@@ -94,7 +94,7 @@ export function AgendaPanel() {
   }
 
   function directoryForItem(item: AgendaItem): string | undefined {
-    if (item.origin?.scope?.type === "global") return "global"
+    if (item.origin?.scope?.type === "home") return "home"
     return item.origin?.scope?.directory ?? item.origin?.scope?.worktree ?? directory()
   }
 
@@ -173,8 +173,8 @@ export function AgendaPanel() {
 
   function formDirectory(): string {
     const item = editingItem()
-    if (item) return directoryForItem(item) ?? directory() ?? globalSync.data.path.home
-    return directory() ?? globalSync.data.path.home
+    if (item) return directoryForItem(item) ?? directory() ?? globalSync.data.paths.home
+    return directory() ?? globalSync.data.paths.home
   }
 
   function openCreate() {
@@ -214,8 +214,8 @@ export function AgendaPanel() {
       const query = options?.query ?? activityQuery()
       const page = await requestAgendaActivity({
         client: sdk.client,
-        directory: directory() ?? globalSync.data.path.home,
-        scopeID: directory() === "global" ? "global" : undefined,
+        directory: directory() ?? globalSync.data.paths.home,
+        scopeID: directory() === "home" ? "home" : undefined,
         query,
         append,
         state: activity(),
@@ -240,7 +240,7 @@ export function AgendaPanel() {
   )
 
   function navigateToSession(sessionID: string, scopeID: string) {
-    const dir = scopeID === "global" ? "global" : directory()
+    const dir = scopeID === "home" ? "home" : directory()
     if (!dir) return
     navigate(`/${base64Encode(dir)}/session/${sessionID}`)
   }

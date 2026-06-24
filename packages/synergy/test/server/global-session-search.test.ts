@@ -11,7 +11,7 @@ Log.init({ print: false })
 describe("GET /global/session", () => {
   test("returns 200 with expected response shape (data, total, offset, limit)", async () => {
     await ScopeContext.provide({
-      scope: Scope.global(),
+      scope: Scope.home(),
       fn: async () => {
         const app = Server.App()
         const res = await app.request("/global/session")
@@ -50,7 +50,7 @@ describe("GET /global/session", () => {
     })
 
     await ScopeContext.provide({
-      scope: Scope.global(),
+      scope: Scope.home(),
       fn: async () => {
         const app = Server.App()
         const res = await app.request("/global/session")
@@ -100,7 +100,7 @@ describe("GET /global/session", () => {
     })
 
     await ScopeContext.provide({
-      scope: Scope.global(),
+      scope: Scope.home(),
       fn: async () => {
         const app = Server.App()
         const res = await app.request("/global/session?search=FindMe")
@@ -138,7 +138,7 @@ describe("GET /global/session", () => {
     })
 
     await ScopeContext.provide({
-      scope: Scope.global(),
+      scope: Scope.home(),
       fn: async () => {
         const app = Server.App()
 
@@ -177,7 +177,7 @@ describe("GET /global/session", () => {
     })
 
     await ScopeContext.provide({
-      scope: Scope.global(),
+      scope: Scope.home(),
       fn: async () => {
         const app = Server.App()
         const res = await app.request("/global/session")

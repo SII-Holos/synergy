@@ -59,7 +59,7 @@ describe("GET /note/meta metadata route", () => {
               content: [{ type: "paragraph", content: [{ type: "text", text: "Hello from the API" }] }],
             },
           },
-          { scopeID: "global" },
+          { scopeID: "home" },
         )
         await NoteStore.create({
           title: "Local note",

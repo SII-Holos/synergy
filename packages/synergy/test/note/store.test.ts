@@ -22,11 +22,11 @@ describe("NoteStore", () => {
           {
             title: "Global note",
           },
-          { scopeID: "global" },
+          { scopeID: "home" },
         )
 
         expect(note.global).toBe(true)
-        const globalNote = await NoteStore.get("global", note.id)
+        const globalNote = await NoteStore.get("home", note.id)
         expect(globalNote.id).toBe(note.id)
       },
     })
@@ -108,7 +108,7 @@ describe("NoteStore", () => {
     })
   })
 
-  test("getAny resolves notes outside the active and global scopes", async () => {
+  test("getAny resolves notes outside the active and home scopes", async () => {
     await using sourceTmp = await tmpdir()
     await using activeTmp = await tmpdir()
     const sourceScope = (await Scope.fromDirectory(sourceTmp.path)).scope
@@ -149,7 +149,7 @@ describe("NoteStore", () => {
               content: [{ type: "paragraph", content: [{ type: "text", text: "Global content here" }] }],
             },
           },
-          { scopeID: "global" },
+          { scopeID: "home" },
         )
         const projectNote = await NoteStore.create({
           title: "Project note",
@@ -187,14 +187,14 @@ describe("NoteStore", () => {
         }
 
         // Verify searchText contains actual note text (pre-computed markdown from index)
-        const globalGroup = groups.find((g) => g.scopeID === "global")
+        const globalGroup = groups.find((g) => g.scopeID === "home")
         expect(globalGroup).toBeDefined()
         const globalMeta = globalGroup!.notes.find((n) => n.id === globalNote.id)
         expect(globalMeta).toBeDefined()
         expect(globalMeta!.searchText).toContain("Global content")
 
         // Verify project note is present in its project scope group
-        const projectGroup = groups.find((g) => g.scopeID !== "global" && g.notes.some((n) => n.id === projectNote.id))
+        const projectGroup = groups.find((g) => g.scopeID !== "home" && g.notes.some((n) => n.id === projectNote.id))
         expect(projectGroup).toBeDefined()
       },
     })

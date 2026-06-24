@@ -260,7 +260,7 @@ export type AuthOuathResult = { url: string; instructions: string } & (
 export type PluginInput = {
   client: ReturnType<typeof createSynergyClient>
   scope: {
-    type: "global" | "project"
+    type: "home" | "project"
     id: string
     directory: string
     worktree: string

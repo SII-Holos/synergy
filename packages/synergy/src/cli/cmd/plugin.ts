@@ -183,7 +183,7 @@ export const PluginAddCommand = cmd({
     }),
   async handler(args) {
     await ScopeContext.provide({
-      scope: Scope.global(),
+      scope: Scope.home(),
       async fn() {
         const spec = args.spec as string
         const spinner = prompts.spinner()
@@ -237,7 +237,7 @@ export const PluginRemoveCommand = cmd({
       }),
   async handler(args) {
     await ScopeContext.provide({
-      scope: Scope.global(),
+      scope: Scope.home(),
       async fn() {
         const pluginId = args.id as string
 
@@ -294,7 +294,7 @@ export const PluginUpdateCommand = cmd({
       }),
   async handler(args) {
     await ScopeContext.provide({
-      scope: Scope.global(),
+      scope: Scope.home(),
       async fn() {
         const config = await Config.globalResolved()
         const configSpecs = config.plugin ?? []
@@ -510,7 +510,7 @@ export const PluginListCommand = cmd({
       }),
   async handler(args) {
     await ScopeContext.provide({
-      scope: Scope.global(),
+      scope: Scope.home(),
       async fn() {
         const config = await Config.current()
         const configSpecs = config.plugin ?? []

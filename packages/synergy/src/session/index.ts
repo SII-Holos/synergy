@@ -105,7 +105,7 @@ export namespace Session {
 
   function toNavEntry(session: Info): SessionNavEntry {
     const scope = session.scope as Scope
-    const scopeType = scope.id === "global" ? "global" : "project"
+    const scopeType = scope.type === "home" ? "home" : "project"
     const category =
       session.category ??
       SessionNav.deriveCategory({
@@ -185,7 +185,7 @@ export namespace Session {
 
     const endpoint = input?.endpoint
     const createdAt = Date.now()
-    const scopeType = scope.id === "global" ? "global" : "project"
+    const scopeType = scope.type === "home" ? "home" : "project"
     const category = SessionNav.deriveCategory({
       scopeType,
       endpointKind: endpoint?.kind,

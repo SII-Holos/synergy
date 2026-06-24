@@ -4,7 +4,7 @@ import { useGlobalSDK } from "@/context/global-sdk"
 import { base64Encode } from "@ericsanchezok/synergy-util/encode"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { relativeTime } from "@/utils/time"
-import { getScopeLabel, isGlobalScope } from "@/utils/scope"
+import { getScopeLabel, isHomeScope } from "@/utils/scope"
 import type { GlobalSessionSearchResponse } from "@ericsanchezok/synergy-sdk/client"
 import "./global-search-modal.css"
 
@@ -71,7 +71,7 @@ export function GlobalSearchModal(props: GlobalSearchModalProps) {
   onCleanup(() => clearTimeout(debounceTimer))
 
   const handleSelect = (item: SessionItem) => {
-    const dir = isGlobalScope(item.scope.directory) ? "global" : item.scope.directory
+    const dir = item.scope.type === "home" ? "home" : item.scope.directory
     navigate(`/${base64Encode(dir)}/session/${item.id}`)
     props.onClose()
   }

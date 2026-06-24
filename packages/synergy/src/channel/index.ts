@@ -128,7 +128,7 @@ export namespace Channel {
 
   const state = ScopedState.create(
     async (): Promise<State> => {
-      const scope = Scope.global()
+      const scope = Scope.home()
       const cfg = await Config.current()
       const channels = cfg.channel ?? {}
       const connections = new Map<string, Connection>()
@@ -711,7 +711,7 @@ export namespace Channel {
 
     s.statuses.set(key, { status: "connecting" })
     const abort = new AbortController()
-    const scope = Scope.global()
+    const scope = Scope.home()
 
     await connectAccount({
       channelType,

@@ -12,7 +12,7 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
   init: () => {
     const globalSync = useGlobalSync()
     const sdk = useSDK()
-    const [store, setStore] = globalSync.child(sdk.directory)
+    const [store, setStore] = globalSync.ensureScopeState(sdk.scopeKey)
     const absolute = (path: string) => (store.path.directory + "/" + path).replace("//", "/")
     const chunk = 200
     const maxMessages = 500
@@ -252,7 +252,12 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
           if (pending) return pending
 
           const promise = retry(() =>
-            sdk.client.session.dag({ sessionID, directory: sdk.directory }).then((r) => r.data as any),
+            sdk.client.session
+              .dag({
+                sessionID,
+                ...(sdk.isHome ? { scopeID: sdk.scopeID } : { directory: sdk.directory }),
+              })
+              .then((r) => r.data as any),
           )
             .then((nodes) => {
               setStore("dag", sessionID, reconcile(nodes ?? [], { key: "id" }))
@@ -290,7 +295,7 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
     }
 
     onCleanup(() => {
-      globalSync.releaseChild(sdk.directory)
+      globalSync.releaseScopeState(sdk.scopeKey)
     })
   },
 })

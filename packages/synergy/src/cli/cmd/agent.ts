@@ -59,7 +59,7 @@ const AgentCreateCommand = cmd({
       }),
   async handler(args) {
     await ScopeContext.provide({
-      scope: Scope.global(),
+      scope: Scope.home(),
       async fn() {
         const cliPath = args.path
         const cliDescription = args.description
@@ -233,7 +233,7 @@ const AgentListCommand = cmd({
   describe: "list all available agents",
   async handler() {
     await ScopeContext.provide({
-      scope: Scope.global(),
+      scope: Scope.home(),
       async fn() {
         const agents = await Agent.list()
         const sortedAgents = agents.sort((a, b) => {

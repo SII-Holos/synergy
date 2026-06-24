@@ -68,7 +68,7 @@ export const McpListCommand = cmd({
   describe: "list MCP servers and their status",
   async handler() {
     await ScopeContext.provide({
-      scope: Scope.global(),
+      scope: Scope.home(),
       async fn() {
         UI.empty()
         prompts.intro("MCP Servers")
@@ -163,7 +163,7 @@ export const McpAuthCommand = cmd({
       .command(McpAuthListCommand),
   async handler(args) {
     await ScopeContext.provide({
-      scope: Scope.global(),
+      scope: Scope.home(),
       async fn() {
         UI.empty()
         prompts.intro("MCP OAuth Authentication")
@@ -288,7 +288,7 @@ export const McpAuthListCommand = cmd({
   describe: "list OAuth-capable MCP servers and their auth status",
   async handler() {
     await ScopeContext.provide({
-      scope: Scope.global(),
+      scope: Scope.home(),
       async fn() {
         UI.empty()
         prompts.intro("MCP OAuth Status")
@@ -332,7 +332,7 @@ export const McpLogoutCommand = cmd({
     }),
   async handler(args) {
     await ScopeContext.provide({
-      scope: Scope.global(),
+      scope: Scope.home(),
       async fn() {
         UI.empty()
         prompts.intro("MCP OAuth Logout")
@@ -533,7 +533,7 @@ export const McpDebugCommand = cmd({
     }),
   async handler(args) {
     await ScopeContext.provide({
-      scope: Scope.global(),
+      scope: Scope.home(),
       async fn() {
         UI.empty()
         prompts.intro("MCP OAuth Debug")

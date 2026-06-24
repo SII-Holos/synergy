@@ -316,9 +316,9 @@ describe("GET /session/index (v2 nav)", () => {
     let globalSessionID: string | undefined
     let projectSessionID: string | undefined
 
-    // Create a session in the global scope
+    // Create a session in the home scope
     await ScopeContext.provide({
-      scope: Scope.global(),
+      scope: Scope.home(),
       fn: async () => {
         const s = await Session.create({ title: "Global Scope Session" })
         globalSessionID = s.id
@@ -349,12 +349,12 @@ describe("GET /session/index (v2 nav)", () => {
       },
     })
 
-    // Query global scope explicitly via scopeID override
+    // Query home scope explicitly via scopeID override
     await ScopeContext.provide({
       scope,
       fn: async () => {
         const app = Server.App()
-        const res = await app.request(`/session/index?scopeID=global&directory=${encodeURIComponent(scope.directory)}`)
+        const res = await app.request(`/session/index?scopeID=home&directory=${encodeURIComponent(scope.directory)}`)
         const body = await res.json()
         const ids = body.items.map((s: any) => s.id)
         expect(ids).toContain(globalSessionID!)
@@ -364,7 +364,7 @@ describe("GET /session/index (v2 nav)", () => {
 
     // Cleanup
     await ScopeContext.provide({
-      scope: Scope.global(),
+      scope: Scope.home(),
       fn: async () => {
         await Session.remove(globalSessionID!)
       },

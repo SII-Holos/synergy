@@ -18,7 +18,7 @@ export namespace GlobalRuntime {
   export async function start() {
     if (!started) {
       started = ScopeContext.provide({
-        scope: Scope.global(),
+        scope: Scope.home(),
         fn: async () => {
           log.info("starting")
           await Plugin.init()
@@ -38,7 +38,7 @@ export namespace GlobalRuntime {
   export async function stop() {
     Agenda.stop()
     await ScopeContext.provide({
-      scope: Scope.global(),
+      scope: Scope.home(),
       fn: async () => {
         await Channel.stopAll().catch(() => undefined)
       },

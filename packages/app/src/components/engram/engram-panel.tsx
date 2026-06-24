@@ -33,14 +33,14 @@ export function EngramPanel() {
     const dir = directory()
     const sessionID = params.id
     if (!dir || !sessionID) return undefined
-    const [store] = globalSync.child(dir)
+    const [store] = globalSync.ensureScopeState(dir)
     return store.session.find((session) => session.id === sessionID)
   })
   const currentSessionID = createMemo(() => currentSession()?.id)
   const currentScopeID = createMemo(() => {
     const dir = directory()
     if (!dir) return undefined
-    const [store] = globalSync.child(dir)
+    const [store] = globalSync.ensureScopeState(dir)
     return store.scopeID || undefined
   })
 

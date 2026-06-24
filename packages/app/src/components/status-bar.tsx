@@ -195,8 +195,8 @@ export function StatusBar() {
   const directory = createMemo(() => decodeDirectory(params.dir))
   const store = createMemo(() => {
     const dir = directory()
-    if (!dir || dir === "global") return undefined
-    return globalSync.child(dir)[0]
+    if (!dir || dir === "home") return undefined
+    return globalSync.peekScopeState(dir)?.[0]
   })
   const scope = createMemo(() => {
     const current = store()

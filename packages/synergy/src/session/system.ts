@@ -65,7 +65,7 @@ export namespace SystemPrompt {
       }
     }
 
-    if (scope.type === "global") {
+    if (scope.type === "home") {
       if (!endpointType) {
         envLines.push(`  Scope: home`)
       }

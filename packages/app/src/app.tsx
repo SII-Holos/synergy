@@ -172,7 +172,7 @@ function ConnectedApp() {
                       </LayoutProvider>
                     )}
                   >
-                    <Route path="/" component={() => <Navigate href={`/${base64Encode("global")}/session`} />} />
+                    <Route path="/" component={() => <Navigate href={`/${base64Encode("home")}/session`} />} />
                     <Route path="/plugins/marketplace" component={MarketplacePage} />
                     <Route path="/plugins/:pluginId" component={PluginDetailPage} />
                     <Route path="/:dir" component={DirectoryLayout}>

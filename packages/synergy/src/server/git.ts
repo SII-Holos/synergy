@@ -10,7 +10,7 @@ export const GitRoute = new Hono().post(
   describeRoute({
     summary: "Initialize git repository",
     description: "Initialize a git repository in the specified directory if one does not already exist.",
-    operationId: "git.init",
+    operationId: "global.git.init",
     responses: {
       200: {
         description: "Git initialization result",

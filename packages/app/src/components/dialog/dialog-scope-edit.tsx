@@ -19,7 +19,7 @@ export function DialogScopeEdit(props: { scope: LocalScope }) {
     setSaving(true)
     try {
       const scopeID = props.scope.id ?? props.scope.worktree
-      await globalSDK.client.scope.update({ scopeID, name: name().trim() || undefined })
+      await globalSDK.client.scope.update({ path_scopeID: scopeID, name: name().trim() || undefined })
       showToast({ type: "info", title: "Project updated", description: name() || getScopeLabel(props.scope) })
       dialog.close()
     } catch (e: any) {

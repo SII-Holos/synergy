@@ -38,7 +38,7 @@ export function DialogSessionExport() {
   const currentSession = () => {
     const dir = directory()
     if (!dir) return undefined
-    const [store] = globalSync.child(dir)
+    const [store] = globalSync.ensureScopeState(dir)
     return store.session.find((s: Session) => s.id === sessionID())
   }
 
@@ -46,7 +46,7 @@ export function DialogSessionExport() {
     const dir = directory()
     const id = sessionID()
     if (!dir || !id) return []
-    const [store] = globalSync.child(dir)
+    const [store] = globalSync.ensureScopeState(dir)
     return store.session.filter((s: Session) => s.parentID === id)
   }
 

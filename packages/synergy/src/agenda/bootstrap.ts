@@ -18,10 +18,10 @@ export namespace AgendaBootstrap {
   }
 
   export async function seed(): Promise<void> {
-    const scopeID = "global"
+    const scopeID = "home"
 
     await ScopeContext.provide({
-      scope: Scope.global(),
+      scope: Scope.home(),
       fn: async () => {
         const existing = await AgendaStore.get(scopeID, SEED_ID).catch(() => undefined)
         const enabled = await isAutonomyEnabled()

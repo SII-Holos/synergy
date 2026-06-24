@@ -832,7 +832,7 @@ export namespace Config {
   }
 
   export async function globalResolved() {
-    return forScope(Scope.global())
+    return forScope(Scope.home())
   }
 
   export const Event = {
@@ -950,7 +950,7 @@ export namespace Config {
         throw new Error("Config.reload('project') requires a ScopeContext")
       }
       return ScopeContext.provide<ReloadResult>({
-        scope: Scope.global(),
+        scope: Scope.home(),
         fn: () => reload(scope),
       })
     }

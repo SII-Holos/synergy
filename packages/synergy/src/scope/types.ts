@@ -1,8 +1,8 @@
 import z from "zod"
 
-export interface Global {
-  type: "global"
-  id: "global"
+export interface Home {
+  type: "home"
+  id: "home"
   directory: string
   worktree: string
 }
@@ -19,12 +19,12 @@ export interface Project {
   time: { created: number; updated: number; initialized?: number; archived?: number }
 }
 
-export type Scope = Global | Project
+export type Scope = Home | Project
 
 export const Info = z
   .object({
     id: z.string(),
-    type: z.enum(["global", "project"]),
+    type: z.enum(["home", "project"]),
     directory: z.string(),
     worktree: z.string(),
     vcs: z.literal("git").optional(),

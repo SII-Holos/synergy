@@ -56,7 +56,7 @@ export default function Layout(props: ParentProps) {
   createEffect(() => {
     const dir = params.dir ? base64Decode(params.dir) : undefined
     if (!dir) return
-    const [store] = globalSync.child(dir)
+    const [store] = globalSync.ensureScopeState(dir)
     const cfg = (store.config as any)?.toast
     setToastConfig(
       cfg
@@ -100,7 +100,7 @@ export default function Layout(props: ParentProps) {
       const directory = e.name
       const perm = e.details.properties
 
-      const [childStore] = globalSync.child(directory)
+      const [childStore] = globalSync.ensureScopeState(directory)
       const session = childStore.session.find((s) => s.id === perm.sessionID)
       const sessionKey = `${directory}:${perm.sessionID}`
 
@@ -159,7 +159,7 @@ export default function Layout(props: ParentProps) {
         toastBySession.delete(sessionKey)
         alertedAtBySession.delete(sessionKey)
       }
-      const [childStore] = globalSync.child(currentDir)
+      const [childStore] = globalSync.ensureScopeState(currentDir)
       const childSessions = childStore.session.filter((s) => s.parentID === currentSession)
       for (const child of childSessions) {
         const childKey = `${currentDir}:${child.id}`
@@ -417,7 +417,7 @@ export default function Layout(props: ParentProps) {
       if (result.initGit) {
         const dirs = Array.isArray(result.directory) ? result.directory : [result.directory]
         for (const dir of dirs) {
-          await globalSDK.client.git.init({ body_directory: dir }).catch(() => {})
+          await globalSDK.client.global.git.init({ directory: dir }).catch(() => {})
         }
       }
 

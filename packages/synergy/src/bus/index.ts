@@ -72,7 +72,7 @@ export namespace Bus {
       // Route UI/session events to the scope directory, not the execution cwd.
       // A session may execute from a worktree workspace while still belonging to
       // the original scope store that the frontend subscribed to.
-      directory: ScopeContext.current.scope.type === "global" ? "global" : ScopeContext.current.scope.directory,
+      directory: ScopeContext.current.scope.type === "home" ? "home" : ScopeContext.current.scope.directory,
       payload,
     })
     await Promise.all(pending)

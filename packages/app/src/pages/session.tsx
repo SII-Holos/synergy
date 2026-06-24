@@ -28,7 +28,7 @@ import { SessionReviewTab } from "@/components/session"
 
 import { navMark, navParams } from "@/utils/perf"
 import { same } from "@/utils/same"
-import { isGlobalScope } from "@/utils/scope"
+import { isHomeScope } from "@/utils/scope"
 
 import { useSessionCommands } from "@/components/session/commands"
 import { useSessionMeta } from "@/composables/use-session-meta"
@@ -188,7 +188,7 @@ function SessionPageContent() {
   const messages = createMemo(() => (params.id ? (sync.data.message[params.id] ?? []) : []) ?? [])
   const isNewSession = createMemo(() => {
     if (!params.id) return true
-    if (isGlobalScope(sdk.directory) && (messages()?.length ?? 0) === 0) return true
+    if (isHomeScope(sdk.scopeKey) && (messages()?.length ?? 0) === 0) return true
     return false
   })
   const messagesReady = createMemo(() => {
@@ -407,7 +407,7 @@ function SessionPageContent() {
   createEffect(() => {
     const session = currentSession()
     let title: string
-    if (isGlobalScope(sdk.directory)) {
+    if (isHomeScope(sdk.scopeKey)) {
       title = "Home"
     } else {
       title = session?.title || "New session"
@@ -939,7 +939,7 @@ function SessionPageContent() {
               }}
               isNewSession={isNewSession}
               showTabs={showTabs}
-              isGlobal={isGlobalScope(sdk.directory)}
+              isGlobal={isHomeScope(sdk.scopeKey)}
               sessionID={params.id}
               prompt={prompt}
               sync={sync}

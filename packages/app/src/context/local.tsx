@@ -580,7 +580,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
     })()
 
     const result = {
-      slug: createMemo(() => base64Encode(sdk.directory)),
+      slug: createMemo(() => base64Encode(sdk.scopeKey)),
       model,
       agent,
       file,

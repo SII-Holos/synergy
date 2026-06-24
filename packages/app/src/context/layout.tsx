@@ -13,6 +13,7 @@ import { Binary } from "@ericsanchezok/synergy-util/binary"
 import { retry } from "@ericsanchezok/synergy-util/retry"
 import { computeDefaultWorkspaceWidth } from "./workspace-layout"
 import { reconcile } from "solid-js/store"
+import { HOME_SCOPE_KEY } from "@/utils/scope"
 
 const AVATAR_COLOR_KEYS = ["pink", "mint", "orange", "purple", "cyan", "lime"] as const
 export type AvatarColorKey = (typeof AVATAR_COLOR_KEYS)[number]
@@ -51,7 +52,7 @@ export const SESSION_PAGE_SIZE = 20
 export interface NavEntry {
   id: string
   scopeID: string
-  scopeType: "global" | "project"
+  scopeType: "home" | "project"
   title: string
   category: "project" | "home" | "channel" | "background"
   lastActivityAt: number
@@ -68,7 +69,7 @@ export interface NavCursor {
 
 export interface ScopeNavEntry {
   scopeID: string
-  scopeType: "global" | "project"
+  scopeType: "home" | "project"
   name?: string
   directory: string
   latestActivityAt: number
@@ -301,7 +302,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       navPending.add(key)
       try {
         const res = await globalSdk.client.session.index({
-          scopeID: "global",
+          scopeID: "home",
           category,
           parentOnly: "true",
           limit: ROOT_NAV_SECTION_LIMIT,
@@ -323,8 +324,6 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
             total: data.total,
           })
         }
-        // Pre-warm the global child store for live sidebar icons
-        globalSync.child("global")
       } finally {
         navPending.delete(key)
       }
@@ -348,15 +347,6 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
           setRecentEntries({ items: merged, nextCursor: data.nextCursor, total: data.total })
         } else {
           setRecentEntries({ items: data.items as NavEntry[], nextCursor: data.nextCursor, total: data.total })
-        }
-        // Pre-warm child stores so sidebar icons resolve to live runtime status
-        for (const item of data.items) {
-          if (item.scopeType === "global") {
-            globalSync.child("global")
-          } else {
-            const scope = globalSync.data.scope.find((s) => s.id === item.scopeID)
-            if (scope?.worktree) globalSync.child(scope.worktree)
-          }
         }
       } finally {
         navPending.delete(key)
@@ -401,7 +391,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       try {
         const existing = rootNavStore[category]
         const res = await globalSdk.client.session.index({
-          scopeID: "global",
+          scopeID: "home",
           category,
           parentOnly: "true",
           limit: Math.max(ROOT_NAV_SECTION_LIMIT, existing?.items.length ?? 0),
@@ -482,7 +472,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
             loadScopeIndex()
           }, NAV_REFRESH_DEBOUNCE_MS),
         )
-        if (scope.id === "global") {
+        if (scope.id === "home") {
           for (const category of ROOT_NAV_SECTION_KEYS) {
             if (!rootNavStore[category]) continue
             const pending = navRefreshTimers.get(`__root_${category}`)
@@ -516,6 +506,16 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
 
     const usedColors = new Set<AvatarColorKey>()
 
+    function scopeKeyForSession(session: Session): string {
+      return session.scope.type === "home" || session.scope.id === HOME_SCOPE_KEY
+        ? HOME_SCOPE_KEY
+        : (session.scope.directory ?? session.scope.worktree ?? session.scope.id)
+    }
+
+    function scopeRequest(scopeKey: string) {
+      return scopeKey === HOME_SCOPE_KEY ? { scopeID: HOME_SCOPE_KEY } : { directory: scopeKey }
+    }
+
     function pickAvailableColor(): AvatarColorKey {
       const available = AVATAR_COLOR_KEYS.filter((c) => !usedColors.has(c))
       if (available.length === 0) return AVATAR_COLOR_KEYS[Math.floor(Math.random() * AVATAR_COLOR_KEYS.length)]
@@ -523,8 +523,8 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
     }
 
     function enrich(project: { worktree: string; expanded: boolean }) {
-      const [childStore] = globalSync.child(project.worktree)
-      const scopeID = childStore.scopeID
+      const childState = globalSync.peekScopeState(project.worktree)
+      const scopeID = childState?.[0].scopeID
       const metadata = scopeID
         ? globalSync.data.scope.find((x) => x.id === scopeID)
         : globalSync.data.scope.find((x) => x.worktree === project.worktree)
@@ -543,7 +543,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       usedColors.add(color)
       scope.icon = { ...scope.icon, color }
       if (scope.id) {
-        globalSdk.client.scope.update({ scopeID: scope.id, icon: { color } })
+        globalSdk.client.scope.update({ path_scopeID: scope.id, icon: { color } })
       }
       return scope
     }
@@ -695,7 +695,9 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
     function projectSessions(scope: LocalScope | undefined): Session[] {
       if (!scope) return []
       const dirs = [scope.worktree, ...(scope.sandboxes ?? [])]
-      const stores = dirs.map((dir) => globalSync.child(dir)[0])
+      const stores = dirs
+        .map((dir) => globalSync.peekScopeState(dir)?.[0])
+        .filter((store): store is NonNullable<typeof store> => !!store)
       const byID = new Map<string, Session>()
       for (const session of stores.flatMap((s) =>
         s.session.filter((session) => session.scope.directory === s.path.directory),
@@ -735,7 +737,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
 
     function childStoreForScope(scope: LocalScope | undefined) {
       if (!scope) return undefined
-      return globalSync.child(scope.worktree)[0]
+      return globalSync.peekScopeState(scope.worktree)?.[0]
     }
 
     type PrefetchQueue = {
@@ -764,9 +766,11 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       return created
     }
 
-    const prefetchMessages = (directory: string, sessionID: string, token: number) => {
-      const [, setChildStore] = globalSync.child(directory)
-      return retry(() => globalSdk.client.session.messages({ directory, sessionID, limit: prefetchChunk }))
+    const prefetchMessages = (scopeKey: string, sessionID: string, token: number) => {
+      const [, setChildStore] = globalSync.ensureScopeState(scopeKey)
+      return retry(() =>
+        globalSdk.client.session.messages({ ...scopeRequest(scopeKey), sessionID, limit: prefetchChunk }),
+      )
         .then((messages) => {
           if (prefetchToken.value !== token) return
           const items = (messages.data ?? []).filter((x) => !!x?.info?.id)
@@ -795,8 +799,8 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         .catch(() => undefined)
     }
 
-    const pumpPrefetch = (directory: string) => {
-      const q = queueFor(directory)
+    const pumpPrefetch = (scopeKey: string) => {
+      const q = queueFor(scopeKey)
       if (q.running >= prefetchConcurrency) return
       const sessionID = q.pending.shift()
       if (!sessionID) return
@@ -804,19 +808,19 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       q.inflight.add(sessionID)
       q.running += 1
       const token = prefetchToken.value
-      void prefetchMessages(directory, sessionID, token).finally(() => {
+      void prefetchMessages(scopeKey, sessionID, token).finally(() => {
         q.running -= 1
         q.inflight.delete(sessionID)
-        pumpPrefetch(directory)
+        pumpPrefetch(scopeKey)
       })
     }
 
     function prefetchSession(session: Session, priority: "high" | "low" = "low") {
-      const directory = session.scope.directory
-      if (!directory) return
-      const [childStore] = globalSync.child(directory)
+      const scopeKey = scopeKeyForSession(session)
+      if (!scopeKey) return
+      const [childStore] = globalSync.ensureScopeState(scopeKey)
       if (childStore.message[session.id] !== undefined) return
-      const q = queueFor(directory)
+      const q = queueFor(scopeKey)
       if (q.inflight.has(session.id)) return
       if (q.pendingSet.has(session.id)) return
       if (priority === "high") q.pending.unshift(session.id)
@@ -827,7 +831,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         if (!dropped) continue
         q.pendingSet.delete(dropped)
       }
-      pumpPrefetch(directory)
+      pumpPrefetch(scopeKey)
     }
 
     function resetPrefetch() {
@@ -839,13 +843,14 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
     }
 
     async function archiveSession(session: Session) {
-      const [childStore, setChildStore] = globalSync.child(session.scope.directory!)
+      const scopeKey = scopeKeyForSession(session)
+      const [childStore, setChildStore] = globalSync.ensureScopeState(scopeKey)
       const sessions = childStore.session ?? []
       const index = sessions.findIndex((s) => s.id === session.id)
       const nextSession = sessions[index + 1] ?? sessions[index - 1]
 
       await globalSdk.client.session.update({
-        directory: session.scope.directory,
+        ...scopeRequest(scopeKey),
         sessionID: session.id,
         time: { archived: Date.now() },
       })
@@ -855,10 +860,9 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
           if (match.found) draft.session.splice(match.index, 1)
         }),
       )
-      const dir = session.scope.directory!
-      const existing = navEntries[dir]
+      const existing = navEntries[scopeKey]
       if (existing) {
-        setNavEntries(dir, {
+        setNavEntries(scopeKey, {
           ...existing,
           items: existing.items.filter((e) => e.id !== session.id),
           total: Math.max(0, existing.total - 1),
@@ -868,7 +872,8 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
     }
 
     async function pinSession(session: Session, pinned: boolean) {
-      const [, setChildStore] = globalSync.child(session.scope.directory!)
+      const scopeKey = scopeKeyForSession(session)
+      const [, setChildStore] = globalSync.ensureScopeState(scopeKey)
       const value = pinned ? Date.now() : 0
       setChildStore(
         produce((draft) => {
@@ -876,17 +881,16 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
           if (match.found) draft.session[match.index].pinned = value
         }),
       )
-      const dir = session.scope.directory!
-      const existing = navEntries[dir]
+      const existing = navEntries[scopeKey]
       if (existing) {
         setNavEntries(
-          dir,
+          scopeKey,
           "items",
           (items) => items.map((e) => (e.id === session.id ? { ...e, pinned: value } : e)) as NavEntry[],
         )
       }
       await globalSdk.client.session.update({
-        directory: session.scope.directory,
+        ...scopeRequest(scopeKey),
         sessionID: session.id,
         pinned: value,
       })

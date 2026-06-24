@@ -66,7 +66,7 @@ export async function run(options: RuntimeOptions) {
     if (options.printChannelStatus) {
       statuses.push(
         ...(await ScopeContext.provide({
-          scope: Scope.global(),
+          scope: Scope.home(),
           fn: connectionStatusRows,
         })),
       )
@@ -76,7 +76,7 @@ export async function run(options: RuntimeOptions) {
   if (options.printBanner) {
     if (
       await ScopeContext.provide({
-        scope: Scope.global(),
+        scope: Scope.home(),
         fn: hasNoModelConfigured,
       })
     ) {

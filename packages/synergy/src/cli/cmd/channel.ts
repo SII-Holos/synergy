@@ -159,7 +159,7 @@ export const ChannelListCommand = cmd({
   describe: "list configured channels",
   async handler() {
     await ScopeContext.provide({
-      scope: Scope.global(),
+      scope: Scope.home(),
       async fn() {
         UI.empty()
         prompts.intro("Channels")

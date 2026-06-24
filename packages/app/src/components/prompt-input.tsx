@@ -49,7 +49,7 @@ import { Binary } from "@ericsanchezok/synergy-util/binary"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import { ContextBar } from "@/components/context-bar"
 import { QuickActions } from "@/components/quick-actions"
-import { isGlobalScope } from "@/utils/scope"
+import { isHomeScope } from "@/utils/scope"
 import { computeWorkingPhrase, titlecaseStatusLabel } from "@ericsanchezok/synergy-ui/session-status"
 import { SessionAgendaWakeIndicator } from "@/components/session/wake-indicator"
 import { FILE_INPUT_ACCEPT } from "@/components/prompt-input/files"
@@ -1022,7 +1022,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                 ? "Enter shell command..."
                 : planMode()
                   ? "Plan your approach..."
-                  : isGlobalScope(sdk.directory)
+                  : isHomeScope(sdk.scopeKey)
                     ? `Ask me anything... "${PLACEHOLDERS_GLOBAL[store.placeholder % PLACEHOLDERS_GLOBAL.length]}"`
                     : `Ask anything... "${PLACEHOLDERS[store.placeholder]}"`}
             </div>

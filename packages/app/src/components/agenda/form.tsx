@@ -212,7 +212,7 @@ export function AgendaForm(props: { directory: string; item?: AgendaItem; onBack
   })
 
   const scopes = createMemo(() => {
-    const home = globalSync.data.path.home
+    const home = globalSync.data.paths.home
     const seen = new Set<string>()
     const items = (globalSync.data.scope ?? []).filter((s) => {
       if (seen.has(s.id)) return false
@@ -220,14 +220,15 @@ export function AgendaForm(props: { directory: string; item?: AgendaItem; onBack
       if (home && s.worktree === home) return false
       return true
     })
-    if (home) items.unshift({ id: "global", worktree: home, name: "Home" } as (typeof items)[0])
+    if (home)
+      items.unshift({ id: "home", type: "home", worktree: home, directory: home, name: "Home" } as (typeof items)[0])
     return items
   })
 
   const currentScopeID = createMemo(() => {
     const dir = props.directory
     if (!dir) return ""
-    const [store] = globalSync.child(dir)
+    const [store] = globalSync.ensureScopeState(dir)
     return store.scopeID
   })
 

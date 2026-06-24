@@ -16,6 +16,7 @@ import { getApproval } from "../plugin/consent/approval-store.js"
 import type { PluginManifest as PluginManifestType } from "@ericsanchezok/synergy-plugin"
 import * as ManifestReader from "../plugin/manifest-reader"
 import { PluginLogBuffer } from "./logs.js"
+import { Global } from "../global/index.js"
 import {
   RuntimeRegistry,
   defaultRuntimeRegistry,
@@ -292,10 +293,10 @@ export class PluginRuntimeSupervisor {
       const scope =
         options.scope ??
         ({
-          id: "global",
-          type: "global" as const,
-          directory: options.pluginDir,
-          worktree: options.pluginDir,
+          id: "home",
+          type: "home" as const,
+          directory: Global.Path.home,
+          worktree: Global.Path.home,
           time: { created: 0, updated: 0 },
           sandboxes: [],
         } as IsolatedPluginInputData["scope"])
@@ -418,10 +419,10 @@ export class PluginRuntimeSupervisor {
       const scope =
         options.scope ??
         ({
-          id: "global",
-          type: "global" as const,
-          directory: options.pluginDir,
-          worktree: options.pluginDir,
+          id: "home",
+          type: "home" as const,
+          directory: Global.Path.home,
+          worktree: Global.Path.home,
           time: { created: 0, updated: 0 },
           sandboxes: [],
         } as IsolatedPluginInputData["scope"])

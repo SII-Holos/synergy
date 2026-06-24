@@ -11,7 +11,7 @@ export default function Home() {
     <div class="flex flex-col items-center justify-center w-full min-h-full px-6">
       <div class="flex flex-col items-center gap-8 -mt-16">
         <Mark class="size-12 text-icon-base" />
-        <Button onClick={() => navigate(`/${base64Encode("global")}/session`)}>Start</Button>
+        <Button onClick={() => navigate(`/${base64Encode("home")}/session`)}>Start</Button>
       </div>
       <div class="absolute bottom-0 left-0 right-0 safe-bottom">
         <StatusBar />

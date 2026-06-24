@@ -4,12 +4,14 @@ export type ClientOptions = {
   baseUrl: `${string}://${string}` | (string & {})
 }
 
-export type HolosLoginResponse = {
-  url: string
-}
-
-export type HolosCredentialsResponse = {
-  success: true
+export type GlobalPaths = {
+  home: string
+  root: string
+  data: string
+  config: string
+  state: string
+  cache: string
+  log: string
 }
 
 export type BadRequestError = {
@@ -18,6 +20,152 @@ export type BadRequestError = {
     [key: string]: unknown
   }>
   success: false
+}
+
+export type StatsSnapshot = {
+  overview: {
+    totalSessions: number
+    activeSessions: number
+    archivedSessions: number
+    totalMessages: number
+    totalTurns: number
+    totalDays: number
+    longestStreak: number
+    currentStreak: number
+    projectCount: number
+  }
+  tokenCost: {
+    tokens: {
+      input: number
+      output: number
+      reasoning: number
+      cache: {
+        read: number
+        write: number
+      }
+    }
+    cost: number
+    cacheHitRate: number
+    avgCostPerTurn: number
+    avgTokensPerTurn: number
+    dailyCost: number
+    dailyTokens: number
+  }
+  models: {
+    models: Array<{
+      providerID: string
+      modelID: string
+      messages: number
+      turns: number
+      tokens: {
+        input: number
+        output: number
+        reasoning: number
+        cache: {
+          read: number
+          write: number
+        }
+      }
+      cost: number
+      avgResponseMs: number
+    }>
+  }
+  agents: {
+    agents: Array<{
+      agent: string
+      messages: number
+      sessions: number
+      tokens: {
+        input: number
+        output: number
+        reasoning: number
+        cache: {
+          read: number
+          write: number
+        }
+      }
+      cost: number
+      subagentInvocations: number
+    }>
+    totalSubagentCalls: number
+  }
+  tools: {
+    tools: Array<{
+      tool: string
+      calls: number
+      successes: number
+      errors: number
+      avgDurationMs: number
+    }>
+  }
+  codeChanges: {
+    totalAdditions: number
+    totalDeletions: number
+    totalFiles: number
+    netLines: number
+    dailyAdditions: number
+    dailyDeletions: number
+  }
+  lifecycle: {
+    pinnedCount: number
+    avgTurnsPerSession: number
+    medianTurnsPerSession: number
+    compactionCount: number
+    retryCount: number
+    errorCount: number
+    errorRate: number
+    durationBuckets: {
+      short: number
+      medium: number
+      long: number
+    }
+  }
+  channels: {
+    channels: Array<{
+      channel: string
+      sessions: number
+      messages: number
+    }>
+    interactiveSessions: number
+    unattendedSessions: number
+  }
+  timeSeries: {
+    days: Array<{
+      day: string
+      sessions: number
+      turns: number
+      tokens: {
+        input: number
+        output: number
+        reasoning: number
+        cache: {
+          read: number
+          write: number
+        }
+      }
+      cost: number
+      additions: number
+      deletions: number
+      files: number
+      toolCalls: number
+      errors: number
+    }>
+    hours: Array<{
+      hour: string
+      turns: number
+    }>
+    hourlyActivity: Array<number>
+  }
+  computedAt: number
+  watermark: number
+}
+
+export type HolosLoginResponse = {
+  url: string
+}
+
+export type HolosCredentialsResponse = {
+  success: true
 }
 
 export type HolosLogoutResponse = {
@@ -254,7 +402,7 @@ export type AgendaItem = {
 export type SessionNavEntry = {
   id: string
   scopeID: string
-  scopeType: "global" | "project"
+  scopeType: "home" | "project"
   title: string
   category: "project" | "home" | "channel" | "background"
   lastActivityAt: number
@@ -286,7 +434,7 @@ export type AgendaWebhookResult = {
 
 export type Scope = {
   id: string
-  type: "global" | "project"
+  type: "home" | "project"
   directory: string
   worktree: string
   vcs?: "git"
@@ -306,7 +454,7 @@ export type Scope = {
 
 export type ScopeNavEntry = {
   scopeID: string
-  scopeType: "global" | "project"
+  scopeType: "home" | "project"
   name?: string
   directory: string
   latestActivityAt: number
@@ -3431,7 +3579,7 @@ export type NoteMetaInfo = {
 
 export type NoteMetaScopeGroup = {
   scopeID: string
-  scopeType: "global" | "project"
+  scopeType: "home" | "project"
   notes: Array<NoteMetaInfo>
 }
 
@@ -3460,7 +3608,7 @@ export type NoteInfo = {
 
 export type NoteScopeGroup = {
   scopeID: string
-  scopeType: "global" | "project"
+  scopeType: "home" | "project"
   notes: Array<NoteInfo>
 }
 
@@ -3582,144 +3730,6 @@ export type AssetInfo = {
   url: string
   mime: string
   size: number
-}
-
-export type StatsSnapshot = {
-  overview: {
-    totalSessions: number
-    activeSessions: number
-    archivedSessions: number
-    totalMessages: number
-    totalTurns: number
-    totalDays: number
-    longestStreak: number
-    currentStreak: number
-    projectCount: number
-  }
-  tokenCost: {
-    tokens: {
-      input: number
-      output: number
-      reasoning: number
-      cache: {
-        read: number
-        write: number
-      }
-    }
-    cost: number
-    cacheHitRate: number
-    avgCostPerTurn: number
-    avgTokensPerTurn: number
-    dailyCost: number
-    dailyTokens: number
-  }
-  models: {
-    models: Array<{
-      providerID: string
-      modelID: string
-      messages: number
-      turns: number
-      tokens: {
-        input: number
-        output: number
-        reasoning: number
-        cache: {
-          read: number
-          write: number
-        }
-      }
-      cost: number
-      avgResponseMs: number
-    }>
-  }
-  agents: {
-    agents: Array<{
-      agent: string
-      messages: number
-      sessions: number
-      tokens: {
-        input: number
-        output: number
-        reasoning: number
-        cache: {
-          read: number
-          write: number
-        }
-      }
-      cost: number
-      subagentInvocations: number
-    }>
-    totalSubagentCalls: number
-  }
-  tools: {
-    tools: Array<{
-      tool: string
-      calls: number
-      successes: number
-      errors: number
-      avgDurationMs: number
-    }>
-  }
-  codeChanges: {
-    totalAdditions: number
-    totalDeletions: number
-    totalFiles: number
-    netLines: number
-    dailyAdditions: number
-    dailyDeletions: number
-  }
-  lifecycle: {
-    pinnedCount: number
-    avgTurnsPerSession: number
-    medianTurnsPerSession: number
-    compactionCount: number
-    retryCount: number
-    errorCount: number
-    errorRate: number
-    durationBuckets: {
-      short: number
-      medium: number
-      long: number
-    }
-  }
-  channels: {
-    channels: Array<{
-      channel: string
-      sessions: number
-      messages: number
-    }>
-    interactiveSessions: number
-    unattendedSessions: number
-  }
-  timeSeries: {
-    days: Array<{
-      day: string
-      sessions: number
-      turns: number
-      tokens: {
-        input: number
-        output: number
-        reasoning: number
-        cache: {
-          read: number
-          write: number
-        }
-      }
-      cost: number
-      additions: number
-      deletions: number
-      files: number
-      toolCalls: number
-      errors: number
-    }>
-    hours: Array<{
-      hour: string
-      turns: number
-    }>
-    hourlyActivity: Array<number>
-  }
-  computedAt: number
-  watermark: number
 }
 
 export type HolosCredentialsStatusResponse = {
@@ -4870,6 +4880,270 @@ export type GlobalHealthResponses = {
 
 export type GlobalHealthResponse = GlobalHealthResponses[keyof GlobalHealthResponses]
 
+export type GlobalPathsGetData = {
+  body?: never
+  path?: never
+  query?: never
+  url: "/global/paths"
+}
+
+export type GlobalPathsGetResponses = {
+  /**
+   * Global paths
+   */
+  200: GlobalPaths
+}
+
+export type GlobalPathsGetResponse = GlobalPathsGetResponses[keyof GlobalPathsGetResponses]
+
+export type GlobalFilesystemBrowseData = {
+  body?: never
+  path?: never
+  query: {
+    path: string
+    query?: string
+    limit?: number
+    depth?: number
+  }
+  url: "/global/filesystem/browse"
+}
+
+export type GlobalFilesystemBrowseResponses = {
+  /**
+   * Directory paths
+   */
+  200: Array<string>
+}
+
+export type GlobalFilesystemBrowseResponse = GlobalFilesystemBrowseResponses[keyof GlobalFilesystemBrowseResponses]
+
+export type GlobalGitInitData = {
+  body?: {
+    /**
+     * Directory path to initialize git in
+     */
+    directory: string
+  }
+  path?: never
+  query?: never
+  url: "/global/git/init"
+}
+
+export type GlobalGitInitErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type GlobalGitInitError = GlobalGitInitErrors[keyof GlobalGitInitErrors]
+
+export type GlobalGitInitResponses = {
+  /**
+   * Git initialization result
+   */
+  200: {
+    /**
+     * Whether a new git repository was initialized
+     */
+    initialized: boolean
+  }
+}
+
+export type GlobalGitInitResponse = GlobalGitInitResponses[keyof GlobalGitInitResponses]
+
+export type GlobalStatsGetData = {
+  body?: never
+  path?: never
+  query?: {
+    /**
+     * Set to 'true' to force a full recompute from scratch
+     */
+    recompute?: "true" | "false"
+  }
+  url: "/global/stats"
+}
+
+export type GlobalStatsGetErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type GlobalStatsGetError = GlobalStatsGetErrors[keyof GlobalStatsGetErrors]
+
+export type GlobalStatsGetResponses = {
+  /**
+   * Stats snapshot
+   */
+  200: StatsSnapshot
+}
+
+export type GlobalStatsGetResponse = GlobalStatsGetResponses[keyof GlobalStatsGetResponses]
+
+export type GlobalStatsProgressData = {
+  body?: never
+  path?: never
+  query?: never
+  url: "/global/stats/progress"
+}
+
+export type GlobalStatsProgressResponses = {
+  /**
+   * Server-sent events containing progress and final snapshot payloads
+   */
+  200: {
+    type: "progress" | "done" | "error"
+    progress?: {
+      phase: "scan" | "digest" | "bucket" | "snapshot"
+      current: number
+      total: number
+      message?: string
+    }
+    snapshot?: {
+      overview: {
+        totalSessions: number
+        activeSessions: number
+        archivedSessions: number
+        totalMessages: number
+        totalTurns: number
+        totalDays: number
+        longestStreak: number
+        currentStreak: number
+        projectCount: number
+      }
+      tokenCost: {
+        tokens: {
+          input: number
+          output: number
+          reasoning: number
+          cache: {
+            read: number
+            write: number
+          }
+        }
+        cost: number
+        cacheHitRate: number
+        avgCostPerTurn: number
+        avgTokensPerTurn: number
+        dailyCost: number
+        dailyTokens: number
+      }
+      models: {
+        models: Array<{
+          providerID: string
+          modelID: string
+          messages: number
+          turns: number
+          tokens: {
+            input: number
+            output: number
+            reasoning: number
+            cache: {
+              read: number
+              write: number
+            }
+          }
+          cost: number
+          avgResponseMs: number
+        }>
+      }
+      agents: {
+        agents: Array<{
+          agent: string
+          messages: number
+          sessions: number
+          tokens: {
+            input: number
+            output: number
+            reasoning: number
+            cache: {
+              read: number
+              write: number
+            }
+          }
+          cost: number
+          subagentInvocations: number
+        }>
+        totalSubagentCalls: number
+      }
+      tools: {
+        tools: Array<{
+          tool: string
+          calls: number
+          successes: number
+          errors: number
+          avgDurationMs: number
+        }>
+      }
+      codeChanges: {
+        totalAdditions: number
+        totalDeletions: number
+        totalFiles: number
+        netLines: number
+        dailyAdditions: number
+        dailyDeletions: number
+      }
+      lifecycle: {
+        pinnedCount: number
+        avgTurnsPerSession: number
+        medianTurnsPerSession: number
+        compactionCount: number
+        retryCount: number
+        errorCount: number
+        errorRate: number
+        durationBuckets: {
+          short: number
+          medium: number
+          long: number
+        }
+      }
+      channels: {
+        channels: Array<{
+          channel: string
+          sessions: number
+          messages: number
+        }>
+        interactiveSessions: number
+        unattendedSessions: number
+      }
+      timeSeries: {
+        days: Array<{
+          day: string
+          sessions: number
+          turns: number
+          tokens: {
+            input: number
+            output: number
+            reasoning: number
+            cache: {
+              read: number
+              write: number
+            }
+          }
+          cost: number
+          additions: number
+          deletions: number
+          files: number
+          toolCalls: number
+          errors: number
+        }>
+        hours: Array<{
+          hour: string
+          turns: number
+        }>
+        hourlyActivity: Array<number>
+      }
+      computedAt: number
+      watermark: number
+    }
+    message?: string
+  }
+}
+
+export type GlobalStatsProgressResponse = GlobalStatsProgressResponses[keyof GlobalStatsProgressResponses]
+
 export type GlobalDisposeData = {
   body?: never
   path?: never
@@ -5065,7 +5339,7 @@ export type GlobalSessionSearchResponses = {
       title: string
       scope: {
         id: string
-        type: "global" | "project"
+        type: "home" | "project"
         directory: string
         worktree: string
         name?: string
@@ -5172,6 +5446,7 @@ export type ScopeListData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/scope"
 }
@@ -5190,6 +5465,7 @@ export type ScopeCurrentData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/scope/current"
 }
@@ -5208,6 +5484,7 @@ export type ScopeIndexData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/scope/index"
 }
@@ -5228,6 +5505,7 @@ export type ScopeRemoveData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/scope/{scopeID}"
 }
@@ -5257,6 +5535,7 @@ export type ScopeUpdateData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/scope/{scopeID}"
 }
@@ -5283,48 +5562,12 @@ export type ScopeUpdateResponses = {
 
 export type ScopeUpdateResponse = ScopeUpdateResponses[keyof ScopeUpdateResponses]
 
-export type GitInitData = {
-  body?: {
-    /**
-     * Directory path to initialize git in
-     */
-    directory: string
-  }
-  path?: never
-  query?: {
-    directory?: string
-  }
-  url: "/git/init"
-}
-
-export type GitInitErrors = {
-  /**
-   * Bad request
-   */
-  400: BadRequestError
-}
-
-export type GitInitError = GitInitErrors[keyof GitInitErrors]
-
-export type GitInitResponses = {
-  /**
-   * Git initialization result
-   */
-  200: {
-    /**
-     * Whether a new git repository was initialized
-     */
-    initialized: boolean
-  }
-}
-
-export type GitInitResponse = GitInitResponses[keyof GitInitResponses]
-
 export type PtyListData = {
   body?: never
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/pty"
 }
@@ -5351,6 +5594,7 @@ export type PtyCreateData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/pty"
 }
@@ -5380,6 +5624,7 @@ export type PtyRemoveData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/pty/{ptyID}"
 }
@@ -5409,6 +5654,7 @@ export type PtyGetData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/pty/{ptyID}"
 }
@@ -5444,6 +5690,7 @@ export type PtyUpdateData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/pty/{ptyID}"
 }
@@ -5473,6 +5720,7 @@ export type PtyConnectData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/pty/{ptyID}/connect"
 }
@@ -5500,6 +5748,7 @@ export type ConfigGetData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/config"
 }
@@ -5520,6 +5769,7 @@ export type ConfigUpdateData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/config"
 }
@@ -5547,6 +5797,7 @@ export type ConfigGlobalData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/config/global"
 }
@@ -5565,6 +5816,7 @@ export type ConfigDomainListData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/config/domains"
 }
@@ -5598,6 +5850,7 @@ export type ConfigDomainGetData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/config/domains/{domain}"
 }
@@ -5640,6 +5893,7 @@ export type ConfigDomainUpdateData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/config/domains/{domain}"
 }
@@ -5667,6 +5921,7 @@ export type ConfigImportPlanData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/config/import/plan"
 }
@@ -5713,6 +5968,7 @@ export type ConfigImportApplyData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/config/import/apply"
 }
@@ -5740,6 +5996,7 @@ export type ConfigProvidersData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/config/providers"
 }
@@ -5768,6 +6025,7 @@ export type RuntimeReloadData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/runtime/reload"
 }
@@ -5795,6 +6053,7 @@ export type ControlProfileListData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/control-profiles"
 }
@@ -5813,6 +6072,7 @@ export type ControlProfileEffectiveData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
     /**
      * Agent name to resolve profile for
      */
@@ -5844,6 +6104,7 @@ export type SandboxStatusData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/sandbox/status"
 }
@@ -5862,6 +6123,7 @@ export type SandboxReadinessData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/sandbox/readiness"
 }
@@ -5880,6 +6142,7 @@ export type ToolIdsData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/experimental/tool/ids"
 }
@@ -5907,6 +6170,7 @@ export type ToolListData = {
   path?: never
   query: {
     directory?: string
+    scopeID?: string
     provider: string
     model: string
   }
@@ -5936,6 +6200,7 @@ export type ScopeRuntimeDisposeData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/scope/runtime/dispose"
 }
@@ -5954,6 +6219,7 @@ export type PathGetData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/path"
 }
@@ -5972,6 +6238,7 @@ export type WorktreeListData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/experimental/worktree"
 }
@@ -5990,6 +6257,7 @@ export type WorktreeCreateData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/experimental/worktree"
 }
@@ -6017,6 +6285,7 @@ export type VcsGetData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/vcs"
 }
@@ -6060,6 +6329,7 @@ export type SessionListData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
     /**
      * Number of sessions to skip
      */
@@ -6116,6 +6386,7 @@ export type SessionCreateData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/session"
 }
@@ -6143,6 +6414,7 @@ export type SessionStatusData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/session/status"
 }
@@ -6174,6 +6446,7 @@ export type SessionDeleteData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/session/{sessionID}"
 }
@@ -6207,6 +6480,7 @@ export type SessionGetData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/session/{sessionID}"
 }
@@ -6247,6 +6521,7 @@ export type SessionUpdateData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/session/{sessionID}"
 }
@@ -6280,6 +6555,7 @@ export type SessionChildrenData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/session/{sessionID}/children"
 }
@@ -6316,6 +6592,7 @@ export type SessionTodoData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/session/{sessionID}/todo"
 }
@@ -6352,6 +6629,7 @@ export type SessionDagData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/session/{sessionID}/dag"
 }
@@ -6388,6 +6666,7 @@ export type SessionAgendaData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
     limit?: number
     offset?: number
   }
@@ -6430,6 +6709,7 @@ export type SessionInitData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/session/{sessionID}/init"
 }
@@ -6465,6 +6745,7 @@ export type SessionForkData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/session/{sessionID}/fork"
 }
@@ -6485,6 +6766,7 @@ export type SessionAbortData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/session/{sessionID}/abort"
 }
@@ -6525,6 +6807,7 @@ export type SessionSummarizeData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/session/{sessionID}/summarize"
 }
@@ -6561,6 +6844,7 @@ export type SessionMessagesData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
     limit?: number
   }
   url: "/session/{sessionID}/message"
@@ -6624,6 +6908,7 @@ export type SessionPromptData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/session/{sessionID}/message"
 }
@@ -6663,6 +6948,7 @@ export type SessionDiffData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/session/{sessionID}/diff"
 }
@@ -6703,6 +6989,7 @@ export type SessionMessageData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/session/{sessionID}/message/{messageID}"
 }
@@ -6750,6 +7037,7 @@ export type PartDeleteData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/session/{sessionID}/message/{messageID}/part/{partID}"
 }
@@ -6794,6 +7082,7 @@ export type PartUpdateData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/session/{sessionID}/message/{messageID}/part/{partID}"
 }
@@ -6853,6 +7142,7 @@ export type SessionPromptAsyncData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/session/{sessionID}/prompt_async"
 }
@@ -6908,6 +7198,7 @@ export type SessionCommandData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/session/{sessionID}/command"
 }
@@ -6951,6 +7242,7 @@ export type SessionShellData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/session/{sessionID}/shell"
 }
@@ -6987,6 +7279,7 @@ export type SessionRevertData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/session/{sessionID}/revert"
 }
@@ -7020,6 +7313,7 @@ export type SessionUnrevertData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/session/{sessionID}/unrevert"
 }
@@ -7056,6 +7350,7 @@ export type PermissionRespondData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/session/{sessionID}/permissions/{permissionID}"
 }
@@ -7092,6 +7387,7 @@ export type PermissionReplyData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/permission/{requestID}/reply"
 }
@@ -7123,6 +7419,7 @@ export type PermissionListData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/permission"
 }
@@ -7141,6 +7438,7 @@ export type QuestionListData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/question"
 }
@@ -7166,6 +7464,7 @@ export type QuestionReplyData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/question/{requestID}/reply"
 }
@@ -7199,6 +7498,7 @@ export type QuestionRejectData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/question/{requestID}/reject"
 }
@@ -7235,6 +7535,7 @@ export type SessionExportEstimateData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/session/{sessionID}/export/estimate"
 }
@@ -7271,6 +7572,7 @@ export type SessionExportDownloadData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
     mode?: SessionExportMode
   }
   url: "/session/{sessionID}/export"
@@ -7301,6 +7603,7 @@ export type CortexListData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
     sessionID?: string
   }
   url: "/cortex/tasks"
@@ -7331,6 +7634,7 @@ export type CortexGetData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/cortex/tasks/{taskID}"
 }
@@ -7364,6 +7668,7 @@ export type CortexOutputData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/cortex/tasks/{taskID}/output"
 }
@@ -7399,6 +7704,7 @@ export type CortexCancelData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/cortex/tasks/{taskID}/cancel"
 }
@@ -7430,6 +7736,7 @@ export type CommandListData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/command"
 }
@@ -7448,6 +7755,7 @@ export type ProviderListData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/provider"
 }
@@ -7532,6 +7840,7 @@ export type ProviderAuthData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/provider/auth"
 }
@@ -7562,6 +7871,7 @@ export type ProviderOauthAuthorizeData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/provider/{providerID}/oauth/authorize"
 }
@@ -7603,6 +7913,7 @@ export type ProviderOauthCallbackData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/provider/{providerID}/oauth/callback"
 }
@@ -7630,6 +7941,7 @@ export type SkillListData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/skill"
 }
@@ -7648,6 +7960,7 @@ export type SkillReloadData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/skill/reload"
 }
@@ -7668,6 +7981,7 @@ export type SkillRemoveData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/skill/{name}"
 }
@@ -7700,6 +8014,7 @@ export type SkillImportData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/skill/import"
 }
@@ -7734,6 +8049,7 @@ export type SkillImportUrlData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/skill/import-url"
 }
@@ -7760,33 +8076,12 @@ export type SkillImportUrlResponses = {
 
 export type SkillImportUrlResponse = SkillImportUrlResponses[keyof SkillImportUrlResponses]
 
-export type FindBrowseData = {
-  body?: never
-  path?: never
-  query: {
-    directory?: string
-    path: string
-    query?: string
-    limit?: number
-    depth?: number
-  }
-  url: "/find/browse"
-}
-
-export type FindBrowseResponses = {
-  /**
-   * Directory paths
-   */
-  200: Array<string>
-}
-
-export type FindBrowseResponse = FindBrowseResponses[keyof FindBrowseResponses]
-
 export type FindTextData = {
   body?: never
   path?: never
   query: {
     directory?: string
+    scopeID?: string
     pattern: string
   }
   url: "/find"
@@ -7822,6 +8117,7 @@ export type FindFilesData = {
   path?: never
   query: {
     directory?: string
+    scopeID?: string
     query: string
     dirs?: "true" | "false"
     type?: "file" | "directory"
@@ -7844,6 +8140,7 @@ export type FindSymbolsData = {
   path?: never
   query: {
     directory?: string
+    scopeID?: string
     query: string
   }
   url: "/find/symbol"
@@ -7863,6 +8160,7 @@ export type FileListData = {
   path?: never
   query: {
     directory?: string
+    scopeID?: string
     path: string
   }
   url: "/file"
@@ -7882,6 +8180,7 @@ export type FileReadData = {
   path?: never
   query: {
     directory?: string
+    scopeID?: string
     path: string
   }
   url: "/file/content"
@@ -7901,6 +8200,7 @@ export type FileStatusData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/file/status"
 }
@@ -7932,6 +8232,7 @@ export type EngramExperienceSearchData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/engram/experience/search"
 }
@@ -8009,6 +8310,7 @@ export type EngramExperienceRemoveData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/engram/experience/{id}"
 }
@@ -8041,6 +8343,7 @@ export type EngramExperienceGetData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/engram/experience/{id}"
 }
@@ -8083,6 +8386,7 @@ export type EngramExperienceApplyRewardData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/engram/experience/{id}/reward"
 }
@@ -8138,6 +8442,7 @@ export type EngramStatsData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
     /**
      * Set to 'true' to force a full analytics recompute
      */
@@ -8186,6 +8491,7 @@ export type EngramSearchData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/engram/search"
 }
@@ -8226,6 +8532,7 @@ export type EngramResetData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/engram/reset"
 }
@@ -8258,6 +8565,7 @@ export type EngramRemoveData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/engram/{id}"
 }
@@ -8290,6 +8598,7 @@ export type EngramGetData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/engram/{id}"
 }
@@ -8321,6 +8630,7 @@ export type EngramListData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
     category?: MemoryCategory
     recallMode?: MemoryRecallMode
   }
@@ -8397,6 +8707,7 @@ export type AgendaSessionsData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/agenda/{id}/sessions"
 }
@@ -8429,6 +8740,7 @@ export type AgendaRunsData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/agenda/{id}/runs"
 }
@@ -8461,6 +8773,7 @@ export type AgendaTriggerData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/agenda/{id}/trigger"
 }
@@ -8493,6 +8806,7 @@ export type AgendaActivateData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/agenda/{id}/activate"
 }
@@ -8525,6 +8839,7 @@ export type AgendaPauseData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/agenda/{id}/pause"
 }
@@ -8557,6 +8872,7 @@ export type AgendaCompleteData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/agenda/{id}/complete"
 }
@@ -8589,6 +8905,7 @@ export type AgendaCancelData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/agenda/{id}/cancel"
 }
@@ -8621,6 +8938,7 @@ export type AgendaRemoveData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/agenda/{id}"
 }
@@ -8653,6 +8971,7 @@ export type AgendaGetData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/agenda/{id}"
 }
@@ -8689,6 +9008,7 @@ export type AgendaUpdateData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/agenda/{id}"
 }
@@ -8748,6 +9068,7 @@ export type AgendaCreateData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/agenda"
 }
@@ -8775,6 +9096,7 @@ export type NoteListMetaData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/note/meta"
 }
@@ -8802,6 +9124,7 @@ export type NoteListAllData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/note/all"
 }
@@ -8834,6 +9157,7 @@ export type NoteExportData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
     /**
      * Export format
      */
@@ -8867,6 +9191,7 @@ export type NoteListData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/note"
 }
@@ -8894,6 +9219,7 @@ export type NoteCreateData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/note"
 }
@@ -8926,6 +9252,7 @@ export type NoteRemoveData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/note/{id}"
 }
@@ -8958,6 +9285,7 @@ export type NoteGetData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/note/{id}"
 }
@@ -8994,6 +9322,7 @@ export type NoteUpdateData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/note/{id}"
 }
@@ -9029,6 +9358,7 @@ export type BlueprintLoopListData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/blueprint/loop"
 }
@@ -9056,6 +9386,7 @@ export type BlueprintLoopCreateData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/blueprint/loop"
 }
@@ -9088,6 +9419,7 @@ export type BlueprintLoopCompleteData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/blueprint/loop/{id}/complete"
 }
@@ -9124,6 +9456,7 @@ export type BlueprintLoopCancelData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/blueprint/loop/{id}/cancel"
 }
@@ -9160,6 +9493,7 @@ export type BlueprintLoopGetData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/blueprint/loop/{id}"
 }
@@ -9201,6 +9535,7 @@ export type BlueprintLoopBindData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/blueprint/loop/{id}/bind"
 }
@@ -9242,6 +9577,7 @@ export type BlueprintLoopStartData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/blueprint/loop/{id}/start"
 }
@@ -9278,6 +9614,7 @@ export type BlueprintLoopWaitData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/blueprint/loop/{id}/wait"
 }
@@ -9314,6 +9651,7 @@ export type BlueprintLoopResumeData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/blueprint/loop/{id}/resume"
 }
@@ -9350,6 +9688,7 @@ export type BlueprintLoopActivityData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/blueprint/loop/{id}/activity"
 }
@@ -9391,6 +9730,7 @@ export type BlueprintSessionPlanModeData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/blueprint/session/{id}/plan-mode"
 }
@@ -9425,6 +9765,7 @@ export type AssetUploadData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/asset"
 }
@@ -9454,6 +9795,7 @@ export type AssetGetData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/asset/{id}"
 }
@@ -9474,206 +9816,12 @@ export type AssetGetResponses = {
   200: unknown
 }
 
-export type StatsGetData = {
-  body?: never
-  path?: never
-  query?: {
-    directory?: string
-    /**
-     * Set to 'true' to force a full recompute from scratch
-     */
-    recompute?: "true" | "false"
-  }
-  url: "/stats"
-}
-
-export type StatsGetErrors = {
-  /**
-   * Bad request
-   */
-  400: BadRequestError
-}
-
-export type StatsGetError = StatsGetErrors[keyof StatsGetErrors]
-
-export type StatsGetResponses = {
-  /**
-   * Stats snapshot
-   */
-  200: StatsSnapshot
-}
-
-export type StatsGetResponse = StatsGetResponses[keyof StatsGetResponses]
-
-export type StatsProgressData = {
-  body?: never
-  path?: never
-  query?: {
-    directory?: string
-  }
-  url: "/stats/progress"
-}
-
-export type StatsProgressResponses = {
-  /**
-   * Server-sent events containing progress and final snapshot payloads
-   */
-  200: {
-    type: "progress" | "done" | "error"
-    progress?: {
-      phase: "scan" | "digest" | "bucket" | "snapshot"
-      current: number
-      total: number
-      message?: string
-    }
-    snapshot?: {
-      overview: {
-        totalSessions: number
-        activeSessions: number
-        archivedSessions: number
-        totalMessages: number
-        totalTurns: number
-        totalDays: number
-        longestStreak: number
-        currentStreak: number
-        projectCount: number
-      }
-      tokenCost: {
-        tokens: {
-          input: number
-          output: number
-          reasoning: number
-          cache: {
-            read: number
-            write: number
-          }
-        }
-        cost: number
-        cacheHitRate: number
-        avgCostPerTurn: number
-        avgTokensPerTurn: number
-        dailyCost: number
-        dailyTokens: number
-      }
-      models: {
-        models: Array<{
-          providerID: string
-          modelID: string
-          messages: number
-          turns: number
-          tokens: {
-            input: number
-            output: number
-            reasoning: number
-            cache: {
-              read: number
-              write: number
-            }
-          }
-          cost: number
-          avgResponseMs: number
-        }>
-      }
-      agents: {
-        agents: Array<{
-          agent: string
-          messages: number
-          sessions: number
-          tokens: {
-            input: number
-            output: number
-            reasoning: number
-            cache: {
-              read: number
-              write: number
-            }
-          }
-          cost: number
-          subagentInvocations: number
-        }>
-        totalSubagentCalls: number
-      }
-      tools: {
-        tools: Array<{
-          tool: string
-          calls: number
-          successes: number
-          errors: number
-          avgDurationMs: number
-        }>
-      }
-      codeChanges: {
-        totalAdditions: number
-        totalDeletions: number
-        totalFiles: number
-        netLines: number
-        dailyAdditions: number
-        dailyDeletions: number
-      }
-      lifecycle: {
-        pinnedCount: number
-        avgTurnsPerSession: number
-        medianTurnsPerSession: number
-        compactionCount: number
-        retryCount: number
-        errorCount: number
-        errorRate: number
-        durationBuckets: {
-          short: number
-          medium: number
-          long: number
-        }
-      }
-      channels: {
-        channels: Array<{
-          channel: string
-          sessions: number
-          messages: number
-        }>
-        interactiveSessions: number
-        unattendedSessions: number
-      }
-      timeSeries: {
-        days: Array<{
-          day: string
-          sessions: number
-          turns: number
-          tokens: {
-            input: number
-            output: number
-            reasoning: number
-            cache: {
-              read: number
-              write: number
-            }
-          }
-          cost: number
-          additions: number
-          deletions: number
-          files: number
-          toolCalls: number
-          errors: number
-        }>
-        hours: Array<{
-          hour: string
-          turns: number
-        }>
-        hourlyActivity: Array<number>
-      }
-      computedAt: number
-      watermark: number
-    }
-    message?: string
-  }
-}
-
-export type StatsProgressResponse = StatsProgressResponses[keyof StatsProgressResponses]
-
 export type HolosCredentialsStatusData = {
   body?: never
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/holos/credentials/status"
 }
@@ -9692,6 +9840,7 @@ export type HolosStateData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/holos/state"
 }
@@ -9710,6 +9859,7 @@ export type HolosVerifyData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/holos/verify"
 }
@@ -9728,6 +9878,7 @@ export type HolosAccountsListData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/holos/accounts"
 }
@@ -9748,6 +9899,7 @@ export type HolosAccountsSwitchData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/holos/accounts/switch"
 }
@@ -9781,6 +9933,7 @@ export type HolosAccountsRemoveData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/holos/accounts/{agentId}"
 }
@@ -9808,6 +9961,7 @@ export type HolosStatusData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/holos/status"
 }
@@ -9826,6 +9980,7 @@ export type HolosContactListData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/holos/contact"
 }
@@ -9847,6 +10002,7 @@ export type HolosContactAddData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/holos/contact"
 }
@@ -9876,6 +10032,7 @@ export type HolosContactRemoveData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/holos/contact/{id}"
 }
@@ -9896,6 +10053,7 @@ export type HolosContactGetData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/holos/contact/{id}"
 }
@@ -9927,6 +10085,7 @@ export type HolosContactToggleBlockData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/holos/contact/{id}/block"
 }
@@ -9954,6 +10113,7 @@ export type HolosPresenceData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/holos/presence"
 }
@@ -9972,6 +10132,7 @@ export type HolosAgentsListData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
     limit?: number
     offset?: number
     need_active?: boolean
@@ -10011,6 +10172,7 @@ export type HolosAgentsGetData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/holos/agents/{agentId}"
 }
@@ -10061,6 +10223,7 @@ export type HolosSendData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/holos/send"
 }
@@ -10081,6 +10244,7 @@ export type HolosSendRetryData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/holos/send/{messageId}/retry"
 }
@@ -10108,6 +10272,7 @@ export type HolosInboxListData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/holos/inbox"
 }
@@ -10126,6 +10291,7 @@ export type HolosOutboxListData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/holos/outbox"
 }
@@ -10146,6 +10312,7 @@ export type HolosThreadGetData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/holos/thread/{contactId}"
 }
@@ -10164,6 +10331,7 @@ export type PluginListUiContributionsData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/plugin/ui/contributions"
 }
@@ -10195,6 +10363,7 @@ export type PluginServeAssetData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/plugin/assets/{pluginId}/{versionHash}/*"
 }
@@ -10227,6 +10396,7 @@ export type PluginSandboxData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/plugin/{pluginId}/sandbox/{panelId}"
 }
@@ -10258,6 +10428,7 @@ export type PluginInteractData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/plugin/{pluginId}/interact"
 }
@@ -10287,6 +10458,7 @@ export type PluginConfigSchemaData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/plugin/{pluginId}/config-schema"
 }
@@ -10316,6 +10488,7 @@ export type PluginGetConfigData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/plugin/{pluginId}/config"
 }
@@ -10347,6 +10520,7 @@ export type PluginUpdateConfigData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/plugin/{pluginId}/config"
 }
@@ -10380,6 +10554,7 @@ export type PluginStatusData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/plugin/{pluginId}/status"
 }
@@ -10407,6 +10582,7 @@ export type ApiPluginsListData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/api/plugins"
 }
@@ -10427,6 +10603,7 @@ export type ApiPluginsGetData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/api/plugins/{pluginId}"
 }
@@ -10456,6 +10633,7 @@ export type ApiPluginsStatusData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/api/plugins/{pluginId}/status"
 }
@@ -10487,6 +10665,7 @@ export type ApiPluginsPreviewInstallData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/api/plugins/preview-install"
 }
@@ -10524,6 +10703,7 @@ export type ApiPluginsApproveInstallData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/api/plugins/{pluginId}/approve-install"
 }
@@ -10564,6 +10744,7 @@ export type ApiPluginsPreviewUpdateData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/api/plugins/{pluginId}/preview-update"
 }
@@ -10604,6 +10785,7 @@ export type ApiPluginsApproveUpdateData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/api/plugins/{pluginId}/approve-update"
 }
@@ -10635,6 +10817,7 @@ export type ApiPluginsGetApprovalData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/api/plugins/{pluginId}/approval"
 }
@@ -10666,6 +10849,7 @@ export type ApiPluginsPermissionDiffData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/api/plugins/{pluginId}/permission-diff"
 }
@@ -10699,6 +10883,7 @@ export type ApiPluginsInstallFromRegistryData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/api/plugins/install-from-registry"
 }
@@ -10740,6 +10925,7 @@ export type ApiPluginsUpdateFromRegistryData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/api/plugins/{pluginId}/update-from-registry"
 }
@@ -10777,6 +10963,7 @@ export type PluginRuntimeReloadData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/api/plugins/{pluginId}/runtime/reload"
 }
@@ -10806,6 +10993,7 @@ export type PluginRuntimeStopData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/api/plugins/{pluginId}/runtime/stop"
 }
@@ -10835,6 +11023,7 @@ export type PluginRuntimeStartData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/api/plugins/{pluginId}/runtime/start"
 }
@@ -10864,6 +11053,7 @@ export type PluginRuntimeLogsData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/api/plugins/{pluginId}/runtime/logs"
 }
@@ -10891,6 +11081,7 @@ export type RegistryPluginsSearchData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
     q?: string
     offset?: number
     limit?: number
@@ -10928,6 +11119,7 @@ export type RegistryPluginsGetData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/api/registry/{id}"
 }
@@ -10957,6 +11149,7 @@ export type RegistryPluginsVersionsData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/api/registry/{id}/versions"
 }
@@ -10987,6 +11180,7 @@ export type RegistryPluginsVersionData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/api/registry/{id}/versions/{version}"
 }
@@ -11017,6 +11211,7 @@ export type RegistryPluginsDownloadData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/api/registry/{id}/download/{version}"
 }
@@ -11046,6 +11241,7 @@ export type RegistryPluginsPublishData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/api/registry/publish"
 }
@@ -11092,6 +11288,7 @@ export type AppLogData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/log"
 }
@@ -11119,6 +11316,7 @@ export type AppAgentsData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/agent"
 }
@@ -11137,6 +11335,7 @@ export type McpStatusData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/mcp"
 }
@@ -11160,6 +11359,7 @@ export type McpAddData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/mcp"
 }
@@ -11191,6 +11391,7 @@ export type McpAuthRemoveData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/mcp/{name}/auth"
 }
@@ -11222,6 +11423,7 @@ export type McpAuthStartData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/mcp/{name}/auth"
 }
@@ -11265,6 +11467,7 @@ export type McpAuthCallbackData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/mcp/{name}/auth/callback"
 }
@@ -11298,6 +11501,7 @@ export type McpAuthAuthenticateData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/mcp/{name}/auth/authenticate"
 }
@@ -11331,6 +11535,7 @@ export type McpConnectData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/mcp/{name}/connect"
 }
@@ -11351,6 +11556,7 @@ export type McpDisconnectData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/mcp/{name}/disconnect"
 }
@@ -11371,6 +11577,7 @@ export type McpRestartData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/mcp/{name}/restart"
 }
@@ -11400,6 +11607,7 @@ export type McpRefreshData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/mcp/{name}/refresh"
 }
@@ -11429,6 +11637,7 @@ export type McpInspectData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/mcp/{name}/inspect"
 }
@@ -11463,6 +11672,7 @@ export type McpTestData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/mcp/{name}/test"
 }
@@ -11490,6 +11700,7 @@ export type ChannelStatusData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/channel"
 }
@@ -11510,6 +11721,7 @@ export type ChannelStartData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/channel/start"
 }
@@ -11530,6 +11742,7 @@ export type ChannelStopData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/channel/stop"
 }
@@ -11553,6 +11766,7 @@ export type ChannelStartOneData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/channel/{channelType}/{accountId}/start"
 }
@@ -11576,6 +11790,7 @@ export type ChannelStopOneData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/channel/{channelType}/{accountId}/stop"
 }
@@ -11599,6 +11814,7 @@ export type ChannelDisconnectData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/channel/{channelType}/{accountId}/disconnect"
 }
@@ -11619,6 +11835,7 @@ export type ChannelAppSessionData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/channel/app/session"
 }
@@ -11637,6 +11854,7 @@ export type ChannelAppResetData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/channel/app/reset"
 }
@@ -11657,6 +11875,7 @@ export type ExperimentalResourceListData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/experimental/resource"
 }
@@ -11678,6 +11897,7 @@ export type LspStatusData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/lsp"
 }
@@ -11696,6 +11916,7 @@ export type FormatterStatusData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/formatter"
 }
@@ -11716,6 +11937,7 @@ export type AuthSetData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/auth/{providerID}"
 }
@@ -11743,6 +11965,7 @@ export type EventSubscribeData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/event"
 }

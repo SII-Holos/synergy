@@ -45,7 +45,7 @@ export namespace AgendaReactor {
       return { nextRunAt: undefined, sessionID: undefined }
     }
 
-    const scope = storedItem.origin.scope ?? Scope.global()
+    const scope = storedItem.origin.scope ?? Scope.home()
     return ScopeContext.provide({ scope, fn: () => runInScope(storedItem, signal, scopeID, scope) })
   }
 

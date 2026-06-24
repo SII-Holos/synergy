@@ -12,7 +12,7 @@ Log.init({ print: false })
 describe("GET /global/recent", () => {
   test("returns 200 with expected response shape (items, nextCursor, total)", async () => {
     await ScopeContext.provide({
-      scope: Scope.global(),
+      scope: Scope.home(),
       fn: async () => {
         const app = Server.App()
         const res = await app.request("/global/recent")
@@ -50,7 +50,7 @@ describe("GET /global/recent", () => {
     })
 
     await ScopeContext.provide({
-      scope: Scope.global(),
+      scope: Scope.home(),
       fn: async () => {
         const app = Server.App()
         const res = await app.request("/global/recent")
@@ -71,7 +71,7 @@ describe("GET /global/recent", () => {
     })
   })
 
-  test("returns sessions from all scopes including global", async () => {
+  test("returns sessions from all scopes including home", async () => {
     await using tmpA = await tmpdir({ git: true })
     const scope = await tmpA.scope()
 
@@ -85,7 +85,7 @@ describe("GET /global/recent", () => {
     })
 
     await ScopeContext.provide({
-      scope: Scope.global(),
+      scope: Scope.home(),
       fn: async () => {
         // Create a home session
         const homeSession = await Session.create({ title: "Home Chat" })
@@ -94,9 +94,9 @@ describe("GET /global/recent", () => {
         const res = await app.request("/global/recent")
         const body = await res.json()
 
-        // Sessions from ALL scopes (global + project) are included
+        // Sessions from ALL scopes (home + project) are included
         for (const item of body.items) {
-          expect(["global", "project"]).toContain(item.scopeType)
+          expect(["home", "project"]).toContain(item.scopeType)
         }
 
         await Session.remove(homeSession.id)
@@ -107,7 +107,7 @@ describe("GET /global/recent", () => {
 
   test("returns 400 for invalid limit", async () => {
     await ScopeContext.provide({
-      scope: Scope.global(),
+      scope: Scope.home(),
       fn: async () => {
         const app = Server.App()
         const res = await app.request("/global/recent?limit=-1")
@@ -120,7 +120,7 @@ describe("GET /global/recent", () => {
 describe("GET /global/pinned", () => {
   test("returns 200 with expected response shape", async () => {
     await ScopeContext.provide({
-      scope: Scope.global(),
+      scope: Scope.home(),
       fn: async () => {
         const app = Server.App()
         const res = await app.request("/global/pinned")
@@ -157,7 +157,7 @@ describe("GET /global/pinned", () => {
     })
 
     await ScopeContext.provide({
-      scope: Scope.global(),
+      scope: Scope.home(),
       fn: async () => {
         const app = Server.App()
         const res = await app.request("/global/pinned")
@@ -193,7 +193,7 @@ describe("GET /global/pinned", () => {
     })
 
     await ScopeContext.provide({
-      scope: Scope.global(),
+      scope: Scope.home(),
       fn: async () => {
         const app = Server.App()
         const res = await app.request("/global/pinned")
@@ -230,7 +230,7 @@ describe("GET /global/pinned", () => {
     })
 
     await ScopeContext.provide({
-      scope: Scope.global(),
+      scope: Scope.home(),
       fn: async () => {
         const app = Server.App()
         const res = await app.request("/global/pinned")

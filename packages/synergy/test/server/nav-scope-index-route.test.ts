@@ -12,7 +12,7 @@ Log.init({ print: false })
 describe("GET /scope/index", () => {
   test("returns 200 with expected response shape (array of ScopeNavEntry)", async () => {
     await ScopeContext.provide({
-      scope: Scope.global(),
+      scope: Scope.home(),
       fn: async () => {
         const app = Server.App()
         const res = await app.request("/scope/index")
@@ -27,7 +27,7 @@ describe("GET /scope/index", () => {
           expect(entry).toHaveProperty("latestActivityAt")
           expect(entry).toHaveProperty("sessionCount")
           expect(typeof entry.scopeID).toBe("string")
-          expect(["global", "project"]).toContain(entry.scopeType)
+          expect(["home", "project"]).toContain(entry.scopeType)
           expect(typeof entry.latestActivityAt).toBe("number")
           expect(typeof entry.sessionCount).toBe("number")
         }
@@ -61,7 +61,7 @@ describe("GET /scope/index", () => {
     })
 
     await ScopeContext.provide({
-      scope: Scope.global(),
+      scope: Scope.home(),
       fn: async () => {
         const app = Server.App()
         const res = await app.request("/scope/index")
@@ -98,7 +98,7 @@ describe("GET /scope/index", () => {
     })
 
     await ScopeContext.provide({
-      scope: Scope.global(),
+      scope: Scope.home(),
       fn: async () => {
         const app = Server.App()
         const res = await app.request("/scope/index")
@@ -132,7 +132,7 @@ describe("GET /scope/index", () => {
         })
 
         await ScopeContext.provide({
-          scope: Scope.global(),
+          scope: Scope.home(),
           fn: async () => {
             const app = Server.App()
             const res = await app.request("/scope/index")
@@ -171,7 +171,7 @@ describe("GET /scope/index", () => {
     })
 
     await ScopeContext.provide({
-      scope: Scope.global(),
+      scope: Scope.home(),
       fn: async () => {
         const app = Server.App()
         const res = await app.request("/scope/index")

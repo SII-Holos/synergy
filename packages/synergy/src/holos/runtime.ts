@@ -282,8 +282,8 @@ export class HolosProvider {
     try {
       capturedScope = ScopeContext.current.scope
     } catch {
-      log.warn("ScopeContext.current.scope unavailable during connect, falling back to global scope")
-      capturedScope = Scope.global()
+      log.warn("ScopeContext.current.scope unavailable during connect, falling back to home scope")
+      capturedScope = Scope.home()
     }
 
     const credentials = await HolosAuth.getCredentialOrThrow()

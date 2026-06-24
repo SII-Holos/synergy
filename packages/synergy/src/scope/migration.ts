@@ -20,6 +20,8 @@ const log = Log.create({ service: "scope.migration" })
  * All their data is consolidated into this single scope so it remains browsable.
  */
 const RECLAIMED_SCOPE_ID = "__reclaimed__"
+const LEGACY_GLOBAL_SCOPE_ID = "global"
+const HOME_SCOPE_ID = "home"
 
 export const migrations: Migration[] = [
   {
@@ -65,7 +67,8 @@ export const migrations: Migration[] = [
         for (const row of rows) dataScopeIDs.add(row.scope_id)
       } catch {}
 
-      dataScopeIDs.delete("global")
+      dataScopeIDs.delete(LEGACY_GLOBAL_SCOPE_ID)
+      dataScopeIDs.delete(HOME_SCOPE_ID)
       dataScopeIDs.delete(RECLAIMED_SCOPE_ID)
 
       // 2. Collect active project scopeIDs: non-archived + worktree exists
@@ -183,8 +186,301 @@ export const migrations: Migration[] = [
       log.info("orphan scope reclaim complete", { scopes: orphanIDs.length, engramRemoved: totalRemoved })
     },
   },
+  {
+    id: "20260624-scope-global-to-home",
+    description: "Rename legacy global scope data to the home scope",
+    async up(progress) {
+      const dataDir = Global.Path.data
+      const fromSID = Identifier.asScopeID(LEGACY_GLOBAL_SCOPE_ID)
+      const toSID = Identifier.asScopeID(HOME_SCOPE_ID)
+      const steps = 12
+      let done = 0
+
+      await moveFileBasedData(LEGACY_GLOBAL_SCOPE_ID, HOME_SCOPE_ID, dataDir)
+      await moveFile(
+        path.join(dataDir, ...StoragePath.sessionNavIndex(fromSID)) + ".json",
+        path.join(dataDir, ...StoragePath.sessionNavIndex(toSID)) + ".json",
+      )
+      done++
+      progress(done, steps)
+
+      await moveDir(
+        path.join(dataDir, ...StoragePath.blueprintLoopsRoot(fromSID)),
+        path.join(dataDir, ...StoragePath.blueprintLoopsRoot(toSID)),
+      )
+      await moveFile(
+        path.join(dataDir, ...StoragePath.permission(fromSID)) + ".json",
+        path.join(dataDir, ...StoragePath.permission(toSID)) + ".json",
+      )
+      await moveDir(
+        path.join(Global.Path.snapshot, LEGACY_GLOBAL_SCOPE_ID),
+        path.join(Global.Path.snapshot, HOME_SCOPE_ID),
+      )
+      done++
+      progress(done, steps)
+
+      await patchSessionIndexes()
+      done++
+      progress(done, steps)
+
+      await patchHomeSessionInfos()
+      done++
+      progress(done, steps)
+
+      await patchHomeSessionNavIndex()
+      done++
+      progress(done, steps)
+
+      await patchEndpointSessionIndexes()
+      done++
+      progress(done, steps)
+
+      await patchHomeAgendaItems()
+      done++
+      progress(done, steps)
+
+      await patchAgendaSessionRefs()
+      done++
+      progress(done, steps)
+
+      await patchHomeNotes()
+      done++
+      progress(done, steps)
+
+      await patchHomeBlueprintLoops()
+      done++
+      progress(done, steps)
+
+      await renameEngramScope()
+      done++
+      progress(done, steps)
+
+      await clearStatsCaches()
+      await removeLegacyGlobalRoots()
+      done++
+      progress(done, steps)
+
+      log.info("legacy global scope migrated to home")
+    },
+  },
 ]
 MigrationRegistry.register("scope", migrations)
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === "object" && !Array.isArray(value)
+}
+
+function normalizeLegacyScopeFields(value: unknown): boolean {
+  if (!isRecord(value)) return false
+  let changed = false
+  for (const [key, child] of Object.entries(value)) {
+    if (key === "scopeID" && child === LEGACY_GLOBAL_SCOPE_ID) {
+      value[key] = HOME_SCOPE_ID
+      changed = true
+      continue
+    }
+    if (key === "scopeType" && child === LEGACY_GLOBAL_SCOPE_ID) {
+      value[key] = HOME_SCOPE_ID
+      changed = true
+      continue
+    }
+    if (key === "category" && child === LEGACY_GLOBAL_SCOPE_ID) {
+      value[key] = "home"
+      changed = true
+      continue
+    }
+    if (isRecord(child)) {
+      if (child.id === LEGACY_GLOBAL_SCOPE_ID) {
+        child.id = HOME_SCOPE_ID
+        child.directory = Global.Path.home
+        child.worktree = Global.Path.home
+        changed = true
+      }
+      if (child.type === LEGACY_GLOBAL_SCOPE_ID) {
+        child.type = HOME_SCOPE_ID
+        changed = true
+      }
+      if (normalizeLegacyScopeFields(child)) changed = true
+      continue
+    }
+    if (Array.isArray(child)) {
+      for (const item of child) {
+        if (normalizeLegacyScopeFields(item)) changed = true
+      }
+    }
+  }
+  return changed
+}
+
+function normalizeHomeSessionInfo(info: Record<string, unknown>): boolean {
+  let changed = normalizeLegacyScopeFields(info)
+  const scope = isRecord(info.scope) ? info.scope : undefined
+  if (!scope || scope.id === HOME_SCOPE_ID || scope.type === HOME_SCOPE_ID) {
+    info.scope = {
+      ...(scope ?? {}),
+      id: HOME_SCOPE_ID,
+      type: HOME_SCOPE_ID,
+      directory: Global.Path.home,
+      worktree: Global.Path.home,
+    }
+    changed = true
+  }
+
+  const workspace = isRecord(info.workspace) ? info.workspace : undefined
+  if (
+    workspace?.scopeID === HOME_SCOPE_ID ||
+    workspace?.scopeID === LEGACY_GLOBAL_SCOPE_ID ||
+    scope?.id === HOME_SCOPE_ID
+  ) {
+    info.workspace = {
+      ...(workspace ?? {}),
+      type: workspace?.type ?? "main",
+      path: Global.Path.home,
+      scopeID: HOME_SCOPE_ID,
+    }
+    changed = true
+  }
+
+  if (info.category === LEGACY_GLOBAL_SCOPE_ID) {
+    info.category = "home"
+    changed = true
+  }
+  return changed
+}
+
+async function patchSessionIndexes() {
+  const sessionIDs = await Storage.scan(StoragePath.sessionIndexRoot())
+  for (const sessionID of sessionIDs) {
+    const key = StoragePath.sessionIndex(Identifier.asSessionID(sessionID))
+    const entry = await Storage.read<Record<string, unknown>>(key).catch(() => undefined)
+    if (!entry || entry.scopeID !== LEGACY_GLOBAL_SCOPE_ID) continue
+    entry.scopeID = HOME_SCOPE_ID
+    entry.directory = Global.Path.home
+    await Storage.write(key, entry)
+  }
+}
+
+async function patchHomeSessionInfos() {
+  const scope = Identifier.asScopeID(HOME_SCOPE_ID)
+  const sessionIDs = await Storage.scan(StoragePath.sessionsRoot(scope))
+  for (const sessionID of sessionIDs) {
+    const key = StoragePath.sessionInfo(scope, Identifier.asSessionID(sessionID))
+    const info = await Storage.read<Record<string, unknown>>(key).catch(() => undefined)
+    if (!info) continue
+    if (normalizeHomeSessionInfo(info)) await Storage.write(key, info)
+  }
+}
+
+async function patchHomeSessionNavIndex() {
+  const key = StoragePath.sessionNavIndex(Identifier.asScopeID(HOME_SCOPE_ID))
+  const index = await Storage.read<Record<string, unknown>>(key).catch(() => undefined)
+  if (!index) return
+  if (normalizeLegacyScopeFields(index)) await Storage.write(key, index)
+}
+
+async function patchEndpointSessionIndexes() {
+  const endpointKeys = await Storage.scan(["endpoint_session"])
+  for (const endpointKey of endpointKeys) {
+    const sessionIDs = await Storage.scan(["endpoint_session", endpointKey])
+    for (const sessionID of sessionIDs) {
+      const key = ["endpoint_session", endpointKey, sessionID]
+      const entry = await Storage.read<Record<string, unknown>>(key).catch(() => undefined)
+      if (!entry || entry.scopeID !== LEGACY_GLOBAL_SCOPE_ID) continue
+      entry.scopeID = HOME_SCOPE_ID
+      await Storage.write(key, entry)
+    }
+  }
+}
+
+async function patchHomeAgendaItems() {
+  const scope = Identifier.asScopeID(HOME_SCOPE_ID)
+  const itemIDs = await Storage.scan(StoragePath.agendaItemsRoot(scope))
+  for (const itemID of itemIDs) {
+    const key = StoragePath.agendaItem(scope, itemID)
+    const item = await Storage.read<Record<string, unknown>>(key).catch(() => undefined)
+    if (!item) continue
+    if (normalizeLegacyScopeFields(item)) await Storage.write(key, item)
+  }
+}
+
+async function patchAgendaSessionRefs() {
+  const itemIDs = await Storage.scan(["agenda", "sessions"])
+  for (const itemID of itemIDs) {
+    const sessionIDs = await Storage.scan(StoragePath.agendaSessionsRoot(itemID))
+    for (const sessionID of sessionIDs) {
+      const key = StoragePath.agendaSession(itemID, sessionID)
+      const entry = await Storage.read<Record<string, unknown>>(key).catch(() => undefined)
+      if (!entry || entry.scopeID !== LEGACY_GLOBAL_SCOPE_ID) continue
+      entry.scopeID = HOME_SCOPE_ID
+      await Storage.write(key, entry)
+    }
+  }
+}
+
+async function patchHomeNotes() {
+  const scope = Identifier.asScopeID(HOME_SCOPE_ID)
+  const noteIDs = await Storage.scan(StoragePath.notesRoot(scope))
+  let rebuiltIndex = false
+  for (const noteID of noteIDs) {
+    if (noteID.startsWith("_")) continue
+    const key = StoragePath.note(scope, noteID)
+    const note = await Storage.read<Record<string, unknown>>(key).catch(() => undefined)
+    if (!note) continue
+    if (normalizeLegacyScopeFields(note)) {
+      await Storage.write(key, note)
+      rebuiltIndex = true
+    }
+  }
+  if (rebuiltIndex) await Storage.remove(StoragePath.note(scope, "_index")).catch(() => undefined)
+}
+
+async function patchHomeBlueprintLoops() {
+  const scope = Identifier.asScopeID(HOME_SCOPE_ID)
+  const loopIDs = await Storage.scan(StoragePath.blueprintLoopsRoot(scope))
+  for (const loopID of loopIDs) {
+    const key = StoragePath.blueprintLoop(scope, loopID)
+    const loop = await Storage.read<Record<string, unknown>>(key).catch(() => undefined)
+    if (!loop) continue
+    if (normalizeLegacyScopeFields(loop)) await Storage.write(key, loop)
+  }
+}
+
+async function renameEngramScope() {
+  try {
+    const changed = EngramDB.Experience.renameScope(LEGACY_GLOBAL_SCOPE_ID, HOME_SCOPE_ID)
+    if (changed > 0) log.info("renamed engram experience scope", { changed })
+  } catch (err) {
+    log.warn("failed to rename engram experience scope", { error: String(err) })
+  }
+}
+
+async function clearStatsCaches() {
+  await Storage.remove(StoragePath.statsWatermark()).catch(() => undefined)
+  await Storage.remove(StoragePath.statsSnapshot()).catch(() => undefined)
+  await Storage.remove(StoragePath.engramSnapshot()).catch(() => undefined)
+  await Storage.removeTree(StoragePath.statsDigestsRoot()).catch(() => undefined)
+  await Storage.removeTree(StoragePath.statsDailyRoot()).catch(() => undefined)
+}
+
+async function removeLegacyGlobalRoots() {
+  await Storage.removeTree(StoragePath.sessionsRoot(Identifier.asScopeID(LEGACY_GLOBAL_SCOPE_ID))).catch(
+    () => undefined,
+  )
+  await Storage.remove(StoragePath.sessionsPageIndex(Identifier.asScopeID(LEGACY_GLOBAL_SCOPE_ID))).catch(
+    () => undefined,
+  )
+  await Storage.remove(StoragePath.sessionNavIndex(Identifier.asScopeID(LEGACY_GLOBAL_SCOPE_ID))).catch(() => undefined)
+  await Storage.removeTree(StoragePath.notesRoot(Identifier.asScopeID(LEGACY_GLOBAL_SCOPE_ID))).catch(() => undefined)
+  await Storage.removeTree(StoragePath.agendaItemsRoot(Identifier.asScopeID(LEGACY_GLOBAL_SCOPE_ID))).catch(
+    () => undefined,
+  )
+  await Storage.removeTree(["agenda", "runs", LEGACY_GLOBAL_SCOPE_ID]).catch(() => undefined)
+  await Storage.remove(StoragePath.agendaRunIndex(Identifier.asScopeID(LEGACY_GLOBAL_SCOPE_ID))).catch(() => undefined)
+  await Storage.removeTree(StoragePath.blueprintLoopsRoot(Identifier.asScopeID(LEGACY_GLOBAL_SCOPE_ID))).catch(
+    () => undefined,
+  )
+  await Storage.remove(StoragePath.permission(Identifier.asScopeID(LEGACY_GLOBAL_SCOPE_ID))).catch(() => undefined)
+}
 
 async function moveFileBasedData(fromScopeID: string, toScopeID: string, dataDir: string) {
   const fromSID = Identifier.asScopeID(fromScopeID)

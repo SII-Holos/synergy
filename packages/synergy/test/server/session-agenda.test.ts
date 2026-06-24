@@ -43,7 +43,7 @@ async function createAgendaItem(input: TestAgendaItemInput) {
     createdBy: "agent",
   })
 
-  const storageScopeID = Identifier.asScopeID(input.global ? "global" : ScopeContext.current.scope.id)
+  const storageScopeID = Identifier.asScopeID(input.global ? "home" : ScopeContext.current.scope.id)
   await Storage.update(StoragePath.agendaItem(storageScopeID, item.id), (draft: any) => {
     if (input.status) draft.status = input.status
     if (input.nextRunAt === null) delete draft.state.nextRunAt

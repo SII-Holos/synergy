@@ -26,9 +26,9 @@ describe("SessionNav.deriveCategory", () => {
   })
 
   // ── Home ──────────────────────────────────────────────────────────────
-  test("home session: global scope with no channel endpoint, no parent", () => {
+  test("home session: home scope with no channel endpoint, no parent", () => {
     const cat = SessionNav.deriveCategory({
-      scopeType: "global",
+      scopeType: "home",
       endpointKind: undefined,
       parentID: undefined,
       cortex: undefined,
@@ -37,10 +37,10 @@ describe("SessionNav.deriveCategory", () => {
     expect(cat).toBe("home")
   })
 
-  test("home session: global scope overrides project scope", () => {
-    // global scope always maps to home regardless of other flags
+  test("home session: home scope overrides project scope", () => {
+    // home scope always maps to home regardless of other flags
     const cat = SessionNav.deriveCategory({
-      scopeType: "global",
+      scopeType: "home",
       endpointKind: undefined,
       parentID: undefined,
       cortex: undefined,
@@ -72,9 +72,9 @@ describe("SessionNav.deriveCategory", () => {
     expect(cat).toBe("channel")
   })
 
-  test("channel category takes precedence over scope type for global scope", () => {
+  test("channel category takes precedence over scope type for home scope", () => {
     const cat = SessionNav.deriveCategory({
-      scopeType: "global",
+      scopeType: "home",
       endpointKind: "channel",
       parentID: undefined,
       cortex: undefined,
@@ -157,7 +157,7 @@ describe("SessionNav.deriveCategory", () => {
   test("channel overrides everything", () => {
     // channel always wins
     const cat = SessionNav.deriveCategory({
-      scopeType: "global",
+      scopeType: "home",
       endpointKind: "channel",
       parentID: "ses_child",
       cortex: {
@@ -175,7 +175,7 @@ describe("SessionNav.deriveCategory", () => {
 
   test("background overrides home when channel is absent", () => {
     const cat = SessionNav.deriveCategory({
-      scopeType: "global",
+      scopeType: "home",
       endpointKind: undefined,
       parentID: "ses_child",
       cortex: undefined,
@@ -184,9 +184,9 @@ describe("SessionNav.deriveCategory", () => {
     expect(cat).toBe("background")
   })
 
-  test("home is the fallback for global scope with no channel or background signals", () => {
+  test("home is the fallback for home scope with no channel or background signals", () => {
     const cat = SessionNav.deriveCategory({
-      scopeType: "global",
+      scopeType: "home",
       endpointKind: undefined,
       parentID: undefined,
       cortex: undefined,

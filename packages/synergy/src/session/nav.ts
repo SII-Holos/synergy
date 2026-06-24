@@ -11,7 +11,7 @@ export const SessionNavEntry = z
   .object({
     id: z.string(),
     scopeID: z.string(),
-    scopeType: z.enum(["global", "project"]),
+    scopeType: z.enum(["home", "project"]),
     title: z.string(),
     category: NavCategory,
     lastActivityAt: z.number(),
@@ -40,7 +40,7 @@ export const SessionNavResponse = z
 export const ScopeNavEntry = z
   .object({
     scopeID: z.string(),
-    scopeType: z.enum(["global", "project"]),
+    scopeType: z.enum(["home", "project"]),
     name: z.string().optional(),
     directory: z.string(),
     latestActivityAt: z.number(),
@@ -55,7 +55,7 @@ export const ScopeNavEntry = z
   .meta({ ref: "ScopeNavEntry" })
 
 export interface DeriveCategoryInput {
-  scopeType: "global" | "project"
+  scopeType: "home" | "project"
   endpointKind?: "channel"
   parentID?: string
   cortex?: {
@@ -76,7 +76,7 @@ export interface DeriveCategoryInput {
 export interface SessionNavEntry {
   id: string
   scopeID: string
-  scopeType: "global" | "project"
+  scopeType: "home" | "project"
   title: string
   category: NavCategory
   lastActivityAt: number
@@ -87,7 +87,7 @@ export interface SessionNavEntry {
 }
 export interface ScopeNavEntry {
   scopeID: string
-  scopeType: "global" | "project"
+  scopeType: "home" | "project"
   name?: string
   directory: string
   latestActivityAt: number
@@ -111,7 +111,7 @@ export namespace SessionNav {
   export function deriveCategory(input: DeriveCategoryInput): NavCategory {
     if (input.endpointKind === "channel") return "channel"
     if (input.parentID || input.cortex || input.agenda) return "background"
-    if (input.scopeType === "global") return "home"
+    if (input.scopeType === "home") return "home"
     return "project"
   }
 
@@ -148,7 +148,7 @@ export namespace SessionNav {
           log.warn("skipping malformed session info", { scopeID })
           continue
         }
-        const scopeType: "global" | "project" = scopeID === "global" ? "global" : "project"
+        const scopeType: "home" | "project" = scopeID === "home" ? "home" : "project"
         const category = deriveCategory({
           scopeType,
           endpointKind: session.endpoint?.kind,
@@ -196,7 +196,7 @@ export namespace SessionNav {
   export async function rebuildAllNavIndexes(progress?: (done: number, total: number) => void): Promise<void> {
     const sessionScopeIDs = await Storage.scan(["sessions"])
     const allScopeIDs = [...sessionScopeIDs]
-    if (!allScopeIDs.includes("global")) allScopeIDs.push("global")
+    if (!allScopeIDs.includes("home")) allScopeIDs.push("home")
     const total = allScopeIDs.length
     let done = 0
     for (const scopeID of allScopeIDs) {
@@ -214,7 +214,7 @@ export namespace SessionNav {
     const { Scope } = await import("../scope")
     const projects = await Scope.list()
     const sessionScopeIDs = await Storage.scan(["sessions"])
-    return [...new Set(["global", ...projects.map((p) => p.id), ...sessionScopeIDs])]
+    return [...new Set(["home", ...projects.map((p) => p.id), ...sessionScopeIDs])]
   }
 
   export async function queryScope(
@@ -242,7 +242,7 @@ export namespace SessionNav {
     cursor?: NavCursor
     limit?: number
   }): Promise<{ items: SessionNavEntry[]; nextCursor: NavCursor | null; total: number }> {
-    // Includes global scope sessions alongside project scopes for a cross-scope overview
+    // Includes Home sessions alongside project scopes for a cross-scope overview.
     const scopeIDs = await getAllScopeIDs()
     const allEntries: SessionNavEntry[] = []
     for (const sid of scopeIDs) {
@@ -276,21 +276,23 @@ export namespace SessionNav {
   export async function buildScopeIndex(): Promise<ScopeNavEntry[]> {
     const scopeIDs = await getAllScopeIDs()
     const results: ScopeNavEntry[] = []
+    const { Scope } = await import("../scope")
+    const home = Scope.home()
     for (const sid of scopeIDs) {
       const index = await readNavIndex(sid)
       const activeEntries = index.entries.filter((e) => !e.archived)
       let scopeInfo:
         | { name?: string; icon?: { url?: string; color?: string }; directory?: string; worktree?: string }
         | undefined
-      if (sid !== "global") {
+      if (sid !== "home") {
         scopeInfo = await Storage.read<any>(StoragePath.scope(Identifier.asScopeID(sid))).catch(() => undefined)
       }
       const latestActivityAt = activeEntries.length > 0 ? Math.max(...activeEntries.map((e) => e.lastActivityAt)) : 0
       results.push({
         scopeID: sid,
-        scopeType: sid === "global" ? "global" : "project",
+        scopeType: sid === "home" ? "home" : "project",
         name: scopeInfo?.name,
-        directory: sid === "global" ? "" : (scopeInfo?.directory ?? ""),
+        directory: sid === "home" ? home.directory : (scopeInfo?.directory ?? ""),
         latestActivityAt,
         sessionCount: activeEntries.length,
         icon: scopeInfo?.icon,

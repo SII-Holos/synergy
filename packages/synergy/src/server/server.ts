@@ -45,6 +45,7 @@ import { McpRoute } from "./mcp-route"
 import { PermissionRoute } from "./permission"
 import { FindRoute } from "./find"
 import { FileRoute } from "./file"
+import { File as SynergyFile } from "../file"
 import { ConfigRoute } from "./config-route"
 import { ChannelRoute } from "./channel"
 import { EngramRoute } from "./engram"
@@ -194,8 +195,6 @@ export namespace Server {
       pathname.startsWith("/blueprint/") ||
       pathname === "/asset" ||
       pathname.startsWith("/asset/") ||
-      pathname === "/stats" ||
-      pathname.startsWith("/stats/") ||
       pathname === "/lsp" ||
       pathname.startsWith("/lsp/") ||
       pathname === "/formatter" ||
@@ -213,28 +212,57 @@ export namespace Server {
     }
   }
 
-  async function resolveScopedRequestScope(c: Context, directory: string | undefined): Promise<Scope | Response> {
-    if (!directory) {
+  function requestScopeID(c: Context) {
+    const scopeID = c.req.query("scopeID") || c.req.header("x-synergy-scope-id")
+    if (!scopeID) return undefined
+    try {
+      return decodeURIComponent(scopeID)
+    } catch {
+      return scopeID
+    }
+  }
+
+  async function resolveScopedRequestScope(
+    c: Context,
+    input: { scopeID?: string; directory?: string },
+  ): Promise<Scope | Response> {
+    if (!input.scopeID && !input.directory) {
       return c.json(
         {
           name: "ScopeRequired",
           data: {
-            message: "This route requires an explicit directory or x-synergy-directory header.",
+            message:
+              "This route requires an explicit scopeID, directory, x-synergy-scope-id, or x-synergy-directory header.",
           },
         },
         400,
       )
     }
-    if (directory === "global") return Scope.global()
-    return (await Scope.fromDirectory(directory)).scope
+    if (input.scopeID) {
+      const scope = await Scope.fromID(input.scopeID)
+      if (!scope) {
+        return c.json(
+          {
+            name: "ScopeNotFound",
+            data: {
+              message: `Scope not found: ${input.scopeID}`,
+            },
+          },
+          404,
+        )
+      }
+      return scope
+    }
+    return (await Scope.fromDirectory(input.directory!)).scope
   }
 
   async function provideRequestScope(c: Context, next: Next) {
     const directory = requestDirectory(c)
+    const scopeID = requestScopeID(c)
     const scope =
-      isGlobalRoute(c.req.path) || (!directory && !isScopeRequiredRoute(c.req.path))
-        ? Scope.global()
-        : await resolveScopedRequestScope(c, directory)
+      isGlobalRoute(c.req.path) || (!directory && !scopeID && !isScopeRequiredRoute(c.req.path))
+        ? Scope.home()
+        : await resolveScopedRequestScope(c, { scopeID, directory })
     if (scope instanceof Response) return scope
     return ScopeContext.provide({
       scope,
@@ -352,6 +380,81 @@ export namespace Server {
             return c.json({ healthy: true, version: Installation.VERSION, modelReady })
           },
         )
+        .get(
+          "/global/paths",
+          describeRoute({
+            summary: "Get global server paths",
+            description: "Retrieve process-level Synergy paths that do not require a scope context.",
+            operationId: "global.paths.get",
+            responses: {
+              200: {
+                description: "Global paths",
+                content: {
+                  "application/json": {
+                    schema: resolver(
+                      z
+                        .object({
+                          home: z.string(),
+                          root: z.string(),
+                          data: z.string(),
+                          config: z.string(),
+                          state: z.string(),
+                          cache: z.string(),
+                          log: z.string(),
+                        })
+                        .meta({ ref: "GlobalPaths" }),
+                    ),
+                  },
+                },
+              },
+            },
+          }),
+          async (c) => {
+            return c.json({
+              home: Global.Path.home,
+              root: Global.Path.root,
+              data: Global.Path.data,
+              config: Global.Path.config,
+              state: Global.Path.state,
+              cache: Global.Path.cache,
+              log: Global.Path.log,
+            })
+          },
+        )
+        .get(
+          "/global/filesystem/browse",
+          describeRoute({
+            summary: "Browse server directories",
+            description: "Browse filesystem directories by path with optional fuzzy search. Returns absolute paths.",
+            operationId: "global.filesystem.browse",
+            responses: {
+              200: {
+                description: "Directory paths",
+                content: {
+                  "application/json": {
+                    schema: resolver(z.string().array()),
+                  },
+                },
+              },
+            },
+          }),
+          validator(
+            "query",
+            z.object({
+              path: z.string(),
+              query: z.string().optional(),
+              limit: z.coerce.number().int().min(1).max(200).optional(),
+              depth: z.coerce.number().int().min(1).max(10).optional(),
+            }),
+          ),
+          async (c) => {
+            const { path, query, limit, depth } = c.req.valid("query")
+            const results = await SynergyFile.browse({ path, query, limit: limit ?? 50, depth: depth ?? 4 })
+            return c.json(results)
+          },
+        )
+        .route("/global/git", GitRoute)
+        .route("/global/stats", StatsRoute)
         .get(
           "/global/event/ws",
           (() => {
@@ -529,10 +632,9 @@ export namespace Server {
             },
           }),
         )
-        .use(validator("query", z.object({ directory: z.string().optional() })))
+        .use(validator("query", z.object({ directory: z.string().optional(), scopeID: z.string().optional() })))
 
         .route("/scope", ScopeRoute)
-        .route("/git", GitRoute)
         .route("/pty", PtyRoute)
         .route("/config", ConfigRoute)
         .route("/runtime", RuntimeRoute)
@@ -787,7 +889,6 @@ export namespace Server {
         .route("/note", NoteRoute)
         .route("/blueprint", BlueprintRoute)
         .route("/asset", AssetRoute)
-        .route("/stats", StatsRoute)
         .route("/holos", HolosDataRoute)
         .route("", BrowserRoute)
         .route("/plugin", PluginRoute)

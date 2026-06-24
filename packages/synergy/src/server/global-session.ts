@@ -17,7 +17,7 @@ const GlobalSessionItem = z.object({
   title: z.string(),
   scope: z.object({
     id: z.string(),
-    type: z.enum(["global", "project"]),
+    type: z.enum(["home", "project"]),
     directory: z.string(),
     worktree: z.string(),
     name: z.string().optional(),
@@ -36,12 +36,12 @@ const GlobalSessionItem = z.object({
 type GlobalSessionItem = z.infer<typeof GlobalSessionItem>
 
 async function readScopeInfo(scopeID: string): Promise<z.infer<typeof Scope.Info> | undefined> {
-  if (scopeID === "global") return undefined
+  if (scopeID === "home") return undefined
   return Storage.read<z.infer<typeof Scope.Info>>(StoragePath.scope(asScopeID(scopeID))).catch(() => undefined)
 }
 
 function buildScopeField(
-  scope: Scope.Global | Scope.Project,
+  scope: Scope.Home | Scope.Project,
   persisted: z.infer<typeof Scope.Info> | undefined,
 ): GlobalSessionItem["scope"] {
   return {
@@ -122,7 +122,7 @@ export const GlobalSessionRoute = new Hono().get(
       scopeIDs = [query.scopeID]
     } else {
       const projects = await Scope.list()
-      scopeIDs = ["global", ...projects.map((p) => p.id)]
+      scopeIDs = ["home", ...projects.map((p) => p.id)]
     }
 
     // Collect all page index entries across scopes
@@ -180,8 +180,8 @@ export const GlobalSessionRoute = new Hono().get(
         const info = await Storage.read<SessionInfo>(StoragePath.sessionInfo(asScopeID(scopeID), asSessionID(entry.id)))
         const scopeInfo = scopeInfoCache.get(scopeID)
         const scope: Scope =
-          scopeID === "global"
-            ? Scope.global()
+          scopeID === "home"
+            ? Scope.home()
             : {
                 type: "project" as const,
                 id: scopeID,

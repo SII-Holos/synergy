@@ -372,7 +372,7 @@ function ScopeSection(props: {
   })
 
   function getOriginName(note: NoteMetaInfo): string | undefined {
-    if (props.group.scopeType !== "global") return undefined
+    if (props.group.scopeType !== "home") return undefined
     const origin = note.originScope
     if (!origin) return undefined
     return props.scopeLookup.get(origin)?.name ?? "Archived project"
@@ -400,7 +400,7 @@ function ScopeSection(props: {
           >
             <Icon name="chevron-right" size="small" />
           </span>
-          <Show when={props.group.scopeType === "global"}>
+          <Show when={props.group.scopeType === "home"}>
             <Icon name="home" size="small" class="text-icon-weak shrink-0" />
           </Show>
           <Show when={props.group.scopeType === "project" && !props.group.archived}>
@@ -501,14 +501,14 @@ export function NotePanel() {
 
   const currentScopeID = createMemo(() => {
     const dir = directory()
-    if (!dir || dir === "global") return "global"
+    if (!dir || dir === "home") return "home"
     const scope = globalSync.data.scope.find((s) => s.worktree === dir || (s.sandboxes ?? []).includes(dir))
     return scope?.id ?? ""
   })
 
   const scopeLookup = createMemo(() => {
     const map = new Map<string, { name: string; directory: string }>()
-    map.set("global", { name: getScopeLabel(undefined, "global"), directory: "global" })
+    map.set("home", { name: getScopeLabel(undefined, "home"), directory: "home" })
     for (const scope of globalSync.data.scope) {
       map.set(scope.id, {
         name: getScopeLabel(scope),
@@ -585,8 +585,7 @@ export function NotePanel() {
         const meta = lookup.get(g.scopeID)
         const isCurrent = g.scopeID === curID
         const archived = g.scopeType === "project" && !meta && !isCurrent
-        const groupDirectory =
-          meta?.directory ?? (g.scopeID === "global" ? "global" : isCurrent ? (directory() ?? "") : "")
+        const groupDirectory = meta?.directory ?? (g.scopeID === "home" ? "home" : isCurrent ? (directory() ?? "") : "")
         let notes: NoteCardInfo[] = [...g.notes]
         if (q) {
           notes = notes.filter((n) => {
@@ -609,7 +608,7 @@ export function NotePanel() {
         return {
           ...g,
           notes,
-          name: meta?.name ?? (g.scopeID === "global" ? getScopeLabel(undefined, "global") : "Archived project"),
+          name: meta?.name ?? (g.scopeID === "home" ? getScopeLabel(undefined, "home") : "Archived project"),
           directory: groupDirectory,
           isCurrent,
         }
@@ -626,7 +625,7 @@ export function NotePanel() {
         scopeType: "project",
         notes: archivedNotes,
         name: "Archived projects",
-        directory: directory() ?? "global",
+        directory: directory() ?? "home",
         isCurrent: false,
         archived: true,
       })
@@ -798,7 +797,7 @@ export function NotePanel() {
       <Show when={view() === "editor" && selectedNoteId()}>
         <NoteEditor
           id={selectedNoteId()!}
-          directory={selectedNoteDir() ?? directory() ?? "global"}
+          directory={selectedNoteDir() ?? directory() ?? "home"}
           onBack={() => {
             setView("list")
             refetch()
@@ -1290,7 +1289,7 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
         directory: targetDirectory,
         throwOnError: true,
       })
-      globalSync.child(targetDirectory)
+      globalSync.ensureScopeState(targetDirectory)
     }
 
     const session = await client.session.create({}).then((result) => result.data)

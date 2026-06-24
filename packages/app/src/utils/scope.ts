@@ -1,12 +1,14 @@
 import { getFilename } from "@ericsanchezok/synergy-util/path"
 import type { LocalScope } from "@/context/layout"
 
-export function isGlobalScope(directory: string) {
-  return directory === "global"
+export const HOME_SCOPE_KEY = "home"
+
+export function isHomeScope(scopeKey: string | undefined) {
+  return scopeKey === HOME_SCOPE_KEY
 }
 
-export function getScopeLabel(scope?: Pick<LocalScope, "worktree" | "name">, fallbackDirectory?: string) {
-  const directory = scope?.worktree || fallbackDirectory || ""
-  if (isGlobalScope(directory)) return "Home"
-  return scope?.name || getFilename(directory) || "Project"
+export function getScopeLabel(scope?: Pick<LocalScope, "worktree" | "name">, fallbackScopeKey?: string) {
+  const scopeKey = scope?.worktree || fallbackScopeKey || ""
+  if (isHomeScope(scopeKey)) return "Home"
+  return scope?.name || getFilename(scopeKey) || "Project"
 }

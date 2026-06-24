@@ -9,7 +9,7 @@ import { useLocal } from "@/context/local"
 import { useCommand } from "@/context/command"
 import { useSync } from "@/context/sync"
 import { base64Decode } from "@ericsanchezok/synergy-util/encode"
-import { isGlobalScope } from "@/utils/scope"
+import { isHomeScope } from "@/utils/scope"
 import { useSessionMeta } from "@/composables/use-session-meta"
 import "./session-top-bar.css"
 
@@ -20,7 +20,7 @@ export function SessionTopBar() {
   const command = useCommand()
   const sync = useSync()
 
-  const isGlobal = () => (params.dir ? isGlobalScope(base64Decode(params.dir)) : false)
+  const isGlobal = () => (params.dir ? isHomeScope(base64Decode(params.dir)) : false)
 
   const sessionInfo = createMemo(() => (params.id ? sync.session.get(params.id) : undefined))
 

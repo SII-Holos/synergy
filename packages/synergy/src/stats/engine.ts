@@ -121,6 +121,14 @@ export namespace Engine {
     const scopes = await Storage.readMany<z.infer<typeof Scope.Info>>(
       scopeIDs.map((id) => StoragePath.scope(Identifier.asScopeID(id))),
     )
+    const homeScopeID = Identifier.asScopeID("home")
+    const homeSessionIDs = await Storage.scan(StoragePath.sessionsRoot(homeScopeID))
+    const homeSessions = await Storage.readMany<SessionInfo>(
+      homeSessionIDs.map((sid) => StoragePath.sessionInfo(homeScopeID, Identifier.asSessionID(sid))),
+    )
+    for (const info of homeSessions) {
+      if (info) sessions.push(info)
+    }
 
     for (const scope of scopes) {
       if (!scope) continue

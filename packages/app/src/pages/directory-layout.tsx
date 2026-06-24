@@ -9,18 +9,19 @@ import { useGlobalSDK } from "@/context/global-sdk"
 import { base64Decode, base64Encode } from "@ericsanchezok/synergy-util/encode"
 import { DataProvider } from "@ericsanchezok/synergy-ui/context"
 import { iife } from "@ericsanchezok/synergy-util/iife"
+import { HOME_SCOPE_KEY } from "@/utils/scope"
 
 export default function Layout(props: ParentProps) {
   const params = useParams()
   const navigate = useNavigate()
   const globalSync = useGlobalSync()
   const globalSDK = useGlobalSDK()
-  const directory = createMemo(() => {
+  const scopeKey = createMemo(() => {
     return base64Decode(params.dir!)
   })
   return (
     <Show when={params.dir} keyed>
-      <SDKProvider directory={directory()}>
+      <SDKProvider scopeKey={scopeKey()}>
         <SyncProvider>
           {iife(() => {
             const sync = useSync()
@@ -32,7 +33,7 @@ export default function Layout(props: ParentProps) {
             }) => sdk.client.permission.respond(input)
 
             const routeDir = (scope: { type?: string; directory?: string }) =>
-              base64Encode(scope.type === "global" ? "global" : (scope.directory ?? directory()))
+              base64Encode(scope.type === "home" ? HOME_SCOPE_KEY : (scope.directory ?? scopeKey()))
 
             const navigateToSession = (sessionID: string) => {
               const navState = { state: { from: window.location.pathname } }
@@ -44,7 +45,7 @@ export default function Layout(props: ParentProps) {
               }
 
               for (const scope of globalSync.data.scope) {
-                const [store] = globalSync.child(scope.worktree)
+                const [store] = globalSync.ensureScopeState(scope.worktree)
                 const match = store.session.find((s) => s.id === sessionID)
                 if (match) {
                   navigate(`/${routeDir(match.scope)}/session/${sessionID}`, navState)
@@ -70,7 +71,7 @@ export default function Layout(props: ParentProps) {
             return (
               <DataProvider
                 data={sync.data}
-                directory={directory()}
+                directory={scopeKey()}
                 serverUrl={sdk.url}
                 onPermissionRespond={respond}
                 onNavigateToSession={navigateToSession}

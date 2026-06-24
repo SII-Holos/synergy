@@ -132,6 +132,7 @@ export const migrations: Migration[] = [
       const { Identifier } = await import("../id/id")
       const sessionScopeIDs = await Storage.scan(["sessions"])
       const allScopeIDs = [...sessionScopeIDs]
+      if (!allScopeIDs.includes("home")) allScopeIDs.push("home")
       if (!allScopeIDs.includes("global")) allScopeIDs.push("global")
 
       const targetKeys: Array<[string[], string]> = []

@@ -61,8 +61,8 @@ export namespace FileWatcher {
 
       const subs: ParcelWatcher.AsyncSubscription[] = []
 
-      // Global scope: watch the global config directory and emit via GlobalBus
-      if (ScopeContext.current.scope.type === "global") {
+      // Home context in GlobalRuntime watches global config and emits via GlobalBus.
+      if (ScopeContext.current.scope.type === "home") {
         const globalConfigDir = Global.Path.config
         const globalSubscribe: ParcelWatcher.SubscribeCallback = (err, evts) => {
           if (err) return
@@ -90,7 +90,7 @@ export namespace FileWatcher {
         return { subs }
       }
 
-      // Project scope: existing project-scoped watching logic
+      // Project scope: existing project-scoped watching logic.
       if (ScopeContext.current.scope.vcs !== "git") return { subs }
 
       const subscribe: ParcelWatcher.SubscribeCallback = (err, evts) => {

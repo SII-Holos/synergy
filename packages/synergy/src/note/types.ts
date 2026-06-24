@@ -74,7 +74,7 @@ export namespace NoteTypes {
   export const ScopeGroup = z
     .object({
       scopeID: z.string(),
-      scopeType: z.enum(["global", "project"]),
+      scopeType: z.enum(["home", "project"]),
       notes: z.array(Info),
     })
     .meta({ ref: "NoteScopeGroup" })
@@ -112,7 +112,7 @@ export namespace NoteTypes {
   export const MetaScopeGroup = z
     .object({
       scopeID: z.string(),
-      scopeType: z.enum(["global", "project"]),
+      scopeType: z.enum(["home", "project"]),
       notes: z.array(MetaInfo),
     })
     .meta({ ref: "NoteMetaScopeGroup" })

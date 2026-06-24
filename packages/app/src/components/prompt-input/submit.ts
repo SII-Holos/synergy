@@ -113,13 +113,14 @@ export function usePromptSubmit(input: PromptSubmitInput) {
     input.setStore("savedPrompt", null)
 
     const projectDirectory = sdk.directory
+    const currentScopeKey = sdk.scopeKey
     const isNewSession = !params.id
     const worktreeSelection = input.props.newSessionWorktree ?? "main"
 
-    let sessionDirectory = projectDirectory
+    let sessionScopeKey = currentScopeKey
     let client = sdk.client
 
-    if (isNewSession) {
+    if (isNewSession && !sdk.isHome && projectDirectory) {
       if (worktreeSelection === "create") {
         const createdWorktree = await client.worktree
           .create({ directory: projectDirectory })
@@ -141,21 +142,21 @@ export function usePromptSubmit(input: PromptSubmitInput) {
           })
           return
         }
-        sessionDirectory = createdWorktree.path
+        sessionScopeKey = createdWorktree.path
       }
 
       if (worktreeSelection !== "main" && worktreeSelection !== "create") {
-        sessionDirectory = worktreeSelection
+        sessionScopeKey = worktreeSelection
       }
 
-      if (sessionDirectory !== projectDirectory) {
+      if (sessionScopeKey !== currentScopeKey) {
         client = createSynergyClient({
           baseUrl: sdk.url,
           fetch: platform.fetch,
-          directory: sessionDirectory,
+          directory: sessionScopeKey,
           throwOnError: true,
         })
-        globalSync.child(sessionDirectory)
+        globalSync.ensureScopeState(sessionScopeKey)
       }
 
       input.props.onNewSessionWorktreeReset?.()
@@ -169,7 +170,7 @@ export function usePromptSubmit(input: PromptSubmitInput) {
         .then((x) => x.data ?? undefined)
       if (session) {
         createdSessionForSubmit = true
-        navigate(`/${base64Encode(sessionDirectory)}/session/${session.id}`)
+        navigate(`/${base64Encode(sessionScopeKey)}/session/${session.id}`)
       }
     }
     if (!session && params.id) {
@@ -213,7 +214,7 @@ export function usePromptSubmit(input: PromptSubmitInput) {
     const rollbackCreatedSession = async () => {
       if (!createdSessionForSubmit) return
       await client.session.delete({ sessionID: activeSession.id }).catch(() => undefined)
-      navigate(`/${base64Encode(projectDirectory)}/session`, { replace: true })
+      navigate(`/${base64Encode(currentScopeKey)}/session`, { replace: true })
     }
 
     if (blueprintSlot && mode === "normal") {
@@ -350,10 +351,12 @@ export function usePromptSubmit(input: PromptSubmitInput) {
     }
 
     const toAbsolutePath = (path: string) =>
-      path.startsWith("/") ? path : (sessionDirectory + "/" + path).replace("//", "/")
+      path.startsWith("/")
+        ? path
+        : ((sync.data.path.directory || projectDirectory || globalSync.data.paths.home) + "/" + path).replace("//", "/")
 
     const getSessionPreviewData = async (attachment: SessionAttachmentPart) => {
-      const [childStore] = globalSync.child(attachment.directory)
+      const [childStore] = globalSync.ensureScopeState(attachment.directory)
       const cachedMessages = childStore.message[attachment.sessionId]
       if (cachedMessages !== undefined) {
         return {
@@ -529,7 +532,8 @@ export function usePromptSubmit(input: PromptSubmitInput) {
       model,
     }
 
-    const setSyncStore = sessionDirectory === projectDirectory ? sync.set : globalSync.child(sessionDirectory)[1]
+    const setSyncStore =
+      sessionScopeKey === currentScopeKey ? sync.set : globalSync.ensureScopeState(sessionScopeKey)[1]
 
     const addOptimisticMessage = () => {
       setSyncStore(

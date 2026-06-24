@@ -118,7 +118,7 @@ export function ExperienceView(props: {
         const result = await props.sdk.client.engram.experience.search({
           query,
           topK: 50,
-          scopeID: filter === "scope" ? scopeID : undefined,
+          body_scopeID: filter === "scope" ? scopeID : undefined,
         })
         return (result.data ?? []) as ExperienceSearchItem[]
       } catch {

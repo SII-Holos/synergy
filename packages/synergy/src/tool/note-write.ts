@@ -20,7 +20,7 @@ const parameters = z.object({
   description: z.string().optional().describe("Short blueprint description. Only used when kind is 'blueprint'."),
   defaultAgent: z.string().optional().describe("Default agent for this blueprint. Only used when kind is 'blueprint'."),
   scope: z
-    .enum(["current", "global"])
+    .enum(["current", "home"])
     .default("current")
     .describe("Which scope to create the note in. Only used for create mode."),
 })
@@ -125,7 +125,7 @@ export const NoteWriteTool = Tool.define("note_write", {
         }
       }
 
-      const scopeID = params.scope === "global" ? "global" : ScopeContext.current.scope.id
+      const scopeID = params.scope === "home" ? "home" : ScopeContext.current.scope.id
       const kind =
         params.kind ?? (params.description !== undefined || params.defaultAgent !== undefined ? "blueprint" : "note")
       const note = await NoteStore.create(

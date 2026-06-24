@@ -680,6 +680,20 @@ export namespace EngramDB {
       return r1.changes
     }
 
+    export function renameScope(fromScopeID: string, toScopeID: string): number {
+      const conn = open()
+      const r1 = conn.prepare("UPDATE experience SET scope_id = ?1 WHERE scope_id = ?2").run(toScopeID, fromScopeID)
+      const r2 = conn
+        .prepare("UPDATE experience_content SET scope_id = ?1 WHERE scope_id = ?2")
+        .run(toScopeID, fromScopeID)
+      safeVecExperienceOp(() => {
+        conn.prepare("UPDATE vec_experience SET scope_id = ?1 WHERE scope_id = ?2").run(toScopeID, fromScopeID)
+      }, undefined)
+      const changed = r1.changes + r2.changes
+      log.info("experience.renameScope", { fromScopeID, toScopeID, changed })
+      return changed
+    }
+
     export interface DuplicateInfo {
       id: string
       intentSimilarity: number

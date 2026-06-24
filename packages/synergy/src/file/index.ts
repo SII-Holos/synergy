@@ -124,14 +124,14 @@ export namespace File {
     let cache: Entry = { files: [], dirs: [] }
     let fetching = false
 
-    const isGlobalHome = ScopeContext.current.scope.type === "global"
+    const isHome = ScopeContext.current.scope.type === "home"
 
     const fn = async (result: Entry) => {
       // Disable scanning if in root of file system
       if (ScopeContext.current.directory === path.parse(ScopeContext.current.directory).root) return
       fetching = true
 
-      if (isGlobalHome) {
+      if (isHome) {
         const dirs = new Set<string>()
         const ignore = new Set<string>()
 

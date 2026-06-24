@@ -371,7 +371,7 @@ export const migrations: Migration[] = [
     description: "Build session navigation v2 indexes and backfill session categories",
     async up(progress) {
       const scopeIDs: string[] = await Storage.scan(["sessions"]).catch(() => [])
-      const allScopeIDs = scopeIDs.includes("global") ? scopeIDs : ["global", ...scopeIDs]
+      const allScopeIDs = scopeIDs.includes("home") ? scopeIDs : ["home", ...scopeIDs]
       if (allScopeIDs.length === 0) return
 
       let done = 0
@@ -478,9 +478,9 @@ export const migrations: Migration[] = [
   },
   {
     id: "20260619-remove-home-endpoint",
-    description: "Strip endpoint from global-scope app-channel sessions and rebuild global nav index",
+    description: "Strip endpoint from home-scope app-channel sessions and rebuild home nav index",
     async up(progress) {
-      const scope = Identifier.asScopeID("global")
+      const scope = Identifier.asScopeID("home")
       const sessionIDs = await Storage.scan(StoragePath.sessionsRoot(scope)).catch(() => [])
       if (sessionIDs.length === 0) return
 
@@ -499,10 +499,20 @@ export const migrations: Migration[] = [
         progress(done, sessionIDs.length)
       }
 
-      // Rebuild global nav index so categories are correct
-      await SessionNav.buildNavIndex("global").catch((error) => {
+      // Rebuild home nav index so categories are correct.
+      await SessionNav.buildNavIndex("home").catch((error) => {
         // Log but don't fail — nav index rebuilds lazily
       })
+    },
+  },
+  {
+    id: "20260624-session-home-nav-rebuild",
+    description: "Rebuild home session navigation after global scope rename",
+    async up(progress) {
+      await SessionNav.buildNavIndex("home").catch((error) => {
+        log.warn("failed to rebuild home nav index after scope rename", { error: String(error) })
+      })
+      progress(1, 1)
     },
   },
 ]

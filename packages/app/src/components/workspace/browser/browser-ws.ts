@@ -22,6 +22,7 @@ export function createBrowserWebSocket(store: BrowserStoreAPI, sessionID: string
 
   const connect = () => {
     if (disposed) return
+    if (!sdk.directory) return
     store.setSession("connectionStatus", "connecting")
     const wsUrl =
       sdk.url.replace(/^http/, "ws") +

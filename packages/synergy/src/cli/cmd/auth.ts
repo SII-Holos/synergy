@@ -225,7 +225,7 @@ export const AuthLoginCommand = cmd({
     }),
   async handler(args) {
     await ScopeContext.provide({
-      scope: Scope.global(),
+      scope: Scope.home(),
       async fn() {
         UI.empty()
         prompts.intro("Add credential")

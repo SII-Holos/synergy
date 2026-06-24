@@ -88,7 +88,7 @@ export namespace HolosAuth {
 
   export async function reloadRuntime(): Promise<void> {
     await ScopeContext.provide({
-      scope: Scope.global(),
+      scope: Scope.home(),
       fn: async () => {
         const { HolosRuntime } = await import("@/holos/runtime")
         await HolosRuntime.reload()

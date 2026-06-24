@@ -18,7 +18,7 @@ export namespace ScopedState {
     log.info("disposing scoped state", { scopeID: id })
     await State.dispose(id)
     GlobalBus.emit("event", {
-      directory: id === "global" ? "global" : ScopeContext.tryScope()?.directory,
+      directory: id === "home" ? "home" : ScopeContext.tryScope()?.directory,
       payload: {
         type: "scope.runtime.disposed",
         properties: {

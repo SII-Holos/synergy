@@ -33,7 +33,7 @@ export const ModelsCommand = cmd({
     }
 
     await ScopeContext.provide({
-      scope: Scope.global(),
+      scope: Scope.home(),
       async fn() {
         const providers = await Provider.list()
 

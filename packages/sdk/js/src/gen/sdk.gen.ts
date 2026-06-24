@@ -159,21 +159,25 @@ import type {
   FilePartSource,
   FileReadResponses,
   FileStatusResponses,
-  FindBrowseResponses,
   FindFilesResponses,
   FindSymbolsResponses,
   FindTextResponses,
   FormatterStatusResponses,
-  GitInitErrors,
-  GitInitResponses,
   GlobalAgendaListErrors,
   GlobalAgendaListResponses,
   GlobalDisposeResponses,
+  GlobalFilesystemBrowseResponses,
+  GlobalGitInitErrors,
+  GlobalGitInitResponses,
   GlobalHealthResponses,
   GlobalNavPinnedResponses,
   GlobalNavRecentResponses,
+  GlobalPathsGetResponses,
   GlobalSessionSearchErrors,
   GlobalSessionSearchResponses,
+  GlobalStatsGetErrors,
+  GlobalStatsGetResponses,
+  GlobalStatsProgressResponses,
   HolosAccountsListResponses,
   HolosAccountsRemoveErrors,
   HolosAccountsRemoveResponses,
@@ -391,9 +395,6 @@ import type {
   SkillReloadResponses,
   SkillRemoveErrors,
   SkillRemoveResponses,
-  StatsGetErrors,
-  StatsGetResponses,
-  StatsProgressResponses,
   TextPartInput,
   ToolIdsErrors,
   ToolIdsResponses,
@@ -446,6 +447,115 @@ class HeyApiRegistry<T> {
 
   set(value: T, key?: string): void {
     this.instances.set(key ?? this.defaultKey, value)
+  }
+}
+
+export class Paths extends HeyApiClient {
+  /**
+   * Get global server paths
+   *
+   * Retrieve process-level Synergy paths that do not require a scope context.
+   */
+  public get<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
+    return (options?.client ?? this.client).get<GlobalPathsGetResponses, unknown, ThrowOnError>({
+      url: "/global/paths",
+      ...options,
+    })
+  }
+}
+
+export class Filesystem extends HeyApiClient {
+  /**
+   * Browse server directories
+   *
+   * Browse filesystem directories by path with optional fuzzy search. Returns absolute paths.
+   */
+  public browse<ThrowOnError extends boolean = false>(
+    parameters: {
+      path: string
+      query?: string
+      limit?: number
+      depth?: number
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "path" },
+            { in: "query", key: "query" },
+            { in: "query", key: "limit" },
+            { in: "query", key: "depth" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<GlobalFilesystemBrowseResponses, unknown, ThrowOnError>({
+      url: "/global/filesystem/browse",
+      ...options,
+      ...params,
+    })
+  }
+}
+
+export class Git extends HeyApiClient {
+  /**
+   * Initialize git repository
+   *
+   * Initialize a git repository in the specified directory if one does not already exist.
+   */
+  public init<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "body", key: "directory" }] }])
+    return (options?.client ?? this.client).post<GlobalGitInitResponses, GlobalGitInitErrors, ThrowOnError>({
+      url: "/global/git/init",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+}
+
+export class Stats extends HeyApiClient {
+  /**
+   * Get stats snapshot
+   *
+   * Get the full stats snapshot. Returns cached snapshot if available, otherwise computes incrementally. Use ?recompute=true to force a full recompute from scratch.
+   */
+  public get<ThrowOnError extends boolean = false>(
+    parameters?: {
+      recompute?: "true" | "false"
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "recompute" }] }])
+    return (options?.client ?? this.client).get<GlobalStatsGetResponses, GlobalStatsGetErrors, ThrowOnError>({
+      url: "/global/stats",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Stream stats recompute progress
+   *
+   * Force a stats recompute and stream progress updates over SSE until the final snapshot is ready.
+   */
+  public progress<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
+    return (options?.client ?? this.client).sse.get<GlobalStatsProgressResponses, unknown, ThrowOnError>({
+      url: "/global/stats/progress",
+      ...options,
+    })
   }
 }
 
@@ -530,6 +640,7 @@ export class Agenda extends HeyApiClient {
     parameters: {
       id: string
       directory?: string
+      scopeID?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -540,6 +651,7 @@ export class Agenda extends HeyApiClient {
           args: [
             { in: "path", key: "id" },
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
           ],
         },
       ],
@@ -560,6 +672,7 @@ export class Agenda extends HeyApiClient {
     parameters: {
       id: string
       directory?: string
+      scopeID?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -570,6 +683,7 @@ export class Agenda extends HeyApiClient {
           args: [
             { in: "path", key: "id" },
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
           ],
         },
       ],
@@ -590,6 +704,7 @@ export class Agenda extends HeyApiClient {
     parameters: {
       id: string
       directory?: string
+      scopeID?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -600,6 +715,7 @@ export class Agenda extends HeyApiClient {
           args: [
             { in: "path", key: "id" },
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
           ],
         },
       ],
@@ -620,6 +736,7 @@ export class Agenda extends HeyApiClient {
     parameters: {
       id: string
       directory?: string
+      scopeID?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -630,6 +747,7 @@ export class Agenda extends HeyApiClient {
           args: [
             { in: "path", key: "id" },
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
           ],
         },
       ],
@@ -650,6 +768,7 @@ export class Agenda extends HeyApiClient {
     parameters: {
       id: string
       directory?: string
+      scopeID?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -660,6 +779,7 @@ export class Agenda extends HeyApiClient {
           args: [
             { in: "path", key: "id" },
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
           ],
         },
       ],
@@ -680,6 +800,7 @@ export class Agenda extends HeyApiClient {
     parameters: {
       id: string
       directory?: string
+      scopeID?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -690,6 +811,7 @@ export class Agenda extends HeyApiClient {
           args: [
             { in: "path", key: "id" },
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
           ],
         },
       ],
@@ -710,6 +832,7 @@ export class Agenda extends HeyApiClient {
     parameters: {
       id: string
       directory?: string
+      scopeID?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -720,6 +843,7 @@ export class Agenda extends HeyApiClient {
           args: [
             { in: "path", key: "id" },
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
           ],
         },
       ],
@@ -740,6 +864,7 @@ export class Agenda extends HeyApiClient {
     parameters: {
       id: string
       directory?: string
+      scopeID?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -750,6 +875,7 @@ export class Agenda extends HeyApiClient {
           args: [
             { in: "path", key: "id" },
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
           ],
         },
       ],
@@ -770,6 +896,7 @@ export class Agenda extends HeyApiClient {
     parameters: {
       id: string
       directory?: string
+      scopeID?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -780,6 +907,7 @@ export class Agenda extends HeyApiClient {
           args: [
             { in: "path", key: "id" },
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
           ],
         },
       ],
@@ -800,6 +928,7 @@ export class Agenda extends HeyApiClient {
     parameters: {
       id: string
       directory?: string
+      scopeID?: string
       agendaPatchInput?: AgendaPatchInput
     },
     options?: Options<never, ThrowOnError>,
@@ -811,6 +940,7 @@ export class Agenda extends HeyApiClient {
           args: [
             { in: "path", key: "id" },
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
             { key: "agendaPatchInput", map: "body" },
           ],
         },
@@ -836,6 +966,7 @@ export class Agenda extends HeyApiClient {
   public create<ThrowOnError extends boolean = false>(
     parameters?: {
       directory?: string
+      scopeID?: string
       agendaCreateInput?: AgendaCreateInput
     },
     options?: Options<never, ThrowOnError>,
@@ -846,6 +977,7 @@ export class Agenda extends HeyApiClient {
         {
           args: [
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
             { key: "agendaCreateInput", map: "body" },
           ],
         },
@@ -874,6 +1006,7 @@ export class Export extends HeyApiClient {
     parameters: {
       sessionID: string
       directory?: string
+      scopeID?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -884,6 +1017,7 @@ export class Export extends HeyApiClient {
           args: [
             { in: "path", key: "sessionID" },
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
           ],
         },
       ],
@@ -908,6 +1042,7 @@ export class Export extends HeyApiClient {
     parameters: {
       sessionID: string
       directory?: string
+      scopeID?: string
       mode?: SessionExportMode
     },
     options?: Options<never, ThrowOnError>,
@@ -919,6 +1054,7 @@ export class Export extends HeyApiClient {
           args: [
             { in: "path", key: "sessionID" },
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
             { in: "query", key: "mode" },
           ],
         },
@@ -1025,6 +1161,7 @@ export class Session extends HeyApiClient {
   public list<ThrowOnError extends boolean = false>(
     parameters?: {
       directory?: string
+      scopeID?: string
       offset?: number
       limit?: number
       search?: string
@@ -1041,6 +1178,7 @@ export class Session extends HeyApiClient {
         {
           args: [
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
             { in: "query", key: "offset" },
             { in: "query", key: "limit" },
             { in: "query", key: "search" },
@@ -1067,6 +1205,7 @@ export class Session extends HeyApiClient {
   public create<ThrowOnError extends boolean = false>(
     parameters?: {
       directory?: string
+      scopeID?: string
       parentID?: string
       title?: string
       id?: string
@@ -1080,6 +1219,7 @@ export class Session extends HeyApiClient {
         {
           args: [
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
             { in: "body", key: "parentID" },
             { in: "body", key: "title" },
             { in: "body", key: "id" },
@@ -1108,10 +1248,21 @@ export class Session extends HeyApiClient {
   public status<ThrowOnError extends boolean = false>(
     parameters?: {
       directory?: string
+      scopeID?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
-    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
     return (options?.client ?? this.client).get<SessionStatusResponses, SessionStatusErrors, ThrowOnError>({
       url: "/session/status",
       ...options,
@@ -1128,6 +1279,7 @@ export class Session extends HeyApiClient {
     parameters: {
       sessionID: string
       directory?: string
+      scopeID?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -1138,6 +1290,7 @@ export class Session extends HeyApiClient {
           args: [
             { in: "path", key: "sessionID" },
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
           ],
         },
       ],
@@ -1158,6 +1311,7 @@ export class Session extends HeyApiClient {
     parameters: {
       sessionID: string
       directory?: string
+      scopeID?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -1168,6 +1322,7 @@ export class Session extends HeyApiClient {
           args: [
             { in: "path", key: "sessionID" },
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
           ],
         },
       ],
@@ -1188,6 +1343,7 @@ export class Session extends HeyApiClient {
     parameters: {
       sessionID: string
       directory?: string
+      scopeID?: string
       title?: string
       pinned?: number
       controlProfile?: "guarded" | "autonomous" | "full_access"
@@ -1204,6 +1360,7 @@ export class Session extends HeyApiClient {
           args: [
             { in: "path", key: "sessionID" },
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
             { in: "body", key: "title" },
             { in: "body", key: "pinned" },
             { in: "body", key: "controlProfile" },
@@ -1233,6 +1390,7 @@ export class Session extends HeyApiClient {
     parameters: {
       sessionID: string
       directory?: string
+      scopeID?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -1243,6 +1401,7 @@ export class Session extends HeyApiClient {
           args: [
             { in: "path", key: "sessionID" },
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
           ],
         },
       ],
@@ -1263,6 +1422,7 @@ export class Session extends HeyApiClient {
     parameters: {
       sessionID: string
       directory?: string
+      scopeID?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -1273,6 +1433,7 @@ export class Session extends HeyApiClient {
           args: [
             { in: "path", key: "sessionID" },
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
           ],
         },
       ],
@@ -1293,6 +1454,7 @@ export class Session extends HeyApiClient {
     parameters: {
       sessionID: string
       directory?: string
+      scopeID?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -1303,6 +1465,7 @@ export class Session extends HeyApiClient {
           args: [
             { in: "path", key: "sessionID" },
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
           ],
         },
       ],
@@ -1323,6 +1486,7 @@ export class Session extends HeyApiClient {
     parameters: {
       sessionID: string
       directory?: string
+      scopeID?: string
       limit?: number
       offset?: number
     },
@@ -1335,6 +1499,7 @@ export class Session extends HeyApiClient {
           args: [
             { in: "path", key: "sessionID" },
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
             { in: "query", key: "limit" },
             { in: "query", key: "offset" },
           ],
@@ -1357,6 +1522,7 @@ export class Session extends HeyApiClient {
     parameters: {
       sessionID: string
       directory?: string
+      scopeID?: string
       modelID?: string
       providerID?: string
       messageID?: string
@@ -1370,6 +1536,7 @@ export class Session extends HeyApiClient {
           args: [
             { in: "path", key: "sessionID" },
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
             { in: "body", key: "modelID" },
             { in: "body", key: "providerID" },
             { in: "body", key: "messageID" },
@@ -1398,6 +1565,7 @@ export class Session extends HeyApiClient {
     parameters: {
       sessionID: string
       directory?: string
+      scopeID?: string
       messageID?: string
     },
     options?: Options<never, ThrowOnError>,
@@ -1409,6 +1577,7 @@ export class Session extends HeyApiClient {
           args: [
             { in: "path", key: "sessionID" },
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
             { in: "body", key: "messageID" },
           ],
         },
@@ -1435,6 +1604,7 @@ export class Session extends HeyApiClient {
     parameters: {
       sessionID: string
       directory?: string
+      scopeID?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -1445,6 +1615,7 @@ export class Session extends HeyApiClient {
           args: [
             { in: "path", key: "sessionID" },
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
           ],
         },
       ],
@@ -1465,6 +1636,7 @@ export class Session extends HeyApiClient {
     parameters: {
       sessionID: string
       directory?: string
+      scopeID?: string
       providerID?: string
       modelID?: string
       auto?: boolean
@@ -1478,6 +1650,7 @@ export class Session extends HeyApiClient {
           args: [
             { in: "path", key: "sessionID" },
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
             { in: "body", key: "providerID" },
             { in: "body", key: "modelID" },
             { in: "body", key: "auto" },
@@ -1506,6 +1679,7 @@ export class Session extends HeyApiClient {
     parameters: {
       sessionID: string
       directory?: string
+      scopeID?: string
       limit?: number
     },
     options?: Options<never, ThrowOnError>,
@@ -1517,6 +1691,7 @@ export class Session extends HeyApiClient {
           args: [
             { in: "path", key: "sessionID" },
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
             { in: "query", key: "limit" },
           ],
         },
@@ -1538,6 +1713,7 @@ export class Session extends HeyApiClient {
     parameters: {
       sessionID: string
       directory?: string
+      scopeID?: string
       messageID?: string
       model?: {
         providerID: string
@@ -1567,6 +1743,7 @@ export class Session extends HeyApiClient {
           args: [
             { in: "path", key: "sessionID" },
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
             { in: "body", key: "messageID" },
             { in: "body", key: "model" },
             { in: "body", key: "agent" },
@@ -1602,6 +1779,7 @@ export class Session extends HeyApiClient {
     parameters: {
       sessionID: string
       directory?: string
+      scopeID?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -1612,6 +1790,7 @@ export class Session extends HeyApiClient {
           args: [
             { in: "path", key: "sessionID" },
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
           ],
         },
       ],
@@ -1633,6 +1812,7 @@ export class Session extends HeyApiClient {
       sessionID: string
       messageID: string
       directory?: string
+      scopeID?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -1644,6 +1824,7 @@ export class Session extends HeyApiClient {
             { in: "path", key: "sessionID" },
             { in: "path", key: "messageID" },
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
           ],
         },
       ],
@@ -1664,6 +1845,7 @@ export class Session extends HeyApiClient {
     parameters: {
       sessionID: string
       directory?: string
+      scopeID?: string
       messageID?: string
       model?: {
         providerID: string
@@ -1693,6 +1875,7 @@ export class Session extends HeyApiClient {
           args: [
             { in: "path", key: "sessionID" },
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
             { in: "body", key: "messageID" },
             { in: "body", key: "model" },
             { in: "body", key: "agent" },
@@ -1728,6 +1911,7 @@ export class Session extends HeyApiClient {
     parameters: {
       sessionID: string
       directory?: string
+      scopeID?: string
       messageID?: string
       agent?: string
       model?: string
@@ -1756,6 +1940,7 @@ export class Session extends HeyApiClient {
           args: [
             { in: "path", key: "sessionID" },
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
             { in: "body", key: "messageID" },
             { in: "body", key: "agent" },
             { in: "body", key: "model" },
@@ -1788,6 +1973,7 @@ export class Session extends HeyApiClient {
     parameters: {
       sessionID: string
       directory?: string
+      scopeID?: string
       agent?: string
       model?: {
         providerID: string
@@ -1804,6 +1990,7 @@ export class Session extends HeyApiClient {
           args: [
             { in: "path", key: "sessionID" },
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
             { in: "body", key: "agent" },
             { in: "body", key: "model" },
             { in: "body", key: "command" },
@@ -1832,6 +2019,7 @@ export class Session extends HeyApiClient {
     parameters: {
       sessionID: string
       directory?: string
+      scopeID?: string
       messageID?: string
       partID?: string
     },
@@ -1844,6 +2032,7 @@ export class Session extends HeyApiClient {
           args: [
             { in: "path", key: "sessionID" },
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
             { in: "body", key: "messageID" },
             { in: "body", key: "partID" },
           ],
@@ -1871,6 +2060,7 @@ export class Session extends HeyApiClient {
     parameters: {
       sessionID: string
       directory?: string
+      scopeID?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -1881,6 +2071,7 @@ export class Session extends HeyApiClient {
           args: [
             { in: "path", key: "sessionID" },
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
           ],
         },
       ],
@@ -1901,6 +2092,7 @@ export class Session extends HeyApiClient {
     parameters: {
       id: string
       directory?: string
+      scopeID?: string
       planMode?: boolean
     },
     options?: Options<never, ThrowOnError>,
@@ -1912,6 +2104,7 @@ export class Session extends HeyApiClient {
           args: [
             { in: "path", key: "id" },
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
             { in: "body", key: "planMode" },
           ],
         },
@@ -2020,6 +2213,14 @@ export class Global extends HeyApiClient {
     })
   }
 
+  paths = new Paths({ client: this.client })
+
+  filesystem = new Filesystem({ client: this.client })
+
+  git = new Git({ client: this.client })
+
+  stats = new Stats({ client: this.client })
+
   agenda = new Agenda({ client: this.client })
 
   session = new Session({ client: this.client })
@@ -2036,10 +2237,21 @@ export class Credentials extends HeyApiClient {
   public status<ThrowOnError extends boolean = false>(
     parameters?: {
       directory?: string
+      scopeID?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
-    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
     return (options?.client ?? this.client).get<HolosCredentialsStatusResponses, unknown, ThrowOnError>({
       url: "/holos/credentials/status",
       ...options,
@@ -2057,10 +2269,21 @@ export class Accounts extends HeyApiClient {
   public list<ThrowOnError extends boolean = false>(
     parameters?: {
       directory?: string
+      scopeID?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
-    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
     return (options?.client ?? this.client).get<HolosAccountsListResponses, unknown, ThrowOnError>({
       url: "/holos/accounts",
       ...options,
@@ -2076,6 +2299,7 @@ export class Accounts extends HeyApiClient {
   public switch<ThrowOnError extends boolean = false>(
     parameters?: {
       directory?: string
+      scopeID?: string
       agentId?: string
     },
     options?: Options<never, ThrowOnError>,
@@ -2086,6 +2310,7 @@ export class Accounts extends HeyApiClient {
         {
           args: [
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
             { in: "body", key: "agentId" },
           ],
         },
@@ -2114,6 +2339,7 @@ export class Accounts extends HeyApiClient {
     parameters: {
       agentId: string
       directory?: string
+      scopeID?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -2124,6 +2350,7 @@ export class Accounts extends HeyApiClient {
           args: [
             { in: "path", key: "agentId" },
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
           ],
         },
       ],
@@ -2149,10 +2376,21 @@ export class Contact extends HeyApiClient {
   public list<ThrowOnError extends boolean = false>(
     parameters?: {
       directory?: string
+      scopeID?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
-    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
     return (options?.client ?? this.client).get<HolosContactListResponses, unknown, ThrowOnError>({
       url: "/holos/contact",
       ...options,
@@ -2168,6 +2406,7 @@ export class Contact extends HeyApiClient {
   public add<ThrowOnError extends boolean = false>(
     parameters?: {
       directory?: string
+      scopeID?: string
       id?: string
       name?: string
     },
@@ -2179,6 +2418,7 @@ export class Contact extends HeyApiClient {
         {
           args: [
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
             { in: "body", key: "id" },
             { in: "body", key: "name" },
           ],
@@ -2206,6 +2446,7 @@ export class Contact extends HeyApiClient {
     parameters: {
       id: string
       directory?: string
+      scopeID?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -2216,6 +2457,7 @@ export class Contact extends HeyApiClient {
           args: [
             { in: "path", key: "id" },
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
           ],
         },
       ],
@@ -2236,6 +2478,7 @@ export class Contact extends HeyApiClient {
     parameters: {
       id: string
       directory?: string
+      scopeID?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -2246,6 +2489,7 @@ export class Contact extends HeyApiClient {
           args: [
             { in: "path", key: "id" },
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
           ],
         },
       ],
@@ -2266,6 +2510,7 @@ export class Contact extends HeyApiClient {
     parameters: {
       id: string
       directory?: string
+      scopeID?: string
       blocked?: boolean
     },
     options?: Options<never, ThrowOnError>,
@@ -2277,6 +2522,7 @@ export class Contact extends HeyApiClient {
           args: [
             { in: "path", key: "id" },
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
             { in: "body", key: "blocked" },
           ],
         },
@@ -2308,6 +2554,7 @@ export class Agents extends HeyApiClient {
   public list<ThrowOnError extends boolean = false>(
     parameters?: {
       directory?: string
+      scopeID?: string
       limit?: number
       offset?: number
       need_active?: boolean
@@ -2320,6 +2567,7 @@ export class Agents extends HeyApiClient {
         {
           args: [
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
             { in: "query", key: "limit" },
             { in: "query", key: "offset" },
             { in: "query", key: "need_active" },
@@ -2343,6 +2591,7 @@ export class Agents extends HeyApiClient {
     parameters: {
       agentId: string
       directory?: string
+      scopeID?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -2353,6 +2602,7 @@ export class Agents extends HeyApiClient {
           args: [
             { in: "path", key: "agentId" },
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
           ],
         },
       ],
@@ -2375,6 +2625,7 @@ export class Send extends HeyApiClient {
     parameters: {
       messageId: string
       directory?: string
+      scopeID?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -2385,6 +2636,7 @@ export class Send extends HeyApiClient {
           args: [
             { in: "path", key: "messageId" },
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
           ],
         },
       ],
@@ -2406,10 +2658,21 @@ export class Inbox extends HeyApiClient {
   public list<ThrowOnError extends boolean = false>(
     parameters?: {
       directory?: string
+      scopeID?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
-    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
     return (options?.client ?? this.client).get<HolosInboxListResponses, unknown, ThrowOnError>({
       url: "/holos/inbox",
       ...options,
@@ -2427,10 +2690,21 @@ export class Outbox extends HeyApiClient {
   public list<ThrowOnError extends boolean = false>(
     parameters?: {
       directory?: string
+      scopeID?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
-    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
     return (options?.client ?? this.client).get<HolosOutboxListResponses, unknown, ThrowOnError>({
       url: "/holos/outbox",
       ...options,
@@ -2449,6 +2723,7 @@ export class Thread extends HeyApiClient {
     parameters: {
       contactId: string
       directory?: string
+      scopeID?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -2459,6 +2734,7 @@ export class Thread extends HeyApiClient {
           args: [
             { in: "path", key: "contactId" },
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
           ],
         },
       ],
@@ -2575,10 +2851,21 @@ export class Holos extends HeyApiClient {
   public state<ThrowOnError extends boolean = false>(
     parameters?: {
       directory?: string
+      scopeID?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
-    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
     return (options?.client ?? this.client).get<HolosStateResponses, unknown, ThrowOnError>({
       url: "/holos/state",
       ...options,
@@ -2594,10 +2881,21 @@ export class Holos extends HeyApiClient {
   public verify<ThrowOnError extends boolean = false>(
     parameters?: {
       directory?: string
+      scopeID?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
-    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
     return (options?.client ?? this.client).get<HolosVerifyResponses, unknown, ThrowOnError>({
       url: "/holos/verify",
       ...options,
@@ -2613,10 +2911,21 @@ export class Holos extends HeyApiClient {
   public status<ThrowOnError extends boolean = false>(
     parameters?: {
       directory?: string
+      scopeID?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
-    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
     return (options?.client ?? this.client).get<HolosStatusResponses, unknown, ThrowOnError>({
       url: "/holos/status",
       ...options,
@@ -2632,10 +2941,21 @@ export class Holos extends HeyApiClient {
   public presence<ThrowOnError extends boolean = false>(
     parameters?: {
       directory?: string
+      scopeID?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
-    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
     return (options?.client ?? this.client).get<HolosPresenceResponses, unknown, ThrowOnError>({
       url: "/holos/presence",
       ...options,
@@ -2651,6 +2971,7 @@ export class Holos extends HeyApiClient {
   public send<ThrowOnError extends boolean = false>(
     parameters?: {
       directory?: string
+      scopeID?: string
       toId?: string
       text?: string
       replyToMessageId?: string
@@ -2663,6 +2984,7 @@ export class Holos extends HeyApiClient {
         {
           args: [
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
             { in: "body", key: "toId" },
             { in: "body", key: "text" },
             { in: "body", key: "replyToMessageId" },
@@ -2708,6 +3030,7 @@ export class Runtime extends HeyApiClient {
   public reload<ThrowOnError extends boolean = false>(
     parameters?: {
       directory?: string
+      scopeID?: string
       targets?: Array<RuntimeReloadTarget>
       scope?: RuntimeReloadScope
       force?: boolean
@@ -2721,6 +3044,7 @@ export class Runtime extends HeyApiClient {
         {
           args: [
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
             { in: "body", key: "targets" },
             { in: "body", key: "scope" },
             { in: "body", key: "force" },
@@ -2749,10 +3073,21 @@ export class Runtime extends HeyApiClient {
   public dispose<ThrowOnError extends boolean = false>(
     parameters?: {
       directory?: string
+      scopeID?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
-    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
     return (options?.client ?? this.client).post<ScopeRuntimeDisposeResponses, unknown, ThrowOnError>({
       url: "/scope/runtime/dispose",
       ...options,
@@ -2769,6 +3104,7 @@ export class Runtime extends HeyApiClient {
     parameters: {
       pluginId: string
       directory?: string
+      scopeID?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -2779,6 +3115,7 @@ export class Runtime extends HeyApiClient {
           args: [
             { in: "path", key: "pluginId" },
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
           ],
         },
       ],
@@ -2799,6 +3136,7 @@ export class Runtime extends HeyApiClient {
     parameters: {
       pluginId: string
       directory?: string
+      scopeID?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -2809,6 +3147,7 @@ export class Runtime extends HeyApiClient {
           args: [
             { in: "path", key: "pluginId" },
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
           ],
         },
       ],
@@ -2829,6 +3168,7 @@ export class Runtime extends HeyApiClient {
     parameters: {
       pluginId: string
       directory?: string
+      scopeID?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -2839,6 +3179,7 @@ export class Runtime extends HeyApiClient {
           args: [
             { in: "path", key: "pluginId" },
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
           ],
         },
       ],
@@ -2860,10 +3201,21 @@ export class Scope extends HeyApiClient {
   public list<ThrowOnError extends boolean = false>(
     parameters?: {
       directory?: string
+      scopeID?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
-    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
     return (options?.client ?? this.client).get<ScopeListResponses, unknown, ThrowOnError>({
       url: "/scope",
       ...options,
@@ -2879,10 +3231,21 @@ export class Scope extends HeyApiClient {
   public current<ThrowOnError extends boolean = false>(
     parameters?: {
       directory?: string
+      scopeID?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
-    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
     return (options?.client ?? this.client).get<ScopeCurrentResponses, unknown, ThrowOnError>({
       url: "/scope/current",
       ...options,
@@ -2898,10 +3261,21 @@ export class Scope extends HeyApiClient {
   public index<ThrowOnError extends boolean = false>(
     parameters?: {
       directory?: string
+      scopeID?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
-    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
     return (options?.client ?? this.client).get<ScopeIndexResponses, unknown, ThrowOnError>({
       url: "/scope/index",
       ...options,
@@ -2916,8 +3290,9 @@ export class Scope extends HeyApiClient {
    */
   public remove<ThrowOnError extends boolean = false>(
     parameters: {
-      scopeID: string
+      path_scopeID: string
       directory?: string
+      query_scopeID?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -2926,8 +3301,17 @@ export class Scope extends HeyApiClient {
       [
         {
           args: [
-            { in: "path", key: "scopeID" },
+            {
+              in: "path",
+              key: "path_scopeID",
+              map: "scopeID",
+            },
             { in: "query", key: "directory" },
+            {
+              in: "query",
+              key: "query_scopeID",
+              map: "scopeID",
+            },
           ],
         },
       ],
@@ -2946,8 +3330,9 @@ export class Scope extends HeyApiClient {
    */
   public update<ThrowOnError extends boolean = false>(
     parameters: {
-      scopeID: string
+      path_scopeID: string
       directory?: string
+      query_scopeID?: string
       name?: string
       icon?: {
         url?: string
@@ -2962,8 +3347,17 @@ export class Scope extends HeyApiClient {
       [
         {
           args: [
-            { in: "path", key: "scopeID" },
+            {
+              in: "path",
+              key: "path_scopeID",
+              map: "scopeID",
+            },
             { in: "query", key: "directory" },
+            {
+              in: "query",
+              key: "query_scopeID",
+              map: "scopeID",
+            },
             { in: "body", key: "name" },
             { in: "body", key: "icon" },
             { in: "body", key: "archived" },
@@ -2986,51 +3380,6 @@ export class Scope extends HeyApiClient {
   runtime = new Runtime({ client: this.client })
 }
 
-export class Git extends HeyApiClient {
-  /**
-   * Initialize git repository
-   *
-   * Initialize a git repository in the specified directory if one does not already exist.
-   */
-  public init<ThrowOnError extends boolean = false>(
-    parameters?: {
-      query_directory?: string
-      body_directory?: string
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            {
-              in: "query",
-              key: "query_directory",
-              map: "directory",
-            },
-            {
-              in: "body",
-              key: "body_directory",
-              map: "directory",
-            },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).post<GitInitResponses, GitInitErrors, ThrowOnError>({
-      url: "/git/init",
-      ...options,
-      ...params,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers,
-        ...params.headers,
-      },
-    })
-  }
-}
-
 export class Pty extends HeyApiClient {
   /**
    * List PTY sessions
@@ -3040,10 +3389,21 @@ export class Pty extends HeyApiClient {
   public list<ThrowOnError extends boolean = false>(
     parameters?: {
       directory?: string
+      scopeID?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
-    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
     return (options?.client ?? this.client).get<PtyListResponses, unknown, ThrowOnError>({
       url: "/pty",
       ...options,
@@ -3059,6 +3419,7 @@ export class Pty extends HeyApiClient {
   public create<ThrowOnError extends boolean = false>(
     parameters?: {
       directory?: string
+      scopeID?: string
       command?: string
       args?: Array<string>
       cwd?: string
@@ -3075,6 +3436,7 @@ export class Pty extends HeyApiClient {
         {
           args: [
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
             { in: "body", key: "command" },
             { in: "body", key: "args" },
             { in: "body", key: "cwd" },
@@ -3105,6 +3467,7 @@ export class Pty extends HeyApiClient {
     parameters: {
       ptyID: string
       directory?: string
+      scopeID?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -3115,6 +3478,7 @@ export class Pty extends HeyApiClient {
           args: [
             { in: "path", key: "ptyID" },
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
           ],
         },
       ],
@@ -3135,6 +3499,7 @@ export class Pty extends HeyApiClient {
     parameters: {
       ptyID: string
       directory?: string
+      scopeID?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -3145,6 +3510,7 @@ export class Pty extends HeyApiClient {
           args: [
             { in: "path", key: "ptyID" },
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
           ],
         },
       ],
@@ -3165,6 +3531,7 @@ export class Pty extends HeyApiClient {
     parameters: {
       ptyID: string
       directory?: string
+      scopeID?: string
       title?: string
       size?: {
         rows: number
@@ -3180,6 +3547,7 @@ export class Pty extends HeyApiClient {
           args: [
             { in: "path", key: "ptyID" },
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
             { in: "body", key: "title" },
             { in: "body", key: "size" },
           ],
@@ -3207,6 +3575,7 @@ export class Pty extends HeyApiClient {
     parameters: {
       ptyID: string
       directory?: string
+      scopeID?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -3217,6 +3586,7 @@ export class Pty extends HeyApiClient {
           args: [
             { in: "path", key: "ptyID" },
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
           ],
         },
       ],
@@ -3238,10 +3608,21 @@ export class Domain extends HeyApiClient {
   public list<ThrowOnError extends boolean = false>(
     parameters?: {
       directory?: string
+      scopeID?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
-    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
     return (options?.client ?? this.client).get<ConfigDomainListResponses, unknown, ThrowOnError>({
       url: "/config/domains",
       ...options,
@@ -3271,6 +3652,7 @@ export class Domain extends HeyApiClient {
         | "email"
         | "runtime"
       directory?: string
+      scopeID?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -3281,6 +3663,7 @@ export class Domain extends HeyApiClient {
           args: [
             { in: "path", key: "domain" },
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
           ],
         },
       ],
@@ -3314,6 +3697,7 @@ export class Domain extends HeyApiClient {
         | "email"
         | "runtime"
       directory?: string
+      scopeID?: string
       configDomainUpdateInput?: ConfigDomainUpdateInput
     },
     options?: Options<never, ThrowOnError>,
@@ -3325,6 +3709,7 @@ export class Domain extends HeyApiClient {
           args: [
             { in: "path", key: "domain" },
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
             { key: "configDomainUpdateInput", map: "body" },
           ],
         },
@@ -3352,6 +3737,7 @@ export class Import extends HeyApiClient {
   public plan<ThrowOnError extends boolean = false>(
     parameters?: {
       directory?: string
+      scopeID?: string
       configDomainImportPlanInput?: ConfigDomainImportPlanInput
     },
     options?: Options<never, ThrowOnError>,
@@ -3362,6 +3748,7 @@ export class Import extends HeyApiClient {
         {
           args: [
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
             { key: "configDomainImportPlanInput", map: "body" },
           ],
         },
@@ -3387,6 +3774,7 @@ export class Import extends HeyApiClient {
   public apply<ThrowOnError extends boolean = false>(
     parameters?: {
       directory?: string
+      scopeID?: string
       config?: Config2
       only?: Array<
         | "general"
@@ -3414,6 +3802,7 @@ export class Import extends HeyApiClient {
         {
           args: [
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
             { in: "body", key: "config" },
             { in: "body", key: "only" },
             { in: "body", key: "mode" },
@@ -3444,10 +3833,21 @@ export class Config extends HeyApiClient {
   public get<ThrowOnError extends boolean = false>(
     parameters?: {
       directory?: string
+      scopeID?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
-    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
     return (options?.client ?? this.client).get<ConfigGetResponses, unknown, ThrowOnError>({
       url: "/config",
       ...options,
@@ -3463,6 +3863,7 @@ export class Config extends HeyApiClient {
   public update<ThrowOnError extends boolean = false>(
     parameters?: {
       directory?: string
+      scopeID?: string
       config?: Config2
     },
     options?: Options<never, ThrowOnError>,
@@ -3473,6 +3874,7 @@ export class Config extends HeyApiClient {
         {
           args: [
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
             { in: "body", key: "config" },
           ],
         },
@@ -3498,10 +3900,21 @@ export class Config extends HeyApiClient {
   public global<ThrowOnError extends boolean = false>(
     parameters?: {
       directory?: string
+      scopeID?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
-    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
     return (options?.client ?? this.client).get<ConfigGlobalResponses, unknown, ThrowOnError>({
       url: "/config/global",
       ...options,
@@ -3517,10 +3930,21 @@ export class Config extends HeyApiClient {
   public providers<ThrowOnError extends boolean = false>(
     parameters?: {
       directory?: string
+      scopeID?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
-    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
     return (options?.client ?? this.client).get<ConfigProvidersResponses, unknown, ThrowOnError>({
       url: "/config/providers",
       ...options,
@@ -3542,10 +3966,21 @@ export class ControlProfile extends HeyApiClient {
   public list<ThrowOnError extends boolean = false>(
     parameters?: {
       directory?: string
+      scopeID?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
-    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
     return (options?.client ?? this.client).get<ControlProfileListResponses, unknown, ThrowOnError>({
       url: "/control-profiles",
       ...options,
@@ -3561,6 +3996,7 @@ export class ControlProfile extends HeyApiClient {
   public effective<ThrowOnError extends boolean = false>(
     parameters?: {
       directory?: string
+      scopeID?: string
       agent?: string
     },
     options?: Options<never, ThrowOnError>,
@@ -3571,6 +4007,7 @@ export class ControlProfile extends HeyApiClient {
         {
           args: [
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
             { in: "query", key: "agent" },
           ],
         },
@@ -3597,10 +4034,21 @@ export class Sandbox extends HeyApiClient {
   public status<ThrowOnError extends boolean = false>(
     parameters?: {
       directory?: string
+      scopeID?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
-    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
     return (options?.client ?? this.client).get<SandboxStatusResponses, unknown, ThrowOnError>({
       url: "/sandbox/status",
       ...options,
@@ -3616,10 +4064,21 @@ export class Sandbox extends HeyApiClient {
   public readiness<ThrowOnError extends boolean = false>(
     parameters?: {
       directory?: string
+      scopeID?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
-    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
     return (options?.client ?? this.client).get<SandboxReadinessResponses, unknown, ThrowOnError>({
       url: "/sandbox/readiness",
       ...options,
@@ -3637,10 +4096,21 @@ export class Tool extends HeyApiClient {
   public ids<ThrowOnError extends boolean = false>(
     parameters?: {
       directory?: string
+      scopeID?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
-    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
     return (options?.client ?? this.client).get<ToolIdsResponses, ToolIdsErrors, ThrowOnError>({
       url: "/experimental/tool/ids",
       ...options,
@@ -3656,6 +4126,7 @@ export class Tool extends HeyApiClient {
   public list<ThrowOnError extends boolean = false>(
     parameters: {
       directory?: string
+      scopeID?: string
       provider: string
       model: string
     },
@@ -3667,6 +4138,7 @@ export class Tool extends HeyApiClient {
         {
           args: [
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
             { in: "query", key: "provider" },
             { in: "query", key: "model" },
           ],
@@ -3690,10 +4162,21 @@ export class Path extends HeyApiClient {
   public get<ThrowOnError extends boolean = false>(
     parameters?: {
       directory?: string
+      scopeID?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
-    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
     return (options?.client ?? this.client).get<PathGetResponses, unknown, ThrowOnError>({
       url: "/path",
       ...options,
@@ -3711,10 +4194,21 @@ export class Worktree extends HeyApiClient {
   public list<ThrowOnError extends boolean = false>(
     parameters?: {
       directory?: string
+      scopeID?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
-    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
     return (options?.client ?? this.client).get<WorktreeListResponses, unknown, ThrowOnError>({
       url: "/experimental/worktree",
       ...options,
@@ -3730,6 +4224,7 @@ export class Worktree extends HeyApiClient {
   public create<ThrowOnError extends boolean = false>(
     parameters?: {
       directory?: string
+      scopeID?: string
       worktreeCreateInput?: WorktreeCreateInput
     },
     options?: Options<never, ThrowOnError>,
@@ -3740,6 +4235,7 @@ export class Worktree extends HeyApiClient {
         {
           args: [
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
             { key: "worktreeCreateInput", map: "body" },
           ],
         },
@@ -3767,10 +4263,21 @@ export class Vcs extends HeyApiClient {
   public get<ThrowOnError extends boolean = false>(
     parameters?: {
       directory?: string
+      scopeID?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
-    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
     return (options?.client ?? this.client).get<VcsGetResponses, unknown, ThrowOnError>({
       url: "/vcs",
       ...options,
@@ -3789,6 +4296,7 @@ export class Part extends HeyApiClient {
       messageID: string
       partID: string
       directory?: string
+      scopeID?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -3801,6 +4309,7 @@ export class Part extends HeyApiClient {
             { in: "path", key: "messageID" },
             { in: "path", key: "partID" },
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
           ],
         },
       ],
@@ -3821,6 +4330,7 @@ export class Part extends HeyApiClient {
       messageID: string
       partID: string
       directory?: string
+      scopeID?: string
       part?: Part2
     },
     options?: Options<never, ThrowOnError>,
@@ -3834,6 +4344,7 @@ export class Part extends HeyApiClient {
             { in: "path", key: "messageID" },
             { in: "path", key: "partID" },
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
             { key: "part", map: "body" },
           ],
         },
@@ -3865,6 +4376,7 @@ export class Permission extends HeyApiClient {
       sessionID: string
       permissionID: string
       directory?: string
+      scopeID?: string
       response?: "once" | "session" | "always" | "reject"
     },
     options?: Options<never, ThrowOnError>,
@@ -3877,6 +4389,7 @@ export class Permission extends HeyApiClient {
             { in: "path", key: "sessionID" },
             { in: "path", key: "permissionID" },
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
             { in: "body", key: "response" },
           ],
         },
@@ -3903,6 +4416,7 @@ export class Permission extends HeyApiClient {
     parameters: {
       requestID: string
       directory?: string
+      scopeID?: string
       reply?: "once" | "session" | "always" | "reject"
       message?: string
     },
@@ -3915,6 +4429,7 @@ export class Permission extends HeyApiClient {
           args: [
             { in: "path", key: "requestID" },
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
             { in: "body", key: "reply" },
             { in: "body", key: "message" },
           ],
@@ -3941,10 +4456,21 @@ export class Permission extends HeyApiClient {
   public list<ThrowOnError extends boolean = false>(
     parameters?: {
       directory?: string
+      scopeID?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
-    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
     return (options?.client ?? this.client).get<PermissionListResponses, unknown, ThrowOnError>({
       url: "/permission",
       ...options,
@@ -3962,10 +4488,21 @@ export class Question extends HeyApiClient {
   public list<ThrowOnError extends boolean = false>(
     parameters?: {
       directory?: string
+      scopeID?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
-    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
     return (options?.client ?? this.client).get<QuestionListResponses, unknown, ThrowOnError>({
       url: "/question",
       ...options,
@@ -3982,6 +4519,7 @@ export class Question extends HeyApiClient {
     parameters: {
       requestID: string
       directory?: string
+      scopeID?: string
       answers?: Array<QuestionAnswer>
     },
     options?: Options<never, ThrowOnError>,
@@ -3993,6 +4531,7 @@ export class Question extends HeyApiClient {
           args: [
             { in: "path", key: "requestID" },
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
             { in: "body", key: "answers" },
           ],
         },
@@ -4019,6 +4558,7 @@ export class Question extends HeyApiClient {
     parameters: {
       requestID: string
       directory?: string
+      scopeID?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -4029,6 +4569,7 @@ export class Question extends HeyApiClient {
           args: [
             { in: "path", key: "requestID" },
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
           ],
         },
       ],
@@ -4050,6 +4591,7 @@ export class Cortex extends HeyApiClient {
   public list<ThrowOnError extends boolean = false>(
     parameters?: {
       directory?: string
+      scopeID?: string
       sessionID?: string
     },
     options?: Options<never, ThrowOnError>,
@@ -4060,6 +4602,7 @@ export class Cortex extends HeyApiClient {
         {
           args: [
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
             { in: "query", key: "sessionID" },
           ],
         },
@@ -4081,6 +4624,7 @@ export class Cortex extends HeyApiClient {
     parameters: {
       taskID: string
       directory?: string
+      scopeID?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -4091,6 +4635,7 @@ export class Cortex extends HeyApiClient {
           args: [
             { in: "path", key: "taskID" },
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
           ],
         },
       ],
@@ -4111,6 +4656,7 @@ export class Cortex extends HeyApiClient {
     parameters: {
       taskID: string
       directory?: string
+      scopeID?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -4121,6 +4667,7 @@ export class Cortex extends HeyApiClient {
           args: [
             { in: "path", key: "taskID" },
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
           ],
         },
       ],
@@ -4141,6 +4688,7 @@ export class Cortex extends HeyApiClient {
     parameters: {
       taskID: string
       directory?: string
+      scopeID?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -4151,6 +4699,7 @@ export class Cortex extends HeyApiClient {
           args: [
             { in: "path", key: "taskID" },
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
           ],
         },
       ],
@@ -4172,10 +4721,21 @@ export class Command extends HeyApiClient {
   public list<ThrowOnError extends boolean = false>(
     parameters?: {
       directory?: string
+      scopeID?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
-    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
     return (options?.client ?? this.client).get<CommandListResponses, unknown, ThrowOnError>({
       url: "/command",
       ...options,
@@ -4194,6 +4754,7 @@ export class Oauth extends HeyApiClient {
     parameters: {
       providerID: string
       directory?: string
+      scopeID?: string
       method?: number
     },
     options?: Options<never, ThrowOnError>,
@@ -4205,6 +4766,7 @@ export class Oauth extends HeyApiClient {
           args: [
             { in: "path", key: "providerID" },
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
             { in: "body", key: "method" },
           ],
         },
@@ -4235,6 +4797,7 @@ export class Oauth extends HeyApiClient {
     parameters: {
       providerID: string
       directory?: string
+      scopeID?: string
       method?: number
       code?: string
     },
@@ -4247,6 +4810,7 @@ export class Oauth extends HeyApiClient {
           args: [
             { in: "path", key: "providerID" },
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
             { in: "body", key: "method" },
             { in: "body", key: "code" },
           ],
@@ -4279,10 +4843,21 @@ export class Provider extends HeyApiClient {
   public list<ThrowOnError extends boolean = false>(
     parameters?: {
       directory?: string
+      scopeID?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
-    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
     return (options?.client ?? this.client).get<ProviderListResponses, unknown, ThrowOnError>({
       url: "/provider",
       ...options,
@@ -4298,10 +4873,21 @@ export class Provider extends HeyApiClient {
   public auth<ThrowOnError extends boolean = false>(
     parameters?: {
       directory?: string
+      scopeID?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
-    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
     return (options?.client ?? this.client).get<ProviderAuthResponses, unknown, ThrowOnError>({
       url: "/provider/auth",
       ...options,
@@ -4321,10 +4907,21 @@ export class Skill extends HeyApiClient {
   public list<ThrowOnError extends boolean = false>(
     parameters?: {
       directory?: string
+      scopeID?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
-    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
     return (options?.client ?? this.client).get<SkillListResponses, unknown, ThrowOnError>({
       url: "/skill",
       ...options,
@@ -4340,10 +4937,21 @@ export class Skill extends HeyApiClient {
   public reload<ThrowOnError extends boolean = false>(
     parameters?: {
       directory?: string
+      scopeID?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
-    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
     return (options?.client ?? this.client).post<SkillReloadResponses, unknown, ThrowOnError>({
       url: "/skill/reload",
       ...options,
@@ -4360,6 +4968,7 @@ export class Skill extends HeyApiClient {
     parameters: {
       name: string
       directory?: string
+      scopeID?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -4370,6 +4979,7 @@ export class Skill extends HeyApiClient {
           args: [
             { in: "path", key: "name" },
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
           ],
         },
       ],
@@ -4389,6 +4999,7 @@ export class Skill extends HeyApiClient {
   public import<ThrowOnError extends boolean = false>(
     parameters?: {
       directory?: string
+      scopeID?: string
       file?: unknown
       scope?: "project" | "global"
     },
@@ -4400,6 +5011,7 @@ export class Skill extends HeyApiClient {
         {
           args: [
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
             { in: "body", key: "file" },
             { in: "body", key: "scope" },
           ],
@@ -4427,6 +5039,7 @@ export class Skill extends HeyApiClient {
   public importUrl<ThrowOnError extends boolean = false>(
     parameters?: {
       directory?: string
+      scopeID?: string
       url?: string
       scope?: "project" | "global"
     },
@@ -4438,6 +5051,7 @@ export class Skill extends HeyApiClient {
         {
           args: [
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
             { in: "body", key: "url" },
             { in: "body", key: "scope" },
           ],
@@ -4459,42 +5073,6 @@ export class Skill extends HeyApiClient {
 
 export class Find extends HeyApiClient {
   /**
-   * Browse directories
-   *
-   * Browse filesystem directories by path with optional fuzzy search. Returns absolute paths.
-   */
-  public browse<ThrowOnError extends boolean = false>(
-    parameters: {
-      directory?: string
-      path: string
-      query?: string
-      limit?: number
-      depth?: number
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "query", key: "directory" },
-            { in: "query", key: "path" },
-            { in: "query", key: "query" },
-            { in: "query", key: "limit" },
-            { in: "query", key: "depth" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).get<FindBrowseResponses, unknown, ThrowOnError>({
-      url: "/find/browse",
-      ...options,
-      ...params,
-    })
-  }
-
-  /**
    * Find text
    *
    * Search for text patterns across files in the project using ripgrep.
@@ -4502,6 +5080,7 @@ export class Find extends HeyApiClient {
   public text<ThrowOnError extends boolean = false>(
     parameters: {
       directory?: string
+      scopeID?: string
       pattern: string
     },
     options?: Options<never, ThrowOnError>,
@@ -4512,6 +5091,7 @@ export class Find extends HeyApiClient {
         {
           args: [
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
             { in: "query", key: "pattern" },
           ],
         },
@@ -4532,6 +5112,7 @@ export class Find extends HeyApiClient {
   public files<ThrowOnError extends boolean = false>(
     parameters: {
       directory?: string
+      scopeID?: string
       query: string
       dirs?: "true" | "false"
       type?: "file" | "directory"
@@ -4545,6 +5126,7 @@ export class Find extends HeyApiClient {
         {
           args: [
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
             { in: "query", key: "query" },
             { in: "query", key: "dirs" },
             { in: "query", key: "type" },
@@ -4568,6 +5150,7 @@ export class Find extends HeyApiClient {
   public symbols<ThrowOnError extends boolean = false>(
     parameters: {
       directory?: string
+      scopeID?: string
       query: string
     },
     options?: Options<never, ThrowOnError>,
@@ -4578,6 +5161,7 @@ export class Find extends HeyApiClient {
         {
           args: [
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
             { in: "query", key: "query" },
           ],
         },
@@ -4600,6 +5184,7 @@ export class File extends HeyApiClient {
   public list<ThrowOnError extends boolean = false>(
     parameters: {
       directory?: string
+      scopeID?: string
       path: string
     },
     options?: Options<never, ThrowOnError>,
@@ -4610,6 +5195,7 @@ export class File extends HeyApiClient {
         {
           args: [
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
             { in: "query", key: "path" },
           ],
         },
@@ -4630,6 +5216,7 @@ export class File extends HeyApiClient {
   public read<ThrowOnError extends boolean = false>(
     parameters: {
       directory?: string
+      scopeID?: string
       path: string
     },
     options?: Options<never, ThrowOnError>,
@@ -4640,6 +5227,7 @@ export class File extends HeyApiClient {
         {
           args: [
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
             { in: "query", key: "path" },
           ],
         },
@@ -4660,10 +5248,21 @@ export class File extends HeyApiClient {
   public status<ThrowOnError extends boolean = false>(
     parameters?: {
       directory?: string
+      scopeID?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
-    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
     return (options?.client ?? this.client).get<FileStatusResponses, unknown, ThrowOnError>({
       url: "/file/status",
       ...options,
@@ -4681,8 +5280,9 @@ export class Experience extends HeyApiClient {
   public search<ThrowOnError extends boolean = false>(
     parameters?: {
       directory?: string
+      query_scopeID?: string
       query?: string
-      scopeID?: string
+      body_scopeID?: string
       topK?: number
     },
     options?: Options<never, ThrowOnError>,
@@ -4693,8 +5293,17 @@ export class Experience extends HeyApiClient {
         {
           args: [
             { in: "query", key: "directory" },
+            {
+              in: "query",
+              key: "query_scopeID",
+              map: "scopeID",
+            },
             { in: "body", key: "query" },
-            { in: "body", key: "scopeID" },
+            {
+              in: "body",
+              key: "body_scopeID",
+              map: "scopeID",
+            },
             { in: "body", key: "topK" },
           ],
         },
@@ -4769,6 +5378,7 @@ export class Experience extends HeyApiClient {
     parameters: {
       id: string
       directory?: string
+      scopeID?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -4779,6 +5389,7 @@ export class Experience extends HeyApiClient {
           args: [
             { in: "path", key: "id" },
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
           ],
         },
       ],
@@ -4803,6 +5414,7 @@ export class Experience extends HeyApiClient {
     parameters: {
       id: string
       directory?: string
+      scopeID?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -4813,6 +5425,7 @@ export class Experience extends HeyApiClient {
           args: [
             { in: "path", key: "id" },
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
           ],
         },
       ],
@@ -4833,6 +5446,7 @@ export class Experience extends HeyApiClient {
     parameters: {
       id: string
       directory?: string
+      scopeID?: string
       reward?: number
       rewards?: RewardsInfo
     },
@@ -4845,6 +5459,7 @@ export class Experience extends HeyApiClient {
           args: [
             { in: "path", key: "id" },
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
             { in: "body", key: "reward" },
             { in: "body", key: "rewards" },
           ],
@@ -4907,6 +5522,7 @@ export class Engram extends HeyApiClient {
   public stats<ThrowOnError extends boolean = false>(
     parameters?: {
       directory?: string
+      scopeID?: string
       recompute?: "true" | "false"
     },
     options?: Options<never, ThrowOnError>,
@@ -4917,6 +5533,7 @@ export class Engram extends HeyApiClient {
         {
           args: [
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
             { in: "query", key: "recompute" },
           ],
         },
@@ -4937,6 +5554,7 @@ export class Engram extends HeyApiClient {
   public search<ThrowOnError extends boolean = false>(
     parameters?: {
       directory?: string
+      scopeID?: string
       query?: string
       topK?: number
       categories?: Array<MemoryCategory>
@@ -4950,6 +5568,7 @@ export class Engram extends HeyApiClient {
         {
           args: [
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
             { in: "body", key: "query" },
             { in: "body", key: "topK" },
             { in: "body", key: "categories" },
@@ -4978,8 +5597,9 @@ export class Engram extends HeyApiClient {
   public reset<ThrowOnError extends boolean = false>(
     parameters?: {
       directory?: string
+      query_scopeID?: string
       type?: "memory" | "experience" | "all"
-      scopeID?: string
+      body_scopeID?: string
       confirm?: true
     },
     options?: Options<never, ThrowOnError>,
@@ -4990,8 +5610,17 @@ export class Engram extends HeyApiClient {
         {
           args: [
             { in: "query", key: "directory" },
+            {
+              in: "query",
+              key: "query_scopeID",
+              map: "scopeID",
+            },
             { in: "body", key: "type" },
-            { in: "body", key: "scopeID" },
+            {
+              in: "body",
+              key: "body_scopeID",
+              map: "scopeID",
+            },
             { in: "body", key: "confirm" },
           ],
         },
@@ -5018,6 +5647,7 @@ export class Engram extends HeyApiClient {
     parameters: {
       id: string
       directory?: string
+      scopeID?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -5028,6 +5658,7 @@ export class Engram extends HeyApiClient {
           args: [
             { in: "path", key: "id" },
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
           ],
         },
       ],
@@ -5048,6 +5679,7 @@ export class Engram extends HeyApiClient {
     parameters: {
       id: string
       directory?: string
+      scopeID?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -5058,6 +5690,7 @@ export class Engram extends HeyApiClient {
           args: [
             { in: "path", key: "id" },
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
           ],
         },
       ],
@@ -5077,6 +5710,7 @@ export class Engram extends HeyApiClient {
   public list<ThrowOnError extends boolean = false>(
     parameters?: {
       directory?: string
+      scopeID?: string
       category?: MemoryCategory
       recallMode?: MemoryRecallMode
     },
@@ -5088,6 +5722,7 @@ export class Engram extends HeyApiClient {
         {
           args: [
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
             { in: "query", key: "category" },
             { in: "query", key: "recallMode" },
           ],
@@ -5113,10 +5748,21 @@ export class Note extends HeyApiClient {
   public listMeta<ThrowOnError extends boolean = false>(
     parameters?: {
       directory?: string
+      scopeID?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
-    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
     return (options?.client ?? this.client).get<NoteListMetaResponses, NoteListMetaErrors, ThrowOnError>({
       url: "/note/meta",
       ...options,
@@ -5132,10 +5778,21 @@ export class Note extends HeyApiClient {
   public listAll<ThrowOnError extends boolean = false>(
     parameters?: {
       directory?: string
+      scopeID?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
-    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
     return (options?.client ?? this.client).get<NoteListAllResponses, NoteListAllErrors, ThrowOnError>({
       url: "/note/all",
       ...options,
@@ -5152,6 +5809,7 @@ export class Note extends HeyApiClient {
     parameters: {
       id: string
       directory?: string
+      scopeID?: string
       format?: "md" | "html"
     },
     options?: Options<never, ThrowOnError>,
@@ -5163,6 +5821,7 @@ export class Note extends HeyApiClient {
           args: [
             { in: "path", key: "id" },
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
             { in: "query", key: "format" },
           ],
         },
@@ -5183,10 +5842,21 @@ export class Note extends HeyApiClient {
   public list<ThrowOnError extends boolean = false>(
     parameters?: {
       directory?: string
+      scopeID?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
-    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
     return (options?.client ?? this.client).get<NoteListResponses, NoteListErrors, ThrowOnError>({
       url: "/note",
       ...options,
@@ -5202,6 +5872,7 @@ export class Note extends HeyApiClient {
   public create<ThrowOnError extends boolean = false>(
     parameters?: {
       directory?: string
+      scopeID?: string
       noteCreateInput?: NoteCreateInput
     },
     options?: Options<never, ThrowOnError>,
@@ -5212,6 +5883,7 @@ export class Note extends HeyApiClient {
         {
           args: [
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
             { key: "noteCreateInput", map: "body" },
           ],
         },
@@ -5238,6 +5910,7 @@ export class Note extends HeyApiClient {
     parameters: {
       id: string
       directory?: string
+      scopeID?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -5248,6 +5921,7 @@ export class Note extends HeyApiClient {
           args: [
             { in: "path", key: "id" },
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
           ],
         },
       ],
@@ -5268,6 +5942,7 @@ export class Note extends HeyApiClient {
     parameters: {
       id: string
       directory?: string
+      scopeID?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -5278,6 +5953,7 @@ export class Note extends HeyApiClient {
           args: [
             { in: "path", key: "id" },
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
           ],
         },
       ],
@@ -5298,6 +5974,7 @@ export class Note extends HeyApiClient {
     parameters: {
       id: string
       directory?: string
+      scopeID?: string
       notePatchInput?: NotePatchInput
     },
     options?: Options<never, ThrowOnError>,
@@ -5309,6 +5986,7 @@ export class Note extends HeyApiClient {
           args: [
             { in: "path", key: "id" },
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
             { key: "notePatchInput", map: "body" },
           ],
         },
@@ -5336,10 +6014,21 @@ export class Loop extends HeyApiClient {
   public list<ThrowOnError extends boolean = false>(
     parameters?: {
       directory?: string
+      scopeID?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
-    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
     return (options?.client ?? this.client).get<BlueprintLoopListResponses, BlueprintLoopListErrors, ThrowOnError>({
       url: "/blueprint/loop",
       ...options,
@@ -5355,6 +6044,7 @@ export class Loop extends HeyApiClient {
   public create<ThrowOnError extends boolean = false>(
     parameters?: {
       directory?: string
+      scopeID?: string
       blueprintLoopCreateInput?: BlueprintLoopCreateInput
     },
     options?: Options<never, ThrowOnError>,
@@ -5365,6 +6055,7 @@ export class Loop extends HeyApiClient {
         {
           args: [
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
             { key: "blueprintLoopCreateInput", map: "body" },
           ],
         },
@@ -5393,6 +6084,7 @@ export class Loop extends HeyApiClient {
     parameters: {
       id: string
       directory?: string
+      scopeID?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -5403,6 +6095,7 @@ export class Loop extends HeyApiClient {
           args: [
             { in: "path", key: "id" },
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
           ],
         },
       ],
@@ -5427,6 +6120,7 @@ export class Loop extends HeyApiClient {
     parameters: {
       id: string
       directory?: string
+      scopeID?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -5437,6 +6131,7 @@ export class Loop extends HeyApiClient {
           args: [
             { in: "path", key: "id" },
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
           ],
         },
       ],
@@ -5459,6 +6154,7 @@ export class Loop extends HeyApiClient {
     parameters: {
       id: string
       directory?: string
+      scopeID?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -5469,6 +6165,7 @@ export class Loop extends HeyApiClient {
           args: [
             { in: "path", key: "id" },
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
           ],
         },
       ],
@@ -5489,6 +6186,7 @@ export class Loop extends HeyApiClient {
     parameters: {
       id: string
       directory?: string
+      scopeID?: string
       sessionID?: string
     },
     options?: Options<never, ThrowOnError>,
@@ -5500,6 +6198,7 @@ export class Loop extends HeyApiClient {
           args: [
             { in: "path", key: "id" },
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
             { in: "body", key: "sessionID" },
           ],
         },
@@ -5526,6 +6225,7 @@ export class Loop extends HeyApiClient {
     parameters: {
       id: string
       directory?: string
+      scopeID?: string
       userPrompt?: string
     },
     options?: Options<never, ThrowOnError>,
@@ -5537,6 +6237,7 @@ export class Loop extends HeyApiClient {
           args: [
             { in: "path", key: "id" },
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
             { in: "body", key: "userPrompt" },
           ],
         },
@@ -5563,6 +6264,7 @@ export class Loop extends HeyApiClient {
     parameters: {
       id: string
       directory?: string
+      scopeID?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -5573,6 +6275,7 @@ export class Loop extends HeyApiClient {
           args: [
             { in: "path", key: "id" },
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
           ],
         },
       ],
@@ -5593,6 +6296,7 @@ export class Loop extends HeyApiClient {
     parameters: {
       id: string
       directory?: string
+      scopeID?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -5603,6 +6307,7 @@ export class Loop extends HeyApiClient {
           args: [
             { in: "path", key: "id" },
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
           ],
         },
       ],
@@ -5625,6 +6330,7 @@ export class Loop extends HeyApiClient {
     parameters: {
       id: string
       directory?: string
+      scopeID?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -5635,6 +6341,7 @@ export class Loop extends HeyApiClient {
           args: [
             { in: "path", key: "id" },
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
           ],
         },
       ],
@@ -5666,6 +6373,7 @@ export class Asset extends HeyApiClient {
   public upload<ThrowOnError extends boolean = false>(
     parameters?: {
       directory?: string
+      scopeID?: string
       file?: unknown
     },
     options?: Options<never, ThrowOnError>,
@@ -5676,6 +6384,7 @@ export class Asset extends HeyApiClient {
         {
           args: [
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
             { in: "body", key: "file" },
           ],
         },
@@ -5703,6 +6412,7 @@ export class Asset extends HeyApiClient {
     parameters: {
       id: string
       directory?: string
+      scopeID?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -5713,63 +6423,13 @@ export class Asset extends HeyApiClient {
           args: [
             { in: "path", key: "id" },
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
           ],
         },
       ],
     )
     return (options?.client ?? this.client).get<AssetGetResponses, AssetGetErrors, ThrowOnError>({
       url: "/asset/{id}",
-      ...options,
-      ...params,
-    })
-  }
-}
-
-export class Stats extends HeyApiClient {
-  /**
-   * Get stats snapshot
-   *
-   * Get the full stats snapshot. Returns cached snapshot if available, otherwise computes incrementally. Use ?recompute=true to force a full recompute from scratch.
-   */
-  public get<ThrowOnError extends boolean = false>(
-    parameters?: {
-      directory?: string
-      recompute?: "true" | "false"
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "query", key: "directory" },
-            { in: "query", key: "recompute" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).get<StatsGetResponses, StatsGetErrors, ThrowOnError>({
-      url: "/stats",
-      ...options,
-      ...params,
-    })
-  }
-
-  /**
-   * Stream stats recompute progress
-   *
-   * Force a stats recompute and stream progress updates over SSE until the final snapshot is ready.
-   */
-  public progress<ThrowOnError extends boolean = false>(
-    parameters?: {
-      directory?: string
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
-    return (options?.client ?? this.client).sse.get<StatsProgressResponses, unknown, ThrowOnError>({
-      url: "/stats/progress",
       ...options,
       ...params,
     })
@@ -5785,10 +6445,21 @@ export class Plugin extends HeyApiClient {
   public listUiContributions<ThrowOnError extends boolean = false>(
     parameters?: {
       directory?: string
+      scopeID?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
-    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
     return (options?.client ?? this.client).get<
       PluginListUiContributionsResponses,
       PluginListUiContributionsErrors,
@@ -5810,6 +6481,7 @@ export class Plugin extends HeyApiClient {
       pluginId: string
       versionHash: string
       directory?: string
+      scopeID?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -5821,6 +6493,7 @@ export class Plugin extends HeyApiClient {
             { in: "path", key: "pluginId" },
             { in: "path", key: "versionHash" },
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
           ],
         },
       ],
@@ -5842,6 +6515,7 @@ export class Plugin extends HeyApiClient {
       pluginId: string
       panelId: string
       directory?: string
+      scopeID?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -5853,6 +6527,7 @@ export class Plugin extends HeyApiClient {
             { in: "path", key: "pluginId" },
             { in: "path", key: "panelId" },
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
           ],
         },
       ],
@@ -5873,6 +6548,7 @@ export class Plugin extends HeyApiClient {
     parameters: {
       pluginId: string
       directory?: string
+      scopeID?: string
       type?: string
       payload?: unknown
       source?: string
@@ -5886,6 +6562,7 @@ export class Plugin extends HeyApiClient {
           args: [
             { in: "path", key: "pluginId" },
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
             { in: "body", key: "type" },
             { in: "body", key: "payload" },
             { in: "body", key: "source" },
@@ -5914,6 +6591,7 @@ export class Plugin extends HeyApiClient {
     parameters: {
       pluginId: string
       directory?: string
+      scopeID?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -5924,6 +6602,7 @@ export class Plugin extends HeyApiClient {
           args: [
             { in: "path", key: "pluginId" },
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
           ],
         },
       ],
@@ -5944,6 +6623,7 @@ export class Plugin extends HeyApiClient {
     parameters: {
       pluginId: string
       directory?: string
+      scopeID?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -5954,6 +6634,7 @@ export class Plugin extends HeyApiClient {
           args: [
             { in: "path", key: "pluginId" },
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
           ],
         },
       ],
@@ -5974,6 +6655,7 @@ export class Plugin extends HeyApiClient {
     parameters: {
       pluginId: string
       directory?: string
+      scopeID?: string
       body?: {
         [key: string]: unknown
       }
@@ -5982,7 +6664,16 @@ export class Plugin extends HeyApiClient {
   ) {
     const params = buildClientParams(
       [parameters],
-      [{ args: [{ in: "path", key: "pluginId" }, { in: "query", key: "directory" }, { in: "body" }] }],
+      [
+        {
+          args: [
+            { in: "path", key: "pluginId" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { in: "body" },
+          ],
+        },
+      ],
     )
     return (options?.client ?? this.client).patch<PluginUpdateConfigResponses, PluginUpdateConfigErrors, ThrowOnError>({
       url: "/plugin/{pluginId}/config",
@@ -6005,6 +6696,7 @@ export class Plugin extends HeyApiClient {
     parameters: {
       pluginId: string
       directory?: string
+      scopeID?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -6015,6 +6707,7 @@ export class Plugin extends HeyApiClient {
           args: [
             { in: "path", key: "pluginId" },
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
           ],
         },
       ],
@@ -6038,10 +6731,21 @@ export class Plugins extends HeyApiClient {
   public list<ThrowOnError extends boolean = false>(
     parameters?: {
       directory?: string
+      scopeID?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
-    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
     return (options?.client ?? this.client).get<ApiPluginsListResponses, unknown, ThrowOnError>({
       url: "/api/plugins",
       ...options,
@@ -6058,6 +6762,7 @@ export class Plugins extends HeyApiClient {
     parameters: {
       pluginId: string
       directory?: string
+      scopeID?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -6068,6 +6773,7 @@ export class Plugins extends HeyApiClient {
           args: [
             { in: "path", key: "pluginId" },
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
           ],
         },
       ],
@@ -6088,6 +6794,7 @@ export class Plugins extends HeyApiClient {
     parameters: {
       pluginId: string
       directory?: string
+      scopeID?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -6098,6 +6805,7 @@ export class Plugins extends HeyApiClient {
           args: [
             { in: "path", key: "pluginId" },
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
           ],
         },
       ],
@@ -6117,6 +6825,7 @@ export class Plugins extends HeyApiClient {
   public previewInstall<ThrowOnError extends boolean = false>(
     parameters?: {
       directory?: string
+      scopeID?: string
       manifest?: {
         [key: string]: unknown
       }
@@ -6129,6 +6838,7 @@ export class Plugins extends HeyApiClient {
         {
           args: [
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
             { in: "body", key: "manifest" },
           ],
         },
@@ -6159,6 +6869,7 @@ export class Plugins extends HeyApiClient {
     parameters: {
       pluginId: string
       directory?: string
+      scopeID?: string
       manifest?: {
         [key: string]: unknown
       }
@@ -6173,6 +6884,7 @@ export class Plugins extends HeyApiClient {
           args: [
             { in: "path", key: "pluginId" },
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
             { in: "body", key: "manifest" },
             { in: "body", key: "capabilities" },
           ],
@@ -6204,6 +6916,7 @@ export class Plugins extends HeyApiClient {
     parameters: {
       pluginId: string
       directory?: string
+      scopeID?: string
       manifest?: {
         [key: string]: unknown
       }
@@ -6217,6 +6930,7 @@ export class Plugins extends HeyApiClient {
           args: [
             { in: "path", key: "pluginId" },
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
             { in: "body", key: "manifest" },
           ],
         },
@@ -6247,6 +6961,7 @@ export class Plugins extends HeyApiClient {
     parameters: {
       pluginId: string
       directory?: string
+      scopeID?: string
       manifest?: {
         [key: string]: unknown
       }
@@ -6261,6 +6976,7 @@ export class Plugins extends HeyApiClient {
           args: [
             { in: "path", key: "pluginId" },
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
             { in: "body", key: "manifest" },
             { in: "body", key: "capabilities" },
           ],
@@ -6292,6 +7008,7 @@ export class Plugins extends HeyApiClient {
     parameters: {
       pluginId: string
       directory?: string
+      scopeID?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -6302,6 +7019,7 @@ export class Plugins extends HeyApiClient {
           args: [
             { in: "path", key: "pluginId" },
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
           ],
         },
       ],
@@ -6326,6 +7044,7 @@ export class Plugins extends HeyApiClient {
     parameters: {
       pluginId: string
       directory?: string
+      scopeID?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -6336,6 +7055,7 @@ export class Plugins extends HeyApiClient {
           args: [
             { in: "path", key: "pluginId" },
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
           ],
         },
       ],
@@ -6359,6 +7079,7 @@ export class Plugins extends HeyApiClient {
   public installFromRegistry<ThrowOnError extends boolean = false>(
     parameters?: {
       directory?: string
+      scopeID?: string
       id?: string
       version?: string
     },
@@ -6370,6 +7091,7 @@ export class Plugins extends HeyApiClient {
         {
           args: [
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
             { in: "body", key: "id" },
             { in: "body", key: "version" },
           ],
@@ -6401,6 +7123,7 @@ export class Plugins extends HeyApiClient {
     parameters: {
       pluginId: string
       directory?: string
+      scopeID?: string
       targetVersion?: string
     },
     options?: Options<never, ThrowOnError>,
@@ -6412,6 +7135,7 @@ export class Plugins extends HeyApiClient {
           args: [
             { in: "path", key: "pluginId" },
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
             { in: "body", key: "targetVersion" },
           ],
         },
@@ -6441,6 +7165,7 @@ export class Plugins extends HeyApiClient {
   public search<ThrowOnError extends boolean = false>(
     parameters?: {
       directory?: string
+      scopeID?: string
       q?: string
       offset?: number
       limit?: number
@@ -6453,6 +7178,7 @@ export class Plugins extends HeyApiClient {
         {
           args: [
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
             { in: "query", key: "q" },
             { in: "query", key: "offset" },
             { in: "query", key: "limit" },
@@ -6480,6 +7206,7 @@ export class Plugins extends HeyApiClient {
     parameters: {
       id: string
       directory?: string
+      scopeID?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -6490,6 +7217,7 @@ export class Plugins extends HeyApiClient {
           args: [
             { in: "path", key: "id" },
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
           ],
         },
       ],
@@ -6515,6 +7243,7 @@ export class Plugins extends HeyApiClient {
       id: string
       version: string
       directory?: string
+      scopeID?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -6526,6 +7255,7 @@ export class Plugins extends HeyApiClient {
             { in: "path", key: "id" },
             { in: "path", key: "version" },
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
           ],
         },
       ],
@@ -6551,6 +7281,7 @@ export class Plugins extends HeyApiClient {
       id: string
       version: string
       directory?: string
+      scopeID?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -6562,6 +7293,7 @@ export class Plugins extends HeyApiClient {
             { in: "path", key: "id" },
             { in: "path", key: "version" },
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
           ],
         },
       ],
@@ -6585,6 +7317,7 @@ export class Plugins extends HeyApiClient {
   public publish<ThrowOnError extends boolean = false>(
     parameters?: {
       directory?: string
+      scopeID?: string
       registryPublishInput?: RegistryPublishInput
     },
     options?: Options<never, ThrowOnError>,
@@ -6595,6 +7328,7 @@ export class Plugins extends HeyApiClient {
         {
           args: [
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
             { key: "registryPublishInput", map: "body" },
           ],
         },
@@ -6634,6 +7368,7 @@ export class App extends HeyApiClient {
   public log<ThrowOnError extends boolean = false>(
     parameters?: {
       directory?: string
+      scopeID?: string
       service?: string
       level?: "debug" | "info" | "error" | "warn"
       message?: string
@@ -6649,6 +7384,7 @@ export class App extends HeyApiClient {
         {
           args: [
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
             { in: "body", key: "service" },
             { in: "body", key: "level" },
             { in: "body", key: "message" },
@@ -6677,10 +7413,21 @@ export class App extends HeyApiClient {
   public agents<ThrowOnError extends boolean = false>(
     parameters?: {
       directory?: string
+      scopeID?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
-    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
     return (options?.client ?? this.client).get<AppAgentsResponses, unknown, ThrowOnError>({
       url: "/agent",
       ...options,
@@ -6696,10 +7443,21 @@ export class App extends HeyApiClient {
   public session<ThrowOnError extends boolean = false>(
     parameters?: {
       directory?: string
+      scopeID?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
-    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
     return (options?.client ?? this.client).get<ChannelAppSessionResponses, unknown, ThrowOnError>({
       url: "/channel/app/session",
       ...options,
@@ -6715,10 +7473,21 @@ export class App extends HeyApiClient {
   public reset<ThrowOnError extends boolean = false>(
     parameters?: {
       directory?: string
+      scopeID?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
-    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
     return (options?.client ?? this.client).post<ChannelAppResetResponses, unknown, ThrowOnError>({
       url: "/channel/app/reset",
       ...options,
@@ -6737,6 +7506,7 @@ export class Auth extends HeyApiClient {
     parameters: {
       name: string
       directory?: string
+      scopeID?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -6747,6 +7517,7 @@ export class Auth extends HeyApiClient {
           args: [
             { in: "path", key: "name" },
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
           ],
         },
       ],
@@ -6767,6 +7538,7 @@ export class Auth extends HeyApiClient {
     parameters: {
       name: string
       directory?: string
+      scopeID?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -6777,6 +7549,7 @@ export class Auth extends HeyApiClient {
           args: [
             { in: "path", key: "name" },
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
           ],
         },
       ],
@@ -6797,6 +7570,7 @@ export class Auth extends HeyApiClient {
     parameters: {
       name: string
       directory?: string
+      scopeID?: string
       code?: string
     },
     options?: Options<never, ThrowOnError>,
@@ -6808,6 +7582,7 @@ export class Auth extends HeyApiClient {
           args: [
             { in: "path", key: "name" },
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
             { in: "body", key: "code" },
           ],
         },
@@ -6834,6 +7609,7 @@ export class Auth extends HeyApiClient {
     parameters: {
       name: string
       directory?: string
+      scopeID?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -6844,6 +7620,7 @@ export class Auth extends HeyApiClient {
           args: [
             { in: "path", key: "name" },
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
           ],
         },
       ],
@@ -6866,6 +7643,7 @@ export class Auth extends HeyApiClient {
     parameters: {
       providerID: string
       directory?: string
+      scopeID?: string
       auth?: Auth2
     },
     options?: Options<never, ThrowOnError>,
@@ -6877,6 +7655,7 @@ export class Auth extends HeyApiClient {
           args: [
             { in: "path", key: "providerID" },
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
             { key: "auth", map: "body" },
           ],
         },
@@ -6904,10 +7683,21 @@ export class Mcp extends HeyApiClient {
   public status<ThrowOnError extends boolean = false>(
     parameters?: {
       directory?: string
+      scopeID?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
-    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
     return (options?.client ?? this.client).get<McpStatusResponses, unknown, ThrowOnError>({
       url: "/mcp",
       ...options,
@@ -6923,6 +7713,7 @@ export class Mcp extends HeyApiClient {
   public add<ThrowOnError extends boolean = false>(
     parameters?: {
       directory?: string
+      scopeID?: string
       name?: string
       config?: McpLocalConfig | McpRemoteConfig
     },
@@ -6934,6 +7725,7 @@ export class Mcp extends HeyApiClient {
         {
           args: [
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
             { in: "body", key: "name" },
             { in: "body", key: "config" },
           ],
@@ -6959,6 +7751,7 @@ export class Mcp extends HeyApiClient {
     parameters: {
       name: string
       directory?: string
+      scopeID?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -6969,6 +7762,7 @@ export class Mcp extends HeyApiClient {
           args: [
             { in: "path", key: "name" },
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
           ],
         },
       ],
@@ -6987,6 +7781,7 @@ export class Mcp extends HeyApiClient {
     parameters: {
       name: string
       directory?: string
+      scopeID?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -6997,6 +7792,7 @@ export class Mcp extends HeyApiClient {
           args: [
             { in: "path", key: "name" },
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
           ],
         },
       ],
@@ -7017,6 +7813,7 @@ export class Mcp extends HeyApiClient {
     parameters: {
       name: string
       directory?: string
+      scopeID?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -7027,6 +7824,7 @@ export class Mcp extends HeyApiClient {
           args: [
             { in: "path", key: "name" },
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
           ],
         },
       ],
@@ -7047,6 +7845,7 @@ export class Mcp extends HeyApiClient {
     parameters: {
       name: string
       directory?: string
+      scopeID?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -7057,6 +7856,7 @@ export class Mcp extends HeyApiClient {
           args: [
             { in: "path", key: "name" },
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
           ],
         },
       ],
@@ -7077,6 +7877,7 @@ export class Mcp extends HeyApiClient {
     parameters: {
       name: string
       directory?: string
+      scopeID?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -7087,6 +7888,7 @@ export class Mcp extends HeyApiClient {
           args: [
             { in: "path", key: "name" },
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
           ],
         },
       ],
@@ -7107,6 +7909,7 @@ export class Mcp extends HeyApiClient {
     parameters: {
       name: string
       directory?: string
+      scopeID?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -7117,6 +7920,7 @@ export class Mcp extends HeyApiClient {
           args: [
             { in: "path", key: "name" },
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
           ],
         },
       ],
@@ -7140,10 +7944,21 @@ export class Channel extends HeyApiClient {
   public status<ThrowOnError extends boolean = false>(
     parameters?: {
       directory?: string
+      scopeID?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
-    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
     return (options?.client ?? this.client).get<ChannelStatusResponses, unknown, ThrowOnError>({
       url: "/channel",
       ...options,
@@ -7159,10 +7974,21 @@ export class Channel extends HeyApiClient {
   public start<ThrowOnError extends boolean = false>(
     parameters?: {
       directory?: string
+      scopeID?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
-    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
     return (options?.client ?? this.client).post<ChannelStartResponses, unknown, ThrowOnError>({
       url: "/channel/start",
       ...options,
@@ -7178,10 +8004,21 @@ export class Channel extends HeyApiClient {
   public stop<ThrowOnError extends boolean = false>(
     parameters?: {
       directory?: string
+      scopeID?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
-    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
     return (options?.client ?? this.client).post<ChannelStopResponses, unknown, ThrowOnError>({
       url: "/channel/stop",
       ...options,
@@ -7199,6 +8036,7 @@ export class Channel extends HeyApiClient {
       channelType: string
       accountId: string
       directory?: string
+      scopeID?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -7210,6 +8048,7 @@ export class Channel extends HeyApiClient {
             { in: "path", key: "channelType" },
             { in: "path", key: "accountId" },
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
           ],
         },
       ],
@@ -7231,6 +8070,7 @@ export class Channel extends HeyApiClient {
       channelType: string
       accountId: string
       directory?: string
+      scopeID?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -7242,6 +8082,7 @@ export class Channel extends HeyApiClient {
             { in: "path", key: "channelType" },
             { in: "path", key: "accountId" },
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
           ],
         },
       ],
@@ -7263,6 +8104,7 @@ export class Channel extends HeyApiClient {
       channelType: string
       accountId: string
       directory?: string
+      scopeID?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -7274,6 +8116,7 @@ export class Channel extends HeyApiClient {
             { in: "path", key: "channelType" },
             { in: "path", key: "accountId" },
             { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
           ],
         },
       ],
@@ -7297,10 +8140,21 @@ export class Resource extends HeyApiClient {
   public list<ThrowOnError extends boolean = false>(
     parameters?: {
       directory?: string
+      scopeID?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
-    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
     return (options?.client ?? this.client).get<ExperimentalResourceListResponses, unknown, ThrowOnError>({
       url: "/experimental/resource",
       ...options,
@@ -7322,10 +8176,21 @@ export class Lsp extends HeyApiClient {
   public status<ThrowOnError extends boolean = false>(
     parameters?: {
       directory?: string
+      scopeID?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
-    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
     return (options?.client ?? this.client).get<LspStatusResponses, unknown, ThrowOnError>({
       url: "/lsp",
       ...options,
@@ -7343,10 +8208,21 @@ export class Formatter extends HeyApiClient {
   public status<ThrowOnError extends boolean = false>(
     parameters?: {
       directory?: string
+      scopeID?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
-    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
     return (options?.client ?? this.client).get<FormatterStatusResponses, unknown, ThrowOnError>({
       url: "/formatter",
       ...options,
@@ -7364,10 +8240,21 @@ export class Event extends HeyApiClient {
   public subscribe<ThrowOnError extends boolean = false>(
     parameters?: {
       directory?: string
+      scopeID?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
-    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
     return (options?.client ?? this.client).sse.get<EventSubscribeResponses, unknown, ThrowOnError>({
       url: "/event",
       ...options,
@@ -7391,8 +8278,6 @@ export class SynergyClient extends HeyApiClient {
   agenda = new Agenda({ client: this.client })
 
   scope = new Scope({ client: this.client })
-
-  git = new Git({ client: this.client })
 
   pty = new Pty({ client: this.client })
 
@@ -7439,8 +8324,6 @@ export class SynergyClient extends HeyApiClient {
   blueprint = new Blueprint({ client: this.client })
 
   asset = new Asset({ client: this.client })
-
-  stats = new Stats({ client: this.client })
 
   plugin = new Plugin({ client: this.client })
 

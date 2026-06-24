@@ -28,7 +28,7 @@ function withAnima(autonomy: boolean, fn: () => Promise<void>) {
     await Bun.write(path.join(Global.Path.config, "synergy.jsonc"), JSON.stringify({ engram: { autonomy } }))
 
     await ScopeContext.provide({
-      scope: Scope.global(),
+      scope: Scope.home(),
       fn: async () => {
         await AgendaStore.create(
           {
@@ -57,7 +57,7 @@ test("seed creates anima item on startup when missing", async () => {
 
   await AgendaBootstrap.seed()
 
-  const created = await AgendaStore.get("global", "anima-daily")
+  const created = await AgendaStore.get("home", "anima-daily")
   expect(created.id).toBe("anima-daily")
   expect(created.status).toBe("active")
   expect(created.agent).toBe("anima")
@@ -66,11 +66,11 @@ test("seed creates anima item on startup when missing", async () => {
 test(
   "seed does not reactivate a user-paused anima item on startup",
   withAnima(true, async () => {
-    await AgendaStore.update("global", "anima-daily", { status: "paused" })
+    await AgendaStore.update("home", "anima-daily", { status: "paused" })
 
     await AgendaBootstrap.seed()
 
-    const updated = await AgendaStore.get("global", "anima-daily")
+    const updated = await AgendaStore.get("home", "anima-daily")
     expect(updated.status).toBe("paused")
   }),
 )
@@ -78,11 +78,11 @@ test(
 test(
   "syncAnima reactivates paused items when autonomy is toggled on",
   withAnima(true, async () => {
-    await AgendaStore.update("global", "anima-daily", { status: "paused" })
+    await AgendaStore.update("home", "anima-daily", { status: "paused" })
 
     await AgendaBootstrap.syncAnima(true)
 
-    const updated = await AgendaStore.get("global", "anima-daily")
+    const updated = await AgendaStore.get("home", "anima-daily")
     expect(updated.status).toBe("active")
   }),
 )
@@ -90,12 +90,12 @@ test(
 test(
   "syncAnima pauses active items when autonomy is toggled off",
   withAnima(true, async () => {
-    const before = await AgendaStore.get("global", "anima-daily")
+    const before = await AgendaStore.get("home", "anima-daily")
     expect(before.status).toBe("active")
 
     await AgendaBootstrap.syncAnima(false)
 
-    const updated = await AgendaStore.get("global", "anima-daily")
+    const updated = await AgendaStore.get("home", "anima-daily")
     expect(updated.status).toBe("paused")
   }),
 )
@@ -105,14 +105,14 @@ test(
   withAnima(true, async () => {
     const overdueNextRunAt = Date.now() - 60_000
 
-    await AgendaStore.update("global", "anima-daily", { status: "paused" })
-    await Storage.update(StoragePath.agendaItem(Identifier.asScopeID("global"), "anima-daily"), (draft: any) => {
+    await AgendaStore.update("home", "anima-daily", { status: "paused" })
+    await Storage.update(StoragePath.agendaItem(Identifier.asScopeID("home"), "anima-daily"), (draft: any) => {
       draft.state.nextRunAt = overdueNextRunAt
     })
 
     await AgendaBootstrap.syncAnima(true)
 
-    const updated = await AgendaStore.get("global", "anima-daily")
+    const updated = await AgendaStore.get("home", "anima-daily")
     const expectedNextRunAt = new Cron("0 3 * * *", { timezone: "Asia/Shanghai" }).nextRun()?.getTime()
 
     expect(updated.status).toBe("active")

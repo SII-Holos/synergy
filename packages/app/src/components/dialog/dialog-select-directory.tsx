@@ -32,7 +32,7 @@ export function DialogSelectDirectory(props: DialogSelectDirectoryProps) {
   const [initGit, setInitGit] = createSignal(false)
   const [filter, setFilter] = createSignal("")
 
-  const home = createMemo(() => sync.data.path.home)
+  const home = createMemo(() => sync.data.paths.home)
 
   function display(abs: string) {
     const h = home()
@@ -52,7 +52,7 @@ export function DialogSelectDirectory(props: DialogSelectDirectoryProps) {
     () => filter(),
     async (f) => {
       const { path, query } = resolveInput(f)
-      const data = await sdk.client.find
+      const data = await sdk.client.global.filesystem
         .browse({ path, query, limit: 50 })
         .then((x) => x.data ?? [])
         .catch(() => [])

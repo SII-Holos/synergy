@@ -97,7 +97,7 @@ function searchMessage(msg: MessageV2.WithParts, regex: RegExp): Match | undefin
 function formatResult(result: SessionResult): string {
   const scope = result.session.scope as Scope
   const scopeLabel =
-    scope.type === "global"
+    scope.type === "home"
       ? "Home"
       : (scope.name ?? (scope.directory ? path.basename(scope.directory) : undefined) ?? scope.id)
   const updated = formatLocalDateTime(result.session.time.updated)
