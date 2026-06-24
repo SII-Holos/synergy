@@ -1,4 +1,6 @@
 export namespace NoteMarkdown {
+  const DEFAULT_PREVIEW_BLOCKS = 16
+
   interface TipTapNode {
     type: string
     attrs?: Record<string, any>
@@ -567,6 +569,6 @@ export namespace NoteMarkdown {
     if (!content || typeof content !== "object") return ""
     const doc = content as TipTapNode
     if (doc.type !== "doc") return ""
-    return renderPreviewHtml(doc.content ?? [], options?.maxBlocks ?? 5, { title: options?.title })
+    return renderPreviewHtml(doc.content ?? [], options?.maxBlocks ?? DEFAULT_PREVIEW_BLOCKS, { title: options?.title })
   }
 }
