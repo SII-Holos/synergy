@@ -11,7 +11,9 @@ const parameters = z.object({
 
 interface BrowserViewMetadata {
   action: string
-  workspaceOpen?: boolean
+  workspaceOpen?: boolean | "unknown"
+  workspaceTool?: "browser"
+  workspaceCommand?: "show" | "hide" | "focus" | "status"
 }
 
 export const BrowserViewTool = Tool.define<typeof parameters, BrowserViewMetadata>("browser_view", {
@@ -23,26 +25,31 @@ export const BrowserViewTool = Tool.define<typeof parameters, BrowserViewMetadat
       case "show":
         return {
           title: "Browser workspace shown",
-          output: "Browser workspace panel is now visible.",
-          metadata: { action: "show" },
+          output: "Requested the Browser workspace panel.",
+          metadata: { action: "show", workspaceCommand: "show", workspaceTool: "browser", workspaceOpen: "unknown" },
         }
       case "hide":
         return {
           title: "Browser workspace hidden",
-          output: "Browser workspace panel is now hidden.",
-          metadata: { action: "hide" },
+          output: "Requested hiding the Browser workspace panel.",
+          metadata: { action: "hide", workspaceCommand: "hide", workspaceTool: "browser", workspaceOpen: "unknown" },
         }
       case "focus":
         return {
           title: "Browser focused",
-          output: "Active tool switched to browser.",
-          metadata: { action: "focus" },
+          output: "Requested focus for the Browser workspace panel.",
+          metadata: { action: "focus", workspaceCommand: "focus", workspaceTool: "browser", workspaceOpen: "unknown" },
         }
       case "status":
         return {
           title: "Browser workspace status",
-          output: "Browser workspace is open.",
-          metadata: { action: "status", workspaceOpen: true },
+          output: "Browser workspace frontend state is unknown from the server.",
+          metadata: {
+            action: "status",
+            workspaceCommand: "status",
+            workspaceTool: "browser",
+            workspaceOpen: "unknown",
+          },
         }
     }
   },

@@ -24,27 +24,35 @@ export const BrowserWaitTool = Tool.define("browser_wait", {
   }),
   async execute(params, ctx) {
     const tab = await BrowserToolHelper.resolveTab(ctx, params.tabId)
+    return BrowserToolHelper.withActivity(
+      ctx,
+      tab,
+      "reading",
+      "browser_wait",
+      "Waiting for page condition",
+      async () => {
+        const met = await tab.waitFor(params.condition, params.timeout)
 
-    const met = await tab.waitFor(params.condition, params.timeout)
+        const conditionDesc =
+          params.condition.type === "load"
+            ? "page loaded"
+            : `${params.condition.type} contains "${params.condition.contains}"`
 
-    const conditionDesc =
-      params.condition.type === "load"
-        ? "page loaded"
-        : `${params.condition.type} contains "${params.condition.contains}"`
-
-    return {
-      title: met ? `Wait satisfied` : `Wait timed out`,
-      output: met
-        ? `Condition met: ${conditionDesc} (after waiting)`
-        : `Condition not met within ${params.timeout}ms: ${conditionDesc}`,
-      metadata: {
-        tabId: tab.id,
-        condition: params.condition,
-        timeout: params.timeout,
-        satisfied: met,
-        url: tab.url,
-        title: tab.title,
+        return {
+          title: met ? `Wait satisfied` : `Wait timed out`,
+          output: met
+            ? `Condition met: ${conditionDesc} (after waiting)`
+            : `Condition not met within ${params.timeout}ms: ${conditionDesc}`,
+          metadata: {
+            tabId: tab.id,
+            condition: params.condition,
+            timeout: params.timeout,
+            satisfied: met,
+            url: tab.url,
+            title: tab.title,
+          },
+        }
       },
-    }
+    )
   },
 })

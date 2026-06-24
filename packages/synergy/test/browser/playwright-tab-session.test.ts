@@ -179,13 +179,17 @@ describe("Contract 3: BrowserTabImpl wraps Playwright Page", () => {
     expect(src).toMatch(/import.*Page.*from.*playwright|import.*playwright/)
   })
 
-  // ── navigate → page.goto ──────────────────────────────────────────────
-  test("navigate(url) calls page.goto(url)", () => {
+  // ── navigate → policy wrapper → page.goto ────────────────────────────
+  test("navigate(url) delegates to the Playwright goto path after policy checks", () => {
     const src = readSource(TAB_PATH)
     const navMethod = extractMethod(src, "async navigate")
-    expect(navMethod).toMatch(/\.goto\s*\(/)
+    const navOverrideMethod = extractMethod(src, "async navigateWithOverride")
+    expect(navMethod).toMatch(/navigateWithOverride\s*\(/)
+    expect(navOverrideMethod).toMatch(/\.goto\s*\(/)
     expect(navMethod).not.toMatch(/"Page\.navigate"/)
     expect(navMethod).not.toMatch(/sendCmd/)
+    expect(navOverrideMethod).not.toMatch(/"Page\.navigate"/)
+    expect(navOverrideMethod).not.toMatch(/sendCmd/)
   })
 
   // ── reload → page.reload ──────────────────────────────────────────────
@@ -354,11 +358,14 @@ describe("Contract 5: Console/network buffers from page.on events", () => {
 // ═══════════════════════════════════════════════════════════════════════════
 
 describe("Contract 6: Source-level Playwright delegation checks", () => {
-  test("navigate method body references page.goto", () => {
+  test("navigate flow references page.goto", () => {
     const src = readSource(TAB_PATH)
     const navigateMethod = extractMethod(src, "async navigate")
-    expect(navigateMethod).toMatch(/goto/)
+    const navOverrideMethod = extractMethod(src, "async navigateWithOverride")
+    expect(navigateMethod).toMatch(/navigateWithOverride/)
+    expect(navOverrideMethod).toMatch(/goto/)
     expect(navigateMethod).not.toMatch(/"Page\.navigate"/)
+    expect(navOverrideMethod).not.toMatch(/"Page\.navigate"/)
   })
 
   test("reload method body references page.reload", () => {

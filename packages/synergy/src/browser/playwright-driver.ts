@@ -1,6 +1,9 @@
+import fs from "fs/promises"
 import type { Browser, BrowserContext, Page } from "playwright"
 import { BrowserOwner } from "./owner.js"
 import type { BrowserDriver } from "./driver.js"
+import { BrowserInstall } from "./install.js"
+import { BrowserStorage } from "./storage.js"
 
 interface InternalContext {
   owner: BrowserOwner.Info
@@ -23,14 +26,41 @@ export class PlaywrightBrowserDriver implements BrowserDriver.Driver {
   private _browserType = "chromium"
   private _browser: Browser | null = null
 
+  private launchArgs(): string[] {
+    return [
+      "--headless=new",
+      "--disable-gpu",
+      "--disable-gpu-vsync",
+      "--disable-frame-rate-limit",
+      "--disable-background-networking",
+      "--disable-sync",
+      "--disable-default-apps",
+      "--disable-extensions",
+      "--disable-component-update",
+      "--disable-breakpad",
+    ]
+  }
+
   async ensure(): Promise<BrowserDriver.DriverState> {
     if (this._running) return { running: true, browserType: this._browserType, activeOwners: this.contexts.size }
 
+    const playwright = (await import("playwright")) as {
+      chromium?: { launch(options?: Record<string, unknown>): Promise<Browser> }
+    }
+    if (!playwright.chromium) throw new Error("Playwright chromium is unavailable")
+
     try {
-      const playwright = (await import("playwright")) as { chromium?: { launch(): Promise<Browser> } }
-      if (playwright.chromium) this._browser = await playwright.chromium.launch()
-    } catch {
-      this._browser = null
+      const executablePath = await BrowserInstall.discoverChromium()
+      this._browser = await playwright.chromium.launch({
+        headless: true,
+        ...(executablePath ? { executablePath } : {}),
+        args: this.launchArgs(),
+      })
+    } catch (error) {
+      throw new Error(
+        `Unable to launch Playwright Chromium. Run "bunx playwright install chromium" or set CHROMIUM_PATH to a usable Chromium executable. ${error instanceof Error ? error.message : String(error)}`,
+        { cause: error },
+      )
     }
 
     this._running = true
@@ -67,12 +97,23 @@ export class PlaywrightBrowserDriver implements BrowserDriver.Driver {
     let ctx = this.contexts.get(key)
     if (!ctx) {
       ctx = { owner: { ...owner }, browserContextId: nextContextId() }
-      if (this._browser) {
-        ctx.browserContext = await this._browser.newContext({
-          viewport: { width: 1280, height: 720 },
-          acceptDownloads: true,
-        })
+      if (!this._browser) throw new Error("Browser is not running")
+
+      await BrowserStorage.ensureOwnerDirs(owner)
+      const storageState = BrowserStorage.storageStatePath(owner)
+      let storageStateOption: string | undefined
+      try {
+        await fs.access(storageState)
+        storageStateOption = storageState
+      } catch {
+        storageStateOption = undefined
       }
+
+      ctx.browserContext = await this._browser.newContext({
+        viewport: { width: 1280, height: 720 },
+        acceptDownloads: true,
+        storageState: storageStateOption,
+      })
       this.contexts.set(key, ctx)
       this.pages.set(key, new Map())
     }
@@ -83,12 +124,20 @@ export class PlaywrightBrowserDriver implements BrowserDriver.Driver {
     const key = BrowserOwner.key(owner)
     await this.contextFor(owner)
     const ctx = this.contexts.get(key)!
-    const page = ctx.browserContext ? await ctx.browserContext.newPage() : createMockPage(url)
+    if (!ctx.browserContext) throw new Error("Browser context is not available")
+    const page = await ctx.browserContext.newPage()
     const tabID = nextTabId()
     ;(page as unknown as Record<string, unknown>)._synergyTabID = tabID
     this.pages.get(key)!.set(tabID, page)
     // Do not navigate here. BrowserSession/BrowserTab.navigate performs URL policy checks.
     return page
+  }
+
+  async saveContextStorage(owner: BrowserOwner.Info): Promise<void> {
+    const ctx = this.contexts.get(BrowserOwner.key(owner))
+    if (!ctx?.browserContext) return
+    await BrowserStorage.ensureOwnerDirs(owner)
+    await ctx.browserContext.storageState({ path: BrowserStorage.storageStatePath(owner) })
   }
 
   getPage(owner: BrowserOwner.Info, pageId: string): Page | undefined {
@@ -111,83 +160,4 @@ export class PlaywrightBrowserDriver implements BrowserDriver.Driver {
   listOwners(): BrowserOwner.Info[] {
     return Array.from(this.contexts.values()).map((ctx) => ctx.owner)
   }
-}
-
-function createMockPage(url?: string): Page {
-  const handlers = new Map<string, Set<(...args: unknown[]) => void>>()
-  let currentUrl = url ?? "about:blank"
-  let currentTitle = ""
-  let closed = false
-  const mockContext = {
-    grantPermissions: async () => {},
-    newCDPSession: async () => ({
-      send: async () => ({ result: { value: null } }),
-      detach: async () => {},
-    }),
-  }
-
-  const mockPage = {
-    url: () => currentUrl,
-    title: async () => currentTitle,
-    goto: async (u: string) => {
-      currentUrl = u
-      return null
-    },
-    reload: async () => null,
-    goBack: async () => null,
-    goForward: async () => null,
-    close: async () => {
-      closed = true
-    },
-    isClosed: () => closed,
-    context: () => mockContext,
-    on: (event: string, handler: (...args: unknown[]) => void) => {
-      if (!handlers.has(event)) handlers.set(event, new Set())
-      handlers.get(event)!.add(handler)
-    },
-    off: (event: string, handler: (...args: unknown[]) => void) => {
-      handlers.get(event)?.delete(handler)
-    },
-    mouse: {
-      click: async () => {},
-      wheel: async () => {},
-      move: async () => {},
-      down: async () => {},
-      up: async () => {},
-    },
-    keyboard: {
-      type: async () => {},
-      press: async () => {},
-    },
-    screenshot: async () => Buffer.from("") as Buffer,
-    evaluate: async () => null,
-    locator: () => mockLocator,
-    getByRole: () => mockLocator,
-    getByText: () => mockLocator,
-    getByLabel: () => mockLocator,
-    getByPlaceholder: () => mockLocator,
-    getByTestId: () => mockLocator,
-    waitForURL: async () => {},
-    waitForLoadState: async () => {},
-    setViewportSize: async () => {},
-    viewportSize: () => ({ width: 1280, height: 720 }),
-  }
-
-  return mockPage as unknown as Page
-}
-
-const mockLocator = {
-  click: async () => {},
-  dblclick: async () => {},
-  fill: async () => {},
-  type: async () => {},
-  selectOption: async () => {},
-  check: async () => {},
-  uncheck: async () => {},
-  hover: async () => {},
-  dragTo: async () => {},
-  waitFor: async () => {},
-  screenshot: async () => Buffer.from(""),
-  boundingBox: async () => ({ x: 0, y: 0, width: 10, height: 10 }),
-  evaluate: async () => null,
 }

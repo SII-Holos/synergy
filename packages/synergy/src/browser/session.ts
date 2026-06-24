@@ -1,7 +1,20 @@
 import { BrowserOwner } from "./owner.js"
 import { BrowserStorage } from "./storage.js"
-import { BrowserTabImpl, type BrowserTab } from "./tab.js"
-import type { BrowserAnnotation, BrowserAnnotationInput, BrowserSession, BrowserSessionObserver } from "./types.js"
+import {
+  BrowserTabImpl,
+  type BrowserDialogRequest,
+  type BrowserDownloadEntry,
+  type BrowserFileChooserRequest,
+  type BrowserTab,
+  type BrowserTabEventHandlers,
+} from "./tab.js"
+import type {
+  BrowserAgentActivity,
+  BrowserAnnotation,
+  BrowserAnnotationInput,
+  BrowserSession,
+  BrowserSessionObserver,
+} from "./types.js"
 import { BrowserAnnotationHelper } from "./annotation.js"
 import type { BrowserDriver } from "./driver.js"
 export type { BrowserAnnotation, BrowserAnnotationInput, BrowserSession }
@@ -31,11 +44,36 @@ export class BrowserSessionImpl implements BrowserSession {
   constructor(owner: BrowserOwner.Info, driver: BrowserDriver.Driver) {
     this.owner = owner
     this.driver = driver
+  }
 
-    // Restore saved state asynchronously (don't block constructor)
-    this.restore().catch(() => {
-      /* ignore restore errors on construction */
-    })
+  private tabEvents(): BrowserTabEventHandlers {
+    return {
+      onLoading: (tab) => {
+        for (const o of this._observers) o.onPageLoadState?.(tab, "loading")
+        for (const o of this._observers) o.onTabUpdated?.(tab)
+      },
+      onLoaded: (tab) => {
+        this.save().catch(() => {})
+        for (const o of this._observers) o.onPageLoadState?.(tab, "loaded")
+        for (const o of this._observers) o.onTabNavigated?.(tab)
+        for (const o of this._observers) o.onTabUpdated?.(tab)
+      },
+      onError: (tab, message) => {
+        for (const o of this._observers) o.onPageLoadState?.(tab, "error", message)
+      },
+      onCrashed: (tab, message) => {
+        for (const o of this._observers) o.onPageLoadState?.(tab, "error", message)
+      },
+      onDownload: (tab, entry: BrowserDownloadEntry) => {
+        for (const o of this._observers) o.onDownload?.(tab, entry)
+      },
+      onFileChooser: (tab, request: BrowserFileChooserRequest) => {
+        for (const o of this._observers) o.onFileChooser?.(tab, request)
+      },
+      onDialog: (tab, request: BrowserDialogRequest) => {
+        for (const o of this._observers) o.onDialog?.(tab, request)
+      },
+    }
   }
 
   async createTab(url?: string): Promise<BrowserTab> {
@@ -47,6 +85,8 @@ export class BrowserSessionImpl implements BrowserSession {
     const tab = new BrowserTabImpl({
       page,
       directory: this.owner.directory,
+      owner: this.owner,
+      events: this.tabEvents(),
     })
     this._tabs.push(tab)
 
@@ -74,6 +114,7 @@ export class BrowserSessionImpl implements BrowserSession {
         this._activeTab.lastActiveAt = Date.now()
       }
       this._activeTab = tab
+      for (const o of this._observers) o.onTabActivated?.(tab)
     }
   }
 
@@ -164,6 +205,14 @@ export class BrowserSessionImpl implements BrowserSession {
     for (const o of this._observers) o.onTabNavigated?.(tab)
   }
 
+  async notifyAgentActivity(activity: BrowserAgentActivity): Promise<void> {
+    for (const o of this._observers) o.onAgentActivity?.(activity)
+  }
+
+  async notifyControlChanged(mode: "user" | "agent"): Promise<void> {
+    for (const o of this._observers) o.onControlChanged?.(mode)
+  }
+
   async save(): Promise<void> {
     const state: BrowserStorage.SessionState = {
       tabs: this._tabs.map((tab, i) => ({
@@ -179,7 +228,10 @@ export class BrowserSessionImpl implements BrowserSession {
       panelWidth: 400,
       timestamp: Date.now(),
       annotations: this._annotations,
+      storageStatePath: BrowserStorage.storageStatePath(this.owner),
+      profileDir: BrowserStorage.profileDir(this.owner),
     }
+    await this.driver.saveContextStorage(this.owner)
     await BrowserStorage.save(this.owner, state)
   }
 
@@ -202,12 +254,27 @@ export class BrowserSessionImpl implements BrowserSession {
     const sorted = [...data.tabs].sort((a, b) => a.order - b.order)
     for (const saved of sorted) {
       const page = await this.driver.newPage(this.owner)
-      const tab = new BrowserTabImpl({ page, directory: this.owner.directory, id: saved.id })
-      tab.url = saved.url
-      tab.title = saved.title
+      const tab = new BrowserTabImpl({
+        page,
+        directory: this.owner.directory,
+        owner: this.owner,
+        id: saved.id,
+        events: this.tabEvents(),
+      })
       tab.pinned = saved.pinned ?? false
       tab.kept = saved.kept ?? false
       tab.lastActiveAt = saved.lastActiveAt ?? null
+      if (saved.url && saved.url !== "about:blank" && !saved.url.startsWith("[")) {
+        try {
+          await tab.navigateForUser(saved.url)
+        } catch {
+          tab.url = saved.url
+          tab.title = saved.title
+        }
+      } else {
+        tab.url = saved.url
+        tab.title = saved.title
+      }
       this._tabs.push(tab)
     }
 

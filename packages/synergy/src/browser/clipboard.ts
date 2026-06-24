@@ -56,7 +56,7 @@ export namespace BrowserClipboard {
       const ctx = page.context()
       await ctx.grantPermissions(["clipboard-read", "clipboard-write"])
     } catch {
-      // grantPermissions may not be available (mock mode, headless, etc.)
+      // grantPermissions may not be available in some headless/context configurations.
     }
   }
 

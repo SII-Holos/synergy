@@ -56,6 +56,21 @@ export namespace BrowserPolicy {
     "application/x-mach-binary",
   ])
 
+  const BLOCKED_DOWNLOAD_EXTENSIONS = new Set([
+    ".app",
+    ".bat",
+    ".cmd",
+    ".com",
+    ".dmg",
+    ".exe",
+    ".msi",
+    ".pkg",
+    ".ps1",
+    ".scr",
+    ".sh",
+    ".vbs",
+  ])
+
   function range(start: number, end: number): number[] {
     const result: number[] = []
     for (let i = start; i <= end; i++) result.push(i)
@@ -93,7 +108,85 @@ export namespace BrowserPolicy {
   // ── Public API ─────────────────────────────────────────────────────
 
   /**
+   * Normalize browser address bar input. Bare domains become https URLs;
+   * plain words become a search query.
+   */
+  export function normalizeBrowserURL(input: string, base?: string): string {
+    const raw = input.trim()
+    if (!raw) throw new Error("URL is required")
+
+    if (/^(localhost|127\.0\.0\.1|\[::1\]|::1)(:\d+)?(\/.*)?$/i.test(raw)) {
+      return `http://${raw}`
+    }
+
+    if (/^[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}(:\d+)?(\/.*)?$/.test(raw)) {
+      return `https://${raw}`
+    }
+
+    if (base || /^[a-zA-Z][a-zA-Z\d+.-]*:/.test(raw)) {
+      try {
+        return new URL(raw, base).toString()
+      } catch {
+        // Continue to search fallback below.
+      }
+    }
+
+    return `https://www.google.com/search?q=${encodeURIComponent(raw)}`
+  }
+
+  /**
+   * User-facing hard safety check. Public http(s) browsing is allowed here;
+   * agent approval is layered separately through evaluateURL/control profile.
+   */
+  export function hardCheckNavigation(url: string, workspace: string): PolicyResult {
+    let parsed: URL
+    try {
+      parsed = new URL(url)
+    } catch {
+      return { decision: "deny", reason: `Invalid URL: ${url}`, permanent: false }
+    }
+
+    const protocol = parsed.protocol.replace(/:$/, "")
+    if (protocol === "file") return evaluateFileURL(parsed.pathname, workspace)
+
+    if (protocol !== "http" && protocol !== "https" && protocol !== "about") {
+      return {
+        decision: "deny",
+        reason: `Protocol not allowed: ${protocol}`,
+        permanent: false,
+      }
+    }
+
+    if (protocol === "about") {
+      if (parsed.href === "about:blank") return { decision: "allow", reason: "Blank page", permanent: true }
+      return {
+        decision: "deny",
+        reason: `Only about:blank is allowed`,
+        permanent: false,
+      }
+    }
+
+    const hostname = parsed.hostname.toLowerCase()
+    const port = parsed.port ? parseInt(parsed.port, 10) : protocol === "https" ? 443 : 80
+    if (isLocalhost(hostname) && isSensitivePort(hostname, port)) {
+      return {
+        decision: "deny",
+        reason: `Port ${port} on ${hostname} is blocked for security`,
+        permanent: false,
+      }
+    }
+
+    return {
+      decision: "allow",
+      reason: "User browser navigation",
+      permanent: false,
+    }
+  }
+
+  /**
    * Evaluate a URL against the browser policy. Pure function, no I/O.
+   * This keeps agent/automation approval semantics: public URLs and uncommon
+   * localhost ports are "blocked" so the tool layer can ask.
    */
   export function evaluateURL(url: string, workspace: string): PolicyResult {
     let parsed: URL
@@ -221,6 +314,16 @@ export namespace BrowserPolicy {
     }
 
     return false
+  }
+
+  export function isDangerousDownload(input: { mimeType?: string | null; filename?: string | null }): boolean {
+    const mimeType = input.mimeType?.split(";")[0]?.trim().toLowerCase()
+    if (mimeType && BLOCKED_DOWNLOAD_MIMES.has(mimeType)) return true
+
+    const filename = input.filename?.trim().toLowerCase()
+    if (!filename) return false
+    const ext = path.extname(filename)
+    return BLOCKED_DOWNLOAD_EXTENSIONS.has(ext)
   }
 
   /**

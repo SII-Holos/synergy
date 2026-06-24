@@ -22,6 +22,7 @@ Synergy currently spans several product surfaces and workflows:
 
 - A central `server` process that handles requests independently of a single working directory
 - A `web` client for browser-based interaction
+- A built-in Browser workspace backed by Playwright/Chromium for interactive page control
 - A `send` command for one-off, non-interactive execution
 - CLI commands for session, config, identity, and operational workflows
 - Configurable agents for orchestration, coding, research, writing, search, and review
@@ -29,6 +30,14 @@ Synergy currently spans several product surfaces and workflows:
 - MCP integration for external tool ecosystems
 - Channel integrations such as Feishu / Lark
 - Identity, login, notes, memory/engram, agenda, and community-facing capabilities
+
+### Built-In Browser Workspace
+
+The Web client includes a right-side Browser workspace that runs a real Playwright Chromium page, not an iframe or a screenshot-only mock. Users can navigate, search, click, type, scroll, upload, and download in the workspace while browser tools operate on the same underlying page and BrowserContext.
+
+Browser contexts are isolated by Synergy owner/session and persist tab state plus browser storage state. User-explicit navigation and page interaction run without approval prompts but still pass hard safety checks such as invalid protocols, sensitive local ports, and out-of-scope `file://` access. Agent-driven browser tools continue to use the active control profile, so guarded/autonomous/full-access behavior remains consistent with the rest of Synergy.
+
+Large browser diagnostics such as console, network, snapshots, assets, and downloads are surfaced in the Browser workspace developer drawer and compact tool cards instead of flooding the normal chat transcript.
 
 ## Quick Start
 

@@ -1,4 +1,3 @@
-import path from "path"
 import { Log } from "../util/log"
 import { BrowserInstall } from "./install.js"
 import { BrowserOwner } from "./owner.js"
@@ -25,35 +24,6 @@ export namespace BrowserRuntime {
   let running = false
   let chromiumPath: string | null = null
   let driver: BrowserDriver.Driver | null = null
-
-  // ── Chromium launch helpers ─────────────────────────────────────
-
-  const CHROMIUM_BASE_ARGS = [
-    "--headless=new",
-    "--disable-gpu",
-    "--user-data-dir",
-    "--disable-background-networking",
-    "--disable-sync",
-    "--disable-default-apps",
-    "--disable-extensions",
-    "--disable-plugins",
-    "--disable-component-update",
-    "--disable-breakpad",
-  ]
-
-  function buildArgs(userDataDir: string, usePipe: boolean): string[] {
-    const args: string[] = []
-    if (usePipe) args.push("--remote-debugging-pipe")
-    args.push("--remote-debugging-port=0")
-    for (const arg of CHROMIUM_BASE_ARGS) {
-      if (arg === "--user-data-dir") {
-        args.push(`--user-data-dir=${userDataDir}`)
-      } else {
-        args.push(arg)
-      }
-    }
-    return args
-  }
 
   // ── Public API ──────────────────────────────────────────────────
 
@@ -161,6 +131,7 @@ export namespace BrowserRuntime {
     const { BrowserSessionImpl } = await import("./session.js")
     const session = new BrowserSessionImpl(owner, driver)
     sessions.set(k, session)
+    await session.restore()
     return session
   }
 
