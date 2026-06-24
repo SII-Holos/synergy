@@ -16,6 +16,7 @@ import { Config } from "@/config/config"
 import { PermissionNext } from "@/permission/next"
 import { ExperienceEncoder } from "@/engram/experience-encoder"
 import { Question } from "@/question"
+import { Observability } from "@/observability"
 
 export namespace SessionProcessor {
   const DOOM_LOOP_THRESHOLD = 3
@@ -77,6 +78,15 @@ export namespace SessionProcessor {
     }
     async function settleToolPart(part: MessageV2.ToolPart, outcome: ToolOutcome) {
       const startTime = toolStartTime(part)
+      await Observability.emit("tool.settle.start", {
+        sessionID: input.sessionID,
+        messageID: input.assistantMessage.id,
+        callID: part.callID,
+        tool: part.tool,
+        data: {
+          status: outcome.status,
+        },
+      })
       if (outcome.status === "completed") {
         await Session.updatePart({
           ...part,
@@ -102,6 +112,16 @@ export namespace SessionProcessor {
           },
         })
       }
+      await Observability.emit("tool.settle.end", {
+        sessionID: input.sessionID,
+        messageID: input.assistantMessage.id,
+        callID: part.callID,
+        tool: part.tool,
+        level: outcome.status === "error" ? "error" : "info",
+        data: {
+          status: outcome.status,
+        },
+      })
     }
 
     const result = {
@@ -116,6 +136,19 @@ export namespace SessionProcessor {
       },
       async process(streamInput: LLM.StreamInput) {
         log.info("process")
+        const turnTraceId = Observability.traceId("turn")
+        const turnStartedAt = Date.now()
+        await Observability.emit("session.turn.start", {
+          traceId: turnTraceId,
+          sessionID: input.sessionID,
+          messageID: input.assistantMessage.id,
+          data: {
+            parentID: input.assistantMessage.parentID,
+            agent: input.assistantMessage.agent,
+            model: input.model.id,
+            providerID: input.model.providerID,
+          },
+        })
         const shouldBreak = (await Config.current()).experimental?.continue_loop_on_deny !== true
         while (true) {
           try {
@@ -426,6 +459,18 @@ export namespace SessionProcessor {
             if (retry !== undefined && attempt < SessionRetry.RETRY_MAX_ATTEMPTS) {
               attempt++
               const delay = SessionRetry.delay(attempt, error.name === "APIError" ? error : undefined)
+              await Observability.emit("session.turn.retry", {
+                traceId: turnTraceId,
+                sessionID: input.sessionID,
+                messageID: input.assistantMessage.id,
+                level: "warn",
+                data: {
+                  attempt,
+                  delay,
+                  retry,
+                  error,
+                },
+              })
               SessionManager.setStatus(input.sessionID, {
                 type: "retry",
                 attempt,
@@ -436,6 +481,15 @@ export namespace SessionProcessor {
               continue
             }
             input.assistantMessage.error = error
+            await Observability.emit("session.turn.error", {
+              traceId: turnTraceId,
+              sessionID: input.sessionID,
+              messageID: input.assistantMessage.id,
+              level: "error",
+              data: {
+                error,
+              },
+            })
             Bus.publish(SessionEvent.Error, {
               sessionID: input.assistantMessage.sessionID,
               error: input.assistantMessage.error,
@@ -511,6 +565,19 @@ export namespace SessionProcessor {
             },
             {},
           )
+          await Observability.emit("session.turn.end", {
+            traceId: turnTraceId,
+            sessionID: input.sessionID,
+            messageID: input.assistantMessage.id,
+            level: input.assistantMessage.error ? "error" : "info",
+            data: {
+              finish: input.assistantMessage.finish,
+              blocked,
+              error: input.assistantMessage.error,
+              durationMs: Date.now() - turnStartedAt,
+              pendingTools: pendingExecutions.size,
+            },
+          })
           if (blocked) return "stop"
           if (input.assistantMessage.error) return "stop"
           return "continue"

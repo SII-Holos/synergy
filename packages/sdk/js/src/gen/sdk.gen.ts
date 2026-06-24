@@ -256,6 +256,7 @@ import type {
   NoteRemoveResponses,
   NoteUpdateErrors,
   NoteUpdateResponses,
+  ObservabilityDiagnosticsSummaryResponses,
   Part as Part2,
   PartDeleteErrors,
   PartDeleteResponses,
@@ -2307,6 +2308,24 @@ export class Global extends HeyApiClient {
   session = new Session({ client: this.client })
 
   nav = new Nav({ client: this.client })
+}
+
+export class Diagnostics extends HeyApiClient {
+  /**
+   * Get local diagnostics summary
+   *
+   * Get a readonly local diagnostics summary for the Synergy server.
+   */
+  public summary<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
+    return (options?.client ?? this.client).get<ObservabilityDiagnosticsSummaryResponses, unknown, ThrowOnError>({
+      url: "/global/diagnostics",
+      ...options,
+    })
+  }
+}
+
+export class Observability extends HeyApiClient {
+  diagnostics = new Diagnostics({ client: this.client })
 }
 
 export class Credentials extends HeyApiClient {
@@ -8365,6 +8384,8 @@ export class SynergyClient extends HeyApiClient {
   }
 
   global = new Global({ client: this.client })
+
+  observability = new Observability({ client: this.client })
 
   holos = new Holos({ client: this.client })
 

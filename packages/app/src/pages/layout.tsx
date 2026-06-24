@@ -30,6 +30,7 @@ import { EngramPanel } from "@/components/engram"
 import { AgendaPanel } from "@/components/agenda"
 
 import { LucidPanel } from "@/components/lucid-panel"
+import { DiagnosticsPanel } from "@/components/diagnostics-panel"
 import { ConnectionBanner } from "@/components/connection-banner"
 import { getGlobalPanel } from "@/plugin"
 import { SandboxIframe } from "@/plugin/sandbox"
@@ -472,6 +473,9 @@ function GlobalPanelSwitch() {
       </Match>
       <Match when={panel.active() === "lucid"}>
         <LucidPanel />
+      </Match>
+      <Match when={panel.active() === "diagnostics"}>
+        <DiagnosticsPanel />
       </Match>
       <Match when={panel.hasSlot(panel.active()!)}>{panel.slot(panel.active()!)}</Match>
       <Match when={!!getGlobalPanel(panel.active()!)}>

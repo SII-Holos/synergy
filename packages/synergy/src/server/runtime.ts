@@ -14,6 +14,7 @@ import { ServerProcessLock } from "../daemon/server-process-lock"
 import { StartupReporter } from "../cli/startup-reporter"
 import { Flag } from "../flag/flag"
 import { GlobalRuntime } from "./global-runtime"
+import { Observability } from "../observability"
 
 const log = Log.create({ service: "server-runtime" })
 
@@ -43,7 +44,17 @@ export async function run(options: RuntimeOptions) {
   })
   reporter?.migration(migration)
 
-  await ServerProcessLock.acquire()
+  const processLock = await ServerProcessLock.acquire()
+  await Observability.cleanup().catch(() => {})
+  await Observability.emit("server.start", {
+    data: {
+      pid: process.pid,
+      cwd: process.cwd(),
+      launchCwd: startupScopeLabel(),
+      mode: process.env.SYNERGY_DAEMON === "1" ? "daemon" : "server",
+      network: options.network,
+    },
+  })
 
   // Holos login: intentionally skipped at CLI startup.
   // Users can log in via Web UI sidebar Holos panel or 'synergy holos login'.
@@ -85,7 +96,7 @@ export async function run(options: RuntimeOptions) {
     renderBanner({ server, network: options.network, reporter: reporter ?? StartupReporter.create(), statuses })
   }
 
-  registerShutdown(server)
+  registerShutdown(server, processLock.release)
 
   if (process.env.SYNERGY_DAEMON === "1") {
     DaemonLogRotate.start()
@@ -286,35 +297,112 @@ function displayUrl(hostname: string, port: number) {
   return url.toString().replace(/\/$/, "")
 }
 
-function registerShutdown(server: { stop: (closeActiveConnections?: boolean) => Promise<void> }) {
+function registerShutdown(
+  server: { stop: (closeActiveConnections?: boolean) => Promise<void> },
+  releaseLock: () => Promise<void>,
+) {
   let shuttingDown = false
 
   const gracefulShutdown = async (signal: string) => {
     if (shuttingDown) {
+      await Observability.emit("shutdown.force_exit", {
+        level: "error",
+        data: { signal, reason: "duplicate signal" },
+      })
       process.exit(1)
       return
     }
 
     shuttingDown = true
     log.info("received signal, shutting down gracefully", { signal })
+    await Observability.emit("shutdown.signal", {
+      data: {
+        signal,
+        pid: process.pid,
+      },
+    })
+
+    let phase = "start"
 
     const forceExitTimeout = setTimeout(() => {
-      log.warn("graceful shutdown timed out, forcing exit")
-      process.exit(1)
+      void (async () => {
+        log.warn("graceful shutdown timed out, forcing exit")
+        await Observability.emit("shutdown.force_exit", {
+          level: "error",
+          data: {
+            signal,
+            phase,
+            reason: "timeout",
+          },
+        })
+        await releaseLock().catch(() => {})
+        Log.flush()
+        process.exit(1)
+      })()
     }, 5000)
     forceExitTimeout.unref()
 
     try {
+      phase = "stop log rotate"
+      await Observability.emit("shutdown.phase", { data: { phase } })
       DaemonLogRotate.stop()
+
+      phase = "kill running processes"
+      await Observability.emit("shutdown.phase", { data: { phase } })
       await ProcessRegistry.killAllRunning()
+
+      phase = "stop global runtime"
+      await Observability.emit("shutdown.phase", { data: { phase } })
       await GlobalRuntime.stop()
+
+      phase = "dispose scopes"
+      await Observability.emit("shutdown.phase", { data: { phase } })
       await ScopeRuntime.disposeAll()
+
+      phase = "server stop"
+      await Observability.emit("shutdown.phase", { data: { phase } })
       await server.stop()
+
+      phase = "release lock"
+      await Observability.emit("shutdown.phase", { data: { phase } })
+      await releaseLock()
+
+      phase = "complete"
+      await Observability.emit("server.stop", { data: { signal, pid: process.pid } })
     } catch (error) {
       log.error("error during graceful shutdown", { error })
+      await Observability.emit("shutdown.error", {
+        level: "error",
+        data: {
+          signal,
+          phase,
+          error:
+            error instanceof Error ? { name: error.name, message: error.message, stack: error.stack } : String(error),
+        },
+      })
+    }
+
+    if (phase !== "complete") {
+      try {
+        phase = "release lock"
+        await Observability.emit("shutdown.phase", { data: { phase, afterError: true } })
+        await releaseLock()
+      } catch (error) {
+        log.error("failed to release server process lock", { error })
+        await Observability.emit("shutdown.error", {
+          level: "error",
+          data: {
+            signal,
+            phase,
+            error:
+              error instanceof Error ? { name: error.name, message: error.message, stack: error.stack } : String(error),
+          },
+        })
+      }
     }
 
     clearTimeout(forceExitTimeout)
+    Log.flush()
     process.exit(0)
   }
 

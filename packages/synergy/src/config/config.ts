@@ -58,6 +58,8 @@ export namespace Config {
   export type Holos = Schema.Holos
   export const SandboxConfig = Schema.SandboxConfig
   export type SandboxConfig = Schema.SandboxConfig
+  export const ObservabilityConfig = Schema.ObservabilityConfig
+  export type ObservabilityConfig = Schema.ObservabilityConfig
   export const Channel = Schema.Channel
   export type Channel = Schema.Channel
   export const EmailSmtp = Schema.EmailSmtp

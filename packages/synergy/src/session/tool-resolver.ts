@@ -32,10 +32,13 @@ import { Config } from "@/config/config"
 import { ControlProfileCompiler } from "@/control-profile/compiler"
 import { ApprovalPolicy, type ApprovalMetadata } from "@/control-profile/approval"
 import { ExecutionBudget } from "@/util/execution-budget"
+import { Observability } from "@/observability"
 
 export namespace ToolResolver {
   const log = Log.create({ service: "tool.resolver" })
   const neverAbort = new AbortController().signal
+  const DEFAULT_STALLED_TOOL_MS = 30_000
+  const TOOL_HEARTBEAT_MS = 15_000
 
   export interface Input {
     agent: Agent.Info
@@ -194,6 +197,120 @@ export namespace ToolResolver {
 
   function toolTiming(ctx: Tool.Context): ToolTiming {
     return (ctx.extra as any).toolTiming as ToolTiming
+  }
+
+  interface ToolTrace {
+    traceId: string
+    phase(
+      type: string,
+      phase: string,
+      data?: Record<string, unknown>,
+      level?: Observability.Event["level"],
+    ): Promise<void>
+    end(data?: Record<string, unknown>): Promise<void>
+    error(error: unknown, data?: Record<string, unknown>): Promise<void>
+    dispose(): void
+  }
+
+  async function startToolTrace(
+    input: Input,
+    ctx: Tool.Context,
+    toolName: string,
+    args: Record<string, unknown>,
+  ): Promise<ToolTrace> {
+    const traceId = Observability.traceId("tool")
+    ;(ctx.extra as any).traceId = traceId
+    const startedAt = Date.now()
+    let phase = "start"
+    let lastActivity = startedAt
+    let stalled = false
+    const stalledMs = await stalledToolMs()
+    const base = () => ({
+      traceId,
+      sessionID: input.sessionID,
+      messageID: input.processor.message.id,
+      callID: ctx.callID,
+      tool: toolName,
+      cwd: ScopeContext.current.directory,
+      scopeID: ScopeContext.current.scope.id,
+    })
+    const emit = (type: string, data?: Record<string, unknown>, level?: Observability.Event["level"]) =>
+      Observability.emit(type, {
+        ...base(),
+        level,
+        data: {
+          phase,
+          elapsedMs: Date.now() - startedAt,
+          ...data,
+        },
+      })
+
+    await emit("tool.start", { args })
+
+    const heartbeat = setInterval(() => {
+      void emit("tool.heartbeat", {
+        idleMs: Date.now() - lastActivity,
+      })
+    }, TOOL_HEARTBEAT_MS)
+    const stale = setInterval(
+      () => {
+        const idleMs = Date.now() - lastActivity
+        if (!stalled && idleMs >= stalledMs) {
+          stalled = true
+          void emit(
+            "tool.stalled",
+            {
+              idleMs,
+              thresholdMs: stalledMs,
+            },
+            "warn",
+          )
+        }
+      },
+      Math.max(5_000, Math.min(stalledMs, TOOL_HEARTBEAT_MS)),
+    )
+    if (typeof heartbeat === "object" && "unref" in heartbeat) heartbeat.unref()
+    if (typeof stale === "object" && "unref" in stale) stale.unref()
+
+    return {
+      traceId,
+      async phase(type, nextPhase, data, level) {
+        phase = nextPhase
+        lastActivity = Date.now()
+        await emit(type, data, level)
+      },
+      async end(data) {
+        phase = "end"
+        lastActivity = Date.now()
+        await emit("tool.end", data)
+      },
+      async error(error, data) {
+        phase = "error"
+        lastActivity = Date.now()
+        await emit(
+          "tool.error",
+          {
+            ...data,
+            error:
+              error instanceof Error ? { name: error.name, message: error.message, stack: error.stack } : String(error),
+          },
+          "error",
+        )
+      },
+      dispose() {
+        clearInterval(heartbeat)
+        clearInterval(stale)
+      },
+    }
+  }
+
+  async function stalledToolMs() {
+    try {
+      const cfg = await Config.current()
+      return cfg.observability?.stalledToolMs ?? DEFAULT_STALLED_TOOL_MS
+    } catch {
+      return DEFAULT_STALLED_TOOL_MS
+    }
   }
 
   function approvalTime(timing: ToolTiming): ApprovalMetadata["time"] {
@@ -671,6 +788,7 @@ export namespace ToolResolver {
             inputSchema: jsonSchema(schema),
             async execute(args, options) {
               const ctx = context(args, options)
+              let toolTrace: ToolTrace | undefined
               let resolveExecution!: (outcome: SessionProcessor.ToolOutcome) => void
               const executionPromise = new Promise<SessionProcessor.ToolOutcome>((r) => {
                 resolveExecution = r
@@ -678,6 +796,7 @@ export namespace ToolResolver {
               runtimeInput.processor.trackExecution(options.toolCallId, executionPromise)
 
               try {
+                toolTrace = await startToolTrace(runtimeInput, ctx, item.id, args as Record<string, unknown>)
                 const workspace = ScopeContext.current.directory
                 const workspaceInfo = ScopeContext.current.workspace
                 const interaction = runtimeInput.session?.interaction
@@ -701,15 +820,27 @@ export namespace ToolResolver {
                   profileId,
                   readRoots: [synergyRoot],
                 })
+                await toolTrace.phase("tool.resolver.ready", "resolver ready", {
+                  profileId,
+                  workspace,
+                  workspaceType: workspaceInfo?.type ?? "scope",
+                })
 
                 const envelope = gate.evaluate(item.id, args as Record<string, any>)
                 await applyGateApproval(ctx, gate, envelope, item.id, args as Record<string, any>, runtimeInput.session)
+                await toolTrace.phase("tool.approval.resolved", "approval resolved", {
+                  decision: envelope.decision,
+                  capabilities: envelope.capabilities.map((cap) => cap.class),
+                })
 
                 const timeoutCfg = await TimeoutConfig.resolve()
                 const toolTimeoutMs = timeoutCfg.toolOverrides[item.id] ?? timeoutCfg.toolDefaultMs
                 const combinedAbort = startExecutionBudget(ctx, toolTimeoutMs)
                 ctx.abort = combinedAbort
                 await markExecutionStarted(runtimeInput, ctx, args as Record<string, any>)
+                await toolTrace.phase("tool.execution.started", "execution started", {
+                  timeoutMs: toolTimeoutMs,
+                })
                 const toolCtx = { ...ctx, abort: combinedAbort }
                 using toolTimer = log.time("tool.execute", { tool: item.id, callID: options.toolCallId })
 
@@ -718,6 +849,11 @@ export namespace ToolResolver {
                 if (item.id === "bash") {
                   const sandbox = gate.getSandbox()
                   if (sandbox.mode !== "none" && !shouldBypassShellSandbox(ctx)) {
+                    await toolTrace.phase("tool.sandbox.prepare", "sandbox prepare", {
+                      mode: sandbox.mode,
+                      backend: sandbox.backend,
+                      fallback: sandbox.fallback,
+                    })
                     const bashCommand = ((args as Record<string, any>)?.command as string) ?? ""
                     // Register externally-approved roots into the gate so the
                     // policy engine can aggregate them with auto-approved paths.
@@ -748,10 +884,16 @@ export namespace ToolResolver {
                     // Store wrapper in context for bash tool to use
                     ;(toolCtx.extra as any).sandboxWrapper = sandboxWrapper
                     ;(toolCtx.extra as any).sandboxFallback = sandbox.fallback
+                    await toolTrace.phase("tool.sandbox.prepared", "sandbox prepared", {
+                      skipReason: sandboxWrapper.skipReason,
+                      command: sandboxWrapper.command,
+                      args: sandboxWrapper.args,
+                    })
                   }
                 }
 
                 // ── Plugin: tool.execute.before ────────────────────────
+                await toolTrace.phase("plugin.runtime.before.start", "plugin before start")
                 await Plugin.trigger(
                   "tool.execute.before",
                   {
@@ -763,7 +905,14 @@ export namespace ToolResolver {
                     args,
                   },
                 )
+                await toolTrace.phase("plugin.runtime.before.end", "plugin before end")
+                await toolTrace.phase("tool.execute.start", "tool execute start")
                 const result = await item.execute(args, toolCtx)
+                await toolTrace.phase("tool.execute.end", "tool execute end", {
+                  outputChars: result.output.length,
+                  attachmentCount: result.attachments?.length ?? 0,
+                })
+                await toolTrace.phase("plugin.runtime.after.start", "plugin after start")
                 await Plugin.trigger(
                   "tool.execute.after",
                   {
@@ -773,6 +922,7 @@ export namespace ToolResolver {
                   },
                   result,
                 )
+                await toolTrace.phase("plugin.runtime.after.end", "plugin after end")
                 resolveExecution({
                   status: "completed",
                   input: args,
@@ -784,6 +934,10 @@ export namespace ToolResolver {
                       : (result.metadata ?? {}),
                     attachments: result.attachments,
                   },
+                })
+                await toolTrace.end({
+                  outputChars: result.output.length,
+                  attachmentCount: result.attachments?.length ?? 0,
                 })
                 return result
               } catch (error) {
@@ -806,8 +960,10 @@ export namespace ToolResolver {
                   error: formatErrorForModel(error),
                   metadata: approvalFromContext(ctx) ? { approval: approvalFromContext(ctx) } : undefined,
                 })
+                await toolTrace?.error(error)
                 throw error
               } finally {
+                toolTrace?.dispose()
                 disposeExecutionBudget(ctx)
               }
             },
@@ -845,6 +1001,7 @@ export namespace ToolResolver {
               ...item,
               execute: async (args, opts) => {
                 const ctx = context(args, opts)
+                let toolTrace: ToolTrace | undefined
                 let resolveExecution!: (outcome: SessionProcessor.ToolOutcome) => void
                 const executionPromise = new Promise<SessionProcessor.ToolOutcome>((r) => {
                   resolveExecution = r
@@ -852,6 +1009,7 @@ export namespace ToolResolver {
                 runtimeInput.processor.trackExecution(opts.toolCallId, executionPromise)
 
                 try {
+                  toolTrace = await startToolTrace(runtimeInput, ctx, key, args as Record<string, unknown>)
                   const workspace = ScopeContext.current.directory
                   const workspaceInfo = ScopeContext.current.workspace
                   const interaction = runtimeInput.session?.interaction
@@ -874,16 +1032,29 @@ export namespace ToolResolver {
                     pluginApprovals: pluginGateData.approvals,
                     profileId,
                   })
+                  await toolTrace.phase("tool.resolver.ready", "resolver ready", {
+                    profileId,
+                    workspace,
+                    workspaceType: workspaceInfo?.type ?? "scope",
+                  })
                   const envelope = gate.evaluate(key, args as Record<string, any>)
                   await applyGateApproval(ctx, gate, envelope, key, args as Record<string, any>, runtimeInput.session)
+                  await toolTrace.phase("tool.approval.resolved", "approval resolved", {
+                    decision: envelope.decision,
+                    capabilities: envelope.capabilities.map((cap) => cap.class),
+                  })
 
                   const timeoutCfg = await TimeoutConfig.resolve()
                   const toolTimeoutMs = timeoutCfg.toolOverrides[key] ?? timeoutCfg.toolDefaultMs
                   const combinedAbort = startExecutionBudget(ctx, toolTimeoutMs)
                   ctx.abort = combinedAbort
                   await markExecutionStarted(runtimeInput, ctx, args as Record<string, any>)
+                  await toolTrace.phase("tool.execution.started", "execution started", {
+                    timeoutMs: toolTimeoutMs,
+                  })
                   using toolTimer = log.time("tool.execute", { tool: key, callID: opts.toolCallId })
 
+                  await toolTrace.phase("plugin.runtime.before.start", "plugin before start")
                   await Plugin.trigger(
                     "tool.execute.before",
                     {
@@ -895,9 +1066,15 @@ export namespace ToolResolver {
                       args,
                     },
                   )
+                  await toolTrace.phase("plugin.runtime.before.end", "plugin before end")
 
+                  await toolTrace.phase("tool.execute.start", "tool execute start")
                   const result = await execute(args, { ...opts, abortSignal: combinedAbort })
+                  await toolTrace.phase("tool.execute.end", "tool execute end", {
+                    contentCount: result.content.length,
+                  })
 
+                  await toolTrace.phase("plugin.runtime.after.start", "plugin after start")
                   await Plugin.trigger(
                     "tool.execute.after",
                     {
@@ -907,6 +1084,7 @@ export namespace ToolResolver {
                     },
                     result,
                   )
+                  await toolTrace.phase("plugin.runtime.after.end", "plugin after end")
 
                   const textParts: string[] = []
                   const attachments: MessageV2.FilePart[] = []
@@ -947,6 +1125,11 @@ export namespace ToolResolver {
                     },
                   })
 
+                  await toolTrace.end({
+                    outputChars: output.output.length,
+                    attachmentCount: output.attachments.length,
+                    contentCount: output.content.length,
+                  })
                   return output
                 } catch (error) {
                   if (error instanceof EnforcementError.SandboxBlocked) {
@@ -968,8 +1151,10 @@ export namespace ToolResolver {
                     error: formatErrorForModel(error),
                     metadata: approvalFromContext(ctx) ? { approval: approvalFromContext(ctx) } : undefined,
                   })
+                  await toolTrace?.error(error)
                   throw error
                 } finally {
+                  toolTrace?.dispose()
                   disposeExecutionBudget(ctx)
                 }
               },

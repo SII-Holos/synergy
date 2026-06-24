@@ -423,6 +423,21 @@ export function Sidebar(props: SidebarProps) {
             </Show>
           </button>
         </Tooltip>
+        <Tooltip value="Diagnostics" placement="right">
+          <button
+            type="button"
+            classList={{
+              "sb-global-btn": true,
+              "sb-global-active": panel.active() === "diagnostics",
+            }}
+            onClick={() => panel.toggle("diagnostics")}
+          >
+            <Icon name="stethoscope" size="normal" />
+            <Show when={isExpanded()}>
+              <span class="sb-action-label">Diagnostics</span>
+            </Show>
+          </button>
+        </Tooltip>
       </div>
       <Tooltip value="Plugins" placement="right">
         <button
