@@ -51,7 +51,7 @@ jobs:
           git config --global user.name "CI Runner"
 
       - name: Run tests
-        run: bun test --timeout 30000
+        run: bun test --timeout 30000 --coverage-reporter=lcov
         working-directory: packages/synergy
 
   format:
