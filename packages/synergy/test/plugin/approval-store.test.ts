@@ -67,6 +67,20 @@ describe("computeManifestHash", () => {
     expect(computeManifestHash(a)).not.toBe(computeManifestHash(b))
   })
 
+  test("differs when declarative contributions change", () => {
+    const a = minimalManifest({
+      contributes: {
+        skills: [{ name: "docs", description: "Read docs", dir: "./skills/docs" }],
+      },
+    })
+    const b = minimalManifest({
+      contributes: {
+        skills: [{ name: "docs", description: "Read current docs", dir: "./skills/docs" }],
+      },
+    })
+    expect(computeManifestHash(a)).not.toBe(computeManifestHash(b))
+  })
+
   test("is stable (does not change on repeated calls)", () => {
     const m = minimalManifest()
     const h1 = computeManifestHash(m)
@@ -109,6 +123,30 @@ describe("computePermissionsHash", () => {
     const b = minimalManifest({
       permissions: {
         tools: { filesystem: "write" as const, invoke: true, shell: false, network: false, mcp: "none" as const },
+      },
+    })
+    expect(computePermissionsHash(a, [])).not.toBe(computePermissionsHash(b, []))
+  })
+
+  test("differs when capability-bearing contributions change", () => {
+    const a = minimalManifest({
+      contributes: {
+        mcp: {
+          docs: {
+            type: "local" as const,
+            command: ["bun", "run", "docs-mcp.ts"],
+          },
+        },
+      },
+    })
+    const b = minimalManifest({
+      contributes: {
+        mcp: {
+          docs: {
+            type: "local" as const,
+            command: ["bun", "run", "docs-mcp-v2.ts"],
+          },
+        },
       },
     })
     expect(computePermissionsHash(a, [])).not.toBe(computePermissionsHash(b, []))

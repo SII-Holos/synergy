@@ -5,6 +5,7 @@ import { PluginManifest, type PluginManifest as PluginManifestType } from "@eric
 import { cmd } from "../cmd"
 import { UI } from "../ui"
 import { sha256File } from "../lib/crypto"
+import { missingPackagedAssets } from "../lib/artifact-assets"
 
 function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
@@ -34,6 +35,20 @@ export function packPluginProject(pluginDir: string): string {
     throw new Error(`dist/ directory not found at ${distDir}. Run "synergy-plugin build" first.`)
   if (!fs.existsSync(path.join(distDir, "plugin.json"))) {
     throw new Error(`dist/plugin.json not found at ${distDir}. Run "synergy-plugin build" first.`)
+  }
+  for (const required of ["runtime/index.js", "integrity.json", "permissions.summary.json"]) {
+    if (!fs.existsSync(path.join(distDir, required))) {
+      throw new Error(`dist/${required} not found at ${distDir}. Run "synergy-plugin build" first.`)
+    }
+  }
+
+  const distManifest = PluginManifest.parse(
+    JSON.parse(fs.readFileSync(path.join(distDir, "plugin.json"), "utf-8")),
+  ) as PluginManifestType
+  const missing = missingPackagedAssets(distDir, distManifest)
+  if (missing.length > 0) {
+    const details = missing.map((asset) => `  - ${asset.label}: ${asset.packageRelative}`).join("\n")
+    throw new Error(`dist/ is missing manifest-declared plugin assets:\n${details}`)
   }
 
   const tgzName = `${safePackageName(manifest.name)}-${manifest.version}.synergy-plugin.tgz`

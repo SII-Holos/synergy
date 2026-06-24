@@ -7,8 +7,10 @@ import { PluginManifest, type PluginManifest as PluginManifestType } from "@eric
 import { cmd } from "../cmd"
 import { UI } from "../ui"
 import { SIGNING_KEYS_DIR, SIGNING_KEY_FILE } from "../lib/paths"
-import { sha256Content, sha256File } from "../lib/crypto"
+import { sha256File } from "../lib/crypto"
 import type { SignatureMetadata } from "../lib/signature"
+import { baseCapabilities } from "../lib/capability"
+import { computeManifestHash, computePermissionsHash } from "../lib/hash"
 
 interface KeyFile {
   publicKey: string
@@ -64,8 +66,7 @@ export async function signPluginTarball(tarballPath: string, options: { stdout?:
     throw new Error("Failed to parse plugin.normalized.json from tarball")
   }
 
-  const permissionsRaw = extractFromTarball(tarballPath, "permissions.summary.json")
-  if (!permissionsRaw) {
+  if (!extractFromTarball(tarballPath, "permissions.summary.json")) {
     throw new Error("Failed to extract permissions.summary.json from tarball. Has the plugin been built?")
   }
 
@@ -80,8 +81,8 @@ export async function signPluginTarball(tarballPath: string, options: { stdout?:
 
   const payload = {
     tarballHash,
-    manifestHash: sha256Content(manifestRaw),
-    permissionsHash: sha256Content(permissionsRaw),
+    manifestHash: computeManifestHash(manifest),
+    permissionsHash: computePermissionsHash(manifest, baseCapabilities(manifest)),
   }
   const privateKey = await importPrivateKey(keyFile.privateKey)
   const sigRaw = await subtle.sign("Ed25519" as any, privateKey, new TextEncoder().encode(JSON.stringify(payload)))

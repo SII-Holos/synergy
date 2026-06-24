@@ -12,6 +12,7 @@ import { computeRisk } from "../lib/risk"
 import { validateRuntimePolicy, type CheckResult } from "../lib/runtime-policy"
 import { validateRuntimeDiscovery } from "../lib/runtime-discovery"
 import { assertCanonicalPluginIdentity, importUrlForEntry, resolveEntryFromPluginDir } from "../lib/spec"
+import { collectPackagedAssets, resolveUnder } from "../lib/artifact-assets"
 
 function scanExports(source: string): string[] {
   const names = new Set<string>()
@@ -187,21 +188,33 @@ export async function validatePluginProject(pluginPath: string, options: { runti
         checkExport("uiCommand", ui.commands)
       }
     }
+  }
 
-    for (const icon of ui.icons ?? []) {
-      if (!fs.existsSync(path.resolve(pluginDir, icon.path))) {
-        results.push({ type: "error", message: `icon "${icon.name}" path ${icon.path} not found` })
+  const uiSource = findUiSource(pluginDir)
+  let packagedAssets: ReturnType<typeof collectPackagedAssets> = []
+  try {
+    packagedAssets = collectPackagedAssets(m)
+  } catch (error) {
+    results.push({ type: "error", message: error instanceof Error ? error.message : String(error) })
+  }
+  for (const asset of packagedAssets) {
+    if (asset.label === "UI entry" && uiSource && !fs.existsSync(path.resolve(pluginDir, asset.sourceRelative)))
+      continue
+    try {
+      const assetPath = resolveUnder(pluginDir, asset.sourceRelative)
+      if (!fs.existsSync(assetPath)) {
+        results.push({ type: "error", message: `${asset.label} ${asset.sourceRelative} not found` })
+        continue
       }
-    }
-    for (const theme of ui.themes ?? []) {
-      if (!fs.existsSync(path.resolve(pluginDir, theme.path))) {
-        results.push({ type: "error", message: `theme "${theme.id}" path ${theme.path} not found` })
+      const stat = fs.statSync(assetPath)
+      if (asset.kind === "dir" && !stat.isDirectory()) {
+        results.push({ type: "error", message: `${asset.label} ${asset.sourceRelative} is not a directory` })
       }
-    }
-    for (const route of ui.routes ?? []) {
-      if (!fs.existsSync(path.resolve(pluginDir, route.entry))) {
-        results.push({ type: "error", message: `route "${route.path}" entry ${route.entry} not found` })
+      if (asset.kind === "file" && !stat.isFile()) {
+        results.push({ type: "error", message: `${asset.label} ${asset.sourceRelative} is not a file` })
       }
+    } catch (error) {
+      results.push({ type: "error", message: error instanceof Error ? error.message : String(error) })
     }
   }
 
@@ -212,7 +225,12 @@ export async function validatePluginProject(pluginPath: string, options: { runti
 
   if (m.contributes?.config?.schema) {
     if (isValidJsonSchema(m.contributes.config.schema)) results.push({ type: "pass", message: "config schema valid" })
-    else results.push({ type: "warn", message: "config schema does not appear to be valid JSON Schema" })
+    else
+      results.push({
+        type: "warn",
+        message:
+          'config schema does not appear to be valid JSON Schema; wrap plugin settings in a top-level schema such as { "type": "object", "properties": { ... } }',
+      })
   }
 
   const pluginRisk = computeRisk(baseCapabilities(m), m)
@@ -232,9 +250,14 @@ export async function validatePluginProject(pluginPath: string, options: { runti
       try {
         const mod = await import(importUrlForEntry(entryPath, Date.now()))
         const descriptors: PluginDescriptor[] = []
+        const seenDescriptors = new Set<PluginDescriptor>()
         for (const value of Object.values(mod)) {
           if (value && typeof value === "object" && !Array.isArray(value) && "id" in value && "init" in value) {
-            descriptors.push(value as PluginDescriptor)
+            const descriptor = value as PluginDescriptor
+            if (!seenDescriptors.has(descriptor)) {
+              descriptors.push(descriptor)
+              seenDescriptors.add(descriptor)
+            }
           }
         }
 

@@ -6,6 +6,12 @@ import { PluginManifest, type PluginManifest as PluginManifestType } from "@eric
 import { cmd } from "../cmd"
 import { UI } from "../ui"
 import { sha256File, sha256JSON } from "../lib/crypto"
+import {
+  collectPackagedAssets,
+  copyPackagedAsset,
+  hashPackagedFiles,
+  rewritePackagedManifestPaths,
+} from "../lib/artifact-assets"
 
 function ensureDir(dirPath: string) {
   fs.mkdirSync(dirPath, { recursive: true })
@@ -21,28 +27,13 @@ function copyDir(src: string, dest: string) {
   }
 }
 
-function copyFilePreserve(pluginDir: string, distDir: string, relativePath: string) {
-  const normalized = relativePath.replace(/^\.\//, "")
-  const src = path.resolve(pluginDir, normalized)
-  if (!fs.existsSync(src) || !fs.statSync(src).isFile()) return
-  const dest = path.join(distDir, normalized)
-  ensureDir(path.dirname(dest))
-  fs.copyFileSync(src, dest)
-}
-
 function findUiSource(pluginDir: string): string | undefined {
   const candidates = ["src/ui.tsx", "src/ui/index.tsx", "src/ui.ts", "src/ui/index.ts"]
   return candidates.map((candidate) => path.join(pluginDir, candidate)).find((candidate) => fs.existsSync(candidate))
 }
 
 function packagedManifest(manifest: PluginManifestType): PluginManifestType {
-  const next = structuredClone(manifest) as PluginManifestType
-  next.main = "./runtime/index.js"
-  if (next.contributes?.ui?.entry) {
-    next.contributes.ui.entry = next.contributes.ui.entry.replace(/^\.\//, "").replace(/^dist\//, "./")
-    if (!next.contributes.ui.entry.startsWith(".")) next.contributes.ui.entry = `./${next.contributes.ui.entry}`
-  }
-  return next
+  return rewritePackagedManifestPaths(manifest) as PluginManifestType
 }
 
 function permissionSummary(manifest: PluginManifestType): Record<string, unknown> {
@@ -142,6 +133,16 @@ export async function buildPluginProject(pluginDir: string): Promise<boolean> {
     }
   }
 
+  spinner("Copying declared assets")
+  try {
+    for (const asset of collectPackagedAssets(manifest)) {
+      copyPackagedAsset(pluginDir, distDir, asset)
+    }
+  } catch (error) {
+    UI.error(error instanceof Error ? error.message : String(error))
+    return false
+  }
+
   spinner("Normalizing manifest")
   const distManifest = packagedManifest(manifest)
   const distManifestPath = path.join(distDir, "plugin.json")
@@ -166,8 +167,6 @@ export async function buildPluginProject(pluginDir: string): Promise<boolean> {
     spinner("Copying assets")
     copyDir(publicAssetsPath, path.join(distDir, "assets"))
   }
-  for (const theme of manifest.contributes?.ui?.themes ?? []) copyFilePreserve(pluginDir, distDir, theme.path)
-  for (const icon of manifest.contributes?.ui?.icons ?? []) copyFilePreserve(pluginDir, distDir, icon.path)
 
   spinner("Computing integrity hashes")
   const integrity: Record<string, string> = {
@@ -180,7 +179,11 @@ export async function buildPluginProject(pluginDir: string): Promise<boolean> {
     const uiIndex = path.resolve(pluginDir, uiEntry)
     if (fs.existsSync(uiIndex)) integrity.ui = sha256File(uiIndex)
   }
-  fs.writeFileSync(path.join(distDir, "integrity.json"), JSON.stringify(integrity, null, 2))
+  const integrityPayload = {
+    ...integrity,
+    files: hashPackagedFiles(distDir),
+  }
+  fs.writeFileSync(path.join(distDir, "integrity.json"), JSON.stringify(integrityPayload, null, 2))
 
   UI.println(
     `${UI.Style.TEXT_SUCCESS}✔${UI.Style.TEXT_NORMAL} Built ${manifest.name} v${manifest.version} -> ${distDir}`,
