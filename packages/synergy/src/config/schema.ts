@@ -1266,6 +1266,10 @@ export const Info = z
     instructions: z.array(z.string()).optional().describe("Additional instruction files or patterns to include"),
     layout: Layout.optional().describe("@deprecated Always uses stretch layout."),
     permission: Permission.optional(),
+    auto_classifier: z
+      .boolean()
+      .optional()
+      .describe("Enable LLM risk classifier to auto-allow safe permission asks (Stage 4 auto mode)"),
     tools: z.record(z.string(), z.boolean()).optional(),
     enterprise: z
       .object({

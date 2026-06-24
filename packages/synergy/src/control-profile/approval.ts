@@ -19,7 +19,8 @@ export interface ApprovalMetadata {
     | "auto_denied"
     | "policy_denied"
     | "sandbox_blocked"
-  source: "profile" | "automatic" | "user" | "sandbox"
+    | "pre_authorized"
+  source: "profile" | "automatic" | "user" | "sandbox" | "provenance" | "classifier"
   mode?: ProfileApproval["mode"]
   risk?: RiskLevel
   reason?: string
@@ -50,6 +51,7 @@ const HIGH_RISK = new Set([
   "communication_email",
   "channel_outbound",
   "platform_control",
+  "protected_op",
 ])
 
 const MEDIUM_RISK = new Set(["file_write", "shell", "network_request"])

@@ -1871,6 +1871,10 @@ export type Config = {
   instructions?: Array<string>
   layout?: LayoutConfig
   permission?: PermissionConfig
+  /**
+   * Enable LLM risk classifier to auto-allow safe permission asks (Stage 4 auto mode)
+   */
+  auto_classifier?: boolean
   tools?: {
     [key: string]: boolean
   }
@@ -2367,6 +2371,10 @@ export type Session = {
   pinned?: number
   permission?: PermissionRuleset
   controlProfile?: "guarded" | "autonomous" | "full_access"
+  /**
+   * Tool names pre-authorized by the user via system scheduling (e.g. agenda wake). Bypasses the ask gate for these tools within this session only.
+   */
+  preAuthorizedActions?: Array<string>
   pendingReply?: boolean
   interaction?: SessionInteraction
   agenda?: {
@@ -4378,7 +4386,7 @@ export type EventPermissionReplied = {
   properties: {
     sessionID: string
     requestID: string
-    reply: "once" | "reject"
+    reply: "once" | "session" | "always" | "reject"
   }
 }
 
@@ -7035,7 +7043,7 @@ export type SessionUnrevertResponse = SessionUnrevertResponses[keyof SessionUnre
 
 export type PermissionRespondData = {
   body?: {
-    response: "once" | "reject"
+    response: "once" | "session" | "always" | "reject"
   }
   path: {
     sessionID: string
@@ -7071,7 +7079,7 @@ export type PermissionRespondResponse = PermissionRespondResponses[keyof Permiss
 
 export type PermissionReplyData = {
   body?: {
-    reply: "once" | "reject"
+    reply: "once" | "session" | "always" | "reject"
     message?: string
   }
   path: {

@@ -24,7 +24,7 @@ export class ApprovalCache {
 import { buildPermissionProfile, type SynergySandboxPermissionProfile } from "../sandbox/policy-engine"
 import { Filesystem } from "../util/filesystem"
 
-import { PathClassifier } from "./classify"
+import { PathClassifier, checkProtectedPath } from "./classify"
 import { ShellSafety } from "./shell-safety"
 import { ControlProfileCompiler } from "../control-profile/compiler"
 import {
@@ -42,10 +42,13 @@ import type { PluginApprovalRecord } from "../plugin/consent/approval-store.js"
 export interface Capability {
   class: string
   nonBypassable: boolean
-  reason?: string
   opaque?: boolean
   approved?: boolean
   paths?: string[]
+  /** Human-readable explanation of why this capability was flagged. */
+  reason?: string
+  /** Structured metadata about the match (e.g. matched pattern source). */
+  metadata?: Record<string, unknown>
 }
 
 export interface ClassifyResult {
@@ -69,7 +72,6 @@ export interface Envelope {
   decision: "allow" | "ask" | "deny"
   profileId: string
   opaque: boolean
-  canAutoApprove(): boolean
   capabilities: Capability[]
   /** Populated when decision is "deny" — explains why and whether retrying would help */
   refusal?: {
@@ -145,6 +147,149 @@ const DESTRUCTIVE_PATTERNS = [
 ]
 
 const DESTRUCTIVE_REGEX = /(?:^|[\s;&|])dd\s/
+
+/**
+ * Shell command wrappers that should be stripped before destructive analysis.
+ * `timeout 10 rm -rf /` should be analyzed as `rm -rf /`.
+ */
+const COMMAND_WRAPPERS = ["timeout", "nice", "nohup", "exec", "command", "env", "xargs", "sudo", "time"]
+
+/**
+ * Split a compound shell command into its sub-commands for independent
+ * destructive analysis. `rm -rf / && echo done` yields two sub-commands.
+ */
+export function splitCompoundCommands(command: string): string[] {
+  const parts: string[] = []
+  let current = ""
+  let inSingle = false
+  let inDouble = false
+  for (let i = 0; i < command.length; i++) {
+    const ch = command[i]
+    if (ch === "'" && !inDouble) {
+      inSingle = !inSingle
+      current += ch
+      continue
+    }
+    if (ch === '"' && !inSingle) {
+      inDouble = !inDouble
+      current += ch
+      continue
+    }
+    if (!inSingle && !inDouble) {
+      if (ch === "&" && command[i + 1] === "&") {
+        parts.push(current)
+        current = ""
+        i++
+        continue
+      }
+      if (ch === "|" && command[i + 1] === "|") {
+        parts.push(current)
+        current = ""
+        i++
+        continue
+      }
+      if (ch === ";" || ch === "|") {
+        parts.push(current)
+        current = ""
+        continue
+      }
+    }
+    current += ch
+  }
+  if (current.trim()) parts.push(current)
+  return parts
+}
+
+/**
+ * Strip leading wrapper commands (timeout, sudo, etc.) to reveal the actual
+ * command being run.
+ */
+export function stripWrappers(command: string): string {
+  let cmd = command.trim()
+  let changed = true
+  while (changed) {
+    changed = false
+    for (const wrapper of COMMAND_WRAPPERS) {
+      const regex = new RegExp(`^${wrapper}\\s+`, "i")
+      const match = cmd.match(regex)
+      if (match) {
+        cmd = cmd.slice(match[0].length)
+        // Strip a single following argument (the wrapper's own arg, e.g. "10s" for timeout)
+        // But be careful not to strip the actual command. Heuristic: if the next token
+        // looks like a flag (-x) or a number/time, strip it. Otherwise leave it.
+        const nextTokenMatch = cmd.match(/^(\S+)\s+/)
+        if (nextTokenMatch) {
+          const nextToken = nextTokenMatch[1]
+          if (/^(-|\d)/.test(nextToken)) {
+            cmd = cmd.slice(nextTokenMatch[0].length)
+          }
+        }
+        changed = true
+        break
+      }
+    }
+  }
+  return cmd
+}
+
+export interface DestructiveMatch {
+  matched: boolean
+  reason?: string
+  pattern?: string
+}
+
+/**
+ * Resilient destructive patterns. Uses regex with flexible whitespace and
+ * handles common bypass techniques (extra spaces, quotes around paths).
+ */
+const DESTRUCTIVE_PATTERNS_RESILIENT: { regex: RegExp; label: string }[] = [
+  // rm -rf with flexible whitespace, optional quotes around target
+  { regex: /\brm\s+(-[a-z]*r[a-z]*f?|--recursive|--force)[^\n]*\b/s, label: "rm recursive/force" },
+  { regex: /\brm\s+-[a-z]*f[a-z]*r?[^\n]*\b/s, label: "rm force" },
+  // rm with wildcard or root/home target
+  { regex: /\brm\s+[^\n]*\s+\/(\s|$|\*)/, label: "rm targeting root" },
+  { regex: /\brm\s+[^\n]*\s+~(\s|$|\*)/, label: "rm targeting home" },
+  { regex: /\brm\s+[^\n]*\s+\*(\s|$)/, label: "rm with wildcard" },
+  // git history rewrite / destructive ops
+  { regex: /\bgit\s+push\b[^\n]*--force\b/i, label: "git push --force" },
+  { regex: /\bgit\s+push\b[^\n]*-f\b/i, label: "git push -f" },
+  { regex: /\bgit\s+reset\s+--hard\b/i, label: "git reset --hard" },
+  { regex: /\bgit\s+clean\s+-[a-z]*d[a-z]*f?/i, label: "git clean -d" },
+  // chmod 777 on sensitive paths
+  { regex: /\bchmod\s+(-R\s+)?[0-7]{3,4}\s+\/(\s|$)/i, label: "chmod on root" },
+  // shred (secure delete)
+  { regex: /\bshred\b/i, label: "shred (secure delete)" },
+  // dd to a device (not a file)
+  { regex: /\bdd\b[^\n]*\bof=\/dev\//i, label: "dd to device" },
+  // mkfs (filesystem format)
+  { regex: /\bmkfs\b/i, label: "mkfs (format filesystem)" },
+  // Mass deletion via find -delete or find -exec rm
+  { regex: /\bfind\b[^\n]*-delete\b/i, label: "find -delete" },
+  { regex: /\bfind\b[^\n]*-exec\s+rm\b/i, label: "find -exec rm" },
+]
+
+/**
+ * Analyze a shell command for destructive patterns. Splits compound commands,
+ * strips wrappers, and checks each sub-command independently.
+ */
+export function analyzeDestructiveCommand(command: string): DestructiveMatch {
+  if (!command || !command.trim()) return { matched: false }
+  const subCommands = splitCompoundCommands(command)
+  for (const sub of subCommands) {
+    const stripped = stripWrappers(sub).trim()
+    if (!stripped) continue
+    for (const pattern of DESTRUCTIVE_PATTERNS_RESILIENT) {
+      if (pattern.regex.test(stripped)) {
+        return {
+          matched: true,
+          reason: `Destructive pattern: ${pattern.label}`,
+          pattern: pattern.regex.source,
+        }
+      }
+    }
+  }
+  return { matched: false }
+}
 
 const NETWORK_PATTERNS = [
   "curl ",
@@ -317,6 +462,18 @@ function classifyPathCapability(
   }
 }
 
+function classifyProtectedPathCapability(caps: Capability[], pathInput: string, mode: "read" | "write") {
+  const protectedMatch = checkProtectedPath(pathInput, mode)
+  if (!protectedMatch.matched) return
+  uniqueCapability(caps, {
+    class: "protected_op",
+    nonBypassable: true,
+    opaque: true,
+    reason: protectedMatch.reason,
+    metadata: { protectedCategory: protectedMatch.category },
+  })
+}
+
 function extractShellPathArguments(command: string, cwd: string): string[] {
   const paths: string[] = []
   const commandPattern =
@@ -390,6 +547,19 @@ export namespace EnforcementGate {
 
     function classify(toolName: string, args: Record<string, any>): ClassifyResult {
       const caps: Capability[] = []
+
+      // Protected path hard boundary — checked first so it applies to every
+      // path-bearing tool regardless of profile/mode. A match forces an ask
+      // even in full_access because the capability is nonBypassable+opaque
+      // and profiles.ts hard-codes protected_op → "ask".
+      const pathArg = (args.path as string) ?? (args.file_path as string) ?? (args.filePath as string)
+      if (pathArg) {
+        const mode =
+          toolName === "write" || toolName === "edit" || toolName === "revise_file" || toolName === "save_file"
+            ? "write"
+            : "read"
+        classifyProtectedPathCapability(caps, pathArg, mode)
+      }
 
       // MCP tools: mcp__server__tool
       if (toolName.startsWith("mcp__")) {
@@ -500,11 +670,13 @@ export namespace EnforcementGate {
           const paths =
             multiPaths.length > 0 ? multiPaths : ([pathFromHashlinePatch(args.input)].filter(Boolean) as string[])
           for (const p of paths) {
+            classifyProtectedPathCapability(caps, p, "write")
             classifyPathCapability(caps, p, { activeWorkspace, originalCheckout, write: true })
           }
         } else {
           const filePath = args.filePath ?? args.path ?? ""
           if (filePath) {
+            classifyProtectedPathCapability(caps, filePath, "write")
             classifyPathCapability(caps, filePath, { activeWorkspace, originalCheckout, write: true })
           }
         }
@@ -551,21 +723,37 @@ export namespace EnforcementGate {
           })
           return { capabilities: caps }
         }
-        caps.push({ class: risk, nonBypassable: false })
 
-        if (risk === "shell_destructive") {
-          caps[caps.length - 1].nonBypassable = true
-          const extraReason = isDestructive(command)
-          if (extraReason) {
-            caps[caps.length - 1].reason = `matched destructive pattern: ${extraReason}`
+        // shell_destructive is high-risk by definition; it must always be a hard
+        // boundary so the classifier can never bypass a profile deny on it.
+        caps.push({ class: risk, nonBypassable: risk === "shell_destructive" })
+
+        if (risk !== "shell_destructive") {
+          const resilient = analyzeDestructiveCommand(command)
+          if (resilient.matched) {
+            caps.push({
+              class: "shell_destructive",
+              nonBypassable: true,
+              reason: resilient.reason,
+              metadata: { pattern: resilient.pattern },
+            })
+          } else {
+            const matched = isDestructive(command)
+            if (matched) {
+              caps.push({
+                class: "shell_destructive",
+                nonBypassable: true,
+                reason: `matched destructive pattern: ${matched}`,
+              })
+            }
           }
-        } else if (isDestructive(command)) {
+        } else {
+          // ShellSafety already classified as shell_destructive — annotate the
+          // existing capability with diagnostic reason from the pattern list.
           const matched = isDestructive(command)
-          caps.push({
-            class: "shell_destructive",
-            nonBypassable: true,
-            reason: matched ? `matched destructive pattern: ${matched}` : undefined,
-          })
+          if (matched) {
+            caps[caps.length - 1].reason = `matched destructive pattern: ${matched}`
+          }
         }
 
         const cwd = args.workdir ?? activeWorkspace
@@ -578,6 +766,7 @@ export namespace EnforcementGate {
         // shell / shell_destructive → write-capable (builds, scripts, destructive ops)
         const writeCapable = risk !== "shell_read"
         for (const candidate of pathCandidates) {
+          classifyProtectedPathCapability(caps, candidate, writeCapable ? "write" : "read")
           const result = PathClassifier.classifyPath(candidate, { workspace: activeWorkspace, originalCheckout })
           if (result.boundary === "outside") {
             uniqueCapability(caps, {
@@ -859,9 +1048,6 @@ export namespace EnforcementGate {
             opaque: false,
             capabilities: [],
             amendment,
-            canAutoApprove() {
-              return true
-            },
           }
         }
 
@@ -879,9 +1065,6 @@ export namespace EnforcementGate {
               reason: `ExecPolicy forbids command prefix [${execPolicyMatch.matchedRule?.prefix?.join(" ") ?? ""}]`,
               permanent: true,
               matchedPermission: "shell_hardline",
-            },
-            canAutoApprove() {
-              return false
             },
           }
         }
@@ -984,9 +1167,6 @@ export namespace EnforcementGate {
         capabilities,
         refusal,
         amendment,
-        canAutoApprove() {
-          return !capabilities.some((c) => c.nonBypassable || c.opaque)
-        },
       }
     }
 

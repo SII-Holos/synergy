@@ -25,8 +25,11 @@ export default function Layout(props: ParentProps) {
           {iife(() => {
             const sync = useSync()
             const sdk = useSDK()
-            const respond = (input: { sessionID: string; permissionID: string; response: "once" | "reject" }) =>
-              sdk.client.permission.respond(input)
+            const respond = (input: {
+              sessionID: string
+              permissionID: string
+              response: "once" | "session" | "always" | "reject"
+            }) => sdk.client.permission.respond(input)
 
             const routeDir = (scope: { type?: string; directory?: string }) =>
               base64Encode(scope.type === "global" ? "global" : (scope.directory ?? directory()))

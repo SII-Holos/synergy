@@ -8,6 +8,7 @@ export namespace TimeoutConfig {
     providerWallMs: number | false
     toolDefaultMs: number
     toolOverrides: Record<string, number>
+    permissionAskMs: number
   }
 
   const DEFAULTS: Resolved = {
@@ -17,6 +18,7 @@ export namespace TimeoutConfig {
     providerWallMs: 0,
     toolDefaultMs: 300_000,
     toolOverrides: {},
+    permissionAskMs: 300_000,
   }
 
   let cached: Resolved | undefined
@@ -30,6 +32,7 @@ export namespace TimeoutConfig {
           invoke_sec?: number
           provider?: { ttfb_sec?: number; idle_sec?: number | false; wall_sec?: number | false }
           tool?: { default_sec?: number; overrides?: Record<string, number> }
+          permission?: { ask_sec?: number }
         }
       | undefined
 
@@ -60,6 +63,7 @@ export namespace TimeoutConfig {
       toolOverrides: timeout?.tool?.overrides
         ? Object.fromEntries(Object.entries(timeout.tool.overrides).map(([k, v]) => [k, v * 1000]))
         : DEFAULTS.toolOverrides,
+      permissionAskMs: secToMs(timeout?.permission?.ask_sec, DEFAULTS.permissionAskMs),
     }
 
     return cached

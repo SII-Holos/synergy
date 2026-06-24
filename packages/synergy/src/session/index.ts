@@ -164,6 +164,7 @@ export namespace Session {
     title?: string
     permission?: PermissionNext.Ruleset
     controlProfile?: Info["controlProfile"]
+    preAuthorizedActions?: string[]
     endpoint?: SessionEndpoint.Info
     id?: string
     agenda?: { itemID: string }
@@ -202,6 +203,7 @@ export namespace Session {
       title: input?.title ?? createDefaultTitle(!!input?.parentID),
       permission: input?.permission,
       controlProfile,
+      preAuthorizedActions: input?.preAuthorizedActions,
       endpoint,
       interaction: inheritedInteraction,
       agenda: input?.agenda,

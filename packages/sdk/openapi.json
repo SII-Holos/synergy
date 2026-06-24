@@ -4533,7 +4533,7 @@
                 "properties": {
                   "response": {
                     "type": "string",
-                    "enum": ["once", "reject"]
+                    "enum": ["once", "session", "always", "reject"]
                   }
                 },
                 "required": ["response"]
@@ -4611,7 +4611,7 @@
                 "properties": {
                   "reply": {
                     "type": "string",
-                    "enum": ["once", "reject"]
+                    "enum": ["once", "session", "always", "reject"]
                   },
                   "message": {
                     "type": "string"
@@ -17081,6 +17081,10 @@
           "permission": {
             "$ref": "#/components/schemas/PermissionConfig"
           },
+          "auto_classifier": {
+            "description": "Enable LLM risk classifier to auto-allow safe permission asks (Stage 4 auto mode)",
+            "type": "boolean"
+          },
           "tools": {
             "type": "object",
             "propertyNames": {
@@ -18372,6 +18376,13 @@
           "controlProfile": {
             "type": "string",
             "enum": ["guarded", "autonomous", "full_access"]
+          },
+          "preAuthorizedActions": {
+            "description": "Tool names pre-authorized by the user via system scheduling (e.g. agenda wake). Bypasses the ask gate for these tools within this session only.",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           },
           "pendingReply": {
             "type": "boolean"
@@ -24290,7 +24301,7 @@
               },
               "reply": {
                 "type": "string",
-                "enum": ["once", "reject"]
+                "enum": ["once", "session", "always", "reject"]
               }
             },
             "required": ["sessionID", "requestID", "reply"]

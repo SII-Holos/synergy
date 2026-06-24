@@ -190,4 +190,5 @@ export type AdvancedStore = {
   compaction_overflow_threshold: string
   permission: string
   question_timeout: string
+  auto_classifier: string
 }
