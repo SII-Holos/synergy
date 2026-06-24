@@ -637,10 +637,18 @@ export function Sidebar(props: SidebarProps) {
                 <div ref={scopeListRef}>
                   <For each={scopes()}>
                     {(scope) => {
-                      const isActive = () => scope.worktree === currentDirectory()
                       const [menuOpen, setMenuOpen] = createSignal(false)
                       const isSupplemental = layout.scopes.isSupplemental(scope)
                       const navLoaded = () => !!layout.nav.navEntries()[scope.worktree]
+                      const activeSessionVisible = createMemo(() => {
+                        const activeID = params.id
+                        if (!scope.expanded || !activeID) return false
+                        if (isSupplemental && !navLoaded()) return false
+                        return layout.nav.projectNavEntries(scope).some((entry) => entry.id === activeID)
+                      })
+                      const isActive = createMemo(
+                        () => scope.worktree === currentDirectory() && !activeSessionVisible(),
+                      )
 
                       return (
                         <div class="sb-project-group" data-scope-id={scope.id || scope.worktree}>
