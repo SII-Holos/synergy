@@ -339,6 +339,7 @@ type DisplayGroup = NoteMetaScopeGroup & {
   name: string
   directory: string
   isCurrent: boolean
+  archived?: boolean
 }
 
 function ScopeSection(props: {
@@ -374,7 +375,7 @@ function ScopeSection(props: {
     if (props.group.scopeType !== "global") return undefined
     const origin = note.originScope
     if (!origin) return undefined
-    return props.scopeLookup.get(origin)?.name ?? origin
+    return props.scopeLookup.get(origin)?.name ?? "Archived project"
   }
 
   return (
@@ -402,8 +403,11 @@ function ScopeSection(props: {
           <Show when={props.group.scopeType === "global"}>
             <Icon name="home" size="small" class="text-icon-weak shrink-0" />
           </Show>
-          <Show when={props.group.scopeType === "project"}>
+          <Show when={props.group.scopeType === "project" && !props.group.archived}>
             <Icon name="folder" size="small" class="text-icon-weak shrink-0" />
+          </Show>
+          <Show when={props.group.archived}>
+            <Icon name="archive" size="small" class="text-icon-weak shrink-0" />
           </Show>
           <span class="min-w-0 truncate text-12-medium text-text-strong">{props.group.name}</span>
           <Show when={props.group.isCurrent}>
@@ -420,9 +424,11 @@ function ScopeSection(props: {
             </span>
           </Show>
         </button>
-        <button type="button" class="note-scope-new-button" onClick={props.onCreateNote} title="New note">
-          <Icon name="plus" size="small" />
-        </button>
+        <Show when={!props.group.archived}>
+          <button type="button" class="note-scope-new-button" onClick={props.onCreateNote} title="New note">
+            <Icon name="plus" size="small" />
+          </button>
+        </Show>
       </div>
 
       <Show
@@ -572,14 +578,16 @@ export function NotePanel() {
     const curID = currentScopeID()
     const q = search().toLowerCase().trim()
     const activeTags = selectedTags()
+    const archivedNotes: NoteCardInfo[] = []
 
-    return groups
-      .map((g): DisplayGroup => {
+    const mapped = groups
+      .map((g): DisplayGroup | undefined => {
         const meta = lookup.get(g.scopeID)
         const isCurrent = g.scopeID === curID
+        const archived = g.scopeType === "project" && !meta && !isCurrent
         const groupDirectory =
           meta?.directory ?? (g.scopeID === "global" ? "global" : isCurrent ? (directory() ?? "") : "")
-        let notes = [...g.notes]
+        let notes: NoteCardInfo[] = [...g.notes]
         if (q) {
           notes = notes.filter((n) => {
             if (n.title.toLowerCase().includes(q)) return true
@@ -594,20 +602,44 @@ export function NotePanel() {
           if (a.pinned !== b.pinned) return a.pinned ? -1 : 1
           return b.time.updated - a.time.updated
         })
+        if (archived) {
+          archivedNotes.push(...notes)
+          return undefined
+        }
         return {
           ...g,
           notes,
-          name: meta?.name ?? g.scopeID,
+          name: meta?.name ?? (g.scopeID === "global" ? getScopeLabel(undefined, "global") : "Archived project"),
           directory: groupDirectory,
           isCurrent,
         }
       })
+      .filter((g): g is DisplayGroup => g !== undefined)
+
+    if (archivedNotes.length > 0) {
+      archivedNotes.sort((a, b) => {
+        if (a.pinned !== b.pinned) return a.pinned ? -1 : 1
+        return b.time.updated - a.time.updated
+      })
+      mapped.push({
+        scopeID: "__archived_projects__",
+        scopeType: "project",
+        notes: archivedNotes,
+        name: "Archived projects",
+        directory: directory() ?? "global",
+        isCurrent: false,
+        archived: true,
+      })
+    }
+
+    return mapped
       .filter((g) => {
         const hasFilters = q || activeTags.size > 0
         return hasFilters ? g.notes.length > 0 : g.notes.length > 0 || g.isCurrent
       })
       .sort((a, b) => {
         if (a.isCurrent !== b.isCurrent) return a.isCurrent ? -1 : 1
+        if ((a.archived ?? false) !== (b.archived ?? false)) return a.archived ? 1 : -1
         const latestA = a.notes[0]?.time.updated ?? 0
         const latestB = b.notes[0]?.time.updated ?? 0
         return latestB - latestA

@@ -132,6 +132,16 @@ export namespace NoteStore {
         // fallthrough
       }
     }
+    const scopeIDs = await Storage.scan(["notes"])
+    for (const candidate of scopeIDs) {
+      if (candidate === scopeID || candidate === "global") continue
+      try {
+        const note = await Storage.read<NoteTypes.Info>(StoragePath.note(Identifier.asScopeID(candidate), noteID))
+        return { scopeID: candidate, note: normalize(note) }
+      } catch {
+        // continue
+      }
+    }
     throw new Storage.NotFoundError({ message: `Note not found: ${noteID}` })
   }
 
