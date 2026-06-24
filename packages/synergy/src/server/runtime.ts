@@ -11,6 +11,7 @@ import { Provider } from "../provider/provider"
 import { DaemonLogRotate } from "../daemon/log-rotate"
 import { SingleInstance } from "../daemon/single-instance"
 import { StartupReporter } from "../cli/startup-reporter"
+import { Flag } from "../flag/flag"
 
 const log = Log.create({ service: "server-runtime" })
 
@@ -107,7 +108,7 @@ function renderBanner(input: {
   input.reporter.render({
     title: `Synergy ${Installation.VERSION}`,
     rows: [
-      { label: "Scope", value: Instance.directory },
+      { label: "Scope", value: startupScopeLabel() },
       { label: "Server", value: url },
       { label: "Bind", value: bind },
       { label: "Logs", value: Log.file() || "stderr" },
@@ -115,6 +116,10 @@ function renderBanner(input: {
     statuses: input.statuses,
     next: ["synergy web" + attach, "synergy send" + attach + ' "your message"'],
   })
+}
+
+export function startupScopeLabel() {
+  return Flag.SYNERGY_CWD || process.cwd()
 }
 
 async function hasNoModelConfigured() {
