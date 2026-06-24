@@ -364,9 +364,17 @@ import type {
   SessionForkResponses,
   SessionGetErrors,
   SessionGetResponses,
+  SessionInboxErrors,
+  SessionInboxGuideErrors,
+  SessionInboxGuideResponses,
+  SessionInboxRemoveErrors,
+  SessionInboxRemoveResponses,
+  SessionInboxResponses,
   SessionIndexResponses,
   SessionInitErrors,
   SessionInitResponses,
+  SessionInputErrors,
+  SessionInputResponses,
   SessionListResponses,
   SessionMessageErrors,
   SessionMessageResponses,
@@ -1705,6 +1713,174 @@ export class Session extends HeyApiClient {
       ...options,
       ...params,
     })
+  }
+
+  /**
+   * List session inbox items
+   *
+   * Get active queued user messages and agent updates for a session.
+   */
+  public inbox<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      directory?: string
+      scopeID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<SessionInboxResponses, SessionInboxErrors, ThrowOnError>({
+      url: "/session/{sessionID}/inbox",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Submit session input
+   *
+   * Submit user input to a session. If the session is running, the input is queued in the session inbox; otherwise a new turn starts immediately.
+   */
+  public input<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      directory?: string
+      scopeID?: string
+      messageID?: string
+      model?: {
+        providerID: string
+        modelID: string
+      }
+      agent?: string
+      noReply?: boolean
+      metadata?: {
+        [key: string]: unknown
+      }
+      summary?: {
+        title?: string
+      }
+      tools?: {
+        [key: string]: boolean
+      }
+      system?: string
+      variant?: string
+      parts?: Array<TextPartInput | FilePartInput>
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { in: "body", key: "messageID" },
+            { in: "body", key: "model" },
+            { in: "body", key: "agent" },
+            { in: "body", key: "noReply" },
+            { in: "body", key: "metadata" },
+            { in: "body", key: "summary" },
+            { in: "body", key: "tools" },
+            { in: "body", key: "system" },
+            { in: "body", key: "variant" },
+            { in: "body", key: "parts" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<SessionInputResponses, SessionInputErrors, ThrowOnError>({
+      url: "/session/{sessionID}/input",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Guide current run with inbox item
+   *
+   * Promote a queued user message so it is added before the next model request in the current run.
+   */
+  public inboxGuide<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      itemID: string
+      directory?: string
+      scopeID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "path", key: "itemID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<SessionInboxGuideResponses, SessionInboxGuideErrors, ThrowOnError>({
+      url: "/session/{sessionID}/inbox/{itemID}/guide",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Remove inbox item
+   *
+   * Remove a queued user message from the session inbox.
+   */
+  public inboxRemove<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      itemID: string
+      directory?: string
+      scopeID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "path", key: "itemID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).delete<SessionInboxRemoveResponses, SessionInboxRemoveErrors, ThrowOnError>(
+      {
+        url: "/session/{sessionID}/inbox/{itemID}",
+        ...options,
+        ...params,
+      },
+    )
   }
 
   /**

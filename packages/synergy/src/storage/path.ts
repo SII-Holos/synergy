@@ -46,6 +46,14 @@ export namespace StoragePath {
   ]
   export const sessionTodo = (scopeID: ScopeID, sessionID: SessionID) => [...sessionRoot(scopeID, sessionID), "todo"]
   export const sessionDag = (scopeID: ScopeID, sessionID: SessionID) => [...sessionRoot(scopeID, sessionID), "dag"]
+  export const sessionInboxRoot = (scopeID: ScopeID, sessionID: SessionID) => [
+    ...sessionRoot(scopeID, sessionID),
+    "inbox",
+  ]
+  export const sessionInboxItem = (scopeID: ScopeID, sessionID: SessionID, itemID: string) => [
+    ...sessionInboxRoot(scopeID, sessionID),
+    itemID,
+  ]
   export const sessionMessagesRoot = (scopeID: ScopeID, sessionID: SessionID) => [
     ...sessionRoot(scopeID, sessionID),
     "messages",

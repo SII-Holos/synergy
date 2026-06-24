@@ -663,7 +663,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
 
   const sendQuickAction = (text: string) => {
     const sessionID = params.id
-    if (!sessionID || working()) return
+    if (!sessionID) return
 
     const currentModel = local.model.current()
     const currentAgent = local.agent.current()
@@ -676,20 +676,23 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     const textPart = { id: Identifier.ascending("part"), type: "text" as const, text }
 
     const optimistic: Message = { id: messageID, sessionID, role: "user", time: { created: Date.now() }, agent, model }
-    sync.set(
-      produce((draft) => {
-        const messages = draft.message[sessionID]
-        if (!messages) {
-          draft.message[sessionID] = [optimistic]
-        } else {
-          const { index } = Binary.search(messages, messageID, (m) => m.id)
-          messages.splice(index, 0, optimistic)
-        }
-        draft.part[messageID] = [{ ...textPart, sessionID, messageID }] as unknown as Part[]
-      }),
-    )
-
-    sdk.client.session.promptAsync({ sessionID, agent, model, messageID, parts: [textPart], variant }).catch(() => {
+    let optimisticAdded = false
+    const addOptimisticMessage = () => {
+      sync.set(
+        produce((draft) => {
+          const messages = draft.message[sessionID]
+          if (!messages) {
+            draft.message[sessionID] = [optimistic]
+          } else {
+            const { index } = Binary.search(messages, messageID, (m) => m.id)
+            messages.splice(index, 0, optimistic)
+          }
+          draft.part[messageID] = [{ ...textPart, sessionID, messageID }] as unknown as Part[]
+        }),
+      )
+      optimisticAdded = true
+    }
+    const removeOptimisticMessage = () => {
       sync.set(
         produce((draft) => {
           const messages = draft.message[sessionID]
@@ -700,7 +703,19 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
           delete draft.part[messageID]
         }),
       )
-    })
+      optimisticAdded = false
+    }
+
+    if (!working()) addOptimisticMessage()
+
+    sdk.client.session
+      .input({ sessionID, agent, model, messageID, parts: [textPart], variant })
+      .then((result) => {
+        if (result.data?.status === "queued" && optimisticAdded) removeOptimisticMessage()
+      })
+      .catch(() => {
+        if (optimisticAdded) removeOptimisticMessage()
+      })
   }
 
   const addToHistory = (prompt: Prompt, mode: "normal" | "shell") => {
@@ -926,7 +941,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
             class="relative"
             onSend={sendQuickAction}
             onCommand={(id) => command.trigger(id)}
-            disabled={working()}
+            commandsDisabled={working()}
           />
         </div>
       </Show>

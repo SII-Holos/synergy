@@ -2747,6 +2747,114 @@ export type SessionAgendaResponse = {
   hasMore: boolean
 }
 
+export type SessionInboxItemSource = {
+  type: string
+  label?: string
+  [key: string]: unknown | string | undefined
+}
+
+export type SessionInboxItem = {
+  id: string
+  sessionID: string
+  kind: "queued_user" | "guiding" | "agent_update"
+  state: "queued" | "guiding"
+  deliveryTarget: "after_turn" | "next_model_call"
+  summary: {
+    title: string
+    preview?: string
+  }
+  detail?: {
+    text?: string
+    attachments?: Array<string>
+  }
+  source: SessionInboxItemSource
+  time: {
+    created: number
+    updated?: number
+  }
+  orderKey: string
+  messageID?: string
+}
+
+export type SessionInputResult =
+  | {
+      status: "started"
+      messageID: string
+    }
+  | {
+      status: "queued"
+      item: SessionInboxItem
+    }
+
+export type TextPartInput = {
+  id?: string
+  type: "text"
+  text: string
+  synthetic?: boolean
+  ignored?: boolean
+  time?: {
+    start: number
+    end?: number
+  }
+  metadata?: {
+    [key: string]: unknown
+  }
+}
+
+export type FilePartSourceText = {
+  value: string
+  start: number
+  end: number
+}
+
+export type FileSource = {
+  text: FilePartSourceText
+  type: "file"
+  path: string
+}
+
+export type Range = {
+  start: {
+    line: number
+    character: number
+  }
+  end: {
+    line: number
+    character: number
+  }
+}
+
+export type SymbolSource = {
+  text: FilePartSourceText
+  type: "symbol"
+  path: string
+  range: Range
+  name: string
+  kind: number
+}
+
+export type ResourceSource = {
+  text: FilePartSourceText
+  type: "resource"
+  clientName: string
+  uri: string
+}
+
+export type FilePartSource = FileSource | SymbolSource | ResourceSource
+
+export type FilePartInput = {
+  id?: string
+  type: "file"
+  mime: string
+  filename?: string
+  url: string
+  localPath?: string
+  source?: FilePartSource
+  metadata?: {
+    [key: string]: unknown
+  }
+}
+
 export type UserMessage = {
   id: string
   sessionID: string
@@ -2887,47 +2995,6 @@ export type ReasoningPart = {
     end?: number
   }
 }
-
-export type FilePartSourceText = {
-  value: string
-  start: number
-  end: number
-}
-
-export type FileSource = {
-  text: FilePartSourceText
-  type: "file"
-  path: string
-}
-
-export type Range = {
-  start: {
-    line: number
-    character: number
-  }
-  end: {
-    line: number
-    character: number
-  }
-}
-
-export type SymbolSource = {
-  text: FilePartSourceText
-  type: "symbol"
-  path: string
-  range: Range
-  name: string
-  kind: number
-}
-
-export type ResourceSource = {
-  text: FilePartSourceText
-  type: "resource"
-  clientName: string
-  uri: string
-}
-
-export type FilePartSource = FileSource | SymbolSource | ResourceSource
 
 export type FilePart = {
   id: string
@@ -3098,34 +3165,6 @@ export type Part =
   | PatchPart
   | RetryPart
   | CompactionPart
-
-export type TextPartInput = {
-  id?: string
-  type: "text"
-  text: string
-  synthetic?: boolean
-  ignored?: boolean
-  time?: {
-    start: number
-    end?: number
-  }
-  metadata?: {
-    [key: string]: unknown
-  }
-}
-
-export type FilePartInput = {
-  id?: string
-  type: "file"
-  mime: string
-  filename?: string
-  url: string
-  localPath?: string
-  source?: FilePartSource
-  metadata?: {
-    [key: string]: unknown
-  }
-}
 
 export type SessionRollbackEvent = {
   id: string
@@ -4610,6 +4649,14 @@ export type EventSessionIdle = {
   }
 }
 
+export type EventSessionInboxUpdated = {
+  type: "session.inbox.updated"
+  properties: {
+    sessionID: string
+    items: Array<SessionInboxItem>
+  }
+}
+
 export type EventNoteCreated = {
   type: "note.created"
   properties: {
@@ -4944,6 +4991,7 @@ export type Event =
   | EventSessionError
   | EventSessionStatus
   | EventSessionIdle
+  | EventSessionInboxUpdated
   | EventNoteCreated
   | EventNoteUpdated
   | EventNoteDeleted
@@ -6961,6 +7009,185 @@ export type SessionAbortResponses = {
 }
 
 export type SessionAbortResponse = SessionAbortResponses[keyof SessionAbortResponses]
+
+export type SessionInboxData = {
+  body?: never
+  path: {
+    /**
+     * Session ID
+     */
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/session/{sessionID}/inbox"
+}
+
+export type SessionInboxErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type SessionInboxError = SessionInboxErrors[keyof SessionInboxErrors]
+
+export type SessionInboxResponses = {
+  /**
+   * Session inbox items
+   */
+  200: Array<SessionInboxItem>
+}
+
+export type SessionInboxResponse = SessionInboxResponses[keyof SessionInboxResponses]
+
+export type SessionInputData = {
+  body?: {
+    messageID?: string
+    model?: {
+      providerID: string
+      modelID: string
+    }
+    agent?: string
+    noReply?: boolean
+    metadata?: {
+      [key: string]: unknown
+    }
+    summary?: {
+      title?: string
+    }
+    /**
+     * Per-prompt tool visibility toggle. Does not affect session permissions.
+     */
+    tools?: {
+      [key: string]: boolean
+    }
+    system?: string
+    variant?: string
+    parts: Array<TextPartInput | FilePartInput>
+  }
+  path: {
+    /**
+     * Session ID
+     */
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/session/{sessionID}/input"
+}
+
+export type SessionInputErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type SessionInputError = SessionInputErrors[keyof SessionInputErrors]
+
+export type SessionInputResponses = {
+  /**
+   * Input accepted
+   */
+  200: SessionInputResult
+}
+
+export type SessionInputResponse = SessionInputResponses[keyof SessionInputResponses]
+
+export type SessionInboxGuideData = {
+  body?: never
+  path: {
+    /**
+     * Session ID
+     */
+    sessionID: string
+    /**
+     * Inbox item ID
+     */
+    itemID: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/session/{sessionID}/inbox/{itemID}/guide"
+}
+
+export type SessionInboxGuideErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type SessionInboxGuideError = SessionInboxGuideErrors[keyof SessionInboxGuideErrors]
+
+export type SessionInboxGuideResponses = {
+  /**
+   * Promoted inbox item
+   */
+  200: SessionInboxItem
+}
+
+export type SessionInboxGuideResponse = SessionInboxGuideResponses[keyof SessionInboxGuideResponses]
+
+export type SessionInboxRemoveData = {
+  body?: never
+  path: {
+    /**
+     * Session ID
+     */
+    sessionID: string
+    /**
+     * Inbox item ID
+     */
+    itemID: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/session/{sessionID}/inbox/{itemID}"
+}
+
+export type SessionInboxRemoveErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type SessionInboxRemoveError = SessionInboxRemoveErrors[keyof SessionInboxRemoveErrors]
+
+export type SessionInboxRemoveResponses = {
+  /**
+   * Inbox item removed
+   */
+  204: void
+}
+
+export type SessionInboxRemoveResponse = SessionInboxRemoveResponses[keyof SessionInboxRemoveResponses]
 
 export type SessionSummarizeData = {
   body?: {

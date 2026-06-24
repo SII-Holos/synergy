@@ -18,6 +18,7 @@ import {
   type QuestionRequest,
   type CortexTask,
   type AgendaItem,
+  type SessionInboxItem,
   createSynergyClient,
 } from "@ericsanchezok/synergy-sdk/client"
 import { createStore, produce, reconcile } from "solid-js/store"
@@ -85,6 +86,9 @@ type State = {
   }
   question: {
     [sessionID: string]: QuestionRequest[]
+  }
+  inbox: {
+    [sessionID: string]: SessionInboxItem[]
   }
   mcp: {
     [name: string]: McpStatus
@@ -209,6 +213,7 @@ function createGlobalSync() {
         dag: {},
         permission: {},
         question: {},
+        inbox: {},
         mcp: {},
         lsp: [],
         cortex: [],
@@ -715,6 +720,10 @@ function createGlobalSync() {
         setStore("session_status", event.properties.sessionID, reconcile(event.properties.status))
         break
       }
+      case "session.inbox.updated": {
+        setStore("inbox", event.properties.sessionID, reconcile(event.properties.items, { key: "id" }))
+        break
+      }
       case "message.updated": {
         const messages = store.message[event.properties.info.sessionID]
         if (!messages) {
@@ -941,6 +950,7 @@ function createGlobalSync() {
               }
               delete draft.message[sessionID]
               delete draft.session_diff[sessionID]
+              delete draft.inbox[sessionID]
             }),
           )
         })

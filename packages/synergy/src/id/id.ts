@@ -27,6 +27,7 @@ export namespace Identifier {
     process: "proc",
     memory: "mem",
     agenda: "agd",
+    inbox: "inb",
     note: "nte",
     blueprint_loop: "bll",
     history: "hst",

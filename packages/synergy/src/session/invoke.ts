@@ -31,6 +31,7 @@ import { SessionProcessor } from "./processor"
 import { ExternalAgentProcessor } from "@/external-agent/processor"
 import { ExternalAgent } from "@/external-agent/bridge"
 import { SessionManager } from "./manager"
+import { SessionInbox } from "./inbox"
 import { TimeoutConfig } from "@/util/timeout-config"
 import { ToolResolver } from "./tool-resolver"
 import { PromptBudgeter } from "./prompt-budgeter"
@@ -107,34 +108,14 @@ export namespace SessionInvoke {
   })
 
   async function processMailbox(sessionID: string): Promise<void> {
-    const assistantMails = SessionManager.drainMails(sessionID, "assistant")
-    const userMails = SessionManager.drainMails(sessionID, "user")
-    const fallbackModel = await lastModel(sessionID).catch(() => undefined)
+    const runtimeMails = SessionManager.drainAllMails(sessionID)
+    const inboxItems = await SessionInbox.drainReady(sessionID)
+    const inboxIDs = new Set(inboxItems.map((item) => item.id))
+    const legacyMails = runtimeMails.filter((mail) => !mail.inboxItemID || !inboxIDs.has(mail.inboxItemID))
 
-    for (const mail of assistantMails) {
-      await writeAssistantMail(sessionID, mail)
-    }
-
-    if (userMails.length === 0) return
-
-    const needsReply = userMails.some((mail) => !mail.noReply)
-
-    for (const mail of userMails) {
-      const model = mail.model ?? fallbackModel
-      if (!model) {
-        log.warn("processMailbox: no model for mail, skipping", { sessionID })
-        continue
-      }
-      await createUserMessage({
-        sessionID,
-        agent: mail.agent,
-        model,
-        parts: partsFromMail(mail),
-        noReply: !needsReply,
-        summary: mail.summary,
-        metadata: mail.metadata,
-      })
-    }
+    const inboxResult = await materializeInboxItems(sessionID, inboxItems)
+    const legacyResult = await materializeLegacyMails(sessionID, legacyMails)
+    const needsReply = inboxResult.needsReply || legacyResult.needsReply
 
     await Session.update(sessionID, (draft) => {
       draft.pendingReply = needsReply || undefined
@@ -143,6 +124,103 @@ export namespace SessionInvoke {
     if (needsReply) {
       await loop(sessionID)
     }
+  }
+
+  async function materializeInboxItems(
+    sessionID: string,
+    items: SessionInbox.StoredItem[],
+    options?: { guiding?: boolean },
+  ): Promise<{ needsReply: boolean; userMessages: MessageV2.WithParts[] }> {
+    if (items.length === 0) return { needsReply: false, userMessages: [] }
+    SessionManager.discardMails(
+      sessionID,
+      items.map((item) => item.id),
+    )
+
+    let needsReply = false
+    const userMessages: MessageV2.WithParts[] = []
+    const fallbackModel = await lastModel(sessionID).catch(() => undefined)
+
+    for (const item of items) {
+      if (item.input) {
+        const noReply = options?.guiding ? true : item.input.noReply
+        const created = await createUserMessage({
+          ...item.input,
+          sessionID,
+          noReply,
+          metadata: {
+            ...(noReply === true ? { guided: item.kind === "guiding" } : {}),
+            ...item.input.metadata,
+          },
+        })
+        userMessages.push(created)
+        if (noReply !== true) needsReply = true
+        continue
+      }
+
+      const mail = item.mail
+      if (!mail) continue
+      if (mail.type === "assistant") {
+        await writeAssistantMail(sessionID, mail)
+        continue
+      }
+
+      const model = mail.model ?? fallbackModel
+      if (!model) {
+        log.warn("materializeInboxItems: no model for mail, skipping", { sessionID, inboxItemID: item.id })
+        continue
+      }
+      const noReply = options?.guiding ? true : mail.noReply
+      const created = await createUserMessage({
+        sessionID,
+        agent: mail.agent,
+        model,
+        parts: partsFromMail(mail),
+        noReply,
+        summary: mail.summary,
+        metadata: mail.metadata,
+      })
+      userMessages.push(created)
+      if (noReply !== true) needsReply = true
+    }
+
+    return { needsReply, userMessages }
+  }
+
+  async function materializeLegacyMails(
+    sessionID: string,
+    mails: SessionManager.SessionMail[],
+  ): Promise<{ needsReply: boolean; userMessages: MessageV2.WithParts[] }> {
+    if (mails.length === 0) return { needsReply: false, userMessages: [] }
+
+    let needsReply = false
+    const userMessages: MessageV2.WithParts[] = []
+    const fallbackModel = await lastModel(sessionID).catch(() => undefined)
+
+    for (const mail of mails) {
+      if (mail.type === "assistant") {
+        await writeAssistantMail(sessionID, mail)
+        continue
+      }
+      const model = mail.model ?? fallbackModel
+      if (!model) {
+        log.warn("materializeLegacyMails: no model for mail, skipping", { sessionID })
+        continue
+      }
+      const created = await createUserMessage({
+        sessionID,
+        agent: mail.agent,
+        model,
+        parts: partsFromMail(mail),
+        noReply: mail.noReply,
+        summary: mail.summary,
+        metadata: mail.metadata,
+      })
+      userMessages.push(created)
+      if (mail.noReply !== true) needsReply = true
+    }
+
+    return { needsReply, userMessages }
   }
 
   async function recallMemory(
@@ -274,25 +352,21 @@ export namespace SessionInvoke {
           if (result === "continue") continue
         }
 
-        // Drain user mails that arrived while the agent was working.
-        const userMails = SessionManager.drainMails(sessionID, "user")
-        if (userMails.length > 0) {
-          const userModel = await lastModel(sessionID).catch(() => undefined)
-          for (const mail of userMails) {
-            const mailModel = mail.model ?? userModel
-            if (!mailModel) continue
-            const created = await createUserMessage({
-              sessionID,
-              agent: mail.agent,
-              model: mailModel,
-              parts: partsFromMail(mail),
-              noReply: mail.noReply,
-              summary: mail.summary,
-              metadata: mail.metadata,
-            })
-            msgs.push(created)
-          }
-          log.info("drained user mails into session", { sessionID, count: userMails.length })
+        // Guiding items are user-authored steering context for the current run.
+        // They enter the next model request, but are marked noReply so they do
+        // not schedule a second assistant turn after the current response.
+        const guidingItems = await SessionInbox.drainGuiding(sessionID)
+        if (guidingItems.length > 0) {
+          const guided = await materializeInboxItems(sessionID, guidingItems, { guiding: true })
+          msgs.push(...guided.userMessages)
+          log.info("drained guiding inbox items into session", { sessionID, count: guidingItems.length })
+        }
+
+        const legacyUserMails = SessionManager.drainMails(sessionID, "user").filter((mail) => !mail.inboxItemID)
+        if (legacyUserMails.length > 0) {
+          const legacy = await materializeLegacyMails(sessionID, legacyUserMails)
+          msgs.push(...legacy.userMessages)
+          log.info("drained legacy user mails into session", { sessionID, count: legacy.userMessages.length })
         }
 
         const model = await Provider.getModel(lastUser.model.providerID, lastUser.model.modelID)
@@ -713,32 +787,20 @@ export namespace SessionInvoke {
         continue
       }
 
-      // Inner loop finished — check for user mails that arrived during the last LLM call.
-      // If any need a reply, persist them and re-enter the loop.
-      const remainingMails = SessionManager.drainMails(sessionID, "user")
-      if (remainingMails.length > 0) {
-        const needsReply = remainingMails.some((mail) => !mail.noReply)
-        const userModel = await lastModel(sessionID).catch(() => undefined)
-        for (const mail of remainingMails) {
-          const mailModel = mail.model ?? userModel
-          if (!mailModel) continue
-          await createUserMessage({
-            sessionID,
-            agent: mail.agent,
-            model: mailModel,
-            parts: partsFromMail(mail),
-            noReply: !needsReply,
-            summary: mail.summary,
-            metadata: mail.metadata,
-          })
-        }
-        if (needsReply) continue outer
-      }
+      // Inner loop finished — drain queued user input and agent updates in the
+      // same visible Inbox order. If any item requires a reply, re-enter the loop.
+      const readyItems = await SessionInbox.drainReady(sessionID)
+      const readyResult = await materializeInboxItems(sessionID, readyItems)
+      if (readyResult.needsReply) continue outer
+
+      const legacyMails = SessionManager.drainAllMails(sessionID).filter((mail) => !mail.inboxItemID)
+      const legacyResult = await materializeLegacyMails(sessionID, legacyMails)
+      if (legacyResult.needsReply) continue outer
       break
     }
 
-    // Drain assistant mails and write them as messages
-    const assistantMails = SessionManager.drainMails(sessionID, "assistant")
+    // Drain legacy assistant mails and write them as messages.
+    const assistantMails = SessionManager.drainMails(sessionID, "assistant").filter((mail) => !mail.inboxItemID)
     for (const mail of assistantMails) {
       await writeAssistantMail(sessionID, mail)
     }

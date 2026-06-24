@@ -6,6 +6,7 @@ import { Command } from "../command/command"
 import { Session } from "../session"
 import { SessionManager } from "../session/manager"
 import { SessionInvoke, InvokeInput } from "../session/invoke"
+import { SessionInbox } from "../session/inbox"
 import { shell as invokeShell, ShellInput } from "../session/shell"
 import { SessionHistory } from "../session/history"
 import { MessageV2 } from "../session/message-v2"
@@ -21,6 +22,19 @@ import { errors } from "./error"
 
 const log = Log.create({ service: "session" })
 const ControlProfileId = z.enum(["guarded", "autonomous", "full_access"])
+
+async function submitInput(input: InvokeInput): Promise<SessionInbox.InputResult> {
+  const messageID = input.messageID ?? Identifier.ascending("message")
+  const next = { ...input, messageID }
+  if (SessionManager.isRunning(input.sessionID)) {
+    const item = await SessionInbox.enqueueUser(next)
+    return { status: "queued", item }
+  }
+  SessionInvoke.invoke(next).catch((error) => {
+    log.error("failed to execute async input", { sessionID: input.sessionID, error })
+  })
+  return { status: "started", messageID }
+}
 
 export const SessionRoute = new Hono()
   .get(
@@ -494,6 +508,124 @@ export const SessionRoute = new Hono()
     },
   )
 
+  .get(
+    "/:sessionID/inbox",
+    describeRoute({
+      summary: "List session inbox items",
+      description: "Get active queued user messages and agent updates for a session.",
+      operationId: "session.inbox",
+      responses: {
+        200: {
+          description: "Session inbox items",
+          content: {
+            "application/json": {
+              schema: resolver(SessionInbox.Item.array()),
+            },
+          },
+        },
+        ...errors(400, 404),
+      },
+    }),
+    validator(
+      "param",
+      z.object({
+        sessionID: z.string().meta({ description: "Session ID" }),
+      }),
+    ),
+    async (c) => {
+      const sessionID = c.req.valid("param").sessionID
+      return c.json(await SessionInbox.list(sessionID))
+    },
+  )
+  .post(
+    "/:sessionID/input",
+    describeRoute({
+      summary: "Submit session input",
+      description:
+        "Submit user input to a session. If the session is running, the input is queued in the session inbox; otherwise a new turn starts immediately.",
+      operationId: "session.input",
+      responses: {
+        200: {
+          description: "Input accepted",
+          content: {
+            "application/json": {
+              schema: resolver(SessionInbox.InputResult),
+            },
+          },
+        },
+        ...errors(400, 404),
+      },
+    }),
+    validator(
+      "param",
+      z.object({
+        sessionID: z.string().meta({ description: "Session ID" }),
+      }),
+    ),
+    validator("json", InvokeInput.omit({ sessionID: true })),
+    async (c) => {
+      const sessionID = c.req.valid("param").sessionID
+      const body = c.req.valid("json")
+      return c.json(await submitInput({ ...body, sessionID }))
+    },
+  )
+  .post(
+    "/:sessionID/inbox/:itemID/guide",
+    describeRoute({
+      summary: "Guide current run with inbox item",
+      description: "Promote a queued user message so it is added before the next model request in the current run.",
+      operationId: "session.inbox_guide",
+      responses: {
+        200: {
+          description: "Promoted inbox item",
+          content: {
+            "application/json": {
+              schema: resolver(SessionInbox.Item),
+            },
+          },
+        },
+        ...errors(400, 404),
+      },
+    }),
+    validator(
+      "param",
+      z.object({
+        sessionID: z.string().meta({ description: "Session ID" }),
+        itemID: z.string().meta({ description: "Inbox item ID" }),
+      }),
+    ),
+    async (c) => {
+      const params = c.req.valid("param")
+      return c.json(await SessionInbox.guide(params))
+    },
+  )
+  .delete(
+    "/:sessionID/inbox/:itemID",
+    describeRoute({
+      summary: "Remove inbox item",
+      description: "Remove a queued user message from the session inbox.",
+      operationId: "session.inbox_remove",
+      responses: {
+        204: {
+          description: "Inbox item removed",
+        },
+        ...errors(400, 404),
+      },
+    }),
+    validator(
+      "param",
+      z.object({
+        sessionID: z.string().meta({ description: "Session ID" }),
+        itemID: z.string().meta({ description: "Inbox item ID" }),
+      }),
+    ),
+    async (c) => {
+      const params = c.req.valid("param")
+      await SessionInbox.remove(params)
+      return c.body(null, 204)
+    },
+  )
+
   .post(
     "/:sessionID/summarize",
     describeRoute({
@@ -819,7 +951,7 @@ export const SessionRoute = new Hono()
       return stream(c, async () => {
         const sessionID = c.req.valid("param").sessionID
         const body = c.req.valid("json")
-        SessionInvoke.invoke({ ...body, sessionID })
+        await submitInput({ ...body, sessionID })
       })
     },
   )

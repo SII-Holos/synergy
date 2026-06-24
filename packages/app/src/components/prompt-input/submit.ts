@@ -609,12 +609,16 @@ export function usePromptSubmit(input: PromptSubmitInput) {
     }
 
     clearInput()
-    addOptimisticMessage()
+    let optimisticAdded = false
+    if (!input.working()) {
+      addOptimisticMessage()
+      optimisticAdded = true
+    }
 
     const wsConnected = sdk.connected()
 
     client.session
-      .promptAsync({
+      .input({
         sessionID: activeSession.id,
         agent,
         model,
@@ -622,7 +626,11 @@ export function usePromptSubmit(input: PromptSubmitInput) {
         parts: requestParts,
         variant,
       })
-      .then(() => {
+      .then((result) => {
+        if (result.data?.status === "queued" && optimisticAdded) {
+          removeOptimisticMessage()
+          optimisticAdded = false
+        }
         if (!wsConnected) {
           showToast({
             type: "warning",
@@ -637,7 +645,7 @@ export function usePromptSubmit(input: PromptSubmitInput) {
           title: "Failed to send prompt",
           description: errorMessage(err),
         })
-        removeOptimisticMessage()
+        if (optimisticAdded) removeOptimisticMessage()
         rollbackCreatedSession()
         restoreInput()
       })
