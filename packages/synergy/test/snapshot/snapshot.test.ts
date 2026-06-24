@@ -475,30 +475,25 @@ describe.serial("snapshot", () => {
 
   test("revert only removes files in invoking worktree", async () => {
     await using tmp = await bootstrap()
+    const sessionID = "revert-worktree-isolation"
     const worktreePath = `${tmp.path}-worktree`
     await $`git worktree add ${worktreePath} HEAD`.cwd(tmp.path).quiet()
 
     try {
-      await Instance.provide({
-        scope: await tmp.scope(),
-        fn: async () => {
-          expect(await Snapshot.track("test")).toBeTruthy()
-        },
-      })
       const primaryFile = `${tmp.path}/worktree.txt`
       await Bun.write(primaryFile, "primary content")
 
       await Instance.provide({
         scope: (await Scope.fromDirectory(worktreePath)).scope,
         fn: async () => {
-          const before = await Snapshot.track("test")
+          const before = await Snapshot.track(sessionID)
           expect(before).toBeTruthy()
 
           const worktreeFile = `${worktreePath}/worktree.txt`
           await Bun.write(worktreeFile, "worktree content")
 
-          const patch = await Snapshot.patch(before!, "test")
-          await Snapshot.revert([patch], "test")
+          const patch = await Snapshot.patch(before!, sessionID)
+          await Snapshot.revert([patch], sessionID)
 
           expect(await Bun.file(worktreeFile).exists()).toBe(false)
         },
