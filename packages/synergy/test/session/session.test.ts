@@ -4,10 +4,12 @@ import { Session } from "../../src/session"
 import { SessionInteraction } from "../../src/session/interaction"
 import { AppChannel } from "../../src/channel/app"
 import { SessionEvent } from "../../src/session/event"
+import { MessageV2 } from "../../src/session/message-v2"
 import { Bus } from "../../src/bus"
 import { Log } from "../../src/util/log"
 import { ScopeContext } from "../../src/scope/context"
 import { Scope } from "../../src/scope"
+import { Identifier } from "../../src/id/id"
 
 Log.init({ print: false })
 
@@ -45,6 +47,46 @@ describe("session lifecycle events", () => {
         const session = await AppChannel.session()
 
         expect(session.interaction).toEqual(SessionInteraction.interactive("channel:app"))
+
+        await Session.remove(session.id)
+      },
+    })
+  })
+
+  test("merging message metadata preserves summary fields", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({ title: "Metadata Merge" })
+        const user = (await Session.updateMessage({
+          id: Identifier.ascending("message"),
+          sessionID: session.id,
+          role: "user",
+          time: { created: Date.now() },
+          agent: "synergy",
+          model: { providerID: "test", modelID: "test" },
+          metadata: { source: "prompt" },
+        })) as MessageV2.User
+
+        await Session.updateMessage({
+          ...user,
+          summary: { title: "Greeting in Chinese", diffs: [] },
+        })
+
+        await Session.mergeMessageMetadata({
+          sessionID: session.id,
+          messageID: user.id,
+          metadata: { injectedContext: { memory: { ids: ["mem_1"] } } },
+        })
+
+        const messages = await Session.messages({ sessionID: session.id })
+        const stored = messages.find((msg) => msg.info.id === user.id)?.info
+
+        if (!stored || stored.role !== "user") throw new Error("expected stored user message")
+        expect(stored.summary?.title).toBe("Greeting in Chinese")
+        expect(stored.metadata?.source).toBe("prompt")
+        expect(stored.metadata?.injectedContext).toEqual({ memory: { ids: ["mem_1"] } })
 
         await Session.remove(session.id)
       },

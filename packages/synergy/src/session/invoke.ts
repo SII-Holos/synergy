@@ -538,11 +538,12 @@ export namespace SessionInvoke {
           if (step === 1) cacheResult(sessionID, memoryResult)
           const { injection } = memoryResult
           if ((injection.memory || injection.experience) && !lastUser.metadata?.injectedContext) {
-            const updated: MessageV2.User = {
-              ...lastUser,
-              metadata: { ...lastUser.metadata, injectedContext: injection },
-            }
-            await Session.updateMessage(updated)
+            const updated = await Session.mergeMessageMetadata({
+              sessionID,
+              messageID: lastUser.id,
+              metadata: { injectedContext: injection },
+            })
+            if (updated?.role === "user") lastUser = updated
           }
         }
 
