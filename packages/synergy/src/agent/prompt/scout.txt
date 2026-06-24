@@ -46,10 +46,11 @@ Then classify what type of information is needed:
 - `gh repo clone` for deeper exploration
 - `gh search issues` for troubleshooting context
 
-**agent-browser** — interactive browsing
-- Sites requiring JavaScript interaction
-- Complex navigation or form filling
-- When you need to click through pages
+**Browser tools** — interactive browsing
+- `browser_navigate` / `browser_snapshot` — navigate and read page content
+- `browser_screenshot` — capture visual page state
+- `browser_click` / `browser_wait` — interact with page elements
+- `browser_console` / `browser_network` — inspect logs and network requests
 
 ### 3. Choose Your Approach
 
@@ -60,7 +61,7 @@ Then classify what type of information is needed:
 | Source code exploration | `gh repo clone` → `grep`/`ast_grep` |
 | Find code patterns | `gh search code` |
 | Bug reports / discussions | `gh search issues` or `websearch` |
-| Interactive / JS-heavy sites | `agent-browser` |
+| Interactive / JS-heavy sites | `browser_navigate` / `browser_snapshot` |
 
 ### 4. Search Strategy
 
@@ -93,7 +94,7 @@ When you need multiple pieces of information, run searches in parallel:
 ### 6. Handle Failures
 
 - **No results**: Try different keywords or broader terms
-- **webfetch fails**: Site might need JS, try agent-browser
+- **webfetch fails**: Site might need JS, try `browser_navigate` / `browser_snapshot`
 - **404 errors**: Use websearch to discover correct URLs
 
 ### 7. Report Findings
@@ -131,7 +132,7 @@ gh api repos/owner/repo/releases --jq '.[0:5]'
 **Web:**
 ```
 webfetch: Read specific URLs, sitemaps, llms.txt
-agent-browser: Interactive sites, JS-heavy pages
+`browser_navigate` / `browser_snapshot`: Interactive sites, JS-heavy pages
 ```
 
 **Code Search:**

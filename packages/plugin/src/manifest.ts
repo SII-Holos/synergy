@@ -1,5 +1,195 @@
 import z from "zod"
 
+const ToolRendererDef = z
+  .object({
+    tool: z.string().min(1),
+    exportName: z.string().optional().default("default"),
+    priority: z.number().int().min(0).max(100).optional().default(0),
+    fallback: z
+      .object({
+        icon: z.string().optional(),
+        title: z.string().optional(),
+        subtitleTemplate: z.string().optional(),
+      })
+      .optional(),
+  })
+  .strict()
+
+const PartRendererDef = z
+  .object({
+    type: z.string().min(1),
+    exportName: z.string().optional().default("default"),
+    priority: z.number().int().min(0).max(100).optional().default(0),
+  })
+  .strict()
+
+const PanelDef = z
+  .object({
+    id: z.string().min(1).max(64),
+    label: z.string().min(1).max(64),
+    icon: z.string().min(1),
+    exportName: z.string().optional().default("default"),
+    sandbox: z.boolean().optional().default(false),
+    sandboxEntry: z
+      .string()
+      .regex(/^[a-zA-Z0-9_/.-]+\.js$/)
+      .max(256)
+      .optional(),
+  })
+  .strict()
+
+const SettingsDef = z
+  .object({
+    id: z.string().min(1).max(64),
+    label: z.string().min(1).max(64),
+    icon: z.string().min(1),
+    group: z.string(),
+    formSchema: z.record(z.string(), z.unknown()).optional(),
+    exportName: z.string().optional(),
+    sandbox: z.boolean().optional().default(false),
+    sandboxEntry: z
+      .string()
+      .regex(/^[a-zA-Z0-9_/.-]+\.js$/)
+      .max(256)
+      .optional(),
+  })
+  .strict()
+
+const ChatComponentDef = z
+  .object({
+    id: z.string().min(1),
+    exportName: z.string().optional().default("default"),
+    slot: z.enum(["before-tools", "after-tools", "before-reasoning", "after-reasoning"]).optional(),
+  })
+  .strict()
+
+const ThemeDef = z
+  .object({
+    id: z.string().min(1).max(64),
+    label: z.string().min(1).max(64),
+    path: z.string().min(1),
+  })
+  .strict()
+
+const IconDef = z
+  .object({
+    name: z.string().min(1).max(128),
+    path: z.string().min(1),
+  })
+  .strict()
+
+const RouteDef = z
+  .object({
+    path: z.string().min(1),
+    entry: z.string().min(1),
+    label: z.string().min(1),
+    icon: z.string().optional(),
+  })
+  .strict()
+
+const UICommandDef = z
+  .object({
+    id: z.string().min(1).max(64),
+    label: z.string().min(1).max(64),
+    exportName: z.string().optional(),
+    description: z.string().max(256).optional(),
+    icon: z.string().optional(),
+  })
+  .strict()
+
+const UIContribution = z
+  .object({
+    entry: z
+      .string()
+      .regex(/^[a-zA-Z0-9_/.-]+\.js$/)
+      .max(256)
+      .optional(),
+    minUIApiVersion: z
+      .string()
+      .regex(/^\d+\.\d+\.\d+$/)
+      .optional(),
+    toolRenderers: z.array(ToolRendererDef).optional(),
+    partRenderers: z.array(PartRendererDef).optional(),
+    workspacePanels: z.array(PanelDef).optional(),
+    globalPanels: z.array(PanelDef).optional(),
+    settings: z.array(SettingsDef).optional(),
+    chatComponents: z.array(ChatComponentDef).optional(),
+    themes: z.array(ThemeDef).optional(),
+    icons: z.array(IconDef).optional(),
+    routes: z.array(RouteDef).optional(),
+    commands: z.array(UICommandDef).optional(),
+  })
+  .partial()
+  .optional()
+
+const PluginPermissionsSchema = z
+  .object({
+    /** Tool execution permissions */
+    tools: z
+      .object({
+        invoke: z.boolean().default(true),
+        shell: z.boolean().default(false),
+        filesystem: z.preprocess(
+          (val) => {
+            if (val === true) return "write"
+            if (val === false) return "none"
+            return val
+          },
+          z.enum(["none", "read", "write"]).default("none"),
+        ),
+        network: z.boolean().default(false),
+        mcp: z.enum(["none", "invoke", "spawn"]).default("none"),
+      })
+      .optional(),
+
+    /** Data access */
+    data: z
+      .object({
+        session: z.enum(["none", "metadata", "read"]).default("none"),
+        workspace: z.enum(["none", "metadata", "read"]).default("none"),
+        config: z.enum(["plugin", "global"]).default("plugin"),
+        secrets: z.enum(["none", "own"]).default("none"),
+      })
+      .optional(),
+
+    /** Network access */
+    network: z
+      .object({
+        connectDomains: z.array(z.string()).default([]),
+        resourceDomains: z.array(z.string()).default([]),
+        frameDomains: z.array(z.string()).default([]),
+      })
+      .optional(),
+
+    /** UI surface permissions */
+    ui: z
+      .object({
+        toolRenderers: z.boolean().default(false),
+        partRenderers: z.boolean().default(false),
+        workspacePanels: z.boolean().default(false),
+        globalPanels: z.boolean().default(false),
+        settings: z.boolean().default(false),
+        themes: z.boolean().default(false),
+        icons: z.boolean().default(false),
+        routes: z.boolean().default(false),
+        trustedImport: z.boolean().default(false),
+        sandboxIframe: z.boolean().default(false),
+      })
+      .optional(),
+
+    /** Hook permission declarations */
+    hooks: z
+      .object({
+        events: z.enum(["none", "selected", "all"]).default("selected"),
+        eventNames: z.array(z.string()).default([]),
+        toolExecute: z.enum(["none", "own", "declared", "all"]).default("own"),
+        permissionAsk: z.enum(["none", "own", "all"]).default("none"),
+        promptTransform: z.boolean().default(false),
+        compactionTransform: z.boolean().default(false),
+      })
+      .optional(),
+  })
+  .optional()
 // PluginManifest: the declarative plugin descriptor (plugin.json)
 export const PluginManifest = z
   .object({
@@ -29,15 +219,39 @@ export const PluginManifest = z
     // Dependencies on other plugins
     dependencies: z.record(z.string(), z.string()).optional(),
 
+    // Trust tier request
+    trust: z
+      .object({
+        requestedTier: z.enum(["declarative", "trusted-import", "sandbox"]).optional(),
+        reason: z.string().optional(),
+      })
+      .optional(),
+    // Permission / trust declaration
+    permissions: PluginPermissionsSchema,
     // Declarative contributions
     contributes: z
       .object({
         tools: z
           .array(
             z.object({
+              id: z.string().optional(),
               name: z.string(),
+              title: z.string().optional(),
               description: z.string(),
+              icon: z.string().optional(),
+              category: z.string().optional(),
               kind: z.string().optional(),
+              capabilities: z
+                .object({
+                  filesystem: z.enum(["none", "read", "write"]).optional(),
+                  network: z.boolean().optional(),
+                  shell: z.boolean().optional(),
+                  session: z.enum(["none", "metadata", "read"]).optional(),
+                  workspace: z.enum(["none", "metadata", "read"]).optional(),
+                  config: z.enum(["none", "plugin", "global"]).optional(),
+                })
+                .optional(),
+              risk: z.enum(["low", "medium", "high"]).optional(),
             }),
           )
           .optional(),
@@ -211,7 +425,8 @@ export const PluginManifest = z
           })
           .optional(),
 
-        extensionPack: z.array(z.string()).optional(),
+        permissions: PluginPermissionsSchema,
+        ui: UIContribution,
       })
       .partial()
       .optional(),
@@ -223,6 +438,23 @@ export const PluginManifest = z
         install: z.string().optional(),
         uninstall: z.string().optional(),
         update: z.string().optional(),
+      })
+      .optional(),
+
+    // Runtime preferences
+    runtime: z
+      .object({
+        mode: z.enum(["in-process", "worker", "process"]).optional(),
+        minRuntimeApiVersion: z.string().optional(),
+        resources: z
+          .object({
+            memoryMb: z.number().positive().optional(),
+            startupTimeoutMs: z.number().positive().optional(),
+            requestTimeoutMs: z.number().positive().optional(),
+            maxConcurrentRequests: z.number().positive().optional(),
+            maxLogBytesPerMinute: z.number().positive().optional(),
+          })
+          .optional(),
       })
       .optional(),
   })

@@ -1,15 +1,27 @@
 import { LSP } from "../lsp"
 import { Filesystem } from "../util/filesystem"
+import { type DiagnosticDelta, diffDiagnostics, formatDiagnosticDelta } from "../lsp/diagnostics-delta"
 
 const MAX_DIAGNOSTICS_PER_FILE = 20
 const MAX_PROJECT_DIAGNOSTICS_FILES = 5
 
-export async function collectWriteDiagnostics(filePath: string): Promise<{
+export async function collectWriteDiagnostics(
+  filePath: string,
+  options?: { before?: Awaited<ReturnType<typeof LSP.diagnostics>> },
+): Promise<{
   diagnostics: Awaited<ReturnType<typeof LSP.diagnostics>>
   output: string
+  delta?: DiagnosticDelta
 }> {
   await LSP.touchFile(filePath, true)
   const diagnostics = await LSP.diagnostics()
+  const before = options?.before
+
+  if (before) {
+    const delta = diffDiagnostics(before, diagnostics, filePath)
+    return { diagnostics, output: formatDiagnosticDelta(delta), delta }
+  }
+
   return { diagnostics, output: formatDiagnostics(diagnostics, filePath) }
 }
 

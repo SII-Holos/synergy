@@ -3,6 +3,7 @@ import { Ripgrep } from "../file/ripgrep"
 import { Global } from "../global"
 import { Filesystem } from "../util/filesystem"
 import { Config } from "../config/config"
+import { formatLocalDate, formatLocalDateTime } from "../util/time-format"
 
 import { Instance } from "../scope/instance"
 import { SessionEndpoint } from "./endpoint"
@@ -14,25 +15,6 @@ import type { Provider } from "@/provider/provider"
 import { Flag } from "@/flag/flag"
 
 export namespace SystemPrompt {
-  function formatLocalDate(date: Date): string {
-    const offset = -date.getTimezoneOffset()
-    const sign = offset >= 0 ? "+" : "-"
-    const absOffset = Math.abs(offset)
-    const hours = String(Math.floor(absOffset / 60)).padStart(2, "0")
-    const minutes = String(absOffset % 60).padStart(2, "0")
-    return `${date.toDateString()} (UTC${sign}${hours}:${minutes})`
-  }
-
-  function formatLocalDateTime(epochMs: number): string {
-    const date = new Date(epochMs)
-    const offset = -date.getTimezoneOffset()
-    const sign = offset >= 0 ? "+" : "-"
-    const absOffset = Math.abs(offset)
-    const hours = String(Math.floor(absOffset / 60)).padStart(2, "0")
-    const minutes = String(absOffset % 60).padStart(2, "0")
-    return `${date.toLocaleString()} (UTC${sign}${hours}:${minutes})`
-  }
-
   export function provider(_model: Provider.Model) {
     return [PROMPT_FALLBACK]
   }
@@ -59,7 +41,7 @@ export namespace SystemPrompt {
       `  Working directory: ${Instance.directory}`,
       `  Is directory a git repo: ${scope.type === "project" && scope.vcs === "git" ? "yes" : "no"}`,
       `  Platform: ${process.platform}`,
-      `  Today's date: ${formatLocalDate(new Date())}`,
+      `  Today's date: ${formatLocalDate(Date.now())}`,
     ]
 
     const workspace = Instance.workspace

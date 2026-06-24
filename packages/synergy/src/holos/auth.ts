@@ -76,7 +76,7 @@ export namespace HolosAuth {
   }
 
   export async function configureHolos(): Promise<void> {
-    await Config.updateGlobal({
+    await Config.domainUpdate("holos", {
       holos: {
         enabled: true,
         apiUrl: HOLOS_URL,

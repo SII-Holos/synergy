@@ -26,6 +26,7 @@ export namespace Identifier {
     memory: "mem",
     agenda: "agd",
     note: "nte",
+    blueprint_loop: "bll",
   } as const
 
   export function schema(prefix: keyof typeof prefixes) {

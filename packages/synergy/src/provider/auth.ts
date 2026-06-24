@@ -10,7 +10,7 @@ import { Auth } from "@/provider/api-key"
 export namespace ProviderAuth {
   const state = Instance.state(async () => {
     const methods = pipe(
-      await Plugin.list(),
+      await Plugin.allHooks(),
       filter((x) => x.auth?.provider !== undefined),
       map((x) => [x.auth!.provider, x.auth!] as const),
       fromEntries(),

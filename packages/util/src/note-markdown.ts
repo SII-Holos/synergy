@@ -449,6 +449,24 @@ export namespace NoteMarkdown {
     return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;")
   }
 
+  function normalizePreviewText(text: string): string {
+    return text.replace(/\s+/g, " ").trim().toLowerCase()
+  }
+
+  function previewPlainText(node: TipTapNode): string {
+    switch (node.type) {
+      case "paragraph":
+      case "heading":
+        return (node.content ?? []).map(previewPlainText).join("")
+      case "text":
+        return node.text ?? ""
+      case "hardBreak":
+        return " "
+      default:
+        return ""
+    }
+  }
+
   function renderPreviewInline(nodes: TipTapNode[]): string {
     let result = ""
     for (const node of nodes) {
@@ -513,8 +531,10 @@ export namespace NoteMarkdown {
       case "blockquote":
         return `<blockquote>${renderPreviewHtml(node.content ?? [], 10)}</blockquote>`
       case "codeBlock": {
-        const code = escapeHtml((node.content ?? ([] as TipTapNode[])).map((c: TipTapNode) => c.text ?? "").join("\n"))
-        return `<pre><code>${code}</code></pre>`
+        const rawCode = (node.content ?? ([] as TipTapNode[])).map((c: TipTapNode) => c.text ?? "").join("\n")
+        const lines = rawCode.split("\n")
+        const preview = lines.length > 4 ? [...lines.slice(0, 4), "…"].join("\n") : rawCode
+        return `<pre><code>${escapeHtml(preview)}</code></pre>`
       }
       default:
         if (node.content) return renderPreviewHtml(node.content, 10)
@@ -522,10 +542,15 @@ export namespace NoteMarkdown {
     }
   }
 
-  function renderPreviewHtml(nodes: TipTapNode[], maxBlocks: number): string {
+  function renderPreviewHtml(nodes: TipTapNode[], maxBlocks: number, options?: { title?: string }): string {
     let count = 0
     let result = ""
-    for (const node of nodes) {
+    const normalizedTitle = normalizePreviewText(options?.title ?? "")
+    for (let index = 0; index < nodes.length; index++) {
+      const node = nodes[index]
+      if (index === 0 && normalizedTitle && normalizePreviewText(previewPlainText(node)) === normalizedTitle) {
+        continue
+      }
       if (count >= maxBlocks) break
       const html = renderPreviewBlock(node)
       if (html) count++
@@ -535,13 +560,13 @@ export namespace NoteMarkdown {
   }
 
   /** Generate safe, escaped HTML snippet from Tiptap JSON for note card thumbnails.
-   *  Produces up to 3 top-level blocks. All text is HTML-escaped, only known inline
+   *  Produces a compact multi-block preview. All text is HTML-escaped, only known inline
    *  marks (bold, italic, code, strike) produce tags. No external HTML is rendered.
    */
-  export function toPreviewHtml(content: any): string {
+  export function toPreviewHtml(content: any, options?: { title?: string; maxBlocks?: number }): string {
     if (!content || typeof content !== "object") return ""
     const doc = content as TipTapNode
     if (doc.type !== "doc") return ""
-    return renderPreviewHtml(doc.content ?? [], 3)
+    return renderPreviewHtml(doc.content ?? [], options?.maxBlocks ?? 5, { title: options?.title })
   }
 }

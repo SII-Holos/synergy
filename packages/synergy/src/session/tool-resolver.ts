@@ -5,7 +5,10 @@ import { Agent } from "@/agent/agent"
 import { Identifier } from "@/id/id"
 import { MCP } from "@/mcp"
 import { PermissionNext } from "@/permission/next"
+import { PermissionRules } from "@/permission/rules"
+import { RiskClassifier } from "@/permission/classifier"
 import { Plugin } from "@/plugin"
+import { PluginToolId } from "../plugin/ids.js"
 import { ProviderTransform } from "@/provider/transform"
 import type { Provider } from "@/provider/provider"
 import { Tool } from "@/tool/tool"
@@ -20,7 +23,7 @@ import { Instance } from "@/scope/instance"
 import { EnforcementGate, type Capability } from "@/enforcement/gate"
 import { SandboxBackend } from "@/sandbox/backend"
 import type { SandboxExecutionWrapper } from "@/sandbox/backend"
-import type { ProfileId } from "@/control-profile/types"
+import type { ProfileId, ResolvedProfile } from "@/control-profile/types"
 import { EnforcementError } from "@/enforcement/errors"
 import { Config } from "@/config/config"
 import { ControlProfileCompiler } from "@/control-profile/compiler"
@@ -50,13 +53,13 @@ export namespace ToolResolver {
 
   /**
    * Resolve the effective control profile id using precedence:
-   *   1. session controlProfile
+   *   1. session controlProfile (resolved from parent chain)
    *   2. agent config controlProfile
    *   3. top-level config controlProfile
    *   4. default 'guarded'
    */
-  function resolveEffectiveProfile(agent: Agent.Info, topLevelProfile?: string, session?: Info): ProfileId {
-    return ControlProfileCompiler.normalize(session?.controlProfile ?? agent.controlProfile ?? topLevelProfile)
+  function resolveEffectiveProfile(agent: Agent.Info, topLevelProfile?: string, sessionProfile?: string): ProfileId {
+    return ControlProfileCompiler.normalize(sessionProfile ?? agent.controlProfile ?? topLevelProfile)
   }
 
   /** Cached config lookup to avoid repeated Config.get() inside tool execute. */
@@ -70,6 +73,21 @@ export namespace ToolResolver {
       }
     }
     return _cachedConfig.controlProfile
+  }
+
+  /** Cached plugin tool IDs (prefixed) for enforcement gate registration. */
+  let _cachedPluginToolIds: Set<string> | null = null
+  async function cachedPluginToolIds(): Promise<Set<string>> {
+    if (_cachedPluginToolIds === null) {
+      const ids = new Set<string>()
+      for (const plugin of await Plugin.perPluginHooks()) {
+        for (const toolId of Object.keys(plugin.hooks.tool ?? {})) {
+          ids.add(PluginToolId.format(plugin.id, toolId))
+        }
+      }
+      _cachedPluginToolIds = ids
+    }
+    return _cachedPluginToolIds
   }
 
   /**
@@ -87,7 +105,7 @@ export namespace ToolResolver {
   }
 
   function permissionForGateCapability(toolName: string, className: string): string {
-    if (className === "file_external") return "external_directory"
+    if (className === "file_external_read" || className === "file_external_write") return "external_directory"
     if (className === "shell_read") return "bash"
     if (className === "shell_destructive") return "bash"
     if (className === "network_request")
@@ -96,7 +114,7 @@ export namespace ToolResolver {
   }
 
   function patternsForGateCapability(toolName: string, cap: Capability, args: Record<string, any>): string[] {
-    if (cap.class === "file_external")
+    if (cap.class === "file_external_read" || cap.class === "file_external_write")
       return cap.paths?.length ? cap.paths : [externalPathFromArgs(toolName, args) || "*"]
     if (cap.class === "shell_destructive") return [String(args.command ?? "*")]
     if (cap.class === "network_request") return [String(args.url ?? args.query ?? "*")]
@@ -178,7 +196,8 @@ export namespace ToolResolver {
       approval.status === "auto_denied" ||
       approval.status === "policy_denied" ||
       approval.status === "sandbox_blocked" ||
-      approval.status === "not_required"
+      approval.status === "not_required" ||
+      approval.status === "pre_authorized"
     ) {
       timing.approvalResolvedAt ??= now
     }
@@ -268,22 +287,123 @@ export namespace ToolResolver {
 
   async function applyGateApproval(
     ctx: Tool.Context,
-    gate: ReturnType<typeof EnforcementGate.create>,
-    envelope: ReturnType<ReturnType<typeof EnforcementGate.create>["evaluate"]>,
+    gate: Awaited<ReturnType<typeof EnforcementGate.create>>,
+    envelope: ReturnType<Awaited<ReturnType<typeof EnforcementGate.create>>["evaluate"]>,
     toolName: string,
     args: Record<string, any>,
+    session?: Info,
   ) {
     const profile = gate.getProfileInfo()
     const approval = profile.approval
     const policyDecision = ApprovalPolicy.decideCapabilities(approval, envelope.capabilities)
+    // envelope.decision is authoritative — the gate already merged profile rules,
+    // exec-policy, and approval cache. policyDecision provides risk/capabilities
+    // metadata only; its .action is discarded.
     const decision = { ...policyDecision, action: envelope.decision }
+    // Deny is a hard policy boundary (profile-level security decision). It
+    // must be enforced before anything else — the classifier and user rules
+    // exist only to save a confirmation prompt, never to override a deny.
     if (decision.action === "deny") {
-      await setApprovalMetadata(ctx, ApprovalPolicy.metadata(approval, decision, "auto_denied"))
-      throw new EnforcementError.PolicyDenied(decision.reason, decision.capabilities, envelope.profileId)
+      // Use the refusal's diagnostic reason when available — this carries
+      // specific detail like "matched destructive pattern: git push" that
+      // should be visible both in the error message AND the frontend audit tooltip.
+      const diagnosticReason = envelope.refusal?.reason ?? decision.reason
+      const metadata = ApprovalPolicy.metadata(approval, decision, "auto_denied")
+      await setApprovalMetadata(ctx, { ...metadata, reason: diagnosticReason })
+      throw new EnforcementError.PolicyDenied(diagnosticReason, decision.capabilities, envelope.profileId)
     }
 
+    // Profile already permits the operation — no need for the classifier.
     if (decision.action === "allow") {
       await setApprovalMetadata(ctx, ApprovalPolicy.metadata(approval, decision, "auto_allowed"))
+      if (toolName === "bash") markShellSandboxBypass(ctx)
+      return
+    }
+
+    // Classifier (auto mode): may promote an ask → allow to save the user a
+    // confirmation prompt. It must NEVER run for a non-bypassable ask
+    // (protected_op, file_external_*, identity_act, shell_destructive) — those
+    // are hard boundaries that must always reach the user. Nor can it ever
+    // promote a deny, which was already handled above.
+    const hasNonBypassable = envelope.capabilities.some((c) => c.nonBypassable)
+    if (!hasNonBypassable) {
+      const cfg = await Config.get()
+      const autoEnabled = cfg.auto_classifier === true
+      if (autoEnabled && !RiskClassifier.isAutoDisabled()) {
+        const caps = envelope.capabilities.map((c) => c.class)
+        const classification = await RiskClassifier.classify({
+          tool: toolName,
+          args,
+          capabilities: caps,
+          workspace: Instance.directory,
+        })
+        if (RiskClassifier.shouldAutoAllow(classification)) {
+          await setApprovalMetadata(ctx, {
+            ...ApprovalPolicy.metadata(approval, decision, "auto_allowed"),
+            source: "classifier",
+            reason: `Auto-allowed by classifier: ${classification!.reason} (confidence ${classification!.confidence.toFixed(2)})`,
+          })
+          if (toolName === "bash") markShellSandboxBypass(ctx)
+          return
+        }
+        if (classification) {
+          ;(ctx.extra as any).classifierRisk = classification
+        }
+      }
+    }
+
+    // User/session rules: check persistent user rules (from "Always allow"
+    // button) and ephemeral session rules. Deny always wins. Allow only
+    // bypasses soft asks; non-bypassable asks must still reach the user.
+    if (decision.action === "ask") {
+      const patterns = [
+        PermissionRules.extractPattern(toolName, args),
+        ...envelope.capabilities.flatMap((cap) => patternsForGateCapability(toolName, cap, args)),
+      ]
+      const userRules = await PermissionRules.userRuleset()
+      const sessionRules = PermissionRules.sessionRuleset(session?.id)
+      const ruleDecisions = [...new Set(patterns)].map((pattern) =>
+        PermissionRules.evaluate(toolName, pattern, userRules, sessionRules),
+      )
+      const ruleDecision =
+        ruleDecisions.find((item) => item.action === "deny") ??
+        ruleDecisions.find((item) => item.action === "allow") ??
+        ({ action: "ask" } as const)
+      if (ruleDecision.action === "deny") {
+        await setApprovalMetadata(ctx, {
+          ...ApprovalPolicy.metadata(approval, decision, "auto_denied"),
+          source: "user",
+          reason: `Denied by user rule: ${ruleDecision.rule?.permission}(${ruleDecision.rule?.pattern})`,
+        })
+        throw new EnforcementError.PolicyDenied(
+          `Blocked by user permission rule: ${ruleDecision.rule?.permission ?? toolName}(${ruleDecision.rule?.pattern ?? patterns[0]})`,
+          decision.capabilities,
+          envelope.profileId,
+        )
+      }
+      if (ruleDecision.action === "allow" && !hasNonBypassable) {
+        await setApprovalMetadata(ctx, {
+          ...ApprovalPolicy.metadata(approval, decision, "auto_allowed"),
+          source: "user",
+          reason: `Allowed by user rule: ${ruleDecision.rule?.permission}(${ruleDecision.rule?.pattern})`,
+        })
+        if (toolName === "bash") markShellSandboxBypass(ctx)
+        return
+      }
+      // action === "ask" → fall through to gateOwnedAsks
+    }
+
+    // Provenance: sessions created by system scheduling (e.g. agenda wake)
+    // may pre-authorize specific tools to bypass the ask gate. This only
+    // applies within this session and cannot override profile denies,
+    // protected paths, or explicit user deny rules.
+    const preAuthorized = session?.preAuthorizedActions ?? []
+    if (decision.action === "ask" && preAuthorized.includes(toolName)) {
+      await setApprovalMetadata(ctx, {
+        ...ApprovalPolicy.metadata(approval, decision, "pre_authorized"),
+        source: "provenance",
+        reason: `Pre-authorized by system scheduling (session inherits trust from agenda wake)`,
+      })
       if (toolName === "bash") markShellSandboxBypass(ctx)
       return
     }
@@ -313,10 +433,13 @@ export namespace ToolResolver {
           nonBypassable: true,
           capability: cap.class,
           opaque: cap.opaque === true,
-          ...(cap.class === "file_external" ? { workspaceBoundary: true, outsideWorkspace: true } : {}),
+          ...(cap.class === "file_external_read" || cap.class === "file_external_write"
+            ? { workspaceBoundary: true, outsideWorkspace: true }
+            : {}),
         },
       })
-      if (cap.class === "file_external") rememberApprovedExternalRoots(ctx, patterns)
+      if (cap.class === "file_external_read" || cap.class === "file_external_write")
+        rememberApprovedExternalRoots(ctx, patterns)
       gate.resolveCapability(cap.class)
     }
   }
@@ -359,11 +482,13 @@ export namespace ToolResolver {
 
   function contextFactory(input: Input) {
     return (args: any, options: ToolCallOptions): Tool.Context => {
-      let profilePromise: Promise<ReturnType<typeof ControlProfileCompiler.resolve>> | undefined
-      const resolvedProfile = async () => {
+      let profilePromise: Promise<ResolvedProfile> | undefined
+      const resolvedProfile = async (): Promise<ResolvedProfile> => {
         if (!profilePromise) {
-          profilePromise = cachedTopLevelProfile().then((topLevelProfile) => {
-            const profileId = resolveEffectiveProfile(input.agent, topLevelProfile, input.session)
+          profilePromise = (async () => {
+            const topLevelProfile = await cachedTopLevelProfile()
+            const sessionProfile = input.session?.id ? await Session.resolveControlProfile(input.session.id) : undefined
+            const profileId = resolveEffectiveProfile(input.agent, topLevelProfile, sessionProfile)
             const workspaceInfo = Instance.workspace
             const interaction = input.session?.interaction
             const interactionMode = interaction?.mode === "unattended" ? "unattended" : "attended"
@@ -372,7 +497,7 @@ export namespace ToolResolver {
               workspaceType: workspaceInfo?.type === "git_worktree" ? "worktree" : "main",
               interactionMode,
             })
-          })
+          })()
         }
         return profilePromise
       }
@@ -445,9 +570,11 @@ export namespace ToolResolver {
             }
             rememberShellApproval(ctx, req.permission, requestMetadata)
             await setApprovalMetadata(ctx, ApprovalPolicy.metadata(profile.approval, decision, "user_allowed"))
+            RiskClassifier.recordUserFeedback((ctx.extra as any).classifierRisk, true)
           } catch (error) {
             if (error instanceof PermissionNext.RejectedError || error instanceof PermissionNext.CorrectedError) {
               await setApprovalMetadata(ctx, ApprovalPolicy.metadata(profile.approval, decision, "user_denied"))
+              RiskClassifier.recordUserFeedback((ctx.extra as any).classifierRisk, false)
             }
             throw error
           }
@@ -457,9 +584,54 @@ export namespace ToolResolver {
     }
   }
 
+  const PLAN_MODE_ALLOWED_TOOLS = new Set([
+    // Read tools
+    "read",
+    "glob",
+    "grep",
+    "view_file",
+    "scan_files",
+    "parse_code",
+    "look_at",
+    "scan_document",
+    "ast_grep",
+    "lsp",
+    // Session read
+    "session_list",
+    "session_read",
+    "session_search",
+    // Note read
+    "note_list",
+    "note_read",
+    "note_search",
+    "note_write",
+    "note_edit",
+    // Memory read
+    "memory_search",
+    "memory_get",
+    // Coordination read/write
+    "task_list",
+    "task_output",
+    "dagread",
+    "dagwrite",
+    "dagpatch",
+    "task",
+    "task_cancel",
+    // UI
+    "question",
+    "skill",
+    // Network
+    "websearch",
+    "webfetch",
+    // Agenda read
+    "agenda_list",
+    "agenda_logs",
+    // Platform read
+    "worktree_list",
+  ])
   export async function definitions(input: Omit<Input, "processor">): Promise<Definition[]> {
     using _ = log.time("definitions")
-    const result: Definition[] = []
+    let result: Definition[] = []
 
     for (const item of await ToolRegistry.tools(input.model.providerID, input.agent)) {
       const schema = ProviderTransform.schema(input.model, z.toJSONSchema(item.parameters), {
@@ -489,19 +661,24 @@ export namespace ToolResolver {
                 const interaction = runtimeInput.session?.interaction
                 const interactionMode = interaction?.mode === "unattended" ? "unattended" : "attended"
                 const topLevelProfile = await cachedTopLevelProfile()
-                const profileId = resolveEffectiveProfile(runtimeInput.agent, topLevelProfile, runtimeInput.session)
+                const sessionProfile = runtimeInput.session?.id
+                  ? await Session.resolveControlProfile(runtimeInput.session.id)
+                  : undefined
+                const profileId = resolveEffectiveProfile(runtimeInput.agent, topLevelProfile, sessionProfile)
                 const synergyRoot = Global.Path.root
-                const gate = EnforcementGate.create({
+                const pluginToolIds = await cachedPluginToolIds()
+                const gate = await EnforcementGate.create({
                   activeWorkspace: workspace,
                   workspaceType: workspaceInfo?.type === "git_worktree" ? "worktree" : "main",
                   interactionMode,
                   originalCheckout: (workspaceInfo as any)?.originalCheckout,
+                  registeredPluginTools: pluginToolIds,
                   profileId,
                   readRoots: [synergyRoot],
                 })
 
                 const envelope = gate.evaluate(item.id, args as Record<string, any>)
-                await applyGateApproval(ctx, gate, envelope, item.id, args as Record<string, any>)
+                await applyGateApproval(ctx, gate, envelope, item.id, args as Record<string, any>, runtimeInput.session)
 
                 const timeoutCfg = await TimeoutConfig.resolve()
                 const toolTimeoutMs = timeoutCfg.toolOverrides[item.id] ?? timeoutCfg.toolDefaultMs
@@ -517,16 +694,31 @@ export namespace ToolResolver {
                   const sandbox = gate.getSandbox()
                   if (sandbox.mode !== "none" && !shouldBypassShellSandbox(ctx)) {
                     const bashCommand = ((args as Record<string, any>)?.command as string) ?? ""
+                    // Register externally-approved roots into the gate so the
+                    // policy engine can aggregate them with auto-approved paths.
+                    const extRoots = approvedExternalRoots(ctx)
+                    if (extRoots.length > 0) {
+                      gate.registerApprovedPaths(extRoots, extRoots, false)
+                    }
+                    const sandboxPolicy = gate.getSandboxPolicy()
                     sandboxWrapper = SandboxBackend.prepareWrapper({
                       command: "/bin/sh",
                       args: ["-c", bashCommand],
                       workspace,
                       sandboxMode: sandbox.mode,
-                      extraReadRoots: [synergyRoot, ...approvedExternalRoots(ctx)],
-                      extraWritableRoots: approvedExternalRoots(ctx),
+                      extraReadRoots: [synergyRoot, ...extRoots],
+                      extraWritableRoots: sandboxPolicy?.fileSystem.writableRoots ?? [],
+                      protectedPaths: sandboxPolicy?.fileSystem.protectedPaths,
+                      dataDenyRoots: sandboxPolicy?.fileSystem.dataDenyRoots,
+                      backend: sandbox.backend,
                     })
-                    if (sandboxWrapper.skipReason && sandbox.fallback === "deny") {
-                      throw new Error(`Sandbox required but unavailable: ${sandboxWrapper.skipReason}`)
+                    if (sandboxWrapper.skipReason) {
+                      if (sandbox.fallback === "deny") {
+                        throw new Error(`Sandbox required but unavailable: ${sandboxWrapper.skipReason}`)
+                      }
+                      // warn fallback: log warning and surface in context for bash tool to include in output
+                      log.warn("sandbox.unavailable", { skipReason: sandboxWrapper.skipReason })
+                      ;(toolCtx.extra as any).sandboxWarning = sandboxWrapper.skipReason
                     }
                     // Store wrapper in context for bash tool to use
                     ;(toolCtx.extra as any).sandboxWrapper = sandboxWrapper
@@ -640,17 +832,22 @@ export namespace ToolResolver {
                   const interaction = runtimeInput.session?.interaction
                   const interactionMode = interaction?.mode === "unattended" ? "unattended" : "attended"
                   const topLevelProfile = await cachedTopLevelProfile()
-                  const profileId = resolveEffectiveProfile(runtimeInput.agent, topLevelProfile, runtimeInput.session)
-                  const gate = EnforcementGate.create({
+                  const sessionProfile = runtimeInput.session?.id
+                    ? await Session.resolveControlProfile(runtimeInput.session.id)
+                    : undefined
+                  const profileId = resolveEffectiveProfile(runtimeInput.agent, topLevelProfile, sessionProfile)
+                  const pluginToolIds = await cachedPluginToolIds()
+                  const gate = await EnforcementGate.create({
                     activeWorkspace: workspace,
                     workspaceType: workspaceInfo?.type === "git_worktree" ? "worktree" : "main",
                     interactionMode,
                     originalCheckout: (workspaceInfo as any)?.originalCheckout,
                     registeredMcpTools: mcpToolNames,
+                    registeredPluginTools: pluginToolIds,
                     profileId,
                   })
                   const envelope = gate.evaluate(key, args as Record<string, any>)
-                  await applyGateApproval(ctx, gate, envelope, key, args as Record<string, any>)
+                  await applyGateApproval(ctx, gate, envelope, key, args as Record<string, any>, runtimeInput.session)
 
                   const timeoutCfg = await TimeoutConfig.resolve()
                   const toolTimeoutMs = timeoutCfg.toolOverrides[key] ?? timeoutCfg.toolDefaultMs
@@ -760,6 +957,18 @@ export namespace ToolResolver {
       }
     }
 
+    if (input.session?.blueprint?.planMode) {
+      result = result.filter((d) => PLAN_MODE_ALLOWED_TOOLS.has(d.id))
+    }
+
+    const activeBlueprintLoopID = input.session?.blueprint?.loopID
+    const isSupervisor = input.agent.name === "supervisor"
+    if (!isSupervisor) {
+      result = result.filter((d) => d.id !== "blueprint_loop_restart")
+    }
+    if (!isSupervisor && !activeBlueprintLoopID) {
+      result = result.filter((d) => d.id !== "blueprint_loop_finish")
+    }
     const disabled = PermissionNext.disabled(
       result.map((item) => item.id),
       PermissionNext.merge(input.agent.permission, PermissionNext.sessionRuleset(input.session)),

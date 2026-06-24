@@ -2,6 +2,7 @@ import { cmd } from "./cmd"
 import * as prompts from "@clack/prompts"
 import { UI } from "../ui"
 import { Config } from "../../config/config"
+import { ConfigDomain } from "../../config/domain"
 
 export const EngramCommand = cmd({
   command: "engram",
@@ -104,8 +105,8 @@ export const EngramLearningCommand = cmd({
       prompts.log.message(JSON.stringify(config, null, 2))
     } else {
       await Config.updateGlobal(config)
-      prompts.log.success("Learning configuration saved to the active global Config Set")
-      prompts.log.info(`Config file: ${await Config.globalPath()}`)
+      prompts.log.success("Learning configuration saved")
+      prompts.log.info(`Config file: ${ConfigDomain.filepath("engram")}`)
     }
 
     prompts.outro("Done")
@@ -151,8 +152,8 @@ export const EngramMemoryCommand = cmd({
       prompts.log.message(JSON.stringify(config, null, 2))
     } else {
       await Config.updateGlobal(config)
-      prompts.log.success("Memory configuration saved to the active global Config Set")
-      prompts.log.info(`Config file: ${await Config.globalPath()}`)
+      prompts.log.success("Memory configuration saved")
+      prompts.log.info(`Config file: ${ConfigDomain.filepath("engram")}`)
     }
 
     prompts.outro("Done")

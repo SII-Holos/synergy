@@ -340,8 +340,8 @@ describe("tool.revise_file", () => {
           const tool = await ReviseFileTool.init()
           const result = await tool.execute({ input: `[same.ts#${tag}]\nreplace 1..1:\n+const x = 1\n` }, ctx)
           expect(result.metadata.applied).toBe(false)
-          expect(result.output).toContain("No-op")
-          expect(result.output).toContain("already match")
+          expect(result.output).toContain("no change")
+          expect(result.output).toContain("re-read")
         },
       })
     })

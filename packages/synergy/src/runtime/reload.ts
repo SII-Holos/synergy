@@ -4,7 +4,7 @@ import z from "zod"
 import { BusEvent } from "../bus/bus-event"
 import { GlobalBus } from "../bus/global"
 import { Config } from "../config/config"
-import { ConfigSet } from "../config/set"
+import { ConfigDomain } from "../config/domain"
 import { Global } from "../global"
 import { Instance } from "../scope/instance"
 import { RuntimeSchema } from "./schema"
@@ -338,13 +338,12 @@ export namespace RuntimeReload {
   }
 
   function hasProjectConfig() {
-    const candidates = [
-      path.join(Instance.directory, ".synergy", "synergy.jsonc"),
-      path.join(Instance.directory, ".synergy", "synergy.json"),
-      path.join(Instance.directory, "synergy.jsonc"),
-      path.join(Instance.directory, "synergy.json"),
-    ]
-    return candidates.some((candidate) => existsSync(candidate))
+    return (
+      projectLegacyConfigFiles().some((file) => existsSync(file)) ||
+      ConfigDomain.definitions.some((domain) =>
+        existsSync(path.join(Instance.directory, ".synergy", "synergy.d", domain.filename)),
+      )
+    )
   }
 
   // ─── Config cascade inference ────────────────────────────────────────
@@ -484,35 +483,32 @@ export namespace RuntimeReload {
     return roots.some((root) => normalized.startsWith(root + path.sep))
   }
 
+  function globalLegacyConfigFiles() {
+    return [path.join(Global.Path.config, "synergy.jsonc"), path.join(Global.Path.config, "synergy.json")].map((file) =>
+      path.resolve(file),
+    )
+  }
+
+  function projectLegacyConfigFiles() {
+    return [
+      path.join(Instance.directory, "synergy.jsonc"),
+      path.join(Instance.directory, "synergy.json"),
+      path.join(Instance.directory, ".synergy", "synergy.jsonc"),
+      path.join(Instance.directory, ".synergy", "synergy.json"),
+    ].map((file) => path.resolve(file))
+  }
+
   export function detectScopeForFile(filePath: string): Scope | undefined {
     const normalized = path.resolve(filePath)
 
-    // Check global config files
-    const globalFiles = [
-      ConfigSet.defaultFilePath(),
-      path.join(Global.Path.config, "synergy.json"),
-      ConfigSet.metadataPath(),
-    ].map((item) => path.resolve(item))
-    if (globalFiles.includes(normalized)) return "global"
+    if (globalLegacyConfigFiles().includes(normalized)) return "global"
+    if (projectLegacyConfigFiles().includes(normalized)) return "project"
 
-    // Check ConfigSet files
-    const configSetRoot = path.resolve(ConfigSet.directory())
-    if (normalized.startsWith(configSetRoot + path.sep)) {
-      const relative = path.relative(configSetRoot, normalized)
-      const parts = relative.split(path.sep)
-      if (parts.length >= 2 && parts[parts.length - 1] === "synergy.jsonc") {
-        return parts[0] === ConfigSet.activeNameSync() ? "global" : undefined
-      }
-    }
+    const globalDomainDir = path.resolve(ConfigDomain.directory())
+    if (normalized.startsWith(globalDomainDir + path.sep) && ConfigDomain.domainForFile(normalized)) return "global"
 
-    // Check project config files
-    const projectFiles = [
-      path.join(Instance.directory, ".synergy", "synergy.jsonc"),
-      path.join(Instance.directory, ".synergy", "synergy.json"),
-      path.join(Instance.directory, "synergy.jsonc"),
-      path.join(Instance.directory, "synergy.json"),
-    ].map((item) => path.resolve(item))
-    if (projectFiles.includes(normalized)) return "project"
+    const projectDomainDir = path.resolve(path.join(Instance.directory, ".synergy", "synergy.d"))
+    if (normalized.startsWith(projectDomainDir + path.sep) && ConfigDomain.domainForFile(normalized)) return "project"
 
     // P3: Check global config directory roots (agent, command, skill, tool, plugin)
     const globalRoots = globalConfigRoots()
@@ -543,31 +539,18 @@ export namespace RuntimeReload {
     const normalized = path.resolve(filePath)
     const targets = [] as Target[]
 
-    // Config files
-    const configFiles = [
-      ConfigSet.defaultFilePath(),
-      path.join(Global.Path.config, "synergy.json"),
-      ConfigSet.metadataPath(),
-      path.join(Instance.directory, ".synergy", "synergy.jsonc"),
-      path.join(Instance.directory, ".synergy", "synergy.json"),
-      path.join(Instance.directory, "synergy.jsonc"),
-      path.join(Instance.directory, "synergy.json"),
-    ].map((item) => path.resolve(item))
-    if (configFiles.includes(normalized)) {
+    if (globalLegacyConfigFiles().includes(normalized) || projectLegacyConfigFiles().includes(normalized)) {
       targets.push("config")
     }
 
-    // ConfigSet files
-    const configSetRoot = path.resolve(ConfigSet.directory())
-    if (normalized.startsWith(configSetRoot + path.sep)) {
-      const relative = path.relative(configSetRoot, normalized)
-      const parts = relative.split(path.sep)
-      if (parts.length >= 2 && parts[parts.length - 1] === "synergy.jsonc") {
-        const setName = parts[0]
-        if (setName === ConfigSet.activeNameSync()) {
-          targets.push("config")
-        }
-      }
+    const globalDomainDir = path.resolve(ConfigDomain.directory())
+    const projectDomainDir = path.resolve(path.join(Instance.directory, ".synergy", "synergy.d"))
+    if (
+      (normalized.startsWith(globalDomainDir + path.sep) || normalized.startsWith(projectDomainDir + path.sep)) &&
+      ConfigDomain.domainForFile(normalized)
+    ) {
+      const domain = ConfigDomain.domainForFile(normalized)!
+      targets.push(...(domain.reloadTargets as Target[]))
     }
 
     const gRoots = globalConfigRoots()

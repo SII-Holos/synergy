@@ -23,3 +23,5 @@ export * from "./types"
 // Compatibility re-exports
 export { normalizeContent, splitContentLines } from "./tag"
 export { parseHashlinePatch, type HashlinePatch, type PatchOp } from "./patch"
+export * from "./block-resolver"
+export * from "./noop-loop-guard"

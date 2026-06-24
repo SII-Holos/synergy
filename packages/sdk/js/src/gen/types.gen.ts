@@ -219,6 +219,10 @@ export type AgendaItem = {
     modelID: string
   }
   /**
+   * Session mode override. Recurring triggers (cron, every) default to 'persistent' (reuse session across fires). Set 'ephemeral' to start a fresh session on every fire — useful for tasks that must not carry history from previous runs, such as daily reports.
+   */
+  sessionMode?: "ephemeral" | "persistent"
+  /**
    * Sessions whose content may be relevant — injected as context references
    */
   sessionRefs?: Array<AgendaSessionRef>
@@ -701,6 +705,54 @@ export type ServerConfig = {
    * Additional domains to allow for CORS
    */
   cors?: Array<string>
+}
+
+/**
+ * Plugin approval policy configuration
+ */
+export type PluginApprovalPolicyConfig = {
+  /**
+   * Allow unsigned local plugins with user consent
+   */
+  allowUnsignedLocal?: boolean
+  /**
+   * Auto-approve builtin plugins without user consent
+   */
+  autoApproveBuiltin?: boolean
+  /**
+   * Block third-party plugins with high-risk capabilities
+   */
+  denyHighRiskThirdParty?: boolean
+  /**
+   * Require cryptographic signature for non-local plugins
+   */
+  requireSignatureForMarketplace?: boolean
+}
+
+/**
+ * Plugin runtime isolation policy configuration
+ */
+export type PluginRuntimePolicyConfig = {
+  /**
+   * Default isolation mode for third-party plugins (npm, git, url)
+   */
+  thirdPartyDefaultMode?: "process" | "worker"
+  /**
+   * Require process isolation for high-risk plugins regardless of source
+   */
+  highRiskRequiresProcess?: boolean
+  /**
+   * Allow third-party plugins to request in-process mode (not recommended)
+   */
+  allowThirdPartyInProcess?: boolean
+  /**
+   * Allow plugins to request worker thread isolation
+   */
+  allowWorkerMode?: boolean
+  /**
+   * Allow local plugins to run in-process
+   */
+  allowLocalInProcess?: boolean
 }
 
 export type PermissionActionConfig = "ask" | "allow" | "deny"
@@ -1413,24 +1465,79 @@ export type ChannelFeishuConfig = {
  */
 export type SandboxConfig = {
   /**
-   * Enable the sandbox runtime when available
+   * Enable the sandbox runtime when available (default: true)
    */
   enabled?: boolean
   /**
-   * How to proceed when the requested sandbox runtime is unavailable
+   * How to proceed when the requested sandbox runtime is unavailable (default: 'warn')
    */
   fallbackPolicy?: "warn" | "allow" | "deny"
   /**
-   * Force a specific sandbox backend. 'auto' (default) selects the platform-native backend. Valid: 'auto' (platform default), 'sandbox-exec' (macOS), 'bwrap' (Linux), 'windows-restricted-token' (Windows MVP), 'windows-elevated' (Windows full, future).
+   * Force a specific sandbox backend. 'auto' (default) selects the platform-native backend. Valid: 'auto' (platform default), 'seatbelt-deny-default' (macOS deny-default SBPL), 'seatbelt-legacy-allow-default' (macOS allow-default SBPL), 'synergy-sandbox-linux' (Linux bundled bwrap), 'bwrap-inline-debug' (Linux in-tree bwrap debug), 'windows-restricted-token' (Windows MVP), 'windows-elevated' (Windows full, future).
    */
-  backend?: "auto" | "sandbox-exec" | "bwrap" | "windows-restricted-token" | "windows-elevated"
+  backend?:
+    | "auto"
+    | "seatbelt-deny-default"
+    | "seatbelt-legacy-allow-default"
+    | "synergy-sandbox-linux"
+    | "bwrap-inline-debug"
+    | "windows-restricted-token"
+    | "windows-elevated"
+  /**
+   * Network configuration for sandbox enforcement
+   */
+  network?: {
+    /**
+     * Network access mode within the sandbox (default: 'restricted')
+     */
+    mode?: "restricted" | "proxy_only" | "full"
+  }
+  /**
+   * macOS-specific sandbox settings
+   */
+  macos?: {
+    /**
+     * Log sandbox denials via macOS Seatbelt (default: true)
+     */
+    denialLogger?: boolean
+  }
+  /**
+   * Linux-specific sandbox settings
+   */
+  linux?: {
+    /**
+     * Use the bundled bwrap binary instead of system bwrap (default: true)
+     */
+    bundledBwrap?: boolean
+    /**
+     * Fall back to Landlock LSM when bwrap is unavailable (default: true)
+     */
+    landlockFallback?: boolean
+  }
   /**
    * Windows-specific sandbox settings
    */
   windows?: {
+    /**
+     * Windows sandbox level (default: 'restricted-token')
+     */
     level?: "disabled" | "restricted-token" | "elevated"
+    /**
+     * Path to the synergy-sandbox-windows.exe helper binary
+     */
     helperPath?: string
+    /**
+     * Verify the helper binary SHA-256 hash before use (default: true)
+     */
     verifyHelperHash?: boolean
+    /**
+     * Create a private desktop for the sandboxed process (default: true)
+     */
+    privateDesktop?: boolean
+    /**
+     * Use ConPTY for pseudo-terminal support (default: true)
+     */
+    conpty?: boolean
   }
 }
 
@@ -1621,6 +1728,8 @@ export type Config = {
     ignore?: Array<string>
   }
   plugin?: Array<string>
+  pluginApprovalPolicy?: PluginApprovalPolicyConfig
+  pluginRuntimePolicy?: PluginRuntimePolicyConfig
   snapshot?: boolean
   /**
    * Automatically update to the latest version. Set to true to auto-update, false to disable, or 'notify' to show update notifications
@@ -1762,6 +1871,10 @@ export type Config = {
   instructions?: Array<string>
   layout?: LayoutConfig
   permission?: PermissionConfig
+  /**
+   * Enable LLM risk classifier to auto-allow safe permission asks (Stage 4 auto mode)
+   */
+  auto_classifier?: boolean
   tools?: {
     [key: string]: boolean
   }
@@ -1848,92 +1961,86 @@ export type Config = {
   }
 }
 
-export type ConfigSetName = string
-
-export type ConfigSetSummary = {
-  name: ConfigSetName
-  active: boolean
-  isDefault: boolean
+export type ConfigDomainSummary = {
+  id:
+    | "general"
+    | "models"
+    | "providers"
+    | "engram"
+    | "mcp"
+    | "plugins"
+    | "agents"
+    | "commands"
+    | "permissions"
+    | "channels"
+    | "holos"
+    | "email"
+    | "runtime"
+  filename: string
+  label: string
   path: string
+  ownedKeys: Array<string>
+  mergePolicy: "merge" | "replace-domain" | "append"
+  reloadTargets: Array<string>
+  uiSection: string
+  importable: boolean
+  config?: Config
 }
 
-export type ConfigSetWithConfig = {
-  name: ConfigSetName
-  active: boolean
-  isDefault: boolean
-  path: string
+export type ConfigDomainUpdateInput = {
   config: Config
+  mode?: "merge" | "replace-domain" | "append"
 }
 
-export type ConfigSetCreateInput = {
-  name: ConfigSetName
-  config?: Config
+export type ConfigDomainImportChange = {
+  key: string
+  before?: unknown
+  after?: unknown
+  conflict: boolean
 }
 
-export type ConfigSetRaw = {
-  name: ConfigSetName
-  path: string
-  raw: string
-  config?: Config
-  active: boolean
-  isDefault: boolean
+export type ConfigDomainImportPlan = {
+  domains: Array<{
+    id:
+      | "general"
+      | "models"
+      | "providers"
+      | "engram"
+      | "mcp"
+      | "plugins"
+      | "agents"
+      | "commands"
+      | "permissions"
+      | "channels"
+      | "holos"
+      | "email"
+      | "runtime"
+    filename: string
+    path: string
+    mode: "merge" | "replace-domain" | "append"
+    changes: Array<ConfigDomainImportChange>
+  }>
+  conflicts: Array<ConfigDomainImportChange>
 }
 
-export type ConfigRawValidationResult = {
-  valid: boolean
-  config?: Config
-  errors: Array<string>
-  warnings: Array<string>
-}
-
-export type ConfigSetRawValidateInput = {
-  raw: string
-}
-
-export type RuntimeReloadTarget =
-  | "config"
-  | "skill"
-  | "provider"
-  | "agent"
-  | "plugin"
-  | "mcp"
-  | "lsp"
-  | "formatter"
-  | "watcher"
-  | "channel"
-  | "holos"
-  | "command"
-  | "tool_registry"
-  | "all"
-
-export type RuntimeReloadResult = {
-  success: boolean
-  requested: Array<RuntimeReloadTarget>
-  executed: Array<RuntimeReloadTarget>
-  cascaded: Array<RuntimeReloadTarget>
-  changedFields: Array<string>
-  restartRequired: Array<string>
-  liveApplied: Array<string>
-  warnings: Array<string>
-}
-
-export type ConfigSetRawSaveResult = {
-  configSet: ConfigSetRaw
-  validation: ConfigRawValidationResult
-  saved: boolean
-  runtimeReload?: RuntimeReloadResult
-}
-
-export type ConfigSetRawSaveInput = {
-  raw: string
-  reload?: boolean
-}
-
-export type ConfigSetActivateResult = {
-  previous: ConfigSetName
-  active: ConfigSetName
-  changed: boolean
-  runtimeReload: RuntimeReloadResult
+export type ConfigDomainImportPlanInput = {
+  config: Config
+  only?: Array<
+    | "general"
+    | "models"
+    | "providers"
+    | "engram"
+    | "mcp"
+    | "plugins"
+    | "agents"
+    | "commands"
+    | "permissions"
+    | "channels"
+    | "holos"
+    | "email"
+    | "runtime"
+  >
+  mode?: "merge" | "replace-domain" | "append"
 }
 
 export type Model = {
@@ -2021,6 +2128,33 @@ export type Provider = {
   }
 }
 
+export type RuntimeReloadTarget =
+  | "config"
+  | "skill"
+  | "provider"
+  | "agent"
+  | "plugin"
+  | "mcp"
+  | "lsp"
+  | "formatter"
+  | "watcher"
+  | "channel"
+  | "holos"
+  | "command"
+  | "tool_registry"
+  | "all"
+
+export type RuntimeReloadResult = {
+  success: boolean
+  requested: Array<RuntimeReloadTarget>
+  executed: Array<RuntimeReloadTarget>
+  cascaded: Array<RuntimeReloadTarget>
+  changedFields: Array<string>
+  restartRequired: Array<string>
+  liveApplied: Array<string>
+  warnings: Array<string>
+}
+
 export type RuntimeReloadScope = "auto" | "global" | "project"
 
 export type ControlProfileSummary = {
@@ -2043,6 +2177,26 @@ export type SandboxStatus = {
   available: boolean
   backend: string | null
   supported: boolean
+}
+
+export type SandboxReadinessCheck = {
+  id: string
+  label: string
+  status: "pass" | "warn" | "fail"
+  detail: string
+  recovery?: {
+    action: string
+    label: string
+    command: string
+  }
+}
+
+export type SandboxReadiness = {
+  platform: "macos" | "linux" | "windows" | "unsupported"
+  backend: string | null
+  ready: boolean
+  checks: Array<SandboxReadinessCheck>
+  summary: string
 }
 
 export type ToolIds = Array<string>
@@ -2217,6 +2371,10 @@ export type Session = {
   pinned?: number
   permission?: PermissionRuleset
   controlProfile?: "guarded" | "autonomous" | "full_access"
+  /**
+   * Tool names pre-authorized by the user via system scheduling (e.g. agenda wake). Bypasses the ask gate for these tools within this session only.
+   */
+  preAuthorizedActions?: Array<string>
   pendingReply?: boolean
   interaction?: SessionInteraction
   agenda?: {
@@ -2235,6 +2393,10 @@ export type Session = {
   cortex?: SessionCortexDelegation
   working?: SessionWorkingInfo
   workspace?: SessionWorkspace
+  blueprint?: {
+    loopID?: string
+    planMode?: boolean
+  }
 }
 
 export type SessionStatus =
@@ -3208,6 +3370,7 @@ export type AgendaCreateInput = {
     providerID: string
     modelID: string
   }
+  sessionMode?: "ephemeral" | "persistent"
   sessionRefs?: Array<AgendaSessionRef>
   timeout?: number
   createdBy?: "user" | "agent"
@@ -3229,7 +3392,13 @@ export type AgendaPatchInput = {
   wake?: boolean
   silent?: boolean
   agent?: string
+  model?: {
+    providerID: string
+    modelID: string
+  }
+  sessionMode?: "ephemeral" | "persistent"
   sessionRefs?: Array<AgendaSessionRef>
+  timeout?: number
 }
 
 export type NoteMetaInfo = {
@@ -3239,6 +3408,7 @@ export type NoteMetaInfo = {
   global: boolean
   originScope?: string
   tags: Array<string>
+  kind?: "note" | "blueprint"
   version: number
   time: {
     created: number
@@ -3246,6 +3416,13 @@ export type NoteMetaInfo = {
   }
   searchText: string
   previewHtml?: string
+  blueprint?: {
+    description?: string
+    defaultAgent?: string
+    activeLoopID?: string
+    runCount?: number
+    lastRunAt?: number
+  }
 }
 
 export type NoteMetaScopeGroup = {
@@ -3262,6 +3439,14 @@ export type NoteInfo = {
   global: boolean
   originScope?: string
   tags: Array<string>
+  kind?: "note" | "blueprint"
+  blueprint?: {
+    description?: string
+    defaultAgent?: string
+    activeLoopID?: string
+    runCount?: number
+    lastRunAt?: number
+  }
   version: number
   time: {
     created: number
@@ -3279,6 +3464,14 @@ export type NoteCreateInput = {
   title: string
   content?: unknown
   tags?: Array<string>
+  kind?: "note" | "blueprint"
+  blueprint?: {
+    description?: string
+    defaultAgent?: string
+    activeLoopID?: string
+    runCount?: number
+    lastRunAt?: number
+  }
 }
 
 export type NoteConflictError = {
@@ -3296,7 +3489,88 @@ export type NotePatchInput = {
   pinned?: boolean
   global?: boolean
   tags?: Array<string>
+  kind?: "note" | "blueprint"
+  blueprint?: {
+    description?: string
+    defaultAgent?: string
+    activeLoopID?: string | null
+    runCount?: number
+    lastRunAt?: number
+  } | null
   expectedVersion?: number
+}
+
+export type BlueprintLoopInfo = {
+  id: string
+  noteID: string
+  noteVersion?: number
+  title: string
+  description?: string
+  sessionID: string
+  supervisorSessionID?: string
+  scopeID: string
+  status: "armed" | "running" | "waiting" | "auditing" | "completed" | "failed" | "cancelled"
+  runMode?: "current" | "new" | "worktree"
+  parentSessionID?: string
+  firstPrompt?: string
+  error?: string
+  loopIndex?: number
+  audit?: {
+    lastReason?: string
+    lastAuditedAt?: number
+    attempts: number
+  }
+  time: {
+    created: number
+    started?: number
+    updated: number
+    completed?: number
+  }
+}
+
+export type BlueprintLoopCreateInput = {
+  /**
+   * Note ID to loop
+   */
+  noteID: string
+  /**
+   * Note version to lock
+   */
+  noteVersion?: number
+  /**
+   * Loop title
+   */
+  title: string
+  /**
+   * Loop description
+   */
+  description?: string
+  /**
+   * Session ID driving this loop
+   */
+  sessionID: string
+  /**
+   * Loop run mode (default current)
+   */
+  runMode?: "current" | "new" | "worktree"
+  /**
+   * Parent session ID
+   */
+  parentSessionID?: string
+  /**
+   * First user prompt for the loop
+   */
+  firstPrompt?: string
+  /**
+   * Zero-based loop index
+   */
+  loopIndex?: number
+}
+
+export type BlueprintLoopActivity = {
+  stepCount: number
+  messageCount: number
+  lastActivityAt?: number
 }
 
 export type AssetInfo = {
@@ -3559,6 +3833,265 @@ export type HolosRetryResponse = {
 
 export type MailboxMessageList = Array<unknown>
 
+export type PluginUiContribution = {
+  pluginId: string
+  name?: string
+  version: string
+  trustTier: "declarative" | "trusted-import" | "sandbox"
+  ui?: {
+    [key: string]: unknown
+  } | null
+  permissions?: {
+    [key: string]: unknown
+  } | null
+}
+
+export type PluginInteractResult = {
+  status: string
+  type: string
+}
+
+export type PluginConfigSchema = {
+  [key: string]: unknown
+}
+
+export type PluginConfig = {
+  [key: string]: unknown
+}
+
+export type PluginStatus = {
+  id: string
+  name?: string
+  version?: string
+  source: "local" | "npm" | "git" | "url" | "builtin" | "official"
+  trust: {
+    tier: "declarative" | "trusted-import" | "sandbox"
+    source: "local" | "npm" | "git" | "url" | "builtin" | "official"
+    userTrusted: boolean
+    verifiedIntegrity: boolean
+    reason: string
+  }
+  loaded: boolean
+  loadError?: string
+  manifestValid: boolean
+  integrity: "verified" | "unverified" | "failed"
+  permissions: {
+    base: Array<string>
+    tools: {
+      [key: string]: Array<string>
+    }
+    overallRisk: "low" | "medium" | "high"
+    warnings: Array<{
+      type: string
+      message: string
+      toolId?: string
+    }>
+  }
+  routes: Array<string>
+  tools: Array<{
+    id: string
+    fullId: string
+    capabilities: Array<string>
+    warnings: Array<string>
+  }>
+  ui: {
+    contributions: number
+    errors: Array<string>
+  }
+  stores: {
+    config: boolean
+    secrets: "none" | "plaintext" | "keychain"
+    cacheBytes?: number
+  }
+  runtime?: {
+    mode: string
+    pid?: number
+    state: string
+    restarts: number
+    lastHeartbeatAt?: number
+    memoryMb?: number
+    limits: {
+      [key: string]: unknown
+    }
+    lastError?: string
+    runtimeDecision?: string
+  }
+  warnings: Array<{
+    type: string
+    message: string
+    toolId?: string
+  }>
+}
+
+export type ApiPluginInfo = {
+  pluginId: string
+  name?: string
+  version?: string
+  trustTier: "declarative" | "trusted-import" | "sandbox"
+  hasManifest: boolean
+  pluginDir: string
+  cliCommands: Array<string>
+  skillCount: number
+  agentCount: number
+}
+
+export type ApiPluginDetail = {
+  pluginId: string
+  name?: string
+  version?: string
+  trustTier: "declarative" | "trusted-import" | "sandbox"
+  hasManifest: boolean
+  pluginDir: string
+  manifest?: {
+    [key: string]: unknown
+  } | null
+  cliCommands: Array<string>
+  skills: Array<string>
+  agents: Array<string>
+}
+
+export type PluginRuntimeInfo = {
+  mode: "in-process" | "worker" | "process"
+  pid?: number
+  state: "starting" | "ready" | "unhealthy" | "stopped" | "crashed"
+  restarts: number
+  lastHeartbeatAt?: number
+  memoryMb?: number
+  limits: {
+    STARTUP_TIMEOUT_MS: number
+    REQUEST_TIMEOUT_MS: number
+    SHUTDOWN_GRACE_MS: number
+    CONCURRENT_REQUESTS: number
+    MAX_LOG_BYTES_PER_MINUTE: number
+    MEMORY_MB: number
+    HEARTBEAT_INTERVAL_MS: number
+    HEARTBEAT_MISSES_BEFORE_KILL: number
+  }
+  lastError?: string
+}
+
+export type PluginRuntimeLogEntry = {
+  timestamp: number
+  level: string
+  message: string
+}
+
+export type RegistryPluginSummary = {
+  id: string
+  name: string
+  description: string
+  author: {
+    name: string
+    email?: string
+    url?: string
+  }
+  verified: boolean
+  official: boolean
+  keywords: Array<string>
+  latestVersion?: string
+  updatedAt: number
+  risk: "low" | "medium" | "high"
+  trustTier: "declarative" | "trusted-import" | "sandbox"
+  runtimeMode: "in-process" | "worker" | "process"
+  uiSurfaces: Array<string>
+  tools: Array<string>
+  downloads: number
+  rating?: number
+}
+
+export type RegistryPluginSignature = {
+  algorithm: string
+  value: string
+  keyId?: string
+  timestamp?: number
+}
+
+export type RegistryPermissionItem = {
+  key: string
+  description: string
+  risk: "low" | "medium" | "high"
+  granted?: boolean
+}
+
+export type RegistryPluginVersion = {
+  version: string
+  manifestHash: string
+  permissionsHash: string
+  signature?: RegistryPluginSignature
+  downloadUrl?: string
+  integrity: string
+  risk: "low" | "medium" | "high"
+  permissionsSummary: Array<RegistryPermissionItem>
+  publishedAt: number
+  changelog?: string
+}
+
+export type RegistryPermissionSummary = {
+  key: string
+  category: string
+  severity: string
+  title: string
+  description: string
+}
+
+export type RegistryPluginEntry = {
+  id: string
+  name: string
+  description: string
+  author: {
+    name: string
+    email?: string
+    url?: string
+  }
+  verified: boolean
+  official: boolean
+  keywords: Array<string>
+  compatibility: {
+    synergy: string
+  }
+  versions: Array<RegistryPluginVersion>
+  createdAt: number
+  updatedAt: number
+  risk: "low" | "medium" | "high"
+  trustTier: "declarative" | "trusted-import" | "sandbox"
+  runtimeMode: "in-process" | "worker" | "process"
+  permissionsSummary: Array<RegistryPermissionSummary>
+  uiSurfaces: Array<string>
+  tools: Array<string>
+  downloads: number
+  rating?: number
+  ratingCount?: number
+  changelog?: string
+}
+
+export type RegistryPublishInput = {
+  id: string
+  name: string
+  description: string
+  author: {
+    name: string
+    email?: string
+    url?: string
+  }
+  verified: boolean
+  official: boolean
+  keywords: Array<string>
+  compatibility: {
+    synergy: string
+  }
+  versions: Array<RegistryPluginVersion>
+  risk: "low" | "medium" | "high"
+  trustTier: "declarative" | "trusted-import" | "sandbox"
+  runtimeMode: "in-process" | "worker" | "process"
+  permissionsSummary: Array<RegistryPermissionSummary>
+  uiSurfaces: Array<string>
+  tools: Array<string>
+  downloads: number
+  rating?: number
+  ratingCount?: number
+  changelog?: string
+}
+
 export type ExternalAgentInfo = {
   adapter: string
   path?: string
@@ -3753,14 +4286,6 @@ export type EventConfigUpdated = {
   }
 }
 
-export type EventConfigSetActivated = {
-  type: "config.set.activated"
-  properties: {
-    previous: ConfigSetName
-    active: ConfigSetName
-  }
-}
-
 export type EventServerInstanceDisposed = {
   type: "server.instance.disposed"
   properties: {
@@ -3861,7 +4386,7 @@ export type EventPermissionReplied = {
   properties: {
     sessionID: string
     requestID: string
-    reply: "once" | "reject"
+    reply: "once" | "session" | "always" | "reject"
   }
 }
 
@@ -4017,6 +4542,57 @@ export type EventTodoUpdated = {
   properties: {
     sessionID: string
     todos: Array<Todo>
+  }
+}
+
+export type EventBlueprintLoopCreated = {
+  type: "blueprint_loop.created"
+  properties: {
+    loop: BlueprintLoopInfo
+  }
+}
+
+export type EventBlueprintLoopUpdated = {
+  type: "blueprint_loop.updated"
+  properties: {
+    loop: BlueprintLoopInfo
+  }
+}
+
+export type EventBlueprintLoopCompleted = {
+  type: "blueprint_loop.completed"
+  properties: {
+    loopID: string
+  }
+}
+
+export type EventBlueprintLoopFailed = {
+  type: "blueprint_loop.failed"
+  properties: {
+    loopID: string
+    error: string
+  }
+}
+
+export type EventBlueprintLoopCancelled = {
+  type: "blueprint_loop.cancelled"
+  properties: {
+    loopID: string
+  }
+}
+
+export type EventBlueprintLoopAuditing = {
+  type: "blueprint_loop.auditing"
+  properties: {
+    loopID: string
+  }
+}
+
+export type EventBlueprintLoopRestarted = {
+  type: "blueprint_loop.restarted"
+  properties: {
+    loopID: string
+    reason: string
   }
 }
 
@@ -4201,7 +4777,6 @@ export type Event =
   | EventInstallationUpdated
   | EventInstallationUpdateAvailable
   | EventConfigUpdated
-  | EventConfigSetActivated
   | EventServerInstanceDisposed
   | EventMcpToolsChanged
   | EventMcpPromptsChanged
@@ -4236,6 +4811,13 @@ export type Event =
   | EventMessagePartRemoved
   | EventDagUpdated
   | EventTodoUpdated
+  | EventBlueprintLoopCreated
+  | EventBlueprintLoopUpdated
+  | EventBlueprintLoopCompleted
+  | EventBlueprintLoopFailed
+  | EventBlueprintLoopCancelled
+  | EventBlueprintLoopAuditing
+  | EventBlueprintLoopRestarted
   | EventSessionCompacted
   | EventAgendaItemCreated
   | EventAgendaItemUpdated
@@ -4973,253 +5555,180 @@ export type ConfigGlobalResponses = {
 
 export type ConfigGlobalResponse = ConfigGlobalResponses[keyof ConfigGlobalResponses]
 
-export type ConfigSetListData = {
+export type ConfigDomainListData = {
   body?: never
   path?: never
   query?: {
     directory?: string
   }
-  url: "/config/sets"
+  url: "/config/domains"
 }
 
-export type ConfigSetListResponses = {
+export type ConfigDomainListResponses = {
   /**
-   * List of Config Sets
+   * List of config domains
    */
-  200: Array<ConfigSetSummary>
+  200: Array<ConfigDomainSummary>
 }
 
-export type ConfigSetListResponse = ConfigSetListResponses[keyof ConfigSetListResponses]
+export type ConfigDomainListResponse = ConfigDomainListResponses[keyof ConfigDomainListResponses]
 
-export type ConfigSetCreateData = {
-  body?: ConfigSetCreateInput
+export type ConfigDomainGetData = {
+  body?: never
+  path: {
+    domain:
+      | "general"
+      | "models"
+      | "providers"
+      | "engram"
+      | "mcp"
+      | "plugins"
+      | "agents"
+      | "commands"
+      | "permissions"
+      | "channels"
+      | "holos"
+      | "email"
+      | "runtime"
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/config/domains/{domain}"
+}
+
+export type ConfigDomainGetErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type ConfigDomainGetError = ConfigDomainGetErrors[keyof ConfigDomainGetErrors]
+
+export type ConfigDomainGetResponses = {
+  /**
+   * Config domain fragment
+   */
+  200: Config
+}
+
+export type ConfigDomainGetResponse = ConfigDomainGetResponses[keyof ConfigDomainGetResponses]
+
+export type ConfigDomainUpdateData = {
+  body?: ConfigDomainUpdateInput
+  path: {
+    domain:
+      | "general"
+      | "models"
+      | "providers"
+      | "engram"
+      | "mcp"
+      | "plugins"
+      | "agents"
+      | "commands"
+      | "permissions"
+      | "channels"
+      | "holos"
+      | "email"
+      | "runtime"
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/config/domains/{domain}"
+}
+
+export type ConfigDomainUpdateErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type ConfigDomainUpdateError = ConfigDomainUpdateErrors[keyof ConfigDomainUpdateErrors]
+
+export type ConfigDomainUpdateResponses = {
+  /**
+   * Updated config domain fragment
+   */
+  200: Config
+}
+
+export type ConfigDomainUpdateResponse = ConfigDomainUpdateResponses[keyof ConfigDomainUpdateResponses]
+
+export type ConfigImportPlanData = {
+  body?: ConfigDomainImportPlanInput
   path?: never
   query?: {
     directory?: string
   }
-  url: "/config/sets"
+  url: "/config/import/plan"
 }
 
-export type ConfigSetCreateErrors = {
+export type ConfigImportPlanErrors = {
   /**
    * Bad request
    */
   400: BadRequestError
 }
 
-export type ConfigSetCreateError = ConfigSetCreateErrors[keyof ConfigSetCreateErrors]
+export type ConfigImportPlanError = ConfigImportPlanErrors[keyof ConfigImportPlanErrors]
 
-export type ConfigSetCreateResponses = {
+export type ConfigImportPlanResponses = {
   /**
-   * Created Config Set
+   * Config import plan
    */
-  200: ConfigSetWithConfig
+  200: ConfigDomainImportPlan
 }
 
-export type ConfigSetCreateResponse = ConfigSetCreateResponses[keyof ConfigSetCreateResponses]
+export type ConfigImportPlanResponse = ConfigImportPlanResponses[keyof ConfigImportPlanResponses]
 
-export type ConfigSetDeleteData = {
-  body?: never
-  path: {
-    name: ConfigSetName
+export type ConfigImportApplyData = {
+  body?: {
+    config: Config
+    only?: Array<
+      | "general"
+      | "models"
+      | "providers"
+      | "engram"
+      | "mcp"
+      | "plugins"
+      | "agents"
+      | "commands"
+      | "permissions"
+      | "channels"
+      | "holos"
+      | "email"
+      | "runtime"
+    >
+    mode?: "merge" | "replace-domain" | "append"
+    yes?: boolean
   }
+  path?: never
   query?: {
     directory?: string
   }
-  url: "/config/sets/{name}"
+  url: "/config/import/apply"
 }
 
-export type ConfigSetDeleteErrors = {
+export type ConfigImportApplyErrors = {
   /**
    * Bad request
    */
   400: BadRequestError
 }
 
-export type ConfigSetDeleteError = ConfigSetDeleteErrors[keyof ConfigSetDeleteErrors]
+export type ConfigImportApplyError = ConfigImportApplyErrors[keyof ConfigImportApplyErrors]
 
-export type ConfigSetDeleteResponses = {
+export type ConfigImportApplyResponses = {
   /**
-   * Deleted Config Set
+   * Applied config import plan
    */
-  200: ConfigSetSummary
+  200: ConfigDomainImportPlan
 }
 
-export type ConfigSetDeleteResponse = ConfigSetDeleteResponses[keyof ConfigSetDeleteResponses]
-
-export type ConfigSetGetData = {
-  body?: never
-  path: {
-    name: ConfigSetName
-  }
-  query?: {
-    directory?: string
-  }
-  url: "/config/sets/{name}"
-}
-
-export type ConfigSetGetErrors = {
-  /**
-   * Bad request
-   */
-  400: BadRequestError
-}
-
-export type ConfigSetGetError = ConfigSetGetErrors[keyof ConfigSetGetErrors]
-
-export type ConfigSetGetResponses = {
-  /**
-   * Config Set
-   */
-  200: ConfigSetWithConfig
-}
-
-export type ConfigSetGetResponse = ConfigSetGetResponses[keyof ConfigSetGetResponses]
-
-export type ConfigSetUpdateData = {
-  body?: Config
-  path: {
-    name: ConfigSetName
-  }
-  query?: {
-    directory?: string
-  }
-  url: "/config/sets/{name}"
-}
-
-export type ConfigSetUpdateErrors = {
-  /**
-   * Bad request
-   */
-  400: BadRequestError
-}
-
-export type ConfigSetUpdateError = ConfigSetUpdateErrors[keyof ConfigSetUpdateErrors]
-
-export type ConfigSetUpdateResponses = {
-  /**
-   * Updated Config Set
-   */
-  200: ConfigSetWithConfig
-}
-
-export type ConfigSetUpdateResponse = ConfigSetUpdateResponses[keyof ConfigSetUpdateResponses]
-
-export type ConfigSetRawGetData = {
-  body?: never
-  path: {
-    name: ConfigSetName
-  }
-  query?: {
-    directory?: string
-  }
-  url: "/config/sets/{name}/raw"
-}
-
-export type ConfigSetRawGetErrors = {
-  /**
-   * Bad request
-   */
-  400: BadRequestError
-}
-
-export type ConfigSetRawGetError = ConfigSetRawGetErrors[keyof ConfigSetRawGetErrors]
-
-export type ConfigSetRawGetResponses = {
-  /**
-   * Config Set raw source
-   */
-  200: ConfigSetRaw
-}
-
-export type ConfigSetRawGetResponse = ConfigSetRawGetResponses[keyof ConfigSetRawGetResponses]
-
-export type ConfigSetRawSaveData = {
-  body?: ConfigSetRawSaveInput
-  path: {
-    name: ConfigSetName
-  }
-  query?: {
-    directory?: string
-  }
-  url: "/config/sets/{name}/raw"
-}
-
-export type ConfigSetRawSaveErrors = {
-  /**
-   * Bad request
-   */
-  400: BadRequestError
-}
-
-export type ConfigSetRawSaveError = ConfigSetRawSaveErrors[keyof ConfigSetRawSaveErrors]
-
-export type ConfigSetRawSaveResponses = {
-  /**
-   * Saved Config Set raw source
-   */
-  200: ConfigSetRawSaveResult
-}
-
-export type ConfigSetRawSaveResponse = ConfigSetRawSaveResponses[keyof ConfigSetRawSaveResponses]
-
-export type ConfigSetRawValidateData = {
-  body?: ConfigSetRawValidateInput
-  path: {
-    name: ConfigSetName
-  }
-  query?: {
-    directory?: string
-  }
-  url: "/config/sets/{name}/raw/validate"
-}
-
-export type ConfigSetRawValidateErrors = {
-  /**
-   * Bad request
-   */
-  400: BadRequestError
-}
-
-export type ConfigSetRawValidateError = ConfigSetRawValidateErrors[keyof ConfigSetRawValidateErrors]
-
-export type ConfigSetRawValidateResponses = {
-  /**
-   * Validation result
-   */
-  200: ConfigRawValidationResult
-}
-
-export type ConfigSetRawValidateResponse = ConfigSetRawValidateResponses[keyof ConfigSetRawValidateResponses]
-
-export type ConfigSetActivateData = {
-  body?: never
-  path: {
-    name: ConfigSetName
-  }
-  query?: {
-    directory?: string
-  }
-  url: "/config/sets/{name}/activate"
-}
-
-export type ConfigSetActivateErrors = {
-  /**
-   * Bad request
-   */
-  400: BadRequestError
-}
-
-export type ConfigSetActivateError = ConfigSetActivateErrors[keyof ConfigSetActivateErrors]
-
-export type ConfigSetActivateResponses = {
-  /**
-   * Activated Config Set
-   */
-  200: ConfigSetActivateResult
-}
-
-export type ConfigSetActivateResponse = ConfigSetActivateResponses[keyof ConfigSetActivateResponses]
+export type ConfigImportApplyResponse = ConfigImportApplyResponses[keyof ConfigImportApplyResponses]
 
 export type ConfigProvidersData = {
   body?: never
@@ -5342,6 +5851,24 @@ export type SandboxStatusResponses = {
 }
 
 export type SandboxStatusResponse = SandboxStatusResponses[keyof SandboxStatusResponses]
+
+export type SandboxReadinessData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/sandbox/readiness"
+}
+
+export type SandboxReadinessResponses = {
+  /**
+   * Sandbox readiness information
+   */
+  200: SandboxReadiness
+}
+
+export type SandboxReadinessResponse = SandboxReadinessResponses[keyof SandboxReadinessResponses]
 
 export type ToolIdsData = {
   body?: never
@@ -6516,7 +7043,7 @@ export type SessionUnrevertResponse = SessionUnrevertResponses[keyof SessionUnre
 
 export type PermissionRespondData = {
   body?: {
-    response: "once" | "reject"
+    response: "once" | "session" | "always" | "reject"
   }
   path: {
     sessionID: string
@@ -6552,7 +7079,7 @@ export type PermissionRespondResponse = PermissionRespondResponses[keyof Permiss
 
 export type PermissionReplyData = {
   body?: {
-    reply: "once" | "reject"
+    reply: "once" | "session" | "always" | "reject"
     message?: string
   }
   path: {
@@ -8492,6 +9019,400 @@ export type NoteUpdateResponses = {
 
 export type NoteUpdateResponse = NoteUpdateResponses[keyof NoteUpdateResponses]
 
+export type BlueprintLoopListData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/blueprint/loop"
+}
+
+export type BlueprintLoopListErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type BlueprintLoopListError = BlueprintLoopListErrors[keyof BlueprintLoopListErrors]
+
+export type BlueprintLoopListResponses = {
+  /**
+   * List of BlueprintLoops
+   */
+  200: Array<BlueprintLoopInfo>
+}
+
+export type BlueprintLoopListResponse = BlueprintLoopListResponses[keyof BlueprintLoopListResponses]
+
+export type BlueprintLoopCreateData = {
+  body?: BlueprintLoopCreateInput
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/blueprint/loop"
+}
+
+export type BlueprintLoopCreateErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type BlueprintLoopCreateError = BlueprintLoopCreateErrors[keyof BlueprintLoopCreateErrors]
+
+export type BlueprintLoopCreateResponses = {
+  /**
+   * Created BlueprintLoop
+   */
+  200: BlueprintLoopInfo
+}
+
+export type BlueprintLoopCreateResponse = BlueprintLoopCreateResponses[keyof BlueprintLoopCreateResponses]
+
+export type BlueprintLoopCompleteData = {
+  body?: never
+  path: {
+    /**
+     * BlueprintLoop ID
+     */
+    id: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/blueprint/loop/{id}/complete"
+}
+
+export type BlueprintLoopCompleteErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type BlueprintLoopCompleteError = BlueprintLoopCompleteErrors[keyof BlueprintLoopCompleteErrors]
+
+export type BlueprintLoopCompleteResponses = {
+  /**
+   * Completed BlueprintLoop
+   */
+  200: BlueprintLoopInfo
+}
+
+export type BlueprintLoopCompleteResponse = BlueprintLoopCompleteResponses[keyof BlueprintLoopCompleteResponses]
+
+export type BlueprintLoopCancelData = {
+  body?: never
+  path: {
+    /**
+     * BlueprintLoop ID
+     */
+    id: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/blueprint/loop/{id}/cancel"
+}
+
+export type BlueprintLoopCancelErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type BlueprintLoopCancelError = BlueprintLoopCancelErrors[keyof BlueprintLoopCancelErrors]
+
+export type BlueprintLoopCancelResponses = {
+  /**
+   * Cancelled BlueprintLoop
+   */
+  200: BlueprintLoopInfo
+}
+
+export type BlueprintLoopCancelResponse = BlueprintLoopCancelResponses[keyof BlueprintLoopCancelResponses]
+
+export type BlueprintLoopGetData = {
+  body?: never
+  path: {
+    /**
+     * BlueprintLoop ID
+     */
+    id: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/blueprint/loop/{id}"
+}
+
+export type BlueprintLoopGetErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type BlueprintLoopGetError = BlueprintLoopGetErrors[keyof BlueprintLoopGetErrors]
+
+export type BlueprintLoopGetResponses = {
+  /**
+   * BlueprintLoop
+   */
+  200: BlueprintLoopInfo
+}
+
+export type BlueprintLoopGetResponse = BlueprintLoopGetResponses[keyof BlueprintLoopGetResponses]
+
+export type BlueprintLoopBindData = {
+  body?: {
+    /**
+     * Session ID to bind
+     */
+    sessionID: string
+  }
+  path: {
+    /**
+     * BlueprintLoop ID
+     */
+    id: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/blueprint/loop/{id}/bind"
+}
+
+export type BlueprintLoopBindErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type BlueprintLoopBindError = BlueprintLoopBindErrors[keyof BlueprintLoopBindErrors]
+
+export type BlueprintLoopBindResponses = {
+  /**
+   * Updated BlueprintLoop
+   */
+  200: BlueprintLoopInfo
+}
+
+export type BlueprintLoopBindResponse = BlueprintLoopBindResponses[keyof BlueprintLoopBindResponses]
+
+export type BlueprintLoopStartData = {
+  body?: {
+    /**
+     * User-provided prompt to merge into execution start message
+     */
+    userPrompt?: string
+  }
+  path: {
+    /**
+     * BlueprintLoop ID
+     */
+    id: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/blueprint/loop/{id}/start"
+}
+
+export type BlueprintLoopStartErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type BlueprintLoopStartError = BlueprintLoopStartErrors[keyof BlueprintLoopStartErrors]
+
+export type BlueprintLoopStartResponses = {
+  /**
+   * Started BlueprintLoop
+   */
+  200: BlueprintLoopInfo
+}
+
+export type BlueprintLoopStartResponse = BlueprintLoopStartResponses[keyof BlueprintLoopStartResponses]
+
+export type BlueprintLoopWaitData = {
+  body?: never
+  path: {
+    /**
+     * BlueprintLoop ID
+     */
+    id: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/blueprint/loop/{id}/wait"
+}
+
+export type BlueprintLoopWaitErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type BlueprintLoopWaitError = BlueprintLoopWaitErrors[keyof BlueprintLoopWaitErrors]
+
+export type BlueprintLoopWaitResponses = {
+  /**
+   * Waiting BlueprintLoop
+   */
+  200: BlueprintLoopInfo
+}
+
+export type BlueprintLoopWaitResponse = BlueprintLoopWaitResponses[keyof BlueprintLoopWaitResponses]
+
+export type BlueprintLoopResumeData = {
+  body?: never
+  path: {
+    /**
+     * BlueprintLoop ID
+     */
+    id: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/blueprint/loop/{id}/resume"
+}
+
+export type BlueprintLoopResumeErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type BlueprintLoopResumeError = BlueprintLoopResumeErrors[keyof BlueprintLoopResumeErrors]
+
+export type BlueprintLoopResumeResponses = {
+  /**
+   * Resumed BlueprintLoop
+   */
+  200: BlueprintLoopInfo
+}
+
+export type BlueprintLoopResumeResponse = BlueprintLoopResumeResponses[keyof BlueprintLoopResumeResponses]
+
+export type BlueprintLoopActivityData = {
+  body?: never
+  path: {
+    /**
+     * BlueprintLoop ID
+     */
+    id: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/blueprint/loop/{id}/activity"
+}
+
+export type BlueprintLoopActivityErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type BlueprintLoopActivityError = BlueprintLoopActivityErrors[keyof BlueprintLoopActivityErrors]
+
+export type BlueprintLoopActivityResponses = {
+  /**
+   * Activity summary
+   */
+  200: BlueprintLoopActivity
+}
+
+export type BlueprintLoopActivityResponse = BlueprintLoopActivityResponses[keyof BlueprintLoopActivityResponses]
+
+export type BlueprintSessionPlanModeData = {
+  body?: {
+    /**
+     * Enable or disable Plan Mode
+     */
+    planMode: boolean
+  }
+  path: {
+    /**
+     * Session ID
+     */
+    id: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/blueprint/session/{id}/plan-mode"
+}
+
+export type BlueprintSessionPlanModeErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type BlueprintSessionPlanModeError = BlueprintSessionPlanModeErrors[keyof BlueprintSessionPlanModeErrors]
+
+export type BlueprintSessionPlanModeResponses = {
+  /**
+   * Updated session
+   */
+  200: Session
+}
+
+export type BlueprintSessionPlanModeResponse =
+  BlueprintSessionPlanModeResponses[keyof BlueprintSessionPlanModeResponses]
+
 export type AssetUploadData = {
   body?: {
     file: unknown
@@ -9232,6 +10153,915 @@ export type HolosThreadGetResponses = {
 }
 
 export type HolosThreadGetResponse = HolosThreadGetResponses[keyof HolosThreadGetResponses]
+
+export type PluginListUiContributionsData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/plugin/ui/contributions"
+}
+
+export type PluginListUiContributionsErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type PluginListUiContributionsError = PluginListUiContributionsErrors[keyof PluginListUiContributionsErrors]
+
+export type PluginListUiContributionsResponses = {
+  /**
+   * List of plugin UI contributions
+   */
+  200: Array<PluginUiContribution>
+}
+
+export type PluginListUiContributionsResponse =
+  PluginListUiContributionsResponses[keyof PluginListUiContributionsResponses]
+
+export type PluginServeAssetData = {
+  body?: never
+  path: {
+    pluginId: string
+    versionHash: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/plugin/assets/{pluginId}/{versionHash}/*"
+}
+
+export type PluginServeAssetErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type PluginServeAssetError = PluginServeAssetErrors[keyof PluginServeAssetErrors]
+
+export type PluginServeAssetResponses = {
+  /**
+   * Plugin static asset
+   */
+  200: unknown
+}
+
+export type PluginSandboxData = {
+  body?: never
+  path: {
+    pluginId: string
+    panelId: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/plugin/{pluginId}/sandbox/{panelId}"
+}
+
+export type PluginSandboxErrors = {
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type PluginSandboxError = PluginSandboxErrors[keyof PluginSandboxErrors]
+
+export type PluginSandboxResponses = {
+  /**
+   * Sandbox HTML page
+   */
+  200: unknown
+}
+
+export type PluginInteractData = {
+  body?: {
+    type: string
+    payload?: unknown
+    source?: string
+  }
+  path: {
+    pluginId: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/plugin/{pluginId}/interact"
+}
+
+export type PluginInteractErrors = {
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type PluginInteractError = PluginInteractErrors[keyof PluginInteractErrors]
+
+export type PluginInteractResponses = {
+  /**
+   * Interaction relayed
+   */
+  200: PluginInteractResult
+}
+
+export type PluginInteractResponse = PluginInteractResponses[keyof PluginInteractResponses]
+
+export type PluginConfigSchemaData = {
+  body?: never
+  path: {
+    pluginId: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/plugin/{pluginId}/config-schema"
+}
+
+export type PluginConfigSchemaErrors = {
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type PluginConfigSchemaError = PluginConfigSchemaErrors[keyof PluginConfigSchemaErrors]
+
+export type PluginConfigSchemaResponses = {
+  /**
+   * Plugin config schema
+   */
+  200: PluginConfigSchema
+}
+
+export type PluginConfigSchemaResponse = PluginConfigSchemaResponses[keyof PluginConfigSchemaResponses]
+
+export type PluginGetConfigData = {
+  body?: never
+  path: {
+    pluginId: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/plugin/{pluginId}/config"
+}
+
+export type PluginGetConfigErrors = {
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type PluginGetConfigError = PluginGetConfigErrors[keyof PluginGetConfigErrors]
+
+export type PluginGetConfigResponses = {
+  /**
+   * Plugin config
+   */
+  200: PluginConfig
+}
+
+export type PluginGetConfigResponse = PluginGetConfigResponses[keyof PluginGetConfigResponses]
+
+export type PluginUpdateConfigData = {
+  body?: {
+    [key: string]: unknown
+  }
+  path: {
+    pluginId: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/plugin/{pluginId}/config"
+}
+
+export type PluginUpdateConfigErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type PluginUpdateConfigError = PluginUpdateConfigErrors[keyof PluginUpdateConfigErrors]
+
+export type PluginUpdateConfigResponses = {
+  /**
+   * Updated plugin config
+   */
+  200: PluginConfig
+}
+
+export type PluginUpdateConfigResponse = PluginUpdateConfigResponses[keyof PluginUpdateConfigResponses]
+
+export type PluginStatusData = {
+  body?: never
+  path: {
+    pluginId: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/plugin/{pluginId}/status"
+}
+
+export type PluginStatusErrors = {
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type PluginStatusError = PluginStatusErrors[keyof PluginStatusErrors]
+
+export type PluginStatusResponses = {
+  /**
+   * Plugin status
+   */
+  200: PluginStatus
+}
+
+export type PluginStatusResponse = PluginStatusResponses[keyof PluginStatusResponses]
+
+export type ApiPluginsListData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/api/plugins"
+}
+
+export type ApiPluginsListResponses = {
+  /**
+   * List of loaded plugins
+   */
+  200: Array<ApiPluginInfo>
+}
+
+export type ApiPluginsListResponse = ApiPluginsListResponses[keyof ApiPluginsListResponses]
+
+export type ApiPluginsGetData = {
+  body?: never
+  path: {
+    pluginId: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/api/plugins/{pluginId}"
+}
+
+export type ApiPluginsGetErrors = {
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type ApiPluginsGetError = ApiPluginsGetErrors[keyof ApiPluginsGetErrors]
+
+export type ApiPluginsGetResponses = {
+  /**
+   * Plugin detail
+   */
+  200: ApiPluginDetail
+}
+
+export type ApiPluginsGetResponse = ApiPluginsGetResponses[keyof ApiPluginsGetResponses]
+
+export type ApiPluginsStatusData = {
+  body?: never
+  path: {
+    pluginId: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/api/plugins/{pluginId}/status"
+}
+
+export type ApiPluginsStatusErrors = {
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type ApiPluginsStatusError = ApiPluginsStatusErrors[keyof ApiPluginsStatusErrors]
+
+export type ApiPluginsStatusResponses = {
+  /**
+   * Plugin status
+   */
+  200: PluginStatus
+}
+
+export type ApiPluginsStatusResponse = ApiPluginsStatusResponses[keyof ApiPluginsStatusResponses]
+
+export type ApiPluginsPreviewInstallData = {
+  body?: {
+    manifest: {
+      [key: string]: unknown
+    }
+  }
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/api/plugins/preview-install"
+}
+
+export type ApiPluginsPreviewInstallErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type ApiPluginsPreviewInstallError = ApiPluginsPreviewInstallErrors[keyof ApiPluginsPreviewInstallErrors]
+
+export type ApiPluginsPreviewInstallResponses = {
+  /**
+   * Permission diff
+   */
+  200: {
+    [key: string]: unknown
+  }
+}
+
+export type ApiPluginsPreviewInstallResponse =
+  ApiPluginsPreviewInstallResponses[keyof ApiPluginsPreviewInstallResponses]
+
+export type ApiPluginsApproveInstallData = {
+  body?: {
+    manifest: {
+      [key: string]: unknown
+    }
+    capabilities: Array<string>
+  }
+  path: {
+    pluginId: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/api/plugins/{pluginId}/approve-install"
+}
+
+export type ApiPluginsApproveInstallErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type ApiPluginsApproveInstallError = ApiPluginsApproveInstallErrors[keyof ApiPluginsApproveInstallErrors]
+
+export type ApiPluginsApproveInstallResponses = {
+  /**
+   * Approval record
+   */
+  200: {
+    [key: string]: unknown
+  }
+}
+
+export type ApiPluginsApproveInstallResponse =
+  ApiPluginsApproveInstallResponses[keyof ApiPluginsApproveInstallResponses]
+
+export type ApiPluginsPreviewUpdateData = {
+  body?: {
+    manifest: {
+      [key: string]: unknown
+    }
+  }
+  path: {
+    pluginId: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/api/plugins/{pluginId}/preview-update"
+}
+
+export type ApiPluginsPreviewUpdateErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type ApiPluginsPreviewUpdateError = ApiPluginsPreviewUpdateErrors[keyof ApiPluginsPreviewUpdateErrors]
+
+export type ApiPluginsPreviewUpdateResponses = {
+  /**
+   * Permission diff
+   */
+  200: {
+    [key: string]: unknown
+  }
+}
+
+export type ApiPluginsPreviewUpdateResponse = ApiPluginsPreviewUpdateResponses[keyof ApiPluginsPreviewUpdateResponses]
+
+export type ApiPluginsApproveUpdateData = {
+  body?: {
+    manifest: {
+      [key: string]: unknown
+    }
+    capabilities: Array<string>
+  }
+  path: {
+    pluginId: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/api/plugins/{pluginId}/approve-update"
+}
+
+export type ApiPluginsApproveUpdateErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type ApiPluginsApproveUpdateError = ApiPluginsApproveUpdateErrors[keyof ApiPluginsApproveUpdateErrors]
+
+export type ApiPluginsApproveUpdateResponses = {
+  /**
+   * Approval record
+   */
+  200: {
+    [key: string]: unknown
+  }
+}
+
+export type ApiPluginsApproveUpdateResponse = ApiPluginsApproveUpdateResponses[keyof ApiPluginsApproveUpdateResponses]
+
+export type ApiPluginsGetApprovalData = {
+  body?: never
+  path: {
+    pluginId: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/api/plugins/{pluginId}/approval"
+}
+
+export type ApiPluginsGetApprovalErrors = {
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type ApiPluginsGetApprovalError = ApiPluginsGetApprovalErrors[keyof ApiPluginsGetApprovalErrors]
+
+export type ApiPluginsGetApprovalResponses = {
+  /**
+   * Approval record
+   */
+  200: {
+    [key: string]: unknown
+  }
+}
+
+export type ApiPluginsGetApprovalResponse = ApiPluginsGetApprovalResponses[keyof ApiPluginsGetApprovalResponses]
+
+export type ApiPluginsPermissionDiffData = {
+  body?: never
+  path: {
+    pluginId: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/api/plugins/{pluginId}/permission-diff"
+}
+
+export type ApiPluginsPermissionDiffErrors = {
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type ApiPluginsPermissionDiffError = ApiPluginsPermissionDiffErrors[keyof ApiPluginsPermissionDiffErrors]
+
+export type ApiPluginsPermissionDiffResponses = {
+  /**
+   * Permission diff
+   */
+  200: {
+    [key: string]: unknown
+  }
+}
+
+export type ApiPluginsPermissionDiffResponse =
+  ApiPluginsPermissionDiffResponses[keyof ApiPluginsPermissionDiffResponses]
+
+export type ApiPluginsInstallFromRegistryData = {
+  body?: {
+    id: string
+    version: string
+  }
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/api/plugins/install-from-registry"
+}
+
+export type ApiPluginsInstallFromRegistryErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Conflict
+   */
+  409: NoteConflictError
+}
+
+export type ApiPluginsInstallFromRegistryError =
+  ApiPluginsInstallFromRegistryErrors[keyof ApiPluginsInstallFromRegistryErrors]
+
+export type ApiPluginsInstallFromRegistryResponses = {
+  /**
+   * Install result with plugin status
+   */
+  200: ApiPluginDetail
+}
+
+export type ApiPluginsInstallFromRegistryResponse =
+  ApiPluginsInstallFromRegistryResponses[keyof ApiPluginsInstallFromRegistryResponses]
+
+export type ApiPluginsUpdateFromRegistryData = {
+  body?: {
+    targetVersion?: string
+  }
+  path: {
+    pluginId: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/api/plugins/{pluginId}/update-from-registry"
+}
+
+export type ApiPluginsUpdateFromRegistryErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type ApiPluginsUpdateFromRegistryError =
+  ApiPluginsUpdateFromRegistryErrors[keyof ApiPluginsUpdateFromRegistryErrors]
+
+export type ApiPluginsUpdateFromRegistryResponses = {
+  /**
+   * Update check result
+   */
+  200: {
+    [key: string]: unknown
+  }
+}
+
+export type ApiPluginsUpdateFromRegistryResponse =
+  ApiPluginsUpdateFromRegistryResponses[keyof ApiPluginsUpdateFromRegistryResponses]
+
+export type PluginRuntimeReloadData = {
+  body?: never
+  path: {
+    pluginId: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/api/plugins/{pluginId}/runtime/reload"
+}
+
+export type PluginRuntimeReloadErrors = {
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type PluginRuntimeReloadError = PluginRuntimeReloadErrors[keyof PluginRuntimeReloadErrors]
+
+export type PluginRuntimeReloadResponses = {
+  /**
+   * Runtime state after reload
+   */
+  200: PluginRuntimeInfo | null
+}
+
+export type PluginRuntimeReloadResponse = PluginRuntimeReloadResponses[keyof PluginRuntimeReloadResponses]
+
+export type PluginRuntimeStopData = {
+  body?: never
+  path: {
+    pluginId: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/api/plugins/{pluginId}/runtime/stop"
+}
+
+export type PluginRuntimeStopErrors = {
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type PluginRuntimeStopError = PluginRuntimeStopErrors[keyof PluginRuntimeStopErrors]
+
+export type PluginRuntimeStopResponses = {
+  /**
+   * Runtime state after stop
+   */
+  200: PluginRuntimeInfo | null
+}
+
+export type PluginRuntimeStopResponse = PluginRuntimeStopResponses[keyof PluginRuntimeStopResponses]
+
+export type PluginRuntimeStartData = {
+  body?: never
+  path: {
+    pluginId: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/api/plugins/{pluginId}/runtime/start"
+}
+
+export type PluginRuntimeStartErrors = {
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type PluginRuntimeStartError = PluginRuntimeStartErrors[keyof PluginRuntimeStartErrors]
+
+export type PluginRuntimeStartResponses = {
+  /**
+   * Runtime state after start
+   */
+  200: PluginRuntimeInfo | null
+}
+
+export type PluginRuntimeStartResponse = PluginRuntimeStartResponses[keyof PluginRuntimeStartResponses]
+
+export type PluginRuntimeLogsData = {
+  body?: never
+  path: {
+    pluginId: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/api/plugins/{pluginId}/runtime/logs"
+}
+
+export type PluginRuntimeLogsErrors = {
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type PluginRuntimeLogsError = PluginRuntimeLogsErrors[keyof PluginRuntimeLogsErrors]
+
+export type PluginRuntimeLogsResponses = {
+  /**
+   * Recent runtime log entries
+   */
+  200: Array<PluginRuntimeLogEntry>
+}
+
+export type PluginRuntimeLogsResponse = PluginRuntimeLogsResponses[keyof PluginRuntimeLogsResponses]
+
+export type RegistryPluginsSearchData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    q?: string
+    offset?: number
+    limit?: number
+  }
+  url: "/api/registry/search"
+}
+
+export type RegistryPluginsSearchErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type RegistryPluginsSearchError = RegistryPluginsSearchErrors[keyof RegistryPluginsSearchErrors]
+
+export type RegistryPluginsSearchResponses = {
+  /**
+   * Search results with pagination metadata
+   */
+  200: {
+    plugins: Array<RegistryPluginSummary>
+    total: number
+    offset: number
+    limit: number
+  }
+}
+
+export type RegistryPluginsSearchResponse = RegistryPluginsSearchResponses[keyof RegistryPluginsSearchResponses]
+
+export type RegistryPluginsGetData = {
+  body?: never
+  path: {
+    id: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/api/registry/{id}"
+}
+
+export type RegistryPluginsGetErrors = {
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type RegistryPluginsGetError = RegistryPluginsGetErrors[keyof RegistryPluginsGetErrors]
+
+export type RegistryPluginsGetResponses = {
+  /**
+   * Plugin registry entry
+   */
+  200: RegistryPluginEntry
+}
+
+export type RegistryPluginsGetResponse = RegistryPluginsGetResponses[keyof RegistryPluginsGetResponses]
+
+export type RegistryPluginsVersionsData = {
+  body?: never
+  path: {
+    id: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/api/registry/{id}/versions"
+}
+
+export type RegistryPluginsVersionsErrors = {
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type RegistryPluginsVersionsError = RegistryPluginsVersionsErrors[keyof RegistryPluginsVersionsErrors]
+
+export type RegistryPluginsVersionsResponses = {
+  /**
+   * Plugin version list
+   */
+  200: Array<RegistryPluginVersion>
+}
+
+export type RegistryPluginsVersionsResponse = RegistryPluginsVersionsResponses[keyof RegistryPluginsVersionsResponses]
+
+export type RegistryPluginsVersionData = {
+  body?: never
+  path: {
+    id: string
+    version: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/api/registry/{id}/versions/{version}"
+}
+
+export type RegistryPluginsVersionErrors = {
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type RegistryPluginsVersionError = RegistryPluginsVersionErrors[keyof RegistryPluginsVersionErrors]
+
+export type RegistryPluginsVersionResponses = {
+  /**
+   * Plugin version details
+   */
+  200: RegistryPluginVersion
+}
+
+export type RegistryPluginsVersionResponse = RegistryPluginsVersionResponses[keyof RegistryPluginsVersionResponses]
+
+export type RegistryPluginsDownloadData = {
+  body?: never
+  path: {
+    id: string
+    version: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/api/registry/{id}/download/{version}"
+}
+
+export type RegistryPluginsDownloadErrors = {
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Download not yet implemented for this entry
+   */
+  501: unknown
+}
+
+export type RegistryPluginsDownloadError = RegistryPluginsDownloadErrors[keyof RegistryPluginsDownloadErrors]
+
+export type RegistryPluginsDownloadResponses = {
+  /**
+   * Plugin archive binary
+   */
+  200: unknown
+}
+
+export type RegistryPluginsPublishData = {
+  body?: RegistryPublishInput
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/api/registry/publish"
+}
+
+export type RegistryPluginsPublishErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type RegistryPluginsPublishError = RegistryPluginsPublishErrors[keyof RegistryPluginsPublishErrors]
+
+export type RegistryPluginsPublishResponses = {
+  /**
+   * Published plugin entry
+   */
+  200: RegistryPluginEntry
+}
+
+export type RegistryPluginsPublishResponse = RegistryPluginsPublishResponses[keyof RegistryPluginsPublishResponses]
 
 export type AppLogData = {
   body?: {

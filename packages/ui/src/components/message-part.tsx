@@ -1,5 +1,6 @@
 import {
   Component,
+  ErrorBoundary,
   createEffect,
   createMemo,
   createSignal,
@@ -31,7 +32,7 @@ import { useDiffComponent } from "../context/diff"
 import { useCodeComponent } from "../context/code"
 import { useDialog } from "../context/dialog"
 import { BasicTool } from "./basic-tool"
-import { GenericTool, SmartTool } from "./basic-tool"
+import { SmartTool } from "./basic-tool"
 import { Card } from "./card"
 import { Icon } from "./icon"
 import { Tooltip } from "./tooltip"
@@ -214,6 +215,65 @@ function shortToken(value: unknown, max = 16) {
 function pushArg(args: string[], value: unknown) {
   if (!value) return
   args.push(String(value))
+}
+
+function isBlueprintToolKind(input: any = {}, metadata: any = {}) {
+  if ((metadata.kind || input.kind) === "blueprint") return true
+  const kinds = metadata.kinds
+  return Array.isArray(kinds) && kinds.length > 0 && kinds.every((kind) => kind === "blueprint")
+}
+
+const browserToolLabels: Record<string, { icon: IconName; title: string }> = {
+  browser_navigate: { icon: "globe", title: "Navigate" },
+  browser_snapshot: { icon: "binoculars", title: "Snapshot" },
+  browser_screenshot: { icon: "image", title: "Screenshot" },
+  browser_click: { icon: "mouse-pointer-2", title: "Click" },
+  browser_type: { icon: "text-select", title: "Type" },
+  browser_scroll: { icon: "arrow-down", title: "Scroll" },
+  browser_wait: { icon: "hourglass", title: "Wait" },
+  browser_inspect: { icon: "scan-eye", title: "Inspect" },
+  browser_read: { icon: "glasses", title: "Read" },
+  browser_console: { icon: "file-terminal", title: "Console" },
+  browser_network: { icon: "cable", title: "Network" },
+  browser_download: { icon: "download", title: "Download" },
+  browser_downloads: { icon: "download", title: "Downloads" },
+  browser_tab: { icon: "panel-right", title: "Tab" },
+  browser_annotate: { icon: "square-pen", title: "Annotate" },
+  browser_action: { icon: "mouse-pointer-2", title: "Action" },
+  browser_clipboard: { icon: "copy", title: "Clipboard" },
+  browser_eval: { icon: "code", title: "Eval" },
+  browser_list: { icon: "list", title: "Browser Sessions" },
+  browser_assets: { icon: "package", title: "Assets" },
+  browser_view: { icon: "panel-right", title: "Browser View" },
+  browser_navigation: { icon: "repeat", title: "Navigation" },
+  browser_viewport: { icon: "maximize", title: "Viewport" },
+}
+
+function getBrowserToolInfo(tool: string, input: any = {}, metadata: any = {}): ToolTriggerInfo | undefined {
+  const info = browserToolLabels[tool]
+  if (!info) return undefined
+
+  const args: string[] = []
+  pushArg(args, metadata?.entryCount != null ? `${metadata.entryCount} console` : undefined)
+  pushArg(args, metadata?.requestCount != null ? `${metadata.requestCount} requests` : undefined)
+  pushArg(args, metadata?.assetCount != null ? `${metadata.assetCount} assets` : undefined)
+  pushArg(args, metadata?.elementsCount != null ? `${metadata.elementsCount} elements` : undefined)
+  pushArg(args, metadata?.captureKind)
+
+  return {
+    icon: info.icon,
+    title: info.title,
+    subtitle: firstString(
+      metadata?.url,
+      input?.url,
+      metadata?.title,
+      input?.tabId,
+      metadata?.tabId,
+      input?.action,
+      input?.type,
+    ),
+    args: args.length ? args : undefined,
+  }
 }
 
 function qzScopeLabel(input: any = {}) {
@@ -451,6 +511,8 @@ export function getQzToolInfo(tool: string, input: any = {}, _metadata: any = {}
 export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): ToolTriggerInfo {
   const qz = getQzToolInfo(tool, input, metadata)
   if (qz) return qz
+  const browser = getBrowserToolInfo(tool, input, metadata)
+  if (browser) return browser
 
   switch (tool) {
     case "read":
@@ -657,12 +719,30 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
         subtitle: input.title,
       }
     case "note_list":
+      if (isBlueprintToolKind(input, metadata)) {
+        return {
+          icon: "stamp",
+          title: "Blueprints",
+          subtitle: input.scope,
+        }
+      }
       return {
         icon: "notebook-pen",
         title: "Notes",
         subtitle: input.scope,
       }
     case "note_read":
+      if (isBlueprintToolKind(input, metadata)) {
+        return {
+          icon: "stamp",
+          title: "Read Blueprint",
+          subtitle: Array.isArray(input.ids)
+            ? input.ids.length === 1
+              ? input.ids[0]
+              : `${input.ids.length} blueprints`
+            : undefined,
+        }
+      }
       return {
         icon: "notebook-pen",
         title: "Read Note",
@@ -673,22 +753,55 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
           : undefined,
       }
     case "note_search":
+      if (isBlueprintToolKind(input, metadata)) {
+        return {
+          icon: "stamp",
+          title: "Blueprint Search",
+          subtitle: input.pattern,
+        }
+      }
       return {
         icon: "notebook-pen",
         title: "Note Search",
         subtitle: input.pattern,
       }
     case "note_write":
+      if (isBlueprintToolKind(input, metadata)) {
+        return {
+          icon: "stamp",
+          title: "Write Blueprint",
+          subtitle: input.title || input.mode,
+        }
+      }
       return {
         icon: "notebook-pen",
         title: "Write Note",
         subtitle: input.title || input.mode,
       }
     case "note_edit":
+      if (isBlueprintToolKind(input, metadata)) {
+        return {
+          icon: "stamp",
+          title: "Edit Blueprint",
+          subtitle: input.title || input.id,
+        }
+      }
       return {
         icon: "notebook-pen",
         title: "Edit Note",
         subtitle: input.title || input.id,
+      }
+    case "blueprint_loop_finish":
+      return {
+        icon: "stamp",
+        title: "Finish BlueprintLoop",
+        subtitle: input.loopID,
+      }
+    case "blueprint_loop_restart":
+      return {
+        icon: "stamp",
+        title: "Restart BlueprintLoop",
+        subtitle: input.loopID,
       }
     case "task_list":
       return {
@@ -1496,58 +1609,57 @@ function HighlightedText(props: { text: string; references: FilePart[] }) {
     </For>
   )
 }
-
 export function Part(props: MessagePartProps) {
   const component = createMemo(() => PART_MAPPING[props.part.type])
   return (
     <Show when={component()}>
-      <Dynamic
-        component={component()}
-        part={props.part}
-        message={props.message}
-        hideDetails={props.hideDetails}
-        defaultOpen={props.defaultOpen}
-      />
+      <ErrorBoundary
+        fallback={(err) => (
+          <div class="plugin-error-card">
+            <div class="plugin-error-header">
+              <Icon name="alert-triangle" />
+              <span>Part Render Error: {props.part.type}</span>
+            </div>
+            <div class="plugin-error-message">{err?.message || String(err)}</div>
+          </div>
+        )}
+      >
+        <Dynamic
+          component={component()}
+          part={props.part}
+          message={props.message}
+          hideDetails={props.hideDetails}
+          defaultOpen={props.defaultOpen}
+        />
+      </ErrorBoundary>
     </Show>
   )
 }
 
-export interface ToolProps {
-  input: Record<string, any>
-  metadata: Record<string, any>
-  tool: string
-  title?: string
-  output?: string
-  status?: string
-  raw?: string
-  charsReceived?: number
-  hideDetails?: boolean
-  defaultOpen?: boolean
-  forceOpen?: boolean
-}
-
-export type ToolComponent = Component<ToolProps>
-
-const state: Record<
-  string,
-  {
-    name: string
-    render?: ToolComponent
-  }
-> = {}
-
-export function registerTool(input: { name: string; render?: ToolComponent }) {
-  state[input.name] = input
-  return input
-}
-
-export function getTool(name: string) {
-  return state[name]?.render
-}
-
-export const ToolRegistry = {
-  register: registerTool,
-  render: getTool,
+// ── Re-exported from tool-registry-lazy.ts for testability ────
+import type { ToolProps, ToolComponent as _ToolComponent } from "./tool-registry-lazy"
+export type { ToolProps }
+export type ToolComponent = _ToolComponent
+import {
+  registerTool,
+  getTool,
+  ToolRegistry,
+  setExternalToolLookup,
+  setExternalFallbackLookup,
+  notifyExternalToolLoaded,
+  resolveToolRenderer,
+  externalLookup,
+  externalFallbackLookup,
+  externalLoadNotify,
+} from "./tool-registry-lazy"
+export {
+  registerTool,
+  getTool,
+  ToolRegistry,
+  setExternalToolLookup,
+  setExternalFallbackLookup,
+  notifyExternalToolLoaded,
+  resolveToolRenderer,
 }
 
 function ToolAttachments(props: { attachments: FilePart[] }) {
@@ -1595,7 +1707,9 @@ PART_MAPPING["tool"] = function ToolPartDisplay(props) {
   const approval = createMemo(() => metadata().approval as Record<string, any> | undefined)
   const audit = createMemo(() => getApprovalAudit(approval()))
 
-  const render = createMemo(() => ToolRegistry.render(part().tool))
+  const render = createMemo(() =>
+    resolveToolRenderer(part().tool, ToolRegistry, { externalLookup, externalLoadNotify }),
+  )
 
   // Smoothly animate charsReceived so tool cards don't jump
   const charsAnimated = createAnimatedNumber(() => {
@@ -1604,7 +1718,9 @@ PART_MAPPING["tool"] = function ToolPartDisplay(props) {
   })
 
   // For unregistered tools (external agents, MCP, etc.), use SmartTool
-  // which classifies by semantic category for appropriate icon/title/subtitle
+  // which classifies by semantic category for appropriate icon/title/subtitle.
+  // When plugin Tier 1 declarative fallback metadata is available, it overrides
+  // the auto-classified icon/title/subtitle.
   const fallbackRender = (p: any) => (
     <SmartTool
       tool={p.tool}
@@ -1615,10 +1731,11 @@ PART_MAPPING["tool"] = function ToolPartDisplay(props) {
       charsReceived={p.charsReceived}
       metadata={p.metadata}
       hideDetails={p.hideDetails}
+      fallbackMeta={externalFallbackLookup?.(p.tool)}
     />
   )
 
-  const component = createMemo(() => render() ?? fallbackRender ?? GenericTool)
+  const component = createMemo(() => render() ?? fallbackRender)
 
   return (
     <div data-component="tool-part-wrapper" data-permission={!!permission()}>

@@ -199,25 +199,78 @@ export type Holos = z.infer<typeof Holos>
 
 export const SandboxConfig = z
   .object({
-    enabled: z.boolean().optional().describe("Enable the sandbox runtime when available"),
+    enabled: z.boolean().optional().describe("Enable the sandbox runtime when available (default: true)"),
     fallbackPolicy: z
       .enum(["warn", "allow", "deny"])
       .optional()
-      .describe("How to proceed when the requested sandbox runtime is unavailable"),
+      .describe("How to proceed when the requested sandbox runtime is unavailable (default: 'warn')"),
     backend: z
-      .enum(["auto", "sandbox-exec", "bwrap", "windows-restricted-token", "windows-elevated"])
+      .enum([
+        "auto",
+        "seatbelt-deny-default",
+        "seatbelt-legacy-allow-default",
+        "synergy-sandbox-linux",
+        "bwrap-inline-debug",
+        "windows-restricted-token",
+        "windows-elevated",
+      ])
       .optional()
       .describe(
         "Force a specific sandbox backend. 'auto' (default) selects the platform-native backend. " +
-          "Valid: 'auto' (platform default), 'sandbox-exec' (macOS), 'bwrap' (Linux), " +
+          "Valid: 'auto' (platform default), 'seatbelt-deny-default' (macOS deny-default SBPL), " +
+          "'seatbelt-legacy-allow-default' (macOS allow-default SBPL), " +
+          "'synergy-sandbox-linux' (Linux bundled bwrap), 'bwrap-inline-debug' (Linux in-tree bwrap debug), " +
           "'windows-restricted-token' (Windows MVP), 'windows-elevated' (Windows full, future).",
       ),
+    network: z
+      .object({
+        mode: z
+          .enum(["restricted", "proxy_only", "full"])
+          .optional()
+          .describe("Network access mode within the sandbox (default: 'restricted')"),
+      })
+      .strict()
+      .optional()
+      .describe("Network configuration for sandbox enforcement"),
+    macos: z
+      .object({
+        denialLogger: z.boolean().optional().describe("Log sandbox denials via macOS Seatbelt (default: true)"),
+      })
+      .strict()
+      .optional()
+      .describe("macOS-specific sandbox settings"),
+    linux: z
+      .object({
+        bundledBwrap: z
+          .boolean()
+          .optional()
+          .describe("Use the bundled bwrap binary instead of system bwrap (default: true)"),
+        landlockFallback: z
+          .boolean()
+          .optional()
+          .describe("Fall back to Landlock LSM when bwrap is unavailable (default: true)"),
+      })
+      .strict()
+      .optional()
+      .describe("Linux-specific sandbox settings"),
     windows: z
       .object({
-        level: z.enum(["disabled", "restricted-token", "elevated"]).optional(),
-        helperPath: z.string().optional(),
-        verifyHelperHash: z.boolean().optional(),
+        level: z
+          .enum(["disabled", "restricted-token", "elevated"])
+          .optional()
+          .describe("Windows sandbox level (default: 'restricted-token')"),
+        helperPath: z.string().optional().describe("Path to the synergy-sandbox-windows.exe helper binary"),
+        verifyHelperHash: z
+          .boolean()
+          .optional()
+          .describe("Verify the helper binary SHA-256 hash before use (default: true)"),
+        privateDesktop: z
+          .boolean()
+          .optional()
+          .describe("Create a private desktop for the sandboxed process (default: true)"),
+        conpty: z.boolean().optional().describe("Use ConPTY for pseudo-terminal support (default: true)"),
       })
+      .strict()
       .optional()
       .describe("Windows-specific sandbox settings"),
   })
@@ -917,6 +970,66 @@ export const Provider = ModelsDev.Provider.partial()
   })
 export type Provider = z.infer<typeof Provider>
 
+export const PluginApprovalPolicy = z
+  .object({
+    allowUnsignedLocal: z.boolean().optional().default(true).describe("Allow unsigned local plugins with user consent"),
+    autoApproveBuiltin: z
+      .boolean()
+      .optional()
+      .default(true)
+      .describe("Auto-approve builtin plugins without user consent"),
+    denyHighRiskThirdParty: z
+      .boolean()
+      .optional()
+      .default(true)
+      .describe("Block third-party plugins with high-risk capabilities"),
+    requireSignatureForMarketplace: z
+      .boolean()
+      .optional()
+      .default(false)
+      .describe("Require cryptographic signature for non-local plugins"),
+  })
+  .strict()
+  .meta({ ref: "PluginApprovalPolicyConfig" })
+export type PluginApprovalPolicy = z.infer<typeof PluginApprovalPolicy>
+
+export const PLUGIN_APPROVAL_POLICY_DEFAULTS = {
+  allowUnsignedLocal: true,
+  autoApproveBuiltin: true,
+  denyHighRiskThirdParty: true,
+  requireSignatureForMarketplace: false,
+} as const satisfies Required<PluginApprovalPolicy>
+export const PluginRuntimePolicy = z
+  .object({
+    thirdPartyDefaultMode: z
+      .enum(["process", "worker"])
+      .optional()
+      .default("process")
+      .describe("Default isolation mode for third-party plugins (npm, git, url)"),
+    highRiskRequiresProcess: z
+      .boolean()
+      .optional()
+      .default(true)
+      .describe("Require process isolation for high-risk plugins regardless of source"),
+    allowThirdPartyInProcess: z
+      .boolean()
+      .optional()
+      .default(false)
+      .describe("Allow third-party plugins to request in-process mode (not recommended)"),
+    allowWorkerMode: z.boolean().optional().default(true).describe("Allow plugins to request worker thread isolation"),
+    allowLocalInProcess: z.boolean().optional().default(true).describe("Allow local plugins to run in-process"),
+  })
+  .strict()
+  .meta({ ref: "PluginRuntimePolicyConfig" })
+export type PluginRuntimePolicy = z.infer<typeof PluginRuntimePolicy>
+
+export const PLUGIN_RUNTIME_POLICY_DEFAULTS = {
+  thirdPartyDefaultMode: "process" as const,
+  highRiskRequiresProcess: true,
+  allowThirdPartyInProcess: false,
+  allowWorkerMode: true,
+  allowLocalInProcess: true,
+} as const satisfies Required<PluginRuntimePolicy>
 export const Info = z
   .object({
     $schema: z.string().optional().describe("JSON schema reference for configuration validation"),
@@ -982,6 +1095,8 @@ export const Info = z
       })
       .optional(),
     plugin: z.string().array().optional(),
+    pluginApprovalPolicy: PluginApprovalPolicy.optional().describe("Plugin approval policy configuration"),
+    pluginRuntimePolicy: PluginRuntimePolicy.optional().describe("Plugin runtime isolation policy configuration"),
     snapshot: z.boolean().optional(),
     autoupdate: z
       .union([z.boolean(), z.literal("notify")])
@@ -1151,6 +1266,10 @@ export const Info = z
     instructions: z.array(z.string()).optional().describe("Additional instruction files or patterns to include"),
     layout: Layout.optional().describe("@deprecated Always uses stretch layout."),
     permission: Permission.optional(),
+    auto_classifier: z
+      .boolean()
+      .optional()
+      .describe("Enable LLM risk classifier to auto-allow safe permission asks (Stage 4 auto mode)"),
     tools: z.record(z.string(), z.boolean()).optional(),
     enterprise: z
       .object({

@@ -22,6 +22,7 @@ Synergy currently spans several product surfaces and workflows:
 
 - A central `server` process that handles requests independently of a single working directory
 - A `web` client for browser-based interaction
+- A built-in Browser workspace backed by Playwright/Chromium for interactive page control
 - A `send` command for one-off, non-interactive execution
 - CLI commands for session, config, identity, and operational workflows
 - Configurable agents for orchestration, coding, research, writing, search, and review
@@ -29,6 +30,14 @@ Synergy currently spans several product surfaces and workflows:
 - MCP integration for external tool ecosystems
 - Channel integrations such as Feishu / Lark
 - Identity, login, notes, memory/engram, agenda, and community-facing capabilities
+
+### Built-In Browser Workspace
+
+The Web client includes a right-side Browser workspace that runs a real Playwright Chromium page, not an iframe or a screenshot-only mock. Users can navigate, search, click, type, scroll, upload, and download in the workspace while browser tools operate on the same underlying page and BrowserContext.
+
+Browser contexts are isolated by Synergy owner/session and persist tab state plus browser storage state. User-explicit navigation and page interaction run without approval prompts but still pass hard safety checks such as invalid protocols, sensitive local ports, and out-of-scope `file://` access. Agent-driven browser tools continue to use the active control profile, so guarded/autonomous/full-access behavior remains consistent with the rest of Synergy.
+
+Large browser diagnostics such as console, network, snapshots, assets, and downloads are surfaced in the Browser workspace developer drawer and compact tool cards instead of flooding the normal chat transcript.
 
 ## Quick Start
 
@@ -105,18 +114,11 @@ loginctl enable-linger "$USER"
 
 ### Running from this repository
 
-Install dependencies, build the SDK, then build the frontend:
+One command to set up everything — deps, SDK, frontend, and sandbox helper:
 
 ```bash
-bun install
-bun run --cwd packages/sdk/js build
-bun run --cwd packages/app build
-```
-
-Start the server:
-
-```bash
-bun dev
+bun dev prepare    # install deps, generate SDK, build frontend, compile sandbox helper
+bun dev server     # start the server
 ```
 
 Then connect from another terminal:
@@ -126,18 +128,24 @@ bun dev web --dev
 bun dev send "hello"
 ```
 
-## Common Commands
+After editing code:
+
+```bash
+bun dev build       # rebuild frontend (after app changes)
+bun dev server      # restart the server
+```
 
 ### Core runtime
 
 ```bash
-synergy start              # Start the background service, optionally with Holos login
-synergy stop               # Stop the background service
-synergy stop && synergy start            # Stop then start the background service
-synergy status             # Show background service status
-synergy server             # Start the Synergy server in foreground mode
-synergy web                # Open the web UI and attach to a server
-synergy send "message"     # Run a one-off prompt
+synergy start                  # Start the background service, optionally with Holos login
+synergy stop                   # Stop the background service
+synergy stop && synergy start  # Restart the background service (stop + start)
+synergy status                 # Show background service status
+synergy doctor                 # Diagnose sandbox and environment readiness
+synergy server                 # Start the Synergy server in foreground mode
+synergy web                    # Open the web UI and attach to a server
+synergy send "message"         # Run a one-off prompt
 ```
 
 ### Configuration and identity
@@ -145,7 +153,7 @@ synergy send "message"     # Run a one-off prompt
 ```bash
 synergy config              # Manage configuration
 synergy config path         # Show config paths
-synergy config edit         # Open global config in an editor
+synergy config import       # Import selected config domains
 synergy login               # Bind to Holos platform
 synergy identity            # Work with identity-related features
 ```
@@ -190,22 +198,14 @@ If you update agent names, roles, or recommended usage, update this section and 
 
 ## Configuration
 
-Synergy configuration is layered.
+Synergy configuration is layered and domain-based.
 
 ### Global config
 
-The active global Config Set is loaded from `~/.synergy/config`.
-
-By default, the `default` Config Set uses:
+Global config is loaded from one canonical domain directory:
 
 ```bash
-~/.synergy/config/synergy.jsonc
-```
-
-Additional global Config Sets live under:
-
-```bash
-~/.synergy/config/config-sets/<name>/synergy.jsonc
+~/.synergy/config/synergy.d/
 ```
 
 Useful command:
@@ -216,11 +216,10 @@ synergy config path
 
 ### Project config
 
-Project-level config can be provided in the project tree, typically via:
+Project-level config uses the same domain layout under:
 
 ```bash
-synergy.jsonc
-synergy.json
+<project>/.synergy/synergy.d/
 ```
 
 Synergy also supports project-scoped extension directories under:
@@ -280,7 +279,7 @@ After `/worktree new` or `/worktree enter`, the switch applies to subsequent ses
 
 Worktree sessions treat the worktree as the active workspace boundary. File, search, attachment, and local shell tools route through Synergy's control profile gate before they run. In a worktree session, the original checkout and sibling worktrees are outside the active workspace unless the session is using `full_access`; those boundary checks are not skipped by allow-all or unattended execution.
 
-Control profiles are configured in `synergy.jsonc`:
+Control profiles are configured in the permissions domain (`80-permissions.jsonc`):
 
 ```jsonc
 {
@@ -307,30 +306,55 @@ Built-in profiles:
 
 ### Sandbox
 
-Synergy sandboxes shell command execution at the OS level for security. Sandbox support per platform:
+Synergy sandboxes shell command execution at the OS level for security. Availability per platform:
 
-| Platform | Backend                        | Status         |
-| -------- | ------------------------------ | -------------- |
-| macOS    | `sandbox-exec` (Seatbelt)      | Production     |
-| Linux    | `bwrap` (Bubblewrap)           | Available      |
-| Windows  | Restricted Token (Rust helper) | In development |
+| Platform | Backend                        | Installed         | Source-deploy        |
+| -------- | ------------------------------ | ----------------- | -------------------- |
+| macOS    | `sandbox-exec` (Seatbelt)      | ✅ Out of the box | ✅ `bun dev prepare` |
+| Linux    | `bwrap` + Rust helper          | ✅ Out of the box | ✅ `bun dev prepare` |
+| Windows  | Restricted Token (Rust helper) | ✅ Out of the box | ✅ `bun dev prepare` |
+
+> **Permission system** (profiles, ExecPolicy, approval gating) is pure TypeScript — works on all three platforms with zero setup, both installed and source-deploy.
 
 Sandbox mode is driven by the active control profile (`guarded`, `autonomous`, `full_access`), not by global config. The built-in profiles resolve sandbox as follows:
 
 | Profile       | Sandbox mode      | Fallback |
 | ------------- | ----------------- | -------- |
-| `guarded`     | `workspace_write` | `deny`   |
-| `autonomous`  | `workspace_write` | `deny`   |
+| `guarded`     | `workspace_write` | `warn`   |
+| `autonomous`  | `workspace_write` | `warn`   |
 | `full_access` | `none`            | `allow`  |
 
-The global `sandbox` config fields control backend selection and fallback behavior. Current supported fields:
+The global `sandbox` config fields control backend selection and fallback behavior:
 
 ```jsonc
 {
   "sandbox": {
-    "enabled": true, // Enable/disable sandbox globally
-    "fallbackPolicy": "deny", // "deny" | "warn" | "allow" — when backend is unavailable
-    // "backend": "auto",   // Planned: force a specific backend
+    "enabled": true, // Enable/disable sandbox globally (default: true)
+    "fallbackPolicy": "warn", // "warn" | "allow" | "deny" — when backend is unavailable (default: "warn")
+    "backend": "auto", // Force a specific backend: "auto" (platform default),
+    // "seatbelt-deny-default" (macOS deny-default SBPL),
+    // "seatbelt-legacy-allow-default" (macOS allow-default SBPL),
+    // "synergy-sandbox-linux" (Linux bundled bwrap),
+    // "bwrap-inline-debug" (Linux in-tree bwrap debug),
+    // "windows-restricted-token" (Windows MVP),
+    // "windows-elevated" (Windows full, future)
+    "network": {
+      "mode": "restricted", // "restricted" | "proxy_only" | "full" — network access within sandbox
+    },
+    "macos": {
+      "denialLogger": true, // Log sandbox denials via macOS Seatbelt (default: true)
+    },
+    "linux": {
+      "bundledBwrap": true, // Use bundled bwrap binary instead of system bwrap (default: true)
+      "landlockFallback": true, // Fall back to Landlock LSM when bwrap is unavailable (default: true)
+    },
+    "windows": {
+      "level": "restricted-token", // "disabled" | "restricted-token" | "elevated"
+      "helperPath": "/path/to/synergy-sandbox-windows.exe",
+      "verifyHelperHash": true, // Verify helper binary SHA-256 hash before use (default: true)
+      "privateDesktop": true, // Create a private desktop for sandboxed process (default: true)
+      "conpty": true, // Use ConPTY for pseudo-terminal support (default: true)
+    },
   },
 }
 ```
@@ -451,43 +475,25 @@ bun install
 
 ### Running locally
 
-#### Quick start
-
-`bun dev prepare` does everything in one step (install deps, generate SDK, build frontend). If you prefer manual control:
-
-1. `bun install`
-2. `./script/generate.ts` (or `bun dev prepare` to do all three)
-3. `bun run --cwd packages/app build`
-
-Then start the dev server:
+One command sets up everything: dependencies, SDK, frontend, and sandbox helper.
 
 ```bash
-bun dev server   # start the server
-bun dev web --dev  # open the web UI (separate terminal)
+bun dev prepare
+bun dev server
 ```
 
-After editing code:
+`bun dev prepare` handles the full stack — on macOS the sandbox works immediately (built-in `sandbox-exec`). On Linux and Windows it compiles the Rust sandbox helper automatically (requires `cargo` — install from https://rustup.rs if missing).
 
-```bash
-bun dev build      # rebuild frontend (after app changes)
-bun dev server      # restart the server
-```
+If Rust is not installed, prepare skips the sandbox step with a clear message and link. Re-run after installing Rust to complete sandbox setup.
 
-> **Note:** If the frontend build fails with `Could not resolve @ericsanchezok/synergy-sdk/client`, it means the SDK `dist/` hasn't been built yet. The `vite.js` config includes fallback aliases that resolve to SDK source files when `dist/` is missing, so a fresh `bun install` + build should work. If you've modified server routes, run `./script/generate.ts` first to rebuild the SDK.
+### Sandbox setup details
 
-**Web UI (development mode)** — run in a second terminal while the server is up:
+`bun dev prepare` compiles the sandbox helper on Linux and Windows automatically. If you need to recompile it separately:
 
-```bash
-bun dev web --dev
-```
+**Linux:** `cd packages/synergy/src/sandbox/helper-linux && cargo build --release`
+**Windows:** `cd packages/synergy/src/sandbox/helper && cargo build --release`
 
-This launches a Vite dev server for the frontend with hot-reload. Use this when working on the Web UI — no need to rebuild `packages/app/dist` each time.
-
-**One-off prompt** — send a single message without opening the Web UI:
-
-```bash
-bun dev send "hello"
-```
+Synergy auto-discovers the locally-built binary on startup. If the hash table is empty (pre-release state), the helper is still usable — Synergy runs minimum plausibility checks (file size, executable permission) instead of precise SHA-256 verification.
 
 ### Quality checks
 
@@ -498,34 +504,30 @@ bun run typecheck       # type-check all packages via turbo
 
 ### Tests
 
-Run tests from `packages/synergy` — the root `test` script intentionally blocks:
+Run TS tests from `packages/synergy` — the root `test` script intentionally blocks:
 
 ```bash
 cd packages/synergy
-bun test                            # full suite
-bun test test/tool/read.test.ts     # single file
-bun test --watch                    # watch mode
+bun test                                # full suite
+bun test test/sandbox/                  # sandbox tests
+bun test test/tool/read.test.ts         # single file
+bun test --watch                        # watch mode
+```
+
+Run Rust helper tests:
+
+```bash
+cd packages/synergy/src/sandbox/helper-linux && cargo test   # Linux helper
+cd packages/synergy/src/sandbox/helper && cargo test         # Windows helper
 ```
 
 ### Build and SDK generation
 
 ```bash
 ./packages/synergy/script/build.ts --single   # build the synergy CLI binary
-./script/generate.ts                           # regenerate the TypeScript SDK
+bun dev prepare                                # regenerate SDK + rebuild frontend
 ```
 
 Regenerate the SDK after modifying server routes or route schemas.
 
 ## Documentation Rules
-
-This repository moves quickly. README drift is a real maintenance issue.
-
-Update documentation whenever you change:
-
-- CLI command names or recommended command flows
-- agent names, default roles, or user-facing descriptions
-- config paths or config schema expectations
-- package responsibilities in the monorepo
-- user-facing platform features such as MCP, channels, identity, web flows, agenda, notes, or community features
-
-If a change is visible to a user or another developer, it probably deserves a doc check.

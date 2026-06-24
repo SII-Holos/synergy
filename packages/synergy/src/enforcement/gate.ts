@@ -1,20 +1,65 @@
-import path from "node:path"
+export interface ApprovalCacheEntry {
+  decision: "approved_for_session" | "denied"
+  timestamp: number
+}
+
+export class ApprovalCache {
+  private cache = new Map<string, ApprovalCacheEntry>()
+
+  get(capabilityKey: string): "approved_for_session" | "denied" | null {
+    const entry = this.cache.get(capabilityKey)
+    if (!entry) return null
+    return entry.decision
+  }
+
+  put(capabilityKey: string, decision: "approved_for_session" | "denied"): void {
+    this.cache.set(capabilityKey, { decision, timestamp: Date.now() })
+  }
+
+  clear(): void {
+    this.cache.clear()
+  }
+}
+
+import { buildPermissionProfile, type SynergySandboxPermissionProfile } from "../sandbox/policy-engine"
 import { Filesystem } from "../util/filesystem"
 
-import { PathClassifier } from "./classify"
+import { PathClassifier, checkProtectedPath } from "./classify"
 import { ShellSafety } from "./shell-safety"
 import { ControlProfileCompiler } from "../control-profile/compiler"
+import {
+  type PrefixRule,
+  evaluateCommand,
+  generateAmendment,
+  generateAmendmentForCapability,
+  type ExecPolicyAmendment,
+  type RuleMatch,
+} from "./exec-policy"
 import type { ProfileIdInput, ProfileRule, ProfileSandbox } from "../control-profile/types"
+import { PluginToolId } from "../plugin/ids.js"
+import type { PluginApprovalRecord } from "../plugin/consent/approval-store.js"
 
 export interface Capability {
   class: string
   nonBypassable: boolean
   opaque?: boolean
+  approved?: boolean
   paths?: string[]
+  /** Human-readable explanation of why this capability was flagged. */
+  reason?: string
+  /** Structured metadata about the match (e.g. matched pattern source). */
+  metadata?: Record<string, unknown>
 }
 
 export interface ClassifyResult {
   capabilities: Capability[]
+}
+
+export interface PluginToolCapabilityMap {
+  /** Capability strings from the plugin manifest (e.g. "filesystem:read", "shell", "network") */
+  capabilities: string[]
+  /** Risk level from manifest */
+  risk: "low" | "medium" | "high"
 }
 
 export interface AuditRecord {
@@ -27,14 +72,17 @@ export interface Envelope {
   decision: "allow" | "ask" | "deny"
   profileId: string
   opaque: boolean
-  canAutoApprove(): boolean
   capabilities: Capability[]
   /** Populated when decision is "deny" — explains why and whether retrying would help */
   refusal?: {
     reason: string
     permanent: boolean
     matchedPermission: string
+    guidance?: string
+    amendment?: ExecPolicyAmendment
   }
+  /** Populated when execPolicy generates an amendment for "ask" decisions */
+  amendment?: ExecPolicyAmendment
 }
 
 export interface GateOptions {
@@ -44,10 +92,15 @@ export interface GateOptions {
   interactionMode?: "attended" | "unattended"
   registeredMcpTools?: Set<string>
   registeredPluginTools?: Set<string>
+  /** Map from plugin tool full ID (e.g. plugin__x__y) to resolved capabilities */
+  pluginToolCapabilities?: Record<string, PluginToolCapabilityMap>
+  /** Pre-loaded approval records keyed by plugin ID. If absent, no approval check is performed. */
+  pluginApprovals?: Record<string, PluginApprovalRecord>
   originalCheckout?: string
   /** Additional directories where read-only access is treated as inside-workspace.
    *  Write operations are never allowed through readRoots. */
   readRoots?: string[]
+  execPolicy?: { rules: PrefixRule[] }
 }
 
 const DESTRUCTIVE_PATTERNS = [
@@ -94,6 +147,149 @@ const DESTRUCTIVE_PATTERNS = [
 ]
 
 const DESTRUCTIVE_REGEX = /(?:^|[\s;&|])dd\s/
+
+/**
+ * Shell command wrappers that should be stripped before destructive analysis.
+ * `timeout 10 rm -rf /` should be analyzed as `rm -rf /`.
+ */
+const COMMAND_WRAPPERS = ["timeout", "nice", "nohup", "exec", "command", "env", "xargs", "sudo", "time"]
+
+/**
+ * Split a compound shell command into its sub-commands for independent
+ * destructive analysis. `rm -rf / && echo done` yields two sub-commands.
+ */
+export function splitCompoundCommands(command: string): string[] {
+  const parts: string[] = []
+  let current = ""
+  let inSingle = false
+  let inDouble = false
+  for (let i = 0; i < command.length; i++) {
+    const ch = command[i]
+    if (ch === "'" && !inDouble) {
+      inSingle = !inSingle
+      current += ch
+      continue
+    }
+    if (ch === '"' && !inSingle) {
+      inDouble = !inDouble
+      current += ch
+      continue
+    }
+    if (!inSingle && !inDouble) {
+      if (ch === "&" && command[i + 1] === "&") {
+        parts.push(current)
+        current = ""
+        i++
+        continue
+      }
+      if (ch === "|" && command[i + 1] === "|") {
+        parts.push(current)
+        current = ""
+        i++
+        continue
+      }
+      if (ch === ";" || ch === "|") {
+        parts.push(current)
+        current = ""
+        continue
+      }
+    }
+    current += ch
+  }
+  if (current.trim()) parts.push(current)
+  return parts
+}
+
+/**
+ * Strip leading wrapper commands (timeout, sudo, etc.) to reveal the actual
+ * command being run.
+ */
+export function stripWrappers(command: string): string {
+  let cmd = command.trim()
+  let changed = true
+  while (changed) {
+    changed = false
+    for (const wrapper of COMMAND_WRAPPERS) {
+      const regex = new RegExp(`^${wrapper}\\s+`, "i")
+      const match = cmd.match(regex)
+      if (match) {
+        cmd = cmd.slice(match[0].length)
+        // Strip a single following argument (the wrapper's own arg, e.g. "10s" for timeout)
+        // But be careful not to strip the actual command. Heuristic: if the next token
+        // looks like a flag (-x) or a number/time, strip it. Otherwise leave it.
+        const nextTokenMatch = cmd.match(/^(\S+)\s+/)
+        if (nextTokenMatch) {
+          const nextToken = nextTokenMatch[1]
+          if (/^(-|\d)/.test(nextToken)) {
+            cmd = cmd.slice(nextTokenMatch[0].length)
+          }
+        }
+        changed = true
+        break
+      }
+    }
+  }
+  return cmd
+}
+
+export interface DestructiveMatch {
+  matched: boolean
+  reason?: string
+  pattern?: string
+}
+
+/**
+ * Resilient destructive patterns. Uses regex with flexible whitespace and
+ * handles common bypass techniques (extra spaces, quotes around paths).
+ */
+const DESTRUCTIVE_PATTERNS_RESILIENT: { regex: RegExp; label: string }[] = [
+  // rm -rf with flexible whitespace, optional quotes around target
+  { regex: /\brm\s+(-[a-z]*r[a-z]*f?|--recursive|--force)[^\n]*\b/s, label: "rm recursive/force" },
+  { regex: /\brm\s+-[a-z]*f[a-z]*r?[^\n]*\b/s, label: "rm force" },
+  // rm with wildcard or root/home target
+  { regex: /\brm\s+[^\n]*\s+\/(\s|$|\*)/, label: "rm targeting root" },
+  { regex: /\brm\s+[^\n]*\s+~(\s|$|\*)/, label: "rm targeting home" },
+  { regex: /\brm\s+[^\n]*\s+\*(\s|$)/, label: "rm with wildcard" },
+  // git history rewrite / destructive ops
+  { regex: /\bgit\s+push\b[^\n]*--force\b/i, label: "git push --force" },
+  { regex: /\bgit\s+push\b[^\n]*-f\b/i, label: "git push -f" },
+  { regex: /\bgit\s+reset\s+--hard\b/i, label: "git reset --hard" },
+  { regex: /\bgit\s+clean\s+-[a-z]*d[a-z]*f?/i, label: "git clean -d" },
+  // chmod 777 on sensitive paths
+  { regex: /\bchmod\s+(-R\s+)?[0-7]{3,4}\s+\/(\s|$)/i, label: "chmod on root" },
+  // shred (secure delete)
+  { regex: /\bshred\b/i, label: "shred (secure delete)" },
+  // dd to a device (not a file)
+  { regex: /\bdd\b[^\n]*\bof=\/dev\//i, label: "dd to device" },
+  // mkfs (filesystem format)
+  { regex: /\bmkfs\b/i, label: "mkfs (format filesystem)" },
+  // Mass deletion via find -delete or find -exec rm
+  { regex: /\bfind\b[^\n]*-delete\b/i, label: "find -delete" },
+  { regex: /\bfind\b[^\n]*-exec\s+rm\b/i, label: "find -exec rm" },
+]
+
+/**
+ * Analyze a shell command for destructive patterns. Splits compound commands,
+ * strips wrappers, and checks each sub-command independently.
+ */
+export function analyzeDestructiveCommand(command: string): DestructiveMatch {
+  if (!command || !command.trim()) return { matched: false }
+  const subCommands = splitCompoundCommands(command)
+  for (const sub of subCommands) {
+    const stripped = stripWrappers(sub).trim()
+    if (!stripped) continue
+    for (const pattern of DESTRUCTIVE_PATTERNS_RESILIENT) {
+      if (pattern.regex.test(stripped)) {
+        return {
+          matched: true,
+          reason: `Destructive pattern: ${pattern.label}`,
+          pattern: pattern.regex.source,
+        }
+      }
+    }
+  }
+  return { matched: false }
+}
 
 const NETWORK_PATTERNS = [
   "curl ",
@@ -143,8 +339,8 @@ const SAFE_PSEUDO_PATHS = new Set([
   "/dev/fd/2",
 ])
 
-const EXTERNAL_NETWORK_TOOLS = new Set(["webfetch", "websearch", "arxiv_search", "arxiv_download"])
-
+const SESSION_STATE_TOOLS = new Set(["dagwrite", "dagpatch", "todowrite", "task", "task_cancel"])
+const NETWORK_READ_TOOLS = new Set(["webfetch", "websearch", "arxiv_search", "arxiv_download"])
 // const AGORA_NETWORK_TOOLS = new Set(["agora_read", "agora_search"])
 //
 // const AGORA_STATEFUL_TOOLS = new Set([
@@ -166,9 +362,26 @@ const AGENT_ORCHESTRATION_TOOLS = new Set([
   "agenda_trigger",
 ])
 
-function isDestructive(command: string): boolean {
+/** Maps gate.ts capability class names to plugin manifest capability strings. */
+const GATE_TO_MANIFEST_CAP: Record<string, string> = {
+  plugin_file_read: "filesystem:read",
+  plugin_file_write: "filesystem:write",
+  plugin_shell: "shell",
+  plugin_network: "network",
+  plugin_session_read: "session_data",
+  plugin_workspace_read: "workspace_data",
+  plugin_config_read: "config:read",
+  plugin_config_write: "config:write",
+  plugin_secret_read: "secrets",
+}
+
+function isDestructive(command: string): string | null {
   const lower = command.toLowerCase()
-  return DESTRUCTIVE_PATTERNS.some((p) => lower.includes(p)) || DESTRUCTIVE_REGEX.test(lower)
+  for (const p of DESTRUCTIVE_PATTERNS) {
+    if (lower.includes(p)) return p
+  }
+  if (DESTRUCTIVE_REGEX.test(lower)) return "dd with raw device"
+  return null
 }
 
 function extractAbsolutePaths(command: string): string[] {
@@ -241,8 +454,24 @@ function classifyPathCapability(
       paths: [pathInput],
     })
   } else {
-    uniqueCapability(caps, { class: "file_external", nonBypassable: true, paths: [pathInput] })
+    uniqueCapability(caps, {
+      class: options.write ? "file_external_write" : "file_external_read",
+      nonBypassable: true,
+      paths: [pathInput],
+    })
   }
+}
+
+function classifyProtectedPathCapability(caps: Capability[], pathInput: string, mode: "read" | "write") {
+  const protectedMatch = checkProtectedPath(pathInput, mode)
+  if (!protectedMatch.matched) return
+  uniqueCapability(caps, {
+    class: "protected_op",
+    nonBypassable: true,
+    opaque: true,
+    reason: protectedMatch.reason,
+    metadata: { protectedCategory: protectedMatch.category },
+  })
 }
 
 function extractShellPathArguments(command: string, cwd: string): string[] {
@@ -264,7 +493,7 @@ function extractShellPathArguments(command: string, cwd: string): string[] {
         continue
       }
       if (name === "chmod" && (raw.startsWith("+") || /^\d+$/.test(raw))) continue
-      paths.push(path.isAbsolute(raw) ? raw : path.join(cwd, raw))
+      paths.push(raw.startsWith("/") ? raw : `${cwd}/${raw}`)
     }
   }
   return paths
@@ -283,7 +512,7 @@ function matchRule(cap: Capability, rules: ProfileRule[], unmatchedAction: Profi
 }
 
 export namespace EnforcementGate {
-  export function create(options: GateOptions) {
+  export async function create(options: GateOptions) {
     const {
       activeWorkspace,
       workspaceType,
@@ -291,12 +520,15 @@ export namespace EnforcementGate {
       interactionMode = "attended",
       registeredMcpTools = new Set<string>(),
       registeredPluginTools = new Set<string>(),
+      pluginToolCapabilities = {},
+      pluginApprovals,
       originalCheckout,
       readRoots,
+      execPolicy,
     } = options
     const profileId = ControlProfileCompiler.normalize(rawProfileId)
 
-    const resolved = ControlProfileCompiler.resolve(profileId, {
+    const resolved = await ControlProfileCompiler.resolve(profileId, {
       workspace: activeWorkspace,
       workspaceType,
       interactionMode,
@@ -305,12 +537,29 @@ export namespace EnforcementGate {
     if (!resolved.valid) {
       throw new Error(resolved.reason ?? "Invalid profile for this context")
     }
-
     const auditRecords: AuditRecord[] = []
     const pendingCapabilities = new Set<string>()
+    // Accumulated sandbox-approved paths across all evaluate() calls
+    const approvedReadPaths = new Set<string>()
+    const approvedWritePaths = new Set<string>()
+    let approvedNetwork = false
+    const approvalCache = new ApprovalCache()
 
     function classify(toolName: string, args: Record<string, any>): ClassifyResult {
       const caps: Capability[] = []
+
+      // Protected path hard boundary — checked first so it applies to every
+      // path-bearing tool regardless of profile/mode. A match forces an ask
+      // even in full_access because the capability is nonBypassable+opaque
+      // and profiles.ts hard-codes protected_op → "ask".
+      const pathArg = (args.path as string) ?? (args.file_path as string) ?? (args.filePath as string)
+      if (pathArg) {
+        const mode =
+          toolName === "write" || toolName === "edit" || toolName === "revise_file" || toolName === "save_file"
+            ? "write"
+            : "read"
+        classifyProtectedPathCapability(caps, pathArg, mode)
+      }
 
       // MCP tools: mcp__server__tool
       if (toolName.startsWith("mcp__")) {
@@ -319,10 +568,82 @@ export namespace EnforcementGate {
         return { capabilities: caps }
       }
 
-      // Plugin tools: plugin__plugin__action
-      if (toolName.startsWith("plugin__")) {
-        const opaque = !registeredPluginTools.has(toolName)
-        caps.push({ class: "plugin_invoke", nonBypassable: true, opaque })
+      // Local tools: local__fileName__exportName
+      if (toolName.startsWith("local__")) {
+        caps.push({ class: "local_tool_invoke", nonBypassable: false })
+        return { capabilities: caps }
+      }
+
+      // Plugin tools: plugin__pluginId__toolId
+      if (PluginToolId.is(toolName)) {
+        const entry = pluginToolCapabilities[toolName]
+        const known = registeredPluginTools.has(toolName) || !!entry
+        const opaque = !known
+
+        // Always emit plugin_invoke as the base capability
+        caps.push({
+          class: "plugin_invoke",
+          nonBypassable: true,
+          opaque,
+        })
+
+        // If we have resolved capabilities from the plugin manifest, decompose them
+        if (entry) {
+          const manifestCaps = entry.capabilities
+          const hasCap = (c: string) => manifestCaps.includes(c)
+
+          if (hasCap("filesystem:read")) {
+            caps.push({ class: "plugin_file_read", nonBypassable: false })
+          }
+          if (hasCap("filesystem:write")) {
+            caps.push({ class: "plugin_file_write", nonBypassable: true })
+          }
+          if (hasCap("shell")) {
+            caps.push({ class: "plugin_shell", nonBypassable: true })
+          }
+          if (hasCap("network")) {
+            caps.push({ class: "plugin_network", nonBypassable: true })
+          }
+          if (hasCap("session_data")) {
+            caps.push({ class: "plugin_session_read", nonBypassable: false })
+          }
+          if (hasCap("workspace_data")) {
+            caps.push({ class: "plugin_workspace_read", nonBypassable: false })
+          }
+          if (hasCap("config:read")) {
+            caps.push({ class: "plugin_config_read", nonBypassable: false })
+          }
+          if (hasCap("config:write")) {
+            caps.push({ class: "plugin_config_write", nonBypassable: true })
+          }
+          if (hasCap("secrets")) {
+            caps.push({ class: "plugin_secret_read", nonBypassable: true })
+          }
+        } else if (opaque) {
+          // Tool is undeclared — opaque and high risk
+          caps[0].opaque = true
+        }
+
+        // Approval check: mark sub-capabilities that haven't been approved by the user
+        if (pluginApprovals) {
+          const parsed = PluginToolId.parse(toolName)
+          if (parsed) {
+            const approval = pluginApprovals[parsed.pluginId]
+            const approvedSet = new Set(approval?.approvedCapabilities ?? [])
+            for (let i = 1; i < caps.length; i++) {
+              const cap = caps[i]
+              const manifestCap = GATE_TO_MANIFEST_CAP[cap.class]
+              if (manifestCap && !approvedSet.has(manifestCap)) {
+                cap.opaque = true
+                cap.approved = false
+                cap.reason = "unapproved"
+              } else {
+                cap.approved = true
+              }
+            }
+          }
+        }
+
         return { capabilities: caps }
       }
 
@@ -349,11 +670,13 @@ export namespace EnforcementGate {
           const paths =
             multiPaths.length > 0 ? multiPaths : ([pathFromHashlinePatch(args.input)].filter(Boolean) as string[])
           for (const p of paths) {
+            classifyProtectedPathCapability(caps, p, "write")
             classifyPathCapability(caps, p, { activeWorkspace, originalCheckout, write: true })
           }
         } else {
           const filePath = args.filePath ?? args.path ?? ""
           if (filePath) {
+            classifyProtectedPathCapability(caps, filePath, "write")
             classifyPathCapability(caps, filePath, { activeWorkspace, originalCheckout, write: true })
           }
         }
@@ -393,14 +716,44 @@ export namespace EnforcementGate {
         const risk = ShellSafety.classifyBashRisk(command)
 
         if (risk === "shell_hardline") {
-          caps.push({ class: "shell_hardline", nonBypassable: true })
+          caps.push({
+            class: "shell_hardline",
+            nonBypassable: true,
+            reason: `hardline rule matched: ${command.slice(0, 200)}`,
+          })
           return { capabilities: caps }
         }
 
-        caps.push({ class: risk, nonBypassable: false })
+        // shell_destructive is high-risk by definition; it must always be a hard
+        // boundary so the classifier can never bypass a profile deny on it.
+        caps.push({ class: risk, nonBypassable: risk === "shell_destructive" })
 
-        if (risk !== "shell_destructive" && isDestructive(command)) {
-          caps.push({ class: "shell_destructive", nonBypassable: true })
+        if (risk !== "shell_destructive") {
+          const resilient = analyzeDestructiveCommand(command)
+          if (resilient.matched) {
+            caps.push({
+              class: "shell_destructive",
+              nonBypassable: true,
+              reason: resilient.reason,
+              metadata: { pattern: resilient.pattern },
+            })
+          } else {
+            const matched = isDestructive(command)
+            if (matched) {
+              caps.push({
+                class: "shell_destructive",
+                nonBypassable: true,
+                reason: `matched destructive pattern: ${matched}`,
+              })
+            }
+          }
+        } else {
+          // ShellSafety already classified as shell_destructive — annotate the
+          // existing capability with diagnostic reason from the pattern list.
+          const matched = isDestructive(command)
+          if (matched) {
+            caps[caps.length - 1].reason = `matched destructive pattern: ${matched}`
+          }
         }
 
         const cwd = args.workdir ?? activeWorkspace
@@ -409,10 +762,18 @@ export namespace EnforcementGate {
         }
 
         const pathCandidates = [...extractAbsolutePaths(command), ...extractShellPathArguments(command, cwd)]
+        // shell_read → known read-only (cat, ls, grep, git log, etc.)
+        // shell / shell_destructive → write-capable (builds, scripts, destructive ops)
+        const writeCapable = risk !== "shell_read"
         for (const candidate of pathCandidates) {
+          classifyProtectedPathCapability(caps, candidate, writeCapable ? "write" : "read")
           const result = PathClassifier.classifyPath(candidate, { workspace: activeWorkspace, originalCheckout })
           if (result.boundary === "outside") {
-            uniqueCapability(caps, { class: "file_external", nonBypassable: true, paths: [candidate] })
+            uniqueCapability(caps, {
+              class: writeCapable ? "file_external_write" : "file_external_read",
+              nonBypassable: true,
+              paths: [candidate],
+            })
           }
         }
 
@@ -424,9 +785,9 @@ export namespace EnforcementGate {
         return { capabilities: caps }
       }
 
-      // Network and external lookup operations
-      if (EXTERNAL_NETWORK_TOOLS.has(toolName)) {
-        caps.push({ class: "network_request", nonBypassable: true })
+      // Read-only network search tools — browsing/searching, no stateful side effects
+      if (NETWORK_READ_TOOLS.has(toolName)) {
+        caps.push({ class: "network_read", nonBypassable: false })
         return { capabilities: caps }
       }
 
@@ -505,16 +866,16 @@ export namespace EnforcementGate {
         return { capabilities: caps }
       }
 
-      // Stateful orchestration tools — create/mutate internal state
-      if (
-        toolName === "dagwrite" ||
-        toolName === "dagpatch" ||
-        toolName === "todowrite" ||
-        toolName === "task" ||
-        toolName === "task_cancel" ||
-        toolName === "batch"
-      ) {
-        caps.push({ class: "file_write", nonBypassable: false })
+      // Lightweight session state tools — mutate internal coordination state,
+      // no filesystem or network side effects
+      if (SESSION_STATE_TOOLS.has(toolName)) {
+        caps.push({ class: "session_state", nonBypassable: false })
+        return { capabilities: caps }
+      }
+
+      // batch (legacy)
+      if (toolName === "batch") {
+        caps.push({ class: "session_state", nonBypassable: false })
         return { capabilities: caps }
       }
 
@@ -578,11 +939,140 @@ export namespace EnforcementGate {
         }
         return { capabilities: caps }
       }
+      // Browser tools
+      if (toolName === "browser_navigate") {
+        caps.push({ class: "network_request", nonBypassable: false })
+        return { capabilities: caps }
+      }
+      if (
+        toolName === "browser_click" ||
+        toolName === "browser_clipboard" ||
+        toolName === "browser_type" ||
+        toolName === "browser_scroll" ||
+        toolName === "browser_action"
+      ) {
+        caps.push({ class: "browser_interact", nonBypassable: false })
+        return { capabilities: caps }
+      }
+      if (toolName === "browser_viewport") {
+        caps.push({ class: "browser_viewport", nonBypassable: false })
+        return { capabilities: caps }
+      }
+      if (
+        toolName === "browser_snapshot" ||
+        toolName === "browser_screenshot" ||
+        toolName === "browser_inspect" ||
+        toolName === "browser_wait"
+      ) {
+        caps.push({ class: "browser_inspect", nonBypassable: false })
+        return { capabilities: caps }
+      }
+      if (toolName === "browser_console" || toolName === "browser_network") {
+        caps.push({ class: "browser_inspect", nonBypassable: false })
+        return { capabilities: caps }
+      }
+      if (toolName === "browser_tab") {
+        caps.push({ class: "session_state", nonBypassable: false })
+        return { capabilities: caps }
+      }
+      if (toolName === "browser_download") {
+        caps.push({ class: "network_request", nonBypassable: false })
+        return { capabilities: caps }
+      }
+      if (toolName === "browser_downloads") {
+        caps.push({ class: "browser_download", nonBypassable: false })
+        return { capabilities: caps }
+      }
+      if (toolName === "browser_annotate") {
+        caps.push({ class: "session_state", nonBypassable: false })
+        return { capabilities: caps }
+      }
+      if (toolName === "browser_navigation") {
+        caps.push({ class: "browser_interact", nonBypassable: false })
+        return { capabilities: caps }
+      }
+      if (toolName === "browser_list") {
+        caps.push({ class: "session_state", nonBypassable: false })
+        return { capabilities: caps }
+      }
+      if (toolName === "browser_read") {
+        caps.push({ class: "browser_inspect", nonBypassable: false })
+        return { capabilities: caps }
+      }
+      if (toolName === "browser_assets") {
+        caps.push({ class: "browser_inspect", nonBypassable: false })
+        return { capabilities: caps }
+      }
+      if (toolName === "browser_eval") {
+        caps.push({ class: "browser_eval_readonly", nonBypassable: false })
+        return { capabilities: caps }
+      }
+      if (toolName === "browser_view") {
+        caps.push({ class: "session_state", nonBypassable: false })
+        return { capabilities: caps }
+      }
+
+      // Blueprint loop management tools — session state coordination
+      if (toolName === "blueprint_loop_finish" || toolName === "blueprint_loop_restart") {
+        caps.push({ class: "session_state", nonBypassable: false })
+        return { capabilities: caps }
+      }
       // Default: unknown tool, no capabilities
       return { capabilities: caps }
     }
 
+    function buildCapabilityKey(caps: Capability[]): string {
+      const classes = [...new Set(caps.filter((c) => c.class !== "file_read").map((c) => c.class))].sort()
+      return classes.join("|") || "file_read"
+    }
+
     function evaluate(toolName: string, args: Record<string, any>): Envelope {
+      // ── ExecPolicy: bash command routing ──────────────────────────────
+      let execPolicyMatch: RuleMatch | undefined
+      let amendment: ExecPolicyAmendment | undefined
+
+      if (execPolicy && toolName === "bash") {
+        const rawCmd: string = args.command ?? ""
+        const words = rawCmd.trim().split(/\s+/).filter(Boolean)
+        if (words.length > 0) {
+          execPolicyMatch = evaluateCommand(words, execPolicy.rules)
+        }
+      }
+
+      if (execPolicyMatch) {
+        // "allow" → gate passes; no capabilities needed (policy-authorised)
+        if (execPolicyMatch.action === "allow") {
+          return {
+            decision: "allow",
+            profileId,
+            opaque: false,
+            capabilities: [],
+            amendment,
+          }
+        }
+
+        // "deny" → hardline forbid
+        if (execPolicyMatch.action === "deny") {
+          const caps: Capability[] = [{ class: "shell_hardline", nonBypassable: true }]
+          auditRecords.push({ tool: toolName, capabilities: caps, timestamp: Date.now() })
+          return {
+            decision: "deny",
+            profileId,
+            opaque: false,
+            capabilities: caps,
+            amendment,
+            refusal: {
+              reason: `ExecPolicy forbids command prefix [${execPolicyMatch.matchedRule?.prefix?.join(" ") ?? ""}]`,
+              permanent: true,
+              matchedPermission: "shell_hardline",
+            },
+          }
+        }
+
+        // "ask" → generate amendment, then fall through to normal classify
+        amendment = generateAmendment(execPolicyMatch) ?? undefined
+      }
+
       const { capabilities } = classify(toolName, args)
 
       let decision: "allow" | "ask" | "deny" = "allow"
@@ -602,19 +1092,57 @@ export namespace EnforcementGate {
           decision = "ask"
           continue // Keep checking — a later deny overrides
         }
-        // rule.action === "allow" — profile explicitly allows this capability.
-        // NonBypassable/opaque affect explicit asks and metadata, not an
-        // already-allowed profile decision.
-        // Allow stands unless overridden
+      }
+
+      // When execPolicy says "ask", override profile decision to "ask"
+      if (execPolicyMatch?.action === "ask") {
+        decision = "ask"
+      }
+
+      // Approval cache: if the profile says "ask" but the capability was
+      // previously approved for this session, skip the prompt.
+      if (decision === "ask") {
+        const key = buildCapabilityKey(capabilities)
+        const cached = approvalCache.get(key)
+        if (cached === "approved_for_session") {
+          decision = "allow"
+        }
       }
 
       // Populate refusal info for deny decisions
       let refusal: Envelope["refusal"]
       if (decision === "deny") {
+        const isAutonomous = profileId === "autonomous"
+        const diagnosticReasons = capabilities
+          .filter((c) => c.reason)
+          .map((c) => c.reason)
+          .join("; ")
+
         refusal = {
-          reason: `Profile "${profileId}" denies capability "${deniedCapClass ?? "unknown"}"`,
+          reason: diagnosticReasons
+            ? `Profile "${profileId}" denies capability "${deniedCapClass ?? "unknown"}" — ${diagnosticReasons}`
+            : `Profile "${profileId}" denies capability "${deniedCapClass ?? "unknown"}"`,
           permanent: true,
           matchedPermission: deniedCapClass ?? "unknown",
+          guidance:
+            diagnosticReasons || (isAutonomous ? "Switch to guarded profile to approve this operation." : undefined),
+          amendment: isAutonomous && deniedCapClass ? generateAmendmentForCapability(deniedCapClass) : undefined,
+        }
+      }
+
+      // Accumulate sandbox-approved paths when the profile auto-allows
+      if (decision === "allow") {
+        for (const cap of capabilities) {
+          if (cap.paths?.length) {
+            if (cap.class === "file_read" || cap.class === "file_external_read") {
+              for (const p of cap.paths) approvedReadPaths.add(p)
+            } else if (cap.class === "file_write") {
+              for (const p of cap.paths) approvedWritePaths.add(p)
+            }
+          }
+          if (cap.class === "network_request") {
+            approvedNetwork = true
+          }
         }
       }
 
@@ -638,9 +1166,7 @@ export namespace EnforcementGate {
         opaque,
         capabilities,
         refusal,
-        canAutoApprove() {
-          return !capabilities.some((c) => c.nonBypassable || c.opaque)
-        },
+        amendment,
       }
     }
 
@@ -673,6 +1199,43 @@ export namespace EnforcementGate {
       },
       resolveCapability(className: string) {
         pendingCapabilities.delete(className)
+      },
+      /** Register approval-granted external paths from outside the gate (e.g. tool-resolver). */
+      registerApprovedPaths(readPaths: string[], writePaths: string[], network: boolean) {
+        for (const p of readPaths) approvedReadPaths.add(p)
+        for (const p of writePaths) approvedWritePaths.add(p)
+        if (network) approvedNetwork = true
+      },
+      /**
+       * Build the aggregated sandbox permission profile from all accumulated
+       * approved paths. Returns null when sandbox is disabled.
+       */
+      getSandboxPolicy(): SynergySandboxPermissionProfile | null {
+        const sandbox = resolved.sandbox
+        if (sandbox.mode === "none") return null
+        return buildPermissionProfile({
+          workspace: activeWorkspace,
+          executionCwd: activeWorkspace,
+          sandboxMode: sandbox.mode,
+          approvedReadPaths: [...approvedReadPaths],
+          approvedWritePaths: [...approvedWritePaths],
+          approvedNetwork,
+          approvedUnixSockets: [],
+        })
+      },
+      /** Record a session-level approval for the capability classes in this envelope. */
+      approveCapability(capabilities: Capability[]) {
+        const key = buildCapabilityKey(capabilities)
+        approvalCache.put(key, "approved_for_session")
+      },
+      /** Record a session-level denial for the capability classes in this envelope. */
+      denyCapability(capabilities: Capability[]) {
+        const key = buildCapabilityKey(capabilities)
+        approvalCache.put(key, "denied")
+      },
+      /** Clear all session-level approval cache entries. */
+      clearApprovalCache() {
+        approvalCache.clear()
       },
     }
   }

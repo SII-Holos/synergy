@@ -9,6 +9,7 @@ import type { UserMessage, AssistantMessage, Message } from "@ericsanchezok/syne
 import { SessionTimeline } from "./session-timeline"
 import { ConversationViewport } from "./conversation-viewport"
 import { navMark } from "@/utils/perf"
+import { BrowserViewEffects } from "@/components/workspace/browser/browser-view-effects"
 
 export function SessionConversation(props: {
   sessionID: string
@@ -52,7 +53,7 @@ export function SessionConversation(props: {
         if (props.isDesktop()) props.onScheduleScrollSpy(el)
       }}
       overlay={
-        <Show when={props.isDesktop()}>
+        <Show when={props.isDesktop() && !workspaceOpen()}>
           <div class="absolute inset-0 pointer-events-none z-10">
             <SessionTimeline
               messages={props.visibleUserMessages}
@@ -72,6 +73,7 @@ export function SessionConversation(props: {
         "mt-0": props.showTabs(),
       }}
     >
+      <BrowserViewEffects timeline={props.timeline} />
       <Show when={props.turnStart > 0}>
         <div class="w-full flex justify-center">
           <Button

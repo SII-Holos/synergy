@@ -3,8 +3,11 @@ import * as path from "path"
 import * as fs from "fs"
 import * as crypto from "crypto"
 import type { PrepareWrapperOpts, SandboxExecutionWrapper } from "./types"
-import { detectPlatform } from "./platform"
+import { detectPlatform } from "./detect"
 import { Log } from "@/util/log"
+import { DEFAULT_PROTECTED_PATHS } from "./policy"
+import { buildPermissionProfile } from "./policy-engine"
+import { isTarballHelperUpToDate, verifyHelperHash } from "./utils"
 
 const log = Log.create({ service: "sandbox-windows" })
 
@@ -16,25 +19,121 @@ const log = Log.create({ service: "sandbox-windows" })
  * Known search paths for the Windows sandbox helper binary.
  * Priority order: bundled with Synergy, then global bin directory.
  */
-const HELPER_SEARCH_PATHS = [
+export const WINDOWS_HELPER_BINARY_NAME = "synergy-sandbox-windows.exe"
+
+export const WINDOWS_HELPER_SEARCH_PATHS = [
   // Bundled with Synergy installation
-  (homedir: string) => path.join(homedir, ".synergy", "sandbox-helper", "synergy-sandbox.exe"),
+  (homedir: string) => path.join(homedir, ".synergy", "sandbox-helper", WINDOWS_HELPER_BINARY_NAME),
   // Global Synergy binary directory
-  (homedir: string) => path.join(homedir, ".synergy", "bin", "synergy-sandbox.exe"),
+  (homedir: string) => path.join(homedir, ".synergy", "bin", WINDOWS_HELPER_BINARY_NAME),
+  // Global npm install — node_modules in user home
+  (homedir: string) =>
+    path.join(
+      homedir,
+      "node_modules",
+      "@ericsanchezok",
+      "synergy-sandbox-windows-x64",
+      "bin",
+      WINDOWS_HELPER_BINARY_NAME,
+    ),
+  // System-wide npm install (%ProgramFiles% equivalent)
+  (_homedir: string) =>
+    path.join(
+      "C:\\Program Files\\node_modules",
+      "@ericsanchezok",
+      "synergy-sandbox-windows-x64",
+      "bin",
+      WINDOWS_HELPER_BINARY_NAME,
+    ),
 ]
+
+/**
+ * One-time initialization: detect and install the sandbox helper from a
+ * tarball-relative sandbox/ directory next to the bundled synergy binary.
+ *
+ * Standalone tarball layout:
+ *   synergy-windows-x64/
+ *   ├── bin/synergy.exe
+ *   └── sandbox/
+ *       └── synergy-sandbox-windows.exe
+ *
+ * Only runs when the current binary is inside a `bin/` subdirectory of
+ * a release tarball — never when running from source (`bun run`).
+ * Copies the helper to ~/.synergy/sandbox-helper/ if found.
+ * Non-fatal: warns and returns false on any error.
+ */
+function installTarballHelper(): boolean {
+  const execPath = process.execPath
+  const execDir = path.dirname(execPath)
+  const execDirName = path.basename(execDir)
+
+  // Guard: only install from tarball layout where the binary is inside a
+  // `bin/` subdirectory. Prevents false positives when running from source.
+  if (execDirName !== "bin") return false
+
+  const tarballSandboxDir = path.resolve(execDir, "..", "sandbox")
+  const tarballHelper = path.join(tarballSandboxDir, WINDOWS_HELPER_BINARY_NAME)
+
+  if (!fs.existsSync(tarballHelper)) return false
+
+  const homedir = os.homedir()
+  const destDir = path.join(homedir, ".synergy", "sandbox-helper")
+  const destPath = path.join(destDir, WINDOWS_HELPER_BINARY_NAME)
+
+  // Idempotent: skip if destination already exists and is up to date.
+  try {
+    if (fs.existsSync(destPath) && isTarballHelperUpToDate(tarballHelper, destPath)) {
+      return true
+    }
+  } catch {
+    // Fall through to copy
+  }
+
+  try {
+    fs.mkdirSync(destDir, { recursive: true })
+    fs.copyFileSync(tarballHelper, destPath)
+    log.info("Installed sandbox helper from tarball", { src: tarballHelper, dest: destPath })
+    return true
+  } catch (e) {
+    log.warn("Failed to install tarball sandbox helper", {
+      src: tarballHelper,
+      dest: destPath,
+      error: String(e),
+    })
+    return false
+  }
+}
+
+/**
+ * Trusted SHA-256 hashes for Windows helper binaries.
+ * Updated with every helper binary release.
+ * Never load from config — embedded at compile time.
+ */
+export const TRUSTED_WINDOWS_HELPER_HASHES: Record<string, string> = {
+  [path.join(os.homedir(), ".synergy", "sandbox-helper", "synergy-sandbox-windows.exe")]:
+    "038835d500dd0e2c1fac4dcf829e0bb13ebadd69373d77f19b575758b3437b5b",
+}
 
 /**
  * Resolve the path to the sandbox helper binary on Windows.
  * Returns the absolute path if found and hash-verified, or null if not installed.
  */
 function findHelperBinary(): { path: string; verified: boolean } | null {
+  // Try tarball-relative installation before searching standard paths
+  installTarballHelper()
+
   const homedir = os.homedir()
-  for (const getPath of HELPER_SEARCH_PATHS) {
+  for (const getPath of WINDOWS_HELPER_SEARCH_PATHS) {
     const p = getPath(homedir)
     try {
       if (fs.existsSync(p)) {
-        const verified = verifyHelperHash(p)
-        return { path: p, verified }
+        const verified = verifyHelperHash(p, TRUSTED_WINDOWS_HELPER_HASHES)
+        if (verified) {
+          return { path: p, verified: true }
+        }
+        // Hash mismatch — log warning and continue searching
+        log.warn("Windows sandbox helper hash verification failed", { path: p })
+        continue
       }
     } catch {
       // Permission denied or filesystem error — skip this path
@@ -44,56 +143,12 @@ function findHelperBinary(): { path: string; verified: boolean } | null {
   return null
 }
 
-/**
- * Verify the helper binary's SHA-256 hash against a known trusted hash.
- * Returns true if verification passes or is not configured.
- *
- * Phase 3 MVP: return true (no hash configured yet).
- * Phase 4: load trusted hash from config or embedded constant.
- */
-function verifyHelperHash(binaryPath: string): boolean {
-  // MVP: no hash verification configured — trusted by location
-  try {
-    const hash = crypto.createHash("sha256")
-    const data = fs.readFileSync(binaryPath)
-    hash.update(data)
-    const digest = hash.digest("hex")
-    log.debug(`Helper binary hash: ${digest}`)
-    // TODO Phase 4: compare against trusted hash list
-    return true
-  } catch {
-    return false
-  }
-}
-
-// ------------------------------------------------------------------
-// Protected paths
-// ------------------------------------------------------------------
-
-function defaultProtectedPaths(homedir: string, workspace: string): string[] {
-  return [
-    path.join(workspace, ".git"),
-    path.join(homedir, ".synergy", "config"),
-    path.join(homedir, ".synergy", "data", "auth", "api-key.json"),
-  ]
-}
-
 // ------------------------------------------------------------------
 // Windows sandbox config (mirrors helper/src/config.rs)
 // ------------------------------------------------------------------
 
-interface WindowsSandboxConfig {
-  level: "restricted-token" | "elevated"
-  mode: "read_only" | "workspace_write"
-  workspace: string
-  execution_cwd: string
-  writable_roots: string[]
-  read_roots: string[]
-  protected_paths: string[]
-  data_deny_roots: string[]
-  command: string
-  args: string[]
-}
+// Windows helper consumes the same SynergySandboxPermissionProfile JSON as the
+// Linux helper. Process command/args are passed after `--` in argv.
 
 // ------------------------------------------------------------------
 // WindowsBackend
@@ -103,10 +158,9 @@ export namespace WindowsBackend {
   /**
    * Prepare a Windows sandbox execution wrapper.
    *
-   * Phase 3: detects the Rust helper binary, builds JSON config,
+   * Detects the Rust helper binary, builds JSON config,
    * writes it to a temp file, and returns a sandboxed wrapper that
-   * invokes synergy-sandbox.exe with the config.
-   *
+   * invokes synergy-sandbox-windows.exe with a shared PermissionProfile config.
    * Security invariants:
    * - `sandboxed: true` only when the helper binary is actually used
    * - Config is structured JSON, never a shell command string
@@ -130,14 +184,15 @@ export namespace WindowsBackend {
       }
     }
 
-    // Locate the helper binary
-    const helper = findHelperBinary()
+    const helper = opts.forceHelperPath
+      ? { path: opts.forceHelperPath, verified: opts.forceHelperVerified === true }
+      : findHelperBinary()
     if (!helper) {
       return {
         command,
         args,
         sandboxed: false,
-        skipReason: "Windows sandbox helper binary not found. Install the Synergy sandbox helper for Windows.",
+        skipReason: `Windows sandbox helper binary ${WINDOWS_HELPER_BINARY_NAME} not found. Install the Synergy sandbox helper for Windows.`,
       }
     }
 
@@ -146,34 +201,37 @@ export namespace WindowsBackend {
         command,
         args,
         sandboxed: false,
-        skipReason: "Windows sandbox helper binary hash verification failed.",
+        skipReason:
+          "Windows sandbox helper binary hash verification failed. The helper may be corrupted or tampered. Reinstall the Synergy Windows sandbox helper.",
       }
     }
 
     const homedir = os.homedir()
 
-    // Build the sandbox config
-    const config: WindowsSandboxConfig = {
-      level: "restricted-token",
-      mode: sandboxMode,
+    const profile = buildPermissionProfile({
       workspace,
-      execution_cwd: opts.executionCwd ?? workspace,
-      writable_roots: [workspace, ...(opts.writableRoots ?? []), ...(opts.extraWritableRoots ?? [])],
-      read_roots: [path.join(homedir, ".synergy"), ...(opts.runtimeReadRoots ?? []), ...(opts.extraReadRoots ?? [])],
-      protected_paths: defaultProtectedPaths(homedir, workspace),
-      data_deny_roots: opts.dataDenyRoots ?? [],
-      command,
-      args,
-    }
+      executionCwd: opts.executionCwd ?? workspace,
+      sandboxMode,
+      approvedReadPaths: [
+        path.join(homedir, ".synergy"),
+        ...(opts.runtimeReadRoots ?? []),
+        ...(opts.extraReadRoots ?? []),
+      ],
+      approvedWritePaths:
+        opts.sandboxMode === "workspace_write"
+          ? [...(opts.writableRoots ?? []), ...(opts.extraWritableRoots ?? [])]
+          : [],
+      approvedNetwork: false,
+      approvedUnixSockets: [],
+    })
 
-    // Write config to temp file
     const tempDir = os.tmpdir()
-    const configPath = path.join(tempDir, `synergy-sandbox-${Math.random().toString(36).slice(2, 10)}.json`)
-    fs.writeFileSync(configPath, JSON.stringify(config, null, 2), "utf-8")
+    const configPath = path.join(tempDir, `synergy-sandbox-windows-${crypto.randomBytes(8).toString("hex")}.json`)
+    fs.writeFileSync(configPath, JSON.stringify(profile, null, 2), { encoding: "utf-8", mode: 0o600 })
 
     return {
       command: helper.path,
-      args: ["--config", configPath, "--", command, ...args],
+      args: ["--permission-profile", configPath, "--cwd", opts.executionCwd ?? workspace, "--", command, ...args],
       sandboxed: true,
       tempPath: configPath,
     }
@@ -187,4 +245,12 @@ export namespace WindowsBackend {
 export function isWindowsHelperAvailable(): boolean {
   const helper = findHelperBinary()
   return helper !== null && helper.verified
+}
+
+/**
+ * Detailed diagnostic info about the Windows sandbox helper.
+ * Returns null if no helper binary found at any search path.
+ */
+export function getWindowsHelperInfo(): { path: string; verified: boolean } | null {
+  return findHelperBinary()
 }

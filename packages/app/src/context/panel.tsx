@@ -1,6 +1,7 @@
 import { createSignal, type JSX } from "solid-js"
 import { createSimpleContext } from "@ericsanchezok/synergy-ui/context"
 import type { IconName } from "@ericsanchezok/synergy-ui/icon"
+import { listGlobalPanels } from "@/plugin"
 
 export interface PanelDef {
   id: string
@@ -8,11 +9,11 @@ export interface PanelDef {
   icon: IconName
 }
 
-export const PANELS: PanelDef[] = [
-  { id: "engram", label: "Library", icon: "book-open" },
-  { id: "agenda", label: "Agenda", icon: "clipboard-list" },
-  { id: "lucid", label: "Lucid", icon: "sparkles" },
-]
+export const PANELS: PanelDef[] = listGlobalPanels().map((p) => ({
+  id: p.id,
+  label: p.label,
+  icon: p.icon as IconName,
+}))
 
 export const { use: usePanel, provider: PanelProvider } = createSimpleContext({
   name: "Panel",

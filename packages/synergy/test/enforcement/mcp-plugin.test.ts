@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test"
+const { EnforcementGate } = await import("../../src/enforcement/gate")
 
 // ---------------------------------------------------------------------------
 // enforcement/mcp-plugin.test.ts
@@ -14,9 +15,8 @@ import { describe, expect, test } from "bun:test"
 // 1. Unknown MCP tools
 // ------------------------------------------------------------------
 describe("EnforcementGate MCP opaque strategy", () => {
-  test("unknown MCP tool defaults to ask", () => {
-    const { EnforcementGate } = require("../../src/enforcement/gate")
-    const gate = EnforcementGate.create({
+  test("unknown MCP tool defaults to ask", async () => {
+    const gate = await EnforcementGate.create({
       activeWorkspace: "/Users/test/synergy-control-profile",
       workspaceType: "worktree",
       profileId: "guarded",
@@ -31,38 +31,35 @@ describe("EnforcementGate MCP opaque strategy", () => {
     expect(envelope.decision).toBe("ask")
   })
 
-  test("unknown MCP tool produces mcp_invoke capability with nonBypassable", () => {
-    const { EnforcementGate } = require("../../src/enforcement/gate")
-    const gate = EnforcementGate.create({
+  test("unknown MCP tool produces mcp_invoke capability with nonBypassable", async () => {
+    const gate = await EnforcementGate.create({
       activeWorkspace: "/Users/test/synergy-control-profile",
       workspaceType: "worktree",
     })
 
     const result = gate.classify("mcp__github__list_repos", {})
 
-    const mcpCap = result.capabilities.find((c: any) => c.class === "mcp_invoke")
+    const mcpCap = result.capabilities.find((c: any) => c.class === "mcp_invoke")!
     expect(mcpCap).toBeDefined()
     // MCP invoke is an externalIO operation — always nonBypassable
     expect(mcpCap.nonBypassable).toBe(true)
   })
 
-  test("MCP tool with unknown server name is classified as opaque", () => {
-    const { EnforcementGate } = require("../../src/enforcement/gate")
-    const gate = EnforcementGate.create({
+  test("MCP tool with unknown server name is classified as opaque", async () => {
+    const gate = await EnforcementGate.create({
       activeWorkspace: "/Users/test/synergy-control-profile",
       workspaceType: "worktree",
     })
 
     const result = gate.classify("mcp__completely_fake_server__do_something", {})
 
-    const mcpCap = result.capabilities.find((c: any) => c.class === "mcp_invoke")
+    const mcpCap = result.capabilities.find((c: any) => c.class === "mcp_invoke")!
     expect(mcpCap).toBeDefined()
     expect(mcpCap.opaque).toBe(true)
   })
 
-  test("unattended mode does not auto-approve unknown MCP tool", () => {
-    const { EnforcementGate } = require("../../src/enforcement/gate")
-    const gate = EnforcementGate.create({
+  test("unattended mode does not auto-approve unknown MCP tool", async () => {
+    const gate = await EnforcementGate.create({
       activeWorkspace: "/Users/test/synergy-control-profile",
       workspaceType: "worktree",
       profileId: "guarded",
@@ -78,9 +75,8 @@ describe("EnforcementGate MCP opaque strategy", () => {
     expect(envelope.decision).toBe("ask")
   })
 
-  test("guarded profile asks for MCP tool invocations", () => {
-    const { EnforcementGate } = require("../../src/enforcement/gate")
-    const gate = EnforcementGate.create({
+  test("guarded profile asks for MCP tool invocations", async () => {
+    const gate = await EnforcementGate.create({
       activeWorkspace: "/Users/test/synergy-control-profile",
       workspaceType: "worktree",
       profileId: "guarded",
@@ -99,9 +95,8 @@ describe("EnforcementGate MCP opaque strategy", () => {
 // 2. Unknown plugin tools
 // ------------------------------------------------------------------
 describe("EnforcementGate plugin opaque strategy", () => {
-  test("unknown plugin tool defaults to ask", () => {
-    const { EnforcementGate } = require("../../src/enforcement/gate")
-    const gate = EnforcementGate.create({
+  test("unknown plugin tool defaults to ask", async () => {
+    const gate = await EnforcementGate.create({
       activeWorkspace: "/Users/test/synergy-control-profile",
       workspaceType: "worktree",
       profileId: "guarded",
@@ -116,38 +111,35 @@ describe("EnforcementGate plugin opaque strategy", () => {
     expect(envelope.decision).toBe("ask")
   })
 
-  test("unknown plugin tool produces plugin_invoke capability with nonBypassable", () => {
-    const { EnforcementGate } = require("../../src/enforcement/gate")
-    const gate = EnforcementGate.create({
+  test("unknown plugin tool produces plugin_invoke capability with nonBypassable", async () => {
+    const gate = await EnforcementGate.create({
       activeWorkspace: "/Users/test/synergy-control-profile",
       workspaceType: "worktree",
     })
 
     const result = gate.classify("plugin__my_plugin__do_export", {})
 
-    const pluginCap = result.capabilities.find((c: any) => c.class === "plugin_invoke")
+    const pluginCap = result.capabilities.find((c: any) => c.class === "plugin_invoke")!
     expect(pluginCap).toBeDefined()
     // Plugin invoke is an externalIO operation — always nonBypassable
     expect(pluginCap.nonBypassable).toBe(true)
   })
 
-  test("plugin tool with unknown plugin name is classified as opaque", () => {
-    const { EnforcementGate } = require("../../src/enforcement/gate")
-    const gate = EnforcementGate.create({
+  test("plugin tool with unknown plugin name is classified as opaque", async () => {
+    const gate = await EnforcementGate.create({
       activeWorkspace: "/Users/test/synergy-control-profile",
       workspaceType: "worktree",
     })
 
     const result = gate.classify("plugin__no_such_plugin__run_task", {})
 
-    const pluginCap = result.capabilities.find((c: any) => c.class === "plugin_invoke")
+    const pluginCap = result.capabilities.find((c: any) => c.class === "plugin_invoke")!
     expect(pluginCap).toBeDefined()
     expect(pluginCap.opaque).toBe(true)
   })
 
-  test("unattended mode does not auto-approve unknown plugin tool", () => {
-    const { EnforcementGate } = require("../../src/enforcement/gate")
-    const gate = EnforcementGate.create({
+  test("unattended mode does not auto-approve unknown plugin tool", async () => {
+    const gate = await EnforcementGate.create({
       activeWorkspace: "/Users/test/synergy-control-profile",
       workspaceType: "worktree",
       profileId: "guarded",
@@ -168,9 +160,8 @@ describe("EnforcementGate plugin opaque strategy", () => {
 // 3. Known vs unknown MCP/plugin distinction
 // ------------------------------------------------------------------
 describe("EnforcementGate known vs unknown MCP/plugin", () => {
-  test("known MCP tool from registered server can be allowed by profile", () => {
-    const { EnforcementGate } = require("../../src/enforcement/gate")
-    const gate = EnforcementGate.create({
+  test("known MCP tool from registered server can be allowed by profile", async () => {
+    const gate = await EnforcementGate.create({
       activeWorkspace: "/Users/test/synergy-control-profile",
       workspaceType: "worktree",
       profileId: "guarded",
@@ -187,9 +178,8 @@ describe("EnforcementGate known vs unknown MCP/plugin", () => {
     expect(envelope.opaque).toBe(false)
   })
 
-  test("known plugin tool from registered plugin can be allowed by profile", () => {
-    const { EnforcementGate } = require("../../src/enforcement/gate")
-    const gate = EnforcementGate.create({
+  test("known plugin tool from registered plugin can be allowed by profile", async () => {
+    const gate = await EnforcementGate.create({
       activeWorkspace: "/Users/test/synergy-control-profile",
       workspaceType: "worktree",
       profileId: "guarded",
@@ -205,9 +195,8 @@ describe("EnforcementGate known vs unknown MCP/plugin", () => {
     expect(envelope.opaque).toBe(false)
   })
 
-  test("known MCP tool still asks under guarded profile", () => {
-    const { EnforcementGate } = require("../../src/enforcement/gate")
-    const gate = EnforcementGate.create({
+  test("known MCP tool still asks under guarded profile", async () => {
+    const gate = await EnforcementGate.create({
       activeWorkspace: "/Users/test/synergy-control-profile",
       workspaceType: "worktree",
       registeredMcpTools: new Set(["mcp__github__list_repos"]),
@@ -226,9 +215,8 @@ describe("EnforcementGate known vs unknown MCP/plugin", () => {
 // 4. ExternalIO capability class consistency
 // ------------------------------------------------------------------
 describe("EnforcementGate externalIO capability classification", () => {
-  test("all MCP and plugin invocations are classified as externalIO", () => {
-    const { EnforcementGate } = require("../../src/enforcement/gate")
-    const gate = EnforcementGate.create({
+  test("all MCP and plugin invocations are classified as externalIO", async () => {
+    const gate = await EnforcementGate.create({
       activeWorkspace: "/Users/test/synergy-control-profile",
       workspaceType: "worktree",
     })
@@ -242,9 +230,8 @@ describe("EnforcementGate externalIO capability classification", () => {
     }
   })
 
-  test("externalIO capabilities are always nonBypassable", () => {
-    const { EnforcementGate } = require("../../src/enforcement/gate")
-    const gate = EnforcementGate.create({
+  test("externalIO capabilities are always nonBypassable", async () => {
+    const gate = await EnforcementGate.create({
       activeWorkspace: "/Users/test/synergy-control-profile",
       workspaceType: "worktree",
     })

@@ -217,6 +217,43 @@ function initialize(conn: Database) {
 
   refreshVecTableState(conn, vecExperience, embeddingDimensions)
   refreshVecTableState(conn, vecMemory, embeddingDimensions)
+  // Ensure vec tables are re-initialized on every connection open — not just
+  // during data insertion. sqlite-vec's vec0 module may need per-connection
+  // CREATE TABLE registration for internal data structures.
+  // Use the dimensions discovered by refreshVecTableState (from sqlite_master),
+  // not embeddingDimensions (which closeDB() resets to undefined).
+  if (vecExperience.dimensions !== undefined) {
+    try {
+      conn.exec(`
+        CREATE VIRTUAL TABLE IF NOT EXISTS vec_experience USING vec0(
+          experience_id TEXT PRIMARY KEY,
+          scope_id TEXT partition key,
+          reward_status TEXT,
+          intent_embedding float[${vecExperience.dimensions}] distance_metric=cosine,
+          script_embedding float[${vecExperience.dimensions}] distance_metric=cosine
+        )
+      `)
+      refreshVecTableState(conn, vecExperience, embeddingDimensions)
+      if (vecExperience.ready) vecExperience.failAt = undefined
+    } catch (e) {
+      log.warn("vec_experience re-initialization failed", { error: e })
+    }
+  }
+  if (vecMemory.dimensions !== undefined) {
+    try {
+      conn.exec(`
+        CREATE VIRTUAL TABLE IF NOT EXISTS vec_memory USING vec0(
+          memory_id TEXT PRIMARY KEY,
+          category TEXT,
+          embedding float[${vecMemory.dimensions}] distance_metric=cosine
+        )
+      `)
+      refreshVecTableState(conn, vecMemory, embeddingDimensions)
+      if (vecMemory.ready) vecMemory.failAt = undefined
+    } catch (e) {
+      log.warn("vec_memory re-initialization failed", { error: e })
+    }
+  }
 
   conn.exec(`
     CREATE TABLE IF NOT EXISTS experience (

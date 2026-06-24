@@ -3,7 +3,7 @@ import { Bus } from "@/bus"
 import { GlobalBus } from "@/bus/global"
 import { Log } from "../util/log"
 import { describeRoute, generateSpecs, validator, resolver, openAPIRouteHandler } from "hono-openapi"
-import { Hono, type Context, type Next } from "hono"
+import { Hono, type Context, type MiddlewareHandler, type Next } from "hono"
 import { cors } from "hono/cors"
 import { streamSSE } from "hono/streaming"
 import * as fs from "fs"
@@ -12,7 +12,6 @@ import z from "zod"
 import { Provider } from "../provider/provider"
 import { NamedError } from "@ericsanchezok/synergy-util/error"
 import { Config } from "../config/config"
-import { ConfigSet } from "../config/set"
 import { LSP } from "../lsp"
 import { Format } from "../file/format"
 import { Instance } from "../scope/instance"
@@ -53,6 +52,9 @@ import { EngramRoute } from "./engram"
 import { AgendaRoute } from "./agenda"
 import { NoteRoute } from "./note"
 import { AssetRoute } from "./asset"
+import { PluginRoute, ApiPluginRoute } from "./plugin-routes"
+import { PluginRuntimeRoute } from "./plugin-runtime-routes"
+import { RegistryRoute } from "./plugin-registry-routes"
 import { StatsRoute } from "./stats"
 import { Agenda, AgendaBootstrap, AgendaStore, AgendaTypes, AgendaWebhook } from "../agenda"
 import { SkillRoute } from "./skill-route"
@@ -62,6 +64,9 @@ import { GlobalSessionRoute } from "./global-session"
 import { SessionNavRoute } from "./session-nav"
 import { GlobalNavRoute } from "./global-nav"
 import { ControlProfileRoute } from "./control-profile-route"
+import { SandboxReadinessRoute } from "./sandbox-readiness-route"
+import { BrowserRoute } from "./browser-route"
+import { BlueprintRoute } from "./blueprint"
 import { RuntimeReload } from "../runtime/reload"
 
 // @ts-ignore This global is needed to prevent ai-sdk from logging warnings to stdout https://github.com/vercel/ai/blob/2dc67e0ef538307f21368db32d5a12345d98831b/packages/ai/src/logger/log-warnings.ts#L85
@@ -75,12 +80,51 @@ export namespace Server {
   export const DEFAULT_URL = `http://${DEFAULT_HOST}:${DEFAULT_PORT}`
 
   const log = Log.create({ service: "server" })
-
   const APP_DIST = (() => {
     const fromExec = path.resolve(path.dirname(fs.realpathSync(process.execPath)), "../app")
     if (fs.existsSync(fromExec)) return fromExec
     return path.resolve(import.meta.dirname, "../../../app/dist")
   })()
+
+  // Baseline Content-Security-Policy for SPA responses.
+  // style-src 'unsafe-inline' is required for Solid's reactive CSS-in-JS <style> injection.
+  // script-src is extended per-request: the theme preloader hash is always included;
+  // the fallback handler adds a per-request nonce for the dynamic route-tag script.
+  const CSP_BASELINE =
+    "default-src 'self'; " +
+    "script-src 'self'; " +
+    "style-src 'self' 'unsafe-inline'; " +
+    "img-src 'self' data: https: blob:; " +
+    "font-src 'self'; " +
+    "connect-src 'self' ws: wss:; " +
+    "frame-src 'self'; " +
+    "media-src 'none'; " +
+    "object-src 'none'; " +
+    "base-uri 'self'; " +
+    "form-action 'self'"
+
+  // SHA-256 of index.html's <script id="synergy-theme-preload-script"> body.
+  // Update this hash when the inline theme preloader script changes.
+  const CSP_THEME_SCRIPT_HASH = "sha256-Qf8GAcLAwW4P3mUyGKGC4j67XnDPP6d00NW/TNjPNE0="
+
+  function spaCsp(nonce?: string): string {
+    const sources = [CSP_THEME_SCRIPT_HASH]
+    if (nonce) sources.push(`'nonce-${nonce}'`)
+    return CSP_BASELINE.replace("script-src 'self'", `script-src 'self' ${sources.join(" ")}`)
+  }
+
+  export function cspMiddleware(): MiddlewareHandler {
+    return async (c, next) => {
+      await next()
+      if (!c.res.headers.get("Content-Security-Policy")) {
+        c.res.headers.set("Content-Security-Policy", CSP_BASELINE)
+      }
+      if (!c.res.headers.get("X-Frame-Options")) {
+        c.res.headers.set("X-Frame-Options", "DENY")
+      }
+    }
+  }
+
   let _url: URL | undefined
   let _corsWhitelist = new Set<string>()
   let _appMounted = false
@@ -160,15 +204,7 @@ export namespace Server {
             if (err instanceof Storage.NotFoundError) status = 404
             else if (err instanceof Provider.ModelNotFoundError) status = 400
             else if (err.name === "ChannelStartError") status = 400
-            else if (ConfigSet.NotFoundError.isInstance(err)) status = 404
-            else if (
-              ConfigSet.ExistsError.isInstance(err) ||
-              ConfigSet.DeleteDefaultError.isInstance(err) ||
-              ConfigSet.DeleteActiveError.isInstance(err) ||
-              err.name.startsWith("Worktree") ||
-              err.name.startsWith("Command")
-            )
-              status = 400
+            else if (err.name.startsWith("Worktree") || err.name.startsWith("Command")) status = 400
             else status = 500
             return c.json(err.toObject(), { status })
           }
@@ -215,6 +251,7 @@ export namespace Server {
           }),
         )
         .use(provideRequestScope)
+        .use(cspMiddleware())
         .get(
           "/global/health",
           describeRoute({
@@ -436,7 +473,7 @@ export namespace Server {
         .route("/config", ConfigRoute)
         .route("/runtime", RuntimeRoute)
         .route("", ControlProfileRoute)
-
+        .route("", SandboxReadinessRoute)
         .get(
           "/experimental/tool/ids",
           describeRoute({
@@ -684,9 +721,15 @@ export namespace Server {
         .route("/engram", EngramRoute)
         .route("/agenda", AgendaRoute)
         .route("/note", NoteRoute)
+        .route("/blueprint", BlueprintRoute)
         .route("/asset", AssetRoute)
         .route("/stats", StatsRoute)
         .route("/holos", HolosDataRoute)
+        .route("", BrowserRoute)
+        .route("/plugin", PluginRoute)
+        .route("/api/plugins", ApiPluginRoute)
+        .route("/api/plugins", PluginRuntimeRoute)
+        .route("/api/registry", RegistryRoute)
 
         .post(
           "/log",
@@ -935,6 +978,7 @@ export namespace Server {
         const serveFile = (resolved: string, immutable?: boolean) => {
           const file = Bun.file(resolved)
           if (immutable) c.header("Cache-Control", "public, immutable, max-age=31536000")
+          c.header("Content-Security-Policy", spaCsp())
           return c.body(file.stream(), { headers: { "Content-Type": file.type || "application/octet-stream" } })
         }
 
@@ -973,7 +1017,9 @@ export namespace Server {
         if (await file.exists().catch(() => false)) {
           const html = await file.text()
           const reqPath = new URL(c.req.url).pathname
-          const routeTag = `<script>window.__SYNERGY_ROUTE__=${JSON.stringify(reqPath)}</script>`
+          const nonce = crypto.randomUUID().replace(/-/g, "")
+          const routeTag = `<script nonce="${nonce}">window.__SYNERGY_ROUTE__=${JSON.stringify(reqPath)}</script>`
+          c.header("Content-Security-Policy", spaCsp(nonce))
           const rendered = html.includes("</head>") ? html.replace("</head>", `${routeTag}\n</head>`) : routeTag + html
           return c.body(rendered, { headers: { "Content-Type": "text/html; charset=utf-8" } })
         }

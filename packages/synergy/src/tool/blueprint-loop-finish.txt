@@ -1,0 +1,14 @@
+Use this when the active BlueprintLoop is ready for audit or cannot continue.
+
+Execution agents may set:
+- auditing: the implementation is ready for supervisor audit
+- failed: execution cannot continue
+
+Supervisors may set:
+- completed: audit passed
+- failed: audit cannot continue
+
+Parameters:
+- loopID: The active BlueprintLoop ID
+- status: "auditing", "failed", or "completed" according to the role rules above
+- summary: Optional completion, failure, or audit summary

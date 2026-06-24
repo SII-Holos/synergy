@@ -1,6 +1,7 @@
 [package]
-name = "sandbox-helper"
+name = "synergy-sandbox-windows"
 version = "0.1.0"
+rust-version = "1.82"
 edition = "2021"
 
 [dependencies]
@@ -11,10 +12,19 @@ windows-sys = { version = "0.59", features = [
     "Win32_System_Threading",
     "Win32_System_JobObjects",
     "Win32_System_Console",
+    "Win32_System_Pipes",
+    "Win32_System_IO",
+    "Win32_System_StationsAndDesktops",
+    "Win32_Graphics_Gdi",
+    "Win32_System_Rpc",
     "Win32_Storage_FileSystem",
+    "Win32_NetworkManagement_WindowsFilteringPlatform",
+    "Win32_System_Registry",
+    "Win32_UI_Shell",
 ]}
 windows-result = "0.4"
 serde = { version = "1", features = ["derive"] }
+rand = "0.8"
 serde_json = "1"
 log = "0.4"
 env_logger = "0.11"

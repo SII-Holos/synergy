@@ -1,5 +1,7 @@
 import PROMPT_BASE from "./base.txt"
-import { buildAgentTable, buildSynergyMemorySection, type AgentInfo } from "../synergy/builder"
+import { buildAgentTable } from "../agent-table"
+import type { AgentInfo } from "../types"
+import { buildSynergyMemorySection } from "../synergy/builder"
 
 export function buildSynergyMaxPrompt(agents: AgentInfo[]): string {
   const agentTable = buildAgentTable(agents, "synergy-max")

@@ -52,7 +52,9 @@ export const { use: useWorkspace, provider: WorkspaceProvider } = createSimpleCo
           ws().setActive(toolId)
           ws().open()
         } else if (ws().active() === toolId) {
-          ws().setActive(null)
+          // Keep the active tool set so the panel content (e.g. NotePanel
+          // expanded sections, scroll position) survives close/reopen.
+          // Only close the drawer; clearing active would remount the tool.
           ws().close()
         } else {
           ws().setActive(toolId)

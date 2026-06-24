@@ -77,6 +77,113 @@ export const migrations: Migration[] = [
       })
     },
   },
+  {
+    id: "20260623-note-add-blueprint-fields",
+    description: "Add note kind to existing notes; set kind default to 'note'",
+    domain: "note",
+    async up(progress) {
+      const scopeIDs = await Storage.scan(["notes"])
+      let totalNotes = 0
+      for (const sid of scopeIDs) {
+        const s = Identifier.asScopeID(sid)
+        const ids = await Storage.scan(StoragePath.notesRoot(s))
+        totalNotes += ids.filter((id) => !id.startsWith("_")).length
+      }
+      let done = 0
+      for (const sid of scopeIDs) {
+        const s = Identifier.asScopeID(sid)
+        const ids = await Storage.scan(StoragePath.notesRoot(s))
+        const noteIDs = ids.filter((id) => !id.startsWith("_"))
+        for (const noteID of noteIDs) {
+          const notePath = StoragePath.note(s, noteID)
+          try {
+            const raw = await Storage.read<Record<string, unknown>>(notePath)
+            if (!raw.kind) raw.kind = "note"
+            await Storage.write(notePath, raw)
+          } catch (err) {
+            log.warn("failed to migrate note blueprint fields", { scopeID: sid, noteID, error: String(err) })
+          }
+          done++
+          if (done % 10 === 0 || done === totalNotes) {
+            progress(done, totalNotes)
+          }
+        }
+      }
+      log.info("blueprint fields migration complete", { totalNotes, scopes: scopeIDs.length })
+    },
+  },
+  {
+    id: "20260623-note-rebuild-blueprint-meta",
+    description: "Rebuild note metadata indices with blueprint fields",
+    domain: "note",
+    dependsOn: ["20260623-note-add-blueprint-fields"],
+    async up(progress) {
+      const scopeIDs = await Storage.scan(["notes"])
+      let done = 0
+      for (const sid of scopeIDs) {
+        const s = Identifier.asScopeID(sid)
+        await Storage.remove(StoragePath.note(s, "_index")).catch(() => {})
+        done++
+        progress(done, scopeIDs.length)
+      }
+      log.info("blueprint metadata index rebuild scheduled", { scopes: scopeIDs.length })
+    },
+  },
+  {
+    id: "20260624-note-remove-blueprint-status",
+    description: "Remove deprecated blueprint status metadata from notes",
+    domain: "note",
+    dependsOn: ["20260623-note-rebuild-blueprint-meta"],
+    async up(progress) {
+      const scopeIDs = await Storage.scan(["notes"])
+      let totalNotes = 0
+      for (const sid of scopeIDs) {
+        const s = Identifier.asScopeID(sid)
+        const ids = await Storage.scan(StoragePath.notesRoot(s))
+        totalNotes += ids.filter((id) => !id.startsWith("_")).length
+      }
+
+      let done = 0
+      let changed = 0
+      for (const sid of scopeIDs) {
+        const s = Identifier.asScopeID(sid)
+        const ids = await Storage.scan(StoragePath.notesRoot(s))
+        const noteIDs = ids.filter((id) => !id.startsWith("_"))
+        let rebuiltIndex = false
+
+        for (const noteID of noteIDs) {
+          const notePath = StoragePath.note(s, noteID)
+          try {
+            const raw = await Storage.read<Record<string, unknown>>(notePath)
+            const blueprint = raw.blueprint as Record<string, unknown> | undefined
+            if (blueprint && "status" in blueprint) {
+              delete blueprint.status
+              if (raw.kind === "blueprint") {
+                raw.blueprint = blueprint
+              } else {
+                delete raw.blueprint
+              }
+              await Storage.write(notePath, raw)
+              changed++
+              rebuiltIndex = true
+            }
+          } catch (err) {
+            log.warn("failed to remove note blueprint status", { scopeID: sid, noteID, error: String(err) })
+          }
+
+          done++
+          if (done % 10 === 0 || done === totalNotes) {
+            progress(done, totalNotes)
+          }
+        }
+
+        if (rebuiltIndex) {
+          await Storage.remove(StoragePath.note(s, "_index")).catch(() => {})
+        }
+      }
+      log.info("blueprint status removal complete", { totalNotes, changed, scopes: scopeIDs.length })
+    },
+  },
 ]
 
 MigrationRegistry.register("note", migrations)

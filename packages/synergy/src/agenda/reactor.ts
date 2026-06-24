@@ -109,7 +109,6 @@ export namespace AgendaReactor {
     } else {
       // Normal path — create session, run prompt via SessionInvoke
       const sessionMode = AgendaTypes.inferSessionMode(item.triggers, item.sessionMode)
-      const contextMode = AgendaTypes.inferContextMode(sessionMode)
       const persistent = sessionMode === "persistent"
 
       await Instance.provide({
@@ -119,7 +118,7 @@ export namespace AgendaReactor {
             ? await resolveOrCreateSession(item, scope, scopeID)
             : await createEphemeralSession(item, scope)
 
-          const promptText = AgendaPrompt.build(item, signal, contextMode)
+          const promptText = AgendaPrompt.build(item, signal)
 
           try {
             await withTimeout(
@@ -252,6 +251,7 @@ export namespace AgendaReactor {
       title: `Agenda: ${item.title} ${date}`,
       agenda: { itemID: item.id },
       interaction: SessionInteraction.unattended("agenda"),
+      preAuthorizedActions: item.wake !== false ? ["session_send"] : undefined,
     })
     return session.id
   }

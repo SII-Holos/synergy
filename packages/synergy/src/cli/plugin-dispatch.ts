@@ -1,10 +1,5 @@
 import type { Argv } from "yargs"
-import type {
-  Plugin as PluginDescriptor,
-  PluginCLIEntry,
-  PluginCLICommand,
-  PluginCLIGroup,
-} from "@ericsanchezok/synergy-plugin"
+import type { PluginDescriptor, PluginCLIEntry, PluginCLICommand, PluginCLIGroup } from "@ericsanchezok/synergy-plugin"
 import { Config } from "../config/config"
 import { PluginSpec } from "../util/plugin-spec"
 import { BunProc } from "../util/bun"
@@ -51,6 +46,7 @@ const BUILTIN_COMMANDS = new Set([
   "stop",
   "restart",
   "status",
+  "doctor",
   "logs",
   "plugin",
   "data",

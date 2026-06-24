@@ -38,6 +38,9 @@ jobs:
       - name: Install dependencies
         run: bun install
 
+      - name: Install Playwright Chromium
+        run: bunx playwright install chromium
+
       - name: Install ripgrep
         run: sudo apt-get update && sudo apt-get install -y ripgrep
 

@@ -68,9 +68,49 @@ describe("plugin lockfile", () => {
     expect(original.plugins["drop"]).toBeDefined()
   })
 
-  test("checkIntegrity() returns true (stub)", async () => {
-    const empty: PluginLockfile = { version: 1, plugins: {} }
-    const result = await lockfileMod.checkIntegrity(empty, "any-plugin", "/any/path")
+  test("computeIntegrity() returns hex hash for a real file", async () => {
+    const result = await lockfileMod.computeIntegrity(import.meta.path)
+    expect(result).toBeTruthy()
+    expect(typeof result).toBe("string")
+    expect(result!.length).toBe(64) // sha256 hex is 64 chars
+  })
+
+  test("computeIntegrity() returns null for nonexistent file", async () => {
+    const result = await lockfileMod.computeIntegrity("/nonexistent/path/should-not-exist.ts")
+    expect(result).toBeNull()
+  })
+
+  test("checkIntegrity() returns false when entry has no integrity field", async () => {
+    const entry: PluginLockEntry = {
+      spec: "github:example/plugin",
+      version: "1.0.0",
+      resolved: import.meta.path,
+      // no integrity field
+    }
+    const result = await lockfileMod.checkIntegrity(entry)
+    expect(result).toBe(false)
+  })
+
+  test("checkIntegrity() returns true when hash matches", async () => {
+    const integrity = await lockfileMod.computeIntegrity(import.meta.path)
+    const entry: PluginLockEntry = {
+      spec: "github:example/plugin",
+      version: "1.0.0",
+      resolved: import.meta.path,
+      integrity: integrity ?? "",
+    }
+    const result = await lockfileMod.checkIntegrity(entry)
     expect(result).toBe(true)
+  })
+
+  test("checkIntegrity() returns false when hash mismatches", async () => {
+    const entry: PluginLockEntry = {
+      spec: "github:example/plugin",
+      version: "1.0.0",
+      resolved: import.meta.path,
+      integrity: "sha256-0000000000000000000000000000000000000000000000000000000000000000",
+    }
+    const result = await lockfileMod.checkIntegrity(entry)
+    expect(result).toBe(false)
   })
 })

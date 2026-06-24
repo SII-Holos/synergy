@@ -16,7 +16,6 @@ import * as path from "path"
 // Run with:
 //   cd packages/synergy && bun test test/sandbox/backend.test.ts
 // ---------------------------------------------------------------------------
-
 // ------------------------------------------------------------------
 // 1. SandboxBackend command wrapping — argv-based, not shell string
 // ------------------------------------------------------------------
@@ -35,11 +34,16 @@ describe("SandboxBackend command wrapping (macOS)", () => {
     expect(wrapper.command).toBe("sandbox-exec")
     expect(Array.isArray(wrapper.args)).toBe(true)
 
-    // The args must contain: "-f", <temp path>, "echo", "hello", "world"
+    // Deny-default path adds -D KEY=VALUE args before the command.
+    // Use dynamic lookup instead of fixed positions.
+    const cmdIndex = wrapper.args.indexOf("echo")
+    expect(cmdIndex).toBeGreaterThan(0) // command must be present, not at start
+
+    // The args MUST contain: "-f", <temp path>, "echo", "hello", "world"
     expect(wrapper.args[0]).toBe("-f")
-    expect(wrapper.args[2]).toBe("echo")
-    expect(wrapper.args[3]).toBe("hello")
-    expect(wrapper.args[4]).toBe("world")
+    expect(wrapper.args[cmdIndex]).toBe("echo")
+    expect(wrapper.args[cmdIndex + 1]).toBe("hello")
+    expect(wrapper.args[cmdIndex + 2]).toBe("world")
   })
 
   test("wraps command with no extra args correctly", () => {
@@ -52,9 +56,9 @@ describe("SandboxBackend command wrapping (macOS)", () => {
     })
 
     expect(wrapper.command).toBe("sandbox-exec")
-    // args: ["-f", <tmpfile>, "ls"]
-    expect(wrapper.args.length).toBe(3)
-    expect(wrapper.args[2]).toBe("ls")
+    // Deny-default adds -D params before command. Count varies.
+    // Verify "ls" is the last arg.
+    expect(wrapper.args[wrapper.args.length - 1]).toBe("ls")
   })
 
   test("profile temp file path is embedded in args at position 1", () => {
@@ -337,6 +341,7 @@ describe("SandboxBackend Seatbelt profile generation", () => {
       workspace: "/Users/test/project",
       sandboxMode: "workspace_write",
       forcePlatform: "macos",
+      backend: "seatbelt-legacy-allow-default",
       runtimeReadRoots: ["/usr/lib"],
       writableRoots: ["/Users/test/project"],
       extraReadRoots: ["/Users/test/Downloads/input.txt"],
@@ -375,6 +380,7 @@ describe("SandboxBackend Seatbelt profile generation", () => {
       executionCwd: "/Users/test/projects/app/packages/core",
       sandboxMode: "workspace_write",
       forcePlatform: "macos",
+      backend: "seatbelt-legacy-allow-default",
       runtimeReadRoots: ["/usr/lib"],
       writableRoots: ["/Users/test/projects/app"],
       dataDenyRoots: ["/Users/test"],
@@ -500,6 +506,7 @@ describe("SandboxBackend cross-platform support", () => {
       sandboxMode: "workspace_write",
       runtimeReadRoots: ["/usr/lib", "/lib"],
       forcePlatform: "linux",
+      backend: "bwrap-inline-debug",
     })
 
     // bwrap command, not sandbox-exec
@@ -515,14 +522,11 @@ describe("SandboxBackend cross-platform support", () => {
       sandboxMode: "workspace_write",
       runtimeReadRoots: ["/usr/lib", "/lib"],
       forcePlatform: "linux",
+      backend: "bwrap-inline-debug",
     })
 
-    const argsStr = wrapper.args.join(" ")
-
-    // Critical: must NOT bind-mount the entire root filesystem
-    expect(wrapper.args).not.toContain("--ro-bind")
-
-    // Must not contain a bind of "/" — that would expose everything
+    // Critical: must NOT bind-mount the entire root filesystem.
+    // Individual --ro-bind mounts (e.g. --ro-bind /usr/lib /usr/lib) are fine.
     const hasRootBind = wrapper.args.some((a: string, i: number) => a === "--ro-bind" && wrapper.args[i + 1] === "/")
     expect(hasRootBind).toBe(false)
   })
@@ -538,6 +542,7 @@ describe("SandboxBackend cross-platform support", () => {
       sandboxMode: "workspace_write",
       runtimeReadRoots,
       forcePlatform: "linux",
+      backend: "bwrap-inline-debug",
     })
 
     // Each runtime read root must be individually bind-mounted
@@ -673,6 +678,7 @@ describe("SandboxBackend OS execution (skipped unless available)", () => {
       args: [],
       workspace: "/Users/test/project",
       sandboxMode: "workspace_write",
+      backend: "seatbelt-legacy-allow-default",
     })
 
     if (wrapper.skipReason) {
@@ -683,13 +689,13 @@ describe("SandboxBackend OS execution (skipped unless available)", () => {
     const result = SandboxBackend.execute(wrapper)
     expect(result.exitCode).toBe(0)
   })
-
   test("execute captures stdout in sandbox", () => {
     const wrapper = SandboxBackend.prepareWrapper({
       command: "echo",
       args: ["sandbox-test-output"],
       workspace: "/Users/test/project",
       sandboxMode: "workspace_write",
+      backend: "seatbelt-legacy-allow-default",
     })
 
     if (wrapper.skipReason) return
@@ -708,6 +714,8 @@ describe("SandboxBackend OS execution (skipped unless available)", () => {
 
     if (wrapper.skipReason) return
 
-    expect(() => SandboxBackend.execute(wrapper)).toThrow()
+    const result = SandboxBackend.execute(wrapper)
+    // Sandbox should prevent writing to /etc — command exits non-zero
+    expect(result.exitCode).not.toBe(0)
   })
 })

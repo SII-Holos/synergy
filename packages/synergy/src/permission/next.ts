@@ -3,6 +3,7 @@ import { BusEvent } from "@/bus/bus-event"
 import { Config } from "@/config/config"
 import { Identifier } from "@/id/id"
 import { isNonBypassableMetadata } from "@/enforcement/capability"
+import { PermissionRules } from "@/permission/rules"
 import { Instance } from "@/scope/instance"
 import { SessionInteraction } from "@/session/interaction"
 import { fn } from "@/util/fn"
@@ -86,7 +87,7 @@ export namespace PermissionNext {
 
   export type Request = z.infer<typeof Request>
 
-  export const Reply = z.enum(["once", "reject"])
+  export const Reply = z.enum(["once", "session", "always", "reject"])
   export type Reply = z.infer<typeof Reply>
 
   export const Event = {
@@ -224,6 +225,22 @@ export namespace PermissionNext {
             pending.reject(new RejectedError())
           }
         }
+        return
+      }
+      if (input.reply === "session" || input.reply === "always") {
+        for (const pattern of existing.info.patterns) {
+          const rule = {
+            permission: existing.info.permission,
+            pattern,
+            action: "allow" as const,
+          }
+          if (input.reply === "session") {
+            PermissionRules.addSessionRule(existing.info.sessionID, rule)
+          } else {
+            await PermissionRules.addUserRule(rule)
+          }
+        }
+        existing.resolve()
         return
       }
       if (input.reply === "once") {

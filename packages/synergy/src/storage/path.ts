@@ -68,6 +68,7 @@ export namespace StoragePath {
   ]
 
   export const permission = (scopeID: ScopeID) => ["permissions", scopeID as string]
+  export const permissionRules = () => ["permission-rules"]
 
   export const share = (shareID: string) => ["shares", shareID]
 
@@ -89,6 +90,9 @@ export namespace StoragePath {
 
   export const notesRoot = (scopeID: ScopeID) => ["notes", scopeID as string]
   export const note = (scopeID: ScopeID, noteID: string) => ["notes", scopeID as string, noteID]
+
+  export const blueprintLoopsRoot = (scopeID: ScopeID) => ["blueprint_loops", scopeID as string]
+  export const blueprintLoop = (scopeID: ScopeID, id: string) => ["blueprint_loops", scopeID as string, id]
 
   export const holosContactsRoot = () => ["holos", "contacts"]
   export const holosContact = (id: string) => ["holos", "contacts", id]

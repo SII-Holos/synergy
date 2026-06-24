@@ -19,7 +19,8 @@ export interface ApprovalMetadata {
     | "auto_denied"
     | "policy_denied"
     | "sandbox_blocked"
-  source: "profile" | "automatic" | "user" | "sandbox"
+    | "pre_authorized"
+  source: "profile" | "automatic" | "user" | "sandbox" | "provenance" | "classifier"
   mode?: ProfileApproval["mode"]
   risk?: RiskLevel
   reason?: string
@@ -34,15 +35,23 @@ export interface ApprovalMetadata {
 }
 
 const HIGH_RISK = new Set([
-  "shell_destructive",
   "shell_hardline",
-  "file_external",
+  "shell_destructive",
+  "file_external_read",
+  "file_external_write",
+
   "mcp_invoke",
   "plugin_invoke",
+  "plugin_file_read",
+  "plugin_file_write",
+  "plugin_shell",
+  "plugin_network",
+  "plugin_secret_read",
   "identity_act",
   "communication_email",
   "channel_outbound",
   "platform_control",
+  "protected_op",
 ])
 
 const MEDIUM_RISK = new Set(["file_write", "shell", "network_request"])
@@ -60,12 +69,11 @@ const PERMISSION_CAPABILITY: Record<string, string> = {
   revise_file: "file_write",
   save_file: "file_write",
   bash: "shell",
-  shell_read: "shell_read",
-  external_directory: "file_external",
-  webfetch: "network_request",
-  websearch: "network_request",
-  arxiv_search: "network_request",
-  arxiv_download: "network_request",
+  external_directory: "file_external_read",
+  webfetch: "network_read",
+  websearch: "network_read",
+  arxiv_search: "network_read",
+  arxiv_download: "network_read",
   network_request: "network_request",
   email_read: "communication_email",
   email_send: "communication_email",

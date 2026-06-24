@@ -112,6 +112,12 @@ export const Info = z
       pinned: z.number().optional(),
       permission: PermissionNext.Ruleset.optional(),
       controlProfile: ControlProfileId.optional(),
+      preAuthorizedActions: z
+        .array(z.string())
+        .optional()
+        .describe(
+          "Tool names pre-authorized by the user via system scheduling (e.g. agenda wake). Bypasses the ask gate for these tools within this session only.",
+        ),
       pendingReply: z.boolean().optional(),
       interaction: SessionInteraction.Info.optional(),
       agenda: z
@@ -136,6 +142,12 @@ export const Info = z
       cortex: CortexDelegationInfo.optional(),
       working: WorkingInfo.optional(),
       workspace: Workspace.optional(),
+      blueprint: z
+        .object({
+          loopID: z.string().optional(),
+          planMode: z.boolean().optional(),
+        })
+        .optional(),
     }),
   )
   .meta({

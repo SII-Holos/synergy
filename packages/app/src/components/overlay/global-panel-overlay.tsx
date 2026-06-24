@@ -1,10 +1,12 @@
 import type { JSX } from "solid-js"
-import { Show, onCleanup, onMount } from "solid-js"
+import { Show, onCleanup, onMount, createSignal } from "solid-js"
+import { Dynamic } from "solid-js/web"
+import type { Component } from "solid-js"
 import { usePanel } from "@/context/panel"
 import { useLayout } from "@/context/layout"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
+import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
 import "./global-panel-overlay.css"
-
 interface GlobalPanelOverlayProps {
   panelContent: () => JSX.Element
   bare?: boolean

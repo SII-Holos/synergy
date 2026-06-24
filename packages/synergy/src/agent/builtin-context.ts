@@ -25,6 +25,7 @@ export type SubagentPermissionProfile =
   | "sessionHistory"
   | "externalResearch"
   | "research"
+  | "supervisor"
 
 export interface SubagentDefinition {
   name: string
@@ -106,6 +107,8 @@ function baseToolPermissions(profile: SubagentPermissionProfile): PermissionNext
     note_list: "allow",
     note_read: "allow",
     note_search: "allow",
+    note_write: "allow",
+    note_edit: "allow",
     session_list: "allow",
     session_read: "allow",
     session_search: "allow",
@@ -174,6 +177,31 @@ function baseToolPermissions(profile: SubagentPermissionProfile): PermissionNext
     )
   }
 
+  if (profile === "supervisor") {
+    return PermissionNext.merge(
+      common,
+      anchoredReadTools(),
+      PermissionNext.fromConfig({
+        dagwrite: "allow",
+        dagread: "allow",
+        dagpatch: "allow",
+        task: "allow",
+        task_list: "allow",
+        task_output: "allow",
+        task_cancel: "allow",
+        session_send: "deny",
+        session_control: "deny",
+        note_list: "allow",
+        note_read: "allow",
+        note_search: "allow",
+        note_write: "deny",
+        note_edit: "deny",
+        blueprint_loop_restart: "allow",
+        blueprint_loop_finish: "allow",
+      }),
+    )
+  }
+
   return PermissionNext.merge(common, classicReadTools())
 }
 
@@ -186,7 +214,7 @@ export function createSubagent(ctx: BuiltinAgentContext, definition: SubagentDef
     permission: PermissionNext.merge(ctx.defaults, baseToolPermissions(definition.permission), ctx.user),
     mode: "subagent",
     native: true,
-    visibleTo: definition.visibleTo ?? ["synergy-max"],
+    visibleTo: definition.visibleTo ?? ["synergy-max", "supervisor"],
     model: ctx.role(definition.model ?? "mid"),
     steps: definition.steps,
     temperature: definition.temperature,

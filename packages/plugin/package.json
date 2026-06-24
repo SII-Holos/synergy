@@ -31,6 +31,11 @@
       "bun": "./src/hooks.ts",
       "types": "./src/hooks.ts",
       "import": "./dist/hooks.js"
+    },
+    "./ui": {
+      "bun": "./src/ui.ts",
+      "types": "./src/ui.ts",
+      "import": "./dist/ui.js"
     }
   },
   "files": [
@@ -44,6 +49,7 @@
     "@ericsanchezok/synergy-sdk": "workspace:*",
     "@tsconfig/node22": "catalog:",
     "@types/node": "catalog:",
+    "solid-js": "catalog:",
     "typescript": "catalog:",
     "@typescript/native-preview": "catalog:",
     "zod": "catalog:"

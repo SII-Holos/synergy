@@ -2,7 +2,7 @@ export const WORKSPACE_DEFAULT_WIDTH = 640
 export const WORKSPACE_MIN_WIDTH = 300
 export const WORKSPACE_SESSION_MIN_WIDTH = 350
 export const WORKSPACE_TABS_MIN_WIDTH = 200
-export const WORKSPACE_RAIL_GAP = 8
+export const WORKSPACE_RAIL_GAP = 0
 export const WORKSPACE_RAIL_VISIBLE_MARGIN = 60
 
 export interface WorkspaceWidthConstraints {

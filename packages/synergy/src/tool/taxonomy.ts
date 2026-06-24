@@ -12,12 +12,12 @@
  *
  * Consumers:
  *   - cortex/trajectory.ts  — domain for phase grouping, kind for labels
- *   - ui/semantic-tool-classifier.ts — kind→SemanticCategory mapping
+ *   - ui/tool/classifier.ts — kind→SemanticCategory mapping
  */
 
 // ── Types ────────────────────────────────────────────────────────────
 
-export type ToolDomain = "search" | "code" | "knowledge" | "orchestration" | "platform" | "communication"
+export type ToolDomain = "search" | "code" | "knowledge" | "orchestration" | "platform" | "communication" | "browser"
 
 export type ToolKind =
   | "search.web"
@@ -49,6 +49,12 @@ export type ToolKind =
   | "communication.email"
   | "communication.visual"
   | "communication.deliver"
+  | "browser.navigate"
+  | "browser.interact"
+  | "browser.inspect"
+  | "browser.tab"
+  | "browser.download"
+  | "browser.annotate"
 
 export interface ToolTraits {
   auxiliary?: true
@@ -111,6 +117,8 @@ const REGISTRY: Record<string, ToolTaxonomyEntry> = {
   note_edit: entry("knowledge.note", { stateful: true, auxiliary: true }),
   note_list: entry("knowledge.note"),
   note_read: entry("knowledge.note"),
+  blueprint_loop_finish: entry("orchestration.task", { stateful: true }),
+  blueprint_loop_restart: entry("orchestration.task", { stateful: true }),
   skill: entry("knowledge.skill"),
 
   // orchestration
@@ -184,6 +192,30 @@ const REGISTRY: Record<string, ToolTaxonomyEntry> = {
   // 🔇 diagram: entry("communication.visual"),  — 已注释，待重构
   render: entry("communication.visual"),
   attach: entry("communication.deliver"),
+  // browser
+  browser_navigate: entry("browser.navigate", { externalIO: true, stateful: true }),
+  browser_snapshot: entry("browser.inspect"),
+  browser_screenshot: entry("browser.inspect", { stateful: true }),
+  browser_inspect: entry("browser.inspect"),
+  browser_wait: entry("browser.inspect"),
+  browser_click: entry("browser.interact", { stateful: true }),
+  browser_type: entry("browser.interact", { stateful: true }),
+  browser_scroll: entry("browser.interact", { stateful: true }),
+  browser_action: entry("browser.interact", { stateful: true }),
+  browser_tab: entry("browser.tab", { stateful: true }),
+  browser_console: entry("browser.inspect"),
+  browser_network: entry("browser.inspect"),
+  browser_download: entry("browser.download", { externalIO: true }),
+  browser_downloads: entry("browser.download", { stateful: true }),
+  browser_viewport: entry("browser.inspect", { stateful: true }),
+  browser_annotate: entry("browser.annotate", { stateful: true }),
+  browser_read: entry("browser.inspect"),
+  browser_eval: entry("browser.inspect", { stateful: true }),
+  browser_clipboard: entry("browser.interact", { externalIO: true }),
+  browser_list: entry("browser.inspect"),
+  browser_assets: entry("browser.inspect"),
+  browser_view: entry("browser.inspect"),
+  browser_navigation: entry("browser.navigate", { stateful: true }),
 }
 
 // ── Pattern fallbacks ────────────────────────────────────────────────
@@ -225,6 +257,7 @@ const PATTERN_FALLBACKS: { pattern: RegExp; kind: ToolKind; traits?: ToolTraits 
   // 🔇 { pattern: /^diagram/i, kind: "communication.visual" },  — 已注释，待重构
   { pattern: /^render/i, kind: "communication.visual" },
   { pattern: /^attach/i, kind: "communication.deliver" },
+  { pattern: /^browser_/i, kind: "browser.inspect" },
 ]
 
 // ── Public API ───────────────────────────────────────────────────────
@@ -283,5 +316,11 @@ export namespace ToolTaxonomy {
     "communication.email": "Email",
     "communication.visual": "Diagram",
     "communication.deliver": "Deliver",
+    "browser.navigate": "Navigate",
+    "browser.interact": "Interact",
+    "browser.inspect": "Inspect",
+    "browser.tab": "Tabs",
+    "browser.download": "Download",
+    "browser.annotate": "Annotate",
   }
 }

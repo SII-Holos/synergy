@@ -1,10 +1,84 @@
-import { Show, Suspense, onMount, onCleanup, createSignal, createMemo, createEffect } from "solid-js"
+import { ErrorBoundary, Show, Suspense, onMount, onCleanup, createSignal, createMemo, createEffect } from "solid-js"
 import { Dynamic } from "solid-js/web"
+import type { Component } from "solid-js"
 import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
 import { ResizeHandle } from "@ericsanchezok/synergy-ui/resize-handle"
 import { useWorkspace } from "@/context/workspace"
 import { computeMaxWorkspaceWidth, WORKSPACE_MIN_WIDTH, WORKSPACE_SESSION_MIN_WIDTH } from "@/context/workspace-layout"
+import { getWorkspacePanel } from "@/plugin"
+import { SandboxIframe } from "@/plugin/sandbox"
 import "./workspace-drawer.css"
+
+/** Wrapper that shows a skeleton/spinner while lazy-loading a plugin panel component. */
+function PluginWorkspaceContent(props: { panelId: string }) {
+  const [comp, setComp] = createSignal<Component | null>(null)
+  const [loading, setLoading] = createSignal(true)
+  const [entry, setEntry] = createSignal<ReturnType<typeof getWorkspacePanel>>(undefined)
+
+  onMount(() => {
+    const e = getWorkspacePanel(props.panelId)
+    setEntry(e)
+    if (!e) {
+      setLoading(false)
+      return
+    }
+    if (e.component) {
+      setComp(() => e.component!)
+      setLoading(false)
+      return
+    }
+    if (e.sandbox) {
+      setLoading(false)
+      return
+    }
+    if (e.loader) {
+      e.loader().then(
+        (mod) => {
+          setComp(() => mod.default)
+          setLoading(false)
+        },
+        () => setLoading(false),
+      )
+      return
+    }
+    setLoading(false)
+  })
+
+  const isSandbox = () => entry()?.sandbox && entry()?.sandboxUrl
+
+  return (
+    <Show
+      when={!loading()}
+      fallback={
+        <div class="flex items-center justify-center h-full">
+          <Spinner class="size-5" />
+        </div>
+      }
+    >
+      <Show when={isSandbox()}>
+        <ErrorBoundary
+          fallback={(error) => (
+            <div class="flex items-center justify-center h-full text-14 text-icon-critical-base p-4">
+              {error.message}
+            </div>
+          )}
+        >
+          <SandboxIframe src={entry()!.sandboxUrl!} pluginId={entry()!.pluginId} panelId={entry()!.id} />
+        </ErrorBoundary>
+      </Show>
+      <Show when={!isSandbox()}>
+        <Show
+          when={comp()}
+          fallback={
+            <div class="flex items-center justify-center h-full text-text-weak text-14">Plugin panel unavailable</div>
+          }
+        >
+          {(c) => <Dynamic component={c()} />}
+        </Show>
+      </Show>
+    </Show>
+  )
+}
 
 export function WorkspaceDrawer() {
   const workspace = useWorkspace()
@@ -50,6 +124,13 @@ export function WorkspaceDrawer() {
     workspace.setWidth(w)
   }
 
+  // Detect whether the active tool is a plugin panel that needs lazy loading
+  const isPluginPanel = createMemo(() => {
+    const t = tool()
+    if (!t) return false
+    return !!getWorkspacePanel(t.id)
+  })
+
   return (
     <div
       class="workspace-drawer relative shrink-0 h-full"
@@ -71,7 +152,9 @@ export function WorkspaceDrawer() {
       />
       <aside
         ref={drawerEl}
-        class="w-full h-full flex flex-col overflow-hidden border-l border-border-weak-base bg-background-stronger"
+        class="workspace-drawer-panel h-full flex flex-col overflow-hidden border-l border-border-weak-base bg-background-stronger"
+        classList={{ "workspace-drawer-panel--open": workspace.opened() }}
+        style={{ width: `${workspace.width()}px` }}
         role="complementary"
         aria-label="Session workspace"
       >
@@ -82,15 +165,22 @@ export function WorkspaceDrawer() {
               <div class="flex items-center justify-center h-full text-text-weak text-14">No tool selected</div>
             }
           >
-            <Suspense
+            <Show
+              when={isPluginPanel()}
               fallback={
-                <div class="flex items-center justify-center h-full">
-                  <Spinner class="size-5" />
-                </div>
+                <Suspense
+                  fallback={
+                    <div class="flex items-center justify-center h-full">
+                      <Spinner class="size-5" />
+                    </div>
+                  }
+                >
+                  <Dynamic component={tool()!.component} />
+                </Suspense>
               }
             >
-              <Dynamic component={tool()!.component} />
-            </Suspense>
+              <PluginWorkspaceContent panelId={tool()!.id} />
+            </Show>
           </Show>
         </div>
       </aside>

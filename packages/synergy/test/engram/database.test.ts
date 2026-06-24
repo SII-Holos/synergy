@@ -125,6 +125,7 @@ function replaceVecMemoryTable(dimensions: number, schemaDimensions: number) {
 
 describe.serial("EngramDB", () => {
   beforeEach(() => {
+    closeDB()
     EngramDB.Experience.removeAll()
     EngramDB.Memory.removeAll()
   })

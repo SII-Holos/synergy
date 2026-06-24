@@ -106,6 +106,7 @@ export function ensureInit(params: EnsureInitParams): string | undefined {
     ),
     permission: resolvePermissionForUi(cfg.permission),
     question_timeout: String(cfg.question?.timeout ?? UI_DEFAULTS.questionTimeout),
+    auto_classifier: (cfg as Record<string, unknown>).auto_classifier === true ? "true" : "false",
   })
 
   params.setEmail({

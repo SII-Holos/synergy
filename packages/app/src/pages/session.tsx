@@ -1,4 +1,5 @@
 import { Show, Match, Switch, createMemo, createEffect, createSignal, on, onCleanup } from "solid-js"
+import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
 import { createResizeObserver } from "@solid-primitives/resize-observer"
 import { useLocal } from "@/context/local"
 import { useFile, type SelectedLineRange } from "@/context/file"
@@ -39,6 +40,7 @@ import { WorkspaceRail } from "@/components/session/workspace-rail"
 import { WorkspaceDrawer } from "@/components/session/workspace-drawer"
 import { WorkspaceProvider, useWorkspace } from "@/context/workspace"
 import { WorkspaceNotesTool } from "@/components/workspace/tool-notes"
+import { WorkspaceBrowserTool } from "@/components/workspace/tool-browser"
 import { TerminalPanel } from "@/components/session/terminal-panel"
 import { SessionTopBar } from "@/components/top-bar/session-top-bar"
 
@@ -797,6 +799,9 @@ function SessionPageContent() {
 
   return (
     <>
+      <Show when={!!params.id}>
+        <WorkspaceBrowserTool />
+      </Show>
       <WorkspaceNotesTool />
       <div class="relative bg-background-base size-full overflow-hidden flex flex-col">
         <div class="flex-1 min-h-0 flex flex-col md:flex-row">
@@ -827,16 +832,10 @@ function SessionPageContent() {
           <div
             class="@container relative min-w-0 flex flex-col min-h-0 h-full bg-background-stronger pt-3 pb-0 md:py-3"
             classList={{
-              "flex-none": isDesktop() && workspaceOpen(),
-              "flex-1": !(isDesktop() && workspaceOpen()),
+              "flex-1": !(isDesktop() && showTabs()),
             }}
             style={{
-              width:
-                isDesktop() && workspaceOpen()
-                  ? `max(${WORKSPACE_SESSION_MIN_WIDTH}px, calc(100% - ${workspace().width()}px))`
-                  : isDesktop() && showTabs()
-                    ? `${layout.session.width()}px`
-                    : undefined,
+              width: isDesktop() && showTabs() ? `${layout.session.width()}px` : undefined,
               "min-width": isDesktop() && workspaceOpen() ? `${WORKSPACE_SESSION_MIN_WIDTH}px` : undefined,
               "--prompt-height": store.promptHeight ? `${store.promptHeight}px` : undefined,
             }}
@@ -846,7 +845,24 @@ function SessionPageContent() {
               <div class="flex-1 min-h-0 min-w-0 overflow-hidden">
                 <Switch>
                   <Match when={!isNewSession()}>
-                    <Show when={activeMessage() || (timeline()?.length ?? 0) > 0}>
+                    <Show
+                      when={activeMessage() || (timeline()?.length ?? 0) > 0}
+                      fallback={
+                        <Show
+                          when={messagesReady()}
+                          fallback={
+                            <div class="flex flex-col items-center justify-center h-full gap-3">
+                              <Spinner class="text-text-weak size-10" />
+                              <span class="text-text-weak text-sm">Loading conversation…</span>
+                            </div>
+                          }
+                        >
+                          <div class="flex items-center justify-center h-full">
+                            <span class="text-text-weak text-sm">No messages yet</span>
+                          </div>
+                        </Show>
+                      }
+                    >
                       <Show
                         when={!mobileReview()}
                         fallback={
@@ -978,10 +994,10 @@ function SessionPageContent() {
               handoffFiles={handoff.files}
             />
           </Show>
-          <Show when={isDesktop() && !!params.id}>
+          <Show when={isDesktop()}>
             <WorkspaceDrawer />
           </Show>
-          <Show when={isDesktop() && !!params.id}>
+          <Show when={isDesktop()}>
             <WorkspaceRail />
           </Show>
         </div>

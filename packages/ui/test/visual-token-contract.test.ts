@@ -169,9 +169,9 @@ describe("Visual Token Contract", () => {
       })
     }
 
-    test("font-size-x-small value is 11px", async () => {
+    test("font-size-x-small value is 12px", async () => {
       const css = await readThemeCss()
-      expect(css).toMatch(/--font-size-x-small\s*:\s*11px/)
+      expect(css).toMatch(/--font-size-x-small\s*:\s*12px/)
     })
 
     test("font-weight-semibold value is 600", async () => {

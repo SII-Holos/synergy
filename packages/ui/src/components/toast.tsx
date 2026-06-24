@@ -21,6 +21,10 @@ export interface ToastRootComponentProps extends ToastRootProps {
   class?: string
   classList?: ComponentProps<"li">["classList"]
   children?: JSX.Element
+  onPointerEnter?: ComponentProps<"li">["onPointerEnter"]
+  onPointerLeave?: ComponentProps<"li">["onPointerLeave"]
+  onFocusIn?: ComponentProps<"li">["onFocusIn"]
+  onFocusOut?: ComponentProps<"li">["onFocusOut"]
 }
 
 function ToastRoot(props: ToastRootComponentProps) {
@@ -68,6 +72,14 @@ function ToastCloseButton(props: ToastCloseButtonProps & ComponentProps<"button"
   )
 }
 
+function ToastCopyButton(props: ComponentProps<"button"> & { copied?: boolean }) {
+  return (
+    <button data-slot="toast-copy-button" data-component="icon-button" data-variant="ghost" {...props}>
+      <Icon name={props.copied ? "clipboard-check" : "copy"} size="small" />
+    </button>
+  )
+}
+
 function ToastProgressTrack(props: ComponentProps<typeof Kobalte.ProgressTrack>) {
   return <Kobalte.ProgressTrack data-slot="toast-progress-track" {...props} />
 }
@@ -84,6 +96,7 @@ export const Toast = Object.assign(ToastRoot, {
   Description: ToastDescription,
   Actions: ToastActions,
   CloseButton: ToastCloseButton,
+  CopyButton: ToastCopyButton,
   ProgressTrack: ToastProgressTrack,
   ProgressFill: ToastProgressFill,
 })
@@ -142,21 +155,67 @@ export function showToast(options: ToastOptions): number {
     const duration = resolvedDuration ?? 5000
     const hasCountdown = !options.persistent && duration !== 0
 
-    if (hasCountdown) {
-      const startTime = Date.now()
-      let rafId: number
-      const tick = () => {
-        const elapsed = Date.now() - startTime
-        const remaining = Math.max(0, duration - elapsed)
-        setCountdown(`${Math.ceil(remaining / 1000)}s`)
-        if (remaining > 0) rafId = requestAnimationFrame(tick)
+    const COUNTDOWN_TICK_MS = 200
+    let intervalId: ReturnType<typeof setInterval> | undefined
+    let elapsedBeforePause = 0
+    let segmentStartTime = 0
+    const [copied, setCopied] = createSignal(false)
+    const copyText = () => {
+      const parts = [options.title, options.description].filter(Boolean)
+      if (parts.length === 0) return
+      navigator.clipboard.writeText(parts.join("\n"))
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+    }
+    let isPaused = false
+
+    const updateCountdown = () => {
+      const totalElapsed = elapsedBeforePause + (Date.now() - segmentStartTime)
+      const remaining = Math.max(0, duration - totalElapsed)
+      setCountdown(`${Math.ceil(remaining / 1000)}s`)
+      if (remaining <= 0 && intervalId !== undefined) {
+        clearInterval(intervalId)
+        intervalId = undefined
       }
-      rafId = requestAnimationFrame(tick)
-      onCleanup(() => cancelAnimationFrame(rafId))
     }
 
+    if (hasCountdown) {
+      segmentStartTime = Date.now()
+      intervalId = setInterval(updateCountdown, COUNTDOWN_TICK_MS)
+    }
+
+    const pause = () => {
+      if (isPaused) return
+      if (intervalId !== undefined) {
+        clearInterval(intervalId)
+        intervalId = undefined
+      }
+      elapsedBeforePause += Date.now() - segmentStartTime
+      isPaused = true
+    }
+
+    const resume = () => {
+      if (!isPaused) return
+      segmentStartTime = Date.now()
+      isPaused = false
+      intervalId = setInterval(updateCountdown, COUNTDOWN_TICK_MS)
+    }
+
+    onCleanup(() => {
+      if (intervalId !== undefined) clearInterval(intervalId)
+    })
+
     return (
-      <Toast toastId={props.toastId} duration={duration} persistent={options.persistent} data-type={type}>
+      <Toast
+        toastId={props.toastId}
+        duration={duration}
+        persistent={options.persistent}
+        data-type={type}
+        onPointerEnter={pause}
+        onPointerLeave={resume}
+        onFocusIn={pause}
+        onFocusOut={resume}
+      >
         <Show when={iconName}>
           <Toast.Icon name={iconName!} />
         </Show>
@@ -195,6 +254,7 @@ export function showToast(options: ToastOptions): number {
             <Toast.ProgressFill />
           </Toast.ProgressTrack>
         </Toast.Content>
+        <Toast.CopyButton copied={copied()} onClick={copyText} />
         <Toast.CloseButton />
       </Toast>
     )

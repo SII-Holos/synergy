@@ -1,17 +1,9 @@
 import { AgendaTypes } from "./types"
+import { formatLocalDateTime } from "../util/time-format"
 
 export namespace AgendaPrompt {
-  export function build(
-    item: AgendaTypes.Item,
-    signal: AgendaTypes.FiredSignal,
-    contextMode: "full" | "signal",
-  ): string {
+  export function build(item: AgendaTypes.Item, signal: AgendaTypes.FiredSignal): string {
     const prompt = item.prompt
-
-    if (contextMode === "signal") {
-      const payload = formatSignalPayload(signal)
-      return payload ? `${payload}\n${prompt}` : prompt
-    }
 
     const sections = [
       "<agenda-context>",
@@ -45,18 +37,17 @@ export namespace AgendaPrompt {
           break
         case "every":
           parts.push(
-            `every ${trigger.interval}${trigger.anchor !== undefined ? ` from anchor ${new Date(trigger.anchor).toISOString()}` : ""}`,
+            `every ${trigger.interval}${trigger.anchor !== undefined ? ` from anchor ${formatLocalDateTime(trigger.anchor)}` : ""}`,
           )
           break
         case "at":
-          parts.push(`at ${new Date(trigger.at).toISOString()}`)
+          parts.push(`at ${formatLocalDateTime(trigger.at)}`)
           break
         case "delay":
           parts.push(`delay ${trigger.delay}`)
           break
         case "watch": {
           const w = trigger.watch
-          // Only file watch kind is active
           if (w.kind === "file") {
             const filter = w.event ? ` on ${w.event}` : ""
             const debounce = w.debounce ? ` (debounce ${w.debounce})` : ""
@@ -72,7 +63,7 @@ export namespace AgendaPrompt {
       }
     }
     const triggerDesc = parts.length > 0 ? parts.join(", ") : "manual"
-    return `${triggerDesc} — fired at ${new Date(signal.timestamp).toISOString()}`
+    return `${triggerDesc} — fired at ${formatLocalDateTime(signal.timestamp)}`
   }
 
   function formatSignalPayload(signal: AgendaTypes.FiredSignal): string | undefined {
@@ -104,7 +95,7 @@ export namespace AgendaPrompt {
   function formatLastRun(state: AgendaTypes.ItemState): string | undefined {
     if (state.lastRunAt === undefined) return undefined
 
-    const date = new Date(state.lastRunAt).toISOString()
+    const date = formatLocalDateTime(state.lastRunAt)
     const duration =
       state.lastRunDuration !== undefined ? ` duration="${(state.lastRunDuration / 1000).toFixed(1)}s"` : ""
 

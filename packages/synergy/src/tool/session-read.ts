@@ -1,3 +1,4 @@
+import { formatLocalDateTime } from "@/util/time-format"
 import z from "zod"
 import { Tool } from "./tool"
 import { Session } from "../session"
@@ -47,7 +48,7 @@ function extractToolSummaries(parts: MessageV2.Part[]): Array<{ name: string; st
 
 function formatMessage(msg: MessageV2.WithParts, highlight?: boolean): string {
   const text = extractMessageText(msg.parts)
-  const time = new Date(msg.info.time.created).toISOString()
+  const time = formatLocalDateTime(msg.info.time.created)
   const marker = highlight ? " ◀" : ""
 
   if (msg.info.role === "user") {
@@ -102,7 +103,7 @@ export const SessionReadTool = Tool.define("session_read", {
       allMessages.push(msg)
     }
 
-    const updated = new Date(session.time.updated).toISOString()
+    const updated = formatLocalDateTime(session.time.updated)
     const header = `Session: ${session.id} — "${session.title}" (updated ${updated})`
 
     if (params.around) {

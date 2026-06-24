@@ -8,11 +8,13 @@ import { Installation } from "../global/installation"
 import { setActiveMigrationContext } from "./context"
 // Side-effect imports: register domain migrations in MigrationRegistry
 import "../agenda/migration"
+import "../browser/migration"
 import "../config/migration"
 import "../engram/migration"
 import "../scope/migration"
 import "../session/migration"
 import "../note/migration"
+import "../blueprint/migration"
 import "../holos/migration"
 import type { Migration, RunOptions, MigrationContext } from "./types"
 
