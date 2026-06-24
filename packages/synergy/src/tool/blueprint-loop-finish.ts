@@ -82,10 +82,57 @@ export const BlueprintLoopFinishTool = Tool.define("blueprint_loop_finish", {
         )
       }
     }
+
+    // Pre-check loop status for terminal and idempotent states
+    const loop = await BlueprintLoopStore.get(scopeID, params.loopID)
+    const currentStatus = loop.status
+
+    if (currentStatus === "completed") {
+      return {
+        title: `Loop ${params.loopID} → already completed`,
+        output: `BlueprintLoop ${params.loopID} is already completed. Create a new BlueprintLoop if you need to re-run this Blueprint.`,
+        metadata: {
+          loopID: params.loopID,
+          status: "completed",
+        },
+      }
+    }
+
+    if (currentStatus === "failed") {
+      return {
+        title: `Loop ${params.loopID} → already failed`,
+        output: `BlueprintLoop ${params.loopID} is already failed. Create a new BlueprintLoop if you need to re-run this Blueprint.`,
+        metadata: {
+          loopID: params.loopID,
+          status: "failed",
+        },
+      }
+    }
+
+    if (currentStatus === "cancelled") {
+      return {
+        title: `Loop ${params.loopID} → already cancelled`,
+        output: `BlueprintLoop ${params.loopID} is already cancelled. Create a new BlueprintLoop if you need to re-run this Blueprint.`,
+        metadata: {
+          loopID: params.loopID,
+          status: "cancelled",
+        },
+      }
+    }
+
+    if (currentStatus === "auditing" && params.status === "auditing") {
+      return {
+        title: `Loop ${params.loopID} → already auditing`,
+        output: `BlueprintLoop ${params.loopID} is already being audited.`,
+        metadata: {
+          loopID: params.loopID,
+          status: "auditing",
+        },
+      }
+    }
     let supervisorSessionID: string | undefined
 
     if (params.status === "auditing") {
-      const loop = await BlueprintLoopStore.get(scopeID, params.loopID)
       const auditPrompt = `Audit BlueprintLoop ${params.loopID} (Note ${loop.noteID}) in session ${loop.sessionID}.
 Read the Blueprint Note via blueprint_read, examine the implementation evidence (session trajectory, git diff, test results), and determine if the Blueprint is fully implemented.
 If NOT fully implemented, call blueprint_loop_restart with detailed reason.

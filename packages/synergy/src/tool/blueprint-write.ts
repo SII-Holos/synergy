@@ -11,7 +11,6 @@ const parameters = z.object({
   title: z.string().optional().describe("New title for the blueprint."),
   tags: z.array(z.string()).optional().describe("Tags for the blueprint."),
   description: z.string().optional().describe("Short description of what this blueprint does."),
-  status: z.enum(["draft", "ready", "archived"]).optional().describe("Blueprint status."),
   defaultAgent: z.string().optional().describe("Default agent for this blueprint."),
 })
 
@@ -41,7 +40,6 @@ async function updateExisting(input: {
   title?: string
   tags?: string[]
   description?: string
-  status?: string
   defaultAgent?: string
   content: unknown
 }) {
@@ -54,11 +52,10 @@ async function updateExisting(input: {
   }
   if (input.title !== undefined) patch.title = input.title
   if (input.tags !== undefined) patch.tags = input.tags
-  if (input.description !== undefined || input.status !== undefined || input.defaultAgent !== undefined) {
+  if (input.description !== undefined || input.defaultAgent !== undefined) {
     patch.blueprint = {
       ...(existing.blueprint ?? {}),
       ...(input.description !== undefined ? { description: input.description } : {}),
-      ...(input.status !== undefined ? { status: input.status } : {}),
       ...(input.defaultAgent !== undefined ? { defaultAgent: input.defaultAgent } : {}),
     }
   }
@@ -108,7 +105,6 @@ export const BlueprintWriteTool = Tool.define("blueprint_write", {
         title: params.title,
         tags: params.tags,
         description: params.description,
-        status: params.status,
         defaultAgent: params.defaultAgent,
         content: merged,
       })
@@ -121,7 +117,6 @@ export const BlueprintWriteTool = Tool.define("blueprint_write", {
         title: params.title,
         tags: params.tags,
         description: params.description,
-        status: params.status,
         defaultAgent: params.defaultAgent,
         content: tiptapContent,
       })

@@ -15,10 +15,26 @@ export namespace NoteStore {
 
   export type Metadata = NoteTypes.MetaInfo
 
+  function normalizeBlueprint(note: NoteTypes.Info): void {
+    if (note.kind !== "blueprint") {
+      note.blueprint = undefined
+      return
+    }
+
+    const blueprint = note.blueprint as (NoteTypes.Info["blueprint"] & { status?: unknown }) | undefined
+    if (!blueprint) {
+      note.blueprint = {}
+      return
+    }
+    delete blueprint.status
+    note.blueprint = blueprint
+  }
+
   function normalize(note: NoteTypes.Info): NoteTypes.Info {
     note.global ??= false
     note.version ??= 1
     note.kind ??= "note"
+    normalizeBlueprint(note)
     return note
   }
 
@@ -136,6 +152,10 @@ export namespace NoteStore {
     const scopeID = Identifier.asScopeID(targetScopeID)
     const isGlobal = targetScopeID === "global"
     const now = Date.now()
+    const blueprint = create.note.blueprint as
+      | (NonNullable<NoteTypes.CreateInput["blueprint"]> & { status?: unknown })
+      | undefined
+    if (blueprint) delete blueprint.status
     const note: NoteTypes.Info = {
       id,
       title: create.note.title,
@@ -144,12 +164,12 @@ export namespace NoteStore {
       global: isGlobal,
       tags: create.note.tags ?? [],
       kind: create.note.kind ?? "note",
-      blueprint: create.note.blueprint
+      blueprint: blueprint
         ? {
-            ...create.note.blueprint,
-            runCount: create.note.blueprint.runCount ?? 0,
+            ...blueprint,
+            runCount: blueprint.runCount ?? 0,
           }
-        : create.note.blueprint,
+        : blueprint,
       version: 1,
       time: { created: now, updated: now },
     }
@@ -247,7 +267,10 @@ export namespace NoteStore {
       if (update.patch.blueprint === null) {
         draft.blueprint = undefined
       } else if (update.patch.blueprint !== undefined) {
-        const { activeLoopID, ...rest } = update.patch.blueprint
+        const { activeLoopID, ...rest } = update.patch.blueprint as NoteTypes.PatchInput["blueprint"] & {
+          status?: unknown
+        }
+        delete rest.status
         const next = { ...(draft.blueprint ?? {}), ...rest }
         if (activeLoopID !== undefined && activeLoopID !== null) next.activeLoopID = activeLoopID
         if (activeLoopID === null) delete next.activeLoopID

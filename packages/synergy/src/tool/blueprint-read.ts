@@ -34,13 +34,11 @@ export const BlueprintReadTool = Tool.define("blueprint_read", {
         const global = note.global ? "yes" : "no"
         const updated = formatLocalDateTime(note.time.updated)
         const bp = note.blueprint
-        const status = bp?.status ?? "draft"
         const description = bp?.description ?? "none"
         const defaultAgent = bp?.defaultAgent ?? "none"
 
         const header = [
           `[${id}] ${note.title}`,
-          `Status: ${status}`,
           `Description: ${description}`,
           `Default Agent: ${defaultAgent}`,
           `Tags: ${tags}`,

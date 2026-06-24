@@ -89,6 +89,25 @@ export const TIPTAP_STYLES = `
     margin-bottom: 0.95em;
     box-shadow: inset 0 1px 0 rgba(255,255,255,0.04), 0 14px 34px -28px rgba(0,0,0,0.28);
   }
+  .tiptap pre.shiki,
+  .tiptap pre.shiki code,
+  .tiptap pre.shiki span {
+    background-color: var(--shiki-light-bg, var(--surface-inset-base)) !important;
+  }
+  [data-color-scheme="dark"] .tiptap pre.shiki,
+  [data-color-scheme="dark"] .tiptap pre.shiki code,
+  [data-color-scheme="dark"] .tiptap pre.shiki span {
+    color: var(--shiki-dark, var(--text-base)) !important;
+    background-color: var(--shiki-dark-bg, var(--surface-inset-base)) !important;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-color-scheme]) .tiptap pre.shiki,
+    :root:not([data-color-scheme]) .tiptap pre.shiki code,
+    :root:not([data-color-scheme]) .tiptap pre.shiki span {
+      color: var(--shiki-dark, var(--text-base)) !important;
+      background-color: var(--shiki-dark-bg, var(--surface-inset-base)) !important;
+    }
+  }
   .tiptap pre code {
     background: none;
     padding: 0;
@@ -278,7 +297,11 @@ export function createDocumentEditorExtensions(config: DocumentEditorExtensionsC
       nested: true,
     }),
     CodeBlockShiki.configure({
-      defaultTheme: "github-dark",
+      defaultTheme: "github-light",
+      themes: {
+        light: "github-light",
+        dark: "github-dark",
+      },
     }),
     MathExtension,
     Video,
@@ -365,11 +388,11 @@ export function DocumentEditorCore(props: DocumentEditorCoreProps) {
   }
 
   return (
-    <div class="relative flex-1 min-h-0 bg-background-base px-4 pb-4 pt-3">
-      <div class="relative h-full overflow-hidden rounded-[1.25rem] border border-border-weak-base bg-surface-raised-base">
+    <div class="document-editor-core relative flex-1 min-h-0 bg-surface-raised-base">
+      <div class="relative h-full overflow-hidden">
         <div
           ref={editorRef}
-          class="h-full overflow-y-auto px-6 py-5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          class="h-full overflow-y-auto px-7 py-6 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
           onClick={handleEditorAreaClick}
         />
         <div
@@ -380,7 +403,7 @@ export function DocumentEditorCore(props: DocumentEditorCoreProps) {
       <div ref={bubbleRef} class="note-bubble-menu">
         <Show when={editorInstance()}>{(getEditor) => <BubbleMenuContent editor={getEditor()} />}</Show>
       </div>
-      <div class="pointer-events-none absolute bottom-7 right-7 inline-flex items-center rounded-full bg-background-base/72 px-3 py-1.5 text-11-medium text-text-weak ring-1 ring-inset ring-border-weak-base backdrop-blur-sm">
+      <div class="pointer-events-none absolute bottom-4 right-4 inline-flex items-center rounded-full bg-background-base/72 px-3 py-1.5 text-11-medium text-text-weak ring-1 ring-inset ring-border-weak-base backdrop-blur-sm">
         <Show when={props.saving} fallback="Saved">
           Saving...
         </Show>

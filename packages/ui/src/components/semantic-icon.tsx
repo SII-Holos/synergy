@@ -24,11 +24,12 @@ export const SemanticIconToken = {
   // === 连接状态 ===
   "connection.holos": "satellite", // Holos identity / connection — satellite node in orbit, distinct from auto-orbit
   "connection.lsp": "braces", // language server
-  "connection.mcp": "server", // MCP / external tool server
+  "connection.mcp": "cable", // MCP connection — protocol cable, consistent with settings/navigation
   "connection.cortex": "workflow", // background orchestration tasks
 
   // === 编排 ===
-  "orchestration.dag": "workflow", // DAG tools (no longer git-branch)
+  "orchestration.blueprint": "scroll-text", // Blueprint design document — distinct from Cortex workflow runtime
+  "orchestration.dag": "route", // DAG execution path
   "orchestration.holos-branch": "git-merge", // Holos conversation branch (no longer git-branch)
 } as const satisfies Record<string, IconName>
 

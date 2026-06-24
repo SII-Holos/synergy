@@ -3338,6 +3338,8 @@ export type NoteMetaInfo = {
   searchText: string
   previewHtml?: string
   blueprint?: {
+    description?: string
+    defaultAgent?: string
     activeLoopID?: string
     runCount?: number
     lastRunAt?: number
@@ -3361,7 +3363,6 @@ export type NoteInfo = {
   kind?: "note" | "blueprint"
   blueprint?: {
     description?: string
-    status?: "draft" | "ready" | "archived"
     defaultAgent?: string
     activeLoopID?: string
     runCount?: number
@@ -3387,7 +3388,6 @@ export type NoteCreateInput = {
   kind?: "note" | "blueprint"
   blueprint?: {
     description?: string
-    status?: "draft" | "ready" | "archived"
     defaultAgent?: string
     activeLoopID?: string
     runCount?: number
@@ -3413,7 +3413,6 @@ export type NotePatchInput = {
   kind?: "note" | "blueprint"
   blueprint?: {
     description?: string
-    status?: "draft" | "ready" | "archived"
     defaultAgent?: string
     activeLoopID?: string | null
     runCount?: number
@@ -9006,7 +9005,12 @@ export type BlueprintLoopBindResponses = {
 export type BlueprintLoopBindResponse = BlueprintLoopBindResponses[keyof BlueprintLoopBindResponses]
 
 export type BlueprintLoopStartData = {
-  body?: never
+  body?: {
+    /**
+     * User-provided prompt to merge into execution start message
+     */
+    userPrompt?: string
+  }
   path: {
     /**
      * BlueprintLoop ID

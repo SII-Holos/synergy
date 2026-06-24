@@ -27,7 +27,7 @@ export const BlueprintDuplicateTool = Tool.define("blueprint_duplicate", {
         content: original.content,
         tags: original.tags,
         kind: "blueprint",
-        blueprint: original.blueprint ?? { status: "draft" },
+        blueprint: original.blueprint ?? {},
       },
       { scopeID },
     )

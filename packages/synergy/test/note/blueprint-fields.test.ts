@@ -124,18 +124,15 @@ describe("Note blueprint fields", () => {
           } as any,
         })
         const bp0 = note.blueprint as any
+        expect(bp0?.status).toBeUndefined()
         expect(bp0?.runCount).toBe(2)
         expect(bp0?.activeLoopID).toBe("blp_old")
 
-        // Patch only status — the blueprint sub-object should be deep-merged,
-        // not replaced wholesale. Other fields must survive.
-        // If the current store replaces the entire blueprint object on patch,
-        // these assertions WILL fail (RED).
         const updated = await NoteStore.update(scope.id, note.id, {
           blueprint: { status: "archived" } as any,
         })
         const bp1 = updated.blueprint as any
-        expect(bp1?.status).toBe("archived")
+        expect(bp1?.status).toBeUndefined()
         expect(bp1?.description).toBeDefined()
         expect(bp1?.runCount).toBeDefined()
         expect(bp1?.activeLoopID).toBeDefined()

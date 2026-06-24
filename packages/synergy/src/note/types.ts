@@ -14,7 +14,6 @@ export namespace NoteTypes {
       blueprint: z
         .object({
           description: z.string().optional(),
-          status: z.enum(["draft", "ready", "archived"]).default("draft").optional(),
           defaultAgent: z.string().optional(),
           activeLoopID: z.string().optional(),
           runCount: z.number().optional(),
@@ -39,7 +38,6 @@ export namespace NoteTypes {
       blueprint: z
         .object({
           description: z.string().optional(),
-          status: z.enum(["draft", "ready", "archived"]).default("draft").optional(),
           defaultAgent: z.string().optional(),
           activeLoopID: z.string().optional(),
           runCount: z.number().optional(),
@@ -61,7 +59,6 @@ export namespace NoteTypes {
       blueprint: z
         .object({
           description: z.string().optional(),
-          status: z.enum(["draft", "ready", "archived"]).optional(),
           defaultAgent: z.string().optional(),
           activeLoopID: z.string().nullable().optional(),
           runCount: z.number().optional(),
@@ -101,6 +98,8 @@ export namespace NoteTypes {
       previewHtml: z.string().optional(),
       blueprint: z
         .object({
+          description: z.string().optional(),
+          defaultAgent: z.string().optional(),
           activeLoopID: z.string().optional(),
           runCount: z.number().optional(),
           lastRunAt: z.number().optional(),

@@ -42,13 +42,18 @@ async function bindSessionToLoop(sessionID: string, loopID: string) {
 async function deliverFirstPrompt(
   sessionID: string,
   loop: { id: string; noteID: string; title: string; firstPrompt?: string },
+  userPrompt?: string,
 ) {
+  let text = loop.firstPrompt?.trim() || defaultFirstPrompt(loop)
+  if (userPrompt?.trim()) {
+    text += `\n\nUser instruction:\n${userPrompt.trim()}`
+  }
   const textPart: MessageV2.TextPart = {
     id: Identifier.ascending("part"),
     sessionID,
     messageID: Identifier.ascending("message"),
     type: "text",
-    text: loop.firstPrompt?.trim() || defaultFirstPrompt(loop),
+    text,
   }
   const mail: SessionManager.SessionMail.User = {
     type: "user",
@@ -241,17 +246,36 @@ export const BlueprintRoute = new Hono()
       },
     }),
     validator("param", z.object({ id: z.string().meta({ description: "BlueprintLoop ID" }) })),
+    validator(
+      "json",
+      z
+        .object({
+          userPrompt: z
+            .string()
+            .optional()
+            .meta({ description: "User-provided prompt to merge into execution start message" }),
+        })
+        .optional(),
+    ),
     async (c) => {
+      const id = c.req.valid("param").id
+      let started = false
       try {
-        const id = c.req.valid("param").id
+        const body = c.req.valid("json")
         const before = await BlueprintLoopStore.get(Instance.scope.id, id)
-        await bindSessionToLoop(before.sessionID, id)
-        await deliverFirstPrompt(before.sessionID, before)
         const loop = await BlueprintLoopStore.updateStatus(Instance.scope.id, id, { status: "running" })
+        started = true
+        await bindSessionToLoop(before.sessionID, id)
+        await deliverFirstPrompt(before.sessionID, before, body?.userPrompt)
         return c.json(loop)
       } catch (err: any) {
-        if (err instanceof Storage.NotFoundError)
-          return c.json({ message: `BlueprintLoop not found: ${c.req.valid("param").id}` }, 404)
+        if (started) {
+          await BlueprintLoopStore.updateStatus(Instance.scope.id, id, {
+            status: "failed",
+            error: err?.message ?? String(err),
+          }).catch(() => undefined)
+        }
+        if (err instanceof Storage.NotFoundError) return c.json({ message: `BlueprintLoop not found: ${id}` }, 404)
         if (err instanceof LoopError.InvalidTransition) return c.json({ message: err.message, data: err.data }, 400)
         return c.json({ message: err?.message ?? String(err) }, 400)
       }

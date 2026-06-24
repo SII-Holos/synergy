@@ -8957,6 +8957,21 @@
             }
           }
         },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "userPrompt": {
+                    "description": "User-provided prompt to merge into execution start message",
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
         "x-codeSamples": [
           {
             "lang": "js",
@@ -19954,6 +19969,12 @@
           "blueprint": {
             "type": "object",
             "properties": {
+              "description": {
+                "type": "string"
+              },
+              "defaultAgent": {
+                "type": "string"
+              },
               "activeLoopID": {
                 "type": "string"
               },
@@ -20021,11 +20042,6 @@
             "properties": {
               "description": {
                 "type": "string"
-              },
-              "status": {
-                "default": "draft",
-                "type": "string",
-                "enum": ["draft", "ready", "archived"]
               },
               "defaultAgent": {
                 "type": "string"
@@ -20101,11 +20117,6 @@
               "description": {
                 "type": "string"
               },
-              "status": {
-                "default": "draft",
-                "type": "string",
-                "enum": ["draft", "ready", "archived"]
-              },
               "defaultAgent": {
                 "type": "string"
               },
@@ -20178,10 +20189,6 @@
                 "properties": {
                   "description": {
                     "type": "string"
-                  },
-                  "status": {
-                    "type": "string",
-                    "enum": ["draft", "ready", "archived"]
                   },
                   "defaultAgent": {
                     "type": "string"

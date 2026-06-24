@@ -1,20 +1,100 @@
 import { createMemo, createResource, createSignal, For, Show, createEffect, onCleanup, onMount } from "solid-js"
-import { useParams } from "@solidjs/router"
+import { useNavigate, useParams } from "@solidjs/router"
 import type { Editor } from "@tiptap/core"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
+import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
 
-import { base64Decode } from "@ericsanchezok/synergy-util/encode"
+import { base64Decode, base64Encode } from "@ericsanchezok/synergy-util/encode"
+import { createSynergyClient } from "@ericsanchezok/synergy-sdk/client"
+import { usePlatform } from "@/context/platform"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { useGlobalSync } from "@/context/global-sync"
 import { TIPTAP_STYLES, DocumentEditorCore } from "@/components/note/document-editor-core"
-import type { NoteInfo, NoteMetaInfo, NoteMetaScopeGroup } from "@ericsanchezok/synergy-sdk/client"
+import type { BlueprintLoopInfo, NoteInfo, NoteMetaInfo, NoteMetaScopeGroup } from "@ericsanchezok/synergy-sdk/client"
 import { getScopeLabel } from "@/utils/scope"
 import { assetHttpUrl } from "@/utils/asset-url"
 import { relativeTime } from "@/utils/time"
 import "./note-panel.css"
 
-function attachNoteDragData(e: DragEvent, note: NoteMetaInfo) {
+type LoopStatus = BlueprintLoopInfo["status"]
+
+type NoteCardInfo = NoteMetaInfo & {
+  kind?: "note" | "blueprint"
+}
+
+type BlueprintVisualState = {
+  label: string
+  detail: string
+  tone: "idle" | "running" | "waiting" | "auditing" | "failed" | "completed"
+  icon: string
+}
+
+function isBlueprintNote(note: { kind?: string; blueprint?: unknown }) {
+  return note.kind === "blueprint"
+}
+
+function isActiveLoopStatus(status: LoopStatus) {
+  return status === "running" || status === "waiting" || status === "auditing"
+}
+
+function getLoopLabel(status: LoopStatus) {
+  if (status === "armed") return "Run queued"
+  if (status === "running") return "Running"
+  if (status === "waiting") return "Needs input"
+  if (status === "auditing") return "Reviewing"
+  if (status === "completed") return "Completed"
+  if (status === "failed") return "Failed"
+  return "Cancelled"
+}
+
+function getLoopTone(status: LoopStatus): BlueprintVisualState["tone"] {
+  if (status === "armed" || status === "running") return "running"
+  if (status === "waiting") return "waiting"
+  if (status === "auditing") return "auditing"
+  if (status === "completed") return "completed"
+  if (status === "failed") return "failed"
+  return "idle"
+}
+
+function getRunModeLabel(mode?: BlueprintLoopInfo["runMode"]) {
+  if (mode === "current") return "Session run"
+  if (mode === "new") return "New session"
+  if (mode === "worktree") return "Worktree run"
+  return "Active run"
+}
+
+function getBlueprintVisualState(note: NoteCardInfo | NoteInfo, loops: BlueprintLoopInfo[] = []): BlueprintVisualState {
+  const active = loops.find((loop) => isActiveLoopStatus(loop.status))
+  if (active) {
+    return {
+      label: getLoopLabel(active.status),
+      detail: getRunModeLabel(active.runMode),
+      tone: getLoopTone(active.status),
+      icon: active.status === "auditing" ? "clipboard-check" : active.status === "waiting" ? "hourglass" : "zap",
+    }
+  }
+  const latest = loops[0]
+  if (latest?.status === "failed") {
+    return { label: "Run failed", detail: "Last run failed", tone: "failed", icon: "circle-x" }
+  }
+  return {
+    label: "Blueprint",
+    detail: "No active run",
+    tone: "idle",
+    icon: getSemanticIcon("orchestration.blueprint"),
+  }
+}
+
+function getRunCount(note: NoteCardInfo | NoteInfo, loops: BlueprintLoopInfo[] = []) {
+  return note.blueprint?.runCount ?? loops.length
+}
+
+function getBlueprintActivityTime(note: NoteCardInfo | NoteInfo, loops: BlueprintLoopInfo[] = []) {
+  return note.blueprint?.lastRunAt ?? loops[0]?.time.updated ?? note.time.updated
+}
+
+function attachNoteDragData(e: DragEvent, note: NoteCardInfo) {
   const title = note.title || "Untitled"
   const payload = JSON.stringify({
     id: note.id,
@@ -24,6 +104,15 @@ function attachNoteDragData(e: DragEvent, note: NoteMetaInfo) {
 
   e.dataTransfer!.effectAllowed = "copy"
   e.dataTransfer!.setData("application/x-synergy-note", payload)
+  if (isBlueprintNote(note)) {
+    e.dataTransfer!.setData(
+      "application/x-synergy-blueprint",
+      JSON.stringify({
+        noteID: note.id,
+        title: note.title,
+      }),
+    )
+  }
   e.dataTransfer!.setData("text/plain", title)
 
   const dragImage = document.createElement("div")
@@ -39,30 +128,39 @@ function attachNoteDragData(e: DragEvent, note: NoteMetaInfo) {
 
 type NoteCardVariant = "compact" | "balanced" | "featured"
 
-function NoteCard(props: { note: NoteMetaInfo; originName?: string; variant?: NoteCardVariant; onClick: () => void }) {
+function NoteCard(props: {
+  note: NoteCardInfo
+  originName?: string
+  variant?: NoteCardVariant
+  loops?: BlueprintLoopInfo[]
+  onClick: () => void
+}) {
   const previewHtml = createMemo(() => props.note.previewHtml ?? null)
   const searchPreview = createMemo(() => props.note.searchText ?? "")
   const hasContent = createMemo(() => (previewHtml() ?? searchPreview()).length > 0)
   const variant = createMemo(() => props.variant ?? "balanced")
+  const isBlueprint = createMemo(() => isBlueprintNote(props.note))
+  const blueprintState = createMemo(() => getBlueprintVisualState(props.note, props.loops ?? []))
   const cardHeight = createMemo(() => {
-    if (variant() === "compact") return "h-[220px]"
-    if (variant() === "featured") return "h-[320px]"
-    return "h-[260px]"
+    if (variant() === "compact") return "h-[260px]"
+    if (variant() === "featured") return "h-[370px]"
+    return "h-[320px]"
   })
 
   return (
     <button
       type="button"
-      class={`group note-card relative flex w-full ${cardHeight()} flex-col overflow-hidden rounded-[1.1rem] border border-border-weak-base bg-surface-raised-base text-left shadow-sm hover:-translate-y-0.5 hover:border-border-weak-hover hover:bg-surface-raised-base-hover hover:shadow-md active:scale-[0.985] cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-text-interactive-base/45 focus-visible:ring-offset-2 focus-visible:ring-offset-surface-base`}
+      class={`group note-card relative flex w-full ${cardHeight()} flex-col overflow-hidden rounded-[0.95rem] border border-border-weaker-base bg-surface-raised-base/80 text-left hover:border-border-weak-hover hover:bg-surface-raised-base-hover active:scale-[0.99] cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-border-strong-base/40 focus-visible:ring-offset-2 focus-visible:ring-offset-background-base`}
+      classList={{
+        "note-card--blueprint": isBlueprint(),
+        [`note-card--blueprint-${blueprintState().tone}`]: isBlueprint(),
+      }}
       draggable={true}
       onDragStart={(e) => attachNoteDragData(e, props.note)}
       onClick={props.onClick}
     >
       <Show when={props.originName}>
-        <div class="absolute right-2 top-2 z-10 flex max-w-[60%] items-center gap-1 rounded-full border border-border-weak-base bg-surface-raised-stronger-non-alpha/90 px-2 py-1 text-text-weak shadow-sm backdrop-blur-sm">
-          <Icon name="folder" class="size-2.5 shrink-0 text-text-weak" />
-          <span class="truncate text-10-medium leading-tight">{props.originName}</span>
-        </div>
+        <span class="sr-only">From {props.originName}</span>
       </Show>
 
       <div class="px-3.5 pt-3.5">
@@ -100,16 +198,53 @@ function NoteCard(props: { note: NoteMetaInfo; originName?: string; variant?: No
         </div>
       </Show>
 
-      <div class="mt-auto shrink-0 border-t border-border-weaker-base px-3.5 py-2.5">
-        <div class="flex items-center gap-2">
-          <Show when={props.note.pinned}>
-            <span class="inline-flex size-5 shrink-0 items-center justify-center rounded-full bg-surface-raised-stronger-non-alpha text-text-interactive-base">
-              <Icon name="pin" size="small" class="size-3" />
+      <div class="note-card-footer mt-auto shrink-0 px-3.5 py-2.5">
+        <Show
+          when={isBlueprint()}
+          fallback={
+            <div class="flex items-center gap-2">
+              <Show when={props.originName}>
+                <span class="note-card-origin">
+                  <Icon name="folder" class="size-3 shrink-0" />
+                  <span class="truncate">From {props.originName}</span>
+                </span>
+              </Show>
+              <Show when={props.note.pinned}>
+                <span class="inline-flex size-5 shrink-0 items-center justify-center rounded-full bg-surface-raised-stronger-non-alpha text-text-weak">
+                  <Icon name="pin" size="small" class="size-3" />
+                </span>
+              </Show>
+              <span class="flex-1" />
+              <span class="text-11-regular text-text-weak">{relativeTime(props.note.time.updated)}</span>
+            </div>
+          }
+        >
+          <div class="flex items-center gap-2">
+            <span class={`note-card-status note-card-status--${blueprintState().tone}`}>
+              <Icon name={blueprintState().icon} size="small" class="size-3" />
+              {blueprintState().label}
             </span>
-          </Show>
-          <span class="flex-1" />
-          <span class="text-11-regular text-text-weak">{relativeTime(props.note.time.updated)}</span>
-        </div>
+            <span class="min-w-0 flex-1 truncate text-10-regular text-text-weaker">{blueprintState().detail}</span>
+            <Show when={props.note.pinned}>
+              <Icon name="pin" size="small" class="size-3 shrink-0 text-text-weak" />
+            </Show>
+          </div>
+          <div class="mt-2 flex items-center gap-2 text-11-regular text-text-weak">
+            <Show when={props.originName}>
+              <span class="note-card-origin">
+                <Icon name="folder" class="size-3 shrink-0" />
+                <span class="truncate">From {props.originName}</span>
+              </span>
+            </Show>
+            <span class="truncate">
+              {getRunCount(props.note, props.loops ?? []) > 0
+                ? `${getRunCount(props.note, props.loops ?? [])} runs`
+                : "No runs yet"}
+            </span>
+            <span class="flex-1" />
+            <span class="shrink-0">{relativeTime(getBlueprintActivityTime(props.note, props.loops ?? []))}</span>
+          </div>
+        </Show>
       </div>
     </button>
   )
@@ -118,7 +253,7 @@ function NoteCard(props: { note: NoteMetaInfo; originName?: string; variant?: No
 /** Skeleton placeholder matching NoteCard shape, shown during list loading */
 function NoteCardSkeleton() {
   return (
-    <div class="flex w-full h-[260px] flex-col overflow-hidden rounded-[1.1rem] border border-border-weak-base bg-surface-raised-base shadow-sm animate-pulse">
+    <div class="flex w-full h-[320px] flex-col overflow-hidden rounded-[0.95rem] border border-border-weaker-base bg-surface-raised-base/70 animate-pulse">
       <div class="px-3.5 pt-3.5 space-y-1.5">
         <div class="h-3 w-3/4 rounded bg-surface-inset-base/70" />
         <div class="h-3 w-1/2 rounded bg-surface-inset-base/70" />
@@ -128,8 +263,73 @@ function NoteCardSkeleton() {
         <div class="h-2 w-5/6 rounded bg-surface-inset-base/70" />
         <div class="h-2 w-2/3 rounded bg-surface-inset-base/70" />
       </div>
-      <div class="shrink-0 border-t border-border-weaker-base px-3.5 py-2.5">
+      <div class="note-card-footer shrink-0 px-3.5 py-2.5">
         <div class="ml-auto h-3 w-1/4 rounded bg-surface-inset-base/70" />
+      </div>
+    </div>
+  )
+}
+
+function RunMenu(props: {
+  title: string
+  hasCurrentSession: boolean
+  onRun: (mode: "current" | "new" | "worktree") => void
+  onClose: () => void
+}) {
+  const options = [
+    {
+      mode: "current" as const,
+      title: "Current session",
+      description: props.hasCurrentSession ? "Run in the session you are viewing." : "Open a session first.",
+      disabled: !props.hasCurrentSession,
+    },
+    {
+      mode: "new" as const,
+      title: "New session",
+      description: "Create a fresh session in this scope and start immediately.",
+      disabled: false,
+    },
+    {
+      mode: "worktree" as const,
+      title: "New worktree session",
+      description: "Create an isolated worktree session and start immediately.",
+      disabled: false,
+    },
+  ]
+
+  return (
+    <div class="note-run-menu absolute right-4 top-[3.75rem] z-40 w-[min(22rem,calc(100%-2rem))] p-3">
+      <div class="px-2 pb-2">
+        <div class="flex items-start gap-2">
+          <div class="min-w-0 flex-1">
+            <h3 class="text-13-medium text-text-strong">Run Blueprint</h3>
+            <p class="mt-1 line-clamp-2 text-11-regular text-text-weak">{props.title || "Untitled"}</p>
+          </div>
+          <button
+            type="button"
+            class="flex size-6 shrink-0 items-center justify-center rounded-full text-icon-weak transition-colors hover:bg-surface-raised-base-hover hover:text-icon-base"
+            onClick={props.onClose}
+            title="Close"
+          >
+            <Icon name="x" size="small" class="size-3" />
+          </button>
+        </div>
+      </div>
+      <div class="space-y-1.5">
+        <For each={options}>
+          {(option) => (
+            <button
+              type="button"
+              class="w-full rounded-[0.95rem] border border-border-weak-base bg-surface-raised-base px-3 py-2.5 text-left transition-colors hover:bg-surface-raised-base-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-border-strong-base/35"
+              classList={{ "cursor-not-allowed opacity-55 hover:bg-surface-raised-base": option.disabled }}
+              disabled={option.disabled}
+              onClick={() => props.onRun(option.mode)}
+            >
+              <span class="block text-12-medium text-text-strong">{option.title}</span>
+              <span class="mt-0.5 block text-10-regular leading-4 text-text-weak">{option.description}</span>
+            </button>
+          )}
+        </For>
       </div>
     </div>
   )
@@ -144,6 +344,7 @@ type DisplayGroup = NoteMetaScopeGroup & {
 function ScopeSection(props: {
   group: DisplayGroup
   expanded: boolean
+  loopsByNote: Map<string, BlueprintLoopInfo[]>
   onToggle: () => void
   onOpenNote: (id: string) => void
   onCreateNote: () => void
@@ -154,11 +355,6 @@ function ScopeSection(props: {
   const noteCountLabel = createMemo(
     () => `${props.group.notes.length} ${props.group.notes.length === 1 ? "note" : "notes"}`,
   )
-  const sectionClass = createMemo(() => {
-    if (props.expanded) return "border-border-weak-base bg-surface-inset-base/70"
-    if (props.group.isCurrent) return "bg-surface-inset-base/42"
-  })
-
   const shelfNotes = createMemo(() => props.group.notes.slice(0, columns()))
   const hasMore = createMemo(() => props.group.notes.length > columns())
 
@@ -167,9 +363,7 @@ function ScopeSection(props: {
   onMount(() => {
     const ro = new ResizeObserver(([entry]) => {
       const w = entry.contentRect.width
-      // section p-2 (16px) + grid px-1 (8px)
-      const inner = w - 24
-      const cols = inner < 310 ? 2 : inner < 470 ? 3 : 4
+      const cols = w < 380 ? 1 : w < 660 ? 2 : 3
       setColumns(cols)
     })
     ro.observe(sectionRef)
@@ -186,16 +380,15 @@ function ScopeSection(props: {
   return (
     <section
       ref={sectionRef}
-      class={`relative mb-3 overflow-hidden rounded-[1.25rem] border border-border-weak-base bg-surface-inset-base/24 p-2 transition-colors hover:bg-surface-inset-base/34 ${sectionClass()}`}
+      class="note-scope-section"
+      classList={{
+        "note-scope-section--current": props.group.isCurrent,
+      }}
     >
-      <Show when={props.group.isCurrent}>
-        <div class="absolute bottom-3 left-0 top-3 w-0.5 rounded-full bg-text-interactive-base/70" />
-      </Show>
-
       <div class="flex items-center gap-2">
         <button
           type="button"
-          class="flex min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-2xl px-2.5 py-2 text-left transition-colors hover:bg-surface-raised-base-hover/55"
+          class="note-scope-header"
           aria-expanded={props.expanded}
           aria-label={`${props.expanded ? "Collapse" : "Expand"} ${props.group.name} notes`}
           onClick={props.onToggle}
@@ -207,15 +400,15 @@ function ScopeSection(props: {
             <Icon name="chevron-right" size="small" />
           </span>
           <Show when={props.group.scopeType === "global"}>
-            <Icon name="home" size="small" class="text-text-interactive-base shrink-0" />
+            <Icon name="home" size="small" class="text-icon-weak shrink-0" />
           </Show>
           <Show when={props.group.scopeType === "project"}>
             <Icon name="folder" size="small" class="text-icon-weak shrink-0" />
           </Show>
           <span class="min-w-0 truncate text-12-medium text-text-strong">{props.group.name}</span>
           <Show when={props.group.isCurrent}>
-            <span class="inline-flex items-center gap-1 rounded-full bg-surface-raised-stronger-non-alpha/85 px-2 py-0.5 text-[10px] font-medium text-text-interactive-base ring-1 ring-inset ring-border-weaker-base">
-              <span class="size-1.5 rounded-full bg-text-interactive-base/80" />
+            <span class="note-scope-current-badge">
+              <span class="size-1.5 rounded-full bg-text-diff-add-base/80" />
               Current
             </span>
           </Show>
@@ -227,12 +420,7 @@ function ScopeSection(props: {
             </span>
           </Show>
         </button>
-        <button
-          type="button"
-          class="flex size-7 shrink-0 items-center justify-center rounded-full border border-border-weak-base bg-surface-raised-stronger-non-alpha text-icon-weak opacity-70 shadow-sm transition-all hover:bg-surface-raised-base-hover hover:text-icon-base hover:opacity-100"
-          onClick={props.onCreateNote}
-          title="New note"
-        >
+        <button type="button" class="note-scope-new-button" onClick={props.onCreateNote} title="New note">
           <Icon name="plus" size="small" />
         </button>
       </div>
@@ -242,7 +430,7 @@ function ScopeSection(props: {
         fallback={
           <Show when={shelfNotes().length > 0}>
             <div
-              class="mt-1.5 grid gap-2.5 px-1 pb-1"
+              class="note-card-grid note-card-grid--shelf"
               style={`grid-template-columns: repeat(${columns()}, minmax(0, 1fr))`}
             >
               <For each={shelfNotes()}>
@@ -250,6 +438,7 @@ function ScopeSection(props: {
                   <NoteCard
                     note={note}
                     originName={getOriginName(note)}
+                    loops={props.loopsByNote.get(note.id) ?? []}
                     variant="compact"
                     onClick={() => props.onOpenNote(note.id)}
                   />
@@ -257,11 +446,7 @@ function ScopeSection(props: {
               </For>
             </div>
             <Show when={hasMore()}>
-              <button
-                type="button"
-                class="flex w-full items-center justify-center gap-1 rounded-xl px-1 pb-1.5 pt-0.5 text-11-medium text-text-weak transition-colors hover:text-text-base"
-                onClick={props.onToggle}
-              >
+              <button type="button" class="note-scope-view-all" onClick={props.onToggle}>
                 View all {props.group.notes.length} notes
                 <Icon name="chevron-right" size="small" class="size-3" />
               </button>
@@ -274,7 +459,7 @@ function ScopeSection(props: {
           fallback={<div class="py-4 text-center text-12-regular text-text-weaker">No notes in this scope</div>}
         >
           <div
-            class="mt-2 grid gap-2.5 px-1 mb-1"
+            class="note-card-grid note-card-grid--expanded"
             style={`grid-template-columns: repeat(${columns()}, minmax(0, 1fr))`}
           >
             <For each={props.group.notes}>
@@ -282,6 +467,7 @@ function ScopeSection(props: {
                 <NoteCard
                   note={note}
                   originName={getOriginName(note)}
+                  loops={props.loopsByNote.get(note.id) ?? []}
                   variant={note.pinned ? "featured" : "balanced"}
                   onClick={() => props.onOpenNote(note.id)}
                 />
@@ -335,6 +521,30 @@ export function NotePanel() {
     },
   )
 
+  const [loops, { refetch: refetchLoops }] = createResource(
+    () => directory(),
+    async (dir) => {
+      if (!dir) return [] as BlueprintLoopInfo[]
+      try {
+        const result = await sdk.client.blueprint.loop.list({ directory: dir })
+        return [...((result.data ?? []) as BlueprintLoopInfo[])].sort((a, b) => b.time.updated - a.time.updated)
+      } catch (error) {
+        console.error("Failed to load blueprint loops", error)
+        return [] as BlueprintLoopInfo[]
+      }
+    },
+  )
+
+  const loopsByNote = createMemo(() => {
+    const map = new Map<string, BlueprintLoopInfo[]>()
+    for (const loop of loops() ?? []) {
+      const items = map.get(loop.noteID) ?? []
+      items.push(loop)
+      map.set(loop.noteID, items)
+    }
+    return map
+  })
+
   const allTags = createMemo(() => {
     const freq = new Map<string, number>()
     for (const g of rawGroups() ?? []) {
@@ -367,6 +577,8 @@ export function NotePanel() {
       .map((g): DisplayGroup => {
         const meta = lookup.get(g.scopeID)
         const isCurrent = g.scopeID === curID
+        const groupDirectory =
+          meta?.directory ?? (g.scopeID === "global" ? "global" : isCurrent ? (directory() ?? "") : "")
         let notes = [...g.notes]
         if (q) {
           notes = notes.filter((n) => {
@@ -386,7 +598,7 @@ export function NotePanel() {
           ...g,
           notes,
           name: meta?.name ?? g.scopeID,
-          directory: meta?.directory ?? "global",
+          directory: groupDirectory,
           isCurrent,
         }
       })
@@ -415,12 +627,14 @@ export function NotePanel() {
   }
 
   function openNote(id: string, dir: string) {
+    if (!dir) return
     setSelectedNoteId(id)
     setSelectedNoteDir(dir)
     setView("editor")
   }
 
   async function createNoteInScope(dir: string) {
+    if (!dir) return
     try {
       const result = await sdk.client.note.create({
         directory: dir,
@@ -516,9 +730,6 @@ export function NotePanel() {
                 <NoteCardSkeleton />
                 <NoteCardSkeleton />
                 <NoteCardSkeleton />
-                <NoteCardSkeleton />
-                <NoteCardSkeleton />
-                <NoteCardSkeleton />
               </div>
             </Show>
             <Show when={!rawGroups.loading}>
@@ -531,12 +742,13 @@ export function NotePanel() {
                   </div>
                 }
               >
-                <div class="flex flex-col gap-1">
+                <div class="flex flex-col">
                   <For each={displayGroups()}>
                     {(group) => (
                       <ScopeSection
                         group={group}
                         expanded={isExpanded(group.scopeID, group.isCurrent)}
+                        loopsByNote={loopsByNote()}
                         onToggle={() => toggleExpanded(group.scopeID, group.isCurrent)}
                         onOpenNote={(id) => openNote(id, group.directory)}
                         onCreateNote={() => createNoteInScope(group.directory)}
@@ -558,10 +770,12 @@ export function NotePanel() {
           onBack={() => {
             setView("list")
             refetch()
+            refetchLoops()
           }}
           onDelete={() => {
             setView("list")
             refetch()
+            refetchLoops()
           }}
         />
       </Show>
@@ -583,6 +797,9 @@ type NoteConflictState =
 function NoteEditor(props: { id: string; directory: string; onBack: () => void; onDelete: () => void }) {
   const sdk = useGlobalSDK()
   const globalSync = useGlobalSync()
+  const platform = usePlatform()
+  const params = useParams()
+  const navigate = useNavigate()
   const directory = () => props.directory
 
   const [note, { refetch }] = createResource(
@@ -616,12 +833,36 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
   const [dirty, setDirty] = createSignal(false)
   const [conflict, setConflict] = createSignal<NoteConflictState | null>(null)
   const [editor, setEditor] = createSignal<Editor>()
+  const [convertingBlueprint, setConvertingBlueprint] = createSignal(false)
+  const [runningBlueprint, setRunningBlueprint] = createSignal(false)
+  const [showRunMenu, setShowRunMenu] = createSignal(false)
 
   let debounceTimer: ReturnType<typeof setTimeout> | undefined
   let saveQueued = false
   let saveInFlight: Promise<void> | undefined
 
   const noteLoaded = createMemo(() => !!baseNote())
+  const isBlueprint = createMemo(() => baseNote()?.kind === "blueprint")
+  const [noteLoops, { refetch: refetchLoops }] = createResource(
+    () => ({ id: props.id, dir: directory(), ver: globalSync.noteVersion() }),
+    async ({ id, dir }) => {
+      if (!dir) return [] as BlueprintLoopInfo[]
+      try {
+        const result = await sdk.client.blueprint.loop.list({ directory: dir })
+        return ((result.data ?? []) as BlueprintLoopInfo[])
+          .filter((loop) => loop.noteID === id)
+          .sort((a, b) => b.time.updated - a.time.updated)
+      } catch (error) {
+        console.error("Failed to load blueprint loops", error)
+        return [] as BlueprintLoopInfo[]
+      }
+    },
+  )
+  const blueprintState = createMemo(() => {
+    const base = baseNote()
+    if (!base) return null
+    return getBlueprintVisualState(base, noteLoops() ?? [])
+  })
 
   function remoteConflict() {
     const current = conflict()
@@ -913,20 +1154,159 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
   async function convertToBlueprint() {
     const dir = directory()
     const base = baseNote()
-    if (!dir || !base) return
+    if (!dir || !base || isBlueprint() || convertingBlueprint()) return
+    if (dirty()) {
+      setConflict({
+        type: "metadata-blocked",
+        message: "Save or reload your draft before converting this note to a Blueprint.",
+      })
+      return
+    }
 
+    setConvertingBlueprint(true)
     try {
-      await sdk.client.note.update({
+      const result = await sdk.client.note.update({
         id: base.id,
         directory: dir,
         notePatchInput: {
           kind: "blueprint",
-          blueprint: { status: "draft" as const },
+          blueprint: {},
+          expectedVersion: base.version,
         },
       })
+      applySnapshot(result.data as NoteInfo)
+    } catch (error) {
+      const remote = parseConflict(error)
+      if (remote) {
+        setConflict({
+          type: "remote-update",
+          message: "This note changed before it could be converted to a Blueprint.",
+          remote,
+        })
+        return
+      }
+      console.error("Failed to convert note to blueprint", error)
+    } finally {
+      setConvertingBlueprint(false)
+    }
+  }
+
+  async function convertToNote() {
+    const dir = directory()
+    const base = baseNote()
+    if (!dir || !base || !isBlueprint() || convertingBlueprint()) return
+    if (dirty()) {
+      setConflict({
+        type: "metadata-blocked",
+        message: "Save or reload your draft before converting this Blueprint to a Note.",
+      })
+      return
+    }
+    if (base.blueprint?.activeLoopID || (noteLoops() ?? []).some((loop) => isActiveLoopStatus(loop.status))) {
+      alert("This Blueprint has an active loop. Finish or cancel the loop before converting it back to a Note.")
+      return
+    }
+
+    setConvertingBlueprint(true)
+    try {
+      const result = await sdk.client.note.update({
+        id: base.id,
+        directory: dir,
+        notePatchInput: {
+          kind: "note",
+          blueprint: null,
+          expectedVersion: base.version,
+        },
+      })
+      applySnapshot(result.data as NoteInfo)
+      await refetchLoops()
+    } catch (error) {
+      const remote = parseConflict(error)
+      if (remote) {
+        setConflict({
+          type: "remote-update",
+          message: "This Blueprint changed before it could be converted to a Note.",
+          remote,
+        })
+        return
+      }
+      console.error("Failed to convert blueprint to note", error)
+    } finally {
+      setConvertingBlueprint(false)
+    }
+  }
+
+  async function createExecutionSession(mode: "current" | "new" | "worktree", blueprintDir: string) {
+    if (mode === "current") {
+      if (!params.id) {
+        alert("Open a session before running this Blueprint in the current session.")
+        return undefined
+      }
+      return { sessionID: params.id, directory: blueprintDir }
+    }
+
+    let targetDirectory = blueprintDir
+    let client = sdk.client
+
+    if (mode === "worktree") {
+      const worktree = await sdk.client.worktree.create({ directory: blueprintDir }).then((result) => result.data)
+      if (!worktree?.path) throw new Error("Failed to create worktree")
+      targetDirectory = worktree.path
+      client = createSynergyClient({
+        baseUrl: sdk.url,
+        fetch: platform.fetch,
+        directory: targetDirectory,
+        throwOnError: true,
+      })
+      globalSync.child(targetDirectory)
+    }
+
+    const session = await client.session.create({}).then((result) => result.data)
+    if (!session?.id) throw new Error("Failed to create session")
+    return { sessionID: session.id, directory: targetDirectory }
+  }
+
+  async function runBlueprint(mode: "current" | "new" | "worktree") {
+    const dir = directory()
+    if (!dir || runningBlueprint()) return
+    await flushSave()
+    if (remoteConflict()) return
+    const base = baseNote()
+    if (!base || !isBlueprint()) return
+
+    setRunningBlueprint(true)
+    let createdLoopID: string | undefined
+    try {
+      const target = await createExecutionSession(mode, dir)
+      if (!target) return
+      const loop = await sdk.client.blueprint.loop
+        .create({
+          directory: dir,
+          blueprintLoopCreateInput: {
+            noteID: base.id,
+            noteVersion: base.version,
+            title: base.title || "Blueprint run",
+            description: base.blueprint?.description,
+            sessionID: target.sessionID,
+            runMode: mode,
+          },
+        })
+        .then((result) => result.data)
+      if (!loop?.id) throw new Error("Failed to create BlueprintLoop")
+      createdLoopID = loop.id
+      await sdk.client.blueprint.loop.start({ id: loop.id, directory: dir })
+      setShowRunMenu(false)
+      await refetchLoops()
       await refetch()
-    } catch (e) {
-      console.error("Failed to convert note to blueprint", e)
+      navigate(`/${base64Encode(target.directory)}/session/${target.sessionID}`)
+    } catch (error) {
+      if (createdLoopID) {
+        await sdk.client.blueprint.loop.cancel({ id: createdLoopID, directory: dir }).catch(() => undefined)
+      }
+      console.error("Failed to run blueprint", error)
+      alert(error instanceof Error ? error.message : "Failed to run blueprint")
+    } finally {
+      setRunningBlueprint(false)
     }
   }
 
@@ -939,7 +1319,7 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
   }
 
   return (
-    <div class="flex flex-col h-full bg-background-base">
+    <div class="relative flex flex-col h-full bg-background-base">
       <Show when={note.loading && !noteLoaded()}>
         <div class="flex items-center justify-center h-full">
           <Spinner class="size-6" />
@@ -947,18 +1327,18 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
       </Show>
 
       <Show when={noteLoaded() && baseNote()}>
-        <div class="shrink-0 border-b border-border-weak-base bg-surface-raised-base/92 px-4 py-3">
-          <div class="flex items-center gap-2 rounded-[1.15rem] bg-surface-inset-base/42 px-2.5 py-2">
+        <div class="shrink-0 border-b border-border-weaker-base bg-surface-raised-base px-4 py-3">
+          <div class="flex items-center gap-2">
             <button
               type="button"
-              class="flex size-8 items-center justify-center rounded-full border border-border-weak-base bg-surface-raised-stronger-non-alpha text-icon-weak shadow-sm transition-all hover:bg-surface-raised-base-hover hover:text-text-base"
+              class="flex size-8 items-center justify-center rounded-full text-icon-weak transition-colors hover:bg-surface-raised-base-hover hover:text-text-base focus:outline-none focus-visible:ring-2 focus-visible:ring-border-strong-base/35"
               onClick={handleBack}
               title="Back to list"
             >
               <Icon name="arrow-left" size="normal" />
             </button>
 
-            <div class="min-w-0 flex-1 rounded-[0.95rem] bg-surface-raised-base/92 px-3.5 py-2">
+            <div class="min-w-0 flex-1 px-2 py-1.5">
               <input
                 type="text"
                 class="w-full bg-transparent text-14-medium tracking-tight text-text-strong outline-none placeholder:text-text-weak/50"
@@ -968,11 +1348,26 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
               />
             </div>
 
+            <Show when={isBlueprint()}>
+              <button
+                type="button"
+                class="inline-flex h-8 items-center gap-1.5 whitespace-nowrap rounded-full bg-surface-success-base/58 px-3 text-11-medium text-text-diff-add-base transition-colors hover:bg-surface-success-base/82 focus:outline-none focus-visible:ring-2 focus-visible:ring-border-success-base/35 disabled:cursor-not-allowed disabled:opacity-60"
+                onClick={() => setShowRunMenu((current) => !current)}
+                disabled={runningBlueprint()}
+                title="Run Blueprint"
+              >
+                <Show when={!runningBlueprint()} fallback={<Spinner class="size-3.5" />}>
+                  <Icon name="zap" size="small" class="size-3" />
+                </Show>
+                <span>Run</span>
+              </button>
+            </Show>
+
             <button
               type="button"
-              class="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-11-medium transition-all"
+              class="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-11-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-border-strong-base/35"
               classList={{
-                "bg-surface-interactive-base/14 text-text-interactive-base shadow-sm": baseNote()!.pinned,
+                "bg-surface-inset-base text-text-base": baseNote()!.pinned,
                 "bg-surface-raised-stronger-non-alpha text-text-weak hover:bg-surface-raised-base-hover hover:text-text-base":
                   !baseNote()!.pinned,
               }}
@@ -984,9 +1379,9 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
 
             <button
               type="button"
-              class="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-11-medium transition-all"
+              class="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-11-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-border-strong-base/35"
               classList={{
-                "bg-surface-diff-add-base/12 text-text-diff-add-base shadow-sm": baseNote()!.global,
+                "bg-surface-diff-add-base/12 text-text-diff-add-base": baseNote()!.global,
                 "bg-surface-raised-stronger-non-alpha text-text-weak hover:bg-surface-raised-base-hover hover:text-text-base":
                   !baseNote()!.global,
               }}
@@ -998,7 +1393,7 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
 
             <button
               type="button"
-              class="flex size-8 items-center justify-center rounded-full border border-border-weak-base bg-surface-raised-stronger-non-alpha text-icon-weak shadow-sm transition-all hover:bg-surface-raised-base-hover hover:text-text-base"
+              class="flex size-8 items-center justify-center rounded-full text-icon-weak transition-colors hover:bg-surface-raised-base-hover hover:text-text-base focus:outline-none focus-visible:ring-2 focus-visible:ring-border-strong-base/35"
               onClick={downloadNote}
               title="Download as Markdown"
             >
@@ -1006,16 +1401,29 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
             </button>
             <button
               type="button"
-              class="flex size-8 items-center justify-center rounded-full border border-border-weak-base bg-surface-raised-stronger-non-alpha text-icon-weak shadow-sm transition-all hover:bg-surface-raised-base-hover hover:text-text-interactive-base"
-              onClick={convertToBlueprint}
-              title="Convert to Blueprint"
+              class="inline-flex h-8 items-center gap-1.5 whitespace-nowrap rounded-full px-3 text-11-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-border-strong-base/35"
+              classList={{
+                "bg-surface-inset-base text-text-base": isBlueprint(),
+                "bg-surface-raised-stronger-non-alpha text-text-weak hover:bg-surface-raised-base-hover hover:text-text-base":
+                  !isBlueprint(),
+                "opacity-60 cursor-not-allowed": convertingBlueprint(),
+              }}
+              onClick={() => {
+                if (isBlueprint()) void convertToNote()
+                else void convertToBlueprint()
+              }}
+              title={isBlueprint() ? "Convert to Note" : "Convert to Blueprint"}
+              disabled={convertingBlueprint()}
             >
-              <Icon name="workflow" size="small" />
+              <Show when={!convertingBlueprint()} fallback={<Spinner class="size-3.5" />}>
+                <Icon name={isBlueprint() ? "notebook-pen" : getSemanticIcon("orchestration.blueprint")} size="small" />
+              </Show>
+              <span>{isBlueprint() ? "To Note" : "To Blueprint"}</span>
             </button>
 
             <button
               type="button"
-              class="flex size-8 items-center justify-center rounded-full border border-border-weak-base bg-surface-raised-stronger-non-alpha text-icon-weak shadow-sm transition-all hover:bg-surface-raised-base-hover hover:text-text-diff-delete-base"
+              class="flex size-8 items-center justify-center rounded-full text-icon-weak transition-colors hover:bg-surface-raised-base-hover hover:text-text-diff-delete-base focus:outline-none focus-visible:ring-2 focus-visible:ring-border-strong-base/35"
               onClick={deleteNote}
               title="Delete"
             >
@@ -1023,6 +1431,32 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
             </button>
           </div>
         </div>
+
+        <Show when={isBlueprint() && blueprintState()}>
+          <div class="shrink-0 border-b border-border-weaker-base bg-surface-raised-base px-4 py-2.5">
+            <div class="note-blueprint-meta flex flex-wrap items-center gap-2">
+              <span class={`note-card-status note-card-status--${blueprintState()!.tone}`}>
+                <Icon name={blueprintState()!.icon} size="small" class="size-3" />
+                {blueprintState()!.label}
+              </span>
+              <span class="text-11-regular text-text-weak">{blueprintState()!.detail}</span>
+              <span class="h-3 w-px bg-border-weaker-base" />
+              <span class="text-11-regular text-text-weak">
+                {getRunCount(baseNote()!, noteLoops() ?? []) > 0
+                  ? `${getRunCount(baseNote()!, noteLoops() ?? [])} runs`
+                  : "No runs yet"}
+              </span>
+              <span class="h-3 w-px bg-border-weaker-base" />
+              <span class="text-11-regular text-text-weak">
+                Last activity {relativeTime(getBlueprintActivityTime(baseNote()!, noteLoops() ?? []))}
+              </span>
+              <Show when={baseNote()!.blueprint?.defaultAgent}>
+                <span class="h-3 w-px bg-border-weaker-base" />
+                <span class="text-11-regular text-text-weak">{baseNote()!.blueprint!.defaultAgent}</span>
+              </Show>
+            </div>
+          </div>
+        </Show>
 
         <Show when={conflict()}>
           <div class="shrink-0 border-b border-border-warning-base bg-surface-raised-base px-4 py-3 text-12-regular text-text-base">
@@ -1041,7 +1475,7 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
                 </button>
                 <button
                   type="button"
-                  class="rounded-full bg-surface-interactive-base/12 px-3 py-1.5 text-11-medium text-text-interactive-base transition-colors hover:bg-surface-interactive-base/18"
+                  class="rounded-full bg-surface-success-base/40 px-3 py-1.5 text-11-medium text-text-diff-add-base transition-colors hover:bg-surface-success-base/62"
                   onClick={overwriteRemote}
                 >
                   Overwrite remote
@@ -1051,11 +1485,11 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
           </div>
         </Show>
 
-        <div class="shrink-0 border-b border-border-weak-base bg-surface-raised-base/88 px-4 py-3">
-          <div class="flex flex-wrap items-center gap-2 rounded-[1rem] bg-surface-inset-base/42 px-3 py-2.5">
+        <div class="shrink-0 border-b border-border-weaker-base bg-surface-raised-base px-4 py-2.5">
+          <div class="flex flex-wrap items-center gap-2">
             <For each={tags()}>
               {(tag) => (
-                <span class="inline-flex items-center gap-1.5 rounded-full bg-surface-raised-stronger-non-alpha px-2.5 py-1.5 text-11-medium text-text-weak">
+                <span class="inline-flex items-center gap-1.5 rounded-full bg-surface-inset-base/68 px-2.5 py-1.5 text-11-medium text-text-weak">
                   <button
                     type="button"
                     class="flex size-4 items-center justify-center rounded-full text-icon-weak transition-colors hover:bg-surface-raised-base-hover hover:text-icon-base"
@@ -1067,7 +1501,7 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
                 </span>
               )}
             </For>
-            <div class="flex min-w-[7rem] flex-1 items-center gap-2 rounded-full bg-surface-raised-base/92 px-3 py-1.5">
+            <div class="flex min-w-[7rem] flex-1 items-center gap-2 rounded-full px-1 py-1.5">
               <Icon name="tag" size="small" class="text-icon-weak shrink-0" />
               <input
                 type="text"
@@ -1096,6 +1530,15 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
           sdkUrl={sdk.url}
           saving={saving()}
         />
+
+        <Show when={showRunMenu() && isBlueprint() && baseNote()}>
+          <RunMenu
+            title={baseNote()!.title || "Untitled"}
+            hasCurrentSession={!!params.id}
+            onRun={runBlueprint}
+            onClose={() => setShowRunMenu(false)}
+          />
+        </Show>
       </Show>
     </div>
   )

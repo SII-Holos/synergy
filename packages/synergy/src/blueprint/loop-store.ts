@@ -6,6 +6,7 @@ import { Bus } from "../bus"
 import { LoopEvent } from "./event"
 import { LoopError } from "./error"
 import { NoteStore } from "../note"
+import { Session } from "../session"
 import type { Info } from "./types"
 
 type LoopStatus = Info["status"]
@@ -127,13 +128,22 @@ export namespace BlueprintLoopStore {
       if (patch.error !== undefined) draft.error = patch.error
     })
 
-    // Clear activeLoopID on note when loop reaches terminal state
     if (isTerminal) {
       try {
         const note = await NoteStore.get(scopeID, updated.noteID)
         if (note.kind === "blueprint" && note.blueprint?.activeLoopID === id) {
           await NoteStore.update(scopeID, updated.noteID, {
             blueprint: { activeLoopID: null },
+          })
+        }
+      } catch {
+        // best effort
+      }
+
+      try {
+        if (updated.sessionID) {
+          await Session.update(updated.sessionID, (draft) => {
+            draft.blueprint = { ...draft.blueprint, loopID: undefined }
           })
         }
       } catch {
