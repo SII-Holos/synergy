@@ -1,4 +1,4 @@
-import { createMemo, For, Show, type JSX } from "solid-js"
+import { createMemo, createSignal, For, Show, type JSX } from "solid-js"
 import { useDialog } from "../context/dialog"
 import { FileIcon } from "./file-icon"
 import { Icon } from "./icon"
@@ -24,13 +24,14 @@ export {
 
 export function ArtifactCard(props: { file: ArtifactFile; serverUrl: string }) {
   const dialog = useDialog()
+  const [imageFailed, setImageFailed] = createSignal(false)
   const url = createMemo(() => resolveArtifactUrl(props.serverUrl, props.file))
   const filename = createMemo(() => props.file.filename ?? (isPdfArtifact(props.file) ? "file.pdf" : "file"))
   const meta = createMemo(() => artifactMeta(props.file))
 
   return (
     <Show
-      when={isImageArtifact(props.file) && url()}
+      when={isImageArtifact(props.file) && url() && !imageFailed()}
       fallback={
         <DynamicArtifactLink
           url={url()}
@@ -62,7 +63,7 @@ export function ArtifactCard(props: { file: ArtifactFile; serverUrl: string }) {
         title={filename()}
         onClick={() => dialog.show(() => <ImagePreview src={url()!} alt={filename()} />)}
       >
-        <img src={url()!} alt={filename()} loading="lazy" />
+        <img src={url()!} alt={filename()} loading="lazy" onError={() => setImageFailed(true)} />
       </button>
     </Show>
   )
