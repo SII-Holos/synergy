@@ -48,8 +48,8 @@
     "/global/dispose": {
       "post": {
         "operationId": "global.dispose",
-        "summary": "Dispose instance",
-        "description": "Clean up and dispose all Synergy instances, releasing all resources.",
+        "summary": "Dispose scope runtimes",
+        "description": "Clean up and dispose all scope runtimes, releasing all scoped resources.",
         "responses": {
           "200": {
             "description": "Global disposed",
@@ -2117,9 +2117,9 @@
         ]
       }
     },
-    "/instance/dispose": {
+    "/scope/runtime/dispose": {
       "post": {
-        "operationId": "instance.dispose",
+        "operationId": "scope.runtime.dispose",
         "parameters": [
           {
             "in": "query",
@@ -2129,11 +2129,11 @@
             }
           }
         ],
-        "summary": "Dispose instance",
-        "description": "Clean up and dispose the current Synergy instance, releasing all resources.",
+        "summary": "Dispose scope runtime",
+        "description": "Clean up and dispose the current scope runtime, releasing scoped resources.",
         "responses": {
           "200": {
-            "description": "Instance disposed",
+            "description": "Scope runtime disposed",
             "content": {
               "application/json": {
                 "schema": {
@@ -2146,7 +2146,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.instance.dispose({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.scope.runtime.dispose({\n  ...\n})"
           }
         ]
       }
@@ -2164,7 +2164,7 @@
           }
         ],
         "summary": "Get paths",
-        "description": "Retrieve the current working directory and related path information for the Synergy instance.",
+        "description": "Retrieve the current working directory and related path information for the active scope context.",
         "responses": {
           "200": {
             "description": "Path",
@@ -16067,6 +16067,10 @@
               "type": "string"
             }
           },
+          "cwd": {
+            "description": "Working directory for local MCP servers",
+            "type": "string"
+          },
           "environment": {
             "description": "Environment variables to set when running the MCP server",
             "type": "object",
@@ -23956,6 +23960,28 @@
         },
         "required": ["type", "properties"]
       },
+      "Event.scope.runtime.disposed": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "scope.runtime.disposed"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "scopeID": {
+                "type": "string"
+              },
+              "directory": {
+                "type": "string"
+              }
+            },
+            "required": ["scopeID"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
       "Event.installation.updated": {
         "type": "object",
         "properties": {
@@ -24016,25 +24042,6 @@
               }
             },
             "required": ["scope", "changedFields"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.server.instance.disposed": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "server.instance.disposed"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "directory": {
-                "type": "string"
-              }
-            },
-            "required": ["directory"]
           }
         },
         "required": ["type", "properties"]
@@ -24132,6 +24139,36 @@
         },
         "required": ["type", "properties"]
       },
+      "Event.command.executed": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "command.executed"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "sessionID": {
+                "type": "string",
+                "pattern": "^ses.*"
+              },
+              "arguments": {
+                "type": "string"
+              },
+              "messageID": {
+                "type": "string",
+                "pattern": "^msg.*"
+              }
+            },
+            "required": ["name", "sessionID", "arguments", "messageID"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
       "Event.file.edited": {
         "type": "object",
         "properties": {
@@ -24147,42 +24184,6 @@
               }
             },
             "required": ["file"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.lsp.client.diagnostics": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "lsp.client.diagnostics"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "serverID": {
-                "type": "string"
-              },
-              "path": {
-                "type": "string"
-              }
-            },
-            "required": ["serverID", "path"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.lsp.updated": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "lsp.updated"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {}
           }
         },
         "required": ["type", "properties"]
@@ -24222,32 +24223,38 @@
         },
         "required": ["type", "properties"]
       },
-      "Event.command.executed": {
+      "Event.lsp.client.diagnostics": {
         "type": "object",
         "properties": {
           "type": {
             "type": "string",
-            "const": "command.executed"
+            "const": "lsp.client.diagnostics"
           },
           "properties": {
             "type": "object",
             "properties": {
-              "name": {
+              "serverID": {
                 "type": "string"
               },
-              "sessionID": {
-                "type": "string",
-                "pattern": "^ses.*"
-              },
-              "arguments": {
+              "path": {
                 "type": "string"
-              },
-              "messageID": {
-                "type": "string",
-                "pattern": "^msg.*"
               }
             },
-            "required": ["name", "sessionID", "arguments", "messageID"]
+            "required": ["serverID", "path"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.lsp.updated": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "lsp.updated"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {}
           }
         },
         "required": ["type", "properties"]
@@ -25378,6 +25385,9 @@
             "$ref": "#/components/schemas/Event.scope.removed"
           },
           {
+            "$ref": "#/components/schemas/Event.scope.runtime.disposed"
+          },
+          {
             "$ref": "#/components/schemas/Event.installation.updated"
           },
           {
@@ -25385,9 +25395,6 @@
           },
           {
             "$ref": "#/components/schemas/Event.config.updated"
-          },
-          {
-            "$ref": "#/components/schemas/Event.server.instance.disposed"
           },
           {
             "$ref": "#/components/schemas/Event.mcp.tools.changed"
@@ -25405,19 +25412,19 @@
             "$ref": "#/components/schemas/Event.mcp.failed"
           },
           {
+            "$ref": "#/components/schemas/Event.command.executed"
+          },
+          {
             "$ref": "#/components/schemas/Event.file.edited"
+          },
+          {
+            "$ref": "#/components/schemas/Event.file.watcher.updated"
           },
           {
             "$ref": "#/components/schemas/Event.lsp.client.diagnostics"
           },
           {
             "$ref": "#/components/schemas/Event.lsp.updated"
-          },
-          {
-            "$ref": "#/components/schemas/Event.file.watcher.updated"
-          },
-          {
-            "$ref": "#/components/schemas/Event.command.executed"
           },
           {
             "$ref": "#/components/schemas/Event.vcs.branch.updated"

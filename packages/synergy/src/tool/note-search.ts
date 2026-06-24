@@ -3,7 +3,7 @@ import { Tool } from "./tool"
 import { NoteStore } from "../note"
 import { NoteMarkdown } from "../note"
 import { NoteTypes } from "../note"
-import { Instance } from "../scope/instance"
+import { ScopeContext } from "../scope/context"
 import DESCRIPTION from "./note-search.txt"
 import { Plugin } from "../plugin"
 
@@ -57,7 +57,7 @@ export const NoteSearchTool = Tool.define("note_search", {
   description: DESCRIPTION,
   parameters,
   async execute(params: z.infer<typeof parameters>) {
-    const currentScopeID = Instance.scope.id
+    const currentScopeID = ScopeContext.current.scope.id
     const search = await Plugin.trigger(
       "note.search.before",
       {

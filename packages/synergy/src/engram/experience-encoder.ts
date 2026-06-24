@@ -60,7 +60,7 @@ export namespace ExperienceEncoder {
 
     const scope = session.scope as Scope
 
-    const config = await Config.get()
+    const config = await Config.current()
     const engram = (config as any).engram as
       | { experience?: { encode?: boolean; learning?: Config.Learning } }
       | undefined
@@ -237,7 +237,7 @@ export namespace ExperienceEncoder {
     const session = await Session.get(sessionID).catch(() => undefined)
     if (session?.parentID) return
 
-    const config = await Config.get()
+    const config = await Config.current()
     const engram = (config as any).engram as
       | { experience?: { encode?: boolean; learning?: Config.Learning } }
       | undefined

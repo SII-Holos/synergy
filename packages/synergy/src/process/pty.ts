@@ -5,7 +5,8 @@ import z from "zod"
 import { Identifier } from "../id/id"
 import { Log } from "../util/log"
 import type { WSContext } from "hono/ws"
-import { Instance } from "../scope/instance"
+import { ScopeContext } from "../scope/context"
+import { ScopedState } from "../scope/scoped-state"
 import { lazy } from "@ericsanchezok/synergy-util/lazy"
 import { Shell } from "@/util/shell"
 
@@ -70,7 +71,7 @@ export namespace Pty {
     subscribers: Set<WSContext>
   }
 
-  const state = Instance.state(
+  const state = ScopedState.create(
     () => new Map<string, ActiveSession>(),
     async (sessions) => {
       for (const session of sessions.values()) {
@@ -101,7 +102,7 @@ export namespace Pty {
       args.push("-l")
     }
 
-    const cwd = input.cwd || Instance.directory
+    const cwd = input.cwd || ScopeContext.current.directory
     const env = { ...process.env, ...input.env, TERM: "xterm-256color" } as Record<string, string>
     log.info("creating session", { id, cmd: command, args, cwd })
 

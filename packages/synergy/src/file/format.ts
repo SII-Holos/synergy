@@ -7,7 +7,8 @@ import z from "zod"
 import * as Formatter from "./formatter"
 import { Config } from "../config/config"
 import { mergeDeep } from "remeda"
-import { Instance } from "../scope/instance"
+import { ScopeContext } from "../scope/context"
+import { ScopedState } from "../scope/scoped-state"
 
 export namespace Format {
   const log = Log.create({ service: "format" })
@@ -23,9 +24,9 @@ export namespace Format {
     })
   export type Status = z.infer<typeof Status>
 
-  const state = Instance.state(async () => {
+  const state = ScopedState.create(async () => {
     const enabled: Record<string, boolean> = {}
-    const cfg = await Config.get()
+    const cfg = await Config.current()
 
     const formatters: Record<string, Formatter.Info> = {}
     if (cfg.formatter === false) {
@@ -108,7 +109,7 @@ export namespace Format {
 
   export function init() {
     log.info("init")
-    const fmtState = Instance.state(
+    const fmtState = ScopedState.create(
       () => {
         const unsub = Bus.subscribe(File.Event.Edited, async (payload) => {
           const file = payload.properties.file
@@ -120,7 +121,7 @@ export namespace Format {
             try {
               const proc = Bun.spawn({
                 cmd: item.command.map((x) => x.replace("$FILE", file)),
-                cwd: Instance.directory,
+                cwd: ScopeContext.current.directory,
                 env: { ...process.env, ...item.environment },
                 stdout: "ignore",
                 stderr: "ignore",

@@ -1,7 +1,8 @@
-import { Instance } from "../scope/instance"
+import { ScopeContext } from "../scope/context"
+import { ScopedState } from "../scope/scoped-state"
 
 export namespace Env {
-  const state = Instance.state(() => {
+  const state = ScopedState.create(() => {
     return process.env as Record<string, string | undefined>
   })
 

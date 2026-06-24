@@ -1,20 +1,20 @@
 import { describe, expect, test, beforeEach } from "bun:test"
 import { Contact } from "../../../src/holos/contact"
-import { Instance } from "../../../src/scope/instance"
+import { ScopeContext } from "../../../src/scope/context"
 import { Scope } from "../../../src/scope"
 import { tmpdir } from "../../fixture/fixture"
 
 describe("Contact sync update logic", () => {
-  async function withInstance(fn: () => Promise<void>) {
+  async function withScopeContext(fn: () => Promise<void>) {
     await using tmp = await tmpdir()
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn,
     })
   }
 
   test("add new contact", async () => {
-    await withInstance(async () => {
+    await withScopeContext(async () => {
       const contact = await Contact.add({
         id: "peer_001",
         name: "Alice",
@@ -29,7 +29,7 @@ describe("Contact sync update logic", () => {
   })
 
   test("update contact name only", async () => {
-    await withInstance(async () => {
+    await withScopeContext(async () => {
       const contact = await Contact.add({
         id: "peer_002",
         name: "Bob",
@@ -44,7 +44,7 @@ describe("Contact sync update logic", () => {
   })
 
   test("update preserves fields not being changed", async () => {
-    await withInstance(async () => {
+    await withScopeContext(async () => {
       const contact = await Contact.add({
         id: "peer_005",
         name: "Eve",
@@ -60,7 +60,7 @@ describe("Contact sync update logic", () => {
   })
 
   test("list includes added contacts", async () => {
-    await withInstance(async () => {
+    await withScopeContext(async () => {
       await Contact.add({
         id: "peer_list_a",
         name: "ListA",
@@ -80,7 +80,7 @@ describe("Contact sync update logic", () => {
   })
 
   test("remove deletes contact", async () => {
-    await withInstance(async () => {
+    await withScopeContext(async () => {
       await Contact.add({
         id: "peer_del",
         name: "ToDelete",

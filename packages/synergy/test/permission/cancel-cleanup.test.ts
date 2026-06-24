@@ -1,13 +1,13 @@
 import { test, expect } from "bun:test"
 import { PermissionNext } from "../../src/permission/next"
 import { SessionInvoke } from "../../src/session/invoke"
-import { Instance } from "../../src/scope/instance"
+import { ScopeContext } from "../../src/scope/context"
 import { Session } from "../../src/session"
 import { tmpdir } from "../fixture/fixture"
 
 test("cancel - clears all pending PermissionNext entries for the cancelled session", async () => {
   await using tmp = await tmpdir({ git: true })
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
       const session = await Session.create({ title: "cancel-cleanup-test" })
@@ -54,7 +54,7 @@ test("cancel - clears all pending PermissionNext entries for the cancelled sessi
 
 test("cancel - rejects pending promises when session is cancelled", async () => {
   await using tmp = await tmpdir({ git: true })
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
       const session = await Session.create({ title: "cancel-reject" })
@@ -100,7 +100,7 @@ test("cancel - rejects pending promises when session is cancelled", async () => 
 
 test("cancel - reply on cancelled session request ID is no-op", async () => {
   await using tmp = await tmpdir({ git: true })
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
       const session = await Session.create({ title: "cancel-reply-noop" })
@@ -131,7 +131,7 @@ test("cancel - reply on cancelled session request ID is no-op", async () => {
 
 test("cancel - only clears entries for the targeted session", async () => {
   await using tmp = await tmpdir({ git: true })
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
       const sessionA = await Session.create({ title: "cancel-scope-A" })

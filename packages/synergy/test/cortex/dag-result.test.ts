@@ -3,7 +3,7 @@ import { describe, expect, test, beforeEach, afterEach } from "bun:test"
 import { Dag } from "../../src/session/dag"
 import { Cortex } from "../../src/cortex"
 import { Session } from "../../src/session"
-import { Instance } from "../../src/scope/instance"
+import { ScopeContext } from "../../src/scope/context"
 import { tmpdir } from "../fixture/fixture"
 
 // ---------------------------------------------------------------------------
@@ -173,7 +173,7 @@ describe("delegated subagent with DAG context (integration)", () => {
 
   test("delegated_subagent task populates DAG node with upstream completion context", async () => {
     await using tmp = await tmpdir({ git: true })
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const parentSession = await Session.create({})
@@ -233,7 +233,7 @@ describe("delegated subagent with DAG context (integration)", () => {
 
   test("delegated_subagent without dagNodeId does not modify DAG", async () => {
     await using tmp = await tmpdir({ git: true })
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const parentSession = await Session.create({})
@@ -269,7 +269,7 @@ describe("delegated subagent with DAG context (integration)", () => {
 
   test("completed task result set on DAG node preserves content", async () => {
     await using tmp = await tmpdir({ git: true })
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const parentSession = await Session.create({})
@@ -305,7 +305,7 @@ describe("delegated subagent with DAG context (integration)", () => {
 
   test("primary execution role task does NOT set upstream-results context but still updates DAG", async () => {
     await using tmp = await tmpdir({ git: true })
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const parentSession = await Session.create({})
@@ -375,7 +375,7 @@ describe("dagpatch rejects task_id / session_id mutation on completed nodes", ()
 
   test("completed node rejects task_id mutation", async () => {
     await using tmp = await tmpdir({ git: true })
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const session = await Session.create({})
@@ -417,7 +417,7 @@ describe("dagpatch rejects task_id / session_id mutation on completed nodes", ()
 
   test("completed node rejects session_id mutation", async () => {
     await using tmp = await tmpdir({ git: true })
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const session = await Session.create({})

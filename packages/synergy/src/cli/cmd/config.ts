@@ -563,7 +563,7 @@ async function manualProviderSelection(selectedCount = 0): Promise<boolean> {
     if (selectedCount === 0) {
       await Config.updateGlobal({ model: modelString } as Config.Info)
     } else {
-      const existing = await Config.get().catch(() => ({}) as Config.Info)
+      const existing = await Config.globalResolved().catch(() => ({}) as Config.Info)
       if (!existing.model) {
         await Config.updateGlobal({ model: modelString } as Config.Info)
       }

@@ -2,7 +2,7 @@ import { formatLocalDateTime } from "@/util/time-format"
 import z from "zod"
 import { Tool } from "./tool"
 import { Agenda, AgendaTypes } from "../agenda"
-import { Instance } from "../scope/instance"
+import { ScopeContext } from "../scope/context"
 import DESCRIPTION from "./agenda-update.txt"
 
 const parameters = z.object({
@@ -53,7 +53,7 @@ export const AgendaUpdateTool = Tool.define("agenda_update", {
     if (params.sessionMode !== undefined) patch.sessionMode = params.sessionMode
     if (params.sessionRefs !== undefined) patch.sessionRefs = params.sessionRefs
 
-    const item = await Agenda.update(params.id, patch, Instance.scope.id)
+    const item = await Agenda.update(params.id, patch, ScopeContext.current.scope.id)
 
     const lines = ["Agenda item updated.", `ID: ${item.id}`, `Title: ${item.title}`, `Status: ${item.status}`]
     if (item.state.nextRunAt) lines.push(`Next run: ${formatLocalDateTime(item.state.nextRunAt)}`)

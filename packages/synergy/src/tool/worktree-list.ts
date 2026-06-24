@@ -1,7 +1,7 @@
 import z from "zod"
 import { Tool } from "./tool"
 import { Worktree } from "../project/worktree"
-import { Instance } from "../scope/instance"
+import { ScopeContext } from "../scope/context"
 
 const parameters = z.object({})
 
@@ -25,7 +25,7 @@ export const WorktreeListTool = Tool.define<typeof parameters, WorktreeListMetad
   parameters,
   async execute(_params, _ctx) {
     const worktrees = await Worktree.list()
-    const ws = Instance.workspace
+    const ws = ScopeContext.current.workspace
 
     const activeWt = ws ? (worktrees.find((wt) => wt.path === ws.path) ?? null) : null
 

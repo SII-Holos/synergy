@@ -1,7 +1,7 @@
 import z from "zod"
 import { Tool } from "./tool"
 import { NoteError, NoteStore, NoteMarkdown } from "../note"
-import { Instance } from "../scope/instance"
+import { ScopeContext } from "../scope/context"
 import DESCRIPTION from "./note-write.txt"
 
 const parameters = z.object({
@@ -55,7 +55,7 @@ async function updateExisting(input: {
   defaultAgent?: string
   content: unknown
 }) {
-  const existing = await NoteStore.getAny(Instance.scope.id, input.id)
+  const existing = await NoteStore.getAny(ScopeContext.current.scope.id, input.id)
   const nextTitle = input.title ?? existing.title
   const nextKind =
     input.kind ?? (input.description !== undefined || input.defaultAgent !== undefined ? "blueprint" : undefined)
@@ -80,7 +80,7 @@ async function updateExisting(input: {
   }
 
   try {
-    await NoteStore.updateAny(Instance.scope.id, input.id, patch as any)
+    await NoteStore.updateAny(ScopeContext.current.scope.id, input.id, patch as any)
   } catch (error) {
     if (error instanceof NoteError.Conflict) {
       return createConflictResult({
@@ -125,7 +125,7 @@ export const NoteWriteTool = Tool.define("note_write", {
         }
       }
 
-      const scopeID = params.scope === "global" ? "global" : Instance.scope.id
+      const scopeID = params.scope === "global" ? "global" : ScopeContext.current.scope.id
       const kind =
         params.kind ?? (params.description !== undefined || params.defaultAgent !== undefined ? "blueprint" : "note")
       const note = await NoteStore.create(
@@ -169,7 +169,7 @@ export const NoteWriteTool = Tool.define("note_write", {
     }
 
     if (params.mode === "append") {
-      const existing = await NoteStore.getAny(Instance.scope.id, params.id)
+      const existing = await NoteStore.getAny(ScopeContext.current.scope.id, params.id)
       const merged = {
         type: "doc" as const,
         content: [...(existing.content?.content ?? []), ...(tiptapContent.content ?? [])],

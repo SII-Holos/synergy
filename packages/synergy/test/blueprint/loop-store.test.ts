@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import { tmpdir } from "../fixture/fixture"
-import { Instance } from "../../src/scope/instance"
+import { ScopeContext } from "../../src/scope/context"
 import { Scope } from "../../src/scope"
 import { BlueprintLoopStore } from "../../src/blueprint/loop-store"
 import { LoopError } from "../../src/blueprint/error"
@@ -32,11 +32,11 @@ describe("BlueprintLoopStore transitions", () => {
     await using tmp = await tmpdir({ git: true })
     const scope = (await Scope.fromDirectory(tmp.path)).scope
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope,
       fn: async () => {
         const id = Identifier.ascending("blueprint_loop")
-        const scopeID = Instance.scope.id
+        const scopeID = ScopeContext.current.scope.id
         const sid = Identifier.asScopeID(scopeID)
         const now = Date.now()
         await Storage.write(StoragePath.blueprintLoop(sid, id), {
@@ -61,11 +61,11 @@ describe("BlueprintLoopStore transitions", () => {
     await using tmp = await tmpdir({ git: true })
     const scope = (await Scope.fromDirectory(tmp.path)).scope
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope,
       fn: async () => {
         const id = Identifier.ascending("blueprint_loop")
-        const scopeID = Instance.scope.id
+        const scopeID = ScopeContext.current.scope.id
         const sid = Identifier.asScopeID(scopeID)
         const now = Date.now()
         await Storage.write(StoragePath.blueprintLoop(sid, id), {
@@ -90,11 +90,11 @@ describe("BlueprintLoopStore transitions", () => {
     await using tmp = await tmpdir({ git: true })
     const scope = (await Scope.fromDirectory(tmp.path)).scope
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope,
       fn: async () => {
         const id = Identifier.ascending("blueprint_loop")
-        const scopeID = Instance.scope.id
+        const scopeID = ScopeContext.current.scope.id
         const sid = Identifier.asScopeID(scopeID)
         const now = Date.now()
         await Storage.write(StoragePath.blueprintLoop(sid, id), {
@@ -118,7 +118,7 @@ describe("BlueprintLoopStore transitions", () => {
     await using tmp = await tmpdir({ git: true })
     const scope = (await Scope.fromDirectory(tmp.path)).scope
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope,
       fn: async () => {
         const loop = await BlueprintLoopStore.create({
@@ -127,11 +127,11 @@ describe("BlueprintLoopStore transitions", () => {
           sessionID: "ses_test",
         })
         // create() returns "armed"; transition to running first
-        await BlueprintLoopStore.updateStatus(Instance.scope.id, loop.id, {
+        await BlueprintLoopStore.updateStatus(ScopeContext.current.scope.id, loop.id, {
           status: "running" as any,
         })
 
-        const updated = await BlueprintLoopStore.updateStatus(Instance.scope.id, loop.id, {
+        const updated = await BlueprintLoopStore.updateStatus(ScopeContext.current.scope.id, loop.id, {
           status: "waiting" as any,
         })
         expect(updated.status as string).toBe("waiting")
@@ -143,7 +143,7 @@ describe("BlueprintLoopStore transitions", () => {
     await using tmp = await tmpdir({ git: true })
     const scope = (await Scope.fromDirectory(tmp.path)).scope
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope,
       fn: async () => {
         const loop = await BlueprintLoopStore.create({
@@ -152,14 +152,14 @@ describe("BlueprintLoopStore transitions", () => {
           sessionID: "ses_test",
         })
         // armed → running → waiting
-        await BlueprintLoopStore.updateStatus(Instance.scope.id, loop.id, {
+        await BlueprintLoopStore.updateStatus(ScopeContext.current.scope.id, loop.id, {
           status: "running" as any,
         })
-        await BlueprintLoopStore.updateStatus(Instance.scope.id, loop.id, {
+        await BlueprintLoopStore.updateStatus(ScopeContext.current.scope.id, loop.id, {
           status: "waiting" as any,
         })
 
-        const updated = await BlueprintLoopStore.updateStatus(Instance.scope.id, loop.id, {
+        const updated = await BlueprintLoopStore.updateStatus(ScopeContext.current.scope.id, loop.id, {
           status: "running" as any,
         })
         expect(updated.status).toBe("running")
@@ -171,7 +171,7 @@ describe("BlueprintLoopStore transitions", () => {
     await using tmp = await tmpdir({ git: true })
     const scope = (await Scope.fromDirectory(tmp.path)).scope
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope,
       fn: async () => {
         const loop = await BlueprintLoopStore.create({
@@ -180,14 +180,14 @@ describe("BlueprintLoopStore transitions", () => {
           sessionID: "ses_test",
         })
         // armed → running → waiting
-        await BlueprintLoopStore.updateStatus(Instance.scope.id, loop.id, {
+        await BlueprintLoopStore.updateStatus(ScopeContext.current.scope.id, loop.id, {
           status: "running" as any,
         })
-        await BlueprintLoopStore.updateStatus(Instance.scope.id, loop.id, {
+        await BlueprintLoopStore.updateStatus(ScopeContext.current.scope.id, loop.id, {
           status: "waiting" as any,
         })
 
-        const updated = await BlueprintLoopStore.updateStatus(Instance.scope.id, loop.id, {
+        const updated = await BlueprintLoopStore.updateStatus(ScopeContext.current.scope.id, loop.id, {
           status: "cancelled" as any,
         })
         expect(updated.status).toBe("cancelled")
@@ -199,7 +199,7 @@ describe("BlueprintLoopStore transitions", () => {
     await using tmp = await tmpdir({ git: true })
     const scope = (await Scope.fromDirectory(tmp.path)).scope
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope,
       fn: async () => {
         const loop = await BlueprintLoopStore.create({
@@ -208,14 +208,14 @@ describe("BlueprintLoopStore transitions", () => {
           sessionID: "ses_test",
         })
         // armed → running → auditing
-        await BlueprintLoopStore.updateStatus(Instance.scope.id, loop.id, {
+        await BlueprintLoopStore.updateStatus(ScopeContext.current.scope.id, loop.id, {
           status: "running" as any,
         })
-        await BlueprintLoopStore.updateStatus(Instance.scope.id, loop.id, {
+        await BlueprintLoopStore.updateStatus(ScopeContext.current.scope.id, loop.id, {
           status: "auditing" as any,
         })
 
-        const updated = await BlueprintLoopStore.updateStatus(Instance.scope.id, loop.id, {
+        const updated = await BlueprintLoopStore.updateStatus(ScopeContext.current.scope.id, loop.id, {
           status: "completed" as any,
         })
         expect(updated.status).toBe("completed")
@@ -227,7 +227,7 @@ describe("BlueprintLoopStore transitions", () => {
     await using tmp = await tmpdir({ git: true })
     const scope = (await Scope.fromDirectory(tmp.path)).scope
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope,
       fn: async () => {
         const loop = await BlueprintLoopStore.create({
@@ -236,13 +236,13 @@ describe("BlueprintLoopStore transitions", () => {
           sessionID: "ses_test",
         })
         // armed → running → completed
-        await BlueprintLoopStore.updateStatus(Instance.scope.id, loop.id, {
+        await BlueprintLoopStore.updateStatus(ScopeContext.current.scope.id, loop.id, {
           status: "running" as any,
         })
-        await BlueprintLoopStore.complete(Instance.scope.id, loop.id)
+        await BlueprintLoopStore.complete(ScopeContext.current.scope.id, loop.id)
 
         await expect(
-          BlueprintLoopStore.updateStatus(Instance.scope.id, loop.id, { status: "running" as any }),
+          BlueprintLoopStore.updateStatus(ScopeContext.current.scope.id, loop.id, { status: "running" as any }),
         ).rejects.toBeInstanceOf(LoopError.InvalidTransition)
       },
     })
@@ -252,7 +252,7 @@ describe("BlueprintLoopStore transitions", () => {
     await using tmp = await tmpdir({ git: true })
     const scope = (await Scope.fromDirectory(tmp.path)).scope
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope,
       fn: async () => {
         const loop = await BlueprintLoopStore.create({
@@ -261,15 +261,15 @@ describe("BlueprintLoopStore transitions", () => {
           sessionID: "ses_test",
         })
         // armed → running → failed
-        await BlueprintLoopStore.updateStatus(Instance.scope.id, loop.id, {
+        await BlueprintLoopStore.updateStatus(ScopeContext.current.scope.id, loop.id, {
           status: "running" as any,
         })
-        await BlueprintLoopStore.updateStatus(Instance.scope.id, loop.id, {
+        await BlueprintLoopStore.updateStatus(ScopeContext.current.scope.id, loop.id, {
           status: "failed" as any,
         })
 
         await expect(
-          BlueprintLoopStore.updateStatus(Instance.scope.id, loop.id, { status: "running" as any }),
+          BlueprintLoopStore.updateStatus(ScopeContext.current.scope.id, loop.id, { status: "running" as any }),
         ).rejects.toBeInstanceOf(LoopError.InvalidTransition)
       },
     })
@@ -279,7 +279,7 @@ describe("BlueprintLoopStore transitions", () => {
     await using tmp = await tmpdir({ git: true })
     const scope = (await Scope.fromDirectory(tmp.path)).scope
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope,
       fn: async () => {
         const loop = await BlueprintLoopStore.create({
@@ -288,12 +288,12 @@ describe("BlueprintLoopStore transitions", () => {
           sessionID: "ses_test",
         })
         // armed → cancelled
-        await BlueprintLoopStore.updateStatus(Instance.scope.id, loop.id, {
+        await BlueprintLoopStore.updateStatus(ScopeContext.current.scope.id, loop.id, {
           status: "cancelled" as any,
         })
 
         await expect(
-          BlueprintLoopStore.updateStatus(Instance.scope.id, loop.id, { status: "running" as any }),
+          BlueprintLoopStore.updateStatus(ScopeContext.current.scope.id, loop.id, { status: "running" as any }),
         ).rejects.toBeInstanceOf(LoopError.InvalidTransition)
       },
     })
@@ -303,7 +303,7 @@ describe("BlueprintLoopStore transitions", () => {
     await using tmp = await tmpdir({ git: true })
     const scope = (await Scope.fromDirectory(tmp.path)).scope
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope,
       fn: async () => {
         const loop = await BlueprintLoopStore.create({
@@ -312,12 +312,12 @@ describe("BlueprintLoopStore transitions", () => {
           sessionID: "ses_test",
         })
         // armed → running → completed
-        await BlueprintLoopStore.updateStatus(Instance.scope.id, loop.id, {
+        await BlueprintLoopStore.updateStatus(ScopeContext.current.scope.id, loop.id, {
           status: "running" as any,
         })
-        await BlueprintLoopStore.complete(Instance.scope.id, loop.id)
+        await BlueprintLoopStore.complete(ScopeContext.current.scope.id, loop.id)
 
-        const updated = await BlueprintLoopStore.updateStatus(Instance.scope.id, loop.id, {
+        const updated = await BlueprintLoopStore.updateStatus(ScopeContext.current.scope.id, loop.id, {
           status: "completed" as any,
         })
         expect(updated.status).toBe("completed")

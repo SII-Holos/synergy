@@ -6,7 +6,7 @@ import { AppChannel } from "../../src/channel/app"
 import { SessionEvent } from "../../src/session/event"
 import { Bus } from "../../src/bus"
 import { Log } from "../../src/util/log"
-import { Instance } from "../../src/scope/instance"
+import { ScopeContext } from "../../src/scope/context"
 import { Scope } from "../../src/scope"
 
 Log.init({ print: false })
@@ -14,7 +14,7 @@ Log.init({ print: false })
 describe("session lifecycle events", () => {
   test("emits session.updated when a session is created", async () => {
     await using tmp = await tmpdir({ git: true })
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const resolved = Promise.withResolvers<Session.Info>()
@@ -39,7 +39,7 @@ describe("session lifecycle events", () => {
 
   test("app channel sessions stay interactive", async () => {
     await using tmp = await tmpdir({ git: true })
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const session = await AppChannel.session()
@@ -53,7 +53,7 @@ describe("session lifecycle events", () => {
 
   test("child sessions inherit unattended interaction from parent", async () => {
     await using tmp = await tmpdir({ git: true })
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const parent = await Session.create({
@@ -72,7 +72,7 @@ describe("session lifecycle events", () => {
 
   test("resolveControlProfile walks the parent chain", async () => {
     await using tmp = await tmpdir({ git: true })
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const parent = await Session.create({
@@ -96,7 +96,7 @@ describe("session lifecycle events", () => {
 
   test("resolveControlProfile returns own value for root session", async () => {
     await using tmp = await tmpdir({ git: true })
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const session = await Session.create({
@@ -112,7 +112,7 @@ describe("session lifecycle events", () => {
 
   test("resolveControlProfile sees updated parent profile", async () => {
     await using tmp = await tmpdir({ git: true })
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const parent = await Session.create({
@@ -133,7 +133,7 @@ describe("session lifecycle events", () => {
 
   test("child sessions inherit the parent control profile via Session.get", async () => {
     await using tmp = await tmpdir({ git: true })
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const parent = await Session.create({
@@ -161,7 +161,7 @@ describe("session lifecycle events", () => {
 
   test("parent control profile updates propagate via runtime resolver", async () => {
     await using tmp = await tmpdir({ git: true })
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const parent = await Session.create({

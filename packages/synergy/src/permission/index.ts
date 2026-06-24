@@ -4,7 +4,8 @@ import z from "zod"
 import { Log } from "../util/log"
 import { Identifier } from "../id/id"
 import { Plugin } from "../plugin"
-import { Instance } from "../scope/instance"
+import { ScopeContext } from "../scope/context"
+import { ScopedState } from "../scope/scoped-state"
 import { TimeoutConfig } from "@/util/timeout-config"
 
 export namespace Permission {
@@ -44,7 +45,7 @@ export namespace Permission {
     ),
   }
 
-  const state = Instance.state(
+  const state = ScopedState.create(
     () => {
       const pending: {
         [sessionID: string]: {

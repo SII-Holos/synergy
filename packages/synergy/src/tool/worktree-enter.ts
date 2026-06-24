@@ -1,7 +1,7 @@
 import z from "zod"
 import { Tool } from "./tool"
 import { Worktree } from "../project/worktree"
-import { Instance } from "../scope/instance"
+import { ScopeContext } from "../scope/context"
 import { PermissionNext } from "../permission/next"
 import { EnforcementError } from "@/enforcement/errors"
 
@@ -66,7 +66,7 @@ export const WorktreeEnterTool = Tool.define<typeof parameters, WorktreeEnterMet
     "Omit 'target' to create a new worktree with an auto-generated unique name.",
   parameters,
   async execute(params, ctx) {
-    const currentWorkspace = Instance.workspace
+    const currentWorkspace = ScopeContext.current.workspace
     if (currentWorkspace?.type === "git_worktree") {
       const cw = currentWorkspace as Record<string, unknown>
       const currentName = (cw.name ?? cw.worktreeID ?? cw.path ?? "unknown") as string

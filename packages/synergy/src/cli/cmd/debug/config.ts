@@ -1,6 +1,6 @@
 import { EOL } from "os"
 import { Config } from "../../../config/config"
-import { bootstrap } from "../../bootstrap"
+import { withScopeContext } from "../../scope"
 import { cmd } from "../cmd"
 
 export const ConfigCommand = cmd({
@@ -8,8 +8,8 @@ export const ConfigCommand = cmd({
   describe: "show resolved configuration",
   builder: (yargs) => yargs,
   async handler() {
-    await bootstrap(process.cwd(), async () => {
-      const config = await Config.get()
+    await withScopeContext(process.cwd(), async () => {
+      const config = await Config.current()
       process.stdout.write(JSON.stringify(config, null, 2) + EOL)
     })
   },

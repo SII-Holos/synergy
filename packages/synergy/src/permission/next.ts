@@ -4,7 +4,8 @@ import { Config } from "@/config/config"
 import { Identifier } from "@/id/id"
 import { isNonBypassableMetadata } from "@/enforcement/capability"
 import { PermissionRules } from "@/permission/rules"
-import { Instance } from "@/scope/instance"
+import { ScopeContext } from "@/scope/context"
+import { ScopedState } from "@/scope/scoped-state"
 import { SessionInteraction } from "@/session/interaction"
 import { fn } from "@/util/fn"
 import { Log } from "@/util/log"
@@ -106,7 +107,7 @@ export namespace PermissionNext {
     return isNonBypassableMetadata(request.metadata)
   }
 
-  const state = Instance.state(async () => {
+  const state = ScopedState.create(async () => {
     const pending: Record<
       string,
       {

@@ -1,7 +1,7 @@
 import fs from "fs/promises"
 import { DaemonPaths } from "./paths"
 
-export namespace SingleInstance {
+export namespace ServerProcessLock {
   export interface LockInfo {
     pid: number
     startedAt: number
@@ -12,7 +12,7 @@ export namespace SingleInstance {
 
   export class AlreadyRunningError extends Error {
     constructor(readonly lock: LockInfo) {
-      super(`Another Synergy instance is already running (pid ${lock.pid})`)
+      super(`Another Synergy server process is already running (pid ${lock.pid})`)
       this.name = "AlreadyRunningError"
     }
   }

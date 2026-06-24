@@ -59,7 +59,7 @@ export namespace ExperienceRecall {
   }
 
   export async function retrieve(scopeID: string | undefined, query: string, options: Options = {}): Promise<Result[]> {
-    const config = await Config.get()
+    const config = await Config.current()
     const engram = (config as any).engram
     const exp = engram?.experience
     const retConfig: Record<string, any> =

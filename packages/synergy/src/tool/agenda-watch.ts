@@ -5,7 +5,7 @@ import { Agenda } from "../agenda"
 import { AgendaDedup } from "../agenda/dedup"
 import { AgendaStore } from "../agenda/store"
 import { SessionManager } from "../session/manager"
-import { Instance } from "../scope/instance"
+import { ScopeContext } from "../scope/context"
 import DESCRIPTION from "./agenda-watch.txt"
 
 const parameters = z.object({
@@ -56,7 +56,12 @@ export const AgendaWatchTool = Tool.define("agenda_watch", {
     const session = await SessionManager.getSession(ctx.sessionID).catch(() => undefined)
     const trigger = { type: "delay" as const, delay: params.delay }
 
-    const conflicts = await AgendaDedup.findConflicts(Instance.scope.id, params.title, [trigger], params.global)
+    const conflicts = await AgendaDedup.findConflicts(
+      ScopeContext.current.scope.id,
+      params.title,
+      [trigger],
+      params.global,
+    )
     if (conflicts.length > 0) {
       return {
         title: "agenda_watch",

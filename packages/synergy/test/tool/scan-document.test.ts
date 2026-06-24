@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import path from "path"
 import { ScanDocumentTool } from "../../src/tool/scan-document"
-import { Instance } from "../../src/scope/instance"
+import { ScopeContext } from "../../src/scope/context"
 import { tmpdir } from "../fixture/fixture"
 
 const ctx = {
@@ -31,7 +31,7 @@ describe("tool.scan_document", () => {
           await Bun.write(path.join(dir, "data.csv"), "name,age\nAlice,30\nBob,25\n")
         },
       })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const tool = await ScanDocumentTool.init()
@@ -53,7 +53,7 @@ describe("tool.scan_document", () => {
           await Bun.write(path.join(dir, "inventory.csv"), "sku,qty\nABC,10\nDEF,20\n")
         },
       })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const tool = await ScanDocumentTool.init()
@@ -81,7 +81,7 @@ describe("tool.scan_document", () => {
           await Bun.write(path.join(dir, "paged.csv"), csvContent(16))
         },
       })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const tool = await ScanDocumentTool.init()
@@ -105,7 +105,7 @@ describe("tool.scan_document", () => {
           await Bun.write(path.join(dir, "limited.csv"), csvContent(30))
         },
       })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const tool = await ScanDocumentTool.init()
@@ -126,7 +126,7 @@ describe("tool.scan_document", () => {
           await Bun.write(path.join(dir, "large.csv"), csvContent(100))
         },
       })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const tool = await ScanDocumentTool.init()
@@ -145,7 +145,7 @@ describe("tool.scan_document", () => {
           await Bun.write(path.join(dir, "small.csv"), csvContent(3))
         },
       })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const tool = await ScanDocumentTool.init()
@@ -166,7 +166,7 @@ describe("tool.scan_document", () => {
           await Bun.write(path.join(dir, "program.exe"), "binary")
         },
       })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const tool = await ScanDocumentTool.init()
@@ -184,7 +184,7 @@ describe("tool.scan_document", () => {
           await Bun.write(path.join(dir, "lib.dll"), "binary")
         },
       })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const tool = await ScanDocumentTool.init()
@@ -197,7 +197,7 @@ describe("tool.scan_document", () => {
 
     test("throws for file not found", async () => {
       await using tmp = await tmpdir({ git: true })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const tool = await ScanDocumentTool.init()
@@ -215,7 +215,7 @@ describe("tool.scan_document", () => {
           await Bun.write(path.join(dir, "lib.so"), "binary")
         },
       })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const tool = await ScanDocumentTool.init()
@@ -233,7 +233,7 @@ describe("tool.scan_document", () => {
           await Bun.write(path.join(dir, "bad.csv"), "\x00\x01\x02")
         },
       })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const tool = await ScanDocumentTool.init()
@@ -257,7 +257,7 @@ describe("tool.scan_document", () => {
         },
       })
       await using tmp = await tmpdir({ git: true })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const tool = await ScanDocumentTool.init()

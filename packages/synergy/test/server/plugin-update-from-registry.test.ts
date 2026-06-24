@@ -1,6 +1,6 @@
 import { describe, expect, test, mock, afterEach } from "bun:test"
 import { tmpdir } from "../fixture/fixture"
-import { Instance } from "../../src/scope/instance"
+import { ScopeContext } from "../../src/scope/context"
 import { Server } from "../../src/server/server"
 import { Plugin } from "../../src/plugin"
 import { Config } from "../../src/config/config"
@@ -40,14 +40,14 @@ const _origPlugin = {
 }
 
 const _origConfig = {
-  get: Config.get,
+  current: Config.current,
 }
 
 afterEach(() => {
   ;(Plugin as any).get = _origPlugin.get
   ;(Plugin as any).manifest = _origPlugin.manifest
   ;(Plugin as any).getStatus = _origPlugin.getStatus
-  ;(Config as any).get = _origConfig.get
+  ;(Config as any).current = _origConfig.current
 })
 
 // ---------------------------------------------------------------------------
@@ -59,7 +59,7 @@ describe("POST /api/plugins/:pluginId/update-from-registry", () => {
     await using tmp = await tmpdir({ git: true })
     ;(Plugin as any).get = mock(async () => buildLoadedPlugin())
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const app = Server.App()
@@ -80,7 +80,7 @@ describe("POST /api/plugins/:pluginId/update-from-registry", () => {
     await using tmp = await tmpdir({ git: true })
     ;(Plugin as any).get = mock(async () => buildLoadedPlugin())
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const app = Server.App()
@@ -102,7 +102,7 @@ describe("POST /api/plugins/:pluginId/update-from-registry", () => {
     ;(Plugin as any).get = mock(async () => plugin)
     ;(Plugin as any).manifest = mock(async () => manifest)
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const app = Server.App()
@@ -128,7 +128,7 @@ describe("POST /api/plugins/:pluginId/update-from-registry — error states", ()
     await using tmp = await tmpdir({ git: true })
     ;(Plugin as any).get = mock(async () => null)
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const app = Server.App()
@@ -151,7 +151,7 @@ describe("POST /api/plugins/:pluginId/update-from-registry — error states", ()
     ;(Plugin as any).manifest = mock(async () => buildManifest({ version: "1.0.0" }))
 
     // No registry file exists → handler returns structured response indicating no update check possible
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const app = Server.App()
@@ -174,7 +174,7 @@ describe("POST /api/plugins/:pluginId/update-from-registry — error states", ()
     ;(Plugin as any).manifest = mock(async () => buildManifest({ version: "1.0.0" }))
 
     // No registry file exists → handler returns structured response regardless of targetVersion
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const app = Server.App()
@@ -204,7 +204,7 @@ describe("POST /api/plugins/:pluginId/update-from-registry — success responses
     ;(Plugin as any).manifest = mock(async () => manifest)
 
     // The installed version is already the latest in registry → no update needed
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const app = Server.App()
@@ -231,7 +231,7 @@ describe("POST /api/plugins/:pluginId/update-from-registry — success responses
     ;(Plugin as any).manifest = mock(async () => oldManifest)
 
     // The registry has a newer version with expanded permissions → needs consent
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const app = Server.App()
@@ -256,7 +256,7 @@ describe("POST /api/plugins/:pluginId/update-from-registry — success responses
     ;(Plugin as any).get = mock(async () => plugin)
     ;(Plugin as any).manifest = mock(async () => manifest)
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const app = Server.App()
@@ -293,7 +293,7 @@ describe("POST /api/plugins/:pluginId/update-from-registry — edge cases", () =
       return null
     })
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const app = Server.App()

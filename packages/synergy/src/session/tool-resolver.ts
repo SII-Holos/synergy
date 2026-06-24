@@ -19,7 +19,7 @@ import { Session } from "."
 import type { Info } from "./types"
 import type { MessageV2 } from "./message-v2"
 import type { SessionProcessor } from "./processor"
-import { Instance } from "@/scope/instance"
+import { ScopeContext } from "@/scope/context"
 import { EnforcementGate, type Capability } from "@/enforcement/gate"
 import { SandboxBackend } from "@/sandbox/backend"
 import type { SandboxExecutionWrapper } from "@/sandbox/backend"
@@ -62,12 +62,12 @@ export namespace ToolResolver {
     return ControlProfileCompiler.normalize(sessionProfile ?? agent.controlProfile ?? topLevelProfile)
   }
 
-  /** Cached config lookup to avoid repeated Config.get() inside tool execute. */
+  /** Cached config lookup to avoid repeated Config.current() inside tool execute. */
   let _cachedConfig: { controlProfile?: string } | null = null
   async function cachedTopLevelProfile(): Promise<string | undefined> {
     if (_cachedConfig === null) {
       try {
-        _cachedConfig = { controlProfile: (await Config.get()).controlProfile }
+        _cachedConfig = { controlProfile: (await Config.current()).controlProfile }
       } catch {
         _cachedConfig = {}
       }
@@ -327,7 +327,7 @@ export namespace ToolResolver {
     // promote a deny, which was already handled above.
     const hasNonBypassable = envelope.capabilities.some((c) => c.nonBypassable)
     if (!hasNonBypassable) {
-      const cfg = await Config.get()
+      const cfg = await Config.current()
       const autoEnabled = cfg.auto_classifier === true
       if (autoEnabled && !RiskClassifier.isAutoDisabled()) {
         const caps = envelope.capabilities.map((c) => c.class)
@@ -335,7 +335,7 @@ export namespace ToolResolver {
           tool: toolName,
           args,
           capabilities: caps,
-          workspace: Instance.directory,
+          workspace: ScopeContext.current.directory,
         })
         if (RiskClassifier.shouldAutoAllow(classification)) {
           await setApprovalMetadata(ctx, {
@@ -489,11 +489,11 @@ export namespace ToolResolver {
             const topLevelProfile = await cachedTopLevelProfile()
             const sessionProfile = input.session?.id ? await Session.resolveControlProfile(input.session.id) : undefined
             const profileId = resolveEffectiveProfile(input.agent, topLevelProfile, sessionProfile)
-            const workspaceInfo = Instance.workspace
+            const workspaceInfo = ScopeContext.current.workspace
             const interaction = input.session?.interaction
             const interactionMode = interaction?.mode === "unattended" ? "unattended" : "attended"
             return ControlProfileCompiler.resolve(profileId, {
-              workspace: Instance.directory,
+              workspace: ScopeContext.current.directory,
               workspaceType: workspaceInfo?.type === "git_worktree" ? "worktree" : "main",
               interactionMode,
             })
@@ -656,8 +656,8 @@ export namespace ToolResolver {
               runtimeInput.processor.trackExecution(options.toolCallId, executionPromise)
 
               try {
-                const workspace = Instance.directory
-                const workspaceInfo = Instance.workspace
+                const workspace = ScopeContext.current.directory
+                const workspaceInfo = ScopeContext.current.workspace
                 const interaction = runtimeInput.session?.interaction
                 const interactionMode = interaction?.mode === "unattended" ? "unattended" : "attended"
                 const topLevelProfile = await cachedTopLevelProfile()
@@ -827,8 +827,8 @@ export namespace ToolResolver {
                 runtimeInput.processor.trackExecution(opts.toolCallId, executionPromise)
 
                 try {
-                  const workspace = Instance.directory
-                  const workspaceInfo = Instance.workspace
+                  const workspace = ScopeContext.current.directory
+                  const workspaceInfo = ScopeContext.current.workspace
                   const interaction = runtimeInput.session?.interaction
                   const interactionMode = interaction?.mode === "unattended" ? "unattended" : "attended"
                   const topLevelProfile = await cachedTopLevelProfile()

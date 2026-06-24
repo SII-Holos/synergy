@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import { tmpdir } from "../fixture/fixture"
-import { Instance } from "../../src/scope/instance"
+import { ScopeContext } from "../../src/scope/context"
 import { Server } from "../../src/server/server"
 import { Log } from "../../src/util/log"
 import path from "path"
@@ -87,7 +87,7 @@ describe("plugin registry routes v2", () => {
 
     const entry = buildEntry()
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const app = Server.App()
@@ -126,7 +126,7 @@ describe("plugin registry routes v2", () => {
 
     const entry = buildEntry()
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const app = Server.App()
@@ -149,7 +149,7 @@ describe("plugin registry routes v2", () => {
 
     const entry = buildEntry()
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const app = Server.App()
@@ -195,7 +195,7 @@ describe("plugin registry routes v2", () => {
 
     const entry = buildEntry({ rating: 4.5, ratingCount: 10, changelog: "Initial release" })
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const app = Server.App()
@@ -237,7 +237,7 @@ describe("plugin registry routes v2", () => {
 
     const entry = buildEntry({ name: "SearchablePlugin", description: "Find me", keywords: ["searchable"] })
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const app = Server.App()
@@ -268,7 +268,7 @@ describe("plugin registry routes v2", () => {
     await using tmp = await tmpdir({ git: true })
     cleanRegistry()
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const app = Server.App()
@@ -285,7 +285,7 @@ describe("plugin registry routes v2", () => {
     await using tmp = await tmpdir({ git: true })
     cleanRegistry()
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const app = Server.App()
@@ -320,7 +320,7 @@ describe("plugin registry routes v2", () => {
       downloads: 0,
     })
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const app = Server.App()

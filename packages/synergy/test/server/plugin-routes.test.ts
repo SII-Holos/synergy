@@ -2,7 +2,7 @@ import { describe, expect, test, mock, afterEach } from "bun:test"
 import path from "path"
 import fs from "fs"
 import { tmpdir } from "../fixture/fixture"
-import { Instance } from "../../src/scope/instance"
+import { ScopeContext } from "../../src/scope/context"
 import { Server } from "../../src/server/server"
 import { Plugin } from "../../src/plugin"
 import { Config } from "../../src/config/config"
@@ -47,7 +47,7 @@ const _origPlugin = {
 }
 
 const _origConfig = {
-  get: Config.get,
+  current: Config.current,
   updateGlobal: Config.updateGlobal,
 }
 
@@ -57,7 +57,7 @@ afterEach(() => {
   ;(Plugin as any).loaded = _origPlugin.loaded
   ;(Plugin as any).add = _origPlugin.add
   ;(Plugin as any).getStatus = _origPluginStatus.getStatus
-  ;(Config as any).get = _origConfig.get
+  ;(Config as any).current = _origConfig.current
   ;(Config as any).updateGlobal = _origConfig.updateGlobal
 })
 
@@ -140,7 +140,7 @@ describe("GET /plugin/assets/:pluginId/:versionHash/* — asset edge cases", () 
     const plugin = buildLoadedPlugin({ pluginDir: tmp.path })
     ;(Plugin as any).get = mock(async () => plugin)
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const app = Server.App()
@@ -199,7 +199,7 @@ describe("GET /plugin/:pluginId/status — comprehensive status", () => {
       buildStatusResponse({ source: "local", trust: { ...buildStatusResponse().trust, tier: "trusted-import" } }),
     )
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const app = Server.App()
@@ -235,7 +235,7 @@ describe("GET /plugin/:pluginId/status — comprehensive status", () => {
       }),
     )
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const app = Server.App()
@@ -252,7 +252,7 @@ describe("GET /plugin/:pluginId/status — comprehensive status", () => {
     await using tmp = await tmpdir({ git: true })
     ;(Plugin as any).getStatus = mock(async () => buildStatusResponse({ manifestValid: false, version: undefined }))
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const app = Server.App()
@@ -269,7 +269,7 @@ describe("GET /plugin/:pluginId/status — comprehensive status", () => {
     await using tmp = await tmpdir({ git: true })
     ;(Plugin as any).getStatus = mock(async () => null)
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const app = Server.App()
@@ -305,7 +305,7 @@ describe("POST /api/plugins/install-from-registry", () => {
         ],
       },
       async () => {
-        await Instance.provide({
+        await ScopeContext.provide({
           scope: await tmp.scope(),
           fn: async () => {
             const app = Server.App()
@@ -340,7 +340,7 @@ describe("GET /plugin/:pluginId/config-schema", () => {
     ;(Plugin as any).get = mock(async () => plugin)
     ;(Plugin as any).manifest = mock(async () => manifest)
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const app = Server.App()
@@ -359,7 +359,7 @@ describe("GET /plugin/:pluginId/config-schema", () => {
     ;(Plugin as any).get = mock(async () => plugin)
     ;(Plugin as any).manifest = mock(async () => manifest)
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const app = Server.App()
@@ -377,7 +377,7 @@ describe("GET /plugin/:pluginId/config-schema", () => {
     ;(Plugin as any).get = mock(async () => plugin)
     ;(Plugin as any).manifest = mock(async () => null)
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const app = Server.App()
@@ -400,13 +400,13 @@ describe("PATCH /plugin/:pluginId/config", () => {
     const plugin = buildLoadedPlugin()
     const currentConfig = { theme: "dark", refreshInterval: 30 }
     ;(Plugin as any).get = mock(async () => plugin)
-    ;(Config as any).get = mock(async () => ({
+    ;(Config as any).current = mock(async () => ({
       pluginConfig: { "test-plugin": currentConfig },
     }))
     const domainUpdateSpy = mock(async () => {})
     ;(Config as any).domainUpdate = domainUpdateSpy
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const app = Server.App()
@@ -432,11 +432,11 @@ describe("PATCH /plugin/:pluginId/config", () => {
     await using tmp = await tmpdir({ git: true })
     const plugin = buildLoadedPlugin()
     ;(Plugin as any).get = mock(async () => plugin)
-    ;(Config as any).get = mock(async () => ({}))
+    ;(Config as any).current = mock(async () => ({}))
     const domainUpdateSpy = mock(async () => {})
     ;(Config as any).domainUpdate = domainUpdateSpy
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const app = Server.App()
@@ -465,7 +465,7 @@ describe("PATCH /plugin/:pluginId/config", () => {
     // Verify the payload is actually over 64KB (65536 bytes)
     expect(serialized.length).toBeGreaterThan(65535)
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const app = Server.App()
@@ -485,7 +485,7 @@ describe("PATCH /plugin/:pluginId/config", () => {
     await using tmp = await tmpdir({ git: true })
     const plugin = buildLoadedPlugin()
     ;(Plugin as any).get = mock(async () => plugin)
-    ;(Config as any).get = mock(async () => ({}))
+    ;(Config as any).current = mock(async () => ({}))
     const domainUpdateSpy = mock(async () => {})
     ;(Config as any).domainUpdate = domainUpdateSpy
 
@@ -495,7 +495,7 @@ describe("PATCH /plugin/:pluginId/config", () => {
     const serialized = JSON.stringify(payload)
     expect(serialized.length).toBeLessThan(65536)
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const app = Server.App()
@@ -515,7 +515,7 @@ describe("PATCH /plugin/:pluginId/config", () => {
     await using tmp = await tmpdir({ git: true })
     ;(Plugin as any).get = mock(async () => undefined)
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const app = Server.App()

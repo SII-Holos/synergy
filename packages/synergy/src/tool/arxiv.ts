@@ -2,7 +2,7 @@ import z from "zod"
 import path from "path"
 import { Tool } from "./tool"
 import { Flag } from "../flag/flag"
-import { Instance } from "../scope/instance"
+import { ScopeContext } from "../scope/context"
 
 const DEFAULT_TIMEOUT = 30 * 1000
 const ARXIV_PDF_BASE = "https://arxiv.org/pdf"
@@ -166,7 +166,7 @@ Examples of valid arXiv IDs:
 
     const filepath = path.isAbsolute(params.outputPath)
       ? params.outputPath
-      : path.join(Instance.directory, params.outputPath)
+      : path.join(ScopeContext.current.directory, params.outputPath)
 
     const file = Bun.file(filepath)
     const exists = await file.exists()
@@ -179,7 +179,7 @@ Examples of valid arXiv IDs:
       }
     }
 
-    const displayPath = path.relative(Instance.directory, filepath)
+    const displayPath = path.relative(ScopeContext.current.directory, filepath)
 
     await ctx.ask({
       permission: "download",

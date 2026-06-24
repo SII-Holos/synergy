@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import { RuntimeReloadTool } from "../../src/tool/runtime-reload"
-import { Instance } from "../../src/scope/instance"
+import { ScopeContext } from "../../src/scope/context"
 import { tmpdir } from "../fixture/fixture"
 
 const ctx = {
@@ -16,7 +16,7 @@ const ctx = {
 describe("tool.runtime_reload", () => {
   test("returns structured reload summary", async () => {
     await using tmp = await tmpdir({ git: true })
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const tool = await RuntimeReloadTool.init()

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import { tmpdir } from "../fixture/fixture"
-import { Instance } from "../../src/scope/instance"
+import { ScopeContext } from "../../src/scope/context"
 import { Scope } from "../../src/scope"
 import { NoteError, NoteStore } from "../../src/note"
 import { Storage } from "../../src/storage/storage"
@@ -15,7 +15,7 @@ describe("NoteStore", () => {
     await using tmp = await tmpdir()
     const scope = (await Scope.fromDirectory(tmp.path)).scope
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope,
       fn: async () => {
         const note = await NoteStore.create(
@@ -36,7 +36,7 @@ describe("NoteStore", () => {
     await using tmp = await tmpdir()
     const scope = (await Scope.fromDirectory(tmp.path)).scope
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope,
       fn: async () => {
         const created = await NoteStore.create({
@@ -59,7 +59,7 @@ describe("NoteStore", () => {
     await using tmp = await tmpdir()
     const scope = (await Scope.fromDirectory(tmp.path)).scope
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope,
       fn: async () => {
         const created = await NoteStore.create({
@@ -83,7 +83,7 @@ describe("NoteStore", () => {
     await using tmp = await tmpdir()
     const scope = (await Scope.fromDirectory(tmp.path)).scope
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope,
       fn: async () => {
         const noteID = Identifier.ascending("note")
@@ -115,7 +115,7 @@ describe("NoteStore", () => {
     const activeScope = (await Scope.fromDirectory(activeTmp.path)).scope
 
     let noteID = ""
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: sourceScope,
       fn: async () => {
         const note = await NoteStore.create({
@@ -125,7 +125,7 @@ describe("NoteStore", () => {
       },
     })
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: activeScope,
       fn: async () => {
         const note = await NoteStore.getAny(activeScope.id, noteID)
@@ -138,7 +138,7 @@ describe("NoteStore", () => {
     await using tmp = await tmpdir()
     const scope = (await Scope.fromDirectory(tmp.path)).scope
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope,
       fn: async () => {
         const globalNote = await NoteStore.create(
@@ -204,7 +204,7 @@ describe("NoteStore", () => {
     await using tmp = await tmpdir()
     const scope = (await Scope.fromDirectory(tmp.path)).scope
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope,
       fn: async () => {
         await NoteStore.create({

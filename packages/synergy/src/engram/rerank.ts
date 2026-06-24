@@ -60,7 +60,7 @@ export namespace Rerank {
   }
 
   async function resolveConfig() {
-    const config = await Config.get()
+    const config = await Config.current()
     const rerankConfig = config.rerank
     const embeddingConfig = config.embedding
 

@@ -3,7 +3,7 @@ import DESCRIPTION from "./scan-files.txt"
 import { Tool } from "./tool"
 import { Ripgrep } from "../file/ripgrep"
 import { conflictWarning, detectConflicts } from "../conflict/detect"
-import { Instance } from "../scope/instance"
+import { ScopeContext } from "../scope/context"
 import {
   displayPath,
   formatRecordedBlock,
@@ -106,7 +106,7 @@ export const ScanFilesTool = Tool.define("scan_files", {
       metadata: { pattern: params.pattern, path: params.path, include: params.include, globs: params.globs },
     })
 
-    const searchPath = params.path ? resolveFilePath(params.path) : Instance.directory
+    const searchPath = params.path ? resolveFilePath(params.path) : ScopeContext.current.directory
     const rgPath = await Ripgrep.filepath()
     const perFileLimit = normalizePositiveInt(params.perFileLimit, DEFAULT_PER_FILE_LIMIT, SINGLE_FILE_PER_FILE_LIMIT)
     const limitFiles = normalizePositiveInt(params.limitFiles, DEFAULT_FILE_LIMIT, DEFAULT_FILE_LIMIT)

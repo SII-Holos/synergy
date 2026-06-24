@@ -7,7 +7,8 @@ import { Config } from "../config/config"
 import { ConfigMarkdown } from "../config/markdown"
 import { Identifier } from "../id/id"
 import { MCP } from "../mcp"
-import { Instance } from "../scope/instance"
+import { ScopeContext } from "../scope/context"
+import { ScopedState } from "../scope/scoped-state"
 import { Skill } from "../skill/skill"
 import PROMPT_COMMIT from "./template/commit.txt"
 import PROMPT_INITIALIZE from "./template/initialize.txt"
@@ -130,7 +131,7 @@ export namespace Command {
     WORKTREE: "worktree",
   } as const
 
-  const subscriptions = Instance.state(
+  const subscriptions = ScopedState.create(
     () => {
       const unsubscribers: Array<() => void> = []
       const reset = () => {
@@ -156,15 +157,15 @@ export namespace Command {
     subscriptions()
   }
 
-  const state = Instance.state(async () => {
-    const cfg = await Config.get()
+  const state = ScopedState.create(async () => {
+    const cfg = await Config.current()
 
     const result: Record<string, Info> = {
       [Default.INIT]: promptCommand({
         name: Default.INIT,
         description: "create/update AGENTS.md",
         get template() {
-          return PROMPT_INITIALIZE.replace("${path}", Instance.directory)
+          return PROMPT_INITIALIZE.replace("${path}", ScopeContext.current.directory)
         },
         hints: hints(PROMPT_INITIALIZE),
       }),
@@ -172,7 +173,7 @@ export namespace Command {
         name: Default.REVIEW,
         description: "review changes [commit|branch|pr], defaults to uncommitted",
         get template() {
-          return PROMPT_REVIEW.replace("${path}", Instance.directory)
+          return PROMPT_REVIEW.replace("${path}", ScopeContext.current.directory)
         },
         hints: hints(PROMPT_REVIEW),
       }),

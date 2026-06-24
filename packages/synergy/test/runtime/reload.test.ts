@@ -2,7 +2,7 @@ import { afterEach, describe, expect, mock, test } from "bun:test"
 import path from "path"
 import fs from "fs/promises"
 import { tmpdir } from "../fixture/fixture"
-import { Instance } from "../../src/scope/instance"
+import { ScopeContext } from "../../src/scope/context"
 import { RuntimeReload } from "../../src/runtime/reload"
 import { Config } from "../../src/config/config"
 import { ConfigDomain } from "../../src/config/domain"
@@ -18,7 +18,7 @@ afterEach(() => {
 describe("runtime.reload", () => {
   test("detects config, skill, and custom tool targets by file path", async () => {
     await using tmp = await tmpdir({ git: true })
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         await Bun.write(path.join(tmp.path, ".synergy", "skill", "demo", "SKILL.md"), "---\nname: demo\n---\n")
@@ -39,7 +39,7 @@ describe("runtime.reload", () => {
 
   test("detects plugin targets by file path", async () => {
     await using tmp = await tmpdir({ git: true })
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const pluginTarget = RuntimeReload.detectTargetsForFile(path.join(tmp.path, ".synergy", "plugin", "demo.ts"))
@@ -63,7 +63,7 @@ describe("runtime.reload", () => {
         "---\nname: compat-demo\ndescription: demo\n---\n",
       )
 
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const globalSkillTarget = RuntimeReload.detectTargetsForFile(
@@ -87,7 +87,7 @@ describe("runtime.reload", () => {
     const originalHome = process.env.SYNERGY_TEST_HOME
     process.env.SYNERGY_TEST_HOME = tmp.path
     try {
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const projectAgent = RuntimeReload.detectScopeForFile(path.join(tmp.path, ".synergy", "agent", "custom.md"))
@@ -118,7 +118,7 @@ describe("runtime.reload", () => {
       },
     })
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         await RuntimeReload.reload({ targets: ["config"], scope: "project", reason: "prime" })
@@ -146,7 +146,7 @@ describe("runtime.reload", () => {
 
   test("all expands into concrete targets", async () => {
     await using tmp = await tmpdir({ git: true })
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const result = await RuntimeReload.reload({ targets: ["all"], scope: "global", reason: "test" })
@@ -161,7 +161,7 @@ describe("runtime.reload", () => {
 
   test("warns when editing built-in source paths", async () => {
     await using tmp = await tmpdir({ git: true })
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const warning = RuntimeReload.builtinSourceEditWarning(
@@ -184,7 +184,7 @@ describe("runtime.reload", () => {
       },
     })
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const configReloadMock = mock(async (scope: "global" | "project") => ({
@@ -211,7 +211,7 @@ describe("runtime.reload", () => {
 
   test("detects global domain config files as global scope", async () => {
     await using tmp = await tmpdir({ git: true })
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         expect(RuntimeReload.detectScopeForFile(ConfigDomain.filepath("models"))).toBe("global")
@@ -273,7 +273,7 @@ describe("runtime.reload", () => {
 
     // Verify email is in restart-required (P13 fix)
     await using tmp = await tmpdir({ git: true })
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const configReloadMock = mock(async () => ({
@@ -295,7 +295,7 @@ describe("runtime.reload", () => {
 
   test("error isolation: reload continues after subsystem failure", async () => {
     await using tmp = await tmpdir({ git: true })
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const result = await RuntimeReload.reload({ targets: ["skill"], scope: "global", reason: "test" })

@@ -9,7 +9,7 @@ import type { MessageV2 } from "./message-v2"
 import { BusyError } from "./error"
 import { SessionEvent } from "./event"
 import { Scope } from "@/scope"
-import { Instance } from "@/scope/instance"
+import { ScopeRuntime } from "@/scope/runtime"
 import { Info, type StatusInfo } from "./types"
 import { SessionEndpoint } from "./endpoint"
 
@@ -166,9 +166,10 @@ export namespace SessionManager {
         path: scope.directory,
         scopeID: scope.id,
       }
-      return await Instance.provide({
+      return await ScopeRuntime.provide({
         scope,
         workspace,
+        ensure: scope.type === "project",
         fn: async () => {
           const workspace = (session as Info).workspace
           if (workspace?.type !== "git_worktree") return fn()

@@ -6,7 +6,7 @@ import { Log } from "../util/log"
 import { BrowserOwner } from "../browser/owner.js"
 import { BrowserRuntime } from "../browser/runtime.js"
 import { BrowserAssets } from "../browser/assets.js"
-import { Instance } from "../scope/instance"
+import { ScopeContext } from "../scope/context"
 
 const log = Log.create({ service: "browser.route" })
 
@@ -79,8 +79,8 @@ export const BrowserRoute = new Hono().get(
 
     const mode = (c.req.query("mode") ?? "session") as BrowserOwner.Mode
     const sessionID = c.req.query("sessionID")
-    const scopeID = Instance.scope.id
-    const owner = BrowserOwner.fromRoute({ directory: Instance.directory, scopeID, sessionID, mode })
+    const scopeID = ScopeContext.current.scope.id
+    const owner = BrowserOwner.fromRoute({ directory: ScopeContext.current.directory, scopeID, sessionID, mode })
     BrowserOwner.assertValid(owner)
 
     let unsubscribe: (() => void) | undefined

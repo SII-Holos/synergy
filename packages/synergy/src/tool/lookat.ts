@@ -6,7 +6,7 @@ import { SessionInteraction } from "@/session/interaction"
 import type { MessageV2 } from "../session/message-v2"
 import { Identifier } from "../id/id"
 import { Agent } from "../agent/agent"
-import { Instance } from "../scope/instance"
+import { ScopeContext } from "../scope/context"
 import DESCRIPTION from "./lookat.txt"
 import { Asset } from "../asset/asset"
 
@@ -97,7 +97,7 @@ export const LookAtTool = Tool.define<typeof parameters, LookAtMetadata>("look_a
 
       const files: Array<{ filepath: string; mimeType: string; filename: string }> = []
       for (const raw of paths) {
-        const filepath = path.isAbsolute(raw) ? raw : path.join(Instance.directory, raw)
+        const filepath = path.isAbsolute(raw) ? raw : path.join(ScopeContext.current.directory, raw)
         if (!(await Bun.file(filepath).exists())) {
           return {
             title: "File not found",

@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import { $ } from "bun"
 import { Snapshot } from "../../src/session/snapshot"
-import { Instance } from "../../src/scope/instance"
+import { ScopeContext } from "../../src/scope/context"
 import { Scope } from "../../src/scope"
 import { tmpdir } from "../fixture/fixture"
 
@@ -27,7 +27,7 @@ async function bootstrap() {
 describe.serial("snapshot", () => {
   test("tracks deleted files correctly", async () => {
     await using tmp = await bootstrap()
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const before = await Snapshot.track("test")
@@ -42,7 +42,7 @@ describe.serial("snapshot", () => {
 
   test("revert should remove new files", async () => {
     await using tmp = await bootstrap()
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const before = await Snapshot.track("test")
@@ -59,7 +59,7 @@ describe.serial("snapshot", () => {
 
   test("revert in subdirectory", async () => {
     await using tmp = await bootstrap()
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const before = await Snapshot.track("test")
@@ -79,7 +79,7 @@ describe.serial("snapshot", () => {
 
   test("multiple file operations", async () => {
     await using tmp = await bootstrap()
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const before = await Snapshot.track("test")
@@ -104,7 +104,7 @@ describe.serial("snapshot", () => {
 
   test("empty directory handling", async () => {
     await using tmp = await bootstrap()
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const before = await Snapshot.track("test")
@@ -119,7 +119,7 @@ describe.serial("snapshot", () => {
 
   test("binary file handling", async () => {
     await using tmp = await bootstrap()
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const before = await Snapshot.track("test")
@@ -138,7 +138,7 @@ describe.serial("snapshot", () => {
 
   test("large file handling", async () => {
     await using tmp = await bootstrap()
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const before = await Snapshot.track("test")
@@ -153,7 +153,7 @@ describe.serial("snapshot", () => {
 
   test("nested directory revert", async () => {
     await using tmp = await bootstrap()
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const before = await Snapshot.track("test")
@@ -171,7 +171,7 @@ describe.serial("snapshot", () => {
 
   test("revert with empty patches", async () => {
     await using tmp = await bootstrap()
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         // Should not crash with empty patches
@@ -185,7 +185,7 @@ describe.serial("snapshot", () => {
 
   test("patch with invalid hash", async () => {
     await using tmp = await bootstrap()
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const before = await Snapshot.track("test")
@@ -204,7 +204,7 @@ describe.serial("snapshot", () => {
 
   test("revert non-existent file", async () => {
     await using tmp = await bootstrap()
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const before = await Snapshot.track("test")
@@ -229,7 +229,7 @@ describe.serial("snapshot", () => {
 
   test("unicode filenames", async () => {
     await using tmp = await bootstrap()
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const before = await Snapshot.track("test")
@@ -259,7 +259,7 @@ describe.serial("snapshot", () => {
 
   test("very long filenames", async () => {
     await using tmp = await bootstrap()
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const before = await Snapshot.track("test")
@@ -281,7 +281,7 @@ describe.serial("snapshot", () => {
 
   test("hidden files", async () => {
     await using tmp = await bootstrap()
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const before = await Snapshot.track("test")
@@ -301,7 +301,7 @@ describe.serial("snapshot", () => {
 
   test("nested symlinks", async () => {
     await using tmp = await bootstrap()
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const before = await Snapshot.track("test")
@@ -321,7 +321,7 @@ describe.serial("snapshot", () => {
 
   test("file permissions and ownership changes", async () => {
     await using tmp = await bootstrap()
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const before = await Snapshot.track("test")
@@ -342,7 +342,7 @@ describe.serial("snapshot", () => {
 
   test("circular symlinks", async () => {
     await using tmp = await bootstrap()
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const before = await Snapshot.track("test")
@@ -359,7 +359,7 @@ describe.serial("snapshot", () => {
 
   test("gitignore changes", async () => {
     await using tmp = await bootstrap()
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const before = await Snapshot.track("test")
@@ -385,7 +385,7 @@ describe.serial("snapshot", () => {
 
   test("concurrent file operations during patch", async () => {
     await using tmp = await bootstrap()
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const before = await Snapshot.track("test")
@@ -417,7 +417,7 @@ describe.serial("snapshot", () => {
     await using tmp1 = await bootstrap()
     await using tmp2 = await bootstrap()
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp1.scope(),
       fn: async () => {
         const before1 = await Snapshot.track("test")
@@ -427,7 +427,7 @@ describe.serial("snapshot", () => {
       },
     })
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp2.scope(),
       fn: async () => {
         const before2 = await Snapshot.track("test")
@@ -447,14 +447,14 @@ describe.serial("snapshot", () => {
     await $`git worktree add ${worktreePath} HEAD`.cwd(tmp.path).quiet()
 
     try {
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           expect(await Snapshot.track("test")).toBeTruthy()
         },
       })
 
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: (await Scope.fromDirectory(worktreePath)).scope,
         fn: async () => {
           const before = await Snapshot.track("test")
@@ -483,7 +483,7 @@ describe.serial("snapshot", () => {
       const primaryFile = `${tmp.path}/worktree.txt`
       await Bun.write(primaryFile, "primary content")
 
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: (await Scope.fromDirectory(worktreePath)).scope,
         fn: async () => {
           const before = await Snapshot.track(sessionID)
@@ -513,14 +513,14 @@ describe.serial("snapshot", () => {
     await $`git worktree add ${worktreePath} HEAD`.cwd(tmp.path).quiet()
 
     try {
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           expect(await Snapshot.track("test")).toBeTruthy()
         },
       })
 
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: (await Scope.fromDirectory(worktreePath)).scope,
         fn: async () => {
           const before = await Snapshot.track("test")
@@ -547,7 +547,7 @@ describe.serial("snapshot", () => {
 
   test("track with no changes returns same hash", async () => {
     await using tmp = await bootstrap()
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const hash1 = await Snapshot.track("test")
@@ -566,7 +566,7 @@ describe.serial("snapshot", () => {
 
   test("diff function with various changes", async () => {
     await using tmp = await bootstrap()
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const before = await Snapshot.track("test")
@@ -587,7 +587,7 @@ describe.serial("snapshot", () => {
 
   test("restore function — per-file restore based on session patches", async () => {
     await using tmp = await bootstrap()
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const before = await Snapshot.track("test")
@@ -614,7 +614,7 @@ describe.serial("snapshot", () => {
 
   test("revert should not delete files that existed but were deleted in snapshot", async () => {
     await using tmp = await bootstrap()
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const snapshot1 = await Snapshot.track("test")
@@ -639,7 +639,7 @@ describe.serial("snapshot", () => {
 
   test("revert preserves file that existed in snapshot when deleted then recreated", async () => {
     await using tmp = await bootstrap()
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         await Bun.write(`${tmp.path}/existing.txt`, "original content")
@@ -666,7 +666,7 @@ describe.serial("snapshot", () => {
 
   test("diffFull with new file additions", async () => {
     await using tmp = await bootstrap()
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const before = await Snapshot.track("test")
@@ -692,7 +692,7 @@ describe.serial("snapshot", () => {
 
   test("diffFull with file modifications", async () => {
     await using tmp = await bootstrap()
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const before = await Snapshot.track("test")
@@ -718,7 +718,7 @@ describe.serial("snapshot", () => {
 
   test("diffFull with file deletions", async () => {
     await using tmp = await bootstrap()
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const before = await Snapshot.track("test")
@@ -744,7 +744,7 @@ describe.serial("snapshot", () => {
 
   test("diffFull with multiple line additions", async () => {
     await using tmp = await bootstrap()
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const before = await Snapshot.track("test")
@@ -770,7 +770,7 @@ describe.serial("snapshot", () => {
 
   test("diffFull with addition and deletion", async () => {
     await using tmp = await bootstrap()
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const before = await Snapshot.track("test")
@@ -804,7 +804,7 @@ describe.serial("snapshot", () => {
 
   test("diffFull with multiple additions and deletions", async () => {
     await using tmp = await bootstrap()
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const before = await Snapshot.track("test")
@@ -846,7 +846,7 @@ describe.serial("snapshot", () => {
 
   test("diffFull with no changes", async () => {
     await using tmp = await bootstrap()
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const before = await Snapshot.track("test")
@@ -863,7 +863,7 @@ describe.serial("snapshot", () => {
 
   test("diffFull with binary file changes", async () => {
     await using tmp = await bootstrap()
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const before = await Snapshot.track("test")
@@ -886,7 +886,7 @@ describe.serial("snapshot", () => {
 
   test("diffFull with whitespace changes", async () => {
     await using tmp = await bootstrap()
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         await Bun.write(`${tmp.path}/whitespace.txt`, "line1\nline2")

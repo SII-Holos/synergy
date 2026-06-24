@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import path from "path"
 import { ReviseFileTool } from "../../src/tool/revise-file"
-import { Instance } from "../../src/scope/instance"
+import { ScopeContext } from "../../src/scope/context"
 import { tmpdir } from "../fixture/fixture"
 
 //
@@ -50,7 +50,7 @@ describe("recovery: external drift before target", () => {
         await Bun.write(path.join(dir, "d1.ts"), "line 1\nline 2\nline 3\nline 4\n")
       },
     })
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const filePath = path.join(tmp.path, "d1.ts")
@@ -86,7 +86,7 @@ describe("recovery: external drift before target", () => {
         await Bun.write(path.join(dir, "d1b.ts"), "declare const x: number\n// TARGET HERE\nconst y = x + 1\n")
       },
     })
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const filePath = path.join(tmp.path, "d1b.ts")
@@ -130,7 +130,7 @@ describe("recovery: external drift modifies target", () => {
         await Bun.write(path.join(dir, "d2.ts"), "A\nB\nC\nD\n")
       },
     })
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const filePath = path.join(tmp.path, "d2.ts")
@@ -159,7 +159,7 @@ describe("recovery: external drift modifies target", () => {
         await Bun.write(path.join(dir, "d2b.ts"), "function foo() {\n  return 1\n}\nfunction bar() {\n  return 2\n}\n")
       },
     })
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const filePath = path.join(tmp.path, "d2b.ts")
@@ -199,7 +199,7 @@ describe("recovery: session-chain replay", () => {
         )
       },
     })
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const filePath = path.join(tmp.path, "d3.ts")
@@ -232,7 +232,7 @@ describe("recovery: session-chain replay", () => {
         await Bun.write(path.join(dir, "d3b.ts"), "const HOST = 'localhost'\nconst PORT = 3000\nconst DEBUG = true\n")
       },
     })
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const filePath = path.join(tmp.path, "d3b.ts")
@@ -270,7 +270,7 @@ describe("recovery: ambiguous duplicate target", () => {
         )
       },
     })
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const filePath = path.join(tmp.path, "d4.ts")
@@ -312,7 +312,7 @@ describe("recovery: ambiguous duplicate target", () => {
         )
       },
     })
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const filePath = path.join(tmp.path, "d4b.ts")
@@ -351,7 +351,7 @@ describe("recovery: ambiguous duplicate target", () => {
         )
       },
     })
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const filePath = path.join(tmp.path, "d4c.ts")
@@ -392,7 +392,7 @@ describe("recovery: ambiguous duplicate target", () => {
         )
       },
     })
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const filePath = path.join(tmp.path, "d4d.ts")
@@ -435,7 +435,7 @@ describe("recovery: boundary repair", () => {
         await Bun.write(path.join(dir, "d5.ts"), "function hello() {\n  console.log('hi')\n}\n")
       },
     })
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const filePath = path.join(tmp.path, "d5.ts")

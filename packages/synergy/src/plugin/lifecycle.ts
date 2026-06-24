@@ -2,7 +2,8 @@ import type { PluginHooks } from "@ericsanchezok/synergy-plugin"
 import { Config } from "../config/config"
 import { Bus } from "../bus"
 import { Log } from "../util/log"
-import { Instance } from "../scope/instance"
+import { ScopeContext } from "../scope/context"
+import { ScopedState } from "../scope/scoped-state"
 import { startForPlugin, stopForPlugin } from "./mcp"
 import * as ManifestReader from "./manifest-reader"
 import { state, getPlugin, incrementReloadVersion } from "./loader"
@@ -97,7 +98,7 @@ export async function reload() {
 
 export async function init() {
   await restoreRuntimeState()
-  const config = await Config.get()
+  const config = await Config.current()
 
   const loaded = await state().then((x) => x.loaded)
   for (const { id, hooks } of loaded) {
@@ -109,7 +110,7 @@ export async function init() {
       void startForPlugin(id, m.contributes.mcp).catch((err) => log.error("plugin mcp start error", { id, err }))
     }
   }
-  const pluginEventState = Instance.state(
+  const pluginEventState = ScopedState.create(
     () => {
       const unsub = Bus.subscribeAll(async (input) => {
         const loaded = await state().then((x) => x.loaded)

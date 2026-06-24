@@ -13,7 +13,8 @@ import { Log } from "../util/log"
 import { createSynergyClient } from "@ericsanchezok/synergy-sdk"
 import { BunProc } from "../util/bun"
 import { PluginSpec } from "../util/plugin-spec"
-import { Instance } from "../scope/instance"
+import { ScopeContext } from "../scope/context"
+import { ScopedState } from "../scope/scoped-state"
 import { Global } from "../global"
 import { createConfigAccessor, createAuthStore, createCacheStore } from "./store"
 import { StartupReporter } from "../cli/startup-reporter"
@@ -60,7 +61,7 @@ export function findPackageRoot(entryPath: string): string {
 export function resolveSpecPluginDir(spec: string): string {
   if (spec.startsWith("file://")) {
     const filePath = spec.slice("file://".length)
-    const absolute = path.isAbsolute(filePath) ? filePath : path.resolve(Instance.directory, filePath)
+    const absolute = path.isAbsolute(filePath) ? filePath : path.resolve(ScopeContext.current.directory, filePath)
     return findPackageRoot(absolute)
   }
   const { pkg } = PluginSpec.parse(spec)
@@ -76,8 +77,8 @@ export interface LoaderState {
   loaded: LoadedPlugin[]
 }
 
-export const state = Instance.state(async (): Promise<LoaderState> => {
-  const config = await Config.get()
+export const state = ScopedState.create(async (): Promise<LoaderState> => {
+  const config = await Config.current()
   const loaded: LoadedPlugin[] = []
   const pluginPaths = [...(config.plugin ?? [])]
 
@@ -91,9 +92,9 @@ export const state = Instance.state(async (): Promise<LoaderState> => {
   })
   const baseInput: Omit<PluginInput, "config" | "auth" | "cache" | "pluginDir"> = {
     client,
-    scope: Instance.scope,
-    worktree: Instance.worktree,
-    directory: Instance.directory,
+    scope: ScopeContext.current.scope,
+    worktree: ScopeContext.current.worktree,
+    directory: ScopeContext.current.directory,
     serverUrl: Server.url(),
     $: Bun.$,
   }
@@ -128,7 +129,7 @@ export const state = Instance.state(async (): Promise<LoaderState> => {
       pluginDir = findPackageRoot(importPath)
     } else {
       const filePath = configPath.slice("file://".length)
-      const absolute = path.isAbsolute(filePath) ? filePath : path.resolve(Instance.directory, filePath)
+      const absolute = path.isAbsolute(filePath) ? filePath : path.resolve(ScopeContext.current.directory, filePath)
       importPath = absolute
       pluginDir = findPackageRoot(absolute)
     }

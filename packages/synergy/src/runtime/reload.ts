@@ -6,7 +6,7 @@ import { GlobalBus } from "../bus/global"
 import { Config } from "../config/config"
 import { ConfigDomain } from "../config/domain"
 import { Global } from "../global"
-import { Instance } from "../scope/instance"
+import { ScopeContext } from "../scope/context"
 import { RuntimeSchema } from "./schema"
 import { SkillPaths } from "../skill/paths"
 import { Log } from "../util/log"
@@ -109,7 +109,7 @@ export namespace RuntimeReload {
     const liveApplied = new Set<string>()
 
     // P2: Centralized Config cache invalidation — all subsystems that read
-    // Config.get() during their state() initialization will get fresh config.
+    // Config.current() during their state() initialization will get fresh config.
     // This replaces the scattered Config.state.resetAll() calls that were
     // previously in individual subsystem reload() functions.
     const needsConfig = requested.includes("config") || requested.includes("all")
@@ -172,7 +172,7 @@ export namespace RuntimeReload {
     }
 
     GlobalBus.emit("event", {
-      directory: Instance.directory,
+      directory: ScopeContext.current.directory,
       payload: {
         type: Event.Reloaded.type,
         properties: {
@@ -281,6 +281,7 @@ export namespace RuntimeReload {
       case "plugin": {
         const { Plugin } = await import("../plugin")
         await Plugin.reload()
+        await Plugin.init()
         return
       }
       case "mcp": {
@@ -341,7 +342,7 @@ export namespace RuntimeReload {
     return (
       projectLegacyConfigFiles().some((file) => existsSync(file)) ||
       ConfigDomain.definitions.some((domain) =>
-        existsSync(path.join(Instance.directory, ".synergy", "synergy.d", domain.filename)),
+        existsSync(path.join(ScopeContext.current.directory, ".synergy", "synergy.d", domain.filename)),
       )
     )
   }
@@ -431,7 +432,7 @@ export namespace RuntimeReload {
 
   export function builtinSourceEditWarning(filePath: string) {
     const normalized = path.resolve(filePath)
-    const builtinRoot = path.resolve(path.join(Instance.directory, "packages", "synergy", "src"))
+    const builtinRoot = path.resolve(path.join(ScopeContext.current.directory, "packages", "synergy", "src"))
     if (!normalized.startsWith(builtinRoot + path.sep)) return undefined
     return BUILTIN_SOURCE_RESTART_WARNING
   }
@@ -447,8 +448,8 @@ export namespace RuntimeReload {
         path.resolve(path.join(Global.Path.config, "command")),
         path.resolve(path.join(Global.Path.config, "commands")),
       ],
-      skill: SkillPaths.runtimeSkillRootsSync(Instance.directory).filter(
-        (root) => !root.startsWith(path.resolve(Instance.directory)),
+      skill: SkillPaths.runtimeSkillRootsSync(ScopeContext.current.directory).filter(
+        (root) => !root.startsWith(path.resolve(ScopeContext.current.directory)),
       ),
       tool: [path.resolve(path.join(Global.Path.config, "tool"))],
       plugin: [
@@ -461,20 +462,20 @@ export namespace RuntimeReload {
   function projectConfigRoots() {
     return {
       agent: [
-        path.resolve(path.join(Instance.directory, ".synergy", "agent")),
-        path.resolve(path.join(Instance.directory, ".synergy", "agents")),
+        path.resolve(path.join(ScopeContext.current.directory, ".synergy", "agent")),
+        path.resolve(path.join(ScopeContext.current.directory, ".synergy", "agents")),
       ],
       command: [
-        path.resolve(path.join(Instance.directory, ".synergy", "command")),
-        path.resolve(path.join(Instance.directory, ".synergy", "commands")),
+        path.resolve(path.join(ScopeContext.current.directory, ".synergy", "command")),
+        path.resolve(path.join(ScopeContext.current.directory, ".synergy", "commands")),
       ],
-      skill: SkillPaths.runtimeSkillRootsSync(Instance.directory).filter((root) =>
-        root.startsWith(path.resolve(Instance.directory)),
+      skill: SkillPaths.runtimeSkillRootsSync(ScopeContext.current.directory).filter((root) =>
+        root.startsWith(path.resolve(ScopeContext.current.directory)),
       ),
-      tool: [path.resolve(path.join(Instance.directory, ".synergy", "tool"))],
+      tool: [path.resolve(path.join(ScopeContext.current.directory, ".synergy", "tool"))],
       plugin: [
-        path.resolve(path.join(Instance.directory, ".synergy", "plugin")),
-        path.resolve(path.join(Instance.directory, ".synergy", "plugins")),
+        path.resolve(path.join(ScopeContext.current.directory, ".synergy", "plugin")),
+        path.resolve(path.join(ScopeContext.current.directory, ".synergy", "plugins")),
       ],
     }
   }
@@ -491,10 +492,10 @@ export namespace RuntimeReload {
 
   function projectLegacyConfigFiles() {
     return [
-      path.join(Instance.directory, "synergy.jsonc"),
-      path.join(Instance.directory, "synergy.json"),
-      path.join(Instance.directory, ".synergy", "synergy.jsonc"),
-      path.join(Instance.directory, ".synergy", "synergy.json"),
+      path.join(ScopeContext.current.directory, "synergy.jsonc"),
+      path.join(ScopeContext.current.directory, "synergy.json"),
+      path.join(ScopeContext.current.directory, ".synergy", "synergy.jsonc"),
+      path.join(ScopeContext.current.directory, ".synergy", "synergy.json"),
     ].map((file) => path.resolve(file))
   }
 
@@ -507,7 +508,7 @@ export namespace RuntimeReload {
     const globalDomainDir = path.resolve(ConfigDomain.directory())
     if (normalized.startsWith(globalDomainDir + path.sep) && ConfigDomain.domainForFile(normalized)) return "global"
 
-    const projectDomainDir = path.resolve(path.join(Instance.directory, ".synergy", "synergy.d"))
+    const projectDomainDir = path.resolve(path.join(ScopeContext.current.directory, ".synergy", "synergy.d"))
     if (normalized.startsWith(projectDomainDir + path.sep) && ConfigDomain.domainForFile(normalized)) return "project"
 
     // P3: Check global config directory roots (agent, command, skill, tool, plugin)
@@ -544,7 +545,7 @@ export namespace RuntimeReload {
     }
 
     const globalDomainDir = path.resolve(ConfigDomain.directory())
-    const projectDomainDir = path.resolve(path.join(Instance.directory, ".synergy", "synergy.d"))
+    const projectDomainDir = path.resolve(path.join(ScopeContext.current.directory, ".synergy", "synergy.d"))
     if (
       (normalized.startsWith(globalDomainDir + path.sep) || normalized.startsWith(projectDomainDir + path.sep)) &&
       ConfigDomain.domainForFile(normalized)

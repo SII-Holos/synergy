@@ -14,7 +14,7 @@ export namespace Chronicler {
     const { SessionInvoke } = await import("../session/invoke")
     const { Identifier } = await import("../id/id")
 
-    const config = await Config.get()
+    const config = await Config.current()
     const engram = (config as any).engram as { memory?: { enabled?: boolean } } | undefined
     if (!engram?.memory?.enabled) return
 

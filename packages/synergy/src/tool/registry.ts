@@ -55,7 +55,8 @@ import { ScanDocumentTool } from "./scan-document"
 import { AstGrepTool } from "./ast-grep"
 import type { Agent } from "../agent/agent"
 import { Tool } from "./tool"
-import { Instance } from "../scope/instance"
+import { ScopeContext } from "../scope/context"
+import { ScopedState } from "../scope/scoped-state"
 import { Config } from "../config/config"
 import path from "path"
 import { type ToolDefinition } from "@ericsanchezok/synergy-plugin"
@@ -105,7 +106,7 @@ import { BrowserAssetsTool } from "./browser-assets"
 export namespace ToolRegistry {
   const log = Log.create({ service: "tool.registry" })
 
-  export const state = Instance.state(async () => {
+  export const state = ScopedState.create(async () => {
     const custom = [] as Tool.Info[]
     const glob = new Bun.Glob("tool/*.{js,ts}")
 
@@ -153,7 +154,7 @@ export namespace ToolRegistry {
             messageID: ctx.messageID,
             agent: ctx.agent,
             abort: ctx.abort,
-            directory: Instance.directory,
+            directory: ScopeContext.current.directory,
             ask: (input: { permission: string; patterns: string[]; metadata?: Record<string, any> }) =>
               ctx.ask({ ...input, metadata: input.metadata ?? {} }),
           }
@@ -201,7 +202,7 @@ export namespace ToolRegistry {
 
   async function all(): Promise<Tool.Info[]> {
     const custom = await state().then((x) => x.custom)
-    const config = await Config.get()
+    const config = await Config.current()
 
     return [
       InvalidTool,

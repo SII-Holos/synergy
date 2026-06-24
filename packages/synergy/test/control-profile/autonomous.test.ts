@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import { buildProfile } from "../../src/control-profile/profiles"
-import { Instance } from "../../src/scope/instance"
+import { ScopeContext } from "../../src/scope/context"
 import { tmpdir } from "../fixture/fixture"
 import type { ResolvedProfile } from "../../src/control-profile/types"
 
@@ -22,7 +22,7 @@ async function guardedProfile() {
 describe("autonomous profile capabilities", () => {
   test("autonomous allows file_external_read", async () => {
     await using tmp = await tmpdir()
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const profile = await autonomousProfile()
@@ -33,7 +33,7 @@ describe("autonomous profile capabilities", () => {
 
   test("autonomous denies file_external_write", async () => {
     await using tmp = await tmpdir()
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const profile = await autonomousProfile()
@@ -45,7 +45,7 @@ describe("autonomous profile capabilities", () => {
 
   test("autonomous allows network_request", async () => {
     await using tmp = await tmpdir()
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const profile = await autonomousProfile()
@@ -56,7 +56,7 @@ describe("autonomous profile capabilities", () => {
 
   test("autonomous allows mcp_invoke, asks for plugin_invoke", async () => {
     await using tmp = await tmpdir()
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const profile = await autonomousProfile()
@@ -69,7 +69,7 @@ describe("autonomous profile capabilities", () => {
 
   test("autonomous allows identity_act and communication_email", async () => {
     await using tmp = await tmpdir()
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const profile = await autonomousProfile()
@@ -81,7 +81,7 @@ describe("autonomous profile capabilities", () => {
 
   test("autonomous allows platform_control", async () => {
     await using tmp = await tmpdir()
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const profile = await autonomousProfile()
@@ -92,7 +92,7 @@ describe("autonomous profile capabilities", () => {
 
   test("autonomous denies shell_hardline", async () => {
     await using tmp = await tmpdir()
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const profile = await autonomousProfile()
@@ -105,7 +105,7 @@ describe("autonomous profile capabilities", () => {
 
   test("autonomous has shell_destructive as deny", async () => {
     await using tmp = await tmpdir()
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const profile = await autonomousProfile()
@@ -118,7 +118,7 @@ describe("autonomous profile capabilities", () => {
 describe("autonomous profile filesystem", () => {
   test("autonomous filesystem has / as readRoots", async () => {
     await using tmp = await tmpdir()
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const profile = await autonomousProfile()
@@ -129,7 +129,7 @@ describe("autonomous profile filesystem", () => {
 
   test("autonomous filesystem has workspace as writeRoots", async () => {
     await using tmp = await tmpdir()
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const profile = await autonomousProfile()
@@ -142,7 +142,7 @@ describe("autonomous profile filesystem", () => {
 describe("autonomous profile sandbox", () => {
   test("autonomous sandbox mode is workspace_write", async () => {
     await using tmp = await tmpdir()
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const profile = await autonomousProfile()
@@ -155,7 +155,7 @@ describe("autonomous profile sandbox", () => {
 describe("profile isolation", () => {
   test("guarded still has original rules (not affected by autonomous changes)", async () => {
     await using tmp = await tmpdir()
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const profile = await guardedProfile()
@@ -169,7 +169,7 @@ describe("profile isolation", () => {
 describe("autonomous profile summary", () => {
   test("autonomous deniedCapabilities contains shell_hardline and shell_destructive", async () => {
     await using tmp = await tmpdir()
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const profile = await autonomousProfile()

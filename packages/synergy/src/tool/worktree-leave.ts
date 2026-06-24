@@ -1,7 +1,7 @@
 import z from "zod"
 import { Tool } from "./tool"
 import { Worktree } from "../project/worktree"
-import { Instance } from "../scope/instance"
+import { ScopeContext } from "../scope/context"
 import { PermissionNext } from "../permission/next"
 
 const parameters = z.object({
@@ -30,7 +30,7 @@ export const WorktreeLeaveTool = Tool.define<typeof parameters, WorktreeLeaveMet
     "restores the workspace to the main tree, and optionally removes the worktree if it has no uncommitted changes.",
   parameters,
   async execute(params, ctx) {
-    const workspace = Instance.workspace
+    const workspace = ScopeContext.current.workspace
 
     if (!workspace || workspace.type !== "git_worktree") {
       return {
@@ -81,7 +81,7 @@ export const WorktreeLeaveTool = Tool.define<typeof parameters, WorktreeLeaveMet
     const previous = { type: workspace.type, path: worktreePath, name: worktreeName }
 
     await Worktree.leave(ctx.sessionID)
-    const restored = { type: "main", path: Instance.scope.directory }
+    const restored = { type: "main", path: ScopeContext.current.scope.directory }
 
     let cleanupResult: { performed: boolean; skippedReason?: string } = { performed: false }
     if (params.cleanup === "remove_if_clean" && worktreeID) {

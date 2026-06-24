@@ -3,7 +3,7 @@ import path from "path"
 import { Tool } from "./tool"
 import DESCRIPTION from "./glob.txt"
 import { Ripgrep } from "../file/ripgrep"
-import { Instance } from "../scope/instance"
+import { ScopeContext } from "../scope/context"
 
 export const GlobTool = Tool.define("glob", {
   description: DESCRIPTION,
@@ -26,8 +26,8 @@ export const GlobTool = Tool.define("glob", {
       },
     })
 
-    let search = params.path ?? Instance.directory
-    search = path.isAbsolute(search) ? search : path.resolve(Instance.directory, search)
+    let search = params.path ?? ScopeContext.current.directory
+    search = path.isAbsolute(search) ? search : path.resolve(ScopeContext.current.directory, search)
 
     const TIMEOUT_MS = 15_000
     const limit = 100
@@ -86,7 +86,7 @@ export const GlobTool = Tool.define("glob", {
     }
 
     return {
-      title: path.relative(Instance.directory, search),
+      title: path.relative(ScopeContext.current.directory, search),
       metadata: {
         count: files.length,
         truncated,

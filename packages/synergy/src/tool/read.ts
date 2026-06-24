@@ -5,7 +5,7 @@ import { Tool } from "./tool"
 import { LSP } from "../lsp"
 import { FileTime } from "../file/time"
 import DESCRIPTION from "./read.txt"
-import { Instance } from "../scope/instance"
+import { ScopeContext } from "../scope/context"
 import { Attachment } from "../attachment"
 
 const DEFAULT_READ_LIMIT = 2000
@@ -23,9 +23,9 @@ export const ReadTool = Tool.define("read", {
   async execute(params, ctx) {
     let filepath = params.filePath
     if (!path.isAbsolute(filepath)) {
-      filepath = path.join(Instance.directory, filepath)
+      filepath = path.join(ScopeContext.current.directory, filepath)
     }
-    const title = path.relative(Instance.directory, filepath)
+    const title = path.relative(ScopeContext.current.directory, filepath)
 
     await ctx.ask({
       permission: "read",

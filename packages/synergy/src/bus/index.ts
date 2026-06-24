@@ -1,6 +1,7 @@
 import z from "zod"
 import { Log } from "../util/log"
-import { Instance } from "../scope/instance"
+import { ScopeContext } from "../scope/context"
+import { ScopedState } from "../scope/scoped-state"
 import { BusEvent } from "./bus-event"
 import { GlobalBus } from "./global"
 
@@ -8,14 +9,15 @@ export namespace Bus {
   const log = Log.create({ service: "bus" })
   type Subscription = (event: any) => void
 
-  export const InstanceDisposed = BusEvent.define(
-    "server.instance.disposed",
+  export const ScopeRuntimeDisposed = BusEvent.define(
+    "scope.runtime.disposed",
     z.object({
-      directory: z.string(),
+      scopeID: z.string(),
+      directory: z.string().optional(),
     }),
   )
 
-  const state = Instance.state(
+  const state = ScopedState.create(
     () => {
       const subscriptions = new Map<any, Subscription[]>()
 
@@ -27,9 +29,10 @@ export namespace Bus {
       const wildcard = entry.subscriptions.get("*")
       if (!wildcard) return
       const event = {
-        type: InstanceDisposed.type,
+        type: ScopeRuntimeDisposed.type,
         properties: {
-          directory: Instance.directory,
+          scopeID: ScopeContext.current.scope.id,
+          directory: ScopeContext.current.directory,
         },
       }
       for (const sub of [...wildcard]) {
@@ -69,7 +72,7 @@ export namespace Bus {
       // Route UI/session events to the scope directory, not the execution cwd.
       // A session may execute from a worktree workspace while still belonging to
       // the original scope store that the frontend subscribed to.
-      directory: Instance.scope.type === "global" ? "global" : Instance.scope.directory,
+      directory: ScopeContext.current.scope.type === "global" ? "global" : ScopeContext.current.scope.directory,
       payload,
     })
     await Promise.all(pending)

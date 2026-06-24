@@ -1,5 +1,5 @@
 import { describe, expect, test, mock } from "bun:test"
-import { Instance } from "../../src/scope/instance"
+import { ScopeContext } from "../../src/scope/context"
 import { Log } from "../../src/util/log"
 import { SessionManager } from "../../src/session/manager"
 import { Session } from "../../src/session"
@@ -13,7 +13,7 @@ describe("SessionManager.getSession", () => {
   describe("by sessionID", () => {
     test("returns session info when session exists in storage", async () => {
       await using tmp = await tmpdir({ git: true })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const session = await Session.create({})
@@ -30,7 +30,7 @@ describe("SessionManager.getSession", () => {
 
     test("returns undefined for nonexistent session", async () => {
       await using tmp = await tmpdir({ git: true })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const result = await SessionManager.getSession("ses_nonexistent")
@@ -43,7 +43,7 @@ describe("SessionManager.getSession", () => {
   describe("by channel", () => {
     test("returns session matching channel", async () => {
       await using tmp = await tmpdir({ git: true })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const channel: Channel.Info = {
@@ -66,7 +66,7 @@ describe("SessionManager.getSession", () => {
 
     test("returns undefined when no session matches channel", async () => {
       await using tmp = await tmpdir({ git: true })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const otherChannel: Channel.Info = {
@@ -83,7 +83,7 @@ describe("SessionManager.getSession", () => {
 
     test("does not return archived sessions", async () => {
       await using tmp = await tmpdir({ git: true })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const channel: Channel.Info = {
@@ -109,7 +109,7 @@ describe("SessionManager.getSession", () => {
   describe("runtime", () => {
     test("registerRuntime and unregisterRuntime manage runtime entries", async () => {
       await using tmp = await tmpdir({ git: true })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const session = await Session.create({})
@@ -127,7 +127,7 @@ describe("SessionManager.getSession", () => {
     test("listStatuses only reports in-memory runtime status", async () => {
       await using tmp = await tmpdir({ git: true })
       const scope = await tmp.scope()
-      await Instance.provide({
+      await ScopeContext.provide({
         scope,
         fn: async () => {
           const session = await Session.create({})

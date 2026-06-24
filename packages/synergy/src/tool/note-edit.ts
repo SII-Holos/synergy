@@ -1,7 +1,7 @@
 import z from "zod"
 import { Tool } from "./tool"
 import { NoteError, NoteStore, NoteMarkdown } from "../note"
-import { Instance } from "../scope/instance"
+import { ScopeContext } from "../scope/context"
 import { Storage } from "../storage/storage"
 import DESCRIPTION from "./note-edit.txt"
 
@@ -59,7 +59,7 @@ export const NoteEditTool = Tool.define("note_edit", {
 
     let existing: Awaited<ReturnType<typeof NoteStore.getAny>>
     try {
-      existing = await NoteStore.getAny(Instance.scope.id, params.id)
+      existing = await NoteStore.getAny(ScopeContext.current.scope.id, params.id)
     } catch (error) {
       if (error instanceof Storage.NotFoundError) {
         return {
@@ -116,7 +116,7 @@ export const NoteEditTool = Tool.define("note_edit", {
     }
 
     try {
-      await NoteStore.updateAny(Instance.scope.id, params.id, {
+      await NoteStore.updateAny(ScopeContext.current.scope.id, params.id, {
         content: doc,
         expectedVersion: existing.version,
       })

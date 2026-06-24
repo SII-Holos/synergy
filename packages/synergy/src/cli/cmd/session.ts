@@ -1,7 +1,7 @@
 import type { Argv } from "yargs"
 import { cmd } from "./cmd"
 import { Session } from "../../session"
-import { bootstrap } from "../bootstrap"
+import { withScopeContext } from "../scope"
 import { UI } from "../ui"
 import { Locale } from "../../util/locale"
 import { Flag } from "../../flag/flag"
@@ -60,7 +60,7 @@ export const SessionListCommand = cmd({
       })
   },
   handler: async (args) => {
-    await bootstrap(process.cwd(), async () => {
+    await withScopeContext(process.cwd(), async () => {
       const sessions = []
       for await (const session of Session.listAll()) {
         if (!session.parentID) {

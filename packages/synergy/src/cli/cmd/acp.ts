@@ -1,5 +1,4 @@
 import { Log } from "@/util/log"
-import { bootstrap } from "../bootstrap"
 import { cmd } from "./cmd"
 import { AgentSideConnection, ndJsonStream } from "@agentclientprotocol/sdk"
 import { ACP } from "@/acp/agent"
@@ -21,51 +20,50 @@ export const AcpCommand = cmd({
     })
   },
   handler: async (args) => {
-    await bootstrap(process.cwd(), async () => {
-      await runMigrations({ output: "silent" })
-      const opts = await resolveNetworkOptions(args)
-      const server = Server.listen(opts)
+    await runMigrations({ output: "silent" })
+    const opts = await resolveNetworkOptions(args)
+    const server = Server.listen(opts)
 
-      const sdk = createSynergyClient({
-        baseUrl: `http://${server.hostname}:${server.port}`,
-      })
+    const sdk = createSynergyClient({
+      baseUrl: `http://${server.hostname}:${server.port}`,
+      directory: args.cwd,
+    })
 
-      const input = new WritableStream<Uint8Array>({
-        write(chunk) {
-          return new Promise<void>((resolve, reject) => {
-            process.stdout.write(chunk, (err) => {
-              if (err) {
-                reject(err)
-              } else {
-                resolve()
-              }
-            })
+    const input = new WritableStream<Uint8Array>({
+      write(chunk) {
+        return new Promise<void>((resolve, reject) => {
+          process.stdout.write(chunk, (err) => {
+            if (err) {
+              reject(err)
+            } else {
+              resolve()
+            }
           })
-        },
-      })
-      const output = new ReadableStream<Uint8Array>({
-        start(controller) {
-          process.stdin.on("data", (chunk: Buffer) => {
-            controller.enqueue(new Uint8Array(chunk))
-          })
-          process.stdin.on("end", () => controller.close())
-          process.stdin.on("error", (err) => controller.error(err))
-        },
-      })
+        })
+      },
+    })
+    const output = new ReadableStream<Uint8Array>({
+      start(controller) {
+        process.stdin.on("data", (chunk: Buffer) => {
+          controller.enqueue(new Uint8Array(chunk))
+        })
+        process.stdin.on("end", () => controller.close())
+        process.stdin.on("error", (err) => controller.error(err))
+      },
+    })
 
-      const stream = ndJsonStream(input, output)
-      const agent = await ACP.init({ sdk })
+    const stream = ndJsonStream(input, output)
+    const agent = await ACP.init({ sdk })
 
-      new AgentSideConnection((conn) => {
-        return agent.create(conn, { sdk })
-      }, stream)
+    new AgentSideConnection((conn) => {
+      return agent.create(conn, { sdk })
+    }, stream)
 
-      log.info("setup connection")
-      process.stdin.resume()
-      await new Promise((resolve, reject) => {
-        process.stdin.on("end", resolve)
-        process.stdin.on("error", reject)
-      })
+    log.info("setup connection")
+    process.stdin.resume()
+    await new Promise((resolve, reject) => {
+      process.stdin.on("end", resolve)
+      process.stdin.on("error", reject)
     })
   },
 })

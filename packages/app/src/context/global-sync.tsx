@@ -657,7 +657,7 @@ function createGlobalSync() {
 
     const [store, setStore] = child(directory)
     switch (event.type) {
-      case "server.instance.disposed": {
+      case "scope.runtime.disposed": {
         scheduleBootstrap(directory)
         break
       }

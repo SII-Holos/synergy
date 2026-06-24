@@ -5,7 +5,7 @@ import z from "zod"
 import { Ripgrep } from "../file/ripgrep"
 import { File } from "../file"
 import { LSP } from "../lsp"
-import { Instance } from "../scope/instance"
+import { ScopeContext } from "../scope/context"
 
 export const FindRoute = new Hono()
   .get(
@@ -66,7 +66,7 @@ export const FindRoute = new Hono()
     async (c) => {
       const pattern = c.req.valid("query").pattern
       const result = await Ripgrep.search({
-        cwd: Instance.directory,
+        cwd: ScopeContext.current.directory,
         pattern,
         limit: 10,
       })

@@ -10,7 +10,7 @@ import { McpAuth } from "../../mcp/auth"
 import { McpOAuthProvider } from "../../mcp/oauth-provider"
 import { Config } from "../../config/config"
 import { ConfigDomain } from "../../config/domain"
-import { Instance } from "../../scope/instance"
+import { ScopeContext } from "../../scope/context"
 import { Scope } from "@/scope"
 import { Installation } from "../../global/installation"
 
@@ -67,13 +67,13 @@ export const McpListCommand = cmd({
   aliases: ["ls"],
   describe: "list MCP servers and their status",
   async handler() {
-    await Instance.provide({
-      scope: (await Scope.fromDirectory(process.cwd())).scope,
+    await ScopeContext.provide({
+      scope: Scope.global(),
       async fn() {
         UI.empty()
         prompts.intro("MCP Servers")
 
-        const config = await Config.get()
+        const config = await Config.current()
         const mcpServers = config.mcp ?? {}
         const statuses = await MCP.status()
 
@@ -162,13 +162,13 @@ export const McpAuthCommand = cmd({
       })
       .command(McpAuthListCommand),
   async handler(args) {
-    await Instance.provide({
-      scope: (await Scope.fromDirectory(process.cwd())).scope,
+    await ScopeContext.provide({
+      scope: Scope.global(),
       async fn() {
         UI.empty()
         prompts.intro("MCP OAuth Authentication")
 
-        const config = await Config.get()
+        const config = await Config.current()
         const mcpServers = config.mcp ?? {}
 
         // Get OAuth-capable servers (remote servers with oauth not explicitly disabled)
@@ -287,13 +287,13 @@ export const McpAuthListCommand = cmd({
   aliases: ["ls"],
   describe: "list OAuth-capable MCP servers and their auth status",
   async handler() {
-    await Instance.provide({
-      scope: (await Scope.fromDirectory(process.cwd())).scope,
+    await ScopeContext.provide({
+      scope: Scope.global(),
       async fn() {
         UI.empty()
         prompts.intro("MCP OAuth Status")
 
-        const config = await Config.get()
+        const config = await Config.current()
         const mcpServers = config.mcp ?? {}
 
         // Get OAuth-capable servers
@@ -331,8 +331,8 @@ export const McpLogoutCommand = cmd({
       type: "string",
     }),
   async handler(args) {
-    await Instance.provide({
-      scope: (await Scope.fromDirectory(process.cwd())).scope,
+    await ScopeContext.provide({
+      scope: Scope.global(),
       async fn() {
         UI.empty()
         prompts.intro("MCP OAuth Logout")
@@ -532,13 +532,13 @@ export const McpDebugCommand = cmd({
       demandOption: true,
     }),
   async handler(args) {
-    await Instance.provide({
-      scope: (await Scope.fromDirectory(process.cwd())).scope,
+    await ScopeContext.provide({
+      scope: Scope.global(),
       async fn() {
         UI.empty()
         prompts.intro("MCP OAuth Debug")
 
-        const config = await Config.get()
+        const config = await Config.current()
         const mcpServers = config.mcp ?? {}
         const serverName = args.name
 

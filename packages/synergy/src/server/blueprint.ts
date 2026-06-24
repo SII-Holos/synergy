@@ -5,7 +5,7 @@ import { Identifier } from "../id/id"
 import { errors } from "./error"
 import { BlueprintLoopStore, LoopError } from "../blueprint"
 import { Info as BlueprintLoopInfoSchema } from "../blueprint/types"
-import { Instance } from "../scope/instance"
+import { ScopeContext } from "../scope/context"
 import { Storage } from "../storage/storage"
 import { Session } from "../session"
 import { SessionManager } from "../session/manager"
@@ -84,7 +84,7 @@ export const BlueprintRoute = new Hono()
     }),
     async (c) => {
       try {
-        const loops = await BlueprintLoopStore.list(Instance.scope.id)
+        const loops = await BlueprintLoopStore.list(ScopeContext.current.scope.id)
         return c.json(loops)
       } catch (err: any) {
         return c.json({ message: err?.message ?? String(err) }, 400)
@@ -137,7 +137,7 @@ export const BlueprintRoute = new Hono()
     async (c) => {
       try {
         const id = c.req.valid("param").id
-        const loop = await BlueprintLoopStore.complete(Instance.scope.id, id)
+        const loop = await BlueprintLoopStore.complete(ScopeContext.current.scope.id, id)
         return c.json(loop)
       } catch (err: any) {
         if (err instanceof Storage.NotFoundError)
@@ -164,7 +164,7 @@ export const BlueprintRoute = new Hono()
     async (c) => {
       try {
         const id = c.req.valid("param").id
-        const loop = await BlueprintLoopStore.updateStatus(Instance.scope.id, id, { status: "cancelled" })
+        const loop = await BlueprintLoopStore.updateStatus(ScopeContext.current.scope.id, id, { status: "cancelled" })
         return c.json(loop)
       } catch (err: any) {
         if (err instanceof Storage.NotFoundError)
@@ -192,7 +192,7 @@ export const BlueprintRoute = new Hono()
     async (c) => {
       try {
         const id = c.req.valid("param").id
-        const loop = await BlueprintLoopStore.get(Instance.scope.id, id)
+        const loop = await BlueprintLoopStore.get(ScopeContext.current.scope.id, id)
         return c.json(loop)
       } catch (err: any) {
         if (err instanceof Storage.NotFoundError)
@@ -221,7 +221,7 @@ export const BlueprintRoute = new Hono()
       try {
         const id = c.req.valid("param").id
         const { sessionID } = c.req.valid("json")
-        const loop = await BlueprintLoopStore.get(Instance.scope.id, id)
+        const loop = await BlueprintLoopStore.get(ScopeContext.current.scope.id, id)
         await bindSessionToLoop(sessionID, id)
         return c.json(loop)
       } catch (err: any) {
@@ -262,15 +262,15 @@ export const BlueprintRoute = new Hono()
       let started = false
       try {
         const body = c.req.valid("json")
-        const before = await BlueprintLoopStore.get(Instance.scope.id, id)
-        const loop = await BlueprintLoopStore.updateStatus(Instance.scope.id, id, { status: "running" })
+        const before = await BlueprintLoopStore.get(ScopeContext.current.scope.id, id)
+        const loop = await BlueprintLoopStore.updateStatus(ScopeContext.current.scope.id, id, { status: "running" })
         started = true
         await bindSessionToLoop(before.sessionID, id)
         await deliverFirstPrompt(before.sessionID, before, body?.userPrompt)
         return c.json(loop)
       } catch (err: any) {
         if (started) {
-          await BlueprintLoopStore.updateStatus(Instance.scope.id, id, {
+          await BlueprintLoopStore.updateStatus(ScopeContext.current.scope.id, id, {
             status: "failed",
             error: err?.message ?? String(err),
           }).catch(() => undefined)
@@ -299,7 +299,7 @@ export const BlueprintRoute = new Hono()
     async (c) => {
       try {
         const id = c.req.valid("param").id
-        const loop = await BlueprintLoopStore.updateStatus(Instance.scope.id, id, { status: "waiting" })
+        const loop = await BlueprintLoopStore.updateStatus(ScopeContext.current.scope.id, id, { status: "waiting" })
         return c.json(loop)
       } catch (err: any) {
         if (err instanceof Storage.NotFoundError)
@@ -327,7 +327,7 @@ export const BlueprintRoute = new Hono()
     async (c) => {
       try {
         const id = c.req.valid("param").id
-        const loop = await BlueprintLoopStore.updateStatus(Instance.scope.id, id, { status: "running" })
+        const loop = await BlueprintLoopStore.updateStatus(ScopeContext.current.scope.id, id, { status: "running" })
         return c.json(loop)
       } catch (err: any) {
         if (err instanceof Storage.NotFoundError)
@@ -366,7 +366,7 @@ export const BlueprintRoute = new Hono()
     validator("param", z.object({ id: z.string().meta({ description: "BlueprintLoop ID" }) })),
     async (c) => {
       try {
-        await BlueprintLoopStore.get(Instance.scope.id, c.req.valid("param").id)
+        await BlueprintLoopStore.get(ScopeContext.current.scope.id, c.req.valid("param").id)
         // Activity is derived from session state — not persistently stored.
         // Return zeros safely; full derivation endpoint later.
         return c.json({

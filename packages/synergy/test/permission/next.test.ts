@@ -1,7 +1,7 @@
 import { test, expect } from "bun:test"
 import { PermissionNext } from "../../src/permission/next"
 import { PermissionRules } from "../../src/permission/rules"
-import { Instance } from "../../src/scope/instance"
+import { ScopeContext } from "../../src/scope/context"
 import { Storage } from "../../src/storage/storage"
 import { tmpdir } from "../fixture/fixture"
 
@@ -422,7 +422,7 @@ test("disabled - specific allow overrides wildcard deny", () => {
 
 test("ask - resolves immediately when action is allow", async () => {
   await using tmp = await tmpdir({ git: true })
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
       const result = await PermissionNext.ask({
@@ -439,7 +439,7 @@ test("ask - resolves immediately when action is allow", async () => {
 
 test("ask - throws RejectedError when action is deny", async () => {
   await using tmp = await tmpdir({ git: true })
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
       await expect(
@@ -457,7 +457,7 @@ test("ask - throws RejectedError when action is deny", async () => {
 
 test("ask - returns pending promise when action is ask", async () => {
   await using tmp = await tmpdir({ git: true })
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
       const promise = PermissionNext.ask({
@@ -478,7 +478,7 @@ test("ask - returns pending promise when action is ask", async () => {
 
 test("reply - once resolves the pending ask", async () => {
   await using tmp = await tmpdir({ git: true })
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
       const askPromise = PermissionNext.ask({
@@ -502,7 +502,7 @@ test("reply - once resolves the pending ask", async () => {
 
 test("reply - reject throws RejectedError", async () => {
   await using tmp = await tmpdir({ git: true })
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
       const askPromise = PermissionNext.ask({
@@ -526,7 +526,7 @@ test("reply - reject throws RejectedError", async () => {
 
 test("reply - reject cancels all pending for same session", async () => {
   await using tmp = await tmpdir({ git: true })
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
       const askPromise1 = PermissionNext.ask({
@@ -566,7 +566,7 @@ test("reply - reject cancels all pending for same session", async () => {
 
 test("ask - checks all patterns and stops on first deny", async () => {
   await using tmp = await tmpdir({ git: true })
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
       await expect(
@@ -587,7 +587,7 @@ test("ask - checks all patterns and stops on first deny", async () => {
 
 test("ask - allows all patterns when all match allow rules", async () => {
   await using tmp = await tmpdir({ git: true })
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
       const result = await PermissionNext.ask({
@@ -604,7 +604,7 @@ test("ask - allows all patterns when all match allow rules", async () => {
 
 test("ask - unattended metadata auto-approves ask actions", async () => {
   await using tmp = await tmpdir({ git: true })
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
       await expect(
@@ -636,7 +636,7 @@ test("Reply schema accepts session and always approvals", () => {
 test("reply - session approval records a session-scoped allow rule", async () => {
   PermissionRules.clearSessionRules()
   await using tmp = await tmpdir({ git: true })
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
       const promise = PermissionNext.ask({
@@ -663,7 +663,7 @@ test("reply - session approval records a session-scoped allow rule", async () =>
 
 test("ask - nonBypassable metadata stays pending for ask rules", async () => {
   await using tmp = await tmpdir({ git: true })
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
       const promise = PermissionNext.ask({
@@ -692,7 +692,7 @@ test("ask - nonBypassable metadata stays pending for ask rules", async () => {
 
 test("ask - workspaceBoundary metadata prevents unattended auto-approve", async () => {
   await using tmp = await tmpdir({ git: true })
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
       // Request with workspaceBoundary metadata and unattended mode
@@ -726,7 +726,7 @@ test("ask - workspaceBoundary metadata prevents unattended auto-approve", async 
 
 test("ask - nonBypassable metadata keeps edit ask pending", async () => {
   await using tmp = await tmpdir({ git: true })
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
       const promise = PermissionNext.ask({
@@ -752,7 +752,7 @@ test("ask - nonBypassable metadata keeps edit ask pending", async () => {
 
 test("ask - nonBypassable workspace boundary metadata keeps bash ask pending", async () => {
   await using tmp = await tmpdir({ git: true })
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
       const promise = PermissionNext.ask({

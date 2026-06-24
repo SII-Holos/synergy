@@ -2,7 +2,7 @@ import z from "zod"
 import { Bus } from "@/bus"
 import { BusEvent } from "@/bus/bus-event"
 import type { Config } from "@/config/config"
-import { Instance } from "@/scope/instance"
+import { ScopeContext } from "@/scope/context"
 import { Scope } from "@/scope"
 import { State } from "@/scope/state"
 import { Log } from "@/util/log"
@@ -148,7 +148,7 @@ export namespace HolosRuntime {
 
   export async function init(): Promise<void> {
     const { Config } = await import("@/config/config")
-    const cfg = await Config.get()
+    const cfg = await Config.current()
     const holos = cfg.holos
     const current = await state()
 
@@ -280,9 +280,9 @@ export class HolosProvider {
 
     let capturedScope: Scope
     try {
-      capturedScope = Instance.scope
+      capturedScope = ScopeContext.current.scope
     } catch {
-      log.warn("Instance.scope unavailable during connect, falling back to global scope")
+      log.warn("ScopeContext.current.scope unavailable during connect, falling back to global scope")
       capturedScope = Scope.global()
     }
 
@@ -329,7 +329,7 @@ export class HolosProvider {
         }, HEARTBEAT_INTERVAL_MS)
         this.state.heartbeatTimer.unref?.()
 
-        Instance.provide({
+        ScopeContext.provide({
           scope: capturedScope,
           fn: () => {
             Bus.publish(HolosRuntime.Event.Connected, { peerId: credentials.agentId })
@@ -341,7 +341,7 @@ export class HolosProvider {
         try {
           const parsed = Envelope.parse(event.data as string)
           if (!parsed) return
-          Instance.provide({
+          ScopeContext.provide({
             scope: capturedScope,
             fn: () => this.handleParsedMessage(parsed),
           }).catch((err) =>
@@ -361,7 +361,7 @@ export class HolosProvider {
         if (!opened) {
           reject(new Error("WebSocket connection failed"))
         } else if (onDisconnect) {
-          Instance.provide({ scope: capturedScope, fn: () => onDisconnect("ws_closed") }).catch((err) =>
+          ScopeContext.provide({ scope: capturedScope, fn: () => onDisconnect("ws_closed") }).catch((err) =>
             log.warn("disconnect handler failed", {
               error: err,
             }),

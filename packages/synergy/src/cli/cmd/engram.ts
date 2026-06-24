@@ -19,7 +19,7 @@ export const EngramShowCommand = cmd({
     UI.empty()
     prompts.intro("Engram Config")
 
-    const cfg = await Config.get()
+    const cfg = await Config.globalResolved()
     const engram = (cfg as any).engram
 
     if (!engram) {

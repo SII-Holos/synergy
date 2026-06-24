@@ -4,7 +4,8 @@ import { $ } from "bun"
 import path from "path"
 import z from "zod"
 import { Log } from "@/util/log"
-import { Instance } from "@/scope/instance"
+import { ScopeContext } from "@/scope/context"
+import { ScopedState } from "@/scope/scoped-state"
 import { FileWatcher } from "@/file/watcher"
 import { Filesystem } from "@/util/filesystem"
 
@@ -33,15 +34,15 @@ export namespace Vcs {
     return $`git rev-parse --abbrev-ref HEAD`
       .quiet()
       .nothrow()
-      .cwd(Instance.directory)
+      .cwd(ScopeContext.current.directory)
       .text()
       .then((x) => x.trim())
       .catch(() => undefined)
   }
 
-  const state = Instance.state(
+  const state = ScopedState.create(
     async () => {
-      if (Instance.scope.type !== "project" || Instance.scope.vcs !== "git") {
+      if (ScopeContext.current.scope.type !== "project" || ScopeContext.current.scope.vcs !== "git") {
         return { branch: async () => undefined, unsubscribe: undefined }
       }
       let current = await currentBranch()

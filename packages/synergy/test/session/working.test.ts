@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import path from "path"
 import { tmpdir } from "../fixture/fixture"
-import { Instance } from "../../src/scope/instance"
+import { ScopeContext } from "../../src/scope/context"
 import { Session } from "../../src/session"
 import { SessionManager } from "../../src/session/manager"
 import * as SessionWorking from "../../src/session/working"
@@ -19,7 +19,7 @@ describe("SessionWorking", () => {
   describe("resolve()", () => {
     test("returns undefined for idle session with no messages", async () => {
       await using tmp = await tmpdir({ git: true })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const session = await Session.create({})
@@ -31,7 +31,7 @@ describe("SessionWorking", () => {
 
     test("returns busy when runtime is active", async () => {
       await using tmp = await tmpdir({ git: true })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const session = await Session.create({})
@@ -53,7 +53,7 @@ describe("SessionWorking", () => {
 
     test("returns retry when runtime is retrying", async () => {
       await using tmp = await tmpdir({ git: true })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const session = await Session.create({})
@@ -85,7 +85,7 @@ describe("SessionWorking", () => {
 
     test("ignores stored pendingReply without runtime work", async () => {
       await using tmp = await tmpdir({ git: true })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const session = await Session.create({})
@@ -101,7 +101,7 @@ describe("SessionWorking", () => {
 
     test("returns recovering when last assistant message lacks time.completed", async () => {
       await using tmp = await tmpdir({ git: true })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const session = await Session.create({})

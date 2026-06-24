@@ -1,7 +1,7 @@
 import { Storage } from "../storage/storage"
 import { StoragePath } from "../storage/path"
 import { Identifier } from "../id/id"
-import { Instance } from "../scope/instance"
+import { ScopeContext } from "../scope/context"
 import { Bus } from "../bus"
 import { NoteEvent } from "./event"
 import { NoteTypes } from "./types"
@@ -148,7 +148,7 @@ export namespace NoteStore {
   // --- Public API: full data ---
 
   export async function create(input: NoteTypes.CreateInput, options?: { scopeID?: string }): Promise<NoteTypes.Info> {
-    const targetScopeID = options?.scopeID ?? Instance.scope.id
+    const targetScopeID = options?.scopeID ?? ScopeContext.current.scope.id
     const create = await Plugin.trigger(
       "note.create.before",
       {
@@ -360,7 +360,7 @@ export namespace NoteStore {
 
   export async function listMetaGrouped(): Promise<NoteTypes.MetaScopeGroup[]> {
     const scopeIDs = await Storage.scan(["notes"])
-    const currentScopeID = Instance.scope.id
+    const currentScopeID = ScopeContext.current.scope.id
     scopeIDs.sort((a, b) => {
       if (a === currentScopeID) return -1
       if (b === currentScopeID) return 1

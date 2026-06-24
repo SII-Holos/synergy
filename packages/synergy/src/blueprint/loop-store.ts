@@ -1,7 +1,7 @@
 import { Identifier } from "../id/id"
 import { Storage } from "../storage/storage"
 import { StoragePath } from "../storage/path"
-import { Instance } from "../scope/instance"
+import { ScopeContext } from "../scope/context"
 import { Bus } from "../bus"
 import { LoopEvent } from "./event"
 import { LoopError } from "./error"
@@ -37,7 +37,7 @@ export namespace BlueprintLoopStore {
     firstPrompt?: string
     loopIndex?: number
   }): Promise<Info> {
-    const scopeID = Instance.scope.id
+    const scopeID = ScopeContext.current.scope.id
     const sid = Identifier.asScopeID(scopeID)
     const now = Date.now()
     const id = Identifier.ascending("blueprint_loop")

@@ -66,7 +66,7 @@ export namespace Email {
   }
 
   async function resolveConfig(): Promise<ResolvedConfig> {
-    const config = await Config.get()
+    const config = await Config.current()
     const email = config.email
     if (!email) {
       throw new NotConfiguredError({

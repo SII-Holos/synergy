@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import path from "path"
 import { WriteTool } from "../../src/tool/write"
-import { Instance } from "../../src/scope/instance"
+import { ScopeContext } from "../../src/scope/context"
 import { tmpdir } from "../fixture/fixture"
 
 const ctx = {
@@ -17,7 +17,7 @@ const ctx = {
 describe("tool.write auto runtime reload", () => {
   test("reloads config when writing synergy config file", async () => {
     await using tmp = await tmpdir({ git: true })
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const tool = await WriteTool.init()

@@ -13,7 +13,10 @@ import { NamedError } from "@ericsanchezok/synergy-util/error"
 import { Flag } from "../flag/flag"
 import { Auth } from "../provider/api-key"
 import { type ParseError as JsoncParseError, parse as parseJsonc, printParseErrorCode } from "jsonc-parser"
-import { Instance } from "../scope/instance"
+import { ScopeContext } from "../scope/context"
+import { ScopedState } from "../scope/scoped-state"
+import { ScopeRuntime } from "../scope/runtime"
+import { Scope } from "../scope"
 import { BusEvent } from "../bus/bus-event"
 import { LSPServer } from "../lsp/server"
 import { BunProc } from "@/util/bun"
@@ -164,7 +167,7 @@ export namespace Config {
 
   ConfigDomain.assertRegistryComplete()
 
-  export const state = Instance.state(async () => {
+  export const state = ScopedState.create(async () => {
     const auth = await Auth.all()
 
     // Load remote/well-known config first as the base layer (lowest precedence)
@@ -243,30 +246,27 @@ export namespace Config {
 
     result.agent = result.agent || {}
     result.plugin = result.plugin || []
-    const directories = [
-      Global.Path.config,
-      ...(await Array.fromAsync(
-        Filesystem.up({
-          targets: [".synergy"],
-          start: Instance.directory,
-          stop: Instance.directory,
-        }),
-      )),
-      ...(await Array.fromAsync(
-        Filesystem.up({
-          targets: [".synergy"],
-          start: Global.Path.home,
-          stop: Global.Path.home,
-        }),
-      )),
-    ]
+    const scope = ScopeContext.current.scope
+    const projectDirectories =
+      scope.type === "project"
+        ? await Array.fromAsync(
+            Filesystem.up({
+              targets: [".synergy"],
+              start: ScopeContext.current.directory,
+              stop: ScopeContext.current.directory,
+            }),
+          )
+        : []
+    const directories = [Global.Path.config, ...projectDirectories]
 
     if (Flag.SYNERGY_CONFIG_DIR) {
       directories.push(Flag.SYNERGY_CONFIG_DIR)
       log.debug("loading config from SYNERGY_CONFIG_DIR", { path: Flag.SYNERGY_CONFIG_DIR })
     }
 
-    await migrateLegacyProjectConfig(Instance.directory)
+    if (scope.type === "project") {
+      await migrateLegacyProjectConfig(ScopeContext.current.directory)
+    }
 
     for (const dir of unique(directories)) {
       if (dir.endsWith(".synergy") || dir === Flag.SYNERGY_CONFIG_DIR) {
@@ -288,7 +288,6 @@ export namespace Config {
       result.plugin.push(...(await loadPlugin(dir)))
     }
 
-    result = mergeConfigConcatArrays(result, await loadLegacyProjectConfigFiles(Instance.directory))
     result.agent ??= {}
     result.plugin ??= []
 
@@ -351,8 +350,10 @@ export namespace Config {
       result.compaction = { ...result.compaction, prune: false }
     }
 
+    const config = Info.parse(result)
+
     return {
-      config: result,
+      config,
       directories,
     }
   })
@@ -640,23 +641,6 @@ export namespace Config {
     }
   }
 
-  async function loadLegacyProjectConfigFiles(projectRoot: string): Promise<Info> {
-    const synergyDir = path.join(projectRoot, ".synergy")
-    const candidates = [
-      path.join(projectRoot, "synergy.jsonc"),
-      path.join(projectRoot, "synergy.json"),
-      path.join(synergyDir, "synergy.jsonc"),
-      path.join(synergyDir, "synergy.json"),
-    ]
-
-    let result: Info = {}
-    for (const candidate of candidates) {
-      if (!(await Bun.file(candidate).exists())) continue
-      result = mergeConfigConcatArrays(result, await loadFile(candidate))
-    }
-    return result
-  }
-
   async function loadFile(filepath: string, options: { addSchema?: boolean } = {}): Promise<Info> {
     log.info("loading", { path: filepath })
     let text = await Bun.file(filepath)
@@ -836,8 +820,19 @@ export namespace Config {
     }),
   )
 
-  export async function get() {
+  export async function current() {
     return state().then((x) => x.config)
+  }
+
+  export async function forScope(scope: Scope) {
+    return ScopeContext.provide({
+      scope,
+      fn: current,
+    })
+  }
+
+  export async function globalResolved() {
+    return forScope(Scope.global())
   }
 
   export const Event = {
@@ -943,7 +938,23 @@ export namespace Config {
     return result as Info
   }
 
-  export async function reload(scope: "global" | "project" = "global") {
+  export interface ReloadResult {
+    config: Info
+    changedFields: string[]
+    oldConfig: Info
+  }
+
+  export async function reload(scope: "global" | "project" = "global"): Promise<ReloadResult> {
+    if (!ScopeContext.tryScope()) {
+      if (scope !== "global") {
+        throw new Error("Config.reload('project') requires a ScopeContext")
+      }
+      return ScopeContext.provide<ReloadResult>({
+        scope: Scope.global(),
+        fn: () => reload(scope),
+      })
+    }
+
     const oldConfig = await state()
       .then((x) => x.config)
       .catch(() => ({}) as Info)
@@ -968,11 +979,11 @@ export namespace Config {
   }
 
   export async function update(config: Info) {
-    const synergyDir = path.join(Instance.directory, ".synergy")
+    const synergyDir = path.join(ScopeContext.current.directory, ".synergy")
     for (const [id, fragment] of ConfigDomain.split(config)) {
       await writeDomainFile(id, fragment, synergyDir)
     }
-    await Instance.dispose()
+    await ScopeRuntime.dispose()
   }
 
   export async function updateGlobal(config: Info) {

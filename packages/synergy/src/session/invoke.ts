@@ -54,7 +54,7 @@ import "./title"
 
 import { LLM } from "./llm"
 import { SessionRevert } from "./revert"
-import { Instance } from "../scope/instance"
+import { ScopeContext } from "../scope/context"
 import { Scope } from "@/scope"
 import { LoopJob } from "./loop-job"
 import "./loop-signals"
@@ -157,7 +157,7 @@ export namespace SessionInvoke {
   ): Promise<{ context: string; injection: InjectionInfo } | undefined> {
     if (step === 1 && isTopSession) {
       SessionManager.setStatus(sessionID, { type: "busy", description: "Flashing back..." })
-      const cfg = await Config.get()
+      const cfg = await Config.current()
       return withTimeout(buildMemoryContext(sessionID, scopeID, sessionMessages, cfg.engram), RECALL_TIMEOUT_MS).catch(
         (err: any) => {
           log.warn("recall failed or timed out", { sessionID, error: err })
@@ -173,7 +173,7 @@ export namespace SessionInvoke {
       return getCachedResult(sessionID)
     }
     if (step === 1 && !isTopSession) {
-      const cfg = await Config.get()
+      const cfg = await Config.current()
       if (cfg.engram?.memory?.enabled !== false) {
         const alwaysContext = buildAlwaysOnlyMemoryContext()
         return alwaysContext ? { context: alwaysContext, injection: {} as InjectionInfo } : undefined
@@ -256,9 +256,9 @@ export namespace SessionInvoke {
           lastFinishedParts,
           lastAssistant,
           abort,
-          compactionAutoDisabled: (await Config.get()).compaction?.auto === false,
-          compactionOverflowThreshold: (await Config.get()).compaction?.overflowThreshold,
-          compactionMaxHistoryImages: (await Config.get()).compaction?.maxHistoryImages ?? 8,
+          compactionAutoDisabled: (await Config.current()).compaction?.auto === false,
+          compactionOverflowThreshold: (await Config.current()).compaction?.overflowThreshold,
+          compactionMaxHistoryImages: (await Config.current()).compaction?.maxHistoryImages ?? 8,
           modelID: lastUser.model.modelID,
           modelLimits: await Promise.all([
             Provider.getModel(lastUser.model.providerID, lastUser.model.modelID)
@@ -309,7 +309,7 @@ export namespace SessionInvoke {
         })
 
         if (agent.external) {
-          const topLevelProfile = await Config.get()
+          const topLevelProfile = await Config.current()
             .then((c) => c.controlProfile)
             .catch(() => undefined)
           const sessionProfile = session?.id ? await Session.resolveControlProfile(session.id) : undefined
@@ -331,7 +331,7 @@ export namespace SessionInvoke {
 
           if (!adapter.started) {
             await adapter.start({
-              cwd: Instance.directory,
+              cwd: ScopeContext.current.directory,
               config: runConfig,
               env,
             })
@@ -386,8 +386,8 @@ export namespace SessionInvoke {
             mode: agent.name,
             agent: agent.name,
             path: {
-              cwd: Instance.directory,
-              root: Instance.directory,
+              cwd: ScopeContext.current.directory,
+              root: ScopeContext.current.directory,
             },
             cost: 0,
             tokens: {
@@ -481,11 +481,11 @@ export namespace SessionInvoke {
 
         // Layer 1.5: Semi-static — permission context (stable per session)
         try {
-          const workspace = Instance.directory
-          const workspaceInfo = Instance.workspace
+          const workspace = ScopeContext.current.directory
+          const workspaceInfo = ScopeContext.current.workspace
           const interaction = session?.interaction
           const interactionMode = interaction?.mode === "unattended" ? "unattended" : "attended"
-          const topLevelProfile = await Config.get()
+          const topLevelProfile = await Config.current()
             .then((c) => c.controlProfile)
             .catch(() => undefined)
           const sessionProfile = session?.id ? await Session.resolveControlProfile(session.id) : undefined
@@ -551,7 +551,7 @@ export namespace SessionInvoke {
         systemParts.push(...envParts)
 
         // Layer 4.5: Dynamic — git health diagnostics (warns about uncommitted changes, large files, etc.)
-        const gitHealthBlock = GitHealth.injectCached(Instance.directory)
+        const gitHealthBlock = GitHealth.injectCached(ScopeContext.current.directory)
         if (gitHealthBlock) systemParts.push(gitHealthBlock)
 
         // Layer 5: Dynamic — upcoming agenda wake-ups (always at the end)
@@ -811,8 +811,8 @@ export namespace SessionInvoke {
       mode: "unknown",
       agent: "unknown",
       path: {
-        cwd: Instance.directory,
-        root: Instance.directory,
+        cwd: ScopeContext.current.directory,
+        root: ScopeContext.current.directory,
       },
       cost: 0,
       tokens: {
@@ -862,8 +862,8 @@ export namespace SessionInvoke {
       agent: mail.agentID ?? "unknown",
       mode: mail.agentID ?? "unknown",
       path: {
-        cwd: Instance.directory,
-        root: Instance.directory,
+        cwd: ScopeContext.current.directory,
+        root: ScopeContext.current.directory,
       },
       cost: 0,
       tokens: {
@@ -1288,8 +1288,8 @@ export namespace SessionInvoke {
       agent: agentName,
       cost: 0,
       path: {
-        cwd: Instance.directory,
-        root: Instance.directory,
+        cwd: ScopeContext.current.directory,
+        root: ScopeContext.current.directory,
       },
       time: { created: Date.now(), completed: Date.now() },
       tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },

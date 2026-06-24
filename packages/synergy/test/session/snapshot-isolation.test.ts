@@ -3,7 +3,7 @@ import { $ } from "bun"
 import path from "path"
 import fs from "fs/promises"
 import { Snapshot } from "../../src/session/snapshot"
-import { Instance } from "../../src/scope/instance"
+import { ScopeContext } from "../../src/scope/context"
 import { Global } from "../../src/global"
 import { tmpdir } from "../fixture/fixture"
 import { Identifier } from "../../src/id/id"
@@ -15,10 +15,10 @@ function fakeSessionID(): string {
 describe("Snapshot per-session isolation", () => {
   test("track() with different sessionIDs produces hashes in separate git repos", async () => {
     await using tmp = await tmpdir({ git: true })
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
-        const scopeID = Instance.scope.id
+        const scopeID = ScopeContext.current.scope.id
         const snapshotRoot = Global.Path.snapshot
         const sessionA = fakeSessionID()
         const sessionB = fakeSessionID()
@@ -51,7 +51,7 @@ describe("Snapshot per-session isolation", () => {
 
   test("revert() in one session preserves another session's changes on non-overlapping files", async () => {
     await using tmp = await tmpdir({ git: true })
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const sessionA = fakeSessionID()
@@ -83,7 +83,7 @@ describe("Snapshot per-session isolation", () => {
 
   test("restore() only restores tracked files, not full working tree", async () => {
     await using tmp = await tmpdir({ git: true })
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const sessionID = fakeSessionID()
@@ -108,10 +108,10 @@ describe("Snapshot per-session isolation", () => {
 
   test("first track() call per session creates a new git repo", async () => {
     await using tmp = await tmpdir({ git: true })
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
-        const scopeID = Instance.scope.id
+        const scopeID = ScopeContext.current.scope.id
         const snapshotRoot = Global.Path.snapshot
         const sessionID = fakeSessionID()
         const repoPath = path.join(snapshotRoot, scopeID, sessionID)
@@ -133,7 +133,7 @@ describe("Snapshot per-session isolation", () => {
 
   test("patch() with a hash from another session's repo returns empty files", async () => {
     await using tmp = await tmpdir({ git: true })
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const sessionA = fakeSessionID()
@@ -153,7 +153,7 @@ describe("Snapshot per-session isolation", () => {
 
   test("diff() with a hash from another session's repo returns empty string", async () => {
     await using tmp = await tmpdir({ git: true })
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const sessionA = fakeSessionID()
@@ -173,10 +173,10 @@ describe("Snapshot per-session isolation", () => {
 
   test("multiple track() calls within the same session accumulate in that session's repo", async () => {
     await using tmp = await tmpdir({ git: true })
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
-        const scopeID = Instance.scope.id
+        const scopeID = ScopeContext.current.scope.id
         const snapshotRoot = Global.Path.snapshot
         const sessionID = fakeSessionID()
         const repoPath = path.join(snapshotRoot, scopeID, sessionID)
@@ -201,7 +201,7 @@ describe("Snapshot per-session isolation", () => {
 
   test("diffFull() with hashes from different sessions returns empty array", async () => {
     await using tmp = await tmpdir({ git: true })
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const sessionA = fakeSessionID()

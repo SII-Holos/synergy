@@ -1,18 +1,19 @@
 import { afterAll, afterEach, describe, expect, test } from "bun:test"
 import { tmpdir } from "../fixture/fixture"
 import { Server } from "../../src/server/server"
-import { Instance } from "../../src/scope/instance"
+import { ScopeContext } from "../../src/scope/context"
+import { ScopeRuntime } from "../../src/scope/runtime"
 import { EngramDB, closeDB } from "../../src/engram/database"
 
 afterEach(async () => {
   EngramDB.Experience.removeAll()
   EngramDB.Memory.removeAll()
-  await Instance.disposeAll()
+  await ScopeRuntime.disposeAll()
   closeDB()
 })
 
 afterAll(async () => {
-  await Instance.disposeAll()
+  await ScopeRuntime.disposeAll()
   closeDB()
 })
 
@@ -157,7 +158,7 @@ describe("Engram API DTO contracts", () => {
       metadata: '{"kind":"test"}',
     })
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope,
       fn: async () => {
         const app = Server.App()
@@ -194,7 +195,7 @@ describe("Engram API DTO contracts", () => {
       metadata: '{"detail":true}',
     })
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope,
       fn: async () => {
         const app = Server.App()
@@ -228,7 +229,7 @@ describe("Engram API DTO contracts", () => {
       updatedAt: 1710000001000,
     })
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope,
       fn: async () => {
         const app = Server.App()

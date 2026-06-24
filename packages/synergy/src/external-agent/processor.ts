@@ -2,7 +2,7 @@ import { ExternalAgent } from "./bridge"
 import { MessageV2 } from "@/session/message-v2"
 import { Session } from "@/session"
 import { Identifier } from "@/id/id"
-import { Instance } from "@/scope/instance"
+import { ScopeContext } from "@/scope/context"
 import { Log } from "@/util/log"
 import { SessionManager } from "@/session/manager"
 import { ExperienceEncoder } from "@/engram/experience-encoder"
@@ -41,8 +41,8 @@ export namespace ExternalAgentProcessor {
       agent,
       mode: agent,
       path: {
-        cwd: Instance.directory,
-        root: Instance.directory,
+        cwd: ScopeContext.current.directory,
+        root: ScopeContext.current.directory,
       },
       cost: 0,
       tokens: {

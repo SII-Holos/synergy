@@ -5,7 +5,7 @@ import { $ } from "bun"
 import { lazy } from "@/util/lazy"
 import { Shell } from "@/util/shell"
 import { Log } from "@/util/log"
-import { Instance } from "@/scope/instance"
+import { ScopeContext } from "@/scope/context"
 import { ProcessRegistry } from "@/process/registry"
 import type { BashBackend } from "./shared"
 import { truncateMetadataOutput } from "./shared"
@@ -67,7 +67,7 @@ export const LocalBashBackend: BashBackend = {
     const shell = Shell.acceptable()
     log.info("bash tool using shell", { shell })
 
-    const cwd = params.workdir || Instance.directory
+    const cwd = params.workdir || ScopeContext.current.directory
     const tree = await parser().then((p) => p.parse(params.command))
     if (!tree) {
       throw new Error("Failed to parse command")

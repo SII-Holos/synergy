@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import { AgendaStore } from "../../src/agenda/store"
 import { Identifier } from "../../src/id/id"
-import { Instance } from "../../src/scope/instance"
+import { ScopeContext } from "../../src/scope/context"
 import { Scope } from "../../src/scope"
 import { Server } from "../../src/server/server"
 import { Session } from "../../src/session"
@@ -26,7 +26,7 @@ function withProjectScope(fn: (scope: Scope) => Promise<void>) {
   return async () => {
     await using tmp = await tmpdir({ git: true })
     const scope = await tmp.scope()
-    await Instance.provide({ scope, fn: async () => fn(scope) })
+    await ScopeContext.provide({ scope, fn: async () => fn(scope) })
   }
 }
 
@@ -43,7 +43,7 @@ async function createAgendaItem(input: TestAgendaItemInput) {
     createdBy: "agent",
   })
 
-  const storageScopeID = Identifier.asScopeID(input.global ? "global" : Instance.scope.id)
+  const storageScopeID = Identifier.asScopeID(input.global ? "global" : ScopeContext.current.scope.id)
   await Storage.update(StoragePath.agendaItem(storageScopeID, item.id), (draft: any) => {
     if (input.status) draft.status = input.status
     if (input.nextRunAt === null) delete draft.state.nextRunAt

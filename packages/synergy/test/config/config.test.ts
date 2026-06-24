@@ -1,6 +1,6 @@
 import { test, expect, mock } from "bun:test"
 import { Config } from "../../src/config/config"
-import { Instance } from "../../src/scope/instance"
+import { ScopeContext } from "../../src/scope/context"
 import { Scope } from "../../src/scope"
 import { Auth } from "../../src/provider/api-key"
 import { tmpdir } from "../fixture/fixture"
@@ -15,10 +15,10 @@ import { StoragePath } from "../../src/storage/path"
 
 test("loads config with defaults when no files exist", async () => {
   await using tmp = await tmpdir()
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
-      const config = await Config.get()
+      const config = await Config.current()
       expect(config.username).toBeDefined()
     },
   })
@@ -37,10 +37,10 @@ test("loads JSON config file", async () => {
       )
     },
   })
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
-      const config = await Config.get()
+      const config = await Config.current()
       expect(config.model).toBe("test/model")
       expect(config.username).toBe("testuser")
     },
@@ -61,10 +61,10 @@ test("loads JSONC config file", async () => {
       )
     },
   })
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
-      const config = await Config.get()
+      const config = await Config.current()
       expect(config.model).toBe("test/model")
       expect(config.username).toBe("testuser")
     },
@@ -91,10 +91,10 @@ test("merges multiple config files with correct precedence", async () => {
       )
     },
   })
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
-      const config = await Config.get()
+      const config = await Config.current()
       expect(config.model).toBe("override")
       expect(config.username).toBe("base")
     },
@@ -117,10 +117,10 @@ test("handles environment variable substitution", async () => {
         )
       },
     })
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
-        const config = await Config.get()
+        const config = await Config.current()
         expect(config.theme).toBe("test_theme")
       },
     })
@@ -146,10 +146,10 @@ test("handles file inclusion substitution", async () => {
       )
     },
   })
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
-      const config = await Config.get()
+      const config = await Config.current()
       expect(config.theme).toBe("test_theme")
     },
   })
@@ -167,11 +167,11 @@ test("validates config schema and throws on invalid fields", async () => {
       )
     },
   })
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
       // Strict schema should throw an error for invalid fields
-      await expect(Config.get()).rejects.toThrow()
+      await expect(Config.current()).rejects.toThrow()
     },
   })
 })
@@ -182,10 +182,10 @@ test("throws error for invalid JSON", async () => {
       await Bun.write(path.join(dir, "synergy.json"), "{ invalid json }")
     },
   })
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
-      await expect(Config.get()).rejects.toThrow()
+      await expect(Config.current()).rejects.toThrow()
     },
   })
 })
@@ -208,10 +208,10 @@ test("handles agent configuration", async () => {
       )
     },
   })
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
-      const config = await Config.get()
+      const config = await Config.current()
       expect(config.agent?.["test_agent"]).toEqual(
         expect.objectContaining({
           model: "test/model",
@@ -241,10 +241,10 @@ test("handles command configuration", async () => {
       )
     },
   })
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
-      const config = await Config.get()
+      const config = await Config.current()
       expect(config.command?.["test_command"]).toEqual({
         template: "test template",
         description: "test command",
@@ -271,10 +271,10 @@ Test agent prompt`,
       )
     },
   })
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
-      const config = await Config.get()
+      const config = await Config.current()
       expect(config.agent?.["test"]).toEqual(
         expect.objectContaining({
           name: "test",
@@ -288,7 +288,7 @@ Test agent prompt`,
 
 test("updates config and writes to file", async () => {
   await using tmp = await tmpdir()
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
       const newConfig = { model: "updated/model" }
@@ -303,7 +303,7 @@ test("updates config and writes to file", async () => {
 
 test("gets config directories", async () => {
   await using tmp = await tmpdir()
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
       const dirs = await Config.directories()
@@ -353,7 +353,7 @@ test("resolves scoped npm plugins in config", async () => {
     },
   })
 
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
       // Bun 1.3.13: import.meta.resolve from file:/// URLs on Windows fails for
@@ -362,7 +362,7 @@ test("resolves scoped npm plugins in config", async () => {
       // Tracked as: Bun #<unknown> — file:/// scoped package resolution on Windows.
       if (process.platform === "win32") return
 
-      const config = await Config.get()
+      const config = await Config.current()
       const pluginEntries = config.plugin ?? []
 
       const baseUrl = pathToFileURL(path.join(tmp.path, "synergy.json")).href
@@ -404,10 +404,10 @@ test("merges plugin arrays from global and local configs", async () => {
     },
   })
 
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
-      const config = await Config.get()
+      const config = await Config.current()
       const plugins = config.plugin ?? []
 
       // Should contain both root and .synergy plugins
@@ -440,10 +440,10 @@ Helper subagent prompt`,
       )
     },
   })
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
-      const config = await Config.get()
+      const config = await Config.current()
       expect(config.agent?.["helper"]).toMatchObject({
         name: "helper",
         model: "test/model",
@@ -479,11 +479,11 @@ test("merges instructions arrays from global and local configs", async () => {
     },
   })
 
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
       await Config.state.reset()
-      const config = await Config.get()
+      const config = await Config.current()
       const instructions = config.instructions ?? []
 
       expect(instructions).toContain("global-instructions.md")
@@ -519,11 +519,11 @@ test("deduplicates duplicate instructions from global and local configs", async 
     },
   })
 
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
       await Config.state.reset()
-      const config = await Config.get()
+      const config = await Config.current()
       const instructions = config.instructions ?? []
 
       expect(instructions).toContain("global-only.md")
@@ -564,11 +564,11 @@ test("deduplicates duplicate plugins from global and local configs", async () =>
     },
   })
 
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
       await Config.state.reset()
-      const config = await Config.get()
+      const config = await Config.current()
       const plugins = config.plugin ?? []
 
       // Should contain all unique plugins
@@ -610,10 +610,10 @@ test("migrates legacy tools config to permissions - allow", async () => {
       )
     },
   })
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
-      const config = await Config.get()
+      const config = await Config.current()
       expect(config.agent?.["test"]?.permission).toEqual({
         bash: "allow",
         read: "allow",
@@ -641,10 +641,10 @@ test("migrates legacy tools config to permissions - deny", async () => {
       )
     },
   })
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
-      const config = await Config.get()
+      const config = await Config.current()
       expect(config.agent?.["test"]?.permission).toEqual({
         bash: "deny",
         webfetch: "deny",
@@ -671,10 +671,10 @@ test("migrates legacy write tool to edit permission", async () => {
       )
     },
   })
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
-      const config = await Config.get()
+      const config = await Config.current()
       expect(config.agent?.["test"]?.permission).toEqual({
         edit: "allow",
       })
@@ -700,10 +700,10 @@ test("migrates legacy edit tool to edit permission", async () => {
       )
     },
   })
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
-      const config = await Config.get()
+      const config = await Config.current()
       expect(config.agent?.["test"]?.permission).toEqual({
         edit: "deny",
       })
@@ -729,10 +729,10 @@ test("migrates legacy patch tool to edit permission", async () => {
       )
     },
   })
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
-      const config = await Config.get()
+      const config = await Config.current()
       expect(config.agent?.["test"]?.permission).toEqual({
         edit: "allow",
       })
@@ -758,10 +758,10 @@ test("migrates legacy multiedit tool to edit permission", async () => {
       )
     },
   })
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
-      const config = await Config.get()
+      const config = await Config.current()
       expect(config.agent?.["test"]?.permission).toEqual({
         edit: "deny",
       })
@@ -790,10 +790,10 @@ test("migrates mixed legacy tools config", async () => {
       )
     },
   })
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
-      const config = await Config.get()
+      const config = await Config.current()
       expect(config.agent?.["test"]?.permission).toEqual({
         bash: "allow",
         edit: "allow",
@@ -825,10 +825,10 @@ test("merges legacy tools with existing permission config", async () => {
       )
     },
   })
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
-      const config = await Config.get()
+      const config = await Config.current()
       expect(config.agent?.["test"]?.permission).toEqual({
         glob: "allow",
         bash: "allow",
@@ -861,10 +861,10 @@ test("permission config preserves key order", async () => {
       )
     },
   })
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
-      const config = await Config.get()
+      const config = await Config.current()
       expect(Object.keys(config.permission!)).toEqual([
         "*",
         "edit",
@@ -1143,10 +1143,10 @@ test("project config can override MCP server enabled status", async () => {
       )
     },
   })
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
-      const config = await Config.get()
+      const config = await Config.current()
       // jira should be enabled (overridden by project config)
       expect(config.mcp?.jira).toEqual({
         type: "remote",
@@ -1199,10 +1199,10 @@ test("MCP config deep merges preserving base config properties", async () => {
       )
     },
   })
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
-      const config = await Config.get()
+      const config = await Config.current()
       expect(config.mcp?.myserver).toEqual({
         type: "remote",
         url: "https://myserver.example.com/mcp",
@@ -1250,10 +1250,10 @@ test("local .synergy config can override MCP from project config", async () => {
       )
     },
   })
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
-      const config = await Config.get()
+      const config = await Config.current()
       expect(config.mcp?.docs?.enabled).toBe(true)
     },
   })
@@ -1318,11 +1318,11 @@ test("project config overrides remote well-known config", async () => {
         )
       },
     })
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         await Config.state.reset()
-        const config = await Config.get()
+        const config = await Config.current()
         // Verify fetch was called for wellknown config
         expect(fetchedUrl).toBe("https://example.com/.well-known/synergy")
         // Project config (enabled: true) should override remote (enabled: false)
@@ -1375,10 +1375,10 @@ test("MCP server config accepts new lifecycle fields", async () => {
       )
     },
   })
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
-      const config = await Config.get()
+      const config = await Config.current()
       const sidebar = config.mcp?.sidebar
       expect(sidebar).toBeDefined()
       if (sidebar && "type" in sidebar) {
@@ -1476,10 +1476,10 @@ test("MCP config preserves backward compatibility with old timeout-only shape", 
       )
     },
   })
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
-      const config = await Config.get()
+      const config = await Config.current()
       expect(config.mcp?.oldserver).toBeDefined()
       if (config.mcp?.oldserver && "type" in config.mcp.oldserver) {
         expect(config.mcp.oldserver.timeout).toBe(5000)
@@ -1508,10 +1508,10 @@ test("experimental.mcp_timeout does not break config loading", async () => {
       )
     },
   })
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
-      const config = await Config.get()
+      const config = await Config.current()
       expect(config.mcp?.mymcp).toBeDefined()
       expect(config.experimental?.mcp_timeout).toBe(60000)
     },

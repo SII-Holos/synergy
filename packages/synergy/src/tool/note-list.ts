@@ -2,7 +2,7 @@ import { formatLocalDateTime } from "@/util/time-format"
 import z from "zod"
 import { Tool } from "./tool"
 import { NoteStore } from "../note"
-import { Instance } from "../scope/instance"
+import { ScopeContext } from "../scope/context"
 import DESCRIPTION from "./note-list.txt"
 
 const parameters = z.object({
@@ -31,7 +31,7 @@ export const NoteListTool = Tool.define("note_list", {
   description: DESCRIPTION,
   parameters,
   async execute(params: z.infer<typeof parameters>) {
-    const currentScopeID = Instance.scope.id
+    const currentScopeID = ScopeContext.current.scope.id
 
     let notes =
       params.scope === "all"

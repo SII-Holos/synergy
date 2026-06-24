@@ -3,7 +3,7 @@ import { Cron } from "croner"
 import { Storage } from "../storage/storage"
 import { StoragePath } from "../storage/path"
 import { Identifier } from "../id/id"
-import { Instance } from "../scope/instance"
+import { ScopeContext } from "../scope/context"
 import { Bus } from "../bus"
 import { AgendaEvent } from "./event"
 import { AgendaTypes } from "./types"
@@ -90,7 +90,7 @@ export namespace AgendaStore {
     input: AgendaTypes.CreateInput,
     id: string = Identifier.ascending("agenda"),
   ): Promise<AgendaTypes.Item> {
-    const scope = Instance.scope
+    const scope = ScopeContext.current.scope
     const now = Date.now()
     const triggers = input.triggers ?? []
 

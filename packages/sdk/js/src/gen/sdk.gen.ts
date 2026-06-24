@@ -208,7 +208,6 @@ import type {
   HolosStatusResponses,
   HolosThreadGetResponses,
   HolosVerifyResponses,
-  InstanceDisposeResponses,
   LspStatusResponses,
   McpAddErrors,
   McpAddResponses,
@@ -331,6 +330,7 @@ import type {
   ScopeIndexResponses,
   ScopeListResponses,
   ScopeRemoveResponses,
+  ScopeRuntimeDisposeResponses,
   ScopeUpdateErrors,
   ScopeUpdateResponses,
   SessionAbortErrors,
@@ -2009,9 +2009,9 @@ export class Global extends HeyApiClient {
   }
 
   /**
-   * Dispose instance
+   * Dispose scope runtimes
    *
-   * Clean up and dispose all Synergy instances, releasing all resources.
+   * Clean up and dispose all scope runtimes, releasing all scoped resources.
    */
   public dispose<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
     return (options?.client ?? this.client).post<GlobalDisposeResponses, unknown, ThrowOnError>({
@@ -2699,6 +2699,158 @@ export class Holos extends HeyApiClient {
   thread = new Thread({ client: this.client })
 }
 
+export class Runtime extends HeyApiClient {
+  /**
+   * Reload runtime state
+   *
+   * Reload Synergy runtime subsystems after self-configuration changes.
+   */
+  public reload<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      targets?: Array<RuntimeReloadTarget>
+      scope?: RuntimeReloadScope
+      force?: boolean
+      reason?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "body", key: "targets" },
+            { in: "body", key: "scope" },
+            { in: "body", key: "force" },
+            { in: "body", key: "reason" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<RuntimeReloadResponses, RuntimeReloadErrors, ThrowOnError>({
+      url: "/runtime/reload",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Dispose scope runtime
+   *
+   * Clean up and dispose the current scope runtime, releasing scoped resources.
+   */
+  public dispose<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    return (options?.client ?? this.client).post<ScopeRuntimeDisposeResponses, unknown, ThrowOnError>({
+      url: "/scope/runtime/dispose",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Stop plugin runtime
+   *
+   * Gracefully stop the plugin runtime process.
+   */
+  public stop<ThrowOnError extends boolean = false>(
+    parameters: {
+      pluginId: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "pluginId" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<PluginRuntimeStopResponses, PluginRuntimeStopErrors, ThrowOnError>({
+      url: "/api/plugins/{pluginId}/runtime/stop",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Start plugin runtime
+   *
+   * Start the plugin runtime process.
+   */
+  public start<ThrowOnError extends boolean = false>(
+    parameters: {
+      pluginId: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "pluginId" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<PluginRuntimeStartResponses, PluginRuntimeStartErrors, ThrowOnError>({
+      url: "/api/plugins/{pluginId}/runtime/start",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Get plugin runtime logs
+   *
+   * Return recent log entries for the plugin runtime.
+   */
+  public logs<ThrowOnError extends boolean = false>(
+    parameters: {
+      pluginId: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "pluginId" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<PluginRuntimeLogsResponses, PluginRuntimeLogsErrors, ThrowOnError>({
+      url: "/api/plugins/{pluginId}/runtime/logs",
+      ...options,
+      ...params,
+    })
+  }
+}
+
 export class Scope extends HeyApiClient {
   /**
    * List all scopes
@@ -2830,6 +2982,8 @@ export class Scope extends HeyApiClient {
       },
     })
   }
+
+  runtime = new Runtime({ client: this.client })
 }
 
 export class Git extends HeyApiClient {
@@ -3379,139 +3533,6 @@ export class Config extends HeyApiClient {
   import = new Import({ client: this.client })
 }
 
-export class Runtime extends HeyApiClient {
-  /**
-   * Reload runtime state
-   *
-   * Reload Synergy runtime subsystems after self-configuration changes.
-   */
-  public reload<ThrowOnError extends boolean = false>(
-    parameters?: {
-      directory?: string
-      targets?: Array<RuntimeReloadTarget>
-      scope?: RuntimeReloadScope
-      force?: boolean
-      reason?: string
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "query", key: "directory" },
-            { in: "body", key: "targets" },
-            { in: "body", key: "scope" },
-            { in: "body", key: "force" },
-            { in: "body", key: "reason" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).post<RuntimeReloadResponses, RuntimeReloadErrors, ThrowOnError>({
-      url: "/runtime/reload",
-      ...options,
-      ...params,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers,
-        ...params.headers,
-      },
-    })
-  }
-
-  /**
-   * Stop plugin runtime
-   *
-   * Gracefully stop the plugin runtime process.
-   */
-  public stop<ThrowOnError extends boolean = false>(
-    parameters: {
-      pluginId: string
-      directory?: string
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "path", key: "pluginId" },
-            { in: "query", key: "directory" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).post<PluginRuntimeStopResponses, PluginRuntimeStopErrors, ThrowOnError>({
-      url: "/api/plugins/{pluginId}/runtime/stop",
-      ...options,
-      ...params,
-    })
-  }
-
-  /**
-   * Start plugin runtime
-   *
-   * Start the plugin runtime process.
-   */
-  public start<ThrowOnError extends boolean = false>(
-    parameters: {
-      pluginId: string
-      directory?: string
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "path", key: "pluginId" },
-            { in: "query", key: "directory" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).post<PluginRuntimeStartResponses, PluginRuntimeStartErrors, ThrowOnError>({
-      url: "/api/plugins/{pluginId}/runtime/start",
-      ...options,
-      ...params,
-    })
-  }
-
-  /**
-   * Get plugin runtime logs
-   *
-   * Return recent log entries for the plugin runtime.
-   */
-  public logs<ThrowOnError extends boolean = false>(
-    parameters: {
-      pluginId: string
-      directory?: string
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "path", key: "pluginId" },
-            { in: "query", key: "directory" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).get<PluginRuntimeLogsResponses, PluginRuntimeLogsErrors, ThrowOnError>({
-      url: "/api/plugins/{pluginId}/runtime/logs",
-      ...options,
-      ...params,
-    })
-  }
-}
-
 export class ControlProfile extends HeyApiClient {
   /**
    * List control profiles
@@ -3660,32 +3681,11 @@ export class Tool extends HeyApiClient {
   }
 }
 
-export class Instance extends HeyApiClient {
-  /**
-   * Dispose instance
-   *
-   * Clean up and dispose the current Synergy instance, releasing all resources.
-   */
-  public dispose<ThrowOnError extends boolean = false>(
-    parameters?: {
-      directory?: string
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
-    return (options?.client ?? this.client).post<InstanceDisposeResponses, unknown, ThrowOnError>({
-      url: "/instance/dispose",
-      ...options,
-      ...params,
-    })
-  }
-}
-
 export class Path extends HeyApiClient {
   /**
    * Get paths
    *
-   * Retrieve the current working directory and related path information for the Synergy instance.
+   * Retrieve the current working directory and related path information for the active scope context.
    */
   public get<ThrowOnError extends boolean = false>(
     parameters?: {
@@ -7405,8 +7405,6 @@ export class SynergyClient extends HeyApiClient {
   sandbox = new Sandbox({ client: this.client })
 
   tool = new Tool({ client: this.client })
-
-  instance = new Instance({ client: this.client })
 
   path = new Path({ client: this.client })
 

@@ -3,7 +3,7 @@ import z from "zod"
 import { Tool } from "./tool"
 import { NoteStore } from "../note"
 import { NoteMarkdown } from "../note"
-import { Instance } from "../scope/instance"
+import { ScopeContext } from "../scope/context"
 import DESCRIPTION from "./note-read.txt"
 
 const MAX_IDS = 10
@@ -139,7 +139,7 @@ export const NoteReadTool = Tool.define("note_read", {
 
     for (const id of ids) {
       try {
-        const note = await NoteStore.getAny(Instance.scope.id, id)
+        const note = await NoteStore.getAny(ScopeContext.current.scope.id, id)
         found++
         titles.push(note.title)
         const bodyText = params.format === "blocks" ? renderBlocks(note.content) : NoteMarkdown.toMarkdown(note.content)

@@ -85,7 +85,7 @@ export namespace Cortex {
       executionRole,
     })
 
-    const config = await Config.get()
+    const config = await Config.current()
     const parent = await Session.get(input.parentSessionID)
     const blockedTools = Array.from(
       new Set([...(config.experimental?.primary_tools ?? []), ...DEFAULT_SUBAGENT_BLOCKED_TOOLS]),

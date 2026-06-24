@@ -10,7 +10,7 @@ import z from "zod"
 import type { LSPServer } from "./server"
 import { NamedError } from "@ericsanchezok/synergy-util/error"
 import { withTimeout } from "../util/timeout"
-import { Instance } from "../scope/instance"
+import { ScopeContext } from "../scope/context"
 import { Filesystem } from "../util/filesystem"
 
 const DIAGNOSTICS_DEBOUNCE_MS = 150
@@ -149,7 +149,9 @@ export namespace LSPClient {
       },
       notify: {
         async open(input: { path: string }) {
-          input.path = path.isAbsolute(input.path) ? input.path : path.resolve(Instance.directory, input.path)
+          input.path = path.isAbsolute(input.path)
+            ? input.path
+            : path.resolve(ScopeContext.current.directory, input.path)
           const file = Bun.file(input.path)
           const text = await file.text()
           const extension = path.extname(input.path)
@@ -212,7 +214,7 @@ export namespace LSPClient {
       },
       async waitForDiagnostics(input: { path: string }) {
         const normalizedPath = Filesystem.normalizePath(
-          path.isAbsolute(input.path) ? input.path : path.resolve(Instance.directory, input.path),
+          path.isAbsolute(input.path) ? input.path : path.resolve(ScopeContext.current.directory, input.path),
         )
         log.info("waiting for diagnostics", { path: normalizedPath })
         let unsub: () => void

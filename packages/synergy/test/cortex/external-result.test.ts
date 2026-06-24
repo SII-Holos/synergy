@@ -1,6 +1,6 @@
 import { describe, expect, test, beforeAll } from "bun:test"
 import { Cortex } from "../../src/cortex"
-import { Instance } from "../../src/scope/instance"
+import { ScopeContext } from "../../src/scope/context"
 import { Session } from "../../src/session"
 import { Identifier } from "../../src/id/id"
 import { tmpdir } from "../fixture/fixture"
@@ -63,7 +63,7 @@ describe("extractExternalTaskResult", () => {
 
   test("extracts text from a single assistant message", async () => {
     await using tmp = await tmpdir({ git: true })
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const session = await createSessionWithAssistantText(await tmp.scope(), [{ text: "Hello from external agent" }])
@@ -76,7 +76,7 @@ describe("extractExternalTaskResult", () => {
 
   test("filters out synthetic text", async () => {
     await using tmp = await tmpdir({ git: true })
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const session = await createSessionWithAssistantText(await tmp.scope(), [
@@ -93,7 +93,7 @@ describe("extractExternalTaskResult", () => {
 
   test("filters out ignored text", async () => {
     await using tmp = await tmpdir({ git: true })
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const session = await createSessionWithAssistantText(await tmp.scope(), [
@@ -110,7 +110,7 @@ describe("extractExternalTaskResult", () => {
 
   test("joins multiple assistant messages in order", async () => {
     await using tmp = await tmpdir({ git: true })
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const scope = await tmp.scope()
@@ -186,7 +186,7 @@ describe("extractExternalTaskResult", () => {
 
   test("returns diagnostic for session with no assistant text", async () => {
     await using tmp = await tmpdir({ git: true })
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const session = await Session.create({ scope: await tmp.scope() })
@@ -199,7 +199,7 @@ describe("extractExternalTaskResult", () => {
 
   test("skips user messages", async () => {
     await using tmp = await tmpdir({ git: true })
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const scope = await tmp.scope()
@@ -257,7 +257,7 @@ describe("extractExternalTaskResult", () => {
 
   test("truncates output exceeding char limit", async () => {
     await using tmp = await tmpdir({ git: true })
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const longText = "A".repeat(150_000)

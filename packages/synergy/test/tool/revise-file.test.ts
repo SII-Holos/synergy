@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import path from "path"
 import { ReviseFileTool } from "../../src/tool/revise-file"
-import { Instance } from "../../src/scope/instance"
+import { ScopeContext } from "../../src/scope/context"
 import { tmpdir } from "../fixture/fixture"
 import { computeTag } from "../../src/hashline/tag"
 
@@ -28,7 +28,7 @@ describe("tool.revise_file", () => {
           await Bun.write(path.join(dir, "file.ts"), "line 1\nline 2\nline 3\n")
         },
       })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const { ViewFileTool } = await import("../../src/tool/view-file")
@@ -48,7 +48,7 @@ describe("tool.revise_file", () => {
 
     test("rejects input without hashline header", async () => {
       await using tmp = await tmpdir({ git: true })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const tool = await ReviseFileTool.init()
@@ -66,7 +66,7 @@ describe("tool.revise_file", () => {
           await Bun.write(path.join(dir, "src/a.ts"), "content\n")
         },
       })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const tool = await ReviseFileTool.init()
@@ -86,7 +86,7 @@ describe("tool.revise_file", () => {
           await Bun.write(path.join(dir, "file.ts"), "hello\n")
         },
       })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const tool = await ReviseFileTool.init()
@@ -103,7 +103,7 @@ describe("tool.revise_file", () => {
           await Bun.write(path.join(dir, "file.ts"), "original\n")
         },
       })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const { ViewFileTool } = await import("../../src/tool/view-file")
@@ -133,7 +133,7 @@ describe("tool.revise_file", () => {
           await Bun.write(path.join(dir, "file.ts"), "line 1\nline 2\nline 3\n")
         },
       })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const { ViewFileTool } = await import("../../src/tool/view-file")
@@ -162,7 +162,7 @@ describe("tool.revise_file", () => {
           await Bun.write(path.join(dir, "file.ts"), "line 1\nline 2\nline 3\n")
         },
       })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const { ViewFileTool } = await import("../../src/tool/view-file")
@@ -189,7 +189,7 @@ describe("tool.revise_file", () => {
           await Bun.write(path.join(dir, "file.ts"), "line 1\nline 2\n")
         },
       })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const { ViewFileTool } = await import("../../src/tool/view-file")
@@ -216,7 +216,7 @@ describe("tool.revise_file", () => {
           await Bun.write(path.join(dir, "file.ts"), "line 1\nline 2\n")
         },
       })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const { ViewFileTool } = await import("../../src/tool/view-file")
@@ -243,7 +243,7 @@ describe("tool.revise_file", () => {
           await Bun.write(path.join(dir, "file.ts"), "line 1\n")
         },
       })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const { ViewFileTool } = await import("../../src/tool/view-file")
@@ -270,7 +270,7 @@ describe("tool.revise_file", () => {
           await Bun.write(path.join(dir, "file.ts"), "line 1\n")
         },
       })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const { ViewFileTool } = await import("../../src/tool/view-file")
@@ -299,7 +299,7 @@ describe("tool.revise_file", () => {
           await Bun.write(path.join(dir, "file.ts"), "const x = 1\n")
         },
       })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const { ViewFileTool } = await import("../../src/tool/view-file")
@@ -329,7 +329,7 @@ describe("tool.revise_file", () => {
           await Bun.write(path.join(dir, "same.ts"), "const x = 1\n")
         },
       })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const { ViewFileTool } = await import("../../src/tool/view-file")
@@ -348,7 +348,7 @@ describe("tool.revise_file", () => {
 
     test("provides a clear error for missing tag", async () => {
       await using tmp = await tmpdir({ git: true })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const tool = await ReviseFileTool.init()
@@ -365,7 +365,7 @@ describe("tool.revise_file", () => {
           await Bun.write(path.join(dir, "short.txt"), "only one line\n")
         },
       })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const { ViewFileTool } = await import("../../src/tool/view-file")
@@ -389,7 +389,7 @@ describe("tool.revise_file", () => {
           await Bun.write(path.join(dir, "conflict.ts"), CONFLICT_CONTENT_1)
         },
       })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const { ViewFileTool } = await import("../../src/tool/view-file")
@@ -415,7 +415,7 @@ describe("tool.revise_file", () => {
           await Bun.write(path.join(dir, "f.ts"), CONFLICT_CONTENT_2)
         },
       })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const { ViewFileTool } = await import("../../src/tool/view-file")
@@ -438,7 +438,7 @@ describe("tool.revise_file", () => {
           await Bun.write(path.join(dir, "clean.ts"), "const x = 1\n")
         },
       })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const { ViewFileTool } = await import("../../src/tool/view-file")
@@ -464,7 +464,7 @@ describe("tool.revise_file", () => {
           await Bun.write(path.join(dir, "mod.ts"), "const x = 1\n")
         },
       })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const { ViewFileTool } = await import("../../src/tool/view-file")
@@ -490,7 +490,7 @@ describe("tool.revise_file", () => {
           await Bun.write(path.join(dir, "same.ts"), "const x = 1\n")
         },
       })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const { ViewFileTool } = await import("../../src/tool/view-file")
@@ -539,7 +539,7 @@ describe("tool.revise_file", () => {
           await Bun.write(path.join(dir, "fmt.ts"), "const  x  =  1\n")
         },
       })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const { Format } = await import("../../src/file/format")
@@ -582,7 +582,7 @@ describe("tool.revise_file", () => {
           await Bun.write(path.join(dir, "fmt2.ts"), "const  a  =  1\n")
         },
       })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const { Format } = await import("../../src/file/format")

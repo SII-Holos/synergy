@@ -1,6 +1,6 @@
 import { test, expect, describe } from "bun:test"
 import { Permission } from "../../src/permission"
-import { Instance } from "../../src/scope/instance"
+import { ScopeContext } from "../../src/scope/context"
 import { Session } from "../../src/session"
 import { tmpdir } from "../fixture/fixture"
 
@@ -13,10 +13,10 @@ import { tmpdir } from "../fixture/fixture"
 // memory). The ask() auto-allow check is exercised indirectly: we verify
 // that after a "session" respond, the memory store contains the expected key.
 
-async function withInstance<T>(fn: () => Promise<T>): Promise<T> {
+async function withScopeContext<T>(fn: () => Promise<T>): Promise<T> {
   await using tmp = await tmpdir({ git: true })
   let result: T | undefined
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
       result = await fn()
@@ -27,7 +27,7 @@ async function withInstance<T>(fn: () => Promise<T>): Promise<T> {
 
 describe("Permission session memory", () => {
   test("clearSessionMemory is a no-op when no memory exists", async () => {
-    await withInstance(async () => {
+    await withScopeContext(async () => {
       const session = await Session.create({ title: "no-op-clear" })
       // Should not throw
       Permission.clearSessionMemory(session.id)

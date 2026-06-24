@@ -7,7 +7,8 @@ import path from "path"
 import fs from "fs"
 import ignore from "ignore"
 import { Log } from "../util/log"
-import { Instance } from "../scope/instance"
+import { ScopeContext } from "../scope/context"
+import { ScopedState } from "../scope/scoped-state"
 import { Ripgrep } from "./ripgrep"
 import fuzzysort from "fuzzysort"
 import { Global } from "../global"
@@ -118,16 +119,16 @@ export namespace File {
     ),
   }
 
-  const state = Instance.state(async () => {
+  const state = ScopedState.create(async () => {
     type Entry = { files: string[]; dirs: string[] }
     let cache: Entry = { files: [], dirs: [] }
     let fetching = false
 
-    const isGlobalHome = Instance.scope.type === "global"
+    const isGlobalHome = ScopeContext.current.scope.type === "global"
 
     const fn = async (result: Entry) => {
       // Disable scanning if in root of file system
-      if (Instance.directory === path.parse(Instance.directory).root) return
+      if (ScopeContext.current.directory === path.parse(ScopeContext.current.directory).root) return
       fetching = true
 
       if (isGlobalHome) {
@@ -142,7 +143,7 @@ export namespace File {
         const shouldIgnoreNested = (name: string) => name.startsWith(".") || ignoreNested.has(name)
 
         const top = await fs.promises
-          .readdir(Instance.directory, { withFileTypes: true })
+          .readdir(ScopeContext.current.directory, { withFileTypes: true })
           .catch(() => [] as fs.Dirent[])
 
         for (const entry of top) {
@@ -150,7 +151,7 @@ export namespace File {
           if (shouldIgnore(entry.name)) continue
           dirs.add(entry.name + "/")
 
-          const base = path.join(Instance.directory, entry.name)
+          const base = path.join(ScopeContext.current.directory, entry.name)
           const children = await fs.promises.readdir(base, { withFileTypes: true }).catch(() => [] as fs.Dirent[])
           for (const child of children) {
             if (!child.isDirectory()) continue
@@ -178,7 +179,7 @@ export namespace File {
       const INDEX_TIMEOUT_MS = 30_000
       const timeoutSignal = AbortSignal.timeout(INDEX_TIMEOUT_MS)
       const set = new Set<string>()
-      for await (const file of Ripgrep.files({ cwd: Instance.directory, signal: timeoutSignal })) {
+      for await (const file of Ripgrep.files({ cwd: ScopeContext.current.directory, signal: timeoutSignal })) {
         if (timeoutSignal.aborted) break
         result.files.push(file)
         let current = file
@@ -215,10 +216,10 @@ export namespace File {
   }
 
   export async function status() {
-    const scope = Instance.scope
+    const scope = ScopeContext.current.scope
     if (scope.type !== "project" || scope.vcs !== "git") return []
 
-    const diffOutput = await $`git diff --numstat HEAD`.cwd(Instance.directory).quiet().nothrow().text()
+    const diffOutput = await $`git diff --numstat HEAD`.cwd(ScopeContext.current.directory).quiet().nothrow().text()
 
     const changedFiles: Info[] = []
 
@@ -236,7 +237,7 @@ export namespace File {
     }
 
     const untrackedOutput = await $`git ls-files --others --exclude-standard`
-      .cwd(Instance.directory)
+      .cwd(ScopeContext.current.directory)
       .quiet()
       .nothrow()
       .text()
@@ -245,7 +246,7 @@ export namespace File {
       const untrackedFiles = untrackedOutput.trim().split("\n")
       for (const filepath of untrackedFiles) {
         try {
-          const content = await Bun.file(path.join(Instance.directory, filepath)).text()
+          const content = await Bun.file(path.join(ScopeContext.current.directory, filepath)).text()
           const lines = content.split("\n").length
           changedFiles.push({
             path: filepath,
@@ -261,7 +262,7 @@ export namespace File {
 
     // Get deleted files
     const deletedOutput = await $`git diff --name-only --diff-filter=D HEAD`
-      .cwd(Instance.directory)
+      .cwd(ScopeContext.current.directory)
       .quiet()
       .nothrow()
       .text()
@@ -280,18 +281,18 @@ export namespace File {
 
     return changedFiles.map((x) => ({
       ...x,
-      path: path.relative(Instance.directory, x.path),
+      path: path.relative(ScopeContext.current.directory, x.path),
     }))
   }
 
   export async function read(file: string): Promise<Content> {
     using _ = log.time("read", { file })
-    const scope = Instance.scope
-    const full = path.join(Instance.directory, file)
+    const scope = ScopeContext.current.scope
+    const full = path.join(ScopeContext.current.directory, file)
 
-    // TODO: Instance.contains is lexical only - symlinks inside the project can escape.
+    // TODO: ScopeContext.contains is lexical only - symlinks inside the project can escape.
     // TODO: On Windows, cross-drive paths bypass this check. Consider realpath canonicalization.
-    if (!Instance.contains(full)) {
+    if (!ScopeContext.contains(full)) {
       throw new Error(`Access denied: path escapes project directory`)
     }
 
@@ -316,10 +317,11 @@ export namespace File {
       .then((x) => x.trim())
 
     if (scope.type === "project" && scope.vcs === "git") {
-      let diff = await $`git diff ${file}`.cwd(Instance.directory).quiet().nothrow().text()
-      if (!diff.trim()) diff = await $`git diff --staged ${file}`.cwd(Instance.directory).quiet().nothrow().text()
+      let diff = await $`git diff ${file}`.cwd(ScopeContext.current.directory).quiet().nothrow().text()
+      if (!diff.trim())
+        diff = await $`git diff --staged ${file}`.cwd(ScopeContext.current.directory).quiet().nothrow().text()
       if (diff.trim()) {
-        const original = await $`git show HEAD:${file}`.cwd(Instance.directory).quiet().nothrow().text()
+        const original = await $`git show HEAD:${file}`.cwd(ScopeContext.current.directory).quiet().nothrow().text()
         const patch = structuredPatch(file, file, original, content, "old", "new", {
           context: Infinity,
           ignoreWhitespace: true,
@@ -333,25 +335,25 @@ export namespace File {
 
   export async function list(dir?: string) {
     const exclude = [".git", ".DS_Store"]
-    const scope = Instance.scope
+    const scope = ScopeContext.current.scope
     let ignored = (_: string) => false
     if (scope.type === "project" && scope.vcs === "git") {
       const ig = ignore()
-      const gitignore = Bun.file(path.join(Instance.directory, ".gitignore"))
+      const gitignore = Bun.file(path.join(ScopeContext.current.directory, ".gitignore"))
       if (await gitignore.exists()) {
         ig.add(await gitignore.text())
       }
-      const ignoreFile = Bun.file(path.join(Instance.directory, ".ignore"))
+      const ignoreFile = Bun.file(path.join(ScopeContext.current.directory, ".ignore"))
       if (await ignoreFile.exists()) {
         ig.add(await ignoreFile.text())
       }
       ignored = ig.ignores.bind(ig)
     }
-    const resolved = dir ? path.join(Instance.directory, dir) : Instance.directory
+    const resolved = dir ? path.join(ScopeContext.current.directory, dir) : ScopeContext.current.directory
 
-    // TODO: Instance.contains is lexical only - symlinks inside the project can escape.
+    // TODO: ScopeContext.contains is lexical only - symlinks inside the project can escape.
     // TODO: On Windows, cross-drive paths bypass this check. Consider realpath canonicalization.
-    if (!Instance.contains(resolved)) {
+    if (!ScopeContext.contains(resolved)) {
       throw new Error(`Access denied: path escapes project directory`)
     }
 
@@ -363,7 +365,7 @@ export namespace File {
       .catch(() => [])) {
       if (exclude.includes(entry.name)) continue
       const fullPath = path.join(resolved, entry.name)
-      const relativePath = path.relative(Instance.directory, fullPath)
+      const relativePath = path.relative(ScopeContext.current.directory, fullPath)
       const type = entry.isDirectory() ? "directory" : "file"
       nodes.push({
         name: entry.name,

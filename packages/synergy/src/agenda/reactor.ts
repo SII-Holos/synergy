@@ -1,6 +1,6 @@
 import { withTimeout } from "@/util/timeout"
 import { Identifier } from "../id/id"
-import { Instance } from "../scope/instance"
+import { ScopeContext } from "../scope/context"
 import { Scope } from "../scope"
 import { Session } from "../session"
 import { SessionInvoke } from "../session/invoke"
@@ -46,7 +46,7 @@ export namespace AgendaReactor {
     }
 
     const scope = storedItem.origin.scope ?? Scope.global()
-    return Instance.provide({ scope, fn: () => runInScope(storedItem, signal, scopeID, scope) })
+    return ScopeContext.provide({ scope, fn: () => runInScope(storedItem, signal, scopeID, scope) })
   }
 
   async function runInScope(
@@ -111,7 +111,7 @@ export namespace AgendaReactor {
       const sessionMode = AgendaTypes.inferSessionMode(item.triggers, item.sessionMode)
       const persistent = sessionMode === "persistent"
 
-      await Instance.provide({
+      await ScopeContext.provide({
         scope,
         fn: async () => {
           sessionID = persistent

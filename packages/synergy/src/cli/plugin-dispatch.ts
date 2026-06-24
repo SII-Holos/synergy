@@ -6,14 +6,14 @@ import { BunProc } from "../util/bun"
 import { Global } from "../global"
 import { Plugin } from "../plugin"
 import { UI } from "./ui"
-import { bootstrap } from "./bootstrap"
+import { withScopeRuntime } from "./scope"
 import { cmd } from "./cmd/cmd"
 import path from "path"
 import { existsSync } from "fs"
 import { EOL } from "os"
 
 // ---------------------------------------------------------------------------
-// Discovery — lightweight, no Instance/scope dependency
+// Discovery — lightweight, no scope runtime dependency
 // ---------------------------------------------------------------------------
 
 interface DiscoveredPlugin {
@@ -73,7 +73,7 @@ function resolveInstalledPath(spec: string): string | undefined {
 
 /**
  * Discover installed plugin descriptors from global config.
- * Uses Config.global() which reads the config file directly — no Instance scope needed.
+ * Uses Config.global() which reads the config file directly — no scope runtime needed.
  */
 async function discoverPlugins(): Promise<DiscoveredPlugin[]> {
   let globalConfig: Config.Info
@@ -217,7 +217,7 @@ function createPluginCommand(plugin: DiscoveredPlugin) {
     describe: plugin.name ?? `${plugin.id} plugin commands`,
     builder: (yargs: Argv) => yargs.strict(false).help(false),
     async handler(args) {
-      await bootstrap(process.cwd(), async () => {
+      await withScopeRuntime(process.cwd(), async () => {
         const entries = await Plugin.cliEntries()
         const match = entries.find((e) => e.pluginId === plugin.id)
         if (!match || Object.keys(match.commands).length === 0) {

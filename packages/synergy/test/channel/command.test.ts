@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test"
 import { ChannelCommand } from "../../src/channel/command"
 import { Session } from "../../src/session"
 import { SessionEndpoint } from "../../src/session/endpoint"
-import { Instance } from "../../src/scope/instance"
+import { ScopeContext } from "../../src/scope/context"
 import { tmpdir } from "../fixture/fixture"
 
 describe("ChannelCommand", () => {
@@ -16,7 +16,7 @@ describe("ChannelCommand", () => {
 
   test("handles bare /new with explicit confirmation", async () => {
     await using tmp = await tmpdir({ git: true })
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const result = await ChannelCommand.execute("/new", baseContext)
@@ -30,7 +30,7 @@ describe("ChannelCommand", () => {
 
   test("handles mention-prefixed /new", async () => {
     await using tmp = await tmpdir({ git: true })
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const result = await ChannelCommand.execute("@Synergy /new", {
@@ -48,7 +48,7 @@ describe("ChannelCommand", () => {
 
   test("handles mention-prefixed /new with continuation text", async () => {
     await using tmp = await tmpdir({ git: true })
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const result = await ChannelCommand.execute("@Synergy /new 帮我总结今天会议", {
@@ -66,7 +66,7 @@ describe("ChannelCommand", () => {
 
   test("ignores mention-prefixed text without a command", async () => {
     await using tmp = await tmpdir({ git: true })
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const result = await ChannelCommand.execute("@Synergy 你好", {
@@ -81,7 +81,7 @@ describe("ChannelCommand", () => {
 
   test("/help lists available commands", async () => {
     await using tmp = await tmpdir({ git: true })
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const result = await ChannelCommand.execute("/help", baseContext)
@@ -100,7 +100,7 @@ describe("ChannelCommand", () => {
 
   test("/status reports when no conversation exists yet", async () => {
     await using tmp = await tmpdir({ git: true })
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const result = await ChannelCommand.execute("/status", baseContext)
@@ -114,7 +114,7 @@ describe("ChannelCommand", () => {
 
   test("/new archives the existing channel session", async () => {
     await using tmp = await tmpdir({ git: true })
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const session = await Session.create({

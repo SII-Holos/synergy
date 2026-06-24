@@ -1,7 +1,7 @@
 import { describe, expect, test, mock, afterEach } from "bun:test"
 import { Cortex, CortexConcurrency } from "../../src/cortex"
 import { Worktree } from "../../src/project/worktree"
-import { Instance } from "../../src/scope/instance"
+import { ScopeContext } from "../../src/scope/context"
 import { Session } from "../../src/session"
 import { tmpdir } from "../fixture/fixture"
 
@@ -29,7 +29,7 @@ afterEach(() => {
 describe("Cortex worktree creation", () => {
   test("calls Worktree.create and Worktree.enter when worktree.create is requested", async () => {
     await using tmp = await tmpdir({ git: true })
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const parentSession = await Session.create({})
@@ -72,7 +72,7 @@ describe("Cortex worktree creation", () => {
 
   test("does not create worktree when worktree.create is not requested", async () => {
     await using tmp = await tmpdir({ git: true })
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const parentSession = await Session.create({})
@@ -96,7 +96,7 @@ describe("Cortex worktree creation", () => {
 
   test("survives failed worktree creation gracefully", async () => {
     await using tmp = await tmpdir({ git: true })
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const parentSession = await Session.create({})
@@ -123,7 +123,7 @@ describe("Cortex worktree creation", () => {
 
   test("passes bind:false and correct args to Worktree.create", async () => {
     await using tmp = await tmpdir({ git: true })
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const parentSession = await Session.create({})

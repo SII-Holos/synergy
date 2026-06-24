@@ -9,7 +9,7 @@ import os from "os"
 import { Config } from "../../config/config"
 import { Global } from "../../global"
 import { Plugin } from "../../plugin"
-import { Instance } from "../../scope/instance"
+import { ScopeContext } from "../../scope/context"
 import { Scope } from "@/scope"
 import type { PluginHooks } from "@ericsanchezok/synergy-plugin"
 
@@ -224,8 +224,8 @@ export const AuthLoginCommand = cmd({
       type: "string",
     }),
   async handler(args) {
-    await Instance.provide({
-      scope: (await Scope.fromDirectory(process.cwd())).scope,
+    await ScopeContext.provide({
+      scope: Scope.global(),
       async fn() {
         UI.empty()
         prompts.intro("Add credential")
@@ -254,7 +254,7 @@ export const AuthLoginCommand = cmd({
         }
         await ModelsDev.refresh()?.catch(() => {})
 
-        const config = await Config.get()
+        const config = await Config.current()
 
         const disabled = new Set(config.disabled_providers ?? [])
         const enabled = config.enabled_providers ? new Set(config.enabled_providers) : undefined

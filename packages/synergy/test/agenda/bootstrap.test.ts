@@ -8,7 +8,7 @@ import { Global } from "../../src/global"
 import { Identifier } from "../../src/id/id"
 import { Storage } from "../../src/storage/storage"
 import { StoragePath } from "../../src/storage/path"
-import { Instance } from "../../src/scope/instance"
+import { ScopeContext } from "../../src/scope/context"
 import { Scope } from "../../src/scope"
 import { tmpdir } from "../fixture/fixture"
 
@@ -27,7 +27,7 @@ function withAnima(autonomy: boolean, fn: () => Promise<void>) {
     await fs.mkdir(Global.Path.config, { recursive: true })
     await Bun.write(path.join(Global.Path.config, "synergy.jsonc"), JSON.stringify({ engram: { autonomy } }))
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: Scope.global(),
       fn: async () => {
         await AgendaStore.create(

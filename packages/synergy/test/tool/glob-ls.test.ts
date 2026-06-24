@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test"
 import path from "path"
 import { GlobTool } from "../../src/tool/glob"
 import { ListTool } from "../../src/tool/ls"
-import { Instance } from "../../src/scope/instance"
+import { ScopeContext } from "../../src/scope/context"
 import { tmpdir } from "../fixture/fixture"
 
 const ctx = {
@@ -38,7 +38,7 @@ describe("tool.glob", () => {
       },
     })
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const tool = await GlobTool.init()
@@ -60,7 +60,7 @@ describe("tool.glob", () => {
       init: async (_dir) => {},
     })
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const tool = await GlobTool.init()
@@ -82,7 +82,7 @@ describe("tool.glob", () => {
       },
     })
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const tool = await GlobTool.init()
@@ -109,7 +109,7 @@ describe("tool.glob", () => {
       },
     })
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const tool = await GlobTool.init()
@@ -133,7 +133,7 @@ describe("tool.list", () => {
       },
     })
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const tool = await ListTool.init()
@@ -155,7 +155,7 @@ describe("tool.list", () => {
       },
     })
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const tool = await ListTool.init()

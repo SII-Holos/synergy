@@ -2,7 +2,8 @@ import { BusEvent } from "@/bus/bus-event"
 import { Bus } from "@/bus"
 import { GlobalBus } from "@/bus/global"
 import z from "zod"
-import { Instance } from "../scope/instance"
+import { ScopeContext } from "../scope/context"
+import { ScopedState } from "../scope/scoped-state"
 import { Log } from "../util/log"
 import { FileIgnore } from "./ignore"
 import { Config } from "../config/config"
@@ -43,10 +44,10 @@ export namespace FileWatcher {
     return createWrapper(binding) as typeof import("@parcel/watcher")
   })
 
-  const state = Instance.state(
+  const state = ScopedState.create(
     async () => {
-      log.info("init", { scopeType: Instance.scope.type })
-      const cfg = await Config.get().catch(() => null)
+      log.info("init", { scopeType: ScopeContext.current.scope.type })
+      const cfg = await Config.current().catch(() => null)
       const backend = (() => {
         if (process.platform === "win32") return "windows"
         if (process.platform === "darwin") return "fs-events"
@@ -61,7 +62,7 @@ export namespace FileWatcher {
       const subs: ParcelWatcher.AsyncSubscription[] = []
 
       // Global scope: watch the global config directory and emit via GlobalBus
-      if (Instance.scope.type === "global") {
+      if (ScopeContext.current.scope.type === "global") {
         const globalConfigDir = Global.Path.config
         const globalSubscribe: ParcelWatcher.SubscribeCallback = (err, evts) => {
           if (err) return
@@ -90,7 +91,7 @@ export namespace FileWatcher {
       }
 
       // Project scope: existing project-scoped watching logic
-      if (Instance.scope.vcs !== "git") return { subs }
+      if (ScopeContext.current.scope.vcs !== "git") return { subs }
 
       const subscribe: ParcelWatcher.SubscribeCallback = (err, evts) => {
         if (err) return
@@ -106,7 +107,7 @@ export namespace FileWatcher {
       // P7: Watch .synergy/ directory for config/agent/command/skill/tool/plugin changes.
       // These events are emitted to GlobalBus so the auto-reload system can process them,
       // just like global config directory events.
-      const synergyDir = path.join(Instance.directory, ".synergy")
+      const synergyDir = path.join(ScopeContext.current.directory, ".synergy")
       if (existsSync(synergyDir)) {
         const synergySubscribe: ParcelWatcher.SubscribeCallback = (err, evts) => {
           if (err) return
@@ -118,7 +119,7 @@ export namespace FileWatcher {
             if (evt.path.includes("node_modules")) continue
             log.info("project .synergy file event", { file: evt.path, event: eventType })
             GlobalBus.emit("event", {
-              directory: Instance.directory,
+              directory: ScopeContext.current.directory,
               payload: {
                 type: "global.config.file.changed",
                 properties: { file: evt.path, event: eventType },
@@ -136,12 +137,12 @@ export namespace FileWatcher {
       }
 
       if (Flag.SYNERGY_EXPERIMENTAL_FILEWATCHER) {
-        const pending = watcher().subscribe(Instance.directory, subscribe, {
+        const pending = watcher().subscribe(ScopeContext.current.directory, subscribe, {
           ignore: [...FileIgnore.PATTERNS, ...cfgIgnores],
           backend,
         })
         const sub = await withTimeout(pending, SUBSCRIBE_TIMEOUT_MS).catch((err) => {
-          log.error("failed to subscribe to Instance.directory", { error: err })
+          log.error("failed to subscribe to ScopeContext.current.directory", { error: err })
           pending.then((s) => s.unsubscribe()).catch(() => {})
           return undefined
         })
@@ -151,9 +152,9 @@ export namespace FileWatcher {
       const vcsDir = await $`git rev-parse --git-dir`
         .quiet()
         .nothrow()
-        .cwd(Instance.directory)
+        .cwd(ScopeContext.current.directory)
         .text()
-        .then((x) => path.resolve(Instance.directory, x.trim()))
+        .then((x) => path.resolve(ScopeContext.current.directory, x.trim()))
         .catch(() => undefined)
       if (vcsDir && !cfgIgnores.includes(".git") && !cfgIgnores.includes(vcsDir)) {
         const gitDirContents = await readdir(vcsDir).catch(() => [])

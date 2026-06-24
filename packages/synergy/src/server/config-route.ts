@@ -36,7 +36,7 @@ export const ConfigRoute = new Hono()
         },
       },
     }),
-    async (c) => c.json(Config.redactForClient(await Config.get())),
+    async (c) => c.json(Config.redactForClient(await Config.current())),
   )
   .patch(
     "/",
@@ -56,12 +56,12 @@ export const ConfigRoute = new Hono()
     async (c) => {
       const rawBody = c.req.valid("json").config as Record<string, unknown>
       const changedFields = classifyChangedFields(rawBody)
-      const storedConfig = await Config.get()
+      const storedConfig = await Config.current()
       const validated = Config.Info.parse(rawBody)
       const merged = Config.mergeRedactedSecrets(validated, storedConfig)
       await Config.updateGlobal(merged)
       await reloadAfterConfigChange(changedFields, "config.update route")
-      return c.json(Config.redactForClient(await Config.get()))
+      return c.json(Config.redactForClient(await Config.current()))
     },
   )
   .get(

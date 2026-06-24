@@ -1,14 +1,15 @@
 /**
  * Session-scoped hashline snapshot store adapter.
- * Wraps InMemorySnapshotStore with Instance.state + Bus SessionEvent.Deleted cleanup.
+ * Wraps InMemorySnapshotStore with ScopedState + Bus SessionEvent.Deleted cleanup.
  */
 import { Bus } from "../bus"
-import { Instance } from "../scope/instance"
+import { ScopeContext } from "../scope/context"
+import { ScopedState } from "../scope/scoped-state"
 import { SessionEvent } from "../session/event"
 import { InMemorySnapshotStore, type SnapshotStore } from "./snapshots"
 
 export namespace SessionSnapshotStore {
-  const state = Instance.state(() => new Map<string, InMemorySnapshotStore>())
+  const state = ScopedState.create(() => new Map<string, InMemorySnapshotStore>())
 
   let cleanupSubscribed = false
 

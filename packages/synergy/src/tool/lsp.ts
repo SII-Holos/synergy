@@ -3,7 +3,7 @@ import { Tool } from "./tool"
 import path from "path"
 import { LSP } from "../lsp"
 import DESCRIPTION from "./lsp.txt"
-import { Instance } from "../scope/instance"
+import { ScopeContext } from "../scope/context"
 import { pathToFileURL } from "url"
 
 const operations = [
@@ -33,7 +33,9 @@ export const LspTool = Tool.define("lsp", {
       metadata: {},
     })
 
-    const file = path.isAbsolute(args.filePath) ? args.filePath : path.join(Instance.directory, args.filePath)
+    const file = path.isAbsolute(args.filePath)
+      ? args.filePath
+      : path.join(ScopeContext.current.directory, args.filePath)
     const uri = pathToFileURL(file).href
     const position = {
       file,
@@ -41,7 +43,7 @@ export const LspTool = Tool.define("lsp", {
       character: args.character - 1,
     }
 
-    const relPath = path.relative(Instance.directory, file)
+    const relPath = path.relative(ScopeContext.current.directory, file)
     const title = `${args.operation} ${relPath}:${args.line}:${args.character}`
 
     const exists = await Bun.file(file).exists()

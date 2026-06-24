@@ -128,7 +128,7 @@ export async function add(
       }
 
       const trust = decideTrust({ source, userTrusted: false, verifiedIntegrity: sigMeta != null, devMode })
-      const config = await Config.get()
+      const config = await Config.current()
       const policy: PluginApprovalPolicy = config.pluginApprovalPolicy ?? PLUGIN_APPROVAL_POLICY_DEFAULTS
 
       // Compute runtime mode for policy evaluation
@@ -232,7 +232,7 @@ export async function add(
     await Lockfile.write(updatedLockfile)
 
     // Add to config.plugin[] array
-    const config = await Config.get()
+    const config = await Config.current()
     const currentPlugins = config.plugin ?? []
     if (!currentPlugins.includes(spec)) {
       await Config.domainUpdate("plugins", { plugin: [spec] } as any, { mode: "append" })
@@ -302,7 +302,7 @@ export async function remove(pluginId: string, opts: { autoReload?: boolean } = 
   }
 
   // Remove from config.plugin[] array
-  const config = await Config.get()
+  const config = await Config.current()
   const currentPlugins = config.plugin ?? []
   const kept = currentPlugins.filter((spec) => {
     const entry = specToPluginId.get(spec)

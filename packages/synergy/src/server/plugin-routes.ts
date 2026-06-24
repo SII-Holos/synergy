@@ -342,7 +342,7 @@ export const PluginRoute = new Hono()
       const plugin = await Plugin.get(pluginId)
       if (!plugin) return c.json({ message: `Plugin not found: ${pluginId}` }, 404)
 
-      const config = await Config.get()
+      const config = await Config.current()
       const values = (config.pluginConfig?.[pluginId] as Record<string, any>) ?? {}
       return c.json(values)
     },
@@ -379,7 +379,7 @@ export const PluginRoute = new Hono()
       if (!plugin) return c.json({ message: `Plugin not found: ${pluginId}` }, 404)
 
       const values = c.req.valid("json")
-      const config = await Config.get()
+      const config = await Config.current()
       const current = (config.pluginConfig?.[pluginId] as Record<string, any>) ?? {}
       const merged = { ...current, ...values }
       await Config.domainUpdate("plugins", { pluginConfig: { [pluginId]: merged } } as any)

@@ -1,7 +1,7 @@
 import { describe, test, expect } from "bun:test"
 import { PermissionNext } from "../src/permission/next"
 import { Config } from "../src/config/config"
-import { Instance } from "../src/scope/instance"
+import { ScopeContext } from "../src/scope/context"
 import { tmpdir } from "./fixture/fixture"
 
 describe("PermissionNext.evaluate for permission.task", () => {
@@ -151,10 +151,10 @@ describe("permission.task with real config files", () => {
         },
       },
     })
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
-        const config = await Config.get()
+        const config = await Config.current()
         const ruleset = PermissionNext.fromConfig(config.permission ?? {})
         // general and orchestrator-fast should be allowed, code-reviewer denied
         expect(PermissionNext.evaluate("task", "general", ruleset).action).toBe("allow")
@@ -176,10 +176,10 @@ describe("permission.task with real config files", () => {
         },
       },
     })
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
-        const config = await Config.get()
+        const config = await Config.current()
         const ruleset = PermissionNext.fromConfig(config.permission ?? {})
         // general and code-reviewer should be ask, orchestrator-* denied
         expect(PermissionNext.evaluate("task", "general", ruleset).action).toBe("ask")
@@ -201,10 +201,10 @@ describe("permission.task with real config files", () => {
         },
       },
     })
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
-        const config = await Config.get()
+        const config = await Config.current()
         const ruleset = PermissionNext.fromConfig(config.permission ?? {})
         expect(PermissionNext.evaluate("task", "general", ruleset).action).toBe("allow")
         expect(PermissionNext.evaluate("task", "code-reviewer", ruleset).action).toBe("deny")
@@ -228,10 +228,10 @@ describe("permission.task with real config files", () => {
         },
       },
     })
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
-        const config = await Config.get()
+        const config = await Config.current()
         const ruleset = PermissionNext.fromConfig(config.permission ?? {})
 
         // Verify task permissions
@@ -266,10 +266,10 @@ describe("permission.task with real config files", () => {
         },
       },
     })
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
-        const config = await Config.get()
+        const config = await Config.current()
         const ruleset = PermissionNext.fromConfig(config.permission ?? {})
 
         // Last matching rule wins - "*" deny is last, so all agents are denied
@@ -297,10 +297,10 @@ describe("permission.task with real config files", () => {
         },
       },
     })
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
-        const config = await Config.get()
+        const config = await Config.current()
         const ruleset = PermissionNext.fromConfig(config.permission ?? {})
 
         // Evaluate uses findLast - "general" allow comes after "*" deny

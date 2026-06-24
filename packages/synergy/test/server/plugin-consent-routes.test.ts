@@ -1,7 +1,7 @@
 import { describe, expect, test, mock, afterEach } from "bun:test"
 import path from "path"
 import { tmpdir } from "../fixture/fixture"
-import { Instance } from "../../src/scope/instance"
+import { ScopeContext } from "../../src/scope/context"
 import { Server } from "../../src/server/server"
 import { Plugin } from "../../src/plugin"
 import { Log } from "../../src/util/log"
@@ -48,7 +48,7 @@ describe("POST /api/plugins/preview-install", () => {
       },
     })
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const app = Server.App()
@@ -73,7 +73,7 @@ describe("POST /api/plugins/preview-install", () => {
     await using tmp = await tmpdir({ git: true })
     const manifest = buildManifest({ name: "safe-plugin", version: "1.0.0" })
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const app = Server.App()
@@ -103,7 +103,7 @@ describe("POST /api/plugins/:pluginId/approve-install", () => {
       permissions: { tools: { filesystem: "read" } },
     })
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const app = Server.App()
@@ -148,7 +148,7 @@ describe("POST /api/plugins/:pluginId/preview-update", () => {
     })
     ;(Plugin as any).manifest = mock(async () => oldManifest)
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const app = Server.App()
@@ -172,7 +172,7 @@ describe("POST /api/plugins/:pluginId/preview-update", () => {
     await using tmp = await tmpdir({ git: true })
     ;(Plugin as any).manifest = mock(async () => null)
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const app = Server.App()
@@ -202,7 +202,7 @@ describe("POST /api/plugins/:pluginId/approve-update", () => {
       permissions: { tools: { network: true } },
     })
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const app = Server.App()
@@ -236,7 +236,7 @@ describe("GET /api/plugins/:pluginId/approval", () => {
       version: "1.0.0",
     })
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const app = Server.App()
@@ -262,7 +262,7 @@ describe("GET /api/plugins/:pluginId/approval", () => {
   test("returns 404 when no approval exists", async () => {
     await using tmp = await tmpdir({ git: true })
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const app = Server.App()
@@ -289,7 +289,7 @@ describe("GET /api/plugins/:pluginId/permission-diff", () => {
     })
     ;(Plugin as any).manifest = mock(async () => manifest)
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const app = Server.App()
@@ -319,7 +319,7 @@ describe("GET /api/plugins/:pluginId/permission-diff", () => {
     })
     ;(Plugin as any).manifest = mock(async () => manifest)
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const app = Server.App()
@@ -336,7 +336,7 @@ describe("GET /api/plugins/:pluginId/permission-diff", () => {
     await using tmp = await tmpdir({ git: true })
     ;(Plugin as any).manifest = mock(async () => null)
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const app = Server.App()

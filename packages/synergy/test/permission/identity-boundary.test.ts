@@ -1,6 +1,6 @@
 import { test, expect, describe } from "bun:test"
 import { PermissionNext } from "../../src/permission/next"
-import { Instance } from "../../src/scope/instance"
+import { ScopeContext } from "../../src/scope/context"
 import { tmpdir } from "../fixture/fixture"
 
 async function expectPending(input: Parameters<typeof PermissionNext.ask>[0], sessionID: string) {
@@ -20,7 +20,7 @@ async function expectPending(input: Parameters<typeof PermissionNext.ask>[0], se
 describe("session_send identity boundary", () => {
   test("identity_act with nonBypassable metadata stays pending", async () => {
     await using tmp = await tmpdir({ git: true })
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         await expectPending(
@@ -44,7 +44,7 @@ describe("session_send identity boundary", () => {
 
   test("identity_act with nonBypassable metadata prevents unattended auto-approve", async () => {
     await using tmp = await tmpdir({ git: true })
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         await expectPending(
@@ -69,7 +69,7 @@ describe("session_send identity boundary", () => {
 
   test("session_send role=assistant remains allowed where system agents need delivery", async () => {
     await using tmp = await tmpdir({ git: true })
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const result = await PermissionNext.ask({
@@ -90,7 +90,7 @@ describe("session_send identity boundary", () => {
 
   test("session_send role=user evaluated as deny returns DeniedError", async () => {
     await using tmp = await tmpdir({ git: true })
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         await expect(
@@ -114,7 +114,7 @@ describe("session_send identity boundary", () => {
 describe("email_send communication boundary", () => {
   test("communication_email with nonBypassable metadata stays pending", async () => {
     await using tmp = await tmpdir({ git: true })
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         await expectPending(
@@ -138,7 +138,7 @@ describe("email_send communication boundary", () => {
 
   test("communication_email with nonBypassable metadata prevents unattended auto-approve", async () => {
     await using tmp = await tmpdir({ git: true })
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         await expectPending(
@@ -164,7 +164,7 @@ describe("email_send communication boundary", () => {
 
   test("communication_email with deny rule returns DeniedError", async () => {
     await using tmp = await tmpdir({ git: true })
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         await expect(

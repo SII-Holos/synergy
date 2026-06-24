@@ -14,7 +14,8 @@ import { NamedError } from "@ericsanchezok/synergy-util/error"
 import { Config } from "../config/config"
 import { LSP } from "../lsp"
 import { Format } from "../file/format"
-import { Instance } from "../scope/instance"
+import { ScopeContext } from "../scope/context"
+import { ScopeRuntime } from "../scope/runtime"
 import { Scope } from "@/scope"
 import { Vcs } from "../project/vcs"
 import { Agent } from "../agent/agent"
@@ -26,8 +27,6 @@ import { GitRoute } from "./git"
 import { ToolRegistry } from "../tool/registry"
 import { zodToJsonSchema } from "zod-to-json-schema"
 import { lazy } from "../util/lazy"
-import { InstanceBootstrap } from "../project/bootstrap"
-import { Flag } from "../flag/flag"
 import { MCP } from "../mcp"
 import { Storage } from "../storage/storage"
 import type { ContentfulStatusCode } from "hono/utils/http-status"
@@ -56,7 +55,7 @@ import { PluginRoute, ApiPluginRoute } from "./plugin-routes"
 import { PluginRuntimeRoute } from "./plugin-runtime-routes"
 import { RegistryRoute } from "./plugin-registry-routes"
 import { StatsRoute } from "./stats"
-import { Agenda, AgendaBootstrap, AgendaStore, AgendaTypes, AgendaWebhook } from "../agenda"
+import { AgendaStore, AgendaTypes, AgendaWebhook } from "../agenda"
 import { SkillRoute } from "./skill-route"
 import { HolosRoute, HolosDataRoute } from "./holos"
 import { RuntimeRoute } from "./runtime-route"
@@ -149,31 +148,96 @@ export namespace Server {
 
   function isGlobalRoute(pathname: string) {
     return (
+      pathname === "/" ||
+      pathname === "/doc" ||
+      pathname === "/log" ||
+      pathname.startsWith("/assets/") ||
       pathname === "/global" ||
       pathname.startsWith("/global/") ||
+      pathname === "/scope" ||
+      pathname === "/scope/index" ||
       pathname === "/holos" ||
       pathname.startsWith("/holos/") ||
       pathname === "/channel" ||
-      pathname.startsWith("/channel/")
+      pathname.startsWith("/channel/") ||
+      pathname === "/plugin" ||
+      pathname.startsWith("/plugin/") ||
+      pathname === "/api/plugins" ||
+      pathname.startsWith("/api/plugins/") ||
+      pathname === "/api/registry" ||
+      pathname.startsWith("/api/registry/") ||
+      pathname === "/auth" ||
+      pathname.startsWith("/auth/")
     )
   }
 
-  async function resolveScopedRequestScope(c: Context): Promise<Scope> {
-    let directory = c.req.query("directory") || c.req.header("x-synergy-directory") || Flag.SYNERGY_CWD || process.cwd()
+  function isScopeRequiredRoute(pathname: string) {
+    return (
+      pathname === "/scope/current" ||
+      pathname === "/git" ||
+      pathname.startsWith("/git/") ||
+      pathname === "/pty" ||
+      pathname.startsWith("/pty/") ||
+      pathname === "/path" ||
+      pathname.startsWith("/path/") ||
+      pathname === "/experimental/worktree" ||
+      pathname.startsWith("/experimental/worktree/") ||
+      pathname === "/vcs" ||
+      pathname.startsWith("/vcs/") ||
+      pathname === "/find" ||
+      pathname.startsWith("/find/") ||
+      pathname === "/file" ||
+      pathname.startsWith("/file/") ||
+      pathname === "/note" ||
+      pathname.startsWith("/note/") ||
+      pathname === "/blueprint" ||
+      pathname.startsWith("/blueprint/") ||
+      pathname === "/asset" ||
+      pathname.startsWith("/asset/") ||
+      pathname === "/stats" ||
+      pathname.startsWith("/stats/") ||
+      pathname === "/lsp" ||
+      pathname.startsWith("/lsp/") ||
+      pathname === "/formatter" ||
+      pathname.startsWith("/formatter/")
+    )
+  }
+
+  function requestDirectory(c: Context) {
+    const directory = c.req.query("directory") || c.req.header("x-synergy-directory")
+    if (!directory) return undefined
     try {
-      directory = decodeURIComponent(directory)
+      return decodeURIComponent(directory)
     } catch {
-      // fallback to original value
+      return directory
+    }
+  }
+
+  async function resolveScopedRequestScope(c: Context, directory: string | undefined): Promise<Scope | Response> {
+    if (!directory) {
+      return c.json(
+        {
+          name: "ScopeRequired",
+          data: {
+            message: "This route requires an explicit directory or x-synergy-directory header.",
+          },
+        },
+        400,
+      )
     }
     if (directory === "global") return Scope.global()
     return (await Scope.fromDirectory(directory)).scope
   }
 
   async function provideRequestScope(c: Context, next: Next) {
-    const scope = isGlobalRoute(c.req.path) ? Scope.global() : await resolveScopedRequestScope(c)
-    return Instance.provide({
+    const directory = requestDirectory(c)
+    const scope =
+      isGlobalRoute(c.req.path) || (!directory && !isScopeRequiredRoute(c.req.path))
+        ? Scope.global()
+        : await resolveScopedRequestScope(c, directory)
+    if (scope instanceof Response) return scope
+    return ScopeContext.provide({
       scope,
-      init: InstanceBootstrap,
       async fn() {
         return next()
       },
@@ -364,8 +428,8 @@ export namespace Server {
         .post(
           "/global/dispose",
           describeRoute({
-            summary: "Dispose instance",
-            description: "Clean up and dispose all Synergy instances, releasing all resources.",
+            summary: "Dispose scope runtimes",
+            description: "Clean up and dispose all scope runtimes, releasing all scoped resources.",
             operationId: "global.dispose",
             responses: {
               200: {
@@ -379,7 +443,7 @@ export namespace Server {
             },
           }),
           async (c) => {
-            await Instance.disposeAll()
+            await ScopeRuntime.disposeAll()
             GlobalBus.emit("event", {
               directory: "global",
               payload: {
@@ -549,14 +613,14 @@ export namespace Server {
           },
         )
         .post(
-          "/instance/dispose",
+          "/scope/runtime/dispose",
           describeRoute({
-            summary: "Dispose instance",
-            description: "Clean up and dispose the current Synergy instance, releasing all resources.",
-            operationId: "instance.dispose",
+            summary: "Dispose scope runtime",
+            description: "Clean up and dispose the current scope runtime, releasing scoped resources.",
+            operationId: "scope.runtime.dispose",
             responses: {
               200: {
-                description: "Instance disposed",
+                description: "Scope runtime disposed",
                 content: {
                   "application/json": {
                     schema: resolver(z.boolean()),
@@ -566,7 +630,7 @@ export namespace Server {
             },
           }),
           async (c) => {
-            await Instance.dispose()
+            await ScopeRuntime.dispose()
             return c.json(true)
           },
         )
@@ -575,7 +639,7 @@ export namespace Server {
           describeRoute({
             summary: "Get paths",
             description:
-              "Retrieve the current working directory and related path information for the Synergy instance.",
+              "Retrieve the current working directory and related path information for the active scope context.",
             operationId: "path.get",
             responses: {
               200: {
@@ -605,8 +669,8 @@ export namespace Server {
               home: Global.Path.home,
               state: Global.Path.state,
               config: Global.Path.config,
-              worktree: Instance.worktree,
-              directory: Instance.directory,
+              worktree: ScopeContext.current.worktree,
+              directory: ScopeContext.current.directory,
             })
           },
         )
@@ -938,7 +1002,7 @@ export namespace Server {
                 await stream.writeSSE({
                   data: JSON.stringify(event),
                 })
-                if (event.type === Bus.InstanceDisposed.type) {
+                if (event.type === Bus.ScopeRuntimeDisposed.type) {
                   stream.close()
                 }
               })
@@ -1099,19 +1163,12 @@ export namespace Server {
 
     const originalStop = server.stop.bind(server)
     server.stop = async (closeActiveConnections?: boolean) => {
-      Agenda.stop()
       if (shouldPublishMDNS) MDNS.unpublish()
       _globalEventBroadcastOff?.()
       if (_globalEventHeartbeatInterval) clearInterval(_globalEventHeartbeatInterval)
       _globalEventClients?.clear()
       return originalStop(closeActiveConnections)
     }
-
-    Agenda.start()
-      .then(() => AgendaBootstrap.seed())
-      .catch((err) => {
-        log.error("failed to start agenda", { error: err instanceof Error ? err : new Error(String(err)) })
-      })
 
     return server
   }

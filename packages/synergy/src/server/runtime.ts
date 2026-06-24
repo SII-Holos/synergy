@@ -1,17 +1,19 @@
 import { ensureMigrations } from "../migration"
 import { Server } from "./server"
 import { Installation } from "../global/installation"
-import { Instance } from "../scope/instance"
+import { ScopeContext } from "../scope/context"
+import { ScopedState } from "../scope/scoped-state"
+import { ScopeRuntime } from "../scope/runtime"
 import { Scope } from "../scope"
 import { ProcessRegistry } from "../process/registry"
 import { Log } from "../util/log"
-import { InstanceBootstrap, ChannelBootstrap, HolosBootstrap } from "../project/bootstrap"
 import * as ChannelTypes from "../channel/types"
 import { Provider } from "../provider/provider"
 import { DaemonLogRotate } from "../daemon/log-rotate"
-import { SingleInstance } from "../daemon/single-instance"
+import { ServerProcessLock } from "../daemon/server-process-lock"
 import { StartupReporter } from "../cli/startup-reporter"
 import { Flag } from "../flag/flag"
+import { GlobalRuntime } from "./global-runtime"
 
 const log = Log.create({ service: "server-runtime" })
 
@@ -41,7 +43,7 @@ export async function run(options: RuntimeOptions) {
   })
   reporter?.migration(migration)
 
-  await SingleInstance.acquire()
+  await ServerProcessLock.acquire()
 
   // Holos login: intentionally skipped at CLI startup.
   // Users can log in via Web UI sidebar Holos panel or 'synergy holos login'.
@@ -59,21 +61,25 @@ export async function run(options: RuntimeOptions) {
   const server = Server.listen(options.network)
   const statuses: StartupReporter.StatusRow[] = []
 
-  await StartupReporter.provide(reporter, () =>
-    Instance.provide({
-      scope: Scope.global(),
-      init: InstanceBootstrap,
-      fn: async () => {
-        await Promise.all([ChannelBootstrap(), HolosBootstrap()])
-        if (options.printChannelStatus) {
-          statuses.push(...(await connectionStatusRows()))
-        }
-      },
-    }),
-  )
+  await StartupReporter.provide(reporter, async () => {
+    await GlobalRuntime.start()
+    if (options.printChannelStatus) {
+      statuses.push(
+        ...(await ScopeContext.provide({
+          scope: Scope.global(),
+          fn: connectionStatusRows,
+        })),
+      )
+    }
+  })
 
   if (options.printBanner) {
-    if (await hasNoModelConfigured()) {
+    if (
+      await ScopeContext.provide({
+        scope: Scope.global(),
+        fn: hasNoModelConfigured,
+      })
+    ) {
       reporter?.warning("No AI model configured — run synergy config before sending messages.")
     }
     renderBanner({ server, network: options.network, reporter: reporter ?? StartupReporter.create(), statuses })
@@ -108,7 +114,8 @@ function renderBanner(input: {
   input.reporter.render({
     title: `Synergy ${Installation.VERSION}`,
     rows: [
-      { label: "Scope", value: startupScopeLabel() },
+      { label: "Mode", value: "global server" },
+      { label: "Launch cwd", value: startupScopeLabel() },
       { label: "Server", value: url },
       { label: "Bind", value: bind },
       { label: "Logs", value: Log.file() || "stderr" },
@@ -210,7 +217,7 @@ async function connectionStatusRows(): Promise<StartupReporter.StatusRow[]> {
   const channelStatuses = await resolveStatuses({ statuses: await Channel.status(), refresh: () => Channel.status() })
   const rows: StartupReporter.StatusRow[] = [channelStatusRow(channelStatuses), await holosStatusRow()]
 
-  const channelState = Instance.state(
+  const channelState = ScopedState.create(
     () => {
       const unsubs: Array<() => void> = []
       unsubs.push(
@@ -300,7 +307,8 @@ function registerShutdown(server: { stop: (closeActiveConnections?: boolean) => 
     try {
       DaemonLogRotate.stop()
       await ProcessRegistry.killAllRunning()
-      await Instance.disposeAll()
+      await GlobalRuntime.stop()
+      await ScopeRuntime.disposeAll()
       await server.stop()
     } catch (error) {
       log.error("error during graceful shutdown", { error })

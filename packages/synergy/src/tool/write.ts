@@ -8,7 +8,7 @@ import { Bus } from "../bus"
 import { File } from "../file"
 import { FileTime } from "../file/time"
 import { Filesystem } from "../util/filesystem"
-import { Instance } from "../scope/instance"
+import { ScopeContext } from "../scope/context"
 import { trimDiff } from "./edit"
 import { RuntimeReload } from "../runtime/reload"
 
@@ -22,8 +22,10 @@ export const WriteTool = Tool.define("write", {
     content: z.string().describe("The content to write to the file"),
   }),
   async execute(params, ctx) {
-    const filepath = path.isAbsolute(params.filePath) ? params.filePath : path.join(Instance.directory, params.filePath)
-    const displayPath = path.relative(Instance.directory, filepath)
+    const filepath = path.isAbsolute(params.filePath)
+      ? params.filePath
+      : path.join(ScopeContext.current.directory, params.filePath)
+    const displayPath = path.relative(ScopeContext.current.directory, filepath)
 
     const file = Bun.file(filepath)
     const exists = await file.exists()

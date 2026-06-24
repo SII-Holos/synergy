@@ -2,7 +2,7 @@ import { Hono } from "hono"
 import { describeRoute, validator, resolver } from "hono-openapi"
 import z from "zod"
 import { SessionNav, NavCategory, SessionNavResponse } from "../session/nav"
-import { Instance } from "../scope/instance"
+import { ScopeContext } from "../scope/context"
 
 const booleanQuery = z.enum(["true", "false"]).transform((v) => v === "true")
 
@@ -45,7 +45,7 @@ export const SessionNavRoute = new Hono().get(
   validator("query", SessionNavQuery),
   async (c) => {
     const query = c.req.valid("query")
-    const targetScopeID = query.scopeID ?? Instance.scope.id
+    const targetScopeID = query.scopeID ?? ScopeContext.current.scope.id
     const result = await SessionNav.queryScope(targetScopeID, {
       parentOnly: query.parentOnly,
       category: query.category,

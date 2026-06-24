@@ -393,7 +393,7 @@ export const EngramRoute = new Hono()
       const row = EngramDB.Experience.get(id)
       if (!row) return c.json({ message: `Experience not found: ${id}` }, 404)
 
-      const config = await Config.get()
+      const config = await Config.current()
       const engramLearning = (config as any).engram?.experience?.learning ?? {}
 
       const rewards: EngramDB.Experience.Rewards = body.rewards ?? { outcome: body.reward! }

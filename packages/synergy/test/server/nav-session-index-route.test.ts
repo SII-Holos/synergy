@@ -3,7 +3,7 @@ import { tmpdir } from "../fixture/fixture"
 import { Session } from "../../src/session"
 import { SessionNav, type NavCategory } from "../../src/session/nav"
 import { Log } from "../../src/util/log"
-import { Instance } from "../../src/scope/instance"
+import { ScopeContext } from "../../src/scope/context"
 import { Scope } from "../../src/scope"
 import { Server } from "../../src/server/server"
 import { SessionEndpoint } from "../../src/session/endpoint"
@@ -15,7 +15,7 @@ describe("GET /session/index (v2 nav)", () => {
     await using tmp = await tmpdir({ git: true })
     const scope = await tmp.scope()
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope,
       fn: async () => {
         const app = Server.App()
@@ -43,7 +43,7 @@ describe("GET /session/index (v2 nav)", () => {
     let parentID: string | undefined
     let childID: string | undefined
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope,
       fn: async () => {
         const parent = await Session.create({ title: "Parent Session" })
@@ -53,7 +53,7 @@ describe("GET /session/index (v2 nav)", () => {
       },
     })
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope,
       fn: async () => {
         const app = Server.App()
@@ -86,7 +86,7 @@ describe("GET /session/index (v2 nav)", () => {
 
     let childID: string | undefined
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope,
       fn: async () => {
         const parent = await Session.create({ title: "Parent Project" })
@@ -95,7 +95,7 @@ describe("GET /session/index (v2 nav)", () => {
       },
     })
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope,
       fn: async () => {
         const app = Server.App()
@@ -139,7 +139,7 @@ describe("GET /session/index (v2 nav)", () => {
     let projectParentID: string | undefined
     let backgroundChildID: string | undefined
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope,
       fn: async () => {
         // Create a project-category parent (project scope, no parentID)
@@ -151,7 +151,7 @@ describe("GET /session/index (v2 nav)", () => {
       },
     })
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope,
       fn: async () => {
         const app = Server.App()
@@ -189,7 +189,7 @@ describe("GET /session/index (v2 nav)", () => {
 
     let archivedID: string | undefined
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope,
       fn: async () => {
         const session = await Session.create({ title: "Archive Me" })
@@ -200,7 +200,7 @@ describe("GET /session/index (v2 nav)", () => {
       },
     })
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope,
       fn: async () => {
         const app = Server.App()
@@ -230,7 +230,7 @@ describe("GET /session/index (v2 nav)", () => {
 
     const createdIDs: string[] = []
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope,
       fn: async () => {
         for (let i = 0; i < 5; i++) {
@@ -240,7 +240,7 @@ describe("GET /session/index (v2 nav)", () => {
       },
     })
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope,
       fn: async () => {
         const app = Server.App()
@@ -279,7 +279,7 @@ describe("GET /session/index (v2 nav)", () => {
 
     let sessionID: string | undefined
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope,
       fn: async () => {
         const s = await Session.create({ title: "Field Check" })
@@ -287,7 +287,7 @@ describe("GET /session/index (v2 nav)", () => {
       },
     })
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope,
       fn: async () => {
         const app = Server.App()
@@ -317,7 +317,7 @@ describe("GET /session/index (v2 nav)", () => {
     let projectSessionID: string | undefined
 
     // Create a session in the global scope
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: Scope.global(),
       fn: async () => {
         const s = await Session.create({ title: "Global Scope Session" })
@@ -326,7 +326,7 @@ describe("GET /session/index (v2 nav)", () => {
     })
 
     // Create a session in the project scope
-    await Instance.provide({
+    await ScopeContext.provide({
       scope,
       fn: async () => {
         const s = await Session.create({ title: "Project Scope Session" })
@@ -335,7 +335,7 @@ describe("GET /session/index (v2 nav)", () => {
     })
 
     // Query project scope (default behavior — no scopeID override)
-    await Instance.provide({
+    await ScopeContext.provide({
       scope,
       fn: async () => {
         const app = Server.App()
@@ -350,7 +350,7 @@ describe("GET /session/index (v2 nav)", () => {
     })
 
     // Query global scope explicitly via scopeID override
-    await Instance.provide({
+    await ScopeContext.provide({
       scope,
       fn: async () => {
         const app = Server.App()
@@ -363,13 +363,13 @@ describe("GET /session/index (v2 nav)", () => {
     })
 
     // Cleanup
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: Scope.global(),
       fn: async () => {
         await Session.remove(globalSessionID!)
       },
     })
-    await Instance.provide({
+    await ScopeContext.provide({
       scope,
       fn: async () => {
         await Session.remove(projectSessionID!)
@@ -384,7 +384,7 @@ test("returns endpointKind for channel sessions", async () => {
 
   let channelID: string | undefined
 
-  await Instance.provide({
+  await ScopeContext.provide({
     scope,
     fn: async () => {
       const ch = await Session.create({
@@ -394,7 +394,7 @@ test("returns endpointKind for channel sessions", async () => {
       channelID = ch.id
     },
   })
-  await Instance.provide({
+  await ScopeContext.provide({
     scope,
     fn: async () => {
       const app = Server.App()

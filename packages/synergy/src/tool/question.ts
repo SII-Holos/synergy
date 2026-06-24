@@ -19,7 +19,7 @@ export const QuestionTool = Tool.define<typeof parameters, QuestionMetadata>("qu
   description: DESCRIPTION,
   parameters,
   async execute(params, ctx) {
-    const cfg = await Config.get()
+    const cfg = await Config.current()
     const configuredTimeout = cfg.question?.timeout
     const timeout = configuredTimeout === 0 ? undefined : (configuredTimeout ?? DEFAULT_TIMEOUT)
     const createdAt = Date.now()

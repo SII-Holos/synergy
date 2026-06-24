@@ -17,7 +17,7 @@ export type ModelKey =
   | "long_context_model"
   | "creative_model"
 
-/** Resolved defaults returned by Config.get() (Phase 1 backend). These are the actual active defaults, never undefined. */
+/** Resolved defaults returned by Config.current()/Config.forScope(). These are the actual active defaults, never undefined. */
 export const MODEL_DEFAULTS: Record<ModelKey, string> = {
   model: "synergy",
   nano_model: "",

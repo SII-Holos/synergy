@@ -1,7 +1,7 @@
 import * as fs from "fs"
 import * as path from "path"
 import { FileTime } from "../file/time"
-import { Instance } from "../scope/instance"
+import { ScopeContext } from "../scope/context"
 import { formatHashlineHeader, formatHashlineBlock } from "../hashline/format"
 import { SessionHashlineStore } from "../hashline/store"
 import { normalizeContent, splitContentLines } from "../hashline/tag"
@@ -14,11 +14,11 @@ export const DEFAULT_VIEW_BYTES = 50 * 1024
 export const MAX_LINE_COLUMNS = 512
 
 export function resolveFilePath(filePath: string): string {
-  return path.isAbsolute(filePath) ? filePath : path.join(Instance.directory, filePath)
+  return path.isAbsolute(filePath) ? filePath : path.join(ScopeContext.current.directory, filePath)
 }
 
 export function displayPath(filePath: string): string {
-  const relative = path.relative(Instance.directory, filePath)
+  const relative = path.relative(ScopeContext.current.directory, filePath)
   return relative && !relative.startsWith("..") && !path.isAbsolute(relative) ? relative : filePath
 }
 

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import { tmpdir } from "../fixture/fixture"
-import { Instance } from "../../src/scope/instance"
+import { ScopeContext } from "../../src/scope/context"
 import { Scope } from "../../src/scope"
 import { NoteError, NoteStore } from "../../src/note"
 import { Server } from "../../src/server/server"
@@ -13,7 +13,7 @@ describe("Note conflict payloads", () => {
     await using tmp = await tmpdir()
     const scope = (await Scope.fromDirectory(tmp.path)).scope
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope,
       fn: async () => {
         const created = await NoteStore.create({
@@ -48,7 +48,7 @@ describe("GET /note/meta metadata route", () => {
     await using tmp = await tmpdir()
     const scope = (await Scope.fromDirectory(tmp.path)).scope
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope,
       fn: async () => {
         await NoteStore.create(
@@ -108,7 +108,7 @@ describe("GET /note/meta metadata route", () => {
     await using tmp = await tmpdir()
     const scope = (await Scope.fromDirectory(tmp.path)).scope
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope,
       fn: async () => {
         await NoteStore.create({
@@ -138,7 +138,7 @@ describe("GET /note/meta metadata route", () => {
     await using tmp = await tmpdir()
     const scope = (await Scope.fromDirectory(tmp.path)).scope
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope,
       fn: async () => {
         await NoteStore.create({
@@ -175,7 +175,7 @@ describe("GET /note/meta metadata route", () => {
 
     let noteId = ""
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope,
       fn: async () => {
         const created = await NoteStore.create({

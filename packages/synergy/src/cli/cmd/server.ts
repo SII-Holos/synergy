@@ -4,7 +4,7 @@ import { run as runServerRuntime } from "../../server/runtime"
 import { UI } from "../ui"
 import { FormatError, FormatUnknownError } from "../error"
 import { Log } from "../../util/log"
-import { SingleInstance } from "../../daemon/single-instance"
+import { ServerProcessLock } from "../../daemon/server-process-lock"
 
 export const ServerCommand = cmd({
   command: ["$0", "server"],
@@ -49,14 +49,14 @@ export const ServerCommand = cmd({
             : error,
       })
 
-      if (error instanceof SingleInstance.AlreadyRunningError) {
-        UI.error(`Another Synergy instance is already running (pid ${error.lock.pid})`)
+      if (error instanceof ServerProcessLock.AlreadyRunningError) {
+        UI.error(`Another Synergy server process is already running (pid ${error.lock.pid})`)
         UI.println(`  Existing mode: ${error.lock.mode}`)
         UI.println(`  Existing cwd: ${error.lock.cwd}`)
         UI.println(`  Existing command: ${error.lock.command.join(" ")}`)
         UI.println()
         UI.println("  Next:")
-        UI.println("    Stop the other instance before running `synergy server`")
+        UI.println("    Stop the other server process before running `synergy server`")
         UI.println("    If it is the managed background service, run `synergy stop`")
         UI.println("    Otherwise kill the process and retry")
         process.exitCode = 1

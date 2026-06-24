@@ -5,7 +5,7 @@ import { Session } from "."
 import { Identifier } from "../id/id"
 import { MessageV2 } from "./message-v2"
 import { Log } from "@/util/log"
-import { Instance } from "../scope/instance"
+import { ScopeContext } from "../scope/context"
 const log = Log.create({ service: "session.loop-signals" })
 
 // ─── shared helpers ────────────────────────────────────────────────
@@ -215,7 +215,7 @@ LoopJob.register({
     return ranBash ? [{ type: "git_health_cache_invalidator" }] : []
   },
   async execute() {
-    GitHealth.invalidate(Instance.directory)
+    GitHealth.invalidate(ScopeContext.current.directory)
     return "pass"
   },
 })

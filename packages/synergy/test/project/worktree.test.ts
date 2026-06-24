@@ -3,7 +3,7 @@ import fs from "fs/promises"
 import path from "path"
 import { describe, expect, test } from "bun:test"
 import { tmpdir } from "../fixture/fixture"
-import { Instance } from "../../src/scope/instance"
+import { ScopeContext } from "../../src/scope/context"
 import { Session } from "../../src/session"
 import { Worktree } from "../../src/project/worktree"
 import { Log } from "../../src/util/log"
@@ -35,7 +35,7 @@ describe("git worktree integration", () => {
     await using tmp = await tmpdir({ git: true })
     const scope = await tmp.scope()
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope,
       fn: () =>
         using(async () => {
@@ -58,7 +58,7 @@ describe("git worktree integration", () => {
     )
     const scope = await tmp.scope()
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope,
       fn: () =>
         using(async () => {
@@ -95,7 +95,7 @@ describe("git worktree integration", () => {
     await using tmp = await tmpdir({ git: true })
     const scope = await tmp.scope()
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope,
       fn: () =>
         using(async () => {
@@ -124,7 +124,7 @@ describe("git worktree integration", () => {
     await using tmp = await tmpdir()
     const scope = await tmp.scope()
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope,
       fn: () =>
         using(async () => {
@@ -148,7 +148,7 @@ describe("worktree lock invariant", () => {
     await using tmp = await tmpdir({ git: true })
     const scope = await tmp.scope()
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope,
       fn: () =>
         using(async () => {
@@ -174,7 +174,7 @@ describe("worktree lock invariant", () => {
     await using tmp = await tmpdir({ git: true })
     const scope = await tmp.scope()
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope,
       fn: () =>
         using(async () => {
@@ -213,7 +213,7 @@ describe("worktree lock invariant", () => {
     await using tmp = await tmpdir({ git: true })
     const scope = await tmp.scope()
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope,
       fn: () =>
         using(async () => {
@@ -250,7 +250,7 @@ describe("worktree lock invariant", () => {
     await using tmp = await tmpdir({ git: true })
     const scope = await tmp.scope()
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope,
       fn: () =>
         using(async () => {
@@ -285,7 +285,7 @@ describe("worktree lock invariant", () => {
     await using tmp = await tmpdir({ git: true })
     const scope = await tmp.scope()
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope,
       fn: () =>
         using(async () => {

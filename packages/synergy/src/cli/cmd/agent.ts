@@ -7,7 +7,7 @@ import { Provider } from "../../provider/provider"
 import path from "path"
 import fs from "fs/promises"
 import matter from "gray-matter"
-import { Instance } from "../../scope/instance"
+import { ScopeContext } from "../../scope/context"
 import { Scope } from "@/scope"
 import { EOL } from "os"
 import type { Argv } from "yargs"
@@ -58,8 +58,8 @@ const AgentCreateCommand = cmd({
         describe: "model to use in the format of provider/model",
       }),
   async handler(args) {
-    await Instance.provide({
-      scope: (await Scope.fromDirectory(process.cwd())).scope,
+    await ScopeContext.provide({
+      scope: Scope.global(),
       async fn() {
         const cliPath = args.path
         const cliDescription = args.description
@@ -73,7 +73,7 @@ const AgentCreateCommand = cmd({
           prompts.intro("Create agent")
         }
 
-        const instanceScope = Instance.scope
+        const instanceScope = ScopeContext.current.scope
 
         // Determine scope/path
         let targetPath: string
@@ -88,7 +88,7 @@ const AgentCreateCommand = cmd({
                 {
                   label: "Current project",
                   value: "project" as const,
-                  hint: Instance.directory,
+                  hint: ScopeContext.current.directory,
                 },
                 {
                   label: "Global",
@@ -101,7 +101,7 @@ const AgentCreateCommand = cmd({
             scope = scopeResult
           }
           targetPath = path.join(
-            scope === "global" ? Global.Path.config : path.join(Instance.directory, ".synergy"),
+            scope === "global" ? Global.Path.config : path.join(ScopeContext.current.directory, ".synergy"),
             "agent",
           )
         }
@@ -232,8 +232,8 @@ const AgentListCommand = cmd({
   command: "list",
   describe: "list all available agents",
   async handler() {
-    await Instance.provide({
-      scope: (await Scope.fromDirectory(process.cwd())).scope,
+    await ScopeContext.provide({
+      scope: Scope.global(),
       async fn() {
         const agents = await Agent.list()
         const sortedAgents = agents.sort((a, b) => {

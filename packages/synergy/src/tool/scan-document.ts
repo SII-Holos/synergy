@@ -1,7 +1,7 @@
 import z from "zod"
 import * as path from "path"
 import { Tool } from "./tool"
-import { Instance } from "../scope/instance"
+import { ScopeContext } from "../scope/context"
 import { Document } from "../util/document"
 import { FileTime } from "../file/time"
 import { truncateLineForDisplay } from "./anchored-file"
@@ -54,7 +54,9 @@ export const ScanDocumentTool = Tool.define("scan_document", {
       .describe(`Maximum lines to return (default ${DEFAULT_LIMIT}, max ${MAX_LIMIT})`),
   }),
   async execute(params, ctx) {
-    const filepath = path.isAbsolute(params.filePath) ? params.filePath : path.join(Instance.directory, params.filePath)
+    const filepath = path.isAbsolute(params.filePath)
+      ? params.filePath
+      : path.join(ScopeContext.current.directory, params.filePath)
 
     await ctx.ask({
       permission: "scan_document",

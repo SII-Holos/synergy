@@ -258,7 +258,7 @@ scope.updated  scope.removed
 
 ```
 config.updated  config.set_activated
-server.connected  server.instance.disposed  global.disposed
+server.connected  scope.runtime.disposed  global.disposed
 ```
 
 **File & LSP**

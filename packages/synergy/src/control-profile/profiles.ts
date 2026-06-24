@@ -222,7 +222,7 @@ export async function resolveEffectiveSandbox(profileId: ProfileId): Promise<Pro
 
   let sandboxCfg: any = null
   try {
-    const cfg = await Config.get()
+    const cfg = await Config.current()
     sandboxCfg = cfg.sandbox
   } catch {
     LOG.debug("no config context available for sandbox resolution, using profile defaults", { profile: profileId })

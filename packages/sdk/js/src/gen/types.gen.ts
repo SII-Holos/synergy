@@ -1240,6 +1240,10 @@ export type McpLocalConfig = {
    */
   command: Array<string>
   /**
+   * Working directory for local MCP servers
+   */
+  cwd?: string
+  /**
    * Environment variables to set when running the MCP server
    */
   environment?: {
@@ -4264,6 +4268,14 @@ export type EventScopeRemoved = {
   }
 }
 
+export type EventScopeRuntimeDisposed = {
+  type: "scope.runtime.disposed"
+  properties: {
+    scopeID: string
+    directory?: string
+  }
+}
+
 export type EventInstallationUpdated = {
   type: "installation.updated"
   properties: {
@@ -4283,13 +4295,6 @@ export type EventConfigUpdated = {
   properties: {
     scope: "global" | "project"
     changedFields: Array<string>
-  }
-}
-
-export type EventServerInstanceDisposed = {
-  type: "server.instance.disposed"
-  properties: {
-    directory: string
   }
 }
 
@@ -4329,10 +4334,28 @@ export type EventMcpFailed = {
   }
 }
 
+export type EventCommandExecuted = {
+  type: "command.executed"
+  properties: {
+    name: string
+    sessionID: string
+    arguments: string
+    messageID: string
+  }
+}
+
 export type EventFileEdited = {
   type: "file.edited"
   properties: {
     file: string
+  }
+}
+
+export type EventFileWatcherUpdated = {
+  type: "file.watcher.updated"
+  properties: {
+    file: string
+    event: "add" | "change" | "unlink"
   }
 }
 
@@ -4348,24 +4371,6 @@ export type EventLspUpdated = {
   type: "lsp.updated"
   properties: {
     [key: string]: unknown
-  }
-}
-
-export type EventFileWatcherUpdated = {
-  type: "file.watcher.updated"
-  properties: {
-    file: string
-    event: "add" | "change" | "unlink"
-  }
-}
-
-export type EventCommandExecuted = {
-  type: "command.executed"
-  properties: {
-    name: string
-    sessionID: string
-    arguments: string
-    messageID: string
   }
 }
 
@@ -4774,20 +4779,20 @@ export type EventGlobalDisposed = {
 export type Event =
   | EventScopeUpdated
   | EventScopeRemoved
+  | EventScopeRuntimeDisposed
   | EventInstallationUpdated
   | EventInstallationUpdateAvailable
   | EventConfigUpdated
-  | EventServerInstanceDisposed
   | EventMcpToolsChanged
   | EventMcpPromptsChanged
   | EventMcpResourcesChanged
   | EventMcpReady
   | EventMcpFailed
+  | EventCommandExecuted
   | EventFileEdited
+  | EventFileWatcherUpdated
   | EventLspClientDiagnostics
   | EventLspUpdated
-  | EventFileWatcherUpdated
-  | EventCommandExecuted
   | EventVcsBranchUpdated
   | EventPermissionAsked
   | EventPermissionReplied
@@ -5926,23 +5931,23 @@ export type ToolListResponses = {
 
 export type ToolListResponse = ToolListResponses[keyof ToolListResponses]
 
-export type InstanceDisposeData = {
+export type ScopeRuntimeDisposeData = {
   body?: never
   path?: never
   query?: {
     directory?: string
   }
-  url: "/instance/dispose"
+  url: "/scope/runtime/dispose"
 }
 
-export type InstanceDisposeResponses = {
+export type ScopeRuntimeDisposeResponses = {
   /**
-   * Instance disposed
+   * Scope runtime disposed
    */
   200: boolean
 }
 
-export type InstanceDisposeResponse = InstanceDisposeResponses[keyof InstanceDisposeResponses]
+export type ScopeRuntimeDisposeResponse = ScopeRuntimeDisposeResponses[keyof ScopeRuntimeDisposeResponses]
 
 export type PathGetData = {
   body?: never

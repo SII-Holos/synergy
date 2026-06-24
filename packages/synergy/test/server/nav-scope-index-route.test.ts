@@ -3,7 +3,7 @@ import { tmpdir } from "../fixture/fixture"
 import { Session } from "../../src/session"
 import { SessionNav, type ScopeNavEntry } from "../../src/session/nav"
 import { Log } from "../../src/util/log"
-import { Instance } from "../../src/scope/instance"
+import { ScopeContext } from "../../src/scope/context"
 import { Scope } from "../../src/scope"
 import { Server } from "../../src/server/server"
 
@@ -11,7 +11,7 @@ Log.init({ print: false })
 
 describe("GET /scope/index", () => {
   test("returns 200 with expected response shape (array of ScopeNavEntry)", async () => {
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: Scope.global(),
       fn: async () => {
         const app = Server.App()
@@ -45,13 +45,13 @@ describe("GET /scope/index", () => {
     // Use explicit timestamps to guarantee ordering — relying on wall-clock
     // proximity makes this test flaky on fast CI runners where both creates
     // can land in the same millisecond.
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: scopeA,
       fn: async () => {
         await Session.create({ title: "A Old" })
       },
     })
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: scopeB,
       fn: async () => {
         const s = await Session.create({ title: "B New" })
@@ -60,7 +60,7 @@ describe("GET /scope/index", () => {
       },
     })
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: Scope.global(),
       fn: async () => {
         const app = Server.App()
@@ -87,7 +87,7 @@ describe("GET /scope/index", () => {
 
     const sessionIDs: string[] = []
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope,
       fn: async () => {
         for (let i = 0; i < 3; i++) {
@@ -97,7 +97,7 @@ describe("GET /scope/index", () => {
       },
     })
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: Scope.global(),
       fn: async () => {
         const app = Server.App()
@@ -121,7 +121,7 @@ describe("GET /scope/index", () => {
     const scope = await tmp.scope()
 
     // Create a session so this scope shows up
-    await Instance.provide({
+    await ScopeContext.provide({
       scope,
       fn: async () => {
         const s = await Session.create({ title: "Scope Icon Test" })
@@ -131,7 +131,7 @@ describe("GET /scope/index", () => {
           icon: { url: "https://example.com/icon.png", color: "#ff0000" },
         })
 
-        await Instance.provide({
+        await ScopeContext.provide({
           scope: Scope.global(),
           fn: async () => {
             const app = Server.App()
@@ -159,7 +159,7 @@ describe("GET /scope/index", () => {
     let olderID: string | undefined
     let newerID: string | undefined
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope,
       fn: async () => {
         const older = await Session.create({ title: "Older Scope Entry" })
@@ -170,7 +170,7 @@ describe("GET /scope/index", () => {
       },
     })
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: Scope.global(),
       fn: async () => {
         const app = Server.App()

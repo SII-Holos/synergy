@@ -3,7 +3,7 @@ import { Config } from "../../src/config/config"
 import { MCP } from "../../src/mcp"
 import { connectClientOrCloseOnFailure, McpSupervisor } from "../../src/mcp/supervisor"
 import { startForPlugin } from "../../src/plugin/mcp"
-import { Instance } from "../../src/scope/instance"
+import { ScopeContext } from "../../src/scope/context"
 import { Log } from "../../src/util/log"
 import { tmpdir } from "../fixture/fixture"
 
@@ -41,7 +41,7 @@ describe.serial("McpSupervisor", () => {
       },
     })
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const status = await MCP.status()
@@ -65,7 +65,7 @@ describe.serial("McpSupervisor", () => {
       },
     })
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const tools = await MCP.tools()
@@ -94,7 +94,7 @@ describe.serial("McpSupervisor", () => {
   test("registers plugin MCP servers with defaults and skips metadata", async () => {
     await using tmp = await tmpdir({ config: {} })
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         await startForPlugin("demo-plugin", {
@@ -131,7 +131,7 @@ describe.serial("McpSupervisor", () => {
       },
     })
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         await startForPlugin("demo-plugin", {
@@ -159,10 +159,10 @@ describe.serial("McpSupervisor", () => {
       },
     })
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
-        const config = await Config.get()
+        const config = await Config.current()
         expect(config.mcpDefaults?.callTimeout).toBe(4321)
 
         await startForPlugin("demo-plugin", {

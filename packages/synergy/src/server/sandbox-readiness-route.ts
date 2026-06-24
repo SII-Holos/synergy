@@ -49,7 +49,7 @@ export const SandboxReadinessRoute = new Hono().get(
     },
   }),
   async (c) => {
-    const cfg = await Config.get()
+    const cfg = await Config.current()
     const readiness = await getSandboxReadiness(cfg.sandbox)
     return c.json(readiness)
   },

@@ -5,7 +5,7 @@
 // import { BlobWriter, ZipWriter } from "@zip.js/zip.js"
 // import { Tool } from "./tool"
 // import { AgoraClient } from "../agora"
-// import { Instance } from "../scope/instance"
+// import { ScopeContext } from "../scope/context"
 // import DESCRIPTION from "./agora-post.txt"
 //
 // const parameters = z.object({
@@ -80,7 +80,7 @@
 // }
 //
 // async function resolveWorkspaceFile(workspace: string) {
-//   const absolute = path.isAbsolute(workspace) ? workspace : path.join(Instance.directory, workspace)
+//   const absolute = path.isAbsolute(workspace) ? workspace : path.join(ScopeContext.current.directory, workspace)
 //   const stat = await fs.stat(absolute)
 //
 //   if (stat.isDirectory()) {

@@ -2,7 +2,7 @@ import { test, expect, describe } from "bun:test"
 import path from "path"
 import { Filesystem } from "../../src/util/filesystem"
 import { File } from "../../src/file"
-import { Instance } from "../../src/scope/instance"
+import { ScopeContext } from "../../src/scope/context"
 import { tmpdir } from "../fixture/fixture"
 
 describe("Filesystem.contains", () => {
@@ -47,7 +47,7 @@ describe("File.read path traversal protection", () => {
       },
     })
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         await expect(File.read("../../../etc/passwd")).rejects.toThrow("Access denied: path escapes project directory")
@@ -58,7 +58,7 @@ describe("File.read path traversal protection", () => {
   test("rejects deeply nested traversal", async () => {
     await using tmp = await tmpdir()
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         await expect(File.read("src/nested/../../../../../../../etc/passwd")).rejects.toThrow(
@@ -75,7 +75,7 @@ describe("File.read path traversal protection", () => {
       },
     })
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const result = await File.read("valid.txt")
@@ -89,7 +89,7 @@ describe("File.list path traversal protection", () => {
   test("rejects ../ traversal attempting to list /etc", async () => {
     await using tmp = await tmpdir()
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         await expect(File.list("../../../etc")).rejects.toThrow("Access denied: path escapes project directory")
@@ -104,7 +104,7 @@ describe("File.list path traversal protection", () => {
       },
     })
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const result = await File.list("subdir")

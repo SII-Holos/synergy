@@ -116,7 +116,7 @@ export namespace SessionProcessor {
       },
       async process(streamInput: LLM.StreamInput) {
         log.info("process")
-        const shouldBreak = (await Config.get()).experimental?.continue_loop_on_deny !== true
+        const shouldBreak = (await Config.current()).experimental?.continue_loop_on_deny !== true
         while (true) {
           try {
             let currentText: MessageV2.TextPart | undefined

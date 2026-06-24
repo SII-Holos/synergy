@@ -13,8 +13,9 @@ import { mergeDeep } from "remeda"
 import z from "zod"
 import { Config } from "../config/config"
 import { Log } from "../util/log"
-import { Instance } from "../scope/instance"
+import { ScopeContext } from "../scope/context"
 import { Installation } from "../global/installation"
+import { Global } from "../global"
 import { withTimeout } from "../util/timeout"
 import { Bus } from "../bus"
 import { BusEvent } from "../bus/bus-event"
@@ -199,6 +200,13 @@ function redactUrl(url: string): string {
   } catch {
     return url
   }
+}
+
+function localServerCwd(config: Extract<Config.Mcp, { type: "local" }>): string {
+  if (config.cwd) return config.cwd
+  const scope = ScopeContext.tryScope()
+  if (scope?.type === "project") return scope.directory
+  return Global.Path.home
 }
 
 async function closeFailedClient(client: Client, name: string, phase: string): Promise<void> {
@@ -534,7 +542,7 @@ class McpSupervisorImpl {
    * supervisor handles scheduling independently.
    */
   async registerPluginServers(pluginId: string, manifestMcp: Record<string, unknown>): Promise<void> {
-    const cfg = await Config.get()
+    const cfg = await Config.current()
     const userMcp = cfg.mcp ?? {}
     const defaults =
       typeof manifestMcp.defaults === "object" && manifestMcp.defaults !== null
@@ -586,7 +594,7 @@ class McpSupervisorImpl {
   // ── Internal ────────────────────────────────────────────────────────
 
   private async initFromConfig(): Promise<void> {
-    const cfg = await Config.get()
+    const cfg = await Config.current()
     const config = cfg.mcp ?? {}
 
     for (const [key, mcp] of Object.entries(config)) {
@@ -734,7 +742,7 @@ class McpSupervisorImpl {
 
     if (config.type === "local") {
       const [cmd, ...args] = config.command
-      const cwd = Instance.directory
+      const cwd = localServerCwd(config)
       const transport = new StdioClientTransport({
         stderr: "ignore",
         command: cmd,

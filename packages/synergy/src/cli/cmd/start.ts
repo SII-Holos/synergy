@@ -45,7 +45,7 @@ export const StartCommand = cmd({
         url: status.url,
         logFile: status.logFile,
         detail: status.detail,
-        notes: ["Stop the other Synergy instance before starting the background service."],
+        notes: ["Stop the other Synergy server process before starting the background service."],
         next: ["synergy status", "synergy stop"],
       })
       process.exit(1)

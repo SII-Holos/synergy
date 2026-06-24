@@ -3,7 +3,8 @@ import z from "zod"
 import { Provider } from "../provider/provider"
 import { generateObject, type ModelMessage } from "ai"
 import { SystemPrompt } from "../session/system"
-import { Instance } from "../scope/instance"
+import { ScopeContext } from "../scope/context"
+import { ScopedState } from "../scope/scoped-state"
 import { Truncate } from "../tool/truncation"
 
 import PROMPT_GENERATE from "./generate.txt"
@@ -54,8 +55,8 @@ export namespace Agent {
     })
   export type Info = z.infer<typeof Info>
 
-  const state = Instance.state(async () => {
-    const cfg = await Config.get()
+  const state = ScopedState.create(async () => {
+    const cfg = await Config.current()
     const evolutionActive =
       ((cfg as any).engram?.memory?.enabled ?? true) && (cfg as any).engram?.experience?.encode !== false
     const role = (r: Provider.ModelRole) => Provider.resolveRoleModelSync(cfg, r)
@@ -277,7 +278,7 @@ export namespace Agent {
   }
 
   export async function list() {
-    const cfg = await Config.get()
+    const cfg = await Config.current()
     return pipe(
       await state(),
       values(),
@@ -290,7 +291,7 @@ export namespace Agent {
   }
 
   export async function generate(input: { description: string; model?: { providerID: string; modelID: string } }) {
-    const cfg = await Config.get()
+    const cfg = await Config.current()
     const defaultModel = input.model ?? (await Provider.defaultModel())
     const model = await Provider.getModel(defaultModel.providerID, defaultModel.modelID)
     const language = await Provider.getLanguage(model)

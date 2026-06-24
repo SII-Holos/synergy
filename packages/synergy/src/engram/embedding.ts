@@ -131,7 +131,7 @@ export namespace Embedding {
   }
 
   async function resolveModel() {
-    const config = await Config.get()
+    const config = await Config.current()
     const ec = config.embedding
 
     // User explicitly configured remote → use remote

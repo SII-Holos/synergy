@@ -197,7 +197,7 @@ export const BUS_EVENT_NAMES: string[] = [
   "config.updated",
   "config.set_activated",
   // server
-  "server.instance.disposed",
+  "scope.runtime.disposed",
   "server.connected",
   "global.disposed",
   // file

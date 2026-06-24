@@ -2,7 +2,7 @@ import { describe, expect, test, beforeEach } from "bun:test"
 import { Cortex, CortexConcurrency } from "../../src/cortex"
 import { CortexTypes } from "../../src/cortex/types"
 import { Bus } from "../../src/bus"
-import { Instance } from "../../src/scope/instance"
+import { ScopeContext } from "../../src/scope/context"
 import { Session } from "../../src/session"
 import { tmpdir } from "../fixture/fixture"
 
@@ -93,7 +93,7 @@ describe("Cortex", () => {
 
     test("cancels descendant tasks recursively", async () => {
       await using tmp = await tmpdir({ git: true })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const rootSession = await Session.create({})
@@ -197,7 +197,7 @@ describe("Cortex", () => {
   describe("launch", () => {
     test("creates task and emits TaskCreated event", async () => {
       await using tmp = await tmpdir({ git: true })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const parentSession = await Session.create({})
@@ -240,7 +240,7 @@ describe("Cortex", () => {
 
     test("creates task with category", async () => {
       await using tmp = await tmpdir({ git: true })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const parentSession = await Session.create({})
@@ -263,7 +263,7 @@ describe("Cortex", () => {
 
     test("creates task with custom model", async () => {
       await using tmp = await tmpdir({ git: true })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const parentSession = await Session.create({})
@@ -290,7 +290,7 @@ describe("Cortex", () => {
 
     test("task appears in getTasksForSession", async () => {
       await using tmp = await tmpdir({ git: true })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const parentSession = await Session.create({})
@@ -313,7 +313,7 @@ describe("Cortex", () => {
 
     test("task has progress tracking", async () => {
       await using tmp = await tmpdir({ git: true })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const parentSession = await Session.create({})
@@ -337,7 +337,7 @@ describe("Cortex", () => {
 
     test("task appears in getRunningTasks initially", async () => {
       await using tmp = await tmpdir({ git: true })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const parentSession = await Session.create({})
@@ -363,7 +363,7 @@ describe("Cortex", () => {
   describe("cancel integration", () => {
     test("cancels running task", async () => {
       await using tmp = await tmpdir({ git: true })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const parentSession = await Session.create({})
@@ -388,7 +388,7 @@ describe("Cortex", () => {
 
     test("cancelAll cancels running tasks for session", async () => {
       await using tmp = await tmpdir({ git: true })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const parentSession = await Session.create({})
@@ -434,7 +434,7 @@ describe("Cortex", () => {
   describe("output integration", () => {
     test("returns running status for running task", async () => {
       await using tmp = await tmpdir({ git: true })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const parentSession = await Session.create({})
@@ -458,7 +458,7 @@ describe("Cortex", () => {
 
     test("returns cancelled status for cancelled task", async () => {
       await using tmp = await tmpdir({ git: true })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const parentSession = await Session.create({})
@@ -483,7 +483,7 @@ describe("Cortex", () => {
   describe("waitFor integration", () => {
     test("returns immediately for cancelled task", async () => {
       await using tmp = await tmpdir({ git: true })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const parentSession = await Session.create({})
@@ -510,7 +510,7 @@ describe("Cortex", () => {
   describe("queued cancellation", () => {
     test("cancelled queued task stays cancelled and never runs", async () => {
       await using tmp = await tmpdir({ git: true })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const parentSession = await Session.create({})

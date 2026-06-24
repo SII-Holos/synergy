@@ -5,7 +5,7 @@ import { Tool } from "./tool"
 import { BrowserToolHelper } from "./browser-shared"
 import { BrowserOwner } from "../browser/owner"
 import { BrowserPolicy } from "../browser/policy"
-import { Instance } from "../scope/instance"
+import { ScopeContext } from "../scope/context"
 import { Global } from "../global"
 
 const MAX_DOWNLOAD_SIZE = 100 * 1024 * 1024 // 100MB
@@ -56,7 +56,7 @@ export const BrowserDownloadTool = Tool.define("browser_download", {
     tabId: z.string().describe("Browser tab ID for policy context. Uses the active tab if omitted.").optional(),
   }),
   async execute(params, ctx) {
-    const workspace = Instance.directory
+    const workspace = ScopeContext.current.directory
 
     // Check URL policy
     const policyResult = BrowserPolicy.evaluateURL(params.url, workspace)
@@ -134,7 +134,7 @@ export const BrowserDownloadTool = Tool.define("browser_download", {
     }
 
     // Save to ~/.synergy/data/browser/downloads/{scopeID}/{filename}
-    const dir = downloadsDir(Instance.scope.id)
+    const dir = downloadsDir(ScopeContext.current.scope.id)
     await fs.mkdir(dir, { recursive: true })
 
     // Avoid overwriting: append -n if file exists

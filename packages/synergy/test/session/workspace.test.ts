@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test"
 import { tmpdir } from "../fixture/fixture"
 import { Session } from "../../src/session"
 import { SessionManager } from "../../src/session/manager"
-import { Instance } from "../../src/scope/instance"
+import { ScopeContext } from "../../src/scope/context"
 import { EnforcementGate } from "../../src/enforcement/gate"
 import { Scope } from "../../src/scope"
 import { Log } from "../../src/util/log"
@@ -67,7 +67,7 @@ describe("session workspace binding", () => {
       await using tmp = await tmpdir({ git: true })
       const scope = await tmp.scope()
 
-      await Instance.provide({
+      await ScopeContext.provide({
         scope,
         fn: () =>
           using(async () => {
@@ -98,7 +98,7 @@ describe("session workspace binding", () => {
       await using tmp = await tmpdir({ git: true })
       const scope = await tmp.scope()
 
-      await Instance.provide({
+      await ScopeContext.provide({
         scope,
         fn: () =>
           using(async () => {
@@ -131,7 +131,7 @@ describe("session workspace binding", () => {
       await using tmp = await tmpdir({ git: true })
       const scope = await tmp.scope()
 
-      await Instance.provide({
+      await ScopeContext.provide({
         scope,
         fn: () =>
           using(async () => {
@@ -169,14 +169,14 @@ describe("session workspace binding", () => {
     })
   })
 
-  // === Requirement 5: SessionManager.run() makes Instance.directory === session.workspace.path ===
+  // === Requirement 5: SessionManager.run() makes ScopeContext.current.directory === session.workspace.path ===
 
-  describe("Instance.directory resolution (via workspace)", () => {
-    test("Instance.directory reflects session workspace path inside run context", async () => {
+  describe("ScopeContext.current.directory resolution (via workspace)", () => {
+    test("ScopeContext.current.directory reflects session workspace path inside run context", async () => {
       await using tmp = await tmpdir({ git: true })
       const scope = await tmp.scope()
 
-      await Instance.provide({
+      await ScopeContext.provide({
         scope,
         fn: () =>
           using(async () => {
@@ -188,8 +188,8 @@ describe("session workspace binding", () => {
             const session = await Session.create({ workspace: ws })
 
             await SessionManager.run(session.id, async () => {
-              expect(Instance.directory).toBe(ws.path)
-              expect(Instance.directory).not.toBe(scope.directory)
+              expect(ScopeContext.current.directory).toBe(ws.path)
+              expect(ScopeContext.current.directory).not.toBe(scope.directory)
             })
 
             await Session.remove(session.id)
@@ -198,14 +198,14 @@ describe("session workspace binding", () => {
     })
   })
 
-  // === Requirement 6: Instance.workspace and Instance.worktree separation ===
+  // === Requirement 6: ScopeContext.current.workspace and ScopeContext.current.worktree separation ===
 
-  describe("Instance.workspace and Instance.worktree separation", () => {
-    test("Instance.workspace returns structured metadata", async () => {
+  describe("ScopeContext.current.workspace and ScopeContext.current.worktree separation", () => {
+    test("ScopeContext.current.workspace returns structured metadata", async () => {
       await using tmp = await tmpdir({ git: true })
       const scope = await tmp.scope()
 
-      await Instance.provide({
+      await ScopeContext.provide({
         scope,
         fn: () =>
           using(async () => {
@@ -217,7 +217,7 @@ describe("session workspace binding", () => {
             const session = await Session.create({ workspace: ws })
 
             await SessionManager.run(session.id, async () => {
-              const instWs = Instance.workspace as SessionWorkspace | undefined
+              const instWs = ScopeContext.current.workspace as SessionWorkspace | undefined
               expect(instWs).toBeDefined()
               expect(instWs!.type).toBe("main")
               expect(instWs!.path).toBe(scope.directory)
@@ -229,11 +229,11 @@ describe("session workspace binding", () => {
       })
     })
 
-    test("Instance.worktree is scope.worktree, not workspace.path", async () => {
+    test("ScopeContext.current.worktree is scope.worktree, not workspace.path", async () => {
       await using tmp = await tmpdir({ git: true })
       const scope = await tmp.scope()
 
-      await Instance.provide({
+      await ScopeContext.provide({
         scope,
         fn: () =>
           using(async () => {
@@ -245,8 +245,8 @@ describe("session workspace binding", () => {
             const session = await Session.create({ workspace: ws })
 
             await SessionManager.run(session.id, async () => {
-              expect(Instance.worktree).toBe(scope.worktree)
-              expect(Instance.worktree).not.toBe(ws.path)
+              expect(ScopeContext.current.worktree).toBe(scope.worktree)
+              expect(ScopeContext.current.worktree).not.toBe(ws.path)
             })
 
             await Session.remove(session.id)
@@ -258,11 +258,11 @@ describe("session workspace binding", () => {
   // === Requirement 7: Legacy sessions without workspace fall back to scope.directory ===
 
   describe("legacy session backwards compatibility", () => {
-    test("sessions without workspace resolve Instance.directory to scope.directory", async () => {
+    test("sessions without workspace resolve ScopeContext.current.directory to scope.directory", async () => {
       await using tmp = await tmpdir({ git: true })
       const scope = await tmp.scope()
 
-      await Instance.provide({
+      await ScopeContext.provide({
         scope,
         fn: () =>
           using(async () => {
@@ -290,7 +290,7 @@ describe("session workspace binding", () => {
             SessionManager.registerRuntime(legacySession.id)
 
             await SessionManager.run(legacySession.id, async () => {
-              expect(Instance.directory).toBe(scope.directory)
+              expect(ScopeContext.current.directory).toBe(scope.directory)
             })
 
             SessionManager.unregisterRuntime(legacySession.id)
@@ -307,7 +307,7 @@ describe("session workspace binding", () => {
       await using tmp = await tmpdir({ git: true })
       const scope = await tmp.scope()
 
-      await Instance.provide({
+      await ScopeContext.provide({
         scope,
         fn: () =>
           using(async () => {
@@ -332,11 +332,11 @@ describe("session workspace binding", () => {
   })
 
   describe("mid-turn workspace refresh", () => {
-    test("refreshes Instance.directory after a worktree-style workspace switch", async () => {
+    test("refreshes ScopeContext.current.directory after a worktree-style workspace switch", async () => {
       await using tmp = await tmpdir({ git: true })
       const scope = await tmp.scope()
 
-      await Instance.provide({
+      await ScopeContext.provide({
         scope,
         fn: () =>
           using(async () => {
@@ -350,13 +350,13 @@ describe("session workspace binding", () => {
             }
 
             await SessionManager.run(session.id, async () => {
-              expect(Instance.directory).toBe(scope.directory)
+              expect(ScopeContext.current.directory).toBe(scope.directory)
 
               await Session.updateWorkspace(session.id, worktreeWs)
-              Instance.refreshWorkspace(worktreeWs as Workspace)
+              ScopeContext.refreshWorkspace(worktreeWs as Workspace)
 
-              expect(Instance.directory).toBe(worktreeWs.path)
-              expect((Instance.workspace as SessionWorkspace | undefined)?.type).toBe("git_worktree")
+              expect(ScopeContext.current.directory).toBe(worktreeWs.path)
+              expect((ScopeContext.current.workspace as SessionWorkspace | undefined)?.type).toBe("git_worktree")
             })
 
             await Session.remove(session.id)
@@ -364,11 +364,11 @@ describe("session workspace binding", () => {
       })
     })
 
-    test("refreshes Instance.directory after leaving a worktree-style workspace", async () => {
+    test("refreshes ScopeContext.current.directory after leaving a worktree-style workspace", async () => {
       await using tmp = await tmpdir({ git: true })
       const scope = await tmp.scope()
 
-      await Instance.provide({
+      await ScopeContext.provide({
         scope,
         fn: () =>
           using(async () => {
@@ -386,17 +386,17 @@ describe("session workspace binding", () => {
               scopeID: scope.id,
             }
 
-            await Instance.provide({
+            await ScopeContext.provide({
               scope,
               workspace: worktreeWs as Workspace,
               fn: async () => {
-                expect(Instance.directory).toBe(worktreeWs.path)
+                expect(ScopeContext.current.directory).toBe(worktreeWs.path)
 
                 await Session.updateWorkspace(session.id, mainWs)
-                Instance.refreshWorkspace(mainWs as Workspace)
+                ScopeContext.refreshWorkspace(mainWs as Workspace)
 
-                expect(Instance.directory).toBe(scope.directory)
-                expect((Instance.workspace as SessionWorkspace | undefined)?.type).toBe("main")
+                expect(ScopeContext.current.directory).toBe(scope.directory)
+                expect((ScopeContext.current.workspace as SessionWorkspace | undefined)?.type).toBe("main")
               },
             })
             await Session.remove(session.id)
@@ -408,7 +408,7 @@ describe("session workspace binding", () => {
       await using tmp = await tmpdir({ git: true })
       const scope = await tmp.scope()
 
-      await Instance.provide({
+      await ScopeContext.provide({
         scope,
         fn: () =>
           using(async () => {
@@ -423,11 +423,11 @@ describe("session workspace binding", () => {
 
             await SessionManager.run(session.id, async () => {
               await Session.updateWorkspace(session.id, worktreeWs)
-              Instance.refreshWorkspace(worktreeWs as Workspace)
+              ScopeContext.refreshWorkspace(worktreeWs as Workspace)
 
               const gate = (await EnforcementGate.create({
-                activeWorkspace: Instance.directory,
-                workspaceType: Instance.workspace?.type === "git_worktree" ? "worktree" : "main",
+                activeWorkspace: ScopeContext.current.directory,
+                workspaceType: ScopeContext.current.workspace?.type === "git_worktree" ? "worktree" : "main",
                 profileId: "autonomous",
               })) as any
 
@@ -499,7 +499,7 @@ describe("workspace boundary enforcement with sandbox", () => {
     await using tmp = await tmpdir({ git: true })
     const scope = await tmp.scope()
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope,
       fn: () =>
         using(async () => {

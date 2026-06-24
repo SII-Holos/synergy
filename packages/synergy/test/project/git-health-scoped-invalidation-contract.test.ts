@@ -12,7 +12,7 @@
 // directories (main checkout + worktree), this kills in-flight refresh
 // deduplication and discards cache-write results for unrelated directories.
 //
-// Fix: the invalidator should call GitHealth.invalidate(Instance.directory).
+// Fix: the invalidator should call GitHealth.invalidate(ScopeContext.current.directory).
 //
 // This test lives in test/project/ to stay close to the GitHealth module
 // and avoid the session import chain (which requires workspace packages

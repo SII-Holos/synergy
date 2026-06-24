@@ -3,7 +3,7 @@ import * as prompts from "@clack/prompts"
 import { UI } from "../ui"
 import { Config } from "../../config/config"
 import { ConfigDomain } from "../../config/domain"
-import { Instance } from "../../scope/instance"
+import { ScopeContext } from "../../scope/context"
 import { Scope } from "@/scope"
 import { attachOption, ensureServer, fetchChannelApi, startChannelIfServerRunning } from "./channel-server"
 import * as ChannelTypes from "../../channel/types"
@@ -158,13 +158,13 @@ export const ChannelListCommand = cmd({
   aliases: ["ls"],
   describe: "list configured channels",
   async handler() {
-    await Instance.provide({
-      scope: (await Scope.fromDirectory(process.cwd())).scope,
+    await ScopeContext.provide({
+      scope: Scope.global(),
       async fn() {
         UI.empty()
         prompts.intro("Channels")
 
-        const cfg = await Config.get()
+        const cfg = await Config.current()
         const channels = cfg.channel ?? {}
         const entries = Object.entries(channels) as Array<[string, Config.Channel]>
 

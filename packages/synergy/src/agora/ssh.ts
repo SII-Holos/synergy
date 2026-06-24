@@ -101,7 +101,7 @@
 //   }
 
 //   export async function resolveGiteaSSHHost(url?: string) {
-//     const config = await Config.get()
+//     const config = await Config.current()
 //     const configuredHost = config.agora?.giteaSSHHost?.trim()
 //     if (configuredHost) return configuredHost
 

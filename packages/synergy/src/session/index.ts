@@ -10,7 +10,7 @@ import { Storage } from "../storage/storage"
 import { StoragePath } from "../storage/path"
 import { Log } from "../util/log"
 import { MessageV2 } from "./message-v2"
-import { Instance } from "../scope/instance"
+import { ScopeContext } from "../scope/context"
 import { Scope } from "@/scope"
 import { fn } from "@/util/fn"
 import { Snapshot } from "@/session/snapshot"
@@ -172,7 +172,7 @@ export namespace Session {
     cortex?: CortexDelegationInfoType
     workspace?: import("./types").Workspace
   }) {
-    const scope = input?.scope ?? Instance.scope
+    const scope = input?.scope ?? ScopeContext.current.scope
     const parent = input?.parentID ? await SessionManager.getSession(input.parentID) : undefined
     const workspace: import("./types").Workspace = input?.workspace ??
       parent?.workspace ?? {
@@ -391,7 +391,7 @@ export namespace Session {
     pinned?: boolean
     parentOnly?: boolean
   }): Promise<ListResult> {
-    const scopeID = asScopeID(Instance.scope.id)
+    const scopeID = asScopeID(ScopeContext.current.scope.id)
     const index = await readPageIndex(scopeID)
     let entries = index.entries.filter((e) => !e.archived)
 
@@ -431,7 +431,7 @@ export namespace Session {
   }
 
   export async function* listAll() {
-    const scopeID = asScopeID(Instance.scope.id)
+    const scopeID = asScopeID(ScopeContext.current.scope.id)
     const ids = await Storage.scan(StoragePath.sessionsRoot(scopeID))
     const keys = ids.map((id) => StoragePath.sessionInfo(scopeID, asSessionID(id)))
     const sessions = await Storage.readMany<Info>(keys)

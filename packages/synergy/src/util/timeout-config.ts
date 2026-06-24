@@ -26,7 +26,7 @@ export namespace TimeoutConfig {
   export async function resolve(): Promise<Resolved> {
     if (cached) return cached
 
-    const cfg = await Config.get()
+    const cfg = await Config.current()
     const timeout = (cfg as any).timeout as
       | {
           invoke_sec?: number

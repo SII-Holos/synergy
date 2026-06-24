@@ -1,6 +1,6 @@
 import { Auth } from "@/provider/api-key"
 import { Config } from "@/config/config"
-import { Instance } from "@/scope/instance"
+import { ScopeContext } from "@/scope/context"
 import { Scope } from "@/scope"
 import { HOLOS_PORTAL_URL, HOLOS_URL, HOLOS_WS_URL } from "./constants"
 import { HolosProtocol } from "./protocol"
@@ -87,7 +87,7 @@ export namespace HolosAuth {
   }
 
   export async function reloadRuntime(): Promise<void> {
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: Scope.global(),
       fn: async () => {
         const { HolosRuntime } = await import("@/holos/runtime")

@@ -14,7 +14,7 @@ import { Todo } from "../session/todo"
 import { Dag } from "../session/dag"
 import { Snapshot } from "../session/snapshot"
 import { Agent } from "../agent/agent"
-import { Instance } from "../scope/instance"
+import { ScopeContext } from "../scope/context"
 import { Log } from "../util/log"
 import { AgendaStore, AgendaTypes } from "../agenda"
 import { errors } from "./error"
@@ -106,7 +106,7 @@ export const SessionRoute = new Hono()
       },
     }),
     async (c) => {
-      const result = await SessionManager.listStatuses(Instance.scope.id)
+      const result = await SessionManager.listStatuses(ScopeContext.current.scope.id)
       return c.json(result)
     },
   )

@@ -2,7 +2,7 @@ import { describe, expect, test, beforeEach } from "bun:test"
 import path from "path"
 import { LSPClient } from "../../src/lsp/client"
 import { LSPServer } from "../../src/lsp/server"
-import { Instance } from "../../src/scope/instance"
+import { ScopeContext } from "../../src/scope/context"
 import { Scope } from "../../src/scope"
 import { Log } from "../../src/util/log"
 
@@ -25,7 +25,7 @@ describe("LSPClient interop", () => {
   test("handles workspace/workspaceFolders request", async () => {
     const handle = spawnFakeServer() as any
 
-    const client = await Instance.provide({
+    const client = await ScopeContext.provide({
       scope: (await Scope.fromDirectory(process.cwd())).scope,
       fn: () =>
         LSPClient.create({
@@ -49,7 +49,7 @@ describe("LSPClient interop", () => {
   test("handles client/registerCapability request", async () => {
     const handle = spawnFakeServer() as any
 
-    const client = await Instance.provide({
+    const client = await ScopeContext.provide({
       scope: (await Scope.fromDirectory(process.cwd())).scope,
       fn: () =>
         LSPClient.create({
@@ -73,7 +73,7 @@ describe("LSPClient interop", () => {
   test("handles client/unregisterCapability request", async () => {
     const handle = spawnFakeServer() as any
 
-    const client = await Instance.provide({
+    const client = await ScopeContext.provide({
       scope: (await Scope.fromDirectory(process.cwd())).scope,
       fn: () =>
         LSPClient.create({

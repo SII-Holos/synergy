@@ -129,7 +129,7 @@ export namespace LLM {
       providerID: input.model.providerID,
     })
     const langTimer = l.time("provider.getLanguage")
-    const [language, cfg] = await Promise.all([Provider.getLanguage(input.model), Config.get()])
+    const [language, cfg] = await Promise.all([Provider.getLanguage(input.model), Config.current()])
     langTimer.stop()
 
     const systemTimer = l.time("system.assembly")

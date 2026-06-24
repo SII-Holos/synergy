@@ -10,11 +10,11 @@ import { Config } from "../config/config"
 export function createConfigAccessor(pluginId: string): PluginConfigAccessor {
   return {
     async get() {
-      const config = await Config.get()
+      const config = await Config.current()
       return (config.pluginConfig?.[pluginId] as Record<string, any>) ?? {}
     },
     async set(values: Record<string, any>) {
-      const config = await Config.get()
+      const config = await Config.current()
       const current = (config.pluginConfig?.[pluginId] as Record<string, any>) ?? {}
       const merged = { ...current, ...values }
       await Config.domainUpdate("plugins", { pluginConfig: { [pluginId]: merged } } as any)

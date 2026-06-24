@@ -9,7 +9,7 @@ import { Identifier } from "../id/id"
 import { Agent } from "../agent/agent"
 import { MessageV2 } from "../session/message-v2"
 import { SessionInteraction } from "../session/interaction"
-import { Instance } from "../scope/instance"
+import { ScopeContext } from "../scope/context"
 import { Scope } from "../scope"
 import DESCRIPTION from "./session-control.txt"
 
@@ -56,7 +56,7 @@ export const SessionControlTool = Tool.define("session_control", {
     }
 
     const withScope = <T>(fn: () => Promise<T>) =>
-      Instance.provide({ scope: session.scope as Scope, workspace: session.workspace, fn })
+      ScopeContext.provide({ scope: session.scope as Scope, workspace: session.workspace, fn })
 
     switch (params.action) {
       case "compact": {
