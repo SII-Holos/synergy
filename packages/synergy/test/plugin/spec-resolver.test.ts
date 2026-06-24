@@ -54,7 +54,8 @@ describe("resolvePluginSpec", () => {
 
   test("resolves packed plugin archives as local installable specs", async () => {
     await using tmp = await tmpdir({ init: (dir) => writePlugin(dir, "archive-plugin") })
-    const archivePath = path.join(tmp.path, "archive-plugin-0.1.0.synergy-plugin.tgz")
+    await using archiveTmp = await tmpdir()
+    const archivePath = path.join(archiveTmp.path, "archive-plugin-0.1.0.synergy-plugin.tgz")
     const result = Bun.spawnSync(["tar", "-czf", archivePath, "-C", tmp.path, "."])
     expect(result.exitCode).toBe(0)
 

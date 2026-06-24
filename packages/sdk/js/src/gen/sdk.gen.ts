@@ -358,6 +358,8 @@ import type {
   SessionExportEstimateErrors,
   SessionExportEstimateResponses,
   SessionExportMode,
+  SessionFilesRestoreErrors,
+  SessionFilesRestoreResponses,
   SessionForkResponses,
   SessionGetErrors,
   SessionGetResponses,
@@ -373,8 +375,8 @@ import type {
   SessionPromptAsyncResponses,
   SessionPromptErrors,
   SessionPromptResponses,
-  SessionRevertErrors,
-  SessionRevertResponses,
+  SessionRollbackErrors,
+  SessionRollbackResponses,
   SessionShellErrors,
   SessionShellResponses,
   SessionStatusErrors,
@@ -383,8 +385,8 @@ import type {
   SessionSummarizeResponses,
   SessionTodoErrors,
   SessionTodoResponses,
-  SessionUnrevertErrors,
-  SessionUnrevertResponses,
+  SessionUnrollbackErrors,
+  SessionUnrollbackResponses,
   SessionUpdateErrors,
   SessionUpdateResponses,
   SkillImportErrors,
@@ -996,6 +998,55 @@ export class Agenda extends HeyApiClient {
   }
 }
 
+export class Files extends HeyApiClient {
+  /**
+   * Restore session files
+   *
+   * Explicitly restore files from session patch data. Message rollback never calls this automatically.
+   */
+  public restore<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      directory?: string
+      scopeID?: string
+      rollbackID?: string
+      messageID?: string
+      partID?: string
+      files?: Array<string>
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { in: "body", key: "rollbackID" },
+            { in: "body", key: "messageID" },
+            { in: "body", key: "partID" },
+            { in: "body", key: "files" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<SessionFilesRestoreResponses, SessionFilesRestoreErrors, ThrowOnError>(
+      {
+        url: "/session/{sessionID}/files/restore",
+        ...options,
+        ...params,
+        headers: {
+          "Content-Type": "application/json",
+          ...options?.headers,
+          ...params.headers,
+        },
+      },
+    )
+  }
+}
+
 export class Export extends HeyApiClient {
   /**
    * Estimate session export size
@@ -1567,6 +1618,30 @@ export class Session extends HeyApiClient {
       directory?: string
       scopeID?: string
       messageID?: string
+      position?:
+        | {
+            type: "current"
+          }
+        | {
+            type: "before"
+            messageID: string
+          }
+      workspace?:
+        | {
+            mode: "current"
+          }
+        | {
+            mode: "existing"
+            target: string
+            force?: boolean
+          }
+        | {
+            mode: "create"
+            name?: string
+            baseRef?: "current" | "fresh"
+          }
+      title?: string
+      controlProfile?: "guarded" | "autonomous" | "full_access"
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -1579,6 +1654,10 @@ export class Session extends HeyApiClient {
             { in: "query", key: "directory" },
             { in: "query", key: "scopeID" },
             { in: "body", key: "messageID" },
+            { in: "body", key: "position" },
+            { in: "body", key: "workspace" },
+            { in: "body", key: "title" },
+            { in: "body", key: "controlProfile" },
           ],
         },
       ],
@@ -1681,6 +1760,7 @@ export class Session extends HeyApiClient {
       directory?: string
       scopeID?: string
       limit?: number
+      raw?: boolean
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -1693,6 +1773,7 @@ export class Session extends HeyApiClient {
             { in: "query", key: "directory" },
             { in: "query", key: "scopeID" },
             { in: "query", key: "limit" },
+            { in: "query", key: "raw" },
           ],
         },
       ],
@@ -2011,17 +2092,16 @@ export class Session extends HeyApiClient {
   }
 
   /**
-   * Revert message
+   * Rollback session history
    *
-   * Revert a specific message in a session, undoing its effects and restoring the previous state.
+   * Hide the latest user turn(s) from effective message history without modifying local files.
    */
-  public revert<ThrowOnError extends boolean = false>(
+  public rollback<ThrowOnError extends boolean = false>(
     parameters: {
       sessionID: string
       directory?: string
       scopeID?: string
-      messageID?: string
-      partID?: string
+      numTurns?: number
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -2033,14 +2113,13 @@ export class Session extends HeyApiClient {
             { in: "path", key: "sessionID" },
             { in: "query", key: "directory" },
             { in: "query", key: "scopeID" },
-            { in: "body", key: "messageID" },
-            { in: "body", key: "partID" },
+            { in: "body", key: "numTurns" },
           ],
         },
       ],
     )
-    return (options?.client ?? this.client).post<SessionRevertResponses, SessionRevertErrors, ThrowOnError>({
-      url: "/session/{sessionID}/revert",
+    return (options?.client ?? this.client).post<SessionRollbackResponses, SessionRollbackErrors, ThrowOnError>({
+      url: "/session/{sessionID}/rollback",
       ...options,
       ...params,
       headers: {
@@ -2052,11 +2131,11 @@ export class Session extends HeyApiClient {
   }
 
   /**
-   * Restore reverted messages
+   * Restore rolled-back session history
    *
-   * Restore all previously reverted messages in a session.
+   * Restore the latest rollback when no new user or assistant turn has been added after it.
    */
-  public unrevert<ThrowOnError extends boolean = false>(
+  public unrollback<ThrowOnError extends boolean = false>(
     parameters: {
       sessionID: string
       directory?: string
@@ -2076,8 +2155,8 @@ export class Session extends HeyApiClient {
         },
       ],
     )
-    return (options?.client ?? this.client).post<SessionUnrevertResponses, SessionUnrevertErrors, ThrowOnError>({
-      url: "/session/{sessionID}/unrevert",
+    return (options?.client ?? this.client).post<SessionUnrollbackResponses, SessionUnrollbackErrors, ThrowOnError>({
+      url: "/session/{sessionID}/unrollback",
       ...options,
       ...params,
     })
@@ -2125,6 +2204,8 @@ export class Session extends HeyApiClient {
       },
     })
   }
+
+  files = new Files({ client: this.client })
 
   export = new Export({ client: this.client })
 }

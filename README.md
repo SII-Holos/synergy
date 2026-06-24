@@ -51,6 +51,14 @@ Browser contexts are isolated by Synergy owner/session and persist tab state plu
 
 Large browser diagnostics such as console, network, snapshots, assets, and downloads are surfaced in the Browser workspace developer drawer and compact tool cards instead of flooding the normal chat transcript.
 
+### Session History, File Restore, And Forking
+
+Undo and redo operate on message history only. A rollback hides the latest effective user turn(s) from the session history used by the UI, model invocation, summaries, engram recall, and session forks; it does not restore, delete, or otherwise modify local files.
+
+File restoration is an explicit follow-up action. When a rolled-back turn contains patch data, Synergy can restore selected files through the file restore endpoint or Web command. This is the only user-facing flow that applies snapshot patch data back to the workspace.
+
+Forking copies the current effective history by default, so rolled-back turns are excluded. Forked sessions record their source in `forkedFrom` and do not use `parentID`, which remains reserved for background/subagent lineage. Forks can keep the current workspace or bind to a worktree when the calling surface requests it.
+
 ## Quick Start
 
 ### Install

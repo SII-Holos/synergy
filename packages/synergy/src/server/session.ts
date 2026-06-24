@@ -7,7 +7,7 @@ import { Session } from "../session"
 import { SessionManager } from "../session/manager"
 import { SessionInvoke, InvokeInput } from "../session/invoke"
 import { shell as invokeShell, ShellInput } from "../session/shell"
-import { SessionRevert } from "../session/revert"
+import { SessionHistory } from "../session/history"
 import { MessageV2 } from "../session/message-v2"
 import { Identifier } from "../id/id"
 import { Todo } from "../session/todo"
@@ -529,8 +529,6 @@ export const SessionRoute = new Hono()
     async (c) => {
       const sessionID = c.req.valid("param").sessionID
       const body = c.req.valid("json")
-      const session = await Session.get(sessionID)
-      await SessionRevert.cleanup(session)
       const msgs = await Session.messages({ sessionID })
       let currentAgent = await Agent.defaultAgent()
       for (let i = msgs.length - 1; i >= 0; i--) {
@@ -599,6 +597,7 @@ export const SessionRoute = new Hono()
       "query",
       z.object({
         limit: z.coerce.number().optional(),
+        raw: z.coerce.boolean().optional(),
       }),
     ),
     async (c) => {
@@ -606,6 +605,7 @@ export const SessionRoute = new Hono()
       const messages = await Session.messages({
         sessionID: c.req.valid("param").sessionID,
         limit: query.limit,
+        raw: query.raw,
       })
       return c.json(messages)
     },
@@ -894,17 +894,17 @@ export const SessionRoute = new Hono()
     },
   )
   .post(
-    "/:sessionID/revert",
+    "/:sessionID/rollback",
     describeRoute({
-      summary: "Revert message",
-      description: "Revert a specific message in a session, undoing its effects and restoring the previous state.",
-      operationId: "session.revert",
+      summary: "Rollback session history",
+      description: "Hide the latest user turn(s) from effective message history without modifying local files.",
+      operationId: "session.rollback",
       responses: {
         200: {
-          description: "Updated session",
+          description: "Rollback event",
           content: {
             "application/json": {
-              schema: resolver(Session.Info),
+              schema: resolver(SessionHistory.RollbackEvent),
             },
           },
         },
@@ -914,32 +914,76 @@ export const SessionRoute = new Hono()
     validator(
       "param",
       z.object({
-        sessionID: z.string(),
+        sessionID: Session.rollback.schema.shape.sessionID,
       }),
     ),
-    validator("json", SessionRevert.RevertInput.omit({ sessionID: true })),
+    validator("json", Session.rollback.schema.omit({ sessionID: true })),
     async (c) => {
       const sessionID = c.req.valid("param").sessionID
-      log.info("session.revert", { sessionID, messageID: c.req.valid("json").messageID })
-      const session = await SessionRevert.revert({
-        sessionID,
-        ...c.req.valid("json"),
-      })
-      return c.json(session)
+      const body = c.req.valid("json")
+      log.info("session.rollback", { sessionID, numTurns: body.numTurns })
+      const event = await Session.rollback({ sessionID, ...body })
+      return c.json(event)
     },
   )
   .post(
-    "/:sessionID/unrevert",
+    "/:sessionID/unrollback",
     describeRoute({
-      summary: "Restore reverted messages",
-      description: "Restore all previously reverted messages in a session.",
-      operationId: "session.unrevert",
+      summary: "Restore rolled-back session history",
+      description: "Restore the latest rollback when no new user or assistant turn has been added after it.",
+      operationId: "session.unrollback",
       responses: {
         200: {
-          description: "Updated session",
+          description: "Unrollback event or current rollback state",
           content: {
             "application/json": {
-              schema: resolver(Session.Info),
+              schema: resolver(
+                z.union([
+                  SessionHistory.UnrollbackEvent,
+                  z
+                    .object({
+                      rollback: SessionHistory.RollbackSummary,
+                    })
+                    .optional(),
+                ]),
+              ),
+            },
+          },
+        },
+        ...errors(400, 404, 409),
+      },
+    }),
+    validator(
+      "param",
+      z.object({
+        sessionID: Session.unrollback.schema.shape.sessionID,
+      }),
+    ),
+    async (c) => {
+      const sessionID = c.req.valid("param").sessionID
+      const body = await c.req.json().catch(() => ({}))
+      const parsed = Session.unrollback.schema.omit({ sessionID: true }).parse(body)
+      try {
+        const event = await Session.unrollback({ sessionID, ...parsed })
+        return c.json(event)
+      } catch (error) {
+        if (error instanceof SessionHistory.UnrollbackConflictError) return c.json(error.toObject(), 409)
+        throw error
+      }
+    },
+  )
+  .post(
+    "/:sessionID/files/restore",
+    describeRoute({
+      summary: "Restore session files",
+      description: "Explicitly restore files from session patch data. Message rollback never calls this automatically.",
+      operationId: "session.files.restore",
+      responses: {
+        200: {
+          description: "Restored files",
+          content: {
+            "application/json": {
+              schema: resolver(SessionHistory.FileRestoreResult),
             },
           },
         },
@@ -949,12 +993,19 @@ export const SessionRoute = new Hono()
     validator(
       "param",
       z.object({
-        sessionID: z.string(),
+        sessionID: Session.restoreFiles.schema.shape.sessionID,
       }),
     ),
+    validator("json", Session.restoreFiles.schema.omit({ sessionID: true })),
     async (c) => {
       const sessionID = c.req.valid("param").sessionID
-      const session = await SessionRevert.unrevert({ sessionID })
-      return c.json(session)
+      const body = c.req.valid("json")
+      try {
+        const result = await Session.restoreFiles({ sessionID, ...body })
+        return c.json(result)
+      } catch (error) {
+        if (error instanceof SessionHistory.FileRestoreMissingPatchDataError) return c.json(error.toObject(), 400)
+        throw error
+      }
     },
   )

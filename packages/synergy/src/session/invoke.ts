@@ -53,7 +53,6 @@ import {
 import "./title"
 
 import { LLM } from "./llm"
-import { SessionRevert } from "./revert"
 import { ScopeContext } from "../scope/context"
 import { Scope } from "@/scope"
 import { LoopJob } from "./loop-job"
@@ -92,9 +91,6 @@ export namespace SessionInvoke {
 
   export const invoke = fn(InvokeInput, async (input) => {
     return SessionManager.run(input.sessionID, async () => {
-      const session = await Session.get(input.sessionID)
-      await SessionRevert.cleanup(session)
-
       const message = await createUserMessage(input)
 
       await Session.update(input.sessionID, (draft) => {
@@ -208,7 +204,7 @@ export namespace SessionInvoke {
         SessionManager.setStatus(sessionID, { type: "busy" })
         log.info("loop", { step, sessionID })
         if (abort.aborted) break
-        let msgs = await MessageV2.filterCompacted(MessageV2.stream({ scopeID, sessionID }))
+        let msgs = await effectiveCompactedMessages(sessionID)
 
         let lastUser: MessageV2.User | undefined
         let lastUserParts: MessageV2.Part[] | undefined
@@ -1453,7 +1449,7 @@ export namespace SessionInvoke {
       if (!session) continue
       if (session.agenda) continue
 
-      const messages = await MessageV2.filterCompacted(MessageV2.stream({ sessionID }))
+      const messages = await effectiveCompactedMessages(sessionID)
       const pendingReply = SessionProgress.pendingReply(messages)
 
       if (session.pendingReply !== pendingReply) {
@@ -1466,6 +1462,15 @@ export namespace SessionInvoke {
 
       log.info("pending reply found; automatic assistant resume is disabled", { sessionID })
     }
+  }
+
+  async function effectiveCompactedMessages(sessionID: string) {
+    const messages = await Session.messages({ sessionID })
+    return MessageV2.filterCompacted(newestFirst(messages))
+  }
+
+  async function* newestFirst(messages: MessageV2.WithParts[]) {
+    for (let i = messages.length - 1; i >= 0; i--) yield messages[i]
   }
 
   /**
