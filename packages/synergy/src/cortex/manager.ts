@@ -181,6 +181,7 @@ export namespace Cortex {
         lastUpdate: Date.now(),
         recentTools: [],
       },
+      notifyParentOnComplete: input.notifyParentOnComplete,
     }
 
     tasks.set(taskID, task)
@@ -372,8 +373,10 @@ export namespace Cortex {
       }
       taskWaiters.delete(taskID)
       log.info("task result delivered to waiters, skipping mail", { taskID, waiterCount: waiters.size })
-    } else {
+    } else if (task.notifyParentOnComplete !== false) {
       notifyParentSession(task)
+    } else {
+      log.info("task parent notification suppressed", { taskID })
     }
 
     void cleanupChildWorktree(task)

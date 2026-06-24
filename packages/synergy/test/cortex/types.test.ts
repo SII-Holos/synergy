@@ -94,6 +94,7 @@ describe("CortexTypes", () => {
         startedAt: Date.now(),
         completedAt: Date.now() + 1000,
         result: "Task completed successfully",
+        notifyParentOnComplete: false,
         progress: {
           toolCalls: 3,
           lastUpdate: Date.now(),
@@ -102,6 +103,7 @@ describe("CortexTypes", () => {
       const result = CortexTypes.Task.parse(task)
       expect(result.category).toBe("visual-engineering")
       expect(result.result).toBe("Task completed successfully")
+      expect(result.notifyParentOnComplete).toBe(false)
     })
 
     test("rejects task with invalid id prefix", () => {
@@ -142,6 +144,7 @@ describe("CortexTypes", () => {
         parentSessionID: "ses_parent01234567890",
         parentMessageID: "msg_parent01234567890",
         category: "most-capable",
+        notifyParentOnComplete: false,
         model: {
           providerID: "anthropic",
           modelID: "claude-3-opus",
@@ -150,6 +153,7 @@ describe("CortexTypes", () => {
       const result = CortexTypes.LaunchInput.parse(input)
       expect(result.category).toBe("most-capable")
       expect(result.model?.providerID).toBe("anthropic")
+      expect(result.notifyParentOnComplete).toBe(false)
     })
 
     test("rejects invalid launch input", () => {

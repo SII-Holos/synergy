@@ -57,6 +57,7 @@ import { ScopeContext } from "../scope/context"
 import { Scope } from "@/scope"
 import { LoopJob } from "./loop-job"
 import "./loop-signals"
+import { BlueprintContinuation } from "./blueprint-continuation"
 import "../library/chronicler"
 import { ExperienceEncoder } from "../library/experience-encoder"
 import { GitHealth } from "../project/git-health"
@@ -179,6 +180,7 @@ export namespace SessionInvoke {
   }
 
   export const loop = fn(Identifier.schema("session"), async (sessionID) => {
+    BlueprintContinuation.init()
     SessionManager.registerRuntime(sessionID)
     const abort = SessionManager.acquire(sessionID)
     if (!abort) {

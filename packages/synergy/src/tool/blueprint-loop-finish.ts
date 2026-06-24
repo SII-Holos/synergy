@@ -135,8 +135,8 @@ export const BlueprintLoopFinishTool = Tool.define("blueprint_loop_finish", {
     if (params.status === "auditing") {
       const auditPrompt = `Audit BlueprintLoop ${params.loopID} (Note ${loop.noteID}) in session ${loop.sessionID}.
 Read the Blueprint Note via note_read, examine the implementation evidence (session trajectory, git diff, test results), and determine if the Blueprint is fully implemented.
-If NOT fully implemented, call blueprint_loop_restart with detailed reason.
-If fully implemented, call blueprint_loop_finish(status="completed").`
+If NOT fully implemented, call blueprint_loop_restart({ loopID: "${params.loopID}", reason: "...", completed: "...", remaining: "...", instructions: "..." }) with a detailed reason and concrete next actions.
+If fully implemented, call blueprint_loop_finish({ loopID: "${params.loopID}", status: "completed", summary: "..." }).`
       const { Cortex } = await import("../cortex")
       const task = await Cortex.launch({
         description: `[Supervisor] Audit BlueprintLoop ${params.loopID}`,
@@ -146,6 +146,7 @@ If fully implemented, call blueprint_loop_finish(status="completed").`
         category: "general",
         parentSessionID: loop.sessionID,
         parentMessageID: ctx.messageID,
+        notifyParentOnComplete: false,
       })
       supervisorSessionID = task.sessionID
       await BlueprintLoopStore.updateStatus(scopeID, params.loopID, {
