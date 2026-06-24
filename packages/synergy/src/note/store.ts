@@ -15,9 +15,26 @@ export namespace NoteStore {
 
   export type Metadata = NoteTypes.MetaInfo
 
+  function normalizeBlueprint(note: NoteTypes.Info): void {
+    if (note.kind !== "blueprint") {
+      note.blueprint = undefined
+      return
+    }
+
+    const blueprint = note.blueprint as (NoteTypes.Info["blueprint"] & { status?: unknown }) | undefined
+    if (!blueprint) {
+      note.blueprint = {}
+      return
+    }
+    delete blueprint.status
+    note.blueprint = blueprint
+  }
+
   function normalize(note: NoteTypes.Info): NoteTypes.Info {
     note.global ??= false
     note.version ??= 1
+    note.kind ??= "note"
+    normalizeBlueprint(note)
     return note
   }
 
@@ -25,7 +42,7 @@ export namespace NoteStore {
     const { content, ...meta } = note
     const markdown = NoteMarkdown.toMarkdown(content)
     const searchParts = [note.title, ...(note.tags ?? []), markdown].filter(Boolean)
-    const previewHtml = NoteMarkdown.toPreviewHtml(content) || undefined
+    const previewHtml = NoteMarkdown.toPreviewHtml(content, { title: note.title }) || undefined
     return { ...meta, searchText: searchParts.join("\n"), previewHtml }
   }
 
@@ -115,6 +132,16 @@ export namespace NoteStore {
         // fallthrough
       }
     }
+    const scopeIDs = await Storage.scan(["notes"])
+    for (const candidate of scopeIDs) {
+      if (candidate === scopeID || candidate === "global") continue
+      try {
+        const note = await Storage.read<NoteTypes.Info>(StoragePath.note(Identifier.asScopeID(candidate), noteID))
+        return { scopeID: candidate, note: normalize(note) }
+      } catch {
+        // continue
+      }
+    }
     throw new Storage.NotFoundError({ message: `Note not found: ${noteID}` })
   }
 
@@ -135,6 +162,10 @@ export namespace NoteStore {
     const scopeID = Identifier.asScopeID(targetScopeID)
     const isGlobal = targetScopeID === "global"
     const now = Date.now()
+    const blueprint = create.note.blueprint as
+      | (NonNullable<NoteTypes.CreateInput["blueprint"]> & { status?: unknown })
+      | undefined
+    if (blueprint) delete blueprint.status
     const note: NoteTypes.Info = {
       id,
       title: create.note.title,
@@ -142,6 +173,13 @@ export namespace NoteStore {
       pinned: false,
       global: isGlobal,
       tags: create.note.tags ?? [],
+      kind: create.note.kind ?? "note",
+      blueprint: blueprint
+        ? {
+            ...blueprint,
+            runCount: blueprint.runCount ?? 0,
+          }
+        : blueprint,
       version: 1,
       time: { created: now, updated: now },
     }
@@ -176,6 +214,11 @@ export namespace NoteStore {
     const notes = results.filter((n): n is NoteTypes.Info => n !== undefined).map(normalize)
     sortByPinAndTime(notes)
     return notes
+  }
+
+  export async function listByKind(scopeID: string, kind: string): Promise<NoteTypes.Info[]> {
+    const notes = await list(scopeID)
+    return notes.filter((n) => n.kind === kind)
   }
 
   export async function listWithGlobal(scopeID: string): Promise<NoteTypes.Info[]> {
@@ -230,6 +273,19 @@ export namespace NoteStore {
       if (update.patch.content !== undefined) draft.content = update.patch.content
       if (update.patch.pinned !== undefined) draft.pinned = update.patch.pinned
       if (update.patch.tags !== undefined) draft.tags = update.patch.tags
+      if (update.patch.kind !== undefined) draft.kind = update.patch.kind
+      if (update.patch.blueprint === null) {
+        draft.blueprint = undefined
+      } else if (update.patch.blueprint !== undefined) {
+        const { activeLoopID, ...rest } = update.patch.blueprint as NoteTypes.PatchInput["blueprint"] & {
+          status?: unknown
+        }
+        delete rest.status
+        const next = { ...(draft.blueprint ?? {}), ...rest }
+        if (activeLoopID !== undefined && activeLoopID !== null) next.activeLoopID = activeLoopID
+        if (activeLoopID === null) delete next.activeLoopID
+        draft.blueprint = next
+      }
       if (update.patch.global !== undefined) draft.global = update.patch.global
       if (update.patch.global === true && !wasGlobal) {
         draft.originScope = sid as string

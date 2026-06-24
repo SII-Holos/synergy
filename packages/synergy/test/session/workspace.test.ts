@@ -434,9 +434,9 @@ describe("session workspace binding", () => {
               expect(gate.evaluate("write", { filePath: path.join(worktreeWs.path, "src/file.ts") }).decision).toBe(
                 "allow",
               )
-              // autonomous allows file_external — writing outside workspace is permitted by design
+              // autonomous denies file_external_write — cross-workspace writes are forbidden
               expect(gate.evaluate("write", { filePath: path.join(scope.directory, "src/file.ts") }).decision).toBe(
-                "allow",
+                "deny",
               )
               // autonomous: shell_hardline is denied, shell_destructive is deny (was ask)
               const classifyResult = gate.classify("bash", { command: "rm -rf /" })

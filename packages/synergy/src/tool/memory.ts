@@ -1,3 +1,4 @@
+import { formatLocalDateTime } from "@/util/time-format"
 import z from "zod"
 import { Tool } from "./tool"
 import { EngramDB } from "../engram/database"
@@ -197,7 +198,7 @@ export const MemorySearchTool = Tool.define("memory_search", {
     }
 
     const lines = results.map((r) => {
-      const date = new Date(r.createdAt).toISOString()
+      const date = formatLocalDateTime(r.createdAt)
       return `- [${r.id}] "${r.title}" [${r.category}/${r.recallMode}] (similarity: ${(r.similarity * 100).toFixed(1)}%, created: ${date})`
     })
 
@@ -227,7 +228,7 @@ export const MemoryGetTool = Tool.define("memory_get", {
     }
 
     const entries = rows.map((r) => {
-      const date = new Date(r.created_at).toISOString()
+      const date = formatLocalDateTime(r.created_at)
       return [`[${r.id}] ${r.title} [${r.category}/${r.recall_mode}] (created: ${date})`, r.content].join("\n")
     })
 

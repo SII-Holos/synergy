@@ -243,7 +243,7 @@ mod ffi {
             CloseHandle(input_write);
             CloseHandle(output_read);
             CloseHandle(output_write);
-            return Err(Error::new(hr, "CreatePseudoConsole failed"));
+            return Err(Error::new(windows_result::HRESULT(hr), "CreatePseudoConsole failed"));
         }
 
         // ConPTY owns input_read and output_write — close our references
@@ -266,7 +266,7 @@ mod ffi {
         };
         let hr = ResizePseudoConsole(hpcon, size);
         if hr < 0 {
-            return Err(Error::new(hr, "ResizePseudoConsole failed"));
+            return Err(Error::new(windows_result::HRESULT(hr), "ResizePseudoConsole failed"));
         }
         Ok(())
     }

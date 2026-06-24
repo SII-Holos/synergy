@@ -1393,7 +1393,7 @@
           }
         ],
         "summary": "Get global configuration",
-        "description": "Retrieve only the active global Config Set raw configuration (without project or remote layers).",
+        "description": "Retrieve only the canonical global domain configuration.",
         "responses": {
           "200": {
             "description": "Get global config info",
@@ -1414,9 +1414,9 @@
         ]
       }
     },
-    "/config/sets": {
+    "/config/domains": {
       "get": {
-        "operationId": "config.set.list",
+        "operationId": "config.domain.list",
         "parameters": [
           {
             "in": "query",
@@ -1426,17 +1426,17 @@
             }
           }
         ],
-        "summary": "List Config Sets",
-        "description": "List all global Config Sets and indicate which one is active.",
+        "summary": "List config domains",
+        "description": "List canonical config domains and their current global fragments.",
         "responses": {
           "200": {
-            "description": "List of Config Sets",
+            "description": "List of config domains",
             "content": {
               "application/json": {
                 "schema": {
                   "type": "array",
                   "items": {
-                    "$ref": "#/components/schemas/ConfigSetSummary"
+                    "$ref": "#/components/schemas/ConfigDomainSummary"
                   }
                 }
               }
@@ -1446,65 +1446,14 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.config.set.list({\n  ...\n})"
-          }
-        ]
-      },
-      "post": {
-        "operationId": "config.set.create",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "directory",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "summary": "Create Config Set",
-        "description": "Create a new global Config Set, defaulting to a copy of the current active raw global config.",
-        "responses": {
-          "200": {
-            "description": "Created Config Set",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ConfigSetWithConfig"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Bad request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BadRequestError"
-                }
-              }
-            }
-          }
-        },
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ConfigSetCreateInput"
-              }
-            }
-          }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.config.set.create({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.config.domain.list({\n  ...\n})"
           }
         ]
       }
     },
-    "/config/sets/{name}": {
+    "/config/domains/{domain}": {
       "get": {
-        "operationId": "config.set.get",
+        "operationId": "config.domain.get",
         "parameters": [
           {
             "in": "query",
@@ -1515,22 +1464,37 @@
           },
           {
             "in": "path",
-            "name": "name",
+            "name": "domain",
             "schema": {
-              "$ref": "#/components/schemas/ConfigSetName"
+              "type": "string",
+              "enum": [
+                "general",
+                "models",
+                "providers",
+                "engram",
+                "mcp",
+                "plugins",
+                "agents",
+                "commands",
+                "permissions",
+                "channels",
+                "holos",
+                "email",
+                "runtime"
+              ]
             },
             "required": true
           }
         ],
-        "summary": "Get Config Set",
-        "description": "Read a global Config Set and its raw configuration.",
+        "summary": "Get config domain",
+        "description": "Read one canonical global config domain fragment.",
         "responses": {
           "200": {
-            "description": "Config Set",
+            "description": "Config domain fragment",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ConfigSetWithConfig"
+                  "$ref": "#/components/schemas/Config"
                 }
               }
             }
@@ -1549,12 +1513,12 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.config.set.get({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.config.domain.get({\n  ...\n})"
           }
         ]
       },
       "patch": {
-        "operationId": "config.set.update",
+        "operationId": "config.domain.update",
         "parameters": [
           {
             "in": "query",
@@ -1565,22 +1529,37 @@
           },
           {
             "in": "path",
-            "name": "name",
+            "name": "domain",
             "schema": {
-              "$ref": "#/components/schemas/ConfigSetName"
+              "type": "string",
+              "enum": [
+                "general",
+                "models",
+                "providers",
+                "engram",
+                "mcp",
+                "plugins",
+                "agents",
+                "commands",
+                "permissions",
+                "channels",
+                "holos",
+                "email",
+                "runtime"
+              ]
             },
             "required": true
           }
         ],
-        "summary": "Update Config Set",
-        "description": "Patch a global Config Set raw configuration.",
+        "summary": "Update config domain",
+        "description": "Update one canonical global config domain fragment.",
         "responses": {
           "200": {
-            "description": "Updated Config Set",
+            "description": "Updated config domain fragment",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ConfigSetWithConfig"
+                  "$ref": "#/components/schemas/Config"
                 }
               }
             }
@@ -1600,7 +1579,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/Config"
+                "$ref": "#/components/schemas/ConfigDomainUpdateInput"
               }
             }
           }
@@ -1608,175 +1587,14 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.config.set.update({\n  ...\n})"
-          }
-        ]
-      },
-      "delete": {
-        "operationId": "config.set.delete",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "directory",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "path",
-            "name": "name",
-            "schema": {
-              "$ref": "#/components/schemas/ConfigSetName"
-            },
-            "required": true
-          }
-        ],
-        "summary": "Delete Config Set",
-        "description": "Delete an inactive non-default global Config Set.",
-        "responses": {
-          "200": {
-            "description": "Deleted Config Set",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ConfigSetSummary"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Bad request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BadRequestError"
-                }
-              }
-            }
-          }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.config.set.delete({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.config.domain.update({\n  ...\n})"
           }
         ]
       }
     },
-    "/config/sets/{name}/raw": {
-      "get": {
-        "operationId": "config.set.raw.get",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "directory",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "path",
-            "name": "name",
-            "schema": {
-              "$ref": "#/components/schemas/ConfigSetName"
-            },
-            "required": true
-          }
-        ],
-        "summary": "Get Config Set raw",
-        "description": "Read a global Config Set raw JSONC source and parsed preview.",
-        "responses": {
-          "200": {
-            "description": "Config Set raw source",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ConfigSetRaw"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Bad request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BadRequestError"
-                }
-              }
-            }
-          }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.config.set.raw.get({\n  ...\n})"
-          }
-        ]
-      },
-      "put": {
-        "operationId": "config.set.raw.save",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "directory",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "path",
-            "name": "name",
-            "schema": {
-              "$ref": "#/components/schemas/ConfigSetName"
-            },
-            "required": true
-          }
-        ],
-        "summary": "Save Config Set raw",
-        "description": "Save raw JSONC for a global Config Set after validation and optionally reload runtime if active.",
-        "responses": {
-          "200": {
-            "description": "Saved Config Set raw source",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ConfigSetRawSaveResult"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Bad request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BadRequestError"
-                }
-              }
-            }
-          }
-        },
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ConfigSetRawSaveInput"
-              }
-            }
-          }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.config.set.raw.save({\n  ...\n})"
-          }
-        ]
-      }
-    },
-    "/config/sets/{name}/raw/validate": {
+    "/config/import/plan": {
       "post": {
-        "operationId": "config.set.raw.validate",
+        "operationId": "config.import.plan",
         "parameters": [
           {
             "in": "query",
@@ -1784,25 +1602,17 @@
             "schema": {
               "type": "string"
             }
-          },
-          {
-            "in": "path",
-            "name": "name",
-            "schema": {
-              "$ref": "#/components/schemas/ConfigSetName"
-            },
-            "required": true
           }
         ],
-        "summary": "Validate Config Set raw",
-        "description": "Validate raw JSONC for a global Config Set without saving it.",
+        "summary": "Plan config import",
+        "description": "Create a dry-run plan for importing selected config domains.",
         "responses": {
           "200": {
-            "description": "Validation result",
+            "description": "Config import plan",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ConfigRawValidationResult"
+                  "$ref": "#/components/schemas/ConfigDomainImportPlan"
                 }
               }
             }
@@ -1822,7 +1632,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/ConfigSetRawValidateInput"
+                "$ref": "#/components/schemas/ConfigDomainImportPlanInput"
               }
             }
           }
@@ -1830,14 +1640,14 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.config.set.raw.validate({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.config.import.plan({\n  ...\n})"
           }
         ]
       }
     },
-    "/config/sets/{name}/activate": {
+    "/config/import/apply": {
       "post": {
-        "operationId": "config.set.activate",
+        "operationId": "config.import.apply",
         "parameters": [
           {
             "in": "query",
@@ -1845,25 +1655,17 @@
             "schema": {
               "type": "string"
             }
-          },
-          {
-            "in": "path",
-            "name": "name",
-            "schema": {
-              "$ref": "#/components/schemas/ConfigSetName"
-            },
-            "required": true
           }
         ],
-        "summary": "Activate Config Set",
-        "description": "Activate a global Config Set and reload global runtime configuration.",
+        "summary": "Apply config import",
+        "description": "Apply a selected-domain config import plan.",
         "responses": {
           "200": {
-            "description": "Activated Config Set",
+            "description": "Applied config import plan",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ConfigSetActivateResult"
+                  "$ref": "#/components/schemas/ConfigDomainImportPlan"
                 }
               }
             }
@@ -1879,10 +1681,53 @@
             }
           }
         },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "config": {
+                    "$ref": "#/components/schemas/Config"
+                  },
+                  "only": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "enum": [
+                        "general",
+                        "models",
+                        "providers",
+                        "engram",
+                        "mcp",
+                        "plugins",
+                        "agents",
+                        "commands",
+                        "permissions",
+                        "channels",
+                        "holos",
+                        "email",
+                        "runtime"
+                      ]
+                    }
+                  },
+                  "mode": {
+                    "type": "string",
+                    "enum": ["merge", "replace-domain", "append"]
+                  },
+                  "yes": {
+                    "type": "boolean"
+                  }
+                },
+                "required": ["config"]
+              }
+            }
+          }
+        },
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.config.set.activate({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.config.import.apply({\n  ...\n})"
           }
         ]
       }
@@ -4688,7 +4533,7 @@
                 "properties": {
                   "response": {
                     "type": "string",
-                    "enum": ["once", "reject"]
+                    "enum": ["once", "session", "always", "reject"]
                   }
                 },
                 "required": ["response"]
@@ -4766,7 +4611,7 @@
                 "properties": {
                   "reply": {
                     "type": "string",
-                    "enum": ["once", "reject"]
+                    "enum": ["once", "session", "always", "reject"]
                   },
                   "message": {
                     "type": "string"
@@ -8536,6 +8381,718 @@
         ]
       }
     },
+    "/blueprint/loop": {
+      "get": {
+        "operationId": "blueprint.loop.list",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "List BlueprintLoops",
+        "description": "List all BlueprintLoops for the current scope.",
+        "responses": {
+          "200": {
+            "description": "List of BlueprintLoops",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/BlueprintLoopInfo"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.blueprint.loop.list({\n  ...\n})"
+          }
+        ]
+      },
+      "post": {
+        "operationId": "blueprint.loop.create",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Create BlueprintLoop",
+        "description": "Create a new BlueprintLoop in the current scope. Returns armed status.",
+        "responses": {
+          "200": {
+            "description": "Created BlueprintLoop",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BlueprintLoopInfo"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BlueprintLoopCreateInput"
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.blueprint.loop.create({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/blueprint/loop/{id}/complete": {
+      "post": {
+        "operationId": "blueprint.loop.complete",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "description": "BlueprintLoop ID"
+          }
+        ],
+        "summary": "Complete BlueprintLoop",
+        "description": "Mark a BlueprintLoop as completed.",
+        "responses": {
+          "200": {
+            "description": "Completed BlueprintLoop",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BlueprintLoopInfo"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.blueprint.loop.complete({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/blueprint/loop/{id}/cancel": {
+      "post": {
+        "operationId": "blueprint.loop.cancel",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "description": "BlueprintLoop ID"
+          }
+        ],
+        "summary": "Cancel BlueprintLoop",
+        "description": "Cancel a BlueprintLoop.",
+        "responses": {
+          "200": {
+            "description": "Cancelled BlueprintLoop",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BlueprintLoopInfo"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.blueprint.loop.cancel({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/blueprint/loop/{id}": {
+      "get": {
+        "operationId": "blueprint.loop.get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "description": "BlueprintLoop ID"
+          }
+        ],
+        "summary": "Get BlueprintLoop",
+        "description": "Get a specific BlueprintLoop by ID.",
+        "responses": {
+          "200": {
+            "description": "BlueprintLoop",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BlueprintLoopInfo"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.blueprint.loop.get({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/blueprint/loop/{id}/bind": {
+      "put": {
+        "operationId": "blueprint.loop.bind",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "description": "BlueprintLoop ID"
+          }
+        ],
+        "summary": "Bind session to BlueprintLoop",
+        "description": "Bind the current session to a BlueprintLoop so the session drives loop execution.",
+        "responses": {
+          "200": {
+            "description": "Updated BlueprintLoop",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BlueprintLoopInfo"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "sessionID": {
+                    "description": "Session ID to bind",
+                    "type": "string"
+                  }
+                },
+                "required": ["sessionID"]
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.blueprint.loop.bind({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/blueprint/loop/{id}/start": {
+      "post": {
+        "operationId": "blueprint.loop.start",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "description": "BlueprintLoop ID"
+          }
+        ],
+        "summary": "Start BlueprintLoop (armed → running)",
+        "description": "Transition a BlueprintLoop from armed to running.",
+        "responses": {
+          "200": {
+            "description": "Started BlueprintLoop",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BlueprintLoopInfo"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "userPrompt": {
+                    "description": "User-provided prompt to merge into execution start message",
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.blueprint.loop.start({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/blueprint/loop/{id}/wait": {
+      "post": {
+        "operationId": "blueprint.loop.wait",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "description": "BlueprintLoop ID"
+          }
+        ],
+        "summary": "Wait BlueprintLoop (running → waiting)",
+        "description": "Transition a BlueprintLoop from running to waiting.",
+        "responses": {
+          "200": {
+            "description": "Waiting BlueprintLoop",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BlueprintLoopInfo"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.blueprint.loop.wait({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/blueprint/loop/{id}/resume": {
+      "post": {
+        "operationId": "blueprint.loop.resume",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "description": "BlueprintLoop ID"
+          }
+        ],
+        "summary": "Resume BlueprintLoop (waiting → running)",
+        "description": "Transition a BlueprintLoop from waiting back to running.",
+        "responses": {
+          "200": {
+            "description": "Resumed BlueprintLoop",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BlueprintLoopInfo"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.blueprint.loop.resume({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/blueprint/loop/{id}/activity": {
+      "get": {
+        "operationId": "blueprint.loop.activity",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "description": "BlueprintLoop ID"
+          }
+        ],
+        "summary": "Get BlueprintLoop activity",
+        "description": "Get derived activity metrics for a BlueprintLoop (derived from session state).",
+        "responses": {
+          "200": {
+            "description": "Activity summary",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BlueprintLoopActivity"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.blueprint.loop.activity({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/blueprint/session/{id}/plan-mode": {
+      "put": {
+        "operationId": "blueprint.session.planMode",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "description": "Session ID"
+          }
+        ],
+        "summary": "Toggle Plan Mode",
+        "description": "Enable or disable Plan Mode on a session.",
+        "responses": {
+          "200": {
+            "description": "Updated session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Session"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "planMode": {
+                    "description": "Enable or disable Plan Mode",
+                    "type": "boolean"
+                  }
+                },
+                "required": ["planMode"]
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.blueprint.session.planMode({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/asset": {
       "post": {
         "operationId": "asset.upload",
@@ -10247,6 +10804,1810 @@
           {
             "lang": "js",
             "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.holos.thread.get({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/plugin/ui/contributions": {
+      "get": {
+        "operationId": "plugin.listUIContributions",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "List plugin UI contributions",
+        "description": "Return aggregated UI manifests for all loaded plugins.",
+        "responses": {
+          "200": {
+            "description": "List of plugin UI contributions",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PluginUIContribution"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.plugin.listUIContributions({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/plugin/assets/{pluginId}/{versionHash}/*": {
+      "get": {
+        "operationId": "plugin.serveAsset",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "pluginId",
+            "required": true
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "versionHash",
+            "required": true
+          }
+        ],
+        "summary": "Serve plugin static asset",
+        "description": "Serve a static file from a plugin's directory with immutable cache headers.",
+        "responses": {
+          "200": {
+            "description": "Plugin static asset"
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.plugin.serveAsset({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/plugin/{pluginId}/sandbox/{panelId}": {
+      "get": {
+        "operationId": "plugin.sandbox",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "pluginId",
+            "required": true
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "panelId",
+            "required": true
+          }
+        ],
+        "summary": "Serve plugin sandbox iframe shell",
+        "description": "Serve an HTML shell for loading a plugin panel in a sandboxed iframe.",
+        "responses": {
+          "200": {
+            "description": "Sandbox HTML page"
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.plugin.sandbox({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/plugin/{pluginId}/interact": {
+      "post": {
+        "operationId": "plugin.interact",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "pluginId",
+            "required": true
+          }
+        ],
+        "summary": "Relay plugin interaction",
+        "description": "Relay a postMessage interaction for a plugin.",
+        "responses": {
+          "200": {
+            "description": "Interaction relayed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PluginInteractResult"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "payload": {},
+                  "source": {
+                    "type": "string"
+                  }
+                },
+                "required": ["type"]
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.plugin.interact({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/plugin/{pluginId}/config-schema": {
+      "get": {
+        "operationId": "plugin.configSchema",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "pluginId",
+            "required": true
+          }
+        ],
+        "summary": "Get plugin config schema",
+        "description": "Return the plugin's contributed config schema from its manifest.",
+        "responses": {
+          "200": {
+            "description": "Plugin config schema",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PluginConfigSchema"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.plugin.configSchema({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/plugin/{pluginId}/config": {
+      "get": {
+        "operationId": "plugin.getConfig",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "pluginId",
+            "required": true
+          }
+        ],
+        "summary": "Get plugin config",
+        "description": "Return the current config values for a plugin.",
+        "responses": {
+          "200": {
+            "description": "Plugin config",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PluginConfig"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.plugin.getConfig({\n  ...\n})"
+          }
+        ]
+      },
+      "patch": {
+        "operationId": "plugin.updateConfig",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "pluginId",
+            "required": true
+          }
+        ],
+        "summary": "Update plugin config",
+        "description": "Merge values into the plugin's configuration namespace.",
+        "responses": {
+          "200": {
+            "description": "Updated plugin config",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PluginConfig"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {}
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.plugin.updateConfig({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/plugin/{pluginId}/status": {
+      "get": {
+        "operationId": "plugin.status",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "pluginId",
+            "required": true
+          }
+        ],
+        "summary": "Get plugin status",
+        "description": "Report the current status of a loaded plugin.",
+        "responses": {
+          "200": {
+            "description": "Plugin status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PluginStatus"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.plugin.status({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/api/plugins": {
+      "get": {
+        "operationId": "api.plugins.list",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "List all loaded plugins",
+        "description": "Return metadata for all currently loaded plugins.",
+        "responses": {
+          "200": {
+            "description": "List of loaded plugins",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ApiPluginInfo"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.api.plugins.list({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/api/plugins/{pluginId}": {
+      "get": {
+        "operationId": "api.plugins.get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "pluginId",
+            "required": true
+          }
+        ],
+        "summary": "Get plugin detail",
+        "description": "Return detailed metadata for a single loaded plugin.",
+        "responses": {
+          "200": {
+            "description": "Plugin detail",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiPluginDetail"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.api.plugins.get({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/api/plugins/{pluginId}/status": {
+      "get": {
+        "operationId": "api.plugins.status",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "pluginId",
+            "required": true
+          }
+        ],
+        "summary": "Get plugin status",
+        "description": "Report the current status of a loaded plugin.",
+        "responses": {
+          "200": {
+            "description": "Plugin status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PluginStatus"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.api.plugins.status({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/api/plugins/preview-install": {
+      "post": {
+        "operationId": "api.plugins.previewInstall",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Preview permissions for new plugin install",
+        "description": "Compute the permission diff for a new plugin manifest before installation.",
+        "responses": {
+          "200": {
+            "description": "Permission diff",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "manifest": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {}
+                  }
+                },
+                "required": ["manifest"]
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.api.plugins.previewInstall({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/api/plugins/{pluginId}/approve-install": {
+      "post": {
+        "operationId": "api.plugins.approveInstall",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "pluginId",
+            "required": true
+          }
+        ],
+        "summary": "Approve new plugin install",
+        "description": "Record approval for a new plugin installation after reviewing its permissions.",
+        "responses": {
+          "200": {
+            "description": "Approval record",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "manifest": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {}
+                  },
+                  "capabilities": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "required": ["manifest", "capabilities"]
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.api.plugins.approveInstall({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/api/plugins/{pluginId}/preview-update": {
+      "post": {
+        "operationId": "api.plugins.previewUpdate",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "pluginId",
+            "required": true
+          }
+        ],
+        "summary": "Preview permissions for plugin update",
+        "description": "Compute the permission diff between the currently installed plugin and a new manifest version.",
+        "responses": {
+          "200": {
+            "description": "Permission diff",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "manifest": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {}
+                  }
+                },
+                "required": ["manifest"]
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.api.plugins.previewUpdate({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/api/plugins/{pluginId}/approve-update": {
+      "post": {
+        "operationId": "api.plugins.approveUpdate",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "pluginId",
+            "required": true
+          }
+        ],
+        "summary": "Approve plugin update",
+        "description": "Record approval for a plugin update after reviewing its permission changes.",
+        "responses": {
+          "200": {
+            "description": "Approval record",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "manifest": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {}
+                  },
+                  "capabilities": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "required": ["manifest", "capabilities"]
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.api.plugins.approveUpdate({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/api/plugins/{pluginId}/approval": {
+      "get": {
+        "operationId": "api.plugins.getApproval",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "pluginId",
+            "required": true
+          }
+        ],
+        "summary": "Get plugin approval status",
+        "description": "Return the current approval record for a plugin, or 404 if not approved.",
+        "responses": {
+          "200": {
+            "description": "Approval record",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.api.plugins.getApproval({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/api/plugins/{pluginId}/permission-diff": {
+      "get": {
+        "operationId": "api.plugins.permissionDiff",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "pluginId",
+            "required": true
+          }
+        ],
+        "summary": "Get permission diff for plugin version",
+        "description": "Return the permission diff between the approved capabilities and the current plugin manifest.",
+        "responses": {
+          "200": {
+            "description": "Permission diff",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.api.plugins.permissionDiff({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/api/plugins/install-from-registry": {
+      "post": {
+        "operationId": "api.plugins.installFromRegistry",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Install plugin from registry",
+        "description": "Install a plugin from the local registry store. Looks up the plugin and version in the registry, then installs it via Bun's package manager and loads it into the runtime.",
+        "responses": {
+          "200": {
+            "description": "Install result with plugin status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiPluginDetail"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NoteConflictError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "version": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "required": ["id", "version"]
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.api.plugins.installFromRegistry({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/api/plugins/{pluginId}/update-from-registry": {
+      "post": {
+        "operationId": "api.plugins.updateFromRegistry",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "pluginId",
+            "required": true
+          }
+        ],
+        "summary": "Check for plugin update from registry",
+        "description": "Check if an update is available for a plugin from the local registry. Optionally target a specific version. Returns version comparison and permission diff.",
+        "responses": {
+          "200": {
+            "description": "Update check result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "targetVersion": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.api.plugins.updateFromRegistry({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/api/plugins/{pluginId}/runtime/reload": {
+      "post": {
+        "operationId": "plugin.runtime.reload",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "pluginId",
+            "required": true
+          }
+        ],
+        "summary": "Reload plugin runtime",
+        "description": "Stop and restart the plugin runtime process.",
+        "responses": {
+          "200": {
+            "description": "Runtime state after reload",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/PluginRuntimeInfo"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.plugin.runtime.reload({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/api/plugins/{pluginId}/runtime/stop": {
+      "post": {
+        "operationId": "plugin.runtime.stop",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "pluginId",
+            "required": true
+          }
+        ],
+        "summary": "Stop plugin runtime",
+        "description": "Gracefully stop the plugin runtime process.",
+        "responses": {
+          "200": {
+            "description": "Runtime state after stop",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/PluginRuntimeInfo"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.plugin.runtime.stop({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/api/plugins/{pluginId}/runtime/start": {
+      "post": {
+        "operationId": "plugin.runtime.start",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "pluginId",
+            "required": true
+          }
+        ],
+        "summary": "Start plugin runtime",
+        "description": "Start the plugin runtime process.",
+        "responses": {
+          "200": {
+            "description": "Runtime state after start",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/PluginRuntimeInfo"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.plugin.runtime.start({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/api/plugins/{pluginId}/runtime/logs": {
+      "get": {
+        "operationId": "plugin.runtime.logs",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "pluginId",
+            "required": true
+          }
+        ],
+        "summary": "Get plugin runtime logs",
+        "description": "Return recent log entries for the plugin runtime.",
+        "responses": {
+          "200": {
+            "description": "Recent runtime log entries",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PluginRuntimeLogEntry"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.plugin.runtime.logs({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/api/registry/search": {
+      "get": {
+        "operationId": "registry.plugins.search",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "q",
+            "schema": {
+              "default": "",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "schema": {
+              "default": 0,
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 20,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            }
+          }
+        ],
+        "summary": "Search plugin registry",
+        "description": "Search plugins by keyword in name, description, and keywords with pagination.",
+        "responses": {
+          "200": {
+            "description": "Search results with pagination metadata",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "plugins": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/RegistryPluginSummary"
+                      }
+                    },
+                    "total": {
+                      "type": "number"
+                    },
+                    "offset": {
+                      "type": "number"
+                    },
+                    "limit": {
+                      "type": "number"
+                    }
+                  },
+                  "required": ["plugins", "total", "offset", "limit"]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.registry.plugins.search({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/api/registry/{id}": {
+      "get": {
+        "operationId": "registry.plugins.get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "summary": "Get plugin entry",
+        "description": "Return the full registry entry for a plugin, including its latest version.",
+        "responses": {
+          "200": {
+            "description": "Plugin registry entry",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegistryPluginEntry"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.registry.plugins.get({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/api/registry/{id}/versions": {
+      "get": {
+        "operationId": "registry.plugins.versions",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "summary": "List plugin versions",
+        "description": "Return all published versions for a plugin.",
+        "responses": {
+          "200": {
+            "description": "Plugin version list",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/RegistryPluginVersion"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.registry.plugins.versions({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/api/registry/{id}/versions/{version}": {
+      "get": {
+        "operationId": "registry.plugins.version",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "version",
+            "required": true
+          }
+        ],
+        "summary": "Get plugin version",
+        "description": "Return details for a specific version of a plugin.",
+        "responses": {
+          "200": {
+            "description": "Plugin version details",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegistryPluginVersion"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.registry.plugins.version({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/api/registry/{id}/download/{version}": {
+      "get": {
+        "operationId": "registry.plugins.download",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "version",
+            "required": true
+          }
+        ],
+        "summary": "Download plugin version",
+        "description": "Download a plugin version archive. If downloadUrl is a file:// path within the registry store, streams the file. Otherwise returns 501.",
+        "responses": {
+          "200": {
+            "description": "Plugin archive binary"
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "Download not yet implemented for this entry"
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.registry.plugins.download({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/api/registry/publish": {
+      "post": {
+        "operationId": "registry.plugins.publish",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Publish plugin entry",
+        "description": "Publish a new plugin entry or update an existing one. Local registry publishing is localhost-only.",
+        "responses": {
+          "200": {
+            "description": "Published plugin entry",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegistryPluginEntry"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegistryPublishInput"
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.registry.plugins.publish({\n  ...\n})"
           }
         ]
       }
@@ -12803,6 +15164,66 @@
         },
         "additionalProperties": false
       },
+      "PluginApprovalPolicyConfig": {
+        "description": "Plugin approval policy configuration",
+        "type": "object",
+        "properties": {
+          "allowUnsignedLocal": {
+            "description": "Allow unsigned local plugins with user consent",
+            "default": true,
+            "type": "boolean"
+          },
+          "autoApproveBuiltin": {
+            "description": "Auto-approve builtin plugins without user consent",
+            "default": true,
+            "type": "boolean"
+          },
+          "denyHighRiskThirdParty": {
+            "description": "Block third-party plugins with high-risk capabilities",
+            "default": true,
+            "type": "boolean"
+          },
+          "requireSignatureForMarketplace": {
+            "description": "Require cryptographic signature for non-local plugins",
+            "default": false,
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "PluginRuntimePolicyConfig": {
+        "description": "Plugin runtime isolation policy configuration",
+        "type": "object",
+        "properties": {
+          "thirdPartyDefaultMode": {
+            "description": "Default isolation mode for third-party plugins (npm, git, url)",
+            "default": "process",
+            "type": "string",
+            "enum": ["process", "worker"]
+          },
+          "highRiskRequiresProcess": {
+            "description": "Require process isolation for high-risk plugins regardless of source",
+            "default": true,
+            "type": "boolean"
+          },
+          "allowThirdPartyInProcess": {
+            "description": "Allow third-party plugins to request in-process mode (not recommended)",
+            "default": false,
+            "type": "boolean"
+          },
+          "allowWorkerMode": {
+            "description": "Allow plugins to request worker thread isolation",
+            "default": true,
+            "type": "boolean"
+          },
+          "allowLocalInProcess": {
+            "description": "Allow local plugins to run in-process",
+            "default": true,
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
       "PermissionActionConfig": {
         "type": "string",
         "enum": ["ask", "allow", "deny"]
@@ -14342,6 +16763,12 @@
               "type": "string"
             }
           },
+          "pluginApprovalPolicy": {
+            "$ref": "#/components/schemas/PluginApprovalPolicyConfig"
+          },
+          "pluginRuntimePolicy": {
+            "$ref": "#/components/schemas/PluginRuntimePolicyConfig"
+          },
           "snapshot": {
             "type": "boolean"
           },
@@ -14654,6 +17081,10 @@
           "permission": {
             "$ref": "#/components/schemas/PermissionConfig"
           },
+          "auto_classifier": {
+            "description": "Enable LLM risk classifier to auto-allow safe permission asks (Stage 4 auto mode)",
+            "type": "boolean"
+          },
           "tools": {
             "type": "object",
             "propertyNames": {
@@ -14792,246 +17223,189 @@
         },
         "additionalProperties": false
       },
-      "ConfigSetName": {
-        "type": "string",
-        "minLength": 1,
-        "maxLength": 64,
-        "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]*$"
-      },
-      "ConfigSetSummary": {
+      "ConfigDomainSummary": {
         "type": "object",
         "properties": {
-          "name": {
-            "$ref": "#/components/schemas/ConfigSetName"
+          "id": {
+            "type": "string",
+            "enum": [
+              "general",
+              "models",
+              "providers",
+              "engram",
+              "mcp",
+              "plugins",
+              "agents",
+              "commands",
+              "permissions",
+              "channels",
+              "holos",
+              "email",
+              "runtime"
+            ]
           },
-          "active": {
-            "type": "boolean"
-          },
-          "isDefault": {
-            "type": "boolean"
-          },
-          "path": {
+          "filename": {
             "type": "string"
-          }
-        },
-        "required": ["name", "active", "isDefault", "path"]
-      },
-      "ConfigSetWithConfig": {
-        "type": "object",
-        "properties": {
-          "name": {
-            "$ref": "#/components/schemas/ConfigSetName"
           },
-          "active": {
-            "type": "boolean"
-          },
-          "isDefault": {
-            "type": "boolean"
+          "label": {
+            "type": "string"
           },
           "path": {
             "type": "string"
           },
-          "config": {
-            "$ref": "#/components/schemas/Config"
-          }
-        },
-        "required": ["name", "active", "isDefault", "path", "config"]
-      },
-      "ConfigSetCreateInput": {
-        "type": "object",
-        "properties": {
-          "name": {
-            "$ref": "#/components/schemas/ConfigSetName"
+          "ownedKeys": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           },
-          "config": {
-            "$ref": "#/components/schemas/Config"
-          }
-        },
-        "required": ["name"]
-      },
-      "ConfigSetRaw": {
-        "type": "object",
-        "properties": {
-          "name": {
-            "$ref": "#/components/schemas/ConfigSetName"
+          "mergePolicy": {
+            "type": "string",
+            "enum": ["merge", "replace-domain", "append"]
           },
-          "path": {
+          "reloadTargets": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "uiSection": {
             "type": "string"
           },
-          "raw": {
-            "type": "string"
-          },
-          "config": {
-            "$ref": "#/components/schemas/Config"
-          },
-          "active": {
-            "type": "boolean"
-          },
-          "isDefault": {
-            "type": "boolean"
-          }
-        },
-        "required": ["name", "path", "raw", "active", "isDefault"]
-      },
-      "ConfigRawValidationResult": {
-        "type": "object",
-        "properties": {
-          "valid": {
+          "importable": {
             "type": "boolean"
           },
           "config": {
             "$ref": "#/components/schemas/Config"
-          },
-          "errors": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "warnings": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          }
-        },
-        "required": ["valid", "errors", "warnings"]
-      },
-      "ConfigSetRawValidateInput": {
-        "type": "object",
-        "properties": {
-          "raw": {
-            "type": "string"
-          }
-        },
-        "required": ["raw"]
-      },
-      "RuntimeReloadTarget": {
-        "type": "string",
-        "enum": [
-          "config",
-          "skill",
-          "provider",
-          "agent",
-          "plugin",
-          "mcp",
-          "lsp",
-          "formatter",
-          "watcher",
-          "channel",
-          "holos",
-          "command",
-          "tool_registry",
-          "all"
-        ]
-      },
-      "RuntimeReloadResult": {
-        "type": "object",
-        "properties": {
-          "success": {
-            "type": "boolean"
-          },
-          "requested": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/RuntimeReloadTarget"
-            }
-          },
-          "executed": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/RuntimeReloadTarget"
-            }
-          },
-          "cascaded": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/RuntimeReloadTarget"
-            }
-          },
-          "changedFields": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "restartRequired": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "liveApplied": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "warnings": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
           }
         },
         "required": [
-          "success",
-          "requested",
-          "executed",
-          "cascaded",
-          "changedFields",
-          "restartRequired",
-          "liveApplied",
-          "warnings"
+          "id",
+          "filename",
+          "label",
+          "path",
+          "ownedKeys",
+          "mergePolicy",
+          "reloadTargets",
+          "uiSection",
+          "importable"
         ]
       },
-      "ConfigSetRawSaveResult": {
+      "ConfigDomainUpdateInput": {
         "type": "object",
         "properties": {
-          "configSet": {
-            "$ref": "#/components/schemas/ConfigSetRaw"
+          "config": {
+            "$ref": "#/components/schemas/Config"
           },
-          "validation": {
-            "$ref": "#/components/schemas/ConfigRawValidationResult"
-          },
-          "saved": {
-            "type": "boolean"
-          },
-          "runtimeReload": {
-            "$ref": "#/components/schemas/RuntimeReloadResult"
+          "mode": {
+            "type": "string",
+            "enum": ["merge", "replace-domain", "append"]
           }
         },
-        "required": ["configSet", "validation", "saved"]
+        "required": ["config"]
       },
-      "ConfigSetRawSaveInput": {
+      "ConfigDomainImportChange": {
         "type": "object",
         "properties": {
-          "raw": {
+          "key": {
             "type": "string"
           },
-          "reload": {
+          "before": {},
+          "after": {},
+          "conflict": {
             "type": "boolean"
           }
         },
-        "required": ["raw"]
+        "required": ["key", "conflict"]
       },
-      "ConfigSetActivateResult": {
+      "ConfigDomainImportPlan": {
         "type": "object",
         "properties": {
-          "previous": {
-            "$ref": "#/components/schemas/ConfigSetName"
+          "domains": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "enum": [
+                    "general",
+                    "models",
+                    "providers",
+                    "engram",
+                    "mcp",
+                    "plugins",
+                    "agents",
+                    "commands",
+                    "permissions",
+                    "channels",
+                    "holos",
+                    "email",
+                    "runtime"
+                  ]
+                },
+                "filename": {
+                  "type": "string"
+                },
+                "path": {
+                  "type": "string"
+                },
+                "mode": {
+                  "type": "string",
+                  "enum": ["merge", "replace-domain", "append"]
+                },
+                "changes": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ConfigDomainImportChange"
+                  }
+                }
+              },
+              "required": ["id", "filename", "path", "mode", "changes"]
+            }
           },
-          "active": {
-            "$ref": "#/components/schemas/ConfigSetName"
-          },
-          "changed": {
-            "type": "boolean"
-          },
-          "runtimeReload": {
-            "$ref": "#/components/schemas/RuntimeReloadResult"
+          "conflicts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ConfigDomainImportChange"
+            }
           }
         },
-        "required": ["previous", "active", "changed", "runtimeReload"]
+        "required": ["domains", "conflicts"]
+      },
+      "ConfigDomainImportPlanInput": {
+        "type": "object",
+        "properties": {
+          "config": {
+            "$ref": "#/components/schemas/Config"
+          },
+          "only": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "general",
+                "models",
+                "providers",
+                "engram",
+                "mcp",
+                "plugins",
+                "agents",
+                "commands",
+                "permissions",
+                "channels",
+                "holos",
+                "email",
+                "runtime"
+              ]
+            }
+          },
+          "mode": {
+            "type": "string",
+            "enum": ["merge", "replace-domain", "append"]
+          }
+        },
+        "required": ["config"]
       },
       "Model": {
         "type": "object",
@@ -15294,6 +17668,85 @@
           }
         },
         "required": ["id", "name", "source", "env", "options", "models"]
+      },
+      "RuntimeReloadTarget": {
+        "type": "string",
+        "enum": [
+          "config",
+          "skill",
+          "provider",
+          "agent",
+          "plugin",
+          "mcp",
+          "lsp",
+          "formatter",
+          "watcher",
+          "channel",
+          "holos",
+          "command",
+          "tool_registry",
+          "all"
+        ]
+      },
+      "RuntimeReloadResult": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "requested": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RuntimeReloadTarget"
+            }
+          },
+          "executed": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RuntimeReloadTarget"
+            }
+          },
+          "cascaded": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RuntimeReloadTarget"
+            }
+          },
+          "changedFields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "restartRequired": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "liveApplied": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "success",
+          "requested",
+          "executed",
+          "cascaded",
+          "changedFields",
+          "restartRequired",
+          "liveApplied",
+          "warnings"
+        ]
       },
       "RuntimeReloadScope": {
         "type": "string",
@@ -15924,6 +18377,13 @@
             "type": "string",
             "enum": ["guarded", "autonomous", "full_access"]
           },
+          "preAuthorizedActions": {
+            "description": "Tool names pre-authorized by the user via system scheduling (e.g. agenda wake). Bypasses the ask gate for these tools within this session only.",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
           "pendingReply": {
             "type": "boolean"
           },
@@ -15976,6 +18436,17 @@
           },
           "workspace": {
             "$ref": "#/components/schemas/SessionWorkspace"
+          },
+          "blueprint": {
+            "type": "object",
+            "properties": {
+              "loopID": {
+                "type": "string"
+              },
+              "planMode": {
+                "type": "boolean"
+              }
+            }
           }
         },
         "required": ["id", "scope", "title", "version", "time"]
@@ -18804,6 +21275,10 @@
               "type": "string"
             }
           },
+          "kind": {
+            "type": "string",
+            "enum": ["note", "blueprint"]
+          },
           "version": {
             "type": "number"
           },
@@ -18824,6 +21299,26 @@
           },
           "previewHtml": {
             "type": "string"
+          },
+          "blueprint": {
+            "type": "object",
+            "properties": {
+              "description": {
+                "type": "string"
+              },
+              "defaultAgent": {
+                "type": "string"
+              },
+              "activeLoopID": {
+                "type": "string"
+              },
+              "runCount": {
+                "type": "number"
+              },
+              "lastRunAt": {
+                "type": "number"
+              }
+            }
           }
         },
         "required": ["id", "title", "pinned", "global", "tags", "version", "time", "searchText"]
@@ -18870,6 +21365,30 @@
             "type": "array",
             "items": {
               "type": "string"
+            }
+          },
+          "kind": {
+            "type": "string",
+            "enum": ["note", "blueprint"]
+          },
+          "blueprint": {
+            "type": "object",
+            "properties": {
+              "description": {
+                "type": "string"
+              },
+              "defaultAgent": {
+                "type": "string"
+              },
+              "activeLoopID": {
+                "type": "string"
+              },
+              "runCount": {
+                "type": "number"
+              },
+              "lastRunAt": {
+                "type": "number"
+              }
             }
           },
           "version": {
@@ -18921,6 +21440,30 @@
             "items": {
               "type": "string"
             }
+          },
+          "kind": {
+            "type": "string",
+            "enum": ["note", "blueprint"]
+          },
+          "blueprint": {
+            "type": "object",
+            "properties": {
+              "description": {
+                "type": "string"
+              },
+              "defaultAgent": {
+                "type": "string"
+              },
+              "activeLoopID": {
+                "type": "string"
+              },
+              "runCount": {
+                "type": "number"
+              },
+              "lastRunAt": {
+                "type": "number"
+              }
+            }
           }
         },
         "required": ["title"]
@@ -18969,10 +21512,190 @@
               "type": "string"
             }
           },
+          "kind": {
+            "type": "string",
+            "enum": ["note", "blueprint"]
+          },
+          "blueprint": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "description": {
+                    "type": "string"
+                  },
+                  "defaultAgent": {
+                    "type": "string"
+                  },
+                  "activeLoopID": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "runCount": {
+                    "type": "number"
+                  },
+                  "lastRunAt": {
+                    "type": "number"
+                  }
+                }
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "expectedVersion": {
             "type": "number"
           }
         }
+      },
+      "BlueprintLoopInfo": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^bll.*"
+          },
+          "noteID": {
+            "type": "string"
+          },
+          "noteVersion": {
+            "type": "number"
+          },
+          "title": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "sessionID": {
+            "type": "string"
+          },
+          "supervisorSessionID": {
+            "type": "string"
+          },
+          "scopeID": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["armed", "running", "waiting", "auditing", "completed", "failed", "cancelled"]
+          },
+          "runMode": {
+            "type": "string",
+            "enum": ["current", "new", "worktree"]
+          },
+          "parentSessionID": {
+            "type": "string"
+          },
+          "firstPrompt": {
+            "type": "string"
+          },
+          "error": {
+            "type": "string"
+          },
+          "loopIndex": {
+            "type": "number"
+          },
+          "audit": {
+            "type": "object",
+            "properties": {
+              "lastReason": {
+                "type": "string"
+              },
+              "lastAuditedAt": {
+                "type": "number"
+              },
+              "attempts": {
+                "type": "number"
+              }
+            },
+            "required": ["attempts"]
+          },
+          "time": {
+            "type": "object",
+            "properties": {
+              "created": {
+                "type": "number"
+              },
+              "started": {
+                "type": "number"
+              },
+              "updated": {
+                "type": "number"
+              },
+              "completed": {
+                "type": "number"
+              }
+            },
+            "required": ["created", "updated"]
+          }
+        },
+        "required": ["id", "noteID", "title", "sessionID", "scopeID", "status", "time"]
+      },
+      "BlueprintLoopCreateInput": {
+        "type": "object",
+        "properties": {
+          "noteID": {
+            "description": "Note ID to loop",
+            "type": "string"
+          },
+          "noteVersion": {
+            "description": "Note version to lock",
+            "type": "number"
+          },
+          "title": {
+            "description": "Loop title",
+            "type": "string"
+          },
+          "description": {
+            "description": "Loop description",
+            "type": "string"
+          },
+          "sessionID": {
+            "description": "Session ID driving this loop",
+            "type": "string"
+          },
+          "runMode": {
+            "description": "Loop run mode (default current)",
+            "type": "string",
+            "enum": ["current", "new", "worktree"]
+          },
+          "parentSessionID": {
+            "description": "Parent session ID",
+            "type": "string"
+          },
+          "firstPrompt": {
+            "description": "First user prompt for the loop",
+            "type": "string"
+          },
+          "loopIndex": {
+            "description": "Zero-based loop index",
+            "type": "number"
+          }
+        },
+        "required": ["noteID", "title", "sessionID"]
+      },
+      "BlueprintLoopActivity": {
+        "type": "object",
+        "properties": {
+          "stepCount": {
+            "type": "number"
+          },
+          "messageCount": {
+            "type": "number"
+          },
+          "lastActivityAt": {
+            "type": "number"
+          }
+        },
+        "required": ["stepCount", "messageCount"]
       },
       "AssetInfo": {
         "type": "object",
@@ -19818,6 +22541,928 @@
         "type": "array",
         "items": {}
       },
+      "PluginUIContribution": {
+        "type": "object",
+        "properties": {
+          "pluginId": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          },
+          "trustTier": {
+            "type": "string",
+            "enum": ["declarative", "trusted-import", "sandbox"]
+          },
+          "ui": {
+            "anyOf": [
+              {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {}
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "permissions": {
+            "anyOf": [
+              {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {}
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": ["pluginId", "version", "trustTier"]
+      },
+      "PluginInteractResult": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          }
+        },
+        "required": ["status", "type"]
+      },
+      "PluginConfigSchema": {
+        "type": "object",
+        "propertyNames": {
+          "type": "string"
+        },
+        "additionalProperties": {}
+      },
+      "PluginConfig": {
+        "type": "object",
+        "propertyNames": {
+          "type": "string"
+        },
+        "additionalProperties": {}
+      },
+      "PluginStatus": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string",
+            "enum": ["local", "npm", "git", "url", "builtin", "official"]
+          },
+          "trust": {
+            "type": "object",
+            "properties": {
+              "tier": {
+                "type": "string",
+                "enum": ["declarative", "trusted-import", "sandbox"]
+              },
+              "source": {
+                "type": "string",
+                "enum": ["local", "npm", "git", "url", "builtin", "official"]
+              },
+              "userTrusted": {
+                "type": "boolean"
+              },
+              "verifiedIntegrity": {
+                "type": "boolean"
+              },
+              "reason": {
+                "type": "string"
+              }
+            },
+            "required": ["tier", "source", "userTrusted", "verifiedIntegrity", "reason"]
+          },
+          "loaded": {
+            "type": "boolean"
+          },
+          "loadError": {
+            "type": "string"
+          },
+          "manifestValid": {
+            "type": "boolean"
+          },
+          "integrity": {
+            "type": "string",
+            "enum": ["verified", "unverified", "failed"]
+          },
+          "permissions": {
+            "type": "object",
+            "properties": {
+              "base": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "tools": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              },
+              "overallRisk": {
+                "type": "string",
+                "enum": ["low", "medium", "high"]
+              },
+              "warnings": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "toolId": {
+                      "type": "string"
+                    }
+                  },
+                  "required": ["type", "message"]
+                }
+              }
+            },
+            "required": ["base", "tools", "overallRisk", "warnings"]
+          },
+          "routes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "tools": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "fullId": {
+                  "type": "string"
+                },
+                "capabilities": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "warnings": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              },
+              "required": ["id", "fullId", "capabilities", "warnings"]
+            }
+          },
+          "ui": {
+            "type": "object",
+            "properties": {
+              "contributions": {
+                "type": "number"
+              },
+              "errors": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": ["contributions", "errors"]
+          },
+          "stores": {
+            "type": "object",
+            "properties": {
+              "config": {
+                "type": "boolean"
+              },
+              "secrets": {
+                "type": "string",
+                "enum": ["none", "plaintext", "keychain"]
+              },
+              "cacheBytes": {
+                "type": "number"
+              }
+            },
+            "required": ["config", "secrets"]
+          },
+          "runtime": {
+            "type": "object",
+            "properties": {
+              "mode": {
+                "type": "string"
+              },
+              "pid": {
+                "type": "number"
+              },
+              "state": {
+                "type": "string"
+              },
+              "restarts": {
+                "type": "number"
+              },
+              "lastHeartbeatAt": {
+                "type": "number"
+              },
+              "memoryMb": {
+                "type": "number"
+              },
+              "limits": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {}
+              },
+              "lastError": {
+                "type": "string"
+              },
+              "runtimeDecision": {
+                "type": "string"
+              }
+            },
+            "required": ["mode", "state", "restarts", "limits"]
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string"
+                },
+                "message": {
+                  "type": "string"
+                },
+                "toolId": {
+                  "type": "string"
+                }
+              },
+              "required": ["type", "message"]
+            }
+          }
+        },
+        "required": [
+          "id",
+          "source",
+          "trust",
+          "loaded",
+          "manifestValid",
+          "integrity",
+          "permissions",
+          "routes",
+          "tools",
+          "ui",
+          "stores",
+          "warnings"
+        ]
+      },
+      "ApiPluginInfo": {
+        "type": "object",
+        "properties": {
+          "pluginId": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          },
+          "trustTier": {
+            "type": "string",
+            "enum": ["declarative", "trusted-import", "sandbox"]
+          },
+          "hasManifest": {
+            "type": "boolean"
+          },
+          "pluginDir": {
+            "type": "string"
+          },
+          "cliCommands": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "skillCount": {
+            "type": "number"
+          },
+          "agentCount": {
+            "type": "number"
+          }
+        },
+        "required": ["pluginId", "trustTier", "hasManifest", "pluginDir", "cliCommands", "skillCount", "agentCount"]
+      },
+      "ApiPluginDetail": {
+        "type": "object",
+        "properties": {
+          "pluginId": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          },
+          "trustTier": {
+            "type": "string",
+            "enum": ["declarative", "trusted-import", "sandbox"]
+          },
+          "hasManifest": {
+            "type": "boolean"
+          },
+          "pluginDir": {
+            "type": "string"
+          },
+          "manifest": {
+            "anyOf": [
+              {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {}
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "cliCommands": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "skills": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "agents": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": ["pluginId", "trustTier", "hasManifest", "pluginDir", "cliCommands", "skills", "agents"]
+      },
+      "PluginRuntimeInfo": {
+        "type": "object",
+        "properties": {
+          "mode": {
+            "type": "string",
+            "enum": ["in-process", "worker", "process"]
+          },
+          "pid": {
+            "type": "number"
+          },
+          "state": {
+            "type": "string",
+            "enum": ["starting", "ready", "unhealthy", "stopped", "crashed"]
+          },
+          "restarts": {
+            "type": "number"
+          },
+          "lastHeartbeatAt": {
+            "type": "number"
+          },
+          "memoryMb": {
+            "type": "number"
+          },
+          "limits": {
+            "type": "object",
+            "properties": {
+              "STARTUP_TIMEOUT_MS": {
+                "type": "number"
+              },
+              "REQUEST_TIMEOUT_MS": {
+                "type": "number"
+              },
+              "SHUTDOWN_GRACE_MS": {
+                "type": "number"
+              },
+              "CONCURRENT_REQUESTS": {
+                "type": "number"
+              },
+              "MAX_LOG_BYTES_PER_MINUTE": {
+                "type": "number"
+              },
+              "MEMORY_MB": {
+                "type": "number"
+              },
+              "HEARTBEAT_INTERVAL_MS": {
+                "type": "number"
+              },
+              "HEARTBEAT_MISSES_BEFORE_KILL": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "STARTUP_TIMEOUT_MS",
+              "REQUEST_TIMEOUT_MS",
+              "SHUTDOWN_GRACE_MS",
+              "CONCURRENT_REQUESTS",
+              "MAX_LOG_BYTES_PER_MINUTE",
+              "MEMORY_MB",
+              "HEARTBEAT_INTERVAL_MS",
+              "HEARTBEAT_MISSES_BEFORE_KILL"
+            ]
+          },
+          "lastError": {
+            "type": "string"
+          }
+        },
+        "required": ["mode", "state", "restarts", "limits"]
+      },
+      "PluginRuntimeLogEntry": {
+        "type": "object",
+        "properties": {
+          "timestamp": {
+            "type": "number"
+          },
+          "level": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": ["timestamp", "level", "message"]
+      },
+      "RegistryPluginSummary": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "author": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "email": {
+                "type": "string"
+              },
+              "url": {
+                "type": "string"
+              }
+            },
+            "required": ["name"]
+          },
+          "verified": {
+            "type": "boolean"
+          },
+          "official": {
+            "type": "boolean"
+          },
+          "keywords": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "latestVersion": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "type": "number"
+          },
+          "risk": {
+            "type": "string",
+            "enum": ["low", "medium", "high"]
+          },
+          "trustTier": {
+            "type": "string",
+            "enum": ["declarative", "trusted-import", "sandbox"]
+          },
+          "runtimeMode": {
+            "type": "string",
+            "enum": ["in-process", "worker", "process"]
+          },
+          "uiSurfaces": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "tools": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "downloads": {
+            "type": "number"
+          },
+          "rating": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "description",
+          "author",
+          "verified",
+          "official",
+          "keywords",
+          "updatedAt",
+          "risk",
+          "trustTier",
+          "runtimeMode",
+          "uiSurfaces",
+          "tools",
+          "downloads"
+        ]
+      },
+      "RegistryPluginSignature": {
+        "type": "object",
+        "properties": {
+          "algorithm": {
+            "type": "string"
+          },
+          "value": {
+            "type": "string"
+          },
+          "keyId": {
+            "type": "string"
+          },
+          "timestamp": {
+            "type": "number"
+          }
+        },
+        "required": ["algorithm", "value"]
+      },
+      "RegistryPermissionItem": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "risk": {
+            "type": "string",
+            "enum": ["low", "medium", "high"]
+          },
+          "granted": {
+            "type": "boolean"
+          }
+        },
+        "required": ["key", "description", "risk"]
+      },
+      "RegistryPluginVersion": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": "string"
+          },
+          "manifestHash": {
+            "type": "string"
+          },
+          "permissionsHash": {
+            "type": "string"
+          },
+          "signature": {
+            "$ref": "#/components/schemas/RegistryPluginSignature"
+          },
+          "downloadUrl": {
+            "type": "string"
+          },
+          "integrity": {
+            "type": "string"
+          },
+          "risk": {
+            "type": "string",
+            "enum": ["low", "medium", "high"]
+          },
+          "permissionsSummary": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RegistryPermissionItem"
+            }
+          },
+          "publishedAt": {
+            "type": "number"
+          },
+          "changelog": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "version",
+          "manifestHash",
+          "permissionsHash",
+          "integrity",
+          "risk",
+          "permissionsSummary",
+          "publishedAt"
+        ]
+      },
+      "RegistryPermissionSummary": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "category": {
+            "type": "string"
+          },
+          "severity": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          }
+        },
+        "required": ["key", "category", "severity", "title", "description"]
+      },
+      "RegistryPluginEntry": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "author": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "email": {
+                "type": "string"
+              },
+              "url": {
+                "type": "string"
+              }
+            },
+            "required": ["name"]
+          },
+          "verified": {
+            "type": "boolean"
+          },
+          "official": {
+            "type": "boolean"
+          },
+          "keywords": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "compatibility": {
+            "type": "object",
+            "properties": {
+              "synergy": {
+                "type": "string"
+              }
+            },
+            "required": ["synergy"]
+          },
+          "versions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RegistryPluginVersion"
+            }
+          },
+          "createdAt": {
+            "type": "number"
+          },
+          "updatedAt": {
+            "type": "number"
+          },
+          "risk": {
+            "type": "string",
+            "enum": ["low", "medium", "high"]
+          },
+          "trustTier": {
+            "type": "string",
+            "enum": ["declarative", "trusted-import", "sandbox"]
+          },
+          "runtimeMode": {
+            "type": "string",
+            "enum": ["in-process", "worker", "process"]
+          },
+          "permissionsSummary": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RegistryPermissionSummary"
+            }
+          },
+          "uiSurfaces": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "tools": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "downloads": {
+            "type": "number"
+          },
+          "rating": {
+            "type": "number"
+          },
+          "ratingCount": {
+            "type": "number"
+          },
+          "changelog": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "description",
+          "author",
+          "verified",
+          "official",
+          "keywords",
+          "compatibility",
+          "versions",
+          "createdAt",
+          "updatedAt",
+          "risk",
+          "trustTier",
+          "runtimeMode",
+          "permissionsSummary",
+          "uiSurfaces",
+          "tools",
+          "downloads"
+        ]
+      },
+      "RegistryPublishInput": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "author": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "email": {
+                "type": "string"
+              },
+              "url": {
+                "type": "string"
+              }
+            },
+            "required": ["name"]
+          },
+          "verified": {
+            "type": "boolean"
+          },
+          "official": {
+            "type": "boolean"
+          },
+          "keywords": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "compatibility": {
+            "type": "object",
+            "properties": {
+              "synergy": {
+                "type": "string"
+              }
+            },
+            "required": ["synergy"]
+          },
+          "versions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RegistryPluginVersion"
+            }
+          },
+          "risk": {
+            "type": "string",
+            "enum": ["low", "medium", "high"]
+          },
+          "trustTier": {
+            "type": "string",
+            "enum": ["declarative", "trusted-import", "sandbox"]
+          },
+          "runtimeMode": {
+            "type": "string",
+            "enum": ["in-process", "worker", "process"]
+          },
+          "permissionsSummary": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RegistryPermissionSummary"
+            }
+          },
+          "uiSurfaces": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "tools": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "downloads": {
+            "type": "number"
+          },
+          "rating": {
+            "type": "number"
+          },
+          "ratingCount": {
+            "type": "number"
+          },
+          "changelog": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "description",
+          "author",
+          "verified",
+          "official",
+          "keywords",
+          "compatibility",
+          "versions",
+          "risk",
+          "trustTier",
+          "runtimeMode",
+          "permissionsSummary",
+          "uiSurfaces",
+          "tools",
+          "downloads"
+        ]
+      },
       "ExternalAgentInfo": {
         "type": "object",
         "properties": {
@@ -20375,28 +24020,6 @@
         },
         "required": ["type", "properties"]
       },
-      "Event.config.set.activated": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "config.set.activated"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "previous": {
-                "$ref": "#/components/schemas/ConfigSetName"
-              },
-              "active": {
-                "$ref": "#/components/schemas/ConfigSetName"
-              }
-            },
-            "required": ["previous", "active"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
       "Event.server.instance.disposed": {
         "type": "object",
         "properties": {
@@ -20678,7 +24301,7 @@
               },
               "reply": {
                 "type": "string",
-                "enum": ["once", "reject"]
+                "enum": ["once", "session", "always", "reject"]
               }
             },
             "required": ["sessionID", "requestID", "reply"]
@@ -21128,6 +24751,145 @@
               }
             },
             "required": ["sessionID", "todos"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.blueprint_loop.created": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "blueprint_loop.created"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "loop": {
+                "$ref": "#/components/schemas/BlueprintLoopInfo"
+              }
+            },
+            "required": ["loop"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.blueprint_loop.updated": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "blueprint_loop.updated"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "loop": {
+                "$ref": "#/components/schemas/BlueprintLoopInfo"
+              }
+            },
+            "required": ["loop"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.blueprint_loop.completed": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "blueprint_loop.completed"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "loopID": {
+                "type": "string"
+              }
+            },
+            "required": ["loopID"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.blueprint_loop.failed": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "blueprint_loop.failed"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "loopID": {
+                "type": "string"
+              },
+              "error": {
+                "type": "string"
+              }
+            },
+            "required": ["loopID", "error"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.blueprint_loop.cancelled": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "blueprint_loop.cancelled"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "loopID": {
+                "type": "string"
+              }
+            },
+            "required": ["loopID"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.blueprint_loop.auditing": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "blueprint_loop.auditing"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "loopID": {
+                "type": "string"
+              }
+            },
+            "required": ["loopID"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.blueprint_loop.restarted": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "blueprint_loop.restarted"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "loopID": {
+                "type": "string"
+              },
+              "reason": {
+                "type": "string"
+              }
+            },
+            "required": ["loopID", "reason"]
           }
         },
         "required": ["type", "properties"]
@@ -21625,9 +25387,6 @@
             "$ref": "#/components/schemas/Event.config.updated"
           },
           {
-            "$ref": "#/components/schemas/Event.config.set.activated"
-          },
-          {
             "$ref": "#/components/schemas/Event.server.instance.disposed"
           },
           {
@@ -21728,6 +25487,27 @@
           },
           {
             "$ref": "#/components/schemas/Event.todo.updated"
+          },
+          {
+            "$ref": "#/components/schemas/Event.blueprint_loop.created"
+          },
+          {
+            "$ref": "#/components/schemas/Event.blueprint_loop.updated"
+          },
+          {
+            "$ref": "#/components/schemas/Event.blueprint_loop.completed"
+          },
+          {
+            "$ref": "#/components/schemas/Event.blueprint_loop.failed"
+          },
+          {
+            "$ref": "#/components/schemas/Event.blueprint_loop.cancelled"
+          },
+          {
+            "$ref": "#/components/schemas/Event.blueprint_loop.auditing"
+          },
+          {
+            "$ref": "#/components/schemas/Event.blueprint_loop.restarted"
           },
           {
             "$ref": "#/components/schemas/Event.session.compacted"

@@ -22,6 +22,7 @@ Synergy currently spans several product surfaces and workflows:
 
 - A central `server` process that handles requests independently of a single working directory
 - A `web` client for browser-based interaction
+- A built-in Browser workspace backed by Playwright/Chromium for interactive page control
 - A `send` command for one-off, non-interactive execution
 - CLI commands for session, config, identity, and operational workflows
 - Configurable agents for orchestration, coding, research, writing, search, and review
@@ -29,6 +30,14 @@ Synergy currently spans several product surfaces and workflows:
 - MCP integration for external tool ecosystems
 - Channel integrations such as Feishu / Lark
 - Identity, login, notes, memory/engram, agenda, and community-facing capabilities
+
+### Built-In Browser Workspace
+
+The Web client includes a right-side Browser workspace that runs a real Playwright Chromium page, not an iframe or a screenshot-only mock. Users can navigate, search, click, type, scroll, upload, and download in the workspace while browser tools operate on the same underlying page and BrowserContext.
+
+Browser contexts are isolated by Synergy owner/session and persist tab state plus browser storage state. User-explicit navigation and page interaction run without approval prompts but still pass hard safety checks such as invalid protocols, sensitive local ports, and out-of-scope `file://` access. Agent-driven browser tools continue to use the active control profile, so guarded/autonomous/full-access behavior remains consistent with the rest of Synergy.
+
+Large browser diagnostics such as console, network, snapshots, assets, and downloads are surfaced in the Browser workspace developer drawer and compact tool cards instead of flooding the normal chat transcript.
 
 ## Quick Start
 
@@ -144,7 +153,7 @@ synergy send "message"         # Run a one-off prompt
 ```bash
 synergy config              # Manage configuration
 synergy config path         # Show config paths
-synergy config edit         # Open global config in an editor
+synergy config import       # Import selected config domains
 synergy login               # Bind to Holos platform
 synergy identity            # Work with identity-related features
 ```
@@ -189,22 +198,14 @@ If you update agent names, roles, or recommended usage, update this section and 
 
 ## Configuration
 
-Synergy configuration is layered.
+Synergy configuration is layered and domain-based.
 
 ### Global config
 
-The active global Config Set is loaded from `~/.synergy/config`.
-
-By default, the `default` Config Set uses:
+Global config is loaded from one canonical domain directory:
 
 ```bash
-~/.synergy/config/synergy.jsonc
-```
-
-Additional global Config Sets live under:
-
-```bash
-~/.synergy/config/config-sets/<name>/synergy.jsonc
+~/.synergy/config/synergy.d/
 ```
 
 Useful command:
@@ -215,11 +216,10 @@ synergy config path
 
 ### Project config
 
-Project-level config can be provided in the project tree, typically via:
+Project-level config uses the same domain layout under:
 
 ```bash
-synergy.jsonc
-synergy.json
+<project>/.synergy/synergy.d/
 ```
 
 Synergy also supports project-scoped extension directories under:
@@ -279,7 +279,7 @@ After `/worktree new` or `/worktree enter`, the switch applies to subsequent ses
 
 Worktree sessions treat the worktree as the active workspace boundary. File, search, attachment, and local shell tools route through Synergy's control profile gate before they run. In a worktree session, the original checkout and sibling worktrees are outside the active workspace unless the session is using `full_access`; those boundary checks are not skipped by allow-all or unattended execution.
 
-Control profiles are configured in `synergy.jsonc`:
+Control profiles are configured in the permissions domain (`80-permissions.jsonc`):
 
 ```jsonc
 {

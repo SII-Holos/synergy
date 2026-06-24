@@ -1,3 +1,4 @@
+import { formatLocalDateTime } from "@/util/time-format"
 import z from "zod"
 import { Tool } from "./tool"
 import { NoteStore } from "../note"
@@ -145,10 +146,23 @@ export const NoteReadTool = Tool.define("note_read", {
         const tags = note.tags.length > 0 ? note.tags.join(", ") : "none"
         const pinned = note.pinned ? "yes" : "no"
         const global = note.global ? "yes" : "no"
-        const updated = new Date(note.time.updated).toISOString()
+        const updated = formatLocalDateTime(note.time.updated)
+        const kind = note.kind ?? "note"
+        const blueprintLines =
+          kind === "blueprint"
+            ? [
+                `Description: ${note.blueprint?.description ?? "none"}`,
+                `Default Agent: ${note.blueprint?.defaultAgent ?? "none"}`,
+                `Active Loop: ${note.blueprint?.activeLoopID ?? "none"}`,
+                `Run Count: ${note.blueprint?.runCount ?? 0}`,
+                `Last Run: ${note.blueprint?.lastRunAt ? formatLocalDateTime(note.blueprint.lastRunAt) : "never"}`,
+              ]
+            : []
 
         const header = [
           `[${id}] ${note.title}`,
+          `Kind: ${kind}`,
+          ...blueprintLines,
           `Tags: ${tags}`,
           `Pinned: ${pinned} | Global: ${global}`,
           `Updated: ${updated}`,

@@ -45,7 +45,7 @@
   &:focus-within {
     max-height: 180px;
     align-items: flex-start;
-    padding: 12px 36px 14px 12px;
+    padding: 12px 64px 14px 12px;
   }
 
   &[data-opened] {
@@ -135,17 +135,27 @@
     }
   }
 
-  [data-slot="toast-close-button"] {
+  [data-slot="toast-close-button"],
+  [data-slot="toast-copy-button"] {
     position: absolute;
     top: 8px;
-    right: 8px;
     opacity: 0;
     pointer-events: none;
     transition: opacity 150ms;
   }
 
+  [data-slot="toast-close-button"] {
+    right: 8px;
+  }
+
+  [data-slot="toast-copy-button"] {
+    right: 36px;
+  }
+
   &:hover [data-slot="toast-close-button"],
-  &:focus-within [data-slot="toast-close-button"] {
+  &:focus-within [data-slot="toast-close-button"],
+  &:hover [data-slot="toast-copy-button"],
+  &:focus-within [data-slot="toast-copy-button"] {
     opacity: 1;
     pointer-events: auto;
   }
@@ -214,6 +224,13 @@
   min-width: 24px;
   text-align: right;
   margin-left: auto;
+  transition: opacity 150ms ease;
+}
+
+[data-component="toast"]:hover .toast-countdown,
+[data-component="toast"]:focus-within .toast-countdown {
+  opacity: 0;
+  pointer-events: none;
 }
 
 [data-type="success"] {

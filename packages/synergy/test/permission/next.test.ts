@@ -1,5 +1,6 @@
 import { test, expect } from "bun:test"
 import { PermissionNext } from "../../src/permission/next"
+import { PermissionRules } from "../../src/permission/rules"
 import { Instance } from "../../src/scope/instance"
 import { Storage } from "../../src/storage/storage"
 import { tmpdir } from "../fixture/fixture"
@@ -107,7 +108,7 @@ test("merge - preserves rule order", () => {
 })
 
 test("merge - config permission overrides default ask", () => {
-  // Simulates: defaults have "*": "ask", config sets bash: "allow"
+  // Simulates: defaults have "*": "ask", config overrides bash: "allow"
   const defaults: PermissionNext.Ruleset = [{ permission: "*", pattern: "*", action: "ask" }]
   const config: PermissionNext.Ruleset = [{ permission: "bash", pattern: "*", action: "allow" }]
   const merged = PermissionNext.merge(defaults, config)
@@ -119,7 +120,7 @@ test("merge - config permission overrides default ask", () => {
 })
 
 test("merge - config ask overrides default allow", () => {
-  // Simulates: defaults have bash: "allow", config sets bash: "ask"
+  // Simulates: defaults have bash: "allow", config overrides bash: "ask"
   const defaults: PermissionNext.Ruleset = [{ permission: "bash", pattern: "*", action: "allow" }]
   const config: PermissionNext.Ruleset = [{ permission: "bash", pattern: "*", action: "ask" }]
   const merged = PermissionNext.merge(defaults, config)
@@ -625,6 +626,37 @@ test("sessionRuleset - unattended sessions deny question", () => {
   })
 
   expect(PermissionNext.evaluate("question", "*", result).action).toBe("deny")
+})
+
+test("Reply schema accepts session and always approvals", () => {
+  expect(PermissionNext.Reply.parse("session")).toBe("session")
+  expect(PermissionNext.Reply.parse("always")).toBe("always")
+})
+
+test("reply - session approval records a session-scoped allow rule", async () => {
+  PermissionRules.clearSessionRules()
+  await using tmp = await tmpdir({ git: true })
+  await Instance.provide({
+    scope: await tmp.scope(),
+    fn: async () => {
+      const promise = PermissionNext.ask({
+        id: "permission_session_allow",
+        sessionID: "session_reply_session",
+        permission: "bash",
+        patterns: ["git status"],
+        metadata: {},
+        ruleset: [{ permission: "bash", pattern: "*", action: "ask" }],
+      })
+
+      await PermissionNext.reply({ requestID: "permission_session_allow", reply: "session" })
+      await expect(promise).resolves.toBeUndefined()
+
+      expect(
+        PermissionRules.evaluate("bash", "git status", PermissionRules.sessionRuleset("session_reply_session")).action,
+      ).toBe("allow")
+      expect(PermissionRules.sessionRuleset("other_session")).toHaveLength(0)
+    },
+  })
 })
 
 // === Workspace boundary / non-bypassable tests ===

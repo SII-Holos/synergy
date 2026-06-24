@@ -16,6 +16,9 @@ import { Plugin } from "../plugin"
 import MAX_STEPS from "./prompt/max-steps.txt"
 import CORTEX_REMINDER from "./prompt/cortex-reminder.txt"
 import PLANNING_REMINDER from "./prompt/planning-reminder.txt"
+import PLAN_MODE from "./prompt/plan-mode.txt"
+import PLAN_MODE_SYNERGY from "./prompt/plan-mode-synergy.txt"
+import PLAN_MODE_SYNERGY_MAX from "./prompt/plan-mode-synergy-max.txt"
 import { defer } from "../util/defer"
 import { Command } from "../command/command"
 import "../project/worktree-command"
@@ -58,6 +61,7 @@ import "./loop-signals"
 import "../engram/chronicler"
 import { ExperienceEncoder } from "../engram/experience-encoder"
 import { GitHealth } from "../project/git-health"
+import { BlueprintLoopStore } from "../blueprint/loop-store"
 
 export { InvokeInput, resolveInputParts } from "./input"
 
@@ -308,9 +312,8 @@ export namespace SessionInvoke {
           const topLevelProfile = await Config.get()
             .then((c) => c.controlProfile)
             .catch(() => undefined)
-          const profileId = ControlProfileCompiler.normalize(
-            session.controlProfile ?? agent.controlProfile ?? topLevelProfile,
-          )
+          const sessionProfile = session?.id ? await Session.resolveControlProfile(session.id) : undefined
+          const profileId = ControlProfileCompiler.normalize(sessionProfile ?? agent.controlProfile ?? topLevelProfile)
           const adapter = ExternalAgent.getAdapter(agent.external.adapter, sessionID)
           if (!adapter) {
             log.error("external adapter not found", { adapter: agent.external.adapter, sessionID })
@@ -470,9 +473,11 @@ export namespace SessionInvoke {
         // Layered system prompt assembly: stable → semi-stable → dynamic
         // This ordering maximizes prompt caching by keeping static content first.
         const systemParts: string[] = []
+        let systemCacheBreakpoint: number | undefined
 
         // Layer 1: Static — AGENTS.md instructions (stable within session)
         systemParts.push(...customParts)
+        if (systemParts.length > 0) systemCacheBreakpoint = systemParts.length - 1
 
         // Layer 1.5: Semi-static — permission context (stable per session)
         try {
@@ -483,9 +488,8 @@ export namespace SessionInvoke {
           const topLevelProfile = await Config.get()
             .then((c) => c.controlProfile)
             .catch(() => undefined)
-          const profileId = ControlProfileCompiler.normalize(
-            session.controlProfile ?? agent.controlProfile ?? topLevelProfile,
-          )
+          const sessionProfile = session?.id ? await Session.resolveControlProfile(session.id) : undefined
+          const profileId = ControlProfileCompiler.normalize(sessionProfile ?? agent.controlProfile ?? topLevelProfile)
           const resolved = await ControlProfileCompiler.resolve(profileId, {
             workspace,
             workspaceType: workspaceInfo?.type === "git_worktree" ? "worktree" : "main",
@@ -494,6 +498,7 @@ export namespace SessionInvoke {
           if (resolved.valid) {
             const ctx = buildPermissionContext(resolved, workspace)
             systemParts.push(ctx)
+            systemCacheBreakpoint = systemParts.length - 1
           }
         } catch {
           // Profile resolution failure is non-fatal — skip permission context
@@ -501,6 +506,32 @@ export namespace SessionInvoke {
 
         // Layer 2: Semi-static — cortex context (stable during execution)
         if (cortexExecutionContext) systemParts.push(cortexExecutionContext)
+
+        // Layer 2.5: Semi-static — Plan Mode / BlueprintLoop context
+        const sessionBlueprint = session?.blueprint
+        if (sessionBlueprint?.planMode) {
+          systemParts.push(PLAN_MODE.trim())
+          if (agent.name === "synergy") systemParts.push(PLAN_MODE_SYNERGY.trim())
+          if (agent.name === "synergy-max") systemParts.push(PLAN_MODE_SYNERGY_MAX.trim())
+        }
+        if (sessionBlueprint?.loopID) {
+          const loop = await BlueprintLoopStore.get(scopeID, sessionBlueprint.loopID).catch(() => undefined)
+          if (loop) {
+            systemParts.push(
+              [
+                "<blueprint-loop-context>",
+                `Active BlueprintLoop: ${loop.id}`,
+                `Blueprint Note: ${loop.noteID}`,
+                `Title: ${loop.title}`,
+                `Description: ${loop.description ?? "N/A"}`,
+                `Status: ${loop.status}`,
+                "",
+                `You are executing this BlueprintLoop. Before doing implementation work, call note_read with ids=["${loop.noteID}"] and read the full Blueprint content. Continue working until fully implemented. When ready for audit, call blueprint_loop_finish with status="auditing".`,
+                "</blueprint-loop-context>",
+              ].join("\n"),
+            )
+          }
+        }
 
         // Layer 3: Dynamic — memory/experience context (varies per step)
         if (memoryResult) {
@@ -557,6 +588,7 @@ export namespace SessionInvoke {
         const promptPlan = await PromptBudgeter.buildPlan({
           model,
           system: systemParts,
+          systemCacheBreakpoint,
           messages: preparedMessages,
           toolDefinitions,
         })
@@ -619,6 +651,7 @@ export namespace SessionInvoke {
           abort: combinedAbort,
           sessionID,
           system: promptPlan.system,
+          systemCacheBreakpoint: promptPlan.systemCacheBreakpoint,
           messages: promptPlan.messages,
           tools,
           model,

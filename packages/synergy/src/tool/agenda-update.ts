@@ -1,3 +1,4 @@
+import { formatLocalDateTime } from "@/util/time-format"
 import z from "zod"
 import { Tool } from "./tool"
 import { Agenda, AgendaTypes } from "../agenda"
@@ -55,7 +56,7 @@ export const AgendaUpdateTool = Tool.define("agenda_update", {
     const item = await Agenda.update(params.id, patch, Instance.scope.id)
 
     const lines = ["Agenda item updated.", `ID: ${item.id}`, `Title: ${item.title}`, `Status: ${item.status}`]
-    if (item.state.nextRunAt) lines.push(`Next run: ${new Date(item.state.nextRunAt).toISOString()}`)
+    if (item.state.nextRunAt) lines.push(`Next run: ${formatLocalDateTime(item.state.nextRunAt)}`)
     if (item.sessionMode) lines.push(`Session mode: ${item.sessionMode}`)
     if (item.agent) lines.push(`Agent: ${item.agent}`)
     if (item.model) lines.push(`Model: ${item.model.providerID}/${item.model.modelID}`)

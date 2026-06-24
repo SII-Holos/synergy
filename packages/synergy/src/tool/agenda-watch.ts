@@ -1,3 +1,4 @@
+import { formatLocalDateTime } from "@/util/time-format"
 import z from "zod"
 import { Tool } from "./tool"
 import { Agenda } from "../agenda"
@@ -78,7 +79,7 @@ export const AgendaWatchTool = Tool.define("agenda_watch", {
     })
 
     const delayMs = AgendaStore.parseDuration(params.delay)
-    const firesAt = new Date(Date.now() + delayMs).toISOString()
+    const firesAt = formatLocalDateTime(Date.now() + delayMs)
 
     return {
       title: `Watch: ${params.title}`,

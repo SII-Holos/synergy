@@ -108,6 +108,32 @@ describe("NoteStore", () => {
     })
   })
 
+  test("getAny resolves notes outside the active and global scopes", async () => {
+    await using sourceTmp = await tmpdir()
+    await using activeTmp = await tmpdir()
+    const sourceScope = (await Scope.fromDirectory(sourceTmp.path)).scope
+    const activeScope = (await Scope.fromDirectory(activeTmp.path)).scope
+
+    let noteID = ""
+    await Instance.provide({
+      scope: sourceScope,
+      fn: async () => {
+        const note = await NoteStore.create({
+          title: "Archived source note",
+        })
+        noteID = note.id
+      },
+    })
+
+    await Instance.provide({
+      scope: activeScope,
+      fn: async () => {
+        const note = await NoteStore.getAny(activeScope.id, noteID)
+        expect(note.title).toBe("Archived source note")
+      },
+    })
+  })
+
   test("listMetaGrouped returns grouped note metadata without content and with searchText", async () => {
     await using tmp = await tmpdir()
     const scope = (await Scope.fromDirectory(tmp.path)).scope

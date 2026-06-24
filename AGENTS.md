@@ -227,27 +227,37 @@ Treat schema and data migrations as a first-class architectural concern.
 
 ### Current config locations
 
-Primary global config uses the active global Config Set under:
+Primary global config uses one canonical domain directory under:
 
 ```bash
-~/.synergy/config
+~/.synergy/config/synergy.d/
 ```
 
-The `default` Config Set maps to:
+The domain files are:
 
 ```bash
-~/.synergy/config/synergy.jsonc
+00-general.jsonc
+10-models.jsonc
+20-providers.jsonc
+30-engram.jsonc
+40-mcp.jsonc
+50-plugins.jsonc
+60-agents.jsonc
+70-commands.jsonc
+80-permissions.jsonc
+90-channels.jsonc
+100-holos.jsonc
+110-email.jsonc
+120-runtime.jsonc
 ```
 
-Project-level config is resolved from the working tree and may include:
+Project-level config uses the same domain layout under:
 
 ```bash
-synergy.jsonc
-synergy.json
-.synergy/
+<project>/.synergy/synergy.d/
 ```
 
-When editing or documenting config, prefer `synergy.jsonc` as the primary file name unless you are specifically describing compatibility behavior.
+Legacy monolithic config files are migration inputs only. Do not add new runtime load paths or long-term compatibility branches for them.
 
 ### Config-aware work
 
@@ -292,7 +302,7 @@ Adding a new tool requires registering it in **four** places for full UI support
 2. **`packages/ui/src/components/message-part.tsx`** — add a `case` in `getToolInfo()` returning `{ icon, title, subtitle, args }`. This drives the tool card display for both direct renders and the task summary list.
 3. **`packages/ui/src/components/tool-renders.tsx`** — append the tool name to its group array (e.g. `inspireToolNames`, `researchToolNames`) so `ToolRegistry.register` picks it up with the shared render logic.
 4. **`packages/synergy/src/tool/taxonomy.ts`** — add an entry with the correct domain kind and traits (`stateful`, `externalIO`).
-5. **`packages/ui/src/components/semantic-tool-classifier.ts`** — add the tool to `TOOL_CATEGORIES` with the appropriate semantic category, so the fallback classifier works if steps 2–3 are missed.
+5. **`packages/ui/src/components/tool/classifier.ts`** — add the tool to `TOOL_CATEGORIES` with the appropriate semantic category, so the fallback classifier works if steps 2–3 are missed.
 
 Skipping any of these causes the tool to fall back to a generic icon and label, or to miss permission/state tracking.
 

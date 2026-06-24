@@ -44,16 +44,18 @@ export function blockUnresolvedMessage(
 ): string {
   const phrase = op === "delete" ? `DEL.BLK ${line}` : `SWAP.BLK ${line}:`
   const fallback = op === "delete" ? `DEL ${line}${HL_RANGE_SEP}M` : `SWAP ${line}${HL_RANGE_SEP}M:`
-  let message = `\`${phrase}\` could not resolve a syntactic block beginning on line ${line} (unsupported language, blank/closer line, or parse error). Use \`${fallback}\` with explicit lines.`
+  let message =
+    `\`${phrase}\` could not resolve a syntactic block beginning on line ${line} (unsupported language, blank/closer line, or parse error). ` +
+    `Do not retry the same block op. Do not anchor on a closing delimiter. ` +
+    `Run view_file around line ${line} and either anchor on the true opener or use \`${fallback}\` with explicit lines.`
   if (fileLines) {
     const context = formatAnchoredContext([line], fileLines)
     if (context.length > 0) message += `\n\n${context.join("\n")}`
   }
   return message
 }
-
 export const BLOCK_RESOLVER_UNAVAILABLE =
-  "`SWAP.BLK`/`DEL.BLK`/`INS.BLK.POST` are not available here (no block resolver configured). Use a concrete line range."
+  "Block ops not available for this file type. Use tight explicit `SWAP`/`DEL` ranges instead."
 
 export function insertAfterBlockCloserLoweredWarning(line: number): string {
   return `\`INS.BLK.POST ${line}:\` anchors on a closing delimiter, so it was applied as plain \`INS.POST ${line}:\`. Anchor on the line that OPENS the construct.`
@@ -87,7 +89,7 @@ export const HEADTAIL_DRIFT_WARNING =
   "Applied the `INS.HEAD:`/`INS.TAIL:` edit despite a stale snapshot tag (file changed since your read) — head/tail position is content-independent. Re-read if the drift was unexpected."
 
 export function missingSnapshotTagMessage(sectionPath: string): string {
-  return `Missing hashline snapshot tag for ${sectionPath}; use \`${HL_FILE_PREFIX}${sectionPath}${HL_FILE_HASH_SEP}tag${HL_FILE_SUFFIX}\` from your latest read/search output. To create a new file, use the write tool.`
+  return `Missing hashline snapshot tag for ${sectionPath}; use \`${HL_FILE_PREFIX}${sectionPath}${HL_FILE_HASH_SEP}tag${HL_FILE_SUFFIX}\` from your latest view_file/scan_files/parse_code output. Do not fabricate or guess tags. Do not reuse tags from memory or old responses. To create a new file, use save_file.`
 }
 
 function formatLineRanges(lines: readonly number[]): string {
@@ -115,7 +117,9 @@ export function unseenLinesMessage(sectionPath: string, unseenLines: readonly nu
   return (
     `This edit anchors to lines ${ranges} of ${sectionPath} that ` +
     `${HL_FILE_PREFIX}${sectionPath}${HL_FILE_HASH_SEP}${tag}${HL_FILE_SUFFIX} never displayed (it showed a ` +
-    `partial range, a search hit, or a folded summary). Re-read them in full first with a ranged read like ` +
+    `partial range, a search hit, or a folded summary). ` +
+    `Do not expand the patch to compensate. ` +
+    `Re-read the exact unseen range first with a ranged call like ` +
     `\`${sectionPath}:${selector}\` — it skips summarization and mints a fresh tag (a plain re-read just re-folds ` +
     `them) — then re-issue the edit.`
   )
@@ -133,7 +137,29 @@ export function blockSingleLineMessage(line: number, op: BlockOp): string {
         : `SWAP ${line}${HL_RANGE_SEP}${line}:`
   return (
     `\`${blockForm} ${line}\` resolved a single-line block — line ${line} is a bare statement, not the opening line ` +
-    `of a multi-line construct. For that one line use \`${plainForm}\`; to act on an enclosing construct, anchor ${blockForm} ` +
+    `of a multi-line construct. Do not retry the block op on the same line. ` +
+    `For that one line use \`${plainForm}\`; to act on an enclosing construct, anchor ${blockForm} ` +
     `on the line that OPENS it (e.g. its \`function\`/\`if\`/\`case\` header), never a statement inside it.`
   )
 }
+
+// ── No-op detection warnings ──
+
+export function noopSoftWarning(path: string, count: number): string {
+  return (
+    `Edits to \`${path}\` parsed cleanly but produced no change (attempt ${count}): the body rows already match the file. ` +
+    `The bug is elsewhere — re-read the file with view_file before issuing another edit. ` +
+    `Do NOT widen the payload or add lines; verify the anchor first.`
+  )
+}
+
+export function noopLoopHardStop(path: string, count: number): string {
+  return (
+    `STOP. This exact revise_file patch has produced a byte-identical no-op ${count} times in a row for \`${path}\`. ` +
+    `Cease re-issuing this payload. Either the intended change is already present, or your anchor is wrong. ` +
+    `Run view_file on the current file and produce a different patch from the fresh tag.`
+  )
+}
+
+export const WIDENED_SWAP_WARNING =
+  "Boundary repair applied: your SWAP payload restated unchanged lines that may have been dropped as keepers. Next time use a tight range for changed lines only, or INS.POST/INS.PRE for pure additions."

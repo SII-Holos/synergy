@@ -14,7 +14,7 @@ use windows_sys::Win32::UI::Shell::{
     ShellExecuteExW, SEE_MASK_NOCLOSEPROCESS, SHELLEXECUTEINFOW,
 };
 
-const TOKEN_ELEVATION: u32 = 20; // TOKEN_INFORMATION_CLASS value for TokenElevation
+const TOKEN_ELEVATION: i32 = 20; // TOKEN_INFORMATION_CLASS value for TokenElevation
 const TOKEN_QUERY: u32 = 0x0008;
 
 /// TOKEN_ELEVATION struct — 4 bytes, alignment 4
@@ -43,7 +43,7 @@ pub fn is_elevated() -> bool {
 
 #[cfg(target_os = "windows")]
 unsafe fn is_elevated_impl() -> bool {
-    let mut token: HANDLE = 0;
+    let mut token: HANDLE = std::ptr::null_mut();
     let ok = OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut token);
     if ok == 0 {
         return false;
@@ -126,13 +126,13 @@ unsafe fn self_elevate_impl(
         lpParameters: params_wide.as_ptr(),
         lpDirectory: std::ptr::null(),
         nShow: 0,
-        hInstApp: 0,
+        hInstApp: std::ptr::null_mut(),
         lpIDList: std::ptr::null_mut(),
         lpClass: std::ptr::null(),
-        hkeyClass: 0,
+        hkeyClass: std::ptr::null_mut(),
         dwHotKey: 0,
-        hMonitor: 0,
-        hProcess: 0,
+        Anonymous: unsafe { std::mem::zeroed() },
+        hProcess: std::ptr::null_mut(),
     };
 
     let ok = ShellExecuteExW(&mut sei);
@@ -146,7 +146,7 @@ unsafe fn self_elevate_impl(
 
     // User approved — we have a process handle but don't need to wait for it.
     // The elevated process will connect back to our pipe server.
-    if sei.hProcess != 0 {
+    if !sei.hProcess.is_null() {
         CloseHandle(sei.hProcess);
     }
 

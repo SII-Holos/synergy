@@ -3,7 +3,7 @@ import { ModelsDev } from "../provider/models"
 import { Provider } from "../provider/provider"
 import { ProviderTransform } from "../provider/transform"
 import { Config } from "./config"
-import { ConfigSet } from "./set"
+import { ConfigDomain } from "./domain"
 import { RuntimeReload } from "../runtime/reload"
 import { Global } from "../global"
 import { BunProc } from "../util/bun"
@@ -1435,9 +1435,8 @@ export namespace ConfigSetup {
   }
 
   async function writeGlobalConfigFile(config: Config.Info): Promise<string> {
-    const activeSet = await ConfigSet.activeName()
-    await Config.configSetUpdate(activeSet, config)
-    return ConfigSet.filePath(activeSet)
+    await Config.updateGlobal(config)
+    return Config.globalPath()
   }
 
   export async function finalizeConfig(
@@ -1465,47 +1464,7 @@ export namespace ConfigSetup {
     return { filepath, validation: resolvedValidation }
   }
 
-  const TOP_LEVEL_KEYS = [
-    "$schema",
-    "theme",
-    "keybinds",
-    "logLevel",
-    "server",
-    "command",
-    "watcher",
-    "plugin",
-    "snapshot",
-    "autoupdate",
-    "disabled_providers",
-    "enabled_providers",
-    "model",
-    "nano_model",
-    "mini_model",
-    "mid_model",
-    "thinking_model",
-    "long_context_model",
-    "creative_model",
-    "vision_model",
-    "default_agent",
-    "username",
-    "agent",
-    "embedding",
-    "rerank",
-    "engram",
-    "mcp",
-    "channel",
-    "formatter",
-    "lsp",
-    "instructions",
-    "layout",
-    "permission",
-    "tools",
-    "enterprise",
-    //     "agora",
-    "compaction",
-    "experimental",
-    "category",
-  ]
+  const TOP_LEVEL_KEYS = ConfigDomain.definitions.flatMap((domain) => domain.ownedKeys.map(String))
 
   function suggestKey(key: string, candidates: string[]): string | undefined {
     let best: string | undefined
@@ -1622,7 +1581,8 @@ export namespace ConfigSetup {
       throw new Error(parsed.error.issues.map(formatIssue).join(", "))
     }
 
-    return writeGlobalConfigFile(parsed.data)
+    await Config.domainImportApply({ config: parsed.data, yes: true })
+    return Config.globalPath()
   }
 
   export async function readCurrentConfig(): Promise<Record<string, unknown>> {

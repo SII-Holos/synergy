@@ -44,7 +44,7 @@ describe("EnforcementGate path classification", () => {
       filePath: "/Users/test/synergy/src/index.ts",
     })
 
-    const external = result.capabilities.find((c: any) => c.class === "file_external")!
+    const external = result.capabilities.find((c: any) => c.class === "file_external_read")!
     expect(external).toBeDefined()
     expect(external.nonBypassable).toBe(true)
   })
@@ -59,7 +59,7 @@ describe("EnforcementGate path classification", () => {
       filePath: "/Users/test/.ssh/id_rsa",
     })
 
-    const external = result.capabilities.find((c: any) => c.class === "file_external")!
+    const external = result.capabilities.find((c: any) => c.class === "file_external_read")!
     expect(external).toBeDefined()
     expect(external.nonBypassable).toBe(true)
   })
@@ -90,7 +90,7 @@ describe("EnforcementGate path classification", () => {
       filePath: "/tmp/output.log",
     })
 
-    const external = result.capabilities.find((c: any) => c.class === "file_external")!
+    const external = result.capabilities.find((c: any) => c.class === "file_external_write")!
     expect(external).toBeDefined()
     expect(external.nonBypassable).toBe(true)
   })
@@ -105,7 +105,7 @@ describe("EnforcementGate path classification", () => {
       input: "[/tmp/output.log#A1B2]\nSWAP 1..1:\n+updated\n",
     })
 
-    const external = result.capabilities.find((c: any) => c.class === "file_external")!
+    const external = result.capabilities.find((c: any) => c.class === "file_external_write")!
     expect(external).toBeDefined()
     expect(external.nonBypassable).toBe(true)
   })
@@ -120,7 +120,7 @@ describe("EnforcementGate path classification", () => {
       input: "[/tmp/data.log#1a2b]\nSWAP 1..1:\n+updated\n",
     })
 
-    const external = result.capabilities.find((c: any) => c.class === "file_external")!
+    const external = result.capabilities.find((c: any) => c.class === "file_external_write")!
     expect(external).toBeDefined()
     expect(external.nonBypassable).toBe(true)
   })
@@ -135,7 +135,7 @@ describe("EnforcementGate path classification", () => {
       input: "[src/a.ts#a1b2]\nSWAP 1..1:\n+x\n[src/b.ts#c3d4]\nDEL 2..2\n",
     })
 
-    const caps = result.capabilities.filter((c: any) => c.class === "file_external" || c.class === "file_write")
+    const caps = result.capabilities.filter((c: any) => c.class === "file_external_write" || c.class === "file_write")
     const paths = caps.flatMap((c: any) => c.paths ?? [])
     expect(paths).toContain("src/a.ts")
     expect(paths).toContain("src/b.ts")
@@ -190,6 +190,8 @@ describe("EnforcementGate shell classification", () => {
     const classNames = result.capabilities.map((c: any) => c.class)
     expect(classNames).toContain("shell_read")
     expect(classNames).not.toContain("file_external")
+    expect(classNames).not.toContain("file_external_read")
+    expect(classNames).not.toContain("file_external_write")
   })
 
   test("rm -rf is classified as shell_destructive", async () => {
@@ -220,8 +222,7 @@ describe("EnforcementGate shell classification", () => {
     const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")!
     expect(destructive).toBeDefined()
 
-    const external = result.capabilities.find((c: any) => c.class === "file_external")!
-    expect(external).toBeDefined()
+    const external = result.capabilities.find((c: any) => c.class === "file_external_write")!
   })
 
   test("command targeting external path produces file_external capability", async () => {
@@ -234,7 +235,7 @@ describe("EnforcementGate shell classification", () => {
       command: "cat /etc/passwd",
     })
 
-    const external = result.capabilities.find((c: any) => c.class === "file_external")!
+    const external = result.capabilities.find((c: any) => c.class === "file_external_read")!
     expect(external).toBeDefined()
     expect(external.nonBypassable).toBe(true)
     expect(external.paths).toContain("/etc/passwd")
@@ -421,7 +422,7 @@ describe("isDestructive boundary correctness", () => {
 // 3. Network classification
 // ------------------------------------------------------------------
 describe("EnforcementGate network classification", () => {
-  test("webfetch tool classifies as network_request", async () => {
+  test("webfetch tool classifies as network_read", async () => {
     const gate = await EnforcementGate.create({
       activeWorkspace: "/Users/test/synergy-control-profile",
       workspaceType: "worktree",
@@ -431,8 +432,9 @@ describe("EnforcementGate network classification", () => {
       url: "https://example.com/api/data",
     })
 
-    const net = result.capabilities.find((c: any) => c.class === "network_request")!
+    const net = result.capabilities.find((c: any) => c.class === "network_read")!
     expect(net).toBeDefined()
+    expect(net.nonBypassable).toBe(false)
   })
 
   test("external communication and platform tools classify as nonBypassable", async () => {
@@ -446,8 +448,8 @@ describe("EnforcementGate network classification", () => {
       nonBypassable: true,
     })
     expect(gate.classify("arxiv_search", {}).capabilities).toContainEqual({
-      class: "network_request",
-      nonBypassable: true,
+      class: "network_read",
+      nonBypassable: false,
     })
 
     const inspire = gate.classify("inspire_submit", {}).capabilities
@@ -841,7 +843,7 @@ describe("EnforcementGate multi-capability classification", () => {
     const classNames = result.capabilities.map((c: any) => c.class)
     expect(classNames).toContain("shell")
     expect(classNames).toContain("network_request")
-    expect(classNames).toContain("file_external")
+    expect(classNames).toContain("file_external_write")
   })
 
   test("multi-capability result preserves nonBypassable on external capabilities", async () => {
@@ -856,7 +858,7 @@ describe("EnforcementGate multi-capability classification", () => {
 
     // All capabilities that touch external should be nonBypassable
     for (const cap of result.capabilities) {
-      if (cap.class === "file_external" || cap.class === "network_request") {
+      if (cap.class === "file_external_write" || cap.class === "network_request") {
         expect(cap.nonBypassable).toBe(true)
       }
     }
@@ -878,7 +880,7 @@ describe("EnforcementGate readRoots", () => {
       filePath: "/Users/test/.synergy/config/synergy.jsonc",
     })
 
-    const ext = result.capabilities.find((c: any) => c.class === "file_external")!
+    const ext = result.capabilities.find((c: any) => c.class === "file_external_read")!
     expect(ext).toBeUndefined()
 
     const read = result.capabilities.find((c: any) => c.class === "file_read")!
@@ -927,7 +929,7 @@ describe("EnforcementGate readRoots", () => {
       filePath: "/Users/test/.synergy/config/synergy.jsonc",
     })
 
-    const ext = result.capabilities.find((c: any) => c.class === "file_external")!
+    const ext = result.capabilities.find((c: any) => c.class === "file_external_write")!
     expect(ext).toBeDefined()
     expect(ext.nonBypassable).toBe(true)
 
@@ -950,7 +952,7 @@ describe("EnforcementGate readRoots", () => {
     expect(envelope.decision).toBe("allow")
   })
 
-  test("autonomous allows external file reads with readRoots", async () => {
+  test("autonomous asks before reading protected credential paths", async () => {
     const gate = await EnforcementGate.create({
       activeWorkspace: "/Users/test/my-project",
       workspaceType: "main",
@@ -962,8 +964,8 @@ describe("EnforcementGate readRoots", () => {
       file_path: "/Users/test/.ssh/id_rsa",
     })
 
-    // autonomous allows file_external — reading outside workspace is permitted
-    expect(envelope.decision).toBe("allow")
+    expect(envelope.decision).toBe("ask")
+    expect(envelope.capabilities.some((cap: any) => cap.class === "protected_op")).toBe(true)
   })
 
   test("scan_document inside readRoots is allowed in autonomous mode", async () => {
@@ -992,7 +994,7 @@ describe("EnforcementGate readRoots", () => {
       filePath: "/Users/test/.synergy/cache/models.json",
     })
 
-    const ext = result.capabilities.find((c: any) => c.class === "file_external")!
+    const ext = result.capabilities.find((c: any) => c.class === "file_external_read")!
     expect(ext).toBeUndefined()
   })
 
@@ -1542,7 +1544,7 @@ describe("EnforcementGate path extraction — NON_PATH_PATTERNS", () => {
     })
     // A git commit message containing "POST /api" should not flag /POST as a filesystem path
     const result = gate.classify("bash", { command: "git commit -m 'POST /api'" })
-    const external = result.capabilities.find((c: any) => c.class === "file_external")!
+    const external = result.capabilities.find((c: any) => c.class === "file_external_read")!
     expect(external).toBeUndefined()
   })
 
@@ -1552,7 +1554,7 @@ describe("EnforcementGate path extraction — NON_PATH_PATTERNS", () => {
       workspaceType: "worktree",
     })
     const result = gate.classify("bash", { command: "echo /ab" })
-    const external = result.capabilities.find((c: any) => c.class === "file_external")!
+    const external = result.capabilities.find((c: any) => c.class === "file_external_read")!
     expect(external).toBeUndefined()
   })
 
@@ -1562,7 +1564,7 @@ describe("EnforcementGate path extraction — NON_PATH_PATTERNS", () => {
       workspaceType: "worktree",
     })
     const result = gate.classify("bash", { command: "ls /usr/bin/gcc" })
-    const external = result.capabilities.find((c: any) => c.class === "file_external")!
+    const external = result.capabilities.find((c: any) => c.class === "file_external_read")!
     expect(external).toBeUndefined()
   })
 
@@ -1574,7 +1576,7 @@ describe("EnforcementGate path extraction — NON_PATH_PATTERNS", () => {
     // Anything containing :// should be filtered out of paths
     const result = gate.classify("bash", { command: "echo url https://example.com/page" })
     // The URL should not produce a file_external capability for the /page path
-    const external = result.capabilities.find((c: any) => c.class === "file_external")!
+    const external = result.capabilities.find((c: any) => c.class === "file_external_read")!
     if (external) {
       expect(external.paths).not.toContain("https://example.com/page")
     }
@@ -1591,7 +1593,7 @@ describe("EnforcementGate extended path extraction", () => {
       workspaceType: "worktree",
     })
     const result = gate.classify("bash", { command: "cat /etc/hosts" })
-    const external = result.capabilities.find((c: any) => c.class === "file_external")!
+    const external = result.capabilities.find((c: any) => c.class === "file_external_read")!
     expect(external).toBeDefined()
     expect(external.paths).toContain("/etc/hosts")
   })
@@ -1602,7 +1604,7 @@ describe("EnforcementGate extended path extraction", () => {
       workspaceType: "main",
     })
     const result = gate.classify("bash", { command: "cat data.txt", workdir: "/Users/test/my-project" })
-    const external = result.capabilities.find((c: any) => c.class === "file_external")!
+    const external = result.capabilities.find((c: any) => c.class === "file_external_read")!
     // data.txt relative to workdir — inside workspace, shouldn't be external
     expect(external).toBeUndefined()
   })
@@ -1613,7 +1615,7 @@ describe("EnforcementGate extended path extraction", () => {
       workspaceType: "main",
     })
     const result = gate.classify("bash", { command: "mkdir -m 755 testdir", workdir: "/Users/test/my-project" })
-    const external = result.capabilities.find((c: any) => c.class === "file_external")!
+    const external = result.capabilities.find((c: any) => c.class === "file_external_read")!
     // testdir is inside workspace, 755 is a flag value (skipped), no external
     if (external) {
       const paths = external.paths ?? []
@@ -1627,7 +1629,7 @@ describe("EnforcementGate extended path extraction", () => {
       workspaceType: "main",
     })
     const result = gate.classify("bash", { command: "chmod 755 file", workdir: "/Users/test/my-project" })
-    const external = result.capabilities.find((c: any) => c.class === "file_external")!
+    const external = result.capabilities.find((c: any) => c.class === "file_external_read")!
     // file is inside workspace, 755 is numeric mode (skipped)
     if (external) {
       const paths = external.paths ?? []
@@ -1641,7 +1643,7 @@ describe("EnforcementGate extended path extraction", () => {
       workspaceType: "main",
     })
     const result = gate.classify("bash", { command: "chmod 755 /etc/secret" })
-    const external = result.capabilities.find((c: any) => c.class === "file_external")!
+    const external = result.capabilities.find((c: any) => c.class === "file_external_write")!
     expect(external).toBeDefined()
     expect(external.paths).toContain("/etc/secret")
     expect(external.paths).not.toContain(expect.stringMatching(/755$/))
@@ -1656,7 +1658,9 @@ describe("EnforcementGate extended path extraction", () => {
       command: "dd if=/dev/zero of=output.img",
       workdir: "/Users/test/synergy-control-profile",
     })
-    const caps = result.capabilities.filter((c: any) => c.class === "file_external" || c.class === "shell_destructive")
+    const caps = result.capabilities.filter(
+      (c: any) => c.class === "file_external_read" || c.class === "shell_destructive",
+    )
     // dd should produce shell_destructive
     expect(caps.some((c: any) => c.class === "shell_destructive")).toBe(true)
   })
@@ -1667,7 +1671,7 @@ describe("EnforcementGate extended path extraction", () => {
       workspaceType: "worktree",
     })
     const result = gate.classify("bash", { command: "tee /tmp/output.log" })
-    const external = result.capabilities.find((c: any) => c.class === "file_external")!
+    const external = result.capabilities.find((c: any) => c.class === "file_external_write")!
     expect(external).toBeDefined()
     expect(external.paths).toContain("/tmp/output.log")
   })
@@ -1678,7 +1682,7 @@ describe("EnforcementGate extended path extraction", () => {
       workspaceType: "main",
     })
     const result = gate.classify("bash", { command: "ln -s /etc/hosts symlink", workdir: "/Users/test/my-project" })
-    const external = result.capabilities.find((c: any) => c.class === "file_external")!
+    const external = result.capabilities.find((c: any) => c.class === "file_external_write")!
     // /etc/hosts is external
     expect(external).toBeDefined()
     expect(external.paths).toContain("/etc/hosts")
@@ -1690,7 +1694,7 @@ describe("EnforcementGate extended path extraction", () => {
       workspaceType: "main",
     })
     const result = gate.classify("bash", { command: "install /tmp/src /tmp/dst" })
-    const external = result.capabilities.find((c: any) => c.class === "file_external")!
+    const external = result.capabilities.find((c: any) => c.class === "file_external_write")!
     expect(external).toBeDefined()
   })
 
@@ -1701,7 +1705,7 @@ describe("EnforcementGate extended path extraction", () => {
     })
     const result = gate.classify("bash", { command: "node script.js", workdir: "/Users/test/my-project" })
     // script.js is inside workspace, should not produce file_external
-    const external = result.capabilities.find((c: any) => c.class === "file_external")!
+    const external = result.capabilities.find((c: any) => c.class === "file_external_read")!
     expect(external).toBeUndefined()
   })
 })
@@ -1908,70 +1912,70 @@ describe("EnforcementGate new tool classification", () => {
     expect(cap.nonBypassable).toBe(false)
   })
 
-  // ── Stateful orchestration tools → file_write ─────────────────
+  // ── Stateful orchestration tools → session_state ──────────────
 
-  test("dagwrite classifies as file_write (stateful DAG mutation)", async () => {
+  test("dagwrite classifies as session_state (DAG mutation, internal coordination)", async () => {
     const gate = await EnforcementGate.create({
       activeWorkspace: "/Users/test/synergy-control-profile",
       workspaceType: "worktree",
     })
     const result = gate.classify("dagwrite", {})
-    const cap = result.capabilities.find((c: any) => c.class === "file_write")!
+    const cap = result.capabilities.find((c: any) => c.class === "session_state")!
     expect(cap).toBeDefined()
     expect(cap.nonBypassable).toBe(false)
   })
 
-  test("dagpatch classifies as file_write (stateful DAG patching)", async () => {
+  test("dagpatch classifies as session_state (lightweight DAG patching)", async () => {
     const gate = await EnforcementGate.create({
       activeWorkspace: "/Users/test/synergy-control-profile",
       workspaceType: "worktree",
     })
     const result = gate.classify("dagpatch", {})
-    const cap = result.capabilities.find((c: any) => c.class === "file_write")!
+    const cap = result.capabilities.find((c: any) => c.class === "session_state")!
     expect(cap).toBeDefined()
     expect(cap.nonBypassable).toBe(false)
   })
 
-  test("todowrite classifies as file_write (stateful todo mutation)", async () => {
+  test("todowrite classifies as session_state (lightweight todo mutation)", async () => {
     const gate = await EnforcementGate.create({
       activeWorkspace: "/Users/test/synergy-control-profile",
       workspaceType: "worktree",
     })
     const result = gate.classify("todowrite", {})
-    const cap = result.capabilities.find((c: any) => c.class === "file_write")!
+    const cap = result.capabilities.find((c: any) => c.class === "session_state")!
     expect(cap).toBeDefined()
     expect(cap.nonBypassable).toBe(false)
   })
 
-  test("task classifies as file_write (creates sub-agent sessions)", async () => {
+  test("task classifies as session_state (dispatches sub-agents)", async () => {
     const gate = await EnforcementGate.create({
       activeWorkspace: "/Users/test/synergy-control-profile",
       workspaceType: "worktree",
     })
     const result = gate.classify("task", {})
-    const cap = result.capabilities.find((c: any) => c.class === "file_write")!
+    const cap = result.capabilities.find((c: any) => c.class === "session_state")!
     expect(cap).toBeDefined()
     expect(cap.nonBypassable).toBe(false)
   })
 
-  test("task_cancel classifies as file_write (stateful task cancellation)", async () => {
+  test("task_cancel classifies as session_state (lightweight task cancellation)", async () => {
     const gate = await EnforcementGate.create({
       activeWorkspace: "/Users/test/synergy-control-profile",
       workspaceType: "worktree",
     })
     const result = gate.classify("task_cancel", {})
-    const cap = result.capabilities.find((c: any) => c.class === "file_write")!
+    const cap = result.capabilities.find((c: any) => c.class === "session_state")!
     expect(cap).toBeDefined()
     expect(cap.nonBypassable).toBe(false)
   })
 
-  test("batch classifies as file_write (orchestrates multiple tool calls)", async () => {
+  test("batch classifies as session_state (orchestrates multiple tool calls)", async () => {
     const gate = await EnforcementGate.create({
       activeWorkspace: "/Users/test/synergy-control-profile",
       workspaceType: "worktree",
     })
     const result = gate.classify("batch", { tool_calls: [{ tool: "read", parameters: { filePath: "src/test.ts" } }] })
-    const cap = result.capabilities.find((c: any) => c.class === "file_write")!
+    const cap = result.capabilities.find((c: any) => c.class === "session_state")!
     expect(cap).toBeDefined()
     expect(cap.nonBypassable).toBe(false)
   })
@@ -2084,7 +2088,7 @@ describe("EnforcementGate new tool classification", () => {
       pattern: "const $X = $Y",
       paths: ["/etc/config"],
     })
-    const cap = result.capabilities.find((c: any) => c.class === "file_external")!
+    const cap = result.capabilities.find((c: any) => c.class === "file_external_read")!
     expect(cap).toBeDefined()
     expect(cap.nonBypassable).toBe(true)
   })
@@ -2281,89 +2285,126 @@ describe("EnforcementGate new tool classification", () => {
   })
 })
 
+// 16. file_external split — read vs write distinction
 // ------------------------------------------------------------------
-// 16. Security invariants — deny-first ordering & nonBypassable consistency
-//
-// These tests lock in two security properties that previously had no
-// regression coverage:
-//
-//   1. The resolver-level deny ordering: when the gate produces
-//      decision === "deny", nothing downstream (LLM classifier, user
-//      rules) can weaken it. We cannot call applyGateApproval() directly
-//      (it is private to the ToolResolver namespace), but the deny
-//      decision is already determined at the gate level — the resolver
-//      only acts on it. So a gate-level assertion that a profile-deny
-//      capability is both present and nonBypassable is sufficient
-//      evidence that the classifier cannot bypass it.
-//
-//   2. shell_destructive produced via the ShellSafety.classifyBashRisk
-//      direct path must be nonBypassable=true. This path skips the
-//      resilient analyzer (guarded by `risk !== "shell_destructive"`),
-//      so line 612 in gate.ts is the ONLY place nonBypassable is set
-//      for this case. The earlier bug set it to `false` unconditionally.
-// ------------------------------------------------------------------
-describe("security invariant: classifier cannot bypass profile deny", () => {
-  test("autonomous denies git push even with all-bypassable caps", async () => {
-    // git push → classifyBashRisk returns "shell_destructive"
-    // After the fix: shell_destructive is nonBypassable=true (gate.ts:611)
-    // The classifier only runs on all-bypassable capability sets, so it
-    // can never touch this decision. Autonomous profile denies it.
+describe("EnforcementGate file_external split", () => {
+  test("read of external path produces file_external_read NOT file_external", async () => {
+    const gate = await EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+    })
+
+    const result = gate.classify("read", {
+      filePath: "/etc/hosts",
+    })
+
+    const classNames = result.capabilities.map((c: any) => c.class)
+    // The old class name must not appear
+    expect(classNames).not.toContain("file_external")
+    // The new class name must appear
+    expect(classNames).toContain("file_external_read")
+  })
+
+  test("write of external path produces file_external_write NOT file_external", async () => {
+    const gate = await EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+    })
+
+    const result = gate.classify("write", {
+      filePath: "/tmp/output.log",
+    })
+
+    const classNames = result.capabilities.map((c: any) => c.class)
+    // The old class name must not appear
+    expect(classNames).not.toContain("file_external")
+    // The new class name must appear
+    expect(classNames).toContain("file_external_write")
+  })
+
+  test("autonomous profile denies file_external_write", async () => {
     const gate = await EnforcementGate.create({
       activeWorkspace: "/Users/test/synergy-control-profile",
       workspaceType: "worktree",
       profileId: "autonomous",
     })
+
+    const envelope = gate.evaluate("write", {
+      filePath: "/tmp/output.log",
+    })
+
+    // file_external_write should be denied by autonomous profile
+    expect(envelope.decision).toBe("deny")
+  })
+
+  test("autonomous profile allows file_external_read", async () => {
+    const gate = await EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+      profileId: "autonomous",
+    })
+
+    const envelope = gate.evaluate("read", {
+      filePath: "/etc/hosts",
+    })
+
+    // file_external_read should be allowed by autonomous profile
+    expect(envelope.decision).toBe("allow")
+  })
+})
+
+describe("security invariants: nonBypassable permission boundaries", () => {
+  test("autonomous denies git push and keeps shell_destructive nonBypassable", async () => {
+    const gate = await EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+      profileId: "autonomous",
+    })
+
     const envelope = gate.evaluate("bash", { command: "git push" })
     expect(envelope.decision).toBe("deny")
 
-    // The capability that triggered the deny must be nonBypassable —
-    // this is what prevents the auto-classifier from overriding it.
     const caps = envelope.capabilities.filter((c: any) => c.class === "shell_destructive")
     expect(caps.length).toBeGreaterThan(0)
     expect(caps.every((c: any) => c.nonBypassable === true)).toBe(true)
   })
 
-  test("deny decision is terminal at the resolver level (documented invariant)", () => {
-    // This test documents the security invariant enforced in tool-resolver.ts
-    // applyGateApproval(): when envelope.decision === "deny", the function
-    // throws EnforcementError.PolicyDenied BEFORE the classifier or user
-    // rules run. We assert this at the gate level because the deny is
-    // already determined here — the resolver cannot weaken it, only act
-    // on it. If this assertion ever flips to allow/ask, the resolver
-    // ordering has been broken.
-    //
-    // No runtime assertion needed beyond confirming the invariant is
-    // expressible; the previous test covers the executable behavior.
-    expect(true).toBe(true)
-  })
-})
-
-describe("shell_destructive nonBypassable consistency", () => {
-  test("classifyBashRisk shell_destructive path sets nonBypassable=true (Fix regression guard)", async () => {
+  test("classifyBashRisk shell_destructive path sets nonBypassable=true", async () => {
     const gate = await EnforcementGate.create({
       activeWorkspace: "/Users/test",
       workspaceType: "main",
     })
-    // git push triggers ShellSafety.classifyBashRisk → "shell_destructive".
-    // This path does NOT go through the resilient analyzer (guarded by
-    // `risk !== "shell_destructive"`), so gate.ts:611 is the ONLY place
-    // nonBypassable is set for this case. Before the fix it was `false`.
+
     const result = gate.classify("bash", { command: "git push" })
     const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")
     expect(destructive).toBeDefined()
     expect(destructive!.nonBypassable).toBe(true)
   })
 
-  test("shell and shell_read remain bypassable (classifier can still auto-allow)", async () => {
+  test("shell and shell_read remain bypassable", async () => {
     const gate = await EnforcementGate.create({
       activeWorkspace: "/Users/test",
       workspaceType: "main",
     })
-    // npm run build → shell (not destructive), must stay nonBypassable=false
-    // so the classifier can still auto-allow benign build commands.
+
     const result = gate.classify("bash", { command: "npm run build" })
     const shell = result.capabilities.find((c: any) => c.class === "shell")
     expect(shell).toBeDefined()
     expect(shell!.nonBypassable).toBe(false)
+  })
+
+  test("revise_file detects protected paths from hashline patch headers", async () => {
+    const gate = await EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+      profileId: "full_access",
+    })
+
+    const result = gate.classify("revise_file", {
+      input: "[.env#abcd]\nSWAP 1..1:\n+SECRET=x\n",
+    })
+    const protectedOp = result.capabilities.find((c: any) => c.class === "protected_op")
+    expect(protectedOp).toBeDefined()
+    expect(protectedOp!.nonBypassable).toBe(true)
   })
 })

@@ -75,12 +75,12 @@ export class MismatchError extends Error {
     if (!hashRecognized) {
       return [
         `Edit rejected${pathText}: hash ${HL_FILE_HASH_SEP}${details.expectedFileHash} is not from this session.`,
-        `The current file hashes to ${HL_FILE_HASH_SEP}${details.actualFileHash}. Re-read the file with \`read\` to copy a current ${HL_FILE_PREFIX}path${HL_FILE_HASH_SEP}tag${HL_FILE_SUFFIX} header — never invent the tag and never reuse one from a prior session.`,
+        `The current file hashes to ${HL_FILE_HASH_SEP}${details.actualFileHash}. Do not retry the same patch. Do not adjust line numbers from memory. Re-read the file with \`view_file\` to copy a current ${HL_FILE_PREFIX}path${HL_FILE_HASH_SEP}tag${HL_FILE_SUFFIX} header — never invent the tag and never reuse one from a prior session.`,
       ]
     }
     return [
       `Edit rejected${pathText}: file changed between read and edit.`,
-      `Section is bound to ${HL_FILE_HASH_SEP}${details.expectedFileHash}, but the current file hashes to ${HL_FILE_HASH_SEP}${details.actualFileHash}. If a prior edit in this session modified this file, copy the ${HL_FILE_PREFIX}path${HL_FILE_HASH_SEP}newhash${HL_FILE_SUFFIX} header from that edit's response; otherwise re-read the file with \`read\` to refresh the tag before retrying.`,
+      `Section is bound to ${HL_FILE_HASH_SEP}${details.expectedFileHash}, but the current file hashes to ${HL_FILE_HASH_SEP}${details.actualFileHash}. Do not retry the same patch. Do not adjust line numbers from memory. If a prior edit in this session modified this file, copy the ${HL_FILE_PREFIX}path${HL_FILE_HASH_SEP}newhash${HL_FILE_SUFFIX} header from that edit's response; otherwise re-read the file with \`view_file\` to refresh the tag before retrying.`,
     ]
   }
 
@@ -91,8 +91,13 @@ export class MismatchError extends Error {
   static formatMessage(details: MismatchDetails): string {
     const lines = MismatchError.rejectionHeader(details)
     const context = formatAnchoredContext(details.anchorLines ?? [], details.fileLines)
-    if (context.length === 0) return lines.join("\n")
-    lines.push("", ...context)
+    if (context.length > 0) {
+      lines.push("", ...context)
+    }
+    lines.push(
+      "",
+      "After re-reading, produce a completely new patch from the fresh tag. Do not reuse any part of the old patch.",
+    )
     return lines.join("\n")
   }
 }

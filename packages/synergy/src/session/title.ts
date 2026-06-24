@@ -1,4 +1,5 @@
 import { MessageV2 } from "./message-v2"
+import { formatLocalDateTime } from "../util/time-format"
 import { Log } from "../util/log"
 import type { Info } from "./types"
 import { Agent } from "../agent/agent"
@@ -14,12 +15,12 @@ const parentTitlePrefix = "New session - "
 const childTitlePrefix = "Child session - "
 
 export function createDefaultTitle(isChild = false) {
-  return (isChild ? childTitlePrefix : parentTitlePrefix) + new Date().toISOString()
+  return (isChild ? childTitlePrefix : parentTitlePrefix) + formatLocalDateTime(Date.now())
 }
 
 export function isDefaultTitle(title: string) {
   return new RegExp(
-    `^(${parentTitlePrefix}|${childTitlePrefix})\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$`,
+    `^(${parentTitlePrefix}|${childTitlePrefix})\\d{4}-\\d{2}-\\d{2}\\s\\d{2}:\\d{2}:\\d{2}\\s\\(UTC[+-]\\d{2}:\\d{2}\\)$`,
   ).test(title)
 }
 

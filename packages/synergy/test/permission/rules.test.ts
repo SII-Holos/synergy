@@ -80,16 +80,22 @@ describe("PermissionRules session rules", () => {
   })
 
   test("addSessionRule adds to session ruleset", () => {
-    PermissionRules.addSessionRule({ permission: "bash", pattern: "git *", action: "allow" })
-    const rules = PermissionRules.sessionRuleset()
+    PermissionRules.addSessionRule("session_test", { permission: "bash", pattern: "git *", action: "allow" })
+    const rules = PermissionRules.sessionRuleset("session_test")
     expect(rules).toHaveLength(1)
     expect(rules[0].permission).toBe("bash")
     expect(rules[0].scope).toBe("session")
   })
 
   test("clearSessionRules empties the session ruleset", () => {
-    PermissionRules.addSessionRule({ permission: "bash", pattern: "*", action: "allow" })
+    PermissionRules.addSessionRule("session_test", { permission: "bash", pattern: "*", action: "allow" })
     PermissionRules.clearSessionRules()
-    expect(PermissionRules.sessionRuleset()).toHaveLength(0)
+    expect(PermissionRules.sessionRuleset("session_test")).toHaveLength(0)
+  })
+
+  test("session rules are scoped to one session", () => {
+    PermissionRules.addSessionRule("session_one", { permission: "bash", pattern: "git *", action: "allow" })
+    expect(PermissionRules.sessionRuleset("session_one")).toHaveLength(1)
+    expect(PermissionRules.sessionRuleset("session_two")).toHaveLength(0)
   })
 })

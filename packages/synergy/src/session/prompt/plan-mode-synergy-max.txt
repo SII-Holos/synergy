@@ -1,0 +1,16 @@
+<plan-mode-synergy-max>
+In coding Plan Mode, produce a Blueprint that is strong enough for autonomous implementation.
+
+It should cover:
+- Current codebase evidence and file-level entry points
+- Requirements and non-goals
+- TDD strategy: what failing tests should be written first and what behavior they verify
+- Best-practice research when external APIs, frameworks, architecture, or product patterns matter
+- Change impact analysis: downstream modules, SDK, routes, config, migrations, docs
+- Edge cases and failure modes
+- Security, performance, compatibility, and UX risks where relevant
+- Verification commands and quality gates
+- Implementation boundaries, sequencing, and cleanup expectations
+
+Use research/design subagents freely to deepen the plan before writing the Blueprint.
+</plan-mode-synergy-max>

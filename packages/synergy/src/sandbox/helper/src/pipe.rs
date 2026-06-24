@@ -30,7 +30,7 @@ const PIPE_WAIT: u32 = 0x00000000;
 
 // windows-sys 0.59 constants not exported:
 const TOKEN_QUERY: u32 = 0x0008;
-const TOKEN_USER_CLASS: u32 = 1;
+const TOKEN_USER_CLASS: i32 = 1;
 const SECURITY_DESCRIPTOR_REVISION: u32 = 1;
 
 // ================================================================
@@ -47,7 +47,7 @@ unsafe fn build_pipe_sa() -> SECURITY_ATTRIBUTES {
     use std::alloc::{alloc, Layout};
 
     // 1. Open current process token and get user SID
-    let mut token: HANDLE = 0;
+    let mut token: HANDLE = std::ptr::null_mut();
     if OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut token) == 0 {
         return zero_sa();
     }
@@ -109,7 +109,7 @@ unsafe fn build_pipe_sa() -> SECURITY_ATTRIBUTES {
         return zero_sa();
     }
 
-    if InitializeSecurityDescriptor(sd_ptr, SECURITY_DESCRIPTOR_REVISION) == 0 {
+    if InitializeSecurityDescriptor(sd_ptr as *mut _, SECURITY_DESCRIPTOR_REVISION) == 0 {
         if !dacl.is_null() {
             LocalFree(dacl as HLOCAL);
         }
@@ -117,7 +117,7 @@ unsafe fn build_pipe_sa() -> SECURITY_ATTRIBUTES {
         return zero_sa();
     }
 
-    if SetSecurityDescriptorDacl(sd_ptr, 1, dacl, 0) == 0 {
+    if SetSecurityDescriptorDacl(sd_ptr as *mut _, 1, dacl, 0) == 0 {
         // dacl is owned by the SD now — free dacl, free sd, fall back
         if !dacl.is_null() {
             LocalFree(dacl as HLOCAL);

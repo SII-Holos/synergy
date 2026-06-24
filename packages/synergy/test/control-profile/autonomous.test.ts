@@ -20,13 +20,25 @@ async function guardedProfile() {
 }
 
 describe("autonomous profile capabilities", () => {
-  test("autonomous allows file_external", async () => {
+  test("autonomous allows file_external_read", async () => {
     await using tmp = await tmpdir()
     await Instance.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const profile = await autonomousProfile()
-        expect(rule(profile, "file_external")?.action).toBe("allow")
+        expect(rule(profile, "file_external_read")?.action).toBe("allow")
+      },
+    })
+  })
+
+  test("autonomous denies file_external_write", async () => {
+    await using tmp = await tmpdir()
+    await Instance.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const profile = await autonomousProfile()
+        expect(rule(profile, "file_external_write")?.action).toBe("deny")
+        expect(rule(profile, "file_external_write")?.nonBypassable).toBe(true)
       },
     })
   })
@@ -42,14 +54,15 @@ describe("autonomous profile capabilities", () => {
     })
   })
 
-  test("autonomous allows mcp_invoke and plugin_invoke", async () => {
+  test("autonomous allows mcp_invoke, asks for plugin_invoke", async () => {
     await using tmp = await tmpdir()
     await Instance.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const profile = await autonomousProfile()
         expect(rule(profile, "mcp_invoke")?.action).toBe("allow")
-        expect(rule(profile, "plugin_invoke")?.action).toBe("allow")
+        expect(rule(profile, "plugin_invoke")?.action).toBe("ask")
+        expect(rule(profile, "plugin_invoke")?.nonBypassable).toBe(true)
       },
     })
   })
@@ -146,8 +159,8 @@ describe("profile isolation", () => {
       scope: await tmp.scope(),
       fn: async () => {
         const profile = await guardedProfile()
-        // Guarded should still ask for file_external — it was NOT changed to "allow"
-        expect(rule(profile, "file_external")?.action).toBe("ask")
+        // Guarded should still ask for file_external_read — it was NOT changed to "allow"
+        expect(rule(profile, "file_external_read")?.action).toBe("ask")
       },
     })
   })

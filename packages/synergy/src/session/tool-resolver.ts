@@ -8,6 +8,7 @@ import { PermissionNext } from "@/permission/next"
 import { PermissionRules } from "@/permission/rules"
 import { RiskClassifier } from "@/permission/classifier"
 import { Plugin } from "@/plugin"
+import { PluginToolId } from "../plugin/ids.js"
 import { ProviderTransform } from "@/provider/transform"
 import type { Provider } from "@/provider/provider"
 import { Tool } from "@/tool/tool"
@@ -52,13 +53,13 @@ export namespace ToolResolver {
 
   /**
    * Resolve the effective control profile id using precedence:
-   *   1. session controlProfile
+   *   1. session controlProfile (resolved from parent chain)
    *   2. agent config controlProfile
    *   3. top-level config controlProfile
    *   4. default 'guarded'
    */
-  function resolveEffectiveProfile(agent: Agent.Info, topLevelProfile?: string, session?: Info): ProfileId {
-    return ControlProfileCompiler.normalize(session?.controlProfile ?? agent.controlProfile ?? topLevelProfile)
+  function resolveEffectiveProfile(agent: Agent.Info, topLevelProfile?: string, sessionProfile?: string): ProfileId {
+    return ControlProfileCompiler.normalize(sessionProfile ?? agent.controlProfile ?? topLevelProfile)
   }
 
   /** Cached config lookup to avoid repeated Config.get() inside tool execute. */
@@ -72,6 +73,21 @@ export namespace ToolResolver {
       }
     }
     return _cachedConfig.controlProfile
+  }
+
+  /** Cached plugin tool IDs (prefixed) for enforcement gate registration. */
+  let _cachedPluginToolIds: Set<string> | null = null
+  async function cachedPluginToolIds(): Promise<Set<string>> {
+    if (_cachedPluginToolIds === null) {
+      const ids = new Set<string>()
+      for (const plugin of await Plugin.perPluginHooks()) {
+        for (const toolId of Object.keys(plugin.hooks.tool ?? {})) {
+          ids.add(PluginToolId.format(plugin.id, toolId))
+        }
+      }
+      _cachedPluginToolIds = ids
+    }
+    return _cachedPluginToolIds
   }
 
   /**
@@ -89,7 +105,7 @@ export namespace ToolResolver {
   }
 
   function permissionForGateCapability(toolName: string, className: string): string {
-    if (className === "file_external") return "external_directory"
+    if (className === "file_external_read" || className === "file_external_write") return "external_directory"
     if (className === "shell_read") return "bash"
     if (className === "shell_destructive") return "bash"
     if (className === "network_request")
@@ -98,7 +114,7 @@ export namespace ToolResolver {
   }
 
   function patternsForGateCapability(toolName: string, cap: Capability, args: Record<string, any>): string[] {
-    if (cap.class === "file_external")
+    if (cap.class === "file_external_read" || cap.class === "file_external_write")
       return cap.paths?.length ? cap.paths : [externalPathFromArgs(toolName, args) || "*"]
     if (cap.class === "shell_destructive") return [String(args.command ?? "*")]
     if (cap.class === "network_request") return [String(args.url ?? args.query ?? "*")]
@@ -306,7 +322,7 @@ export namespace ToolResolver {
 
     // Classifier (auto mode): may promote an ask → allow to save the user a
     // confirmation prompt. It must NEVER run for a non-bypassable ask
-    // (protected_op, file_external, identity_act, shell_destructive) — those
+    // (protected_op, file_external_*, identity_act, shell_destructive) — those
     // are hard boundaries that must always reach the user. Nor can it ever
     // promote a deny, which was already handled above.
     const hasNonBypassable = envelope.capabilities.some((c) => c.nonBypassable)
@@ -336,30 +352,23 @@ export namespace ToolResolver {
       }
     }
 
-    // Provenance: sessions created by system scheduling (e.g. agenda wake)
-    // may pre-authorize specific tools to bypass the ask gate. This only
-    // applies within this session and cannot override deny rules or
-    // protected paths (those are checked earlier in the gate).
-    const preAuthorized = session?.preAuthorizedActions ?? []
-    if (decision.action === "ask" && preAuthorized.includes(toolName)) {
-      await setApprovalMetadata(ctx, {
-        ...ApprovalPolicy.metadata(approval, decision, "pre_authorized"),
-        source: "provenance",
-        reason: `Pre-authorized by system scheduling (session inherits trust from agenda wake)`,
-      })
-      if (toolName === "bash") markShellSandboxBypass(ctx)
-      return
-    }
-
     // User/session rules: check persistent user rules (from "Always allow"
-    // button) and ephemeral session rules. Deny always wins. Allow bypasses
-    // the ask. This sits after provenance (system pre-auth) so user deny
-    // rules can still block pre-authorized tools if explicitly configured.
+    // button) and ephemeral session rules. Deny always wins. Allow only
+    // bypasses soft asks; non-bypassable asks must still reach the user.
     if (decision.action === "ask") {
-      const pattern = PermissionRules.extractPattern(toolName, args)
+      const patterns = [
+        PermissionRules.extractPattern(toolName, args),
+        ...envelope.capabilities.flatMap((cap) => patternsForGateCapability(toolName, cap, args)),
+      ]
       const userRules = await PermissionRules.userRuleset()
-      const sessionRules = PermissionRules.sessionRuleset()
-      const ruleDecision = PermissionRules.evaluate(toolName, pattern, userRules, sessionRules)
+      const sessionRules = PermissionRules.sessionRuleset(session?.id)
+      const ruleDecisions = [...new Set(patterns)].map((pattern) =>
+        PermissionRules.evaluate(toolName, pattern, userRules, sessionRules),
+      )
+      const ruleDecision =
+        ruleDecisions.find((item) => item.action === "deny") ??
+        ruleDecisions.find((item) => item.action === "allow") ??
+        ({ action: "ask" } as const)
       if (ruleDecision.action === "deny") {
         await setApprovalMetadata(ctx, {
           ...ApprovalPolicy.metadata(approval, decision, "auto_denied"),
@@ -367,12 +376,12 @@ export namespace ToolResolver {
           reason: `Denied by user rule: ${ruleDecision.rule?.permission}(${ruleDecision.rule?.pattern})`,
         })
         throw new EnforcementError.PolicyDenied(
-          `Blocked by user permission rule: ${ruleDecision.rule?.permission ?? toolName}(${ruleDecision.rule?.pattern ?? pattern})`,
+          `Blocked by user permission rule: ${ruleDecision.rule?.permission ?? toolName}(${ruleDecision.rule?.pattern ?? patterns[0]})`,
           decision.capabilities,
           envelope.profileId,
         )
       }
-      if (ruleDecision.action === "allow") {
+      if (ruleDecision.action === "allow" && !hasNonBypassable) {
         await setApprovalMetadata(ctx, {
           ...ApprovalPolicy.metadata(approval, decision, "auto_allowed"),
           source: "user",
@@ -382,6 +391,21 @@ export namespace ToolResolver {
         return
       }
       // action === "ask" → fall through to gateOwnedAsks
+    }
+
+    // Provenance: sessions created by system scheduling (e.g. agenda wake)
+    // may pre-authorize specific tools to bypass the ask gate. This only
+    // applies within this session and cannot override profile denies,
+    // protected paths, or explicit user deny rules.
+    const preAuthorized = session?.preAuthorizedActions ?? []
+    if (decision.action === "ask" && preAuthorized.includes(toolName)) {
+      await setApprovalMetadata(ctx, {
+        ...ApprovalPolicy.metadata(approval, decision, "pre_authorized"),
+        source: "provenance",
+        reason: `Pre-authorized by system scheduling (session inherits trust from agenda wake)`,
+      })
+      if (toolName === "bash") markShellSandboxBypass(ctx)
+      return
     }
 
     const gateOwnedAsks = envelope.capabilities.filter((cap) => {
@@ -409,10 +433,13 @@ export namespace ToolResolver {
           nonBypassable: true,
           capability: cap.class,
           opaque: cap.opaque === true,
-          ...(cap.class === "file_external" ? { workspaceBoundary: true, outsideWorkspace: true } : {}),
+          ...(cap.class === "file_external_read" || cap.class === "file_external_write"
+            ? { workspaceBoundary: true, outsideWorkspace: true }
+            : {}),
         },
       })
-      if (cap.class === "file_external") rememberApprovedExternalRoots(ctx, patterns)
+      if (cap.class === "file_external_read" || cap.class === "file_external_write")
+        rememberApprovedExternalRoots(ctx, patterns)
       gate.resolveCapability(cap.class)
     }
   }
@@ -460,7 +487,8 @@ export namespace ToolResolver {
         if (!profilePromise) {
           profilePromise = (async () => {
             const topLevelProfile = await cachedTopLevelProfile()
-            const profileId = resolveEffectiveProfile(input.agent, topLevelProfile, input.session)
+            const sessionProfile = input.session?.id ? await Session.resolveControlProfile(input.session.id) : undefined
+            const profileId = resolveEffectiveProfile(input.agent, topLevelProfile, sessionProfile)
             const workspaceInfo = Instance.workspace
             const interaction = input.session?.interaction
             const interactionMode = interaction?.mode === "unattended" ? "unattended" : "attended"
@@ -556,9 +584,54 @@ export namespace ToolResolver {
     }
   }
 
+  const PLAN_MODE_ALLOWED_TOOLS = new Set([
+    // Read tools
+    "read",
+    "glob",
+    "grep",
+    "view_file",
+    "scan_files",
+    "parse_code",
+    "look_at",
+    "scan_document",
+    "ast_grep",
+    "lsp",
+    // Session read
+    "session_list",
+    "session_read",
+    "session_search",
+    // Note read
+    "note_list",
+    "note_read",
+    "note_search",
+    "note_write",
+    "note_edit",
+    // Memory read
+    "memory_search",
+    "memory_get",
+    // Coordination read/write
+    "task_list",
+    "task_output",
+    "dagread",
+    "dagwrite",
+    "dagpatch",
+    "task",
+    "task_cancel",
+    // UI
+    "question",
+    "skill",
+    // Network
+    "websearch",
+    "webfetch",
+    // Agenda read
+    "agenda_list",
+    "agenda_logs",
+    // Platform read
+    "worktree_list",
+  ])
   export async function definitions(input: Omit<Input, "processor">): Promise<Definition[]> {
     using _ = log.time("definitions")
-    const result: Definition[] = []
+    let result: Definition[] = []
 
     for (const item of await ToolRegistry.tools(input.model.providerID, input.agent)) {
       const schema = ProviderTransform.schema(input.model, z.toJSONSchema(item.parameters), {
@@ -588,13 +661,18 @@ export namespace ToolResolver {
                 const interaction = runtimeInput.session?.interaction
                 const interactionMode = interaction?.mode === "unattended" ? "unattended" : "attended"
                 const topLevelProfile = await cachedTopLevelProfile()
-                const profileId = resolveEffectiveProfile(runtimeInput.agent, topLevelProfile, runtimeInput.session)
+                const sessionProfile = runtimeInput.session?.id
+                  ? await Session.resolveControlProfile(runtimeInput.session.id)
+                  : undefined
+                const profileId = resolveEffectiveProfile(runtimeInput.agent, topLevelProfile, sessionProfile)
                 const synergyRoot = Global.Path.root
+                const pluginToolIds = await cachedPluginToolIds()
                 const gate = await EnforcementGate.create({
                   activeWorkspace: workspace,
                   workspaceType: workspaceInfo?.type === "git_worktree" ? "worktree" : "main",
                   interactionMode,
                   originalCheckout: (workspaceInfo as any)?.originalCheckout,
+                  registeredPluginTools: pluginToolIds,
                   profileId,
                   readRoots: [synergyRoot],
                 })
@@ -754,13 +832,18 @@ export namespace ToolResolver {
                   const interaction = runtimeInput.session?.interaction
                   const interactionMode = interaction?.mode === "unattended" ? "unattended" : "attended"
                   const topLevelProfile = await cachedTopLevelProfile()
-                  const profileId = resolveEffectiveProfile(runtimeInput.agent, topLevelProfile, runtimeInput.session)
+                  const sessionProfile = runtimeInput.session?.id
+                    ? await Session.resolveControlProfile(runtimeInput.session.id)
+                    : undefined
+                  const profileId = resolveEffectiveProfile(runtimeInput.agent, topLevelProfile, sessionProfile)
+                  const pluginToolIds = await cachedPluginToolIds()
                   const gate = await EnforcementGate.create({
                     activeWorkspace: workspace,
                     workspaceType: workspaceInfo?.type === "git_worktree" ? "worktree" : "main",
                     interactionMode,
                     originalCheckout: (workspaceInfo as any)?.originalCheckout,
                     registeredMcpTools: mcpToolNames,
+                    registeredPluginTools: pluginToolIds,
                     profileId,
                   })
                   const envelope = gate.evaluate(key, args as Record<string, any>)
@@ -874,6 +957,18 @@ export namespace ToolResolver {
       }
     }
 
+    if (input.session?.blueprint?.planMode) {
+      result = result.filter((d) => PLAN_MODE_ALLOWED_TOOLS.has(d.id))
+    }
+
+    const activeBlueprintLoopID = input.session?.blueprint?.loopID
+    const isSupervisor = input.agent.name === "supervisor"
+    if (!isSupervisor) {
+      result = result.filter((d) => d.id !== "blueprint_loop_restart")
+    }
+    if (!isSupervisor && !activeBlueprintLoopID) {
+      result = result.filter((d) => d.id !== "blueprint_loop_finish")
+    }
     const disabled = PermissionNext.disabled(
       result.map((item) => item.id),
       PermissionNext.merge(input.agent.permission, PermissionNext.sessionRuleset(input.session)),

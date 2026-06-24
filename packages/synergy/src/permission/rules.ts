@@ -22,7 +22,7 @@ export namespace PermissionRules {
   export const Ruleset = Rule.array()
   export type Ruleset = z.infer<typeof Ruleset>
 
-  const sessionRules: Rule[] = []
+  const sessionRules = new Map<string, Rule[]>()
 
   export function extractPattern(toolName: string, args: Record<string, any>): string {
     if (toolName === "bash") {
@@ -64,17 +64,24 @@ export namespace PermissionRules {
     return rulesets.flat()
   }
 
-  export function addSessionRule(rule: Omit<Rule, "scope">) {
-    sessionRules.push({ ...rule, scope: "session" })
-    log.info("added session rule", rule)
+  export function addSessionRule(sessionID: string, rule: Omit<Rule, "scope">) {
+    const rules = sessionRules.get(sessionID) ?? []
+    rules.push({ ...rule, scope: "session" })
+    sessionRules.set(sessionID, rules)
+    log.info("added session rule", { sessionID, ...rule })
   }
 
-  export function clearSessionRules() {
-    sessionRules.length = 0
+  export function clearSessionRules(sessionID?: string) {
+    if (sessionID) {
+      sessionRules.delete(sessionID)
+      return
+    }
+    sessionRules.clear()
   }
 
-  export function sessionRuleset(): Ruleset {
-    return [...sessionRules]
+  export function sessionRuleset(sessionID?: string): Ruleset {
+    if (!sessionID) return []
+    return [...(sessionRules.get(sessionID) ?? [])]
   }
 
   let userRulesCache: Ruleset | undefined
@@ -116,6 +123,6 @@ export namespace PermissionRules {
   }
 
   export async function listAllRules(): Promise<Ruleset> {
-    return [...(await loadUserRules()), ...sessionRules]
+    return [...(await loadUserRules()), ...[...sessionRules.values()].flat()]
   }
 }

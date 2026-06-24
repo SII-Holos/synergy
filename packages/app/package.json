@@ -69,6 +69,7 @@
     "fuzzysort": "catalog:",
     "ghostty-web": "0.3.0",
     "katex": "0.16.38",
+    "jsonc-parser": "3.3.1",
     "luxon": "catalog:",
     "marked": "catalog:",
     "marked-shiki": "catalog:",

@@ -37,6 +37,27 @@ import type {
   AgendaUpdateResponses,
   AgendaWebhookErrors,
   AgendaWebhookResponses,
+  ApiPluginsApproveInstallErrors,
+  ApiPluginsApproveInstallResponses,
+  ApiPluginsApproveUpdateErrors,
+  ApiPluginsApproveUpdateResponses,
+  ApiPluginsGetApprovalErrors,
+  ApiPluginsGetApprovalResponses,
+  ApiPluginsGetErrors,
+  ApiPluginsGetResponses,
+  ApiPluginsInstallFromRegistryErrors,
+  ApiPluginsInstallFromRegistryResponses,
+  ApiPluginsListResponses,
+  ApiPluginsPermissionDiffErrors,
+  ApiPluginsPermissionDiffResponses,
+  ApiPluginsPreviewInstallErrors,
+  ApiPluginsPreviewInstallResponses,
+  ApiPluginsPreviewUpdateErrors,
+  ApiPluginsPreviewUpdateResponses,
+  ApiPluginsStatusErrors,
+  ApiPluginsStatusResponses,
+  ApiPluginsUpdateFromRegistryErrors,
+  ApiPluginsUpdateFromRegistryResponses,
   AppAgentsResponses,
   AppLogErrors,
   AppLogResponses,
@@ -47,6 +68,29 @@ import type {
   Auth as Auth2,
   AuthSetErrors,
   AuthSetResponses,
+  BlueprintLoopActivityErrors,
+  BlueprintLoopActivityResponses,
+  BlueprintLoopBindErrors,
+  BlueprintLoopBindResponses,
+  BlueprintLoopCancelErrors,
+  BlueprintLoopCancelResponses,
+  BlueprintLoopCompleteErrors,
+  BlueprintLoopCompleteResponses,
+  BlueprintLoopCreateErrors,
+  BlueprintLoopCreateInput,
+  BlueprintLoopCreateResponses,
+  BlueprintLoopGetErrors,
+  BlueprintLoopGetResponses,
+  BlueprintLoopListErrors,
+  BlueprintLoopListResponses,
+  BlueprintLoopResumeErrors,
+  BlueprintLoopResumeResponses,
+  BlueprintLoopStartErrors,
+  BlueprintLoopStartResponses,
+  BlueprintLoopWaitErrors,
+  BlueprintLoopWaitResponses,
+  BlueprintSessionPlanModeErrors,
+  BlueprintSessionPlanModeResponses,
   ChannelAppResetResponses,
   ChannelAppSessionResponses,
   ChannelDisconnectResponses,
@@ -57,30 +101,20 @@ import type {
   ChannelStopResponses,
   CommandListResponses,
   Config as Config2,
+  ConfigDomainGetErrors,
+  ConfigDomainGetResponses,
+  ConfigDomainImportPlanInput,
+  ConfigDomainListResponses,
+  ConfigDomainUpdateErrors,
+  ConfigDomainUpdateInput,
+  ConfigDomainUpdateResponses,
   ConfigGetResponses,
   ConfigGlobalResponses,
+  ConfigImportApplyErrors,
+  ConfigImportApplyResponses,
+  ConfigImportPlanErrors,
+  ConfigImportPlanResponses,
   ConfigProvidersResponses,
-  ConfigSetActivateErrors,
-  ConfigSetActivateResponses,
-  ConfigSetCreateErrors,
-  ConfigSetCreateInput,
-  ConfigSetCreateResponses,
-  ConfigSetDeleteErrors,
-  ConfigSetDeleteResponses,
-  ConfigSetGetErrors,
-  ConfigSetGetResponses,
-  ConfigSetListResponses,
-  ConfigSetName,
-  ConfigSetRawGetErrors,
-  ConfigSetRawGetResponses,
-  ConfigSetRawSaveErrors,
-  ConfigSetRawSaveInput,
-  ConfigSetRawSaveResponses,
-  ConfigSetRawValidateErrors,
-  ConfigSetRawValidateInput,
-  ConfigSetRawValidateResponses,
-  ConfigSetUpdateErrors,
-  ConfigSetUpdateResponses,
   ConfigUpdateErrors,
   ConfigUpdateResponses,
   ControlProfileEffectiveErrors,
@@ -230,6 +264,28 @@ import type {
   PermissionReplyResponses,
   PermissionRespondErrors,
   PermissionRespondResponses,
+  PluginConfigSchemaErrors,
+  PluginConfigSchemaResponses,
+  PluginGetConfigErrors,
+  PluginGetConfigResponses,
+  PluginInteractErrors,
+  PluginInteractResponses,
+  PluginListUiContributionsErrors,
+  PluginListUiContributionsResponses,
+  PluginRuntimeLogsErrors,
+  PluginRuntimeLogsResponses,
+  PluginRuntimeStartErrors,
+  PluginRuntimeStartResponses,
+  PluginRuntimeStopErrors,
+  PluginRuntimeStopResponses,
+  PluginSandboxErrors,
+  PluginSandboxResponses,
+  PluginServeAssetErrors,
+  PluginServeAssetResponses,
+  PluginStatusErrors,
+  PluginStatusResponses,
+  PluginUpdateConfigErrors,
+  PluginUpdateConfigResponses,
   ProviderAuthResponses,
   ProviderListResponses,
   ProviderOauthAuthorizeErrors,
@@ -253,6 +309,17 @@ import type {
   QuestionRejectResponses,
   QuestionReplyErrors,
   QuestionReplyResponses,
+  RegistryPluginsDownloadErrors,
+  RegistryPluginsDownloadResponses,
+  RegistryPluginsPublishErrors,
+  RegistryPluginsPublishResponses,
+  RegistryPluginsSearchErrors,
+  RegistryPluginsSearchResponses,
+  RegistryPluginsVersionErrors,
+  RegistryPluginsVersionResponses,
+  RegistryPluginsVersionsErrors,
+  RegistryPluginsVersionsResponses,
+  RegistryPublishInput,
   RewardsInfo,
   RuntimeReloadErrors,
   RuntimeReloadResponses,
@@ -1825,6 +1892,47 @@ export class Session extends HeyApiClient {
     })
   }
 
+  /**
+   * Toggle Plan Mode
+   *
+   * Enable or disable Plan Mode on a session.
+   */
+  public planMode<ThrowOnError extends boolean = false>(
+    parameters: {
+      id: string
+      directory?: string
+      planMode?: boolean
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "id" },
+            { in: "query", key: "directory" },
+            { in: "body", key: "planMode" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).put<
+      BlueprintSessionPlanModeResponses,
+      BlueprintSessionPlanModeErrors,
+      ThrowOnError
+    >({
+      url: "/blueprint/session/{id}/plan-mode",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
   export = new Export({ client: this.client })
 }
 
@@ -2967,15 +3075,47 @@ export class Pty extends HeyApiClient {
   }
 }
 
-export class Raw extends HeyApiClient {
+export class Domain extends HeyApiClient {
   /**
-   * Get Config Set raw
+   * List config domains
    *
-   * Read a global Config Set raw JSONC source and parsed preview.
+   * List canonical config domains and their current global fragments.
+   */
+  public list<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    return (options?.client ?? this.client).get<ConfigDomainListResponses, unknown, ThrowOnError>({
+      url: "/config/domains",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Get config domain
+   *
+   * Read one canonical global config domain fragment.
    */
   public get<ThrowOnError extends boolean = false>(
     parameters: {
-      name: ConfigSetName
+      domain:
+        | "general"
+        | "models"
+        | "providers"
+        | "engram"
+        | "mcp"
+        | "plugins"
+        | "agents"
+        | "commands"
+        | "permissions"
+        | "channels"
+        | "holos"
+        | "email"
+        | "runtime"
       directory?: string
     },
     options?: Options<never, ThrowOnError>,
@@ -2985,29 +3125,42 @@ export class Raw extends HeyApiClient {
       [
         {
           args: [
-            { in: "path", key: "name" },
+            { in: "path", key: "domain" },
             { in: "query", key: "directory" },
           ],
         },
       ],
     )
-    return (options?.client ?? this.client).get<ConfigSetRawGetResponses, ConfigSetRawGetErrors, ThrowOnError>({
-      url: "/config/sets/{name}/raw",
+    return (options?.client ?? this.client).get<ConfigDomainGetResponses, ConfigDomainGetErrors, ThrowOnError>({
+      url: "/config/domains/{domain}",
       ...options,
       ...params,
     })
   }
 
   /**
-   * Save Config Set raw
+   * Update config domain
    *
-   * Save raw JSONC for a global Config Set after validation and optionally reload runtime if active.
+   * Update one canonical global config domain fragment.
    */
-  public save<ThrowOnError extends boolean = false>(
+  public update<ThrowOnError extends boolean = false>(
     parameters: {
-      name: ConfigSetName
+      domain:
+        | "general"
+        | "models"
+        | "providers"
+        | "engram"
+        | "mcp"
+        | "plugins"
+        | "agents"
+        | "commands"
+        | "permissions"
+        | "channels"
+        | "holos"
+        | "email"
+        | "runtime"
       directory?: string
-      configSetRawSaveInput?: ConfigSetRawSaveInput
+      configDomainUpdateInput?: ConfigDomainUpdateInput
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -3016,56 +3169,15 @@ export class Raw extends HeyApiClient {
       [
         {
           args: [
-            { in: "path", key: "name" },
+            { in: "path", key: "domain" },
             { in: "query", key: "directory" },
-            { key: "configSetRawSaveInput", map: "body" },
+            { key: "configDomainUpdateInput", map: "body" },
           ],
         },
       ],
     )
-    return (options?.client ?? this.client).put<ConfigSetRawSaveResponses, ConfigSetRawSaveErrors, ThrowOnError>({
-      url: "/config/sets/{name}/raw",
-      ...options,
-      ...params,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers,
-        ...params.headers,
-      },
-    })
-  }
-
-  /**
-   * Validate Config Set raw
-   *
-   * Validate raw JSONC for a global Config Set without saving it.
-   */
-  public validate<ThrowOnError extends boolean = false>(
-    parameters: {
-      name: ConfigSetName
-      directory?: string
-      configSetRawValidateInput?: ConfigSetRawValidateInput
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "path", key: "name" },
-            { in: "query", key: "directory" },
-            { key: "configSetRawValidateInput", map: "body" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).post<
-      ConfigSetRawValidateResponses,
-      ConfigSetRawValidateErrors,
-      ThrowOnError
-    >({
-      url: "/config/sets/{name}/raw/validate",
+    return (options?.client ?? this.client).patch<ConfigDomainUpdateResponses, ConfigDomainUpdateErrors, ThrowOnError>({
+      url: "/config/domains/{domain}",
       ...options,
       ...params,
       headers: {
@@ -3077,35 +3189,16 @@ export class Raw extends HeyApiClient {
   }
 }
 
-export class _Set extends HeyApiClient {
+export class Import extends HeyApiClient {
   /**
-   * List Config Sets
+   * Plan config import
    *
-   * List all global Config Sets and indicate which one is active.
+   * Create a dry-run plan for importing selected config domains.
    */
-  public list<ThrowOnError extends boolean = false>(
+  public plan<ThrowOnError extends boolean = false>(
     parameters?: {
       directory?: string
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
-    return (options?.client ?? this.client).get<ConfigSetListResponses, unknown, ThrowOnError>({
-      url: "/config/sets",
-      ...options,
-      ...params,
-    })
-  }
-
-  /**
-   * Create Config Set
-   *
-   * Create a new global Config Set, defaulting to a copy of the current active raw global config.
-   */
-  public create<ThrowOnError extends boolean = false>(
-    parameters?: {
-      directory?: string
-      configSetCreateInput?: ConfigSetCreateInput
+      configDomainImportPlanInput?: ConfigDomainImportPlanInput
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -3115,13 +3208,13 @@ export class _Set extends HeyApiClient {
         {
           args: [
             { in: "query", key: "directory" },
-            { key: "configSetCreateInput", map: "body" },
+            { key: "configDomainImportPlanInput", map: "body" },
           ],
         },
       ],
     )
-    return (options?.client ?? this.client).post<ConfigSetCreateResponses, ConfigSetCreateErrors, ThrowOnError>({
-      url: "/config/sets",
+    return (options?.client ?? this.client).post<ConfigImportPlanResponses, ConfigImportPlanErrors, ThrowOnError>({
+      url: "/config/import/plan",
       ...options,
       ...params,
       headers: {
@@ -3133,75 +3226,31 @@ export class _Set extends HeyApiClient {
   }
 
   /**
-   * Delete Config Set
+   * Apply config import
    *
-   * Delete an inactive non-default global Config Set.
+   * Apply a selected-domain config import plan.
    */
-  public delete<ThrowOnError extends boolean = false>(
-    parameters: {
-      name: ConfigSetName
-      directory?: string
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "path", key: "name" },
-            { in: "query", key: "directory" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).delete<ConfigSetDeleteResponses, ConfigSetDeleteErrors, ThrowOnError>({
-      url: "/config/sets/{name}",
-      ...options,
-      ...params,
-    })
-  }
-
-  /**
-   * Get Config Set
-   *
-   * Read a global Config Set and its raw configuration.
-   */
-  public get<ThrowOnError extends boolean = false>(
-    parameters: {
-      name: ConfigSetName
-      directory?: string
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "path", key: "name" },
-            { in: "query", key: "directory" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).get<ConfigSetGetResponses, ConfigSetGetErrors, ThrowOnError>({
-      url: "/config/sets/{name}",
-      ...options,
-      ...params,
-    })
-  }
-
-  /**
-   * Update Config Set
-   *
-   * Patch a global Config Set raw configuration.
-   */
-  public update<ThrowOnError extends boolean = false>(
-    parameters: {
-      name: ConfigSetName
+  public apply<ThrowOnError extends boolean = false>(
+    parameters?: {
       directory?: string
       config?: Config2
+      only?: Array<
+        | "general"
+        | "models"
+        | "providers"
+        | "engram"
+        | "mcp"
+        | "plugins"
+        | "agents"
+        | "commands"
+        | "permissions"
+        | "channels"
+        | "holos"
+        | "email"
+        | "runtime"
+      >
+      mode?: "merge" | "replace-domain" | "append"
+      yes?: boolean
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -3210,15 +3259,17 @@ export class _Set extends HeyApiClient {
       [
         {
           args: [
-            { in: "path", key: "name" },
             { in: "query", key: "directory" },
-            { key: "config", map: "body" },
+            { in: "body", key: "config" },
+            { in: "body", key: "only" },
+            { in: "body", key: "mode" },
+            { in: "body", key: "yes" },
           ],
         },
       ],
     )
-    return (options?.client ?? this.client).patch<ConfigSetUpdateResponses, ConfigSetUpdateErrors, ThrowOnError>({
-      url: "/config/sets/{name}",
+    return (options?.client ?? this.client).post<ConfigImportApplyResponses, ConfigImportApplyErrors, ThrowOnError>({
+      url: "/config/import/apply",
       ...options,
       ...params,
       headers: {
@@ -3228,38 +3279,6 @@ export class _Set extends HeyApiClient {
       },
     })
   }
-
-  /**
-   * Activate Config Set
-   *
-   * Activate a global Config Set and reload global runtime configuration.
-   */
-  public activate<ThrowOnError extends boolean = false>(
-    parameters: {
-      name: ConfigSetName
-      directory?: string
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "path", key: "name" },
-            { in: "query", key: "directory" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).post<ConfigSetActivateResponses, ConfigSetActivateErrors, ThrowOnError>({
-      url: "/config/sets/{name}/activate",
-      ...options,
-      ...params,
-    })
-  }
-
-  raw = new Raw({ client: this.client })
 }
 
 export class Config extends HeyApiClient {
@@ -3320,7 +3339,7 @@ export class Config extends HeyApiClient {
   /**
    * Get global configuration
    *
-   * Retrieve only the active global Config Set raw configuration (without project or remote layers).
+   * Retrieve only the canonical global domain configuration.
    */
   public global<ThrowOnError extends boolean = false>(
     parameters?: {
@@ -3355,7 +3374,9 @@ export class Config extends HeyApiClient {
     })
   }
 
-  set = new _Set({ client: this.client })
+  domain = new Domain({ client: this.client })
+
+  import = new Import({ client: this.client })
 }
 
 export class Runtime extends HeyApiClient {
@@ -3397,6 +3418,96 @@ export class Runtime extends HeyApiClient {
         ...options?.headers,
         ...params.headers,
       },
+    })
+  }
+
+  /**
+   * Stop plugin runtime
+   *
+   * Gracefully stop the plugin runtime process.
+   */
+  public stop<ThrowOnError extends boolean = false>(
+    parameters: {
+      pluginId: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "pluginId" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<PluginRuntimeStopResponses, PluginRuntimeStopErrors, ThrowOnError>({
+      url: "/api/plugins/{pluginId}/runtime/stop",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Start plugin runtime
+   *
+   * Start the plugin runtime process.
+   */
+  public start<ThrowOnError extends boolean = false>(
+    parameters: {
+      pluginId: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "pluginId" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<PluginRuntimeStartResponses, PluginRuntimeStartErrors, ThrowOnError>({
+      url: "/api/plugins/{pluginId}/runtime/start",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Get plugin runtime logs
+   *
+   * Return recent log entries for the plugin runtime.
+   */
+  public logs<ThrowOnError extends boolean = false>(
+    parameters: {
+      pluginId: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "pluginId" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<PluginRuntimeLogsResponses, PluginRuntimeLogsErrors, ThrowOnError>({
+      url: "/api/plugins/{pluginId}/runtime/logs",
+      ...options,
+      ...params,
     })
   }
 }
@@ -3792,7 +3903,7 @@ export class Permission extends HeyApiClient {
     parameters: {
       requestID: string
       directory?: string
-      reply?: "once" | "reject"
+      reply?: "once" | "session" | "always" | "reject"
       message?: string
     },
     options?: Options<never, ThrowOnError>,
@@ -5216,6 +5327,336 @@ export class Note extends HeyApiClient {
   }
 }
 
+export class Loop extends HeyApiClient {
+  /**
+   * List BlueprintLoops
+   *
+   * List all BlueprintLoops for the current scope.
+   */
+  public list<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    return (options?.client ?? this.client).get<BlueprintLoopListResponses, BlueprintLoopListErrors, ThrowOnError>({
+      url: "/blueprint/loop",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Create BlueprintLoop
+   *
+   * Create a new BlueprintLoop in the current scope. Returns armed status.
+   */
+  public create<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      blueprintLoopCreateInput?: BlueprintLoopCreateInput
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { key: "blueprintLoopCreateInput", map: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<BlueprintLoopCreateResponses, BlueprintLoopCreateErrors, ThrowOnError>(
+      {
+        url: "/blueprint/loop",
+        ...options,
+        ...params,
+        headers: {
+          "Content-Type": "application/json",
+          ...options?.headers,
+          ...params.headers,
+        },
+      },
+    )
+  }
+
+  /**
+   * Complete BlueprintLoop
+   *
+   * Mark a BlueprintLoop as completed.
+   */
+  public complete<ThrowOnError extends boolean = false>(
+    parameters: {
+      id: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "id" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      BlueprintLoopCompleteResponses,
+      BlueprintLoopCompleteErrors,
+      ThrowOnError
+    >({
+      url: "/blueprint/loop/{id}/complete",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Cancel BlueprintLoop
+   *
+   * Cancel a BlueprintLoop.
+   */
+  public cancel<ThrowOnError extends boolean = false>(
+    parameters: {
+      id: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "id" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<BlueprintLoopCancelResponses, BlueprintLoopCancelErrors, ThrowOnError>(
+      {
+        url: "/blueprint/loop/{id}/cancel",
+        ...options,
+        ...params,
+      },
+    )
+  }
+
+  /**
+   * Get BlueprintLoop
+   *
+   * Get a specific BlueprintLoop by ID.
+   */
+  public get<ThrowOnError extends boolean = false>(
+    parameters: {
+      id: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "id" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<BlueprintLoopGetResponses, BlueprintLoopGetErrors, ThrowOnError>({
+      url: "/blueprint/loop/{id}",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Bind session to BlueprintLoop
+   *
+   * Bind the current session to a BlueprintLoop so the session drives loop execution.
+   */
+  public bind<ThrowOnError extends boolean = false>(
+    parameters: {
+      id: string
+      directory?: string
+      sessionID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "id" },
+            { in: "query", key: "directory" },
+            { in: "body", key: "sessionID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).put<BlueprintLoopBindResponses, BlueprintLoopBindErrors, ThrowOnError>({
+      url: "/blueprint/loop/{id}/bind",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Start BlueprintLoop (armed → running)
+   *
+   * Transition a BlueprintLoop from armed to running.
+   */
+  public start<ThrowOnError extends boolean = false>(
+    parameters: {
+      id: string
+      directory?: string
+      userPrompt?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "id" },
+            { in: "query", key: "directory" },
+            { in: "body", key: "userPrompt" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<BlueprintLoopStartResponses, BlueprintLoopStartErrors, ThrowOnError>({
+      url: "/blueprint/loop/{id}/start",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Wait BlueprintLoop (running → waiting)
+   *
+   * Transition a BlueprintLoop from running to waiting.
+   */
+  public wait<ThrowOnError extends boolean = false>(
+    parameters: {
+      id: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "id" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<BlueprintLoopWaitResponses, BlueprintLoopWaitErrors, ThrowOnError>({
+      url: "/blueprint/loop/{id}/wait",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Resume BlueprintLoop (waiting → running)
+   *
+   * Transition a BlueprintLoop from waiting back to running.
+   */
+  public resume<ThrowOnError extends boolean = false>(
+    parameters: {
+      id: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "id" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<BlueprintLoopResumeResponses, BlueprintLoopResumeErrors, ThrowOnError>(
+      {
+        url: "/blueprint/loop/{id}/resume",
+        ...options,
+        ...params,
+      },
+    )
+  }
+
+  /**
+   * Get BlueprintLoop activity
+   *
+   * Get derived activity metrics for a BlueprintLoop (derived from session state).
+   */
+  public activity<ThrowOnError extends boolean = false>(
+    parameters: {
+      id: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "id" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<
+      BlueprintLoopActivityResponses,
+      BlueprintLoopActivityErrors,
+      ThrowOnError
+    >({
+      url: "/blueprint/loop/{id}/activity",
+      ...options,
+      ...params,
+    })
+  }
+}
+
+export class Blueprint extends HeyApiClient {
+  loop = new Loop({ client: this.client })
+
+  session = new Session({ client: this.client })
+}
+
 export class Asset extends HeyApiClient {
   /**
    * Upload asset
@@ -5333,6 +5774,855 @@ export class Stats extends HeyApiClient {
       ...params,
     })
   }
+}
+
+export class Plugin extends HeyApiClient {
+  /**
+   * List plugin UI contributions
+   *
+   * Return aggregated UI manifests for all loaded plugins.
+   */
+  public listUiContributions<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    return (options?.client ?? this.client).get<
+      PluginListUiContributionsResponses,
+      PluginListUiContributionsErrors,
+      ThrowOnError
+    >({
+      url: "/plugin/ui/contributions",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Serve plugin static asset
+   *
+   * Serve a static file from a plugin's directory with immutable cache headers.
+   */
+  public serveAsset<ThrowOnError extends boolean = false>(
+    parameters: {
+      pluginId: string
+      versionHash: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "pluginId" },
+            { in: "path", key: "versionHash" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<PluginServeAssetResponses, PluginServeAssetErrors, ThrowOnError>({
+      url: "/plugin/assets/{pluginId}/{versionHash}/*",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Serve plugin sandbox iframe shell
+   *
+   * Serve an HTML shell for loading a plugin panel in a sandboxed iframe.
+   */
+  public sandbox<ThrowOnError extends boolean = false>(
+    parameters: {
+      pluginId: string
+      panelId: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "pluginId" },
+            { in: "path", key: "panelId" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<PluginSandboxResponses, PluginSandboxErrors, ThrowOnError>({
+      url: "/plugin/{pluginId}/sandbox/{panelId}",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Relay plugin interaction
+   *
+   * Relay a postMessage interaction for a plugin.
+   */
+  public interact<ThrowOnError extends boolean = false>(
+    parameters: {
+      pluginId: string
+      directory?: string
+      type?: string
+      payload?: unknown
+      source?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "pluginId" },
+            { in: "query", key: "directory" },
+            { in: "body", key: "type" },
+            { in: "body", key: "payload" },
+            { in: "body", key: "source" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<PluginInteractResponses, PluginInteractErrors, ThrowOnError>({
+      url: "/plugin/{pluginId}/interact",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Get plugin config schema
+   *
+   * Return the plugin's contributed config schema from its manifest.
+   */
+  public configSchema<ThrowOnError extends boolean = false>(
+    parameters: {
+      pluginId: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "pluginId" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<PluginConfigSchemaResponses, PluginConfigSchemaErrors, ThrowOnError>({
+      url: "/plugin/{pluginId}/config-schema",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Get plugin config
+   *
+   * Return the current config values for a plugin.
+   */
+  public getConfig<ThrowOnError extends boolean = false>(
+    parameters: {
+      pluginId: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "pluginId" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<PluginGetConfigResponses, PluginGetConfigErrors, ThrowOnError>({
+      url: "/plugin/{pluginId}/config",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Update plugin config
+   *
+   * Merge values into the plugin's configuration namespace.
+   */
+  public updateConfig<ThrowOnError extends boolean = false>(
+    parameters: {
+      pluginId: string
+      directory?: string
+      body?: {
+        [key: string]: unknown
+      }
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [{ args: [{ in: "path", key: "pluginId" }, { in: "query", key: "directory" }, { in: "body" }] }],
+    )
+    return (options?.client ?? this.client).patch<PluginUpdateConfigResponses, PluginUpdateConfigErrors, ThrowOnError>({
+      url: "/plugin/{pluginId}/config",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Get plugin status
+   *
+   * Report the current status of a loaded plugin.
+   */
+  public status<ThrowOnError extends boolean = false>(
+    parameters: {
+      pluginId: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "pluginId" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<PluginStatusResponses, PluginStatusErrors, ThrowOnError>({
+      url: "/plugin/{pluginId}/status",
+      ...options,
+      ...params,
+    })
+  }
+
+  runtime = new Runtime({ client: this.client })
+}
+
+export class Plugins extends HeyApiClient {
+  /**
+   * List all loaded plugins
+   *
+   * Return metadata for all currently loaded plugins.
+   */
+  public list<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    return (options?.client ?? this.client).get<ApiPluginsListResponses, unknown, ThrowOnError>({
+      url: "/api/plugins",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Get plugin detail
+   *
+   * Return detailed metadata for a single loaded plugin.
+   */
+  public get<ThrowOnError extends boolean = false>(
+    parameters: {
+      pluginId: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "pluginId" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<ApiPluginsGetResponses, ApiPluginsGetErrors, ThrowOnError>({
+      url: "/api/plugins/{pluginId}",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Get plugin status
+   *
+   * Report the current status of a loaded plugin.
+   */
+  public status<ThrowOnError extends boolean = false>(
+    parameters: {
+      pluginId: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "pluginId" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<ApiPluginsStatusResponses, ApiPluginsStatusErrors, ThrowOnError>({
+      url: "/api/plugins/{pluginId}/status",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Preview permissions for new plugin install
+   *
+   * Compute the permission diff for a new plugin manifest before installation.
+   */
+  public previewInstall<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      manifest?: {
+        [key: string]: unknown
+      }
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "body", key: "manifest" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      ApiPluginsPreviewInstallResponses,
+      ApiPluginsPreviewInstallErrors,
+      ThrowOnError
+    >({
+      url: "/api/plugins/preview-install",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Approve new plugin install
+   *
+   * Record approval for a new plugin installation after reviewing its permissions.
+   */
+  public approveInstall<ThrowOnError extends boolean = false>(
+    parameters: {
+      pluginId: string
+      directory?: string
+      manifest?: {
+        [key: string]: unknown
+      }
+      capabilities?: Array<string>
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "pluginId" },
+            { in: "query", key: "directory" },
+            { in: "body", key: "manifest" },
+            { in: "body", key: "capabilities" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      ApiPluginsApproveInstallResponses,
+      ApiPluginsApproveInstallErrors,
+      ThrowOnError
+    >({
+      url: "/api/plugins/{pluginId}/approve-install",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Preview permissions for plugin update
+   *
+   * Compute the permission diff between the currently installed plugin and a new manifest version.
+   */
+  public previewUpdate<ThrowOnError extends boolean = false>(
+    parameters: {
+      pluginId: string
+      directory?: string
+      manifest?: {
+        [key: string]: unknown
+      }
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "pluginId" },
+            { in: "query", key: "directory" },
+            { in: "body", key: "manifest" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      ApiPluginsPreviewUpdateResponses,
+      ApiPluginsPreviewUpdateErrors,
+      ThrowOnError
+    >({
+      url: "/api/plugins/{pluginId}/preview-update",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Approve plugin update
+   *
+   * Record approval for a plugin update after reviewing its permission changes.
+   */
+  public approveUpdate<ThrowOnError extends boolean = false>(
+    parameters: {
+      pluginId: string
+      directory?: string
+      manifest?: {
+        [key: string]: unknown
+      }
+      capabilities?: Array<string>
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "pluginId" },
+            { in: "query", key: "directory" },
+            { in: "body", key: "manifest" },
+            { in: "body", key: "capabilities" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      ApiPluginsApproveUpdateResponses,
+      ApiPluginsApproveUpdateErrors,
+      ThrowOnError
+    >({
+      url: "/api/plugins/{pluginId}/approve-update",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Get plugin approval status
+   *
+   * Return the current approval record for a plugin, or 404 if not approved.
+   */
+  public getApproval<ThrowOnError extends boolean = false>(
+    parameters: {
+      pluginId: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "pluginId" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<
+      ApiPluginsGetApprovalResponses,
+      ApiPluginsGetApprovalErrors,
+      ThrowOnError
+    >({
+      url: "/api/plugins/{pluginId}/approval",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Get permission diff for plugin version
+   *
+   * Return the permission diff between the approved capabilities and the current plugin manifest.
+   */
+  public permissionDiff<ThrowOnError extends boolean = false>(
+    parameters: {
+      pluginId: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "pluginId" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<
+      ApiPluginsPermissionDiffResponses,
+      ApiPluginsPermissionDiffErrors,
+      ThrowOnError
+    >({
+      url: "/api/plugins/{pluginId}/permission-diff",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Install plugin from registry
+   *
+   * Install a plugin from the local registry store. Looks up the plugin and version in the registry, then installs it via Bun's package manager and loads it into the runtime.
+   */
+  public installFromRegistry<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      id?: string
+      version?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "body", key: "id" },
+            { in: "body", key: "version" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      ApiPluginsInstallFromRegistryResponses,
+      ApiPluginsInstallFromRegistryErrors,
+      ThrowOnError
+    >({
+      url: "/api/plugins/install-from-registry",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Check for plugin update from registry
+   *
+   * Check if an update is available for a plugin from the local registry. Optionally target a specific version. Returns version comparison and permission diff.
+   */
+  public updateFromRegistry<ThrowOnError extends boolean = false>(
+    parameters: {
+      pluginId: string
+      directory?: string
+      targetVersion?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "pluginId" },
+            { in: "query", key: "directory" },
+            { in: "body", key: "targetVersion" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      ApiPluginsUpdateFromRegistryResponses,
+      ApiPluginsUpdateFromRegistryErrors,
+      ThrowOnError
+    >({
+      url: "/api/plugins/{pluginId}/update-from-registry",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Search plugin registry
+   *
+   * Search plugins by keyword in name, description, and keywords with pagination.
+   */
+  public search<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      q?: string
+      offset?: number
+      limit?: number
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "q" },
+            { in: "query", key: "offset" },
+            { in: "query", key: "limit" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<
+      RegistryPluginsSearchResponses,
+      RegistryPluginsSearchErrors,
+      ThrowOnError
+    >({
+      url: "/api/registry/search",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * List plugin versions
+   *
+   * Return all published versions for a plugin.
+   */
+  public versions<ThrowOnError extends boolean = false>(
+    parameters: {
+      id: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "id" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<
+      RegistryPluginsVersionsResponses,
+      RegistryPluginsVersionsErrors,
+      ThrowOnError
+    >({
+      url: "/api/registry/{id}/versions",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Get plugin version
+   *
+   * Return details for a specific version of a plugin.
+   */
+  public version<ThrowOnError extends boolean = false>(
+    parameters: {
+      id: string
+      version: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "id" },
+            { in: "path", key: "version" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<
+      RegistryPluginsVersionResponses,
+      RegistryPluginsVersionErrors,
+      ThrowOnError
+    >({
+      url: "/api/registry/{id}/versions/{version}",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Download plugin version
+   *
+   * Download a plugin version archive. If downloadUrl is a file:// path within the registry store, streams the file. Otherwise returns 501.
+   */
+  public download<ThrowOnError extends boolean = false>(
+    parameters: {
+      id: string
+      version: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "id" },
+            { in: "path", key: "version" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<
+      RegistryPluginsDownloadResponses,
+      RegistryPluginsDownloadErrors,
+      ThrowOnError
+    >({
+      url: "/api/registry/{id}/download/{version}",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Publish plugin entry
+   *
+   * Publish a new plugin entry or update an existing one. Local registry publishing is localhost-only.
+   */
+  public publish<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      registryPublishInput?: RegistryPublishInput
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { key: "registryPublishInput", map: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      RegistryPluginsPublishResponses,
+      RegistryPluginsPublishErrors,
+      ThrowOnError
+    >({
+      url: "/api/registry/publish",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+}
+
+export class Api extends HeyApiClient {
+  plugins = new Plugins({ client: this.client })
+}
+
+export class Registry extends HeyApiClient {
+  plugins = new Plugins({ client: this.client })
 }
 
 export class App extends HeyApiClient {
@@ -6148,9 +7438,17 @@ export class SynergyClient extends HeyApiClient {
 
   note = new Note({ client: this.client })
 
+  blueprint = new Blueprint({ client: this.client })
+
   asset = new Asset({ client: this.client })
 
   stats = new Stats({ client: this.client })
+
+  plugin = new Plugin({ client: this.client })
+
+  api = new Api({ client: this.client })
+
+  registry = new Registry({ client: this.client })
 
   app = new App({ client: this.client })
 

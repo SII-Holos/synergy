@@ -19,23 +19,52 @@ const CAPABILITY_PERMISSIONS = [
   "shell",
   "shell_destructive",
   "shell_hardline",
+  "file_external_read",
+  "file_external_write",
+  "network_read",
   "network_request",
-  "file_external",
   "mcp_invoke",
   "plugin_invoke",
+  "plugin_file_read",
+  "plugin_file_write",
+  "plugin_shell",
+  "plugin_network",
+  "plugin_session_read",
+  "plugin_workspace_read",
+  "plugin_config_read",
+  "plugin_config_write",
+  "plugin_secret_read",
   "identity_act",
   "communication_email",
   "channel_outbound",
   "platform_control",
   "protected_op",
+
+  "session_state",
+
+  "browser_interact",
+  "browser_inspect",
+  "browser_eval_readonly",
+  "browser_eval_trusted",
+  "browser_clipboard",
+  "browser_download",
+  "browser_viewport",
 ]
 
 const HIGH_RISK_PERMISSIONS = [
   "shell_hardline",
   "shell_destructive",
-  "file_external",
+
+  "file_external_read",
+  "file_external_write",
+
   "mcp_invoke",
   "plugin_invoke",
+  "plugin_file_read",
+  "plugin_file_write",
+  "plugin_shell",
+  "plugin_network",
+  "plugin_secret_read",
   "identity_act",
   "communication_email",
   "channel_outbound",
@@ -67,7 +96,15 @@ function guardedRules() {
     if (permission === "protected_op") return rule(permission, "ask", true)
     if (HIGH_RISK_PERMISSIONS.includes(permission)) return rule(permission, "ask", true)
     if (permission === "file_read" || permission === "shell_read") return rule(permission, "allow")
-    if (permission === "file_write" || permission === "network_request") return rule(permission, "allow")
+    if (
+      permission === "file_write" ||
+      permission === "network_request" ||
+      permission === "network_read" ||
+      permission === "session_state" ||
+      permission === "browser_interact" ||
+      permission === "browser_inspect"
+    )
+      return rule(permission, "allow")
     return rule(permission, "ask")
   })
 }
@@ -77,16 +114,20 @@ function autonomousRules() {
     if (permission === "shell_hardline") return rule(permission, "deny", true)
     if (permission === "file_read" || permission === "shell_read") return rule(permission, "allow")
     if (permission === "file_write") return rule(permission, "allow")
-    if (permission === "shell") return rule(permission, "allow")
+    if (permission === "file_external_read") return rule(permission, "allow")
+    if (permission === "file_external_write") return rule(permission, "deny", true)
     if (permission === "network_request") return rule(permission, "allow")
-    if (permission === "file_external") return rule(permission, "allow")
+    if (permission === "browser_interact") return rule(permission, "allow")
+    if (permission === "browser_inspect") return rule(permission, "allow")
+    if (permission === "protected_op") return rule(permission, "ask", true)
     if (permission === "mcp_invoke") return rule(permission, "allow")
-    if (permission === "plugin_invoke") return rule(permission, "allow")
+    if (permission.startsWith("plugin_")) return rule(permission, "ask", true)
     if (permission === "identity_act") return rule(permission, "allow")
     if (permission === "communication_email") return rule(permission, "allow")
     if (permission === "channel_outbound") return rule(permission, "allow")
     if (permission === "platform_control") return rule(permission, "allow")
     if (permission === "shell_destructive") return rule(permission, "deny")
+    if (permission === "browser_eval_trusted") return rule(permission, "deny", true)
     return rule(permission, "allow")
   })
 }

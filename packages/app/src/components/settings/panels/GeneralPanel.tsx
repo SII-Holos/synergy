@@ -44,7 +44,7 @@ export function GeneralPanel(props: {
       <div class="ds-setting-section">
         <SectionLabel title="Server-backed" />
         <p class="ds-section-hint">
-          These settings are saved to the Config Set <strong>{props.editingLabel}</strong> and sync immediately.
+          These settings are saved to <strong>{props.editingLabel}</strong> and sync immediately.
         </p>
         <SettingRow
           title="Snapshot"
@@ -72,7 +72,7 @@ export function GeneralPanel(props: {
       </div>
       <div class="ds-setting-section">
         <SectionLabel title="Local Preference" />
-        <p class="ds-section-hint">Stored only in this client and never written to any Config Set.</p>
+        <p class="ds-section-hint">Stored only in this client and never written to global config.</p>
         <SettingRow
           title="Send Shortcut"
           description="Choose whether Enter sends immediately or inserts a newline"

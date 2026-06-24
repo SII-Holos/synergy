@@ -1,3 +1,4 @@
+import { formatLocalDateTime } from "../../util/time-format"
 import { cmd } from "./cmd"
 import { Client } from "@modelcontextprotocol/sdk/client/index.js"
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js"
@@ -8,6 +9,7 @@ import { MCP } from "../../mcp"
 import { McpAuth } from "../../mcp/auth"
 import { McpOAuthProvider } from "../../mcp/oauth-provider"
 import { Config } from "../../config/config"
+import { ConfigDomain } from "../../config/domain"
 import { Instance } from "../../scope/instance"
 import { Scope } from "@/scope"
 import { Installation } from "../../global/installation"
@@ -419,7 +421,13 @@ export const McpAddCommand = cmd({
       })
       if (prompts.isCancel(command)) throw new UI.CancelledError()
 
+      const entry = {
+        type: "local",
+        command: String(command).split(/\s+/).filter(Boolean),
+      } satisfies Config.Mcp
+      await Config.domainUpdate("mcp", { mcp: { [String(name)]: entry } } as Config.Info)
       prompts.log.info(`Local MCP server "${name}" configured with command: ${command}`)
+      prompts.log.info(`Config file: ${ConfigDomain.filepath("mcp")}`)
       prompts.outro("MCP server added successfully")
       return
     }
@@ -472,29 +480,26 @@ export const McpAddCommand = cmd({
             clientSecret = secret
           }
 
+          const entry = {
+            type: "remote",
+            url: String(url),
+            oauth: {
+              clientId: String(clientId),
+              ...(clientSecret ? { clientSecret } : {}),
+            },
+          } satisfies Config.Mcp
+          await Config.domainUpdate("mcp", { mcp: { [String(name)]: entry } } as Config.Info)
           prompts.log.info(`Remote MCP server "${name}" configured with OAuth (client ID: ${clientId})`)
-          prompts.log.info("Add this to your synergy.json:")
-          prompts.log.info(`
-  "mcp": {
-    "${name}": {
-      "type": "remote",
-      "url": "${url}",
-      "oauth": {
-        "clientId": "${clientId}"${clientSecret ? `,\n        "clientSecret": "${clientSecret}"` : ""}
-      }
-    }
-  }`)
+          prompts.log.info(`Config file: ${ConfigDomain.filepath("mcp")}`)
         } else {
+          const entry = {
+            type: "remote",
+            url: String(url),
+            oauth: {},
+          } satisfies Config.Mcp
+          await Config.domainUpdate("mcp", { mcp: { [String(name)]: entry } } as Config.Info)
           prompts.log.info(`Remote MCP server "${name}" configured with OAuth (dynamic registration)`)
-          prompts.log.info("Add this to your synergy.json:")
-          prompts.log.info(`
-  "mcp": {
-    "${name}": {
-      "type": "remote",
-      "url": "${url}",
-      "oauth": {}
-    }
-  }`)
+          prompts.log.info(`Config file: ${ConfigDomain.filepath("mcp")}`)
         }
       } else {
         const client = new Client({
@@ -503,7 +508,13 @@ export const McpAddCommand = cmd({
         })
         const transport = new StreamableHTTPClientTransport(new URL(url))
         await client.connect(transport)
+        const entry = {
+          type: "remote",
+          url: String(url),
+        } satisfies Config.Mcp
+        await Config.domainUpdate("mcp", { mcp: { [String(name)]: entry } } as Config.Info)
         prompts.log.info(`Remote MCP server "${name}" configured with URL: ${url}`)
+        prompts.log.info(`Config file: ${ConfigDomain.filepath("mcp")}`)
       }
     }
 
@@ -563,7 +574,7 @@ export const McpDebugCommand = cmd({
           if (entry.tokens.expiresAt) {
             const expiresDate = new Date(entry.tokens.expiresAt * 1000)
             const isExpired = entry.tokens.expiresAt < Date.now() / 1000
-            prompts.log.info(`  Expires: ${expiresDate.toISOString()} ${isExpired ? "(EXPIRED)" : ""}`)
+            prompts.log.info(`  Expires: ${formatLocalDateTime(expiresDate.getTime())} ${isExpired ? "(EXPIRED)" : ""}`)
           }
           if (entry.tokens.refreshToken) {
             prompts.log.info(`  Refresh token: present`)
@@ -573,7 +584,7 @@ export const McpDebugCommand = cmd({
           prompts.log.info(`  Client ID: ${entry.clientInfo.clientId}`)
           if (entry.clientInfo.clientSecretExpiresAt) {
             const expiresDate = new Date(entry.clientInfo.clientSecretExpiresAt * 1000)
-            prompts.log.info(`  Client secret expires: ${expiresDate.toISOString()}`)
+            prompts.log.info(`  Client secret expires: ${formatLocalDateTime(expiresDate.getTime())}`)
           }
         }
 

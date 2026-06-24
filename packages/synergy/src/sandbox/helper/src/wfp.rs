@@ -13,16 +13,15 @@ pub const SUBLAYER_KEY: &str = "1a2b3c4d-5e6f-7890-abcd-ef0123456789";
 mod platform {
     use std::ptr;
 
-    use windows_sys::core::{GUID, PWSTR};
+    use windows_sys::core::GUID;
     use windows_sys::Win32::Foundation::HANDLE;
     use windows_sys::Win32::NetworkManagement::WindowsFilteringPlatform::*;
     use windows_sys::Win32::Security::{LookupAccountNameW, SidTypeUser, PSID, SID_NAME_USE};
-    use windows_sys::Win32::System::Rpc::SEC_WINNT_AUTH_IDENTITY_W;
 
     use crate::wfp::filter_specs::FilterSpec;
 
     /// Parse a GUID string "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" into a windows_sys GUID.
-    fn parse_guid(s: &str) -> Result<GUID, String> {
+    pub fn parse_guid(s: &str) -> Result<GUID, String> {
         let s = s.trim();
         if s.len() != 36 {
             return Err(format!("GUID must be 36 chars, got {}", s.len()));
@@ -70,7 +69,7 @@ mod platform {
             username: ptr::null_mut(),
             kernelMode: 0,
         };
-        let mut engine: HANDLE = 0;
+        let mut engine: HANDLE = std::ptr::null_mut();
         let status = unsafe { FwpmEngineOpen0(ptr::null(), 0, ptr::null(), &session, &mut engine) };
         if status != 0 {
             return Err(format!("FwpmEngineOpen0 failed: 0x{status:08x}"));
@@ -197,9 +196,7 @@ mod platform {
                     Anonymous: unsafe { std::mem::zeroed() },
                 },
             };
-            unsafe {
-                sid_condition.conditionValue.Anonymous.sid = user_sid;
-            }
+            sid_condition.conditionValue.Anonymous.sid = user_sid as *mut windows_sys::Win32::Security::SID;
             conditions.push(sid_condition);
         }
 
@@ -405,26 +402,24 @@ pub fn install_wfp_filters() -> Result<usize, String> {
     }
     #[cfg(target_os = "windows")]
     {
-        unsafe {
-            let engine = platform::open_wfp_engine()?;
-            let provider_key =
-                platform::parse_guid(PROVIDER_KEY).map_err(|e| format!("provider key: {e}"))?;
-            let sublayer_key =
-                platform::parse_guid(SUBLAYER_KEY).map_err(|e| format!("sublayer key: {e}"))?;
+        let engine = platform::open_wfp_engine()?;
+        let provider_key =
+            platform::parse_guid(PROVIDER_KEY).map_err(|e| format!("provider key: {e}"))?;
+        let sublayer_key =
+            platform::parse_guid(SUBLAYER_KEY).map_err(|e| format!("sublayer key: {e}"))?;
 
-            platform::register_provider_and_sublayer(engine, &provider_key, &sublayer_key)?;
+        platform::register_provider_and_sublayer(engine, &provider_key, &sublayer_key)?;
 
-            // Install filters without per-user SID (system-wide allow rules)
-            let count = platform::install_filters(
-                engine,
-                &provider_key,
-                &sublayer_key,
-                std::ptr::null_mut(),
-            )?;
+        // Install filters without per-user SID (system-wide allow rules)
+        let count = platform::install_filters(
+            engine,
+            &provider_key,
+            &sublayer_key,
+            std::ptr::null_mut(),
+        )?;
 
-            platform::close_engine(engine)?;
-            Ok(count)
-        }
+        platform::close_engine(engine)?;
+        Ok(count)
     }
 }
 
@@ -436,21 +431,19 @@ pub fn install_wfp_filters_for_account(username: &str) -> Result<usize, String> 
     }
     #[cfg(target_os = "windows")]
     {
-        unsafe {
-            let engine = platform::open_wfp_engine()?;
-            let provider_key =
-                platform::parse_guid(PROVIDER_KEY).map_err(|e| format!("provider key: {e}"))?;
-            let sublayer_key =
-                platform::parse_guid(SUBLAYER_KEY).map_err(|e| format!("sublayer key: {e}"))?;
+        let engine = platform::open_wfp_engine()?;
+        let provider_key =
+            platform::parse_guid(PROVIDER_KEY).map_err(|e| format!("provider key: {e}"))?;
+        let sublayer_key =
+            platform::parse_guid(SUBLAYER_KEY).map_err(|e| format!("sublayer key: {e}"))?;
 
-            platform::register_provider_and_sublayer(engine, &provider_key, &sublayer_key)?;
+        platform::register_provider_and_sublayer(engine, &provider_key, &sublayer_key)?;
 
-            let (_sid_ptr, _sid_buf) = platform::lookup_user_sid(username)?;
-            let count = platform::install_filters(engine, &provider_key, &sublayer_key, _sid_ptr)?;
+        let (_sid_ptr, _sid_buf) = platform::lookup_user_sid(username)?;
+        let count = platform::install_filters(engine, &provider_key, &sublayer_key, _sid_ptr)?;
 
-            platform::close_engine(engine)?;
-            Ok(count)
-        }
+        platform::close_engine(engine)?;
+        Ok(count)
     }
 }
 

@@ -14,8 +14,12 @@ import { normalizeToLF } from "../hashline/normalize"
 import { Patcher, type PreparedSection, type PatchSectionResult } from "../hashline/patcher"
 import { BunFilesystem, type WriteResult } from "../hashline/fs"
 import { SessionHashlineStore } from "../hashline/store"
+import { createBlockResolver } from "../hashline/block-resolver"
+import { NoopLoopGuard, noopLoopDiagnostic } from "../hashline/noop-loop-guard"
+import { noopSoftWarning, WIDENED_SWAP_WARNING } from "../hashline/messages"
 import { diffStats, displayPath, resolveFilePath } from "./anchored-file"
 import { collectWriteDiagnostics } from "./write-quality"
+import { LSP } from "../lsp"
 
 /**
  * Synergy-aware Filesystem that resolves paths using Instance.directory
@@ -95,7 +99,8 @@ export const ReviseFileTool = Tool.define("revise_file", {
     // ── 2. Set up Patcher with Synergy-adapted filesystem ──
     const fs = new SynergyFilesystem()
     const snapshots = SessionHashlineStore.get(ctx.sessionID)
-    const patcher = new Patcher({ fs, snapshots })
+    const blockResolver = createBlockResolver()
+    const patcher = new Patcher({ fs, snapshots, blockResolver })
 
     // ── 3. Pre-check each file for conflicts, existence, and stale tags ──
     for (const section of sections) {
@@ -140,11 +145,20 @@ export const ReviseFileTool = Tool.define("revise_file", {
     if (allNoop && prepared.length === 1) {
       const p = prepared[0]
       const displayTitle = displayPath(p.canonicalPath)
+
+      // ── No-op loop guard ──
+      const inputHash = computeFileHash(params.input)
+      const noop = NoopLoopGuard.record(ctx.sessionID, p.canonicalPath, inputHash)
+      if (noop.escalate) {
+        throw new Error(noopLoopDiagnostic(displayTitle, noop.count))
+      }
+
       const block = formatHashlineBlock(displayTitle, snapshots.head(p.canonicalPath)?.hash ?? "????", p.normalized)
       const diagnostics = await collectWriteDiagnostics(p.canonicalPath)
+      const noopMsg = noopSoftWarning(displayTitle, noop.count)
       return {
         title: displayTitle,
-        output: `${block}\nNo-op: patch parsed cleanly but produced no change. The targeted body rows already match the current file. Do not widen ranges; verify the header and line numbers before retrying.${diagnostics.output}`,
+        output: `${block}\n${noopMsg}${diagnostics.output}`,
         metadata: {
           filepath: p.canonicalPath,
           path: displayTitle,
@@ -206,6 +220,9 @@ export const ReviseFileTool = Tool.define("revise_file", {
     const committedResults: PatchSectionResult[] = []
     let firstError: Error | undefined
 
+    // Capture before-diagnostics for delta computation
+    const beforeDiagnostics = await LSP.diagnostics().catch(() => undefined)
+
     for (const p of prepared) {
       if (p.isNoop) {
         const head = snapshots.head(p.canonicalPath)?.hash ?? "????"
@@ -248,6 +265,9 @@ export const ReviseFileTool = Tool.define("revise_file", {
               header: formatHashlineHeader(result.path, formattedHash),
             }
 
+            // Reset noop guard after successful edit
+            NoopLoopGuard.reset(ctx.sessionID, p.canonicalPath)
+
             FileTime.read(ctx.sessionID, p.canonicalPath)
           },
           { signal: ctx.abort },
@@ -257,17 +277,6 @@ export const ReviseFileTool = Tool.define("revise_file", {
         firstError = error instanceof Error ? error : new Error(String(error))
         break
       }
-    }
-
-    if (firstError) {
-      const written = committedResults.filter((r) => r.op !== "noop").map((r) => r.path)
-      const notWritten = prepared.slice(committedResults.length).map((p) => displayPath(p.canonicalPath))
-      throw new Error(
-        `Failed to write section: ${firstError.message}` +
-          (written.length > 0 ? ` Sections already written: ${written.join(", ")}.` : "") +
-          (notWritten.length > 0 ? ` Sections not written: ${notWritten.join(", ")}.` : ""),
-        { cause: firstError },
-      )
     }
 
     // ── 8. Format output ──
@@ -282,7 +291,7 @@ export const ReviseFileTool = Tool.define("revise_file", {
     }
 
     const primaryCanonical = committedResults.find((r) => r.op !== "noop")?.canonicalPath ?? primary.canonicalPath
-    const diagnostics = await collectWriteDiagnostics(primaryCanonical)
+    const diagnostics = await collectWriteDiagnostics(primaryCanonical, { before: beforeDiagnostics })
     if (diagnostics.output) outputBlocks.push(diagnostics.output.trim())
 
     const reloadTargets = RuntimeReload.detectTargetsForFile(primaryCanonical)

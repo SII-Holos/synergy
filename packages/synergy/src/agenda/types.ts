@@ -125,12 +125,6 @@ export namespace AgendaTypes {
     return hasRecurring ? "persistent" : "ephemeral"
   }
 
-  export type ContextMode = "full" | "signal"
-
-  export function inferContextMode(sessionMode: SessionMode): ContextMode {
-    return sessionMode === "persistent" ? "signal" : "full"
-  }
-
   // ---------------------------------------------------------------------------
   // Origin — creation context
   // ---------------------------------------------------------------------------

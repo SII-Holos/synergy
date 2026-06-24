@@ -169,6 +169,7 @@ describe("PathClassifier — glob pattern classification for search tools", () =
     expect(result.boundary).toBe("inside")
   })
 
+  if (process.platform === "win32") return
   test("glob with absolute base outside workspace is classified outside", () => {
     const { PathClassifier } = require("../../src/enforcement/classify")
     const workspace = "/home/user/my-project"

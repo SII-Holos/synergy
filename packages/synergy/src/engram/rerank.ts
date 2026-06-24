@@ -70,7 +70,7 @@ export namespace Rerank {
 
     if (!apiKey) {
       throw new Error(
-        "Rerank API key is required. Configure it in rerank.apiKey or embedding.apiKey in your synergy.jsonc.",
+        "Rerank API key is required. Configure it in rerank.apiKey or embedding.apiKey in 30-engram.jsonc.",
       )
     }
 

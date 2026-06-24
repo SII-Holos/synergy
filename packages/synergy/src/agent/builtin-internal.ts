@@ -142,20 +142,21 @@ export function createBuiltinInternalAgents(ctx: BuiltinAgentContext): Record<st
       permission: PermissionNext.merge(
         ctx.defaults,
         PermissionNext.fromConfig({
-          "*": "allow",
+          // Override defaults that are "ask" → "allow" (anima runs unattended)
+          edit: "allow",
+          write: "allow",
+          external_directory: { "*": "allow" },
+          arxiv_search: "allow",
+          arxiv_download: "allow",
+          // Safety gates
           question: "deny",
           todowrite: "deny",
           todoread: "deny",
-          read: "allow",
-          edit: "allow",
-          write: "allow",
-          arxiv_search: "allow",
-          arxiv_download: "allow",
-          external_directory: { "*": "allow" },
         }),
         ctx.user,
       ),
       options: {},
+      controlProfile: "autonomous",
       model: ctx.role("mid"),
     },
   }

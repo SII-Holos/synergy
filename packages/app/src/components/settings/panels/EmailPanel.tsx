@@ -14,9 +14,7 @@ export function EmailPanel(props: {
 
       <div class="ds-setting-section">
         <SectionLabel title="Outgoing Email" />
-        <p class="ds-section-hint">
-          Configure SMTP for sending emails. For provider-specific fields, switch to the JSON editor.
-        </p>
+        <p class="ds-section-hint">Configure SMTP for sending emails.</p>
         <div class="ds-email-card">
           <SettingRow
             title="Enabled"

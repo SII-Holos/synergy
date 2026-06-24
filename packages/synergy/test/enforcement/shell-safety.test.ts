@@ -316,8 +316,8 @@ describe("ShellSafety classifyBashRisk", () => {
 
   test("KNOWN GAP: commands with dot-space in content (e.g. file.txt) are flagged as unsafe", () => {
     // ". " token catches ".script" extension as it matches dot-space in "file.txt "
-    expect(ShellSafety.classifyBashRisk("cat file.txt")).toBe("shell")
-    expect(ShellSafety.classifyBashRisk("cat script.sh")).toBe("shell")
+    expect(ShellSafety.classifyBashRisk("cat file.txt")).toBe("shell_read")
+    expect(ShellSafety.classifyBashRisk("cat script.sh")).toBe("shell_read")
   })
 })
 
@@ -470,7 +470,7 @@ describe("ShellSafety isReadOnly", () => {
   test("KNOWN GAP: cat file.txt is NOT read-only due to . token", () => {
     // The ". " token (intended to catch `source` via `. /tmp/evil.sh`)
     // also matches dot in "file.txt " after wrapping.
-    expect(ShellSafety.isReadOnly("cat file.txt")).toBe(false)
+    expect(ShellSafety.isReadOnly("cat file.txt")).toBe(true)
   })
 })
 
@@ -953,7 +953,7 @@ describe("ShellSafety git taxonomy — non-git commands unaffected", () => {
   test("non-git read-only commands still return shell_read", () => {
     expect(ShellSafety.classifyBashRisk("ls")).toBe("shell_read")
     expect(ShellSafety.classifyBashRisk("pwd")).toBe("shell_read")
-    expect(ShellSafety.classifyBashRisk("cat file.txt")).toBe("shell")
+    expect(ShellSafety.classifyBashRisk("cat file.txt")).toBe("shell_read")
   })
 
   test("non-git destructive commands still work", () => {

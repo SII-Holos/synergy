@@ -1,6 +1,4 @@
-import type { Config, ConfigSetSummary } from "@ericsanchezok/synergy-sdk/client"
 import type { SendShortcut } from "@/context/input"
-import type { IconName } from "@ericsanchezok/synergy-ui/icon"
 
 export type ProviderModel = {
   providerId: string
@@ -128,66 +126,9 @@ export function emptyMcp(): McpEntry {
   return { key: "", type: "local", enabled: true, command: "", url: "", timeout: "", environment: "", headers: "" }
 }
 
-export type RawValidationState = {
-  valid: boolean
-  errors: string[]
-  warnings: string[]
-}
-
-export type SettingsEditMode = "form" | "raw"
-
 export type DialogSettingsProps = {
   initialTab?: string
 }
-
-export type NavItem = {
-  id: string
-  label: string
-  icon: IconName
-}
-
-export type NavGroup = {
-  label: string
-  icon: IconName
-  items: NavItem[]
-}
-
-export const NAV_GROUPS: NavGroup[] = [
-  {
-    label: "Core",
-    icon: "sliders-horizontal",
-    items: [
-      { id: "general", label: "General", icon: "sliders-horizontal" },
-      { id: "models", label: "Models", icon: "cpu" },
-    ],
-  },
-  {
-    label: "Integrations",
-    icon: "cable",
-    items: [
-      { id: "mcp", label: "MCP", icon: "cable" },
-      { id: "plugins", label: "Plugins", icon: "package" },
-      { id: "email", label: "Email", icon: "mail" },
-      { id: "channels", label: "Channels", icon: "globe" },
-    ],
-  },
-  {
-    label: "Identity",
-    icon: "fingerprint",
-    items: [{ id: "identity", label: "Identity & Memory", icon: "fingerprint" }],
-  },
-  {
-    label: "System",
-    icon: "sliders-horizontal",
-    items: [
-      { id: "advanced", label: "System", icon: "sliders-horizontal" },
-      { id: "config-sets", label: "Config Sets", icon: "layers" },
-    ],
-  },
-]
-
-/** Flat list for backward-compatible lookups */
-export const NAV_ITEMS: NavItem[] = NAV_GROUPS.flatMap((g) => g.items)
 
 export type ProviderGroup = {
   providerId: string

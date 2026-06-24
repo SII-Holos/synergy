@@ -14,12 +14,14 @@ export namespace PromptBudgeter {
   export interface PromptPlanInput {
     model: Provider.Model
     system: string[]
+    systemCacheBreakpoint?: number
     messages: ModelMessage[]
     toolDefinitions: ToolResolver.Definition[]
   }
 
   export interface PromptPlan {
     system: string[]
+    systemCacheBreakpoint?: number
     messages: ModelMessage[]
     toolDefinitions: ToolResolver.Definition[]
   }
@@ -68,9 +70,16 @@ export namespace PromptBudgeter {
 
     return {
       system: normalizedSystem,
+      systemCacheBreakpoint: normalizeCacheBreakpoint(input.systemCacheBreakpoint, normalizedSystem.length),
       messages: ProviderTransform.message(input.messages, input.model),
       toolDefinitions: input.toolDefinitions,
     }
+  }
+
+  function normalizeCacheBreakpoint(index: number | undefined, length: number): number | undefined {
+    if (index === undefined || length === 0) return undefined
+    if (!Number.isInteger(index) || index < 0) return undefined
+    return Math.min(index, length - 1)
   }
 
   export function budget(

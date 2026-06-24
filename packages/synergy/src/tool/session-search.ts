@@ -1,3 +1,4 @@
+import { formatLocalDateTime } from "@/util/time-format"
 import z from "zod"
 import { Tool } from "./tool"
 import { Session } from "../session"
@@ -99,11 +100,11 @@ function formatResult(result: SessionResult): string {
     scope.type === "global"
       ? "Home"
       : (scope.name ?? (scope.directory ? path.basename(scope.directory) : undefined) ?? scope.id)
-  const updated = new Date(result.session.time.updated).toISOString()
+  const updated = formatLocalDateTime(result.session.time.updated)
   const lines = [`[${result.session.id}] "${result.session.title}" — ${scopeLabel} (updated ${updated})`]
 
   for (const match of result.matches) {
-    const time = new Date(match.time).toISOString()
+    const time = formatLocalDateTime(match.time)
     lines.push(`  [${match.messageID}] ${match.role} (${time}):`)
     lines.push(`    ${match.snippet}`)
   }

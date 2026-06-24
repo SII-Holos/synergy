@@ -1,4 +1,6 @@
-import { createMemo, createSignal, For, onCleanup, Show } from "solid-js"
+import { createEffect, createMemo, createSignal, For, on, onCleanup, Show } from "solid-js"
+import { FlipList } from "@/components/flip-list"
+import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
 import { A, useNavigate, useParams } from "@solidjs/router"
 import { useLayout } from "@/context/layout"
 import { useGlobalSync } from "@/context/global-sync"
@@ -114,6 +116,95 @@ export function Sidebar(props: SidebarProps) {
   const [projectsSectionOpen, setProjectsSectionOpen] = createSignal(true)
 
   const scopes = createMemo(() => layout.scopes.list())
+
+  let scopeListRef!: HTMLDivElement
+  let prevSnapshot = new Map<string, number>()
+
+  createEffect(
+    on(
+      () => scopes().map((s) => s.id || s.worktree),
+      () => {
+        const container = scopeListRef
+        if (!container) return
+
+        const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches
+        if (reduceMotion) return
+
+        requestAnimationFrame(() => {
+          const items = container.querySelectorAll<HTMLElement>("[data-scope-id]")
+          const newSnapshot = new Map<string, number>()
+          items.forEach((item) => {
+            const id = item.dataset.scopeId!
+            newSnapshot.set(id, item.getBoundingClientRect().top)
+          })
+
+          if (prevSnapshot.size === 0) {
+            prevSnapshot = newSnapshot
+            return
+          }
+
+          // Cancel any in-flight animations before starting new ones
+          items.forEach((it) => {
+            if (it.style.transition) {
+              it.style.transition = ""
+              it.style.transform = ""
+              it.style.opacity = ""
+            }
+          })
+          items.forEach((item) => {
+            const id = item.dataset.scopeId!
+            const oldY = prevSnapshot.get(id)
+            const newY = newSnapshot.get(id)
+
+            if (oldY === undefined) {
+              // New project: slide in from right + fade in
+              item.style.opacity = "0"
+              item.style.transform = "translateX(12px)"
+              item.style.transition = "none"
+              void item.offsetHeight // force reflow
+              item.style.transition =
+                "opacity 280ms cubic-bezier(0.05, 0.7, 0.1, 1), transform 280ms cubic-bezier(0.05, 0.7, 0.1, 1)"
+              item.style.opacity = "1"
+              item.style.transform = "translateX(0)"
+              item.addEventListener(
+                "transitionend",
+                () => {
+                  item.style.transition = ""
+                  item.style.transform = ""
+                  item.style.opacity = ""
+                },
+                { once: true },
+              )
+              return
+            }
+
+            if (newY === undefined) return
+            const delta = oldY - newY
+            if (Math.abs(delta) < 0.5) return
+
+            // FLIP: invert -> play
+            item.style.transform = `translateY(${delta}px)`
+            item.style.transition = "none"
+            void item.offsetHeight
+            item.style.transition = "transform 300ms cubic-bezier(0.2, 0, 0, 1)"
+            item.style.transform = "translateY(0)"
+
+            item.addEventListener(
+              "transitionend",
+              () => {
+                item.style.transition = ""
+                item.style.transform = ""
+              },
+              { once: true },
+            )
+          })
+
+          prevSnapshot = newSnapshot
+        })
+      },
+      { defer: true },
+    ),
+  )
   const hasExpandedProject = createMemo(() => scopes().some((s) => s.expanded))
   const channelEntries = createMemo(() => layout.nav.rootNavEntries("channel"))
 
@@ -333,6 +424,21 @@ export function Sidebar(props: SidebarProps) {
           </button>
         </Tooltip>
       </div>
+      <Tooltip value="Plugins" placement="right">
+        <button
+          type="button"
+          classList={{
+            "sb-global-btn": true,
+            "sb-global-active": params.dir === "plugins",
+          }}
+          onClick={() => navigate("/plugins/marketplace")}
+        >
+          <Icon name="package-open" size="normal" />
+          <Show when={isExpanded()}>
+            <span class="sb-action-label">Plugins</span>
+          </Show>
+        </button>
+      </Tooltip>
 
       {/* Unified scroll region */}
       <Show
@@ -355,270 +461,303 @@ export function Sidebar(props: SidebarProps) {
         }
       >
         <div class="sb-scroll">
-          {/* Recent */}
-          <div class="sb-root-section">
-            <div class="sb-projects-header" onClick={() => setRecentSectionOpen((v) => !v)} role="button" tabindex="0">
-              <span class="sb-section-title">Recent</span>
-              <Icon
-                name={recentSectionOpen() ? "chevron-down" : "chevron-right"}
-                size="small"
-                class="sb-section-chevron"
-              />
-            </div>
-            <Show when={recentSectionOpen()}>
-              <Show when={recentEntries().length > 0} fallback={<div class="sb-section-empty">No recent sessions</div>}>
-                <div class="sb-sessions">
-                  <For each={recentEntries()}>
-                    {(entry) => (
-                      <button
-                        type="button"
-                        classList={{
-                          "sb-session-row": true,
-                          "sb-session-active": entry.id === params.id,
-                        }}
-                        onClick={() => handleNavEntryClick(entry)}
-                      >
-                        <SessionRowIcon entry={entry} />
-                        <span class="sb-session-title">{entry.title || "Untitled"}</span>
-                      </button>
-                    )}
-                  </For>
-                </div>
-                <Show when={hasMoreRecent()}>
-                  <button type="button" class="sb-load-more-btn" onClick={() => layout.nav.loadMoreNav("__recent__")}>
-                    Load more
-                  </button>
-                </Show>
-              </Show>
-            </Show>
-          </div>
-
-          {/* Home */}
-          <RootNavSection
-            title="Home"
-            open={homeSectionOpen}
-            onToggle={() => setHomeSectionOpen((v) => !v)}
-            entries={layout.nav.rootNavEntries("home")}
-            hasMore={layout.nav.hasMoreRootNavSection("home")}
-            onLoadMore={() => layout.nav.loadMoreRootNavSection("home")}
-            activeID={params.id}
-            onSessionClick={handleNavEntryClick}
-          />
-
-          {/* Channel */}
-          <div class="sb-root-section">
-            <div class="sb-projects-header" onClick={() => setChannelSectionOpen((v) => !v)} role="button" tabindex="0">
-              <span class="sb-section-title">Channel</span>
-              <Icon
-                name={channelSectionOpen() ? "chevron-down" : "chevron-right"}
-                size="small"
-                class="sb-section-chevron"
-              />
-            </div>
-            <Show when={channelSectionOpen()}>
-              <Show when={channelEntries().length > 0} fallback={<div class="sb-section-empty">No sessions</div>}>
-                <div class="sb-session-group">
-                  <div class="sb-session-group-header">Feishu</div>
-                  <For each={channelEntries()}>
-                    {(entry) => (
-                      <button
-                        type="button"
-                        classList={{
-                          "sb-session-row": true,
-                          "sb-session-active": entry.id === params.id,
-                        }}
-                        onClick={() => handleNavEntryClick(entry)}
-                      >
-                        <SessionRowIcon entry={entry} />
-                        <span class="sb-session-title">{entry.title || "Untitled"}</span>
-                      </button>
-                    )}
-                  </For>
-                </div>
-                <Show when={layout.nav.hasMoreRootNavSection("channel")}>
-                  <button
-                    type="button"
-                    class="sb-load-more-btn"
-                    onClick={() => layout.nav.loadMoreRootNavSection("channel")}
-                  >
-                    Load more
-                  </button>
-                </Show>
-              </Show>
-            </Show>
-          </div>
-
-          {/* Background */}
-          <RootNavSection
-            title="Background"
-            open={backgroundSectionOpen}
-            onToggle={() => setBackgroundSectionOpen((v) => !v)}
-            entries={layout.nav.rootNavEntries("background")}
-            hasMore={layout.nav.hasMoreRootNavSection("background")}
-            onLoadMore={() => layout.nav.loadMoreRootNavSection("background")}
-            activeID={params.id}
-            onSessionClick={handleNavEntryClick}
-          />
-
-          {/* Projects */}
-          <div class="sb-projects">
-            <div
-              class="sb-projects-header"
-              onClick={() => setProjectsSectionOpen((v) => !v)}
-              role="button"
-              tabindex="0"
-            >
-              <span class="sb-section-title">Projects</span>
-              <Icon
-                name={projectsSectionOpen() ? "chevron-down" : "chevron-right"}
-                size="small"
-                class="sb-section-chevron"
-              />
-              <span class="sb-projects-header-spacer" />
-              <Show when={hasExpandedProject()}>
-                <Tooltip value="Collapse all projects" placement="top">
-                  <button
-                    type="button"
-                    class="sb-projects-header-expand-all"
-                    aria-label="Collapse all projects"
-                    onClick={(e) => handleCollapseAllProjects(e)}
-                  >
-                    <Icon name="list-collapse" size="small" />
-                  </button>
-                </Tooltip>
-              </Show>
-              <Tooltip value="Add project" placement="top">
-                <button
-                  type="button"
-                  class="sb-projects-header-plus"
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    handleAddProject()
-                  }}
+          <Show
+            when={layout.nav.scopeIndexLoaded()}
+            fallback={
+              <div class="flex flex-col items-center justify-center h-full min-h-[200px] gap-3">
+                <Spinner class="text-text-weak size-8" />
+                <span class="text-text-weak text-xs">Loading projects…</span>
+              </div>
+            }
+          >
+            {/* Recent */}
+            <div class="sb-root-section">
+              <div
+                class="sb-projects-header"
+                onClick={() => setRecentSectionOpen((v) => !v)}
+                role="button"
+                tabindex="0"
+              >
+                <span class="sb-section-title">Recent</span>
+                <Icon
+                  name={recentSectionOpen() ? "chevron-down" : "chevron-right"}
+                  size="small"
+                  class="sb-section-chevron"
+                />
+              </div>
+              <Show when={recentSectionOpen()}>
+                <Show
+                  when={recentEntries().length > 0}
+                  fallback={<div class="sb-section-empty">No recent sessions</div>}
                 >
-                  <Icon name="plus" size="small" />
-                </button>
-              </Tooltip>
+                  <FlipList entries={recentEntries()} class="sb-sessions">
+                    <For each={recentEntries()}>
+                      {(entry) => (
+                        <button
+                          type="button"
+                          classList={{
+                            "sb-session-row": true,
+                            "sb-session-active": entry.id === params.id,
+                          }}
+                          data-session-id={entry.id}
+                          onClick={() => handleNavEntryClick(entry)}
+                        >
+                          <SessionRowIcon entry={entry} />
+                          <span class="sb-session-title">{entry.title || "Untitled"}</span>
+                        </button>
+                      )}
+                    </For>
+                  </FlipList>
+                  <Show when={hasMoreRecent()}>
+                    <button type="button" class="sb-load-more-btn" onClick={() => layout.nav.loadMoreNav("__recent__")}>
+                      Load more
+                    </button>
+                  </Show>
+                </Show>
+              </Show>
             </div>
 
-            <Show when={projectsSectionOpen()}>
-              <For each={scopes()}>
-                {(scope) => {
-                  const isActive = () => scope.worktree === currentDirectory()
-                  const [menuOpen, setMenuOpen] = createSignal(false)
-                  const isSupplemental = layout.scopes.isSupplemental(scope)
-                  const navLoaded = () => !!layout.nav.navEntries()[scope.worktree]
+            {/* Home */}
+            <RootNavSection
+              title="Home"
+              open={homeSectionOpen}
+              onToggle={() => setHomeSectionOpen((v) => !v)}
+              entries={layout.nav.rootNavEntries("home")}
+              hasMore={layout.nav.hasMoreRootNavSection("home")}
+              onLoadMore={() => layout.nav.loadMoreRootNavSection("home")}
+              activeID={params.id}
+              onSessionClick={handleNavEntryClick}
+            />
 
-                  return (
-                    <div class="sb-project-group">
-                      <div
-                        classList={{
-                          "sb-project-row": true,
-                          "sb-project-active": isActive(),
-                        }}
-                      >
-                        <button
-                          type="button"
-                          class="sb-project-chevron-btn"
-                          onClick={(e) => handleProjectToggle(e, scope)}
-                        >
-                          <Icon name={scope.expanded ? "chevron-down" : "chevron-right"} size="small" />
-                        </button>
-                        <button
-                          type="button"
-                          class="sb-project-body"
-                          onClick={() => handleProjectClick(scope.worktree)}
-                        >
-                          <Icon name="folder" size="normal" class="sb-project-folder" />
-                          <span class="sb-project-name">{getScopeLabel(scope)}</span>
-                        </button>
-                        <div class="sb-project-actions">
+            {/* Channel */}
+            <div class="sb-root-section">
+              <div
+                class="sb-projects-header"
+                onClick={() => setChannelSectionOpen((v) => !v)}
+                role="button"
+                tabindex="0"
+              >
+                <span class="sb-section-title">Channel</span>
+                <Icon
+                  name={channelSectionOpen() ? "chevron-down" : "chevron-right"}
+                  size="small"
+                  class="sb-section-chevron"
+                />
+              </div>
+              <Show when={channelSectionOpen()}>
+                <Show when={channelEntries().length > 0} fallback={<div class="sb-section-empty">No sessions</div>}>
+                  <div class="sb-session-group">
+                    <div class="sb-session-group-header">Feishu</div>
+                    <FlipList entries={channelEntries()} class="sb-sessions">
+                      <For each={channelEntries()}>
+                        {(entry) => (
                           <button
                             type="button"
                             classList={{
-                              "sb-project-menu-btn": true,
-                              "sb-project-menu-active": menuOpen(),
+                              "sb-session-row": true,
+                              "sb-session-active": entry.id === params.id,
                             }}
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              setMenuOpen((v) => !v)
-                            }}
+                            data-session-id={entry.id}
+                            onClick={() => handleNavEntryClick(entry)}
                           >
-                            <Icon name="ellipsis" size="small" />
+                            <SessionRowIcon entry={entry} />
+                            <span class="sb-session-title">{entry.title || "Untitled"}</span>
                           </button>
-                          <button
-                            type="button"
-                            class="sb-project-plus-btn"
-                            onClick={(e) => handleProjectPlus(e, scope)}
-                          >
-                            <Icon name="square-pen" size="small" />
-                          </button>
-                          <Show when={menuOpen()}>
-                            <>
-                              <div class="sb-project-menu-backdrop" onClick={() => setMenuOpen(false)} />
-                              <div class="sb-project-menu">
-                                <button type="button" class="sb-menu-item" disabled>
-                                  <Icon name="pin" size="small" />
-                                  <span>Pin</span>
-                                  <span class="sb-menu-disabled-label">Coming soon</span>
-                                </button>
-                                <button type="button" class="sb-menu-item" onClick={(e) => handleProjectEdit(e, scope)}>
-                                  <Icon name="pencil" size="small" />
-                                  <span>Edit</span>
-                                </button>
-                                <button
-                                  type="button"
-                                  class="sb-menu-item sb-menu-item-danger"
-                                  onClick={(e) => handleProjectDelete(e, scope)}
-                                >
-                                  <Icon name="trash-2" size="small" />
-                                  <span>Delete</span>
-                                </button>
-                              </div>
-                            </>
-                          </Show>
-                        </div>
-                      </div>
+                        )}
+                      </For>
+                    </FlipList>
+                  </div>
+                  <Show when={layout.nav.hasMoreRootNavSection("channel")}>
+                    <button
+                      type="button"
+                      class="sb-load-more-btn"
+                      onClick={() => layout.nav.loadMoreRootNavSection("channel")}
+                    >
+                      Load more
+                    </button>
+                  </Show>
+                </Show>
+              </Show>
+            </div>
 
-                      {/* Sessions under expanded project */}
-                      <Show when={scope.expanded}>
-                        <div class="sb-sessions">
-                          <Show
-                            when={!isSupplemental || navLoaded()}
-                            fallback={
-                              <button
-                                type="button"
-                                class="sb-load-more-btn"
-                                onClick={() => layout.nav.loadScopeNav(scope.worktree)}
-                              >
-                                Load sessions
-                              </button>
-                            }
+            {/* Background */}
+            <RootNavSection
+              title="Background"
+              open={backgroundSectionOpen}
+              onToggle={() => setBackgroundSectionOpen((v) => !v)}
+              entries={layout.nav.rootNavEntries("background")}
+              hasMore={layout.nav.hasMoreRootNavSection("background")}
+              onLoadMore={() => layout.nav.loadMoreRootNavSection("background")}
+              activeID={params.id}
+              onSessionClick={handleNavEntryClick}
+            />
+
+            {/* Projects */}
+            <div class="sb-projects">
+              <div
+                class="sb-projects-header"
+                onClick={() => setProjectsSectionOpen((v) => !v)}
+                role="button"
+                tabindex="0"
+              >
+                <span class="sb-section-title">Projects</span>
+                <Icon
+                  name={projectsSectionOpen() ? "chevron-down" : "chevron-right"}
+                  size="small"
+                  class="sb-section-chevron"
+                />
+                <span class="sb-projects-header-spacer" />
+                <Show when={hasExpandedProject()}>
+                  <Tooltip value="Collapse all projects" placement="top">
+                    <button
+                      type="button"
+                      class="sb-projects-header-expand-all"
+                      aria-label="Collapse all projects"
+                      onClick={(e) => handleCollapseAllProjects(e)}
+                    >
+                      <Icon name="list-collapse" size="small" />
+                    </button>
+                  </Tooltip>
+                </Show>
+                <Tooltip value="Add project" placement="top">
+                  <button
+                    type="button"
+                    class="sb-projects-header-plus"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      handleAddProject()
+                    }}
+                  >
+                    <Icon name="plus" size="small" />
+                  </button>
+                </Tooltip>
+              </div>
+
+              <Show when={projectsSectionOpen()}>
+                <div ref={scopeListRef}>
+                  <For each={scopes()}>
+                    {(scope) => {
+                      const isActive = () => scope.worktree === currentDirectory()
+                      const [menuOpen, setMenuOpen] = createSignal(false)
+                      const isSupplemental = layout.scopes.isSupplemental(scope)
+                      const navLoaded = () => !!layout.nav.navEntries()[scope.worktree]
+
+                      return (
+                        <div class="sb-project-group" data-scope-id={scope.id || scope.worktree}>
+                          <div
+                            classList={{
+                              "sb-project-row": true,
+                              "sb-project-active": isActive(),
+                            }}
                           >
-                            <GroupedSessionList
-                              entries={layout.nav.projectNavEntries(scope)}
-                              scope={scope}
-                              activeID={params.id}
-                              onSessionClick={(entry) => handleSessionClick(scope, entry)}
-                            />
-                            <Show when={hasMoreForProject(scope)}>
+                            <button
+                              type="button"
+                              class="sb-project-chevron-btn"
+                              onClick={(e) => handleProjectToggle(e, scope)}
+                            >
+                              <Icon name={scope.expanded ? "chevron-down" : "chevron-right"} size="small" />
+                            </button>
+                            <button
+                              type="button"
+                              class="sb-project-body"
+                              onClick={() => handleProjectClick(scope.worktree)}
+                            >
+                              <Icon name="folder" size="normal" class="sb-project-folder" />
+                              <span class="sb-project-name">{getScopeLabel(scope)}</span>
+                            </button>
+                            <div class="sb-project-actions">
                               <button
                                 type="button"
-                                class="sb-load-more-btn"
-                                onClick={() => layout.nav.loadMoreNav(scope.worktree)}
+                                classList={{
+                                  "sb-project-menu-btn": true,
+                                  "sb-project-menu-active": menuOpen(),
+                                }}
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  setMenuOpen((v) => !v)
+                                }}
                               >
-                                Load more
+                                <Icon name="ellipsis" size="small" />
                               </button>
-                            </Show>
+                              <button
+                                type="button"
+                                class="sb-project-plus-btn"
+                                onClick={(e) => handleProjectPlus(e, scope)}
+                              >
+                                <Icon name="square-pen" size="small" />
+                              </button>
+                              <Show when={menuOpen()}>
+                                <>
+                                  <div class="sb-project-menu-backdrop" onClick={() => setMenuOpen(false)} />
+                                  <div class="sb-project-menu">
+                                    <button type="button" class="sb-menu-item" disabled>
+                                      <Icon name="pin" size="small" />
+                                      <span>Pin</span>
+                                      <span class="sb-menu-disabled-label">Coming soon</span>
+                                    </button>
+                                    <button
+                                      type="button"
+                                      class="sb-menu-item"
+                                      onClick={(e) => handleProjectEdit(e, scope)}
+                                    >
+                                      <Icon name="pencil" size="small" />
+                                      <span>Edit</span>
+                                    </button>
+                                    <button
+                                      type="button"
+                                      class="sb-menu-item sb-menu-item-danger"
+                                      onClick={(e) => handleProjectDelete(e, scope)}
+                                    >
+                                      <Icon name="trash-2" size="small" />
+                                      <span>Delete</span>
+                                    </button>
+                                  </div>
+                                </>
+                              </Show>
+                            </div>
+                          </div>
+
+                          {/* Sessions under expanded project */}
+                          <Show when={scope.expanded}>
+                            <div class="sb-sessions">
+                              <Show
+                                when={!isSupplemental || navLoaded()}
+                                fallback={
+                                  <button
+                                    type="button"
+                                    class="sb-load-more-btn"
+                                    onClick={() => layout.nav.loadScopeNav(scope.worktree)}
+                                  >
+                                    Load sessions
+                                  </button>
+                                }
+                              >
+                                <GroupedSessionList
+                                  entries={layout.nav.projectNavEntries(scope)}
+                                  scope={scope}
+                                  activeID={params.id}
+                                  onSessionClick={(entry) => handleSessionClick(scope, entry)}
+                                />
+                                <Show when={hasMoreForProject(scope)}>
+                                  <button
+                                    type="button"
+                                    class="sb-load-more-btn"
+                                    onClick={() => layout.nav.loadMoreNav(scope.worktree)}
+                                  >
+                                    Load more
+                                  </button>
+                                </Show>
+                              </Show>
+                            </div>
                           </Show>
                         </div>
-                      </Show>
-                    </div>
-                  )
-                }}
-              </For>
-            </Show>
-          </div>
+                      )
+                    }}
+                  </For>
+                </div>
+              </Show>
+            </div>
+          </Show>
         </div>
       </Show>
 
@@ -691,30 +830,29 @@ function RootNavSection(props: {
       </div>
       <Show when={props.open()}>
         <Show when={props.entries.length > 0} fallback={<div class="sb-section-empty">No sessions</div>}>
-          <>
-            <div class="sb-sessions">
-              <For each={props.entries}>
-                {(entry) => (
-                  <button
-                    type="button"
-                    classList={{
-                      "sb-session-row": true,
-                      "sb-session-active": entry.id === props.activeID,
-                    }}
-                    onClick={() => props.onSessionClick(entry)}
-                  >
-                    <SessionRowIcon entry={entry} />
-                    <span class="sb-session-title">{entry.title || "Untitled"}</span>
-                  </button>
-                )}
-              </For>
-            </div>
-            <Show when={props.hasMore}>
-              <button type="button" class="sb-load-more-btn" onClick={props.onLoadMore}>
-                Load more
-              </button>
-            </Show>
-          </>
+          <FlipList entries={props.entries} class="sb-sessions">
+            <For each={props.entries}>
+              {(entry) => (
+                <button
+                  type="button"
+                  classList={{
+                    "sb-session-row": true,
+                    "sb-session-active": entry.id === props.activeID,
+                  }}
+                  data-session-id={entry.id}
+                  onClick={() => props.onSessionClick(entry)}
+                >
+                  <SessionRowIcon entry={entry} />
+                  <span class="sb-session-title">{entry.title || "Untitled"}</span>
+                </button>
+              )}
+            </For>
+          </FlipList>
+          <Show when={props.hasMore}>
+            <button type="button" class="sb-load-more-btn" onClick={props.onLoadMore}>
+              Load more
+            </button>
+          </Show>
         </Show>
       </Show>
     </div>
@@ -728,7 +866,7 @@ function GroupedSessionList(props: {
   onSessionClick: (entry: NavEntry) => void
 }) {
   return (
-    <>
+    <FlipList entries={props.entries} class="sb-sessions">
       <For each={props.entries.filter((e) => e.category === "project")}>
         {(entry) => (
           <button
@@ -737,6 +875,7 @@ function GroupedSessionList(props: {
               "sb-session-row": true,
               "sb-session-active": entry.id === props.activeID,
             }}
+            data-session-id={entry.id}
             onClick={(e) => {
               e.stopPropagation()
               props.onSessionClick(entry)
@@ -747,7 +886,7 @@ function GroupedSessionList(props: {
           </button>
         )}
       </For>
-    </>
+    </FlipList>
   )
 }
 
