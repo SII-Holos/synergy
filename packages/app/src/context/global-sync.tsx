@@ -41,7 +41,6 @@ import {
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import { getFilename } from "@ericsanchezok/synergy-util/path"
 import { isGlobalScope } from "@/utils/scope"
-import type { ConfigSetSummary } from "@ericsanchezok/synergy-sdk/client"
 
 type State = {
   status: "loading" | "partial" | "complete"
@@ -102,7 +101,6 @@ function createGlobalSync() {
     provider: ProviderListResponse
     provider_auth: ProviderAuthResponse
     agenda: AgendaItem[]
-    config_sets: ConfigSetSummary[]
   }>({
     ready: false,
     path: { state: "", config: "", worktree: "", directory: "", home: "" },
@@ -110,7 +108,6 @@ function createGlobalSync() {
     provider: { all: [], connected: [], default: {}, configProviders: [] },
     provider_auth: {},
     agenda: [],
-    config_sets: [],
   })
 
   const children: Record<string, ReturnType<typeof createStore<State>>> = {}
@@ -256,17 +253,6 @@ function createGlobalSync() {
     ]).then(() => undefined)
   }
 
-  async function loadConfigSets() {
-    return globalSDK.client.config.set
-      .list()
-      .then((x) => {
-        setGlobalStore("config_sets", reconcile(x.data ?? [], { key: "name" }))
-      })
-      .catch((err) => {
-        console.error("Failed to load config sets", err)
-      })
-  }
-
   async function refreshConfig(directory: string) {
     const [_, setStore] = child(directory)
     const sdk = createSynergyClient({
@@ -305,7 +291,6 @@ function createGlobalSync() {
           refreshAllConfigsTimer = undefined
           const directories = Object.keys(children)
           Promise.all([
-            loadConfigSets(),
             loadGlobalProviders(),
             runInstanceRequests(directories, (directory) => refreshConfig(directory)),
           ])
@@ -352,7 +337,6 @@ function createGlobalSync() {
 
     if (targets.has("config") || targets.has("provider")) {
       globalPromises.push(loadGlobalProviders())
-      globalPromises.push(loadConfigSets())
     }
 
     const perScopePromise = runInstanceRequests(directories, async (directory) => {
@@ -656,7 +640,7 @@ function createGlobalSync() {
       }
     }
 
-    if (event?.type === "config.updated" || (event as { type?: string }).type === "config.set.activated") {
+    if (event?.type === "config.updated") {
       void refreshAllConfigs()
       return
     }
@@ -1061,7 +1045,6 @@ function createGlobalSync() {
           setGlobalStore("provider_auth", x.data ?? {})
         }),
       ),
-      retry(() => loadConfigSets()),
     ])
       .then(() => {
         setGlobalStore("ready", true)
@@ -1090,11 +1073,7 @@ function createGlobalSync() {
     get agenda() {
       return globalStore.agenda
     },
-    get configSets() {
-      return globalStore.config_sets
-    },
     loadGlobalAgenda,
-    loadConfigSets,
     refreshConfig,
     refreshAllConfigs,
     scope: {

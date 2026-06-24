@@ -34,7 +34,7 @@ export namespace Plugin {
   const BUILTIN: string[] = []
 
   // ---------------------------------------------------------------------------
-  // Plugin config accessor — reads/writes pluginConfig.{id} in synergy.jsonc
+  // Plugin config accessor — reads/writes pluginConfig.{id} in the plugins domain.
   // ---------------------------------------------------------------------------
 
   function createConfigAccessor(pluginId: string): PluginConfigAccessor {
@@ -47,7 +47,7 @@ export namespace Plugin {
         const config = await Config.get()
         const current = (config.pluginConfig?.[pluginId] as Record<string, any>) ?? {}
         const merged = { ...current, ...values }
-        await Config.updateGlobal({ pluginConfig: { [pluginId]: merged } } as any)
+        await Config.domainUpdate("plugins", { pluginConfig: { [pluginId]: merged } } as any)
       },
     }
   }
@@ -483,7 +483,7 @@ export namespace Plugin {
     const config = await Config.get()
     const currentPlugins = config.plugin ?? []
     if (!currentPlugins.includes(spec)) {
-      await Config.updateGlobal({ plugin: [...currentPlugins, spec] } as any)
+      await Config.domainUpdate("plugins", { plugin: [spec] } as any, { mode: "append" })
       await Config.reload("global")
     }
 
@@ -532,16 +532,20 @@ export namespace Plugin {
       return resolveSpecPluginDir(spec) !== plugin.pluginDir
     })
 
-    if (kept.length < currentPlugins.length) {
-      await Config.updateGlobal({ plugin: kept } as any)
+    // Remove from config.plugin[] and pluginConfig.{pluginId}
+    let pluginConfig = config.pluginConfig
+    if (config.pluginConfig?.[pluginId]) {
+      const { [pluginId]: _, ...rest } = config.pluginConfig ?? {}
+      pluginConfig = rest
       configChanged = true
     }
 
-    // Remove pluginConfig.{pluginId}
-    if (config.pluginConfig?.[pluginId]) {
-      const { [pluginId]: _, ...rest } = config.pluginConfig ?? {}
-      await Config.updateGlobal({ pluginConfig: rest } as any)
+    if (kept.length < currentPlugins.length) {
       configChanged = true
+    }
+
+    if (configChanged) {
+      await Config.domainUpdate("plugins", { plugin: kept, pluginConfig } as any, { mode: "replace-domain" })
     }
 
     if (configChanged) {

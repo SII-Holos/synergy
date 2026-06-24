@@ -80,30 +80,20 @@ import type {
   ChannelStopResponses,
   CommandListResponses,
   Config as Config2,
+  ConfigDomainGetErrors,
+  ConfigDomainGetResponses,
+  ConfigDomainImportPlanInput,
+  ConfigDomainListResponses,
+  ConfigDomainUpdateErrors,
+  ConfigDomainUpdateInput,
+  ConfigDomainUpdateResponses,
   ConfigGetResponses,
   ConfigGlobalResponses,
+  ConfigImportApplyErrors,
+  ConfigImportApplyResponses,
+  ConfigImportPlanErrors,
+  ConfigImportPlanResponses,
   ConfigProvidersResponses,
-  ConfigSetActivateErrors,
-  ConfigSetActivateResponses,
-  ConfigSetCreateErrors,
-  ConfigSetCreateInput,
-  ConfigSetCreateResponses,
-  ConfigSetDeleteErrors,
-  ConfigSetDeleteResponses,
-  ConfigSetGetErrors,
-  ConfigSetGetResponses,
-  ConfigSetListResponses,
-  ConfigSetName,
-  ConfigSetRawGetErrors,
-  ConfigSetRawGetResponses,
-  ConfigSetRawSaveErrors,
-  ConfigSetRawSaveInput,
-  ConfigSetRawSaveResponses,
-  ConfigSetRawValidateErrors,
-  ConfigSetRawValidateInput,
-  ConfigSetRawValidateResponses,
-  ConfigSetUpdateErrors,
-  ConfigSetUpdateResponses,
   ConfigUpdateErrors,
   ConfigUpdateResponses,
   ControlProfileEffectiveErrors,
@@ -3045,15 +3035,47 @@ export class Pty extends HeyApiClient {
   }
 }
 
-export class Raw extends HeyApiClient {
+export class Domain extends HeyApiClient {
   /**
-   * Get Config Set raw
+   * List config domains
    *
-   * Read a global Config Set raw JSONC source and parsed preview.
+   * List canonical config domains and their current global fragments.
+   */
+  public list<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    return (options?.client ?? this.client).get<ConfigDomainListResponses, unknown, ThrowOnError>({
+      url: "/config/domains",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Get config domain
+   *
+   * Read one canonical global config domain fragment.
    */
   public get<ThrowOnError extends boolean = false>(
     parameters: {
-      name: ConfigSetName
+      domain:
+        | "general"
+        | "models"
+        | "providers"
+        | "engram"
+        | "mcp"
+        | "plugins"
+        | "agents"
+        | "commands"
+        | "permissions"
+        | "channels"
+        | "holos"
+        | "email"
+        | "runtime"
       directory?: string
     },
     options?: Options<never, ThrowOnError>,
@@ -3063,29 +3085,42 @@ export class Raw extends HeyApiClient {
       [
         {
           args: [
-            { in: "path", key: "name" },
+            { in: "path", key: "domain" },
             { in: "query", key: "directory" },
           ],
         },
       ],
     )
-    return (options?.client ?? this.client).get<ConfigSetRawGetResponses, ConfigSetRawGetErrors, ThrowOnError>({
-      url: "/config/sets/{name}/raw",
+    return (options?.client ?? this.client).get<ConfigDomainGetResponses, ConfigDomainGetErrors, ThrowOnError>({
+      url: "/config/domains/{domain}",
       ...options,
       ...params,
     })
   }
 
   /**
-   * Save Config Set raw
+   * Update config domain
    *
-   * Save raw JSONC for a global Config Set after validation and optionally reload runtime if active.
+   * Update one canonical global config domain fragment.
    */
-  public save<ThrowOnError extends boolean = false>(
+  public update<ThrowOnError extends boolean = false>(
     parameters: {
-      name: ConfigSetName
+      domain:
+        | "general"
+        | "models"
+        | "providers"
+        | "engram"
+        | "mcp"
+        | "plugins"
+        | "agents"
+        | "commands"
+        | "permissions"
+        | "channels"
+        | "holos"
+        | "email"
+        | "runtime"
       directory?: string
-      configSetRawSaveInput?: ConfigSetRawSaveInput
+      configDomainUpdateInput?: ConfigDomainUpdateInput
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -3094,56 +3129,15 @@ export class Raw extends HeyApiClient {
       [
         {
           args: [
-            { in: "path", key: "name" },
+            { in: "path", key: "domain" },
             { in: "query", key: "directory" },
-            { key: "configSetRawSaveInput", map: "body" },
+            { key: "configDomainUpdateInput", map: "body" },
           ],
         },
       ],
     )
-    return (options?.client ?? this.client).put<ConfigSetRawSaveResponses, ConfigSetRawSaveErrors, ThrowOnError>({
-      url: "/config/sets/{name}/raw",
-      ...options,
-      ...params,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers,
-        ...params.headers,
-      },
-    })
-  }
-
-  /**
-   * Validate Config Set raw
-   *
-   * Validate raw JSONC for a global Config Set without saving it.
-   */
-  public validate<ThrowOnError extends boolean = false>(
-    parameters: {
-      name: ConfigSetName
-      directory?: string
-      configSetRawValidateInput?: ConfigSetRawValidateInput
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "path", key: "name" },
-            { in: "query", key: "directory" },
-            { key: "configSetRawValidateInput", map: "body" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).post<
-      ConfigSetRawValidateResponses,
-      ConfigSetRawValidateErrors,
-      ThrowOnError
-    >({
-      url: "/config/sets/{name}/raw/validate",
+    return (options?.client ?? this.client).patch<ConfigDomainUpdateResponses, ConfigDomainUpdateErrors, ThrowOnError>({
+      url: "/config/domains/{domain}",
       ...options,
       ...params,
       headers: {
@@ -3155,35 +3149,16 @@ export class Raw extends HeyApiClient {
   }
 }
 
-export class _Set extends HeyApiClient {
+export class Import extends HeyApiClient {
   /**
-   * List Config Sets
+   * Plan config import
    *
-   * List all global Config Sets and indicate which one is active.
+   * Create a dry-run plan for importing selected config domains.
    */
-  public list<ThrowOnError extends boolean = false>(
+  public plan<ThrowOnError extends boolean = false>(
     parameters?: {
       directory?: string
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
-    return (options?.client ?? this.client).get<ConfigSetListResponses, unknown, ThrowOnError>({
-      url: "/config/sets",
-      ...options,
-      ...params,
-    })
-  }
-
-  /**
-   * Create Config Set
-   *
-   * Create a new global Config Set, defaulting to a copy of the current active raw global config.
-   */
-  public create<ThrowOnError extends boolean = false>(
-    parameters?: {
-      directory?: string
-      configSetCreateInput?: ConfigSetCreateInput
+      configDomainImportPlanInput?: ConfigDomainImportPlanInput
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -3193,13 +3168,13 @@ export class _Set extends HeyApiClient {
         {
           args: [
             { in: "query", key: "directory" },
-            { key: "configSetCreateInput", map: "body" },
+            { key: "configDomainImportPlanInput", map: "body" },
           ],
         },
       ],
     )
-    return (options?.client ?? this.client).post<ConfigSetCreateResponses, ConfigSetCreateErrors, ThrowOnError>({
-      url: "/config/sets",
+    return (options?.client ?? this.client).post<ConfigImportPlanResponses, ConfigImportPlanErrors, ThrowOnError>({
+      url: "/config/import/plan",
       ...options,
       ...params,
       headers: {
@@ -3211,75 +3186,31 @@ export class _Set extends HeyApiClient {
   }
 
   /**
-   * Delete Config Set
+   * Apply config import
    *
-   * Delete an inactive non-default global Config Set.
+   * Apply a selected-domain config import plan.
    */
-  public delete<ThrowOnError extends boolean = false>(
-    parameters: {
-      name: ConfigSetName
-      directory?: string
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "path", key: "name" },
-            { in: "query", key: "directory" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).delete<ConfigSetDeleteResponses, ConfigSetDeleteErrors, ThrowOnError>({
-      url: "/config/sets/{name}",
-      ...options,
-      ...params,
-    })
-  }
-
-  /**
-   * Get Config Set
-   *
-   * Read a global Config Set and its raw configuration.
-   */
-  public get<ThrowOnError extends boolean = false>(
-    parameters: {
-      name: ConfigSetName
-      directory?: string
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "path", key: "name" },
-            { in: "query", key: "directory" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).get<ConfigSetGetResponses, ConfigSetGetErrors, ThrowOnError>({
-      url: "/config/sets/{name}",
-      ...options,
-      ...params,
-    })
-  }
-
-  /**
-   * Update Config Set
-   *
-   * Patch a global Config Set raw configuration.
-   */
-  public update<ThrowOnError extends boolean = false>(
-    parameters: {
-      name: ConfigSetName
+  public apply<ThrowOnError extends boolean = false>(
+    parameters?: {
       directory?: string
       config?: Config2
+      only?: Array<
+        | "general"
+        | "models"
+        | "providers"
+        | "engram"
+        | "mcp"
+        | "plugins"
+        | "agents"
+        | "commands"
+        | "permissions"
+        | "channels"
+        | "holos"
+        | "email"
+        | "runtime"
+      >
+      mode?: "merge" | "replace-domain" | "append"
+      yes?: boolean
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -3288,15 +3219,17 @@ export class _Set extends HeyApiClient {
       [
         {
           args: [
-            { in: "path", key: "name" },
             { in: "query", key: "directory" },
-            { key: "config", map: "body" },
+            { in: "body", key: "config" },
+            { in: "body", key: "only" },
+            { in: "body", key: "mode" },
+            { in: "body", key: "yes" },
           ],
         },
       ],
     )
-    return (options?.client ?? this.client).patch<ConfigSetUpdateResponses, ConfigSetUpdateErrors, ThrowOnError>({
-      url: "/config/sets/{name}",
+    return (options?.client ?? this.client).post<ConfigImportApplyResponses, ConfigImportApplyErrors, ThrowOnError>({
+      url: "/config/import/apply",
       ...options,
       ...params,
       headers: {
@@ -3306,38 +3239,6 @@ export class _Set extends HeyApiClient {
       },
     })
   }
-
-  /**
-   * Activate Config Set
-   *
-   * Activate a global Config Set and reload global runtime configuration.
-   */
-  public activate<ThrowOnError extends boolean = false>(
-    parameters: {
-      name: ConfigSetName
-      directory?: string
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "path", key: "name" },
-            { in: "query", key: "directory" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).post<ConfigSetActivateResponses, ConfigSetActivateErrors, ThrowOnError>({
-      url: "/config/sets/{name}/activate",
-      ...options,
-      ...params,
-    })
-  }
-
-  raw = new Raw({ client: this.client })
 }
 
 export class Config extends HeyApiClient {
@@ -3398,7 +3299,7 @@ export class Config extends HeyApiClient {
   /**
    * Get global configuration
    *
-   * Retrieve only the active global Config Set raw configuration (without project or remote layers).
+   * Retrieve only the canonical global domain configuration.
    */
   public global<ThrowOnError extends boolean = false>(
     parameters?: {
@@ -3433,7 +3334,9 @@ export class Config extends HeyApiClient {
     })
   }
 
-  set = new _Set({ client: this.client })
+  domain = new Domain({ client: this.client })
+
+  import = new Import({ client: this.client })
 }
 
 export class Runtime extends HeyApiClient {

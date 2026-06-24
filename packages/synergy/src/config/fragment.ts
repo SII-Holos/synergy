@@ -2,6 +2,7 @@ import path from "path"
 import fs from "fs/promises"
 import { Log } from "../util/log"
 import { FragmentName } from "./fragment-schema"
+import { parse as parseJsonc, type ParseError, printParseErrorCode } from "jsonc-parser"
 
 const log = Log.create({ service: "config.fragment" })
 
@@ -23,8 +24,8 @@ export async function loadFragments(dir: string): Promise<ConfigObject[]> {
   const fragments = entries
     .filter((entry) => entry.isFile() && FragmentName.test(entry.name))
     .sort((a, b) => {
-      const numA = parseInt(a.name.slice(0, 2), 10)
-      const numB = parseInt(b.name.slice(0, 2), 10)
+      const numA = parseInt(a.name.split("-", 1)[0], 10)
+      const numB = parseInt(b.name.split("-", 1)[0], 10)
       return numA - numB
     })
 
@@ -34,7 +35,15 @@ export async function loadFragments(dir: string): Promise<ConfigObject[]> {
     try {
       const text = await Bun.file(filepath).text()
       if (!text.trim()) continue
-      const parsed = JSON.parse(text)
+      const errors: ParseError[] = []
+      const parsed = parseJsonc(text, errors, { allowTrailingComma: true })
+      if (errors.length) {
+        log.warn("failed to parse config fragment, skipping", {
+          path: filepath,
+          errors: errors.map((error) => printParseErrorCode(error.error)),
+        })
+        continue
+      }
       if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
         results.push(parsed)
       }

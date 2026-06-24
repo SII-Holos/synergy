@@ -144,7 +144,7 @@ synergy send "message"         # Run a one-off prompt
 ```bash
 synergy config              # Manage configuration
 synergy config path         # Show config paths
-synergy config edit         # Open global config in an editor
+synergy config import       # Import selected config domains
 synergy login               # Bind to Holos platform
 synergy identity            # Work with identity-related features
 ```
@@ -189,22 +189,14 @@ If you update agent names, roles, or recommended usage, update this section and 
 
 ## Configuration
 
-Synergy configuration is layered.
+Synergy configuration is layered and domain-based.
 
 ### Global config
 
-The active global Config Set is loaded from `~/.synergy/config`.
-
-By default, the `default` Config Set uses:
+Global config is loaded from one canonical domain directory:
 
 ```bash
-~/.synergy/config/synergy.jsonc
-```
-
-Additional global Config Sets live under:
-
-```bash
-~/.synergy/config/config-sets/<name>/synergy.jsonc
+~/.synergy/config/synergy.d/
 ```
 
 Useful command:
@@ -215,11 +207,10 @@ synergy config path
 
 ### Project config
 
-Project-level config can be provided in the project tree, typically via:
+Project-level config uses the same domain layout under:
 
 ```bash
-synergy.jsonc
-synergy.json
+<project>/.synergy/synergy.d/
 ```
 
 Synergy also supports project-scoped extension directories under:
@@ -279,7 +270,7 @@ After `/worktree new` or `/worktree enter`, the switch applies to subsequent ses
 
 Worktree sessions treat the worktree as the active workspace boundary. File, search, attachment, and local shell tools route through Synergy's control profile gate before they run. In a worktree session, the original checkout and sibling worktrees are outside the active workspace unless the session is using `full_access`; those boundary checks are not skipped by allow-all or unattended execution.
 
-Control profiles are configured in `synergy.jsonc`:
+Control profiles are configured in the permissions domain (`80-permissions.jsonc`):
 
 ```jsonc
 {

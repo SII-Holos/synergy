@@ -14,9 +14,9 @@ export function ChannelsPanel(props: {
         <SectionLabel title="Feishu" />
         <AccountToggleCard
           title="Feishu accounts"
-          description="Enable or disable existing Feishu channel accounts. Add accounts and detailed settings in the JSON editor."
+          description="Enable or disable existing Feishu channel accounts."
           accounts={props.channels.feishuAccounts}
-          emptyLabel="No Feishu accounts configured yet. Add them in JSON first."
+          emptyLabel="No Feishu accounts configured yet."
           onToggle={props.onChannelToggle}
         />
       </div>

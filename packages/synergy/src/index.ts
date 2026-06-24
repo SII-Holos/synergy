@@ -37,8 +37,9 @@ import { DoctorCommand } from "./cli/cmd/doctor"
 import { PluginCommand } from "./cli/cmd/plugin"
 import { DataCommand, MigrateCommand } from "./cli/cmd/data"
 import { MigrationCommand } from "./cli/cmd/migration"
-import { ConfigSet } from "./config/set"
+import { ConfigDomain } from "./config/domain"
 import { registerPluginCommands } from "./cli/plugin-dispatch"
+import { parse as parseJsonc } from "jsonc-parser"
 
 async function flushCliOutput() {
   await Bun.sleep(25)
@@ -95,11 +96,11 @@ const cli = yargs(hideBin(process.argv))
   .middleware(async (opts) => {
     let configLogLevel: string | undefined
     try {
-      const configText = await Bun.file(ConfigSet.defaultFilePath())
+      const configText = await Bun.file(ConfigDomain.filepath("general"))
         .text()
         .catch(() => "")
       if (configText) {
-        const config = JSON.parse(configText)
+        const config = parseJsonc(configText)
         if (config.logLevel && ["DEBUG", "INFO", "WARN", "ERROR"].includes(config.logLevel)) {
           configLogLevel = config.logLevel
         }

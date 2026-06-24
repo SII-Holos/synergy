@@ -1907,92 +1907,86 @@ export type Config = {
   }
 }
 
-export type ConfigSetName = string
-
-export type ConfigSetSummary = {
-  name: ConfigSetName
-  active: boolean
-  isDefault: boolean
+export type ConfigDomainSummary = {
+  id:
+    | "general"
+    | "models"
+    | "providers"
+    | "engram"
+    | "mcp"
+    | "plugins"
+    | "agents"
+    | "commands"
+    | "permissions"
+    | "channels"
+    | "holos"
+    | "email"
+    | "runtime"
+  filename: string
+  label: string
   path: string
+  ownedKeys: Array<string>
+  mergePolicy: "merge" | "replace-domain" | "append"
+  reloadTargets: Array<string>
+  uiSection: string
+  importable: boolean
+  config?: Config
 }
 
-export type ConfigSetWithConfig = {
-  name: ConfigSetName
-  active: boolean
-  isDefault: boolean
-  path: string
+export type ConfigDomainUpdateInput = {
   config: Config
+  mode?: "merge" | "replace-domain" | "append"
 }
 
-export type ConfigSetCreateInput = {
-  name: ConfigSetName
-  config?: Config
+export type ConfigDomainImportChange = {
+  key: string
+  before?: unknown
+  after?: unknown
+  conflict: boolean
 }
 
-export type ConfigSetRaw = {
-  name: ConfigSetName
-  path: string
-  raw: string
-  config?: Config
-  active: boolean
-  isDefault: boolean
+export type ConfigDomainImportPlan = {
+  domains: Array<{
+    id:
+      | "general"
+      | "models"
+      | "providers"
+      | "engram"
+      | "mcp"
+      | "plugins"
+      | "agents"
+      | "commands"
+      | "permissions"
+      | "channels"
+      | "holos"
+      | "email"
+      | "runtime"
+    filename: string
+    path: string
+    mode: "merge" | "replace-domain" | "append"
+    changes: Array<ConfigDomainImportChange>
+  }>
+  conflicts: Array<ConfigDomainImportChange>
 }
 
-export type ConfigRawValidationResult = {
-  valid: boolean
-  config?: Config
-  errors: Array<string>
-  warnings: Array<string>
-}
-
-export type ConfigSetRawValidateInput = {
-  raw: string
-}
-
-export type RuntimeReloadTarget =
-  | "config"
-  | "skill"
-  | "provider"
-  | "agent"
-  | "plugin"
-  | "mcp"
-  | "lsp"
-  | "formatter"
-  | "watcher"
-  | "channel"
-  | "holos"
-  | "command"
-  | "tool_registry"
-  | "all"
-
-export type RuntimeReloadResult = {
-  success: boolean
-  requested: Array<RuntimeReloadTarget>
-  executed: Array<RuntimeReloadTarget>
-  cascaded: Array<RuntimeReloadTarget>
-  changedFields: Array<string>
-  restartRequired: Array<string>
-  liveApplied: Array<string>
-  warnings: Array<string>
-}
-
-export type ConfigSetRawSaveResult = {
-  configSet: ConfigSetRaw
-  validation: ConfigRawValidationResult
-  saved: boolean
-  runtimeReload?: RuntimeReloadResult
-}
-
-export type ConfigSetRawSaveInput = {
-  raw: string
-  reload?: boolean
-}
-
-export type ConfigSetActivateResult = {
-  previous: ConfigSetName
-  active: ConfigSetName
-  changed: boolean
-  runtimeReload: RuntimeReloadResult
+export type ConfigDomainImportPlanInput = {
+  config: Config
+  only?: Array<
+    | "general"
+    | "models"
+    | "providers"
+    | "engram"
+    | "mcp"
+    | "plugins"
+    | "agents"
+    | "commands"
+    | "permissions"
+    | "channels"
+    | "holos"
+    | "email"
+    | "runtime"
+  >
+  mode?: "merge" | "replace-domain" | "append"
 }
 
 export type Model = {
@@ -2078,6 +2072,33 @@ export type Provider = {
   models: {
     [key: string]: Model
   }
+}
+
+export type RuntimeReloadTarget =
+  | "config"
+  | "skill"
+  | "provider"
+  | "agent"
+  | "plugin"
+  | "mcp"
+  | "lsp"
+  | "formatter"
+  | "watcher"
+  | "channel"
+  | "holos"
+  | "command"
+  | "tool_registry"
+  | "all"
+
+export type RuntimeReloadResult = {
+  success: boolean
+  requested: Array<RuntimeReloadTarget>
+  executed: Array<RuntimeReloadTarget>
+  cascaded: Array<RuntimeReloadTarget>
+  changedFields: Array<string>
+  restartRequired: Array<string>
+  liveApplied: Array<string>
+  warnings: Array<string>
 }
 
 export type RuntimeReloadScope = "auto" | "global" | "project"
@@ -3986,14 +4007,6 @@ export type EventConfigUpdated = {
   }
 }
 
-export type EventConfigSetActivated = {
-  type: "config.set.activated"
-  properties: {
-    previous: ConfigSetName
-    active: ConfigSetName
-  }
-}
-
 export type EventServerInstanceDisposed = {
   type: "server.instance.disposed"
   properties: {
@@ -4485,7 +4498,6 @@ export type Event =
   | EventInstallationUpdated
   | EventInstallationUpdateAvailable
   | EventConfigUpdated
-  | EventConfigSetActivated
   | EventServerInstanceDisposed
   | EventMcpToolsChanged
   | EventMcpPromptsChanged
@@ -5264,253 +5276,180 @@ export type ConfigGlobalResponses = {
 
 export type ConfigGlobalResponse = ConfigGlobalResponses[keyof ConfigGlobalResponses]
 
-export type ConfigSetListData = {
+export type ConfigDomainListData = {
   body?: never
   path?: never
   query?: {
     directory?: string
   }
-  url: "/config/sets"
+  url: "/config/domains"
 }
 
-export type ConfigSetListResponses = {
+export type ConfigDomainListResponses = {
   /**
-   * List of Config Sets
+   * List of config domains
    */
-  200: Array<ConfigSetSummary>
+  200: Array<ConfigDomainSummary>
 }
 
-export type ConfigSetListResponse = ConfigSetListResponses[keyof ConfigSetListResponses]
+export type ConfigDomainListResponse = ConfigDomainListResponses[keyof ConfigDomainListResponses]
 
-export type ConfigSetCreateData = {
-  body?: ConfigSetCreateInput
+export type ConfigDomainGetData = {
+  body?: never
+  path: {
+    domain:
+      | "general"
+      | "models"
+      | "providers"
+      | "engram"
+      | "mcp"
+      | "plugins"
+      | "agents"
+      | "commands"
+      | "permissions"
+      | "channels"
+      | "holos"
+      | "email"
+      | "runtime"
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/config/domains/{domain}"
+}
+
+export type ConfigDomainGetErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type ConfigDomainGetError = ConfigDomainGetErrors[keyof ConfigDomainGetErrors]
+
+export type ConfigDomainGetResponses = {
+  /**
+   * Config domain fragment
+   */
+  200: Config
+}
+
+export type ConfigDomainGetResponse = ConfigDomainGetResponses[keyof ConfigDomainGetResponses]
+
+export type ConfigDomainUpdateData = {
+  body?: ConfigDomainUpdateInput
+  path: {
+    domain:
+      | "general"
+      | "models"
+      | "providers"
+      | "engram"
+      | "mcp"
+      | "plugins"
+      | "agents"
+      | "commands"
+      | "permissions"
+      | "channels"
+      | "holos"
+      | "email"
+      | "runtime"
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/config/domains/{domain}"
+}
+
+export type ConfigDomainUpdateErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type ConfigDomainUpdateError = ConfigDomainUpdateErrors[keyof ConfigDomainUpdateErrors]
+
+export type ConfigDomainUpdateResponses = {
+  /**
+   * Updated config domain fragment
+   */
+  200: Config
+}
+
+export type ConfigDomainUpdateResponse = ConfigDomainUpdateResponses[keyof ConfigDomainUpdateResponses]
+
+export type ConfigImportPlanData = {
+  body?: ConfigDomainImportPlanInput
   path?: never
   query?: {
     directory?: string
   }
-  url: "/config/sets"
+  url: "/config/import/plan"
 }
 
-export type ConfigSetCreateErrors = {
+export type ConfigImportPlanErrors = {
   /**
    * Bad request
    */
   400: BadRequestError
 }
 
-export type ConfigSetCreateError = ConfigSetCreateErrors[keyof ConfigSetCreateErrors]
+export type ConfigImportPlanError = ConfigImportPlanErrors[keyof ConfigImportPlanErrors]
 
-export type ConfigSetCreateResponses = {
+export type ConfigImportPlanResponses = {
   /**
-   * Created Config Set
+   * Config import plan
    */
-  200: ConfigSetWithConfig
+  200: ConfigDomainImportPlan
 }
 
-export type ConfigSetCreateResponse = ConfigSetCreateResponses[keyof ConfigSetCreateResponses]
+export type ConfigImportPlanResponse = ConfigImportPlanResponses[keyof ConfigImportPlanResponses]
 
-export type ConfigSetDeleteData = {
-  body?: never
-  path: {
-    name: ConfigSetName
+export type ConfigImportApplyData = {
+  body?: {
+    config: Config
+    only?: Array<
+      | "general"
+      | "models"
+      | "providers"
+      | "engram"
+      | "mcp"
+      | "plugins"
+      | "agents"
+      | "commands"
+      | "permissions"
+      | "channels"
+      | "holos"
+      | "email"
+      | "runtime"
+    >
+    mode?: "merge" | "replace-domain" | "append"
+    yes?: boolean
   }
+  path?: never
   query?: {
     directory?: string
   }
-  url: "/config/sets/{name}"
+  url: "/config/import/apply"
 }
 
-export type ConfigSetDeleteErrors = {
+export type ConfigImportApplyErrors = {
   /**
    * Bad request
    */
   400: BadRequestError
 }
 
-export type ConfigSetDeleteError = ConfigSetDeleteErrors[keyof ConfigSetDeleteErrors]
+export type ConfigImportApplyError = ConfigImportApplyErrors[keyof ConfigImportApplyErrors]
 
-export type ConfigSetDeleteResponses = {
+export type ConfigImportApplyResponses = {
   /**
-   * Deleted Config Set
+   * Applied config import plan
    */
-  200: ConfigSetSummary
+  200: ConfigDomainImportPlan
 }
 
-export type ConfigSetDeleteResponse = ConfigSetDeleteResponses[keyof ConfigSetDeleteResponses]
-
-export type ConfigSetGetData = {
-  body?: never
-  path: {
-    name: ConfigSetName
-  }
-  query?: {
-    directory?: string
-  }
-  url: "/config/sets/{name}"
-}
-
-export type ConfigSetGetErrors = {
-  /**
-   * Bad request
-   */
-  400: BadRequestError
-}
-
-export type ConfigSetGetError = ConfigSetGetErrors[keyof ConfigSetGetErrors]
-
-export type ConfigSetGetResponses = {
-  /**
-   * Config Set
-   */
-  200: ConfigSetWithConfig
-}
-
-export type ConfigSetGetResponse = ConfigSetGetResponses[keyof ConfigSetGetResponses]
-
-export type ConfigSetUpdateData = {
-  body?: Config
-  path: {
-    name: ConfigSetName
-  }
-  query?: {
-    directory?: string
-  }
-  url: "/config/sets/{name}"
-}
-
-export type ConfigSetUpdateErrors = {
-  /**
-   * Bad request
-   */
-  400: BadRequestError
-}
-
-export type ConfigSetUpdateError = ConfigSetUpdateErrors[keyof ConfigSetUpdateErrors]
-
-export type ConfigSetUpdateResponses = {
-  /**
-   * Updated Config Set
-   */
-  200: ConfigSetWithConfig
-}
-
-export type ConfigSetUpdateResponse = ConfigSetUpdateResponses[keyof ConfigSetUpdateResponses]
-
-export type ConfigSetRawGetData = {
-  body?: never
-  path: {
-    name: ConfigSetName
-  }
-  query?: {
-    directory?: string
-  }
-  url: "/config/sets/{name}/raw"
-}
-
-export type ConfigSetRawGetErrors = {
-  /**
-   * Bad request
-   */
-  400: BadRequestError
-}
-
-export type ConfigSetRawGetError = ConfigSetRawGetErrors[keyof ConfigSetRawGetErrors]
-
-export type ConfigSetRawGetResponses = {
-  /**
-   * Config Set raw source
-   */
-  200: ConfigSetRaw
-}
-
-export type ConfigSetRawGetResponse = ConfigSetRawGetResponses[keyof ConfigSetRawGetResponses]
-
-export type ConfigSetRawSaveData = {
-  body?: ConfigSetRawSaveInput
-  path: {
-    name: ConfigSetName
-  }
-  query?: {
-    directory?: string
-  }
-  url: "/config/sets/{name}/raw"
-}
-
-export type ConfigSetRawSaveErrors = {
-  /**
-   * Bad request
-   */
-  400: BadRequestError
-}
-
-export type ConfigSetRawSaveError = ConfigSetRawSaveErrors[keyof ConfigSetRawSaveErrors]
-
-export type ConfigSetRawSaveResponses = {
-  /**
-   * Saved Config Set raw source
-   */
-  200: ConfigSetRawSaveResult
-}
-
-export type ConfigSetRawSaveResponse = ConfigSetRawSaveResponses[keyof ConfigSetRawSaveResponses]
-
-export type ConfigSetRawValidateData = {
-  body?: ConfigSetRawValidateInput
-  path: {
-    name: ConfigSetName
-  }
-  query?: {
-    directory?: string
-  }
-  url: "/config/sets/{name}/raw/validate"
-}
-
-export type ConfigSetRawValidateErrors = {
-  /**
-   * Bad request
-   */
-  400: BadRequestError
-}
-
-export type ConfigSetRawValidateError = ConfigSetRawValidateErrors[keyof ConfigSetRawValidateErrors]
-
-export type ConfigSetRawValidateResponses = {
-  /**
-   * Validation result
-   */
-  200: ConfigRawValidationResult
-}
-
-export type ConfigSetRawValidateResponse = ConfigSetRawValidateResponses[keyof ConfigSetRawValidateResponses]
-
-export type ConfigSetActivateData = {
-  body?: never
-  path: {
-    name: ConfigSetName
-  }
-  query?: {
-    directory?: string
-  }
-  url: "/config/sets/{name}/activate"
-}
-
-export type ConfigSetActivateErrors = {
-  /**
-   * Bad request
-   */
-  400: BadRequestError
-}
-
-export type ConfigSetActivateError = ConfigSetActivateErrors[keyof ConfigSetActivateErrors]
-
-export type ConfigSetActivateResponses = {
-  /**
-   * Activated Config Set
-   */
-  200: ConfigSetActivateResult
-}
-
-export type ConfigSetActivateResponse = ConfigSetActivateResponses[keyof ConfigSetActivateResponses]
+export type ConfigImportApplyResponse = ConfigImportApplyResponses[keyof ConfigImportApplyResponses]
 
 export type ConfigProvidersData = {
   body?: never

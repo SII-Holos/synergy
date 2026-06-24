@@ -70,7 +70,7 @@ export namespace Email {
     const email = config.email
     if (!email) {
       throw new NotConfiguredError({
-        message: "Email is not configured. Add an email section in Settings > Advanced or raw config.",
+        message: "Email is not configured. Add an email section in Settings > Email or 110-email.jsonc.",
         missing: ["email"],
       })
     }

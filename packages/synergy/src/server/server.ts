@@ -12,7 +12,6 @@ import z from "zod"
 import { Provider } from "../provider/provider"
 import { NamedError } from "@ericsanchezok/synergy-util/error"
 import { Config } from "../config/config"
-import { ConfigSet } from "../config/set"
 import { LSP } from "../lsp"
 import { Format } from "../file/format"
 import { Instance } from "../scope/instance"
@@ -190,15 +189,7 @@ export namespace Server {
             if (err instanceof Storage.NotFoundError) status = 404
             else if (err instanceof Provider.ModelNotFoundError) status = 400
             else if (err.name === "ChannelStartError") status = 400
-            else if (ConfigSet.NotFoundError.isInstance(err)) status = 404
-            else if (
-              ConfigSet.ExistsError.isInstance(err) ||
-              ConfigSet.DeleteDefaultError.isInstance(err) ||
-              ConfigSet.DeleteActiveError.isInstance(err) ||
-              err.name.startsWith("Worktree") ||
-              err.name.startsWith("Command")
-            )
-              status = 400
+            else if (err.name.startsWith("Worktree") || err.name.startsWith("Command")) status = 400
             else status = 500
             return c.json(err.toObject(), { status })
           }

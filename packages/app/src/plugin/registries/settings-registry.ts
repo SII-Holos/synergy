@@ -40,9 +40,9 @@ const BUILTIN_SECTIONS: SettingsSection[] = [
   { id: "plugins", label: "Plugins", icon: "package", group: "Integrations" },
   { id: "email", label: "Email", icon: "mail", group: "Integrations" },
   { id: "channels", label: "Channels", icon: "globe", group: "Integrations" },
+  { id: "import", label: "Import", icon: "upload", group: "System" },
   { id: "identity", label: "Identity & Memory", icon: "fingerprint", group: "Identity" },
   { id: "advanced", label: "System", icon: "sliders-horizontal", group: "System" },
-  { id: "config-sets", label: "Config Sets", icon: "layers", group: "System" },
 ]
 
 for (const section of BUILTIN_SECTIONS) {

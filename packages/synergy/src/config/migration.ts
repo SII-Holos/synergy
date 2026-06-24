@@ -3,7 +3,6 @@ import path from "path"
 import { applyEdits, modify, parse as parseJsonc } from "jsonc-parser"
 import type { Migration } from "../migration"
 import { MigrationRegistry } from "../migration/registry"
-import { ConfigSet } from "./set"
 import { Filesystem } from "../util/filesystem"
 import { Global } from "../global"
 import { Flag } from "../flag/flag"
@@ -16,11 +15,15 @@ async function findConfigFiles(): Promise<string[]> {
   const files = new Set<string>()
   const workingDirectory = Flag.SYNERGY_CWD || process.cwd()
 
-  files.add(ConfigSet.defaultFilePath())
+  files.add(path.join(Global.Path.config, "synergy.jsonc"))
+  files.add(path.join(Global.Path.config, "synergy.json"))
 
-  const sets = await ConfigSet.list().catch(() => [])
-  for (const set of sets) {
-    files.add(set.path)
+  const configSetsRoot = path.join(Global.Path.config, "config-sets")
+  const configSets = await fs.readdir(configSetsRoot, { withFileTypes: true }).catch(() => [])
+  for (const entry of configSets) {
+    if (!entry.isDirectory()) continue
+    files.add(path.join(configSetsRoot, entry.name, "synergy.jsonc"))
+    files.add(path.join(configSetsRoot, entry.name, "synergy.json"))
   }
 
   for (const file of ["synergy.jsonc", "synergy.json"]) {
