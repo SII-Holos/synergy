@@ -1,7 +1,6 @@
 import z from "zod"
 import { embed } from "ai"
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible"
-import { pipeline } from "@huggingface/transformers"
 import { Log } from "../util/log"
 import { Config } from "../config/config"
 
@@ -20,6 +19,8 @@ export namespace Embedding {
   async function getLocalExtractor() {
     // Already loaded — fast path.
     if (localExtractor) return localExtractor
+    const transformersPackage = "@huggingface/transformers"
+    const { pipeline } = await import(transformersPackage)
 
     // Previous attempt failed — clear the error so we can retry.
     // This handles the case where the user downloads the model via
