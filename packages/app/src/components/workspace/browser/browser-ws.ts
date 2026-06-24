@@ -4,6 +4,51 @@ import type { BrowserStoreAPI } from "./browser-store"
 
 const MAX_RECONNECT_ATTEMPTS = 10
 const RECONNECT_DELAY = 2000
+const MAX_PENDING_MESSAGES = 50
+
+type BrowserSocket = {
+  readyState: number
+  send(data: string): void
+}
+
+export function createQueuedBrowserSender(
+  getSocket: () => BrowserSocket | undefined,
+  options: { openState?: number; maxPending?: number } = {},
+) {
+  const openState = options.openState ?? WebSocket.OPEN
+  const maxPending = options.maxPending ?? MAX_PENDING_MESSAGES
+  const pending: Record<string, unknown>[] = []
+
+  function send(msg: Record<string, unknown>) {
+    const socket = getSocket()
+    if (socket?.readyState === openState) {
+      socket.send(JSON.stringify(msg))
+      return
+    }
+
+    pending.push(msg)
+    if (pending.length > maxPending) pending.shift()
+  }
+
+  function flush() {
+    const socket = getSocket()
+    if (socket?.readyState !== openState) return
+    const messages = pending.splice(0)
+    for (const msg of messages) {
+      socket.send(JSON.stringify(msg))
+    }
+  }
+
+  function clear() {
+    pending.length = 0
+  }
+
+  function size() {
+    return pending.length
+  }
+
+  return { send, flush, clear, size }
+}
 
 export function createBrowserWebSocket(store: BrowserStoreAPI, sessionID: string) {
   const sdk = useSDK()
@@ -11,12 +56,8 @@ export function createBrowserWebSocket(store: BrowserStoreAPI, sessionID: string
   let reconnectTimer: ReturnType<typeof setTimeout> | undefined
   let disposed = false
   let reconnectAttempts = 0
-
-  const send = (msg: Record<string, unknown>) => {
-    if (ws?.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify(msg))
-    }
-  }
+  const queued = createQueuedBrowserSender(() => ws)
+  const send = queued.send
 
   store._setSend(send)
 
@@ -33,6 +74,7 @@ export function createBrowserWebSocket(store: BrowserStoreAPI, sessionID: string
     socket.addEventListener("open", () => {
       reconnectAttempts = 0
       store.setSession("connectionStatus", "connected")
+      queued.flush()
     })
 
     socket.addEventListener("message", (event) => {
@@ -209,6 +251,7 @@ export function createBrowserWebSocket(store: BrowserStoreAPI, sessionID: string
   onCleanup(() => {
     disposed = true
     if (reconnectTimer) clearTimeout(reconnectTimer)
+    queued.clear()
     ws?.close()
     ws = undefined
   })
