@@ -37,8 +37,8 @@ export const UI_DEFAULTS = {
   questionTimeout: 1800,
   compactionAuto: "true" as string,
   compactionOverflowThreshold: "0.85" as string,
-  identityEvolution: "true" as string,
-  identityAutonomy: "true" as string,
+  libraryLearning: "true" as string,
+  libraryAutonomy: "true" as string,
   memorySimThreshold: "0.7" as string,
   memoryTopK: "3" as string,
   experienceSimThreshold: "0.7" as string,
@@ -174,8 +174,8 @@ export type McpsStore = {
   entries: McpEntry[]
 }
 
-export type IdentityStore = {
-  evolution: string
+export type LibrarySettingsStore = {
+  learning: string
   autonomy: string
   memorySimThreshold: string
   memoryTopK: string

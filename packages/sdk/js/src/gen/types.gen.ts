@@ -160,6 +160,10 @@ export type StatsSnapshot = {
   watermark: number
 }
 
+export type DiagnosticsSummary = {
+  [key: string]: unknown
+}
+
 export type HolosLoginResponse = {
   url: string
 }
@@ -591,11 +595,11 @@ export type KeybindsConfig = {
    */
   messages_copy?: string
   /**
-   * Undo message
+   * Undo message history only
    */
   messages_undo?: string
   /**
-   * Redo message
+   * Redo message history only
    */
   messages_redo?: string
   /**
@@ -1331,7 +1335,7 @@ export type ExperienceConfig = {
   learning?: LearningConfig
 }
 
-export type EngramConfig = {
+export type LibraryConfig = {
   memory?: MemoryConfig
   experience?: ExperienceConfig
   /**
@@ -1720,6 +1724,28 @@ export type SandboxConfig = {
 }
 
 /**
+ * Local logs, traces, and diagnostics settings
+ */
+export type ObservabilityConfig = {
+  /**
+   * Enable local observability trace JSONL events (default: true)
+   */
+  enabled?: boolean
+  /**
+   * Days to retain local trace files (default: 7)
+   */
+  retentionDays?: number
+  /**
+   * Maximum total trace storage in bytes (default: 250MB)
+   */
+  maxBytes?: number
+  /**
+   * Milliseconds without tool activity before emitting a stalled-tool trace event
+   */
+  stalledToolMs?: number
+}
+
+/**
  * Holos platform configuration
  */
 export type HolosConfig = {
@@ -1990,7 +2016,7 @@ export type Config = {
   }
   embedding?: EmbeddingConfig
   rerank?: RerankConfig
-  engram?: EngramConfig
+  library?: LibraryConfig
   /**
    * MCP (Model Context Protocol) server configurations
    */
@@ -2010,6 +2036,7 @@ export type Config = {
     [key: string]: ChannelFeishuConfig
   }
   sandbox?: SandboxConfig
+  observability?: ObservabilityConfig
   controlProfile?: ControlProfileId
   holos?: HolosConfig
   email?: EmailConfig
@@ -2145,7 +2172,7 @@ export type ConfigDomainSummary = {
     | "general"
     | "models"
     | "providers"
-    | "engram"
+    | "library"
     | "mcp"
     | "plugins"
     | "agents"
@@ -2184,7 +2211,7 @@ export type ConfigDomainImportPlan = {
       | "general"
       | "models"
       | "providers"
-      | "engram"
+      | "library"
       | "mcp"
       | "plugins"
       | "agents"
@@ -2208,7 +2235,7 @@ export type ConfigDomainImportPlanInput = {
     | "general"
     | "models"
     | "providers"
-    | "engram"
+    | "library"
     | "mcp"
     | "plugins"
     | "agents"
@@ -2488,6 +2515,20 @@ export type SessionInteraction = {
   source?: string
 }
 
+export type SessionHistoryInfo = {
+  rollback?: {
+    id: string
+    numTurns: number
+    created: number
+    messageID?: string
+    droppedMessageIDs: Array<string>
+    droppedUserMessageIDs: Array<string>
+    files: Array<string>
+    patchPartIDs: Array<string>
+    canUnrollback: boolean
+  }
+}
+
 export type SessionCortexDelegation = {
   parentSessionID: string
   parentMessageID: string
@@ -2531,6 +2572,11 @@ export type Session = {
   id: string
   scope: SessionScope
   parentID?: string
+  forkedFrom?: {
+    sessionID: string
+    messageID?: string
+    title?: string
+  }
   category?: "project" | "home" | "channel" | "background"
   endpoint?: SessionEndpoint
   summary?: {
@@ -2563,12 +2609,7 @@ export type Session = {
     user?: string
     assistant?: string
   }
-  revert?: {
-    messageID: string
-    partID?: string
-    snapshot?: string
-    diff?: string
-  }
+  history?: SessionHistoryInfo
   cortex?: SessionCortexDelegation
   working?: SessionWorkingInfo
   workspace?: SessionWorkspace
@@ -3086,6 +3127,82 @@ export type FilePartInput = {
   }
 }
 
+export type SessionRollbackEvent = {
+  id: string
+  sessionID: string
+  type: "rollback"
+  time: {
+    created: number
+  }
+  numTurns: number
+  droppedMessageIDs: Array<string>
+  droppedUserMessageIDs: Array<string>
+  files: Array<string>
+  patchPartIDs: Array<string>
+}
+
+export type SessionUnrollbackEvent = {
+  id: string
+  sessionID: string
+  type: "unrollback"
+  time: {
+    created: number
+  }
+  rollbackID: string
+}
+
+export type SessionRollbackSummary = {
+  id: string
+  numTurns: number
+  created: number
+  messageID?: string
+  droppedMessageIDs: Array<string>
+  droppedUserMessageIDs: Array<string>
+  files: Array<string>
+  patchPartIDs: Array<string>
+  canUnrollback: boolean
+}
+
+export type NoteInfo = {
+  id: string
+  title: string
+  content: unknown
+  pinned: boolean
+  global: boolean
+  originScope?: string
+  tags: Array<string>
+  kind?: "note" | "blueprint"
+  blueprint?: {
+    description?: string
+    defaultAgent?: string
+    activeLoopID?: string
+    runCount?: number
+    lastRunAt?: number
+  }
+  version: number
+  time: {
+    created: number
+    updated: number
+  }
+}
+
+export type NoteConflictError = {
+  name: "NoteConflictError"
+  data: {
+    noteID: string
+    expectedVersion: number
+    note: NoteInfo
+  }
+}
+
+export type SessionFileRestoreResult = {
+  restoredFiles: Array<string>
+  patchPartIDs: Array<string>
+  rollbackID?: string
+  messageID?: string
+  partID?: string
+}
+
 export type PermissionRequest = {
   id: string
   sessionID: string
@@ -3196,6 +3313,7 @@ export type CortexTask = {
       updatedAt: number
     }>
   }
+  notifyParentOnComplete?: boolean
 }
 
 export type Command = {
@@ -3610,29 +3728,6 @@ export type NoteMetaScopeGroup = {
   notes: Array<NoteMetaInfo>
 }
 
-export type NoteInfo = {
-  id: string
-  title: string
-  content: unknown
-  pinned: boolean
-  global: boolean
-  originScope?: string
-  tags: Array<string>
-  kind?: "note" | "blueprint"
-  blueprint?: {
-    description?: string
-    defaultAgent?: string
-    activeLoopID?: string
-    runCount?: number
-    lastRunAt?: number
-  }
-  version: number
-  time: {
-    created: number
-    updated: number
-  }
-}
-
 export type NoteScopeGroup = {
   scopeID: string
   scopeType: "home" | "project"
@@ -3650,15 +3745,6 @@ export type NoteCreateInput = {
     activeLoopID?: string
     runCount?: number
     lastRunAt?: number
-  }
-}
-
-export type NoteConflictError = {
-  name: "NoteConflictError"
-  data: {
-    noteID: string
-    expectedVersion: number
-    note: NoteInfo
   }
 }
 
@@ -4043,10 +4129,8 @@ export type RegistryPluginSummary = {
 }
 
 export type RegistryPluginSignature = {
-  algorithm: string
-  value: string
-  keyId?: string
-  timestamp?: number
+  algorithm: "ed25519"
+  signer: string
 }
 
 export type RegistryPermissionItem = {
@@ -5188,6 +5272,23 @@ export type GlobalStatsProgressResponses = {
 
 export type GlobalStatsProgressResponse = GlobalStatsProgressResponses[keyof GlobalStatsProgressResponses]
 
+export type ObservabilityDiagnosticsSummaryData = {
+  body?: never
+  path?: never
+  query?: never
+  url: "/global/diagnostics"
+}
+
+export type ObservabilityDiagnosticsSummaryResponses = {
+  /**
+   * Diagnostics summary
+   */
+  200: DiagnosticsSummary
+}
+
+export type ObservabilityDiagnosticsSummaryResponse =
+  ObservabilityDiagnosticsSummaryResponses[keyof ObservabilityDiagnosticsSummaryResponses]
+
 export type GlobalDisposeData = {
   body?: never
   path?: never
@@ -5881,7 +5982,7 @@ export type ConfigDomainGetData = {
       | "general"
       | "models"
       | "providers"
-      | "engram"
+      | "library"
       | "mcp"
       | "plugins"
       | "agents"
@@ -5924,7 +6025,7 @@ export type ConfigDomainUpdateData = {
       | "general"
       | "models"
       | "providers"
-      | "engram"
+      | "library"
       | "mcp"
       | "plugins"
       | "agents"
@@ -5995,7 +6096,7 @@ export type ConfigImportApplyData = {
       | "general"
       | "models"
       | "providers"
-      | "engram"
+      | "library"
       | "mcp"
       | "plugins"
       | "agents"
@@ -6783,6 +6884,30 @@ export type SessionInitResponse = SessionInitResponses[keyof SessionInitResponse
 export type SessionForkData = {
   body?: {
     messageID?: string
+    position?:
+      | {
+          type: "current"
+        }
+      | {
+          type: "before"
+          messageID: string
+        }
+    workspace?:
+      | {
+          mode: "current"
+        }
+      | {
+          mode: "existing"
+          target: string
+          force?: boolean
+        }
+      | {
+          mode: "create"
+          name?: string
+          baseRef?: "current" | "fresh"
+        }
+    title?: string
+    controlProfile?: "guarded" | "autonomous" | "full_access"
   }
   path: {
     sessionID: string
@@ -6890,6 +7015,7 @@ export type SessionMessagesData = {
     directory?: string
     scopeID?: string
     limit?: number
+    raw?: boolean
   }
   url: "/session/{sessionID}/message"
 }
@@ -7313,10 +7439,9 @@ export type SessionShellResponses = {
 
 export type SessionShellResponse = SessionShellResponses[keyof SessionShellResponses]
 
-export type SessionRevertData = {
+export type SessionRollbackData = {
   body?: {
-    messageID: string
-    partID?: string
+    numTurns: number
   }
   path: {
     sessionID: string
@@ -7325,10 +7450,10 @@ export type SessionRevertData = {
     directory?: string
     scopeID?: string
   }
-  url: "/session/{sessionID}/revert"
+  url: "/session/{sessionID}/rollback"
 }
 
-export type SessionRevertErrors = {
+export type SessionRollbackErrors = {
   /**
    * Bad request
    */
@@ -7339,18 +7464,18 @@ export type SessionRevertErrors = {
   404: NotFoundError
 }
 
-export type SessionRevertError = SessionRevertErrors[keyof SessionRevertErrors]
+export type SessionRollbackError = SessionRollbackErrors[keyof SessionRollbackErrors]
 
-export type SessionRevertResponses = {
+export type SessionRollbackResponses = {
   /**
-   * Updated session
+   * Rollback event
    */
-  200: Session
+  200: SessionRollbackEvent
 }
 
-export type SessionRevertResponse = SessionRevertResponses[keyof SessionRevertResponses]
+export type SessionRollbackResponse = SessionRollbackResponses[keyof SessionRollbackResponses]
 
-export type SessionUnrevertData = {
+export type SessionUnrollbackData = {
   body?: never
   path: {
     sessionID: string
@@ -7359,10 +7484,57 @@ export type SessionUnrevertData = {
     directory?: string
     scopeID?: string
   }
-  url: "/session/{sessionID}/unrevert"
+  url: "/session/{sessionID}/unrollback"
 }
 
-export type SessionUnrevertErrors = {
+export type SessionUnrollbackErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Conflict
+   */
+  409: NoteConflictError
+}
+
+export type SessionUnrollbackError = SessionUnrollbackErrors[keyof SessionUnrollbackErrors]
+
+export type SessionUnrollbackResponses = {
+  /**
+   * Unrollback event or current rollback state
+   */
+  200:
+    | SessionUnrollbackEvent
+    | {
+        rollback: SessionRollbackSummary
+      }
+}
+
+export type SessionUnrollbackResponse = SessionUnrollbackResponses[keyof SessionUnrollbackResponses]
+
+export type SessionFilesRestoreData = {
+  body?: {
+    rollbackID?: string
+    messageID?: string
+    partID?: string
+    files?: Array<string>
+  }
+  path: {
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/session/{sessionID}/files/restore"
+}
+
+export type SessionFilesRestoreErrors = {
   /**
    * Bad request
    */
@@ -7373,16 +7545,16 @@ export type SessionUnrevertErrors = {
   404: NotFoundError
 }
 
-export type SessionUnrevertError = SessionUnrevertErrors[keyof SessionUnrevertErrors]
+export type SessionFilesRestoreError = SessionFilesRestoreErrors[keyof SessionFilesRestoreErrors]
 
-export type SessionUnrevertResponses = {
+export type SessionFilesRestoreResponses = {
   /**
-   * Updated session
+   * Restored files
    */
-  200: Session
+  200: SessionFileRestoreResult
 }
 
-export type SessionUnrevertResponse = SessionUnrevertResponses[keyof SessionUnrevertResponses]
+export type SessionFilesRestoreResponse = SessionFilesRestoreResponses[keyof SessionFilesRestoreResponses]
 
 export type PermissionRespondData = {
   body?: {
@@ -8258,7 +8430,7 @@ export type FileStatusResponses = {
 
 export type FileStatusResponse = FileStatusResponses[keyof FileStatusResponses]
 
-export type EngramExperienceSearchData = {
+export type LibraryExperienceSearchData = {
   body?: {
     /**
      * Search query text
@@ -8278,28 +8450,28 @@ export type EngramExperienceSearchData = {
     directory?: string
     scopeID?: string
   }
-  url: "/engram/experience/search"
+  url: "/library/experience/search"
 }
 
-export type EngramExperienceSearchErrors = {
+export type LibraryExperienceSearchErrors = {
   /**
    * Bad request
    */
   400: BadRequestError
 }
 
-export type EngramExperienceSearchError = EngramExperienceSearchErrors[keyof EngramExperienceSearchErrors]
+export type LibraryExperienceSearchError = LibraryExperienceSearchErrors[keyof LibraryExperienceSearchErrors]
 
-export type EngramExperienceSearchResponses = {
+export type LibraryExperienceSearchResponses = {
   /**
    * Search results ranked by hybrid score
    */
   200: Array<ExperienceSearchResult>
 }
 
-export type EngramExperienceSearchResponse = EngramExperienceSearchResponses[keyof EngramExperienceSearchResponses]
+export type LibraryExperienceSearchResponse = LibraryExperienceSearchResponses[keyof LibraryExperienceSearchResponses]
 
-export type EngramExperiencePageData = {
+export type LibraryExperiencePageData = {
   body?: never
   path?: never
   query?: {
@@ -8323,28 +8495,28 @@ export type EngramExperiencePageData = {
      */
     offset?: number
   }
-  url: "/engram/experience/page"
+  url: "/library/experience/page"
 }
 
-export type EngramExperiencePageErrors = {
+export type LibraryExperiencePageErrors = {
   /**
    * Bad request
    */
   400: BadRequestError
 }
 
-export type EngramExperiencePageError = EngramExperiencePageErrors[keyof EngramExperiencePageErrors]
+export type LibraryExperiencePageError = LibraryExperiencePageErrors[keyof LibraryExperiencePageErrors]
 
-export type EngramExperiencePageResponses = {
+export type LibraryExperiencePageResponses = {
   /**
    * Paginated experience list
    */
   200: ExperienceListPage
 }
 
-export type EngramExperiencePageResponse = EngramExperiencePageResponses[keyof EngramExperiencePageResponses]
+export type LibraryExperiencePageResponse = LibraryExperiencePageResponses[keyof LibraryExperiencePageResponses]
 
-export type EngramExperienceRemoveData = {
+export type LibraryExperienceRemoveData = {
   body?: never
   path: {
     /**
@@ -8356,28 +8528,28 @@ export type EngramExperienceRemoveData = {
     directory?: string
     scopeID?: string
   }
-  url: "/engram/experience/{id}"
+  url: "/library/experience/{id}"
 }
 
-export type EngramExperienceRemoveErrors = {
+export type LibraryExperienceRemoveErrors = {
   /**
    * Bad request
    */
   400: BadRequestError
 }
 
-export type EngramExperienceRemoveError = EngramExperienceRemoveErrors[keyof EngramExperienceRemoveErrors]
+export type LibraryExperienceRemoveError = LibraryExperienceRemoveErrors[keyof LibraryExperienceRemoveErrors]
 
-export type EngramExperienceRemoveResponses = {
+export type LibraryExperienceRemoveResponses = {
   /**
    * Deleted
    */
   200: boolean
 }
 
-export type EngramExperienceRemoveResponse = EngramExperienceRemoveResponses[keyof EngramExperienceRemoveResponses]
+export type LibraryExperienceRemoveResponse = LibraryExperienceRemoveResponses[keyof LibraryExperienceRemoveResponses]
 
-export type EngramExperienceGetData = {
+export type LibraryExperienceGetData = {
   body?: never
   path: {
     /**
@@ -8389,10 +8561,10 @@ export type EngramExperienceGetData = {
     directory?: string
     scopeID?: string
   }
-  url: "/engram/experience/{id}"
+  url: "/library/experience/{id}"
 }
 
-export type EngramExperienceGetErrors = {
+export type LibraryExperienceGetErrors = {
   /**
    * Bad request
    */
@@ -8403,18 +8575,18 @@ export type EngramExperienceGetErrors = {
   404: NotFoundError
 }
 
-export type EngramExperienceGetError = EngramExperienceGetErrors[keyof EngramExperienceGetErrors]
+export type LibraryExperienceGetError = LibraryExperienceGetErrors[keyof LibraryExperienceGetErrors]
 
-export type EngramExperienceGetResponses = {
+export type LibraryExperienceGetResponses = {
   /**
    * Experience detail
    */
   200: ExperienceDetailInfo
 }
 
-export type EngramExperienceGetResponse = EngramExperienceGetResponses[keyof EngramExperienceGetResponses]
+export type LibraryExperienceGetResponse = LibraryExperienceGetResponses[keyof LibraryExperienceGetResponses]
 
-export type EngramExperienceApplyRewardData = {
+export type LibraryExperienceApplyRewardData = {
   body?: {
     /**
      * Direct composite reward value [-1, 1]
@@ -8432,10 +8604,10 @@ export type EngramExperienceApplyRewardData = {
     directory?: string
     scopeID?: string
   }
-  url: "/engram/experience/{id}/reward"
+  url: "/library/experience/{id}/reward"
 }
 
-export type EngramExperienceApplyRewardErrors = {
+export type LibraryExperienceApplyRewardErrors = {
   /**
    * Bad request
    */
@@ -8446,20 +8618,20 @@ export type EngramExperienceApplyRewardErrors = {
   404: NotFoundError
 }
 
-export type EngramExperienceApplyRewardError =
-  EngramExperienceApplyRewardErrors[keyof EngramExperienceApplyRewardErrors]
+export type LibraryExperienceApplyRewardError =
+  LibraryExperienceApplyRewardErrors[keyof LibraryExperienceApplyRewardErrors]
 
-export type EngramExperienceApplyRewardResponses = {
+export type LibraryExperienceApplyRewardResponses = {
   /**
    * Reward applied
    */
   200: ApplyRewardResult
 }
 
-export type EngramExperienceApplyRewardResponse =
-  EngramExperienceApplyRewardResponses[keyof EngramExperienceApplyRewardResponses]
+export type LibraryExperienceApplyRewardResponse =
+  LibraryExperienceApplyRewardResponses[keyof LibraryExperienceApplyRewardResponses]
 
-export type EngramExperienceListData = {
+export type LibraryExperienceListData = {
   body?: never
   path?: never
   query?: {
@@ -8469,19 +8641,19 @@ export type EngramExperienceListData = {
      */
     scopeID?: string
   }
-  url: "/engram/experience"
+  url: "/library/experience"
 }
 
-export type EngramExperienceListResponses = {
+export type LibraryExperienceListResponses = {
   /**
    * List of experiences
    */
   200: Array<ExperienceInfo>
 }
 
-export type EngramExperienceListResponse = EngramExperienceListResponses[keyof EngramExperienceListResponses]
+export type LibraryExperienceListResponse = LibraryExperienceListResponses[keyof LibraryExperienceListResponses]
 
-export type EngramStatsData = {
+export type LibraryStatsData = {
   body?: never
   path?: never
   query?: {
@@ -8492,28 +8664,28 @@ export type EngramStatsData = {
      */
     recompute?: "true" | "false"
   }
-  url: "/engram/stats"
+  url: "/library/stats"
 }
 
-export type EngramStatsErrors = {
+export type LibraryStatsErrors = {
   /**
    * Bad request
    */
   400: BadRequestError
 }
 
-export type EngramStatsError = EngramStatsErrors[keyof EngramStatsErrors]
+export type LibraryStatsError = LibraryStatsErrors[keyof LibraryStatsErrors]
 
-export type EngramStatsResponses = {
+export type LibraryStatsResponses = {
   /**
-   * Engram statistics
+   * Library statistics
    */
   200: MemoryStats
 }
 
-export type EngramStatsResponse = EngramStatsResponses[keyof EngramStatsResponses]
+export type LibraryStatsResponse = LibraryStatsResponses[keyof LibraryStatsResponses]
 
-export type EngramSearchData = {
+export type LibrarySearchData = {
   body?: {
     /**
      * Search query text
@@ -8537,28 +8709,28 @@ export type EngramSearchData = {
     directory?: string
     scopeID?: string
   }
-  url: "/engram/search"
+  url: "/library/search"
 }
 
-export type EngramSearchErrors = {
+export type LibrarySearchErrors = {
   /**
    * Bad request
    */
   400: BadRequestError
 }
 
-export type EngramSearchError = EngramSearchErrors[keyof EngramSearchErrors]
+export type LibrarySearchError = LibrarySearchErrors[keyof LibrarySearchErrors]
 
-export type EngramSearchResponses = {
+export type LibrarySearchResponses = {
   /**
    * Search results ranked by similarity
    */
   200: Array<MemorySearchResult>
 }
 
-export type EngramSearchResponse = EngramSearchResponses[keyof EngramSearchResponses]
+export type LibrarySearchResponse = LibrarySearchResponses[keyof LibrarySearchResponses]
 
-export type EngramResetData = {
+export type LibraryResetData = {
   body?: {
     /**
      * What to reset
@@ -8578,28 +8750,28 @@ export type EngramResetData = {
     directory?: string
     scopeID?: string
   }
-  url: "/engram/reset"
+  url: "/library/reset"
 }
 
-export type EngramResetErrors = {
+export type LibraryResetErrors = {
   /**
    * Bad request
    */
   400: BadRequestError
 }
 
-export type EngramResetError = EngramResetErrors[keyof EngramResetErrors]
+export type LibraryResetError = LibraryResetErrors[keyof LibraryResetErrors]
 
-export type EngramResetResponses = {
+export type LibraryResetResponses = {
   /**
    * Reset result with deletion counts
    */
   200: MemoryResetResult
 }
 
-export type EngramResetResponse = EngramResetResponses[keyof EngramResetResponses]
+export type LibraryResetResponse = LibraryResetResponses[keyof LibraryResetResponses]
 
-export type EngramRemoveData = {
+export type LibraryRemoveData = {
   body?: never
   path: {
     /**
@@ -8611,28 +8783,28 @@ export type EngramRemoveData = {
     directory?: string
     scopeID?: string
   }
-  url: "/engram/{id}"
+  url: "/library/{id}"
 }
 
-export type EngramRemoveErrors = {
+export type LibraryRemoveErrors = {
   /**
    * Bad request
    */
   400: BadRequestError
 }
 
-export type EngramRemoveError = EngramRemoveErrors[keyof EngramRemoveErrors]
+export type LibraryRemoveError = LibraryRemoveErrors[keyof LibraryRemoveErrors]
 
-export type EngramRemoveResponses = {
+export type LibraryRemoveResponses = {
   /**
    * Deleted
    */
   200: boolean
 }
 
-export type EngramRemoveResponse = EngramRemoveResponses[keyof EngramRemoveResponses]
+export type LibraryRemoveResponse = LibraryRemoveResponses[keyof LibraryRemoveResponses]
 
-export type EngramGetData = {
+export type LibraryGetData = {
   body?: never
   path: {
     /**
@@ -8644,10 +8816,10 @@ export type EngramGetData = {
     directory?: string
     scopeID?: string
   }
-  url: "/engram/{id}"
+  url: "/library/{id}"
 }
 
-export type EngramGetErrors = {
+export type LibraryGetErrors = {
   /**
    * Bad request
    */
@@ -8658,18 +8830,18 @@ export type EngramGetErrors = {
   404: NotFoundError
 }
 
-export type EngramGetError = EngramGetErrors[keyof EngramGetErrors]
+export type LibraryGetError = LibraryGetErrors[keyof LibraryGetErrors]
 
-export type EngramGetResponses = {
+export type LibraryGetResponses = {
   /**
    * Memory detail
    */
   200: MemoryInfo
 }
 
-export type EngramGetResponse = EngramGetResponses[keyof EngramGetResponses]
+export type LibraryGetResponse = LibraryGetResponses[keyof LibraryGetResponses]
 
-export type EngramListData = {
+export type LibraryListData = {
   body?: never
   path?: never
   query?: {
@@ -8678,17 +8850,17 @@ export type EngramListData = {
     category?: MemoryCategory
     recallMode?: MemoryRecallMode
   }
-  url: "/engram"
+  url: "/library"
 }
 
-export type EngramListResponses = {
+export type LibraryListResponses = {
   /**
    * List of memories
    */
   200: Array<MemoryInfo>
 }
 
-export type EngramListResponse = EngramListResponses[keyof EngramListResponses]
+export type LibraryListResponse = LibraryListResponses[keyof LibraryListResponses]
 
 export type AgendaActivityData = {
   body?: never

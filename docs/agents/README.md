@@ -14,6 +14,7 @@ Read:
 - [../plugins/development-kit.md](../plugins/development-kit.md)
 - [../../packages/plugin/README.md](../../packages/plugin/README.md)
 - [../plugin/toolchain.md](../plugin/toolchain.md)
+- [../plugin/marketplace.md](../plugin/marketplace.md)
 
 Do not read `AGENTS.md` for normal plugin authoring. `AGENTS.md` is about modifying this Synergy source repository.
 
@@ -31,6 +32,8 @@ Read:
 ## Source Checkout Boundary
 
 Plugin authors should not need a Synergy source checkout. They should use `@ericsanchezok/synergy-plugin-kit`, the `synergy-plugin ...` commands, and the `@ericsanchezok/synergy-plugin` SDK.
+
+For official marketplace publishing, use `synergy-plugin publish-market` from the plugin repository. It prepares the GitHub Release assets and the `SII-Holos/synergy-plugins` registry PR; external agents do not need Synergy source-development instructions for that flow.
 
 A source checkout is only needed when:
 

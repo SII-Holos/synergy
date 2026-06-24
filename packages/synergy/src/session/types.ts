@@ -57,6 +57,25 @@ export type CortexDelegationInfo = z.infer<typeof CortexDelegationInfoInner>
 
 const ControlProfileId = z.enum(["guarded", "autonomous", "full_access"])
 
+export const HistoryInfo = z
+  .object({
+    rollback: z
+      .object({
+        id: Identifier.schema("history"),
+        numTurns: z.number(),
+        created: z.number(),
+        messageID: Identifier.schema("message").optional(),
+        droppedMessageIDs: z.array(Identifier.schema("message")),
+        droppedUserMessageIDs: z.array(Identifier.schema("message")),
+        files: z.array(z.string()),
+        patchPartIDs: z.array(Identifier.schema("part")),
+        canUnrollback: z.boolean(),
+      })
+      .optional(),
+  })
+  .meta({ ref: "SessionHistoryInfo" })
+export type HistoryInfo = z.infer<typeof HistoryInfo>
+
 export const WorkingInfo = z
   .union([
     z.object({
@@ -91,6 +110,13 @@ export const Info = z
       id: Identifier.schema("session"),
       scope: ScopeField,
       parentID: Identifier.schema("session").optional(),
+      forkedFrom: z
+        .object({
+          sessionID: Identifier.schema("session"),
+          messageID: Identifier.schema("message").optional(),
+          title: z.string().optional(),
+        })
+        .optional(),
       category: z.enum(["project", "home", "channel", "background"]).optional(),
       endpoint: SessionEndpoint.Info.optional(),
       summary: z
@@ -131,14 +157,7 @@ export const Info = z
           assistant: z.string().optional(),
         })
         .optional(),
-      revert: z
-        .object({
-          messageID: z.string(),
-          partID: z.string().optional(),
-          snapshot: z.string().optional(),
-          diff: z.string().optional(),
-        })
-        .optional(),
+      history: HistoryInfo.optional(),
       cortex: CortexDelegationInfo.optional(),
       working: WorkingInfo.optional(),
       workspace: Workspace.optional(),

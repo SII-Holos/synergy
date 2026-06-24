@@ -13,7 +13,7 @@ When you need detailed schema, fields, or examples for a specific config area, l
 | "set model", "default model", "change model", "vision model", "model role", "nano model", "which model", "cheaper model" | `references/models.txt` |
 | "create agent", "custom agent", "add a code reviewer", "default agent", "override agent", "disable agent" | `references/agents.txt` |
 | "create skill", "add command", "plugin", "new tool", "custom tool" | `references/skills-commands-plugins.txt` |
-| "embeddings", "reranker", "memory config", "permissions", "allow/deny", "read-only agent", "restrict access" | `references/identity-permissions.txt` |
+| "embeddings", "reranker", "memory config", "permissions", "allow/deny", "read-only agent", "restrict access" | `references/library-permissions.txt` |
 | "add Feishu/Lark channel", "飞书", "channel config" | `references/channels.txt` |
 | "reload config", "hot reload", "restart needed?", "changes not applying" | `references/reload.txt` |
 
@@ -32,10 +32,10 @@ When you need detailed schema, fields, or examples for a specific config area, l
 
 | Domain file | Owned keys |
 |---|---|
-| `00-general.jsonc` | `$schema`, `theme`, `keybinds`, `toast`, `logLevel`, `snapshot`, `autoupdate`, `username`, `layout` |
+| `00-general.jsonc` | `$schema`, `theme`, `keybinds`, `toast`, `logLevel`, `snapshot`, `autoupdate`, `username`, `layout`, `embedding`, `rerank` |
 | `10-models.jsonc` | `model`, `nano_model`, `mini_model`, `mid_model`, `thinking_model`, `long_context_model`, `creative_model`, `vision_model` |
 | `20-providers.jsonc` | `provider`, `enabled_providers`, `disabled_providers` |
-| `30-engram.jsonc` | `embedding`, `rerank`, `engram` |
+| `30-library.jsonc` | `library` |
 | `40-mcp.jsonc` | `mcp`, `mcpDefaults` |
 | `50-plugins.jsonc` | `plugin`, `pluginConfig` |
 | `60-agents.jsonc` | `default_agent`, `agent`, `external_agent`, `instructions`, `category` |
@@ -64,7 +64,7 @@ When you need detailed schema, fields, or examples for a specific config area, l
 
 ### Default scope recommendations
 
-- **Provider / MCP / Identity** → global
+- **Provider / MCP / Library** → global
 - **Agent / Permissions** → project
 - **Models** → ask user
 
@@ -104,10 +104,10 @@ Load `references/models.txt` for model role system, common configurations, and c
 Load `references/agents.txt` for the full creation guide, field reference, complete examples, and troubleshooting.
 
 ### Create skill, command, or plugin
-Load `references/skills-commands-plugins.txt` for format details, choosing between the three, and troubleshooting. For permission control over agents, see `references/identity-permissions.txt`.
+Load `references/skills-commands-plugins.txt` for format details, choosing between the three, and troubleshooting. For permission control over agents, see `references/library-permissions.txt`.
 
-### Configure permissions or identity
-Load `references/identity-permissions.txt` for permission schema, common patterns, embedding/rerank config, and troubleshooting.
+### Configure permissions or library
+Load `references/library-permissions.txt` for permission schema, common patterns, embedding/rerank config, and troubleshooting.
 
 ### Add Feishu/Lark channel
 Load `references/channels.txt` for Feishu setup flow, channel config, and troubleshooting.

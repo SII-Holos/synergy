@@ -11,7 +11,7 @@ import { sha256File } from "../util/crypto"
 import { baseCapabilities } from "./capability"
 import { computeManifestHash, computePermissionsHash } from "./consent/approval-store"
 import { computeRisk } from "./consent/risk"
-import { readSignatureFile, verifySignature, type SignatureMetadata } from "./signature"
+import { readSignatureFile, verifySignatureWithPublicKey, type SignatureMetadata } from "./signature"
 
 export namespace PluginMarketplaceRegistry {
   export const Source = z.enum(["official", "local"])
@@ -32,10 +32,15 @@ export namespace PluginMarketplaceRegistry {
     risk: Risk,
     granted: z.boolean().optional(),
   })
+  const RemoteSignature = z.object({
+    algorithm: z.literal("ed25519"),
+    signer: z.string().regex(/^[a-f0-9]{64}$/i),
+  })
   const RemoteVersion = z.object({
     version: z.string(),
     downloadUrl: z.string().url(),
     signatureUrl: z.string().url(),
+    signature: RemoteSignature,
     integrity: z.string().regex(/^sha256-[a-f0-9]{64}$/),
     manifestHash: z.string(),
     permissionsHash: z.string(),
@@ -93,6 +98,7 @@ export namespace PluginMarketplaceRegistry {
     version: string
     manifestHash: string
     permissionsHash: string
+    signature?: { algorithm: "ed25519"; signer: string }
     signatureUrl?: string
     downloadUrl?: string
     integrity: string
@@ -219,6 +225,7 @@ export namespace PluginMarketplaceRegistry {
       version: version.version,
       manifestHash: version.manifestHash,
       permissionsHash: version.permissionsHash,
+      signature: version.signature,
       signatureUrl: version.signatureUrl,
       downloadUrl: version.downloadUrl,
       integrity: version.integrity,
@@ -483,6 +490,14 @@ export namespace PluginMarketplaceRegistry {
 
     const signature = readSignatureFile(tarballPath)
     if (!signature) throw new Error(`Remote plugin artifact signature is missing or invalid`)
+    const trustedSignature = target.signature
+    if (!trustedSignature) throw new Error(`Official registry version is missing reviewed signature metadata`)
+    if (trustedSignature.algorithm !== signature.algorithm) {
+      throw new Error(`Remote plugin artifact signature algorithm mismatch`)
+    }
+    if (trustedSignature.signer !== signature.signer) {
+      throw new Error(`Remote plugin artifact signature signer mismatch`)
+    }
     if (signature.pluginId !== id) throw new Error(`Remote plugin artifact signature plugin id mismatch`)
     if (signature.version !== version) throw new Error(`Remote plugin artifact signature version mismatch`)
     if (signature.payload.tarballHash !== tarballHash) {
@@ -507,7 +522,7 @@ export namespace PluginMarketplaceRegistry {
     if (manifestHash !== target.manifestHash) throw new Error(`Remote plugin artifact manifest hash mismatch`)
     if (permissionsHash !== target.permissionsHash) throw new Error(`Remote plugin artifact permissions hash mismatch`)
 
-    const signatureValid = await verifySignature(tarballPath, signature)
+    const signatureValid = await verifySignatureWithPublicKey(tarballPath, signature, trustedSignature.signer)
     if (!signatureValid) throw new Error(`Remote plugin artifact signature verification failed`)
 
     return {

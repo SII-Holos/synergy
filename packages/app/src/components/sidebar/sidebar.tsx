@@ -413,13 +413,28 @@ export function Sidebar(props: SidebarProps) {
             type="button"
             classList={{
               "sb-global-btn": true,
-              "sb-global-active": panel.active() === "engram",
+              "sb-global-active": panel.active() === "library",
             }}
-            onClick={() => panel.toggle("engram")}
+            onClick={() => panel.toggle("library")}
           >
             <Icon name="book-open" size="normal" />
             <Show when={isExpanded()}>
               <span class="sb-action-label">Library</span>
+            </Show>
+          </button>
+        </Tooltip>
+        <Tooltip value="Diagnostics" placement="right">
+          <button
+            type="button"
+            classList={{
+              "sb-global-btn": true,
+              "sb-global-active": panel.active() === "diagnostics",
+            }}
+            onClick={() => panel.toggle("diagnostics")}
+          >
+            <Icon name="stethoscope" size="normal" />
+            <Show when={isExpanded()}>
+              <span class="sb-action-label">Diagnostics</span>
             </Show>
           </button>
         </Tooltip>

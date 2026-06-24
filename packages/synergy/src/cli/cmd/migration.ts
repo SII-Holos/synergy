@@ -84,7 +84,7 @@ export const MigrationCommand = cmd({
         (yargs) =>
           yargs
             .positional("domain", {
-              describe: "migration domain (e.g. engram, session)",
+              describe: "migration domain (e.g. library, session)",
               type: "string",
               demandOption: true,
             })
@@ -145,8 +145,8 @@ function resolveDomainSourceFile(domain: string): string | null {
       return "src/agenda/migration.ts"
     case "config":
       return "src/config/migration.ts"
-    case "engram":
-      return "src/engram/migration.ts"
+    case "library":
+      return "src/library/migration.ts"
     case "scope":
       return "src/scope/migration.ts"
     case "session":

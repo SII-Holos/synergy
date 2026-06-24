@@ -9,7 +9,7 @@ export namespace ConfigDomain {
     "general",
     "models",
     "providers",
-    "engram",
+    "library",
     "mcp",
     "plugins",
     "agents",
@@ -49,6 +49,8 @@ export namespace ConfigDomain {
       "autoupdate",
       "username",
       "layout",
+      "embedding",
+      "rerank",
     ]),
     def("models", "10-models.jsonc", "Models", [
       "model",
@@ -61,7 +63,7 @@ export namespace ConfigDomain {
       "vision_model",
     ]),
     def("providers", "20-providers.jsonc", "Providers", ["provider", "enabled_providers", "disabled_providers"]),
-    def("engram", "30-engram.jsonc", "Engram", ["embedding", "rerank", "engram"]),
+    def("library", "30-library.jsonc", "Library", ["library"]),
     def("mcp", "40-mcp.jsonc", "MCP", ["mcp", "mcpDefaults"]),
     def(
       "plugins",
@@ -97,6 +99,7 @@ export namespace ConfigDomain {
       "question",
       "compaction",
       "experimental",
+      "observability",
     ]),
   ] as const satisfies Definition[]
 

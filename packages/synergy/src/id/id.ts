@@ -6,11 +6,13 @@ export namespace Identifier {
   export type SessionID = string & { readonly __brand: "SessionID" }
   export type MessageID = string & { readonly __brand: "MessageID" }
   export type PartID = string & { readonly __brand: "PartID" }
+  export type HistoryID = string & { readonly __brand: "HistoryID" }
 
   export const asScopeID = (s: string) => s as ScopeID
   export const asSessionID = (s: string) => s as SessionID
   export const asMessageID = (s: string) => s as MessageID
   export const asPartID = (s: string) => s as PartID
+  export const asHistoryID = (s: string) => s as HistoryID
 
   const prefixes = {
     session: "ses",
@@ -27,6 +29,7 @@ export namespace Identifier {
     agenda: "agd",
     note: "nte",
     blueprint_loop: "bll",
+    history: "hst",
   } as const
 
   export function schema(prefix: keyof typeof prefixes) {
@@ -41,6 +44,7 @@ export namespace Identifier {
   export function ascending(prefix: "session", given?: string): SessionID
   export function ascending(prefix: "message", given?: string): MessageID
   export function ascending(prefix: "part", given?: string): PartID
+  export function ascending(prefix: "history", given?: string): HistoryID
   export function ascending(prefix: keyof typeof prefixes, given?: string): string
   export function ascending(prefix: keyof typeof prefixes, given?: string): string {
     return generateID(prefix, false, given)
@@ -49,6 +53,7 @@ export namespace Identifier {
   export function descending(prefix: "session", given?: string): SessionID
   export function descending(prefix: "message", given?: string): MessageID
   export function descending(prefix: "part", given?: string): PartID
+  export function descending(prefix: "history", given?: string): HistoryID
   export function descending(prefix: keyof typeof prefixes, given?: string): string
   export function descending(prefix: keyof typeof prefixes, given?: string): string {
     return generateID(prefix, true, given)

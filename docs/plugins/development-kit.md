@@ -40,12 +40,12 @@ The generated plugin project depends on `@ericsanchezok/synergy-plugin` and keep
 ## Canonical Workflow
 
 ```bash
-bun run validate
-bun run build
-bun run pack
-bun run sign my-plugin-0.1.0.synergy-plugin.tgz
-bun run publish:market
+synergy-plugin dev
+synergy-plugin validate --runtime-discovery
+synergy-plugin publish-market
 ```
+
+`publish-market` is the preferred official submission path. It validates, builds, packs, signs, uploads GitHub Release assets when possible, writes the `SII-Holos/synergy-plugins` entry with the signer public key, regenerates the official index, validates it, and opens or prepares the registry PR.
 
 During local development:
 

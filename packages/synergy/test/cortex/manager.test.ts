@@ -1,9 +1,11 @@
-import { describe, expect, test, beforeEach } from "bun:test"
+import { describe, expect, test, beforeEach, mock } from "bun:test"
 import { Cortex, CortexConcurrency } from "../../src/cortex"
 import { CortexTypes } from "../../src/cortex/types"
 import { Bus } from "../../src/bus"
 import { ScopeContext } from "../../src/scope/context"
 import { Session } from "../../src/session"
+import { SessionInvoke } from "../../src/session/invoke"
+import { SessionManager } from "../../src/session/manager"
 import { tmpdir } from "../fixture/fixture"
 
 async function launchAndCaptureCreatedTask(
@@ -502,6 +504,89 @@ describe("Cortex", () => {
 
           expect(result).toBeDefined()
           expect(result?.status).toBe("cancelled")
+        },
+      })
+    })
+  })
+
+  describe("parent completion notification", () => {
+    async function waitUntilCompleted(taskID: string) {
+      for (let i = 0; i < 50; i++) {
+        const task = Cortex.get(taskID)
+        if (task?.status === "completed" || task?.status === "error") return task
+        await Bun.sleep(10)
+      }
+      return Cortex.get(taskID)
+    }
+
+    test("notifies parent by default when no waiter consumes the result", async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const originalInvoke = SessionInvoke.invoke
+          const originalDeliver = SessionManager.deliver
+          const deliveries: Parameters<typeof SessionManager.deliver>[0][] = []
+          ;(SessionInvoke.invoke as any) = mock(async () => undefined)
+          ;(SessionManager.deliver as any) = mock(async (input: Parameters<typeof SessionManager.deliver>[0]) => {
+            deliveries.push(input)
+          })
+          try {
+            const parentSession = await Session.create({})
+            const task = await Cortex.launch({
+              description: "Notify parent",
+              prompt: "Do something",
+              agent: "developer",
+              parentSessionID: parentSession.id,
+              parentMessageID: "msg_test01234567890abc",
+              model: { providerID: "test-provider", modelID: "test-model" },
+            })
+
+            const completed = await waitUntilCompleted(task.id)
+
+            expect(completed?.status).toBe("completed")
+            expect(deliveries).toHaveLength(1)
+            expect(deliveries[0].target).toBe(parentSession.id)
+            expect(deliveries[0].mail.type).toBe("user")
+            expect(deliveries[0].mail.metadata?.source).toBe("cortex")
+          } finally {
+            ;(SessionInvoke.invoke as any) = originalInvoke
+            ;(SessionManager.deliver as any) = originalDeliver
+          }
+        },
+      })
+    })
+
+    test("suppresses parent notification when notifyParentOnComplete is false", async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const originalInvoke = SessionInvoke.invoke
+          const originalDeliver = SessionManager.deliver
+          const deliver = mock(async () => {})
+          ;(SessionInvoke.invoke as any) = mock(async () => undefined)
+          ;(SessionManager.deliver as any) = deliver
+          try {
+            const parentSession = await Session.create({})
+            const task = await Cortex.launch({
+              description: "Silent parent",
+              prompt: "Do something",
+              agent: "developer",
+              parentSessionID: parentSession.id,
+              parentMessageID: "msg_test01234567890abc",
+              model: { providerID: "test-provider", modelID: "test-model" },
+              notifyParentOnComplete: false,
+            })
+
+            const completed = await waitUntilCompleted(task.id)
+
+            expect(completed?.status).toBe("completed")
+            expect(deliver).not.toHaveBeenCalled()
+          } finally {
+            ;(SessionInvoke.invoke as any) = originalInvoke
+            ;(SessionManager.deliver as any) = originalDeliver
+          }
         },
       })
     })

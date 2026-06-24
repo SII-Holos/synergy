@@ -31,10 +31,8 @@ const RegistryPermissionSummary = z
 
 const PluginSignature = z
   .object({
-    algorithm: z.string(),
-    value: z.string(),
-    keyId: z.string().optional(),
-    timestamp: z.number().optional(),
+    algorithm: z.literal("ed25519"),
+    signer: z.string().regex(/^[a-f0-9]{64}$/i),
   })
   .meta({ ref: "RegistryPluginSignature" })
 

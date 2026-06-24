@@ -38,6 +38,7 @@ import {
   extractRunningTaskSessionID,
   titlecaseStatusLabel,
 } from "./session-status"
+import { getSpecialUserMessageRenderer } from "./special-user-message"
 
 function getInjectedContext(message: UserMessage | undefined): InjectedContext | undefined {
   if (!message?.metadata) return undefined
@@ -168,6 +169,12 @@ export function SessionTurn(
     if (!msg || msg.role !== "user") return undefined
 
     return msg
+  })
+
+  const specialUserMessageRenderer = createMemo(() => {
+    const msg = message()
+    if (!msg) return undefined
+    return getSpecialUserMessageRenderer(msg)
   })
 
   const lastUserMessageID = createMemo(() => {
@@ -569,11 +576,15 @@ export function SessionTurn(
                       </div>
                     </Show>
                     {/* Mailbox source annotation */}
-                    <Show when={(msg() as UserMessage).metadata?.mailbox}>
+                    <Show when={(msg() as UserMessage).metadata?.mailbox && !specialUserMessageRenderer()}>
                       <MailboxSourceBadge message={msg() as UserMessage} />
                     </Show>
                     {/* User message */}
-                    <Message message={msg()} parts={parts()} />
+                    <Show when={specialUserMessageRenderer()} fallback={<Message message={msg()} parts={parts()} />}>
+                      {(SpecialUserMessage) => (
+                        <Dynamic component={SpecialUserMessage()} message={msg()} parts={parts()} />
+                      )}
+                    </Show>
                     {/* Steps trigger */}
                     <Show when={working() || hasSteps() || chroniclerSessionID() || assistantMessages().length > 0}>
                       <div data-slot="session-turn-steps-row">

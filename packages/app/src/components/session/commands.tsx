@@ -205,7 +205,7 @@ export function useSessionCommands(params: {
     {
       id: "session.undo",
       title: "Undo",
-      description: "Undo the last message",
+      description: "Undo the last message turn",
       category: "Session",
       slash: "undo",
       disabled: !routeParams.id || (visibleUserMessages()?.length ?? 0) === 0,
@@ -215,10 +215,9 @@ export function useSessionCommands(params: {
         if (status()?.type !== "idle") {
           await sdk.client.session.abort({ sessionID }).catch(() => {})
         }
-        const revert = info()?.revert?.messageID
-        const message = userMessages().findLast((x) => !revert || x.id < revert)
+        const message = visibleUserMessages().at(-1)
         if (!message) return
-        await sdk.client.session.revert({ sessionID, messageID: message.id })
+        await sdk.client.session.rollback({ sessionID, numTurns: 1 })
         const parts = sync.data.part[message.id]
         if (parts) {
           const restored = extractPromptFromParts(parts, { directory: sdk.directory })
@@ -231,26 +230,35 @@ export function useSessionCommands(params: {
     {
       id: "session.redo",
       title: "Redo",
-      description: "Redo the last undone message",
+      description: "Restore the last undone message turn",
       category: "Session",
       slash: "redo",
-      disabled: !routeParams.id || !info()?.revert?.messageID,
+      disabled: !routeParams.id || info()?.history?.rollback?.canUnrollback !== true,
       onSelect: async () => {
         const sessionID = routeParams.id
         if (!sessionID) return
-        const revertMessageID = info()?.revert?.messageID
-        if (!revertMessageID) return
-        const nextMessage = userMessages().find((x) => x.id > revertMessageID)
-        if (!nextMessage) {
-          await sdk.client.session.unrevert({ sessionID })
-          prompt.reset()
-          const lastMsg = userMessages().findLast((x) => x.id >= revertMessageID)
-          setActiveMessage(lastMsg)
-          return
-        }
-        await sdk.client.session.revert({ sessionID, messageID: nextMessage.id })
-        const priorMsg = userMessages().findLast((x) => x.id < nextMessage.id)
-        setActiveMessage(priorMsg)
+        await sdk.client.session.unrollback({ sessionID })
+        prompt.reset()
+        setActiveMessage(userMessages().at(-1))
+      },
+    },
+    {
+      id: "session.restore_files",
+      title: "Restore files",
+      description: "Restore files changed by the undone turn",
+      category: "Session",
+      disabled: !routeParams.id || (info()?.history?.rollback?.patchPartIDs.length ?? 0) === 0,
+      onSelect: async () => {
+        const sessionID = routeParams.id
+        const rollback = info()?.history?.rollback
+        if (!sessionID || !rollback) return
+        const result = await sdk.client.session.files.restore({ sessionID, rollbackID: rollback.id })
+        const restoredFiles = result.data?.restoredFiles.length ?? 0
+        showToast({
+          type: "success",
+          title: "Files restored",
+          description: `${restoredFiles} file${restoredFiles === 1 ? "" : "s"} restored`,
+        })
       },
     },
     {
@@ -277,6 +285,20 @@ export function useSessionCommands(params: {
           modelID: model.id,
           providerID: model.provider.id,
         })
+      },
+    },
+    {
+      id: "session.fork",
+      title: "Fork session",
+      description: "Fork the current message history",
+      category: "Session",
+      keybind: "mod+shift+f",
+      disabled: !routeParams.id,
+      onSelect: async () => {
+        const sessionID = routeParams.id
+        if (!sessionID) return
+        const forked = await sdk.client.session.fork({ sessionID, workspace: { mode: "current" } })
+        if (forked.data) navigate(`/${routeParams.dir}/session/${forked.data.id}`)
       },
     },
   ])

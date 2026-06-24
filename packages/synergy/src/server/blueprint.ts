@@ -58,10 +58,15 @@ async function deliverFirstPrompt(
   const mail: SessionManager.SessionMail.User = {
     type: "user",
     parts: [textPart],
+    summary: {
+      title: `Execute ${loop.title} blueprint`,
+    },
     metadata: {
-      mailbox: true,
       source: "blueprint_loop_start",
       loopID: loop.id,
+      noteID: loop.noteID,
+      title: loop.title,
+      ...(userPrompt?.trim() ? { userPrompt: userPrompt.trim() } : {}),
     },
   }
   await SessionManager.deliver({ target: sessionID, mail })

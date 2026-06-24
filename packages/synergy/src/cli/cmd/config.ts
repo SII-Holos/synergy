@@ -207,7 +207,7 @@ export const ConfigEmbeddingCommand = cmd({
     } else {
       await Config.updateGlobal(config)
       prompts.log.success("Embedding configuration saved")
-      prompts.log.info(`Config file: ${ConfigDomain.filepath("engram")}`)
+      prompts.log.info(`Config file: ${ConfigDomain.filepath("general")}`)
     }
 
     if (useEnv) {
@@ -274,7 +274,7 @@ export const ConfigRerankCommand = cmd({
     } else {
       await Config.updateGlobal(config)
       prompts.log.success("Rerank configuration saved")
-      prompts.log.info(`Config file: ${ConfigDomain.filepath("engram")}`)
+      prompts.log.info(`Config file: ${ConfigDomain.filepath("general")}`)
     }
 
     if (useEnv) {

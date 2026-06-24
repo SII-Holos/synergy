@@ -37,7 +37,7 @@ const BUILTIN_COMMANDS = new Set([
   "channel",
   "holos",
   "config",
-  "engram",
+  "library",
   "start",
   "stop",
   "restart",

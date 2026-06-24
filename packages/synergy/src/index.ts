@@ -25,7 +25,7 @@ import { SessionCommand } from "./cli/cmd/session"
 import { ChannelCommand } from "./cli/cmd/channel"
 import { HolosCommand } from "./cli/cmd/holos"
 import { ConfigCommand } from "./cli/cmd/config"
-import { EngramCommand } from "./cli/cmd/engram"
+import { LibraryCommand } from "./cli/cmd/library"
 import { EmbedCommand } from "./cli/cmd/embed"
 import { StartCommand } from "./cli/cmd/start"
 import { StopCommand } from "./cli/cmd/stop"
@@ -33,6 +33,7 @@ import { PrepareCommand, BuildCommand } from "./cli/cmd/prepare"
 import { StatusCommand } from "./cli/cmd/status"
 import { LogsCommand } from "./cli/cmd/logs"
 import { DoctorCommand } from "./cli/cmd/doctor"
+import { DiagnosticsCommand } from "./cli/cmd/diagnostics"
 
 import { PluginCommand } from "./cli/cmd/plugin"
 import { DataCommand, MigrateCommand } from "./cli/cmd/data"
@@ -109,7 +110,7 @@ const cli = yargs(hideBin(process.argv))
 
     await Log.init({
       print: process.argv.includes("--print-logs"),
-      dev: Installation.isLocal(),
+      dev: Installation.isLocal() && isServerCommand(),
       level: (() => {
         if (opts.logLevel) return opts.logLevel as Log.Level
         if (process.env.LOG_LEVEL && ["DEBUG", "INFO", "WARN", "ERROR"].includes(process.env.LOG_LEVEL))
@@ -149,7 +150,7 @@ const cli = yargs(hideBin(process.argv))
   .command(ChannelCommand)
   .command(HolosCommand)
   .command(ConfigCommand)
-  .command(EngramCommand)
+  .command(LibraryCommand)
   .command(EmbedCommand)
   .command(StartCommand)
   .command(StopCommand)
@@ -157,6 +158,7 @@ const cli = yargs(hideBin(process.argv))
   .command(BuildCommand)
   .command(StatusCommand)
   .command(LogsCommand)
+  .command(DiagnosticsCommand)
   .command(PluginCommand)
   .command(DataCommand)
   .command(DoctorCommand)
@@ -198,6 +200,10 @@ function isLongRunningCommand() {
     return process.argv.includes("-f") || process.argv.includes("--follow")
   }
   return false
+}
+
+function isServerCommand() {
+  return (firstPositionalArg() ?? "server") === "server"
 }
 
 try {

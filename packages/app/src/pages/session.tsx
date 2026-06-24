@@ -184,8 +184,14 @@ function SessionPageContent() {
   const info = createMemo(() => (params.id ? sync.session.get(params.id) : undefined))
   const reviewCount = createMemo(() => info()?.summary?.files ?? 0)
   const hasReview = createMemo(() => reviewCount() > 0)
-  const revertMessageID = createMemo(() => info()?.revert?.messageID)
-  const messages = createMemo(() => (params.id ? (sync.data.message[params.id] ?? []) : []) ?? [])
+  const rollback = createMemo(() => info()?.history?.rollback)
+  const hiddenMessageIDs = createMemo(() => new Set(rollback()?.droppedMessageIDs ?? []))
+  const messages = createMemo(() => {
+    const raw = (params.id ? (sync.data.message[params.id] ?? []) : []) ?? []
+    const hidden = hiddenMessageIDs()
+    if (hidden.size === 0) return raw
+    return raw.filter((message) => !hidden.has(message.id))
+  })
   const isNewSession = createMemo(() => {
     if (!params.id) return true
     if (isHomeScope(sdk.scopeKey) && (messages()?.length ?? 0) === 0) return true
@@ -211,11 +217,7 @@ function SessionPageContent() {
     () => messages().filter((m) => m.role === "user" && !(m as UserMessage).metadata?.synthetic) as UserMessage[],
     emptyUserMessages,
   )
-  const visibleUserMessages = createMemo(() => {
-    const revert = revertMessageID()
-    if (!revert) return userMessages()
-    return userMessages().filter((m) => m.id < revert)
-  }, emptyUserMessages)
+  const visibleUserMessages = createMemo(() => userMessages(), emptyUserMessages)
   const lastUserMessage = createMemo(() => visibleUserMessages().at(-1))
   const cortexRunning = createMemo(() => {
     const id = params.id
@@ -397,6 +399,11 @@ function SessionPageContent() {
     const current = currentSession()
     if (!current?.parentID) return undefined
     return sync.data.session.find((s) => s.id === current.parentID)
+  })
+  const forkedFromSession = createMemo(() => {
+    const source = currentSession()?.forkedFrom
+    if (!source) return undefined
+    return sync.data.session.find((s) => s.id === source.sessionID)
   })
   const backPath = createMemo(() => {
     if (parentSession()) return undefined
@@ -948,6 +955,8 @@ function SessionPageContent() {
               handoffPrompt={handoff.prompt}
               meta={sessionMeta}
               parentTitle={parentSession()?.title}
+              forkedFromID={currentSession()?.forkedFrom?.sessionID}
+              forkedFromTitle={forkedFromSession()?.title ?? currentSession()?.forkedFrom?.title}
               backPath={backPath}
               newSessionWorktree={newSessionWorktree}
               onNewSessionWorktreeReset={() => setStore("newSessionWorktree", "main")}

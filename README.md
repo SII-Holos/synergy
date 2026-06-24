@@ -36,12 +36,12 @@ Synergy currently spans several product surfaces and workflows:
 - A `web` client for browser-based interaction
 - A built-in Browser workspace backed by Playwright/Chromium for interactive page control
 - A `send` command for one-off, non-interactive execution
-- CLI commands for session, config, identity, and operational workflows
+- CLI commands for session, config, library, Holos identity, and operational workflows
 - Configurable agents for orchestration, coding, research, writing, search, and review
 - Session persistence and session management commands
 - MCP integration for external tool ecosystems
 - Channel integrations such as Feishu / Lark
-- Identity, login, notes, memory/engram, agenda, and community-facing capabilities
+- Holos identity, login, notes, library, agenda, and community-facing capabilities
 
 ### Built-In Browser Workspace
 
@@ -50,6 +50,14 @@ The Web client includes a right-side Browser workspace that runs a real Playwrig
 Browser contexts are isolated by Synergy owner/session and persist tab state plus browser storage state. User-explicit navigation and page interaction run without approval prompts but still pass hard safety checks such as invalid protocols, sensitive local ports, and out-of-scope `file://` access. Agent-driven browser tools continue to use the active control profile, so guarded/autonomous/full-access behavior remains consistent with the rest of Synergy.
 
 Large browser diagnostics such as console, network, snapshots, assets, and downloads are surfaced in the Browser workspace developer drawer and compact tool cards instead of flooding the normal chat transcript.
+
+### Session History, File Restore, And Forking
+
+Undo and redo operate on message history only. A rollback hides the latest effective user turn(s) from the session history used by the UI, model invocation, summaries, engram recall, and session forks; it does not restore, delete, or otherwise modify local files.
+
+File restoration is an explicit follow-up action. When a rolled-back turn contains patch data, Synergy can restore selected files through the file restore endpoint or Web command. This is the only user-facing flow that applies snapshot patch data back to the workspace.
+
+Forking copies the current effective history by default, so rolled-back turns are excluded. Forked sessions record their source in `forkedFrom` and do not use `parentID`, which remains reserved for background/subagent lineage. Forks can keep the current workspace or bind to a worktree when the calling surface requests it.
 
 ## Quick Start
 
@@ -69,7 +77,7 @@ curl -fsSL https://raw.githubusercontent.com/SII-Holos/synergy/main/install | ba
 
 The installer places the runtime binary together with the bundled Web UI and schema assets under `~/.synergy/`, so `synergy web` works without requiring a local source checkout.
 
-### Develop plugins
+### Develop Plugins
 
 Plugin authors can create and publish plugins without installing the Synergy source tree:
 
@@ -77,12 +85,12 @@ Plugin authors can create and publish plugins without installing the Synergy sou
 bunx @ericsanchezok/synergy-plugin-kit create my-plugin --template tool-ui
 cd my-plugin
 bun install
-bun run validate
-bun run build
-bun run pack
+synergy-plugin dev
+synergy-plugin validate --runtime-discovery
+synergy-plugin publish-market
 ```
 
-Use `synergy-plugin publish-market` when you are ready to submit the plugin to the official GitHub-backed marketplace.
+`publish-market` builds, packs, signs, uploads GitHub Release assets when `gh` is available, prepares the official `SII-Holos/synergy-plugins` registry PR, and leaves clear manual steps when a GitHub action cannot be automated.
 
 ### If you already have the CLI installed
 
@@ -173,14 +181,14 @@ synergy web                    # Open the web UI and attach to a server
 synergy send "message"         # Run a one-off prompt
 ```
 
-### Configuration and identity
+### Configuration, library, and Holos
 
 ```bash
 synergy config              # Manage configuration
 synergy config path         # Show config paths
 synergy config import       # Import selected config domains
-synergy login               # Bind to Holos platform
-synergy identity            # Work with identity-related features
+synergy library             # Manage library memory and learning
+synergy holos login         # Bind to Holos platform
 ```
 
 ### Models, sessions, and exports
@@ -265,9 +273,9 @@ New plugins should use the object descriptor API from `@ericsanchezok/synergy-pl
 bunx @ericsanchezok/synergy-plugin-kit create my-plugin
 cd my-plugin
 bun install
-bun run validate
-bun run build
-bun run pack
+synergy-plugin dev
+synergy-plugin validate --runtime-discovery
+synergy-plugin publish-market
 ```
 
 Install local development plugins with `synergy plugin add file:///absolute/path/to/my-plugin`. The descriptor `id`, `plugin.json.name`, registry id, and approval id must match.

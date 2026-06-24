@@ -121,7 +121,9 @@ export async function resolveInputParts(template: string): Promise<InvokeInput["
 }
 
 export async function lastModel(sessionID: string) {
-  for await (const item of MessageV2.stream({ sessionID })) {
+  const messages = await effectiveMessages(sessionID)
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const item = messages[i]
     if (item.info.role === "user" && item.info.model) return item.info.model
   }
   return Provider.defaultModel()
@@ -133,7 +135,9 @@ export async function createUserMessage(input: InvokeInput) {
     // Inherit the current session agent from the last user message,
     // so system notifications (cortex completion, agenda delivery, etc.)
     // don't silently switch the agent to the default.
-    for await (const item of MessageV2.stream({ sessionID: input.sessionID })) {
+    const messages = await effectiveMessages(input.sessionID)
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const item = messages[i]
       if (item.info.role === "user") {
         agentName = item.info.agent
         break
@@ -583,4 +587,9 @@ export async function createUserMessage(input: InvokeInput) {
     info,
     parts,
   }
+}
+
+async function effectiveMessages(sessionID: string) {
+  const { Session } = await import(".")
+  return Session.messages({ sessionID })
 }

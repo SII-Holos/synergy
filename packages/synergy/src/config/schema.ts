@@ -279,6 +279,22 @@ export const SandboxConfig = z
   .meta({ ref: "SandboxConfig" })
 export type SandboxConfig = z.infer<typeof SandboxConfig>
 
+export const ObservabilityConfig = z
+  .object({
+    enabled: z.boolean().optional().describe("Enable local observability trace JSONL events (default: true)"),
+    retentionDays: z.number().int().positive().optional().describe("Days to retain local trace files (default: 7)"),
+    maxBytes: z.number().int().positive().optional().describe("Maximum total trace storage in bytes (default: 250MB)"),
+    stalledToolMs: z
+      .number()
+      .int()
+      .positive()
+      .optional()
+      .describe("Milliseconds without tool activity before emitting a stalled-tool trace event"),
+  })
+  .strict()
+  .meta({ ref: "ObservabilityConfig" })
+export type ObservabilityConfig = z.infer<typeof ObservabilityConfig>
+
 export const Channel = z.discriminatedUnion("type", [ChannelFeishu])
 export type Channel = z.infer<typeof Channel>
 
@@ -531,8 +547,8 @@ export const Keybinds = z
     messages_previous: z.string().optional().default("none").describe("Navigate to previous message"),
     messages_last_user: z.string().optional().default("none").describe("Navigate to last user message"),
     messages_copy: z.string().optional().default("<leader>y").describe("Copy message"),
-    messages_undo: z.string().optional().default("<leader>u").describe("Undo message"),
-    messages_redo: z.string().optional().default("<leader>r").describe("Redo message"),
+    messages_undo: z.string().optional().default("<leader>u").describe("Undo message history only"),
+    messages_redo: z.string().optional().default("<leader>r").describe("Redo message history only"),
     messages_toggle_conceal: z
       .string()
       .optional()
@@ -904,7 +920,7 @@ export const ExperienceConfig = z
   .meta({ ref: "ExperienceConfig" })
 export type ExperienceConfig = z.infer<typeof ExperienceConfig>
 
-export const EngramConfig = z
+export const LibraryConfig = z
   .object({
     memory: MemoryConfig.optional(),
     experience: ExperienceConfig.optional(),
@@ -915,8 +931,8 @@ export const EngramConfig = z
   })
   .strict()
   .optional()
-  .meta({ ref: "EngramConfig" })
-export type EngramConfig = z.infer<typeof EngramConfig>
+  .meta({ ref: "LibraryConfig" })
+export type LibraryConfig = z.infer<typeof LibraryConfig>
 
 export const Provider = ModelsDev.Provider.partial()
   .extend({
@@ -1228,7 +1244,7 @@ export const Info = z
     provider: z.record(z.string(), Provider).optional().describe("Custom provider configurations and model overrides"),
     embedding: EmbeddingConfig,
     rerank: RerankConfig,
-    engram: EngramConfig,
+    library: LibraryConfig,
     mcp: z
       .record(
         z.string(),
@@ -1251,6 +1267,7 @@ export const Info = z
       .optional()
       .describe("Channel configurations for messaging platform integrations"),
     sandbox: SandboxConfig.optional().describe("Sandbox configuration for workspace boundary enforcement"),
+    observability: ObservabilityConfig.optional().describe("Local logs, traces, and diagnostics settings"),
     controlProfile: ControlProfileId.optional().describe("Default control profile applied to all agents"),
     holos: Holos.optional().describe("Holos platform configuration"),
     email: Email.optional().describe("Outgoing email configuration"),

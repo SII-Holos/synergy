@@ -1038,7 +1038,7 @@ test("migrates project permissions domain auto_classifier config to smartAllow",
   }
 })
 
-test("migrates legacy identity config to valid engram config", async () => {
+test("migrates legacy identity config to valid library config", async () => {
   const home = path.join(os.tmpdir(), `synergy-config-identity-migration-${Math.random().toString(36).slice(2)}`)
   const origHome = process.env["SYNERGY_TEST_HOME"]
   try {
@@ -1104,12 +1104,12 @@ test("migrates legacy identity config to valid engram config", async () => {
       apiKey: "rerank-token",
       model: "rerank-model",
     })
-    expect(migrated.engram.memory.retrieval.simThreshold).toBe(0.6)
-    expect(migrated.engram.memory.retrieval.topK).toBe(5)
-    expect(migrated.engram.memory.retrieval.categories.coding).toEqual({ topK: 2 })
-    expect(migrated.engram.memory.retrieval.categories.user).toEqual({})
-    expect(migrated.engram.memory.dedup).toEqual({ threshold: 0.8 })
-    expect(migrated.engram.experience).toEqual({
+    expect(migrated.library.memory.retrieval.simThreshold).toBe(0.6)
+    expect(migrated.library.memory.retrieval.topK).toBe(5)
+    expect(migrated.library.memory.retrieval.categories.coding).toEqual({ topK: 2 })
+    expect(migrated.library.memory.retrieval.categories.user).toEqual({})
+    expect(migrated.library.memory.dedup).toEqual({ threshold: 0.8 })
+    expect(migrated.library.experience).toEqual({
       encode: false,
       retrieve: {
         topK: 9,
@@ -1118,7 +1118,7 @@ test("migrates legacy identity config to valid engram config", async () => {
         alpha: 0.4,
       },
     })
-    expect(migrated.engram.autonomy).toBe(false)
+    expect(migrated.library.autonomy).toBe(false)
     expect(Config.Info.safeParse(migrated).success).toBe(true)
   } finally {
     process.env["SYNERGY_TEST_HOME"] = origHome
@@ -1126,8 +1126,66 @@ test("migrates legacy identity config to valid engram config", async () => {
   }
 })
 
-test("repairs invalid engram shapes written by legacy identity migration", async () => {
-  const home = path.join(os.tmpdir(), `synergy-config-engram-repair-${Math.random().toString(36).slice(2)}`)
+test("migrates legacy engram domain config to library and general domains", async () => {
+  const home = path.join(os.tmpdir(), `synergy-config-library-domain-migration-${Math.random().toString(36).slice(2)}`)
+  const origHome = process.env["SYNERGY_TEST_HOME"]
+  try {
+    process.env["SYNERGY_TEST_HOME"] = home
+    const domainDir = path.join(home, ".synergy", "config", "synergy.d")
+    await fs.mkdir(domainDir, { recursive: true })
+    const generalFile = path.join(domainDir, "00-general.jsonc")
+    const legacyFile = path.join(domainDir, "30-engram.jsonc")
+    const libraryFile = path.join(domainDir, "30-library.jsonc")
+
+    await Bun.write(generalFile, JSON.stringify({ theme: "system" }))
+    await Bun.write(
+      legacyFile,
+      JSON.stringify({
+        embedding: {
+          baseURL: "https://embedding.example/v1",
+          apiKey: "embedding-token",
+          model: "embed-model",
+        },
+        rerank: {
+          baseURL: "https://rerank.example/v1",
+          apiKey: "rerank-token",
+          model: "rerank-model",
+        },
+        engram: {
+          memory: {
+            enabled: true,
+            retrieval: { simThreshold: 0.6, topK: 4 },
+          },
+          experience: {
+            encode: true,
+            retrieve: { topK: 9 },
+          },
+          autonomy: false,
+        },
+      }),
+    )
+
+    resetMigrations()
+    await runMigrations({ targetDomain: "config" })
+
+    expect(await Bun.file(legacyFile).exists()).toBe(false)
+    const general = parseJsonc(await Bun.file(generalFile).text()) as Record<string, any>
+    const library = parseJsonc(await Bun.file(libraryFile).text()) as Record<string, any>
+    expect(general.theme).toBe("system")
+    expect(general.embedding.model).toBe("embed-model")
+    expect(general.rerank.model).toBe("rerank-model")
+    expect(library.library.memory.retrieval).toEqual({ simThreshold: 0.6, topK: 4 })
+    expect(library.library.experience.retrieve).toEqual({ topK: 9 })
+    expect(library.library.autonomy).toBe(false)
+    expect(Config.Info.safeParse({ ...general, ...library }).success).toBe(true)
+  } finally {
+    process.env["SYNERGY_TEST_HOME"] = origHome
+    await fs.rm(home, { recursive: true, force: true }).catch(() => {})
+  }
+})
+
+test("repairs invalid library shapes written by legacy identity migration", async () => {
+  const home = path.join(os.tmpdir(), `synergy-config-library-repair-${Math.random().toString(36).slice(2)}`)
   const origHome = process.env["SYNERGY_TEST_HOME"]
   try {
     process.env["SYNERGY_TEST_HOME"] = home
@@ -1138,7 +1196,7 @@ test("repairs invalid engram shapes written by legacy identity migration", async
       target,
       JSON.stringify({
         $schema: "file:///test/config.schema.json",
-        engram: {
+        library: {
           memory: {
             retrieval: false,
           },
@@ -1153,9 +1211,9 @@ test("repairs invalid engram shapes written by legacy identity migration", async
     await runMigrations({ targetDomain: "config" })
 
     const migrated = parseJsonc(await Bun.file(target).text()) as Record<string, any>
-    expect(migrated.engram.memory.enabled).toBe(false)
-    expect(migrated.engram.memory.retrieval).toBeUndefined()
-    expect(migrated.engram.experience.learning).toBeUndefined()
+    expect(migrated.library.memory.enabled).toBe(false)
+    expect(migrated.library.memory.retrieval).toBeUndefined()
+    expect(migrated.library.experience.learning).toBeUndefined()
     expect(Config.Info.safeParse(migrated).success).toBe(true)
   } finally {
     process.env["SYNERGY_TEST_HOME"] = origHome

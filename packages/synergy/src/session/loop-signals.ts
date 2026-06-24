@@ -1,4 +1,3 @@
-import { BlueprintLoopStore } from "../blueprint"
 import { GitHealth } from "../project/git-health"
 import { LoopJob } from "./loop-job"
 import { Session } from "."
@@ -216,49 +215,6 @@ LoopJob.register({
   },
   async execute() {
     GitHealth.invalidate(ScopeContext.current.directory)
-    return "pass"
-  },
-})
-
-// ─── BlueprintLoop continuation ──────────────────────────────────
-
-LoopJob.defineSignal({
-  type: "blueprint_loop_bound",
-  async detect(ctx) {
-    const loopID = ctx.session.blueprint?.loopID
-    const loops = loopID ? [await BlueprintLoopStore.get(ctx.session.scope.id, loopID).catch(() => null)] : []
-    return loops.some(
-      (l) => l !== null && (l.status === "running" || l.status === "waiting" || l.status === "auditing"),
-    )
-  },
-})
-
-LoopJob.register({
-  type: "blueprint_loop_continuation",
-  phase: "post",
-  blocking: false,
-  signals: ["blueprint_loop_bound"],
-  collect() {
-    return []
-  },
-  async execute(ctx) {
-    const loopID = ctx.session.blueprint?.loopID
-    if (!loopID) return "pass"
-    const scopeID = ctx.session.scope.id
-    const loop = await BlueprintLoopStore.get(scopeID, loopID).catch(() => null)
-    if (!loop) return "pass"
-    if (loop.status !== "running") return "pass"
-
-    await Session.updatePart({
-      id: Identifier.ascending("part"),
-      messageID: ctx.lastUser.id,
-      sessionID: ctx.sessionID,
-      type: "text",
-      text: `You are still executing BlueprintLoop. Continue working on the Blueprint. When you believe it is ready for audit, call blueprint_loop_finish({ status: "auditing" }). If the task is blocked beyond recovery, call blueprint_loop_finish({ status: "failed" }). Do not stop with a normal final response while the loop is running.`,
-      time: { start: Date.now(), end: Date.now() },
-      synthetic: true,
-    })
-
     return "pass"
   },
 })

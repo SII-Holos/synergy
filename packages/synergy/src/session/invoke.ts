@@ -53,13 +53,13 @@ import {
 import "./title"
 
 import { LLM } from "./llm"
-import { SessionRevert } from "./revert"
 import { ScopeContext } from "../scope/context"
 import { Scope } from "@/scope"
 import { LoopJob } from "./loop-job"
 import "./loop-signals"
-import "../engram/chronicler"
-import { ExperienceEncoder } from "../engram/experience-encoder"
+import { BlueprintContinuation } from "./blueprint-continuation"
+import "../library/chronicler"
+import { ExperienceEncoder } from "../library/experience-encoder"
 import { GitHealth } from "../project/git-health"
 import { BlueprintLoopStore } from "../blueprint/loop-store"
 
@@ -92,9 +92,6 @@ export namespace SessionInvoke {
 
   export const invoke = fn(InvokeInput, async (input) => {
     return SessionManager.run(input.sessionID, async () => {
-      const session = await Session.get(input.sessionID)
-      await SessionRevert.cleanup(session)
-
       const message = await createUserMessage(input)
 
       await Session.update(input.sessionID, (draft) => {
@@ -158,7 +155,7 @@ export namespace SessionInvoke {
     if (step === 1 && isTopSession) {
       SessionManager.setStatus(sessionID, { type: "busy", description: "Flashing back..." })
       const cfg = await Config.current()
-      return withTimeout(buildMemoryContext(sessionID, scopeID, sessionMessages, cfg.engram), RECALL_TIMEOUT_MS).catch(
+      return withTimeout(buildMemoryContext(sessionID, scopeID, sessionMessages, cfg.library), RECALL_TIMEOUT_MS).catch(
         (err: any) => {
           log.warn("recall failed or timed out", { sessionID, error: err })
           return undefined
@@ -174,7 +171,7 @@ export namespace SessionInvoke {
     }
     if (step === 1 && !isTopSession) {
       const cfg = await Config.current()
-      if (cfg.engram?.memory?.enabled !== false) {
+      if (cfg.library?.memory?.enabled !== false) {
         const alwaysContext = buildAlwaysOnlyMemoryContext()
         return alwaysContext ? { context: alwaysContext, injection: {} as InjectionInfo } : undefined
       }
@@ -183,6 +180,7 @@ export namespace SessionInvoke {
   }
 
   export const loop = fn(Identifier.schema("session"), async (sessionID) => {
+    BlueprintContinuation.init()
     SessionManager.registerRuntime(sessionID)
     const abort = SessionManager.acquire(sessionID)
     if (!abort) {
@@ -208,7 +206,7 @@ export namespace SessionInvoke {
         SessionManager.setStatus(sessionID, { type: "busy" })
         log.info("loop", { step, sessionID })
         if (abort.aborted) break
-        let msgs = await MessageV2.filterCompacted(MessageV2.stream({ scopeID, sessionID }))
+        let msgs = await effectiveCompactedMessages(sessionID)
 
         let lastUser: MessageV2.User | undefined
         let lastUserParts: MessageV2.Part[] | undefined
@@ -290,6 +288,7 @@ export namespace SessionInvoke {
               parts: partsFromMail(mail),
               noReply: mail.noReply,
               summary: mail.summary,
+              metadata: mail.metadata,
             })
             msgs.push(created)
           }
@@ -729,6 +728,7 @@ export namespace SessionInvoke {
             parts: partsFromMail(mail),
             noReply: !needsReply,
             summary: mail.summary,
+            metadata: mail.metadata,
           })
         }
         if (needsReply) continue outer
@@ -1453,7 +1453,7 @@ export namespace SessionInvoke {
       if (!session) continue
       if (session.agenda) continue
 
-      const messages = await MessageV2.filterCompacted(MessageV2.stream({ sessionID }))
+      const messages = await effectiveCompactedMessages(sessionID)
       const pendingReply = SessionProgress.pendingReply(messages)
 
       if (session.pendingReply !== pendingReply) {
@@ -1466,6 +1466,15 @@ export namespace SessionInvoke {
 
       log.info("pending reply found; automatic assistant resume is disabled", { sessionID })
     }
+  }
+
+  async function effectiveCompactedMessages(sessionID: string) {
+    const messages = await Session.messages({ sessionID })
+    return MessageV2.filterCompacted(newestFirst(messages))
+  }
+
+  async function* newestFirst(messages: MessageV2.WithParts[]) {
+    for (let i = messages.length - 1; i >= 0; i--) yield messages[i]
   }
 
   /**

@@ -5,7 +5,7 @@ import { Identifier } from "@/id/id"
 import { ScopeContext } from "@/scope/context"
 import { Log } from "@/util/log"
 import { SessionManager } from "@/session/manager"
-import { ExperienceEncoder } from "@/engram/experience-encoder"
+import { ExperienceEncoder } from "@/library/experience-encoder"
 import { Plugin } from "@/plugin"
 
 export namespace ExternalAgentProcessor {

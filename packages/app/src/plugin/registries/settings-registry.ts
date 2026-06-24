@@ -41,7 +41,7 @@ const BUILTIN_SECTIONS: SettingsSection[] = [
   { id: "email", label: "Email", icon: "mail", group: "Integrations" },
   { id: "channels", label: "Channels", icon: "globe", group: "Integrations" },
   { id: "import", label: "Import", icon: "upload", group: "System" },
-  { id: "identity", label: "Identity & Memory", icon: "fingerprint", group: "Identity" },
+  { id: "library", label: "Library", icon: "book-open", group: "Library" },
   { id: "advanced", label: "System", icon: "sliders-horizontal", group: "System" },
 ]
 

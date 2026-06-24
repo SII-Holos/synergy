@@ -121,11 +121,10 @@ my-plugin-0.1.0.synergy-plugin.tgz
 ## 6. Sign And Publish
 
 ```bash
-synergy-plugin sign my-plugin-0.1.0.synergy-plugin.tgz
 synergy-plugin publish-market
 ```
 
-`publish-market` prepares the official marketplace PR. For local marketplace UX testing, `synergy plugin publish <tarball>` records the real tarball artifact, `downloadUrl`, integrity, permission summary, and registry metadata in the local development registry.
+`publish-market` validates, builds, packs, signs, uploads release assets when possible, updates the official registry checkout, regenerates `registry.json`, validates the registry, and prepares the official marketplace PR. For local marketplace UX testing, `synergy plugin publish <tarball>` records the real tarball artifact, `downloadUrl`, integrity, permission summary, and registry metadata in the local development registry.
 
 ## 7. Install Locally
 

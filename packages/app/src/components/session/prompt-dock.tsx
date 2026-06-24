@@ -31,6 +31,8 @@ export function PromptDock(props: {
   handoffPrompt: string
   meta: Accessor<SessionMeta>
   parentTitle?: string
+  forkedFromID?: string
+  forkedFromTitle?: string
   backPath?: Accessor<string | undefined>
   newSessionWorktree: Accessor<string>
   onNewSessionWorktreeReset: () => void
@@ -113,6 +115,28 @@ export function PromptDock(props: {
                       </button>
                     </Tooltip>
                   </div>
+                </Show>
+                <Show when={!props.meta().isSubsession && props.forkedFromID}>
+                  {(sourceID) => (
+                    <div class="flex items-center justify-center pb-2">
+                      <Tooltip value={props.forkedFromTitle || "Fork source"} placement="top">
+                        <button
+                          type="button"
+                          class="flex items-center justify-center gap-1.5 h-8 px-3 rounded-full
+                          border border-border-base bg-surface-raised-stronger-non-alpha
+                          shadow-sm
+                          text-12-medium text-text-weak hover:text-text-base
+                          hover:bg-surface-raised-stronger-hover
+                          active:scale-95
+                          transition-all duration-150"
+                          onClick={() => props.navigate(sourceID())}
+                        >
+                          <Icon name="git-fork" size="small" />
+                          <span>Forked from</span>
+                        </button>
+                      </Tooltip>
+                    </div>
+                  )}
                 </Show>
                 <Show when={!props.meta().isSubsession && props.backPath?.()}>
                   {(from) => (

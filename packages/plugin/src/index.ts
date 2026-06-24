@@ -431,7 +431,7 @@ export interface PluginHooks {
   /** Filter or reorder note search results */
   "note.search.after"?(input: { scopeID: string; pattern: string }, output: { notes: NoteInfo[] }): Promise<void>
   /** Rewrite memory search query */
-  "engram.memory.search.before"?(
+  "library.memory.search.before"?(
     input: {},
     output: {
       query: string
@@ -443,12 +443,12 @@ export interface PluginHooks {
     },
   ): Promise<void>
   /** Filter or reorder memory results */
-  "engram.memory.search.after"?(
+  "library.memory.search.after"?(
     input: { query: string; topK: number },
     output: { results: MemorySearchResult[] },
   ): Promise<void>
   /** Observe experience encoding outcomes */
-  "engram.experience.encode.after"?(
+  "library.experience.encode.after"?(
     input: { sessionID: string; userMessageID: string },
     output: { encoded: boolean; skipped: boolean; duplicateOf?: string; experienceID?: string },
   ): Promise<void>

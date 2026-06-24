@@ -33,7 +33,7 @@ After writing config changes, use `runtime_reload` to apply without restarting.
 | Agent markdown file | `agent` | File watcher also detects `.md` changes in agent dirs |
 | Skill file (SKILL.md) | `skill` | File watcher also detects SKILL.md changes |
 | Permission config | `config` | Detects `permission` field → cascades to `agent` |
-| Identity config | `config` | Detects `identity` field → cascades to `agent` |
+| Library config | `config` | Detects `library` field → cascades to `agent` |
 | Channel config | `config` or `channel` | Config detects `channel` field → cascades |
 | Plugin file (.ts/.js) | `plugin` | Cascades to `tool_registry` |
 | Custom command (.md) | `command` | |
@@ -48,7 +48,7 @@ When you reload `config`, Synergy diffs old vs new config and cascades based on 
 | Changed field(s) | Cascaded targets |
 |---|---|
 | `provider`, `disabled_providers`, `enabled_providers` | `provider` → `agent` |
-| `agent`, `permission`, `identity`, any model role field | `agent` |
+| `agent`, `permission`, `library`, any model role field | `agent` |
 | `mcp` | `mcp` → `command` |
 | `plugin` | `plugin` → `tool_registry` |
 | `channel` | `channel` |

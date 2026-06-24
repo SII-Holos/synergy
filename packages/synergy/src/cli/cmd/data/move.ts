@@ -16,10 +16,11 @@ import {
   isDirEmpty,
   copyDirSkipExisting,
   updateShellProfile,
-  getEngramInfo,
-  mergeEngramDB,
+  getLibraryInfo,
+  mergeLibraryDB,
+  resolveLibraryDB,
   dataRoot,
-  type EngramConflictStrategy,
+  type LibraryConflictStrategy,
 } from "./shared"
 
 export interface MoveOptions {
@@ -176,20 +177,20 @@ export async function executeMove(opts: MoveOptions) {
     }
   }
 
-  // Step 5: Handle engram.db if core is selected
-  let engramStrategy: EngramConflictStrategy = "skip"
-  const sourceEngram = path.join(sourceRoot, "data", "engram.db")
-  const targetEngram = path.join(targetPath, "data", "engram.db")
+  // Step 5: Handle library.db if core is selected
+  let libraryStrategy: LibraryConflictStrategy = "skip"
+  const sourceLibrary = await resolveLibraryDB(sourceRoot)
+  const targetLibrary = path.join(targetPath, "data", "library.db")
 
-  if (selectedKeys.has("core") && (await dirExists(sourceEngram))) {
-    const targetEngramExists = await dirExists(targetEngram)
+  if (selectedKeys.has("core") && (await dirExists(sourceLibrary))) {
+    const targetLibraryExists = await dirExists(targetLibrary)
 
-    if (targetEngramExists) {
-      const srcInfo = await getEngramInfo(sourceEngram)
-      const tgtInfo = await getEngramInfo(targetEngram)
+    if (targetLibraryExists) {
+      const srcInfo = await getLibraryInfo(sourceLibrary)
+      const tgtInfo = await getLibraryInfo(targetLibrary)
 
       if (srcInfo.dimensions && tgtInfo.dimensions && srcInfo.dimensions !== tgtInfo.dimensions) {
-        prompts.log.warn("Vector dimension mismatch between source and target engram:")
+        prompts.log.warn("Vector dimension mismatch between source and target library:")
         prompts.log.info(
           `  Source: ${srcInfo.dimensions}d${srcInfo.embeddingModel ? ` (${srcInfo.embeddingModel})` : ""}`,
         )
@@ -198,14 +199,14 @@ export async function executeMove(opts: MoveOptions) {
         )
 
         const choice = await prompts.select({
-          message: "How should engram data be handled?",
+          message: "How should library data be handled?",
           options: [
             {
               value: "text_only" as const,
               label: "Merge text only, discard source vectors",
               hint: "Source memories added without vector search until re-embedded",
             },
-            { value: "skip" as const, label: "Skip engram entirely", hint: "Source memories are not imported" },
+            { value: "skip" as const, label: "Skip library entirely", hint: "Source memories are not imported" },
             {
               value: "replace_vectors" as const,
               label: "Replace: use source vectors, drop target vectors",
@@ -217,18 +218,18 @@ export async function executeMove(opts: MoveOptions) {
           prompts.cancel("Cancelled")
           return
         }
-        engramStrategy = choice as EngramConflictStrategy
+        libraryStrategy = choice as LibraryConflictStrategy
       } else {
-        engramStrategy = "text_only" // dimensions match or one side has no vec tables
+        libraryStrategy = "text_only" // dimensions match or one side has no vec tables
       }
     }
-    // If target has no engram.db, the file copy will handle it
+    // If target has no library.db, the file copy will handle it
   }
 
   // Step 6: Execute move
   UI.empty()
   const errors: string[] = []
-  let engramMerged = false
+  let libraryMerged = false
 
   for (const cat of selectedCategories) {
     for (const subdir of cat.subdirs) {
@@ -237,24 +238,24 @@ export async function executeMove(opts: MoveOptions) {
 
       if (!(await dirExists(src))) continue
 
-      // Special handling for engram.db inside data/
-      if (subdir === "data" && engramStrategy !== "skip") {
-        const targetEngExists = await dirExists(targetEngram)
+      // Special handling for library.db inside data/
+      if (subdir === "data" && libraryStrategy !== "skip") {
+        const targetLibraryExists = await dirExists(targetLibrary)
 
-        if (targetEngExists && selectedKeys.has("core")) {
-          // Merge engram via SQL, then copy the rest of data/ skipping engram
-          const engSpinner = prompts.spinner()
-          engSpinner.start("Merging engram.db...")
+        if (targetLibraryExists && selectedKeys.has("core")) {
+          // Merge library via SQL, then copy the rest of data/ skipping library
+          const librarySpinner = prompts.spinner()
+          librarySpinner.start("Merging library.db...")
 
           try {
-            const result = await mergeEngramDB(sourceEngram, targetEngram, engramStrategy)
-            engSpinner.stop(
-              `Merged engram: ${result.memoriesMerged} memories, ${result.experiencesMerged} experiences${result.vecDropped ? " (vectors handled per strategy)" : ""}`,
+            const result = await mergeLibraryDB(sourceLibrary, targetLibrary, libraryStrategy)
+            librarySpinner.stop(
+              `Merged library: ${result.memoriesMerged} memories, ${result.experiencesMerged} experiences${result.vecDropped ? " (vectors handled per strategy)" : ""}`,
             )
-            engramMerged = true
+            libraryMerged = true
           } catch (e) {
-            engSpinner.stop("Failed to merge engram.db", 1)
-            errors.push(`engram.db: ${e instanceof Error ? e.message : String(e)}`)
+            librarySpinner.stop("Failed to merge library.db", 1)
+            errors.push(`library.db: ${e instanceof Error ? e.message : String(e)}`)
           }
         }
       }

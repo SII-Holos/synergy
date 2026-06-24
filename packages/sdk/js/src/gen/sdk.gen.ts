@@ -128,28 +128,6 @@ import type {
   CortexListResponses,
   CortexOutputErrors,
   CortexOutputResponses,
-  EngramExperienceApplyRewardErrors,
-  EngramExperienceApplyRewardResponses,
-  EngramExperienceGetErrors,
-  EngramExperienceGetResponses,
-  EngramExperienceListResponses,
-  EngramExperiencePageErrors,
-  EngramExperiencePageResponses,
-  EngramExperienceRemoveErrors,
-  EngramExperienceRemoveResponses,
-  EngramExperienceSearchErrors,
-  EngramExperienceSearchResponses,
-  EngramGetErrors,
-  EngramGetResponses,
-  EngramListResponses,
-  EngramRemoveErrors,
-  EngramRemoveResponses,
-  EngramResetErrors,
-  EngramResetResponses,
-  EngramSearchErrors,
-  EngramSearchResponses,
-  EngramStatsErrors,
-  EngramStatsResponses,
   EventSubscribeResponses,
   ExperienceListFilter,
   ExperienceListSort,
@@ -212,6 +190,28 @@ import type {
   HolosStatusResponses,
   HolosThreadGetResponses,
   HolosVerifyResponses,
+  LibraryExperienceApplyRewardErrors,
+  LibraryExperienceApplyRewardResponses,
+  LibraryExperienceGetErrors,
+  LibraryExperienceGetResponses,
+  LibraryExperienceListResponses,
+  LibraryExperiencePageErrors,
+  LibraryExperiencePageResponses,
+  LibraryExperienceRemoveErrors,
+  LibraryExperienceRemoveResponses,
+  LibraryExperienceSearchErrors,
+  LibraryExperienceSearchResponses,
+  LibraryGetErrors,
+  LibraryGetResponses,
+  LibraryListResponses,
+  LibraryRemoveErrors,
+  LibraryRemoveResponses,
+  LibraryResetErrors,
+  LibraryResetResponses,
+  LibrarySearchErrors,
+  LibrarySearchResponses,
+  LibraryStatsErrors,
+  LibraryStatsResponses,
   LspStatusResponses,
   McpAddErrors,
   McpAddResponses,
@@ -256,6 +256,7 @@ import type {
   NoteRemoveResponses,
   NoteUpdateErrors,
   NoteUpdateResponses,
+  ObservabilityDiagnosticsSummaryResponses,
   Part as Part2,
   PartDeleteErrors,
   PartDeleteResponses,
@@ -358,6 +359,8 @@ import type {
   SessionExportEstimateErrors,
   SessionExportEstimateResponses,
   SessionExportMode,
+  SessionFilesRestoreErrors,
+  SessionFilesRestoreResponses,
   SessionForkResponses,
   SessionGetErrors,
   SessionGetResponses,
@@ -373,8 +376,8 @@ import type {
   SessionPromptAsyncResponses,
   SessionPromptErrors,
   SessionPromptResponses,
-  SessionRevertErrors,
-  SessionRevertResponses,
+  SessionRollbackErrors,
+  SessionRollbackResponses,
   SessionShellErrors,
   SessionShellResponses,
   SessionStatusErrors,
@@ -383,8 +386,8 @@ import type {
   SessionSummarizeResponses,
   SessionTodoErrors,
   SessionTodoResponses,
-  SessionUnrevertErrors,
-  SessionUnrevertResponses,
+  SessionUnrollbackErrors,
+  SessionUnrollbackResponses,
   SessionUpdateErrors,
   SessionUpdateResponses,
   SkillImportErrors,
@@ -996,6 +999,55 @@ export class Agenda extends HeyApiClient {
   }
 }
 
+export class Files extends HeyApiClient {
+  /**
+   * Restore session files
+   *
+   * Explicitly restore files from session patch data. Message rollback never calls this automatically.
+   */
+  public restore<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      directory?: string
+      scopeID?: string
+      rollbackID?: string
+      messageID?: string
+      partID?: string
+      files?: Array<string>
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { in: "body", key: "rollbackID" },
+            { in: "body", key: "messageID" },
+            { in: "body", key: "partID" },
+            { in: "body", key: "files" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<SessionFilesRestoreResponses, SessionFilesRestoreErrors, ThrowOnError>(
+      {
+        url: "/session/{sessionID}/files/restore",
+        ...options,
+        ...params,
+        headers: {
+          "Content-Type": "application/json",
+          ...options?.headers,
+          ...params.headers,
+        },
+      },
+    )
+  }
+}
+
 export class Export extends HeyApiClient {
   /**
    * Estimate session export size
@@ -1567,6 +1619,30 @@ export class Session extends HeyApiClient {
       directory?: string
       scopeID?: string
       messageID?: string
+      position?:
+        | {
+            type: "current"
+          }
+        | {
+            type: "before"
+            messageID: string
+          }
+      workspace?:
+        | {
+            mode: "current"
+          }
+        | {
+            mode: "existing"
+            target: string
+            force?: boolean
+          }
+        | {
+            mode: "create"
+            name?: string
+            baseRef?: "current" | "fresh"
+          }
+      title?: string
+      controlProfile?: "guarded" | "autonomous" | "full_access"
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -1579,6 +1655,10 @@ export class Session extends HeyApiClient {
             { in: "query", key: "directory" },
             { in: "query", key: "scopeID" },
             { in: "body", key: "messageID" },
+            { in: "body", key: "position" },
+            { in: "body", key: "workspace" },
+            { in: "body", key: "title" },
+            { in: "body", key: "controlProfile" },
           ],
         },
       ],
@@ -1681,6 +1761,7 @@ export class Session extends HeyApiClient {
       directory?: string
       scopeID?: string
       limit?: number
+      raw?: boolean
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -1693,6 +1774,7 @@ export class Session extends HeyApiClient {
             { in: "query", key: "directory" },
             { in: "query", key: "scopeID" },
             { in: "query", key: "limit" },
+            { in: "query", key: "raw" },
           ],
         },
       ],
@@ -2011,17 +2093,16 @@ export class Session extends HeyApiClient {
   }
 
   /**
-   * Revert message
+   * Rollback session history
    *
-   * Revert a specific message in a session, undoing its effects and restoring the previous state.
+   * Hide the latest user turn(s) from effective message history without modifying local files.
    */
-  public revert<ThrowOnError extends boolean = false>(
+  public rollback<ThrowOnError extends boolean = false>(
     parameters: {
       sessionID: string
       directory?: string
       scopeID?: string
-      messageID?: string
-      partID?: string
+      numTurns?: number
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -2033,14 +2114,13 @@ export class Session extends HeyApiClient {
             { in: "path", key: "sessionID" },
             { in: "query", key: "directory" },
             { in: "query", key: "scopeID" },
-            { in: "body", key: "messageID" },
-            { in: "body", key: "partID" },
+            { in: "body", key: "numTurns" },
           ],
         },
       ],
     )
-    return (options?.client ?? this.client).post<SessionRevertResponses, SessionRevertErrors, ThrowOnError>({
-      url: "/session/{sessionID}/revert",
+    return (options?.client ?? this.client).post<SessionRollbackResponses, SessionRollbackErrors, ThrowOnError>({
+      url: "/session/{sessionID}/rollback",
       ...options,
       ...params,
       headers: {
@@ -2052,11 +2132,11 @@ export class Session extends HeyApiClient {
   }
 
   /**
-   * Restore reverted messages
+   * Restore rolled-back session history
    *
-   * Restore all previously reverted messages in a session.
+   * Restore the latest rollback when no new user or assistant turn has been added after it.
    */
-  public unrevert<ThrowOnError extends boolean = false>(
+  public unrollback<ThrowOnError extends boolean = false>(
     parameters: {
       sessionID: string
       directory?: string
@@ -2076,8 +2156,8 @@ export class Session extends HeyApiClient {
         },
       ],
     )
-    return (options?.client ?? this.client).post<SessionUnrevertResponses, SessionUnrevertErrors, ThrowOnError>({
-      url: "/session/{sessionID}/unrevert",
+    return (options?.client ?? this.client).post<SessionUnrollbackResponses, SessionUnrollbackErrors, ThrowOnError>({
+      url: "/session/{sessionID}/unrollback",
       ...options,
       ...params,
     })
@@ -2125,6 +2205,8 @@ export class Session extends HeyApiClient {
       },
     })
   }
+
+  files = new Files({ client: this.client })
 
   export = new Export({ client: this.client })
 }
@@ -2226,6 +2308,24 @@ export class Global extends HeyApiClient {
   session = new Session({ client: this.client })
 
   nav = new Nav({ client: this.client })
+}
+
+export class Diagnostics extends HeyApiClient {
+  /**
+   * Get local diagnostics summary
+   *
+   * Get a readonly local diagnostics summary for the Synergy server.
+   */
+  public summary<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
+    return (options?.client ?? this.client).get<ObservabilityDiagnosticsSummaryResponses, unknown, ThrowOnError>({
+      url: "/global/diagnostics",
+      ...options,
+    })
+  }
+}
+
+export class Observability extends HeyApiClient {
+  diagnostics = new Diagnostics({ client: this.client })
 }
 
 export class Credentials extends HeyApiClient {
@@ -3641,7 +3741,7 @@ export class Domain extends HeyApiClient {
         | "general"
         | "models"
         | "providers"
-        | "engram"
+        | "library"
         | "mcp"
         | "plugins"
         | "agents"
@@ -3686,7 +3786,7 @@ export class Domain extends HeyApiClient {
         | "general"
         | "models"
         | "providers"
-        | "engram"
+        | "library"
         | "mcp"
         | "plugins"
         | "agents"
@@ -3780,7 +3880,7 @@ export class Import extends HeyApiClient {
         | "general"
         | "models"
         | "providers"
-        | "engram"
+        | "library"
         | "mcp"
         | "plugins"
         | "agents"
@@ -5310,11 +5410,11 @@ export class Experience extends HeyApiClient {
       ],
     )
     return (options?.client ?? this.client).post<
-      EngramExperienceSearchResponses,
-      EngramExperienceSearchErrors,
+      LibraryExperienceSearchResponses,
+      LibraryExperienceSearchErrors,
       ThrowOnError
     >({
-      url: "/engram/experience/search",
+      url: "/library/experience/search",
       ...options,
       ...params,
       headers: {
@@ -5359,11 +5459,11 @@ export class Experience extends HeyApiClient {
       ],
     )
     return (options?.client ?? this.client).get<
-      EngramExperiencePageResponses,
-      EngramExperiencePageErrors,
+      LibraryExperiencePageResponses,
+      LibraryExperiencePageErrors,
       ThrowOnError
     >({
-      url: "/engram/experience/page",
+      url: "/library/experience/page",
       ...options,
       ...params,
     })
@@ -5395,11 +5495,11 @@ export class Experience extends HeyApiClient {
       ],
     )
     return (options?.client ?? this.client).delete<
-      EngramExperienceRemoveResponses,
-      EngramExperienceRemoveErrors,
+      LibraryExperienceRemoveResponses,
+      LibraryExperienceRemoveErrors,
       ThrowOnError
     >({
-      url: "/engram/experience/{id}",
+      url: "/library/experience/{id}",
       ...options,
       ...params,
     })
@@ -5430,8 +5530,12 @@ export class Experience extends HeyApiClient {
         },
       ],
     )
-    return (options?.client ?? this.client).get<EngramExperienceGetResponses, EngramExperienceGetErrors, ThrowOnError>({
-      url: "/engram/experience/{id}",
+    return (options?.client ?? this.client).get<
+      LibraryExperienceGetResponses,
+      LibraryExperienceGetErrors,
+      ThrowOnError
+    >({
+      url: "/library/experience/{id}",
       ...options,
       ...params,
     })
@@ -5467,11 +5571,11 @@ export class Experience extends HeyApiClient {
       ],
     )
     return (options?.client ?? this.client).put<
-      EngramExperienceApplyRewardResponses,
-      EngramExperienceApplyRewardErrors,
+      LibraryExperienceApplyRewardResponses,
+      LibraryExperienceApplyRewardErrors,
       ThrowOnError
     >({
-      url: "/engram/experience/{id}/reward",
+      url: "/library/experience/{id}/reward",
       ...options,
       ...params,
       headers: {
@@ -5505,19 +5609,19 @@ export class Experience extends HeyApiClient {
         },
       ],
     )
-    return (options?.client ?? this.client).get<EngramExperienceListResponses, unknown, ThrowOnError>({
-      url: "/engram/experience",
+    return (options?.client ?? this.client).get<LibraryExperienceListResponses, unknown, ThrowOnError>({
+      url: "/library/experience",
       ...options,
       ...params,
     })
   }
 }
 
-export class Engram extends HeyApiClient {
+export class Library extends HeyApiClient {
   /**
-   * Get engram stats
+   * Get library stats
    *
-   * Get statistics about the engram database. By default returns a summary with counts and DB size. Use ?recompute=true to force a full analytics recompute and return the extended snapshot.
+   * Get statistics about the library database. By default returns a summary with counts and DB size. Use ?recompute=true to force a full analytics recompute and return the extended snapshot.
    */
   public stats<ThrowOnError extends boolean = false>(
     parameters?: {
@@ -5539,8 +5643,8 @@ export class Engram extends HeyApiClient {
         },
       ],
     )
-    return (options?.client ?? this.client).get<EngramStatsResponses, EngramStatsErrors, ThrowOnError>({
-      url: "/engram/stats",
+    return (options?.client ?? this.client).get<LibraryStatsResponses, LibraryStatsErrors, ThrowOnError>({
+      url: "/library/stats",
       ...options,
       ...params,
     })
@@ -5577,8 +5681,8 @@ export class Engram extends HeyApiClient {
         },
       ],
     )
-    return (options?.client ?? this.client).post<EngramSearchResponses, EngramSearchErrors, ThrowOnError>({
-      url: "/engram/search",
+    return (options?.client ?? this.client).post<LibrarySearchResponses, LibrarySearchErrors, ThrowOnError>({
+      url: "/library/search",
       ...options,
       ...params,
       headers: {
@@ -5626,8 +5730,8 @@ export class Engram extends HeyApiClient {
         },
       ],
     )
-    return (options?.client ?? this.client).post<EngramResetResponses, EngramResetErrors, ThrowOnError>({
-      url: "/engram/reset",
+    return (options?.client ?? this.client).post<LibraryResetResponses, LibraryResetErrors, ThrowOnError>({
+      url: "/library/reset",
       ...options,
       ...params,
       headers: {
@@ -5663,8 +5767,8 @@ export class Engram extends HeyApiClient {
         },
       ],
     )
-    return (options?.client ?? this.client).delete<EngramRemoveResponses, EngramRemoveErrors, ThrowOnError>({
-      url: "/engram/{id}",
+    return (options?.client ?? this.client).delete<LibraryRemoveResponses, LibraryRemoveErrors, ThrowOnError>({
+      url: "/library/{id}",
       ...options,
       ...params,
     })
@@ -5695,8 +5799,8 @@ export class Engram extends HeyApiClient {
         },
       ],
     )
-    return (options?.client ?? this.client).get<EngramGetResponses, EngramGetErrors, ThrowOnError>({
-      url: "/engram/{id}",
+    return (options?.client ?? this.client).get<LibraryGetResponses, LibraryGetErrors, ThrowOnError>({
+      url: "/library/{id}",
       ...options,
       ...params,
     })
@@ -5729,8 +5833,8 @@ export class Engram extends HeyApiClient {
         },
       ],
     )
-    return (options?.client ?? this.client).get<EngramListResponses, unknown, ThrowOnError>({
-      url: "/engram",
+    return (options?.client ?? this.client).get<LibraryListResponses, unknown, ThrowOnError>({
+      url: "/library",
       ...options,
       ...params,
     })
@@ -8285,6 +8389,8 @@ export class SynergyClient extends HeyApiClient {
 
   global = new Global({ client: this.client })
 
+  observability = new Observability({ client: this.client })
+
   holos = new Holos({ client: this.client })
 
   agenda = new Agenda({ client: this.client })
@@ -8329,7 +8435,7 @@ export class SynergyClient extends HeyApiClient {
 
   file = new File({ client: this.client })
 
-  engram = new Engram({ client: this.client })
+  library = new Library({ client: this.client })
 
   note = new Note({ client: this.client })
 

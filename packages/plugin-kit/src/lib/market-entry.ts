@@ -25,6 +25,10 @@ export interface GithubRegistryEntry {
     version: string
     downloadUrl: string
     signatureUrl: string
+    signature: {
+      algorithm: "ed25519"
+      signer: string
+    }
     integrity: string
     manifestHash: string
     permissionsHash: string
@@ -180,6 +184,10 @@ export function githubEntry(input: {
         version: manifest.version,
         downloadUrl,
         signatureUrl,
+        signature: {
+          algorithm: "ed25519",
+          signer: signature.signer,
+        },
         integrity,
         manifestHash,
         permissionsHash,

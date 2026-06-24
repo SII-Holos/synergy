@@ -8,12 +8,12 @@ The supported plugin development flow is:
 bunx @ericsanchezok/synergy-plugin-kit create <name> --template <template>
 cd <name>
 bun install
-bun run validate
-bun run build
-bun run pack
-bun run sign <name>-<version>.synergy-plugin.tgz
-bun run publish:market
+synergy-plugin dev
+synergy-plugin validate --runtime-discovery
+synergy-plugin publish-market
 ```
+
+Generated project scripts such as `bun run validate`, `bun run build`, `bun run pack`, `bun run sign`, and `bun run publish:market` call the same kit commands and are useful for CI or manual fallback flows.
 
 Local installation uses the same resolver as runtime loading:
 
@@ -123,7 +123,7 @@ Signs the plugin archive metadata with the local Ed25519 signing key under `~/.s
 synergy-plugin publish-market [tarball]
 ```
 
-Builds, packs, signs, prepares GitHub Release assets, writes or updates `SII-Holos/synergy-plugins/plugins/<id>.json`, runs registry validation, and opens a PR when `gh` is installed and authenticated.
+Validates, builds, packs, signs, prepares GitHub Release assets, writes or updates `SII-Holos/synergy-plugins/plugins/<id>.json`, regenerates `registry.json`, runs registry validation, and opens a PR when `gh` is installed and authenticated. If upload, push, or PR creation cannot be automated, the command prints the exact manual fallback.
 
 For CI or manual workflows, generate only the aggregator entry:
 
@@ -133,7 +133,7 @@ synergy-plugin entry <tarball> \
   --write-entry ../synergy-plugins/plugins/<name>.json
 ```
 
-`entry` does not upload assets or mutate the remote registry. Use `--download-url` and `--signature-url` when the release asset URLs cannot be inferred from `--repo` and `v<version>`.
+`entry` does not upload assets or mutate the remote registry. Use `--download-url` and `--signature-url` when the release asset URLs cannot be inferred from `--repo` and `v<version>`. The generated entry includes the Ed25519 signer public key from `<tarball>.sig`; the official registry CI verifies that signer before the plugin is installable from the Official source.
 
 ## local publish
 
@@ -145,4 +145,4 @@ Accepts `.synergy-plugin.tgz` or `.tgz`, inspects the packaged `plugin.json`, co
 
 ## Registry Install
 
-The Web marketplace and `install-from-registry` route install the selected registry source/version. Official installs download the release artifact, verify `sha256-...` integrity, verify signature metadata, inspect the package contents, request approval when needed, and then install the cached tarball. Local registry installs use the local artifact `downloadUrl` and preserve the previous development workflow.
+The Web marketplace and `install-from-registry` route install the selected registry source/version. Official installs download the release artifact, verify `sha256-...` integrity, verify the signature with the registry-reviewed signer public key, inspect the package contents, request approval when needed, and then install the cached tarball. Local registry installs use the local artifact `downloadUrl` and preserve the previous development workflow.

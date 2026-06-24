@@ -789,6 +789,31 @@
         ]
       }
     },
+    "/global/diagnostics": {
+      "get": {
+        "operationId": "observability.diagnostics.summary",
+        "summary": "Get local diagnostics summary",
+        "description": "Get a readonly local diagnostics summary for the Synergy server.",
+        "responses": {
+          "200": {
+            "description": "Diagnostics summary",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DiagnosticsSummary"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.observability.diagnostics.summary({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/global/dispose": {
       "post": {
         "operationId": "global.dispose",
@@ -2260,7 +2285,7 @@
                 "general",
                 "models",
                 "providers",
-                "engram",
+                "library",
                 "mcp",
                 "plugins",
                 "agents",
@@ -2332,7 +2357,7 @@
                 "general",
                 "models",
                 "providers",
-                "engram",
+                "library",
                 "mcp",
                 "plugins",
                 "agents",
@@ -2508,7 +2533,7 @@
                         "general",
                         "models",
                         "providers",
-                        "engram",
+                        "library",
                         "mcp",
                         "plugins",
                         "agents",
@@ -4233,6 +4258,89 @@
                   "messageID": {
                     "type": "string",
                     "pattern": "^msg.*"
+                  },
+                  "position": {
+                    "anyOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "type": {
+                            "type": "string",
+                            "const": "current"
+                          }
+                        },
+                        "required": ["type"]
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "type": {
+                            "type": "string",
+                            "const": "before"
+                          },
+                          "messageID": {
+                            "type": "string",
+                            "pattern": "^msg.*"
+                          }
+                        },
+                        "required": ["type", "messageID"]
+                      }
+                    ]
+                  },
+                  "workspace": {
+                    "anyOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "mode": {
+                            "type": "string",
+                            "const": "current"
+                          }
+                        },
+                        "required": ["mode"]
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "mode": {
+                            "type": "string",
+                            "const": "existing"
+                          },
+                          "target": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "force": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": ["mode", "target"]
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "mode": {
+                            "type": "string",
+                            "const": "create"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "baseRef": {
+                            "type": "string",
+                            "enum": ["current", "fresh"]
+                          }
+                        },
+                        "required": ["mode"]
+                      }
+                    ]
+                  },
+                  "title": {
+                    "type": "string"
+                  },
+                  "controlProfile": {
+                    "type": "string",
+                    "enum": ["guarded", "autonomous", "full_access"]
                   }
                 }
               }
@@ -4440,6 +4548,13 @@
             "name": "limit",
             "schema": {
               "type": "number"
+            }
+          },
+          {
+            "in": "query",
+            "name": "raw",
+            "schema": {
+              "type": "boolean"
             }
           }
         ],
@@ -5380,9 +5495,9 @@
         ]
       }
     },
-    "/session/{sessionID}/revert": {
+    "/session/{sessionID}/rollback": {
       "post": {
-        "operationId": "session.revert",
+        "operationId": "session.rollback",
         "parameters": [
           {
             "in": "query",
@@ -5402,20 +5517,21 @@
             "in": "path",
             "name": "sessionID",
             "schema": {
-              "type": "string"
+              "type": "string",
+              "pattern": "^ses.*"
             },
             "required": true
           }
         ],
-        "summary": "Revert message",
-        "description": "Revert a specific message in a session, undoing its effects and restoring the previous state.",
+        "summary": "Rollback session history",
+        "description": "Hide the latest user turn(s) from effective message history without modifying local files.",
         "responses": {
           "200": {
-            "description": "Updated session",
+            "description": "Rollback event",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Session"
+                  "$ref": "#/components/schemas/SessionRollbackEvent"
                 }
               }
             }
@@ -5447,16 +5563,13 @@
               "schema": {
                 "type": "object",
                 "properties": {
-                  "messageID": {
-                    "type": "string",
-                    "pattern": "^msg.*"
-                  },
-                  "partID": {
-                    "type": "string",
-                    "pattern": "^prt.*"
+                  "numTurns": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 9007199254740991
                   }
                 },
-                "required": ["messageID"]
+                "required": ["numTurns"]
               }
             }
           }
@@ -5464,14 +5577,14 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.session.revert({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.session.rollback({\n  ...\n})"
           }
         ]
       }
     },
-    "/session/{sessionID}/unrevert": {
+    "/session/{sessionID}/unrollback": {
       "post": {
-        "operationId": "session.unrevert",
+        "operationId": "session.unrollback",
         "parameters": [
           {
             "in": "query",
@@ -5491,20 +5604,114 @@
             "in": "path",
             "name": "sessionID",
             "schema": {
-              "type": "string"
+              "type": "string",
+              "pattern": "^ses.*"
             },
             "required": true
           }
         ],
-        "summary": "Restore reverted messages",
-        "description": "Restore all previously reverted messages in a session.",
+        "summary": "Restore rolled-back session history",
+        "description": "Restore the latest rollback when no new user or assistant turn has been added after it.",
         "responses": {
           "200": {
-            "description": "Updated session",
+            "description": "Unrollback event or current rollback state",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Session"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/SessionUnrollbackEvent"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "rollback": {
+                          "$ref": "#/components/schemas/SessionRollbackSummary"
+                        }
+                      },
+                      "required": ["rollback"]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NoteConflictError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.session.unrollback({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/session/{sessionID}/files/restore": {
+      "post": {
+        "operationId": "session.files.restore",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "sessionID",
+            "schema": {
+              "type": "string",
+              "pattern": "^ses.*"
+            },
+            "required": true
+          }
+        ],
+        "summary": "Restore session files",
+        "description": "Explicitly restore files from session patch data. Message rollback never calls this automatically.",
+        "responses": {
+          "200": {
+            "description": "Restored files",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionFileRestoreResult"
                 }
               }
             }
@@ -5530,10 +5737,39 @@
             }
           }
         },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "rollbackID": {
+                    "type": "string",
+                    "pattern": "^hst.*"
+                  },
+                  "messageID": {
+                    "type": "string",
+                    "pattern": "^msg.*"
+                  },
+                  "partID": {
+                    "type": "string",
+                    "pattern": "^prt.*"
+                  },
+                  "files": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.session.unrevert({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.session.files.restore({\n  ...\n})"
           }
         ]
       }
@@ -7591,9 +7827,9 @@
         ]
       }
     },
-    "/engram/experience/search": {
+    "/library/experience/search": {
       "post": {
-        "operationId": "engram.experience.search",
+        "operationId": "library.experience.search",
         "parameters": [
           {
             "in": "query",
@@ -7664,14 +7900,14 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.engram.experience.search({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.library.experience.search({\n  ...\n})"
           }
         ]
       }
     },
-    "/engram/experience/page": {
+    "/library/experience/page": {
       "get": {
-        "operationId": "engram.experience.page",
+        "operationId": "library.experience.page",
         "parameters": [
           {
             "in": "query",
@@ -7760,14 +7996,14 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.engram.experience.page({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.library.experience.page({\n  ...\n})"
           }
         ]
       }
     },
-    "/engram/experience/{id}": {
+    "/library/experience/{id}": {
       "get": {
-        "operationId": "engram.experience.get",
+        "operationId": "library.experience.get",
         "parameters": [
           {
             "in": "query",
@@ -7830,12 +8066,12 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.engram.experience.get({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.library.experience.get({\n  ...\n})"
           }
         ]
       },
       "delete": {
-        "operationId": "engram.experience.remove",
+        "operationId": "library.experience.remove",
         "parameters": [
           {
             "in": "query",
@@ -7888,14 +8124,14 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.engram.experience.remove({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.library.experience.remove({\n  ...\n})"
           }
         ]
       }
     },
-    "/engram/experience/{id}/reward": {
+    "/library/experience/{id}/reward": {
       "put": {
-        "operationId": "engram.experience.applyReward",
+        "operationId": "library.experience.applyReward",
         "parameters": [
           {
             "in": "query",
@@ -7978,14 +8214,14 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.engram.experience.applyReward({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.library.experience.applyReward({\n  ...\n})"
           }
         ]
       }
     },
-    "/engram/experience": {
+    "/library/experience": {
       "get": {
-        "operationId": "engram.experience.list",
+        "operationId": "library.experience.list",
         "parameters": [
           {
             "in": "query",
@@ -8023,14 +8259,14 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.engram.experience.list({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.library.experience.list({\n  ...\n})"
           }
         ]
       }
     },
-    "/engram/stats": {
+    "/library/stats": {
       "get": {
-        "operationId": "engram.stats",
+        "operationId": "library.stats",
         "parameters": [
           {
             "in": "query",
@@ -8057,11 +8293,11 @@
             "description": "Set to 'true' to force a full analytics recompute"
           }
         ],
-        "summary": "Get engram stats",
-        "description": "Get statistics about the engram database. By default returns a summary with counts and DB size. Use ?recompute=true to force a full analytics recompute and return the extended snapshot.",
+        "summary": "Get library stats",
+        "description": "Get statistics about the library database. By default returns a summary with counts and DB size. Use ?recompute=true to force a full analytics recompute and return the extended snapshot.",
         "responses": {
           "200": {
-            "description": "Engram statistics",
+            "description": "Library statistics",
             "content": {
               "application/json": {
                 "schema": {
@@ -8084,14 +8320,14 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.engram.stats({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.library.stats({\n  ...\n})"
           }
         ]
       }
     },
-    "/engram/search": {
+    "/library/search": {
       "post": {
-        "operationId": "engram.search",
+        "operationId": "library.search",
         "parameters": [
           {
             "in": "query",
@@ -8172,14 +8408,14 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.engram.search({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.library.search({\n  ...\n})"
           }
         ]
       }
     },
-    "/engram/reset": {
+    "/library/reset": {
       "post": {
-        "operationId": "engram.reset",
+        "operationId": "library.reset",
         "parameters": [
           {
             "in": "query",
@@ -8249,14 +8485,14 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.engram.reset({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.library.reset({\n  ...\n})"
           }
         ]
       }
     },
-    "/engram/{id}": {
+    "/library/{id}": {
       "get": {
-        "operationId": "engram.get",
+        "operationId": "library.get",
         "parameters": [
           {
             "in": "query",
@@ -8319,12 +8555,12 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.engram.get({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.library.get({\n  ...\n})"
           }
         ]
       },
       "delete": {
-        "operationId": "engram.remove",
+        "operationId": "library.remove",
         "parameters": [
           {
             "in": "query",
@@ -8377,14 +8613,14 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.engram.remove({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.library.remove({\n  ...\n})"
           }
         ]
       }
     },
-    "/engram": {
+    "/library": {
       "get": {
-        "operationId": "engram.list",
+        "operationId": "library.list",
         "parameters": [
           {
             "in": "query",
@@ -8435,7 +8671,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.engram.list({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.library.list({\n  ...\n})"
           }
         ]
       }
@@ -15992,6 +16228,13 @@
           "watermark"
         ]
       },
+      "DiagnosticsSummary": {
+        "type": "object",
+        "propertyNames": {
+          "type": "string"
+        },
+        "additionalProperties": {}
+      },
       "HolosLoginResponse": {
         "type": "object",
         "properties": {
@@ -16808,12 +17051,12 @@
             "type": "string"
           },
           "messages_undo": {
-            "description": "Undo message",
+            "description": "Undo message history only",
             "default": "<leader>u",
             "type": "string"
           },
           "messages_redo": {
-            "description": "Redo message",
+            "description": "Redo message history only",
             "default": "<leader>r",
             "type": "string"
           },
@@ -17958,7 +18201,7 @@
         },
         "additionalProperties": false
       },
-      "EngramConfig": {
+      "LibraryConfig": {
         "type": "object",
         "properties": {
           "memory": {
@@ -18515,6 +18758,35 @@
         },
         "additionalProperties": false
       },
+      "ObservabilityConfig": {
+        "description": "Local logs, traces, and diagnostics settings",
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "description": "Enable local observability trace JSONL events (default: true)",
+            "type": "boolean"
+          },
+          "retentionDays": {
+            "description": "Days to retain local trace files (default: 7)",
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "maxBytes": {
+            "description": "Maximum total trace storage in bytes (default: 250MB)",
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "stalledToolMs": {
+            "description": "Milliseconds without tool activity before emitting a stalled-tool trace event",
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "additionalProperties": false
+      },
       "HolosConfig": {
         "description": "Holos platform configuration",
         "type": "object",
@@ -18913,8 +19185,8 @@
           "rerank": {
             "$ref": "#/components/schemas/RerankConfig"
           },
-          "engram": {
-            "$ref": "#/components/schemas/EngramConfig"
+          "library": {
+            "$ref": "#/components/schemas/LibraryConfig"
           },
           "mcp": {
             "description": "MCP (Model Context Protocol) server configurations",
@@ -18966,6 +19238,9 @@
           },
           "sandbox": {
             "$ref": "#/components/schemas/SandboxConfig"
+          },
+          "observability": {
+            "$ref": "#/components/schemas/ObservabilityConfig"
           },
           "controlProfile": {
             "$ref": "#/components/schemas/ControlProfileId"
@@ -19248,7 +19523,7 @@
               "general",
               "models",
               "providers",
-              "engram",
+              "library",
               "mcp",
               "plugins",
               "agents",
@@ -19348,7 +19623,7 @@
                     "general",
                     "models",
                     "providers",
-                    "engram",
+                    "library",
                     "mcp",
                     "plugins",
                     "agents",
@@ -19403,7 +19678,7 @@
                 "general",
                 "models",
                 "providers",
-                "engram",
+                "library",
                 "mcp",
                 "plugins",
                 "agents",
@@ -20205,6 +20480,70 @@
         },
         "required": ["mode"]
       },
+      "SessionHistoryInfo": {
+        "type": "object",
+        "properties": {
+          "rollback": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^hst.*"
+              },
+              "numTurns": {
+                "type": "number"
+              },
+              "created": {
+                "type": "number"
+              },
+              "messageID": {
+                "type": "string",
+                "pattern": "^msg.*"
+              },
+              "droppedMessageIDs": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^msg.*"
+                }
+              },
+              "droppedUserMessageIDs": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^msg.*"
+                }
+              },
+              "files": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "patchPartIDs": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^prt.*"
+                }
+              },
+              "canUnrollback": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "id",
+              "numTurns",
+              "created",
+              "droppedMessageIDs",
+              "droppedUserMessageIDs",
+              "files",
+              "patchPartIDs",
+              "canUnrollback"
+            ]
+          }
+        }
+      },
       "SessionCortexDelegation": {
         "type": "object",
         "properties": {
@@ -20331,6 +20670,23 @@
             "type": "string",
             "pattern": "^ses.*"
           },
+          "forkedFrom": {
+            "type": "object",
+            "properties": {
+              "sessionID": {
+                "type": "string",
+                "pattern": "^ses.*"
+              },
+              "messageID": {
+                "type": "string",
+                "pattern": "^msg.*"
+              },
+              "title": {
+                "type": "string"
+              }
+            },
+            "required": ["sessionID"]
+          },
           "category": {
             "type": "string",
             "enum": ["project", "home", "channel", "background"]
@@ -20426,23 +20782,8 @@
               }
             }
           },
-          "revert": {
-            "type": "object",
-            "properties": {
-              "messageID": {
-                "type": "string"
-              },
-              "partID": {
-                "type": "string"
-              },
-              "snapshot": {
-                "type": "string"
-              },
-              "diff": {
-                "type": "string"
-              }
-            },
-            "required": ["messageID"]
+          "history": {
+            "$ref": "#/components/schemas/SessionHistoryInfo"
           },
           "cortex": {
             "$ref": "#/components/schemas/SessionCortexDelegation"
@@ -21809,6 +22150,286 @@
         },
         "required": ["type", "mime", "url"]
       },
+      "SessionRollbackEvent": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^hst.*"
+          },
+          "sessionID": {
+            "type": "string",
+            "pattern": "^ses.*"
+          },
+          "type": {
+            "type": "string",
+            "const": "rollback"
+          },
+          "time": {
+            "type": "object",
+            "properties": {
+              "created": {
+                "type": "number"
+              }
+            },
+            "required": ["created"]
+          },
+          "numTurns": {
+            "type": "number"
+          },
+          "droppedMessageIDs": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^msg.*"
+            }
+          },
+          "droppedUserMessageIDs": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^msg.*"
+            }
+          },
+          "files": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "patchPartIDs": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^prt.*"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "sessionID",
+          "type",
+          "time",
+          "numTurns",
+          "droppedMessageIDs",
+          "droppedUserMessageIDs",
+          "files",
+          "patchPartIDs"
+        ]
+      },
+      "SessionUnrollbackEvent": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^hst.*"
+          },
+          "sessionID": {
+            "type": "string",
+            "pattern": "^ses.*"
+          },
+          "type": {
+            "type": "string",
+            "const": "unrollback"
+          },
+          "time": {
+            "type": "object",
+            "properties": {
+              "created": {
+                "type": "number"
+              }
+            },
+            "required": ["created"]
+          },
+          "rollbackID": {
+            "type": "string",
+            "pattern": "^hst.*"
+          }
+        },
+        "required": ["id", "sessionID", "type", "time", "rollbackID"]
+      },
+      "SessionRollbackSummary": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^hst.*"
+          },
+          "numTurns": {
+            "type": "number"
+          },
+          "created": {
+            "type": "number"
+          },
+          "messageID": {
+            "type": "string",
+            "pattern": "^msg.*"
+          },
+          "droppedMessageIDs": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^msg.*"
+            }
+          },
+          "droppedUserMessageIDs": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^msg.*"
+            }
+          },
+          "files": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "patchPartIDs": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^prt.*"
+            }
+          },
+          "canUnrollback": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "numTurns",
+          "created",
+          "droppedMessageIDs",
+          "droppedUserMessageIDs",
+          "files",
+          "patchPartIDs",
+          "canUnrollback"
+        ]
+      },
+      "NoteInfo": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "content": {},
+          "pinned": {
+            "type": "boolean"
+          },
+          "global": {
+            "type": "boolean"
+          },
+          "originScope": {
+            "type": "string"
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "kind": {
+            "type": "string",
+            "enum": ["note", "blueprint"]
+          },
+          "blueprint": {
+            "type": "object",
+            "properties": {
+              "description": {
+                "type": "string"
+              },
+              "defaultAgent": {
+                "type": "string"
+              },
+              "activeLoopID": {
+                "type": "string"
+              },
+              "runCount": {
+                "type": "number"
+              },
+              "lastRunAt": {
+                "type": "number"
+              }
+            }
+          },
+          "version": {
+            "type": "number"
+          },
+          "time": {
+            "type": "object",
+            "properties": {
+              "created": {
+                "type": "number"
+              },
+              "updated": {
+                "type": "number"
+              }
+            },
+            "required": ["created", "updated"]
+          }
+        },
+        "required": ["id", "title", "content", "pinned", "global", "tags", "version", "time"]
+      },
+      "NoteConflictError": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "const": "NoteConflictError"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "noteID": {
+                "type": "string"
+              },
+              "expectedVersion": {
+                "type": "number"
+              },
+              "note": {
+                "$ref": "#/components/schemas/NoteInfo"
+              }
+            },
+            "required": ["noteID", "expectedVersion", "note"]
+          }
+        },
+        "required": ["name", "data"]
+      },
+      "SessionFileRestoreResult": {
+        "type": "object",
+        "properties": {
+          "restoredFiles": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "patchPartIDs": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^prt.*"
+            }
+          },
+          "rollbackID": {
+            "type": "string",
+            "pattern": "^hst.*"
+          },
+          "messageID": {
+            "type": "string",
+            "pattern": "^msg.*"
+          },
+          "partID": {
+            "type": "string",
+            "pattern": "^prt.*"
+          }
+        },
+        "required": ["restoredFiles", "patchPartIDs"]
+      },
       "PermissionRequest": {
         "type": "object",
         "properties": {
@@ -22063,6 +22684,9 @@
               }
             },
             "required": ["toolCalls", "lastUpdate"]
+          },
+          "notifyParentOnComplete": {
+            "type": "boolean"
           }
         },
         "required": [
@@ -23358,73 +23982,6 @@
         },
         "required": ["scopeID", "scopeType", "notes"]
       },
-      "NoteInfo": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string"
-          },
-          "title": {
-            "type": "string"
-          },
-          "content": {},
-          "pinned": {
-            "type": "boolean"
-          },
-          "global": {
-            "type": "boolean"
-          },
-          "originScope": {
-            "type": "string"
-          },
-          "tags": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "kind": {
-            "type": "string",
-            "enum": ["note", "blueprint"]
-          },
-          "blueprint": {
-            "type": "object",
-            "properties": {
-              "description": {
-                "type": "string"
-              },
-              "defaultAgent": {
-                "type": "string"
-              },
-              "activeLoopID": {
-                "type": "string"
-              },
-              "runCount": {
-                "type": "number"
-              },
-              "lastRunAt": {
-                "type": "number"
-              }
-            }
-          },
-          "version": {
-            "type": "number"
-          },
-          "time": {
-            "type": "object",
-            "properties": {
-              "created": {
-                "type": "number"
-              },
-              "updated": {
-                "type": "number"
-              }
-            },
-            "required": ["created", "updated"]
-          }
-        },
-        "required": ["id", "title", "content", "pinned", "global", "tags", "version", "time"]
-      },
       "NoteScopeGroup": {
         "type": "object",
         "properties": {
@@ -23483,31 +24040,6 @@
           }
         },
         "required": ["title"]
-      },
-      "NoteConflictError": {
-        "type": "object",
-        "properties": {
-          "name": {
-            "type": "string",
-            "const": "NoteConflictError"
-          },
-          "data": {
-            "type": "object",
-            "properties": {
-              "noteID": {
-                "type": "string"
-              },
-              "expectedVersion": {
-                "type": "number"
-              },
-              "note": {
-                "$ref": "#/components/schemas/NoteInfo"
-              }
-            },
-            "required": ["noteID", "expectedVersion", "note"]
-          }
-        },
-        "required": ["name", "data"]
       },
       "NotePatchInput": {
         "type": "object",
@@ -24656,19 +25188,15 @@
         "type": "object",
         "properties": {
           "algorithm": {
-            "type": "string"
+            "type": "string",
+            "const": "ed25519"
           },
-          "value": {
-            "type": "string"
-          },
-          "keyId": {
-            "type": "string"
-          },
-          "timestamp": {
-            "type": "number"
+          "signer": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
           }
         },
-        "required": ["algorithm", "value"]
+        "required": ["algorithm", "signer"]
       },
       "RegistryPermissionItem": {
         "type": "object",

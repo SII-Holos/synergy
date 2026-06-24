@@ -22,16 +22,15 @@ Canonical workflow:
 bunx @ericsanchezok/synergy-plugin-kit create my-plugin
 cd my-plugin
 bun install
-bun run validate
-bun run build
-bun run pack
-bun run sign my-plugin-0.1.0.synergy-plugin.tgz
+synergy-plugin dev
+synergy-plugin validate --runtime-discovery
+synergy-plugin publish-market
 ```
 
 Public marketplace publishing uses the GitHub aggregator repository instead of a deployed registry server:
 
 ```bash
-bun run publish:market -- --repo https://github.com/owner/my-plugin
+synergy-plugin publish-market --repo https://github.com/owner/my-plugin
 ```
 
 Plugin authors do not need to read the repository root `AGENTS.md` unless they are modifying Synergy itself.

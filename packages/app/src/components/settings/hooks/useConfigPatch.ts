@@ -5,7 +5,7 @@ import type {
   ModelsStore,
   PluginsStore,
   McpsStore,
-  IdentityStore,
+  LibrarySettingsStore,
   AdvancedStore,
   EmailSettings,
   ChannelSettings,
@@ -19,7 +19,7 @@ export type BuildPatchParams = {
   advanced: AdvancedStore
   email: EmailSettings
   channels: ChannelSettings
-  identity: IdentityStore
+  library: LibrarySettingsStore
   originalMcps: Record<string, Record<string, unknown>>
 }
 
@@ -28,7 +28,7 @@ export type BuildPatchParams = {
  * Phase 1 backend returns resolved defaults, so form values are always real (no "" sentinel).
  */
 export function buildPatch(params: BuildPatchParams): Record<string, unknown> {
-  const { cfg, general, models, plugins, mcps, advanced, email, channels, identity, originalMcps } = params
+  const { cfg, general, models, plugins, mcps, advanced, email, channels, library, originalMcps } = params
   const patch: Record<string, unknown> = {}
 
   if (general.snapshot !== (cfg.snapshot ?? true)) patch.snapshot = general.snapshot
@@ -211,16 +211,16 @@ export function buildPatch(params: BuildPatchParams): Record<string, unknown> {
     patch.channel = newChannel
   }
 
-  const origEngram = cfg.engram
-  const origMemory = origEngram?.memory
-  const origExperience = origEngram?.experience
-  const origEvoStr = (() => {
+  const origLibrary = cfg.library
+  const origMemory = origLibrary?.memory
+  const origExperience = origLibrary?.experience
+  const origLearningStr = (() => {
     if (origMemory?.enabled === false && origExperience?.encode === false && origExperience?.retrieve === false) {
       return "false"
     }
     return "true"
   })()
-  const origAutonomyStr = origEngram?.autonomy !== undefined ? (origEngram.autonomy ? "true" : "false") : "true"
+  const origAutonomyStr = origLibrary?.autonomy !== undefined ? (origLibrary.autonomy ? "true" : "false") : "true"
 
   const origMemorySimThreshold = (() => {
     const retrieve = typeof origMemory?.retrieval === "object" ? origMemory.retrieval : undefined
@@ -243,30 +243,30 @@ export function buildPatch(params: BuildPatchParams): Record<string, unknown> {
     return retrieve?.epsilon !== undefined ? String(retrieve.epsilon) : String(0.1)
   })()
 
-  const identityChanged =
-    identity.evolution !== origEvoStr ||
-    identity.autonomy !== origAutonomyStr ||
-    identity.memorySimThreshold !== origMemorySimThreshold ||
-    identity.memoryTopK !== origMemoryTopK ||
-    identity.experienceSimThreshold !== origExperienceSimThreshold ||
-    identity.experienceTopK !== origExperienceTopK ||
-    identity.experienceEpsilon !== origExperienceEpsilon
+  const libraryChanged =
+    library.learning !== origLearningStr ||
+    library.autonomy !== origAutonomyStr ||
+    library.memorySimThreshold !== origMemorySimThreshold ||
+    library.memoryTopK !== origMemoryTopK ||
+    library.experienceSimThreshold !== origExperienceSimThreshold ||
+    library.experienceTopK !== origExperienceTopK ||
+    library.experienceEpsilon !== origExperienceEpsilon
 
-  if (identityChanged) {
-    const newEngram = structuredClone(origEngram ?? {}) as Record<string, unknown>
+  if (libraryChanged) {
+    const newLibrary = structuredClone(origLibrary ?? {}) as Record<string, unknown>
 
-    const evoVal = identity.evolution !== origEvoStr ? identity.evolution : origEvoStr
-    if (evoVal === "true" || evoVal === "false") {
-      const evoBool = evoVal === "true"
+    const learningVal = library.learning !== origLearningStr ? library.learning : origLearningStr
+    if (learningVal === "true" || learningVal === "false") {
+      const learningBool = learningVal === "true"
 
       const memoryRetrieve: Record<string, unknown> = {}
       const memSim =
-        identity.memorySimThreshold !== origMemorySimThreshold ? identity.memorySimThreshold : origMemorySimThreshold
+        library.memorySimThreshold !== origMemorySimThreshold ? library.memorySimThreshold : origMemorySimThreshold
       if (memSim !== String(0.7)) {
         const n = Number(memSim)
         if (!isNaN(n)) memoryRetrieve.simThreshold = n
       }
-      const memTopK = identity.memoryTopK !== origMemoryTopK ? identity.memoryTopK : origMemoryTopK
+      const memTopK = library.memoryTopK !== origMemoryTopK ? library.memoryTopK : origMemoryTopK
       if (memTopK !== String(3)) {
         const n = Number(memTopK)
         if (!isNaN(n) && n >= 1) memoryRetrieve.topK = n
@@ -274,51 +274,54 @@ export function buildPatch(params: BuildPatchParams): Record<string, unknown> {
 
       const experienceRetrieve: Record<string, unknown> = {}
       const expSim =
-        identity.experienceSimThreshold !== origExperienceSimThreshold
-          ? identity.experienceSimThreshold
+        library.experienceSimThreshold !== origExperienceSimThreshold
+          ? library.experienceSimThreshold
           : origExperienceSimThreshold
       if (expSim !== String(0.7)) {
         const n = Number(expSim)
         if (!isNaN(n)) experienceRetrieve.simThreshold = n
       }
-      const expTopK = identity.experienceTopK !== origExperienceTopK ? identity.experienceTopK : origExperienceTopK
+      const expTopK = library.experienceTopK !== origExperienceTopK ? library.experienceTopK : origExperienceTopK
       if (expTopK !== String(8)) {
         const n = Number(expTopK)
         if (!isNaN(n) && n >= 1) experienceRetrieve.topK = n
       }
       const expEps =
-        identity.experienceEpsilon !== origExperienceEpsilon ? identity.experienceEpsilon : origExperienceEpsilon
+        library.experienceEpsilon !== origExperienceEpsilon ? library.experienceEpsilon : origExperienceEpsilon
       if (expEps !== String(0.1)) {
         const n = Number(expEps)
         if (!isNaN(n)) experienceRetrieve.epsilon = n
       }
 
       if (Object.keys(memoryRetrieve).length > 0) {
-        newEngram.memory = {
-          ...((newEngram.memory as Record<string, unknown> | undefined) ?? {}),
+        newLibrary.memory = {
+          ...((newLibrary.memory as Record<string, unknown> | undefined) ?? {}),
           retrieval: memoryRetrieve,
         }
       } else {
-        newEngram.memory = { ...((newEngram.memory as Record<string, unknown> | undefined) ?? {}), enabled: evoBool }
+        newLibrary.memory = {
+          ...((newLibrary.memory as Record<string, unknown> | undefined) ?? {}),
+          enabled: learningBool,
+        }
       }
       if (Object.keys(experienceRetrieve).length > 0) {
-        newEngram.experience = {
-          ...((newEngram.experience as Record<string, unknown> | undefined) ?? {}),
+        newLibrary.experience = {
+          ...((newLibrary.experience as Record<string, unknown> | undefined) ?? {}),
           retrieve: experienceRetrieve,
         }
       } else {
-        newEngram.experience = { encode: evoBool, retrieve: evoBool }
+        newLibrary.experience = { encode: learningBool, retrieve: learningBool }
       }
     } else {
-      newEngram.memory = { ...((newEngram.memory as Record<string, unknown> | undefined) ?? {}), enabled: false }
-      newEngram.experience = { encode: false, retrieve: false }
+      newLibrary.memory = { ...((newLibrary.memory as Record<string, unknown> | undefined) ?? {}), enabled: false }
+      newLibrary.experience = { encode: false, retrieve: false }
     }
 
-    const autoVal = identity.autonomy !== origAutonomyStr ? identity.autonomy : origAutonomyStr
-    if (autoVal === "true") newEngram.autonomy = true
-    else if (autoVal === "false") newEngram.autonomy = false
+    const autoVal = library.autonomy !== origAutonomyStr ? library.autonomy : origAutonomyStr
+    if (autoVal === "true") newLibrary.autonomy = true
+    else if (autoVal === "false") newLibrary.autonomy = false
 
-    patch.engram = Object.keys(newEngram).length > 0 ? newEngram : undefined
+    patch.library = Object.keys(newLibrary).length > 0 ? newLibrary : undefined
   }
 
   return patch
