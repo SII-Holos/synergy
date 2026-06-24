@@ -94,6 +94,27 @@ describe("session.getUsage", () => {
     expect(result.tokens.cache.read).toBe(200)
   })
 
+  test("extracts DeepSeek prompt cache metadata", () => {
+    const model = createModel({ context: 100_000, output: 32_000 })
+    const result = Session.getUsage({
+      model,
+      usage: {
+        inputTokens: 1000,
+        outputTokens: 500,
+        totalTokens: 1500,
+      },
+      metadata: {
+        openaiCompatible: {
+          prompt_cache_hit_tokens: 256,
+          prompt_cache_miss_tokens: 744,
+        },
+      },
+    })
+
+    expect(result.tokens.input).toBe(744)
+    expect(result.tokens.cache.read).toBe(256)
+  })
+
   test("handles anthropic cache write metadata", () => {
     const model = createModel({ context: 100_000, output: 32_000 })
     const result = Session.getUsage({

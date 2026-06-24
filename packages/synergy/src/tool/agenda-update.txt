@@ -4,8 +4,8 @@ Use agenda_list to find the item ID first.
 
 Common actions:
 - Pause: agenda_update(id="agd_xxx", status="paused")
-- Resume: agenda_update(id="agd_xxx", status="active")  
+- Resume: agenda_update(id="agd_xxx", status="active")
 - Mark done: agenda_update(id="agd_xxx", status="done")
 - Change prompt: agenda_update(id="agd_xxx", prompt="new instructions...")
 
-To change the trigger/schedule itself, use agenda_cancel + agenda_schedule (or agenda_watch) to recreate.
+To change the trigger/schedule itself, pass a new triggers array: agenda_update(id="agd_xxx", triggers=[{type:"cron", expr:"0 6 * * *", tz:"Asia/Shanghai"}])

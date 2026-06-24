@@ -5,13 +5,12 @@ import { SessionInteraction } from "../../src/session/interaction"
 import { PermissionNext } from "../../src/permission/next"
 import { Question } from "../../src/question"
 import { AppChannel } from "../../src/channel/app"
-import { GenesisChannel } from "../../src/channel/genesis"
-import { Instance } from "../../src/scope/instance"
+import { ScopeContext } from "../../src/scope/context"
 import { tmpdir } from "../fixture/fixture"
 
 test("session stores unattended interaction metadata", async () => {
   await using tmp = await tmpdir({ git: true })
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
       const session = await Session.create({
@@ -36,7 +35,7 @@ test("sessionRuleset denies question for unattended sessions", async () => {
 
 test("unattended permission ask auto-approves ask actions", async () => {
   await using tmp = await tmpdir({ git: true })
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
       await expect(
@@ -54,7 +53,7 @@ test("unattended permission ask auto-approves ask actions", async () => {
 
 test("unattended permission ask still rejects explicit deny", async () => {
   await using tmp = await tmpdir({ git: true })
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
       await expect(
@@ -72,7 +71,7 @@ test("unattended permission ask still rejects explicit deny", async () => {
 
 test("question ask rejects immediately for unattended sessions", async () => {
   await using tmp = await tmpdir({ git: true })
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
       const session = await Session.create({
@@ -99,7 +98,7 @@ test("question ask rejects immediately for unattended sessions", async () => {
 
 test("getOrCreateForEndpoint applies explicit unattended interaction", async () => {
   await using tmp = await tmpdir({ git: true })
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
       const session = await Session.getOrCreateForEndpoint(
@@ -122,7 +121,7 @@ test("getOrCreateForEndpoint applies explicit unattended interaction", async () 
 
 test("app channel sessions remain interactive", async () => {
   await using tmp = await tmpdir({ git: true })
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
       const session = await AppChannel.session()
@@ -131,20 +130,9 @@ test("app channel sessions remain interactive", async () => {
   })
 })
 
-test("genesis channel sessions remain unattended", async () => {
-  await using tmp = await tmpdir({ git: true })
-  await Instance.provide({
-    scope: await tmp.scope(),
-    fn: async () => {
-      const session = await GenesisChannel.session()
-      expect(session.interaction).toEqual(SessionInteraction.unattended("channel:genesis"))
-    },
-  })
-})
-
 test("child sessions inherit unattended interaction from parent", async () => {
   await using tmp = await tmpdir({ git: true })
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
       const parent = await Session.create({
@@ -161,7 +149,7 @@ test("child sessions inherit unattended interaction from parent", async () => {
 
 test("child sessions can override inherited interaction explicitly", async () => {
   await using tmp = await tmpdir({ git: true })
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
       const parent = await Session.create({

@@ -1,6 +1,7 @@
 import { For, Show, createMemo } from "solid-js"
 import { Doughnut } from "solid-chartjs"
 import { Chart as ChartJS, ArcElement, Tooltip, DoughnutController } from "chart.js"
+import { categoryLabels } from "../shared"
 
 ChartJS.register(ArcElement, Tooltip, DoughnutController)
 
@@ -17,21 +18,6 @@ const CATEGORY_COLORS: Record<string, string> = {
   knowledge: "rgba(59, 130, 246, 0.82)",
   personal: "rgba(192, 132, 252, 0.82)",
   general: "rgba(128, 128, 128, 0.82)",
-}
-
-const CATEGORY_LABELS: Record<string, string> = {
-  user: "User",
-  self: "Self",
-  relationship: "Relationship",
-  interaction: "Interaction",
-  workflow: "Workflow",
-  coding: "Coding",
-  writing: "Writing",
-  asset: "Asset",
-  insight: "Insight",
-  knowledge: "Knowledge",
-  personal: "Personal",
-  general: "General",
 }
 
 const RECALL_MODE_STYLES: Record<string, { bg: string; label: string }> = {
@@ -54,7 +40,7 @@ export function MemoryDistribution(props: {
   const recallModes = () => props.distribution.byRecallMode
 
   const chartData = createMemo(() => ({
-    labels: categories().map((c) => CATEGORY_LABELS[c.category] ?? c.category),
+    labels: categories().map((c) => categoryLabels[c.category as keyof typeof categoryLabels] ?? c.category),
     datasets: [
       {
         data: categories().map((c) => c.count),
@@ -86,8 +72,7 @@ export function MemoryDistribution(props: {
   return (
     <div class="mt-4 rounded-[1.25rem] bg-surface-raised-base/95 p-4 shadow-[inset_0_1px_0_rgba(214,204,190,0.06),inset_0_-1px_0_rgba(24,28,38,0.04)]">
       <div class="pb-2">
-        <div class="text-[9px] font-medium uppercase tracking-[0.18em] text-text-weaker">Distribution</div>
-        <h3 class="mt-1 text-15-semibold text-text-strong tracking-tight">Memory Categories</h3>
+        <h3 class="text-13-medium text-text-strong">Memory categories</h3>
       </div>
 
       <Show
@@ -110,7 +95,7 @@ export function MemoryDistribution(props: {
               <For each={categories()}>
                 {(item) => {
                   const pct = () => (props.totalMemories > 0 ? (item.count / props.totalMemories) * 100 : 0)
-                  const label = CATEGORY_LABELS[item.category] ?? item.category
+                  const label = categoryLabels[item.category as keyof typeof categoryLabels] ?? item.category
                   return (
                     <div class="inline-flex items-center gap-1.5 py-0.5">
                       <span

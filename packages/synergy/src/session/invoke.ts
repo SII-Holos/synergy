@@ -16,8 +16,12 @@ import { Plugin } from "../plugin"
 import MAX_STEPS from "./prompt/max-steps.txt"
 import CORTEX_REMINDER from "./prompt/cortex-reminder.txt"
 import PLANNING_REMINDER from "./prompt/planning-reminder.txt"
+import PLAN_MODE from "./prompt/plan-mode.txt"
+import PLAN_MODE_SYNERGY from "./prompt/plan-mode-synergy.txt"
+import PLAN_MODE_SYNERGY_MAX from "./prompt/plan-mode-synergy-max.txt"
 import { defer } from "../util/defer"
-import { Command } from "../skill/command"
+import { Command } from "../command/command"
+import "../project/worktree-command"
 import { $ } from "bun"
 import { ConfigMarkdown } from "../config/markdown"
 import "./summary"
@@ -31,6 +35,8 @@ import { TimeoutConfig } from "@/util/timeout-config"
 import { ToolResolver } from "./tool-resolver"
 import { PromptBudgeter } from "./prompt-budgeter"
 import { PermissionNext } from "@/permission/next"
+import { ControlProfileCompiler } from "@/control-profile/compiler"
+import { buildPermissionContext } from "./permission-context"
 import { Config } from "@/config/config"
 import { withTimeout } from "@/util/timeout"
 import { lastModel, InvokeInput, resolveInputParts, createUserMessage } from "./input"
@@ -48,12 +54,14 @@ import "./title"
 
 import { LLM } from "./llm"
 import { SessionRevert } from "./revert"
-import { Instance } from "../scope/instance"
+import { ScopeContext } from "../scope/context"
 import { Scope } from "@/scope"
 import { LoopJob } from "./loop-job"
 import "./loop-signals"
 import "../engram/chronicler"
 import { ExperienceEncoder } from "../engram/experience-encoder"
+import { GitHealth } from "../project/git-health"
+import { BlueprintLoopStore } from "../blueprint/loop-store"
 
 export { InvokeInput, resolveInputParts } from "./input"
 
@@ -71,9 +79,15 @@ export namespace SessionInvoke {
   export function cancel(sessionID: string) {
     log.info("cancel", { sessionID })
     evictRecallCache(sessionID)
-    SessionManager.release(sessionID).catch((err) => {
-      log.error("release failed", { sessionID, error: err })
+
+    // Clean up all pending PermissionNext entries for this session before
+    // releasing the runtime. Otherwise the promises block forever and the
+    // entries remain in the pending map as orphans.
+    PermissionNext.clearForSession(sessionID).catch((err) => {
+      log.error("permission cleanup failed", { sessionID, error: err })
     })
+
+    SessionManager.signalAbort(sessionID)
   }
 
   export const invoke = fn(InvokeInput, async (input) => {
@@ -140,18 +154,16 @@ export namespace SessionInvoke {
     scopeID: string,
     sessionMessages: MessageV2.WithParts[],
     isTopSession: boolean,
-    isGenesis: boolean,
   ): Promise<{ context: string; injection: InjectionInfo } | undefined> {
-    if (step === 1 && isTopSession && !isGenesis) {
+    if (step === 1 && isTopSession) {
       SessionManager.setStatus(sessionID, { type: "busy", description: "Flashing back..." })
-      const cfg = await Config.get()
-      return withTimeout(
-        buildMemoryContext(sessionID, scopeID, sessionMessages, Config.resolveEvolution(cfg.identity?.evolution)),
-        RECALL_TIMEOUT_MS,
-      ).catch((err: any) => {
-        log.warn("recall failed or timed out", { sessionID, error: err })
-        return undefined
-      })
+      const cfg = await Config.current()
+      return withTimeout(buildMemoryContext(sessionID, scopeID, sessionMessages, cfg.engram), RECALL_TIMEOUT_MS).catch(
+        (err: any) => {
+          log.warn("recall failed or timed out", { sessionID, error: err })
+          return undefined
+        },
+      )
     }
     // Keep the recalled memory/experience in the system prompt for every step
     // so the prefix stays stable (maximizing cache hits) and the agent retains
@@ -161,9 +173,8 @@ export namespace SessionInvoke {
       return getCachedResult(sessionID)
     }
     if (step === 1 && !isTopSession) {
-      const cfg = await Config.get()
-      const evo = Config.resolveEvolution(cfg.identity?.evolution)
-      if (evo.active) {
+      const cfg = await Config.current()
+      if (cfg.engram?.memory?.enabled !== false) {
         const alwaysContext = buildAlwaysOnlyMemoryContext()
         return alwaysContext ? { context: alwaysContext, injection: {} as InjectionInfo } : undefined
       }
@@ -181,7 +192,10 @@ export namespace SessionInvoke {
       })
     }
 
-    using _ = defer(() => cancel(sessionID))
+    await using _ = defer(async () => {
+      evictRecallCache(sessionID)
+      await SessionManager.release(sessionID)
+    })
 
     const runtime = SessionManager.registerRuntime(sessionID)
     let step = 0
@@ -203,7 +217,7 @@ export namespace SessionInvoke {
         let lastAssistant: MessageV2.Assistant | undefined
         for (let i = msgs.length - 1; i >= 0; i--) {
           const msg = msgs[i]
-          if (!lastUser && msg.info.role === "user") {
+          if (!lastUser && msg.info.role === "user" && MessageV2.isPromptVisible(msg)) {
             const user = msg.info as MessageV2.User
             if (SessionProgress.isReplyRequiredUser(user)) {
               lastUser = user
@@ -242,8 +256,9 @@ export namespace SessionInvoke {
           lastFinishedParts,
           lastAssistant,
           abort,
-          compactionAutoDisabled: (await Config.get()).compaction?.auto === false,
-          compactionOverflowThreshold: (await Config.get()).compaction?.overflowThreshold,
+          compactionAutoDisabled: (await Config.current()).compaction?.auto === false,
+          compactionOverflowThreshold: (await Config.current()).compaction?.overflowThreshold,
+          compactionMaxHistoryImages: (await Config.current()).compaction?.maxHistoryImages ?? 8,
           modelID: lastUser.model.modelID,
           modelLimits: await Promise.all([
             Provider.getModel(lastUser.model.providerID, lastUser.model.modelID)
@@ -294,14 +309,18 @@ export namespace SessionInvoke {
         })
 
         if (agent.external) {
-          const allowAll = await PermissionNext.isAllowingAll(sessionID)
+          const topLevelProfile = await Config.current()
+            .then((c) => c.controlProfile)
+            .catch(() => undefined)
+          const sessionProfile = session?.id ? await Session.resolveControlProfile(session.id) : undefined
+          const profileId = ControlProfileCompiler.normalize(sessionProfile ?? agent.controlProfile ?? topLevelProfile)
           const adapter = ExternalAgent.getAdapter(agent.external.adapter, sessionID)
           if (!adapter) {
             log.error("external adapter not found", { adapter: agent.external.adapter, sessionID })
             break
           }
 
-          const runConfig = applyExternalPermissionMode({ ...agent.external.config }, adapter.name, allowAll)
+          const runConfig = applyExternalPermissionMode({ ...agent.external.config }, adapter.name, profileId)
           const override = await resolveExternalModelOverride(lastUser.model, adapter.name)
           if (override && adapter.capabilities.modelSwitch) {
             applyModelOverride(runConfig, adapter.name, override)
@@ -312,7 +331,7 @@ export namespace SessionInvoke {
 
           if (!adapter.started) {
             await adapter.start({
-              cwd: Instance.directory,
+              cwd: ScopeContext.current.directory,
               config: runConfig,
               env,
             })
@@ -367,8 +386,8 @@ export namespace SessionInvoke {
             mode: agent.name,
             agent: agent.name,
             path: {
-              cwd: Instance.directory,
-              root: Instance.directory,
+              cwd: ScopeContext.current.directory,
+              root: ScopeContext.current.directory,
             },
             cost: 0,
             tokens: {
@@ -424,7 +443,6 @@ export namespace SessionInvoke {
         // prompt assembly, cortex context, and memory recall (flashback) all
         // run concurrently to minimise time-to-first-token.
         const isTopSession = !session.parentID
-        const isGenesis = SessionEndpoint.type(session.endpoint) === "genesis"
 
         const [
           toolDefinitions,
@@ -449,18 +467,71 @@ export namespace SessionInvoke {
           buildCortexExecutionContext(sessionID),
           buildCortexReminder(sessionID),
           buildAgendaReminder(sessionID, scopeID),
-          recallMemory(step, sessionID, scopeID, sessionMessages, isTopSession, isGenesis),
+          recallMemory(step, sessionID, scopeID, sessionMessages, isTopSession),
         ])
 
         // Layered system prompt assembly: stable → semi-stable → dynamic
         // This ordering maximizes prompt caching by keeping static content first.
         const systemParts: string[] = []
+        let systemCacheBreakpoint: number | undefined
 
         // Layer 1: Static — AGENTS.md instructions (stable within session)
         systemParts.push(...customParts)
+        if (systemParts.length > 0) systemCacheBreakpoint = systemParts.length - 1
+
+        // Layer 1.5: Semi-static — permission context (stable per session)
+        try {
+          const workspace = ScopeContext.current.directory
+          const workspaceInfo = ScopeContext.current.workspace
+          const interaction = session?.interaction
+          const interactionMode = interaction?.mode === "unattended" ? "unattended" : "attended"
+          const topLevelProfile = await Config.current()
+            .then((c) => c.controlProfile)
+            .catch(() => undefined)
+          const sessionProfile = session?.id ? await Session.resolveControlProfile(session.id) : undefined
+          const profileId = ControlProfileCompiler.normalize(sessionProfile ?? agent.controlProfile ?? topLevelProfile)
+          const resolved = await ControlProfileCompiler.resolve(profileId, {
+            workspace,
+            workspaceType: workspaceInfo?.type === "git_worktree" ? "worktree" : "main",
+            interactionMode,
+          })
+          if (resolved.valid) {
+            const ctx = buildPermissionContext(resolved, workspace)
+            systemParts.push(ctx)
+            systemCacheBreakpoint = systemParts.length - 1
+          }
+        } catch {
+          // Profile resolution failure is non-fatal — skip permission context
+        }
 
         // Layer 2: Semi-static — cortex context (stable during execution)
         if (cortexExecutionContext) systemParts.push(cortexExecutionContext)
+
+        // Layer 2.5: Semi-static — Plan Mode / BlueprintLoop context
+        const sessionBlueprint = session?.blueprint
+        if (sessionBlueprint?.planMode) {
+          systemParts.push(PLAN_MODE.trim())
+          if (agent.name === "synergy") systemParts.push(PLAN_MODE_SYNERGY.trim())
+          if (agent.name === "synergy-max") systemParts.push(PLAN_MODE_SYNERGY_MAX.trim())
+        }
+        if (sessionBlueprint?.loopID) {
+          const loop = await BlueprintLoopStore.get(scopeID, sessionBlueprint.loopID).catch(() => undefined)
+          if (loop) {
+            systemParts.push(
+              [
+                "<blueprint-loop-context>",
+                `Active BlueprintLoop: ${loop.id}`,
+                `Blueprint Note: ${loop.noteID}`,
+                `Title: ${loop.title}`,
+                `Description: ${loop.description ?? "N/A"}`,
+                `Status: ${loop.status}`,
+                "",
+                `You are executing this BlueprintLoop. Before doing implementation work, call note_read with ids=["${loop.noteID}"] and read the full Blueprint content. Continue working until fully implemented. When ready for audit, call blueprint_loop_finish with status="auditing".`,
+                "</blueprint-loop-context>",
+              ].join("\n"),
+            )
+          }
+        }
 
         // Layer 3: Dynamic — memory/experience context (varies per step)
         if (memoryResult) {
@@ -478,6 +549,10 @@ export namespace SessionInvoke {
 
         // Layer 4: Dynamic — environment block (contains timestamp, changes per invoke)
         systemParts.push(...envParts)
+
+        // Layer 4.5: Dynamic — git health diagnostics (warns about uncommitted changes, large files, etc.)
+        const gitHealthBlock = GitHealth.injectCached(ScopeContext.current.directory)
+        if (gitHealthBlock) systemParts.push(gitHealthBlock)
 
         // Layer 5: Dynamic — upcoming agenda wake-ups (always at the end)
         if (agendaReminder) systemParts.push(agendaReminder)
@@ -497,9 +572,8 @@ export namespace SessionInvoke {
             )
           }
         }
-
         const preparedMessages = [
-          ...MessageV2.toModelMessage(sessionMessages),
+          ...MessageV2.toModelMessage(sessionMessages, { maxHistoryImages: jobCtx.compactionMaxHistoryImages }),
           ...(isLastStep
             ? [
                 {
@@ -514,6 +588,7 @@ export namespace SessionInvoke {
         const promptPlan = await PromptBudgeter.buildPlan({
           model,
           system: systemParts,
+          systemCacheBreakpoint,
           messages: preparedMessages,
           toolDefinitions,
         })
@@ -576,6 +651,7 @@ export namespace SessionInvoke {
           abort: combinedAbort,
           sessionID,
           system: promptPlan.system,
+          systemCacheBreakpoint: promptPlan.systemCacheBreakpoint,
           messages: promptPlan.messages,
           tools,
           model,
@@ -584,9 +660,21 @@ export namespace SessionInvoke {
         processTimer.stop()
 
         // post-LLM jobs
-        const postJobs = LoopJob.collect("post", jobCtx)
+        const postParts = await MessageV2.parts({ scopeID, sessionID, messageID: processor.message.id })
+        const postCtx: LoopJob.Context = {
+          ...jobCtx,
+          messages: [...jobCtx.messages, { info: processor.message, parts: postParts }],
+          lastAssistant: processor.message,
+          lastFinished: SessionProgress.isTerminalAssistant(processor.message)
+            ? processor.message
+            : jobCtx.lastFinished,
+          lastFinishedParts: SessionProgress.isTerminalAssistant(processor.message)
+            ? postParts
+            : jobCtx.lastFinishedParts,
+        }
+        const postJobs = LoopJob.collect("post", postCtx)
         if (postJobs.length > 0) {
-          const postResult = await LoopJob.execute(postJobs, jobCtx)
+          const postResult = await LoopJob.execute(postJobs, postCtx)
           if (postResult === "stop") break
         }
 
@@ -656,9 +744,28 @@ export namespace SessionInvoke {
 
     evictRecallCache(sessionID)
 
+    // Clear pendingReply — the loop has fully completed and the assistant has
+    // replied. Without this, a crashed/restarted server would see pendingReply=true
+    // on already-finished sessions and incorrectly mark them as pending resume.
+    await Session.update(sessionID, (draft) => {
+      draft.pendingReply = undefined
+    })
+
     let resultMessage = selectResultMessage(await Session.messages({ sessionID }))
     if (!resultMessage) {
       resultMessage = await writeAbortedAssistantMessage(sessionID, scopeID)
+    }
+    // If the assistant message is marked with an error (LLM API error, auth
+    // error, output length exceeded, abort, or unknown), propagate it as an
+    // exception so cortex/runTask records task.status = "error" instead of
+    // silently marking the task as "completed".
+    if (resultMessage.info.role === "assistant" && resultMessage.info.error) {
+      const err = resultMessage.info.error
+      throw new MessageV2.SessionTerminalError({
+        errorName: err.name,
+        message:
+          err.data && typeof err.data === "object" && "message" in err.data ? String(err.data.message) : err.name,
+      })
     }
     for (const q of runtime.waiters) {
       q.onComplete(resultMessage)
@@ -704,8 +811,8 @@ export namespace SessionInvoke {
       mode: "unknown",
       agent: "unknown",
       path: {
-        cwd: Instance.directory,
-        root: Instance.directory,
+        cwd: ScopeContext.current.directory,
+        root: ScopeContext.current.directory,
       },
       cost: 0,
       tokens: {
@@ -755,8 +862,8 @@ export namespace SessionInvoke {
       agent: mail.agentID ?? "unknown",
       mode: mail.agentID ?? "unknown",
       path: {
-        cwd: Instance.directory,
-        root: Instance.directory,
+        cwd: ScopeContext.current.directory,
+        root: ScopeContext.current.directory,
       },
       cost: 0,
       tokens: {
@@ -816,20 +923,80 @@ export namespace SessionInvoke {
     return [{ type: "text" as const, text: "" }]
   }
 
-  async function buildCortexExecutionContext(sessionID: string): Promise<string | undefined> {
-    const { Cortex } = await import("../cortex/manager")
-    const role = Cortex.list().find((task) => task.sessionID === sessionID)?.executionRole
-    if (role !== "delegated_subagent") return undefined
+  async function buildDagUpstreamContext(
+    sessionID: string,
+    parentSessionID: string,
+    dagNodeId?: string,
+  ): Promise<string | undefined> {
+    if (!dagNodeId) return undefined
+
+    const { Dag } = await import("./dag")
+    const nodes = await Dag.get(parentSessionID)
+    const current = nodes.find((n) => n.id === dagNodeId)
+    if (!current || current.deps.length === 0) return undefined
+
+    const upstreamResults: string[] = []
+    let totalChars = 0
+    const MAX_PER_NODE = 4096
+    const MAX_TOTAL = 16384
+
+    for (const depId of current.deps) {
+      const depNode = nodes.find((n) => n.id === depId)
+      if (!depNode || depNode.status !== "completed" || !depNode.result) continue
+
+      let result = depNode.result
+      if (result.length > MAX_PER_NODE) {
+        result = result.slice(0, MAX_PER_NODE - 3) + "..."
+      }
+
+      const block = [
+        `## Node: ${depNode.id} — ${depNode.content}`,
+        depNode.assign ? `**Agent**: @${depNode.assign}` : "",
+        "**Result**:",
+        result,
+      ]
+        .filter(Boolean)
+        .join("\n")
+
+      const blockSize = block.length + 2 // +2 for the blank line separator
+      if (totalChars + blockSize > MAX_TOTAL) break
+
+      upstreamResults.push(block)
+      totalChars += blockSize
+    }
+
+    if (upstreamResults.length === 0) return undefined
 
     return [
-      "<cortex-execution>",
-      "Execution role: delegated_subagent",
-      "You are executing a delegated task.",
-      "Default to direct execution and return your result to the parent agent.",
-      "Do not delegate further and do not use task_output unless this session launched a visible background task itself.",
-      "Never call task_output speculatively.",
-      "</cortex-execution>",
+      "<upstream-results>",
+      "The following upstream DAG nodes have completed. Their results are provided as context for your task. Use these findings — do not redo work already done.",
+      "",
+      ...upstreamResults,
+      "</upstream-results>",
     ].join("\n")
+  }
+
+  async function buildCortexExecutionContext(sessionID: string): Promise<string | undefined> {
+    const { Cortex } = await import("../cortex/manager")
+    const task = Cortex.list().find((task) => task.sessionID === sessionID)
+    if (!task || task.executionRole !== "delegated_subagent") return undefined
+
+    const upstreamContext = await buildDagUpstreamContext(sessionID, task.parentSessionID, task.dagNodeId)
+
+    const parts: string[] = []
+    if (upstreamContext) parts.push(upstreamContext)
+    parts.push(
+      [
+        "<cortex-execution>",
+        "Execution role: delegated_subagent",
+        "You are executing a delegated task.",
+        "Default to direct execution and return your result to the parent agent.",
+        "Do not delegate further and do not use task_output unless this session launched a visible background task itself.",
+        "Never call task_output speculatively.",
+        "</cortex-execution>",
+      ].join("\n"),
+    )
+    return parts.join("\n")
   }
 
   async function buildCortexReminder(sessionID: string): Promise<string | undefined> {
@@ -901,6 +1068,7 @@ export namespace SessionInvoke {
     "ast_grep",
     "glob",
     "look_at",
+    "scan_document",
     "edit",
     "write",
     "websearch",
@@ -969,13 +1137,13 @@ export namespace SessionInvoke {
   export function applyExternalPermissionMode(
     config: Record<string, unknown>,
     adapterName: string,
-    allowAll: boolean,
+    controlProfile: string,
   ): Record<string, unknown> {
-    config.allowAll = allowAll
+    config.controlProfile = controlProfile
 
     if (adapterName === "claude-code") {
       delete config.skipPermissions
-      config.permissionMode = allowAll ? "bypassPermissions" : "default"
+      config.permissionMode = controlProfile === "full_access" ? "bypassPermissions" : "default"
       return config
     }
 
@@ -1071,9 +1239,94 @@ export namespace SessionInvoke {
   const placeholderRegex = /\$(\d+)/g
   const quoteTrimRegex = /^["']|["']$/g
 
+  function commandMetadata(command: Command.Info) {
+    return {
+      command: {
+        name: command.name,
+        kind: command.kind,
+        action: command.action,
+        promptVisible: command.promptVisible,
+      },
+      promptVisible: command.promptVisible,
+      source: "command",
+      // Denormalized for easier frontend access (metadata.commandName vs. metadata.command?.name)
+      commandName: command.name,
+    }
+  }
+
+  async function deterministicCommandResult(input: CommandInput, command: Command.Info, result: Command.Result) {
+    const userID = input.messageID ?? Identifier.ascending("message")
+    const agentName = input.agent ?? (await Agent.defaultAgent().catch(() => "system"))
+    const parsedModel = input.model
+      ? Provider.parseModel(input.model)
+      : ((await lastModel(input.sessionID).catch(() => undefined)) ?? { providerID: "system", modelID: "command" })
+    const metadata = commandMetadata(command)
+
+    const user = await Session.updateMessage({
+      id: userID,
+      role: "user",
+      sessionID: input.sessionID,
+      time: { created: Date.now() },
+      agent: agentName,
+      model: parsedModel,
+      metadata,
+    })
+    await Session.updatePart({
+      id: Identifier.ascending("part"),
+      messageID: user.id,
+      sessionID: input.sessionID,
+      type: "text",
+      text: `/${input.command}${input.arguments ? ` ${input.arguments}` : ""}`,
+    })
+
+    const msg: MessageV2.Assistant = {
+      id: Identifier.ascending("message"),
+      sessionID: input.sessionID,
+      parentID: user.id,
+      role: "assistant",
+      mode: agentName,
+      agent: agentName,
+      cost: 0,
+      path: {
+        cwd: ScopeContext.current.directory,
+        root: ScopeContext.current.directory,
+      },
+      time: { created: Date.now(), completed: Date.now() },
+      tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+      finish: "stop",
+      modelID: parsedModel.modelID,
+      providerID: parsedModel.providerID,
+      metadata,
+    }
+    await Session.updateMessage(msg)
+    await Session.updatePart({
+      id: Identifier.ascending("part"),
+      messageID: msg.id,
+      sessionID: input.sessionID,
+      type: "text",
+      text: result.output,
+      metadata: result.metadata,
+    })
+    Bus.publish(Command.Event.Executed, {
+      name: input.command,
+      sessionID: input.sessionID,
+      arguments: input.arguments,
+      messageID: user.id,
+    })
+    return { info: msg, parts: await MessageV2.parts({ sessionID: input.sessionID, messageID: msg.id }) }
+  }
+
   export async function command(input: CommandInput) {
     log.info("command", input)
-    const command = await Command.get(input.command)
+    const command = await Command.require(input.command)
+    if (command.kind === "action") {
+      if (!command.action) throw new Command.UnknownActionError({ action: "" })
+      return SessionManager.run(input.sessionID, async () => {
+        const result = await Command.runAction({ action: command.action!, input, command })
+        return deterministicCommandResult(input, command, result)
+      })
+    }
+    if (!command.template) throw new Command.NotFoundError({ name: input.command })
     const agentName = command.agent ?? input.agent ?? (await Agent.defaultAgent())
 
     const raw = input.arguments.match(argsRegex) ?? []
@@ -1211,7 +1464,7 @@ export namespace SessionInvoke {
 
       if (!pendingReply) continue
 
-      SessionManager.run(sessionID, () => loop(sessionID)).catch(() => {})
+      log.info("pending reply found; automatic assistant resume is disabled", { sessionID })
     }
   }
 

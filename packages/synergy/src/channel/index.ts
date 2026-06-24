@@ -1,7 +1,10 @@
 import fs from "fs/promises"
+import path from "path"
+import { pathToFileURL } from "url"
 import z from "zod"
 import { NamedError } from "@ericsanchezok/synergy-util/error"
-import { Instance } from "../scope/instance"
+import { ScopeContext } from "../scope/context"
+import { ScopedState } from "../scope/scoped-state"
 import { Scope } from "@/scope"
 
 import { Config } from "../config/config"
@@ -123,10 +126,10 @@ export namespace Channel {
     return providers.get(type)
   }
 
-  const state = Instance.state(
+  const state = ScopedState.create(
     async (): Promise<State> => {
-      const scope = Scope.global()
-      const cfg = await Config.get()
+      const scope = Scope.home()
+      const cfg = await Config.current()
       const channels = cfg.channel ?? {}
       const connections = new Map<string, Connection>()
       const statuses = new Map<string, Status>()
@@ -189,6 +192,10 @@ export namespace Channel {
     log.info("reloading channel state")
     await state.resetAll()
     log.info("channel state reloaded")
+  }
+
+  export async function stopAll() {
+    await state.resetAll()
   }
 
   async function connectAccount(input: {
@@ -349,7 +356,7 @@ export namespace Channel {
   }
 
   async function handleMessage(provider: Provider, ctx: MessageContext, scope: Scope): Promise<void> {
-    await Instance.provide({
+    await ScopeContext.provide({
       scope,
       fn: async () => {
         log.info("message received", {
@@ -554,8 +561,8 @@ export namespace Channel {
       for (const attachment of ctx.attachments) {
         parts.push({
           type: "file",
-          url: `file://${attachment.path}`,
-          filename: attachment.filename ?? attachment.path.split("/").pop() ?? "attachment",
+          url: pathToFileURL(attachment.path).href,
+          filename: attachment.filename ?? path.basename(attachment.path) ?? "attachment",
           mime: attachment.contentType,
         })
       }
@@ -667,7 +674,7 @@ export namespace Channel {
     }
 
     // Resolve config for this specific account
-    const cfg = await Config.get()
+    const cfg = await Config.current()
     const channels = cfg.channel ?? {}
     const channelConfig = channels[channelType]
     if (!channelConfig) {
@@ -704,7 +711,7 @@ export namespace Channel {
 
     s.statuses.set(key, { status: "connecting" })
     const abort = new AbortController()
-    const scope = Scope.global()
+    const scope = Scope.home()
 
     await connectAccount({
       channelType,

@@ -31,6 +31,12 @@
     }
   }
 
+  &[data-direction="horizontal"][data-edge="start"] {
+    inset-inline-start: 0;
+    inset-inline-end: auto;
+    transform: translateX(-50%);
+  }
+
   &[data-direction="vertical"] {
     inset-inline: 0;
     inset-block-start: 0;
@@ -44,5 +50,11 @@
       inset-block-start: 50%;
       transform: translateY(-50%);
     }
+  }
+
+  &[data-direction="vertical"][data-edge="end"] {
+    inset-block-start: auto;
+    inset-block-end: 0;
+    transform: translateY(50%);
   }
 }

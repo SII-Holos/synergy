@@ -812,7 +812,7 @@ class NonStreamingSession implements ChannelTypes.StreamingSession {
 ;(globalThis as any).__synergy_feishu_onCardAction = FeishuProvider.onCardAction.bind(FeishuProvider)
 
 // Consume any pending card action handler that was stored by a plugin before this module loaded.
-// This handles the timing issue where Plugin.init() runs before ChannelBootstrap().
+// This handles the timing issue where Plugin.init() runs before GlobalRuntime starts channels.
 const pendingHandler = (globalThis as any).__synergy_feishu_pendingCardActionHandler as
   | ((data: unknown, accountId: string) => Promise<unknown>)
   | undefined

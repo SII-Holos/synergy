@@ -11,7 +11,7 @@
       "@ericsanchezok/meta-protocol": ["../meta-protocol/src/index.ts"]
     }
   },
-  "include": ["src/**/*", "test/**/*", "script/**/*", "parsers-config.ts"],
+  "include": ["src/**/*", "test/**/*", "script/**/*", "scripts/**/*", "parsers-config.ts"],
 
   "exclude": ["dist", "node_modules", ".turbo", ".synergy"]
 }

@@ -1,4 +1,7 @@
+import { ErrorBoundary } from "solid-js"
 import { createEffect, createMemo, createSignal, onCleanup, onMount, ParentProps, Show, Switch, Match } from "solid-js"
+import { Dynamic } from "solid-js/web"
+import type { Component } from "solid-js"
 import { useNavigate, useParams } from "@solidjs/router"
 import { useLayout } from "@/context/layout"
 import { useGlobalSync } from "@/context/global-sync"
@@ -7,10 +10,9 @@ import { base64Decode, base64Encode } from "@ericsanchezok/synergy-util/encode"
 import { getFilename } from "@ericsanchezok/synergy-util/path"
 import { usePlatform } from "@/context/platform"
 import { createStore } from "solid-js/store"
-import { showToast, Toast, toaster } from "@ericsanchezok/synergy-ui/toast"
+import { showToast, Toast, toaster, setToastConfig, type ToastConfig } from "@ericsanchezok/synergy-ui/toast"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { useNotification } from "@/context/notification"
-import { usePermission } from "@/context/permission"
 import { PanelProvider, usePanel, PANELS } from "@/context/panel"
 
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
@@ -20,15 +22,18 @@ import { DialogSelectProvider, DialogSelectServer, DialogSelectDirectory } from 
 import { useCommand, type CommandOption } from "@/context/command"
 import { navStart } from "@/utils/perf"
 import { useServer } from "@/context/server"
-import { HeaderBar } from "@/components/header-bar"
+import { Sidebar } from "@/components/sidebar/sidebar"
+import { GlobalSearchModal } from "@/components/search/global-search-modal"
+import { GlobalPanelOverlay } from "@/components/overlay/global-panel-overlay"
 import { MobileDrawer } from "@/components/mobile-drawer"
 import { EngramPanel } from "@/components/engram"
 import { AgendaPanel } from "@/components/agenda"
-import { NotePanel } from "@/components/note-panel"
-import { ScopesPanel } from "@/components/scopes"
-import { HolosPanel } from "@/components/contacts"
+
 import { LucidPanel } from "@/components/lucid-panel"
 import { ConnectionBanner } from "@/components/connection-banner"
+import { getGlobalPanel } from "@/plugin"
+import { SandboxIframe } from "@/plugin/sandbox"
+import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
 
 export default function Layout(props: ParentProps) {
   const [store, setStore] = createStore({
@@ -42,11 +47,27 @@ export default function Layout(props: ParentProps) {
   const platform = usePlatform()
   const server = useServer()
   const notification = useNotification()
-  const permission = usePermission()
   const navigate = useNavigate()
   const dialog = useDialog()
   const command = useCommand()
   const theme = useTheme()
+  const [searchOpen, setSearchOpen] = createSignal(false)
+  // Wire toast config from serialized config, watching the current directory's config.
+  createEffect(() => {
+    const dir = params.dir ? base64Decode(params.dir) : undefined
+    if (!dir) return
+    const [store] = globalSync.ensureScopeState(dir)
+    const cfg = (store.config as any)?.toast
+    setToastConfig(
+      cfg
+        ? {
+            muted: cfg.muted,
+            durationOverrides: cfg.durationOverrides,
+          }
+        : undefined,
+    )
+  })
+
   const colorSchemeOrder: ColorScheme[] = ["system", "light", "dark"]
   const colorSchemeLabel: Record<ColorScheme, string> = {
     system: "System",
@@ -62,6 +83,7 @@ export default function Layout(props: ParentProps) {
     const next = colorSchemeOrder[nextIndex]
     theme.setColorScheme(next)
     showToast({
+      type: "info",
       title: "Color scheme",
       description: colorSchemeLabel[next],
     })
@@ -77,9 +99,8 @@ export default function Layout(props: ParentProps) {
       if (e.details?.type !== "permission.asked") return
       const directory = e.name
       const perm = e.details.properties
-      if (permission.isAllowingAll(perm.sessionID, directory)) return
 
-      const [childStore] = globalSync.child(directory)
+      const [childStore] = globalSync.ensureScopeState(directory)
       const session = childStore.session.find((s) => s.id === perm.sessionID)
       const sessionKey = `${directory}:${perm.sessionID}`
 
@@ -105,7 +126,8 @@ export default function Layout(props: ParentProps) {
       }
 
       const toastId = showToast({
-        persistent: true,
+        type: "warning",
+        duration: 10000,
         icon: "shield-alert",
         title: "Permission required",
         description,
@@ -137,7 +159,7 @@ export default function Layout(props: ParentProps) {
         toastBySession.delete(sessionKey)
         alertedAtBySession.delete(sessionKey)
       }
-      const [childStore] = globalSync.child(currentDir)
+      const [childStore] = globalSync.ensureScopeState(currentDir)
       const childSessions = childStore.session.filter((s) => s.parentID === currentSession)
       for (const child of childSessions) {
         const childKey = `${currentDir}:${child.id}`
@@ -343,21 +365,13 @@ export default function Layout(props: ParentProps) {
       },
       {
         id: "session.list",
-        title: "List sessions",
-        description: "Show sessions for current project",
+        title: "Search sessions",
+        description: "Search sessions across all projects",
         category: "Session",
         slash: "session",
-        onSelect: () => {},
+        onSelect: () => setSearchOpen(true),
       },
     ]
-
-    commands.push({
-      id: "theme.scheme.cycle",
-      title: "Cycle color scheme",
-      category: "Theme",
-      keybind: "mod+shift+s",
-      onSelect: () => cycleColorScheme(1),
-    })
 
     for (const scheme of colorSchemeOrder) {
       commands.push({
@@ -403,7 +417,7 @@ export default function Layout(props: ParentProps) {
       if (result.initGit) {
         const dirs = Array.isArray(result.directory) ? result.directory : [result.directory]
         for (const dir of dirs) {
-          await globalSDK.client.git.init({ body_directory: dir }).catch(() => {})
+          await globalSDK.client.global.git.init({ directory: dir }).catch(() => {})
         }
       }
 
@@ -434,16 +448,19 @@ export default function Layout(props: ParentProps) {
 
   return (
     <PanelProvider>
-      <LayoutContent>{props.children}</LayoutContent>
+      <LayoutContent
+        searchOpen={searchOpen()}
+        onSearchClose={() => setSearchOpen(false)}
+        onSearchOpen={() => setSearchOpen(true)}
+      >
+        {props.children}
+      </LayoutContent>
     </PanelProvider>
   )
 }
 
-const PANEL_DEFAULT = 45
-const PANEL_MIN = 20
-const MAIN_MIN_PX = 480
-
-function PanelContent() {
+function GlobalPanelSwitch() {
+  const params = useParams()
   const panel = usePanel()
   return (
     <Switch>
@@ -453,20 +470,83 @@ function PanelContent() {
       <Match when={panel.active() === "agenda"}>
         <AgendaPanel />
       </Match>
-      <Match when={panel.active() === "note"}>
-        <NotePanel />
-      </Match>
-      <Match when={panel.active() === "scopes"}>
-        <ScopesPanel />
-      </Match>
-      <Match when={panel.active() === "holos"}>
-        <HolosPanel />
-      </Match>
       <Match when={panel.active() === "lucid"}>
         <LucidPanel />
       </Match>
       <Match when={panel.hasSlot(panel.active()!)}>{panel.slot(panel.active()!)}</Match>
+      <Match when={!!getGlobalPanel(panel.active()!)}>
+        <PluginGlobalPanelContent panelId={panel.active()!} />
+      </Match>
     </Switch>
+  )
+}
+
+/** Wrapper that shows a spinner while lazy-loading a plugin global panel component. */
+function PluginGlobalPanelContent(props: { panelId: string }) {
+  const [comp, setComp] = createSignal<Component | null>(null)
+  const [loading, setLoading] = createSignal(true)
+  const [entry, setEntry] = createSignal<ReturnType<typeof getGlobalPanel>>(undefined)
+
+  onMount(() => {
+    const e = getGlobalPanel(props.panelId)
+    setEntry(e)
+    if (!e) {
+      setLoading(false)
+      return
+    }
+    if (e.component) {
+      setComp(() => e.component!)
+      setLoading(false)
+      return
+    }
+    if (e.sandbox) {
+      setLoading(false)
+      return
+    }
+    if (e.loader) {
+      e.loader().then(
+        (mod) => {
+          setComp(() => mod.default)
+          setLoading(false)
+        },
+        () => setLoading(false),
+      )
+      return
+    }
+    setLoading(false)
+  })
+
+  const isSandbox = () => entry()?.sandbox && entry()?.sandboxUrl
+
+  return (
+    <Show
+      when={!loading()}
+      fallback={
+        <div class="flex items-center justify-center h-full">
+          <Spinner class="size-5" />
+        </div>
+      }
+    >
+      <Show when={isSandbox()}>
+        <ErrorBoundary
+          fallback={(error) => (
+            <div class="flex items-center justify-center h-full text-14 text-icon-critical-base p-4">
+              {error.message}
+            </div>
+          )}
+        >
+          <SandboxIframe src={entry()!.sandboxUrl!} pluginId={entry()!.pluginId} panelId={entry()!.id} />
+        </ErrorBoundary>
+      </Show>
+      <Show when={!isSandbox()}>
+        <Show
+          when={comp()}
+          fallback={<div class="flex items-center justify-center h-full text-text-weak text-14">Panel unavailable</div>}
+        >
+          {(c) => <Dynamic component={c()} />}
+        </Show>
+      </Show>
+    </Show>
   )
 }
 
@@ -493,93 +573,32 @@ function MobilePanelOverlay() {
           </button>
         </div>
         <div class="flex-1 min-h-0 overflow-hidden">
-          <PanelContent />
+          <GlobalPanelSwitch />
         </div>
       </div>
     </Show>
   )
 }
 
-function LayoutContent(props: ParentProps) {
-  const panel = usePanel()
+function LayoutContent(
+  props: ParentProps & { searchOpen: boolean; onSearchClose: () => void; onSearchOpen: () => void },
+) {
   const layout = useLayout()
-  const [panelWidth, setPanelWidth] = createSignal(PANEL_DEFAULT)
-  const [resizing, setResizing] = createSignal(false)
-
-  const isDesktopOpen = () => layout.isDesktop() && !!panel.active()
-
-  const panelMax = () => Math.floor(((window.innerWidth - MAIN_MIN_PX) / window.innerWidth) * 100)
-
-  function handleResizeStart(e: MouseEvent) {
-    e.preventDefault()
-    setResizing(true)
-    const startX = e.clientX
-    const startWidth = panelWidth()
-
-    document.body.style.userSelect = "none"
-    document.body.style.overflow = "hidden"
-
-    const onMouseMove = (moveEvent: MouseEvent) => {
-      const delta = startX - moveEvent.clientX
-      const newPercent = startWidth + (delta / window.innerWidth) * 100
-      setPanelWidth(Math.min(panelMax(), Math.max(PANEL_MIN, newPercent)))
-    }
-
-    const onMouseUp = () => {
-      setResizing(false)
-      document.body.style.userSelect = ""
-      document.body.style.overflow = ""
-      document.removeEventListener("mousemove", onMouseMove)
-      document.removeEventListener("mouseup", onMouseUp)
-    }
-
-    document.addEventListener("mousemove", onMouseMove)
-    document.addEventListener("mouseup", onMouseUp)
-  }
-
-  const params = useParams()
-  const isHome = () => !params.dir
 
   return (
     <div class="relative flex-1 min-h-0 flex flex-col select-none [&_input]:select-text [&_textarea]:select-text [&_[contenteditable]]:select-text">
       <MobileDrawer />
-      <Show when={!isHome()}>
-        <HeaderBar />
-      </Show>
       <ConnectionBanner />
       <div class="flex-1 min-h-0 min-w-0 flex overflow-hidden">
-        <main
-          class="flex-1 min-h-0 min-w-0 overflow-x-hidden flex flex-col contain-strict"
-          style={{ "min-width": layout.isDesktop() ? `${MAIN_MIN_PX}px` : undefined }}
-        >
-          {props.children}
-        </main>
-        <div
-          classList={{
-            "relative h-full shrink-0 overflow-hidden": true,
-            "border-l border-border-weaker-base/60 bg-background-stronger": isDesktopOpen(),
-          }}
-          style={{
-            width: isDesktopOpen() ? `${panelWidth()}%` : "0%",
-            "max-width": `calc(100% - ${MAIN_MIN_PX}px)`,
-            ...(!resizing() && { transition: "width 250ms cubic-bezier(0.16, 1, 0.3, 1)" }),
-          }}
-        >
-          <div class="h-full" style={{ "min-width": `${panelWidth()}vw` }}>
-            <Show when={isDesktopOpen()}>
-              <div
-                class="absolute inset-y-0 left-0 w-2 -translate-x-1/2 cursor-ew-resize z-10 group"
-                onMouseDown={handleResizeStart}
-              >
-                <div class="absolute inset-y-0 left-1/2 w-[3px] -translate-x-1/2 rounded-sm bg-border-strong-base opacity-0 group-hover:opacity-100 group-active:opacity-100 transition-opacity" />
-              </div>
-            </Show>
-            <PanelContent />
-          </div>
-        </div>
+        <Show when={layout.isDesktop()}>
+          <Sidebar onSearchOpen={props.onSearchOpen} />
+        </Show>
+        <main class="flex-1 min-h-0 min-w-0 overflow-x-hidden flex flex-col contain-strict">{props.children}</main>
       </div>
       <MobilePanelOverlay />
-      <Toast.Region />
+      <GlobalSearchModal open={props.searchOpen} onClose={props.onSearchClose} />
+      <GlobalPanelOverlay panelContent={() => <GlobalPanelSwitch />} />
+      <Toast.Region limit={5} swipeDirection="right" pauseOnInteraction={true} />
     </div>
   )
 }

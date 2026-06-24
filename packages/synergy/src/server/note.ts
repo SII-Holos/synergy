@@ -3,11 +3,36 @@ import { describeRoute, validator, resolver } from "hono-openapi"
 import z from "zod"
 import { errors } from "./error"
 import { NoteError, NoteMarkdown, NoteStore, NoteTypes } from "../note"
-import { Instance } from "../scope/instance"
+import { ScopeContext } from "../scope/context"
 import { Storage } from "../storage/storage"
 
 export const NoteRoute = new Hono()
 
+  // Keep static metadata route before parameterized `/:id` routes for clear route intent.
+  .get(
+    "/meta",
+    describeRoute({
+      summary: "List note metadata grouped by scope",
+      description:
+        "List metadata for all notes across all scopes, grouped by scope ID. Does not include full note content.",
+      operationId: "note.listMeta",
+      responses: {
+        200: {
+          description: "Note metadata grouped by scope",
+          content: { "application/json": { schema: resolver(NoteTypes.MetaScopeGroup.array()) } },
+        },
+        ...errors(400),
+      },
+    }),
+    async (c) => {
+      try {
+        const groups = await NoteStore.listMetaGrouped()
+        return c.json(groups)
+      } catch (err: any) {
+        return c.json({ message: err?.message ?? String(err) }, 400)
+      }
+    },
+  )
   .get(
     "/all",
     describeRoute({
@@ -52,7 +77,7 @@ export const NoteRoute = new Hono()
       try {
         const id = c.req.valid("param").id
         const format = c.req.valid("query").format
-        const note = await NoteStore.getAny(Instance.scope.id, id)
+        const note = await NoteStore.getAny(ScopeContext.current.scope.id, id)
         const markdown = NoteMarkdown.toMarkdown(note.content)
         const safeTitle = note.title.replace(/[^\w\s-]/g, "").trim() || "note"
 
@@ -122,7 +147,7 @@ export const NoteRoute = new Hono()
     async (c) => {
       try {
         const id = c.req.valid("param").id
-        const note = await NoteStore.getAny(Instance.scope.id, id)
+        const note = await NoteStore.getAny(ScopeContext.current.scope.id, id)
         return c.json(note)
       } catch (err: any) {
         if (err instanceof Storage.NotFoundError)
@@ -152,7 +177,7 @@ export const NoteRoute = new Hono()
       try {
         const id = c.req.valid("param").id
         const body = c.req.valid("json")
-        const note = await NoteStore.updateAny(Instance.scope.id, id, body)
+        const note = await NoteStore.updateAny(ScopeContext.current.scope.id, id, body)
         return c.json(note)
       } catch (err: any) {
         if (err instanceof Storage.NotFoundError)
@@ -181,7 +206,7 @@ export const NoteRoute = new Hono()
     async (c) => {
       try {
         const id = c.req.valid("param").id
-        await NoteStore.removeAny(Instance.scope.id, id)
+        await NoteStore.removeAny(ScopeContext.current.scope.id, id)
         return c.json(true)
       } catch (err: any) {
         return c.json({ message: err?.message ?? String(err) }, 400)
@@ -205,7 +230,7 @@ export const NoteRoute = new Hono()
     }),
     async (c) => {
       try {
-        const notes = await NoteStore.listWithGlobal(Instance.scope.id)
+        const notes = await NoteStore.listWithGlobal(ScopeContext.current.scope.id)
         return c.json(notes)
       } catch (err: any) {
         return c.json({ message: err?.message ?? String(err) }, 400)

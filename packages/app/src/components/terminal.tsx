@@ -228,6 +228,7 @@ export const Terminal = (props: TerminalProps) => {
     })
 
     const connect = () => {
+      if (!sdk.directory) return
       const socket = new WebSocket(
         sdk.url + `/pty/${local.pty.id}/connect?directory=${encodeURIComponent(sdk.directory)}`,
       )

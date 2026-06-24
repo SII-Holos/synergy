@@ -1,3 +1,7 @@
+import { $ } from "bun"
+
+import { BusyError } from "../session/error"
+import { Worktree } from "../project/worktree"
 import { Bus } from "../bus"
 import { Config } from "../config/config"
 import { Identifier } from "../id/id"
@@ -20,9 +24,12 @@ export namespace Cortex {
 
   const tasks: Map<string, CortexTypes.Task> = new Map()
   const taskWaiters: Map<string, Set<{ resolve: (task: CortexTypes.Task) => void; timeout: Timer }>> = new Map()
+  const taskRuns: Map<string, Promise<void>> = new Map()
   const acquiredTasks = new Set<string>()
 
   const CLEANUP_DELAY_MS = 20 * 60 * 1000
+  const EXTERNAL_TASK_RESULT_CHAR_LIMIT = 120_000
+  const EXTERNAL_TASK_RESULT_HEAD_CHARS = 20_000
   const DEFAULT_SUBAGENT_BLOCKED_TOOLS = [
     "task",
     "task_output",
@@ -35,6 +42,39 @@ export namespace Cortex {
 
   export const Event = CortexEvent
 
+  /** Extract final text from an external-agent subagent session.
+   *  Reads all assistant text parts (excluding synthetic, ignored, tool output, reasoning)
+   *  and returns the concatenated result, capped to avoid excessive context size. */
+  export async function extractExternalTaskResult(sessionID: string): Promise<string> {
+    const messages = await Session.messages({ sessionID })
+    const chunks: string[] = []
+
+    for (const message of messages) {
+      if (message.info.role !== "assistant") continue
+
+      for (const part of message.parts) {
+        if (part.type !== "text" || part.synthetic || part.ignored) continue
+        const text = part.text.trim()
+        if (text) chunks.push(text)
+      }
+    }
+
+    const result = chunks.join("\n\n").trim()
+    if (!result) return "No assistant text found in external subagent session."
+
+    if (result.length <= EXTERNAL_TASK_RESULT_CHAR_LIMIT) return result
+
+    const tailChars = EXTERNAL_TASK_RESULT_CHAR_LIMIT - EXTERNAL_TASK_RESULT_HEAD_CHARS
+    const omitted = result.length - EXTERNAL_TASK_RESULT_CHAR_LIMIT
+    return [
+      result.slice(0, EXTERNAL_TASK_RESULT_HEAD_CHARS).trimEnd(),
+      "",
+      `[External subagent result truncated: ${omitted.toLocaleString()} characters omitted.]`,
+      "",
+      result.slice(-tailChars).trimStart(),
+    ].join("\n")
+  }
+
   export const launch = fn(CortexTypes.LaunchInput, async (input) => {
     const taskID = Identifier.short("cortex")
     const executionRole = input.executionRole ?? "primary"
@@ -45,36 +85,83 @@ export namespace Cortex {
       executionRole,
     })
 
-    const config = await Config.get()
+    const config = await Config.current()
     const parent = await Session.get(input.parentSessionID)
     const blockedTools = Array.from(
       new Set([...(config.experimental?.primary_tools ?? []), ...DEFAULT_SUBAGENT_BLOCKED_TOOLS]),
     )
 
-    const session = await Session.create({
-      scope: parent.scope as import("@/scope").Scope,
-      parentID: input.parentSessionID,
-      title: `[Cortex] ${input.description} (@${input.agent})`,
-      permission: [
-        { permission: "question", pattern: "*", action: "deny" },
-        ...(executionRole === "delegated_subagent"
-          ? blockedTools.map((tool) => ({
-              pattern: "*",
-              action: "deny" as const,
-              permission: tool,
-            }))
-          : []),
-      ],
-      cortex: {
-        parentSessionID: input.parentSessionID,
-        parentMessageID: input.parentMessageID,
+    let session: import("../session/types").Info
+
+    if (input.sessionID) {
+      const existing = await Session.get(input.sessionID)
+      if (!existing) {
+        throw new Error(`Session ${input.sessionID} not found`)
+      }
+      if (existing.parentID !== input.parentSessionID) {
+        throw new Error(
+          `Session ${input.sessionID} does not belong to parent session ${input.parentSessionID}. ` +
+            `Reuse is only allowed for sessions created by the same parent.`,
+        )
+      }
+      if (SessionManager.isRunning(input.sessionID)) {
+        throw new BusyError(input.sessionID)
+      }
+      session = existing
+      log.info("reusing existing session", {
+        taskID,
+        sessionID: existing.id,
         description: input.description,
-        agent: input.agent,
-        executionRole,
-        status: "queued",
-        startedAt: Date.now(),
-      },
-    })
+      })
+    } else {
+      session = await Session.create({
+        scope: parent.scope as import("@/scope").Scope,
+        parentID: input.parentSessionID,
+        title: `[Cortex] ${input.description} (@${input.agent})`,
+        permission: [
+          { permission: "question", pattern: "*", action: "deny" },
+          ...(executionRole === "delegated_subagent"
+            ? blockedTools.map((tool) => ({
+                pattern: "*",
+                action: "deny" as const,
+                permission: tool,
+              }))
+            : []),
+        ],
+        cortex: {
+          parentSessionID: input.parentSessionID,
+          parentMessageID: input.parentMessageID,
+          description: input.description,
+          agent: input.agent,
+          executionRole,
+          status: "queued",
+          startedAt: Date.now(),
+        },
+        workspace: (parent as import("../session/types").Info).workspace,
+      })
+    }
+    if (input.worktree?.create) {
+      const parentWorkspace = (parent as import("../session/types").Info).workspace
+      if (parentWorkspace?.type !== "git_worktree") {
+        try {
+          const created = await Worktree.create({
+            name: input.worktree.name,
+            baseRef: input.worktree.baseRef,
+            bind: false,
+          })
+          await Worktree.enter({ sessionID: session.id, target: created.id, force: false })
+          log.info("worktree bound to child session", {
+            taskID,
+            worktreeID: created.id,
+            worktreeName: created.name,
+          })
+        } catch (error) {
+          log.warn("failed to create worktree for child session", { taskID, error })
+        }
+      } else {
+        log.info("parent already in worktree, child inherits parent workspace", { taskID })
+      }
+    }
 
     const task: CortexTypes.Task = {
       id: taskID,
@@ -112,10 +199,15 @@ export namespace Cortex {
 
     setTaskStatus(taskID, "running")
 
-    runTask(current, input.model).catch((error) => {
-      log.error("task error", { taskID, error })
-      updateTaskStatus(taskID, "error", String(error))
-    })
+    const run = runTask(current, input.model)
+      .catch((error) => {
+        log.error("task error", { taskID, error })
+        updateTaskStatus(taskID, "error", String(error))
+      })
+      .finally(() => {
+        taskRuns.delete(taskID)
+      })
+    taskRuns.set(taskID, run)
 
     return current
   })
@@ -132,6 +224,8 @@ export namespace Cortex {
       if (draft.cortex) {
         draft.cortex.status = status as "queued" | "running" | "completed" | "error" | "cancelled"
       }
+    }).catch((error) => {
+      log.error("failed to persist task status", { taskID, status, error })
     })
 
     Bus.publish(Event.TasksUpdated, { tasks: list() })
@@ -154,6 +248,8 @@ export namespace Cortex {
       if (draft.cortex) {
         draft.cortex.model = { providerID: resolvedModel.providerID, modelID: resolvedModel.modelID }
       }
+    }).catch((error) => {
+      log.error("failed to persist task model", { taskID: task.id, error })
     })
     let unsub: (() => void) | undefined
     try {
@@ -213,8 +309,10 @@ export namespace Cortex {
 
       unsub()
 
-      const summary = await Trajectory.summarize(task.sessionID)
-      updateTaskStatus(task.id, "completed", undefined, summary || undefined)
+      const result = agent.external
+        ? await extractExternalTaskResult(task.sessionID)
+        : await Trajectory.summarize(task.sessionID)
+      updateTaskStatus(task.id, "completed", undefined, result || undefined)
     } catch (error) {
       unsub?.()
       log.error("task execution failed", { taskID: task.id, error })
@@ -245,6 +343,8 @@ export namespace Cortex {
         if (error) draft.cortex.error = error
         if (result) draft.cortex.result = result
       }
+    }).catch((error) => {
+      log.error("failed to persist terminal task fields", { taskID, error })
     })
 
     if (acquiredTasks.delete(taskID)) {
@@ -276,14 +376,29 @@ export namespace Cortex {
       notifyParentSession(task)
     }
 
+    void cleanupChildWorktree(task)
+
     setTimeout(() => {
-      void (async () => {
-        tasks.delete(taskID)
-        acquiredTasks.delete(taskID)
-        SessionManager.unregisterRuntime(task.sessionID)
-        log.info("task cleaned up", { taskID })
-      })()
+      const task = tasks.get(taskID)
+      if (task) {
+        task.prompt = ""
+        task.result = undefined
+        task.error = undefined
+        log.info("task strings evicted", { taskID })
+      }
     }, CLEANUP_DELAY_MS)
+
+    setTimeout(
+      () => {
+        void (async () => {
+          tasks.delete(taskID)
+          acquiredTasks.delete(taskID)
+          SessionManager.unregisterRuntime(task.sessionID)
+          log.info("task cleaned up", { taskID })
+        })()
+      },
+      CLEANUP_DELAY_MS + 5 * 60 * 1000,
+    )
   }
 
   async function updateDagNode(task: CortexTypes.Task): Promise<void> {
@@ -293,6 +408,10 @@ export namespace Cortex {
       const node = nodes.find((n) => n.id === task.dagNodeId)
       if (!node) return
       node.status = task.status === "completed" ? "completed" : "failed"
+      if (task.result || task.error) {
+        const raw = task.status === "completed" ? (task.result ?? "") : (task.error ?? "")
+        node.result = raw.length > 8192 ? raw.slice(0, 8189) + "..." : raw
+      }
       Dag.autoPromote(nodes)
       await Dag.update({ sessionID: task.parentSessionID, nodes })
       log.info("dag node updated", { dagNodeId: task.dagNodeId, status: node.status })
@@ -333,9 +452,12 @@ export namespace Cortex {
         ],
         metadata: {
           channelPush: true,
+          source: "cortex",
           sourceSessionID: task.sessionID,
         },
       },
+    }).catch((error) => {
+      log.error("failed to notify parent session", { taskID: task.id, parentSessionID: task.parentSessionID, error })
     })
   }
 
@@ -444,6 +566,13 @@ export namespace Cortex {
     log.info("cancelling task", { taskID, sessionID: task.sessionID, status: task.status })
     SessionInvoke.cancel(task.sessionID)
     updateTaskStatus(taskID, "cancelled")
+
+    const run = taskRuns.get(taskID)
+    // Don't block cancel on processor settle — status is already "cancelled".
+    // The run promise fulfills when the session loop exits (triggered by the
+    // SessionInvoke.cancel call above plus abort signal propagation), after
+    // which the task's finally block in launch() will clean up taskRuns.
+    if (run) run.catch(() => {})
   }
 
   export async function cancelAll(parentSessionID: string): Promise<number> {
@@ -564,6 +693,7 @@ export namespace Cortex {
 
   export function reset(): void {
     tasks.clear()
+    taskRuns.clear()
     acquiredTasks.clear()
     for (const waiters of taskWaiters.values()) {
       for (const waiter of waiters) {
@@ -572,5 +702,48 @@ export namespace Cortex {
     }
     taskWaiters.clear()
     CortexConcurrency.reset()
+  }
+
+  async function cleanupChildWorktree(task: CortexTypes.Task) {
+    try {
+      const session = await Session.get(task.sessionID)
+      const workspace = session.workspace
+      if (workspace?.type !== "git_worktree" || !workspace.worktreeID) return
+      const state = await Worktree.status(task.sessionID)
+      if (!state.worktree || !state.worktree.managed) return
+      const owner = state.worktree.owner
+      if (owner?.type !== "session" || owner.sessionID !== task.sessionID) return
+      if (state.dirty) {
+        await Worktree.markLifecycle(state.worktree.id, "gc_candidate")
+        log.info("child worktree dirty, marked for gc", {
+          taskID: task.id,
+          worktreeID: state.worktree.id,
+          worktreeName: state.worktree.name,
+        })
+        return
+      }
+      if (state.worktree.branch) {
+        const result = await $`git rev-list --count HEAD --not --remotes`.quiet().nothrow().cwd(state.path)
+        const localOnly = parseInt(result.stdout.toString().trim(), 10)
+        if (!isNaN(localOnly) && localOnly > 0) {
+          log.info("child worktree has local-only commits, kept for review", {
+            taskID: task.id,
+            worktreeID: state.worktree.id,
+            worktreeName: state.worktree.name,
+            branch: state.worktree.branch,
+            localCommits: localOnly,
+          })
+          return
+        }
+      }
+      await Worktree.remove({ sessionID: task.sessionID, target: state.worktree.id, force: false })
+      log.info("child worktree removed", {
+        taskID: task.id,
+        worktreeID: state.worktree.id,
+        worktreeName: state.worktree.name,
+      })
+    } catch (error) {
+      log.warn("child worktree cleanup failed", { taskID: task.id, error })
+    }
   }
 }

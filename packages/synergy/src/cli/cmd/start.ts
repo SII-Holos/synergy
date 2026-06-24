@@ -1,9 +1,11 @@
+import { ConfigDomain } from "../../config/domain"
 import { cmd } from "./cmd"
 import { UI } from "../ui"
 import { withNetworkOptions } from "../network"
 import { Daemon } from "../../daemon"
 import { DaemonOutput } from "../../daemon/output"
 import { DaemonService } from "../../daemon/service"
+import * as prompts from "@clack/prompts"
 
 export const StartCommand = cmd({
   command: "start",
@@ -26,44 +28,59 @@ export const StartCommand = cmd({
         logFile: status.logFile,
         detail: status.detail,
         notes: status.drifted
-          ? ["Current config differs from the installed service. Restart to apply the current config."]
+          ? ["Current config differs from the installed service. Stop and start to apply the current config."]
           : undefined,
         next: status.drifted
-          ? ["synergy restart", "synergy status", "synergy logs"]
+          ? ["synergy stop && synergy start", "synergy status", "synergy logs"]
           : ["synergy web", 'synergy send "your message"'],
       })
       return
     }
 
     if (status.runtime === "unknown") {
-      UI.error("Another Synergy process is already active on the configured address")
-      UI.println(`  URL:       ${status.url}`)
-      if (status.detail) UI.println(`  Detail:    ${status.detail}`)
-      UI.println()
-      UI.println("  Next:")
-      UI.println("    Stop the other Synergy instance before starting the background service")
-      UI.println("    synergy status")
-      UI.println("    synergy stop")
+      DaemonOutput.printStartFailure({
+        message: "Another Synergy process is already active on the configured address",
+        manager: status.manager,
+        runtime: status.runtime,
+        url: status.url,
+        logFile: status.logFile,
+        detail: status.detail,
+        notes: ["Stop the other Synergy server process before starting the background service."],
+        next: ["synergy status", "synergy stop"],
+      })
       process.exit(1)
     }
 
     const interactive = !args.nonInteractive && Boolean(process.stdin.isTTY && process.stdout.isTTY)
 
-    // TODO: redesign CLI Holos login flow so it does not duplicate the Web UI Holos onboarding.
-    // For now we intentionally skip the CLI entrypoint and let users connect from Web UI or `synergy holos login`.
-    // try {
-    //   await HolosStartup.resolveIdentity(interactive)
-    // } catch {
-    //   UI.println(
-    //     UI.Style.TEXT_DIM +
-    //       "Holos setup skipped — starting background service in standalone mode" +
-    //       UI.Style.TEXT_NORMAL,
-    //   )
-    // }
-    if (interactive) {
+    // Check if this is a first-run with no config — launch wizard
+    const configExists = await Promise.any(
+      ConfigDomain.definitions.map((domain) =>
+        Bun.file(ConfigDomain.filepath(domain.id))
+          .exists()
+          .then((exists) => {
+            if (!exists) throw new Error("missing")
+            return true
+          }),
+      ),
+    ).catch(() => false)
+    if (!configExists && interactive) {
+      const { runConfigWizard } = await import("./config")
+      const configured = await runConfigWizard()
+      if (!configured) {
+        const exit = await prompts.confirm({
+          message: "No configuration was set. Start Synergy anyway? (It won't have an AI model yet.)",
+          initialValue: false,
+        })
+        if (prompts.isCancel(exit) || !exit) {
+          prompts.outro("Exiting. Run 'synergy config' later to set up.")
+          process.exit(0)
+        }
+      }
+    } else if (!configExists && !interactive) {
       UI.println(
         UI.Style.TEXT_DIM +
-          "Holos login is skipped in CLI startup for now — use the Web UI or `synergy holos login` if you want to connect Holos." +
+          "No configuration found. Run 'synergy config' to set up, or use --non-interactive to skip." +
           UI.Style.TEXT_NORMAL,
       )
     }
@@ -88,7 +105,7 @@ export const StartCommand = cmd({
             : "Check that the service manager is available and your user has permissions.",
           "If background service startup is unavailable in this environment, try `synergy server` to run the server in the current terminal.",
         ],
-        next: ["synergy status", "synergy logs", "synergy restart", "synergy server"],
+        next: ["synergy status", "synergy logs", "synergy server"],
       })
       process.exit(1)
     }
@@ -133,7 +150,7 @@ async function modelReadinessNotes(url: string): Promise<string[] | undefined> {
     if (!res.ok) return undefined
     const payload = await res.json()
     if (payload?.modelReady === false) {
-      return ['No AI model configured — run "synergy config ui" to set up a provider.']
+      return ['No AI model configured — run "synergy config" to set one up interactively.']
     }
   } catch {}
   return undefined

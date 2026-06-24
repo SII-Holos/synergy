@@ -5,7 +5,7 @@ import { SessionRevert } from "../../src/session/revert"
 import { SessionCompaction } from "../../src/session/compaction"
 import { MessageV2 } from "../../src/session/message-v2"
 import { Log } from "../../src/util/log"
-import { Instance } from "../../src/scope/instance"
+import { ScopeContext } from "../../src/scope/context"
 import { Identifier } from "../../src/id/id"
 import { tmpdir } from "../fixture/fixture"
 
@@ -15,7 +15,7 @@ Log.init({ print: false })
 describe("revert + compact workflow", () => {
   test("should properly handle compact command after revert", async () => {
     await using tmp = await tmpdir({ git: true })
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         // Create a session
@@ -191,7 +191,7 @@ describe("revert + compact workflow", () => {
 
   test("should properly clean up revert state before creating compaction message", async () => {
     await using tmp = await tmpdir({ git: true })
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         // Create a session

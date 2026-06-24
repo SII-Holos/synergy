@@ -39,11 +39,11 @@ export namespace EmailImap {
   }
 
   async function resolveConfig(): Promise<ResolvedConfig> {
-    const config = await Config.get()
+    const config = await Config.current()
     const email = config.email
     if (!email) {
       throw new NotConfiguredError({
-        message: "Email is not configured. Add an email section in Settings > Advanced or raw config.",
+        message: "Email is not configured. Add an email section in Settings > Email or 110-email.jsonc.",
         missing: ["email"],
       })
     }

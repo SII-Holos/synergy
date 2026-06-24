@@ -1251,9 +1251,9 @@ export function DiagramTree(props: { document: TreeDocument }) {
 
 const CHART_COLORS = [
   "var(--surface-brand-base)",
-  "#34d399",
+  "var(--text-on-success-base)",
   "#f59e0b",
-  "#ef4444",
+  "var(--text-on-critical-base)",
   "#8b5cf6",
   "#ec4899",
   "#06b6d4",

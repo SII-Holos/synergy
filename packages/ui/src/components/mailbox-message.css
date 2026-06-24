@@ -19,18 +19,18 @@
     display: flex;
     align-items: center;
     gap: 6px;
-    color: var(--color-text-dimmed);
+    color: var(--color-text-weak);
     font-size: 0.8125rem;
   }
 
   [data-slot="mailbox-message-source-label"] {
-    color: var(--color-text-dimmed);
+    color: var(--color-text-weak);
   }
 
   [data-slot="mailbox-message-source-link"] {
     all: unset;
     cursor: pointer;
-    color: var(--color-text-link);
+    color: var(--color-text-interactive-base);
     text-decoration: underline;
     text-decoration-color: transparent;
     transition: text-decoration-color 0.15s;
@@ -41,7 +41,7 @@
   }
 
   [data-slot="mailbox-message-time"] {
-    color: var(--color-text-dimmed);
+    color: var(--color-text-weak);
     font-size: 0.75rem;
     white-space: nowrap;
   }

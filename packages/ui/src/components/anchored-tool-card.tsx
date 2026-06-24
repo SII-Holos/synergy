@@ -5,7 +5,6 @@ import { getFilename } from "@ericsanchezok/synergy-util/path"
 import { useCodeComponent } from "../context/code"
 import { useDiffComponent } from "../context/diff"
 import { BasicTool } from "./basic-tool"
-import { DiffChanges } from "./diff-changes"
 import { ToolTextOutput } from "./tool-output-text"
 import { DiagnosticsDisplay, getDiagnostics, getDirectory, type ToolProps } from "./message-part"
 
@@ -28,18 +27,19 @@ type RangeInfo = {
 
 function pathFromProps(props: ToolProps): string {
   const headerPath = typeof props.input.input === "string" ? props.input.input.match(/^\[([^#\]]+)/)?.[1] : undefined
-  return (props.metadata?.path || props.metadata?.filepath || props.input.filePath || headerPath || "") as string
+  const paths = Array.isArray(props.input.paths) ? props.input.paths.join(", ") : undefined
+  return (props.metadata?.path ||
+    props.metadata?.filepath ||
+    props.input.filePath ||
+    props.input.path ||
+    paths ||
+    headerPath ||
+    "") as string
 }
 
 function pathLabel(path: string): string {
   if (!path) return ""
   return getDirectory(path) + "/" + getFilename(path)
-}
-
-function directoryLabel(path: string): string {
-  const directory = getDirectory(path)
-  if (!directory) return ""
-  return directory.replace(/\/$/, "")
 }
 
 function shortText(value: unknown, max = 42): string | undefined {
@@ -74,55 +74,6 @@ function diagnosticCount(metadata: Record<string, any>): number {
 
 function changeSummary(props: ToolProps): { additions: number; deletions: number } | undefined {
   return (props.metadata?.changeSummary || props.metadata?.filediff) as any
-}
-
-function AnchoredChip(props: { tone?: "default" | "success" | "warning" | "danger"; children: any }) {
-  return (
-    <span data-component="anchored-chip" data-tone={props.tone ?? "default"}>
-      {props.children}
-    </span>
-  )
-}
-
-function AnchoredTrigger(props: {
-  title: string
-  path?: string
-  rawPath?: boolean
-  chips?: Array<{ label: string; tone?: "default" | "success" | "warning" | "danger" } | undefined>
-  changes?: { additions: number; deletions: number }
-}) {
-  return (
-    <div data-component="anchored-trigger">
-      <div data-slot="message-part-title-area">
-        <div data-slot="message-part-title">{props.title}</div>
-        <Show when={props.path}>
-          <div data-slot="message-part-path">
-            <Show
-              when={!props.rawPath && props.path!.includes("/")}
-              fallback={<span data-slot="message-part-filename">{props.path}</span>}
-            >
-              <span data-slot="message-part-directory">{directoryLabel(props.path!)}</span>
-              <span data-slot="message-part-separator">/</span>
-              <span data-slot="message-part-filename">{getFilename(props.path!)}</span>
-            </Show>
-          </div>
-        </Show>
-      </div>
-      <div data-slot="message-part-actions">
-        <For
-          each={
-            (props.chips ?? []).filter(Boolean) as Array<{
-              label: string
-              tone?: "default" | "success" | "warning" | "danger"
-            }>
-          }
-        >
-          {(chip) => <AnchoredChip tone={chip.tone}>{chip.label}</AnchoredChip>}
-        </For>
-        <Show when={props.changes}>{(changes) => <DiffChanges changes={changes()} />}</Show>
-      </div>
-    </div>
-  )
 }
 
 function SummaryGrid(props: { rows: Array<{ label: string; value?: any } | undefined> }) {
@@ -243,8 +194,12 @@ export function AnchoredViewTool(props: ToolProps) {
   return (
     <BasicTool
       {...props}
-      icon="scan-eye"
-      trigger={<AnchoredTrigger title="View File" path={pathFromProps(props)} chips={chips()} />}
+      trigger={{
+        icon: "scan-eye",
+        title: "View File",
+        subtitlePath: pathFromProps(props),
+        tags: chips().filter(Boolean) as Array<{ label: string; tone?: "default" | "success" | "warning" | "danger" }>,
+      }}
     >
       <WarningPanel metadata={props.metadata} />
       <SummaryGrid
@@ -282,8 +237,12 @@ export function AnchoredSearchTool(props: ToolProps & { mode: "text" | "ast" }) 
   return (
     <BasicTool
       {...props}
-      icon={props.mode === "ast" ? "braces" : "scan-search"}
-      trigger={<AnchoredTrigger title={title()} path={subtitle()} rawPath chips={chips()} />}
+      trigger={{
+        icon: props.mode === "ast" ? "braces" : "scan-search",
+        title: title(),
+        subtitle: subtitle(),
+        tags: chips().filter(Boolean) as Array<{ label: string; tone?: "default" | "success" | "warning" | "danger" }>,
+      }}
     >
       <WarningPanel metadata={props.metadata} />
       <SummaryGrid
@@ -327,8 +286,13 @@ export function AnchoredReviseTool(props: ToolProps) {
   return (
     <BasicTool
       {...props}
-      icon="file-pen"
-      trigger={<AnchoredTrigger title="Revise File" path={filePath()} chips={chips()} changes={changeSummary(props)} />}
+      trigger={{
+        icon: "file-pen",
+        title: "Revise File",
+        subtitlePath: filePath(),
+        tags: chips().filter(Boolean) as Array<{ label: string; tone?: "default" | "success" | "warning" | "danger" }>,
+        changes: changeSummary(props),
+      }}
     >
       <WarningPanel metadata={props.metadata} />
       <SummaryGrid
@@ -370,15 +334,13 @@ export function AnchoredSaveTool(props: ToolProps) {
   return (
     <BasicTool
       {...props}
-      icon="text-select"
-      trigger={
-        <AnchoredTrigger
-          title={isOverwrite() ? "Save File" : "Create File"}
-          path={filePath()}
-          chips={chips()}
-          changes={changeSummary(props)}
-        />
-      }
+      trigger={{
+        icon: "text-select",
+        title: isOverwrite() ? "Save File" : "Create File",
+        subtitlePath: filePath(),
+        tags: chips().filter(Boolean) as Array<{ label: string; tone?: "default" | "success" | "warning" | "danger" }>,
+        changes: changeSummary(props),
+      }}
     >
       <WarningPanel metadata={props.metadata} />
       <SummaryGrid rows={[{ label: "Mode", value: isOverwrite() ? "Overwrite existing file" : "Create new file" }]} />
@@ -386,7 +348,7 @@ export function AnchoredSaveTool(props: ToolProps) {
       <Show
         when={existingDiff()}
         fallback={
-          <Show when={content() || filePath()}>
+          <Show when={content() || filePath()} fallback={<RawOutput output={props.output} />}>
             <div data-component="write-content">
               <Dynamic
                 component={codeComponent}
@@ -410,3 +372,12 @@ export function AnchoredSaveTool(props: ToolProps) {
     </BasicTool>
   )
 }
+export { SummaryGrid, WarningPanel, DiagnosticsPanel, RawOutput, SearchFiles } from "./tool/body-primitives"
+export {
+  shortText,
+  lineRangeLabel,
+  conflictCount,
+  diagnosticCount,
+  changeSummary,
+  operationCounts,
+} from "./tool/body-primitives"

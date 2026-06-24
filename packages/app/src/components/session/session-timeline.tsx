@@ -1,4 +1,5 @@
 import { createEffect, createMemo, createSignal, For, Show, on, onCleanup } from "solid-js"
+import type { Accessor } from "solid-js"
 import type { UserMessage } from "@ericsanchezok/synergy-sdk/client"
 import "./session-timeline.css"
 
@@ -7,6 +8,7 @@ interface SessionTimelineProps {
   currentMessage?: () => UserMessage | undefined
   onMessageSelect: (message: UserMessage) => void
   bottomOffset?: () => number
+  compressed?: Accessor<boolean>
 }
 
 const ITEM_HEIGHT = 28
@@ -93,10 +95,13 @@ export function SessionTimeline(props: SessionTimelineProps) {
 
   const bottomOffset = createMemo(() => props.bottomOffset?.() ?? 0)
 
+  const compressed = createMemo(() => props.compressed?.() ?? false)
+
   return (
     <Show when={total() > 1}>
       <div
         data-component="session-timeline"
+        data-compressed={compressed() ? "true" : undefined}
         onWheel={handleWheel}
         style={{
           top: bottomOffset() > 0 ? `calc(50% - ${bottomOffset() / 2}px)` : undefined,

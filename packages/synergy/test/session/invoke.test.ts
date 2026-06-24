@@ -1,6 +1,12 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test, mock } from "bun:test"
+import { SessionManager } from "../../src/session/manager"
 import { SessionInvoke } from "../../src/session/invoke"
 import { MessageV2 } from "../../src/session/message-v2"
+import { PermissionNext } from "../../src/permission/next"
+import { Log } from "../../src/util/log"
+import { tmpdir } from "../fixture/fixture"
+import { ScopeContext } from "../../src/scope/context"
+import { Session } from "../../src/session"
 
 const sessionID = "ses_test"
 
@@ -82,5 +88,41 @@ describe("SessionInvoke.selectResultMessage", () => {
     const result = SessionInvoke.selectResultMessage([user, assistant])
 
     expect(result?.info.id).toBe("msg_assistant")
+  })
+})
+
+describe("SessionInvoke.cancel", () => {
+  test("delegates to signalAbort instead of leaving runtime idle via release", () => {
+    Log.init({ print: false })
+    const sessionID = "ses_cancel_test"
+    const runtime = SessionManager.registerRuntime(sessionID)
+
+    // Simulate a busy runtime that was previously acquired
+    runtime.abort = new AbortController()
+    runtime.status = { type: "busy", description: "processing..." }
+
+    const releaseSpy = mock(async () => {})
+    ;(SessionManager as any).release = releaseSpy
+
+    const signalAbortSpy = mock(() => {})
+    ;(SessionManager as any).signalAbort = signalAbortSpy
+
+    // Stub PermissionNext.clearForSession to avoid hitting storage
+    const cleanupSpy = mock(() => Promise.resolve())
+    ;(PermissionNext as any).clearForSession = cleanupSpy
+
+    SessionInvoke.cancel(sessionID)
+
+    // signalAbort must be called — cancel() should signal the abort,
+    // not release the runtime. If cancel() calls release() instead,
+    // the runtime transitions to idle before time.completed is set.
+    expect(signalAbortSpy).toHaveBeenCalledTimes(1)
+    expect(signalAbortSpy).toHaveBeenCalledWith(sessionID)
+
+    // release must NOT be called by cancel — only the defer in loop()
+    // should call release after the processor has exited.
+    expect(releaseSpy).not.toHaveBeenCalled()
+
+    SessionManager.unregisterRuntime(sessionID)
   })
 })

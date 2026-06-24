@@ -10,7 +10,7 @@ export function createDocsResearcherAgent(ctx: BuiltinAgentContext) {
   return createSubagent(ctx, {
     name: "docs-researcher",
     description:
-      "Researches current external technical documentation and open-source examples. Use before relying on library APIs, CLI flags, configuration formats, framework behavior, release changes, migration guides, or ecosystem best practices. Provide the technical question and version constraints; the agent returns sources, recommendations, caveats, blockers, and reusable context.",
+      "Researches current external technical documentation and open-source examples. Use before relying on library APIs, CLI flags, configuration formats, framework behavior, release changes, migration guides, or ecosystem best practices. Provide the technical question and version constraints; the agent returns sources, recommendations, caveats, blockers, and reusable context. NOT for academic literature (use literature-searcher), code exploration (use code-cartographer), or writing documentation (use documentation-engineer).",
     prompt: buildDocsResearcherPrompt(),
     model: "mid",
     permission: "externalResearch",

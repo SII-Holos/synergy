@@ -1,9 +1,11 @@
+import { BlueprintLoopStore } from "../blueprint"
+import { GitHealth } from "../project/git-health"
 import { LoopJob } from "./loop-job"
 import { Session } from "."
 import { Identifier } from "../id/id"
 import { MessageV2 } from "./message-v2"
 import { Log } from "@/util/log"
-
+import { ScopeContext } from "../scope/context"
 const log = Log.create({ service: "session.loop-signals" })
 
 // ─── shared helpers ────────────────────────────────────────────────
@@ -186,6 +188,73 @@ LoopJob.register({
       sessionID: ctx.sessionID,
       type: "text",
       text: warning,
+      time: { start: Date.now(), end: Date.now() },
+      synthetic: true,
+    })
+
+    return "pass"
+  },
+})
+
+// ─── git health cache invalidation ─────────────────────────────────
+
+// When the agent runs a bash command, the repo state may have changed
+// (uncommitted edits added/removed, branches created/deleted, etc.).
+// Invalidate the GitHealth cache so the next system prompt assembly
+// picks up the current state instead of returning stale diagnostics.
+LoopJob.register({
+  type: "git_health_cache_invalidator",
+  phase: "post",
+  blocking: false,
+  collect(ctx) {
+    const assistant = lastAssistant(ctx)
+    if (!assistant) return []
+    const ranBash = assistant.parts.some(
+      (p): p is MessageV2.ToolPart => p.type === "tool" && p.tool === "bash" && p.state.status !== "pending",
+    )
+    return ranBash ? [{ type: "git_health_cache_invalidator" }] : []
+  },
+  async execute() {
+    GitHealth.invalidate(ScopeContext.current.directory)
+    return "pass"
+  },
+})
+
+// ─── BlueprintLoop continuation ──────────────────────────────────
+
+LoopJob.defineSignal({
+  type: "blueprint_loop_bound",
+  async detect(ctx) {
+    const loopID = ctx.session.blueprint?.loopID
+    const loops = loopID ? [await BlueprintLoopStore.get(ctx.session.scope.id, loopID).catch(() => null)] : []
+    return loops.some(
+      (l) => l !== null && (l.status === "running" || l.status === "waiting" || l.status === "auditing"),
+    )
+  },
+})
+
+LoopJob.register({
+  type: "blueprint_loop_continuation",
+  phase: "post",
+  blocking: false,
+  signals: ["blueprint_loop_bound"],
+  collect() {
+    return []
+  },
+  async execute(ctx) {
+    const loopID = ctx.session.blueprint?.loopID
+    if (!loopID) return "pass"
+    const scopeID = ctx.session.scope.id
+    const loop = await BlueprintLoopStore.get(scopeID, loopID).catch(() => null)
+    if (!loop) return "pass"
+    if (loop.status !== "running") return "pass"
+
+    await Session.updatePart({
+      id: Identifier.ascending("part"),
+      messageID: ctx.lastUser.id,
+      sessionID: ctx.sessionID,
+      type: "text",
+      text: `You are still executing BlueprintLoop. Continue working on the Blueprint. When you believe it is ready for audit, call blueprint_loop_finish({ status: "auditing" }). If the task is blocked beyond recovery, call blueprint_loop_finish({ status: "failed" }). Do not stop with a normal final response while the loop is running.`,
       time: { start: Date.now(), end: Date.now() },
       synthetic: true,
     })

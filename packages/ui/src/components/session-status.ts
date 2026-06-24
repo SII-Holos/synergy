@@ -99,6 +99,9 @@ export function computeStatusFromPart(part: PartType | undefined): string | unde
       case "note_search":
       case "note_write":
         return "Working with notes"
+      case "blueprint_loop_finish":
+      case "blueprint_loop_restart":
+        return "Working with Blueprint"
       case "session_list":
       case "session_read":
       case "session_search":
@@ -112,16 +115,16 @@ export function computeStatusFromPart(part: PartType | undefined): string | unde
       case "agenda_trigger":
       case "agenda_logs":
         return "Managing schedule"
-      case "agora_search":
-      case "agora_read":
-        return "Browsing projects"
-      case "agora_post":
-      case "agora_join":
-      case "agora_sync":
-      case "agora_submit":
-      case "agora_accept":
-      case "agora_comment":
-        return "Collaborating on Agora"
+      //      case "agora_search":
+      //      case "agora_read":
+      //        return "Browsing projects"
+      //      case "agora_post":
+      //      case "agora_join":
+      //      case "agora_sync":
+      //      case "agora_submit":
+      //      case "agora_accept":
+      //      case "agora_comment":
+      //        return "Collaborating on Agora"
       case "profile_get":
       case "profile_update":
         return "Updating profile"

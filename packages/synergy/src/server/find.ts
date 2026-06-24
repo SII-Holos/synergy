@@ -5,41 +5,9 @@ import z from "zod"
 import { Ripgrep } from "../file/ripgrep"
 import { File } from "../file"
 import { LSP } from "../lsp"
-import { Instance } from "../scope/instance"
+import { ScopeContext } from "../scope/context"
 
 export const FindRoute = new Hono()
-  .get(
-    "/browse",
-    describeRoute({
-      summary: "Browse directories",
-      description: "Browse filesystem directories by path with optional fuzzy search. Returns absolute paths.",
-      operationId: "find.browse",
-      responses: {
-        200: {
-          description: "Directory paths",
-          content: {
-            "application/json": {
-              schema: resolver(z.string().array()),
-            },
-          },
-        },
-      },
-    }),
-    validator(
-      "query",
-      z.object({
-        path: z.string(),
-        query: z.string().optional(),
-        limit: z.coerce.number().int().min(1).max(200).optional(),
-        depth: z.coerce.number().int().min(1).max(10).optional(),
-      }),
-    ),
-    async (c) => {
-      const { path, query, limit, depth } = c.req.valid("query")
-      const results = await File.browse({ path, query, limit: limit ?? 50, depth: depth ?? 4 })
-      return c.json(results)
-    },
-  )
   .get(
     "/",
     describeRoute({
@@ -66,7 +34,7 @@ export const FindRoute = new Hono()
     async (c) => {
       const pattern = c.req.valid("query").pattern
       const result = await Ripgrep.search({
-        cwd: Instance.directory,
+        cwd: ScopeContext.current.directory,
         pattern,
         limit: 10,
       })

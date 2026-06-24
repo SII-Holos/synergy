@@ -7,9 +7,8 @@ import { ToolResolver } from "../../src/session/tool-resolver"
 import { Provider } from "../../src/provider/provider"
 import { Agent } from "../../src/agent/agent"
 import { PermissionNext } from "../../src/permission/next"
-import { GenesisChannel } from "../../src/channel/genesis"
 import { Identifier } from "../../src/id/id"
-import { Instance } from "../../src/scope/instance"
+import { ScopeContext } from "../../src/scope/context"
 import { Cortex } from "../../src/cortex/manager"
 import { tmpdir } from "../fixture/fixture"
 import { Log } from "../../src/util/log"
@@ -94,10 +93,10 @@ describe("SessionInvoke preflight compaction", () => {
       ;(Cortex.list as any) = mock(() => [])
       ;(Cortex.getRunningTasks as any) = mock(() => [])
 
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
-          const session = await Session.create({ endpoint: GenesisChannel.endpoint() })
+          const session = await Session.create({})
           const sessionID = session.id
 
           const user = await Session.updateMessage({

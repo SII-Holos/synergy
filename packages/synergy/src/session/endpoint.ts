@@ -9,14 +9,7 @@ export namespace SessionEndpoint {
     })
     .meta({ ref: "SessionChannelEndpoint" })
 
-  export const Holos = z
-    .object({
-      kind: z.literal("holos"),
-      agentId: z.string(),
-    })
-    .meta({ ref: "SessionHolosEndpoint" })
-
-  export const Info = z.discriminatedUnion("kind", [Channel, Holos]).meta({ ref: "SessionEndpoint" })
+  export const Info = Channel.meta({ ref: "SessionEndpoint" })
   export type Info = z.infer<typeof Info>
 
   export function fromChannel(channel: ChannelInfo): Info {
@@ -26,28 +19,12 @@ export namespace SessionEndpoint {
     }
   }
 
-  export function holos(agentId: string): Info {
-    return {
-      kind: "holos",
-      agentId,
-    }
-  }
-
   export function type(endpoint: Info | undefined): string | undefined {
     if (!endpoint) return undefined
-    if (endpoint.kind === "channel") return endpoint.channel.type
-    return "holos"
+    return endpoint.channel.type
   }
 
   export function toKey(endpoint: Info): string {
-    if (endpoint.kind === "channel") {
-      return `channel:${channelToKey(endpoint.channel)}`
-    }
-
-    return `holos:${endpoint.agentId}`
-  }
-
-  export function isHolos(endpoint: Info | undefined): endpoint is z.infer<typeof Holos> {
-    return endpoint?.kind === "holos"
+    return `channel:${channelToKey(endpoint.channel)}`
   }
 }

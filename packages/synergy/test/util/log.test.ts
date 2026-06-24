@@ -1,4 +1,7 @@
 import { describe, expect, test, beforeEach } from "bun:test"
+import fs from "fs/promises"
+import os from "os"
+import path from "path"
 import { Log } from "../../src/util/log"
 
 describe("util.log", () => {
@@ -230,6 +233,38 @@ describe("util.log", () => {
     test("exists and is usable", () => {
       expect(Log.Default).toBeDefined()
       expect(() => Log.Default.info("test")).not.toThrow()
+    })
+  })
+
+  describe("bootstrap buffering", () => {
+    test("logs emitted before init flush to the selected writer", async () => {
+      const home = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-log-bootstrap-"))
+      const script = `
+        import { Log } from "./src/util/log.ts"
+        const log = Log.create({ service: "bootstrap-test" })
+        log.info("before init")
+        await Log.init({ print: true, dev: true, level: "INFO" })
+        log.info("after init")
+      `
+      const proc = Bun.spawn([process.execPath, "--conditions=browser", "-e", script], {
+        cwd: path.resolve(import.meta.dir, "../.."),
+        env: {
+          ...process.env,
+          SYNERGY_TEST_HOME: home,
+          SYNERGY_DISABLE_MODELS_FETCH: "true",
+        },
+        stdout: "pipe",
+        stderr: "pipe",
+      })
+
+      const [stderr, exitCode] = await Promise.all([new Response(proc.stderr).text(), proc.exited])
+
+      await fs.rm(home, { recursive: true, force: true })
+
+      expect(exitCode).toBe(0)
+      expect(stderr).toContain("before init")
+      expect(stderr).toContain("after init")
+      expect(stderr.indexOf("before init")).toBeLessThan(stderr.indexOf("after init"))
     })
   })
 })

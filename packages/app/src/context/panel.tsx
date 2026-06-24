@@ -1,6 +1,7 @@
 import { createSignal, type JSX } from "solid-js"
 import { createSimpleContext } from "@ericsanchezok/synergy-ui/context"
 import type { IconName } from "@ericsanchezok/synergy-ui/icon"
+import { listGlobalPanels } from "@/plugin"
 
 export interface PanelDef {
   id: string
@@ -8,49 +9,24 @@ export interface PanelDef {
   icon: IconName
 }
 
-export const PANELS: PanelDef[] = [
-  { id: "scopes", label: "Projects", icon: "layout-grid" },
-  { id: "note", label: "Notes", icon: "notebook-pen" },
-  { id: "engram", label: "Engram", icon: "brain" },
-  { id: "agenda", label: "Agenda", icon: "clipboard-list" },
-  { id: "holos", label: "Holos", icon: "users" },
-  { id: "lucid", label: "Lucid", icon: "sparkles" },
-]
+export const PANELS: PanelDef[] = listGlobalPanels().map((p) => ({
+  id: p.id,
+  label: p.label,
+  icon: p.icon as IconName,
+}))
 
 export const { use: usePanel, provider: PanelProvider } = createSimpleContext({
   name: "Panel",
   gate: false,
   init: () => {
     const [active, setActive] = createSignal<string | null>(null)
-    const [scopesDrilldown, setScopesDrilldown] = createSignal<string | null>(null)
     const slots = new Map<string, () => JSX.Element>()
 
     return {
       active,
       open: (id: string) => setActive(id),
-      close: () => {
-        setActive(null)
-        setScopesDrilldown(null)
-      },
-      toggle: (id: string) => {
-        setActive((v) => {
-          if (v === id) {
-            setScopesDrilldown(null)
-            return null
-          }
-          return id
-        })
-      },
-      scopes: {
-        drilldown: scopesDrilldown,
-        open(worktree: string) {
-          setScopesDrilldown(worktree)
-          setActive("scopes")
-        },
-        back() {
-          setScopesDrilldown(null)
-        },
-      },
+      close: () => setActive(null),
+      toggle: (id: string) => setActive((v) => (v === id ? null : id)),
       registerSlot: (id: string, render: () => JSX.Element) => {
         slots.set(id, render)
       },

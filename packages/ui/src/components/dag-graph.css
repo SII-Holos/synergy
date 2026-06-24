@@ -1,10 +1,22 @@
+@property --dag-hover-angle {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
+}
+
 [data-component="dag-graph"] {
   --dag-accent-border: var(--border-warning-base);
   --dag-done: var(--border-success-base);
   --dag-failed: var(--border-critical-base);
   --dag-blocked: var(--border-info-base);
   --dag-card-shadow: var(--shadow-xs);
+  --dag-grid-dot: rgb(17 0 0 / 0.07);
 
+  --dag-pending-bg: var(--surface-raised-base);
+  --dag-running-bg: color-mix(in srgb, var(--surface-warning-weak) 55%, var(--surface-raised-base));
+  --dag-completed-bg: color-mix(in srgb, var(--surface-success-weak) 42%, var(--surface-raised-base));
+  --dag-blocked-bg: color-mix(in srgb, var(--surface-info-weak) 44%, var(--surface-raised-base));
+  --dag-failed-bg: color-mix(in srgb, var(--surface-critical-weak) 48%, var(--surface-raised-base));
   position: relative;
   width: 100%;
   min-width: 0;
@@ -39,14 +51,13 @@
     height: 20px;
     padding: 0 7px;
     border-radius: 999px;
-    border: 1px solid color-mix(in srgb, var(--border-weaker-base) 76%, transparent);
-    background: color-mix(in srgb, var(--surface-base) 78%, transparent);
+    border: 1px solid var(--border-weaker-base);
+    background: var(--surface-base);
     color: var(--text-weaker);
     font-family: var(--font-family-sans);
     font-size: 11px;
     font-weight: var(--font-weight-medium);
     white-space: nowrap;
-    backdrop-filter: blur(8px);
 
     &[data-kind="done"] {
       color: var(--text-on-success-base);
@@ -79,10 +90,9 @@
     gap: 2px;
     flex-shrink: 0;
     padding: 2px;
-    border: 1px solid color-mix(in srgb, var(--border-weaker-base) 76%, transparent);
+    border: 1px solid var(--border-weaker-base);
     border-radius: 999px;
-    background: color-mix(in srgb, var(--surface-base) 78%, transparent);
-    backdrop-filter: blur(8px);
+    background: var(--surface-base);
     pointer-events: auto;
 
     button {
@@ -104,7 +114,7 @@
 
       &:hover {
         color: var(--text-strong);
-        background: color-mix(in srgb, var(--surface-base-hover) 80%, transparent);
+        background: var(--surface-base-hover);
       }
 
       &:active {
@@ -136,18 +146,26 @@
       position: absolute;
       inset: 0;
       pointer-events: none;
-      background: radial-gradient(
-          circle at 1px 1px,
-          light-dark(rgb(17 0 0 / 0.045), rgb(255 255 255 / 0.04)) 1px,
-          transparent 0
-        )
-        0 0 / 24px 24px;
+      background: radial-gradient(circle at 1px 1px, var(--dag-grid-dot) 1px, transparent 0) 0 0 / 24px 24px;
       opacity: 0.7;
     }
 
-    &[data-dragging="true"] {
+    &[data-dragging="true"],
+    &[data-zooming="true"] {
       cursor: grabbing;
     }
+  }
+
+  /* Disable layout transitions during direct user interaction (drag/zoom) so
+     the viewport stays locked to the pointer instead of lagging behind. */
+  [data-slot="dag-graph-viewport"][data-dragging="true"] [data-slot="dag-graph-stage"],
+  [data-slot="dag-graph-viewport"][data-zooming="true"] [data-slot="dag-graph-stage"] {
+    transition: none;
+  }
+
+  [data-slot="dag-graph-viewport"][data-dragging="true"] [data-slot="dag-graph-card"],
+  [data-slot="dag-graph-viewport"][data-zooming="true"] [data-slot="dag-graph-card"] {
+    transition: none;
   }
 
   [data-slot="dag-graph-stage"] {
@@ -157,6 +175,7 @@
     transform-origin: 0 0;
     will-change: transform;
     z-index: 1;
+    transition: transform 0.28s cubic-bezier(0.2, 0, 0, 1);
   }
 
   [data-slot="dag-graph-edges"] {
@@ -176,6 +195,7 @@
     stroke: color-mix(in srgb, var(--border-base) 82%, transparent);
     stroke-width: 1.35;
     stroke-linecap: round;
+    transition: stroke 0.18s ease;
 
     &[data-status="completed"] {
       stroke: color-mix(in srgb, var(--dag-done) 74%, var(--border-base));
@@ -197,56 +217,53 @@
   [data-slot="dag-graph-card"] {
     position: absolute;
     border-radius: var(--radius-md);
-    border: 1px solid var(--border-weaker-base);
-    background: var(--surface-raised-base);
-    box-shadow: var(--dag-card-shadow);
+    border: 1px solid var(--border-weak-base);
+    background: var(--dag-pending-bg);
+    box-shadow:
+      var(--dag-card-shadow),
+      0 0 0 1px color-mix(in srgb, var(--border-weaker-base) 75%, transparent);
     padding: 12px 14px;
     display: flex;
     flex-direction: column;
     gap: 10px;
     overflow: hidden;
     transition:
-      border-color 0.14s ease,
-      background 0.14s ease,
-      box-shadow 0.14s ease,
-      opacity 0.14s ease,
+      border-color 0.18s ease,
+      background-color 0.18s ease,
+      box-shadow 0.18s ease,
       transform 0.14s ease;
 
     &:hover {
       transform: translateY(-1px);
       border-color: var(--border-weak-hover);
-      background: var(--surface-raised-base-hover);
-    }
-
-    &[data-status="completed"] {
-      border-color: color-mix(in srgb, var(--border-success-base) 56%, var(--border-weaker-base));
-      background: color-mix(in srgb, var(--surface-success-weak) 34%, var(--surface-raised-base));
-      opacity: 0.86;
-    }
-
-    &[data-status="running"] {
-      border-color: color-mix(in srgb, var(--border-warning-base) 62%, var(--border-weaker-base));
-      background: color-mix(in srgb, var(--surface-warning-weak) 36%, var(--surface-raised-base));
-      box-shadow:
-        0 0 0 2px color-mix(in srgb, var(--border-warning-base) 14%, transparent),
-        var(--dag-card-shadow);
-    }
-
-    &[data-status="blocked"] {
-      border-color: color-mix(in srgb, var(--border-info-base) 62%, var(--border-weaker-base));
-      background: color-mix(in srgb, var(--surface-info-weak) 36%, var(--surface-raised-base));
-    }
-
-    &[data-status="failed"] {
-      border-color: color-mix(in srgb, var(--border-critical-base) 62%, var(--border-weaker-base));
-      background: color-mix(in srgb, var(--surface-critical-weak) 36%, var(--surface-raised-base));
+      box-shadow: var(--shadow-xs-border-base);
     }
 
     &[data-ready="true"] {
-      border-color: color-mix(in srgb, var(--border-warning-base) 56%, var(--border-weaker-base));
+      border-color: var(--border-weak-hover);
+    }
+
+    &[data-status="completed"] {
+      border-color: color-mix(in srgb, var(--dag-done) 72%, var(--border-weak-base));
+      background: var(--dag-completed-bg);
+    }
+
+    &[data-status="running"] {
+      border-color: color-mix(in srgb, var(--dag-accent-border) 82%, var(--border-weak-base));
+      background: var(--dag-running-bg);
       box-shadow:
-        0 0 0 2px color-mix(in srgb, var(--border-warning-base) 12%, transparent),
-        var(--dag-card-shadow);
+        var(--dag-card-shadow),
+        0 0 0 1px color-mix(in srgb, var(--dag-accent-border) 38%, transparent);
+    }
+
+    &[data-status="blocked"] {
+      border-color: color-mix(in srgb, var(--dag-blocked) 82%, var(--border-weak-base));
+      background: var(--dag-blocked-bg);
+    }
+
+    &[data-status="failed"] {
+      border-color: color-mix(in srgb, var(--dag-failed) 84%, var(--border-weak-base));
+      background: var(--dag-failed-bg);
     }
   }
 
@@ -259,12 +276,15 @@
   }
 
   [data-slot="dag-graph-status-dot"] {
-    width: 7px;
-    height: 7px;
+    width: 8px;
+    height: 8px;
     border-radius: 50%;
     flex-shrink: 0;
     background: var(--text-weaker);
-    box-shadow: 0 0 0 3px color-mix(in srgb, var(--text-weaker) 13%, transparent);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--text-weaker) 18%, transparent);
+    transition:
+      background-color 0.18s ease,
+      box-shadow 0.18s ease;
 
     [data-status="completed"] & {
       background: var(--border-success-base);
@@ -289,10 +309,11 @@
 
   [data-slot="dag-graph-status-label"] {
     font-family: var(--font-family-sans);
-    font-size: 10px;
+    font-size: 11px;
     font-weight: var(--font-weight-medium);
     letter-spacing: 0.065em;
-    color: var(--text-weaker);
+    color: var(--text-weak);
+    transition: color 0.18s ease;
 
     [data-status="completed"] & {
       color: var(--text-on-success-base);
@@ -311,69 +332,37 @@
     }
   }
 
-  [data-slot="dag-graph-assign"] {
+  [data-slot="dag-graph-node-badges"] {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
     min-width: 0;
     margin-left: auto;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    color: var(--text-weaker);
-    font-family: var(--font-family-sans);
-    font-size: 10px;
-    font-weight: var(--font-weight-medium);
   }
 
-  [data-slot="dag-graph-card-content"] {
-    min-height: 0;
-    flex: 1;
-    overflow: auto;
-    padding-right: 3px;
-    color: var(--text-base);
-    font-family: var(--font-family-sans);
-    font-size: var(--font-size-small);
-    line-height: 1.45;
-    word-break: normal;
-    overflow-wrap: anywhere;
-    scrollbar-width: thin;
-    scrollbar-color: var(--border-weak-base) transparent;
-
-    [data-status="completed"] & {
-      color: var(--text-weak);
-    }
-  }
-
-  [data-slot="dag-graph-card-footer"] {
-    display: flex;
+  [data-slot="dag-graph-node-badge"] {
+    display: inline-flex;
+    width: 18px;
+    height: 18px;
     align-items: center;
-    gap: 6px;
-    min-width: 0;
-    flex-shrink: 0;
-    padding-top: 2px;
-  }
-
-  [data-slot="dag-graph-task"] {
-    flex-shrink: 0;
-    max-width: 96px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    border: 1px solid var(--border-weaker-base);
+    justify-content: center;
+    border: 1px solid color-mix(in srgb, var(--border-weaker-base) 72%, transparent);
     border-radius: 999px;
-    padding: 1px 5px;
     color: var(--text-weaker);
-    background: var(--surface-inset-base);
-    font-family: var(--font-family-mono);
-    font-size: 10px;
+    background: color-mix(in srgb, var(--surface-base) 64%, transparent);
   }
 
-  [data-slot="dag-graph-memo"] {
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    color: var(--text-weaker);
-    font-family: var(--font-family-sans);
-    font-size: 11px;
+  [data-slot="dag-graph-hover-hold"] {
+    position: absolute;
+    right: 10px;
+    bottom: 10px;
+    width: 18px;
+    height: 18px;
+    border-radius: 999px;
+    background: conic-gradient(var(--border-warning-base) var(--dag-hover-angle), transparent 0deg);
+    animation: dag-hover-hold 2400ms linear forwards;
+    mask: radial-gradient(circle, transparent 49%, #000 52%);
+    pointer-events: none;
   }
 
   [data-slot="dag-graph-hint"] {
@@ -383,11 +372,228 @@
     z-index: 3;
     padding: 2px 6px;
     border-radius: 999px;
-    background: color-mix(in srgb, var(--surface-base) 68%, transparent);
-    backdrop-filter: blur(8px);
-    color: var(--text-weaker);
+    background: var(--surface-base);
+    color: var(--text-weak);
     font-family: var(--font-family-sans);
     font-size: 11px;
     pointer-events: none;
   }
+}
+
+/* Panel variant — compact enough for embedded session progress surfaces.
+   contain:layout style paint isolates the DAG's ~400 nodes (~8000 DOM
+   elements) into a self-contained layout/paint context so that size changes
+   in the parent (the island panel) don't trigger style/layout recalc of the
+   DAG subtree. (Not using contain:strict/size because the DAG's height
+   depends on its content via the viewport's clamp().)
+   Verified necessary via Chrome trace: without it, the panel's height
+   transition cascaded a full-page UpdateLayoutTree (8352 elements, ~65ms). */
+.dag-graph[data-variant="panel"] {
+  contain: layout style paint;
+  height: 100%;
+
+  [data-slot="dag-graph-viewport"] {
+    height: 100%;
+    min-height: 0;
+  }
+}
+
+/* Panel variant: node card slightly smaller */
+.dag-graph[data-variant="panel"] .dag-node {
+  padding: 8px 10px;
+  gap: 7px;
+
+  [data-slot="dag-graph-card-content"] {
+    font-size: 13px;
+    line-height: 1.4;
+  }
+
+  [data-slot="dag-graph-status-label"] {
+    font-size: 10px;
+  }
+}
+
+[data-slot="dag-node-preview"] {
+  position: fixed;
+  z-index: 80;
+  width: min(360px, calc(100vw - 32px));
+  max-height: min(420px, calc(100vh - 32px));
+  overflow: auto;
+  padding: 12px;
+  border: 1px solid var(--border-base);
+  border-radius: var(--radius-lg);
+  background: var(--surface-raised-stronger-non-alpha);
+  box-shadow: var(--shadow-lg);
+  color: var(--text-base);
+  pointer-events: auto;
+}
+
+[data-slot="dag-node-preview-close"] {
+  display: inline-flex;
+  width: 22px;
+  height: 22px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid color-mix(in srgb, var(--border-weaker-base) 78%, transparent);
+  border-radius: 999px;
+  color: var(--text-weaker);
+  background: color-mix(in srgb, var(--surface-base) 64%, transparent);
+  transition:
+    color 140ms ease,
+    background-color 140ms ease,
+    border-color 140ms ease;
+}
+
+[data-slot="dag-node-preview-close"]:hover {
+  color: var(--text-base);
+  border-color: var(--border-weak-base);
+  background: var(--surface-base-hover);
+}
+
+[data-slot="dag-node-preview-close"]:active {
+  transform: scale(0.96);
+}
+
+[data-slot="dag-node-preview-open-session"] {
+  display: inline-flex;
+  height: 22px;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 5px;
+  padding: 0 8px;
+  border: 1px solid color-mix(in srgb, var(--border-weaker-base) 78%, transparent);
+  border-radius: 999px;
+  color: var(--text-weak);
+  background: color-mix(in srgb, var(--surface-base) 64%, transparent);
+  font-family: var(--font-family-sans);
+  font-size: 11px;
+  transition:
+    color 140ms ease,
+    background-color 140ms ease,
+    border-color 140ms ease;
+}
+
+[data-slot="dag-node-preview-open-session"]:hover {
+  color: var(--text-base);
+  border-color: var(--border-weak-base);
+  background: var(--surface-base-hover);
+}
+
+[data-slot="dag-node-preview-open-session"]:active {
+  transform: scale(0.98);
+}
+
+[data-slot="dag-node-preview-header"] {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+[data-slot="dag-node-preview-status"] {
+  color: var(--text-weak);
+  font-family: var(--font-family-sans);
+  font-size: 10px;
+  font-weight: var(--font-weight-medium);
+  letter-spacing: 0.065em;
+}
+
+[data-slot="dag-node-preview-agent"] {
+  overflow: hidden;
+  color: var(--text-weaker);
+  font-family: var(--font-family-sans);
+  font-size: 11px;
+  font-weight: var(--font-weight-medium);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+[data-slot="dag-node-preview-title"] {
+  color: var(--text-strong);
+  font-family: var(--font-family-sans);
+  font-size: 13px;
+  font-weight: var(--font-weight-medium);
+  line-height: 1.45;
+}
+
+[data-slot="dag-node-preview-meta"] {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-top: 9px;
+  color: var(--text-weaker);
+  font-family: var(--font-family-mono);
+  font-size: 10px;
+  line-height: 1.35;
+}
+
+[data-slot="dag-node-preview-note"],
+[data-slot="dag-node-preview-result"] {
+  margin-top: 9px;
+  padding: 8px;
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--surface-inset-base) 76%, transparent);
+  color: var(--text-base);
+  font-family: var(--font-family-sans);
+  font-size: 11px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+[data-slot="dag-node-preview-result"] [data-component="markdown"] {
+  color: var(--text-base);
+  font-size: 11px;
+  line-height: 1.5;
+  white-space: normal;
+}
+
+[data-slot="dag-node-preview-result"] [data-component="markdown"] > :first-child {
+  margin-top: 0;
+}
+
+[data-slot="dag-node-preview-result"] [data-component="markdown"] > :last-child {
+  margin-bottom: 0;
+}
+
+@keyframes dag-hover-hold {
+  to {
+    --dag-hover-angle: 360deg;
+  }
+}
+
+@keyframes dag-node-preview-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-component="dag-graph"] {
+    [data-slot="dag-graph-stage"],
+    [data-slot="dag-graph-card"],
+    [data-slot="dag-graph-controls"] button {
+      transition: none;
+    }
+
+    [data-slot="dag-graph-hover-hold"] {
+      animation: none;
+    }
+  }
+
+  [data-slot="dag-node-preview"] {
+    animation: none;
+  }
+}
+
+/* Selected node — subtle ring accent */
+.dag-node[data-selected="true"] {
+  box-shadow: 0 0 0 2px var(--surface-interactive-selected);
 }

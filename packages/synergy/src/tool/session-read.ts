@@ -1,20 +1,17 @@
+import { formatLocalDateTime } from "@/util/time-format"
 import z from "zod"
 import { Tool } from "./tool"
 import { Session } from "../session"
-import { SessionEndpoint } from "../session/endpoint"
 import { SessionManager } from "../session/manager"
 import { MessageV2 } from "../session/message-v2"
 import { Scope } from "@/scope"
 import { Identifier } from "../id/id"
 import { Storage } from "../storage/storage"
 import { StoragePath } from "../storage/path"
-import { AppChannel } from "../channel/app"
 import DESCRIPTION from "./session-read.txt"
 
 const parameters = z.object({
-  target: z
-    .string()
-    .describe("Session to read. A session ID (ses_xxx), 'home' for the app home session, or a Holos contact/agent ID."),
+  target: z.string().describe("Session to read. A session ID (ses_xxx)."),
   limit: z.coerce.number().default(20).describe("Number of messages to return."),
   offset: z.coerce.number().default(0).describe("Number of messages to skip (0 = most recent)."),
   around: z
@@ -26,17 +23,10 @@ const parameters = z.object({
 })
 
 async function resolveSession(target: string): Promise<Session.Info> {
-  if (target === "home") {
-    return AppChannel.session()
-  }
   if (target.startsWith("ses_")) {
     return SessionManager.requireSession(target)
   }
-  const session = await SessionManager.getSession(SessionEndpoint.holos(target))
-  if (!session) {
-    throw new Error(`No session found for contact "${target}". The contact may not have an active conversation.`)
-  }
-  return session
+  throw new Error(`Unknown target "${target}". Use a session ID (ses_xxx).`)
 }
 
 function extractMessageText(parts: MessageV2.Part[]): string {
@@ -58,7 +48,7 @@ function extractToolSummaries(parts: MessageV2.Part[]): Array<{ name: string; st
 
 function formatMessage(msg: MessageV2.WithParts, highlight?: boolean): string {
   const text = extractMessageText(msg.parts)
-  const time = new Date(msg.info.time.created).toISOString()
+  const time = formatLocalDateTime(msg.info.time.created)
   const marker = highlight ? " ◀" : ""
 
   if (msg.info.role === "user") {
@@ -113,7 +103,7 @@ export const SessionReadTool = Tool.define("session_read", {
       allMessages.push(msg)
     }
 
-    const updated = new Date(session.time.updated).toISOString()
+    const updated = formatLocalDateTime(session.time.updated)
     const header = `Session: ${session.id} — "${session.title}" (updated ${updated})`
 
     if (params.around) {

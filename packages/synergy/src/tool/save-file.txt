@@ -2,7 +2,8 @@ Write a full file through the anchored coding harness.
 
 Use this for new files or intentional full-file rewrites. The tool writes the supplied content and returns a real `[path#TAG]` header for follow-up `revise_file` calls.
 
-Do NOT use `save_file` for surgical edits when `revise_file` can express the change. `save_file` overwrites the whole file and bypasses line-level freshness checks.
+Do NOT use `save_file` for surgical edits when `revise_file` can express the change. `save_file` overwrites the whole file and bypasses line-level freshness checks — use `revise_file` with a tight swap range instead.
 - `save_file` may intentionally overwrite a file that contains merge conflict markers. Permission and metadata expose whether the previous content or final content had conflicts.
+- After `save_file`, the returned tag is fresh. Use it for follow-up `revise_file` calls. Previous tags for this file are stale.
 
 If the model accidentally copied anchored display output from `view_file`, a leading `[path#TAG]` header and contiguous `LINE:TEXT` row prefixes are stripped before writing. Non-contiguous numeric prefixes are preserved as real content.

@@ -1,10 +1,11 @@
 import type { Argv } from "yargs"
+import { pathToFileURL } from "url"
 import path from "path"
 import { UI } from "../ui"
 import { cmd } from "./cmd"
 import { Flag } from "../../flag/flag"
-import { bootstrap } from "../bootstrap"
-import { Command } from "../../skill/command"
+import { withScopeContext } from "../scope"
+import { Command } from "../../command/command"
 import { EOL } from "os"
 import { select } from "@clack/prompts"
 import { createSynergyClient, type SynergyClient } from "@ericsanchezok/synergy-sdk"
@@ -95,6 +96,7 @@ export const SendCommand = cmd({
       })
   },
   handler: async (args) => {
+    const directory = Flag.SYNERGY_CWD || process.cwd()
     let message = [...args.message, ...(args["--"] || [])]
       .map((arg) => (arg.includes(" ") ? `"${arg.replace(/"/g, '\\"')}"` : arg))
       .join(" ")
@@ -104,7 +106,7 @@ export const SendCommand = cmd({
       const files = Array.isArray(args.file) ? args.file : [args.file]
 
       for (const filePath of files) {
-        const resolvedPath = path.resolve(process.cwd(), filePath)
+        const resolvedPath = path.resolve(directory, filePath)
         const file = Bun.file(resolvedPath)
         const stats = await file.stat().catch(() => {})
         if (!stats) {
@@ -121,7 +123,7 @@ export const SendCommand = cmd({
 
         fileParts.push({
           type: "file",
-          url: `file://${resolvedPath}`,
+          url: pathToFileURL(resolvedPath).href,
           filename: path.basename(resolvedPath),
           mime,
         })
@@ -286,40 +288,42 @@ export const SendCommand = cmd({
     }
 
     if (args.attach) {
-      const sdk = createSynergyClient({ baseUrl: args.attach, directory: Flag.SYNERGY_CWD || process.cwd() })
+      await withScopeContext(directory, async () => {
+        const sdk = createSynergyClient({ baseUrl: args.attach, directory })
 
-      const sessionID = await (async () => {
-        if (args.continue) {
-          const result = await sdk.session.list()
-          const sessions = result.data?.data ?? []
-          return sessions.find((s) => !s.parentID)?.id
+        const sessionID = await (async () => {
+          if (args.continue) {
+            const result = await sdk.session.list()
+            const sessions = result.data?.data ?? []
+            return sessions.find((s) => !s.parentID)?.id
+          }
+          if (args.session) return args.session
+
+          const title =
+            args.title !== undefined
+              ? args.title === ""
+                ? message.slice(0, 50) + (message.length > 50 ? "..." : "")
+                : args.title
+              : undefined
+
+          const result = await sdk.session.create(title ? { title } : undefined)
+          return result.data?.id
+        })()
+
+        if (!sessionID) {
+          UI.error("Session not found")
+          process.exit(1)
         }
-        if (args.session) return args.session
 
-        const title =
-          args.title !== undefined
-            ? args.title === ""
-              ? message.slice(0, 50) + (message.length > 50 ? "..." : "")
-              : args.title
-            : undefined
-
-        const result = await sdk.session.create(title ? { title } : undefined)
-        return result.data?.id
-      })()
-
-      if (!sessionID) {
-        UI.error("Session not found")
-        process.exit(1)
-      }
-
-      await execute(sdk, sessionID)
+        await execute(sdk, sessionID)
+      })
       process.exit(0)
     }
 
-    await bootstrap(process.cwd(), async () => {
-      await runMigrations()
+    await withScopeContext(directory, async () => {
+      await runMigrations({ output: "silent" })
       const server = Server.listen({ port: args.port ?? 0, hostname: "127.0.0.1" })
-      const sdk = createSynergyClient({ baseUrl: `http://${server.hostname}:${server.port}` })
+      const sdk = createSynergyClient({ baseUrl: `http://${server.hostname}:${server.port}`, directory })
 
       if (args.command) {
         const exists = await Command.get(args.command)

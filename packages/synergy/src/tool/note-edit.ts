@@ -1,60 +1,65 @@
 import z from "zod"
 import { Tool } from "./tool"
 import { NoteError, NoteStore, NoteMarkdown } from "../note"
-import { Instance } from "../scope/instance"
+import { ScopeContext } from "../scope/context"
 import { Storage } from "../storage/storage"
-import { replace } from "./edit"
 import DESCRIPTION from "./note-edit.txt"
 
 const parameters = z.object({
   id: z.string().describe("The note ID to edit."),
-  oldString: z.string().describe("The exact text to find and replace in the note's markdown content."),
-  newString: z.string().describe("The text to replace oldString with (must be different from oldString)."),
-  replaceAll: z
-    .boolean()
-    .optional()
-    .default(false)
-    .describe("When true, replace ALL occurrences of oldString instead of failing when multiple matches exist."),
+  ops: z
+    .array(
+      z.object({
+        index: z
+          .number()
+          .int()
+          .min(0)
+          .describe("Block index (0-based), referencing blocks from note_read format:'blocks' output."),
+        action: z
+          .enum(["replace", "insertAfter", "delete"])
+          .describe(
+            "replace: overwrite block at index. insertAfter: insert new blocks after index. delete: remove block at index.",
+          ),
+        content: z
+          .string()
+          .optional()
+          .describe("Markdown content. Required for replace and insertAfter. Not used for delete."),
+      }),
+    )
+    .describe(
+      "Ordered list of block operations. Operations are applied in descending index order to avoid index shifts.",
+    ),
 })
 
-function conflictResult(noteID: string, expectedVersion: number, currentVersion: number) {
-  return {
-    title: "Conflict",
-    output: [
-      `Error: note changed since it was last read.`,
-      `ID: ${noteID}`,
-      `Expected version: ${expectedVersion}`,
-      `Current version: ${currentVersion}`,
-      `Please re-read the note and retry the edit.`,
-    ].join("\n"),
-    metadata: { id: noteID, conflict: true } as Record<string, any>,
-  }
+function sortDescending<T extends { index: number }>(ops: T[]): T[] {
+  return [...ops].sort((a, b) => b.index - a.index)
 }
 
 export const NoteEditTool = Tool.define("note_edit", {
   description: DESCRIPTION,
   parameters,
   async execute(params: z.infer<typeof parameters>) {
-    if (params.oldString === params.newString) {
+    if (params.ops.length === 0) {
       return {
         title: "Error",
-        output: "Error: oldString and newString are identical — nothing to change.",
+        output: "Error: at least one operation is required.",
         metadata: { id: params.id } as Record<string, any>,
       }
     }
 
-    if (params.oldString.length === 0) {
-      return {
-        title: "Error",
-        output: "Error: oldString cannot be empty. Use note_write (append or replace mode) to add new content.",
-        metadata: { id: params.id } as Record<string, any>,
+    for (const op of params.ops) {
+      if (op.action !== "delete" && !op.content) {
+        return {
+          title: "Error",
+          output: `Error: "${op.action}" operation at index ${op.index} requires content.`,
+          metadata: { id: params.id } as Record<string, any>,
+        }
       }
     }
 
-    // Read current note state — catch NotFoundError for bad IDs
     let existing: Awaited<ReturnType<typeof NoteStore.getAny>>
     try {
-      existing = await NoteStore.getAny(Instance.scope.id, params.id)
+      existing = await NoteStore.getAny(ScopeContext.current.scope.id, params.id)
     } catch (error) {
       if (error instanceof Storage.NotFoundError) {
         return {
@@ -66,55 +71,69 @@ export const NoteEditTool = Tool.define("note_edit", {
       throw error
     }
 
-    const sourceText = existing.contentText
+    const doc =
+      existing.content && typeof existing.content === "object" && Array.isArray(existing.content.content)
+        ? { ...existing.content, content: [...existing.content.content] }
+        : { type: "doc", content: [] }
 
-    // Use edit.ts's battle-tested replace() — runs the full 9-Replacer chain
-    // (SimpleReplacer → LineTrimmedReplacer → BlockAnchorReplacer → … → MultiOccurrenceReplacer),
-    // with intelligent error messages (similar-lines hints, match locations).
-    let newText: string
-    try {
-      newText = replace(sourceText, params.oldString, params.newString, params.replaceAll)
-    } catch (error) {
-      return {
-        title: existing.title,
-        output: error instanceof Error ? error.message : String(error),
-        metadata: { id: params.id, replaceError: true } as Record<string, any>,
+    const sorted = sortDescending(params.ops)
+
+    for (const op of sorted) {
+      const maxIndex = doc.content.length - 1
+      if (op.index < 0 || op.index > maxIndex) {
+        return {
+          title: "Error",
+          output: `Error: block index ${op.index} is out of bounds. Valid range for "${op.action}" is 0-${maxIndex} (doc has ${doc.content.length} blocks).`,
+          metadata: { id: params.id } as Record<string, any>,
+        }
+      }
+
+      switch (op.action) {
+        case "delete":
+          doc.content.splice(op.index, 1)
+          break
+        case "replace": {
+          const parsed = NoteMarkdown.fromMarkdown(op.content!)
+          const parsedBlocks = parsed.content ?? []
+          doc.content.splice(op.index, 1, ...parsedBlocks)
+          break
+        }
+        case "insertAfter": {
+          const parsed = NoteMarkdown.fromMarkdown(op.content!)
+          const parsedBlocks = parsed.content ?? []
+          doc.content.splice(op.index + 1, 0, ...parsedBlocks)
+          break
+        }
       }
     }
 
-    // Guard against no-op writes: if replace() returned unchanged content
-    // (e.g. oldString matched nothing, or whitespace-only delta), skip the write.
-    if (newText === sourceText) {
+    if (sorted.length === 0) {
       return {
         title: existing.title,
-        output: [
-          `Note unchanged.`,
-          `ID: ${params.id}`,
-          `The replacement produced no changes — the note content is already as requested.`,
-        ].join("\n"),
+        output: ["Note unchanged.", `ID: ${params.id}`, "No changes were applied."].join("\n"),
         metadata: { id: params.id, noop: true } as Record<string, any>,
       }
     }
 
-    // Convert markdown back to TipTap JSON
-    // Note: this round-trip only preserves markdown-representable content.
-    // Rich TipTap nodes (mentions, text colors, custom extensions) that were
-    // rendered lossily in contentText will be stripped from the structured content.
-    const tiptapContent = NoteMarkdown.fromMarkdown(newText)
-
-    // Write with optimistic concurrency
     try {
-      await NoteStore.updateAny(Instance.scope.id, params.id, {
-        title: existing.title,
-        content: tiptapContent,
-        contentText: newText,
+      await NoteStore.updateAny(ScopeContext.current.scope.id, params.id, {
+        content: doc,
         expectedVersion: existing.version,
       })
     } catch (error) {
       if (error instanceof NoteError.Conflict) {
-        return conflictResult(params.id, existing.version, error.data.note.version)
+        return {
+          title: "Conflict",
+          output: [
+            "Error: note changed since it was last read.",
+            `ID: ${params.id}`,
+            `Expected version: ${existing.version}`,
+            `Current version: ${error.data.note.version}`,
+            "Please re-read the note and retry the edit.",
+          ].join("\n"),
+          metadata: { id: params.id, conflict: true } as Record<string, any>,
+        }
       }
-      // Catch note-deleted-during-edit race
       if (error instanceof Storage.NotFoundError) {
         return {
           title: "Error",
@@ -127,8 +146,13 @@ export const NoteEditTool = Tool.define("note_edit", {
 
     return {
       title: existing.title,
-      output: [`Note edited successfully.`, `ID: ${params.id}`, `Title: ${existing.title}`].join("\n"),
-      metadata: { id: params.id, title: existing.title } as Record<string, any>,
+      output: [
+        "Note edited successfully.",
+        `ID: ${params.id}`,
+        `Title: ${existing.title}`,
+        `Operations applied: ${sorted.length}`,
+      ].join("\n"),
+      metadata: { id: params.id, title: existing.title, opCount: sorted.length },
     }
   },
 })

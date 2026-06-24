@@ -9,14 +9,15 @@ import { FileTime } from "../file/time"
 import { detectConflicts } from "../conflict/detect"
 import { RuntimeReload } from "../runtime/reload"
 import {
-  assertInsideOrAsk,
   diffStats,
   displayPath,
   ensureParentDir,
   hashlineHeaderFor,
+  recordSeenSessionLines,
   resolveFilePath,
 } from "./anchored-file"
 import { stripHashlineDisplayPrefixes } from "../hashline/format"
+import { splitContentLines } from "../hashline/tag"
 import { collectWriteDiagnostics } from "./write-quality"
 
 export const SaveFileTool = Tool.define("save_file", {
@@ -30,7 +31,6 @@ export const SaveFileTool = Tool.define("save_file", {
   async execute(params, ctx) {
     const filePath = resolveFilePath(params.filePath)
     const title = displayPath(filePath)
-    await assertInsideOrAsk(filePath, ctx)
 
     return FileTime.withLock(
       filePath,
@@ -81,6 +81,15 @@ export const SaveFileTool = Tool.define("save_file", {
           : undefined
         const builtinSourceWarning = RuntimeReload.builtinSourceEditWarning(filePath)
         const header = hashlineHeaderFor(ctx.sessionID, filePath, finalContent)
+        const tag = header.match(/#([0-9A-F]{4})\]$/)?.[1]
+        if (tag) {
+          recordSeenSessionLines(
+            ctx.sessionID,
+            filePath,
+            splitContentLines(finalContent).map((_, index) => index + 1),
+            tag,
+          )
+        }
         const finalDiff = trimDiff(createTwoFilesPatch(filePath, filePath, oldContent, finalContent))
         const finalChangeSummary = diffStats(finalDiff)
         let output = header
@@ -94,7 +103,7 @@ export const SaveFileTool = Tool.define("save_file", {
           metadata: {
             filepath: filePath,
             path: title,
-            tag: header.match(/#([0-9A-F]{4})\]$/)?.[1],
+            tag,
             diff: finalDiff,
             filediff: { file: title, path: title, before: oldContent, after: finalContent, ...finalChangeSummary },
             changeSummary: finalChangeSummary,

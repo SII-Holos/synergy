@@ -4,6 +4,7 @@ import { EngramDB } from "./database"
 import { Intent } from "./intent"
 import { Log } from "../util/log"
 
+import { MigrationRegistry } from "../migration/registry"
 type SqliteConn = Database
 
 type LegacyMemoryRow = {
@@ -260,3 +261,4 @@ export const migrations: Migration[] = [
     },
   },
 ]
+MigrationRegistry.register("engram", migrations)

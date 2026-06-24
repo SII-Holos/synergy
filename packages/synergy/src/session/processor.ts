@@ -28,7 +28,7 @@ export namespace SessionProcessor {
         input: any
         result: { output: string; title: string; metadata: Record<string, any>; attachments?: MessageV2.FilePart[] }
       }
-    | { status: "error"; input: any; error: string }
+    | { status: "error"; input: any; error: string; metadata?: Record<string, any> }
 
   export type Info = Awaited<ReturnType<typeof create>>
   export type Result = Awaited<ReturnType<Info["process"]>>
@@ -60,6 +60,50 @@ export namespace SessionProcessor {
     let blocked = false
     let attempt = 0
 
+    function toolStartTime(part: MessageV2.ToolPart, fallback = Date.now()) {
+      if (part.state.status !== "running") return fallback
+      const approval = (part.state.metadata as any)?.approval
+      const executionStartedAt = approval?.time?.executionStartedAt
+      if (typeof executionStartedAt === "number") return executionStartedAt
+      if (
+        approval?.status === "pending_user" ||
+        approval?.status === "user_denied" ||
+        approval?.status === "auto_denied" ||
+        approval?.status === "policy_denied"
+      ) {
+        return fallback
+      }
+      return part.state.time.start
+    }
+    async function settleToolPart(part: MessageV2.ToolPart, outcome: ToolOutcome) {
+      const startTime = toolStartTime(part)
+      if (outcome.status === "completed") {
+        await Session.updatePart({
+          ...part,
+          state: {
+            status: "completed",
+            input: outcome.input,
+            output: outcome.result.output,
+            metadata: outcome.result.metadata,
+            title: outcome.result.title,
+            time: { start: startTime, end: Date.now() },
+            attachments: outcome.result.attachments,
+          },
+        })
+      } else {
+        await Session.updatePart({
+          ...part,
+          state: {
+            status: "error",
+            input: outcome.input,
+            error: outcome.error,
+            metadata: outcome.metadata,
+            time: { start: startTime, end: Date.now() },
+          },
+        })
+      }
+    }
+
     const result = {
       get message() {
         return input.assistantMessage
@@ -72,7 +116,7 @@ export namespace SessionProcessor {
       },
       async process(streamInput: LLM.StreamInput) {
         log.info("process")
-        const shouldBreak = (await Config.get()).experimental?.continue_loop_on_deny !== true
+        const shouldBreak = (await Config.current()).experimental?.continue_loop_on_deny !== true
         while (true) {
           try {
             let currentText: MessageV2.TextPart | undefined
@@ -224,6 +268,7 @@ export namespace SessionProcessor {
                       },
 
                       ruleset: PermissionNext.merge(agent.permission, PermissionNext.sessionRuleset(session)),
+                      signal: input.abort,
                     })
                   }
                   break
@@ -231,22 +276,8 @@ export namespace SessionProcessor {
                 case "tool-result": {
                   const match = toolcalls[value.toolCallId]
                   if (match && match.state.status === "running") {
-                    await Session.updatePart({
-                      ...match,
-                      state: {
-                        status: "completed",
-                        input: value.input,
-                        output: value.output.output,
-                        metadata: value.output.metadata,
-                        title: value.output.title,
-                        time: {
-                          start: match.state.time.start,
-                          end: Date.now(),
-                        },
-                        attachments: value.output.attachments,
-                      },
-                    })
-
+                    const outcome = await pendingExecutions.get(value.toolCallId)
+                    if (outcome) await settleToolPart(match, outcome)
                     delete toolcalls[value.toolCallId]
                   }
                   break
@@ -255,26 +286,15 @@ export namespace SessionProcessor {
                 case "tool-error": {
                   const match = toolcalls[value.toolCallId]
                   if (match && match.state.status === "running") {
-                    await Session.updatePart({
-                      ...match,
-                      state: {
-                        status: "error",
-                        input: value.input,
-                        error: (value.error as any).toString(),
-                        time: {
-                          start: match.state.time.start,
-                          end: Date.now(),
-                        },
-                      },
-                    })
-
-                    if (
-                      value.error instanceof PermissionNext.RejectedError ||
-                      value.error instanceof Question.RejectedError
-                    ) {
-                      blocked = shouldBreak
-                    }
+                    const outcome = await pendingExecutions.get(value.toolCallId)
+                    if (outcome) await settleToolPart(match, outcome)
                     delete toolcalls[value.toolCallId]
+                  }
+                  if (
+                    value.error instanceof PermissionNext.RejectedError ||
+                    value.error instanceof Question.RejectedError
+                  ) {
+                    blocked = shouldBreak
                   }
                   break
                 }
@@ -282,7 +302,7 @@ export namespace SessionProcessor {
                   throw value.error
 
                 case "start-step":
-                  snapshot = await Snapshot.track()
+                  snapshot = await Snapshot.track(input.sessionID, input.abort)
                   await Session.updatePart({
                     id: Identifier.ascending("part"),
                     messageID: input.assistantMessage.id,
@@ -304,7 +324,7 @@ export namespace SessionProcessor {
                   await Session.updatePart({
                     id: Identifier.ascending("part"),
                     reason: value.finishReason,
-                    snapshot: await Snapshot.track(),
+                    snapshot: await Snapshot.track(input.sessionID, input.abort),
                     messageID: input.assistantMessage.id,
                     sessionID: input.assistantMessage.sessionID,
                     type: "step-finish",
@@ -313,7 +333,10 @@ export namespace SessionProcessor {
                   })
                   await Session.updateMessage(input.assistantMessage)
                   if (snapshot) {
-                    const patch = await Snapshot.patch(snapshot, { indexFresh: true })
+                    const patch = await Snapshot.patch(snapshot, input.sessionID, {
+                      indexFresh: true,
+                      signal: input.abort,
+                    })
                     if (patch.files.length) {
                       await Session.updatePart({
                         id: Identifier.ascending("part"),
@@ -419,7 +442,7 @@ export namespace SessionProcessor {
             })
           }
           if (snapshot) {
-            const patch = await Snapshot.patch(snapshot)
+            const patch = await Snapshot.patch(snapshot, input.sessionID, { signal: input.abort })
             if (patch.files.length) {
               await Session.updatePart({
                 id: Identifier.ascending("part"),
@@ -450,38 +473,11 @@ export namespace SessionProcessor {
           }
           for (const part of p) {
             if (part.type === "tool" && part.state.status !== "completed" && part.state.status !== "error") {
-              const startTime = part.state.status === "running" ? part.state.time.start : Date.now()
               const outcome = outcomes.get(part.callID)
-              if (outcome?.status === "completed") {
-                await Session.updatePart({
-                  ...part,
-                  state: {
-                    status: "completed",
-                    input: outcome.input,
-                    output: outcome.result.output,
-                    metadata: outcome.result.metadata,
-                    title: outcome.result.title,
-                    time: {
-                      start: startTime,
-                      end: Date.now(),
-                    },
-                    attachments: outcome.result.attachments,
-                  },
-                })
-              } else if (outcome?.status === "error") {
-                await Session.updatePart({
-                  ...part,
-                  state: {
-                    status: "error",
-                    input: outcome.input,
-                    error: outcome.error,
-                    time: {
-                      start: startTime,
-                      end: Date.now(),
-                    },
-                  },
-                })
+              if (outcome) {
+                await settleToolPart(part, outcome)
               } else {
+                const startTime = toolStartTime(part)
                 await Session.updatePart({
                   ...part,
                   state: {
@@ -489,7 +485,7 @@ export namespace SessionProcessor {
                     status: "error",
                     error: "Tool execution aborted",
                     time: {
-                      start: Date.now(),
+                      start: startTime,
                       end: Date.now(),
                     },
                   },

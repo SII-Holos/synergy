@@ -1,0 +1,121 @@
+.stb-root {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 58px;
+  padding: 0 22px;
+  background: transparent;
+  gap: 16px;
+  pointer-events: none;
+}
+
+.stb-folder {
+  flex-shrink: 0;
+  color: var(--icon-base);
+}
+
+.stb-slash {
+  font-size: 21px;
+  line-height: 1;
+  font-weight: 400;
+  color: var(--text-subtle);
+  font-family: ui-monospace, monospace;
+}
+.stb-left {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  overflow: visible;
+
+  .stb-selector-btn + .stb-selector-btn {
+    margin-left: -4px;
+  }
+}
+
+.stb-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.stb-left,
+.stb-right {
+  pointer-events: auto;
+}
+
+.stb-selector-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: max-content;
+  height: 38px;
+  padding: 0 11px;
+  border-radius: 10px;
+  background: transparent;
+  border: none;
+  color: var(--text-strong);
+  font-size: 18px;
+  font-weight: 650;
+  transition:
+    background-color 150ms,
+    color 150ms;
+}
+
+.stb-selector-btn:hover {
+  background: var(--surface-raised-base-hover);
+}
+
+.stb-locked {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.stb-locked:hover {
+  background: transparent;
+}
+
+.stb-selector-label {
+  white-space: nowrap;
+  overflow: visible;
+}
+.stb-variant-label {
+  font-size: 15px;
+  font-weight: 520;
+  color: var(--text-weak);
+  white-space: nowrap;
+}
+
+.stb-chevron {
+  color: var(--icon-base);
+  flex-shrink: 0;
+}
+
+.stb-icon-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 9px;
+  color: var(--icon-base);
+  transition:
+    color 150ms,
+    background-color 150ms;
+}
+
+.stb-icon-btn:hover {
+  color: var(--icon-base);
+  background: var(--surface-raised-base-hover);
+}
+
+.stb-icon-btn--active {
+  color: var(--icon-strong);
+  background: var(--surface-raised-base-hover);
+}

@@ -3,11 +3,10 @@ import { tmpdir } from "../fixture/fixture"
 import { Session } from "../../src/session"
 import { SessionInteraction } from "../../src/session/interaction"
 import { AppChannel } from "../../src/channel/app"
-import { GenesisChannel } from "../../src/channel/genesis"
 import { SessionEvent } from "../../src/session/event"
 import { Bus } from "../../src/bus"
 import { Log } from "../../src/util/log"
-import { Instance } from "../../src/scope/instance"
+import { ScopeContext } from "../../src/scope/context"
 import { Scope } from "../../src/scope"
 
 Log.init({ print: false })
@@ -15,7 +14,7 @@ Log.init({ print: false })
 describe("session lifecycle events", () => {
   test("emits session.updated when a session is created", async () => {
     await using tmp = await tmpdir({ git: true })
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const resolved = Promise.withResolvers<Session.Info>()
@@ -40,7 +39,7 @@ describe("session lifecycle events", () => {
 
   test("app channel sessions stay interactive", async () => {
     await using tmp = await tmpdir({ git: true })
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const session = await AppChannel.session()
@@ -52,23 +51,9 @@ describe("session lifecycle events", () => {
     })
   })
 
-  test("genesis channel sessions stay unattended", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await Instance.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const session = await GenesisChannel.session()
-
-        expect(session.interaction).toEqual(SessionInteraction.unattended("channel:genesis"))
-
-        await Session.remove(session.id)
-      },
-    })
-  })
-
   test("child sessions inherit unattended interaction from parent", async () => {
     await using tmp = await tmpdir({ git: true })
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const parent = await Session.create({
@@ -79,6 +64,123 @@ describe("session lifecycle events", () => {
         })
 
         expect(child.interaction).toEqual(parent.interaction)
+
+        await Session.remove(parent.id)
+      },
+    })
+  })
+
+  test("resolveControlProfile walks the parent chain", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const parent = await Session.create({
+          controlProfile: "guarded",
+        })
+        const child = await Session.create({
+          parentID: parent.id,
+        })
+        const grandchild = await Session.create({
+          parentID: child.id,
+        })
+
+        // Neither child nor grandchild were created with an explicit
+        // controlProfile — the resolver must walk to the root parent.
+        expect(await Session.resolveControlProfile(grandchild.id)).toBe("guarded")
+
+        await Session.remove(parent.id)
+      },
+    })
+  })
+
+  test("resolveControlProfile returns own value for root session", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({
+          controlProfile: "autonomous",
+        })
+
+        expect(await Session.resolveControlProfile(session.id)).toBe("autonomous")
+
+        await Session.remove(session.id)
+      },
+    })
+  })
+
+  test("resolveControlProfile sees updated parent profile", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const parent = await Session.create({
+          controlProfile: "guarded",
+        })
+        const child = await Session.create({
+          parentID: parent.id,
+        })
+
+        await Session.updateControlProfile(parent.id, "autonomous")
+
+        expect(await Session.resolveControlProfile(child.id)).toBe("autonomous")
+
+        await Session.remove(parent.id)
+      },
+    })
+  })
+
+  test("child sessions inherit the parent control profile via Session.get", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const parent = await Session.create({
+          controlProfile: "autonomous",
+        })
+        const child = await Session.create({
+          parentID: parent.id,
+          // Children no longer store controlProfile — inheritance is
+          // resolved at runtime from the parent chain.
+          controlProfile: "full_access",
+        })
+
+        // The raw return from create() shows what was stored.
+        // After the refactor children never persist their own controlProfile.
+        expect(child.controlProfile).toBeUndefined()
+        // Session.get() resolves the profile by walking the parent chain.
+        expect((await Session.get(child.id)).controlProfile).toBe("autonomous")
+        // The resolver itself returns the same value.
+        expect(await Session.resolveControlProfile(child.id)).toBe("autonomous")
+
+        await Session.remove(parent.id)
+      },
+    })
+  })
+
+  test("parent control profile updates propagate via runtime resolver", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const parent = await Session.create({
+          controlProfile: "guarded",
+        })
+        const child = await Session.create({
+          parentID: parent.id,
+        })
+        const grandchild = await Session.create({
+          parentID: child.id,
+        })
+
+        await Session.updateControlProfile(parent.id, "autonomous")
+
+        // updateControlProfile only touches the target session — no BFS.
+        // Session.get() fills in the resolved profile for API clients.
+        expect((await Session.get(parent.id)).controlProfile).toBe("autonomous")
+        expect((await Session.get(grandchild.id)).controlProfile).toBe("autonomous")
+        expect(await Session.resolveControlProfile(grandchild.id)).toBe("autonomous")
 
         await Session.remove(parent.id)
       },

@@ -89,7 +89,7 @@ export const { use: useNotification, provider: NotificationProvider } = createSi
       switch (event.type) {
         case "session.idle": {
           const sessionID = event.properties.sessionID
-          const [syncStore] = globalSync.child(directory)
+          const [syncStore] = globalSync.ensureScopeState(directory)
           const match = Binary.search(syncStore.session, sessionID, (s) => s.id)
           const session = match.found ? syncStore.session[match.index] : undefined
           if (session?.parentID) break
@@ -107,7 +107,7 @@ export const { use: useNotification, provider: NotificationProvider } = createSi
         }
         case "session.error": {
           const sessionID = event.properties.sessionID
-          const [syncStore] = globalSync.child(directory)
+          const [syncStore] = globalSync.ensureScopeState(directory)
           const match = sessionID ? Binary.search(syncStore.session, sessionID, (s) => s.id) : undefined
           const session = sessionID && match?.found ? syncStore.session[match.index] : undefined
           if (session?.parentID) break

@@ -10,7 +10,7 @@ export function createIntegrationEngineerAgent(ctx: BuiltinAgentContext) {
   return createSubagent(ctx, {
     name: "integration-engineer",
     description:
-      "Integrates outputs from multiple agents into one coherent change set. Use after parallel implementation, test, docs, or review work. Provide prior findings and current scope; the agent resolves interface mismatches, naming drift, import conflicts, and inconsistent assumptions, then returns verification needs and reusable context.",
+      "Integrates outputs from multiple agents into one coherent change set. Use after parallel implementation, test, docs, or review work. Provide prior findings and current scope; the agent resolves interface mismatches, naming drift, import conflicts, and inconsistent assumptions, then returns verification needs and reusable context. NOT for writing new code (use implementation-engineer), writing tests (use test-strategist), running quality gates (use quality-gatekeeper), or resolving architectural conflicts (escalate to solution-architect).",
     prompt: buildIntegrationEngineerPrompt(),
     model: "thinking",
     permission: "anchoredCodeWrite",

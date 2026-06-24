@@ -85,5 +85,3 @@ None, or: insufficient results from any pass; topic terminology unclear; field n
 - Terminology map: what the field calls key concepts, common aliases to avoid
 - Explicit note: which candidate paper this agent recommends deep-reading first
 
-## Next
-Dispatch `literature-analyst` to deep-read and synthesize the prioritized papers.

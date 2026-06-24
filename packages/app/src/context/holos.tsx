@@ -7,11 +7,6 @@ const HOLOS_EVENTS = new Set([
   "holos.contact.added",
   "holos.contact.removed",
   "holos.contact.updated",
-  "holos.contact.config_updated",
-  "holos.friend_request.created",
-  "holos.friend_request.updated",
-  "holos.friend_request.removed",
-  "holos.profile.updated",
   "holos.connection.status_changed",
 ])
 
@@ -42,6 +37,8 @@ const DEFAULT_STATE: HolosState = {
   identity: {
     loggedIn: false,
     agentId: null,
+    activeAccount: null,
+    accounts: [],
   },
   connection: {
     status: "unknown",
@@ -49,22 +46,9 @@ const DEFAULT_STATE: HolosState = {
   readiness: {
     ready: false,
   },
-  capability: {
-    items: [],
-  },
-  entitlement: {
-    quotas: {
-      dailyFreeUsage: {
-        status: "unknown",
-        remaining: null,
-        limit: null,
-      },
-    },
-  },
   social: {
     profile: null,
     contacts: [],
-    friendRequests: [],
     presence: {},
   },
 }
@@ -86,7 +70,7 @@ export const { use: useHolos, provider: HolosProvider } = createSimpleContext<Ho
     async function runRefresh(version: number) {
       try {
         setError(null)
-        const res = await sdk.client.holos.state({ directory: "global" })
+        const res = await sdk.client.holos.state({ scopeID: "home" })
         if (res.data && version === refreshVersion) {
           setState(res.data as HolosState)
         }

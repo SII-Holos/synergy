@@ -24,7 +24,7 @@ const COMMANDS: CommandAction[] = [
 
 const PROMPTS: PromptAction[] = [
   {
-    icon: "scroll-text",
+    icon: "notebook-pen",
     label: "Note",
     description: "Save last response as a note",
     prompt:
@@ -53,16 +53,16 @@ const PROMPTS: PromptAction[] = [
   {
     icon: "microscope",
     label: "Audit",
-    description: "Audit code for readability, abstraction, and structure",
+    description: "Audit recent changes and ensure quality",
     prompt:
-      "Audit your recent changes — list issues only, do NOT fix them yet. Evaluate along three axes: (1) Readability — are names (variables, functions, files) self-explanatory? Is each unit of logic coherent and single-purpose, or does it scatter related concerns across disconnected spots? (2) Unnecessary indirection — does the code wrap logic in layers of functions, wrappers, or adapters that add callsite depth without adding clarity or reuse? Every layer must justify itself; if stripping it preserves behavior and improves navigability, flag it. (3) Structural density — are files bloated with thousands of lines mixing unrelated responsibilities? Flag files that have grown past a reasonable scope and should be decomposed. Also flag any dead code, unused imports, or patch-over-proper-fix patterns you notice. Be honest and specific — cite file names, line ranges, and concrete examples. I'll review your findings before deciding what to fix.",
+      "Audit your recent changes — list issues only, do NOT fix them yet. Evaluate along these axes: (1) Readability — are names self-describing? Does each unit have a single clear responsibility, or does it scatter related concerns? (2) Structural hygiene — dead code, leftover transitional code, unused imports, stale layers, speculative abstraction? Flag anything that doesn't earn its place. (3) Design integrity — unnecessary wrappers, indirection, functions that add callsite depth without clarity or reuse? Every layer must justify itself. (4) Error handling — are error paths covered? Are null, empty, boundary, and failure states handled explicitly? (5) Consistency — do naming, error handling, module layout, and imports match surrounding conventions? Be specific — cite file names, line ranges, and concrete examples. I'll review your findings before deciding what to fix.",
   },
   {
     icon: "zap",
     label: "Start",
-    description: "Implement the proposed plan",
+    description: "Start implementing the current plan",
     prompt:
-      "Your proposal looks good — go ahead and implement it. Prioritize clean, professional code: no redundant logic, no dead code, no leftover patches. If the right solution requires refactoring at a deeper level rather than layering fixes on top, do that. Treat the codebase with care — every line should earn its place.",
+      "Your proposal looks good — go ahead and implement it. Prioritize clean, professional code: no redundant logic, no dead code, no leftover patches. Behavior should be tested, names should communicate domain meaning, structure should be locally consistent. If the right solution requires refactoring at a deeper level rather than layering fixes on top, do that. Quality checks must pass at the end. Treat the codebase with care — every line should earn its place.",
   },
 ]
 

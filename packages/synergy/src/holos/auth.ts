@@ -1,9 +1,10 @@
 import { Auth } from "@/provider/api-key"
 import { Config } from "@/config/config"
-import { Instance } from "@/scope/instance"
+import { ScopeContext } from "@/scope/context"
 import { Scope } from "@/scope"
 import { HOLOS_PORTAL_URL, HOLOS_URL, HOLOS_WS_URL } from "./constants"
 import { HolosProtocol } from "./protocol"
+import { HolosAccounts } from "./accounts"
 
 export namespace HolosAuth {
   export type VerifyResult = { valid: true; agentId: string } | { valid: false; reason: string }
@@ -29,14 +30,15 @@ export namespace HolosAuth {
   }
 
   export async function getStoredCredential(): Promise<StoredCredential | undefined> {
-    const credentials = await Auth.get("holos")
-    if (!credentials || credentials.type !== "holos") return undefined
-    const secret = credentials.agentSecret
+    await HolosAccounts.migrateFromLegacy()
+    const account = await HolosAccounts.getActiveAccount()
+    if (!account) return undefined
+    const secret = account.agentSecret
     const masked =
-      secret.length > 8 ? secret.slice(0, 4) + "•".repeat(12) + secret.slice(-4) : "•".repeat(secret.length)
+      secret.length > 8 ? secret.slice(0, 4) + "\u2022".repeat(12) + secret.slice(-4) : "\u2022".repeat(secret.length)
     return {
-      agentId: credentials.agentId,
-      agentSecret: credentials.agentSecret,
+      agentId: account.agentId,
+      agentSecret: account.agentSecret,
       maskedSecret: masked,
     }
   }
@@ -62,16 +64,19 @@ export namespace HolosAuth {
   }
 
   export async function saveCredentialsAndConfigure(agentId: string, agentSecret: string): Promise<void> {
-    await Auth.set("holos", { type: "holos", agentId, agentSecret })
+    await HolosAccounts.saveAndActivateAccount(agentId, agentSecret)
     await configureHolos()
   }
 
-  export async function clearCredentials(): Promise<void> {
-    await Auth.remove("holos")
+  export async function clearActiveAccount(): Promise<void> {
+    const active = await HolosAccounts.getActiveAccount()
+    if (active) {
+      await HolosAccounts.deleteAccount(active.agentId)
+    }
   }
 
   export async function configureHolos(): Promise<void> {
-    await Config.updateGlobal({
+    await Config.domainUpdate("holos", {
       holos: {
         enabled: true,
         apiUrl: HOLOS_URL,
@@ -82,8 +87,8 @@ export namespace HolosAuth {
   }
 
   export async function reloadRuntime(): Promise<void> {
-    await Instance.provide({
-      scope: Scope.global(),
+    await ScopeContext.provide({
+      scope: Scope.home(),
       fn: async () => {
         const { HolosRuntime } = await import("@/holos/runtime")
         await HolosRuntime.reload()

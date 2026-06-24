@@ -1,7 +1,8 @@
 import path from "path"
 import { existsSync } from "fs"
 import z from "zod"
-import { Instance } from "../scope/instance"
+import { ScopeContext } from "../scope/context"
+import { ScopedState } from "../scope/scoped-state"
 import { NamedError } from "@ericsanchezok/synergy-util/error"
 import { ConfigMarkdown } from "../config/markdown"
 import { Log } from "../util/log"
@@ -308,7 +309,7 @@ export namespace Skill {
     }
   }
 
-  export const state = Instance.state(async () => {
+  export const state = ScopedState.create(async () => {
     const skills: Record<string, Info> = {}
     const priorities: Record<string, number> = {}
     const diagnostics: Diagnostic[] = []
@@ -428,7 +429,7 @@ export namespace Skill {
 
     const candidates = [] as SkillCandidate[]
     const home = Global.Path.home
-    const dir = Instance.directory
+    const dir = ScopeContext.current.directory
 
     const existing = (dirs: string[]) => dirs.filter((d) => existsSync(d)).map((d) => path.resolve(d))
 

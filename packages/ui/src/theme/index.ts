@@ -18,7 +18,6 @@ export {
   oklchToRgb,
   generateScale,
   generateNeutralScale,
-  generateAlphaScale,
   mixColors,
   lighten,
   darken,
@@ -26,7 +25,6 @@ export {
 } from "./color"
 
 export { resolveThemeVariant, resolveTheme, themeToCss } from "./resolve"
-export { applyTheme, setColorScheme } from "./loader"
 export { ThemeProvider, useTheme, type ColorScheme } from "./context"
 
-export { synergyTheme, oc1Theme } from "./default-themes"
+export { synergyTheme } from "./default-themes"

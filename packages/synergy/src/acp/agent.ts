@@ -30,6 +30,7 @@ import { Todo } from "@/session/todo"
 import { Dag } from "@/session/dag"
 import { z } from "zod"
 import { LoadAPIKeyError } from "ai"
+import path from "node:path"
 import type { SynergyClient, SessionMessageResponse } from "@ericsanchezok/synergy-sdk"
 
 export namespace ACP {
@@ -1112,8 +1113,8 @@ export namespace ACP {
   ): { type: "file"; url: string; filename: string; mime: string } | { type: "text"; text: string } {
     try {
       if (uri.startsWith("file://")) {
-        const path = uri.slice(7)
-        const name = path.split("/").pop() || path
+        const filepath = uri.slice(7)
+        const name = path.basename(filepath) || filepath
         return {
           type: "file",
           url: uri,

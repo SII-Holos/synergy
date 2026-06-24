@@ -89,4 +89,6 @@ export const styleVariables = {
   "--diffs-header-font-family": "var(--font-family-sans)",
   "--diffs-gap-block": 0,
   "--diffs-min-number-column-width": "4ch",
+  "--diffs-light-bg": "#f6f6f6",
+  "--diffs-dark-bg": "#181818",
 }

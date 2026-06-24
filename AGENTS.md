@@ -35,7 +35,6 @@ Use current terms consistently.
 
 - `packages/synergy` — core runtime, server, CLI, sessions, tools, permissions, integrations, orchestration
 - `packages/app` — main Web application
-- `packages/config-ui` — dedicated configuration UI package
 - `packages/plugin` — plugin SDK published as `@ericsanchezok/synergy-plugin`
 - `packages/sdk/js` — TypeScript SDK published as `@ericsanchezok/synergy-sdk`
 - `packages/ui` — shared UI component library
@@ -52,7 +51,9 @@ Current work commonly touches these domains:
 - `channel/` — external messaging/channel integrations
 - `cli/` — CLI commands, startup flows, and user-facing entrypoints
 - `config/` — config loading, merging, resolution, setup
+- `control-profile/` — resolved permission/sandbox profile definitions and compiler
 - `cortex/` — task orchestration and background execution
+- `enforcement/` — capability classification and centralized tool boundary gate
 - `engram/` — memory/knowledge infrastructure
 - `mcp/` — MCP support
 - `note/` — notes system
@@ -60,6 +61,7 @@ Current work commonly touches these domains:
 - `process/` and `pty/` — process/runtime plumbing
 - `provider/` — LLM provider integration
 - `scope/` — scope resolution and context
+- `sandbox/` — OS sandbox backend wrappers for process execution
 - `server/` — HTTP server and API routes
 - `session/` — session lifecycle, prompting, recall, summaries, progress
 - `skill/` — skill loading and built-ins
@@ -130,6 +132,16 @@ bun test --watch
 ```
 
 Regenerate the SDK after modifying server routes or route schemas.
+
+### Frontend API calls
+
+Frontend code should use the generated SDK for Synergy server APIs instead of hand-written `fetch()` calls.
+
+- Use `createSynergyClient()` / existing SDK contexts for internal Synergy routes.
+- If a server route is needed by the frontend but is missing from the SDK, add OpenAPI metadata to the route, run `./script/generate.ts`, and call the generated SDK method.
+- Do not duplicate route URLs, query parsing, response shapes, or error handling in app code when an SDK method can represent the same contract.
+- Keep raw browser APIs only for cases the SDK should not abstract: WebSocket/EventSource streams, external URLs, browser downloads/uploads where no SDK route exists, local file/blob handling, and platform-provided `fetch` injection into the SDK client.
+- When replacing raw `fetch()` with SDK calls, preserve auth behavior, directory/scope parameters, error semantics, and response URL formats such as asset URLs.
 
 ## Code Style
 
@@ -215,27 +227,37 @@ Treat schema and data migrations as a first-class architectural concern.
 
 ### Current config locations
 
-Primary global config uses the active global Config Set under:
+Primary global config uses one canonical domain directory under:
 
 ```bash
-~/.synergy/config
+~/.synergy/config/synergy.d/
 ```
 
-The `default` Config Set maps to:
+The domain files are:
 
 ```bash
-~/.synergy/config/synergy.jsonc
+00-general.jsonc
+10-models.jsonc
+20-providers.jsonc
+30-engram.jsonc
+40-mcp.jsonc
+50-plugins.jsonc
+60-agents.jsonc
+70-commands.jsonc
+80-permissions.jsonc
+90-channels.jsonc
+100-holos.jsonc
+110-email.jsonc
+120-runtime.jsonc
 ```
 
-Project-level config is resolved from the working tree and may include:
+Project-level config uses the same domain layout under:
 
 ```bash
-synergy.jsonc
-synergy.json
-.synergy/
+<project>/.synergy/synergy.d/
 ```
 
-When editing or documenting config, prefer `synergy.jsonc` as the primary file name unless you are specifically describing compatibility behavior.
+Legacy monolithic config files are migration inputs only. Do not add new runtime load paths or long-term compatibility branches for them.
 
 ### Config-aware work
 
@@ -249,6 +271,7 @@ If you change:
 - `.synergy/` conventions
 - MCP config shape
 - channel config shape
+- control profile or sandbox config behavior
 
 then review both `README.md` and any related setup/help text.
 
@@ -256,7 +279,7 @@ then review both `README.md` and any related setup/help text.
 
 ### Current agent reality
 
-The repository now has two built-in primary orchestrators: `synergy` for the classic general workflow and `synergy-max` for the expanded coding-harness workflow. Built-in subagents are scoped with visibility masks: classic subagents such as `developer`, `explore`, `scout`, `advisor`, `inspector`, `scribe`, and `scholar` are visible to `synergy`; the new coding-harness and knowledge subagents such as `intent-analyst`, `requirements-engineer`, `code-cartographer`, `solution-architect`, `test-strategist`, `implementation-engineer`, `quality-gatekeeper`, `memory-curator`, `note-librarian`, `session-historian`, and reviewer agents are visible to `synergy-max`.
+The repository now has two built-in primary orchestrators: `synergy` for the classic general workflow and `synergy-max` for the expanded coding-harness workflow. Built-in subagents are scoped with visibility masks: classic subagents such as `developer`, `explore`, `scout`, `advisor`, `inspector`, `scribe`, and `scholar` are visible to `synergy`; the new coding-harness and knowledge subagents such as `intent-analyst`, `requirements-engineer`, `code-cartographer`, `solution-architect`, `test-strategist`, `implementation-engineer`, `research-scout`, `docs-researcher`, `literature-searcher`, `literature-analyst`, `research-methodologist`, `quality-gatekeeper`, `memory-curator`, `note-librarian`, `session-historian`, and reviewer agents are visible to `synergy-max`.
 
 Do not reintroduce `master` as a built-in agent name. The classic coding executor is `developer`; the coding-harness executor is `implementation-engineer`.
 
@@ -279,7 +302,7 @@ Adding a new tool requires registering it in **four** places for full UI support
 2. **`packages/ui/src/components/message-part.tsx`** — add a `case` in `getToolInfo()` returning `{ icon, title, subtitle, args }`. This drives the tool card display for both direct renders and the task summary list.
 3. **`packages/ui/src/components/tool-renders.tsx`** — append the tool name to its group array (e.g. `inspireToolNames`, `researchToolNames`) so `ToolRegistry.register` picks it up with the shared render logic.
 4. **`packages/synergy/src/tool/taxonomy.ts`** — add an entry with the correct domain kind and traits (`stateful`, `externalIO`).
-5. **`packages/ui/src/components/semantic-tool-classifier.ts`** — add the tool to `TOOL_CATEGORIES` with the appropriate semantic category, so the fallback classifier works if steps 2–3 are missed.
+5. **`packages/ui/src/components/tool/classifier.ts`** — add the tool to `TOOL_CATEGORIES` with the appropriate semantic category, so the fallback classifier works if steps 2–3 are missed.
 
 Skipping any of these causes the tool to fall back to a generic icon and label, or to miss permission/state tracking.
 

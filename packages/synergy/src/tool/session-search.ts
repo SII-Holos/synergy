@@ -1,13 +1,15 @@
+import { formatLocalDateTime } from "@/util/time-format"
 import z from "zod"
 import { Tool } from "./tool"
 import { Session } from "../session"
 import { MessageV2 } from "../session/message-v2"
 import { Scope } from "@/scope"
-import { Instance } from "@/scope/instance"
+import { ScopeContext } from "@/scope/context"
 import { Identifier } from "../id/id"
 import { Storage } from "../storage/storage"
 import { StoragePath } from "../storage/path"
 import DESCRIPTION from "./session-search.txt"
+import path from "node:path"
 
 const parameters = z.object({
   pattern: z.string().describe("Regex pattern to search for in message text content."),
@@ -51,7 +53,7 @@ function buildSnippet(text: string, matchIndex: number, matchLength: number): st
 }
 
 async function collectSessions(scope: string, sinceMs?: number, beforeMs?: number): Promise<Session.Info[]> {
-  const scopes = scope === "current" ? [Instance.scope] : await Scope.list()
+  const scopes = scope === "current" ? [ScopeContext.current.scope] : await Scope.list()
   const allSessions: Session.Info[] = []
 
   for (const s of scopes) {
@@ -94,12 +96,15 @@ function searchMessage(msg: MessageV2.WithParts, regex: RegExp): Match | undefin
 
 function formatResult(result: SessionResult): string {
   const scope = result.session.scope as Scope
-  const scopeLabel = scope.type === "global" ? "Home" : (scope.name ?? scope.directory?.split("/").pop() ?? scope.id)
-  const updated = new Date(result.session.time.updated).toISOString()
+  const scopeLabel =
+    scope.type === "home"
+      ? "Home"
+      : (scope.name ?? (scope.directory ? path.basename(scope.directory) : undefined) ?? scope.id)
+  const updated = formatLocalDateTime(result.session.time.updated)
   const lines = [`[${result.session.id}] "${result.session.title}" — ${scopeLabel} (updated ${updated})`]
 
   for (const match of result.matches) {
-    const time = new Date(match.time).toISOString()
+    const time = formatLocalDateTime(match.time)
     lines.push(`  [${match.messageID}] ${match.role} (${time}):`)
     lines.push(`    ${match.snippet}`)
   }

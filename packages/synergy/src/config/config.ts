@@ -5,39 +5,153 @@ import os from "os"
 import z from "zod"
 import { Filesystem } from "../util/filesystem"
 import { ModelsDev } from "../provider/models"
-import { mergeDeep, pipe, unique } from "remeda"
+import { mergeDeep, unique } from "remeda"
 import { Global } from "../global"
 import fs from "fs/promises"
 import { lazy } from "../util/lazy"
 import { NamedError } from "@ericsanchezok/synergy-util/error"
 import { Flag } from "../flag/flag"
 import { Auth } from "../provider/api-key"
-import {
-  type ParseError as JsoncParseError,
-  parse as parseJsonc,
-  printParseErrorCode,
-  modify,
-  applyEdits,
-} from "jsonc-parser"
-import { Instance } from "../scope/instance"
+import { type ParseError as JsoncParseError, parse as parseJsonc, printParseErrorCode } from "jsonc-parser"
+import { ScopeContext } from "../scope/context"
+import { ScopedState } from "../scope/scoped-state"
+import { ScopeRuntime } from "../scope/runtime"
+import { Scope } from "../scope"
 import { BusEvent } from "../bus/bus-event"
-import { GlobalBus } from "../bus/global"
 import { LSPServer } from "../lsp/server"
 import { BunProc } from "@/util/bun"
 import { Installation } from "@/global/installation"
 import { ConfigMarkdown } from "./markdown"
 import { existsSync } from "fs"
-import { ConfigSet } from "./set"
-import { RuntimeSchema } from "../runtime/schema"
+import { loadFragments } from "./fragment"
+import * as Schema from "./schema"
+import { ConfigDomain } from "./domain"
 
 export namespace Config {
   const log = Log.create({ service: "config" })
   const CONFIG_SCHEMA = Global.Path.configSchemaUrl
-  const formattingOptions = {
-    tabSize: 2,
-    insertSpaces: true,
-    eol: "\n",
-  } as const
+  // ── Schema re-exports from ./schema.ts ──
+
+  export const McpLocal = Schema.McpLocal
+  export const McpRetry = Schema.McpRetry
+  export type McpRetry = Schema.McpRetry
+  export const McpToolFilter = Schema.McpToolFilter
+  export type McpToolFilter = Schema.McpToolFilter
+  export const McpTools = Schema.McpTools
+  export type McpTools = Schema.McpTools
+  export const McpToolCache = Schema.McpToolCache
+  export type McpToolCache = Schema.McpToolCache
+  export const McpOAuth = Schema.McpOAuth
+  export type McpOAuth = Schema.McpOAuth
+  export const McpRemote = Schema.McpRemote
+  export const Mcp = Schema.Mcp
+  export type Mcp = Schema.Mcp
+  export const McpDefaults = Schema.McpDefaults
+  export type McpDefaults = Schema.McpDefaults
+  export const FeishuGroupSessionScope = Schema.FeishuGroupSessionScope
+  export type FeishuGroupSessionScope = Schema.FeishuGroupSessionScope
+  export const ChannelFeishuAccount = Schema.ChannelFeishuAccount
+  export type ChannelFeishuAccount = Schema.ChannelFeishuAccount
+  export const ChannelFeishu = Schema.ChannelFeishu
+  export type ChannelFeishu = Schema.ChannelFeishu
+  export const Holos = Schema.Holos
+  export type Holos = Schema.Holos
+  export const SandboxConfig = Schema.SandboxConfig
+  export type SandboxConfig = Schema.SandboxConfig
+  export const Channel = Schema.Channel
+  export type Channel = Schema.Channel
+  export const EmailSmtp = Schema.EmailSmtp
+  export type EmailSmtp = Schema.EmailSmtp
+  export const EmailImap = Schema.EmailImap
+  export type EmailImap = Schema.EmailImap
+  export const EmailFrom = Schema.EmailFrom
+  export type EmailFrom = Schema.EmailFrom
+  export const Email = Schema.Email
+  export type Email = Schema.Email
+  export const PermissionAction = Schema.PermissionAction
+  export type PermissionAction = Schema.PermissionAction
+  export const PermissionObject = Schema.PermissionObject
+  export type PermissionObject = Schema.PermissionObject
+  export const PermissionRule = Schema.PermissionRule
+  export type PermissionRule = Schema.PermissionRule
+  export const ControlProfileId = Schema.ControlProfileId
+  export type ControlProfileId = Schema.ControlProfileId
+
+  export const Permission = Schema.Permission
+  export type Permission = Schema.Permission
+  export const PluginMarketplace = Schema.PluginMarketplace
+  export type PluginMarketplace = Schema.PluginMarketplace
+  export const Command = Schema.Command
+  export type Command = Schema.Command
+  export const Agent = Schema.Agent
+  export type Agent = Schema.Agent
+  export const ExternalAgentConfig = Schema.ExternalAgentConfig
+  export type ExternalAgentConfig = Schema.ExternalAgentConfig
+  export const Keybinds = Schema.Keybinds
+  export const Server = Schema.Server
+  export const CategoryConfig = Schema.CategoryConfig
+  export type CategoryConfig = Schema.CategoryConfig
+  export const Layout = Schema.Layout
+  export type Layout = Schema.Layout
+  export const Learning = Schema.Learning
+  export type Learning = Schema.Learning
+  export const PassiveRetrieval = Schema.PassiveRetrieval
+  export type PassiveRetrieval = Schema.PassiveRetrieval
+  export const REWARD_WEIGHT_DEFAULTS = Schema.REWARD_WEIGHT_DEFAULTS
+  export const LEARNING_DEFAULTS = Schema.LEARNING_DEFAULTS
+  export const PASSIVE_RETRIEVAL_DEFAULTS = Schema.PASSIVE_RETRIEVAL_DEFAULTS
+  export const MEMORY_CATEGORIES = Schema.MEMORY_CATEGORIES
+  export type MemoryCategory = Schema.MemoryCategory
+  export const EmbeddingConfig = Schema.EmbeddingConfig
+  export type EmbeddingConfig = Schema.EmbeddingConfig
+  export const RerankConfig = Schema.RerankConfig
+  export type RerankConfig = Schema.RerankConfig
+  export const MemoryConfig = Schema.MemoryConfig
+  export type MemoryConfig = Schema.MemoryConfig
+  export const ExperienceConfig = Schema.ExperienceConfig
+  export type ExperienceConfig = Schema.ExperienceConfig
+  export const EngramConfig = Schema.EngramConfig
+  export type EngramConfig = Schema.EngramConfig
+  export const Provider = Schema.Provider
+  export type Provider = Schema.Provider
+  export const Info = Schema.Info
+  export type Info = Schema.Info
+
+  /**
+   * Normalize an MCP server config by applying defaults and legacy timeout
+   * compatibility. Callers should pass `config.experimental?.mcp_timeout` and
+   * `config.mcpDefaults` to fill missing timeouts.
+   */
+  export function normalizeMcp(server: Mcp, defaults?: McpDefaults, defaultCallTimeoutMs?: number): Mcp {
+    const result = { ...server }
+    const legacyTimeout = result.timeout
+
+    if (legacyTimeout !== undefined) {
+      if (result.connectTimeout === undefined) result.connectTimeout = legacyTimeout
+      if (result.listTimeout === undefined) result.listTimeout = legacyTimeout
+      if (result.callTimeout === undefined) result.callTimeout = legacyTimeout
+    }
+
+    if (defaultCallTimeoutMs !== undefined && result.callTimeout === undefined) {
+      result.callTimeout = defaultCallTimeoutMs
+    }
+
+    if (defaults) {
+      if (result.startup === undefined) result.startup = defaults.startup
+      if (result.required === undefined) result.required = defaults.required
+      if (result.connectTimeout === undefined) result.connectTimeout = defaults.connectTimeout
+      if (result.listTimeout === undefined) result.listTimeout = defaults.listTimeout
+      if (result.callTimeout === undefined) result.callTimeout = defaults.callTimeout
+      if (result.idleShutdownMs === undefined) result.idleShutdownMs = defaults.idleShutdownMs
+      if (result.retry === undefined) result.retry = defaults.retry
+      if (result.toolFilter === undefined) result.toolFilter = defaults.toolFilter
+      if (result.tools === undefined) result.tools = defaults.tools
+      if (result.toolCache === undefined) result.toolCache = defaults.toolCache
+    }
+
+    result.startup ??= "eager"
+    return result
+  }
 
   // Custom merge function that concatenates array fields instead of replacing them
   function mergeConfigConcatArrays(target: Info, source: Info): Info {
@@ -50,46 +164,71 @@ export namespace Config {
     }
     return merged
   }
+  const wellKnownCache = new Map<string, { data: Info; timestamp: number }>()
+  const WELL_KNOWN_TTL_MS = 10 * 60 * 1000 // 10 minutes
 
-  export const state = Instance.state(async () => {
+  ConfigDomain.assertRegistryComplete()
+
+  export const state = ScopedState.create(async () => {
     const auth = await Auth.all()
 
     // Load remote/well-known config first as the base layer (lowest precedence)
     // This allows organizations to provide default configs that users can override
     let result: Info = {}
+
+    // Inject env vars synchronously (before any fetch/await)
     for (const [key, value] of Object.entries(auth)) {
       if (value.type !== "wellknown") continue
-
       process.env[value.key] = value.token
-      log.debug("fetching remote config", { url: `${key}/.well-known/synergy` })
+    }
 
-      const remoteConfig = await fetch(`${key}/.well-known/synergy`, {
-        signal: AbortSignal.timeout(5000),
-      })
-        .then(async (response) => {
-          if (!response.ok) {
+    // Fetch well-known configs in parallel with TTL caching
+    const wellKnownEntries = Object.entries(auth).filter(([, v]) => v.type === "wellknown")
+    const fetchedConfigs = await Promise.all(
+      wellKnownEntries.map(async ([key]) => {
+        const cached = wellKnownCache.get(key)
+        if (cached && Date.now() - cached.timestamp < WELL_KNOWN_TTL_MS) {
+          log.debug("using cached remote config", { url: key })
+          return cached.data
+        }
+
+        log.debug("fetching remote config", { url: `${key}/.well-known/synergy` })
+
+        const remoteConfig = await fetch(`${key}/.well-known/synergy`, {
+          signal: AbortSignal.timeout(5000),
+        })
+          .then(async (response) => {
+            if (!response.ok) {
+              log.warn("failed to fetch remote config, skipping", {
+                url: `${key}/.well-known/synergy`,
+                status: response.status,
+              })
+              return null
+            }
+            const wellknown = (await response.json()) as any
+            return wellknown.config ?? {}
+          })
+          .catch((err) => {
             log.warn("failed to fetch remote config, skipping", {
               url: `${key}/.well-known/synergy`,
-              status: response.status,
+              error: err instanceof Error ? err.message : String(err),
             })
             return null
-          }
-          const wellknown = (await response.json()) as any
-          return wellknown.config ?? {}
-        })
-        .catch((err) => {
-          log.warn("failed to fetch remote config, skipping", {
-            url: `${key}/.well-known/synergy`,
-            error: err instanceof Error ? err.message : String(err),
           })
-          return null
-        })
 
-      if (!remoteConfig) continue
+        if (!remoteConfig) return null
 
-      if (!remoteConfig.$schema) remoteConfig.$schema = Global.Path.configSchemaUrl
-      result = mergeConfigConcatArrays(result, await load(JSON.stringify(remoteConfig), `${key}/.well-known/synergy`))
-      log.debug("loaded remote config from well-known", { url: key })
+        if (!remoteConfig.$schema) remoteConfig.$schema = Global.Path.configSchemaUrl
+        const loaded = await load(JSON.stringify(remoteConfig), `${key}/.well-known/synergy`)
+        wellKnownCache.set(key, { data: loaded, timestamp: Date.now() })
+        log.debug("loaded remote config from well-known", { url: key })
+        return loaded
+      }),
+    )
+
+    // Merge fetched configs as base layer (lowest precedence)
+    for (const cfg of fetchedConfigs) {
+      if (cfg) result = mergeConfigConcatArrays(result, cfg)
     }
 
     // Global user config overrides remote config
@@ -101,15 +240,6 @@ export namespace Config {
       log.debug("loaded custom config", { path: Flag.SYNERGY_CONFIG })
     }
 
-    // Project config has highest precedence (overrides global and remote)
-    // .json files take precedence over .jsonc when both exist
-    for (const file of ["synergy.jsonc", "synergy.json"]) {
-      const found = await Filesystem.findUp(file, Instance.directory, Instance.directory)
-      for (const resolved of found.toReversed()) {
-        result = mergeConfigConcatArrays(result, await loadFile(resolved))
-      }
-    }
-
     // Inline config content has highest precedence
     if (Flag.SYNERGY_CONFIG_CONTENT) {
       result = mergeConfigConcatArrays(result, JSON.parse(Flag.SYNERGY_CONFIG_CONTENT))
@@ -118,49 +248,50 @@ export namespace Config {
 
     result.agent = result.agent || {}
     result.plugin = result.plugin || []
-
-    const directories = [
-      Global.Path.config,
-      ...(await Array.fromAsync(
-        Filesystem.up({
-          targets: [".synergy"],
-          start: Instance.directory,
-          stop: Instance.directory,
-        }),
-      )),
-      ...(await Array.fromAsync(
-        Filesystem.up({
-          targets: [".synergy"],
-          start: Global.Path.home,
-          stop: Global.Path.home,
-        }),
-      )),
-    ]
+    const scope = ScopeContext.current.scope
+    const projectDirectories =
+      scope.type === "project"
+        ? await Array.fromAsync(
+            Filesystem.up({
+              targets: [".synergy"],
+              start: ScopeContext.current.directory,
+              stop: ScopeContext.current.directory,
+            }),
+          )
+        : []
+    const directories = [Global.Path.config, ...projectDirectories]
 
     if (Flag.SYNERGY_CONFIG_DIR) {
       directories.push(Flag.SYNERGY_CONFIG_DIR)
       log.debug("loading config from SYNERGY_CONFIG_DIR", { path: Flag.SYNERGY_CONFIG_DIR })
     }
 
+    if (scope.type === "project") {
+      await migrateLegacyProjectConfig(ScopeContext.current.directory)
+    }
+
     for (const dir of unique(directories)) {
       if (dir.endsWith(".synergy") || dir === Flag.SYNERGY_CONFIG_DIR) {
-        for (const file of ["synergy.jsonc", "synergy.json"]) {
-          log.debug(`loading config from ${path.join(dir, file)}`)
-          result = mergeConfigConcatArrays(result, await loadFile(path.join(dir, file)))
-          // to satisfy the type checker
-          result.agent ??= {}
-          result.plugin ??= []
+        const fragmentDir = path.join(dir, "synergy.d")
+        const fragments = await loadFragments(fragmentDir)
+        for (const fragment of fragments) {
+          result = mergeConfigConcatArrays(result, fragment as Info) as Info
         }
+        // Re-apply defaults after fragment merge (fragment widens result type)
+        result.agent ??= {}
+        result.plugin ??= []
       }
 
       const exists = existsSync(path.join(dir, "node_modules"))
       const installing = installDependencies(dir)
       if (!exists) await installing
-
       result.command = mergeDeep(result.command ?? {}, await loadCommand(dir))
       result.agent = mergeDeep(result.agent, await loadAgent(dir))
       result.plugin.push(...(await loadPlugin(dir)))
     }
+
+    result.agent ??= {}
+    result.plugin ??= []
 
     if (Flag.SYNERGY_PERMISSION) {
       result.permission = mergeDeep(result.permission ?? {}, JSON.parse(Flag.SYNERGY_PERMISSION))
@@ -180,6 +311,35 @@ export namespace Config {
       result.permission = mergeDeep(perms, result.permission ?? {})
     }
 
+    // Apply centralized defaults for fields shown in Settings UI.
+    // These fill undefined values only — user-set values are preserved.
+    if (result.autoupdate === undefined) result.autoupdate = true
+    if (result.snapshot === undefined) result.snapshot = true
+    if (result.default_agent === undefined) result.default_agent = "synergy"
+    if (result.question === undefined) result.question = { timeout: 1800 }
+    else if (result.question.timeout === undefined) result.question.timeout = 1800
+    if (result.compaction === undefined) {
+      result.compaction = { auto: true, prune: true, overflowThreshold: 0.85, maxHistoryImages: 8 }
+    } else {
+      if (result.compaction.auto === undefined) result.compaction.auto = true
+      if (result.compaction.prune === undefined) result.compaction.prune = true
+      if (result.compaction.overflowThreshold === undefined) result.compaction.overflowThreshold = 0.85
+      if (result.compaction.maxHistoryImages === undefined) result.compaction.maxHistoryImages = 8
+    }
+    if (result.engram) {
+      if (result.engram.memory === undefined) result.engram.memory = { enabled: true }
+      if (result.engram.memory && !result.engram.memory.retrieval) {
+        result.engram.memory.retrieval = { simThreshold: 0.7, topK: 3 }
+      }
+      if (result.engram.memory && !result.engram.memory.dedup) {
+        result.engram.memory.dedup = { threshold: 0.75 }
+      }
+      if (result.engram.experience === undefined) {
+        result.engram.experience = { encode: true, retrieve: true, learning: { ...LEARNING_DEFAULTS } }
+      }
+      if (result.engram.autonomy === undefined) result.engram.autonomy = true
+    }
+
     if (!result.username) result.username = os.userInfo().username
 
     if (!result.keybinds) result.keybinds = Info.shape.keybinds.parse({})
@@ -192,8 +352,10 @@ export namespace Config {
       result.compaction = { ...result.compaction, prune: false }
     }
 
+    const config = Info.parse(result)
+
     return {
-      config: result,
+      config,
       directories,
     }
   })
@@ -236,16 +398,17 @@ export namespace Config {
       dot: true,
       cwd: dir,
     })) {
+      const normalized = item.replaceAll("\\", "/")
       const md = await ConfigMarkdown.parse(item)
       if (!md.data) continue
 
       const name = (() => {
         const patterns = ["/.synergy/command/", "/command/"]
-        const pattern = patterns.find((p) => item.includes(p))
+        const pattern = patterns.find((p) => normalized.includes(p))
 
         if (pattern) {
-          const index = item.indexOf(pattern)
-          return item.slice(index + pattern.length, -3)
+          const index = normalized.indexOf(pattern)
+          return normalized.slice(index + pattern.length, -3)
         }
         return path.basename(item, ".md")
       })()
@@ -276,15 +439,16 @@ export namespace Config {
       dot: true,
       cwd: dir,
     })) {
+      const normalized = item.replaceAll("\\", "/")
       const md = await ConfigMarkdown.parse(item)
       if (!md.data) continue
 
       // Extract relative path from agent folder for nested agents
       let agentName = path.basename(item, ".md")
-      const agentFolderPath = item.includes("/.synergy/agent/")
-        ? item.split("/.synergy/agent/")[1]
-        : item.includes("/agent/")
-          ? item.split("/agent/")[1]
+      const agentFolderPath = normalized.includes("/.synergy/agent/")
+        ? normalized.split("/.synergy/agent/")[1]
+        : normalized.includes("/agent/")
+          ? normalized.split("/agent/")[1]
           : agentName + ".md"
 
       // If agent is in a subfolder, include folder path in name
@@ -324,1310 +488,162 @@ export namespace Config {
     return plugins
   }
 
-  export const McpLocal = z
-    .object({
-      type: z.literal("local").describe("Type of MCP server connection"),
-      command: z.string().array().describe("Command and arguments to run the MCP server"),
-      environment: z
-        .record(z.string(), z.string())
-        .optional()
-        .describe("Environment variables to set when running the MCP server"),
-      enabled: z.boolean().optional().describe("Enable or disable the MCP server on startup"),
-      timeout: z
-        .number()
-        .int()
-        .positive()
-        .optional()
-        .describe(
-          "Timeout in ms for fetching tools from the MCP server. Defaults to 5000 (5 seconds) if not specified.",
-        ),
-    })
-    .strict()
-    .meta({
-      ref: "McpLocalConfig",
-    })
-
-  export const McpOAuth = z
-    .object({
-      clientId: z
-        .string()
-        .optional()
-        .describe("OAuth client ID. If not provided, dynamic client registration (RFC 7591) will be attempted."),
-      clientSecret: z.string().optional().describe("OAuth client secret (if required by the authorization server)"),
-      scope: z.string().optional().describe("OAuth scopes to request during authorization"),
-    })
-    .strict()
-    .meta({
-      ref: "McpOAuthConfig",
-    })
-  export type McpOAuth = z.infer<typeof McpOAuth>
-
-  export const McpRemote = z
-    .object({
-      type: z.literal("remote").describe("Type of MCP server connection"),
-      url: z.string().describe("URL of the remote MCP server"),
-      enabled: z.boolean().optional().describe("Enable or disable the MCP server on startup"),
-      headers: z.record(z.string(), z.string()).optional().describe("Headers to send with the request"),
-      oauth: z
-        .union([McpOAuth, z.literal(false)])
-        .optional()
-        .describe(
-          "OAuth authentication configuration for the MCP server. Set to false to disable OAuth auto-detection.",
-        ),
-      timeout: z
-        .number()
-        .int()
-        .positive()
-        .optional()
-        .describe(
-          "Timeout in ms for fetching tools from the MCP server. Defaults to 5000 (5 seconds) if not specified.",
-        ),
-    })
-    .strict()
-    .meta({
-      ref: "McpRemoteConfig",
-    })
-
-  export const Mcp = z.discriminatedUnion("type", [McpLocal, McpRemote])
-  export type Mcp = z.infer<typeof Mcp>
-
-  export const FeishuGroupSessionScope = z
-    .enum(["group", "group_sender", "group_topic", "group_topic_sender"])
-    .describe(
-      "How group chat sessions are scoped: group = shared, group_sender = per sender, group_topic = per thread/topic, group_topic_sender = per thread+sender",
-    )
-  export type FeishuGroupSessionScope = z.infer<typeof FeishuGroupSessionScope>
-
-  export const ChannelFeishuAccount = z
-    .object({
-      enabled: z.boolean().optional().default(true),
-      appId: z.string().describe("Feishu app ID"),
-      appSecret: z.string().describe("Feishu app secret"),
-      domain: z
-        .enum(["feishu", "lark"])
-        .optional()
-        .describe("Feishu domain (feishu for China, lark for international)"),
-      allowDM: z.boolean().optional().default(true).describe("Allow direct messages"),
-      allowGroup: z.boolean().optional().default(true).describe("Allow group messages"),
-      requireMention: z.boolean().optional().default(true).describe("Require @mention in group chats"),
-      botOpenId: z.string().optional().describe("Bot open_id used to verify real @mentions in group chats"),
-      streaming: z.boolean().optional().default(true).describe("Enable streaming card updates"),
-      streamingThrottleMs: z
-        .number()
-        .int()
-        .positive()
-        .optional()
-        .default(100)
-        .describe("Minimum interval between streaming card updates in ms"),
-      groupSessionScope: FeishuGroupSessionScope.optional()
-        .default("group")
-        .describe("Session scoping strategy for group chats"),
-      inboundDebounceMs: z
-        .number()
-        .int()
-        .nonnegative()
-        .optional()
-        .default(0)
-        .describe("Debounce rapid-fire messages from the same sender in the same chat (0 = disabled)"),
-      resolveSenderNames: z
-        .boolean()
-        .optional()
-        .default(true)
-        .describe("Resolve sender display names via Feishu contact API"),
-      replyInThread: z.boolean().optional().default(false).describe("Reply in thread when message is part of a topic"),
-    })
-    .strict()
-    .meta({ ref: "ChannelFeishuAccountConfig" })
-  export type ChannelFeishuAccount = z.infer<typeof ChannelFeishuAccount>
-
-  export const ChannelFeishu = z
-    .object({
-      type: z.literal("feishu"),
-      accounts: z.record(z.string(), ChannelFeishuAccount),
-      domain: z.enum(["feishu", "lark"]).optional().describe("Default domain for all accounts"),
-      streaming: z.boolean().optional().default(true).describe("Default streaming setting for all accounts"),
-    })
-    .strict()
-    .meta({ ref: "ChannelFeishuConfig" })
-  export type ChannelFeishu = z.infer<typeof ChannelFeishu>
-
-  export const Holos = z
-    .object({
-      enabled: z.boolean().optional().default(true).describe("Enable the Holos runtime connection"),
-      apiUrl: z.string().optional().default("https://api.holosai.io").describe("Holos API base URL"),
-      wsUrl: z.string().optional().default("wss://api.holosai.io").describe("Holos WebSocket base URL"),
-      portalUrl: z
-        .string()
-        .optional()
-        .default("https://www.holosai.io")
-        .describe("Holos portal URL for browser-facing pages (bind/start)"),
-    })
-    .strict()
-    .meta({ ref: "HolosConfig" })
-  export type Holos = z.infer<typeof Holos>
-
-  export const Channel = z.discriminatedUnion("type", [ChannelFeishu])
-  export type Channel = z.infer<typeof Channel>
-
-  export const EmailSmtp = z
-    .object({
-      host: z.string().optional().describe("SMTP server hostname"),
-      port: z.number().int().positive().optional().describe("SMTP server port"),
-      secure: z.boolean().optional().describe("Use TLS/SSL for the SMTP connection"),
-      username: z.string().optional().describe("SMTP username"),
-      password: z.string().optional().describe("SMTP password or app token"),
-    })
-    .strict()
-    .meta({ ref: "EmailSmtpConfig" })
-  export type EmailSmtp = z.infer<typeof EmailSmtp>
-
-  export const EmailImap = z
-    .object({
-      host: z.string().optional().describe("IMAP server hostname"),
-      port: z.number().int().positive().optional().describe("IMAP server port"),
-      secure: z.boolean().optional().describe("Use TLS/SSL for the IMAP connection"),
-      username: z.string().optional().describe("IMAP username"),
-      password: z.string().optional().describe("IMAP password or app token"),
-    })
-    .strict()
-    .meta({ ref: "EmailImapConfig" })
-  export type EmailImap = z.infer<typeof EmailImap>
-
-  export const EmailFrom = z
-    .object({
-      address: z.string().optional().describe("Sender email address"),
-      name: z.string().optional().describe("Sender display name"),
-    })
-    .strict()
-    .meta({ ref: "EmailFromConfig" })
-  export type EmailFrom = z.infer<typeof EmailFrom>
-
-  export const Email = z
-    .object({
-      enabled: z.boolean().optional().describe("Enable email features"),
-      from: EmailFrom.optional().describe("Sender identity for outgoing emails"),
-      smtp: EmailSmtp.optional().describe("SMTP transport settings for outgoing emails"),
-      imap: EmailImap.optional().describe("IMAP settings for reading emails"),
-    })
-    .strict()
-    .meta({ ref: "EmailConfig" })
-  export type Email = z.infer<typeof Email>
-
-  export const PermissionAction = z.enum(["ask", "allow", "deny"]).meta({
-    ref: "PermissionActionConfig",
-  })
-  export type PermissionAction = z.infer<typeof PermissionAction>
-
-  export const PermissionObject = z.record(z.string(), PermissionAction).meta({
-    ref: "PermissionObjectConfig",
-  })
-  export type PermissionObject = z.infer<typeof PermissionObject>
-
-  export const PermissionRule = z.union([PermissionAction, PermissionObject]).meta({
-    ref: "PermissionRuleConfig",
-  })
-  export type PermissionRule = z.infer<typeof PermissionRule>
-
-  // Capture original key order before zod reorders, then rebuild in original order
-  const permissionPreprocess = (val: unknown) => {
-    if (typeof val === "object" && val !== null && !Array.isArray(val)) {
-      return { __originalKeys: Object.keys(val), ...val }
-    }
-    return val
-  }
-
-  const permissionTransform = (x: unknown): Record<string, PermissionRule> => {
-    if (typeof x === "string") return { "*": x as PermissionAction }
-    const obj = x as { __originalKeys?: string[] } & Record<string, unknown>
-    const { __originalKeys, ...rest } = obj
-    if (!__originalKeys) return rest as Record<string, PermissionRule>
-    const result: Record<string, PermissionRule> = {}
-    for (const key of __originalKeys) {
-      if (key in rest) result[key] = rest[key] as PermissionRule
-    }
-    return result
-  }
-
-  export const Permission = z
-    .preprocess(
-      permissionPreprocess,
-      z
-        .object({
-          __originalKeys: z.string().array().optional(),
-          read: PermissionRule.optional(),
-          edit: PermissionRule.optional(),
-          glob: PermissionRule.optional(),
-          grep: PermissionRule.optional(),
-          list: PermissionRule.optional(),
-          bash: PermissionRule.optional(),
-          task: PermissionRule.optional(),
-          external_directory: PermissionRule.optional(),
-          todowrite: PermissionAction.optional(),
-          todoread: PermissionAction.optional(),
-          dagwrite: PermissionAction.optional(),
-          dagread: PermissionAction.optional(),
-          question: PermissionAction.optional(),
-          webfetch: PermissionAction.optional(),
-          websearch: PermissionAction.optional(),
-          download: PermissionAction.optional(),
-          lsp: PermissionRule.optional(),
-          doom_loop: PermissionAction.optional(),
-        })
-        .catchall(PermissionRule)
-        .or(PermissionAction),
-    )
-    .transform(permissionTransform)
-    .meta({
-      ref: "PermissionConfig",
-    })
-  export type Permission = z.infer<typeof Permission>
-
-  export const Command = z.object({
-    template: z.string(),
-    description: z.string().optional(),
-    agent: z.string().optional(),
-    model: z.string().optional(),
-  })
-  export type Command = z.infer<typeof Command>
-
-  export const Agent = z
-    .object({
-      model: z.string().optional(),
-      temperature: z.number().optional(),
-      top_p: z.number().optional(),
-      prompt: z.string().optional(),
-      tools: z.record(z.string(), z.boolean()).optional().describe("@deprecated Use 'permission' field instead"),
-      disable: z.boolean().optional(),
-      description: z.string().optional().describe("Description of when to use the agent"),
-      mode: z.enum(["subagent", "primary", "all"]).optional(),
-      hidden: z
-        .boolean()
-        .optional()
-        .describe("Hide this subagent from the @ autocomplete menu (default: false, only applies to mode: subagent)"),
-      options: z.record(z.string(), z.any()).optional(),
-      color: z
-        .string()
-        .regex(/^#[0-9a-fA-F]{6}$/, "Invalid hex color format")
-        .optional()
-        .describe("Hex color code for the agent (e.g., #FF5733)"),
-      steps: z
-        .number()
-        .int()
-        .positive()
-        .optional()
-        .describe("Maximum number of agentic iterations before forcing text-only response"),
-      maxSteps: z.number().int().positive().optional().describe("@deprecated Use 'steps' field instead."),
-      permission: Permission.optional(),
-    })
-    .catchall(z.any())
-    .transform((agent, ctx) => {
-      const knownKeys = new Set([
-        "name",
-        "model",
-        "prompt",
-        "description",
-        "temperature",
-        "top_p",
-        "mode",
-        "hidden",
-        "color",
-        "steps",
-        "maxSteps",
-        "options",
-        "permission",
-        "disable",
-        "tools",
-      ])
-
-      // Extract unknown properties into options
-      const options: Record<string, unknown> = { ...agent.options }
-      for (const [key, value] of Object.entries(agent)) {
-        if (!knownKeys.has(key)) options[key] = value
-      }
-
-      // Convert legacy tools config to permissions
-      const permission: Permission = {}
-      for (const [tool, enabled] of Object.entries(agent.tools ?? {})) {
-        const action = enabled ? "allow" : "deny"
-        // write, edit, patch, multiedit all map to edit permission
-        if (tool === "write" || tool === "edit" || tool === "patch" || tool === "multiedit") {
-          permission.edit = action
-        } else {
-          permission[tool] = action
-        }
-      }
-      Object.assign(permission, agent.permission)
-
-      // Convert legacy maxSteps to steps
-      const steps = agent.steps ?? agent.maxSteps
-
-      return { ...agent, options, permission, steps } as typeof agent & {
-        options?: Record<string, unknown>
-        permission?: Permission
-        steps?: number
-      }
-    })
-    .meta({
-      ref: "AgentConfig",
-    })
-  export type Agent = z.infer<typeof Agent>
-
-  export const ExternalAgentConfig = z
-    .object({
-      disabled: z.boolean().optional().describe("Disable this external agent"),
-      path: z.string().optional().describe("Override path to the external agent binary"),
-      model: z.string().optional().describe("Default model for this external agent"),
-      auto_discover: z.boolean().optional().describe("Whether to auto-discover this agent on startup (default: true)"),
-    })
-    .catchall(z.unknown())
-    .meta({
-      ref: "ExternalAgentConfig",
-    })
-  export type ExternalAgentConfig = z.infer<typeof ExternalAgentConfig>
-
-  export const Keybinds = z
-    .object({
-      leader: z.string().optional().default("ctrl+x").describe("Leader key for keybind combinations"),
-      app_exit: z.string().optional().default("ctrl+c,ctrl+d,<leader>q").describe("Exit the application"),
-      editor_open: z.string().optional().default("<leader>e").describe("Open external editor"),
-      theme_list: z.string().optional().default("<leader>t").describe("List available themes"),
-      sidebar_toggle: z.string().optional().default("<leader>b").describe("Toggle sidebar"),
-      scrollbar_toggle: z.string().optional().default("none").describe("Toggle session scrollbar"),
-      username_toggle: z.string().optional().default("none").describe("Toggle username visibility"),
-      status_view: z.string().optional().default("<leader>s").describe("View status"),
-      session_export: z.string().optional().default("<leader>x").describe("Export session to editor"),
-      session_new: z.string().optional().default("<leader>n").describe("Create a new session"),
-      session_list: z.string().optional().default("<leader>l").describe("List all sessions"),
-      session_timeline: z.string().optional().default("<leader>g").describe("Show session timeline"),
-      session_fork: z.string().optional().default("none").describe("Fork session from message"),
-      session_rename: z.string().optional().default("none").describe("Rename session"),
-      session_interrupt: z.string().optional().default("escape").describe("Interrupt current session"),
-      session_compact: z.string().optional().default("<leader>c").describe("Compact the session"),
-      messages_page_up: z.string().optional().default("pageup").describe("Scroll messages up by one page"),
-      messages_page_down: z.string().optional().default("pagedown").describe("Scroll messages down by one page"),
-      messages_half_page_up: z.string().optional().default("ctrl+alt+u").describe("Scroll messages up by half page"),
-      messages_half_page_down: z
-        .string()
-        .optional()
-        .default("ctrl+alt+d")
-        .describe("Scroll messages down by half page"),
-      messages_first: z.string().optional().default("ctrl+g,home").describe("Navigate to first message"),
-      messages_last: z.string().optional().default("ctrl+alt+g,end").describe("Navigate to last message"),
-      messages_next: z.string().optional().default("none").describe("Navigate to next message"),
-      messages_previous: z.string().optional().default("none").describe("Navigate to previous message"),
-      messages_last_user: z.string().optional().default("none").describe("Navigate to last user message"),
-      messages_copy: z.string().optional().default("<leader>y").describe("Copy message"),
-      messages_undo: z.string().optional().default("<leader>u").describe("Undo message"),
-      messages_redo: z.string().optional().default("<leader>r").describe("Redo message"),
-      messages_toggle_conceal: z
-        .string()
-        .optional()
-        .default("<leader>h")
-        .describe("Toggle code block concealment in messages"),
-      tool_details: z.string().optional().default("none").describe("Toggle tool details visibility"),
-      model_list: z.string().optional().default("<leader>m").describe("List available models"),
-      model_cycle_recent: z.string().optional().default("f2").describe("Next recently used model"),
-      model_cycle_recent_reverse: z.string().optional().default("shift+f2").describe("Previous recently used model"),
-      model_cycle_favorite: z.string().optional().default("none").describe("Next favorite model"),
-      model_cycle_favorite_reverse: z.string().optional().default("none").describe("Previous favorite model"),
-      command_list: z.string().optional().default("ctrl+p").describe("List available commands"),
-      agent_list: z.string().optional().default("<leader>a").describe("List agents"),
-      agent_cycle: z.string().optional().default("tab").describe("Next agent"),
-      agent_cycle_reverse: z.string().optional().default("shift+tab").describe("Previous agent"),
-      variant_cycle: z.string().optional().default("ctrl+t").describe("Cycle model variants"),
-      input_clear: z.string().optional().default("ctrl+c").describe("Clear input field"),
-      input_paste: z.string().optional().default("ctrl+v").describe("Paste from clipboard"),
-      input_submit: z.string().optional().default("return").describe("Submit input"),
-      input_newline: z
-        .string()
-        .optional()
-        .default("shift+return,ctrl+return,alt+return,ctrl+j")
-        .describe("Insert newline in input"),
-      input_move_left: z.string().optional().default("left,ctrl+b").describe("Move cursor left in input"),
-      input_move_right: z.string().optional().default("right,ctrl+f").describe("Move cursor right in input"),
-      input_move_up: z.string().optional().default("up").describe("Move cursor up in input"),
-      input_move_down: z.string().optional().default("down").describe("Move cursor down in input"),
-      input_select_left: z.string().optional().default("shift+left").describe("Select left in input"),
-      input_select_right: z.string().optional().default("shift+right").describe("Select right in input"),
-      input_select_up: z.string().optional().default("shift+up").describe("Select up in input"),
-      input_select_down: z.string().optional().default("shift+down").describe("Select down in input"),
-      input_line_home: z.string().optional().default("ctrl+a").describe("Move to start of line in input"),
-      input_line_end: z.string().optional().default("ctrl+e").describe("Move to end of line in input"),
-      input_select_line_home: z
-        .string()
-        .optional()
-        .default("ctrl+shift+a")
-        .describe("Select to start of line in input"),
-      input_select_line_end: z.string().optional().default("ctrl+shift+e").describe("Select to end of line in input"),
-      input_visual_line_home: z.string().optional().default("alt+a").describe("Move to start of visual line in input"),
-      input_visual_line_end: z.string().optional().default("alt+e").describe("Move to end of visual line in input"),
-      input_select_visual_line_home: z
-        .string()
-        .optional()
-        .default("alt+shift+a")
-        .describe("Select to start of visual line in input"),
-      input_select_visual_line_end: z
-        .string()
-        .optional()
-        .default("alt+shift+e")
-        .describe("Select to end of visual line in input"),
-      input_buffer_home: z.string().optional().default("home").describe("Move to start of buffer in input"),
-      input_buffer_end: z.string().optional().default("end").describe("Move to end of buffer in input"),
-      input_select_buffer_home: z
-        .string()
-        .optional()
-        .default("shift+home")
-        .describe("Select to start of buffer in input"),
-      input_select_buffer_end: z.string().optional().default("shift+end").describe("Select to end of buffer in input"),
-      input_delete_line: z.string().optional().default("ctrl+shift+d").describe("Delete line in input"),
-      input_delete_to_line_end: z.string().optional().default("ctrl+k").describe("Delete to end of line in input"),
-      input_delete_to_line_start: z.string().optional().default("ctrl+u").describe("Delete to start of line in input"),
-      input_backspace: z.string().optional().default("backspace,shift+backspace").describe("Backspace in input"),
-      input_delete: z.string().optional().default("ctrl+d,delete,shift+delete").describe("Delete character in input"),
-      input_undo: z.string().optional().default("ctrl+-,super+z").describe("Undo in input"),
-      input_redo: z.string().optional().default("ctrl+.,super+shift+z").describe("Redo in input"),
-      input_word_forward: z
-        .string()
-        .optional()
-        .default("alt+f,alt+right,ctrl+right")
-        .describe("Move word forward in input"),
-      input_word_backward: z
-        .string()
-        .optional()
-        .default("alt+b,alt+left,ctrl+left")
-        .describe("Move word backward in input"),
-      input_select_word_forward: z
-        .string()
-        .optional()
-        .default("alt+shift+f,alt+shift+right")
-        .describe("Select word forward in input"),
-      input_select_word_backward: z
-        .string()
-        .optional()
-        .default("alt+shift+b,alt+shift+left")
-        .describe("Select word backward in input"),
-      input_delete_word_forward: z
-        .string()
-        .optional()
-        .default("alt+d,alt+delete,ctrl+delete")
-        .describe("Delete word forward in input"),
-      input_delete_word_backward: z
-        .string()
-        .optional()
-        .default("ctrl+w,ctrl+backspace,alt+backspace")
-        .describe("Delete word backward in input"),
-      history_previous: z.string().optional().default("up").describe("Previous history item"),
-      history_next: z.string().optional().default("down").describe("Next history item"),
-      session_child_cycle: z.string().optional().default("<leader>right").describe("Next child session"),
-      session_child_cycle_reverse: z.string().optional().default("<leader>left").describe("Previous child session"),
-      session_parent: z.string().optional().default("<leader>up").describe("Go to parent session"),
-      terminal_suspend: z.string().optional().default("ctrl+z").describe("Suspend terminal"),
-      terminal_title_toggle: z.string().optional().default("none").describe("Toggle terminal title"),
-      tips_toggle: z.string().optional().default("<leader>h").describe("Toggle tips on home screen"),
-    })
-    .strict()
-    .meta({
-      ref: "KeybindsConfig",
-    })
-
-  export const Server = z
-    .object({
-      port: z.number().int().positive().optional().describe("Port to listen on"),
-      hostname: z.string().optional().describe("Hostname to listen on"),
-      mdns: z.boolean().optional().describe("Enable mDNS service discovery"),
-      cors: z.array(z.string()).optional().describe("Additional domains to allow for CORS"),
-    })
-    .strict()
-    .meta({
-      ref: "ServerConfig",
-    })
-
-  export const CategoryConfig = z
-    .object({
-      model: z.string().optional().describe("Model to use for this category (e.g., 'sii-openai/GPT-5.2')"),
-      temperature: z.number().optional().describe("Temperature override for this category"),
-      promptAppend: z.string().optional().describe("Additional prompt context to inject for this category"),
-      description: z.string().optional().describe("Description of when to use this category"),
-    })
-    .strict()
-    .meta({
-      ref: "CategoryConfig",
-    })
-  export type CategoryConfig = z.infer<typeof CategoryConfig>
-
-  export const Layout = z.enum(["auto", "stretch"]).meta({
-    ref: "LayoutConfig",
-  })
-  export type Layout = z.infer<typeof Layout>
-
-  export const Learning = z
-    .object({
-      alpha: z.number().min(0).max(1).optional().describe("Q-learning step size / learning rate (default: 0.3)"),
-      qInit: z.number().optional().describe("Optimistic Q-value initialization per reward dimension (default: 1.0)"),
-      dedupIntentThreshold: z
-        .number()
-        .min(0)
-        .max(1)
-        .optional()
-        .describe("Intent cosine similarity threshold for deduplicating experiences (default: 0.85)"),
-      dedupScriptThreshold: z
-        .number()
-        .min(0)
-        .max(1)
-        .optional()
-        .describe("Script cosine similarity threshold for deduplicating experiences (default: 0.8)"),
-      qHistorySize: z
-        .number()
-        .int()
-        .min(1)
-        .optional()
-        .describe("Maximum Q-value history entries per experience (default: 50)"),
-      snapThreshold: z
-        .number()
-        .min(0)
-        .max(1)
-        .optional()
-        .describe("Threshold for snapping reward dimensions to discrete {-1, 0, 1} (default: 0.5)"),
-      legacyRewardConfidence: z
-        .number()
-        .min(0)
-        .max(1)
-        .optional()
-        .describe("Default confidence for legacy scalar reward format (default: 0.3)"),
-      encoderRetries: z
-        .number()
-        .int()
-        .min(0)
-        .optional()
-        .describe("LLM retry count for intent/script/reward generation (default: 3)"),
-      digestToolOutputBudget: z
-        .number()
-        .int()
-        .min(0)
-        .optional()
-        .describe("Max estimated tokens for tool output in turn digest (default: 800)"),
-      encoderToolFieldBudget: z
-        .number()
-        .int()
-        .min(0)
-        .optional()
-        .describe("Max chars per tool input field in encoder context (default: 500)"),
-      encoderToolOutputBudget: z
-        .number()
-        .int()
-        .min(0)
-        .optional()
-        .describe("Max chars for tool output in encoder context (default: 300)"),
-      rewardWeights: z
-        .object({
-          outcome: z.number().optional().describe("Weight for outcome dimension (default: 0.35)"),
-          intent: z.number().optional().describe("Weight for intent dimension (default: 0.25)"),
-          execution: z.number().optional().describe("Weight for execution dimension (default: 0.2)"),
-          orchestration: z.number().optional().describe("Weight for orchestration dimension (default: 0.1)"),
-          expression: z.number().optional().describe("Weight for expression dimension (default: 0.1)"),
-        })
-        .strict()
-        .optional()
-        .describe(
-          "Weights for multi-dimensional reward composition (default: outcome=0.35, intent=0.25, execution=0.2, orchestration=0.1, expression=0.1)",
-        ),
-      rewardDelay: z
-        .number()
-        .int()
-        .min(0)
-        .optional()
-        .describe("Number of subsequent turns to wait before evaluating reward (default: 2)"),
-    })
-    .strict()
-    .meta({ ref: "LearningConfig" })
-  export type Learning = z.infer<typeof Learning>
-
-  export const PassiveRetrieval = z
-    .object({
-      simThreshold: z
-        .number()
-        .min(0)
-        .max(1)
-        .optional()
-        .describe("Minimum cosine similarity for retrieval candidates (default: 0.7)"),
-      topK: z.number().int().min(1).optional().describe("Number of experiences to retrieve (default: 8)"),
-      epsilon: z.number().min(0).max(1).optional().describe("ε-greedy exploration probability (default: 0.1)"),
-      wSim: z.number().min(0).max(1).optional().describe("Weight for similarity in hybrid score (default: 0.5)"),
-      wQ: z.number().min(0).max(1).optional().describe("Weight for Q-value in hybrid score (default: 0.5)"),
-      explorationConstant: z
-        .number()
-        .min(0)
-        .optional()
-        .describe("UCB1 exploration constant — scales √(ln(N)/n) visit-decay bonus (default: 0.5)"),
-    })
-    .strict()
-    .meta({ ref: "PassiveRetrievalConfig" })
-  export type PassiveRetrieval = z.infer<typeof PassiveRetrieval>
-
-  export const REWARD_WEIGHT_DEFAULTS = {
-    outcome: 0.35,
-    intent: 0.25,
-    execution: 0.2,
-    orchestration: 0.1,
-    expression: 0.1,
-  } as const
-
-  export const LEARNING_DEFAULTS = {
-    alpha: 0.3,
-    qInit: 0.5,
-    dedupIntentThreshold: 0.85,
-    dedupScriptThreshold: 0.8,
-    qHistorySize: 50,
-    snapThreshold: 0.5,
-    legacyRewardConfidence: 0.3,
-    encoderRetries: 3,
-    digestToolOutputBudget: 800,
-    encoderToolFieldBudget: 500,
-    encoderToolOutputBudget: 300,
-    rewardWeights: { ...REWARD_WEIGHT_DEFAULTS },
-    rewardDelay: 5,
-  } as const satisfies Required<Learning>
-
-  export const PASSIVE_RETRIEVAL_DEFAULTS = {
-    simThreshold: 0.7,
-    topK: 8,
-    epsilon: 0.1,
-    wSim: 0.5,
-    wQ: 0.5,
-    explorationConstant: 0.5,
-  } as const satisfies Required<PassiveRetrieval>
-
-  export const EvolutionPassive = z
-    .object({
-      encode: z
-        .boolean()
-        .optional()
-        .describe("Learn from conversations — extract intent, reward, and scripts (default: true)"),
-      retrieve: z
-        .union([z.boolean(), PassiveRetrieval])
-        .optional()
-        .describe("Inject relevant past experiences into new conversations (default: true)"),
-      learning: Learning.optional().describe("Hyperparameters for the experience learning pipeline"),
-    })
-    .strict()
-    .meta({ ref: "EvolutionPassive" })
-
-  export const MEMORY_CATEGORIES = [
-    "user",
-    "self",
-    "relationship",
-    "interaction",
-    "workflow",
-    "coding",
-    "writing",
-    "asset",
-    "insight",
-    "knowledge",
-    "personal",
-    "general",
-  ] as const
-  export type MemoryCategory = (typeof MEMORY_CATEGORIES)[number]
-
-  const CategoryRetrieveConfig = z
-    .object({
-      simThreshold: z.number().optional().describe("Minimum similarity for contextual retrieval"),
-      topK: z.number().optional().describe("Maximum contextual entries to retrieve"),
-    })
-    .strict()
-
-  export const EvolutionActive = z
-    .object({
-      retrieve: z
-        .union([
-          z.boolean(),
-          z
-            .object({
-              simThreshold: z
-                .number()
-                .optional()
-                .describe("Default minimum similarity for auto-injection (default: 0.7)"),
-              topK: z
-                .number()
-                .optional()
-                .describe("Default maximum entries per category to contextually retrieve (default: 3)"),
-              categories: z
-                .record(z.enum(MEMORY_CATEGORIES), CategoryRetrieveConfig)
-                .optional()
-                .describe("Per-category contextual retrieval overrides"),
-            })
-            .strict(),
-        ])
-        .optional()
-        .describe("Auto-inject relevant memories into new conversations (default: true)"),
-      memoryDedupThreshold: z
-        .number()
-        .min(0)
-        .max(1)
-        .optional()
-        .describe("Cosine similarity threshold for blocking duplicate memory writes (default: 0.75)"),
-    })
-    .strict()
-    .meta({ ref: "EvolutionActive" })
-
-  export const EvolutionConfig = z
-    .object({
-      passive: z
-        .union([z.boolean(), EvolutionPassive])
-        .optional()
-        .describe("RL-enhanced passive experience learning (default: true)"),
-      active: z
-        .union([z.boolean(), EvolutionActive])
-        .optional()
-        .describe("Agent-initiated active memory curation via memory tools (default: true)"),
-    })
-    .strict()
-    .meta({ ref: "EvolutionConfig" })
-
-  export const Evolution = z
-    .union([z.boolean(), EvolutionConfig])
-    .optional()
-    .describe("Dual-mode evolution system: passive experience learning + active memory curation (default: true)")
-
-  export const ACTIVE_RETRIEVAL_DEFAULTS = {
-    simThreshold: 0.7,
-    topK: 3,
-  } as const
-
-  export interface CategoryRetrieval {
-    simThreshold: number
-    topK: number
-  }
-
-  export interface ActiveRetrieval {
-    enabled: boolean
-    categories: Record<MemoryCategory, CategoryRetrieval>
-  }
-
-  export interface ResolvedEvolution {
-    encode: boolean
-    retrieve: boolean
-    active: boolean
-    activeRetrieval: ActiveRetrieval
-    passiveRetrieval: Required<PassiveRetrieval>
-    memoryDedupThreshold: number
-    learning: Required<Learning>
-  }
-
-  export function resolveEvolution(raw?: z.infer<typeof Evolution>): ResolvedEvolution {
-    function buildCategoryRetrieval(
-      globalSimThreshold?: number,
-      globalTopK?: number,
-      overrides?: Partial<Record<MemoryCategory, { simThreshold?: number; topK?: number }>>,
-    ): Record<MemoryCategory, CategoryRetrieval> {
-      const simThreshold = globalSimThreshold ?? ACTIVE_RETRIEVAL_DEFAULTS.simThreshold
-      const topK = globalTopK ?? ACTIVE_RETRIEVAL_DEFAULTS.topK
-      const result = {} as Record<MemoryCategory, CategoryRetrieval>
-      for (const category of MEMORY_CATEGORIES) {
-        const override = overrides?.[category]
-        result[category] = {
-          simThreshold: override?.simThreshold ?? simThreshold,
-          topK: override?.topK ?? topK,
-        }
-      }
-      return result
-    }
-
-    const defaultCategories = buildCategoryRetrieval()
-    const defaultActiveRetrieval: ActiveRetrieval = { enabled: true, categories: defaultCategories }
-    const disabledActiveRetrieval: ActiveRetrieval = { enabled: false, categories: defaultCategories }
-
-    const MEMORY_DEDUP_THRESHOLD_DEFAULT = 0.75
-
-    if (raw === false)
-      return {
-        encode: false,
-        retrieve: false,
-        active: false,
-        activeRetrieval: disabledActiveRetrieval,
-        passiveRetrieval: { ...PASSIVE_RETRIEVAL_DEFAULTS },
-        memoryDedupThreshold: MEMORY_DEDUP_THRESHOLD_DEFAULT,
-        learning: { ...LEARNING_DEFAULTS },
-      }
-    if (raw === true || raw === undefined)
-      return {
-        encode: true,
-        retrieve: true,
-        active: true,
-        activeRetrieval: defaultActiveRetrieval,
-        passiveRetrieval: { ...PASSIVE_RETRIEVAL_DEFAULTS },
-        memoryDedupThreshold: MEMORY_DEDUP_THRESHOLD_DEFAULT,
-        learning: { ...LEARNING_DEFAULTS },
-      }
-
-    const passive = raw.passive
-    let encode: boolean
-    let retrieve: boolean
-    let learning: Required<Learning>
-    let passiveRetrieval: Required<PassiveRetrieval>
-    if (passive === false) {
-      encode = false
-      retrieve = false
-      learning = { ...LEARNING_DEFAULTS }
-      passiveRetrieval = { ...PASSIVE_RETRIEVAL_DEFAULTS }
-    } else if (passive === true || passive === undefined) {
-      encode = true
-      retrieve = true
-      learning = { ...LEARNING_DEFAULTS }
-      passiveRetrieval = { ...PASSIVE_RETRIEVAL_DEFAULTS }
-    } else {
-      encode = passive.encode ?? true
-      const rawRetrieve = passive.retrieve
-      if (rawRetrieve === false) {
-        retrieve = false
-        passiveRetrieval = { ...PASSIVE_RETRIEVAL_DEFAULTS }
-      } else if (rawRetrieve === true || rawRetrieve === undefined) {
-        retrieve = true
-        passiveRetrieval = { ...PASSIVE_RETRIEVAL_DEFAULTS }
-      } else {
-        retrieve = true
-        passiveRetrieval = { ...PASSIVE_RETRIEVAL_DEFAULTS, ...rawRetrieve }
-      }
-      const rawLearning = passive.learning
-      learning = {
-        ...LEARNING_DEFAULTS,
-        ...rawLearning,
-        rewardWeights: { ...REWARD_WEIGHT_DEFAULTS, ...rawLearning?.rewardWeights },
-      }
-    }
-
-    const activeRaw = raw.active
-    let active: boolean
-    let activeRetrieval: ActiveRetrieval
-    let memoryDedupThreshold = MEMORY_DEDUP_THRESHOLD_DEFAULT
-    if (activeRaw === false) {
-      active = false
-      activeRetrieval = disabledActiveRetrieval
-    } else if (activeRaw === true || activeRaw === undefined) {
-      active = true
-      activeRetrieval = defaultActiveRetrieval
-    } else {
-      active = true
-      memoryDedupThreshold = activeRaw.memoryDedupThreshold ?? MEMORY_DEDUP_THRESHOLD_DEFAULT
-      const r = activeRaw.retrieve
-      if (r === false) {
-        activeRetrieval = disabledActiveRetrieval
-      } else if (r === true || r === undefined) {
-        activeRetrieval = defaultActiveRetrieval
-      } else {
-        activeRetrieval = {
-          enabled: true,
-          categories: buildCategoryRetrieval(r.simThreshold, r.topK, r.categories),
-        }
-      }
-    }
-
-    return { encode, retrieve, active, activeRetrieval, passiveRetrieval, memoryDedupThreshold, learning }
-  }
-
-  export const Identity = z
-    .object({
-      embedding: z
-        .object({
-          baseURL: z.string().optional().describe("Base URL for the embedding API"),
-          apiKey: z.string().optional().describe("API key for the embedding service"),
-          model: z.string().optional().describe("Embedding model name (e.g., 'Qwen/Qwen3-Embedding-8B')"),
-        })
-        .optional()
-        .describe("Embedding model configuration for memory and retrieval"),
-      rerank: z
-        .object({
-          baseURL: z.string().optional().describe("Base URL for the rerank API"),
-          apiKey: z.string().optional().describe("API key for the rerank service (falls back to embedding.apiKey)"),
-          model: z.string().optional().describe("Rerank model name (e.g., 'Qwen/Qwen3-Reranker-8B')"),
-        })
-        .optional()
-        .describe("Rerank model configuration for memory retrieval refinement"),
-      evolution: Evolution,
-      autonomy: z
-        .boolean()
-        .optional()
-        .describe("Enable autonomous background routines like anima daily wake (default: true)"),
-    })
-    .strict()
-    .meta({
-      ref: "IdentityConfig",
-    })
-  export type Identity = z.infer<typeof Identity>
-
-  export const Provider = ModelsDev.Provider.partial()
-    .extend({
-      whitelist: z.array(z.string()).optional(),
-      blacklist: z.array(z.string()).optional(),
-      models: z
-        .record(
-          z.string(),
-          ModelsDev.Model.partial().extend({
-            variants: z
-              .record(
-                z.string(),
-                z
-                  .object({
-                    disabled: z.boolean().optional().describe("Disable this variant for the model"),
-                  })
-                  .catchall(z.any()),
-              )
-              .optional()
-              .describe("Variant-specific configuration"),
-          }),
-        )
-        .optional(),
-      options: z
-        .object({
-          apiKey: z.string().optional(),
-          baseURL: z.string().optional(),
-          enterpriseUrl: z.string().optional().describe("GitHub Enterprise URL for copilot authentication"),
-          setCacheKey: z.boolean().optional().describe("Enable promptCacheKey for this provider (default false)"),
-          timeout: z
-            .union([
-              z
-                .number()
-                .int()
-                .positive()
-                .describe(
-                  "Timeout in milliseconds for requests to this provider. Default is 900000 (15 minutes). Set to false to disable timeout.",
-                ),
-              z.literal(false).describe("Disable timeout for this provider entirely."),
-            ])
-            .optional()
-            .describe(
-              "Timeout in milliseconds for requests to this provider. Default is 900000 (15 minutes). Set to false to disable timeout.",
-            ),
-        })
-        .catchall(z.any())
-        .optional(),
-    })
-    .strict()
-    .meta({
-      ref: "ProviderConfig",
-    })
-  export type Provider = z.infer<typeof Provider>
-
-  export const Info = z
-    .object({
-      $schema: z.string().optional().describe("JSON schema reference for configuration validation"),
-      theme: z.string().optional().describe("Theme name to use for the interface"),
-      keybinds: Keybinds.optional().describe("Custom keybind configurations"),
-      logLevel: Log.Level.optional().describe("Log level"),
-      server: Server.optional().describe("Server configuration for synergy serve and web commands"),
-      command: z.record(z.string(), Command).optional().describe("Command configuration"),
-      timeout: z
-        .object({
-          invoke_sec: z
-            .number()
-            .positive()
-            .optional()
-            .describe("Max wall-clock seconds for one agent turn (default: 900 = 15min)"),
-          provider: z
-            .object({
-              ttfb_sec: z
-                .number()
-                .positive()
-                .optional()
-                .describe(
-                  "Max seconds to wait for first byte (TTFB) from provider. " +
-                    "Accommodates reasoning/thinking models (e.g. o1-pro, deepseek-r1). " +
-                    "Default: 600 = 10min",
-                ),
-              idle_sec: z
-                .number()
-                .min(0)
-                .optional()
-                .describe("Idle timeout in seconds (0 = disable, default: 180 = 3min). Resets on each data chunk."),
-              wall_sec: z
-                .number()
-                .min(0)
-                .optional()
-                .describe(
-                  "Hard wall-clock timeout per HTTP request in seconds " +
-                    "(0 = disabled, default: 0). CAUTION: conflicts with streaming — " +
-                    "will interrupt normal token output. Only enable if you need a " +
-                    "hard cap beyond idle+TTFB",
-                ),
-            })
-            .optional(),
-          tool: z
-            .object({
-              default_sec: z
-                .number()
-                .positive()
-                .optional()
-                .describe("Default timeout per tool execution in seconds (default: 300 = 5min)"),
-              overrides: z
-                .record(z.string(), z.number().positive())
-                .optional()
-                .describe("Per-tool timeout overrides by tool name, e.g. { bash: 600, webfetch: 120 }"),
-            })
-            .optional(),
-        })
-        .optional()
-        .describe("Timeout configuration for agent turns, provider requests, and tool execution"),
-      watcher: z
-        .object({
-          ignore: z.array(z.string()).optional(),
-        })
-        .optional(),
-      plugin: z.string().array().optional(),
-      snapshot: z.boolean().optional(),
-      autoupdate: z
-        .union([z.boolean(), z.literal("notify")])
-        .optional()
-        .describe(
-          "Automatically update to the latest version. Set to true to auto-update, false to disable, or 'notify' to show update notifications",
-        ),
-      disabled_providers: z.array(z.string()).optional().describe("Disable providers that are loaded automatically"),
-      enabled_providers: z
-        .array(z.string())
-        .optional()
-        .describe("When set, ONLY these providers will be enabled. All other providers will be ignored"),
-      model: z
-        .string()
-        .describe("Default model in the format of provider/model, eg anthropic/claude-sonnet-4-5")
-        .optional(),
-      nano_model: z
-        .string()
-        .describe(
-          "Cheapest model for trivial extraction tasks like title generation, in the format of provider/model. Falls back to mini_model → mid_model → model.",
-        )
-        .optional(),
-      mini_model: z
-        .string()
-        .describe(
-          "Lightweight model for simple tasks like intent extraction, in the format of provider/model. Falls back to mid_model → model.",
-        )
-        .optional(),
-      mid_model: z
-        .string()
-        .describe(
-          "Mid-tier model for internal agents that need moderate reasoning (script extraction, reward evaluation, code exploration), in the format of provider/model. Falls back to the default model.",
-        )
-        .optional(),
-      thinking_model: z
-        .string()
-        .describe(
-          "Deep thinking model for complex reasoning and architecture tasks, in the format of provider/model. Falls back to the default model if not set.",
-        )
-        .optional(),
-      long_context_model: z
-        .string()
-        .describe(
-          "Model with extra-large context window for processing very long inputs, in the format of provider/model. Falls back to the default model if not set.",
-        )
-        .optional(),
-      creative_model: z
-        .string()
-        .describe(
-          "Model for creative and visual tasks (UI design, writing, artistry), in the format of provider/model. Falls back to the default model if not set.",
-        )
-        .optional(),
-      holos_friend_reply_model: z
-        .string()
-        .describe(
-          "Model for Holos automatic friend replies, in the format of provider/model. Falls back to the default model if not set.",
-        )
-        .optional(),
-      vision_model: z
-        .string()
-        .describe(
-          "Model for image analysis via the look_at tool, in the format of provider/model. If not set, look_at is disabled.",
-        )
-        .optional(),
-      default_agent: z
-        .string()
-        .optional()
-        .describe(
-          "Default agent to use when none is specified. Must be a primary agent. Falls back to 'synergy' if not set or if the specified agent is invalid.",
-        ),
-      username: z
-        .string()
-        .optional()
-        .describe("Custom username to display in conversations instead of system username"),
-      agent: z
-        .object({
-          // primary
-          synergy: Agent.optional(),
-          "synergy-max": Agent.optional(),
-          // classic subagents
-          developer: Agent.optional(),
-          // subagent
-          general: Agent.optional(),
-          explore: Agent.optional(),
-          // specialized
-          title: Agent.optional(),
-          summary: Agent.optional(),
-          compaction: Agent.optional(),
-        })
-        .catchall(Agent)
-        .optional()
-        .describe("Agent configuration"),
-      external_agent: z
-        .record(z.string(), ExternalAgentConfig)
-        .optional()
-        .describe("External agent configurations (e.g. codex, claude-code)"),
-      provider: z
-        .record(z.string(), Provider)
-        .optional()
-        .describe("Custom provider configurations and model overrides"),
-      identity: Identity.optional().describe("Identity configuration for embedding and evolution"),
-      mcp: z
-        .record(
-          z.string(),
-          z.union([
-            Mcp,
-            z
-              .object({
-                enabled: z.boolean(),
-              })
-              .strict(),
-          ]),
-        )
-        .optional()
-        .describe("MCP (Model Context Protocol) server configurations"),
-      channel: z
-        .record(z.string(), Channel)
-        .optional()
-        .describe("Channel configurations for messaging platform integrations"),
-      holos: Holos.optional().describe("Holos platform configuration"),
-      email: Email.optional().describe("Outgoing email configuration"),
-      formatter: z
-        .union([
-          z.literal(false),
-          z.record(
-            z.string(),
-            z.object({
-              disabled: z.boolean().optional(),
-              command: z.array(z.string()).optional(),
-              environment: z.record(z.string(), z.string()).optional(),
-              extensions: z.array(z.string()).optional(),
-            }),
-          ),
-        ])
-        .optional(),
-      lsp: z
-        .union([
-          z.literal(false),
-          z.record(
-            z.string(),
-            z.union([
-              z.object({
-                disabled: z.literal(true),
-              }),
-              z.object({
-                command: z.array(z.string()),
-                extensions: z.array(z.string()).optional(),
-                disabled: z.boolean().optional(),
-                env: z.record(z.string(), z.string()).optional(),
-                initialization: z.record(z.string(), z.any()).optional(),
-              }),
-            ]),
-          ),
-        ])
-        .optional()
-        .refine(
-          (data) => {
-            if (!data) return true
-            if (typeof data === "boolean") return true
-            const serverIds = new Set(Object.values(LSPServer).map((s) => s.id))
-
-            return Object.entries(data).every(([id, config]) => {
-              if (config.disabled) return true
-              if (serverIds.has(id)) return true
-              return Boolean(config.extensions)
-            })
-          },
-          {
-            error: "For custom LSP servers, 'extensions' array is required.",
-          },
-        ),
-      instructions: z.array(z.string()).optional().describe("Additional instruction files or patterns to include"),
-      layout: Layout.optional().describe("@deprecated Always uses stretch layout."),
-      permission: Permission.optional(),
-      tools: z.record(z.string(), z.boolean()).optional(),
-      enterprise: z
-        .object({
-          url: z.string().optional().describe("Enterprise URL"),
-        })
-        .optional(),
-      agora: z
-        .object({
-          url: z.string().optional().describe("Agora API base URL (defaults to https://agora.holosai.io)"),
-          tokenUrl: z
-            .string()
-            .optional()
-            .describe("Holos API URL for Agora token exchange (defaults to https://www.holosai.io)"),
-          giteaSSHHost: z.string().optional().describe("Override SSH hostname used for Agora's Gitea remote"),
-        })
-
-        .optional()
-        .describe("Agora Q&A platform configuration"),
-      question: z
-        .object({
-          timeout: z
-            .number()
-            .min(0)
-            .optional()
-            .describe("Seconds before unanswered questions auto-expire (0 = no timeout, default 1800 = 30min)"),
-        })
-        .optional(),
-      compaction: z
-        .object({
-          auto: z.boolean().optional().describe("Enable automatic compaction when context is full (default: true)"),
-          prune: z.boolean().optional().describe("Enable pruning of old tool outputs (default: true)"),
-          overflowThreshold: z
-            .number()
-            .min(0.5)
-            .max(1)
-            .optional()
-            .describe("Fraction of usable context that triggers auto-compaction (default: 0.85)"),
-        })
-        .optional(),
-      experimental: z
-        .object({
-          batch_tool: z.boolean().optional().describe("Enable the batch tool"),
-          openTelemetry: z
-            .boolean()
-            .optional()
-            .describe("Enable OpenTelemetry spans for AI SDK calls (using the 'experimental_telemetry' flag)"),
-          primary_tools: z
-            .array(z.string())
-            .optional()
-            .describe("Tools that should only be available to primary agents."),
-          continue_loop_on_deny: z.boolean().optional().describe("Continue the agent loop when a tool call is denied"),
-          mcp_timeout: z
-            .number()
-            .int()
-            .positive()
-            .optional()
-            .describe("Timeout in milliseconds for model context protocol (MCP) requests"),
-        })
-        .optional(),
-      pluginConfig: z
-        .record(z.string(), z.record(z.string(), z.any()))
-        .optional()
-        .describe("Per-plugin configuration namespaces. Keys are plugin IDs, values are plugin-specific config."),
-      category: z
-        .record(z.string(), CategoryConfig)
-        .optional()
-        .describe("Custom category configurations for background tasks. Categories define model and prompt presets."),
-    })
-    .strict()
-    .meta({
-      ref: "Config",
-    })
-
-  export type Info = z.output<typeof Info>
-
   export const global = lazy(async () => {
-    const activeSet = await ConfigSet.activeName()
-    const result: Info = pipe({}, mergeDeep(await loadFile(ConfigSet.filePath(activeSet))))
-    return result
+    await migrateLegacyGlobalConfig()
+    return loadDomainDirectory(Global.Path.config)
   })
 
-  async function loadFile(filepath: string): Promise<Info> {
+  async function loadDomainDirectory(root: string): Promise<Info> {
+    let result: Info = {}
+    for (const domain of ConfigDomain.definitions) {
+      const filepath = ConfigDomain.filepath(domain.id, root)
+      const fragment = await loadFile(filepath, { addSchema: false })
+      ConfigDomain.validateKeys(fragment as Record<string, unknown>, domain.id)
+      result = mergeConfigConcatArrays(result, fragment as Info)
+    }
+    return Info.parse(result)
+  }
+
+  async function migrateLegacyGlobalConfig() {
+    const domainDir = ConfigDomain.directory()
+    const existingDomainFiles = await fs
+      .readdir(domainDir)
+      .then((entries) => entries.some((entry) => ConfigDomain.domainForFile(entry)))
+      .catch(() => false)
+    if (existingDomainFiles) return
+
+    const legacy = await findLegacyGlobalConfig()
+    if (!legacy) {
+      await ConfigDomain.ensureDir()
+      return
+    }
+
+    log.info("migrating legacy global config to domain fragments", { source: legacy.source })
+    const config = await loadFile(legacy.source)
+    const split = ConfigDomain.split(config)
+    const tempDir = `${domainDir}.tmp-${process.pid}-${Date.now()}`
+    await fs.rm(tempDir, { recursive: true, force: true })
+    await fs.mkdir(tempDir, { recursive: true })
+
+    try {
+      for (const domain of ConfigDomain.definitions) {
+        const fragment = split.get(domain.id) ?? {}
+        await Bun.write(path.join(tempDir, domain.filename), serializeConfig(fragment))
+      }
+
+      await fs.mkdir(path.dirname(domainDir), { recursive: true })
+      await fs.rename(tempDir, domainDir).catch(async (err) => {
+        if (err?.code !== "EXDEV") throw err
+        await fs.cp(tempDir, domainDir, { recursive: true, force: true })
+        await fs.rm(tempDir, { recursive: true, force: true })
+      })
+
+      await archiveLegacyConfigSets()
+      await archiveLegacyGlobalFile(legacy.source)
+      await fs.rm(path.join(Global.Path.config, "config-set.json"), { force: true }).catch(() => {})
+      log.info("migrated legacy global config", { source: legacy.source, target: domainDir })
+    } catch (err) {
+      await fs.rm(tempDir, { recursive: true, force: true }).catch(() => {})
+      throw err
+    }
+  }
+
+  async function findLegacyGlobalConfig(): Promise<{ source: string } | undefined> {
+    const metadataPath = path.join(Global.Path.config, "config-set.json")
+    const activeName = await Bun.file(metadataPath)
+      .json()
+      .then((data) => (typeof data?.active === "string" ? data.active : "default"))
+      .catch(() => "default")
+
+    const activeSetPath =
+      activeName && activeName !== "default"
+        ? path.join(Global.Path.config, "config-sets", activeName, "synergy.jsonc")
+        : undefined
+    const candidates = [
+      activeSetPath,
+      path.join(Global.Path.config, "synergy.jsonc"),
+      path.join(Global.Path.config, "synergy.json"),
+      path.join(Global.Path.config, "config-sets", "default", "synergy.jsonc"),
+    ].filter((item): item is string => Boolean(item))
+
+    for (const candidate of candidates) {
+      if (await Bun.file(candidate).exists()) return { source: candidate }
+    }
+    return undefined
+  }
+
+  async function archiveLegacyConfigSets() {
+    const source = path.join(Global.Path.config, "config-sets")
+    if (!(await Bun.file(source).exists())) return
+    const target = path.join(Global.Path.config, "archive", "config-sets")
+    await fs.mkdir(path.dirname(target), { recursive: true })
+    await fs.cp(source, target, { recursive: true, force: true }).catch((err) => {
+      log.warn("failed to archive legacy config sets", {
+        source,
+        target,
+        error: err instanceof Error ? err.message : err,
+      })
+    })
+  }
+
+  async function archiveLegacyGlobalFile(filepath: string) {
+    if (!filepath.startsWith(Global.Path.config)) return
+    const archiveDir = path.join(Global.Path.config, "archive")
+    await fs.mkdir(archiveDir, { recursive: true })
+    const target = path.join(archiveDir, path.basename(filepath))
+    await fs.rename(filepath, target).catch((err) => {
+      log.warn("failed to archive legacy global config file", {
+        source: filepath,
+        target,
+        error: err instanceof Error ? err.message : err,
+      })
+    })
+  }
+
+  async function migrateLegacyProjectConfig(projectRoot: string) {
+    const synergyDir = path.join(projectRoot, ".synergy")
+    const domainDir = ConfigDomain.directory(synergyDir)
+    const existingDomainFiles = await fs
+      .readdir(domainDir)
+      .then((entries) => entries.some((entry) => ConfigDomain.domainForFile(entry)))
+      .catch(() => false)
+    if (existingDomainFiles) return
+
+    const candidates = [
+      path.join(projectRoot, "synergy.jsonc"),
+      path.join(projectRoot, "synergy.json"),
+      path.join(synergyDir, "synergy.jsonc"),
+      path.join(synergyDir, "synergy.json"),
+    ]
+
+    let migrated: Info = {}
+    const sources: string[] = []
+    for (const candidate of candidates) {
+      if (!(await Bun.file(candidate).exists())) continue
+      migrated = mergeConfigConcatArrays(migrated, await loadFile(candidate))
+      sources.push(candidate)
+    }
+    if (sources.length === 0) return
+
+    log.info("migrating legacy project config to domain fragments", { sources, target: domainDir })
+    for (const [id, fragment] of ConfigDomain.split(migrated)) {
+      await writeDomainFile(id, fragment, synergyDir)
+    }
+    const archiveDir = path.join(synergyDir, "archive")
+    await fs.mkdir(archiveDir, { recursive: true })
+    for (const source of sources) {
+      const target = path.join(archiveDir, path.basename(source))
+      await fs.rename(source, target).catch((err) => {
+        log.warn("failed to archive legacy project config file", {
+          source,
+          target,
+          error: err instanceof Error ? err.message : err,
+        })
+      })
+    }
+  }
+
+  async function loadFile(filepath: string, options: { addSchema?: boolean } = {}): Promise<Info> {
     log.info("loading", { path: filepath })
     let text = await Bun.file(filepath)
       .text()
@@ -1636,10 +652,10 @@ export namespace Config {
         throw new JsonError({ path: filepath }, { cause: err })
       })
     if (!text) return {}
-    return load(text, filepath)
+    return load(text, filepath, options)
   }
 
-  async function load(text: string, configFilepath: string) {
+  async function load(text: string, configFilepath: string, options: { addSchema?: boolean } = {}) {
     text = text.replace(/\{env:([^}]+)\}/g, (_, varName) => {
       const value = process.env[varName]
       if (value === undefined) {
@@ -1711,7 +727,7 @@ export namespace Config {
 
     const parsed = Info.safeParse(data)
     if (parsed.success) {
-      if (!parsed.data.$schema) {
+      if (options.addSchema !== false && !parsed.data.$schema) {
         parsed.data.$schema = CONFIG_SCHEMA
       }
       const result = parsed.data
@@ -1760,7 +776,7 @@ export namespace Config {
 
     const retried = Info.safeParse(data)
     if (retried.success) {
-      if (!retried.data.$schema) {
+      if (options.addSchema !== false && !retried.data.$schema) {
         retried.data.$schema = CONFIG_SCHEMA
       }
       const result = retried.data
@@ -1806,8 +822,19 @@ export namespace Config {
     }),
   )
 
-  export async function get() {
+  export async function current() {
     return state().then((x) => x.config)
+  }
+
+  export async function forScope(scope: Scope) {
+    return ScopeContext.provide({
+      scope,
+      fn: current,
+    })
+  }
+
+  export async function globalResolved() {
+    return forScope(Scope.home())
   }
 
   export const Event = {
@@ -1816,13 +843,6 @@ export namespace Config {
       z.object({
         scope: z.enum(["global", "project"]),
         changedFields: z.string().array(),
-      }),
-    ),
-    SetActivated: BusEvent.define(
-      "config.set.activated",
-      z.object({
-        previous: ConfigSet.Name,
-        active: ConfigSet.Name,
       }),
     ),
   }
@@ -1842,8 +862,101 @@ export namespace Config {
     }
     return changed
   }
+  /**
+   * Sentinel value used by clients to indicate that a redacted password
+   * field has not changed. When the server receives this value, it merges
+   * the currently stored secret instead of overwriting it with the placeholder.
+   */
+  export const REDACTED_SENTINEL = "__REDACTED__"
 
-  export async function reload(scope: "global" | "project" = "global") {
+  /** Deep-clone config and replace secrets with REDACTED_SENTINEL for safe client exposure. */
+  export function redactForClient(config: Info): Info {
+    const result = structuredClone(config) as Record<string, any>
+    if (result.email?.smtp?.password) result.email.smtp.password = REDACTED_SENTINEL
+    if (result.email?.imap?.password) result.email.imap.password = REDACTED_SENTINEL
+    if (result.channel?.feishu?.accounts) {
+      for (const account of Object.values(result.channel.feishu.accounts) as any[]) {
+        if (account?.appSecret) account.appSecret = REDACTED_SENTINEL
+      }
+    }
+    if (result.embedding?.apiKey) result.embedding.apiKey = REDACTED_SENTINEL
+    if (result.rerank?.apiKey) result.rerank.apiKey = REDACTED_SENTINEL
+    if (result.provider) {
+      for (const provider of Object.values(result.provider) as any[]) {
+        if (provider?.options?.apiKey) provider.options.apiKey = REDACTED_SENTINEL
+      }
+    }
+    if (result.mcp) {
+      for (const server of Object.values(result.mcp) as any[]) {
+        if (server?.oauth?.clientSecret) server.oauth.clientSecret = REDACTED_SENTINEL
+      }
+    }
+    return result as Info
+  }
+
+  /**
+   * When an incoming PATCH payload has REDACTED_SENTINEL for any password
+   * field, replace it with the currently stored value so the real secret
+   * is not overwritten with the placeholder.
+   */
+  export function mergeRedactedSecrets(incoming: Info, stored: Info): Info {
+    const result = structuredClone(incoming) as Record<string, any>
+    if (result.email?.smtp?.password === REDACTED_SENTINEL && stored.email?.smtp?.password) {
+      result.email.smtp.password = stored.email.smtp.password
+    }
+    if (result.email?.imap?.password === REDACTED_SENTINEL && stored.email?.imap?.password) {
+      result.email.imap.password = stored.email.imap.password
+    }
+    if (result.channel?.feishu?.accounts && stored.channel?.feishu?.accounts) {
+      for (const [key, account] of Object.entries(result.channel.feishu.accounts) as [string, any][]) {
+        if (account?.appSecret === REDACTED_SENTINEL) {
+          const storedAccount = (stored.channel.feishu.accounts as Record<string, any>)[key]
+          if (storedAccount?.appSecret) account.appSecret = storedAccount.appSecret
+        }
+      }
+    }
+    if (result.embedding?.apiKey === REDACTED_SENTINEL && stored.embedding?.apiKey) {
+      result.embedding.apiKey = stored.embedding.apiKey
+    }
+    if (result.rerank?.apiKey === REDACTED_SENTINEL && stored.rerank?.apiKey) {
+      result.rerank.apiKey = stored.rerank.apiKey
+    }
+    if (result.provider && stored.provider) {
+      for (const [key, provider] of Object.entries(result.provider) as [string, any][]) {
+        if (provider?.options?.apiKey === REDACTED_SENTINEL) {
+          const storedProvider = (stored.provider as Record<string, any>)[key]
+          if (storedProvider?.options?.apiKey) provider.options.apiKey = storedProvider.options.apiKey
+        }
+      }
+    }
+    if (result.mcp && stored.mcp) {
+      for (const [key, server] of Object.entries(result.mcp) as [string, any][]) {
+        if (server?.oauth?.clientSecret === REDACTED_SENTINEL) {
+          const storedServer = (stored.mcp as Record<string, any>)[key]
+          if (storedServer?.oauth?.clientSecret) server.oauth.clientSecret = storedServer.oauth.clientSecret
+        }
+      }
+    }
+    return result as Info
+  }
+
+  export interface ReloadResult {
+    config: Info
+    changedFields: string[]
+    oldConfig: Info
+  }
+
+  export async function reload(scope: "global" | "project" = "global"): Promise<ReloadResult> {
+    if (!ScopeContext.tryScope()) {
+      if (scope !== "global") {
+        throw new Error("Config.reload('project') requires a ScopeContext")
+      }
+      return ScopeContext.provide<ReloadResult>({
+        scope: Scope.home(),
+        fn: () => reload(scope),
+      })
+    }
+
     const oldConfig = await state()
       .then((x) => x.config)
       .catch(() => ({}) as Info)
@@ -1867,218 +980,205 @@ export namespace Config {
     return { config: newConfig, changedFields, oldConfig }
   }
 
-  async function patchFile(filepath: string, config: Info) {
-    let text = await Bun.file(filepath)
-      .text()
-      .catch(() => "{}")
-
-    for (const [key, value] of Object.entries(config)) {
-      if (value !== null && typeof value === "object" && !Array.isArray(value)) {
-        for (const [subKey, subValue] of Object.entries(value)) {
-          const edits = modify(text, [key, subKey], subValue, { formattingOptions })
-          text = applyEdits(text, edits)
-        }
-      } else {
-        const edits = modify(text, [key], value, { formattingOptions })
-        text = applyEdits(text, edits)
-      }
-    }
-
-    await Bun.write(filepath, text)
-  }
-
   export async function update(config: Info) {
-    const synergyDir = path.join(Instance.directory, ".synergy")
-    const filepath = path.join(synergyDir, "synergy.jsonc")
-    await patchFile(filepath, config)
-    await Instance.dispose()
+    const synergyDir = path.join(ScopeContext.current.directory, ".synergy")
+    for (const [id, fragment] of ConfigDomain.split(config)) {
+      await writeDomainFile(id, fragment, synergyDir)
+    }
+    await ScopeRuntime.dispose()
   }
 
   export async function updateGlobal(config: Info) {
-    const filepath = await globalPath()
-    await fs.mkdir(path.dirname(filepath), { recursive: true })
-    await patchFile(filepath, config)
+    for (const [id, fragment] of ConfigDomain.split(config)) {
+      await domainUpdate(id, fragment)
+    }
   }
 
   export async function globalPath() {
-    return ConfigSet.filePath(await ConfigSet.activeName())
-  }
-
-  export const RawValidationResult = z
-    .object({
-      valid: z.boolean(),
-      config: Info.optional(),
-      errors: z.array(z.string()),
-      warnings: z.array(z.string()),
-    })
-    .meta({ ref: "ConfigRawValidationResult" })
-  export type RawValidationResult = z.infer<typeof RawValidationResult>
-
-  export const RawSet = z
-    .object({
-      name: ConfigSet.Name,
-      path: z.string(),
-      raw: z.string(),
-      config: Info.optional(),
-      active: z.boolean(),
-      isDefault: z.boolean(),
-    })
-    .meta({ ref: "ConfigSetRaw" })
-  export type RawSet = z.infer<typeof RawSet>
-
-  export const RawSaveResult = z
-    .object({
-      configSet: RawSet,
-      validation: RawValidationResult,
-      saved: z.boolean(),
-      runtimeReload: RuntimeSchema.ReloadResult.optional(),
-    })
-    .meta({ ref: "ConfigSetRawSaveResult" })
-  export type RawSaveResult = z.infer<typeof RawSaveResult>
-
-  export async function readRawFile(filepath: string) {
-    const text = await Bun.file(filepath)
-      .text()
-      .catch((err) => {
-        if (err.code === "ENOENT") return "{}\n"
-        throw new JsonError({ path: filepath }, { cause: err })
-      })
-    return text && text.length > 0 ? text : "{}\n"
-  }
-
-  export async function validateRaw(text: string, filepath: string): Promise<RawValidationResult> {
-    const warnings: string[] = []
-
-    try {
-      const config = await load(text, filepath)
-      if (!config.model) {
-        warnings.push("No default model specified — you may need to set one before using this Config Set.")
-      }
-      return {
-        valid: true,
-        config,
-        errors: [],
-        warnings,
-      }
-    } catch (error) {
-      if (JsonError.isInstance(error) || InvalidError.isInstance(error)) {
-        const issues =
-          InvalidError.isInstance(error) && error.data.issues?.length
-            ? error.data.issues.map((issue) => {
-                const location = issue.path.length > 0 ? `${issue.path.join(".")}: ` : ""
-                return `${location}${issue.message}`
-              })
-            : []
-        const details = [error.data.message, ...issues].filter((item): item is string => Boolean(item))
-        return {
-          valid: false,
-          errors: details.length > 0 ? details : ["Invalid config"],
-          warnings,
-        }
-      }
-      throw error
-    }
-  }
-
-  export async function configSetGetRaw(name: string): Promise<RawSet> {
-    await ConfigSet.assertExists(name)
-    const summary = await ConfigSet.summary(name)
-    const filepath = ConfigSet.filePath(name)
-    const raw = await readRawFile(filepath)
-    const validation = await validateRaw(raw, filepath)
-    return {
-      ...summary,
-      path: filepath,
-      raw,
-      config: validation.config,
-    }
-  }
-
-  export async function configSetSaveRaw(name: string, raw: string, reload = true): Promise<RawSaveResult> {
-    const parsed = await ConfigSet.assertExists(name)
-    const filepath = ConfigSet.filePath(parsed)
-    const validation = await validateRaw(raw, filepath)
-    if (!validation.valid) {
-      throw new InvalidError({
-        path: filepath,
-        message: validation.errors.join("\n\n"),
-      })
-    }
-
-    await fs.mkdir(path.dirname(filepath), { recursive: true })
-    await Bun.write(filepath, raw.endsWith("\n") ? raw : raw + "\n")
-
-    const configSet = await configSetGetRaw(parsed)
-    const shouldReload = reload && configSet.active
-    const runtimeReload = shouldReload
-      ? await import("../runtime/reload").then((mod) =>
-          mod.RuntimeReload.reload({
-            targets: ["config"],
-            scope: "global",
-            reason: `config.set.raw.save:${parsed}`,
-          }),
-        )
-      : undefined
-
-    return {
-      configSet,
-      validation,
-      saved: true,
-      runtimeReload,
-    }
+    return ConfigDomain.directory()
   }
 
   export async function globalRaw() {
-    return loadFile(await globalPath())
+    await migrateLegacyGlobalConfig()
+    return loadDomainDirectory(Global.Path.config)
   }
 
-  export async function configSetList() {
-    return ConfigSet.list()
+  export const DomainSummary = z
+    .object({
+      id: ConfigDomain.Id,
+      filename: z.string(),
+      label: z.string(),
+      path: z.string(),
+      ownedKeys: z.array(z.string()),
+      mergePolicy: ConfigDomain.MergeMode,
+      reloadTargets: z.array(z.string()),
+      uiSection: z.string(),
+      importable: z.boolean(),
+      config: Info.optional(),
+    })
+    .meta({ ref: "ConfigDomainSummary" })
+  export type DomainSummary = z.infer<typeof DomainSummary>
+
+  export async function domainList(): Promise<DomainSummary[]> {
+    await migrateLegacyGlobalConfig()
+    return Promise.all(
+      ConfigDomain.definitions.map(async (domain) => ({
+        ...domain,
+        path: ConfigDomain.filepath(domain.id),
+        ownedKeys: domain.ownedKeys.map(String),
+        config: redactForClient(await domainGet(domain.id)),
+      })),
+    )
   }
 
-  export async function configSetGet(name: string) {
-    await ConfigSet.assertExists(name)
-    return {
-      ...(await ConfigSet.summary(name)),
-      config: await loadFile(ConfigSet.filePath(name)),
+  export async function domainGet(id: ConfigDomain.Id, root = Global.Path.config): Promise<Info> {
+    const parsed = ConfigDomain.Id.parse(id)
+    await migrateLegacyGlobalConfig()
+    const filepath = ConfigDomain.filepath(parsed, root)
+    const config = await loadFile(filepath, { addSchema: false })
+    ConfigDomain.validateKeys(config as Record<string, unknown>, parsed)
+    return config
+  }
+
+  export async function domainUpdate(
+    id: ConfigDomain.Id,
+    patch: Partial<Info>,
+    options: { mode?: ConfigDomain.MergeMode; root?: string } = {},
+  ) {
+    const parsed = ConfigDomain.Id.parse(id)
+    ConfigDomain.validateKeys(patch as Record<string, unknown>, parsed)
+    const stored = await domainGet(parsed, options.root)
+    const mergedPatch = mergeRedactedSecrets(patch as Info, stored)
+    const next = mergeDomainConfig(stored, mergedPatch, options.mode ?? ConfigDomain.byId.get(parsed)!.mergePolicy)
+
+    const aggregate = mergeConfigConcatArrays(await globalRaw(), next as Info)
+    Info.parse(aggregate)
+    await writeDomainFile(parsed, next, options.root)
+    global.reset()
+    await state.resetAll()
+    return redactForClient(await domainGet(parsed, options.root))
+  }
+
+  function mergeDomainConfig(current: Info, patch: Info, mode: ConfigDomain.MergeMode): Info {
+    if (mode === "replace-domain") return patch
+    if (mode === "append") {
+      const merged = mergeDeep(current, patch) as Info
+      if (current.plugin || patch.plugin) {
+        merged.plugin = Array.from(new Set([...(current.plugin ?? []), ...(patch.plugin ?? [])]))
+      }
+      return merged
     }
+    return mergeDeep(current, patch) as Info
   }
 
-  export async function configSetCreate(name: string, config?: Info) {
-    const filepath = await ConfigSet.create(name)
-    const initialConfig = config ?? (await globalRaw())
-    if (Object.keys(initialConfig).length > 0) {
-      await patchFile(filepath, initialConfig)
-    }
-    return configSetGet(name)
-  }
+  export const DomainImportPlanInput = z
+    .object({
+      config: Info,
+      only: z.array(ConfigDomain.Id).optional(),
+      mode: ConfigDomain.MergeMode.optional(),
+    })
+    .meta({ ref: "ConfigDomainImportPlanInput" })
+  export type DomainImportPlanInput = z.infer<typeof DomainImportPlanInput>
 
-  export async function configSetUpdate(name: string, config: Info) {
-    const parsed = await ConfigSet.assertExists(name)
-    await fs.mkdir(path.dirname(ConfigSet.filePath(parsed)), { recursive: true })
-    await patchFile(ConfigSet.filePath(parsed), config)
-    return configSetGet(parsed)
-  }
+  export const DomainImportChange = z
+    .object({
+      key: z.string(),
+      before: z.unknown().optional(),
+      after: z.unknown().optional(),
+      conflict: z.boolean(),
+    })
+    .meta({ ref: "ConfigDomainImportChange" })
+  export const DomainImportPlan = z
+    .object({
+      domains: z.array(
+        z.object({
+          id: ConfigDomain.Id,
+          filename: z.string(),
+          path: z.string(),
+          mode: ConfigDomain.MergeMode,
+          changes: z.array(DomainImportChange),
+        }),
+      ),
+      conflicts: z.array(DomainImportChange),
+    })
+    .meta({ ref: "ConfigDomainImportPlan" })
+  export type DomainImportPlan = z.infer<typeof DomainImportPlan>
 
-  export async function configSetDelete(name: string) {
-    const summary = await ConfigSet.summary(name)
-    await ConfigSet.remove(name)
-    return summary
-  }
+  export async function domainImportPlan(input: DomainImportPlanInput): Promise<DomainImportPlan> {
+    const only = new Set(input.only ?? ConfigDomain.definitions.map((domain) => domain.id))
+    const split = ConfigDomain.split(input.config)
+    const domains: DomainImportPlan["domains"] = []
+    const conflicts: z.infer<typeof DomainImportChange>[] = []
 
-  export async function configSetActivate(name: string) {
-    const result = await ConfigSet.activate(name)
-    if (result.changed) {
-      GlobalBus.emit("event", {
-        directory: Instance.directory,
-        payload: {
-          type: Event.SetActivated.type,
-          properties: {
-            previous: result.previous,
-            active: result.active,
-          },
-        },
+    for (const [id, fragment] of split) {
+      if (!only.has(id)) continue
+      const definition = ConfigDomain.byId.get(id)!
+      if (!definition.importable) continue
+      const current = await domainGet(id)
+      const mode = input.mode ?? definition.mergePolicy
+      const next = mergeDomainConfig(current, fragment as Info, mode)
+      const changes = diffDomain(current, next).map((change) => ({
+        ...change,
+        conflict: change.before !== undefined && change.after !== undefined && !sameJson(change.before, change.after),
+      }))
+      conflicts.push(...changes.filter((change) => change.conflict))
+      domains.push({
+        id,
+        filename: definition.filename,
+        path: ConfigDomain.filepath(id),
+        mode,
+        changes,
       })
+    }
+    return { domains, conflicts }
+  }
+
+  export async function domainImportApply(input: DomainImportPlanInput & { yes?: boolean }) {
+    const plan = await domainImportPlan(input)
+    if (plan.conflicts.length && !input.yes) {
+      throw new InvalidError({
+        path: ConfigDomain.directory(),
+        message: `Config import has ${plan.conflicts.length} conflict(s). Re-run with confirmation to apply.`,
+      })
+    }
+    const split = ConfigDomain.split(input.config)
+    for (const domain of plan.domains) {
+      const fragment = split.get(domain.id)
+      if (!fragment) continue
+      await domainUpdate(domain.id, fragment, { mode: domain.mode })
+    }
+    return plan
+  }
+
+  function diffDomain(before: Info, after: Info) {
+    const keys = new Set([...Object.keys(before), ...Object.keys(after)])
+    return [...keys]
+      .filter((key) => !sameJson((before as any)[key], (after as any)[key]))
+      .map((key) => ({ key, before: (before as any)[key], after: (after as any)[key] }))
+  }
+
+  function sameJson(a: unknown, b: unknown) {
+    return JSON.stringify(a) === JSON.stringify(b)
+  }
+
+  async function writeDomainFile(id: ConfigDomain.Id, config: Partial<Info>, root = Global.Path.config) {
+    const filepath = ConfigDomain.filepath(id, root)
+    await fs.mkdir(path.dirname(filepath), { recursive: true })
+    await Bun.write(filepath, serializeConfig(config))
+  }
+
+  function serializeConfig(config: Partial<Info>) {
+    return `${JSON.stringify(sortConfigKeys(config), null, 2)}\n`
+  }
+
+  function sortConfigKeys(config: Partial<Info>) {
+    const result: Record<string, unknown> = {}
+    for (const domain of ConfigDomain.definitions) {
+      for (const key of domain.ownedKeys) {
+        if ((config as Record<string, unknown>)[key] !== undefined) {
+          result[String(key)] = (config as Record<string, unknown>)[key]
+        }
+      }
     }
     return result
   }

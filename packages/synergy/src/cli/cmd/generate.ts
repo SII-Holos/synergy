@@ -14,7 +14,7 @@ export const GenerateCommand = {
           {
             lang: "js",
             source: [
-              `import { createSynergyClient } from "@ericsanchezok/synergy-sdk`,
+              `import { createSynergyClient } from "@ericsanchezok/synergy-sdk"`,
               ``,
               `const client = createSynergyClient()`,
               `await client.${operation.operationId}({`,

@@ -60,9 +60,9 @@ export namespace Rerank {
   }
 
   async function resolveConfig() {
-    const config = await Config.get()
-    const rerankConfig = config.identity?.rerank
-    const embeddingConfig = config.identity?.embedding
+    const config = await Config.current()
+    const rerankConfig = config.rerank
+    const embeddingConfig = config.embedding
 
     const baseURL = rerankConfig?.baseURL ?? DEFAULT_BASE_URL
     const apiKey = rerankConfig?.apiKey ?? embeddingConfig?.apiKey
@@ -70,7 +70,7 @@ export namespace Rerank {
 
     if (!apiKey) {
       throw new Error(
-        "Rerank API key is required. Configure it in identity.rerank.apiKey or identity.embedding.apiKey in your synergy.jsonc.",
+        "Rerank API key is required. Configure it in rerank.apiKey or embedding.apiKey in 30-engram.jsonc.",
       )
     }
 

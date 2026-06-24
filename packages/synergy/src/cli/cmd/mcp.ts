@@ -1,7 +1,7 @@
+import { formatLocalDateTime } from "../../util/time-format"
 import { cmd } from "./cmd"
 import { Client } from "@modelcontextprotocol/sdk/client/index.js"
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js"
-import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js"
 import { UnauthorizedError } from "@modelcontextprotocol/sdk/client/auth.js"
 import * as prompts from "@clack/prompts"
 import { UI } from "../ui"
@@ -9,11 +9,10 @@ import { MCP } from "../../mcp"
 import { McpAuth } from "../../mcp/auth"
 import { McpOAuthProvider } from "../../mcp/oauth-provider"
 import { Config } from "../../config/config"
-import { Instance } from "../../scope/instance"
+import { ConfigDomain } from "../../config/domain"
+import { ScopeContext } from "../../scope/context"
 import { Scope } from "@/scope"
 import { Installation } from "../../global/installation"
-import path from "path"
-import { Global } from "../../global"
 
 function getAuthStatusIcon(status: MCP.AuthStatus): string {
   switch (status) {
@@ -68,13 +67,13 @@ export const McpListCommand = cmd({
   aliases: ["ls"],
   describe: "list MCP servers and their status",
   async handler() {
-    await Instance.provide({
-      scope: (await Scope.fromDirectory(process.cwd())).scope,
+    await ScopeContext.provide({
+      scope: Scope.home(),
       async fn() {
         UI.empty()
         prompts.intro("MCP Servers")
 
-        const config = await Config.get()
+        const config = await Config.current()
         const mcpServers = config.mcp ?? {}
         const statuses = await MCP.status()
 
@@ -116,10 +115,28 @@ export const McpListCommand = cmd({
             statusIcon = "✗"
             statusText = "needs client registration"
             hint = "\n    " + status.error
-          } else {
+          } else if (status.status === "failed") {
             statusIcon = "✗"
             statusText = "failed"
             hint = "\n    " + status.error
+          } else if (status.status === "reconnecting") {
+            statusIcon = "⟳"
+            statusText = `reconnecting (${status.attempt}/${status.maxAttempts})`
+          } else if (status.status === "starting") {
+            statusIcon = "◌"
+            statusText = "starting"
+          } else if (status.status === "connecting") {
+            statusIcon = "◌"
+            statusText = "connecting"
+          } else if (status.status === "listing_tools") {
+            statusIcon = "◌"
+            statusText = "listing tools"
+          } else if (status.status === "stopping") {
+            statusIcon = "◌"
+            statusText = "stopping"
+          } else {
+            statusIcon = "○"
+            statusText = "uninitialized"
           }
 
           const typeHint = serverConfig.type === "remote" ? serverConfig.url : serverConfig.command.join(" ")
@@ -145,13 +162,13 @@ export const McpAuthCommand = cmd({
       })
       .command(McpAuthListCommand),
   async handler(args) {
-    await Instance.provide({
-      scope: (await Scope.fromDirectory(process.cwd())).scope,
+    await ScopeContext.provide({
+      scope: Scope.home(),
       async fn() {
         UI.empty()
         prompts.intro("MCP OAuth Authentication")
 
-        const config = await Config.get()
+        const config = await Config.current()
         const mcpServers = config.mcp ?? {}
 
         // Get OAuth-capable servers (remote servers with oauth not explicitly disabled)
@@ -270,13 +287,13 @@ export const McpAuthListCommand = cmd({
   aliases: ["ls"],
   describe: "list OAuth-capable MCP servers and their auth status",
   async handler() {
-    await Instance.provide({
-      scope: (await Scope.fromDirectory(process.cwd())).scope,
+    await ScopeContext.provide({
+      scope: Scope.home(),
       async fn() {
         UI.empty()
         prompts.intro("MCP OAuth Status")
 
-        const config = await Config.get()
+        const config = await Config.current()
         const mcpServers = config.mcp ?? {}
 
         // Get OAuth-capable servers
@@ -314,13 +331,12 @@ export const McpLogoutCommand = cmd({
       type: "string",
     }),
   async handler(args) {
-    await Instance.provide({
-      scope: (await Scope.fromDirectory(process.cwd())).scope,
+    await ScopeContext.provide({
+      scope: Scope.home(),
       async fn() {
         UI.empty()
         prompts.intro("MCP OAuth Logout")
 
-        const authPath = Global.Path.authMcp
         const credentials = await McpAuth.all()
         const serverNames = Object.keys(credentials)
 
@@ -405,7 +421,13 @@ export const McpAddCommand = cmd({
       })
       if (prompts.isCancel(command)) throw new UI.CancelledError()
 
+      const entry = {
+        type: "local",
+        command: String(command).split(/\s+/).filter(Boolean),
+      } satisfies Config.Mcp
+      await Config.domainUpdate("mcp", { mcp: { [String(name)]: entry } } as Config.Info)
       prompts.log.info(`Local MCP server "${name}" configured with command: ${command}`)
+      prompts.log.info(`Config file: ${ConfigDomain.filepath("mcp")}`)
       prompts.outro("MCP server added successfully")
       return
     }
@@ -458,29 +480,26 @@ export const McpAddCommand = cmd({
             clientSecret = secret
           }
 
+          const entry = {
+            type: "remote",
+            url: String(url),
+            oauth: {
+              clientId: String(clientId),
+              ...(clientSecret ? { clientSecret } : {}),
+            },
+          } satisfies Config.Mcp
+          await Config.domainUpdate("mcp", { mcp: { [String(name)]: entry } } as Config.Info)
           prompts.log.info(`Remote MCP server "${name}" configured with OAuth (client ID: ${clientId})`)
-          prompts.log.info("Add this to your synergy.json:")
-          prompts.log.info(`
-  "mcp": {
-    "${name}": {
-      "type": "remote",
-      "url": "${url}",
-      "oauth": {
-        "clientId": "${clientId}"${clientSecret ? `,\n        "clientSecret": "${clientSecret}"` : ""}
-      }
-    }
-  }`)
+          prompts.log.info(`Config file: ${ConfigDomain.filepath("mcp")}`)
         } else {
+          const entry = {
+            type: "remote",
+            url: String(url),
+            oauth: {},
+          } satisfies Config.Mcp
+          await Config.domainUpdate("mcp", { mcp: { [String(name)]: entry } } as Config.Info)
           prompts.log.info(`Remote MCP server "${name}" configured with OAuth (dynamic registration)`)
-          prompts.log.info("Add this to your synergy.json:")
-          prompts.log.info(`
-  "mcp": {
-    "${name}": {
-      "type": "remote",
-      "url": "${url}",
-      "oauth": {}
-    }
-  }`)
+          prompts.log.info(`Config file: ${ConfigDomain.filepath("mcp")}`)
         }
       } else {
         const client = new Client({
@@ -489,7 +508,13 @@ export const McpAddCommand = cmd({
         })
         const transport = new StreamableHTTPClientTransport(new URL(url))
         await client.connect(transport)
+        const entry = {
+          type: "remote",
+          url: String(url),
+        } satisfies Config.Mcp
+        await Config.domainUpdate("mcp", { mcp: { [String(name)]: entry } } as Config.Info)
         prompts.log.info(`Remote MCP server "${name}" configured with URL: ${url}`)
+        prompts.log.info(`Config file: ${ConfigDomain.filepath("mcp")}`)
       }
     }
 
@@ -507,13 +532,13 @@ export const McpDebugCommand = cmd({
       demandOption: true,
     }),
   async handler(args) {
-    await Instance.provide({
-      scope: (await Scope.fromDirectory(process.cwd())).scope,
+    await ScopeContext.provide({
+      scope: Scope.home(),
       async fn() {
         UI.empty()
         prompts.intro("MCP OAuth Debug")
 
-        const config = await Config.get()
+        const config = await Config.current()
         const mcpServers = config.mcp ?? {}
         const serverName = args.name
 
@@ -549,7 +574,7 @@ export const McpDebugCommand = cmd({
           if (entry.tokens.expiresAt) {
             const expiresDate = new Date(entry.tokens.expiresAt * 1000)
             const isExpired = entry.tokens.expiresAt < Date.now() / 1000
-            prompts.log.info(`  Expires: ${expiresDate.toISOString()} ${isExpired ? "(EXPIRED)" : ""}`)
+            prompts.log.info(`  Expires: ${formatLocalDateTime(expiresDate.getTime())} ${isExpired ? "(EXPIRED)" : ""}`)
           }
           if (entry.tokens.refreshToken) {
             prompts.log.info(`  Refresh token: present`)
@@ -559,7 +584,7 @@ export const McpDebugCommand = cmd({
           prompts.log.info(`  Client ID: ${entry.clientInfo.clientId}`)
           if (entry.clientInfo.clientSecretExpiresAt) {
             const expiresDate = new Date(entry.clientInfo.clientSecretExpiresAt * 1000)
-            prompts.log.info(`  Client secret expires: ${expiresDate.toISOString()}`)
+            prompts.log.info(`  Client secret expires: ${formatLocalDateTime(expiresDate.getTime())}`)
           }
         }
 

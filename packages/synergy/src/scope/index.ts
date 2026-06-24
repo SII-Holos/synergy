@@ -12,19 +12,14 @@ import { Identifier } from "@/id/id"
 import { iife } from "@/util/iife"
 import { GlobalBus } from "@/bus/global"
 import { BusEvent } from "@/bus/bus-event"
-import {
-  type Global as GlobalType,
-  type Project as ProjectType,
-  Info as InfoSchema,
-  type Info as InfoType,
-} from "./types"
+import { type Home as HomeType, type Project as ProjectType, Info as InfoSchema, type Info as InfoType } from "./types"
 
-export type Scope = Scope.Global | Scope.Project
+export type Scope = Scope.Home | Scope.Project
 
 export namespace Scope {
   const log = Log.create({ service: "scope" })
 
-  export type Global = GlobalType
+  export type Home = HomeType
   export type Project = ProjectType
   export const Info = InfoSchema
   export type Info = InfoType
@@ -38,11 +33,11 @@ export namespace Scope {
     return Filesystem.contains(scope.directory, targetPath)
   }
 
-  export function global(): Scope.Global {
+  export function home(): Scope.Home {
     const home = Global.Path.home
     return {
-      type: "global",
-      id: "global",
+      type: "home",
+      id: "home",
       directory: home,
       worktree: home,
     }
@@ -60,6 +55,23 @@ export namespace Scope {
 
   async function readPersisted(scopeID: string) {
     return Storage.read<z.infer<typeof Info>>(StoragePath.scope(pid(scopeID))).catch(() => undefined)
+  }
+
+  export async function fromID(scopeID: string): Promise<Scope | undefined> {
+    if (scopeID === "home") return home()
+    const data = await readPersisted(scopeID)
+    if (!data || data.time?.archived) return undefined
+    return {
+      type: "project" as const,
+      id: data.id,
+      directory: data.directory ?? data.worktree,
+      worktree: data.worktree,
+      vcs: data.vcs,
+      name: data.name,
+      icon: data.icon,
+      sandboxes: data.sandboxes,
+      time: data.time,
+    }
   }
 
   async function writePersisted(data: z.infer<typeof Info>) {
@@ -86,7 +98,7 @@ export namespace Scope {
         await remove(existing.id)
         log.info("archived scope for missing directory", { directory, scopeID: existing.id })
       }
-      return { scope: global(), sandbox: Global.Path.home }
+      return { scope: home(), sandbox: Global.Path.home }
     }
 
     // TODO: [scope-boundary] Upward .git traversal disabled — see analysis below.
@@ -363,14 +375,14 @@ export namespace Scope {
   }
 
   export async function setInitialized(scopeID: string) {
-    if (scopeID === "global") return
+    if (scopeID === "home") return
     await Storage.update<z.infer<typeof Info>>(StoragePath.scope(pid(scopeID)), (draft) => {
       draft.time.initialized = Date.now()
     })
   }
 
   export async function touch(scopeID: string) {
-    if (scopeID === "global") return
+    if (scopeID === "home") return
     await Storage.update<z.infer<typeof Info>>(StoragePath.scope(pid(scopeID)), (draft) => {
       draft.time.updated = Date.now()
     })
@@ -382,7 +394,7 @@ export namespace Scope {
     icon?: { url?: string; color?: string }
     archived?: number | null
   }) {
-    if (input.scopeID === "global") return undefined
+    if (input.scopeID === "home") return undefined
     const result = await Storage.update<z.infer<typeof Info>>(StoragePath.scope(pid(input.scopeID)), (draft) => {
       if (input.name !== undefined) draft.name = input.name
       if (input.icon !== undefined) {
@@ -405,7 +417,7 @@ export namespace Scope {
   }
 
   export async function remove(scopeID: string) {
-    if (scopeID === "global") return undefined
+    if (scopeID === "home") return undefined
     const result = await Storage.update<z.infer<typeof Info>>(StoragePath.scope(pid(scopeID)), (draft) => {
       draft.time.archived = Date.now()
     })

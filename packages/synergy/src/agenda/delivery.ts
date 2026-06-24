@@ -50,6 +50,7 @@ export namespace AgendaDelivery {
           ],
           metadata: {
             mailbox: true,
+            source: "mailbox",
             sourceSessionID: input.sessionID,
             sourceName: input.item.title,
           },

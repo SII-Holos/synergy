@@ -14,9 +14,7 @@ import { createIntegrationEngineerAgent } from "./prompt/integration-engineer/bu
 import { createLiteratureAnalystAgent } from "./prompt/literature-analyst/builder"
 import { createLiteratureSearcherAgent } from "./prompt/literature-searcher/builder"
 import { createMaintainabilityReviewerAgent } from "./prompt/maintainability-reviewer/builder"
-import { createMemoryCuratorAgent } from "./prompt/memory-curator/builder"
 import { createMigrationArchitectAgent } from "./prompt/migration-architect/builder"
-import { createNoteLibrarianAgent } from "./prompt/note-librarian/builder"
 import { createPerformanceReviewerAgent } from "./prompt/performance-reviewer/builder"
 import { createPropertyTestEngineerAgent } from "./prompt/property-test-engineer/builder"
 import { createPythonQualityEngineerAgent } from "./prompt/python-quality-engineer/builder"
@@ -25,8 +23,10 @@ import { createRefactoringEngineerAgent } from "./prompt/refactoring-engineer/bu
 import { createRegressionReproducerAgent } from "./prompt/regression-reproducer/builder"
 import { createRequirementsEngineerAgent } from "./prompt/requirements-engineer/builder"
 import { createResearchMethodologistAgent } from "./prompt/research-methodologist/builder"
+import { createResearchScoutAgent } from "./prompt/research-scout/builder"
 import { createRustQualityEngineerAgent } from "./prompt/rust-quality-engineer/builder"
 import { createSecurityReviewerAgent } from "./prompt/security-reviewer/builder"
+import { createSupervisorAgent } from "./prompt/supervisor/builder"
 import { createSessionHistorianAgent } from "./prompt/session-historian/builder"
 import { createSolutionArchitectAgent } from "./prompt/solution-architect/builder"
 import { createTestStrategistAgent } from "./prompt/test-strategist/builder"
@@ -50,8 +50,6 @@ const FACTORIES = [
   createRefactoringEngineerAgent,
   createIntegrationEngineerAgent,
   createDocumentationEngineerAgent,
-  createMemoryCuratorAgent,
-  createNoteLibrarianAgent,
   createSessionHistorianAgent,
   createQualityGatekeeperAgent,
   createPythonQualityEngineerAgent,
@@ -64,8 +62,10 @@ const FACTORIES = [
   createDocumentationReviewerAgent,
   createDocsResearcherAgent,
   createResearchMethodologistAgent,
+  createResearchScoutAgent,
   createLiteratureSearcherAgent,
   createLiteratureAnalystAgent,
+  createSupervisorAgent,
 ]
 export function createBuiltinMaxSubagents(ctx: BuiltinAgentContext): Record<string, Agent.Info> {
   const result: Record<string, Agent.Info> = {}

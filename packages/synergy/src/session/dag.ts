@@ -48,8 +48,6 @@ export namespace Dag {
     "documentation-reviewer",
     "docs-researcher",
     "research-methodologist",
-    "memory-curator",
-    "note-librarian",
     "session-historian",
   ] as const
   export type Assign = (typeof VALID_ASSIGNS)[number]
@@ -79,6 +77,12 @@ export namespace Dag {
         .optional()
         .describe("Subagent session ID currently or previously associated with this node"),
       memo: z.string().optional().describe("Short node-local memo for important result, blocker, or handoff context"),
+      result: z
+        .string()
+        .optional()
+        .describe(
+          "Execution result (trajectory summary or error) populated automatically on completion — do not set manually",
+        ),
     })
     .meta({ ref: "DagNode" })
   export type Node = z.infer<typeof Node>

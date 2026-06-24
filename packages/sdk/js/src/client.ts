@@ -6,7 +6,7 @@ import { SynergyClient } from "./gen/sdk.gen.js"
 export { type Config as SynergyClientConfig }
 export { SynergyClient }
 
-export function createSynergyClient(config?: Config & { directory?: string }) {
+export function createSynergyClient(config?: Config & { directory?: string; scopeID?: string }) {
   if (!config?.fetch) {
     const customFetch: any = (req: any) => {
       // @ts-ignore
@@ -25,6 +25,13 @@ export function createSynergyClient(config?: Config & { directory?: string }) {
     config.headers = {
       ...config.headers,
       "x-synergy-directory": encodedDirectory,
+    }
+  }
+
+  if (config?.scopeID) {
+    config.headers = {
+      ...config.headers,
+      "x-synergy-scope-id": encodeURIComponent(config.scopeID),
     }
   }
 

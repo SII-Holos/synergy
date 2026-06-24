@@ -1,4 +1,5 @@
 import { MessageV2 } from "./message-v2"
+import { formatLocalDateTime } from "../util/time-format"
 import { Log } from "../util/log"
 import type { Info } from "./types"
 import { Agent } from "../agent/agent"
@@ -6,6 +7,7 @@ import { Provider } from "../provider/provider"
 import { LLM } from "./llm"
 import { iife } from "../util/iife"
 import { LoopJob } from "./loop-job"
+import { Turn } from "./turn"
 
 const log = Log.create({ service: "session.title" })
 
@@ -13,12 +15,12 @@ const parentTitlePrefix = "New session - "
 const childTitlePrefix = "Child session - "
 
 export function createDefaultTitle(isChild = false) {
-  return (isChild ? childTitlePrefix : parentTitlePrefix) + new Date().toISOString()
+  return (isChild ? childTitlePrefix : parentTitlePrefix) + formatLocalDateTime(Date.now())
 }
 
 export function isDefaultTitle(title: string) {
   return new RegExp(
-    `^(${parentTitlePrefix}|${childTitlePrefix})\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$`,
+    `^(${parentTitlePrefix}|${childTitlePrefix})\\d{4}-\\d{2}-\\d{2}\\s\\d{2}:\\d{2}:\\d{2}\\s\\(UTC[+-]\\d{2}:\\d{2}\\)$`,
   ).test(title)
 }
 
@@ -48,23 +50,17 @@ export async function ensureTitle(input: {
   modelID: string
 }) {
   if (input.session.parentID) return
-  if (input.session.endpoint) return
   if (!isDefaultTitle(input.session.title)) return
 
-  // Find first non-synthetic user message
-  const firstRealUserIdx = input.history.findIndex(
-    (m) => m.info.role === "user" && !m.parts.every((p) => "synthetic" in p && p.synthetic),
-  )
+  const promptVisibleUsers = input.history.filter((m) => m.info.role === "user" && !Turn.isSyntheticUser(m))
+  if (promptVisibleUsers.length !== 1) return
+
+  const firstRealUser = promptVisibleUsers[0]
+  const firstRealUserIdx = input.history.findIndex((m) => m.info.id === firstRealUser.info.id)
   if (firstRealUserIdx === -1) return
 
-  const isFirst =
-    input.history.filter((m) => m.info.role === "user" && !m.parts.every((p) => "synthetic" in p && p.synthetic))
-      .length === 1
-  if (!isFirst) return
-
-  // Gather all messages up to and including the first real user message for context
-  const contextMessages = input.history.slice(0, firstRealUserIdx + 1)
-  const firstRealUser = contextMessages[firstRealUserIdx]
+  // Gather all prompt-visible context up to and including the first real user message.
+  const contextMessages = input.history.slice(0, firstRealUserIdx + 1).filter(MessageV2.isPromptVisible)
 
   const agent = await Agent.get("title")
   if (!agent) return

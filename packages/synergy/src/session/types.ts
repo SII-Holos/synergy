@@ -7,6 +7,17 @@ import { SessionInteraction } from "@/session/interaction"
 import { opaque } from "@/util/schema"
 import { SessionEndpoint } from "./endpoint"
 
+// Workspace metadata intentionally allows extra fields so future workspace
+// implementations can carry type-specific data without breaking old sessions.
+export const Workspace = z
+  .object({
+    type: z.string(),
+    path: z.string(),
+    scopeID: z.string(),
+  })
+  .passthrough()
+  .meta({ ref: "SessionWorkspace" })
+export type Workspace = z.infer<typeof Workspace>
 const ScopeField = opaque<Scope>(
   z.object({
     id: z.string(),
@@ -44,6 +55,27 @@ const CortexDelegationInfoInner = z.object({
 export const CortexDelegationInfo = CortexDelegationInfoInner.meta({ ref: "SessionCortexDelegation" })
 export type CortexDelegationInfo = z.infer<typeof CortexDelegationInfoInner>
 
+const ControlProfileId = z.enum(["guarded", "autonomous", "full_access"])
+
+export const WorkingInfo = z
+  .union([
+    z.object({
+      status: z.literal("busy"),
+      description: z.string().optional(),
+    }),
+    z.object({
+      status: z.literal("retry"),
+      attempt: z.number(),
+      message: z.string(),
+      next: z.number(),
+    }),
+    z.object({
+      status: z.literal("recovering"),
+    }),
+  ])
+  .meta({ ref: "SessionWorkingInfo" })
+export type WorkingInfo = z.infer<typeof WorkingInfo>
+
 export const Info = z
   .preprocess(
     (data: any) => {
@@ -59,6 +91,7 @@ export const Info = z
       id: Identifier.schema("session"),
       scope: ScopeField,
       parentID: Identifier.schema("session").optional(),
+      category: z.enum(["project", "home", "channel", "background"]).optional(),
       endpoint: SessionEndpoint.Info.optional(),
       summary: z
         .object({
@@ -78,8 +111,14 @@ export const Info = z
       }),
       pinned: z.number().optional(),
       permission: PermissionNext.Ruleset.optional(),
+      controlProfile: ControlProfileId.optional(),
+      preAuthorizedActions: z
+        .array(z.string())
+        .optional()
+        .describe(
+          "Tool names pre-authorized by the user via system scheduling (e.g. agenda wake). Bypasses the ask gate for these tools within this session only.",
+        ),
       pendingReply: z.boolean().optional(),
-      allowAll: z.boolean().optional(),
       interaction: SessionInteraction.Info.optional(),
       agenda: z
         .object({
@@ -101,13 +140,21 @@ export const Info = z
         })
         .optional(),
       cortex: CortexDelegationInfo.optional(),
+      working: WorkingInfo.optional(),
+      workspace: Workspace.optional(),
+      blueprint: z
+        .object({
+          loopID: z.string().optional(),
+          planMode: z.boolean().optional(),
+        })
+        .optional(),
     }),
   )
   .meta({
     ref: "Session",
   })
-export type Info = z.output<typeof Info>
 
+export type Info = z.infer<typeof Info>
 export const StatusInfo = z
   .union([
     z.object({
@@ -121,6 +168,10 @@ export const StatusInfo = z
     }),
     z.object({
       type: z.literal("busy"),
+      description: z.string().optional(),
+    }),
+    z.object({
+      type: z.literal("recovering"),
       description: z.string().optional(),
     }),
   ])

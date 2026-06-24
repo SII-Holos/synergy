@@ -2,7 +2,7 @@ List sessions by scope. Returns session metadata, scope info, and the latest mes
 
 The `scope` parameter selects which sessions to list:
 - "project": Sessions across all projects. Each entry includes which scope (project) it belongs to.
-- "home": The app home session
+- "home": Sessions in the home scope
 - "contacts": Holos friend/contact sessions, includes contact metadata and online status
 - "feishu": Feishu/Lark channel sessions
 

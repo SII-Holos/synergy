@@ -38,15 +38,19 @@ Use the **`task_output`** tool to check on running background tasks:
 
 Use **`task_list()`** to list all visible background tasks at once.
 
-**No need to set an agenda watch.** When a background task completes, you will be notified automatically — no need to use \`agenda_watch\` or poll manually.
-
-Subagents commonly run 5–30 minutes for non-trivial work (code exploration, multi-file implementation, research, review). Still running is normal — the system handles it.
+**Do NOT use `agenda_watch` or `agenda_schedule` to wait for subagent completion.** When a background task finishes, the system delivers its result and wakes you automatically — no watch, schedule, or manual polling is needed. Setting one would be redundant.
 
 ## Usage notes
 
 1. Launch multiple agents concurrently whenever possible
 2. The result is not visible to the user - summarize it back to them
-3. Each invocation is stateless unless you provide session_id
+3. Provide `session_id` to reuse an existing session (must be idle and belong to this parent).
+   - **Why reuse**: The subagent retains prior conversation context, useful for iterative refinement,
+     debugging, or breaking long tasks into separate invocations without losing state.
+   - **Context hint**: Since the subagent remembers prior turns in the reused session, you do NOT
+     need to restate all context — focus your prompt on what's new or different this time.
+   - **Busy sessions**: If the session is busy, the tool will error — wait for it to finish
+     or use a different session.
 4. Clearly tell the agent whether to write code or just research
 
 ## Writing effective prompts
@@ -61,30 +65,32 @@ Structure your prompt with:
 
 ### Parallel exploration
 ```
-task(background: true, subagent_type: "explore", description: "Find auth logic", prompt: "...")
-task(background: true, subagent_type: "explore", description: "Find data models", prompt: "...")
+task(background: true, subagent_type: "code-cartographer", description: "Find auth logic", prompt: "...")
+task(background: true, subagent_type: "dependency-tracer", description: "Trace auth callers", prompt: "...")
 ```
 
-### Parallel implementation
+### Broad research
 ```
-task(background: true, subagent_type: "developer", description: "Add validation", prompt: "...")
-task(background: true, subagent_type: "developer", description: "Update tests", prompt: "...")
+task(background: true, subagent_type: "research-scout", description: "Survey ecosystem", prompt: "...")
+task(background: true, subagent_type: "docs-researcher", description: "Verify API docs", prompt: "...")
+task(background: true, subagent_type: "literature-searcher", description: "Find papers", prompt: "...")
 ```
 
-### Writing documentation
+### Parallel implementation and review
 ```
-task(subagent_type: "scribe", description: "Write API guide", prompt: "Create a getting-started guide for...")
+task(background: true, subagent_type: "implementation-engineer", description: "Add validation", prompt: "...")
+task(background: true, subagent_type: "security-reviewer", description: "Review trust boundary", prompt: "...")
 ```
 
 ### Synchronous (when result needed immediately)
 ```
-task(background: false, subagent_type: "explore", description: "Find config", prompt: "I need this to proceed...")
+task(background: false, subagent_type: "code-cartographer", description: "Find config", prompt: "I need this to proceed...")
 ```
 
 ## DAG Integration
 
 When executing a DAG node via background task, pass `dag_node_id` to link them:
 ```
-task(background: true, dag_node_id: "research", subagent_type: "explore", description: "Research API", prompt: "...")
+task(background: true, dag_node_id: "research", subagent_type: "research-scout", description: "Research ecosystem", prompt: "...")
 ```
 The DAG node will auto-complete when the task finishes (or auto-fail on error). No manual DAG update needed.

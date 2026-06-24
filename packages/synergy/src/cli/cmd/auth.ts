@@ -9,7 +9,7 @@ import os from "os"
 import { Config } from "../../config/config"
 import { Global } from "../../global"
 import { Plugin } from "../../plugin"
-import { Instance } from "../../scope/instance"
+import { ScopeContext } from "../../scope/context"
 import { Scope } from "@/scope"
 import type { PluginHooks } from "@ericsanchezok/synergy-plugin"
 
@@ -224,8 +224,8 @@ export const AuthLoginCommand = cmd({
       type: "string",
     }),
   async handler(args) {
-    await Instance.provide({
-      scope: (await Scope.fromDirectory(process.cwd())).scope,
+    await ScopeContext.provide({
+      scope: Scope.home(),
       async fn() {
         UI.empty()
         prompts.intro("Add credential")
@@ -254,7 +254,7 @@ export const AuthLoginCommand = cmd({
         }
         await ModelsDev.refresh()?.catch(() => {})
 
-        const config = await Config.get()
+        const config = await Config.current()
 
         const disabled = new Set(config.disabled_providers ?? [])
         const enabled = config.enabled_providers ? new Set(config.enabled_providers) : undefined
@@ -291,9 +291,7 @@ export const AuthLoginCommand = cmd({
               map((x) => ({
                 label: x.name,
                 value: x.id,
-                hint: {
-                  anthropic: "Claude Max or API key",
-                }[x.id],
+                hint: ({ anthropic: "Claude Max or API key" } as Record<string, string | undefined>)[x.id],
               })),
             ),
             {
@@ -305,7 +303,7 @@ export const AuthLoginCommand = cmd({
 
         if (prompts.isCancel(provider)) throw new UI.CancelledError()
 
-        const plugin = await Plugin.list().then((x) => x.find((x) => x.auth?.provider === provider))
+        const plugin = await Plugin.allHooks().then((x) => x.find((x) => x.auth?.provider === provider))
         if (plugin && plugin.auth) {
           const handled = await handlePluginAuth({ auth: plugin.auth }, provider)
           if (handled) return
@@ -321,7 +319,7 @@ export const AuthLoginCommand = cmd({
           if (prompts.isCancel(provider)) throw new UI.CancelledError()
 
           // Check if a plugin provides auth for this custom provider
-          const customPlugin = await Plugin.list().then((x) => x.find((x) => x.auth?.provider === provider))
+          const customPlugin = await Plugin.allHooks().then((x) => x.find((x) => x.auth?.provider === provider))
           if (customPlugin && customPlugin.auth) {
             const handled = await handlePluginAuth({ auth: customPlugin.auth }, provider)
             if (handled) return

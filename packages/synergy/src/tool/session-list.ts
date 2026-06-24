@@ -1,24 +1,21 @@
+import { formatLocalDateTime } from "@/util/time-format"
 import z from "zod"
 import { Tool } from "./tool"
 import { Session } from "../session"
-import { SessionEndpoint } from "../session/endpoint"
-import { SessionManager } from "../session/manager"
 import { Scope } from "@/scope"
 import { Identifier } from "../id/id"
 import { Storage } from "../storage/storage"
 import { StoragePath } from "../storage/path"
-import { AppChannel } from "../channel/app"
-import { Contact } from "../holos/contact"
-import { Presence } from "../holos/presence"
+import { SessionNav, type SessionNavEntry } from "../session/nav"
 import DESCRIPTION from "./session-list.txt"
+import path from "node:path"
 
 const parameters = z.object({
   scope: z
-    .enum(["project", "home", "contacts", "feishu"])
+    .enum(["project", "home", "feishu"])
     .describe(
       "'project' = sessions across all projects (each entry includes its scope), " +
-        "'home' = the app home session, " +
-        "'contacts' = Holos conversation sessions, " +
+        "'home' = sessions in the home scope, " +
         "'feishu' = Feishu/Lark channel sessions.",
     ),
   limit: z.coerce.number().default(20).describe("Maximum number of items to return."),
@@ -36,17 +33,18 @@ interface TimeFilter {
   sinceMs?: number
   beforeMs?: number
 }
+const QueryLimit = 10000
 
 function formatScopeLabel(scope: Scope): string {
-  if (scope.type === "global") return `Home [${scope.id}]`
-  const name = scope.name ?? scope.directory.split("/").pop() ?? scope.id
+  if (scope.type === "home") return `Home [${scope.id}]`
+  const name = scope.name ?? path.basename(scope.directory) ?? scope.id
   return `${name} [${scope.id}] — ${scope.directory}`
 }
 
 function formatSessionEntry(session: Session.Info, extra?: string): string {
   const scope = session.scope as Scope
   const pinned = session.pinned ? " [pinned]" : ""
-  const updated = new Date(session.time.updated).toISOString()
+  const updated = formatLocalDateTime(session.time.updated)
   const parts = [`- [${session.id}] "${session.title}"${pinned} — updated ${updated}`]
   parts.push(`  Scope: ${formatScopeLabel(scope)}`)
   if (extra) parts.push(`  ${extra}`)
@@ -54,99 +52,51 @@ function formatSessionEntry(session: Session.Info, extra?: string): string {
   if (session.lastExchange?.assistant) parts.push(`  Last assistant: ${session.lastExchange.assistant}`)
   return parts.join("\n")
 }
+async function loadSessions(entries: SessionNavEntry[]): Promise<Session.Info[]> {
+  if (entries.length === 0) return []
+  const keys = entries.map((e) =>
+    StoragePath.sessionInfo(Identifier.asScopeID(e.scopeID), Identifier.asSessionID(e.id)),
+  )
+  const sessions = await Storage.readMany<Session.Info>(keys)
+  return sessions.filter((s): s is Session.Info => s != null && !!s.scope && !s.parentID)
+}
+
+function applyTimeFilter(entries: SessionNavEntry[], filter: TimeFilter): SessionNavEntry[] {
+  const { sinceMs, beforeMs } = filter
+  let result = entries
+  if (sinceMs != null) result = result.filter((e) => e.lastActivityAt >= sinceMs)
+  if (beforeMs != null) result = result.filter((e) => e.lastActivityAt < beforeMs)
+  return result
+}
 
 async function listProject(limit: number, offset: number, filter: TimeFilter) {
-  const scopes = await Scope.list()
-  const allEntries: Array<Session.PageIndex["entries"][number] & { scopeID: Identifier.ScopeID }> = []
-
-  for (const scope of scopes) {
-    const scopeID = Identifier.asScopeID(scope.id)
-    const index = await Session.readPageIndex(scopeID)
-    for (const entry of index.entries) {
-      if (entry.archived) continue
-      if (filter.sinceMs && entry.updated < filter.sinceMs) continue
-      if (filter.beforeMs && entry.updated >= filter.beforeMs) continue
-      allEntries.push({ ...entry, scopeID })
-    }
-  }
-
-  allEntries.sort((a, b) => b.updated - a.updated)
-  const total = allEntries.length
-  const page = allEntries.slice(offset, offset + limit)
-
-  const keys = page.map((e) => StoragePath.sessionInfo(e.scopeID, Identifier.asSessionID(e.id)))
-  const sessions = await Storage.readMany<Session.Info>(keys)
-
-  const entries: string[] = []
-  for (const s of sessions) {
-    if (s && s.scope && !s.parentID) entries.push(formatSessionEntry(s))
-  }
+  const result = await SessionNav.queryGlobal({ limit: QueryLimit })
+  const filtered = applyTimeFilter(result.items, filter)
+  const total = filtered.length
+  const page = filtered.slice(offset, offset + limit)
+  const sessions = await loadSessions(page)
+  const entries = sessions.map((s) => formatSessionEntry(s))
   return { entries, total, shown: entries.length }
 }
 
-async function listHome() {
-  const session = await AppChannel.session()
-  const homeSession = { ...session, title: "Home" }
-  return {
-    entries: [formatSessionEntry(homeSession)],
-    total: 1,
-    shown: 1,
-  }
-}
-
-async function listContacts(limit: number, offset: number) {
-  const contacts = await Contact.list()
-  const sorted = contacts.sort((a, b) => b.addedAt - a.addedAt)
-  const total = sorted.length
-  const page = sorted.slice(offset, offset + limit)
-  const entries: string[] = []
-
-  for (const contact of page) {
-    const online = contact.holosId ? Presence.get(contact.holosId) : "unknown"
-    const statusLabel = contact.status === "blocked" ? "blocked" : online
-    const header = `- [${contact.id}] ${contact.name} (${statusLabel})`
-
-    const endpoint = SessionEndpoint.holos(contact.holosId ?? contact.id)
-    const session = await SessionManager.getSession(endpoint)
-    if (session && session.scope && !session.time.archived) {
-      const ex = session.lastExchange
-      const exLines: string[] = []
-      if (ex?.user) exLines.push(`  Last user: ${ex.user}`)
-      if (ex?.assistant) exLines.push(`  Last assistant: ${ex.assistant}`)
-      const exText = exLines.join("\n")
-      entries.push(exText ? `${header}\n  Session: ${session.id}\n${exText}` : `${header}\n  Session: ${session.id}`)
-    } else {
-      entries.push(`${header}\n  No conversation yet`)
-    }
-  }
-
-  return { entries, total, shown: page.length }
+async function listHome(limit: number, offset: number, filter: TimeFilter) {
+  const result = await SessionNav.queryScope("global", { category: "home", limit: QueryLimit })
+  const filtered = applyTimeFilter(result.items, filter)
+  const total = filtered.length
+  const page = filtered.slice(offset, offset + limit)
+  const sessions = await loadSessions(page)
+  const entries = sessions.map((s) => formatSessionEntry(s))
+  return { entries, total, shown: entries.length }
 }
 
 async function listFeishu(limit: number, offset: number, filter: TimeFilter) {
-  const scopeID = Identifier.asScopeID(Scope.global().id)
-  const index = await Session.readPageIndex(scopeID)
-  let entries = index.entries.filter((entry) => {
-    if (entry.archived) return false
-    if (filter.sinceMs && entry.updated < filter.sinceMs) return false
-    if (filter.beforeMs && entry.updated >= filter.beforeMs) return false
-    return true
-  })
-
-  // Need full session info to filter by endpoint type
-  const keys = entries.map((entry) => StoragePath.sessionInfo(scopeID, Identifier.asSessionID(entry.id)))
-  const all = await Storage.readMany<Session.Info>(keys)
-  const feishuSessions = all
-    .filter(
-      (s): s is Session.Info =>
-        s != null && !!s.scope && !s.parentID && !s.time.archived && SessionEndpoint.type(s.endpoint) === "feishu",
-    )
-    .toSorted((a, b) => b.time.updated - a.time.updated)
-
-  const total = feishuSessions.length
-  const page = feishuSessions.slice(offset, offset + limit)
-  const entries_formatted = page.map((s) => formatSessionEntry(s))
-  return { entries: entries_formatted, total, shown: page.length }
+  const result = await SessionNav.queryScope("global", { category: "channel", limit: QueryLimit })
+  const filtered = applyTimeFilter(result.items, filter)
+  const total = filtered.length
+  const page = filtered.slice(offset, offset + limit)
+  const sessions = await loadSessions(page)
+  const entries = sessions.map((s) => formatSessionEntry(s))
+  return { entries, total, shown: entries.length }
 }
 
 export const SessionListTool = Tool.define("session_list", {
@@ -167,10 +117,7 @@ export const SessionListTool = Tool.define("session_list", {
         result = await listProject(clampedLimit, offset, filter)
         break
       case "home":
-        result = await listHome()
-        break
-      case "contacts":
-        result = await listContacts(clampedLimit, offset)
+        result = await listHome(clampedLimit, offset, filter)
         break
       case "feishu":
         result = await listFeishu(clampedLimit, offset, filter)

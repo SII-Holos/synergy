@@ -11,14 +11,17 @@ a:active,
   transition-duration: 80ms;
 }
 
-[data-slot="dialog-container"]:has(.dialog-settings-wide) {
-  width: min(calc(100vw - 16px), 560px);
-  height: min(calc(100vh - 16px), 640px);
+[data-slot="dialog-container"]:has(.dialog-settings-v2) {
+  width: min(calc(100vw - 48px), 1180px);
+  height: min(calc(100vh - 56px), 820px);
+  max-width: 1180px;
+  max-height: 820px;
 }
 
-[data-slot="dialog-container"]:has(.dialog-settings-wide) [data-slot="dialog-body"] {
+[data-slot="dialog-container"]:has(.dialog-settings-v2) [data-slot="dialog-body"] {
   flex: 1;
   min-height: 0;
+  overflow: hidden;
 }
 
 [data-slot="dialog-container"]:has(.dialog-session-export) {
@@ -105,6 +108,41 @@ a:active,
     box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 10%, transparent);
   }
 }
+@keyframes statusbarDotPulse {
+  0%,
+  100% {
+    opacity: 1;
+    box-shadow:
+      0 0 0 1px var(--surface-raised-base),
+      0 0 0 2px color-mix(in srgb, currentColor 12%, transparent);
+  }
+  50% {
+    opacity: 0.78;
+    box-shadow:
+      0 0 0 1px var(--surface-raised-base),
+      0 0 0 2.5px color-mix(in srgb, currentColor 8%, transparent);
+  }
+}
+
+.statusbar-glass {
+  position: relative;
+  background: var(--surface-raised-base);
+  border: 1px solid var(--border-weaker-base);
+  box-shadow: var(--shadow-xs);
+}
+
+.statusbar-glass > * {
+  position: relative;
+  z-index: 1;
+}
+.statusbar-indicator-value {
+  display: inline-block;
+  font-family: var(--font-family-sans);
+  font-size: var(--font-size-small);
+  font-weight: var(--font-weight-regular);
+  line-height: 16px; /* optical centering with 16px status-bar icons */
+  transform: translateY(0.5px);
+}
 
 @keyframes dotPopIn {
   0% {
@@ -152,23 +190,26 @@ a:active,
     padding-bottom: env(safe-area-inset-bottom, 0px);
   }
 
-  [data-slot="dialog-container"]:has(.dialog-settings-wide) {
-    height: min(calc(100dvh - 16px), 640px);
+  [data-slot="dialog-container"]:has(.dialog-settings-v2) {
+    width: 100vw;
+    height: 100dvh;
+    max-width: none;
+    max-height: none;
   }
 
   [data-slot="dialog-container"]:has(.dialog-skill-detail) {
     height: min(calc(100dvh - 20px), 760px);
   }
+}
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
 
-  /* Settings dialog tabs bar — allow horizontal scroll on small screens */
-  .ds-tabs-bar {
-    padding: 4px 8px 0;
-    justify-content: flex-start;
-    overflow-x: auto;
-    scrollbar-width: none;
-    -webkit-overflow-scrolling: touch;
-  }
-  .ds-tabs-bar::-webkit-scrollbar {
-    display: none;
-  }
+.sb-session-icon-pulse [data-slot="icon-svg"] {
+  animation: spin 1.1s linear infinite;
 }

@@ -1,0 +1,189 @@
+import { createEffect, createMemo, createSignal, For, onCleanup, Show } from "solid-js"
+import { useNavigate } from "@solidjs/router"
+import { useGlobalSDK } from "@/context/global-sdk"
+import { base64Encode } from "@ericsanchezok/synergy-util/encode"
+import { Icon } from "@ericsanchezok/synergy-ui/icon"
+import { relativeTime } from "@/utils/time"
+import { getScopeLabel, isHomeScope } from "@/utils/scope"
+import type { GlobalSessionSearchResponse } from "@ericsanchezok/synergy-sdk/client"
+import "./global-search-modal.css"
+
+type SessionItem = NonNullable<GlobalSessionSearchResponse["data"]>[number]
+
+interface GlobalSearchModalProps {
+  open: boolean
+  onClose: () => void
+}
+
+function scopeLabel(itemScope: SessionItem["scope"]) {
+  return getScopeLabel({ worktree: itemScope.directory, name: itemScope.name }, itemScope.directory)
+}
+
+export function GlobalSearchModal(props: GlobalSearchModalProps) {
+  const globalSDK = useGlobalSDK()
+  const navigate = useNavigate()
+  const [query, setQuery] = createSignal("")
+  const [results, setResults] = createSignal<SessionItem[]>([])
+  const [total, setTotal] = createSignal(0)
+  const [loading, setLoading] = createSignal(false)
+  const [selectedIdx, setSelectedIdx] = createSignal(-1)
+  let inputRef: HTMLInputElement | undefined
+  let containerRef: HTMLDivElement | undefined
+  let debounceTimer: ReturnType<typeof setTimeout> | undefined
+
+  const fetchResults = async (search: string) => {
+    if (!globalSDK.connected()) return
+    setLoading(true)
+    try {
+      const res = await globalSDK.client.global.session.search({
+        search: search || undefined,
+        offset: 0,
+        limit: 50,
+        parentOnly: "false",
+      })
+      if (res.data) {
+        setResults(res.data.data ?? [])
+        setTotal(res.data.total ?? 0)
+      }
+    } catch {
+      setResults([])
+      setTotal(0)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  createEffect(() => {
+    if (!props.open) return
+    setQuery("")
+    setSelectedIdx(-1)
+    fetchResults("")
+    setTimeout(() => inputRef?.focus(), 50)
+  })
+
+  const handleInput = (value: string) => {
+    setQuery(value)
+    setSelectedIdx(-1)
+    clearTimeout(debounceTimer)
+    debounceTimer = setTimeout(() => fetchResults(value), 250)
+  }
+
+  onCleanup(() => clearTimeout(debounceTimer))
+
+  const handleSelect = (item: SessionItem) => {
+    const dir = item.scope.type === "home" ? "home" : item.scope.directory
+    navigate(`/${base64Encode(dir)}/session/${item.id}`)
+    props.onClose()
+  }
+
+  const handleKeyDown = (e: KeyboardEvent) => {
+    const items = results()
+    if (e.key === "Escape") {
+      if (query().length > 0) {
+        setQuery("")
+        fetchResults("")
+      } else {
+        props.onClose()
+      }
+      return
+    }
+    if (e.key === "ArrowDown") {
+      e.preventDefault()
+      setSelectedIdx((prev) => Math.min(prev + 1, items.length - 1))
+      return
+    }
+    if (e.key === "ArrowUp") {
+      e.preventDefault()
+      setSelectedIdx((prev) => Math.max(prev - 1, -1))
+      return
+    }
+    if (e.key === "Enter" && selectedIdx() >= 0) {
+      e.preventDefault()
+      const item = items[selectedIdx()]
+      if (item) handleSelect(item)
+    }
+  }
+
+  createEffect(() => {
+    if (typeof document === "undefined") return
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "k" && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault()
+        if (props.open) props.onClose()
+      }
+    }
+    document.addEventListener("keydown", handler)
+    onCleanup(() => document.removeEventListener("keydown", handler))
+  })
+
+  const groupedResults = createMemo(() => results())
+
+  return (
+    <Show when={props.open}>
+      <div class="gsm-overlay" onClick={props.onClose} />
+      <div ref={containerRef} class="gsm-container" onKeyDown={handleKeyDown}>
+        <div class="gsm-search-bar">
+          <Icon name="search" size="large" class="gsm-search-icon" />
+          <input
+            ref={inputRef}
+            type="text"
+            class="gsm-input"
+            placeholder="Search sessions..."
+            value={query()}
+            onInput={(e) => handleInput(e.currentTarget.value)}
+          />
+          <Show when={loading()}>
+            <div class="gsm-spinner" />
+          </Show>
+          <button type="button" class="gsm-close-btn" onClick={props.onClose}>
+            <Icon name="x" size="small" />
+          </button>
+        </div>
+        <div class="gsm-results">
+          <Show when={!loading() && groupedResults().length === 0}>
+            <div class="gsm-empty">
+              <Icon name="search" size="large" class="text-icon-weak" />
+              <span class="text-13-medium text-text-weak">
+                {query().length > 0 ? `No sessions matching "${query()}"` : "No sessions found"}
+              </span>
+            </div>
+          </Show>
+          <For each={groupedResults()}>
+            {(item, index) => (
+              <button
+                type="button"
+                classList={{
+                  "gsm-item": true,
+                  "is-selected": index() === selectedIdx(),
+                }}
+                onMouseEnter={() => setSelectedIdx(index())}
+                onClick={() => handleSelect(item)}
+              >
+                <div class="gsm-item-icon">
+                  <Icon name="file-text" size="normal" />
+                </div>
+                <div class="gsm-item-content">
+                  <div class="gsm-item-title">{item.title}</div>
+                  <div class="gsm-item-meta">
+                    {scopeLabel(item.scope)}
+                    <span class="gsm-item-sep">·</span>
+                    {relativeTime(item.time.updated)}
+                    <Show when={item.lastExchange?.user}>
+                      <span class="gsm-item-sep">·</span>
+                      <span class="gsm-item-preview truncate">You: {item.lastExchange!.user}</span>
+                    </Show>
+                  </div>
+                </div>
+              </button>
+            )}
+          </For>
+        </div>
+        <Show when={total() > 0}>
+          <div class="gsm-footer">
+            <span class="text-11-regular text-text-subtle">{total()} sessions</span>
+          </div>
+        </Show>
+      </div>
+    </Show>
+  )
+}

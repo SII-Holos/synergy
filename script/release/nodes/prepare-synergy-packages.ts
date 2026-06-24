@@ -2,7 +2,7 @@ import { $ } from "bun"
 import { existsSync } from "fs"
 import { createRequire } from "module"
 import { dirname, join } from "path"
-import { APP_DIST_DIR, CONFIG_UI_DIST_DIR, SYNERGY_DIR, SYNERGY_DIST_DIR } from "../shared/packages"
+import { APP_DIST_DIR, SYNERGY_DIR, SYNERGY_DIST_DIR } from "../shared/packages"
 import { currentGitRemoteUrl } from "../shared/git"
 
 export async function prepareSynergyPackages(version: string, platformNames: string[]) {
@@ -25,7 +25,6 @@ export async function prepareSynergyPackages(version: string, platformNames: str
     const distDir = join(SYNERGY_DIST_DIR, name)
 
     await $`cp -r ${APP_DIST_DIR} ${join(distDir, "app")}`
-    await $`cp -r ${CONFIG_UI_DIST_DIR} ${join(distDir, "config-ui")}`
     await $`mkdir -p ${join(distDir, "schema")}`
     await $`cp ${join(SYNERGY_DIR, "schema/config.schema.json")} ${join(distDir, "schema/config.schema.json")}`
 

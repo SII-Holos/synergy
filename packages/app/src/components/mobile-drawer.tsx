@@ -1,17 +1,15 @@
 import { createMemo, createSignal, For, Show, onMount } from "solid-js"
 import { A, useNavigate, useParams } from "@solidjs/router"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
-import { Avatar } from "@ericsanchezok/synergy-ui/avatar"
 import { base64Decode, base64Encode } from "@ericsanchezok/synergy-util/encode"
 import { createSynergyClient } from "@ericsanchezok/synergy-sdk/client"
-import { useLayout, getAvatarColors, type LocalScope, SESSION_PAGE_SIZE } from "@/context/layout"
-import { getFilename } from "@ericsanchezok/synergy-util/path"
+import { useLayout, type LocalScope, SESSION_PAGE_SIZE } from "@/context/layout"
 import { useGlobalSync } from "@/context/global-sync"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { useNotification } from "@/context/notification"
 import { assetPath } from "@/utils/proxy"
 import { useTheme } from "@ericsanchezok/synergy-ui/theme"
-import { getScopeLabel, isGlobalScope } from "@/utils/scope"
+import { getScopeLabel, isHomeScope } from "@/utils/scope"
 import { ActiveZone } from "@/components/scopes/active-zone"
 import { SessionRow } from "@/components/scopes/session-row"
 import { PaginationBar } from "@/components/scopes/pagination-bar"
@@ -59,7 +57,7 @@ export function MobileDrawer() {
             <A href="/" class="flex items-center gap-2" onClick={close}>
               <img
                 src={theme.mode() === "dark" ? assetPath("/holos-logo-white.svg") : assetPath("/holos-logo.svg")}
-                alt="Holos"
+                alt="Synergy"
                 class="size-6 shrink-0"
               />
               <span class="text-14-medium text-text-strong">Synergy</span>
@@ -81,7 +79,7 @@ export function MobileDrawer() {
                 <ScopeListView
                   currentDir={currentDir()}
                   onSelectScope={setDrilldown}
-                  onNavigateHome={() => navigateAndClose(`/${base64Encode("global")}/session`)}
+                  onNavigateHome={() => navigateAndClose(`/${base64Encode("home")}/session`)}
                   onClose={close}
                 />
               }
@@ -92,9 +90,10 @@ export function MobileDrawer() {
                   currentSessionID={params.id}
                   notification={notification}
                   onBack={() => setDrilldown(null)}
-                  onSelectSession={(session) =>
-                    navigateAndClose(`/${base64Encode(session.scope.directory!)}/session/${session.id}`)
-                  }
+                  onSelectSession={(session) => {
+                    const scopeKey = session.scope.type === "home" ? "home" : session.scope.directory!
+                    navigateAndClose(`/${base64Encode(scopeKey)}/session/${session.id}`)
+                  }}
                   onNewSession={() => navigateAndClose(`/${base64Encode(scope().worktree)}/session`)}
                 />
               )}
@@ -120,7 +119,7 @@ function ScopeListView(props: {
   const globalSync = useGlobalSync()
 
   const scopes = createMemo(() => {
-    const homePath = globalSync.data.path?.home
+    const homePath = globalSync.data.paths?.home
     const seen = new Set<string>()
     return layout.scopes.list().filter((s) => {
       if (s.worktree === homePath) return false
@@ -130,7 +129,7 @@ function ScopeListView(props: {
     })
   })
 
-  const isHomeActive = createMemo(() => (props.currentDir ? isGlobalScope(props.currentDir) : false))
+  const isHomeActive = createMemo(() => (props.currentDir ? isHomeScope(props.currentDir) : false))
 
   return (
     <div class="py-2">
@@ -157,7 +156,6 @@ function ScopeListView(props: {
       </div>
       <For each={scopes()}>
         {(scope) => {
-          const colors = createMemo(() => getAvatarColors(scope.icon?.color))
           const isActive = createMemo(() => {
             const dir = props.currentDir
             if (!dir) return false
@@ -174,13 +172,7 @@ function ScopeListView(props: {
               }}
               onClick={() => props.onSelectScope(scope)}
             >
-              <Avatar
-                fallback={getScopeLabel(scope)}
-                src={scope.icon?.url}
-                size="small"
-                background={colors().background}
-                foreground={colors().foreground}
-              />
+              <Icon name="folder" size="normal" class="shrink-0" />
               <span
                 classList={{
                   "text-14-medium truncate": true,

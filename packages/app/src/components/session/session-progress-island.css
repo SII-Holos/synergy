@@ -1,0 +1,258 @@
+.session-progress-island {
+  /* Now a normal-flow flex child inside the shared absolute wrapper at
+     prompt-dock.tsx:67 (absolute inset-x-0 bottom-full). The wrapper
+     guarantees that expanding the island never changes --prompt-height.
+     SubagentDock sits above, island below. */
+  display: flex;
+  width: 100%;
+  justify-content: center;
+  padding: 0 12px 6px;
+  pointer-events: auto;
+}
+
+.session-progress-island-surface {
+  overflow: hidden;
+  width: fit-content;
+  max-width: min(620px, calc(100vw - 24px));
+  border-radius: 999px;
+  color: var(--text-base);
+  background: var(--surface-raised-stronger);
+  transition:
+    max-width 240ms cubic-bezier(0.2, 0, 0, 1),
+    border-radius 240ms cubic-bezier(0.2, 0, 0, 1);
+  animation: session-progress-island-enter 180ms cubic-bezier(0.2, 0, 0, 1) both;
+}
+
+.session-progress-island[data-expanded="true"] .session-progress-island-surface {
+  width: 100%;
+  max-width: min(900px, calc(100vw - 24px));
+  border-radius: 22px;
+}
+
+.session-progress-island-header {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  height: 34px;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  color: var(--text-weak);
+  transition:
+    height 260ms cubic-bezier(0.2, 0, 0, 1),
+    color 140ms ease-out,
+    background-color 140ms ease-out;
+}
+
+.session-progress-island-header:hover {
+  color: var(--text-base);
+  background: var(--surface-raised-base-hover);
+}
+
+.session-progress-island[data-expanded="true"] .session-progress-island-header {
+  height: 44px;
+  padding: 0 16px;
+}
+
+.session-progress-island-indicator {
+  display: inline-flex;
+  flex: 0 0 auto;
+  color: var(--text-interactive-base);
+}
+
+.session-progress-island[data-tone="ready"] .session-progress-island-indicator,
+.session-progress-island[data-tone="neutral"] .session-progress-island-indicator {
+  color: var(--text-weaker);
+}
+
+.session-progress-island[data-tone="blocked"] .session-progress-island-indicator {
+  color: var(--border-warning-base);
+}
+
+.session-progress-island[data-tone="failed"] .session-progress-island-indicator {
+  color: var(--border-critical-base);
+}
+
+.session-progress-island[data-tone="complete"] .session-progress-island-indicator {
+  color: var(--border-success-base);
+}
+
+.session-progress-island[data-tone="running"]
+  .session-progress-island-indicator
+  [data-slot="progress-circle-progress"] {
+  animation: session-progress-island-breathe 1.8s ease-in-out infinite;
+}
+
+.session-progress-island-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+}
+
+.session-progress-island-detail {
+  flex: 0 0 auto;
+  color: var(--text-weaker);
+  font-size: 11px;
+}
+
+.session-progress-island-chevron {
+  flex: 0 0 auto;
+  color: var(--icon-weak-base);
+  transition: transform 180ms cubic-bezier(0.2, 0, 0, 1);
+}
+
+.session-progress-island-chevron.is-expanded {
+  transform: rotate(180deg);
+}
+
+/* Expand/collapse with the panel taken out of normal flow.
+
+   5 Chrome traces showed the DAG panel's ~7000 DOM elements make any height
+   animation expensive when the panel is in flow (grid 0fr→1fr, max-height,
+   contain, content-visibility all recalc'd thousands of elements per frame),
+   and display:none caused a 60ms cold-layout on each toggle.
+
+   Solution: position:absolute the panel so it never participates in the
+   wrapper's layout. The wrapper animates its own height via max-height (cheap
+   — it's an empty container). The panel is always rendered (no cold layout),
+   animating only opacity + a compositor-friendly transform. Neither property
+   triggers style recalc or layout. */
+.session-progress-island-panel-wrap {
+  position: relative;
+  height: 0;
+  overflow: hidden;
+  transition: height 240ms cubic-bezier(0.2, 0, 0, 1);
+}
+
+.session-progress-island-panel-wrap[data-expanded="true"] {
+  height: min(52vh, 560px);
+}
+
+.session-progress-island-panel {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  height: min(52vh, 560px);
+  flex-direction: column;
+  overflow: hidden;
+  border-top: 1px solid var(--border-weak-base);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-8px);
+  transition:
+    opacity 200ms ease-out,
+    transform 200ms cubic-bezier(0.2, 0, 0, 1);
+}
+
+.session-progress-island-panel-wrap[data-expanded="true"] .session-progress-island-panel {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
+  transition:
+    opacity 220ms ease-out 40ms,
+    transform 240ms cubic-bezier(0.2, 0, 0, 1) 40ms;
+}
+
+.session-progress-island-panel-topline {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 7px 12px 5px;
+  color: var(--text-subtle);
+  font-size: 12px;
+}
+
+.session-progress-island-tabs {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 4px;
+  padding: 0 12px 6px;
+}
+
+.session-progress-island-tab {
+  border-radius: 999px;
+  padding: 3px 9px;
+  color: var(--text-weak);
+  font-size: 12px;
+  transition:
+    color 140ms ease-out,
+    background-color 140ms ease-out;
+}
+.session-progress-island-tab:hover {
+  color: var(--text-base);
+  background: var(--surface-raised-base-hover);
+}
+
+.session-progress-island-tab.is-selected {
+  color: var(--text-on-interactive-base);
+  background: var(--surface-interactive-base);
+}
+
+.session-progress-island-body {
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  padding: 0 6px;
+}
+
+@keyframes session-progress-island-enter {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes session-progress-island-breathe {
+  0%,
+  100% {
+    opacity: 0.62;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@keyframes session-progress-island-exit {
+  from {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.97);
+  }
+}
+
+.session-progress-island[data-exiting="true"] {
+  animation: session-progress-island-exit 300ms cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .session-progress-island-surface,
+  .session-progress-island-header,
+  .session-progress-island-chevron,
+  .session-progress-island-tab,
+  .session-progress-island-panel-wrap {
+    transition: none;
+  }
+
+  .session-progress-island-surface,
+  .session-progress-island[data-tone="running"]
+    .session-progress-island-indicator
+    [data-slot="progress-circle-progress"] {
+    animation: none;
+  }
+}

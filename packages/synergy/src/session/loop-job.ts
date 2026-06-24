@@ -20,6 +20,7 @@ export namespace LoopJob {
     abort: AbortSignal
     compactionAutoDisabled?: boolean
     compactionOverflowThreshold?: number
+    compactionMaxHistoryImages?: number
     modelLimits?: { context: number; input?: number; output: number }
     modelID?: string
   }

@@ -104,20 +104,25 @@ export namespace AgendaTypes {
   export type ScheduleTrigger = z.infer<typeof ScheduleTrigger>
 
   // ---------------------------------------------------------------------------
-  // Session mode — inferred internally, not user-facing
+  // Session mode — inferred from triggers, but can be overridden per item
   // ---------------------------------------------------------------------------
 
   export type SessionMode = "ephemeral" | "persistent"
 
-  export function inferSessionMode(triggers: Trigger[]): SessionMode {
+  /**
+   * Infer session mode from triggers, with an optional per-item override.
+   *
+   * Default behaviour: recurring triggers (cron, every, watch) use a persistent
+   * session so the agent can accumulate state across fires. One-shot triggers
+   * (at, delay) use an ephemeral session.
+   *
+   * Set `override` to "ephemeral" when each fire should start with a clean
+   * context — e.g. a daily diary that must not be influenced by previous runs.
+   */
+  export function inferSessionMode(triggers: Trigger[], override?: SessionMode): SessionMode {
+    if (override) return override
     const hasRecurring = triggers.some((t) => t.type === "cron" || t.type === "every" || t.type === "watch")
     return hasRecurring ? "persistent" : "ephemeral"
-  }
-
-  export type ContextMode = "full" | "signal"
-
-  export function inferContextMode(sessionMode: SessionMode): ContextMode {
-    return sessionMode === "persistent" ? "signal" : "full"
   }
 
   // ---------------------------------------------------------------------------
@@ -197,6 +202,12 @@ export namespace AgendaTypes {
       // Advanced execution options
       agent: z.string().optional().describe("Agent to use, defaults to configured default"),
       model: z.object({ providerID: z.string(), modelID: z.string() }).optional().describe("Model override"),
+      sessionMode: z
+        .enum(["ephemeral", "persistent"])
+        .optional()
+        .describe(
+          "Session mode override. Recurring triggers (cron, every) default to 'persistent' (reuse session across fires). Set 'ephemeral' to start a fresh session on every fire — useful for tasks that must not carry history from previous runs, such as daily reports.",
+        ),
       sessionRefs: z
         .array(SessionRef)
         .optional()
@@ -304,6 +315,45 @@ export namespace AgendaTypes {
     .meta({ ref: "AgendaActivityPage" })
   export type ActivityPage = z.infer<typeof ActivityPage>
 
+  export const SessionAgendaTriggerType = z.enum(["cron", "every", "at", "delay", "watch", "webhook"])
+  export type SessionAgendaTriggerType = z.infer<typeof SessionAgendaTriggerType>
+
+  export const SessionAgendaTrigger = z
+    .object({
+      type: SessionAgendaTriggerType,
+      interval: z.string().optional().describe("Interval for every triggers, e.g. '30m'"),
+      delay: z.string().optional().describe("Delay for delay triggers, e.g. '2h'"),
+    })
+    .meta({ ref: "SessionAgendaTrigger" })
+  export type SessionAgendaTrigger = z.infer<typeof SessionAgendaTrigger>
+
+  export const SessionAgendaItem = z
+    .object({
+      itemID: z.string().describe("Agenda item ID"),
+      title: z.string().describe("Agenda item title"),
+      status: z.enum(["active", "pending"]),
+      nextRunAt: z.number().nullable().describe("Next scheduled activation time, or null for open-ended triggers"),
+      triggerTypes: z.array(SessionAgendaTriggerType).describe("Trigger types that can activate this agenda item"),
+      triggers: z.array(SessionAgendaTrigger).describe("Display-safe trigger details for client-side formatting"),
+      global: z.boolean().describe("Whether this agenda item is globally visible"),
+    })
+    .meta({ ref: "SessionAgendaItem" })
+  export type SessionAgendaItem = z.infer<typeof SessionAgendaItem>
+
+  export const SessionAgendaResponse = z
+    .object({
+      sessionID: z.string(),
+      count: z.number().int().min(0),
+      hasActiveAgenda: z.boolean(),
+      items: z.array(SessionAgendaItem),
+      offset: z.number().int().min(0),
+      limit: z.number().int().min(0),
+      total: z.number().int().min(0),
+      hasMore: z.boolean(),
+    })
+    .meta({ ref: "SessionAgendaResponse" })
+  export type SessionAgendaResponse = z.infer<typeof SessionAgendaResponse>
+
   // ---------------------------------------------------------------------------
   // Fired signal — runtime representation of a trigger activation
   // ---------------------------------------------------------------------------
@@ -335,6 +385,7 @@ export namespace AgendaTypes {
       autoDone: z.boolean().optional(),
       agent: z.string().optional(),
       model: z.object({ providerID: z.string(), modelID: z.string() }).optional(),
+      sessionMode: z.enum(["ephemeral", "persistent"]).optional(),
       sessionRefs: z.array(SessionRef).optional(),
       timeout: z.number().optional(),
       createdBy: z.enum(["user", "agent"]).default("user"),
@@ -356,7 +407,10 @@ export namespace AgendaTypes {
       wake: z.boolean().optional(),
       silent: z.boolean().optional(),
       agent: z.string().optional(),
+      model: z.object({ providerID: z.string(), modelID: z.string() }).optional(),
+      sessionMode: z.enum(["ephemeral", "persistent"]).optional(),
       sessionRefs: z.array(SessionRef).optional(),
+      timeout: z.number().optional(),
     })
     .meta({ ref: "AgendaPatchInput" })
   export type PatchInput = z.infer<typeof PatchInput>

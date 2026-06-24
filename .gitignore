@@ -59,6 +59,7 @@ results/
 
 # Project-level Synergy config (user-specific)
 .synergy/bun.lock
+.synergy/worktrees/
 
 tmp_*
 
@@ -74,3 +75,4 @@ faro-web/
 
 # Weekly report skill (standalone repo)
 weekly-report/
+synergy-frontend-kit/

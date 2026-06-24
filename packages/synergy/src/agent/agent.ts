@@ -3,7 +3,8 @@ import z from "zod"
 import { Provider } from "../provider/provider"
 import { generateObject, type ModelMessage } from "ai"
 import { SystemPrompt } from "../session/system"
-import { Instance } from "../scope/instance"
+import { ScopeContext } from "../scope/context"
+import { ScopedState } from "../scope/scoped-state"
 import { Truncate } from "../tool/truncation"
 
 import PROMPT_GENERATE from "./generate.txt"
@@ -13,6 +14,7 @@ import { createBuiltinPrimaryAgents } from "./builtin-primary"
 import { createBuiltinMaxSubagents } from "./builtin-max-subagents"
 import { buildSynergyPrompt } from "./prompt/synergy/builder"
 import { buildSynergyMaxPrompt } from "./prompt/synergy-max/builder"
+import { buildSupervisorPrompt } from "./prompt/supervisor/builder"
 
 import { PermissionNext } from "@/permission/next"
 import { mergeDeep, pipe, sortBy, values } from "remeda"
@@ -36,6 +38,7 @@ export namespace Agent {
       temperature: z.number().optional(),
       color: z.string().optional(),
       permission: PermissionNext.Ruleset,
+      controlProfile: z.enum(["guarded", "autonomous", "full_access"]).optional(),
       model: z
         .object({
           modelID: z.string(),
@@ -52,9 +55,10 @@ export namespace Agent {
     })
   export type Info = z.infer<typeof Info>
 
-  const state = Instance.state(async () => {
-    const cfg = await Config.get()
-    const evo = Config.resolveEvolution(cfg.identity?.evolution)
+  const state = ScopedState.create(async () => {
+    const cfg = await Config.current()
+    const evolutionActive =
+      ((cfg as any).engram?.memory?.enabled ?? true) && (cfg as any).engram?.experience?.encode !== false
     const role = (r: Provider.ModelRole) => Provider.resolveRoleModelSync(cfg, r)
 
     const defaults = PermissionNext.fromConfig({
@@ -88,7 +92,7 @@ export namespace Agent {
     })
     const user = PermissionNext.fromConfig(cfg.permission ?? {})
 
-    const builtinContext = { defaults, user, role, evolutionActive: evo.active }
+    const builtinContext = { defaults, user, role, evolutionActive }
     const result: Record<string, Info> = {
       ...createBuiltinPrimaryAgents(builtinContext),
       ...createBuiltinLegacySubagents(builtinContext),
@@ -122,6 +126,7 @@ export namespace Agent {
       item.steps = value.steps ?? item.steps
       item.options = mergeDeep(item.options, value.options ?? {})
       item.permission = PermissionNext.merge(item.permission, PermissionNext.fromConfig(value.permission ?? {}))
+      if (value.controlProfile !== undefined) item.controlProfile = value.controlProfile as Agent.Info["controlProfile"]
     }
 
     // Merge plugin-contributed agents (lower priority than config agents)
@@ -251,6 +256,7 @@ export namespace Agent {
     }))
     if (result.synergy) result.synergy.prompt = buildSynergyPrompt(agentInfos)
     if (result["synergy-max"]) result["synergy-max"].prompt = buildSynergyMaxPrompt(agentInfos)
+    if (result.supervisor) result.supervisor.prompt = buildSupervisorPrompt(agentInfos)
 
     return result
   })
@@ -272,7 +278,7 @@ export namespace Agent {
   }
 
   export async function list() {
-    const cfg = await Config.get()
+    const cfg = await Config.current()
     return pipe(
       await state(),
       values(),
@@ -285,7 +291,7 @@ export namespace Agent {
   }
 
   export async function generate(input: { description: string; model?: { providerID: string; modelID: string } }) {
-    const cfg = await Config.get()
+    const cfg = await Config.current()
     const defaultModel = input.model ?? (await Provider.defaultModel())
     const model = await Provider.getModel(defaultModel.providerID, defaultModel.modelID)
     const language = await Provider.getLanguage(model)

@@ -1,7 +1,7 @@
 import z from "zod"
 import { Tool } from "./tool"
 import { Agenda } from "../agenda"
-import { Instance } from "../scope/instance"
+import { ScopeContext } from "../scope/context"
 import DESCRIPTION from "./agenda-cancel.txt"
 
 const parameters = z.object({

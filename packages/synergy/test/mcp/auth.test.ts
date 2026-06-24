@@ -152,6 +152,7 @@ describe.serial("McpAuth", () => {
       expect(entry!.tokens!.accessToken).toBe("tok2")
     })
 
+    if (process.platform === "win32") return
     test("sets file permissions to 0o600", async () => {
       await McpAuth.set("server", { tokens: { accessToken: "tok" } })
 

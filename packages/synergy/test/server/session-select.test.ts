@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test"
 import path from "path"
 import { Session } from "../../src/session"
 import { Log } from "../../src/util/log"
-import { Instance } from "../../src/scope/instance"
+import { ScopeContext } from "../../src/scope/context"
 import { Scope } from "../../src/scope"
 import { Server } from "../../src/server/server"
 
@@ -12,7 +12,7 @@ Log.init({ print: false })
 describe("Server.App() current contract", () => {
   describe("current session routes", () => {
     test("should list and create sessions through /session routes", async () => {
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: (await Scope.fromDirectory(projectRoot)).scope,
         fn: async () => {
           const app = Server.App()
@@ -40,7 +40,7 @@ describe("Server.App() current contract", () => {
     })
 
     test("should return 404 for a missing session on current session routes", async () => {
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: (await Scope.fromDirectory(projectRoot)).scope,
         fn: async () => {
           const app = Server.App()

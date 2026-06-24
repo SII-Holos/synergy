@@ -1,9 +1,10 @@
+import { formatLocalDateTime } from "@/util/time-format"
 import z from "zod"
 import { Tool } from "./tool"
 import { Agenda, AgendaTypes } from "../agenda"
 import { AgendaDedup } from "../agenda/dedup"
 import { SessionManager } from "../session/manager"
-import { Instance } from "../scope/instance"
+import { ScopeContext } from "../scope/context"
 import DESCRIPTION from "./agenda-schedule.txt"
 
 const parameters = z.object({
@@ -20,6 +21,15 @@ const parameters = z.object({
   global: z.boolean().optional().describe("If true, visible from all scopes. Default: false (current project only)"),
   wake: z.boolean().optional().describe("If true, wake this session's agent when execution completes. Default: true"),
   silent: z.boolean().optional().describe("If true, suppress result delivery entirely. Default: false"),
+  agent: z.string().optional().describe("Agent to use, defaults to configured default"),
+  model: z.object({ providerID: z.string(), modelID: z.string() }).optional().describe("Model override"),
+  timeout: z.number().optional().describe("Execution timeout in milliseconds"),
+  sessionMode: z
+    .enum(["ephemeral", "persistent"])
+    .optional()
+    .describe(
+      "Session mode override. Recurring triggers (cron, every) default to 'persistent' (reuse session across fires). Set 'ephemeral' to start a fresh session on every fire — useful for tasks that must not carry history from previous runs, such as daily reports.",
+    ),
   sessionRefs: z
     .array(
       z.object({
@@ -38,7 +48,12 @@ export const AgendaScheduleTool = Tool.define("agenda_schedule", {
     const session = await SessionManager.getSession(ctx.sessionID).catch(() => undefined)
     const triggers = [params.trigger as AgendaTypes.Trigger]
 
-    const conflicts = await AgendaDedup.findConflicts(Instance.scope.id, params.title, triggers, params.global)
+    const conflicts = await AgendaDedup.findConflicts(
+      ScopeContext.current.scope.id,
+      params.title,
+      triggers,
+      params.global,
+    )
     if (conflicts.length > 0) {
       return {
         title: "agenda_schedule",
@@ -55,7 +70,11 @@ export const AgendaScheduleTool = Tool.define("agenda_schedule", {
       global: params.global,
       wake: params.wake,
       silent: params.silent,
+      agent: params.agent,
+      model: params.model,
+      sessionMode: params.sessionMode,
       sessionRefs: params.sessionRefs,
+      timeout: params.timeout,
       createdBy: "agent",
       sessionID: ctx.sessionID,
       endpoint: session?.endpoint,
@@ -68,15 +87,19 @@ export const AgendaScheduleTool = Tool.define("agenda_schedule", {
       `Title: ${item.title}`,
       `Schedule: ${formatTrigger(params.trigger)}`,
     ]
-    if (item.state.nextRunAt) lines.push(`Next run: ${new Date(item.state.nextRunAt).toISOString()}`)
+    if (item.state.nextRunAt) lines.push(`Next run: ${formatLocalDateTime(item.state.nextRunAt)}`)
     if (item.tags?.length) lines.push(`Tags: ${item.tags.join(", ")}`)
     if (item.global) lines.push(`Scope: global`)
     if (item.wake === false) lines.push(`Wake: disabled`)
     if (item.silent) lines.push(`Silent: true`)
+    if (item.agent) lines.push(`Agent: ${item.agent}`)
+    if (item.model) lines.push(`Model: ${item.model.providerID}/${item.model.modelID}`)
+    if (item.timeout) lines.push(`Timeout: ${item.timeout}ms`)
+    if (item.sessionMode) lines.push(`Session mode: ${item.sessionMode}`)
 
     lines.push(
       "",
-      `Each run executes in a fresh session. Results are delivered back here.`,
+      `Recurring tasks reuse a persistent session across fires by default. Pass sessionMode="ephemeral" to start a fresh session on each fire.`,
       `To pause: agenda_update(id="${item.id}", status="paused")`,
       `To cancel: agenda_cancel(id="${item.id}")`,
       `To view runs: agenda_logs(id="${item.id}")`,
@@ -97,7 +120,7 @@ function formatTrigger(t: AgendaTypes.ScheduleTrigger): string {
     case "every":
       return `every ${t.interval}`
     case "at":
-      return `at ${new Date(t.at).toISOString()}`
+      return `at ${formatLocalDateTime(t.at)}`
     case "delay":
       return `delay ${t.delay}`
   }

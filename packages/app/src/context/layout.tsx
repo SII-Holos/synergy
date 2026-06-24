@@ -1,5 +1,5 @@
 import { createStore, produce } from "solid-js/store"
-import { batch, createEffect, createMemo, onCleanup, onMount } from "solid-js"
+import { batch, createEffect, createMemo, createSignal, onCleanup, onMount } from "solid-js"
 import { createSimpleContext } from "@ericsanchezok/synergy-ui/context"
 import { createMediaQuery } from "@solid-primitives/media"
 import { useGlobalSync } from "./global-sync"
@@ -11,7 +11,9 @@ import { same } from "@/utils/same"
 import { createScrollPersistence, type SessionScroll } from "./layout-scroll"
 import { Binary } from "@ericsanchezok/synergy-util/binary"
 import { retry } from "@ericsanchezok/synergy-util/retry"
+import { computeDefaultWorkspaceWidth } from "./workspace-layout"
 import { reconcile } from "solid-js/store"
+import { HOME_SCOPE_KEY } from "@/utils/scope"
 
 const AVATAR_COLOR_KEYS = ["pink", "mint", "orange", "purple", "cyan", "lime"] as const
 export type AvatarColorKey = (typeof AVATAR_COLOR_KEYS)[number]
@@ -45,6 +47,46 @@ export type ReviewDiffStyle = "unified" | "split"
 
 export const SESSION_PAGE_SIZE = 20
 
+// --- Nav v2 types (matches backend SessionNavEntry / ScopeNavEntry) ---
+
+export interface NavEntry {
+  id: string
+  scopeID: string
+  scopeType: "home" | "project"
+  title: string
+  category: "project" | "home" | "channel" | "background"
+  lastActivityAt: number
+  pinned: number
+  archived: boolean
+  parentID?: string
+  endpointKind?: "channel"
+}
+
+export interface NavCursor {
+  lastActivityAt: number
+  id: string
+}
+
+export interface ScopeNavEntry {
+  scopeID: string
+  scopeType: "home" | "project"
+  name?: string
+  directory: string
+  latestActivityAt: number
+  sessionCount: number
+  icon?: { url?: string; color?: string }
+}
+
+const ROOT_NAV_SECTION_LIMIT = 100
+const ROOT_NAV_SECTION_KEYS = ["home", "channel", "background"] as const
+type RootNavSectionKey = (typeof ROOT_NAV_SECTION_KEYS)[number]
+type NavListState = { items: NavEntry[]; nextCursor: NavCursor | null; total: number }
+function emptyNavList(): NavListState {
+  return { items: [], nextCursor: null, total: 0 }
+}
+const NAV_FIRST_PAGE_LIMIT = 10
+const RECENT_LIMIT = 10
+
 export const { use: useLayout, provider: LayoutProvider } = createSimpleContext({
   name: "Layout",
   init: () => {
@@ -52,7 +94,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
     const globalSync = useGlobalSync()
     const server = useServer()
     const [store, setStore, _, ready] = persisted(
-      Persist.global("layout", ["layout.v6"]),
+      Persist.global("layout", ["layout.v8", "layout.v9"]),
       createStore({
         sidebar: {
           opened: false,
@@ -74,6 +116,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         },
         sessionTabs: {} as Record<string, SessionTabs>,
         sessionView: {} as Record<string, SessionView>,
+        workspaceSessions: {} as Record<string, { opened: boolean; active: string | null; width?: number }>,
       }),
     )
 
@@ -110,6 +153,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       const keys = new Set<string>()
       for (const key of Object.keys(store.sessionView)) keys.add(key)
       for (const key of Object.keys(store.sessionTabs)) keys.add(key)
+      for (const key of Object.keys(store.workspaceSessions)) keys.add(key)
       if (keys.size <= MAX_SESSION_KEYS) return
 
       const score = (key: string) => {
@@ -126,6 +170,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
           for (const key of drop) {
             delete draft.sessionView[key]
             delete draft.sessionTabs[key]
+            delete draft.workspaceSessions[key]
           }
         }),
       )
@@ -192,7 +237,284 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       })
     })
 
+    // --- Nav v2 store ---
+
+    const [scopeIndex, setScopeIndex] = createSignal<ScopeNavEntry[]>([])
+    const [navEntries, setNavEntries] = createStore<Record<string, NavListState>>({})
+    const [rootNavStore, setRootNavStore] = createStore<Record<RootNavSectionKey, NavListState>>({
+      home: emptyNavList(),
+      channel: emptyNavList(),
+      background: emptyNavList(),
+    })
+    const [recentEntries, setRecentEntries] = createStore<NavListState>({
+      items: [],
+      nextCursor: null,
+      total: 0,
+    })
+    const navPending = new Set<string>()
+    const [scopeIndexLoaded, setScopeIndexLoaded] = createSignal(false)
+
+    async function loadScopeIndex() {
+      await globalSdk.client.scope.list()
+      try {
+        const res = await globalSdk.client.scope.index()
+        if (res.data) {
+          setScopeIndex(res.data as ScopeNavEntry[])
+        }
+      } catch (err) {
+        console.warn("Failed to load scope index", err)
+        // fall through; scope ordering remains localStorage-based
+      } finally {
+        setScopeIndexLoaded(true)
+      }
+    }
+
+    async function loadScopeNav(directory: string, cursor?: NavCursor) {
+      if (navPending.has(directory)) return
+      navPending.add(directory)
+      try {
+        const res = await globalSdk.client.session.index({
+          directory,
+          parentOnly: "true",
+          limit: NAV_FIRST_PAGE_LIMIT,
+          ...(cursor ? { cursorLastActivityAt: cursor.lastActivityAt, cursorId: cursor.id } : {}),
+        })
+        if (!res.data) return
+        const data = res.data
+        if (cursor) {
+          const existing = navEntries[directory]
+          const merged = [
+            ...(existing?.items ?? []),
+            ...data.items.filter((e) => !(existing?.items ?? []).some((x) => x.id === e.id)),
+          ]
+          setNavEntries(directory, { items: merged, nextCursor: data.nextCursor, total: data.total })
+        } else {
+          setNavEntries(directory, { items: data.items as NavEntry[], nextCursor: data.nextCursor, total: data.total })
+        }
+      } finally {
+        navPending.delete(directory)
+      }
+    }
+
+    async function loadRootNavSection(category: RootNavSectionKey, cursor?: NavCursor) {
+      const key = `__root_${category}`
+      if (navPending.has(key)) return
+      navPending.add(key)
+      try {
+        const res = await globalSdk.client.session.index({
+          scopeID: "home",
+          category,
+          parentOnly: "true",
+          limit: ROOT_NAV_SECTION_LIMIT,
+          ...(cursor ? { cursorLastActivityAt: cursor.lastActivityAt, cursorId: cursor.id } : {}),
+        })
+        if (!res.data) return
+        const data = res.data
+        if (cursor) {
+          const existing = rootNavStore[category]
+          const merged = [
+            ...(existing?.items ?? []),
+            ...data.items.filter((e) => !(existing?.items ?? []).some((x) => x.id === e.id)),
+          ]
+          setRootNavStore(category, { items: merged, nextCursor: data.nextCursor, total: data.total })
+        } else {
+          setRootNavStore(category, {
+            items: data.items as NavEntry[],
+            nextCursor: data.nextCursor,
+            total: data.total,
+          })
+        }
+      } finally {
+        navPending.delete(key)
+      }
+    }
+
+    async function loadGlobalRecent(cursor?: NavCursor) {
+      const key = "__recent__"
+      if (navPending.has(key)) return
+      navPending.add(key)
+      try {
+        const res = await globalSdk.client.global.nav.recent({
+          parentOnly: true,
+          limit: RECENT_LIMIT,
+          ...(cursor ? { cursorLastActivityAt: cursor.lastActivityAt, cursorId: cursor.id } : {}),
+        })
+        if (!res.data) return
+        const data = res.data
+        if (cursor) {
+          const existing = recentEntries.items
+          const merged = [...existing, ...data.items.filter((e) => !existing.some((x) => x.id === e.id))]
+          setRecentEntries({ items: merged, nextCursor: data.nextCursor, total: data.total })
+        } else {
+          setRecentEntries({ items: data.items as NavEntry[], nextCursor: data.nextCursor, total: data.total })
+        }
+      } finally {
+        navPending.delete(key)
+      }
+    }
+
+    function loadMoreNav(directory: string) {
+      if (directory === "__recent__") {
+        if (recentEntries.nextCursor) loadGlobalRecent(recentEntries.nextCursor)
+        return
+      }
+      const entry = navEntries[directory]
+      if (!entry?.nextCursor) return
+      loadScopeNav(directory, entry.nextCursor)
+    }
+
+    function loadMoreRootNavSection(category: RootNavSectionKey) {
+      const entry = rootNavStore[category]
+      if (entry?.nextCursor) loadRootNavSection(category, entry.nextCursor)
+    }
+    async function refreshGlobalRecent() {
+      const key = "__refresh__recent__"
+      if (navPending.has(key)) return
+      navPending.add(key)
+      try {
+        const res = await globalSdk.client.global.nav.recent({
+          parentOnly: true,
+          limit: Math.max(RECENT_LIMIT, recentEntries.items.length),
+        })
+        if (!res.data) return
+        const data = res.data
+        setRecentEntries({ items: data.items as NavEntry[], nextCursor: data.nextCursor, total: data.total })
+      } finally {
+        navPending.delete(key)
+      }
+    }
+
+    async function refreshRootNavSection(category: RootNavSectionKey) {
+      const key = `__refresh_root_${category}`
+      if (navPending.has(key)) return
+      navPending.add(key)
+      try {
+        const existing = rootNavStore[category]
+        const res = await globalSdk.client.session.index({
+          scopeID: "home",
+          category,
+          parentOnly: "true",
+          limit: Math.max(ROOT_NAV_SECTION_LIMIT, existing?.items.length ?? 0),
+        })
+        if (!res.data) return
+        const data = res.data
+        setRootNavStore(category, {
+          items: data.items as NavEntry[],
+          nextCursor: data.nextCursor,
+          total: data.total,
+        })
+      } finally {
+        navPending.delete(key)
+      }
+    }
+
+    async function refreshScopeNav(directory: string) {
+      const key = `__refresh_${directory}`
+      if (navPending.has(key)) return
+      navPending.add(key)
+      try {
+        const existing = navEntries[directory]
+        const res = await globalSdk.client.session.index({
+          directory,
+          parentOnly: "true",
+          limit: Math.max(NAV_FIRST_PAGE_LIMIT, existing?.items.length ?? 0),
+        })
+        if (!res.data) return
+        const data = res.data
+        setNavEntries(directory, { items: data.items as NavEntry[], nextCursor: data.nextCursor, total: data.total })
+      } finally {
+        navPending.delete(key)
+      }
+    }
+
+    function rootNavEntriesFor(category: RootNavSectionKey): NavEntry[] {
+      const entry = rootNavStore[category]
+      if (!entry) return []
+      return entry.items.toSorted((a, b) => {
+        if (a.pinned && !b.pinned) return -1
+        if (!a.pinned && b.pinned) return 1
+        if (a.pinned && b.pinned) return b.pinned - a.pinned
+        return b.lastActivityAt - a.lastActivityAt || b.id.localeCompare(a.id)
+      })
+    }
+
+    function hasMoreRootNavSection(category: RootNavSectionKey): boolean {
+      return rootNavStore[category]?.nextCursor != null
+    }
+
+    // --- Nav event refresh ---
+    // On session.updated, refresh nav lists preserving current depth.
+    const navRefreshTimers = new Map<string, ReturnType<typeof setTimeout>>()
+    const NAV_REFRESH_DEBOUNCE_MS = 300
+
+    onMount(() => {
+      const unsub = globalSdk.event.listen((e) => {
+        if ((e.details as { type?: string })?.type !== "session.updated") return
+        const info = (e.details as { properties?: { info?: { scope?: { id?: string; directory?: string } } } })
+          ?.properties?.info
+        const scope = info?.scope
+        if (!scope) return
+        const recentPending = navRefreshTimers.get("__recent__")
+        if (recentPending) clearTimeout(recentPending)
+        navRefreshTimers.set(
+          "__recent__",
+          setTimeout(() => {
+            navRefreshTimers.delete("__recent__")
+            refreshGlobalRecent()
+          }, NAV_REFRESH_DEBOUNCE_MS),
+        )
+        const scopeIndexPending = navRefreshTimers.get("__scopeIndex__")
+        if (scopeIndexPending) clearTimeout(scopeIndexPending)
+        navRefreshTimers.set(
+          "__scopeIndex__",
+          setTimeout(() => {
+            navRefreshTimers.delete("__scopeIndex__")
+            loadScopeIndex()
+          }, NAV_REFRESH_DEBOUNCE_MS),
+        )
+        if (scope.id === "home") {
+          for (const category of ROOT_NAV_SECTION_KEYS) {
+            if (!rootNavStore[category]) continue
+            const pending = navRefreshTimers.get(`__root_${category}`)
+            if (pending) clearTimeout(pending)
+            navRefreshTimers.set(
+              `__root_${category}`,
+              setTimeout(() => {
+                navRefreshTimers.delete(`__root_${category}`)
+                refreshRootNavSection(category)
+              }, NAV_REFRESH_DEBOUNCE_MS),
+            )
+          }
+          return
+        }
+        const dir = scope.directory
+        if (!dir || !navEntries[dir]) return
+        const pending = navRefreshTimers.get(dir)
+        if (pending) clearTimeout(pending)
+        navRefreshTimers.set(
+          dir,
+          setTimeout(() => {
+            navRefreshTimers.delete(dir)
+            refreshScopeNav(dir)
+          }, NAV_REFRESH_DEBOUNCE_MS),
+        )
+      })
+      onCleanup(unsub)
+    })
+
+    // --- Scope enrichment / color ---
+
     const usedColors = new Set<AvatarColorKey>()
+
+    function scopeKeyForSession(session: Session): string {
+      return session.scope.type === "home" || session.scope.id === HOME_SCOPE_KEY
+        ? HOME_SCOPE_KEY
+        : (session.scope.directory ?? session.scope.worktree ?? session.scope.id)
+    }
+
+    function scopeRequest(scopeKey: string) {
+      return scopeKey === HOME_SCOPE_KEY ? { scopeID: HOME_SCOPE_KEY } : { directory: scopeKey }
+    }
 
     function pickAvailableColor(): AvatarColorKey {
       const available = AVATAR_COLOR_KEYS.filter((c) => !usedColors.has(c))
@@ -201,8 +523,8 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
     }
 
     function enrich(project: { worktree: string; expanded: boolean }) {
-      const [childStore] = globalSync.child(project.worktree)
-      const scopeID = childStore.scopeID
+      const childState = globalSync.peekScopeState(project.worktree)
+      const scopeID = childState?.[0].scopeID
       const metadata = scopeID
         ? globalSync.data.scope.find((x) => x.id === scopeID)
         : globalSync.data.scope.find((x) => x.worktree === project.worktree)
@@ -221,7 +543,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       usedColors.add(color)
       scope.icon = { ...scope.icon, color }
       if (scope.id) {
-        globalSdk.client.scope.update({ scopeID: scope.id, icon: { color } })
+        globalSdk.client.scope.update({ path_scopeID: scope.id, icon: { color } })
       }
       return scope
     }
@@ -261,83 +583,163 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       })
     })
 
-    const enriched = createMemo(() => server.scopes.list().flatMap(enrich))
-    const list = createMemo(() => enriched().flatMap(colorize))
+    // Supplemental project scopes: server-side projects that are NOT in the
+    // local server.scopes store. These are shown so the sidebar reflects all
+    // projects (not just manually-opened ones), but their expand state lives
+    // in-memory (not persisted) and their sessions load lazily via an
+    // explicit "Load sessions" action rather than auto-loading on expand.
+    // This keeps initial load light even when the server has dozens of
+    // projects.
+    const [supplementalExpanded, setSupplementalExpanded] = createSignal<Set<string>>(new Set())
 
-    onMount(() => {
-      Promise.all(
-        server.scopes.list().map((project) => {
-          return globalSync.scope.loadSessions(project.worktree)
-        }),
-      )
+    function toggleSupplementalExpand(directory: string) {
+      setSupplementalExpanded((prev) => {
+        const next = new Set(prev)
+        if (next.has(directory)) next.delete(directory)
+        else next.add(directory)
+        return next
+      })
+    }
+    const enriched = createMemo(() => server.scopes.list().flatMap(enrich))
+
+    const list = createMemo(() => {
+      // Locally-tracked scopes (user-opened, persisted in localStorage).
+      const local = enriched().flatMap(colorize)
+      const index = scopeIndex()
+      if (index.length === 0) return local
+
+      // Supplement server-side projects that are NOT locally tracked, so the
+      // sidebar reflects all projects (not just manually-opened ones). These
+      // use a separate in-memory expanded set (not persisted) and load their
+      // sessions lazily via an explicit "Load sessions" action rather than
+      // auto-loading on expand — keeping initial load light even when the
+      // server has dozens of projects.
+      const seenDirectories = new Set(local.map((s) => s.worktree))
+      const seenIDs = new Set(local.map((s) => s.id).filter(Boolean))
+      const expandedSet = supplementalExpanded()
+      const supplemented: LocalScope[] = []
+      for (const entry of index) {
+        if (entry.scopeType !== "project") continue
+        if (entry.directory && seenDirectories.has(entry.directory)) continue
+        if (entry.scopeID && seenIDs.has(entry.scopeID)) continue
+        const metadata = globalSync.data.scope.find((s) => s.id === entry.scopeID || s.worktree === entry.directory)
+        supplemented.push({
+          ...(metadata ?? {}),
+          id: entry.scopeID,
+          worktree: entry.directory,
+          expanded: expandedSet.has(entry.directory),
+          icon: { url: entry.icon?.url ?? metadata?.icon?.url, color: entry.icon?.color ?? metadata?.icon?.color },
+        })
+      }
+
+      const raw = [...local, ...supplemented.flatMap(colorize)]
+
+      const order = new Map(index.map((e, i) => [e.scopeID, i]))
+      return raw.toSorted((a, b) => {
+        const aIdx = order.get(a.id ?? "")
+        const bIdx = order.get(b.id ?? "")
+        if (aIdx !== undefined && bIdx !== undefined) return aIdx - bIdx
+        if (aIdx !== undefined) return -1
+        if (bIdx !== undefined) return 1
+        return 0
+      })
     })
 
-    // Session management: sorting, prefetching, archiving, pinning
+    // Whether a project is supplemental (not locally tracked). Supplemental
+    // projects manage expand state in-memory and load sessions lazily.
+    function isSupplementalScope(scope: { worktree: string }): boolean {
+      return !server.scopes.list().some((s) => s.worktree === scope.worktree)
+    }
+
+    onMount(() => {
+      loadScopeIndex().then(() => {
+        loadGlobalRecent()
+        for (const category of ROOT_NAV_SECTION_KEYS) {
+          loadRootNavSection(category)
+        }
+        const projects = list()
+        const loaded = new Set<string>()
+        for (const project of projects) {
+          if (project.expanded) {
+            loadScopeNav(project.worktree)
+            loaded.add(project.worktree)
+          }
+        }
+        const scopeMetadata = new Map(globalSync.data.scope.map((scope) => [scope.id, scope]))
+        let count = 0
+        for (const entry of scopeIndex()) {
+          if (count >= 3) break
+          if (entry.scopeType !== "project") continue
+          const metadata = scopeMetadata.get(entry.scopeID)
+          const dir = metadata?.worktree ?? entry.directory
+          const project = projects.find((candidate) => candidate.worktree === dir || candidate.id === entry.scopeID)
+          const worktree = project?.worktree ?? dir
+          if (worktree && !loaded.has(worktree)) {
+            loadScopeNav(worktree)
+            loaded.add(worktree)
+            count++
+          }
+        }
+      })
+    })
+
     function sortSessions(a: Session, b: Session) {
       const aPinned = a.pinned && a.pinned > 0
       const bPinned = b.pinned && b.pinned > 0
       if (aPinned && !bPinned) return -1
       if (!aPinned && bPinned) return 1
       if (aPinned && bPinned) return b.pinned! - a.pinned!
-      return 0
+      return (b.time.updated ?? b.time.created) - (a.time.updated ?? a.time.created)
     }
 
-    function projectSessions(scope: LocalScope | undefined) {
+    function projectSessions(scope: LocalScope | undefined): Session[] {
       if (!scope) return []
       const dirs = [scope.worktree, ...(scope.sandboxes ?? [])]
-      const stores = dirs.map((dir) => globalSync.child(dir)[0])
-      const sessions = stores
-        .flatMap((s) => s.session.filter((session) => session.scope.directory === s.path.directory))
-        .toSorted(sortSessions)
-      return sessions.filter((s) => !s.parentID)
+      const stores = dirs
+        .map((dir) => globalSync.peekScopeState(dir)?.[0])
+        .filter((store): store is NonNullable<typeof store> => !!store)
+      const byID = new Map<string, Session>()
+      for (const session of stores.flatMap((s) =>
+        s.session.filter((session) => session.scope.directory === s.path.directory),
+      )) {
+        if (!session.parentID) byID.set(session.id, session)
+      }
+      return [...byID.values()].toSorted(sortSessions)
     }
 
-    function projectSessionTotal(scope: LocalScope | undefined) {
-      if (!scope) return 0
-      const dirs = [scope.worktree, ...(scope.sandboxes ?? [])]
-      return dirs.reduce((sum, dir) => {
-        const [store] = globalSync.child(dir)
-        return sum + (store.sessionTotal ?? 0)
-      }, 0)
+    function projectNavEntries(scope: LocalScope | undefined): NavEntry[] {
+      if (!scope) return []
+      const entry = navEntries[scope.worktree]
+      if (!entry) return []
+      return entry.items.toSorted((a, b) => {
+        if (a.pinned && !b.pinned) return -1
+        if (!a.pinned && b.pinned) return 1
+        if (a.pinned && b.pinned) return b.pinned - a.pinned
+        return b.lastActivityAt - a.lastActivityAt || b.id.localeCompare(a.id)
+      })
     }
+
+    function recentNavEntries(): NavEntry[] {
+      return recentEntries.items.toSorted((a, b) => {
+        if (a.pinned && !b.pinned) return -1
+        if (!a.pinned && b.pinned) return 1
+        if (a.pinned && b.pinned) return b.pinned - a.pinned
+        return b.lastActivityAt - a.lastActivityAt || b.id.localeCompare(a.id)
+      })
+    }
+
+    function hasMoreRecent(): boolean {
+      return recentEntries.nextCursor != null
+    }
+
+    // Nav entries are populated via loadScopeNav / loadGlobalRecent / loadRootNavSection.
+    // Session events trigger depth-preserving refreshes via refreshScopeNav / etc.
 
     function childStoreForScope(scope: LocalScope | undefined) {
       if (!scope) return undefined
-      return globalSync.child(scope.worktree)[0]
+      return globalSync.peekScopeState(scope.worktree)?.[0]
     }
 
-    type ChildInfo = {
-      count: number
-      sessions: Session[]
-      running: number
-    }
-
-    function childInfoForScope(scope: LocalScope | undefined): Record<string, ChildInfo> {
-      if (!scope) return {}
-      const store = childStoreForScope(scope)
-      const dirs = [scope.worktree, ...(scope.sandboxes ?? [])]
-      const stores = dirs.map((dir) => globalSync.child(dir)[0])
-      const all = stores.flatMap((s) => s.session.filter((session) => session.scope.directory === s.path.directory))
-      const result: Record<string, ChildInfo> = {}
-      for (const session of all) {
-        if (!session.parentID) continue
-        if (!result[session.parentID]) result[session.parentID] = { count: 0, sessions: [], running: 0 }
-        const info = result[session.parentID]
-        info.count++
-        info.sessions.push(session)
-        if (store) {
-          const status = store.session_status[session.id]
-          if (status?.type === "busy" || status?.type === "retry") info.running++
-        }
-      }
-      // Sort children by updated desc within each parent
-      for (const info of Object.values(result)) {
-        info.sessions.sort((a, b) => (b.time.updated ?? b.time.created) - (a.time.updated ?? a.time.created))
-      }
-      return result
-    }
-
-    // Prefetch queue system
     type PrefetchQueue = {
       inflight: Set<string>
       pending: string[]
@@ -364,9 +766,11 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       return created
     }
 
-    const prefetchMessages = (directory: string, sessionID: string, token: number) => {
-      const [, setChildStore] = globalSync.child(directory)
-      return retry(() => globalSdk.client.session.messages({ directory, sessionID, limit: prefetchChunk }))
+    const prefetchMessages = (scopeKey: string, sessionID: string, token: number) => {
+      const [, setChildStore] = globalSync.ensureScopeState(scopeKey)
+      return retry(() =>
+        globalSdk.client.session.messages({ ...scopeRequest(scopeKey), sessionID, limit: prefetchChunk }),
+      )
         .then((messages) => {
           if (prefetchToken.value !== token) return
           const items = (messages.data ?? []).filter((x) => !!x?.info?.id)
@@ -395,8 +799,8 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         .catch(() => undefined)
     }
 
-    const pumpPrefetch = (directory: string) => {
-      const q = queueFor(directory)
+    const pumpPrefetch = (scopeKey: string) => {
+      const q = queueFor(scopeKey)
       if (q.running >= prefetchConcurrency) return
       const sessionID = q.pending.shift()
       if (!sessionID) return
@@ -404,19 +808,19 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       q.inflight.add(sessionID)
       q.running += 1
       const token = prefetchToken.value
-      void prefetchMessages(directory, sessionID, token).finally(() => {
+      void prefetchMessages(scopeKey, sessionID, token).finally(() => {
         q.running -= 1
         q.inflight.delete(sessionID)
-        pumpPrefetch(directory)
+        pumpPrefetch(scopeKey)
       })
     }
 
     function prefetchSession(session: Session, priority: "high" | "low" = "low") {
-      const directory = session.scope.directory
-      if (!directory) return
-      const [childStore] = globalSync.child(directory)
+      const scopeKey = scopeKeyForSession(session)
+      if (!scopeKey) return
+      const [childStore] = globalSync.ensureScopeState(scopeKey)
       if (childStore.message[session.id] !== undefined) return
-      const q = queueFor(directory)
+      const q = queueFor(scopeKey)
       if (q.inflight.has(session.id)) return
       if (q.pendingSet.has(session.id)) return
       if (priority === "high") q.pending.unshift(session.id)
@@ -427,7 +831,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         if (!dropped) continue
         q.pendingSet.delete(dropped)
       }
-      pumpPrefetch(directory)
+      pumpPrefetch(scopeKey)
     }
 
     function resetPrefetch() {
@@ -439,13 +843,14 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
     }
 
     async function archiveSession(session: Session) {
-      const [childStore, setChildStore] = globalSync.child(session.scope.directory!)
+      const scopeKey = scopeKeyForSession(session)
+      const [childStore, setChildStore] = globalSync.ensureScopeState(scopeKey)
       const sessions = childStore.session ?? []
       const index = sessions.findIndex((s) => s.id === session.id)
       const nextSession = sessions[index + 1] ?? sessions[index - 1]
 
       await globalSdk.client.session.update({
-        directory: session.scope.directory,
+        ...scopeRequest(scopeKey),
         sessionID: session.id,
         time: { archived: Date.now() },
       })
@@ -455,11 +860,20 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
           if (match.found) draft.session.splice(match.index, 1)
         }),
       )
+      const existing = navEntries[scopeKey]
+      if (existing) {
+        setNavEntries(scopeKey, {
+          ...existing,
+          items: existing.items.filter((e) => e.id !== session.id),
+          total: Math.max(0, existing.total - 1),
+        })
+      }
       return nextSession
     }
 
     async function pinSession(session: Session, pinned: boolean) {
-      const [, setChildStore] = globalSync.child(session.scope.directory!)
+      const scopeKey = scopeKeyForSession(session)
+      const [, setChildStore] = globalSync.ensureScopeState(scopeKey)
       const value = pinned ? Date.now() : 0
       setChildStore(
         produce((draft) => {
@@ -467,8 +881,16 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
           if (match.found) draft.session[match.index].pinned = value
         }),
       )
+      const existing = navEntries[scopeKey]
+      if (existing) {
+        setNavEntries(
+          scopeKey,
+          "items",
+          (items) => items.map((e) => (e.id === session.id ? { ...e, pinned: value } : e)) as NavEntry[],
+        )
+      }
       await globalSdk.client.session.update({
-        directory: session.scope.directory,
+        ...scopeRequest(scopeKey),
         sessionID: session.id,
         pinned: value,
       })
@@ -480,29 +902,42 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       ready,
       isDesktop,
       nav: {
-        sortSessions,
         projectSessions,
-        projectSessionTotal,
+        projectNavEntries,
+        rootNavEntries: rootNavEntriesFor,
+        hasMoreRootNavSection,
+        loadMoreRootNavSection,
+        recentEntries: recentNavEntries,
+        hasMoreRecent,
+        loadMoreNav,
         childStoreForScope,
-        childInfoForScope,
         prefetchSession,
         resetPrefetch,
         archiveSession,
         pinSession,
+        loadScopeNav: (directory: string) => loadScopeNav(directory),
+        navEntries: () => navEntries,
+        scopeIndexLoaded,
       },
       scopes: {
         list,
-        open(directory: string) {
+        isSupplemental: isSupplementalScope,
+        toggleSupplementalExpand,
+        async open(directory: string) {
           const root = roots().get(directory) ?? directory
           if (server.scopes.list().find((x) => x.worktree === root)) return
-          globalSync.scope.loadSessions(root)
           server.scopes.open(root)
+          await loadScopeNav(root)
+          loadScopeIndex()
         },
         close(directory: string) {
           server.scopes.close(directory)
         },
         expand(directory: string) {
           server.scopes.expand(directory)
+          if (!navEntries[directory]) {
+            loadScopeNav(directory)
+          }
         },
         collapse(directory: string) {
           server.scopes.collapse(directory)
@@ -544,7 +979,6 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         },
       },
       review: {
-        // TODO: redesign sidebar — disabled for now
         opened: createMemo(() => false),
         diffStyle: createMemo(() => (store.review?.diffStyle ?? "split") as ReviewDiffStyle),
         setDiffStyle(diffStyle: ReviewDiffStyle) {
@@ -567,6 +1001,46 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
           }
           setStore("session", "width", width)
         },
+      },
+      workspace(sessionKey: string) {
+        touch(sessionKey)
+        const ws = createMemo(() => store.workspaceSessions[sessionKey] ?? { opened: false, active: null })
+        return {
+          opened: createMemo(() => ws().opened),
+          active: createMemo(() => ws().active),
+          width: createMemo(() => ws().width ?? computeDefaultWorkspaceWidth(window.innerWidth)),
+          open() {
+            setStore("workspaceSessions", sessionKey, {
+              opened: true,
+              active: ws().active ?? null,
+              width: ws().width ?? computeDefaultWorkspaceWidth(window.innerWidth),
+            })
+          },
+          close() {
+            setStore("workspaceSessions", sessionKey, "opened", false)
+          },
+          toggle() {
+            setStore("workspaceSessions", sessionKey, "opened", (x) => !(x ?? false))
+          },
+          setActive(tool: string | null) {
+            if (!store.workspaceSessions[sessionKey]) {
+              setStore("workspaceSessions", sessionKey, {
+                opened: false,
+                active: tool,
+                width: computeDefaultWorkspaceWidth(window.innerWidth),
+              })
+            } else {
+              setStore("workspaceSessions", sessionKey, "active", tool)
+            }
+          },
+          setWidth(width: number) {
+            if (!store.workspaceSessions[sessionKey]) {
+              setStore("workspaceSessions", sessionKey, { opened: false, active: null, width })
+            } else {
+              setStore("workspaceSessions", sessionKey, "width", width)
+            }
+          },
+        }
       },
       mobileSidebar: {
         opened: createMemo(() => store.mobileSidebar?.opened ?? false),

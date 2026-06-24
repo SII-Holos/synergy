@@ -5,7 +5,7 @@ import * as prompts from "@clack/prompts"
 import { cmd } from "../cmd"
 import { UI } from "../../ui"
 import { Global } from "../../../global"
-import { SingleInstance } from "../../../daemon/single-instance"
+import { ServerProcessLock } from "../../../daemon/server-process-lock"
 import {
   CATEGORIES,
   scanCategories,
@@ -154,7 +154,7 @@ export async function executeMove(opts: MoveOptions) {
   }
 
   // Step 4: Check running server
-  const lock = await SingleInstance.read().catch(() => undefined)
+  const lock = await ServerProcessLock.read().catch(() => undefined)
   if (lock && isPidAlive(lock.pid)) {
     prompts.log.warn(
       `Synergy server is running (pid ${lock.pid}). Moving data while running may produce inconsistent results.`,

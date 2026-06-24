@@ -1,7 +1,7 @@
 import type { Argv } from "yargs"
 import { Session } from "../../session"
 import { cmd } from "./cmd"
-import { bootstrap } from "../bootstrap"
+import { withScopeContext } from "../scope"
 import { UI } from "../ui"
 import * as prompts from "@clack/prompts"
 import { EOL } from "os"
@@ -16,7 +16,7 @@ export const ExportCommand = cmd({
     })
   },
   handler: async (args) => {
-    await bootstrap(process.cwd(), async () => {
+    await withScopeContext(process.cwd(), async () => {
       let sessionID = args.sessionID
       process.stderr.write(`Exporting session: ${sessionID ?? "latest"}`)
 

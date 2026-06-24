@@ -4,9 +4,8 @@ import { Tool } from "./tool"
 import { runSg } from "./ast-grep/cli"
 import { AST_GREP_LANGUAGES } from "./ast-grep/types"
 import { conflictWarning, detectConflicts } from "../conflict/detect"
-import { Instance } from "../scope/instance"
+import { ScopeContext } from "../scope/context"
 import {
-  assertInsideOrAsk,
   displayPath,
   formatRecordedBlock,
   formatSelectedLines,
@@ -14,6 +13,7 @@ import {
   readTextFileUnderSnapshotCap,
   resolveFilePath,
   splitDisplayLines,
+  recordSeenSessionLines,
 } from "./anchored-file"
 
 const DEFAULT_AST_LIMIT = 50
@@ -95,17 +95,13 @@ export const ParseCodeTool = Tool.define("parse_code", {
       metadata: { pattern: params.pattern, lang: params.lang, paths: params.paths, globs: params.globs },
     })
 
-    for (const searchPath of params.paths?.length ? params.paths.map(resolveFilePath) : [Instance.directory]) {
-      await assertInsideOrAsk(searchPath, ctx)
-    }
-
     const result = await runSg({
       pattern: params.pattern,
       lang: params.lang,
       paths: params.paths,
       globs: params.globs,
       context: params.context,
-      cwd: Instance.directory,
+      cwd: ScopeContext.current.directory,
     })
     const limit = normalizeLimit(params.limit)
     const skip = Math.max(params.skip ?? 0, 0)
@@ -180,6 +176,7 @@ export const ParseCodeTool = Tool.define("parse_code", {
       matchLines[pathLabel] = lines
       matchRanges[pathLabel] = entry.ranges
       tags[pathLabel] = tag
+      recordSeenSessionLines(ctx.sessionID, filePath, lines, tag)
       if (conflict.hasConflicts) conflicts[pathLabel] = conflict.conflicts
     }
 

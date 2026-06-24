@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import { Category } from "../../src/cortex/category"
 import { Config } from "../../src/config/config"
-import { Instance } from "../../src/scope/instance"
+import { ScopeContext } from "../../src/scope/context"
 import { tmpdir } from "../fixture/fixture"
 
 describe("Category", () => {
@@ -36,7 +36,7 @@ describe("Category", () => {
   describe("resolve", () => {
     test("returns undefined for undefined name", async () => {
       await using tmp = await tmpdir({ git: true })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const result = await Category.resolve(undefined)
@@ -47,7 +47,7 @@ describe("Category", () => {
 
     test("returns undefined for 'none'", async () => {
       await using tmp = await tmpdir({ git: true })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const result = await Category.resolve("none")
@@ -66,7 +66,7 @@ describe("Category", () => {
           mid_model: "mid/generalist",
         },
       })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           await Config.state.reset()
@@ -79,7 +79,7 @@ describe("Category", () => {
 
     test("returns undefined for unknown category", async () => {
       await using tmp = await tmpdir({ git: true })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const result = await Category.resolve("nonexistent")
@@ -101,7 +101,7 @@ describe("Category", () => {
           },
         },
       })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           await Config.state.reset()
@@ -128,7 +128,7 @@ describe("Category", () => {
           },
         },
       })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           await Config.state.reset()
@@ -143,7 +143,7 @@ describe("Category", () => {
   describe("list", () => {
     test("returns all builtin categories", async () => {
       await using tmp = await tmpdir({ git: true })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const categories = await Category.list()
@@ -171,7 +171,7 @@ describe("Category", () => {
           },
         },
       })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           await Config.state.reset()
@@ -194,7 +194,7 @@ describe("Category", () => {
           },
         },
       })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const categories = await Category.list()

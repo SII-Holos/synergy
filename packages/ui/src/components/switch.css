@@ -22,26 +22,23 @@
     width: 28px;
     height: 16px;
     flex-shrink: 0;
-    border-radius: 9999px;
-    border: 1px solid var(--border-weak-base);
-    background: var(--surface-base);
+    border-radius: var(--radius-full);
+    border: 1px solid color-mix(in oklch, var(--border-weak-base) 60%, transparent);
+    background: color-mix(in oklch, var(--surface-raised-base) 60%, transparent);
     transition:
-      background-color 150ms,
-      border-color 150ms;
+      background-color var(--motion-duration-base) var(--motion-ease-standard),
+      border-color var(--motion-duration-base) var(--motion-ease-standard);
   }
 
   [data-slot="switch-thumb"] {
     width: 12px;
     height: 12px;
-    border-radius: 9999px;
-    background: var(--icon-base);
-    box-shadow:
-      0 1px 2px -1px rgba(19, 16, 16, 0.04),
-      0 1px 2px 0 rgba(19, 16, 16, 0.06);
+    border-radius: var(--radius-full);
+    background: var(--text-weak);
     transform: translateX(1px);
     transition:
-      transform 150ms,
-      background-color 150ms;
+      transform var(--motion-duration-base) var(--motion-ease-standard),
+      background-color var(--motion-duration-base) var(--motion-ease-standard);
   }
 
   [data-slot="switch-label"] {
@@ -83,18 +80,17 @@
   }
 
   &[data-checked] [data-slot="switch-control"] {
-    border-color: var(--icon-base);
-    background-color: var(--icon-base);
+    border-color: var(--text-interactive-base);
+    background-color: var(--text-interactive-base);
   }
 
   &[data-checked] [data-slot="switch-thumb"] {
     transform: translateX(13px);
-    background-color: var(--icon-invert-base);
+    background-color: var(--text-on-interactive-base);
   }
-
   &[data-checked]:hover:not([data-disabled], [data-readonly]) [data-slot="switch-control"] {
-    border-color: var(--icon-hover);
-    background-color: var(--icon-hover);
+    border-color: color-mix(in oklch, var(--text-interactive-base) 85%, #000);
+    background-color: color-mix(in oklch, var(--text-interactive-base) 85%, #000);
   }
 
   &[data-disabled] {

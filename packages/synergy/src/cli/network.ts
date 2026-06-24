@@ -1,5 +1,6 @@
 import type { Argv, InferredOptionTypes } from "yargs"
 import { Config } from "../config/config"
+import { ensureMigrations } from "../migration"
 
 interface ResolveNetworkInput {
   argv?: string[]
@@ -54,6 +55,8 @@ export async function isServerReachable(url: string): Promise<boolean> {
 }
 
 export async function resolveNetworkOptions(args: NetworkOptions) {
+  await ensureMigrations()
+  Config.global.reset()
   return resolveNetworkArgv({
     argv: process.argv,
     config: await Config.global(),
@@ -77,6 +80,10 @@ export async function resolveNetworkArgv(
   },
 ) {
   const argv = input.argv ?? process.argv
+  if (!input.config) {
+    await ensureMigrations()
+    Config.global.reset()
+  }
   const config = input.config ?? (await Config.global())
   const portExplicitlySet = argv.includes("--port")
   const hostnameExplicitlySet = argv.includes("--hostname")

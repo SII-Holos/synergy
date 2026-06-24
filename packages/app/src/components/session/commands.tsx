@@ -1,14 +1,13 @@
 import { DialogSelectFile, DialogSelectModel, DialogSelectMcp } from "@/components/dialog"
 import type { useCommand } from "@/context/command"
 import type { useLocal } from "@/context/local"
-import type { usePermission } from "@/context/permission"
 import type { usePrompt } from "@/context/prompt"
 import type { useSDK } from "@/context/sdk"
 import type { useSync } from "@/context/sync"
 import type { useTerminal } from "@/context/terminal"
 import type { useLayout } from "@/context/layout"
+import { useWorkspace } from "@/context/workspace"
 import { extractPromptFromParts } from "@/utils/prompt"
-import { isGlobalScope } from "@/utils/scope"
 import type { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import type { UserMessage } from "@ericsanchezok/synergy-sdk"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
@@ -23,7 +22,6 @@ export function useSessionCommands(params: {
   terminal: ReturnType<typeof useTerminal>
   layout: ReturnType<typeof useLayout>
   prompt: ReturnType<typeof usePrompt>
-  permission: ReturnType<typeof usePermission>
   navigate: ReturnType<typeof useNavigate>
   routeParams: { dir: string; id?: string }
   info: () => ReturnType<ReturnType<typeof useSync>["session"]["get"]>
@@ -46,7 +44,6 @@ export function useSessionCommands(params: {
     terminal,
     layout,
     prompt,
-    permission,
     navigate,
     routeParams,
     info,
@@ -60,20 +57,17 @@ export function useSessionCommands(params: {
     navigateMessageByOffset,
   } = params
 
+  const workspace = useWorkspace()
+
   command.register(() => [
     {
       id: "session.new",
-      title: isGlobalScope(sdk.directory) ? "Reset conversation" : "New session",
-      description: isGlobalScope(sdk.directory)
-        ? "Archive current conversation and start fresh"
-        : "Create a new session",
+      title: "New session",
+      description: "Start a fresh conversation",
       category: "Session",
       keybind: "mod+shift+s",
       slash: "new",
-      onSelect: async () => {
-        if (isGlobalScope(sdk.directory)) {
-          await sdk.client.channel.app.reset()
-        }
+      onSelect: () => {
         navigate(`/${routeParams.dir}/session`)
       },
     },
@@ -94,6 +88,19 @@ export function useSessionCommands(params: {
       keybind: "ctrl+`",
       slash: "terminal",
       onSelect: () => layout.terminal.toggle(),
+    },
+    {
+      id: "workspace.close",
+      title: "Close workspace drawer",
+      description: "Close the workspace drawer",
+      category: "View",
+      keybind: "mod+shift+w",
+      disabled: !routeParams.id || !workspace.opened(),
+      slash: "workspace",
+      onSelect: () => {
+        workspace.closePanel()
+        workspace.setActive(null)
+      },
     },
     {
       // TODO: redesign sidebar — disabled for now
@@ -189,29 +196,9 @@ export function useSessionCommands(params: {
       onSelect: () => {
         local.model.variant.cycle()
         showToast({
+          type: "info",
           title: "Thinking effort changed",
           description: "The thinking effort has been changed to " + (local.model.variant.current() ?? "Default"),
-        })
-      },
-    },
-    {
-      id: "permissions.allowall",
-      title:
-        routeParams.id && permission.isAllowingAll(routeParams.id)
-          ? "Stop allowing all permissions"
-          : "Allow all permissions",
-      category: "Permissions",
-      keybind: "mod+shift+y",
-      disabled: !routeParams.id || !permission.permissionsEnabled(),
-      onSelect: () => {
-        const sessionID = routeParams.id
-        if (!sessionID) return
-        permission.toggleAllowAll(sessionID, sdk.directory)
-        showToast({
-          title: permission.isAllowingAll(sessionID) ? "Allowing all permissions" : "Stopped allowing all permissions",
-          description: permission.isAllowingAll(sessionID)
-            ? "All permission requests will be automatically approved"
-            : "Permission requests will require approval",
         })
       },
     },
@@ -279,6 +266,7 @@ export function useSessionCommands(params: {
         const model = local.model.current()
         if (!model) {
           showToast({
+            type: "warning",
             title: "No model selected",
             description: "Connect a provider to summarize this session",
           })

@@ -5,7 +5,7 @@ import { Tool } from "./tool"
 import { LSP } from "../lsp"
 import { FileTime } from "../file/time"
 import DESCRIPTION from "./read.txt"
-import { Instance } from "../scope/instance"
+import { ScopeContext } from "../scope/context"
 import { Attachment } from "../attachment"
 
 const DEFAULT_READ_LIMIT = 2000
@@ -23,21 +23,9 @@ export const ReadTool = Tool.define("read", {
   async execute(params, ctx) {
     let filepath = params.filePath
     if (!path.isAbsolute(filepath)) {
-      filepath = path.join(Instance.directory, filepath)
+      filepath = path.join(ScopeContext.current.directory, filepath)
     }
-    const title = path.relative(Instance.directory, filepath)
-
-    if (!ctx.extra?.["bypassCwdCheck"] && !Instance.contains(filepath)) {
-      const parentDir = path.dirname(filepath)
-      await ctx.ask({
-        permission: "external_directory",
-        patterns: [parentDir],
-        metadata: {
-          filepath,
-          parentDir,
-        },
-      })
-    }
+    const title = path.relative(ScopeContext.current.directory, filepath)
 
     await ctx.ask({
       permission: "read",
@@ -94,7 +82,7 @@ export const ReadTool = Tool.define("read", {
       const text = await Attachment.extractTextFromFile(filepath)
       const lines = text.split("\n")
       const limit = Math.max(params.limit ?? DEFAULT_READ_LIMIT, MIN_READ_LIMIT)
-      const offset = params.offset || 0
+      const offset = params.offset ?? 0
 
       const raw: string[] = []
       let bytes = 0
@@ -159,7 +147,7 @@ export const ReadTool = Tool.define("read", {
     if (isBinary) throw new Error(`Cannot read binary file: ${filepath}`)
 
     const limit = Math.max(params.limit ?? DEFAULT_READ_LIMIT, MIN_READ_LIMIT)
-    const offset = params.offset || 0
+    const offset = params.offset ?? 0
     const lines = await file.text().then((text) => text.split("\n"))
 
     const raw: string[] = []

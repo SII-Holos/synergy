@@ -106,6 +106,7 @@ export namespace LLM {
     model: Provider.Model
     agent: Agent.Info
     system: string[]
+    systemCacheBreakpoint?: number
     abort: AbortSignal
     messages: ModelMessage[]
     small?: boolean
@@ -128,31 +129,24 @@ export namespace LLM {
       providerID: input.model.providerID,
     })
     const langTimer = l.time("provider.getLanguage")
-    const [language, cfg] = await Promise.all([Provider.getLanguage(input.model), Config.get()])
+    const [language, cfg] = await Promise.all([Provider.getLanguage(input.model), Config.current()])
     langTimer.stop()
 
     const systemTimer = l.time("system.assembly")
 
     const system: string[] = []
+    const baseSystem = input.agent.prompt ? [input.agent.prompt] : SystemPrompt.provider(input.model)
+    const baseSystemLength = baseSystem.length
 
     // Part 1: Agent prompt (most stable, always first for caching)
     // Kept separate from custom parts so the static agent prompt can be
     // cached independently even when dynamic parts (env block with timestamps)
     // change on each invoke.
-    if (input.agent.prompt) {
-      system.push(input.agent.prompt)
-    } else {
-      system.push(...SystemPrompt.provider(input.model))
-    }
+    system.push(...baseSystem)
 
     // Part 2: All custom system parts from invoke.ts (ordered static → dynamic)
-    const customSystem = [...input.system, ...(input.user.system ? [input.user.system] : [])]
-      .filter((x) => x)
-      .join("\n")
-
-    if (customSystem) {
-      system.push(customSystem)
-    }
+    system.push(...input.system.filter((x) => x))
+    if (input.user.system) system.push(input.user.system)
 
     const original = clone(system)
     await Plugin.trigger("experimental.chat.system.transform", {}, { system })
@@ -269,7 +263,12 @@ export namespace LLM {
             async transformParams(args) {
               if (args.type === "stream") {
                 // @ts-expect-error
-                args.params.prompt = ProviderTransform.message(args.params.prompt, input.model)
+                args.params.prompt = ProviderTransform.message(args.params.prompt, input.model, {
+                  systemCacheBreakpoint:
+                    input.systemCacheBreakpoint === undefined
+                      ? undefined
+                      : baseSystemLength + input.systemCacheBreakpoint,
+                })
               }
               return args.params
             },

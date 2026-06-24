@@ -4,7 +4,8 @@ import { BusEvent } from "@/bus/bus-event"
 import { Identifier } from "@/id/id"
 import { SessionManager } from "@/session/manager"
 import { SessionInteraction } from "@/session/interaction"
-import { Instance } from "@/scope/instance"
+import { ScopeContext } from "@/scope/context"
+import { ScopedState } from "@/scope/scoped-state"
 import { Log } from "@/util/log"
 import z from "zod"
 
@@ -92,7 +93,7 @@ export namespace Question {
     ),
   }
 
-  const state = Instance.state(async () => {
+  const state = ScopedState.create(async () => {
     const pending: Record<
       string,
       {
@@ -140,7 +141,7 @@ export namespace Question {
     // Read config and adjust timeout asynchronously — pending entry is already visible with default timeout
     void (async () => {
       try {
-        const cfg = await Config.get()
+        const cfg = await Config.current()
         const configuredTimeout = cfg.question?.timeout
         const timeout = configuredTimeout === 0 ? undefined : (configuredTimeout ?? DEFAULT_TIMEOUT)
 
@@ -180,7 +181,7 @@ export namespace Question {
           origReject(e)
         }
       } catch {
-        // Config.get() failed — keep default timeout, question works without config
+        // Config.current() failed — keep default timeout, question works without config
       }
     })()
 

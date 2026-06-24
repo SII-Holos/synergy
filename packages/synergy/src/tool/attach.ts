@@ -2,7 +2,7 @@ import z from "zod"
 import path from "path"
 import { Tool } from "./tool"
 import { Asset } from "../asset/asset"
-import { Instance } from "../scope/instance"
+import { ScopeContext } from "../scope/context"
 import { Identifier } from "../id/id"
 
 const DESCRIPTION = `Deliver files to the user by making them available as conversation attachments. Use this after generating or obtaining user-facing artifacts such as PDFs, images, documents, archives, exports, plots, rendered figures, screenshots, or compiled paper outputs.
@@ -42,7 +42,7 @@ export const AttachTool = Tool.define("attach", {
     for (let i = 0; i < paths.length; i++) {
       let filePath = paths[i]
       if (!path.isAbsolute(filePath)) {
-        filePath = path.join(Instance.directory, filePath)
+        filePath = path.join(ScopeContext.current.directory, filePath)
       }
 
       const file = Bun.file(filePath)

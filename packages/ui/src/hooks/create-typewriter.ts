@@ -1,20 +1,20 @@
 import { createEffect, createSignal, onCleanup } from "solid-js"
 
-const MAX_RATE = 280
+const MAX_RATE = 800
 const MIN_RATE = 18
-const DRAIN_RATE = 360
+const DRAIN_RATE = 800
 const EMIT_INTERVAL_MS = 16
 const MAX_ELAPSED_MS = 100
 const INGRESS_SMOOTHING_MS = 260
 const INGRESS_DECAY_MS = 640
-const TARGET_LOOKAHEAD_MS = 340
+const TARGET_LOOKAHEAD_MS = 240
 const MIN_TARGET_BUFFER = 16
-const MAX_TARGET_BUFFER = 80
+const MAX_TARGET_BUFFER = 160
 const GRACE_WINDOW_MS = 220
 const GRACE_RATE_FLOOR = 0.55
-const RATE_SMOOTHING_MS = 180
-const KP = 0.35
-const KI = 0.08
+const RATE_SMOOTHING_MS = 80
+const KP = 0.6
+const KI = 0.15
 const MAX_INTEGRAL = 400
 
 export interface TypewriterOptions {

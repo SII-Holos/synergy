@@ -1,11 +1,11 @@
 import type { Argv } from "yargs"
 import { Session } from "../../session"
 import { cmd } from "./cmd"
-import { bootstrap } from "../bootstrap"
+import { withScopeContext } from "../scope"
 import { Identifier } from "../../id/id"
 import { Storage } from "../../storage/storage"
 import { StoragePath } from "../../storage/path"
-import { Instance } from "../../scope/instance"
+import { ScopeContext } from "../../scope/context"
 import { EOL } from "os"
 
 export const ImportCommand = cmd({
@@ -19,7 +19,7 @@ export const ImportCommand = cmd({
     })
   },
   handler: async (args) => {
-    await bootstrap(process.cwd(), async () => {
+    await withScopeContext(process.cwd(), async () => {
       let exportData:
         | {
             info: Session.Info
@@ -39,14 +39,17 @@ export const ImportCommand = cmd({
       }
 
       await Storage.write(
-        StoragePath.sessionInfo(Identifier.asScopeID(Instance.scope.id), Identifier.asSessionID(exportData.info.id)),
+        StoragePath.sessionInfo(
+          Identifier.asScopeID(ScopeContext.current.scope.id),
+          Identifier.asSessionID(exportData.info.id),
+        ),
         exportData.info,
       )
 
       for (const msg of exportData.messages) {
         await Storage.write(
           StoragePath.messageInfo(
-            Identifier.asScopeID(Instance.scope.id),
+            Identifier.asScopeID(ScopeContext.current.scope.id),
             Identifier.asSessionID(exportData.info.id),
             Identifier.asMessageID(msg.info.id),
           ),
@@ -56,7 +59,7 @@ export const ImportCommand = cmd({
         for (const part of msg.parts) {
           await Storage.write(
             StoragePath.messagePart(
-              Identifier.asScopeID(Instance.scope.id),
+              Identifier.asScopeID(ScopeContext.current.scope.id),
               Identifier.asSessionID(exportData.info.id),
               Identifier.asMessageID(msg.info.id),
               Identifier.asPartID(part.id),

@@ -2,7 +2,7 @@ import { test, expect } from "bun:test"
 import { Question } from "../../src/question"
 import { Session } from "../../src/session"
 import { SessionInteraction } from "../../src/session/interaction"
-import { Instance } from "../../src/scope/instance"
+import { ScopeContext } from "../../src/scope/context"
 import { tmpdir } from "../fixture/fixture"
 
 async function interactiveSessionID() {
@@ -12,7 +12,7 @@ async function interactiveSessionID() {
 
 test("ask - returns pending promise", async () => {
   await using tmp = await tmpdir({ git: true })
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
       const promise = Question.ask({
@@ -35,7 +35,7 @@ test("ask - returns pending promise", async () => {
 
 test("ask - adds to pending list", async () => {
   await using tmp = await tmpdir({ git: true })
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
       const questions = [
@@ -63,7 +63,7 @@ test("ask - adds to pending list", async () => {
 
 test("reply - removes from pending list", async () => {
   await using tmp = await tmpdir({ git: true })
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
       Question.ask({
@@ -96,7 +96,7 @@ test("reply - removes from pending list", async () => {
 
 test("reply - does nothing for unknown requestID", async () => {
   await using tmp = await tmpdir({ git: true })
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
       await Question.reply({
@@ -112,7 +112,7 @@ test("reply - does nothing for unknown requestID", async () => {
 
 test("reject - throws RejectedError", async () => {
   await using tmp = await tmpdir({ git: true })
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
       const askPromise = Question.ask({
@@ -144,7 +144,7 @@ test("reject - throws RejectedError", async () => {
 
 test("reject - does nothing for unknown requestID", async () => {
   await using tmp = await tmpdir({ git: true })
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
       await Question.reject("que_unknown")
@@ -157,7 +157,7 @@ test("reject - does nothing for unknown requestID", async () => {
 
 test("ask - rejects for unattended sessions", async () => {
   await using tmp = await tmpdir({ git: true })
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
       const session = await Session.create({
@@ -184,7 +184,7 @@ test("ask - rejects for unattended sessions", async () => {
 
 test("ask - handles multiple questions", async () => {
   await using tmp = await tmpdir({ git: true })
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
       const questions = [
@@ -228,7 +228,7 @@ test("ask - handles multiple questions", async () => {
 
 test("list - returns all pending requests", async () => {
   await using tmp = await tmpdir({ git: true })
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
       Question.ask({
@@ -261,7 +261,7 @@ test("list - returns all pending requests", async () => {
 
 test("list - returns empty when no pending", async () => {
   await using tmp = await tmpdir({ git: true })
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
       const pending = await Question.list()

@@ -3,7 +3,7 @@ import { Cron } from "croner"
 import { Storage } from "../storage/storage"
 import { StoragePath } from "../storage/path"
 import { Identifier } from "../id/id"
-import { Instance } from "../scope/instance"
+import { ScopeContext } from "../scope/context"
 import { Bus } from "../bus"
 import { AgendaEvent } from "./event"
 import { AgendaTypes } from "./types"
@@ -12,6 +12,7 @@ import { Session } from "../session"
 
 export namespace AgendaStore {
   const log = Log.create({ service: "agenda.store" })
+  const HOME_SCOPE_ID = "home"
 
   // ---------------------------------------------------------------------------
   // Run index — per-scope, sorted by time.started descending
@@ -90,7 +91,7 @@ export namespace AgendaStore {
     input: AgendaTypes.CreateInput,
     id: string = Identifier.ascending("agenda"),
   ): Promise<AgendaTypes.Item> {
-    const scope = Instance.scope
+    const scope = ScopeContext.current.scope
     const now = Date.now()
     const triggers = input.triggers ?? []
 
@@ -111,6 +112,7 @@ export namespace AgendaStore {
       prompt: input.prompt,
       agent: input.agent,
       model: input.model,
+      sessionMode: input.sessionMode,
       sessionRefs: input.sessionRefs,
       timeout: input.timeout,
       wake: input.wake ?? true,
@@ -126,7 +128,7 @@ export namespace AgendaStore {
       time: { created: now, updated: now },
     }
 
-    const scopeID = Identifier.asScopeID(item.global ? "global" : scope.id)
+    const scopeID = Identifier.asScopeID(item.global ? HOME_SCOPE_ID : scope.id)
     await Storage.write(StoragePath.agendaItem(scopeID, id), item)
     log.info("created", { id, title: input.title, global: item.global })
     await Bus.publish(AgendaEvent.ItemCreated, { item })
@@ -149,8 +151,8 @@ export namespace AgendaStore {
   }
 
   export async function listForScope(scopeID: string): Promise<AgendaTypes.Item[]> {
-    if (scopeID === "global") return list("global")
-    const [scoped, global] = await Promise.all([list(scopeID), list("global")])
+    if (scopeID === HOME_SCOPE_ID) return list(HOME_SCOPE_ID)
+    const [scoped, global] = await Promise.all([list(scopeID), list(HOME_SCOPE_ID)])
     return [...scoped, ...global].sort((a, b) => b.time.created - a.time.created)
   }
 
@@ -161,6 +163,7 @@ export namespace AgendaStore {
     options?: { recomputeNextRunAt?: boolean },
   ): Promise<AgendaTypes.Item> {
     const sid = Identifier.asScopeID(scopeID)
+    const now = Date.now()
     const item = await Storage.update<AgendaTypes.Item>(StoragePath.agendaItem(sid, itemID), (draft) => {
       if (patch.title !== undefined) draft.title = patch.title
       if (patch.description !== undefined) draft.description = patch.description
@@ -173,18 +176,21 @@ export namespace AgendaStore {
           }
         }
         draft.triggers = patch.triggers
-        draft.state.nextRunAt = computeNextRunAt(patch.triggers)
+        draft.state.nextRunAt = computeNextRunAt(patch.triggers, now)
       }
       if (patch.prompt !== undefined) draft.prompt = patch.prompt
       if (patch.global !== undefined) draft.global = patch.global
       if (patch.wake !== undefined) draft.wake = patch.wake
       if (patch.silent !== undefined) draft.silent = patch.silent
       if (patch.agent !== undefined) draft.agent = patch.agent
+      if (patch.model !== undefined) draft.model = patch.model
+      if (patch.sessionMode !== undefined) draft.sessionMode = patch.sessionMode
       if (patch.sessionRefs !== undefined) draft.sessionRefs = patch.sessionRefs
+      if (patch.timeout !== undefined) draft.timeout = patch.timeout
       if (options?.recomputeNextRunAt) {
-        draft.state.nextRunAt = computeNextRunAt(draft.triggers)
+        draft.state.nextRunAt = computeNextRunAt(draft.triggers, now)
       }
-      draft.time.updated = Date.now()
+      draft.time.updated = now
     })
     log.info("updated", { id: itemID })
     await Bus.publish(AgendaEvent.ItemUpdated, { item })
@@ -366,9 +372,9 @@ export namespace AgendaStore {
 
     // Determine which scopes to query
     const scopeIDs = input?.scopeID
-      ? input.scopeID === "global"
-        ? [Identifier.asScopeID("global")]
-        : [Identifier.asScopeID(input.scopeID), Identifier.asScopeID("global")]
+      ? input.scopeID === HOME_SCOPE_ID
+        ? [Identifier.asScopeID(HOME_SCOPE_ID)]
+        : [Identifier.asScopeID(input.scopeID), Identifier.asScopeID(HOME_SCOPE_ID)]
       : await Storage.scan(["agenda", "items"])
 
     // Collect index entries from all relevant scopes
@@ -540,6 +546,67 @@ export namespace AgendaStore {
     return result
   }
 
+  function toSessionAgendaTrigger(trigger: AgendaTypes.Trigger): AgendaTypes.SessionAgendaTrigger {
+    switch (trigger.type) {
+      case "every":
+        return { type: trigger.type, interval: trigger.interval }
+      case "delay":
+        return { type: trigger.type, delay: trigger.delay }
+      default:
+        return { type: trigger.type }
+    }
+  }
+
+  function toSessionAgendaItem(item: AgendaTypes.Item): AgendaTypes.SessionAgendaItem {
+    if (item.status !== "active" && item.status !== "pending") {
+      throw new Error(`Cannot project non-wakeup agenda item '${item.id}' with status '${item.status}'`)
+    }
+
+    return {
+      itemID: item.id,
+      title: item.title,
+      status: item.status,
+      nextRunAt: item.state.nextRunAt ?? null,
+      triggerTypes: item.triggers.map((trigger) => trigger.type),
+      triggers: item.triggers.map(toSessionAgendaTrigger),
+      global: item.global,
+    }
+  }
+
+  export async function listForSessionWakeups(input: {
+    sessionID: string
+    scopeID: string
+    limit: number
+    offset: number
+    now?: number
+  }): Promise<AgendaTypes.SessionAgendaResponse> {
+    const now = input.now ?? Date.now()
+    const items = await listForScope(input.scopeID)
+    const matching = items
+      .filter((item) => item.status === "active" || item.status === "pending")
+      .filter((item) => item.wake !== false && item.silent !== true)
+      .filter((item) => item.origin.sessionID === input.sessionID)
+      .filter((item) => item.state.nextRunAt === undefined || item.state.nextRunAt > now)
+      .sort((a, b) => {
+        const aNext = a.state.nextRunAt ?? Number.POSITIVE_INFINITY
+        const bNext = b.state.nextRunAt ?? Number.POSITIVE_INFINITY
+        return aNext - bNext
+      })
+
+    const total = matching.length
+    const paged = input.limit === 0 ? [] : matching.slice(input.offset, input.offset + input.limit)
+    return {
+      sessionID: input.sessionID,
+      count: total,
+      hasActiveAgenda: total > 0,
+      items: paged.map(toSessionAgendaItem),
+      offset: input.offset,
+      limit: input.limit,
+      total,
+      hasMore: input.offset + paged.length < total,
+    }
+  }
+
   export async function loadActive(): Promise<AgendaTypes.Item[]> {
     const scopeIDs = await Storage.scan(["agenda", "items"])
     const batches = await Promise.all(scopeIDs.map((scopeID) => list(scopeID)))
@@ -569,12 +636,12 @@ export namespace AgendaStore {
     const sid = Identifier.asScopeID(scopeID)
     const item = await Storage.read<AgendaTypes.Item>(StoragePath.agendaItem(sid, itemID)).catch(() => undefined)
     if (item) return { item, scopeID }
-    if (scopeID !== "global") {
-      const globalSid = Identifier.asScopeID("global")
+    if (scopeID !== HOME_SCOPE_ID) {
+      const globalSid = Identifier.asScopeID(HOME_SCOPE_ID)
       const globalItem = await Storage.read<AgendaTypes.Item>(StoragePath.agendaItem(globalSid, itemID)).catch(
         () => undefined,
       )
-      if (globalItem) return { item: globalItem, scopeID: "global" }
+      if (globalItem) return { item: globalItem, scopeID: HOME_SCOPE_ID }
     }
     throw new Error(`Agenda item not found: ${itemID}`)
   }

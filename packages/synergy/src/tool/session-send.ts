@@ -4,15 +4,10 @@ import { Session } from "../session"
 import { SessionManager } from "../session/manager"
 import { MessageV2 } from "../session/message-v2"
 import { Identifier } from "../id/id"
-import { AppChannel } from "../channel/app"
-import { Contact } from "../holos/contact"
-import { HolosRuntime } from "../holos/runtime"
 import DESCRIPTION from "./session-send.txt"
 
 const parameters = z.object({
-  target: z
-    .string()
-    .describe("Target session. A session ID (ses_xxx), 'home' for the app home session, or a Holos contact/agent ID."),
+  target: z.string().describe("Target session. A session ID (ses_xxx)."),
   content: z.string().describe("The text content to send."),
   role: z
     .enum(["user", "assistant"])
@@ -28,21 +23,10 @@ const parameters = z.object({
 })
 
 async function resolveSession(target: string): Promise<Session.Info> {
-  if (target === "home") {
-    return AppChannel.session()
-  }
   if (target.startsWith("ses_")) {
     return SessionManager.requireSession(target)
   }
-  // Treat as holos contact ID
-  const contact = await Contact.get(target)
-  if (!contact) {
-    throw new Error(`Contact "${target}" not found.`)
-  }
-  if (contact.config.blocked) {
-    throw new Error(`Contact "${target}" is blocked.`)
-  }
-  return HolosRuntime.getOrCreateSession(contact.holosId ?? contact.id)
+  throw new Error(`Unknown session target "${target}". Expected a session ID (ses_xxx).`)
 }
 
 export const SessionSendTool = Tool.define("session_send", {
@@ -61,7 +45,7 @@ export const SessionSendTool = Tool.define("session_send", {
 
     const mailMetadata = {
       mailbox: true,
-      source: "agent",
+      source: "mailbox",
       sourceSessionID: ctx.sessionID,
       ...(params.sourceName ? { sourceName: params.sourceName } : {}),
     }
@@ -74,6 +58,16 @@ export const SessionSendTool = Tool.define("session_send", {
       }
       await SessionManager.deliver({ target: session.id, mail })
     } else {
+      await ctx.ask({
+        permission: "identity_act",
+        patterns: [`session_send role=user to ${params.target}`],
+        metadata: {
+          nonBypassable: true,
+          action: "session_send",
+          role: "user",
+          target: params.target,
+        },
+      })
       const mail: SessionManager.SessionMail.User = {
         type: "user",
         parts: [textPart],

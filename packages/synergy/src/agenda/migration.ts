@@ -5,6 +5,7 @@ import { AgendaTypes } from "./types"
 import { Identifier } from "../id/id"
 import { Log } from "../util/log"
 import type { Migration } from "../migration"
+import { MigrationRegistry } from "../migration/registry"
 
 const log = Log.create({ service: "agenda.migration" })
 
@@ -164,3 +165,4 @@ export const migrations: Migration[] = [
     },
   },
 ]
+MigrationRegistry.register("agenda", migrations)

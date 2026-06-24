@@ -52,7 +52,6 @@
 
 [data-slot="timeline-waypoint"]:hover [data-slot="waypoint-dot"] {
   background: var(--text-strong);
-  transform: translateX(-50%) scale(1.3);
 }
 
 [data-slot="timeline-waypoint"]:hover [data-slot="waypoint-label"] {
@@ -82,7 +81,6 @@
   height: 8px;
   background: var(--text-strong);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--text-strong) 12%, transparent);
-  animation: activeGlow 3s ease-in-out infinite;
 }
 
 [data-slot="waypoint-label"] {
@@ -120,12 +118,6 @@
   }
 }
 
-@keyframes activeGlow {
-  0%,
-  100% {
-    box-shadow: 0 0 0 3px color-mix(in srgb, var(--text-strong) 12%, transparent);
-  }
-  50% {
-    box-shadow: 0 0 0 5px color-mix(in srgb, var(--text-strong) 8%, transparent);
-  }
+[data-component="session-timeline"][data-compressed="true"]:hover {
+  width: min(200px, calc(100vw - 40px));
 }

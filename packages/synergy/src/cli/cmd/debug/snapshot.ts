@@ -1,5 +1,5 @@
 import { Snapshot } from "../../../session/snapshot"
-import { bootstrap } from "../../bootstrap"
+import { withScopeContext } from "../../scope"
 import { cmd } from "../cmd"
 
 export const SnapshotCommand = cmd({
@@ -12,9 +12,11 @@ export const SnapshotCommand = cmd({
 const TrackCommand = cmd({
   command: "track",
   describe: "track current snapshot state",
-  async handler() {
-    await bootstrap(process.cwd(), async () => {
-      console.log(await Snapshot.track())
+  builder: (yargs) =>
+    yargs.option("session", { type: "string", description: "Session ID for per-session snapshot isolation" }),
+  async handler(args) {
+    await withScopeContext(process.cwd(), async () => {
+      console.log(await Snapshot.track(args.session ?? "default"))
     })
   },
 })
@@ -23,14 +25,16 @@ const PatchCommand = cmd({
   command: "patch <hash>",
   describe: "show patch for a snapshot hash",
   builder: (yargs) =>
-    yargs.positional("hash", {
-      type: "string",
-      description: "hash",
-      demandOption: true,
-    }),
+    yargs
+      .positional("hash", {
+        type: "string",
+        description: "hash",
+        demandOption: true,
+      })
+      .option("session", { type: "string", description: "Session ID for per-session snapshot isolation" }),
   async handler(args) {
-    await bootstrap(process.cwd(), async () => {
-      console.log(await Snapshot.patch(args.hash))
+    await withScopeContext(process.cwd(), async () => {
+      console.log(await Snapshot.patch(args.hash, args.session ?? "default"))
     })
   },
 })
@@ -39,14 +43,16 @@ const DiffCommand = cmd({
   command: "diff <hash>",
   describe: "show diff for a snapshot hash",
   builder: (yargs) =>
-    yargs.positional("hash", {
-      type: "string",
-      description: "hash",
-      demandOption: true,
-    }),
+    yargs
+      .positional("hash", {
+        type: "string",
+        description: "hash",
+        demandOption: true,
+      })
+      .option("session", { type: "string", description: "Session ID for per-session snapshot isolation" }),
   async handler(args) {
-    await bootstrap(process.cwd(), async () => {
-      console.log(await Snapshot.diff(args.hash))
+    await withScopeContext(process.cwd(), async () => {
+      console.log(await Snapshot.diff(args.hash, args.session ?? "default"))
     })
   },
 })

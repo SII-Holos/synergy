@@ -1,7 +1,7 @@
 import { EOL } from "os"
 import { Ripgrep } from "../../../file/ripgrep"
-import { Instance } from "../../../scope/instance"
-import { bootstrap } from "../../bootstrap"
+import { ScopeContext } from "../../../scope/context"
+import { withScopeContext } from "../../scope"
 import { cmd } from "../cmd"
 
 export const RipgrepCommand = cmd({
@@ -19,8 +19,8 @@ const TreeCommand = cmd({
       type: "number",
     }),
   async handler(args) {
-    await bootstrap(process.cwd(), async () => {
-      process.stdout.write((await Ripgrep.tree({ cwd: Instance.directory, limit: args.limit })) + EOL)
+    await withScopeContext(process.cwd(), async () => {
+      process.stdout.write((await Ripgrep.tree({ cwd: ScopeContext.current.directory, limit: args.limit })) + EOL)
     })
   },
 })
@@ -43,10 +43,10 @@ const FilesCommand = cmd({
         description: "Limit number of results",
       }),
   async handler(args) {
-    await bootstrap(process.cwd(), async () => {
+    await withScopeContext(process.cwd(), async () => {
       const files: string[] = []
       for await (const file of Ripgrep.files({
-        cwd: Instance.directory,
+        cwd: ScopeContext.current.directory,
         glob: args.glob ? [args.glob] : undefined,
       })) {
         files.push(file)

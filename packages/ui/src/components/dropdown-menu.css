@@ -2,21 +2,19 @@
 [data-component="dropdown-menu-sub-content"] {
   min-width: 8rem;
   overflow: hidden;
-  border-radius: var(--radius-md);
-  border: 1px solid color-mix(in oklch, var(--border-base) 50%, transparent);
-  background-clip: padding-box;
-  background-color: var(--surface-raised-stronger-non-alpha);
+  border-radius: var(--radius-lg);
+  border: 1px solid color-mix(in oklch, var(--border-base) 25%, transparent);
   padding: 4px;
   box-shadow: var(--shadow-md);
   z-index: 50;
   transform-origin: var(--kb-menu-content-transform-origin);
 
   &[data-closed] {
-    animation: dropdown-menu-close 0.15s ease-out;
+    animation: dropdown-menu-close var(--motion-duration-fast) var(--motion-ease-standard);
   }
 
   &[data-expanded] {
-    animation: dropdown-menu-open 0.15s ease-out;
+    animation: dropdown-menu-open var(--motion-duration-fast) var(--motion-ease-standard);
   }
 }
 

@@ -2,8 +2,7 @@ import z from "zod"
 import path from "path"
 import { Tool } from "./tool"
 import { Flag } from "../flag/flag"
-import { Instance } from "../scope/instance"
-import { HolosRequest } from "@/holos/request"
+import { ScopeContext } from "../scope/context"
 
 const DEFAULT_TIMEOUT = 30 * 1000
 const ARXIV_PDF_BASE = "https://arxiv.org/pdf"
@@ -72,18 +71,12 @@ Returns paper metadata including title, authors, abstract, categories, and arXiv
     const controller = new AbortController()
     const timeoutId = setTimeout(() => controller.abort(), DEFAULT_TIMEOUT)
 
-    const response = await HolosRequest.fetch(
-      url,
-      {
-        method: "POST",
-        signal: AbortSignal.any([controller.signal, ctx.abort]),
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(body),
-      },
-      { capability: "arxiv" },
-    ).catch((error) => {
+    const response = await fetch(url, {
+      method: "POST",
+      signal: AbortSignal.any([controller.signal, ctx.abort]),
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }).catch((error) => {
       clearTimeout(timeoutId)
       if (error instanceof Error && error.name === "AbortError") {
         throw new Error("Request timed out")
@@ -173,7 +166,7 @@ Examples of valid arXiv IDs:
 
     const filepath = path.isAbsolute(params.outputPath)
       ? params.outputPath
-      : path.join(Instance.directory, params.outputPath)
+      : path.join(ScopeContext.current.directory, params.outputPath)
 
     const file = Bun.file(filepath)
     const exists = await file.exists()
@@ -186,7 +179,7 @@ Examples of valid arXiv IDs:
       }
     }
 
-    const displayPath = path.relative(Instance.directory, filepath)
+    const displayPath = path.relative(ScopeContext.current.directory, filepath)
 
     await ctx.ask({
       permission: "download",

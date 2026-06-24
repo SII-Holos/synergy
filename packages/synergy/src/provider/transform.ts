@@ -22,6 +22,10 @@ export namespace ProviderTransform {
     tool?: string
   }
 
+  interface MessageOptions {
+    systemCacheBreakpoint?: number
+  }
+
   export function sanitizeSurrogates(content: string) {
     return content.replace(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g, "\uFFFD")
   }
@@ -177,9 +181,16 @@ export namespace ProviderTransform {
     return msgs
   }
 
-  function applyCaching(msgs: ModelMessage[], providerID: string): ModelMessage[] {
-    const system = msgs.filter((msg) => msg.role === "system").slice(0, 2)
-    const final = msgs.filter((msg) => msg.role !== "system").slice(-2)
+  function applyCaching(msgs: ModelMessage[], providerID: string, options?: MessageOptions): ModelMessage[] {
+    const selected: ModelMessage[] =
+      options?.systemCacheBreakpoint === undefined
+        ? [
+            ...msgs.filter((msg) => msg.role === "system").slice(0, 2),
+            ...msgs.filter((msg) => msg.role !== "system").slice(-2),
+          ]
+        : [msgs.filter((msg) => msg.role === "system")[options.systemCacheBreakpoint]].filter(
+            (msg) => msg !== undefined,
+          )
 
     const providerOptions = {
       anthropic: {
@@ -196,7 +207,7 @@ export namespace ProviderTransform {
       },
     }
 
-    for (const msg of unique([...system, ...final])) {
+    for (const msg of unique(selected)) {
       const shouldUseContentOptions = providerID !== "anthropic" && Array.isArray(msg.content) && msg.content.length > 0
 
       if (shouldUseContentOptions) {
@@ -313,7 +324,7 @@ export namespace ProviderTransform {
     }
   }
 
-  export function message(msgs: ModelMessage[], model: Provider.Model) {
+  export function message(msgs: ModelMessage[], model: Provider.Model, options?: MessageOptions) {
     msgs = unsupportedParts(msgs, model)
     msgs = normalizeMessages(msgs, model)
     if (
@@ -322,7 +333,7 @@ export namespace ProviderTransform {
       model.api.id.includes("claude") ||
       model.api.npm === "@ai-sdk/anthropic"
     ) {
-      msgs = applyCaching(msgs, model.providerID)
+      msgs = applyCaching(msgs, model.providerID, options)
     }
 
     return msgs
@@ -599,24 +610,27 @@ export namespace ProviderTransform {
 
     if (model.api.id.includes("gpt-5") && !model.api.id.includes("gpt-5-chat")) {
       if (!model.api.id.includes("codex") && !model.api.id.includes("gpt-5-pro")) {
-        result["reasoningEffort"] = "medium"
-        // Only inject reasoningSummary for providers that support it natively.
-        // @ai-sdk/openai-compatible proxies (e.g. LiteLLM) do not understand this parameter.
+        // Only inject reasoningEffort for providers that support it natively.
+        // @ai-sdk/openai-compatible proxies (e.g. LiteLLM) do not support reasoningEffort + tools
+        // on /v1/chat/completions and will return a 400 error.
         if (
           model.api.npm === "@ai-sdk/openai" ||
           model.api.npm === "@ai-sdk/azure" ||
           model.api.npm === "@ai-sdk/github-copilot"
         ) {
+          result["reasoningEffort"] = "medium"
           result["reasoningSummary"] = "auto"
         }
       }
 
-      // Only set textVerbosity for non-chat gpt-5.x models (not codex, not chat variants)
+      // Only set textVerbosity for native openai/azure/copilot providers (Responses API feature).
+      // @ai-sdk/openai-compatible proxies do not support this parameter.
       if (
         model.api.id.includes("gpt-5.") &&
         !model.api.id.includes("codex") &&
         !model.api.id.includes("-chat") &&
-        model.providerID !== "azure"
+        model.providerID !== "azure" &&
+        (model.api.npm === "@ai-sdk/openai" || model.api.npm === "@ai-sdk/github-copilot")
       ) {
         result["textVerbosity"] = "low"
       }
@@ -649,7 +663,7 @@ export namespace ProviderTransform {
       if (model.api.id.includes("google")) {
         return { reasoning: { enabled: false } }
       }
-      return { reasoningEffort: "minimal" }
+      return { reasoning: { effort: "minimal" } }
     }
     return {}
   }

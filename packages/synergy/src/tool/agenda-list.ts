@@ -1,7 +1,8 @@
+import { formatLocalDateTime } from "@/util/time-format"
 import z from "zod"
 import { Tool } from "./tool"
 import { AgendaStore, AgendaTypes } from "../agenda"
-import { Instance } from "../scope/instance"
+import { ScopeContext } from "../scope/context"
 import DESCRIPTION from "./agenda-list.txt"
 
 const parameters = z.object({
@@ -24,7 +25,7 @@ function formatTrigger(triggers: AgendaTypes.Trigger[]): string {
     case "every":
       return `every ${t.interval}`
     case "at":
-      return `at ${new Date(t.at).toISOString()}`
+      return `at ${formatLocalDateTime(t.at)}`
     case "delay":
       return `delay ${t.delay}`
     case "watch":
@@ -56,11 +57,11 @@ function formatItem(item: AgendaTypes.Item): string {
   parts.push(`  Schedule: ${formatTrigger(item.triggers)}`)
   if (item.global) parts.push(`  Scope: global`)
   if (item.tags?.length) parts.push(`  Tags: ${item.tags.join(", ")}`)
-  if (item.state.nextRunAt) parts.push(`  Next run: ${new Date(item.state.nextRunAt).toISOString()}`)
+  if (item.state.nextRunAt) parts.push(`  Next run: ${formatLocalDateTime(item.state.nextRunAt)}`)
   if (item.state.lastRunAt) {
     const status = item.state.lastRunStatus ?? "unknown"
     parts.push(
-      `  Last run: ${new Date(item.state.lastRunAt).toISOString()} (${status}${item.state.runCount > 0 ? `, ${item.state.runCount} total` : ""})`,
+      `  Last run: ${formatLocalDateTime(item.state.lastRunAt)} (${status}${item.state.runCount > 0 ? `, ${item.state.runCount} total` : ""})`,
     )
   }
   return parts.join("\n")
@@ -71,7 +72,7 @@ export const AgendaListTool = Tool.define("agenda_list", {
   parameters,
   async execute(params: z.infer<typeof parameters>) {
     const scopeFilter = params.scope ?? "all"
-    const currentScopeID = Instance.scope.id
+    const currentScopeID = ScopeContext.current.scope.id
 
     let items: AgendaTypes.Item[]
     switch (scopeFilter) {

@@ -1,7 +1,7 @@
 import { test, expect } from "bun:test"
 import path from "path"
 import { tmpdir } from "../fixture/fixture"
-import { Instance } from "../../src/scope/instance"
+import { ScopeContext } from "../../src/scope/context"
 import { Config } from "../../src/config/config"
 import { Agent as AgentSvc } from "../../src/agent/agent"
 
@@ -19,10 +19,10 @@ test("agent color parsed from project config", async () => {
       )
     },
   })
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
-      const cfg = await Config.get()
+      const cfg = await Config.current()
       expect(cfg.agent?.["build"]?.color).toBe("#FFA500")
     },
   })
@@ -42,7 +42,7 @@ test("Agent.get includes color from config", async () => {
       )
     },
   })
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
       const explore = await AgentSvc.get("explore")

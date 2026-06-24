@@ -231,7 +231,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
         return map
       })
 
-      const fallbackModel = createMemo(() => {
+      const fallbackModel = createMemo((): ModelKey | undefined => {
         if (sync.data.config.model) {
           const [providerID, modelID] = sync.data.config.model.split("/")
           if (isModelValid({ providerID, modelID })) {
@@ -257,7 +257,12 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
           }
         }
 
-        throw new Error("No default model found")
+        // No model available yet (e.g. user is still configuring providers, or
+        // the connected provider has no default model mapping). Returning
+        // undefined lets the current() memo resolve gracefully instead of
+        // throwing — which previously crashed the entire UI when the user
+        // opened Settings → Manage models with no valid model configured.
+        return undefined
       })
 
       const current = createMemo(() => {
@@ -343,7 +348,10 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
         set(model: ModelKey | undefined, options?: { recent?: boolean }) {
           batch(() => {
             const currentAgent = agent.current()
-            if (currentAgent) setEphemeral("model", currentAgent.name, model ?? fallbackModel())
+            if (currentAgent) {
+              const resolved = model ?? fallbackModel()
+              if (resolved) setEphemeral("model", currentAgent.name, resolved)
+            }
             if (model) updateQuickSwitcherPreference(model, true)
             if (options?.recent && model) {
               const uniq = uniqueBy([model, ...store.recent], (x) => x.providerID + x.modelID)
@@ -427,7 +435,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
           })
           .catch((e) => {
             showToast({
-              variant: "error",
+              type: "error",
               title: "Failed to load file",
               description: e.message,
             })
@@ -572,7 +580,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
     })()
 
     const result = {
-      slug: createMemo(() => base64Encode(sdk.directory)),
+      slug: createMemo(() => base64Encode(sdk.scopeKey)),
       model,
       agent,
       file,

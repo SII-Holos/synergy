@@ -6,17 +6,18 @@ import { SessionInteraction } from "@/session/interaction"
 import type { MessageV2 } from "../session/message-v2"
 import { Identifier } from "../id/id"
 import { Agent } from "../agent/agent"
-import { Instance } from "../scope/instance"
-import { workMap } from "../util/queue"
+import { ScopeContext } from "../scope/context"
 import DESCRIPTION from "./lookat.txt"
 import { Asset } from "../asset/asset"
 
 const MULTIMODAL_AGENT = "multimodal-looker"
-const CONCURRENCY_LIMIT = 5
+const MAX_IMAGES = 5
 const DEFAULT_TIMEOUT_S = 120
 
 const parameters = z.object({
-  file_path: z.union([z.string(), z.array(z.string())]).describe("Absolute path(s) to the file(s) to analyze"),
+  file_path: z
+    .union([z.string(), z.array(z.string())])
+    .describe(`Absolute path or array of up to ${MAX_IMAGES} paths to the image(s) to analyze`),
   goal: z.string().describe("What specific information to extract from the file(s)"),
   timeout: z
     .number()
@@ -87,11 +88,6 @@ function inferMimeType(filepath: string): string {
   return mimeTypes[ext] || "application/octet-stream"
 }
 
-interface FileResult {
-  output: string
-  timedOut: boolean
-}
-
 export const LookAtTool = Tool.define<typeof parameters, LookAtMetadata>("look_at", async () => {
   return {
     description: DESCRIPTION,
@@ -101,7 +97,7 @@ export const LookAtTool = Tool.define<typeof parameters, LookAtMetadata>("look_a
 
       const files: Array<{ filepath: string; mimeType: string; filename: string }> = []
       for (const raw of paths) {
-        const filepath = path.isAbsolute(raw) ? raw : path.join(Instance.directory, raw)
+        const filepath = path.isAbsolute(raw) ? raw : path.join(ScopeContext.current.directory, raw)
         if (!(await Bun.file(filepath).exists())) {
           return {
             title: "File not found",
@@ -110,20 +106,6 @@ export const LookAtTool = Tool.define<typeof parameters, LookAtMetadata>("look_a
           }
         }
         files.push({ filepath, mimeType: inferMimeType(filepath), filename: path.basename(filepath) })
-      }
-
-      const externalDirs = new Set<string>()
-      for (const file of files) {
-        if (!Instance.contains(file.filepath)) {
-          externalDirs.add(path.dirname(file.filepath))
-        }
-      }
-      for (const dir of externalDirs) {
-        await ctx.ask({
-          permission: "external_directory",
-          patterns: [dir],
-          metadata: { dir },
-        })
       }
 
       const nonImages = files.filter((f) => !f.mimeType.startsWith("image/"))
@@ -140,6 +122,14 @@ export const LookAtTool = Tool.define<typeof parameters, LookAtMetadata>("look_a
         }
       }
 
+      if (files.length > MAX_IMAGES) {
+        return {
+          title: "Too many images",
+          output: `At most ${MAX_IMAGES} images can be analyzed in one call. You provided ${files.length} images. Split them across multiple look_at calls.`,
+          metadata: { error: "too_many_files", fileCount: files.length },
+        }
+      }
+
       const agent = await Agent.get(MULTIMODAL_AGENT)
       if (!agent) {
         return {
@@ -153,7 +143,7 @@ export const LookAtTool = Tool.define<typeof parameters, LookAtMetadata>("look_a
       if (!model) {
         return {
           title: "Model not available",
-          output: `Error: No available model found for ${MULTIMODAL_AGENT} agent`,
+          output: `Error: No vision model is configured. The look_at tool requires a vision model to analyze images. Run 'synergy config --advanced' to configure one, or add 'vision_model' to 10-models.jsonc.`,
           metadata: { error: "model_not_available" },
         }
       }
@@ -165,81 +155,76 @@ export const LookAtTool = Tool.define<typeof parameters, LookAtMetadata>("look_a
         metadata: files.length === 1 ? { filePath: files[0].filepath, timeout } : { fileCount: files.length, timeout },
       })
 
-      const processFile = async (file: (typeof files)[number]): Promise<FileResult> => {
-        const { Session } = await import("../session")
-        const { SessionInvoke } = await import("../session/invoke")
-        const session = await Session.create({
-          parentID: ctx.sessionID,
-          title: `look_at: ${file.filename}`,
-          interaction: SessionInteraction.unattended("tool:look_at"),
-          permission: [
-            { permission: "task", pattern: "*", action: "deny" },
-            { permission: "look_at", pattern: "*", action: "deny" },
-            { permission: "write", pattern: "*", action: "deny" },
-            { permission: "edit", pattern: "*", action: "deny" },
-            { permission: "bash", pattern: "*", action: "deny" },
-          ],
-        })
+      // Single session analyzing all images in one invoke call.
+      const { Session } = await import("../session")
+      const { SessionInvoke } = await import("../session/invoke")
 
-        const prompt = `Analyze this file and extract the requested information.
+      const sessionTitle = files.length === 1 ? `look_at: ${files[0].filename}` : `look_at: ${files.length} images`
+      const session = await Session.create({
+        parentID: ctx.sessionID,
+        title: sessionTitle,
+        interaction: SessionInteraction.unattended("tool:look_at"),
+        permission: [
+          { permission: "task", pattern: "*", action: "deny" },
+          { permission: "look_at", pattern: "*", action: "deny" },
+          { permission: "write", pattern: "*", action: "deny" },
+          { permission: "edit", pattern: "*", action: "deny" },
+          { permission: "bash", pattern: "*", action: "deny" },
+        ],
+      })
+
+      const prompt =
+        files.length === 1
+          ? `Analyze this image and extract the requested information.
 
 Goal: ${params.goal}
 
 Provide ONLY the extracted information that matches the goal.
 Be thorough on what was requested, concise on everything else.
 If the requested information is not found, clearly state what is missing.`
+          : `Analyze these ${files.length} images and extract the requested information for each one.
 
-        let timedOut = false
-        const timer = setTimeout(() => {
-          timedOut = true
-          SessionInvoke.cancel(session.id)
-        }, timeout * 1000)
+Goal: ${params.goal}
 
-        try {
-          const result = await SessionInvoke.invoke({
-            messageID: Identifier.ascending("message"),
-            sessionID: session.id,
-            model,
-            agent: MULTIMODAL_AGENT,
-            parts: [
-              { type: "text", text: prompt },
-              {
-                type: "file",
-                mime: file.mimeType,
-                url: pathToFileURL(file.filepath).href,
-                filename: file.filename,
-              },
-            ],
-          })
+For each image, provide a separate analysis under a "## {filename}" header.
+Be thorough on what was requested, concise on everything else.
+If the requested information is not found, clearly state what is missing.`
 
-          const textPart = result.parts.findLast((p: { type: string }) => p.type === "text")
-          return {
-            output: (textPart as { text: string } | undefined)?.text ?? "No response from multimodal agent",
-            timedOut: false,
-          }
-        } catch (error) {
-          if (timedOut) {
-            return {
-              output: `Timed out after ${timeout}s — the file may be too large or complex. Try a shorter goal or increase the timeout.`,
-              timedOut: true,
-            }
-          }
+      let timedOut = false
+      const timer = setTimeout(() => {
+        timedOut = true
+        SessionInvoke.cancel(session.id)
+      }, timeout * 1000)
+
+      let output: string
+      try {
+        const result = await SessionInvoke.invoke({
+          messageID: Identifier.ascending("message"),
+          sessionID: session.id,
+          model,
+          agent: MULTIMODAL_AGENT,
+          parts: [
+            { type: "text", text: prompt },
+            ...files.map((file) => ({
+              type: "file" as const,
+              mime: file.mimeType,
+              url: pathToFileURL(file.filepath).href,
+              filename: file.filename,
+            })),
+          ],
+        })
+
+        const textPart = result.parts.findLast((p: { type: string }) => p.type === "text")
+        output = (textPart as { text: string } | undefined)?.text ?? "No response from multimodal agent"
+      } catch (error) {
+        if (timedOut) {
+          output = `Timed out after ${timeout}s — the analysis took too long.`
+        } else {
           throw error
-        } finally {
-          clearTimeout(timer)
         }
+      } finally {
+        clearTimeout(timer)
       }
-
-      const results = await workMap(CONCURRENCY_LIMIT, files, (file) =>
-        processFile(file).catch(
-          (error: unknown): FileResult => ({
-            output: `Error analyzing ${file.filename}: ${error instanceof Error ? error.message : String(error)}`,
-            timedOut: false,
-          }),
-        ),
-      )
-
-      const anyTimedOut = results.some((r) => r.timedOut)
 
       const attachments = params.show_to_user
         ? await Promise.all(files.map((file) => toVisibleAttachment(file, ctx)))
@@ -247,27 +232,26 @@ If the requested information is not found, clearly state what is missing.`
 
       if (files.length === 1) {
         return {
-          title: anyTimedOut ? "Analysis timed out" : `Analyzed: ${files[0].filename}`,
-          output: results[0].output,
+          title: timedOut ? "Analysis timed out" : `Analyzed: ${files[0].filename}`,
+          output,
           metadata: {
             filePath: files[0].filepath,
             mimeType: files[0].mimeType,
             timeout,
-            timedOut: anyTimedOut,
+            timedOut,
             shownToUser: params.show_to_user === true,
           },
           attachments,
         }
       }
 
-      const output = files.map((file, i) => `## ${file.filename}\n${results[i].output}`).join("\n\n")
       return {
-        title: anyTimedOut ? "Some analyses timed out" : `Analyzed ${files.length} files`,
+        title: timedOut ? "Analysis timed out" : `Analyzed ${files.length} files`,
         output,
         metadata: {
           fileCount: files.length,
           timeout,
-          timedOut: anyTimedOut,
+          timedOut,
           shownToUser: params.show_to_user === true,
         },
         attachments,

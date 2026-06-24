@@ -1,4 +1,5 @@
 import path from "path"
+import { pathToFileURL } from "url"
 import os from "os"
 import fs from "fs/promises"
 import z from "zod"
@@ -8,7 +9,7 @@ import { Log } from "@/util/log"
 import { SessionEvent } from "./event"
 import { Agent } from "@/agent/agent"
 import { Provider } from "@/provider/provider"
-import { Instance } from "@/scope/instance"
+import { ScopeContext } from "@/scope/context"
 import { Bus } from "@/bus"
 import { Plugin } from "@/plugin"
 import { MCP } from "@/mcp"
@@ -91,7 +92,7 @@ export async function resolveInputParts(template: string): Promise<InvokeInput["
       seen.add(name)
       const filepath = name.startsWith("~/")
         ? path.join(os.homedir(), name.slice(2))
-        : path.resolve(Instance.directory, name)
+        : path.resolve(ScopeContext.current.directory, name)
 
       const stats = await fs.stat(filepath).catch(() => undefined)
       if (!stats) {
@@ -101,7 +102,7 @@ export async function resolveInputParts(template: string): Promise<InvokeInput["
       if (stats.isDirectory()) {
         parts.push({
           type: "file",
-          url: `file://${filepath}`,
+          url: pathToFileURL(filepath).href,
           filename: name,
           mime: "application/x-directory",
         })
@@ -110,7 +111,7 @@ export async function resolveInputParts(template: string): Promise<InvokeInput["
 
       parts.push({
         type: "file",
-        url: `file://${filepath}`,
+        url: pathToFileURL(filepath).href,
         filename: name,
         mime: "text/plain",
       })

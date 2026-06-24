@@ -1,1 +1,0 @@
-export { ScopesPanel } from "./panel"

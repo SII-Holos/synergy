@@ -24,7 +24,8 @@ import { NoteReadTool } from "./note-read"
 import { NoteSearchTool } from "./note-search"
 import { NoteWriteTool } from "./note-write"
 import { NoteEditTool } from "./note-edit"
-import { ProfileGetTool, ProfileUpdateTool } from "./profile"
+import { BlueprintLoopFinishTool } from "./blueprint-loop-finish"
+import { BlueprintLoopRestartTool } from "./blueprint-loop-restart"
 import { SessionListTool } from "./session-list"
 import { SessionReadTool } from "./session-read"
 import { SessionSearchTool } from "./session-search"
@@ -37,28 +38,32 @@ import { AgendaUpdateTool } from "./agenda-update"
 import { AgendaCancelTool } from "./agenda-cancel"
 import { AgendaTriggerTool } from "./agenda-trigger"
 import { AgendaLogsTool } from "./agenda-logs"
-import { AgoraSearchTool } from "./agora-search"
-import { AgoraReadTool } from "./agora-read"
-import { AgoraPostTool } from "./agora-post"
-import { AgoraJoinTool } from "./agora-join"
-import { AgoraSyncTool } from "./agora-sync"
-import { AgoraSubmitTool } from "./agora-submit"
-import { AgoraAcceptTool } from "./agora-accept"
-import { AgoraCommentTool } from "./agora-comment"
+// import { AgoraSearchTool } from "./agora-search"
+// import { AgoraReadTool } from "./agora-read"
+// import { AgoraPostTool } from "./agora-post"
+// import { AgoraJoinTool } from "./agora-join"
+// import { AgoraSyncTool } from "./agora-sync"
+// import { AgoraSubmitTool } from "./agora-submit"
+// import { AgoraAcceptTool } from "./agora-accept"
+// import { AgoraCommentTool } from "./agora-comment"
 import { AttachTool } from "./attach"
 
 import { InvalidTool } from "./invalid"
 import { SkillTool } from "./skill"
 import { LookAtTool } from "./lookat"
+import { ScanDocumentTool } from "./scan-document"
 import { AstGrepTool } from "./ast-grep"
 import type { Agent } from "../agent/agent"
 import { Tool } from "./tool"
-import { Instance } from "../scope/instance"
+import { ScopeContext } from "../scope/context"
+import { ScopedState } from "../scope/scoped-state"
 import { Config } from "../config/config"
 import path from "path"
 import { type ToolDefinition } from "@ericsanchezok/synergy-plugin"
 import z from "zod"
 import { Plugin } from "../plugin"
+import { PluginToolId } from "../plugin/ids.js"
+import { getRuntime, invokeRuntimeTool } from "../plugin-runtime/supervisor"
 import { WebSearchTool } from "./websearch"
 import { ArxivSearchTool, ArxivDownloadTool } from "./arxiv"
 import { Flag } from "@/flag/flag"
@@ -72,11 +77,37 @@ import { RenderTool } from "./render"
 import { EmailSendTool } from "./email"
 import { EmailReadTool } from "./email-read"
 import { RuntimeReloadTool } from "./runtime-reload"
+import { WorktreeEnterTool } from "./worktree-enter"
+import { WorktreeLeaveTool } from "./worktree-leave"
+import { WorktreeListTool } from "./worktree-list"
+import { BrowserAnnotateTool } from "./browser-annotate"
+import { BrowserNavigateTool } from "./browser-navigate"
+import { BrowserSnapshotTool } from "./browser-snapshot"
+import { BrowserScreenshotTool } from "./browser-screenshot"
+import { BrowserInspectTool } from "./browser-inspect"
+import { BrowserWaitTool } from "./browser-wait"
+import { BrowserClickTool } from "./browser-click"
+import { BrowserTypeTool } from "./browser-type"
+import { BrowserScrollTool } from "./browser-scroll"
+import { BrowserTabTool } from "./browser-tab"
+import { BrowserConsoleTool } from "./browser-console"
+import { BrowserNetworkTool } from "./browser-network"
+import { BrowserDownloadTool } from "./browser-download"
+import { BrowserDownloadsTool } from "./browser-downloads"
+import { BrowserViewportTool } from "./browser-viewport"
+import { BrowserReadTool } from "./browser-read"
+import { BrowserClipboardTool } from "./browser-clipboard"
+import { BrowserListTool } from "./browser-list"
+import { BrowserNavigationTool } from "./browser-navigation"
+import { BrowserActionTool } from "./browser-action"
+import { BrowserEvalTool } from "./browser-eval"
+import { BrowserViewTool } from "./browser-view"
+import { BrowserAssetsTool } from "./browser-assets"
 
 export namespace ToolRegistry {
   const log = Log.create({ service: "tool.registry" })
 
-  export const state = Instance.state(async () => {
+  export const state = ScopedState.create(async () => {
     const custom = [] as Tool.Info[]
     const glob = new Bun.Glob("tool/*.{js,ts}")
 
@@ -90,15 +121,21 @@ export namespace ToolRegistry {
         const namespace = path.basename(match, path.extname(match))
         const mod = await import(match)
         for (const [id, def] of Object.entries<ToolDefinition>(mod)) {
-          custom.push(fromPlugin(id === "default" ? namespace : `${namespace}_${id}`, def))
+          custom.push(fromPlugin(`local__${namespace}__${id}`, def))
         }
       }
     }
 
-    const plugins = await Plugin.list()
+    const plugins = await Plugin.perPluginHooks()
     for (const plugin of plugins) {
-      for (const [id, def] of Object.entries(plugin.tool ?? {})) {
-        custom.push(fromPlugin(id, def))
+      for (const [id, def] of Object.entries(plugin.hooks.tool ?? {})) {
+        const runtime = getRuntime(plugin.id)
+        const runtimeMode = plugin.runtimeMode ?? runtime?.mode ?? "in-process"
+        if (runtimeMode !== "in-process") {
+          custom.push(fromRuntimePlugin(id, def, plugin.id))
+        } else {
+          custom.push(fromPlugin(id, def, plugin.id))
+        }
       }
     }
 
@@ -111,9 +148,10 @@ export namespace ToolRegistry {
     log.info("tool registry state reloaded")
   }
 
-  function fromPlugin(id: string, def: ToolDefinition): Tool.Info {
+  function fromPlugin(id: string, def: ToolDefinition, pluginId?: string): Tool.Info {
+    const fullId = pluginId ? PluginToolId.format(pluginId, id) : id
     return {
-      id,
+      id: fullId,
       init: async (initCtx) => ({
         parameters: z.object(def.args),
         description: def.description,
@@ -123,33 +161,63 @@ export namespace ToolRegistry {
             messageID: ctx.messageID,
             agent: ctx.agent,
             abort: ctx.abort,
-            directory: Instance.directory,
+            directory: ScopeContext.current.directory,
             ask: (input: { permission: string; patterns: string[]; metadata?: Record<string, any> }) =>
               ctx.ask({ ...input, metadata: input.metadata ?? {} }),
           }
           const raw = await def.execute(args as any, pluginCtx)
-          if (typeof raw === "object" && raw !== null && "output" in raw) {
-            const structured = raw as { title?: string; output: string; metadata?: Record<string, any> }
-            const out = await Truncate.output(structured.output, {}, initCtx?.agent)
-            return {
-              title: structured.title ?? "",
-              output: out.truncated ? out.content : structured.output,
-              metadata: {
-                ...structured.metadata,
-                truncated: out.truncated,
-                outputPath: out.truncated ? out.outputPath : undefined,
-              },
-            }
-          }
-          const text = raw as string
-          const out = await Truncate.output(text, {}, initCtx?.agent)
-          return {
-            title: "",
-            output: out.truncated ? out.content : text,
-            metadata: { truncated: out.truncated, outputPath: out.truncated ? out.outputPath : undefined },
-          }
+          return normalizePluginResult(raw, initCtx?.agent)
         },
       }),
+    }
+  }
+
+  function fromRuntimePlugin(id: string, def: ToolDefinition, pluginId: string): Tool.Info {
+    const fullId = PluginToolId.format(pluginId, id)
+    return {
+      id: fullId,
+      init: async (initCtx) => ({
+        parameters: z.object(def.args),
+        description: def.description,
+        execute: async (args, ctx) => {
+          const raw = await invokeRuntimeTool(pluginId, id, args, {
+            sessionID: ctx.sessionID,
+            messageID: ctx.messageID,
+            agent: ctx.agent,
+            directory: ScopeContext.current.directory,
+          })
+          return normalizePluginResult(raw, initCtx?.agent)
+        },
+      }),
+    }
+  }
+
+  async function normalizePluginResult(raw: unknown, agent?: Agent.Info) {
+    if (typeof raw === "object" && raw !== null && "output" in raw) {
+      const structured = raw as {
+        title?: string
+        output: string
+        metadata?: Record<string, any>
+        attachments?: any
+      }
+      const out = await Truncate.output(structured.output, {}, agent)
+      return {
+        title: structured.title ?? "",
+        output: out.truncated ? out.content : structured.output,
+        metadata: {
+          ...structured.metadata,
+          truncated: out.truncated,
+          outputPath: out.truncated ? out.outputPath : undefined,
+        },
+        attachments: structured.attachments,
+      }
+    }
+    const text = raw as string
+    const out = await Truncate.output(text, {}, agent)
+    return {
+      title: "",
+      output: out.truncated ? out.content : text,
+      metadata: { truncated: out.truncated, outputPath: out.truncated ? out.outputPath : undefined },
     }
   }
 
@@ -165,7 +233,7 @@ export namespace ToolRegistry {
 
   async function all(): Promise<Tool.Info[]> {
     const custom = await state().then((x) => x.custom)
-    const config = await Config.get()
+    const config = await Config.current()
 
     return [
       InvalidTool,
@@ -198,6 +266,7 @@ export namespace ToolRegistry {
       ArxivDownloadTool,
       SkillTool,
       LookAtTool,
+      ScanDocumentTool,
       AstGrepTool,
       MemoryWriteTool,
       MemoryEditTool,
@@ -208,8 +277,8 @@ export namespace ToolRegistry {
       NoteSearchTool,
       NoteWriteTool,
       NoteEditTool,
-      ProfileGetTool,
-      ProfileUpdateTool,
+      BlueprintLoopFinishTool,
+      BlueprintLoopRestartTool,
       SessionListTool,
       SessionReadTool,
       SessionSearchTool,
@@ -222,22 +291,47 @@ export namespace ToolRegistry {
       AgendaCancelTool,
       AgendaTriggerTool,
       AgendaLogsTool,
-      AgoraSearchTool,
-      AgoraReadTool,
-      AgoraPostTool,
-      AgoraJoinTool,
-      AgoraSyncTool,
-      AgoraSubmitTool,
-      AgoraAcceptTool,
-      AgoraCommentTool,
+      //       AgoraSearchTool,
+      //       AgoraReadTool,
+      //       AgoraPostTool,
+      //       AgoraJoinTool,
+      //       AgoraSyncTool,
+      //       AgoraSubmitTool,
+      //       AgoraAcceptTool,
+      //       AgoraCommentTool,
       AttachTool,
       // 🔇 DiagramTool,  — 已注释，待重构
       RenderTool,
       EmailSendTool,
       EmailReadTool,
       RuntimeReloadTool,
+      WorktreeEnterTool,
+      WorktreeLeaveTool,
+      WorktreeListTool,
+      BrowserAnnotateTool,
+      BrowserNavigateTool,
+      BrowserSnapshotTool,
+      BrowserScreenshotTool,
+      BrowserInspectTool,
+      BrowserWaitTool,
+      BrowserClickTool,
+      BrowserTypeTool,
+      BrowserScrollTool,
+      BrowserTabTool,
+      BrowserConsoleTool,
+      BrowserNetworkTool,
+      BrowserDownloadTool,
+      BrowserDownloadsTool,
+      BrowserViewportTool,
+      BrowserReadTool,
+      BrowserClipboardTool,
+      BrowserListTool,
+      BrowserNavigationTool,
+      BrowserAssetsTool,
+      BrowserActionTool,
+      BrowserEvalTool,
+      BrowserViewTool,
       ...(Flag.SYNERGY_EXPERIMENTAL_LSP_TOOL ? [LspTool] : []),
-      ...(config.experimental?.batch_tool === true ? [BatchTool] : []),
       ...custom,
     ]
   }

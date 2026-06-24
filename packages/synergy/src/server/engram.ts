@@ -393,16 +393,15 @@ export const EngramRoute = new Hono()
       const row = EngramDB.Experience.get(id)
       if (!row) return c.json({ message: `Experience not found: ${id}` }, 404)
 
-      const config = await Config.get()
-      const evo = Config.resolveEvolution(config.identity?.evolution)
-      const learning = evo.learning
+      const config = await Config.current()
+      const engramLearning = (config as any).engram?.experience?.learning ?? {}
 
       const rewards: EngramDB.Experience.Rewards = body.rewards ?? { outcome: body.reward! }
 
       const result = EngramDB.Experience.applyReward(id, {
         rewards,
-        rewardWeights: learning.rewardWeights,
-        alpha: learning.alpha,
+        rewardWeights: engramLearning.rewardWeights ?? Config.REWARD_WEIGHT_DEFAULTS,
+        alpha: engramLearning.alpha ?? 0.3,
       })
       if (!result) return c.json({ message: `Failed to apply reward to: ${id}` }, 400)
 

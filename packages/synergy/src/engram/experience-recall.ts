@@ -44,6 +44,12 @@ export namespace ExperienceRecall {
 
   export function trackRetrieval(sessionID: string, experienceIDs: string[]) {
     pendingRetrievals.set(sessionID, experienceIDs)
+    setTimeout(
+      () => {
+        pendingRetrievals.delete(sessionID)
+      },
+      10 * 60 * 1000,
+    )
   }
 
   export function consumeRetrieval(sessionID: string): string[] {
@@ -53,17 +59,19 @@ export namespace ExperienceRecall {
   }
 
   export async function retrieve(scopeID: string | undefined, query: string, options: Options = {}): Promise<Result[]> {
-    const config = await Config.get()
-    const evo = Config.resolveEvolution(config.identity?.evolution)
-    const retrieval = evo.passiveRetrieval
-    const rewardWeights = evo.learning.rewardWeights
+    const config = await Config.current()
+    const engram = (config as any).engram
+    const exp = engram?.experience
+    const retConfig: Record<string, any> =
+      typeof exp?.retrieve === "object" && exp.retrieve !== null ? exp.retrieve : {}
+    const rewardWeights: Record<string, number | undefined> = exp?.learning?.rewardWeights ?? {}
 
-    const topK = options.topK ?? retrieval.topK
-    const epsilon = options.epsilon ?? retrieval.epsilon
-    const wSim = options.wSim ?? retrieval.wSim
-    const wQ = options.wQ ?? retrieval.wQ
-    const explorationConstant = options.explorationConstant ?? retrieval.explorationConstant
-    const simThreshold = options.simThreshold ?? retrieval.simThreshold
+    const topK = options.topK ?? retConfig.topK
+    const epsilon = options.epsilon ?? retConfig.epsilon
+    const wSim = options.wSim ?? retConfig.wSim
+    const wQ = options.wQ ?? retConfig.wQ
+    const explorationConstant = options.explorationConstant ?? retConfig.explorationConstant
+    const simThreshold = options.simThreshold ?? retConfig.simThreshold
 
     using _ = log.time("retrieve", { scopeID })
 

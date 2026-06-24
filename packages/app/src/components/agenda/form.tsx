@@ -5,7 +5,7 @@ import { getFilename } from "@ericsanchezok/synergy-util/path"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { useGlobalSync } from "@/context/global-sync"
 import type { AgendaItem, AgendaTrigger, AgendaCreateInput, AgendaPatchInput } from "@ericsanchezok/synergy-sdk/client"
-import { Panel } from "@/components/panel"
+import { AppPanel } from "@/components/app-panel"
 import { startOfDay, addDays, addMonths, startOfWeek, MONTH_NAMES_SHORT, DAY_LABELS_MINI } from "./date"
 
 // ---------------------------------------------------------------------------
@@ -212,7 +212,7 @@ export function AgendaForm(props: { directory: string; item?: AgendaItem; onBack
   })
 
   const scopes = createMemo(() => {
-    const home = globalSync.data.path.home
+    const home = globalSync.data.paths.home
     const seen = new Set<string>()
     const items = (globalSync.data.scope ?? []).filter((s) => {
       if (seen.has(s.id)) return false
@@ -220,14 +220,15 @@ export function AgendaForm(props: { directory: string; item?: AgendaItem; onBack
       if (home && s.worktree === home) return false
       return true
     })
-    if (home) items.unshift({ id: "global", worktree: home, name: "Home" } as (typeof items)[0])
+    if (home)
+      items.unshift({ id: "home", type: "home", worktree: home, directory: home, name: "Home" } as (typeof items)[0])
     return items
   })
 
   const currentScopeID = createMemo(() => {
     const dir = props.directory
     if (!dir) return ""
-    const [store] = globalSync.child(dir)
+    const [store] = globalSync.ensureScopeState(dir)
     return store.scopeID
   })
 
@@ -287,10 +288,10 @@ export function AgendaForm(props: { directory: string; item?: AgendaItem; onBack
 
   return (
     <>
-      <Panel.Header>
-        <Panel.HeaderRow>
-          <Panel.Action icon="arrow-left" title="Back" onClick={props.onBack} />
-          <Panel.Title>{isEdit() ? "Edit" : "New Item"}</Panel.Title>
+      <AppPanel.Header>
+        <AppPanel.HeaderRow>
+          <AppPanel.Action icon="arrow-left" title="Back" onClick={props.onBack} />
+          <AppPanel.Title>{isEdit() ? "Edit" : "New Item"}</AppPanel.Title>
           <div class="flex items-center gap-1.5">
             <button
               type="button"
@@ -314,10 +315,10 @@ export function AgendaForm(props: { directory: string; item?: AgendaItem; onBack
               </Show>
             </button>
           </div>
-        </Panel.HeaderRow>
-      </Panel.Header>
+        </AppPanel.HeaderRow>
+      </AppPanel.Header>
 
-      <div class="flex-1 min-h-0 overflow-y-auto px-5 pb-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      <AppPanel.Body padding={false} class="!px-5">
         <div class="flex flex-col gap-0 rounded-[1.25rem] bg-surface-inset-base/38 p-3 ring-1 ring-inset ring-border-base/45 shadow-[inset_0_1px_0_rgba(214,204,190,0.07)]">
           <div class="rounded-[1rem] bg-surface-raised-base/94 px-3.5 py-3 shadow-[inset_0_1px_0_rgba(214,204,190,0.08),inset_0_-1px_0_rgba(24,28,38,0.04)]">
             <input
@@ -474,7 +475,7 @@ export function AgendaForm(props: { directory: string; item?: AgendaItem; onBack
             onClick={() => setShowAdvanced((v) => !v)}
           >
             <div class="shrink-0 text-icon-weak">
-              <Icon name="settings" size="small" />
+              <Icon name="sliders-horizontal" size="small" />
             </div>
             <span class="text-12-regular text-text-weak flex-1">Advanced</span>
             <div class="shrink-0 text-icon-weak">
@@ -498,7 +499,7 @@ export function AgendaForm(props: { directory: string; item?: AgendaItem; onBack
             </div>
           </Show>
         </div>
-      </div>
+      </AppPanel.Body>
 
       <Show when={error()}>
         <div class="shrink-0 mx-5 mb-3 text-12-regular text-text-diff-delete-base bg-text-diff-delete-base/10 border border-text-diff-delete-base/18 rounded-[1rem] px-3 py-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">

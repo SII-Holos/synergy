@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "plugins": {
+    "test-plugin": {
+      "spec": "github:example/plugin",
+      "version": "1.0.0",
+      "resolved": "/some/path/index.ts"
+    }
+  }
+}

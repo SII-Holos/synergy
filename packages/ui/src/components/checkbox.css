@@ -27,7 +27,9 @@
     flex-shrink: 0;
     border-radius: var(--radius-sm);
     border: 1px solid var(--border-weak-base);
-    /* background-color: var(--surface-weak); */
+    transition:
+      border-color var(--motion-duration-base) var(--motion-ease-standard),
+      background-color var(--motion-duration-base) var(--motion-ease-standard);
   }
 
   [data-slot="checkbox-checkbox-indicator"] {
@@ -39,9 +41,6 @@
     color: var(--icon-base);
     opacity: 0;
   }
-
-  /* [data-slot="checkbox-checkbox-content"] { */
-  /* } */
 
   [data-slot="checkbox-checkbox-label"] {
     user-select: none;

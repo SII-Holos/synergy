@@ -1,16 +1,17 @@
 import { spawn } from "child_process"
-import path from "path"
-import { realpathSync } from "fs"
 import { fileURLToPath } from "url"
 import { Language } from "web-tree-sitter"
 import { $ } from "bun"
 import { lazy } from "@/util/lazy"
 import { Shell } from "@/util/shell"
 import { Log } from "@/util/log"
-import { Instance } from "@/scope/instance"
+import { ScopeContext } from "@/scope/context"
 import { ProcessRegistry } from "@/process/registry"
 import type { BashBackend } from "./shared"
 import { truncateMetadataOutput } from "./shared"
+import { SandboxBackend } from "@/sandbox/backend"
+import { EnforcementError } from "@/enforcement/errors"
+import { ShellSafety } from "@/enforcement/shell-safety"
 
 /**
  * Derive a human-readable abort reason from an AbortSignal's .reason.
@@ -66,13 +67,11 @@ export const LocalBashBackend: BashBackend = {
     const shell = Shell.acceptable()
     log.info("bash tool using shell", { shell })
 
-    const cwd = params.workdir || Instance.directory
+    const cwd = params.workdir || ScopeContext.current.directory
     const tree = await parser().then((p) => p.parse(params.command))
     if (!tree) {
       throw new Error("Failed to parse command")
     }
-    const directories = new Set<string>()
-    if (!Instance.contains(cwd)) directories.add(cwd)
     const patterns = new Set<string>()
 
     try {
@@ -94,26 +93,6 @@ export const LocalBashBackend: BashBackend = {
           command.push(child.text)
         }
 
-        if (["cd", "rm", "cp", "mv", "mkdir", "touch", "chmod", "chown"].includes(command[0])) {
-          for (const arg of command.slice(1)) {
-            if (arg.startsWith("-") || (command[0] === "chmod" && arg.startsWith("+"))) continue
-            let resolved: string | undefined
-            try {
-              resolved = realpathSync(path.resolve(cwd, arg))
-            } catch {
-              // path doesn't exist — skip
-            }
-            log.info("resolved path", { arg, resolved })
-            if (resolved) {
-              const normalized =
-                process.platform === "win32" && resolved.match(/^\/[a-z]\//)
-                  ? resolved.replace(/^\/([a-z])\//, (_, drive) => `${drive.toUpperCase()}:\\`).replace(/\//g, "\\")
-                  : resolved
-              if (!Instance.contains(normalized)) directories.add(normalized)
-            }
-          }
-        }
-
         if (command.length && command[0] !== "cd") {
           patterns.add(command.join(" "))
         }
@@ -122,38 +101,35 @@ export const LocalBashBackend: BashBackend = {
       tree.delete()
     }
 
-    if (directories.size > 0) {
-      await ctx.ask({
-        permission: "external_directory",
-        patterns: Array.from(directories),
-        metadata: {},
-      })
-    }
-
-    if (patterns.size > 0) {
+    if (patterns.size > 0 && (ctx.extra as any)?.shellBypassSandbox !== true) {
       await ctx.ask({
         permission: "bash",
         patterns: Array.from(patterns),
-        metadata: {},
+        metadata: {
+          capability: ShellSafety.capability(params.command),
+        },
       })
     }
 
-    const child = spawn(params.command, {
-      shell,
-      cwd,
-      env: {
-        ...process.env,
-      },
-      stdio: ["pipe", "pipe", "pipe"],
-      detached: process.platform !== "win32",
-    })
+    const sandboxWrapper =
+      (ctx.extra as any)?.shellBypassSandbox === true ? undefined : (ctx.extra as any)?.sandboxWrapper
+    const sandboxFallback = (ctx.extra as any)?.sandboxFallback as "deny" | "warn" | "allow" | undefined
+    const sandboxWarning = (ctx.extra as any)?.sandboxWarning as string | undefined
+    const warnOutput = (base: string) => (sandboxWarning ? `[Sandbox unavailable: ${sandboxWarning}]\n\n${base}` : base)
 
+    // Build sandbox-safe environment from the backend allowlist
+    const sandboxEnv: Record<string, string> = {}
+    for (const key of SandboxBackend.SANDBOX_ENV_ALLOWLIST) {
+      const val = process.env[key]
+      if (val !== undefined) {
+        sandboxEnv[key] = val
+      }
+    }
+    // ── ProcessRegistry setup (shared across both paths) ──────────
     const regProc = ProcessRegistry.create({
       command: params.command,
       description: params.description,
       cwd,
-      child,
-      stdin: child.stdin ?? undefined,
     })
 
     ctx.metadata({
@@ -189,10 +165,94 @@ export const LocalBashBackend: BashBackend = {
     }
 
     const append = (chunk: Buffer) => {
-      const text = chunk.toString()
-      ProcessRegistry.appendOutput(regProc, text)
+      ProcessRegistry.appendOutput(regProc, chunk.toString())
       scheduleMetadata()
     }
+
+    // ── Synchronous sandboxed execution via unified sandbox path ──
+    // executeAsync handles env allowlist, timeout, output cap, signal,
+    // sandbox denial detection, and temp cleanup — all in one call.
+    if (sandboxWrapper && !sandboxWrapper.skipReason && !params.background && !params.yieldSeconds) {
+      try {
+        const result = await SandboxBackend.executeAsync(sandboxWrapper, {
+          fallbackPolicy: sandboxFallback ?? "warn",
+          env: sandboxEnv,
+          cwd,
+          signal: ctx.abort,
+          timeoutMs: 3_600_000, // 60-minute hard ceiling
+          maxOutputBytes: 1024 * 1024, // 1 MB
+          onStdout: append,
+          onStderr: append,
+        })
+
+        if (metadataDirty) flushMetadata()
+
+        if (ctx.abort.aborted || result.timedOut) {
+          const abortReason = deriveAbortReason(ctx.abort.reason)
+          const abortTag = `\n\n<bash_metadata>\n${abortReason}\n</bash_metadata>`
+          ProcessRegistry.remove(regProc.id)
+          return {
+            title: params.description,
+            metadata: {
+              output: truncateMetadataOutput(regProc.output + abortTag),
+              exit: result.exitCode,
+              description: params.description,
+              backend: "local",
+            },
+            output: warnOutput(regProc.output + abortTag),
+          }
+        }
+
+        ProcessRegistry.remove(regProc.id)
+        return {
+          title: params.description,
+          metadata: {
+            output: truncateMetadataOutput(regProc.output),
+            exit: result.exitCode,
+            description: params.description,
+            backend: "local",
+          },
+          output: warnOutput(regProc.output),
+        }
+      } catch (e: unknown) {
+        ProcessRegistry.remove(regProc.id)
+        if (e instanceof EnforcementError.SandboxBlocked) throw e
+        throw e
+      }
+    }
+
+    let child: ReturnType<typeof spawn>
+    if (sandboxWrapper && !sandboxWrapper.skipReason) {
+      // Sandboxed path: use allowlisted env
+      child = spawn(sandboxWrapper.command, sandboxWrapper.args, {
+        cwd,
+        env: sandboxEnv,
+        stdio: ["pipe", "pipe", "pipe"],
+        detached: process.platform !== "win32",
+      })
+    } else {
+      // Unsandboxed path: check for deny policy on skip
+      if (sandboxWrapper?.skipReason && sandboxFallback === "deny") {
+        throw new Error(`Sandbox required but unavailable: ${sandboxWrapper.skipReason}`)
+      }
+      if (sandboxWrapper?.skipReason) {
+        log.warn("sandbox unavailable, running unsandboxed", {
+          reason: sandboxWrapper.skipReason,
+          fallback: sandboxFallback,
+        })
+      }
+      child = spawn(params.command, {
+        shell,
+        cwd,
+        env: sandboxEnv,
+        stdio: ["pipe", "pipe", "pipe"],
+        detached: process.platform !== "win32",
+      })
+    }
+    // Wire the spawned child into the existing ProcessRegistry entry
+    regProc.child = child
+    regProc.stdin = child.stdin ?? undefined
+    regProc.pid = child.pid
 
     child.stdout?.on("data", append)
     child.stderr?.on("data", append)
@@ -203,6 +263,9 @@ export const LocalBashBackend: BashBackend = {
         ProcessRegistry.markExited(regProc, code, signal)
       } else {
         ProcessRegistry.remove(regProc.id)
+      }
+      if (sandboxWrapper?.tempPath) {
+        SandboxBackend.cleanupTemp(sandboxWrapper.tempPath)
       }
     })
 
@@ -217,14 +280,15 @@ export const LocalBashBackend: BashBackend = {
           background: true,
           backend: "local",
         },
-        output:
+        output: warnOutput(
           `Command started in background.\n\n` +
-          `Process ID: ${regProc.id}\n` +
-          `Command: ${params.command}\n` +
-          `Status: running\n\n` +
-          `Use \`process(action: "log", processId: "${regProc.id}")\` to get current output (non-blocking).\n` +
-          `Use \`process(action: "poll", processId: "${regProc.id}")\` to check status.\n` +
-          `Use \`process(action: "kill", processId: "${regProc.id}")\` to terminate.`,
+            `Process ID: ${regProc.id}\n` +
+            `Command: ${params.command}\n` +
+            `Status: running\n\n` +
+            `Use \`process(action: "log", processId: "${regProc.id}")\` to get current output (non-blocking).\n` +
+            `Use \`process(action: "poll", processId: "${regProc.id}")\` to check status.\n` +
+            `Use \`process(action: "kill", processId: "${regProc.id}")\` to terminate.`,
+        ),
       }
     }
 
@@ -281,6 +345,10 @@ export const LocalBashBackend: BashBackend = {
       child.once("error", (error) => {
         exited = true
         cleanup()
+        ProcessRegistry.remove(regProc.id)
+        if (sandboxWrapper?.tempPath) {
+          SandboxBackend.cleanupTemp(sandboxWrapper.tempPath)
+        }
         reject(error)
       })
     })
@@ -296,20 +364,20 @@ export const LocalBashBackend: BashBackend = {
           background: true,
           backend: "local",
         },
-        output:
+        output: warnOutput(
           `Command auto-backgrounded after ${yieldS}s.\n\n` +
-          `Process ID: ${regProc.id}\n` +
-          `Command: ${params.command}\n` +
-          `Status: running\n\n` +
-          `Recent output:\n${regProc.tail || "(no output yet)"}\n\n` +
-          `Use \`process(action: "log", processId: "${regProc.id}")\` to get current output (non-blocking).\n` +
-          `Use \`process(action: "poll", processId: "${regProc.id}")\` to check status.\n` +
-          `Use \`process(action: "kill", processId: "${regProc.id}")\` to terminate.`,
+            `Process ID: ${regProc.id}\n` +
+            `Command: ${params.command}\n` +
+            `Status: running\n\n` +
+            `Recent output:\n${regProc.tail || "(no output yet)"}\n\n` +
+            `Use \`process(action: "log", processId: "${regProc.id}")\` to get current output (non-blocking).\n` +
+            `Use \`process(action: "poll", processId: "${regProc.id}")\` to check status.\n` +
+            `Use \`process(action: "kill", processId: "${regProc.id}")\` to terminate.`,
+        ),
       }
     }
 
     const output = regProc.output
-
     const abortReason = deriveAbortReason(ctx.abort.reason)
     const abortTag = `\n\n<bash_metadata>\n${abortReason}\n</bash_metadata>`
     if (aborted) {
@@ -321,7 +389,7 @@ export const LocalBashBackend: BashBackend = {
           description: params.description,
           backend: "local",
         },
-        output: output + abortTag,
+        output: warnOutput(output + abortTag),
       }
     }
 
@@ -333,7 +401,7 @@ export const LocalBashBackend: BashBackend = {
         description: params.description,
         backend: "local",
       },
-      output,
+      output: warnOutput(output),
     }
   },
 }

@@ -5,14 +5,14 @@ import { retry } from "@ericsanchezok/synergy-util/retry"
 import { createSimpleContext } from "@ericsanchezok/synergy-ui/context"
 import { useGlobalSync } from "./global-sync"
 import { useSDK } from "./sdk"
-import type { Message, Part } from "@ericsanchezok/synergy-sdk/client"
+import type { Message, Part, PermissionRequest } from "@ericsanchezok/synergy-sdk/client"
 
 export const { use: useSync, provider: SyncProvider } = createSimpleContext({
   name: "Sync",
   init: () => {
     const globalSync = useGlobalSync()
     const sdk = useSDK()
-    const [store, setStore] = globalSync.child(sdk.directory)
+    const [store, setStore] = globalSync.ensureScopeState(sdk.scopeKey)
     const absolute = (path: string) => (store.path.directory + "/" + path).replace("//", "/")
     const chunk = 200
     const maxMessages = 500
@@ -89,34 +89,26 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
         .finally(() => {
           setMeta("loading", sessionID, false)
         })
+        .catch(() => {})
     }
 
     const evictSession = (sessionID: string) => {
-      const messages = store.message[sessionID]
-      if (!messages) return
-
-      batch(() => {
-        setStore(
-          produce((draft) => {
-            for (const msg of messages) {
-              delete draft.part[msg.id]
-            }
-            delete draft.message[sessionID]
-            delete draft.session_diff[sessionID]
-            delete draft.todo[sessionID]
-            delete draft.dag[sessionID]
-            delete draft.permission[sessionID]
-            delete draft.question[sessionID]
-          }),
-        )
-        setMeta(
-          produce((draft) => {
-            delete draft.limit[sessionID]
-            delete draft.complete[sessionID]
-            delete draft.loading[sessionID]
-          }),
-        )
-      })
+      setStore(
+        produce((draft) => {
+          delete draft.session_diff[sessionID]
+          delete draft.todo[sessionID]
+          delete draft.dag[sessionID]
+          if (!draft.permission[sessionID]?.length) delete draft.permission[sessionID]
+          delete draft.question[sessionID]
+        }),
+      )
+      setMeta(
+        produce((draft) => {
+          delete draft.limit[sessionID]
+          delete draft.complete[sessionID]
+          delete draft.loading[sessionID]
+        }),
+      )
     }
 
     return {
@@ -168,11 +160,22 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
           )
         },
         async sync(sessionID: string) {
+          const syncPermissions = () =>
+            retry(() => sdk.client.permission.list())
+              .then((res) => {
+                const entries = (res.data ?? [])
+                  .filter((entry): entry is PermissionRequest => !!entry?.id && entry.sessionID === sessionID)
+                  .slice()
+                  .sort((a, b) => a.id.localeCompare(b.id))
+                setStore("permission", sessionID, reconcile(entries, { key: "id" }))
+              })
+              .catch(() => {})
+
           const hasSession = getSession(sessionID) !== undefined
           hydrateMessages(sessionID)
 
           const hasMessages = store.message[sessionID] !== undefined
-          if (hasSession && hasMessages) return
+          if (hasSession && hasMessages) return syncPermissions()
 
           const pending = inflight.get(sessionID)
           if (pending) return pending
@@ -198,12 +201,13 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
 
           const messagesReq = hasMessages ? Promise.resolve() : loadMessages(sessionID, limit)
 
-          const promise = Promise.all([sessionReq, messagesReq])
+          const permissionReq = syncPermissions()
+
+          const promise = Promise.all([sessionReq, messagesReq, permissionReq])
             .then(() => {})
             .finally(() => {
               inflight.delete(sessionID)
             })
-
           inflight.set(sessionID, promise)
           return promise
         },
@@ -248,9 +252,12 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
           if (pending) return pending
 
           const promise = retry(() =>
-            fetch(`${sdk.url}/session/${sessionID}/dag?directory=${encodeURIComponent(sdk.directory)}`).then((r) =>
-              r.json(),
-            ),
+            sdk.client.session
+              .dag({
+                sessionID,
+                ...(sdk.isHome ? { scopeID: sdk.scopeID } : { directory: sdk.directory }),
+              })
+              .then((r) => r.data as any),
           )
             .then((nodes) => {
               setStore("dag", sessionID, reconcile(nodes ?? [], { key: "id" }))
@@ -288,7 +295,7 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
     }
 
     onCleanup(() => {
-      globalSync.releaseChild(sdk.directory)
+      globalSync.releaseScopeState(sdk.scopeKey)
     })
   },
 })

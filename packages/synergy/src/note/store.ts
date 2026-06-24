@@ -1,28 +1,50 @@
 import { Storage } from "../storage/storage"
 import { StoragePath } from "../storage/path"
 import { Identifier } from "../id/id"
-import { Instance } from "../scope/instance"
+import { ScopeContext } from "../scope/context"
 import { Bus } from "../bus"
 import { NoteEvent } from "./event"
 import { NoteTypes } from "./types"
 import { NoteError } from "./error"
 import { Log } from "../util/log"
 import { Plugin } from "../plugin"
+import { NoteMarkdown } from "./markdown"
 
 export namespace NoteStore {
   const log = Log.create({ service: "note.store" })
+  const HOME_SCOPE_ID = "home"
 
-  export type Metadata = Omit<NoteTypes.Info, "content">
+  export type Metadata = NoteTypes.MetaInfo
+
+  function normalizeBlueprint(note: NoteTypes.Info): void {
+    if (note.kind !== "blueprint") {
+      note.blueprint = undefined
+      return
+    }
+
+    const blueprint = note.blueprint as (NoteTypes.Info["blueprint"] & { status?: unknown }) | undefined
+    if (!blueprint) {
+      note.blueprint = {}
+      return
+    }
+    delete blueprint.status
+    note.blueprint = blueprint
+  }
 
   function normalize(note: NoteTypes.Info): NoteTypes.Info {
     note.global ??= false
     note.version ??= 1
+    note.kind ??= "note"
+    normalizeBlueprint(note)
     return note
   }
 
   function toMetadata(note: NoteTypes.Info): Metadata {
-    const { content: _, ...meta } = note
-    return meta
+    const { content, ...meta } = note
+    const markdown = NoteMarkdown.toMarkdown(content)
+    const searchParts = [note.title, ...(note.tags ?? []), markdown].filter(Boolean)
+    const previewHtml = NoteMarkdown.toPreviewHtml(content, { title: note.title }) || undefined
+    return { ...meta, searchText: searchParts.join("\n"), previewHtml }
   }
 
   function comparePinTime(a: { pinned: boolean; time: { updated: number } }, b: typeof a): number {
@@ -102,13 +124,23 @@ export namespace NoteStore {
     } catch {
       // fallthrough
     }
-    if (scopeID !== "global") {
-      const globalSid = Identifier.asScopeID("global")
+    if (scopeID !== HOME_SCOPE_ID) {
+      const globalSid = Identifier.asScopeID(HOME_SCOPE_ID)
       try {
         const note = await Storage.read<NoteTypes.Info>(StoragePath.note(globalSid, noteID))
-        return { scopeID: "global", note: normalize(note) }
+        return { scopeID: HOME_SCOPE_ID, note: normalize(note) }
       } catch {
         // fallthrough
+      }
+    }
+    const scopeIDs = await Storage.scan(["notes"])
+    for (const candidate of scopeIDs) {
+      if (candidate === scopeID || candidate === HOME_SCOPE_ID) continue
+      try {
+        const note = await Storage.read<NoteTypes.Info>(StoragePath.note(Identifier.asScopeID(candidate), noteID))
+        return { scopeID: candidate, note: normalize(note) }
+      } catch {
+        // continue
       }
     }
     throw new Storage.NotFoundError({ message: `Note not found: ${noteID}` })
@@ -117,7 +149,7 @@ export namespace NoteStore {
   // --- Public API: full data ---
 
   export async function create(input: NoteTypes.CreateInput, options?: { scopeID?: string }): Promise<NoteTypes.Info> {
-    const targetScopeID = options?.scopeID ?? Instance.scope.id
+    const targetScopeID = options?.scopeID ?? ScopeContext.current.scope.id
     const create = await Plugin.trigger(
       "note.create.before",
       {
@@ -129,16 +161,26 @@ export namespace NoteStore {
     )
     const id = Identifier.ascending("note")
     const scopeID = Identifier.asScopeID(targetScopeID)
-    const isGlobal = targetScopeID === "global"
+    const isGlobal = targetScopeID === HOME_SCOPE_ID
     const now = Date.now()
+    const blueprint = create.note.blueprint as
+      | (NonNullable<NoteTypes.CreateInput["blueprint"]> & { status?: unknown })
+      | undefined
+    if (blueprint) delete blueprint.status
     const note: NoteTypes.Info = {
       id,
       title: create.note.title,
       content: create.note.content ?? { type: "doc", content: [] },
-      contentText: create.note.contentText ?? "",
       pinned: false,
       global: isGlobal,
       tags: create.note.tags ?? [],
+      kind: create.note.kind ?? "note",
+      blueprint: blueprint
+        ? {
+            ...blueprint,
+            runCount: blueprint.runCount ?? 0,
+          }
+        : blueprint,
       version: 1,
       time: { created: now, updated: now },
     }
@@ -175,9 +217,14 @@ export namespace NoteStore {
     return notes
   }
 
+  export async function listByKind(scopeID: string, kind: string): Promise<NoteTypes.Info[]> {
+    const notes = await list(scopeID)
+    return notes.filter((n) => n.kind === kind)
+  }
+
   export async function listWithGlobal(scopeID: string): Promise<NoteTypes.Info[]> {
-    if (scopeID === "global") return list("global")
-    const [local, global] = await Promise.all([list(scopeID), list("global")])
+    if (scopeID === HOME_SCOPE_ID) return list(HOME_SCOPE_ID)
+    const [local, global] = await Promise.all([list(scopeID), list(HOME_SCOPE_ID)])
     return mergeSorted(local, global, comparePinTime)
   }
 
@@ -188,7 +235,7 @@ export namespace NoteStore {
       const notes = await list(sid)
       groups.push({
         scopeID: sid,
-        scopeType: sid === "global" ? "global" : "project",
+        scopeType: sid === HOME_SCOPE_ID ? "home" : "project",
         notes,
       })
     }
@@ -225,9 +272,21 @@ export namespace NoteStore {
       }
       if (update.patch.title !== undefined) draft.title = update.patch.title
       if (update.patch.content !== undefined) draft.content = update.patch.content
-      if (update.patch.contentText !== undefined) draft.contentText = update.patch.contentText
       if (update.patch.pinned !== undefined) draft.pinned = update.patch.pinned
       if (update.patch.tags !== undefined) draft.tags = update.patch.tags
+      if (update.patch.kind !== undefined) draft.kind = update.patch.kind
+      if (update.patch.blueprint === null) {
+        draft.blueprint = undefined
+      } else if (update.patch.blueprint !== undefined) {
+        const { activeLoopID, ...rest } = update.patch.blueprint as NoteTypes.PatchInput["blueprint"] & {
+          status?: unknown
+        }
+        delete rest.status
+        const next = { ...(draft.blueprint ?? {}), ...rest }
+        if (activeLoopID !== undefined && activeLoopID !== null) next.activeLoopID = activeLoopID
+        if (activeLoopID === null) delete next.activeLoopID
+        draft.blueprint = next
+      }
       if (update.patch.global !== undefined) draft.global = update.patch.global
       if (update.patch.global === true && !wasGlobal) {
         draft.originScope = sid as string
@@ -238,11 +297,11 @@ export namespace NoteStore {
 
     const isNowGlobal = note.global ?? false
     if (!wasGlobal && isNowGlobal) {
-      const globalSid = Identifier.asScopeID("global")
+      const globalSid = Identifier.asScopeID(HOME_SCOPE_ID)
       await Storage.write(StoragePath.note(globalSid, noteID), note)
       await Storage.remove(sourcePath)
       await indexRemove(scopeID, noteID)
-      await indexSet("global", note)
+      await indexSet(HOME_SCOPE_ID, note)
       log.info("promoted to global", { id: noteID, from: sid })
     } else if (wasGlobal && !isNowGlobal) {
       const targetSid = Identifier.asScopeID(note.originScope || scopeID)
@@ -284,6 +343,12 @@ export namespace NoteStore {
     return loadIndex(scopeID)
   }
 
+  export async function listMetaWithGlobal(scopeID: string): Promise<Metadata[]> {
+    if (scopeID === HOME_SCOPE_ID) return listMeta(HOME_SCOPE_ID)
+    const [local, global] = await Promise.all([listMeta(scopeID), listMeta(HOME_SCOPE_ID)])
+    return mergeSorted(local, global, comparePinTime)
+  }
+
   export async function listMetaAll(): Promise<Metadata[]> {
     const scopeIDs = await Storage.scan(["notes"])
     const lists = await Promise.all(scopeIDs.map((sid) => listMeta(sid)))
@@ -292,6 +357,28 @@ export namespace NoteStore {
       result = mergeSorted(result, list, comparePinTime)
     }
     return result
+  }
+
+  export async function listMetaGrouped(): Promise<NoteTypes.MetaScopeGroup[]> {
+    const scopeIDs = await Storage.scan(["notes"])
+    const currentScopeID = ScopeContext.current.scope.id
+    scopeIDs.sort((a, b) => {
+      if (a === currentScopeID) return -1
+      if (b === currentScopeID) return 1
+      return a.localeCompare(b)
+    })
+    const groups = await Promise.all(
+      scopeIDs.map(async (sid): Promise<NoteTypes.MetaScopeGroup | undefined> => {
+        const metaList = await listMeta(sid)
+        if (metaList.length === 0) return undefined
+        return {
+          scopeID: sid,
+          scopeType: sid === HOME_SCOPE_ID ? "home" : "project",
+          notes: metaList,
+        }
+      }),
+    )
+    return groups.filter((group): group is NoteTypes.MetaScopeGroup => group !== undefined)
   }
 
   // --- Public API: scope-agnostic access ---

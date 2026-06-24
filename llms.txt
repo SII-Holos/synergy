@@ -1,0 +1,74 @@
+# Synergy
+
+> Synergy is an open-source AI agent platform built as a Bun monorepo. This file is a routing guide for LLMs and external coding agents. Use it to decide which project documents to read before answering questions or making changes.
+
+## Start Here
+
+- [README.md](README.md): project overview, install flow, runtime surfaces, development commands, and package map.
+- [CONTRIBUTING.md](CONTRIBUTING.md): source contribution process and repository workflow.
+- [docs/agents/README.md](docs/agents/README.md): audience-specific guidance for external agents, plugin authors, and Synergy source contributors.
+
+## If You Are Building A Synergy Plugin
+
+You do not need `AGENTS.md` unless you are modifying Synergy itself. Plugin authors should use the installed Synergy CLI and `@ericsanchezok/synergy-plugin` SDK instead of cloning this monorepo.
+
+- [docs/plugins/agent-quickstart.md](docs/plugins/agent-quickstart.md): shortest agent-facing plugin authoring path.
+- [docs/plugins/development-kit.md](docs/plugins/development-kit.md): what the Plugin Development Kit includes and when a source checkout is needed.
+- [packages/plugin/README.md](packages/plugin/README.md): SDK API reference and descriptor examples.
+- [docs/plugins/02-manifest-reference.md](docs/plugins/02-manifest-reference.md): `plugin.json` manifest reference.
+- [docs/plugin/toolchain.md](docs/plugin/toolchain.md): `synergy plugin create/validate/build/pack/sign/publish/add`.
+- [docs/plugin/marketplace.md](docs/plugin/marketplace.md): Official GitHub-backed Plugin Marketplace, local registry, approval install flow, and `SII-Holos/synergy-plugins` publishing.
+- [docs/plugin/runtime-isolation.md](docs/plugin/runtime-isolation.md): in-process, worker, and process runtime behavior.
+- [docs/plugin/permissions-consent.md](docs/plugin/permissions-consent.md): approval and capability model.
+- [docs/plugins/04-tool-renderer-guide.md](docs/plugins/04-tool-renderer-guide.md): Web tool renderer contributions.
+- [docs/plugins/05-workspace-panels.md](docs/plugins/05-workspace-panels.md): workspace and global panel contributions.
+- [docs/plugins/06-settings-themes-icons.md](docs/plugins/06-settings-themes-icons.md): settings, themes, icons, routes, and commands.
+
+## Plugin API Invariants
+
+- Use only the object descriptor API: `PluginDescriptor { id, name?, init() }`.
+- Do not use `definePlugin`, function-style descriptors, or default-exported plugin factory functions.
+- Keep `PluginDescriptor.id`, `plugin.json.name`, registry id, lockfile key, and approval id identical.
+- `contributes.ui.entry` points to a built JavaScript asset, normally `./dist/ui/index.js`; source files such as `src/ui.tsx` are build inputs.
+- Validate with `synergy plugin validate --runtime-discovery` before build, pack, or publish.
+
+## If You Are Modifying Synergy Source
+
+Read `AGENTS.md` before changing this repository. That file is for Synergy source development, not for normal plugin authors.
+
+- [AGENTS.md](AGENTS.md): repository rules for source contributors and coding agents.
+- [README.md](README.md#running-from-this-repository): local source development commands.
+- [packages/synergy/AGENTS.md](packages/synergy/AGENTS.md): core runtime package guidance.
+- [packages/app/AGENTS.md](packages/app/AGENTS.md): Web app package guidance.
+
+## Source Code Map
+
+- [packages/synergy](packages/synergy): core runtime, server, CLI, sessions, tools, permissions, plugin loading, plugin runtime isolation, MCP, channels, config, scope, and engram.
+- [packages/app](packages/app): Web client and plugin UI host.
+- [packages/plugin](packages/plugin): plugin authoring SDK published as `@ericsanchezok/synergy-plugin`.
+- [packages/sdk/js](packages/sdk/js): generated TypeScript SDK for Synergy server APIs.
+- [packages/ui](packages/ui): shared UI component library.
+- [packages/util](packages/util): shared utilities.
+- [docs/plugins](docs/plugins): plugin platform documentation.
+- [docs/plugin](docs/plugin): plugin toolchain, marketplace, runtime, and permission topics.
+
+## Current Synergy Terminology
+
+- Prefer `Scope` for workspace/context resolution in current source and docs.
+- Prefer `engram` for the memory/knowledge subsystem.
+- The built-in primary orchestrators are `synergy` and `synergy-max`.
+- Do not reintroduce `master` as a built-in agent name.
+
+## Plugin Verification
+
+- `synergy plugin validate --runtime-discovery`
+- `synergy plugin build`
+- `synergy plugin pack`
+
+## Source Verification
+
+- Plugin SDK typecheck: `bun run --cwd packages/plugin typecheck`
+- Synergy package tests: `cd packages/synergy && bun test <relevant test files>`
+- Whole monorepo typecheck: `bun run typecheck`
+- Web build: `bun run --cwd packages/app build`
+- SDK regeneration after route/schema changes: `./script/generate.ts`

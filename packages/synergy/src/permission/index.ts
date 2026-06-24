@@ -4,7 +4,9 @@ import z from "zod"
 import { Log } from "../util/log"
 import { Identifier } from "../id/id"
 import { Plugin } from "../plugin"
-import { Instance } from "../scope/instance"
+import { ScopeContext } from "../scope/context"
+import { ScopedState } from "../scope/scoped-state"
+import { TimeoutConfig } from "@/util/timeout-config"
 
 export namespace Permission {
   const log = Log.create({ service: "permission" })
@@ -28,6 +30,9 @@ export namespace Permission {
     })
   export type Info = z.infer<typeof Info>
 
+  export const Response = z.enum(["once", "session", "always", "reject"])
+  export type Response = z.infer<typeof Response>
+
   export const Event = {
     Updated: BusEvent.define("permission.updated", Info),
     Replied: BusEvent.define(
@@ -35,12 +40,12 @@ export namespace Permission {
       z.object({
         sessionID: z.string(),
         permissionID: z.string(),
-        response: z.string(),
+        response: Response,
       }),
     ),
   }
 
-  const state = Instance.state(
+  const state = ScopedState.create(
     () => {
       const pending: {
         [sessionID: string]: {
@@ -52,8 +57,13 @@ export namespace Permission {
         }
       } = {}
 
+      const sessionMemory: {
+        [sessionID: string]: Set<string>
+      } = {}
+
       return {
         pending,
+        sessionMemory,
       }
     },
     async (state) => {
@@ -64,6 +74,11 @@ export namespace Permission {
       }
     },
   )
+
+  function memoryKey(toolName: string, metadata: Record<string, any>): string {
+    const capability = metadata?.capability ?? metadata?.type ?? "default"
+    return `${toolName}:${capability}`
+  }
 
   export function pending() {
     return state().pending
@@ -121,21 +136,60 @@ export namespace Permission {
         return
     }
 
+    const memKey = memoryKey(input.type, input.metadata)
+    const memory = state().sessionMemory[input.sessionID]
+    if (memory?.has(memKey)) {
+      log.info("auto-allowed by session memory", {
+        sessionID: input.sessionID,
+        key: memKey,
+      })
+      return
+    }
+
+    const timeoutCfg = await TimeoutConfig.resolve()
+    const ms = timeoutCfg.permissionAskMs
     pending[input.sessionID] = pending[input.sessionID] || {}
     return new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(async () => {
+        const match = pending[input.sessionID]?.[info.id]
+        if (!match) return
+        delete pending[input.sessionID][info.id]
+        log.warn("permission ask timed out, auto-denying", {
+          sessionID: input.sessionID,
+          permissionID: info.id,
+        })
+        Bus.publish(Event.Replied, {
+          sessionID: input.sessionID,
+          permissionID: info.id,
+          response: "reject",
+        })
+        match.reject(
+          new RejectedError(
+            input.sessionID,
+            info.id,
+            input.callID,
+            input.metadata,
+            `Permission request timed out after ${Math.round(ms / 1000)}s with no user response. The user may be away.`,
+          ),
+        )
+      }, ms)
+
       pending[input.sessionID][info.id] = {
         info,
-        resolve,
-        reject,
+        resolve: () => {
+          clearTimeout(timer)
+          resolve()
+        },
+        reject: (e) => {
+          clearTimeout(timer)
+          reject(e)
+        },
       }
       Bus.publish(Event.Updated, info)
     })
   }
 
-  export const Response = z.enum(["once", "reject"])
-  export type Response = z.infer<typeof Response>
-
-  export function respond(input: { sessionID: Info["sessionID"]; permissionID: Info["id"]; response: Response }) {
+  export async function respond(input: { sessionID: Info["sessionID"]; permissionID: Info["id"]; response: Response }) {
     log.info("response", input)
     const { pending } = state()
     const match = pending[input.sessionID]?.[input.permissionID]
@@ -149,6 +203,30 @@ export namespace Permission {
     if (input.response === "reject") {
       match.reject(new RejectedError(input.sessionID, input.permissionID, match.info.callID, match.info.metadata))
       return
+    }
+
+    if (input.response === "always") {
+      // Persist as a user rule so it never prompts again
+      const { PermissionRules } = await import("./rules")
+      const pattern = PermissionRules.extractPattern(match.info.type, match.info.metadata as Record<string, any>)
+      await PermissionRules.addUserRule({
+        permission: match.info.type,
+        pattern,
+        action: "allow",
+      })
+      log.info("recorded persistent user rule", {
+        sessionID: input.sessionID,
+        permission: match.info.type,
+        pattern,
+      })
+    }
+
+    if (input.response === "session") {
+      const memKey = memoryKey(match.info.type, match.info.metadata)
+      const memory = state().sessionMemory[input.sessionID] ?? new Set<string>()
+      memory.add(memKey)
+      state().sessionMemory[input.sessionID] = memory
+      log.info("recorded session memory", { sessionID: input.sessionID, key: memKey })
     }
     match.resolve()
   }
@@ -166,6 +244,16 @@ export namespace Permission {
           ? reason
           : `The user rejected permission to use this specific tool call. You may try again with different parameters.`,
       )
+    }
+  }
+
+  export function clearSessionMemory(sessionID?: string) {
+    if (sessionID) {
+      delete state().sessionMemory[sessionID]
+    } else {
+      for (const key of Object.keys(state().sessionMemory)) {
+        delete state().sessionMemory[key]
+      }
     }
   }
 }

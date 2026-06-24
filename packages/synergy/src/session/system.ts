@@ -1,9 +1,11 @@
+import { Session } from "../session"
 import { Ripgrep } from "../file/ripgrep"
 import { Global } from "../global"
 import { Filesystem } from "../util/filesystem"
 import { Config } from "../config/config"
+import { formatLocalDate, formatLocalDateTime } from "../util/time-format"
 
-import { Instance } from "../scope/instance"
+import { ScopeContext } from "../scope/context"
 import { SessionEndpoint } from "./endpoint"
 import path from "path"
 import os from "os"
@@ -13,32 +15,12 @@ import type { Provider } from "@/provider/provider"
 import { Flag } from "@/flag/flag"
 
 export namespace SystemPrompt {
-  function formatLocalDate(date: Date): string {
-    const offset = -date.getTimezoneOffset()
-    const sign = offset >= 0 ? "+" : "-"
-    const absOffset = Math.abs(offset)
-    const hours = String(Math.floor(absOffset / 60)).padStart(2, "0")
-    const minutes = String(absOffset % 60).padStart(2, "0")
-    return `${date.toDateString()} (UTC${sign}${hours}:${minutes})`
-  }
-
-  function formatLocalDateTime(epochMs: number): string {
-    const date = new Date(epochMs)
-    const offset = -date.getTimezoneOffset()
-    const sign = offset >= 0 ? "+" : "-"
-    const absOffset = Math.abs(offset)
-    const hours = String(Math.floor(absOffset / 60)).padStart(2, "0")
-    const minutes = String(absOffset % 60).padStart(2, "0")
-    return `${date.toLocaleString()} (UTC${sign}${hours}:${minutes})`
-  }
-
   export function provider(_model: Provider.Model) {
     return [PROMPT_FALLBACK]
   }
 
   const endpointLabels: Record<string, string> = {
     feishu: "Feishu (Lark)",
-    holos: "Holos",
   }
 
   export async function environment(options?: {
@@ -52,17 +34,38 @@ export namespace SystemPrompt {
       interaction?: { mode: string; source?: string }
     }
   }) {
-    const scope = Instance.scope
+    const scope = ScopeContext.current.scope
     const endpointType = options?.endpointType
     const session = options?.session
     const envLines = [
-      `  Working directory: ${Instance.directory}`,
+      `  Working directory: ${ScopeContext.current.directory}`,
       `  Is directory a git repo: ${scope.type === "project" && scope.vcs === "git" ? "yes" : "no"}`,
       `  Platform: ${process.platform}`,
-      `  Today's date: ${formatLocalDate(new Date())}`,
+      `  Today's date: ${formatLocalDate(Date.now())}`,
     ]
 
-    if (scope.type === "global") {
+    const workspace = ScopeContext.current.workspace
+    if (workspace) {
+      envLines.push(`  Workspace type: ${workspace.type}`)
+      envLines.push(`  Workspace path: ${workspace.path}`)
+      if (workspace.type === "git_worktree") {
+        if (workspace.name) envLines.push(`  Worktree name: ${workspace.name}`)
+        if (workspace.branch) envLines.push(`  Worktree branch: ${workspace.branch}`)
+        if (workspace.baseRef) envLines.push(`  Worktree base: ${workspace.baseRef}`)
+        envLines.push(
+          `  Worktree isolation: this session's active workspace is the worktree path above. Stay inside it by default; access outside the active workspace, including the original checkout, requires explicit permission. Do not use cd or workdir to operate outside the worktree unless the user asks for that specific path.`,
+        )
+        envLines.push(`  Workspace boundary: enforced by tools and permission checks`)
+        if (workspace.originalCheckout) {
+          envLines.push(`  Original checkout: ${workspace.originalCheckout}`)
+        }
+        envLines.push(
+          `  Leaving: use worktree_leave when isolated work is complete or you need to return to the main checkout.`,
+        )
+      }
+    }
+
+    if (scope.type === "home") {
       if (!endpointType) {
         envLines.push(`  Scope: home`)
       }
@@ -79,9 +82,6 @@ export namespace SystemPrompt {
       if (ch.chatId) envLines.push(`  Chat ID: ${ch.chatId}`)
       if (ch.senderName) envLines.push(`  User: ${ch.senderName}`)
       else if (ch.senderId) envLines.push(`  Sender ID: ${ch.senderId}`)
-    } else if (session?.endpoint?.kind === "holos") {
-      envLines.push(`  Session source: Holos contact`)
-      envLines.push(`  Contact: ${session.endpoint.agentId}`)
     } else if (endpointType) {
       envLines.push(`  Session source: ${endpointLabels[endpointType] ?? endpointType} endpoint`)
     }
@@ -92,6 +92,15 @@ export namespace SystemPrompt {
       envLines.push(`  Session created: ${formatLocalDateTime(session.time.created)}`)
       if (session.parentID) {
         envLines.push(`  Parent session: ${session.parentID}`)
+        const parent = await Session.get(session.parentID).catch(() => undefined)
+        if (parent) {
+          const parentWs = (parent as any).workspace
+          const childWs = ScopeContext.current.workspace
+          if (parentWs && childWs && parentWs.path !== childWs.path) {
+            envLines.push(`  Parent workspace type: ${parentWs.type}`)
+            envLines.push(`  Parent workspace path: ${parentWs.path}`)
+          }
+        }
       }
     }
 
@@ -105,7 +114,7 @@ export namespace SystemPrompt {
         `  ${
           scope.type === "project" && scope.vcs === "git" && false
             ? await Ripgrep.tree({
-                cwd: Instance.directory,
+                cwd: ScopeContext.current.directory,
                 limit: 200,
               })
             : ""
@@ -130,11 +139,15 @@ export namespace SystemPrompt {
   }
 
   export async function custom() {
-    const config = await Config.get()
+    const config = await Config.current()
     const paths = new Set<string>()
 
     for (const localRuleFile of LOCAL_RULE_FILES) {
-      const matches = await Filesystem.findUp(localRuleFile, Instance.directory, Instance.directory)
+      const matches = await Filesystem.findUp(
+        localRuleFile,
+        ScopeContext.current.directory,
+        ScopeContext.current.directory,
+      )
       if (matches.length > 0) {
         matches.forEach((path) => paths.add(path))
         break
@@ -168,7 +181,11 @@ export namespace SystemPrompt {
             }),
           ).catch(() => [])
         } else {
-          matches = await Filesystem.globUp(instruction, Instance.directory, Instance.directory).catch(() => [])
+          matches = await Filesystem.globUp(
+            instruction,
+            ScopeContext.current.directory,
+            ScopeContext.current.directory,
+          ).catch(() => [])
         }
         matches.forEach((path) => paths.add(path))
       }

@@ -35,7 +35,7 @@ export namespace SessionSummary {
       const all = await Session.messages({ sessionID: input.sessionID })
       await Promise.all([
         summarizeSession({ sessionID: input.sessionID, messages: all }),
-        summarizeMessage({ messageID: input.messageID, messages: all }),
+        summarizeMessage({ messageID: input.messageID, messages: all, sessionID: input.sessionID }),
       ])
     },
   )
@@ -51,7 +51,7 @@ export namespace SessionSummary {
         .flatMap((x) => x.files)
         .map((x) => path.relative(directory, x)),
     )
-    const diffs = await computeDiff({ messages: input.messages }).then((x) =>
+    const diffs = await computeDiff({ messages: input.messages, sessionID: input.sessionID }).then((x) =>
       x.filter((x) => {
         return files.has(x.file)
       }),
@@ -84,13 +84,14 @@ export namespace SessionSummary {
     }
   }
 
-  async function summarizeMessage(input: { messageID: string; messages: MessageV2.WithParts[] }) {
+  async function summarizeMessage(input: { messageID: string; messages: MessageV2.WithParts[]; sessionID: string }) {
     const turn = Turn.collectOne(input.messages, input.messageID)
     if (!turn) return
     const messages = [turn.user, ...turn.assistants]
     const msgWithParts = turn.user
     const userMsg = msgWithParts.info as MessageV2.User
-    const diffs = await computeDiff({ messages })
+    if (!MessageV2.isPromptVisible(msgWithParts)) return
+    const diffs = await computeDiff({ messages, sessionID: input.sessionID })
     userMsg.summary = {
       ...userMsg.summary,
       diffs,
@@ -182,7 +183,15 @@ export namespace SessionSummary {
 
     if (title) userMsg.summary.title = title
     if (body) userMsg.summary.body = body
-    await saveSummary(userMsg)
+
+    // Only persist when new content was produced. The processor path
+    // (finish-step) calls summarize() on every step; without this
+    // guard, saveSummary fires message.updated every time — even when
+    // title and body are unchanged — causing the frontend Typewriter to
+    // restart and producing a visible flicker.
+    if (title || body) {
+      await saveSummary(userMsg)
+    }
   }
 
   export const diff = fn(
@@ -199,7 +208,7 @@ export namespace SessionSummary {
     },
   )
 
-  async function computeDiff(input: { messages: MessageV2.WithParts[] }) {
+  async function computeDiff(input: { messages: MessageV2.WithParts[]; sessionID: string }) {
     let from: string | undefined
     let to: string | undefined
 
@@ -223,7 +232,7 @@ export namespace SessionSummary {
       }
     }
 
-    if (from && to) return Snapshot.diffFull(from, to)
+    if (from && to) return Snapshot.diffFull(from, to, input.sessionID)
     return []
   }
 }

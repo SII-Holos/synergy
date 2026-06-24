@@ -1,16 +1,13 @@
 import { $ } from "bun"
 import fs from "fs"
 import path from "path"
-import { APP_DIST_DIR, CONFIG_UI_DIST_DIR, SYNERGY_DIR, SYNERGY_DIST_DIR } from "../shared/packages"
+import { APP_DIST_DIR, SYNERGY_DIR, SYNERGY_DIST_DIR } from "../shared/packages"
 
 export async function validateLocalArtifacts(platformPackageNames: string[]) {
   console.log("\n=== validate local artifacts ===\n")
 
   if (!(await Bun.file(path.join(APP_DIST_DIR, "index.html")).exists())) {
     throw new Error("packages/app/dist/index.html is missing")
-  }
-  if (!(await Bun.file(path.join(CONFIG_UI_DIST_DIR, "index.html")).exists())) {
-    throw new Error("packages/config-ui/dist/index.html is missing")
   }
   if (!(await Bun.file(path.join(SYNERGY_DIR, "schema/config.schema.json")).exists())) {
     throw new Error("packages/synergy/schema/config.schema.json is missing")
@@ -28,7 +25,7 @@ export async function validateLocalArtifacts(platformPackageNames: string[]) {
   for (const name of platformPackageNames) {
     const baseDir = path.join(SYNERGY_DIST_DIR, name)
     const binaryRelative = name.includes("windows") ? "bin/synergy.exe" : "bin/synergy"
-    for (const relative of [binaryRelative, "app/index.html", "config-ui/index.html", "schema/config.schema.json"]) {
+    for (const relative of [binaryRelative, "app/index.html", "schema/config.schema.json"]) {
       if (!fs.existsSync(path.join(baseDir, relative))) {
         throw new Error(`missing ${relative} in ${baseDir}`)
       }

@@ -11,6 +11,30 @@ const max = 200
 const cache = new Map<string, Entry>()
 const copyResetDelay = 2000
 
+/** Copy text to clipboard, falling back to execCommand for insecure contexts (http://IP, tailscale http) */
+async function copyToClipboard(text: string): Promise<boolean> {
+  if (navigator.clipboard && window.isSecureContext) {
+    await navigator.clipboard.writeText(text)
+    return true
+  }
+  // Fallback for HTTP / non-secure contexts (user-gesture-triggered only)
+  try {
+    const ta = document.createElement("textarea")
+    ta.value = text
+    ta.style.position = "fixed"
+    ta.style.opacity = "0"
+    ta.style.pointerEvents = "none"
+    document.body.appendChild(ta)
+    ta.focus()
+    ta.select()
+    const ok = document.execCommand("copy")
+    document.body.removeChild(ta)
+    return ok
+  } catch {
+    return false
+  }
+}
+
 function touch(key: string, value: Entry) {
   cache.delete(key)
   cache.set(key, value)
@@ -58,28 +82,25 @@ function enhanceMarkdown(root: HTMLDivElement) {
 
     const handleKatexClick = async (e: MouseEvent) => {
       e.stopPropagation()
-      try {
-        await navigator.clipboard.writeText(source)
-        // Show "Copied" tooltip
-        const tooltip = document.createElement("span")
-        tooltip.dataset.slot = "katex-copy-tooltip"
-        tooltip.textContent = "Copied!"
-        // Ensure the element is positioned for the tooltip
-        const prevPosition = katexEl.style.position
-        if (!prevPosition || prevPosition === "static") {
-          katexEl.style.position = "relative"
-        }
-        katexEl.appendChild(tooltip)
-        window.clearTimeout(resetTimer)
-        resetTimer = window.setTimeout(() => {
-          tooltip.remove()
-          if (!prevPosition || prevPosition === "static") {
-            katexEl.style.position = prevPosition || ""
-          }
-        }, copyResetDelay)
-      } catch {
-        // clipboard failed silently
+      const ok = await copyToClipboard(source)
+      if (!ok) return
+      // Show "Copied" tooltip
+      const tooltip = document.createElement("span")
+      tooltip.dataset.slot = "katex-copy-tooltip"
+      tooltip.textContent = "Copied!"
+      // Ensure the element is positioned for the tooltip
+      const prevPosition = katexEl.style.position
+      if (!prevPosition || prevPosition === "static") {
+        katexEl.style.position = "relative"
       }
+      katexEl.appendChild(tooltip)
+      window.clearTimeout(resetTimer)
+      resetTimer = window.setTimeout(() => {
+        tooltip.remove()
+        if (!prevPosition || prevPosition === "static") {
+          katexEl.style.position = prevPosition || ""
+        }
+      }, copyResetDelay)
     }
 
     katexEl.addEventListener("click", handleKatexClick)
@@ -136,13 +157,11 @@ function enhanceMarkdown(root: HTMLDivElement) {
     setCopied(false)
 
     const handleClick = async () => {
-      try {
-        await navigator.clipboard.writeText(source)
-        window.clearTimeout(resetTimer)
-        setCopied(true)
+      const ok = await copyToClipboard(source)
+      window.clearTimeout(resetTimer)
+      setCopied(ok)
+      if (ok) {
         resetTimer = window.setTimeout(() => setCopied(false), copyResetDelay)
-      } catch {
-        setCopied(false)
       }
     }
 

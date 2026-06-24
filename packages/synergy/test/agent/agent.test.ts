@@ -1,7 +1,7 @@
 import { test, expect } from "bun:test"
 import path from "path"
 import { tmpdir } from "../fixture/fixture"
-import { Instance } from "../../src/scope/instance"
+import { ScopeContext } from "../../src/scope/context"
 import { Agent } from "../../src/agent/agent"
 import { PermissionNext } from "../../src/permission/next"
 import { Config } from "../../src/config/config"
@@ -15,7 +15,7 @@ function evalPerm(agent: Agent.Info | undefined, permission: string): Permission
 
 test("returns default native agents when no config", async () => {
   await using tmp = await tmpdir()
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
       const agents = await Agent.list()
@@ -36,7 +36,7 @@ test("returns default native agents when no config", async () => {
 
 test("developer agent has correct default properties", async () => {
   await using tmp = await tmpdir()
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
       const developer = await Agent.get("developer")
@@ -51,7 +51,7 @@ test("developer agent has correct default properties", async () => {
 
 test("explore agent allows edit and write via ask", async () => {
   await using tmp = await tmpdir()
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
       const explore = await Agent.get("explore")
@@ -67,7 +67,7 @@ test("explore agent allows edit and write via ask", async () => {
 
 test("scholar agent has correct permissions", async () => {
   await using tmp = await tmpdir()
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
       const scholar = await Agent.get("scholar")
@@ -83,7 +83,7 @@ test("scholar agent has correct permissions", async () => {
 
 test("compaction agent denies all permissions", async () => {
   await using tmp = await tmpdir()
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
       const compaction = await Agent.get("compaction")
@@ -109,7 +109,7 @@ test("custom agent from config creates new agent", async () => {
       },
     },
   })
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
       const custom = await Agent.get("my_custom_agent")
@@ -138,7 +138,7 @@ test("custom agent config overrides native agent properties", async () => {
       },
     },
   })
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
       const developer = await Agent.get("developer")
@@ -161,7 +161,7 @@ test("agent disable removes agent from list", async () => {
       },
     },
   })
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
       const explore = await Agent.get("explore")
@@ -187,7 +187,7 @@ test("agent permission config merges with defaults", async () => {
       },
     },
   })
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
       const developer = await Agent.get("developer")
@@ -208,7 +208,7 @@ test("global permission config applies to all agents", async () => {
       },
     },
   })
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
       const developer = await Agent.get("developer")
@@ -218,7 +218,7 @@ test("global permission config applies to all agents", async () => {
   })
 })
 
-test("agent steps/maxSteps config sets steps property", async () => {
+test("agent steps/maxSteps config overrides steps property", async () => {
   await using tmp = await tmpdir({
     config: {
       agent: {
@@ -227,7 +227,7 @@ test("agent steps/maxSteps config sets steps property", async () => {
       },
     },
   })
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
       const developer = await Agent.get("developer")
@@ -246,7 +246,7 @@ test("agent mode can be overridden", async () => {
       },
     },
   })
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
       const explore = await Agent.get("explore")
@@ -263,7 +263,7 @@ test("agent name can be overridden", async () => {
       },
     },
   })
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
       const developer = await Agent.get("developer")
@@ -280,7 +280,7 @@ test("agent prompt can be set from config", async () => {
       },
     },
   })
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
       const developer = await Agent.get("developer")
@@ -300,7 +300,7 @@ test("unknown agent properties are placed into options", async () => {
       },
     },
   })
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
       const developer = await Agent.get("developer")
@@ -323,7 +323,7 @@ test("agent options merge correctly", async () => {
       },
     },
   })
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
       const developer = await Agent.get("developer")
@@ -348,7 +348,7 @@ test("multiple custom agents can be defined", async () => {
       },
     },
   })
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
       const agentA = await Agent.get("agent_a")
@@ -363,7 +363,7 @@ test("multiple custom agents can be defined", async () => {
 
 test("Agent.get returns undefined for non-existent agent", async () => {
   await using tmp = await tmpdir()
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
       const nonExistent = await Agent.get("does_not_exist")
@@ -379,16 +379,15 @@ test("explore agent model follows mid_model after config reload", async () => {
       mid_model: "openai/gpt-4.1",
     },
   })
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
       const before = await Agent.get("explore")
       expect(before?.model).toEqual({ providerID: "openai", modelID: "gpt-4.1" })
 
       await Bun.write(
-        path.join(tmp.path, "synergy.json"),
+        path.join(tmp.path, ".synergy", "synergy.d", "10-models.jsonc"),
         JSON.stringify({
-          $schema: "file:///test/config.schema.json",
           model: "openai/gpt-4.1",
           mid_model: "openai/gpt-5-mini",
         }),
@@ -404,7 +403,7 @@ test("explore agent model follows mid_model after config reload", async () => {
 
 test("default subagent permission denies unknown tools and external_directory ask", async () => {
   await using tmp = await tmpdir()
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
       const developer = await Agent.get("developer")
@@ -420,7 +419,7 @@ test("openclaw external agent is registered without model switching claims", asy
     return
   }
   await using tmp = await tmpdir()
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
       const openclaw = await Agent.get("openclaw")
@@ -432,7 +431,7 @@ test("openclaw external agent is registered without model switching claims", asy
 
 test("developer denies webfetch by default", async () => {
   await using tmp = await tmpdir()
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
       const developer = await Agent.get("developer")
@@ -454,7 +453,7 @@ test("legacy tools config converts to permissions", async () => {
       },
     },
   })
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
       const developer = await Agent.get("developer")
@@ -476,7 +475,7 @@ test("legacy tools config maps write/edit/patch/multiedit to edit permission", a
       },
     },
   })
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
       const developer = await Agent.get("developer")
@@ -494,7 +493,7 @@ test("Truncate.DIR is allowed even when user denies external_directory globally"
       },
     },
   })
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
       const developer = await Agent.get("developer")
@@ -519,7 +518,7 @@ test("Truncate.DIR is allowed even when user denies external_directory per-agent
       },
     },
   })
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
       const developer = await Agent.get("developer")
@@ -543,7 +542,7 @@ test("explicit Truncate.DIR deny is respected", async () => {
       },
     },
   })
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
       const developer = await Agent.get("developer")
@@ -556,13 +555,12 @@ test("explicit Truncate.DIR deny is respected", async () => {
 
 test("scribe agent has selective skill permissions", async () => {
   await using tmp = await tmpdir()
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
       const scribe = await Agent.get("scribe")
       expect(scribe).toBeDefined()
-      // Scribe allows agent-browser, git-guide, and skill-creator
-      expect(PermissionNext.evaluate("skill", "agent-browser", scribe!.permission).action).toBe("allow")
+      // Scribe allows git-guide and skill-creator
       expect(PermissionNext.evaluate("skill", "git-guide", scribe!.permission).action).toBe("allow")
       expect(PermissionNext.evaluate("skill", "skill-creator", scribe!.permission).action).toBe("allow")
     },
@@ -571,13 +569,12 @@ test("scribe agent has selective skill permissions", async () => {
 
 test("explore agent has selective skill permissions", async () => {
   await using tmp = await tmpdir()
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
       const explore = await Agent.get("explore")
       expect(explore).toBeDefined()
-      // Explore allows agent-browser, git-guide, and skill-creator
-      expect(PermissionNext.evaluate("skill", "agent-browser", explore!.permission).action).toBe("allow")
+      // Explore allows git-guide and skill-creator
       expect(PermissionNext.evaluate("skill", "git-guide", explore!.permission).action).toBe("allow")
       expect(PermissionNext.evaluate("skill", "skill-creator", explore!.permission).action).toBe("allow")
     },
@@ -586,7 +583,7 @@ test("explore agent has selective skill permissions", async () => {
 
 test("multimodal-looker agent denies all skills", async () => {
   await using tmp = await tmpdir()
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
       const looker = await Agent.get("multimodal-looker")
@@ -600,13 +597,12 @@ test("multimodal-looker agent denies all skills", async () => {
 
 test("scout agent has selective skill permissions", async () => {
   await using tmp = await tmpdir()
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
       const scout = await Agent.get("scout")
       expect(scout).toBeDefined()
-      // Scout allows agent-browser and git-guide, denies skill-creator
-      expect(PermissionNext.evaluate("skill", "agent-browser", scout!.permission).action).toBe("allow")
+      // Scout allows git-guide and skill-creator
       expect(PermissionNext.evaluate("skill", "git-guide", scout!.permission).action).toBe("allow")
       expect(PermissionNext.evaluate("skill", "skill-creator", scout!.permission).action).toBe("allow")
     },
@@ -615,21 +611,20 @@ test("scout agent has selective skill permissions", async () => {
 
 test("developer agent denies skills by default", async () => {
   await using tmp = await tmpdir()
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
       const developer = await Agent.get("developer")
       expect(developer).toBeDefined()
       expect(PermissionNext.evaluate("skill", "git-guide", developer!.permission).action).toBe("allow")
       expect(PermissionNext.evaluate("skill", "skill-creator", developer!.permission).action).toBe("allow")
-      expect(PermissionNext.evaluate("skill", "agent-browser", developer!.permission).action).toBe("allow")
     },
   })
 })
 
 test("Agent.defaultAgent() returns synergy by default", async () => {
   await using tmp = await tmpdir()
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
       const defaultAgent = await Agent.defaultAgent()
@@ -644,7 +639,7 @@ test("Agent.defaultAgent() with default_agent config returns configured agent", 
       default_agent: "developer",
     },
   })
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
       const defaultAgent = await Agent.defaultAgent()
@@ -664,7 +659,7 @@ test("Agent.defaultAgent() with custom default_agent returns configured custom a
       },
     },
   })
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
       const defaultAgent = await Agent.defaultAgent()
@@ -679,7 +674,7 @@ test("Agent.list() sorts configured default_agent first", async () => {
       default_agent: "scribe",
     },
   })
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
       const agents = await Agent.list()
@@ -691,7 +686,7 @@ test("Agent.list() sorts configured default_agent first", async () => {
 
 test("Agent.list() sorts synergy first when no default_agent configured", async () => {
   await using tmp = await tmpdir()
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
       const agents = await Agent.list()

@@ -57,16 +57,20 @@ export namespace ExperienceEncoder {
     const session = await Session.get(sessionID).catch(() => undefined)
     if (!session?.scope) return { encoded: false, skipped: true }
     if (session.parentID) return { encoded: false, skipped: true }
-    if (SessionEndpoint.type(session.endpoint) === "genesis") return { encoded: false, skipped: true }
-    if (SessionEndpoint.isHolos(session.endpoint)) return { encoded: false, skipped: true }
 
     const scope = session.scope as Scope
 
-    const config = await Config.get()
-    const evo = Config.resolveEvolution(config.identity?.evolution)
-    if (evo.encode === false) return { encoded: false, skipped: true }
+    const config = await Config.current()
+    const engram = (config as any).engram as
+      | { experience?: { encode?: boolean; learning?: Config.Learning } }
+      | undefined
+    if (engram?.experience?.encode === false) return { encoded: false, skipped: true }
 
-    const learning = evo.learning
+    const learning = {
+      ...Config.LEARNING_DEFAULTS,
+      ...engram?.experience?.learning,
+      rewardWeights: { ...Config.REWARD_WEIGHT_DEFAULTS, ...engram?.experience?.learning?.rewardWeights },
+    } as Required<Config.Learning>
     const msgs = await Session.messages({ sessionID })
 
     userMessageID = Turn.resolveRealUser(msgs, userMessageID)
@@ -232,14 +236,18 @@ export namespace ExperienceEncoder {
   async function checkRewardWindow(sessionID: string) {
     const session = await Session.get(sessionID).catch(() => undefined)
     if (session?.parentID) return
-    if (SessionEndpoint.type(session?.endpoint) === "genesis") return
-    if (SessionEndpoint.isHolos(session?.endpoint)) return
 
-    const config = await Config.get()
-    const evo = Config.resolveEvolution(config.identity?.evolution)
-    if (evo.encode === false) return
+    const config = await Config.current()
+    const engram = (config as any).engram as
+      | { experience?: { encode?: boolean; learning?: Config.Learning } }
+      | undefined
+    if (engram?.experience?.encode === false) return
 
-    const learning = evo.learning
+    const learning = {
+      ...Config.LEARNING_DEFAULTS,
+      ...engram?.experience?.learning,
+      rewardWeights: { ...Config.REWARD_WEIGHT_DEFAULTS, ...engram?.experience?.learning?.rewardWeights },
+    } as Required<Config.Learning>
     const pending = EngramDB.Experience.listPendingRewards(sessionID)
     if (pending.length === 0) return
 

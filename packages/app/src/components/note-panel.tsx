@@ -1,140 +1,123 @@
-import { createMemo, createResource, createSignal, For, Show, createEffect, onCleanup, untrack } from "solid-js"
-import { useParams } from "@solidjs/router"
-import { Editor } from "@tiptap/core"
-import StarterKit from "@tiptap/starter-kit"
-import Placeholder from "@tiptap/extension-placeholder"
-import Link from "@tiptap/extension-link"
-import Image from "@tiptap/extension-image"
-import { Table } from "@tiptap/extension-table"
-import { TableRow } from "@tiptap/extension-table-row"
-import { TableHeader } from "@tiptap/extension-table-header"
-import { TableCell } from "@tiptap/extension-table-cell"
-import TaskList from "@tiptap/extension-task-list"
-import TaskItem from "@tiptap/extension-task-item"
-import CodeBlockShiki from "tiptap-extension-code-block-shiki"
-import MathExtension from "@aarkue/tiptap-math-extension"
+import { createMemo, createResource, createSignal, For, Show, createEffect, onCleanup, onMount } from "solid-js"
+import { useNavigate, useParams } from "@solidjs/router"
+import type { Editor } from "@tiptap/core"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
+import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
-import { Panel } from "@/components/panel"
-import { base64Decode } from "@ericsanchezok/synergy-util/encode"
-import { NoteMarkdown } from "@ericsanchezok/synergy-util/note-markdown"
-import { getFilename } from "@ericsanchezok/synergy-util/path"
+
+import { base64Decode, base64Encode } from "@ericsanchezok/synergy-util/encode"
+import { createSynergyClient } from "@ericsanchezok/synergy-sdk/client"
+import { usePlatform } from "@/context/platform"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { useGlobalSync } from "@/context/global-sync"
-import { Video, Mermaid, CrossCellSelection, createFileUpload } from "@/components/note/extensions"
-import { createSlashCommands } from "@/components/note/slash-menu"
-import { createBubbleMenu, BubbleMenuContent } from "@/components/note/bubble-menu"
-import type { NoteInfo, NoteScopeGroup } from "@ericsanchezok/synergy-sdk/client"
+import { TIPTAP_STYLES, DocumentEditorCore } from "@/components/note/document-editor-core"
+import type { BlueprintLoopInfo, NoteInfo, NoteMetaInfo, NoteMetaScopeGroup } from "@ericsanchezok/synergy-sdk/client"
 import { getScopeLabel } from "@/utils/scope"
+import { assetHttpUrl } from "@/utils/asset-url"
 import { relativeTime } from "@/utils/time"
-import katex from "katex"
-import "katex/dist/katex.min.css"
+import "./note-panel.css"
 
-function escapeHtml(str: string): string {
-  return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;")
+type LoopStatus = BlueprintLoopInfo["status"]
+
+type NoteCardInfo = NoteMetaInfo & {
+  kind?: "note" | "blueprint"
 }
 
-function tiptapToHtml(node: any): string {
-  if (!node) return ""
-  if (node.type === "text") {
-    let html = escapeHtml(node.text || "")
-    for (const mark of node.marks ?? []) {
-      switch (mark.type) {
-        case "bold":
-          html = `<strong>${html}</strong>`
-          break
-        case "italic":
-          html = `<em>${html}</em>`
-          break
-        case "code":
-          html = `<code>${html}</code>`
-          break
-        case "strike":
-          html = `<s>${html}</s>`
-          break
-        case "link":
-          html = `<a href="${escapeHtml(mark.attrs?.href ?? "")}">${html}</a>`
-          break
-      }
+type BlueprintVisualState = {
+  label: string
+  detail: string
+  tone: "idle" | "running" | "waiting" | "auditing" | "failed" | "completed"
+  icon: string
+}
+
+function isBlueprintNote(note: { kind?: string; blueprint?: unknown }) {
+  return note.kind === "blueprint"
+}
+
+function isActiveLoopStatus(status: LoopStatus) {
+  return status === "running" || status === "waiting" || status === "auditing"
+}
+
+function getLoopLabel(status: LoopStatus) {
+  if (status === "armed") return "Run queued"
+  if (status === "running") return "Running"
+  if (status === "waiting") return "Needs input"
+  if (status === "auditing") return "Reviewing"
+  if (status === "completed") return "Completed"
+  if (status === "failed") return "Failed"
+  return "Cancelled"
+}
+
+function getLoopTone(status: LoopStatus): BlueprintVisualState["tone"] {
+  if (status === "armed" || status === "running") return "running"
+  if (status === "waiting") return "waiting"
+  if (status === "auditing") return "auditing"
+  if (status === "completed") return "completed"
+  if (status === "failed") return "failed"
+  return "idle"
+}
+
+function getRunModeLabel(mode?: BlueprintLoopInfo["runMode"]) {
+  if (mode === "current") return "Session run"
+  if (mode === "new") return "New session"
+  if (mode === "worktree") return "Worktree run"
+  return "Active run"
+}
+
+function getBlueprintVisualState(note: NoteCardInfo | NoteInfo, loops: BlueprintLoopInfo[] = []): BlueprintVisualState {
+  const active = loops.find((loop) => isActiveLoopStatus(loop.status))
+  if (active) {
+    return {
+      label: getLoopLabel(active.status),
+      detail: getRunModeLabel(active.runMode),
+      tone: getLoopTone(active.status),
+      icon: active.status === "auditing" ? "clipboard-check" : active.status === "waiting" ? "hourglass" : "zap",
     }
-    return html
   }
-  const children = (node.content ?? []).map(tiptapToHtml).join("")
-  switch (node.type) {
-    case "doc":
-      return children
-    case "paragraph": {
-      const content = node.content ?? []
-      if (content.length === 1 && content[0]?.type === "inlineMath" && content[0]?.attrs?.display === "yes") {
-        return tiptapToHtml(content[0])
-      }
-      return `<p>${children || "<br>"}</p>`
-    }
-    case "heading":
-      return `<h${node.attrs?.level ?? 1}>${children}</h${node.attrs?.level ?? 1}>`
-    case "bulletList":
-      return `<ul>${children}</ul>`
-    case "orderedList":
-      return `<ol>${children}</ol>`
-    case "listItem":
-      return `<li>${children}</li>`
-    case "blockquote":
-      return `<blockquote>${children}</blockquote>`
-    case "codeBlock":
-      return `<pre><code>${children}</code></pre>`
-    case "image":
-      return `<img src="${escapeHtml(node.attrs?.src ?? "")}" alt="${escapeHtml(node.attrs?.alt ?? "")}" style="max-width:100%;border-radius:0.375rem" />`
-    case "horizontalRule":
-      return `<hr />`
-    case "inlineMath": {
-      const formula = node.attrs?.latex ?? ""
-      if (!formula) return ""
-      const displayMode = node.attrs?.display === "yes"
-      try {
-        const html = katex.renderToString(formula, { displayMode, throwOnError: false })
-        return displayMode ? `<div style="text-align:center;margin:0.5em 0">${html}</div>` : html
-      } catch {
-        return escapeHtml(formula)
-      }
-    }
-    case "hardBreak":
-      return `<br />`
-    case "taskList":
-      return `<ul data-type="taskList">${children}</ul>`
-    case "taskItem": {
-      const checked = node.attrs?.checked ? " checked" : ""
-      return `<li><input type="checkbox"${checked} disabled />${children}</li>`
-    }
-    case "table":
-      return `<table>${children}</table>`
-    case "tableRow":
-      return `<tr>${children}</tr>`
-    case "tableHeader":
-      return `<th>${children}</th>`
-    case "tableCell":
-      return `<td>${children}</td>`
-    case "video":
-      return `<div style="background:var(--surface-inset-base);border-radius:0.375rem;padding:1em;text-align:center;color:var(--text-weak);font-size:0.75rem">▶ Video</div>`
-    default:
-      return children
+  const latest = loops[0]
+  if (latest?.status === "failed") {
+    return { label: "Run failed", detail: "Last run failed", tone: "failed", icon: "circle-x" }
+  }
+  return {
+    label: "Blueprint",
+    detail: "No active run",
+    tone: "idle",
+    icon: getSemanticIcon("orchestration.blueprint"),
   }
 }
 
-function attachNoteDragData(e: DragEvent, note: NoteInfo) {
+function getRunCount(note: NoteCardInfo | NoteInfo, loops: BlueprintLoopInfo[] = []) {
+  return note.blueprint?.runCount ?? loops.length
+}
+
+function getBlueprintActivityTime(note: NoteCardInfo | NoteInfo, loops: BlueprintLoopInfo[] = []) {
+  return note.blueprint?.lastRunAt ?? loops[0]?.time.updated ?? note.time.updated
+}
+
+function attachNoteDragData(e: DragEvent, note: NoteCardInfo) {
   const title = note.title || "Untitled"
   const payload = JSON.stringify({
     id: note.id,
     title: note.title,
-    content: NoteMarkdown.toMarkdown(note.content),
+    content: note.searchText,
   })
 
   e.dataTransfer!.effectAllowed = "copy"
   e.dataTransfer!.setData("application/x-synergy-note", payload)
+  if (isBlueprintNote(note)) {
+    e.dataTransfer!.setData(
+      "application/x-synergy-blueprint",
+      JSON.stringify({
+        noteID: note.id,
+        title: note.title,
+      }),
+    )
+  }
   e.dataTransfer!.setData("text/plain", title)
 
   const dragImage = document.createElement("div")
   dragImage.className =
-    "flex items-center gap-2 rounded-xl border border-border-base/55 bg-surface-raised-base/95 px-3 py-2 text-12-medium text-text-base shadow-[0_14px_36px_rgba(28,34,48,0.12)]"
+    "flex items-center gap-2 rounded-xl border border-border-weak-base bg-surface-raised-base/95 px-3 py-2 text-12-medium text-text-base shadow-[0_14px_36px_rgba(28,34,48,0.12)]"
   dragImage.style.position = "absolute"
   dragImage.style.top = "-1000px"
   dragImage.textContent = title
@@ -143,163 +126,270 @@ function attachNoteDragData(e: DragEvent, note: NoteInfo) {
   setTimeout(() => document.body.removeChild(dragImage), 0)
 }
 
-function NoteCard(props: { note: NoteInfo; originName?: string; onClick: () => void }) {
-  const previewHtml = createMemo(() => tiptapToHtml(props.note.content))
-  const hasContent = createMemo(() => {
-    const html = previewHtml()
-    return html.length > 0 && html !== "<p><br></p>"
+type NoteCardVariant = "compact" | "balanced" | "featured"
+
+function NoteCard(props: {
+  note: NoteCardInfo
+  originName?: string
+  variant?: NoteCardVariant
+  loops?: BlueprintLoopInfo[]
+  onClick: () => void
+}) {
+  const previewHtml = createMemo(() => props.note.previewHtml ?? null)
+  const searchPreview = createMemo(() => props.note.searchText ?? "")
+  const hasContent = createMemo(() => (previewHtml() ?? searchPreview()).length > 0)
+  const variant = createMemo(() => props.variant ?? "balanced")
+  const isBlueprint = createMemo(() => isBlueprintNote(props.note))
+  const blueprintState = createMemo(() => getBlueprintVisualState(props.note, props.loops ?? []))
+  const cardHeight = createMemo(() => {
+    if (variant() === "compact") return "h-[260px]"
+    if (variant() === "featured") return "h-[370px]"
+    return "h-[320px]"
   })
 
   return (
     <button
       type="button"
-      class="group relative flex w-full flex-col overflow-hidden rounded-[1.1rem] border border-border-base/55 bg-surface-raised-base/95 text-left shadow-[inset_0_1px_0_rgba(214,204,190,0.08),0_18px_44px_-34px_rgba(28,34,48,0.24)] transition-all hover:-translate-y-0.5 hover:border-border-base/70 hover:bg-surface-raised-base hover:shadow-[inset_0_1px_0_rgba(214,204,190,0.1),0_24px_54px_-34px_rgba(28,34,48,0.3)] active:scale-[0.985] cursor-pointer"
+      class={`group note-card relative flex w-full ${cardHeight()} flex-col overflow-hidden rounded-[0.95rem] border border-border-weaker-base bg-surface-raised-base/80 text-left hover:border-border-weak-hover hover:bg-surface-raised-base-hover active:scale-[0.99] cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-border-strong-base/40 focus-visible:ring-offset-2 focus-visible:ring-offset-background-base`}
+      classList={{
+        "note-card--blueprint": isBlueprint(),
+        [`note-card--blueprint-${blueprintState().tone}`]: isBlueprint(),
+      }}
       draggable={true}
       onDragStart={(e) => attachNoteDragData(e, props.note)}
       onClick={props.onClick}
     >
       <Show when={props.originName}>
-        <div class="absolute right-2 top-2 z-10 flex items-center gap-1 rounded-full border border-border-base/55 bg-surface-raised-stronger-non-alpha/90 px-2 py-1 text-text-weak shadow-sm backdrop-blur-sm">
-          <Icon name="folder" class="size-2.5 text-text-weak" />
-          <span class="text-10-medium leading-tight">{props.originName}</span>
-        </div>
+        <span class="sr-only">From {props.originName}</span>
       </Show>
+
+      <div class="px-3.5 pt-3.5">
+        <span
+          classList={{
+            "line-clamp-2 text-text-strong": true,
+            "text-12-medium": variant() !== "featured",
+            "text-14-medium tracking-tight": variant() === "featured",
+          }}
+        >
+          {props.note.title || "Untitled"}
+        </span>
+      </div>
+
       <Show
         when={hasContent()}
         fallback={
-          <div class="flex items-center justify-center py-6 text-text-weaker opacity-40">
+          <div class="flex flex-1 items-center justify-center text-text-weaker opacity-35">
             <Icon name="notebook-pen" size="large" />
           </div>
         }
       >
-        <div class="relative overflow-hidden w-full" style={{ "max-height": "220px", "min-height": "60px" }}>
-          <div
-            class="tiptap pointer-events-none select-none"
-            style={{ zoom: "0.34", padding: "0.75rem 0.875rem", "min-height": `${60 / 0.34}px` }}
-            innerHTML={previewHtml()}
-          />
-          <div
-            class="absolute bottom-0 inset-x-0 h-8 pointer-events-none"
-            style={{
-              background:
-                "linear-gradient(to top, color-mix(in srgb, var(--surface-raised-base) 92%, transparent), transparent)",
-            }}
-          />
+        <div class="note-card-preview min-h-0 flex-1 overflow-hidden px-3.5 pt-2">
+          <Show
+            when={previewHtml()}
+            fallback={
+              <div class="whitespace-pre-line text-[10.5px] leading-[1.35] text-text-weaker">{searchPreview()}</div>
+            }
+          >
+            <div
+              class="note-preview-content text-[10.5px] leading-[1.35] text-text-weaker"
+              innerHTML={previewHtml()!}
+            />
+          </Show>
         </div>
       </Show>
 
-      <div class="mt-auto border-t border-border-base/30 px-3.5 py-3">
-        <div class="flex items-center gap-1.5">
-          <Show when={props.note.pinned}>
-            <span class="inline-flex size-5 shrink-0 items-center justify-center rounded-full bg-surface-raised-stronger-non-alpha text-text-interactive-base ring-1 ring-inset ring-border-base/45">
-              <Icon name="pin" size="small" class="size-3" />
-            </span>
-          </Show>
-          <span class="flex-1 line-clamp-1 text-12-medium leading-snug text-text-strong">
-            {props.note.title || "Untitled"}
-          </span>
-        </div>
-        <Show when={(props.note.tags ?? []).length > 0}>
-          <div class="mt-1.5 flex flex-wrap items-center gap-1.5">
-            <For each={(props.note.tags ?? []).slice(0, 3)}>
-              {(tag) => (
-                <span class="inline-flex items-center rounded-full bg-surface-raised-stronger-non-alpha/80 px-2 py-1 text-[10px] font-medium leading-none text-text-weak ring-1 ring-inset ring-border-base/45">
-                  {tag}
+      <div class="note-card-footer mt-auto shrink-0 px-3.5 py-2.5">
+        <Show
+          when={isBlueprint()}
+          fallback={
+            <div class="flex items-center gap-2">
+              <Show when={props.originName}>
+                <span class="note-card-origin">
+                  <Icon name="folder" class="size-3 shrink-0" />
+                  <span class="truncate">From {props.originName}</span>
                 </span>
-              )}
-            </For>
-            <Show when={(props.note.tags ?? []).length > 3}>
-              <span class="text-10-medium text-text-weaker">+{(props.note.tags ?? []).length - 3}</span>
+              </Show>
+              <Show when={props.note.pinned}>
+                <span class="inline-flex size-5 shrink-0 items-center justify-center rounded-full bg-surface-raised-stronger-non-alpha text-text-weak">
+                  <Icon name="pin" size="small" class="size-3" />
+                </span>
+              </Show>
+              <span class="flex-1" />
+              <span class="text-11-regular text-text-weak">{relativeTime(props.note.time.updated)}</span>
+            </div>
+          }
+        >
+          <div class="flex items-center gap-2">
+            <span class={`note-card-status note-card-status--${blueprintState().tone}`}>
+              <Icon name={blueprintState().icon} size="small" class="size-3" />
+              {blueprintState().label}
+            </span>
+            <span class="min-w-0 flex-1 truncate text-10-regular text-text-weaker">{blueprintState().detail}</span>
+            <Show when={props.note.pinned}>
+              <Icon name="pin" size="small" class="size-3 shrink-0 text-text-weak" />
             </Show>
           </div>
+          <div class="mt-2 flex items-center gap-2 text-11-regular text-text-weak">
+            <Show when={props.originName}>
+              <span class="note-card-origin">
+                <Icon name="folder" class="size-3 shrink-0" />
+                <span class="truncate">From {props.originName}</span>
+              </span>
+            </Show>
+            <span class="truncate">
+              {getRunCount(props.note, props.loops ?? []) > 0
+                ? `${getRunCount(props.note, props.loops ?? [])} runs`
+                : "No runs yet"}
+            </span>
+            <span class="flex-1" />
+            <span class="shrink-0">{relativeTime(getBlueprintActivityTime(props.note, props.loops ?? []))}</span>
+          </div>
         </Show>
-        <span class="mt-2 block text-11-regular text-text-weak">{relativeTime(props.note.time.updated)}</span>
       </div>
     </button>
   )
 }
 
-function MiniNoteCard(props: { note: NoteInfo; originName?: string; onClick: () => void }) {
-  const tags = createMemo(() => props.note.tags ?? [])
+/** Skeleton placeholder matching NoteCard shape, shown during list loading */
+function NoteCardSkeleton() {
+  return (
+    <div class="flex w-full h-[320px] flex-col overflow-hidden rounded-[0.95rem] border border-border-weaker-base bg-surface-raised-base/70 animate-pulse">
+      <div class="px-3.5 pt-3.5 space-y-1.5">
+        <div class="h-3 w-3/4 rounded bg-surface-inset-base/70" />
+        <div class="h-3 w-1/2 rounded bg-surface-inset-base/70" />
+      </div>
+      <div class="flex-1 px-3.5 pt-2 space-y-1">
+        <div class="h-2 w-full rounded bg-surface-inset-base/70" />
+        <div class="h-2 w-5/6 rounded bg-surface-inset-base/70" />
+        <div class="h-2 w-2/3 rounded bg-surface-inset-base/70" />
+      </div>
+      <div class="note-card-footer shrink-0 px-3.5 py-2.5">
+        <div class="ml-auto h-3 w-1/4 rounded bg-surface-inset-base/70" />
+      </div>
+    </div>
+  )
+}
+
+function RunMenu(props: {
+  title: string
+  hasCurrentSession: boolean
+  onRun: (mode: "current" | "new" | "worktree") => void
+  onClose: () => void
+}) {
+  const options = [
+    {
+      mode: "current" as const,
+      title: "Current session",
+      description: props.hasCurrentSession ? "Run in the session you are viewing." : "Open a session first.",
+      disabled: !props.hasCurrentSession,
+    },
+    {
+      mode: "new" as const,
+      title: "New session",
+      description: "Create a fresh session in this scope and start immediately.",
+      disabled: false,
+    },
+    {
+      mode: "worktree" as const,
+      title: "New worktree session",
+      description: "Create an isolated worktree session and start immediately.",
+      disabled: false,
+    },
+  ]
 
   return (
-    <button
-      type="button"
-      class="min-w-0 rounded-xl border border-border-base/42 bg-surface-raised-base/82 px-3 py-2.5 text-left shadow-[inset_0_1px_0_rgba(214,204,190,0.08)] transition-all hover:-translate-y-0.5 hover:border-border-base/65 hover:bg-surface-raised-base hover:shadow-[0_14px_32px_-28px_rgba(28,34,48,0.32)] active:scale-[0.985]"
-      draggable={true}
-      onDragStart={(e) => attachNoteDragData(e, props.note)}
-      onClick={props.onClick}
-    >
-      <div class="flex min-w-0 items-center gap-1.5">
-        <Show when={props.note.pinned}>
-          <Icon name="pin" size="small" class="size-3 shrink-0 text-text-interactive-base" />
-        </Show>
-        <span class="min-w-0 flex-1 truncate text-11-medium leading-snug text-text-strong">
-          {props.note.title || "Untitled"}
-        </span>
+    <div class="note-run-menu absolute right-4 top-[3.75rem] z-40 w-[min(22rem,calc(100%-2rem))] p-3">
+      <div class="px-2 pb-2">
+        <div class="flex items-start gap-2">
+          <div class="min-w-0 flex-1">
+            <h3 class="text-13-medium text-text-strong">Run Blueprint</h3>
+            <p class="mt-1 line-clamp-2 text-11-regular text-text-weak">{props.title || "Untitled"}</p>
+          </div>
+          <button
+            type="button"
+            class="flex size-6 shrink-0 items-center justify-center rounded-full text-icon-weak transition-colors hover:bg-surface-raised-base-hover hover:text-icon-base"
+            onClick={props.onClose}
+            title="Close"
+          >
+            <Icon name="x" size="small" class="size-3" />
+          </button>
+        </div>
       </div>
-      <div class="mt-1.5 flex min-w-0 items-center gap-1.5 text-10-medium leading-none text-text-weaker">
-        <Show when={props.originName}>
-          <span class="inline-flex min-w-0 items-center gap-1 truncate text-text-weak">
-            <Icon name="folder" class="size-2.5 shrink-0" />
-            <span class="truncate">{props.originName}</span>
-          </span>
-        </Show>
-        <Show when={tags()[0]}>
-          <span class="max-w-[5.5rem] truncate rounded-md bg-surface-raised-stronger-non-alpha/72 px-1.5 py-0.5 text-text-weak ring-1 ring-inset ring-border-base/35">
-            {tags()[0]}
-          </span>
-        </Show>
-        <span class="shrink-0">{relativeTime(props.note.time.updated)}</span>
+      <div class="space-y-1.5">
+        <For each={options}>
+          {(option) => (
+            <button
+              type="button"
+              class="w-full rounded-[0.95rem] border border-border-weak-base bg-surface-raised-base px-3 py-2.5 text-left transition-colors hover:bg-surface-raised-base-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-border-strong-base/35"
+              classList={{ "cursor-not-allowed opacity-55 hover:bg-surface-raised-base": option.disabled }}
+              disabled={option.disabled}
+              onClick={() => props.onRun(option.mode)}
+            >
+              <span class="block text-12-medium text-text-strong">{option.title}</span>
+              <span class="mt-0.5 block text-10-regular leading-4 text-text-weak">{option.description}</span>
+            </button>
+          )}
+        </For>
       </div>
-    </button>
+    </div>
   )
 }
 
-type DisplayGroup = NoteScopeGroup & {
+type DisplayGroup = NoteMetaScopeGroup & {
   name: string
   directory: string
   isCurrent: boolean
+  archived?: boolean
 }
 
 function ScopeSection(props: {
   group: DisplayGroup
   expanded: boolean
+  loopsByNote: Map<string, BlueprintLoopInfo[]>
   onToggle: () => void
   onOpenNote: (id: string) => void
   onCreateNote: () => void
   scopeLookup: Map<string, { name: string; directory: string }>
 }) {
-  const previewNotes = createMemo(() => props.group.notes.slice(0, 3))
+  const [columns, setColumns] = createSignal(2)
   const latestUpdated = createMemo(() => props.group.notes[0]?.time.updated)
   const noteCountLabel = createMemo(
     () => `${props.group.notes.length} ${props.group.notes.length === 1 ? "note" : "notes"}`,
   )
-  const sectionClass = createMemo(() => {
-    if (props.expanded) return "border-border-base/55 bg-surface-inset-base/36"
-    if (props.group.isCurrent) return "bg-surface-inset-base/42"
-    return ""
+  const shelfNotes = createMemo(() => props.group.notes.slice(0, columns()))
+  const hasMore = createMemo(() => props.group.notes.length > columns())
+
+  let sectionRef!: HTMLElement
+
+  onMount(() => {
+    const ro = new ResizeObserver(([entry]) => {
+      const w = entry.contentRect.width
+      const cols = w < 380 ? 1 : w < 660 ? 2 : 3
+      setColumns(cols)
+    })
+    ro.observe(sectionRef)
+    onCleanup(() => ro.disconnect())
   })
 
-  function getOriginName(note: NoteInfo): string | undefined {
-    if (props.group.scopeType !== "global") return undefined
-    const origin = (note as any).originScope as string | undefined
+  function getOriginName(note: NoteMetaInfo): string | undefined {
+    if (props.group.scopeType !== "home") return undefined
+    const origin = note.originScope
     if (!origin) return undefined
-    return props.scopeLookup.get(origin)?.name ?? origin
+    return props.scopeLookup.get(origin)?.name ?? "Archived project"
   }
 
   return (
     <section
-      class={`relative mb-3 overflow-hidden rounded-[1.25rem] border border-border-base/38 bg-surface-inset-base/24 p-2 transition-colors hover:bg-surface-inset-base/34 ${sectionClass()}`}
+      ref={sectionRef}
+      class="note-scope-section"
+      classList={{
+        "note-scope-section--current": props.group.isCurrent,
+      }}
     >
-      <Show when={props.group.isCurrent}>
-        <div class="absolute bottom-3 left-0 top-3 w-0.5 rounded-full bg-text-interactive-base/70" />
-      </Show>
-
       <div class="flex items-center gap-2">
         <button
           type="button"
-          class="flex min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-2xl px-2.5 py-2 text-left transition-colors hover:bg-surface-raised-base-hover/55"
+          class="note-scope-header"
           aria-expanded={props.expanded}
           aria-label={`${props.expanded ? "Collapse" : "Expand"} ${props.group.name} notes`}
           onClick={props.onToggle}
@@ -310,16 +400,19 @@ function ScopeSection(props: {
           >
             <Icon name="chevron-right" size="small" />
           </span>
-          <Show when={props.group.scopeType === "global"}>
-            <Icon name="home" size="small" class="text-text-interactive-base shrink-0" />
+          <Show when={props.group.scopeType === "home"}>
+            <Icon name="home" size="small" class="text-icon-weak shrink-0" />
           </Show>
-          <Show when={props.group.scopeType === "project"}>
+          <Show when={props.group.scopeType === "project" && !props.group.archived}>
             <Icon name="folder" size="small" class="text-icon-weak shrink-0" />
+          </Show>
+          <Show when={props.group.archived}>
+            <Icon name="archive" size="small" class="text-icon-weak shrink-0" />
           </Show>
           <span class="min-w-0 truncate text-12-medium text-text-strong">{props.group.name}</span>
           <Show when={props.group.isCurrent}>
-            <span class="inline-flex items-center gap-1 rounded-full bg-surface-raised-stronger-non-alpha/85 px-2 py-0.5 text-[10px] font-medium text-text-interactive-base ring-1 ring-inset ring-border-base/38">
-              <span class="size-1.5 rounded-full bg-text-interactive-base/80" />
+            <span class="note-scope-current-badge">
+              <span class="size-1.5 rounded-full bg-text-diff-add-base/80" />
               Current
             </span>
           </Show>
@@ -331,31 +424,39 @@ function ScopeSection(props: {
             </span>
           </Show>
         </button>
-        <button
-          type="button"
-          class="flex size-7 shrink-0 items-center justify-center rounded-full border border-border-base/55 bg-surface-raised-stronger-non-alpha text-icon-weak opacity-70 shadow-sm transition-all hover:bg-surface-raised-base-hover hover:text-icon-base hover:opacity-100"
-          onClick={props.onCreateNote}
-          title="New note"
-        >
-          <Icon name="plus" size="small" />
-        </button>
+        <Show when={!props.group.archived}>
+          <button type="button" class="note-scope-new-button" onClick={props.onCreateNote} title="New note">
+            <Icon name="plus" size="small" />
+          </button>
+        </Show>
       </div>
 
       <Show
         when={props.expanded}
         fallback={
-          <Show when={previewNotes().length > 0}>
-            <div class="grid grid-cols-1 gap-2 px-1 pb-1 pt-1.5 sm:grid-cols-3">
-              <For each={previewNotes()}>
+          <Show when={shelfNotes().length > 0}>
+            <div
+              class="note-card-grid note-card-grid--shelf"
+              style={`grid-template-columns: repeat(${columns()}, minmax(0, 1fr))`}
+            >
+              <For each={shelfNotes()}>
                 {(note) => (
-                  <MiniNoteCard
+                  <NoteCard
                     note={note}
                     originName={getOriginName(note)}
+                    loops={props.loopsByNote.get(note.id) ?? []}
+                    variant="compact"
                     onClick={() => props.onOpenNote(note.id)}
                   />
                 )}
               </For>
             </div>
+            <Show when={hasMore()}>
+              <button type="button" class="note-scope-view-all" onClick={props.onToggle}>
+                View all {props.group.notes.length} notes
+                <Icon name="chevron-right" size="small" class="size-3" />
+              </button>
+            </Show>
           </Show>
         }
       >
@@ -363,16 +464,21 @@ function ScopeSection(props: {
           when={props.group.notes.length > 0}
           fallback={<div class="py-4 text-center text-12-regular text-text-weaker">No notes in this scope</div>}
         >
-          <div class="mb-1 mt-2 flex gap-2.5 px-1">
-            {[0, 1, 2].map((col) => (
-              <div class="flex min-w-0 flex-1 flex-col gap-2.5">
-                <For each={props.group.notes.filter((_, i) => i % 3 === col)}>
-                  {(note) => (
-                    <NoteCard note={note} originName={getOriginName(note)} onClick={() => props.onOpenNote(note.id)} />
-                  )}
-                </For>
-              </div>
-            ))}
+          <div
+            class="note-card-grid note-card-grid--expanded"
+            style={`grid-template-columns: repeat(${columns()}, minmax(0, 1fr))`}
+          >
+            <For each={props.group.notes}>
+              {(note) => (
+                <NoteCard
+                  note={note}
+                  originName={getOriginName(note)}
+                  loops={props.loopsByNote.get(note.id) ?? []}
+                  variant={note.pinned ? "featured" : "balanced"}
+                  onClick={() => props.onOpenNote(note.id)}
+                />
+              )}
+            </For>
           </div>
         </Show>
       </Show>
@@ -395,14 +501,14 @@ export function NotePanel() {
 
   const currentScopeID = createMemo(() => {
     const dir = directory()
-    if (!dir || dir === "global") return "global"
+    if (!dir || dir === "home") return "home"
     const scope = globalSync.data.scope.find((s) => s.worktree === dir || (s.sandboxes ?? []).includes(dir))
     return scope?.id ?? ""
   })
 
   const scopeLookup = createMemo(() => {
     const map = new Map<string, { name: string; directory: string }>()
-    map.set("global", { name: getScopeLabel(undefined, "global"), directory: "global" })
+    map.set("home", { name: getScopeLabel(undefined, "home"), directory: "home" })
     for (const scope of globalSync.data.scope) {
       map.set(scope.id, {
         name: getScopeLabel(scope),
@@ -416,10 +522,34 @@ export function NotePanel() {
     () => ({ dir: directory(), ver: globalSync.noteVersion() }),
     async ({ dir }) => {
       if (!dir) return []
-      const result = await sdk.client.note.listAll({ directory: dir })
-      return (result.data ?? []) as NoteScopeGroup[]
+      const result = await sdk.client.note.listMeta({ directory: dir })
+      return (result.data ?? []) as NoteMetaScopeGroup[]
     },
   )
+
+  const [loops, { refetch: refetchLoops }] = createResource(
+    () => directory(),
+    async (dir) => {
+      if (!dir) return [] as BlueprintLoopInfo[]
+      try {
+        const result = await sdk.client.blueprint.loop.list({ directory: dir })
+        return [...((result.data ?? []) as BlueprintLoopInfo[])].sort((a, b) => b.time.updated - a.time.updated)
+      } catch (error) {
+        console.error("Failed to load blueprint loops", error)
+        return [] as BlueprintLoopInfo[]
+      }
+    },
+  )
+
+  const loopsByNote = createMemo(() => {
+    const map = new Map<string, BlueprintLoopInfo[]>()
+    for (const loop of loops() ?? []) {
+      const items = map.get(loop.noteID) ?? []
+      items.push(loop)
+      map.set(loop.noteID, items)
+    }
+    return map
+  })
 
   const allTags = createMemo(() => {
     const freq = new Map<string, number>()
@@ -448,14 +578,21 @@ export function NotePanel() {
     const curID = currentScopeID()
     const q = search().toLowerCase().trim()
     const activeTags = selectedTags()
+    const archivedNotes: NoteCardInfo[] = []
 
-    return groups
-      .map((g): DisplayGroup => {
+    const mapped = groups
+      .map((g): DisplayGroup | undefined => {
         const meta = lookup.get(g.scopeID)
         const isCurrent = g.scopeID === curID
-        let notes = [...g.notes]
+        const archived = g.scopeType === "project" && !meta && !isCurrent
+        const groupDirectory = meta?.directory ?? (g.scopeID === "home" ? "home" : isCurrent ? (directory() ?? "") : "")
+        let notes: NoteCardInfo[] = [...g.notes]
         if (q) {
-          notes = notes.filter((n) => n.title.toLowerCase().includes(q) || n.contentText.toLowerCase().includes(q))
+          notes = notes.filter((n) => {
+            if (n.title.toLowerCase().includes(q)) return true
+            const searchText = n.searchText ?? ""
+            return searchText.toLowerCase().includes(q)
+          })
         }
         if (activeTags.size > 0) {
           notes = notes.filter((n) => (n.tags ?? []).some((t) => activeTags.has(t)))
@@ -464,20 +601,44 @@ export function NotePanel() {
           if (a.pinned !== b.pinned) return a.pinned ? -1 : 1
           return b.time.updated - a.time.updated
         })
+        if (archived) {
+          archivedNotes.push(...notes)
+          return undefined
+        }
         return {
           ...g,
           notes,
-          name: meta?.name ?? g.scopeID,
-          directory: meta?.directory ?? "global",
+          name: meta?.name ?? (g.scopeID === "home" ? getScopeLabel(undefined, "home") : "Archived project"),
+          directory: groupDirectory,
           isCurrent,
         }
       })
+      .filter((g): g is DisplayGroup => g !== undefined)
+
+    if (archivedNotes.length > 0) {
+      archivedNotes.sort((a, b) => {
+        if (a.pinned !== b.pinned) return a.pinned ? -1 : 1
+        return b.time.updated - a.time.updated
+      })
+      mapped.push({
+        scopeID: "__archived_projects__",
+        scopeType: "project",
+        notes: archivedNotes,
+        name: "Archived projects",
+        directory: directory() ?? "home",
+        isCurrent: false,
+        archived: true,
+      })
+    }
+
+    return mapped
       .filter((g) => {
         const hasFilters = q || activeTags.size > 0
         return hasFilters ? g.notes.length > 0 : g.notes.length > 0 || g.isCurrent
       })
       .sort((a, b) => {
         if (a.isCurrent !== b.isCurrent) return a.isCurrent ? -1 : 1
+        if ((a.archived ?? false) !== (b.archived ?? false)) return a.archived ? 1 : -1
         const latestA = a.notes[0]?.time.updated ?? 0
         const latestB = b.notes[0]?.time.updated ?? 0
         return latestB - latestA
@@ -497,16 +658,18 @@ export function NotePanel() {
   }
 
   function openNote(id: string, dir: string) {
+    if (!dir) return
     setSelectedNoteId(id)
     setSelectedNoteDir(dir)
     setView("editor")
   }
 
   async function createNoteInScope(dir: string) {
+    if (!dir) return
     try {
       const result = await sdk.client.note.create({
         directory: dir,
-        noteCreateInput: { title: "", contentText: "" },
+        noteCreateInput: { title: "" },
       })
       if (result.data) {
         await refetch()
@@ -522,63 +685,101 @@ export function NotePanel() {
       <style>{TIPTAP_STYLES}</style>
 
       <Show when={view() === "list"}>
-        <Panel.Root>
-          <Panel.Header>
-            <Panel.HeaderRow>
-              <Panel.Title>Notes</Panel.Title>
-              <Show when={rawGroups()}>
-                <Panel.Count>{totalNotes()}</Panel.Count>
+        <div class="flex flex-col h-full">
+          <div class="shrink-0 px-4 pt-3 pb-2">
+            <div class="flex items-center gap-2.5 rounded-xl bg-surface-inset-base/60 px-3.5 py-2.5 transition-colors">
+              <Icon name="search" size="small" class="text-icon-weak shrink-0" />
+              <input
+                type="text"
+                placeholder="Search notes..."
+                class="flex-1 bg-transparent text-13-regular text-text-base placeholder:text-text-weak outline-none"
+                value={search()}
+                onInput={(e) => setSearch(e.currentTarget.value)}
+              />
+              <Show when={search()}>
+                <button
+                  type="button"
+                  class="flex items-center justify-center size-5 rounded-md text-icon-weak hover:text-icon-base transition-colors"
+                  aria-label="Clear search"
+                  onClick={() => setSearch("")}
+                >
+                  <Icon name="x" size="small" />
+                </button>
               </Show>
-              <Panel.Actions>
-                <Panel.Action icon="refresh-ccw" title="Refresh" onClick={() => refetch()} />
-                <Panel.Action icon="plus" title="New Note" onClick={() => createNoteInScope(directory() ?? "global")} />
-              </Panel.Actions>
-            </Panel.HeaderRow>
-            <Panel.Search value={search()} onInput={setSearch} placeholder="Search notes..." />
-          </Panel.Header>
+              <span class="text-11-regular text-text-weak mr-0.5">{totalNotes()}</span>
+              <button
+                type="button"
+                class="flex items-center justify-center size-7 rounded-lg text-icon-weak hover:text-icon-base hover:bg-surface-raised-base-hover transition-colors"
+                onClick={() => refetch()}
+                title="Refresh"
+              >
+                <Icon name="refresh-ccw" size="small" />
+              </button>
+            </div>
 
-          <Show when={allTags().length > 0}>
-            <div class="shrink-0 px-6 pb-2">
-              <div class="flex items-center gap-1.5 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            <Show when={allTags().length > 0}>
+              <div class="notes-tag-bar mt-2 flex items-center gap-1.5 overflow-x-auto">
                 <Show when={selectedTags().size > 0}>
                   <button
                     type="button"
                     class="shrink-0 flex items-center justify-center size-6 rounded-lg text-icon-weak hover:text-icon-base hover:bg-surface-raised-base-hover transition-colors"
                     onClick={() => setSelectedTags(new Set())}
-                    title="Clear filters"
+                    aria-label="Clear all filters"
                   >
                     <Icon name="x" size="small" />
                   </button>
                 </Show>
                 <For each={allTags()}>
                   {({ tag, count }) => (
-                    <Panel.FilterChip active={selectedTags().has(tag)} onClick={() => toggleTag(tag)}>
+                    <button
+                      type="button"
+                      classList={{
+                        "px-2.5 py-1 rounded-lg text-12-medium transition-colors": true,
+                        "bg-surface-raised-base-hover text-text-strong": selectedTags().has(tag),
+                        "text-text-weak hover:text-text-base hover:bg-surface-raised-base-hover":
+                          !selectedTags().has(tag),
+                      }}
+                      onClick={() => toggleTag(tag)}
+                    >
                       <span class="whitespace-nowrap">
                         {tag}
                         <span class="ml-0.5 opacity-60">{count}</span>
                       </span>
-                    </Panel.FilterChip>
+                    </button>
                   )}
                 </For>
               </div>
-            </div>
-          </Show>
+            </Show>
+          </div>
 
-          <Panel.Body padding="tight">
+          <div class="flex-1 min-h-0 overflow-y-auto px-4 pb-6 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             <Show when={rawGroups.loading}>
-              <Panel.Loading />
+              <div
+                class="grid gap-3 py-4"
+                style="grid-template-columns: repeat(auto-fill, minmax(min(220px, 100%), 1fr))"
+              >
+                <NoteCardSkeleton />
+                <NoteCardSkeleton />
+                <NoteCardSkeleton />
+              </div>
             </Show>
             <Show when={!rawGroups.loading}>
               <Show
                 when={displayGroups().length > 0}
-                fallback={<Panel.Empty icon="notebook-pen" title="No notes found" />}
+                fallback={
+                  <div class="flex flex-col items-center justify-center py-16 gap-3">
+                    <Icon name="notebook-pen" size="large" class="text-icon-weak" />
+                    <div class="text-14-medium text-text-weak">No notes found</div>
+                  </div>
+                }
               >
-                <div class="flex flex-col gap-1">
+                <div class="flex flex-col">
                   <For each={displayGroups()}>
                     {(group) => (
                       <ScopeSection
                         group={group}
                         expanded={isExpanded(group.scopeID, group.isCurrent)}
+                        loopsByNote={loopsByNote()}
                         onToggle={() => toggleExpanded(group.scopeID, group.isCurrent)}
                         onOpenNote={(id) => openNote(id, group.directory)}
                         onCreateNote={() => createNoteInScope(group.directory)}
@@ -589,21 +790,23 @@ export function NotePanel() {
                 </div>
               </Show>
             </Show>
-          </Panel.Body>
-        </Panel.Root>
+          </div>
+        </div>
       </Show>
 
       <Show when={view() === "editor" && selectedNoteId()}>
         <NoteEditor
           id={selectedNoteId()!}
-          directory={selectedNoteDir() ?? directory() ?? "global"}
+          directory={selectedNoteDir() ?? directory() ?? "home"}
           onBack={() => {
             setView("list")
             refetch()
+            refetchLoops()
           }}
           onDelete={() => {
             setView("list")
             refetch()
+            refetchLoops()
           }}
         />
       </Show>
@@ -625,16 +828,33 @@ type NoteConflictState =
 function NoteEditor(props: { id: string; directory: string; onBack: () => void; onDelete: () => void }) {
   const sdk = useGlobalSDK()
   const globalSync = useGlobalSync()
+  const platform = usePlatform()
+  const params = useParams()
+  const navigate = useNavigate()
   const directory = () => props.directory
 
-  const [note] = createResource(
-    () => ({ id: props.id, dir: directory(), ver: globalSync.noteVersion() }),
+  const [note, { refetch }] = createResource(
+    () => ({ id: props.id, dir: directory() }),
     async ({ id, dir }) => {
       if (!dir) return null
       const result = await sdk.client.note.get({ id, directory: dir })
       return result.data as NoteInfo
     },
   )
+
+  // Re-fetch this note only when it was updated by another session/tab
+  createEffect(() => {
+    const update = globalSync.noteUpdate()
+    if (!update) return
+    if (update.id !== props.id) return
+    if (update.type === "deleted") return
+    const base = baseNote()
+    // No base note yet = initial load handled by the resource itself
+    if (!base) return
+    // Our own save already set baseNote to the latest version — skip echo
+    if (update.version <= base.version) return
+    void refetch()
+  })
 
   const [baseNote, setBaseNote] = createSignal<NoteInfo | null>(null)
   const [title, setTitle] = createSignal("")
@@ -644,14 +864,36 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
   const [dirty, setDirty] = createSignal(false)
   const [conflict, setConflict] = createSignal<NoteConflictState | null>(null)
   const [editor, setEditor] = createSignal<Editor>()
+  const [convertingBlueprint, setConvertingBlueprint] = createSignal(false)
+  const [runningBlueprint, setRunningBlueprint] = createSignal(false)
+  const [showRunMenu, setShowRunMenu] = createSignal(false)
 
-  let editorRef!: HTMLDivElement
-  let bubbleRef!: HTMLDivElement
   let debounceTimer: ReturnType<typeof setTimeout> | undefined
   let saveQueued = false
   let saveInFlight: Promise<void> | undefined
 
   const noteLoaded = createMemo(() => !!baseNote())
+  const isBlueprint = createMemo(() => baseNote()?.kind === "blueprint")
+  const [noteLoops, { refetch: refetchLoops }] = createResource(
+    () => ({ id: props.id, dir: directory(), ver: globalSync.noteVersion() }),
+    async ({ id, dir }) => {
+      if (!dir) return [] as BlueprintLoopInfo[]
+      try {
+        const result = await sdk.client.blueprint.loop.list({ directory: dir })
+        return ((result.data ?? []) as BlueprintLoopInfo[])
+          .filter((loop) => loop.noteID === id)
+          .sort((a, b) => b.time.updated - a.time.updated)
+      } catch (error) {
+        console.error("Failed to load blueprint loops", error)
+        return [] as BlueprintLoopInfo[]
+      }
+    },
+  )
+  const blueprintState = createMemo(() => {
+    const base = baseNote()
+    if (!base) return null
+    return getBlueprintVisualState(base, noteLoops() ?? [])
+  })
 
   function remoteConflict() {
     const current = conflict()
@@ -678,7 +920,6 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
     setConflict(null)
     setDirty(false)
     if (ed && !ed.isDestroyed) {
-      const scrollTop = editorRef?.scrollTop ?? 0
       const { from } = ed.state.selection
       ed.commands.setContent(snapshot.content as any, { emitUpdate: false })
       const docSize = ed.state.doc.content.size
@@ -689,7 +930,6 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
           /* position may be invalid */
         }
       }
-      if (editorRef) editorRef.scrollTop = scrollTop
     }
   }
 
@@ -701,7 +941,6 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
       title: title(),
       tags: tags(),
       content,
-      contentText: NoteMarkdown.toMarkdown(content),
     }
   }
 
@@ -735,7 +974,6 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
         notePatchInput: {
           title: draft.title,
           content: draft.content,
-          contentText: draft.contentText,
           tags: draft.tags,
           expectedVersion: base.version,
         },
@@ -881,81 +1119,8 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
   }
 
   async function uploadFile(file: File): Promise<string> {
-    const form = new FormData()
-    form.append("file", file)
-    const res = await fetch(`${sdk.url}/asset`, { method: "POST", body: form })
-    const data = (await res.json()) as { id: string }
-    return `${sdk.url}/asset/${data.id}`
-  }
-
-  createEffect(() => {
-    const loaded = noteLoaded()
-    if (!loaded || untrack(() => editor())) return
-    untrack(() => {
-      const snapshot = baseNote()!
-      const instance = new Editor({
-        element: editorRef,
-        extensions: [
-          StarterKit.configure({
-            codeBlock: false,
-            link: false,
-          }),
-          Placeholder.configure({
-            placeholder: "Type / for commands...",
-          }),
-          Link.configure({
-            openOnClick: false,
-            autolink: true,
-          }),
-          Image,
-          Table.configure({
-            resizable: true,
-          }),
-          TableRow,
-          TableHeader,
-          TableCell,
-          CrossCellSelection,
-          TaskList,
-          TaskItem.configure({
-            nested: true,
-          }),
-          CodeBlockShiki.configure({
-            defaultTheme: "github-dark",
-          }),
-          MathExtension,
-          Video,
-          Mermaid,
-          createFileUpload(sdk.url),
-          createSlashCommands({ onUploadFile: uploadFile }),
-          createBubbleMenu(bubbleRef),
-        ],
-        content: snapshot.content as any,
-        onUpdate: ({ editor }) => {
-          if (editor.isDestroyed) return
-          markDirty()
-          scheduleSave()
-        },
-      })
-
-      onCleanup(() => instance.destroy())
-      setEditor(instance)
-    })
-  })
-
-  function handleEditorAreaClick(e: MouseEvent) {
-    const ed = editor()
-    if (!ed || ed.isDestroyed || ed.isFocused) return
-    const target = e.target as HTMLElement
-    if (target === editorRef) {
-      ed.commands.focus()
-      return
-    }
-    if (!target.classList.contains("tiptap")) return
-    const pos = ed.view.posAtCoords({ left: e.clientX, top: e.clientY })
-    if (pos) {
-      ed.commands.focus()
-      ed.commands.setTextSelection(pos.pos)
-    }
+    const res = await sdk.client.asset.upload({ file })
+    return assetHttpUrl(sdk.url, res.data as { id?: string; url?: string } | undefined)
   }
 
   function onTitleInput(e: InputEvent & { currentTarget: HTMLInputElement }) {
@@ -1017,6 +1182,165 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
     document.body.removeChild(a)
   }
 
+  async function convertToBlueprint() {
+    const dir = directory()
+    const base = baseNote()
+    if (!dir || !base || isBlueprint() || convertingBlueprint()) return
+    if (dirty()) {
+      setConflict({
+        type: "metadata-blocked",
+        message: "Save or reload your draft before converting this note to a Blueprint.",
+      })
+      return
+    }
+
+    setConvertingBlueprint(true)
+    try {
+      const result = await sdk.client.note.update({
+        id: base.id,
+        directory: dir,
+        notePatchInput: {
+          kind: "blueprint",
+          blueprint: {},
+          expectedVersion: base.version,
+        },
+      })
+      applySnapshot(result.data as NoteInfo)
+    } catch (error) {
+      const remote = parseConflict(error)
+      if (remote) {
+        setConflict({
+          type: "remote-update",
+          message: "This note changed before it could be converted to a Blueprint.",
+          remote,
+        })
+        return
+      }
+      console.error("Failed to convert note to blueprint", error)
+    } finally {
+      setConvertingBlueprint(false)
+    }
+  }
+
+  async function convertToNote() {
+    const dir = directory()
+    const base = baseNote()
+    if (!dir || !base || !isBlueprint() || convertingBlueprint()) return
+    if (dirty()) {
+      setConflict({
+        type: "metadata-blocked",
+        message: "Save or reload your draft before converting this Blueprint to a Note.",
+      })
+      return
+    }
+    if (base.blueprint?.activeLoopID || (noteLoops() ?? []).some((loop) => isActiveLoopStatus(loop.status))) {
+      alert("This Blueprint has an active loop. Finish or cancel the loop before converting it back to a Note.")
+      return
+    }
+
+    setConvertingBlueprint(true)
+    try {
+      const result = await sdk.client.note.update({
+        id: base.id,
+        directory: dir,
+        notePatchInput: {
+          kind: "note",
+          blueprint: null,
+          expectedVersion: base.version,
+        },
+      })
+      applySnapshot(result.data as NoteInfo)
+      await refetchLoops()
+    } catch (error) {
+      const remote = parseConflict(error)
+      if (remote) {
+        setConflict({
+          type: "remote-update",
+          message: "This Blueprint changed before it could be converted to a Note.",
+          remote,
+        })
+        return
+      }
+      console.error("Failed to convert blueprint to note", error)
+    } finally {
+      setConvertingBlueprint(false)
+    }
+  }
+
+  async function createExecutionSession(mode: "current" | "new" | "worktree", blueprintDir: string) {
+    if (mode === "current") {
+      if (!params.id) {
+        alert("Open a session before running this Blueprint in the current session.")
+        return undefined
+      }
+      return { sessionID: params.id, directory: blueprintDir }
+    }
+
+    let targetDirectory = blueprintDir
+    let client = sdk.client
+
+    if (mode === "worktree") {
+      const worktree = await sdk.client.worktree.create({ directory: blueprintDir }).then((result) => result.data)
+      if (!worktree?.path) throw new Error("Failed to create worktree")
+      targetDirectory = worktree.path
+      client = createSynergyClient({
+        baseUrl: sdk.url,
+        fetch: platform.fetch,
+        directory: targetDirectory,
+        throwOnError: true,
+      })
+      globalSync.ensureScopeState(targetDirectory)
+    }
+
+    const session = await client.session.create({}).then((result) => result.data)
+    if (!session?.id) throw new Error("Failed to create session")
+    return { sessionID: session.id, directory: targetDirectory }
+  }
+
+  async function runBlueprint(mode: "current" | "new" | "worktree") {
+    const dir = directory()
+    if (!dir || runningBlueprint()) return
+    await flushSave()
+    if (remoteConflict()) return
+    const base = baseNote()
+    if (!base || !isBlueprint()) return
+
+    setRunningBlueprint(true)
+    let createdLoopID: string | undefined
+    try {
+      const target = await createExecutionSession(mode, dir)
+      if (!target) return
+      const loop = await sdk.client.blueprint.loop
+        .create({
+          directory: dir,
+          blueprintLoopCreateInput: {
+            noteID: base.id,
+            noteVersion: base.version,
+            title: base.title || "Blueprint run",
+            description: base.blueprint?.description,
+            sessionID: target.sessionID,
+            runMode: mode,
+          },
+        })
+        .then((result) => result.data)
+      if (!loop?.id) throw new Error("Failed to create BlueprintLoop")
+      createdLoopID = loop.id
+      await sdk.client.blueprint.loop.start({ id: loop.id, directory: dir })
+      setShowRunMenu(false)
+      await refetchLoops()
+      await refetch()
+      navigate(`/${base64Encode(target.directory)}/session/${target.sessionID}`)
+    } catch (error) {
+      if (createdLoopID) {
+        await sdk.client.blueprint.loop.cancel({ id: createdLoopID, directory: dir }).catch(() => undefined)
+      }
+      console.error("Failed to run blueprint", error)
+      alert(error instanceof Error ? error.message : "Failed to run blueprint")
+    } finally {
+      setRunningBlueprint(false)
+    }
+  }
+
   async function deleteNote() {
     const dir = directory()
     if (!dir) return
@@ -1026,7 +1350,7 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
   }
 
   return (
-    <div class="flex flex-col h-full bg-background-base">
+    <div class="relative flex flex-col h-full bg-background-base">
       <Show when={note.loading && !noteLoaded()}>
         <div class="flex items-center justify-center h-full">
           <Spinner class="size-6" />
@@ -1034,17 +1358,18 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
       </Show>
 
       <Show when={noteLoaded() && baseNote()}>
-        <div class="shrink-0 border-b border-border-base/45 bg-surface-raised-base/92 px-4 py-3 shadow-[inset_0_1px_0_rgba(214,204,190,0.08),inset_0_-1px_0_rgba(24,28,38,0.04)]">
-          <div class="flex items-center gap-2 rounded-[1.15rem] bg-surface-inset-base/42 px-2.5 py-2 ring-1 ring-inset ring-border-base/45 shadow-[inset_0_1px_0_rgba(214,204,190,0.07)]">
+        <div class="shrink-0 border-b border-border-weaker-base bg-surface-raised-base px-4 py-3">
+          <div class="flex items-center gap-2">
             <button
               type="button"
-              class="flex size-8 items-center justify-center rounded-full border border-border-base/55 bg-surface-raised-stronger-non-alpha text-icon-weak shadow-sm transition-all hover:bg-surface-raised-base-hover hover:text-text-base"
+              class="flex size-8 items-center justify-center rounded-full text-icon-weak transition-colors hover:bg-surface-raised-base-hover hover:text-text-base focus:outline-none focus-visible:ring-2 focus-visible:ring-border-strong-base/35"
               onClick={handleBack}
+              title="Back to list"
             >
               <Icon name="arrow-left" size="normal" />
             </button>
 
-            <div class="min-w-0 flex-1 rounded-[0.95rem] bg-surface-raised-base/92 px-3.5 py-2 shadow-[inset_0_1px_0_rgba(214,204,190,0.08),inset_0_-1px_0_rgba(24,28,38,0.04)]">
+            <div class="min-w-0 flex-1 px-2 py-1.5">
               <input
                 type="text"
                 class="w-full bg-transparent text-14-medium tracking-tight text-text-strong outline-none placeholder:text-text-weak/50"
@@ -1054,13 +1379,27 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
               />
             </div>
 
+            <Show when={isBlueprint()}>
+              <button
+                type="button"
+                class="inline-flex h-8 items-center gap-1.5 whitespace-nowrap rounded-full bg-surface-success-base/58 px-3 text-11-medium text-text-diff-add-base transition-colors hover:bg-surface-success-base/82 focus:outline-none focus-visible:ring-2 focus-visible:ring-border-success-base/35 disabled:cursor-not-allowed disabled:opacity-60"
+                onClick={() => setShowRunMenu((current) => !current)}
+                disabled={runningBlueprint()}
+                title="Run Blueprint"
+              >
+                <Show when={!runningBlueprint()} fallback={<Spinner class="size-3.5" />}>
+                  <Icon name="zap" size="small" class="size-3" />
+                </Show>
+                <span>Run</span>
+              </button>
+            </Show>
+
             <button
               type="button"
-              class="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-11-medium ring-1 ring-inset transition-all"
+              class="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-11-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-border-strong-base/35"
               classList={{
-                "bg-surface-interactive-base/14 text-text-interactive-base ring-border-base/45 shadow-sm":
-                  baseNote()!.pinned,
-                "bg-surface-raised-stronger-non-alpha text-text-weak ring-border-base/45 hover:bg-surface-raised-base-hover hover:text-text-base":
+                "bg-surface-inset-base text-text-base": baseNote()!.pinned,
+                "bg-surface-raised-stronger-non-alpha text-text-weak hover:bg-surface-raised-base-hover hover:text-text-base":
                   !baseNote()!.pinned,
               }}
               onClick={togglePin}
@@ -1071,10 +1410,10 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
 
             <button
               type="button"
-              class="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-11-medium ring-1 ring-inset transition-all"
+              class="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-11-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-border-strong-base/35"
               classList={{
-                "bg-surface-diff-add-base/12 text-text-diff-add-base ring-border-base/45 shadow-sm": baseNote()!.global,
-                "bg-surface-raised-stronger-non-alpha text-text-weak ring-border-base/45 hover:bg-surface-raised-base-hover hover:text-text-base":
+                "bg-surface-diff-add-base/12 text-text-diff-add-base": baseNote()!.global,
+                "bg-surface-raised-stronger-non-alpha text-text-weak hover:bg-surface-raised-base-hover hover:text-text-base":
                   !baseNote()!.global,
               }}
               onClick={toggleGlobal}
@@ -1085,27 +1424,74 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
 
             <button
               type="button"
-              class="flex size-8 items-center justify-center rounded-full border border-border-base/55 bg-surface-raised-stronger-non-alpha text-icon-weak shadow-sm transition-all hover:bg-surface-raised-base-hover hover:text-text-base"
+              class="flex size-8 items-center justify-center rounded-full text-icon-weak transition-colors hover:bg-surface-raised-base-hover hover:text-text-base focus:outline-none focus-visible:ring-2 focus-visible:ring-border-strong-base/35"
               onClick={downloadNote}
               title="Download as Markdown"
             >
               <Icon name="download" size="small" />
             </button>
+            <button
+              type="button"
+              class="inline-flex h-8 items-center gap-1.5 whitespace-nowrap rounded-full px-3 text-11-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-border-strong-base/35"
+              classList={{
+                "bg-surface-inset-base text-text-base": isBlueprint(),
+                "bg-surface-raised-stronger-non-alpha text-text-weak hover:bg-surface-raised-base-hover hover:text-text-base":
+                  !isBlueprint(),
+                "opacity-60 cursor-not-allowed": convertingBlueprint(),
+              }}
+              onClick={() => {
+                if (isBlueprint()) void convertToNote()
+                else void convertToBlueprint()
+              }}
+              title={isBlueprint() ? "Convert to Note" : "Convert to Blueprint"}
+              disabled={convertingBlueprint()}
+            >
+              <Show when={!convertingBlueprint()} fallback={<Spinner class="size-3.5" />}>
+                <Icon name={isBlueprint() ? "notebook-pen" : getSemanticIcon("orchestration.blueprint")} size="small" />
+              </Show>
+              <span>{isBlueprint() ? "To Note" : "To Blueprint"}</span>
+            </button>
 
             <button
               type="button"
-              class="flex size-8 items-center justify-center rounded-full border border-border-base/55 bg-surface-raised-stronger-non-alpha text-icon-weak shadow-sm transition-all hover:bg-surface-raised-base-hover hover:text-text-diff-delete-base"
+              class="flex size-8 items-center justify-center rounded-full text-icon-weak transition-colors hover:bg-surface-raised-base-hover hover:text-text-diff-delete-base focus:outline-none focus-visible:ring-2 focus-visible:ring-border-strong-base/35"
               onClick={deleteNote}
               title="Delete"
             >
-              <Icon name="x" size="small" />
+              <Icon name="trash-2" size="small" />
             </button>
           </div>
         </div>
 
+        <Show when={isBlueprint() && blueprintState()}>
+          <div class="shrink-0 border-b border-border-weaker-base bg-surface-raised-base px-4 py-2.5">
+            <div class="note-blueprint-meta flex flex-wrap items-center gap-2">
+              <span class={`note-card-status note-card-status--${blueprintState()!.tone}`}>
+                <Icon name={blueprintState()!.icon} size="small" class="size-3" />
+                {blueprintState()!.label}
+              </span>
+              <span class="text-11-regular text-text-weak">{blueprintState()!.detail}</span>
+              <span class="h-3 w-px bg-border-weaker-base" />
+              <span class="text-11-regular text-text-weak">
+                {getRunCount(baseNote()!, noteLoops() ?? []) > 0
+                  ? `${getRunCount(baseNote()!, noteLoops() ?? [])} runs`
+                  : "No runs yet"}
+              </span>
+              <span class="h-3 w-px bg-border-weaker-base" />
+              <span class="text-11-regular text-text-weak">
+                Last activity {relativeTime(getBlueprintActivityTime(baseNote()!, noteLoops() ?? []))}
+              </span>
+              <Show when={baseNote()!.blueprint?.defaultAgent}>
+                <span class="h-3 w-px bg-border-weaker-base" />
+                <span class="text-11-regular text-text-weak">{baseNote()!.blueprint!.defaultAgent}</span>
+              </Show>
+            </div>
+          </div>
+        </Show>
+
         <Show when={conflict()}>
-          <div class="shrink-0 border-b border-border-warning-base/45 bg-[color:color-mix(in_srgb,var(--surface-warning-base)_12%,var(--surface-raised-base))] px-4 py-3 text-12-regular text-text-base shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
-            <div class="flex flex-wrap items-center gap-2 rounded-[1rem] border border-border-warning-base/40 bg-background-base/55 px-3 py-2.5 backdrop-blur-sm">
+          <div class="shrink-0 border-b border-border-warning-base bg-surface-raised-base px-4 py-3 text-12-regular text-text-base">
+            <div class="flex flex-wrap items-center gap-2 rounded-[1rem] bg-background-base/55 px-3 py-2.5 backdrop-blur-sm">
               <div class="flex size-6 shrink-0 items-center justify-center rounded-full bg-surface-warning-base/18 text-icon-warning-base">
                 <div class="size-1.5 rounded-full bg-icon-warning-base" />
               </div>
@@ -1113,14 +1499,14 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
               <Show when={conflict()?.type === "remote-update"}>
                 <button
                   type="button"
-                  class="rounded-full bg-surface-raised-stronger-non-alpha px-3 py-1.5 text-11-medium text-text-base ring-1 ring-inset ring-border-base/45 transition-colors hover:bg-surface-raised-base-hover"
+                  class="rounded-full bg-surface-raised-stronger-non-alpha px-3 py-1.5 text-11-medium text-text-base transition-colors hover:bg-surface-raised-base-hover"
                   onClick={reloadRemote}
                 >
                   Reload remote
                 </button>
                 <button
                   type="button"
-                  class="rounded-full bg-surface-interactive-base/12 px-3 py-1.5 text-11-medium text-text-interactive-base ring-1 ring-inset ring-border-base/45 transition-colors hover:bg-surface-interactive-base/18"
+                  class="rounded-full bg-surface-success-base/40 px-3 py-1.5 text-11-medium text-text-diff-add-base transition-colors hover:bg-surface-success-base/62"
                   onClick={overwriteRemote}
                 >
                   Overwrite remote
@@ -1130,12 +1516,11 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
           </div>
         </Show>
 
-        <div class="shrink-0 border-b border-border-base/40 bg-surface-raised-base/88 px-4 py-3 shadow-[inset_0_1px_0_rgba(214,204,190,0.06)]">
-          <div class="flex flex-wrap items-center gap-2 rounded-[1rem] bg-surface-inset-base/42 px-3 py-2.5 ring-1 ring-inset ring-border-base/45 shadow-[inset_0_1px_0_rgba(214,204,190,0.07)]">
+        <div class="shrink-0 border-b border-border-weaker-base bg-surface-raised-base px-4 py-2.5">
+          <div class="flex flex-wrap items-center gap-2">
             <For each={tags()}>
               {(tag) => (
-                <span class="inline-flex items-center gap-1.5 rounded-full bg-surface-raised-stronger-non-alpha px-2.5 py-1.5 text-11-medium text-text-weak ring-1 ring-inset ring-border-base/45">
-                  <span>{tag}</span>
+                <span class="inline-flex items-center gap-1.5 rounded-full bg-surface-inset-base/68 px-2.5 py-1.5 text-11-medium text-text-weak">
                   <button
                     type="button"
                     class="flex size-4 items-center justify-center rounded-full text-icon-weak transition-colors hover:bg-surface-raised-base-hover hover:text-icon-base"
@@ -1143,10 +1528,11 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
                   >
                     <Icon name="x" size="small" class="size-2.5" />
                   </button>
+                  {tag}
                 </span>
               )}
             </For>
-            <div class="flex min-w-[7rem] flex-1 items-center gap-2 rounded-full bg-surface-raised-base/92 px-3 py-1.5 shadow-[inset_0_1px_0_rgba(214,204,190,0.07)]">
+            <div class="flex min-w-[7rem] flex-1 items-center gap-2 rounded-full px-1 py-1.5">
               <Icon name="tag" size="small" class="text-icon-weak shrink-0" />
               <input
                 type="text"
@@ -1163,171 +1549,28 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
           </div>
         </div>
 
-        <div class="relative flex-1 min-h-0 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--surface-raised-base)_92%,transparent)_0%,transparent_18%)] px-4 pb-4 pt-3">
-          <div class="relative h-full overflow-hidden rounded-[1.25rem] border border-border-base/50 bg-surface-raised-base/94 shadow-[inset_0_1px_0_rgba(214,204,190,0.09),0_24px_56px_-42px_rgba(28,34,48,0.34)]">
-            <div
-              ref={editorRef}
-              class="h-full overflow-y-auto px-6 py-5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-              onClick={handleEditorAreaClick}
-            />
-            <div class="pointer-events-none absolute inset-x-0 bottom-0 h-14 bg-[linear-gradient(to_top,color-mix(in_srgb,var(--surface-raised-base)_96%,transparent),transparent)]" />
-          </div>
-          <div ref={bubbleRef} class="note-bubble-menu">
-            <Show when={editor()}>
-              <BubbleMenuContent editor={editor()!} />
-            </Show>
-          </div>
+        <DocumentEditorCore
+          content={baseNote()!.content}
+          onUpdate={() => {
+            markDirty()
+            scheduleSave()
+          }}
+          onEditorReady={(instance) => setEditor(instance)}
+          uploadFile={uploadFile}
+          sdkClient={sdk.client}
+          sdkUrl={sdk.url}
+          saving={saving()}
+        />
 
-          <div class="pointer-events-none absolute bottom-7 right-7 inline-flex items-center rounded-full bg-background-base/72 px-3 py-1.5 text-11-medium text-text-weak ring-1 ring-inset ring-border-base/45 backdrop-blur-sm">
-            {saving() ? "Saving..." : dirty() ? "Unsaved changes" : "Saved"}
-          </div>
-        </div>
+        <Show when={showRunMenu() && isBlueprint() && baseNote()}>
+          <RunMenu
+            title={baseNote()!.title || "Untitled"}
+            hasCurrentSession={!!params.id}
+            onRun={runBlueprint}
+            onClose={() => setShowRunMenu(false)}
+          />
+        </Show>
       </Show>
     </div>
   )
 }
-
-const TIPTAP_STYLES = `
-  .tiptap {
-    outline: none;
-    min-height: 100%;
-    font-family: ui-sans-serif, system-ui, sans-serif;
-    color: var(--text-base);
-  }
-  .tiptap::after {
-    content: '';
-    display: block;
-    height: 50vh;
-  }
-  .tiptap p {
-    margin-bottom: 0.75em;
-    line-height: 1.6;
-    font-size: 0.9375rem;
-    color: var(--text-base);
-  }
-  .tiptap h1 {
-    font-size: 1.5rem;
-    font-weight: 600;
-    margin-top: 1.5em;
-    margin-bottom: 0.5em;
-    color: var(--text-strong);
-  }
-  .tiptap h2 {
-    font-size: 1.25rem;
-    font-weight: 600;
-    margin-top: 1.25em;
-    margin-bottom: 0.5em;
-    color: var(--text-strong);
-  }
-  .tiptap h3 {
-    font-size: 1.125rem;
-    font-weight: 600;
-    margin-top: 1em;
-    margin-bottom: 0.5em;
-    color: var(--text-strong);
-  }
-  .tiptap ul, .tiptap ol {
-    padding-left: 1.5em;
-    margin-bottom: 0.75em;
-    color: var(--text-base);
-  }
-  .tiptap ul { list-style-type: disc; }
-  .tiptap ol { list-style-type: decimal; }
-  .tiptap blockquote {
-    margin-left: 0;
-    margin-right: 0;
-    margin-bottom: 0.95em;
-    border-left: 3px solid color-mix(in srgb, var(--border-strong-base) 78%, var(--surface-brand-base));
-    border-radius: 0 0.9rem 0.9rem 0;
-    background: color-mix(in srgb, var(--surface-inset-base) 74%, transparent);
-    padding: 0.9em 1.05em;
-    font-style: italic;
-    color: var(--text-weak);
-    box-shadow: inset 0 1px 0 rgba(214,204,190,0.06);
-  }
-  .tiptap pre {
-    background: linear-gradient(180deg, color-mix(in srgb, var(--surface-inset-base) 92%, #10141c 8%), color-mix(in srgb, var(--surface-inset-base) 80%, #0b0f16 20%));
-    border: 1px solid color-mix(in srgb, var(--border-base) 72%, transparent);
-    border-radius: 0.95rem;
-    padding: 1em 1.05em;
-    overflow-x: auto;
-    margin-bottom: 0.95em;
-    box-shadow: inset 0 1px 0 rgba(255,255,255,0.05), 0 14px 34px -28px rgba(16,20,28,0.52);
-  }
-  .tiptap pre code {
-    background: none;
-    padding: 0;
-    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-    font-size: 0.875rem;
-    color: color-mix(in srgb, var(--text-strong) 82%, white 18%);
-  }
-  .tiptap code {
-    background: color-mix(in srgb, var(--surface-inset-base) 78%, transparent);
-    border: 1px solid color-mix(in srgb, var(--border-base) 58%, transparent);
-    padding: 0.18em 0.45em;
-    border-radius: 0.45rem;
-    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-    font-size: 0.85em;
-    color: var(--text-strong);
-    box-shadow: inset 0 1px 0 rgba(214,204,190,0.08);
-  }
-  .tiptap table {
-    border-collapse: collapse;
-    width: 100%;
-    margin-bottom: 0.95em;
-    overflow: hidden;
-    border-radius: 0.95rem;
-  }
-  .tiptap td, .tiptap th {
-    border: 1px solid color-mix(in srgb, var(--border-weak-base) 82%, transparent);
-    padding: 0.6em 0.7em;
-    text-align: left;
-  }
-  .tiptap th {
-    background: color-mix(in srgb, var(--surface-inset-base) 72%, transparent);
-    font-weight: 600;
-  }
-  .tiptap p.is-editor-empty:first-child::before {
-    content: attr(data-placeholder);
-    float: left;
-    color: var(--text-weaker);
-    pointer-events: none;
-    height: 0;
-  }
-  .tiptap ul[data-type="taskList"] {
-    list-style: none;
-    padding: 0;
-  }
-  .tiptap ul[data-type="taskList"] li {
-    display: flex;
-    gap: 0.5em;
-    align-items: flex-start;
-  }
-  .tiptap ul[data-type="taskList"] li input[type="checkbox"] {
-    margin-top: 0.3em;
-  }
-  .tiptap a {
-    color: var(--text-interactive-base);
-    text-decoration: none;
-    text-decoration-color: color-mix(in srgb, var(--text-interactive-base) 38%, transparent);
-  }
-  .tiptap a:hover {
-    text-decoration: underline;
-  }
-  .katex-display {
-    margin: 0.5em 0;
-    overflow-x: auto;
-    overflow-y: hidden;
-  }
-  .tiptap video {
-    max-width: 100%;
-    border-radius: 0.5rem;
-    margin-bottom: 0.75em;
-  }
-  .tiptap .mermaid-node {
-    margin-bottom: 0.75em;
-  }
-  .note-bubble-menu {
-    z-index: 100;
-  }
-`

@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import path from "path"
 import { SaveFileTool } from "../../src/tool/save-file"
-import { Instance } from "../../src/scope/instance"
+import { ScopeContext } from "../../src/scope/context"
 import { Snapshot } from "../../src/session/snapshot"
 import { tmpdir } from "../fixture/fixture"
 import { computeTag } from "../../src/hashline/tag"
@@ -20,7 +20,7 @@ describe("tool.save_file", () => {
   describe("basic write", () => {
     test("writes content to file and returns hashline header", async () => {
       await using tmp = await tmpdir({ git: true })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const tool = await SaveFileTool.init()
@@ -44,7 +44,7 @@ describe("tool.save_file", () => {
 
     test("returns correct tag for empty file", async () => {
       await using tmp = await tmpdir({ git: true })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const tool = await SaveFileTool.init()
@@ -63,7 +63,7 @@ describe("tool.save_file", () => {
           await Bun.write(path.join(dir, "file.ts"), "v1\n")
         },
       })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const tool = await SaveFileTool.init()
@@ -83,7 +83,7 @@ describe("tool.save_file", () => {
   describe("accidental hashline stripping", () => {
     test("strips accidental hashline display prefixes from content", async () => {
       await using tmp = await tmpdir({ git: true })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const tool = await SaveFileTool.init()
@@ -102,7 +102,7 @@ describe("tool.save_file", () => {
 
     test("does not strip legitimate content that has pipe characters", async () => {
       await using tmp = await tmpdir({ git: true })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const tool = await SaveFileTool.init()
@@ -118,7 +118,7 @@ describe("tool.save_file", () => {
 
     test("does not strip non-contiguous numeric prefixes after a hashline-looking header", async () => {
       await using tmp = await tmpdir({ git: true })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const tool = await SaveFileTool.init()
@@ -133,7 +133,7 @@ describe("tool.save_file", () => {
 
     test("does not corrupt content that has no hashline prefix but looks close", async () => {
       await using tmp = await tmpdir({ git: true })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const tool = await SaveFileTool.init()
@@ -151,7 +151,7 @@ describe("tool.save_file", () => {
   describe("snapshot recording", () => {
     test("recorded snapshot is retrievable after save", async () => {
       await using tmp = await tmpdir({ git: true })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const tool = await SaveFileTool.init()
@@ -178,7 +178,7 @@ describe("tool.save_file", () => {
   describe("create parent directories", () => {
     test("creates missing parent directories for new file paths", async () => {
       await using tmp = await tmpdir({ git: true })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const tool = await SaveFileTool.init()
@@ -213,7 +213,7 @@ after
           await Bun.write(path.join(dir, "conflict.ts"), conflictContent)
         },
       })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const tool = await SaveFileTool.init()
@@ -236,7 +236,7 @@ after
       // When writing a clean file, the metadata should indicate no internal conflicts
       const cleanContent = "clean content\nno markers here\n"
       await using tmp = await tmpdir({ git: true })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const tool = await SaveFileTool.init()
@@ -264,7 +264,7 @@ b
           await Bun.write(path.join(dir, "f.ts"), conflictContent)
         },
       })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           // View the conflicted file first (to confirm view_file sees it)
@@ -296,7 +296,7 @@ b
   describe("diagnostics metadata", () => {
     test("returns diagnostics in metadata after write", async () => {
       await using tmp = await tmpdir({ git: true })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const tool = await SaveFileTool.init()
@@ -317,7 +317,7 @@ b
           await Bun.write(path.join(dir, "exist.ts"), "old\n")
         },
       })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const tool = await SaveFileTool.init()
@@ -354,7 +354,7 @@ b
           )
         },
       })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const { Format } = await import("../../src/file/format")
@@ -390,7 +390,7 @@ b
           )
         },
       })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const { Format } = await import("../../src/file/format")

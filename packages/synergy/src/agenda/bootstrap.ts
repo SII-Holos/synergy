@@ -2,7 +2,7 @@ import { AgendaClock } from "./clock"
 import { AgendaStore } from "./store"
 import { AgendaWatcher } from "./watcher"
 import { AgendaWebhook } from "./webhook"
-import { Instance } from "../scope/instance"
+import { ScopeContext } from "../scope/context"
 import { Scope } from "../scope"
 import { Log } from "../util/log"
 
@@ -13,15 +13,15 @@ export namespace AgendaBootstrap {
 
   async function isAutonomyEnabled(): Promise<boolean> {
     const { Config } = await import("../config/config")
-    const config = await Config.get()
-    return config.identity?.autonomy !== false
+    const config = await Config.current()
+    return config.engram?.autonomy !== false
   }
 
   export async function seed(): Promise<void> {
-    const scopeID = "global"
+    const scopeID = "home"
 
-    await Instance.provide({
-      scope: Scope.global(),
+    await ScopeContext.provide({
+      scope: Scope.home(),
       fn: async () => {
         const existing = await AgendaStore.get(scopeID, SEED_ID).catch(() => undefined)
         const enabled = await isAutonomyEnabled()

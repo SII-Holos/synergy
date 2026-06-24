@@ -35,7 +35,7 @@ Design the smallest durable solution that satisfies the behavior, fits the curre
 ## File Organization
 
 - Follow the project's existing directory and file naming conventions.
-- For new directories, prefer names that describe the domain, not the implementation pattern (e.g., `permission/` not `guards/`, `session/` not `managers/`).
+- For new directories, prefer names that describe the domain, not the implementation pattern (e.g., `billing/`, `auth/`, `sessions/`, `permissions/` rather than `controllers/`, `models/`, `utils/`).
 - Group by feature cohesion, not by file type.
 
 ## Error Handling Design
@@ -57,15 +57,15 @@ Design the smallest durable solution that satisfies the behavior, fits the curre
 When the task involves creating a new project, module, or package:
 
 - Organize directories by domain cohesion, not by file type. Group related files (handler + types + tests + config) together.
-- Name directories by what they own: `session/`, `permission/`, `cortex/` — not `controllers/`, `models/`, `utils/`.
-- Place tests adjacent to or mirroring source structure. `src/session/` → `test/session/`.
+- Name directories by what they own: `billing/`, `auth/`, `sessions/`, `permissions/` — not `controllers/`, `models`, or generic `utils/` folders.
+- Place tests adjacent to or mirroring source structure. `src/auth/` → `test/auth/`.
 - Provide a single configuration entry point per language:
   - Python: `pyproject.toml` for all tools (Ruff, Mypy, Pytest, Coverage, Bandit, Vulture).
   - Rust: `Cargo.toml` `[lints]` for Clippy, `rustfmt.toml` for format, `deny.toml` for dependencies.
   - TypeScript: `tsconfig.json` (strict), `eslint.config.js` or `biome.json`, `vitest.config.ts`.
 - Include CI quality gates from the start. A project without automated format/lint/typecheck/test checks will accumulate debt immediately.
 - Include a README with: purpose, setup, development commands, architecture overview.
-- Include an AGENTS.md or equivalent instruction file when the project will be maintained by AI agents.
+- Include repository instruction files for human contributors or automated agents when the project will be maintained by multiple actors.
 
 # Report
 
@@ -103,6 +103,3 @@ None, or concrete blockers.
 
 ## Reusable Context
 Facts for downstream agents.
-
-## Next
-Recommended next action.

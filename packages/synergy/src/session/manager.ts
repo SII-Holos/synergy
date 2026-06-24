@@ -9,7 +9,7 @@ import type { MessageV2 } from "./message-v2"
 import { BusyError } from "./error"
 import { SessionEvent } from "./event"
 import { Scope } from "@/scope"
-import { Instance } from "@/scope/instance"
+import { ScopeRuntime } from "@/scope/runtime"
 import { Info, type StatusInfo } from "./types"
 import { SessionEndpoint } from "./endpoint"
 
@@ -65,7 +65,13 @@ export namespace SessionManager {
   const sweepTimer = setInterval(() => {
     const now = Date.now()
     for (const [sessionID, runtime] of runtimes) {
-      if (runtime.abort) continue
+      if (runtime.abort) {
+        if (runtime.abort.signal.aborted) {
+          runtime.abort = undefined
+        } else {
+          continue
+        }
+      }
       if (runtime.mailbox.length > 0) continue
       if (now - runtime.lastActiveAt < IDLE_TTL_MS) continue
       runtimes.delete(sessionID)
@@ -153,10 +159,35 @@ export namespace SessionManager {
   export async function run<T>(input: string | SessionEndpoint.Info, fn: () => Promise<T>): Promise<T> {
     const session = await requireSession(input)
     registerRuntime(session.id)
-    return Instance.provide({
-      scope: session.scope as Scope,
-      fn,
-    })
+    try {
+      const scope = session.scope as Scope
+      const workspace = (session as Info).workspace ?? {
+        type: "main" as const,
+        path: scope.directory,
+        scopeID: scope.id,
+      }
+      return await ScopeRuntime.provide({
+        scope,
+        workspace,
+        ensure: scope.type === "project",
+        fn: async () => {
+          const workspace = (session as Info).workspace
+          if (workspace?.type !== "git_worktree") return fn()
+          const { Worktree } = await import("../project/worktree")
+          await Worktree.lock(workspace.path)
+          try {
+            return await fn()
+          } finally {
+            await Worktree.unlock(workspace.path)
+          }
+        },
+      })
+    } finally {
+      const runtime = getRuntime(session.id)
+      if (runtime && !runtime.abort && runtime.mailbox.length === 0) {
+        unregisterRuntime(session.id)
+      }
+    }
   }
 
   export function acquire(sessionID: string): AbortSignal | undefined {
@@ -171,6 +202,21 @@ export namespace SessionManager {
     runtime.abort = controller
     runtime.status = { type: "busy" }
     return controller.signal
+  }
+
+  export function signalAbort(sessionID: string): void {
+    const runtime = getRuntime(sessionID)
+    if (!runtime) return
+
+    const abort = runtime.abort
+    if (abort) {
+      abort.abort()
+      for (const callback of runtime.waiters) {
+        callback.onCancel()
+      }
+      runtime.waiters = []
+    }
+    runtime.abort = undefined
   }
 
   export async function release(sessionID: string): Promise<void> {
@@ -336,8 +382,14 @@ export namespace SessionManager {
             })
           }
         })
-        .catch(() => {
-          // Session was cleaned up before the async fallback ran — safe to ignore.
+        .catch((err) => {
+          // Session was cleaned up before the async fallback ran — idle event dropped.
+          if (status.type === "idle") {
+            log.warn("emitStatus fallback: session already cleaned up, idle event dropped", {
+              sessionID: runtime.sessionID,
+              error: (err as Error)?.message ?? String(err),
+            })
+          }
         })
     }
   }

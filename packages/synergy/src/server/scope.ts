@@ -1,10 +1,11 @@
 import { Hono } from "hono"
 import { describeRoute, validator } from "hono-openapi"
 import { resolver } from "hono-openapi"
-import { Instance } from "../scope/instance"
+import { ScopeContext } from "../scope/context"
 import { Scope } from "../scope"
 import z from "zod"
 import { errors } from "./error"
+import { SessionNav, ScopeNavEntry } from "../session/nav"
 
 export const ScopeRoute = new Hono()
   .get(
@@ -47,7 +48,29 @@ export const ScopeRoute = new Hono()
       },
     }),
     async (c) => {
-      return c.json(Instance.scope)
+      return c.json(ScopeContext.current.scope)
+    },
+  )
+  .get(
+    "/index",
+    describeRoute({
+      summary: "List scope navigation entries",
+      description: "Get navigation entries for all known scopes, sorted by latest session activity.",
+      operationId: "scope.index",
+      responses: {
+        200: {
+          description: "Array of scope navigation entries",
+          content: {
+            "application/json": {
+              schema: resolver(ScopeNavEntry.array()),
+            },
+          },
+        },
+      },
+    }),
+    async (c) => {
+      const result = await SessionNav.buildScopeIndex()
+      return c.json(result)
     },
   )
   .patch(

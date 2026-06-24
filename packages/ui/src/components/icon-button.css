@@ -12,15 +12,7 @@
     background-color: var(--icon-strong-base);
 
     [data-slot="icon-svg"] {
-      /* color: var(--icon-weak-base); */
       color: var(--icon-invert-base);
-
-      /* &:hover:not(:disabled) { */
-      /*   color: var(--icon-weak-hover); */
-      /* } */
-      /* &:active:not(:disabled) { */
-      /*   color: var(--icon-strong-active); */
-      /* } */
     }
 
     &:hover:not(:disabled) {
@@ -71,7 +63,6 @@
 
   &[data-variant="ghost"] {
     background-color: transparent;
-    /* color: var(--icon-base); */
 
     [data-slot="icon-svg"] {
       color: var(--icon-base);
@@ -79,25 +70,12 @@
 
     &:hover:not(:disabled) {
       background-color: var(--surface-raised-base-hover);
-
-      /* [data-slot="icon-svg"] { */
-      /*   color: var(--icon-hover); */
-      /* } */
     }
     &:focus:not(:disabled) {
       background-color: var(--surface-focus);
     }
     &:active:not(:disabled) {
       background-color: var(--surface-raised-base-active);
-      /* [data-slot="icon-svg"] { */
-      /*   color: var(--icon-active); */
-      /* } */
-    }
-    &:selected:not(:disabled) {
-      background-color: var(--surface-raised-base-active);
-      /* [data-slot="icon-svg"] { */
-      /*   color: var(--icon-selected); */
-      /* } */
     }
   }
 
@@ -112,7 +90,6 @@
 
   &[data-size="large"] {
     height: 32px;
-    /* padding: 0 8px 0 6px; */
     gap: 8px;
 
     [data-slot="icon-svg"] {

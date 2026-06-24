@@ -1,14 +1,21 @@
+import { getIcon } from "../plugin/icon-registry"
+// Side-effect import: registers all built-in Lucide icon names in the registry
+import "../plugin/builtin-icons"
+
 import { splitProps, type ComponentProps } from "solid-js"
 import { Dynamic } from "solid-js/web"
 import {
   Activity,
   AlignRight,
   Archive,
+  ArrowDownFromLine,
   ArrowDownToLine,
   ArrowLeft,
   ArrowRight,
   ArrowUp,
   ArrowUpRight,
+  BadgeCheck,
+  BadgeX,
   Ban,
   Binoculars,
   Bot,
@@ -23,6 +30,7 @@ import {
   ChevronRight,
   ChevronUp,
   ChevronsRight,
+  Circle,
   CircleCheck,
   CircleStop,
   CircleX,
@@ -45,8 +53,12 @@ import {
   Disc,
   Download,
   Ellipsis,
+  Orbit,
   Eye,
+  EyeOff,
   FilePen,
+  Hand,
+  FileSearch,
   FileTerminal,
   FileText,
   Fingerprint,
@@ -58,6 +70,7 @@ import {
   Gauge,
   GitBranch,
   GitMerge,
+  GitFork,
   Glasses,
   Globe,
   Gpu,
@@ -65,16 +78,20 @@ import {
   GripVertical,
   HardDrive,
   HeartPulse,
+  HelpCircle,
   Home,
+  Hourglass,
   Image,
   KeyRound,
   Layers,
   LayoutGrid,
   LockKeyhole,
+  LoaderCircle,
   MailSearch,
   Lightbulb,
   List,
   ListChecks,
+  ListCollapse,
   ListFilter,
   ListTodo,
   LogIn,
@@ -90,6 +107,7 @@ import {
   Moon,
   MousePointer2,
   NotebookPen,
+  OctagonAlert,
   Package,
   PanelBottom,
   PanelBottomClose,
@@ -127,6 +145,7 @@ import {
   Share,
   ShieldAlert,
   ShieldCheck,
+  ShieldX,
   Shrink,
   Signal,
   Sigma,
@@ -136,6 +155,11 @@ import {
   Square,
   SquareCheck,
   SquarePlay,
+  SquarePen,
+  Stamp,
+  Star,
+  StarHalf,
+  StarOff,
   Stethoscope,
   Sun,
   Table,
@@ -143,6 +167,7 @@ import {
   Telescope,
   Terminal,
   TextSelect,
+  TriangleAlert,
   Trash2,
   Undo2,
   Redo2,
@@ -160,12 +185,16 @@ import {
 const icons = {
   activity: Activity,
   "align-right": AlignRight,
+  "alert-triangle": TriangleAlert,
   archive: Archive,
   "arrow-down-to-line": ArrowDownToLine,
+  "arrow-down-from-line": ArrowDownFromLine,
   "arrow-left": ArrowLeft,
   "arrow-right": ArrowRight,
   "arrow-up": ArrowUp,
   "arrow-up-right": ArrowUpRight,
+  "badge-check": BadgeCheck,
+  "badge-x": BadgeX,
   ban: Ban,
   binoculars: Binoculars,
   "book-down": BookDown,
@@ -183,6 +212,7 @@ const icons = {
   "chevron-right": ChevronRight,
   "chevron-up": ChevronUp,
   "chevrons-right": ChevronsRight,
+  circle: Circle,
   "circle-check": CircleCheck,
   "circle-stop": CircleStop,
   "circle-x": CircleX,
@@ -203,6 +233,7 @@ const icons = {
   download: Download,
   ellipsis: Ellipsis,
   eye: Eye,
+  "eye-off": EyeOff,
   "file-pen": FilePen,
   "file-terminal": FileTerminal,
   "file-text": FileText,
@@ -211,9 +242,11 @@ const icons = {
   flame: Flame,
   folder: Folder,
   "folder-plus": FolderPlus,
+  hand: Hand,
   funnel: Funnel,
   gauge: Gauge,
   "git-branch": GitBranch,
+  "git-fork": GitFork,
   "git-merge": GitMerge,
   github: Github,
   glasses: Glasses,
@@ -223,7 +256,9 @@ const icons = {
   "grip-vertical": GripVertical,
   "hard-drive": HardDrive,
   "heart-pulse": HeartPulse,
+  "help-circle": HelpCircle,
   home: Home,
+  hourglass: Hourglass,
   image: Image,
   "key-round": KeyRound,
   layers: Layers,
@@ -232,6 +267,8 @@ const icons = {
   lightbulb: Lightbulb,
   list: List,
   "list-checks": ListChecks,
+  "loader-circle": LoaderCircle,
+  "list-collapse": ListCollapse,
   "list-filter": ListFilter,
   "list-todo": ListTodo,
   "log-in": LogIn,
@@ -239,6 +276,7 @@ const icons = {
   "mail-search": MailSearch,
   map: Map,
   maximize: Maximize,
+  orbit: Orbit,
   megaphone: Megaphone,
   menu: Menu,
   "message-circle": MessageCircle,
@@ -248,6 +286,7 @@ const icons = {
   moon: Moon,
   "mouse-pointer-2": MousePointer2,
   "notebook-pen": NotebookPen,
+  "octagon-alert": OctagonAlert,
   package: Package,
   "panel-bottom": PanelBottom,
   "panel-bottom-close": PanelBottomClose,
@@ -275,6 +314,7 @@ const icons = {
   satellite: Satellite,
   scale: Scale,
   scan: Scan,
+  "scan-document": FileSearch,
   "scan-eye": ScanEye,
   "scan-search": ScanSearch,
   "scroll-text": ScrollText,
@@ -285,6 +325,7 @@ const icons = {
   share: Share,
   "shield-alert": ShieldAlert,
   "shield-check": ShieldCheck,
+  "shield-x": ShieldX,
   shrink: Shrink,
   signal: Signal,
   sigma: Sigma,
@@ -292,9 +333,14 @@ const icons = {
   sparkles: Sparkles,
   spline: Spline,
   square: Square,
+  "square-pen": SquarePen,
   "square-check": SquareCheck,
   "square-play": SquarePlay,
+  stamp: Stamp,
   stethoscope: Stethoscope,
+  star: Star,
+  "star-half": StarHalf,
+  "star-off": StarOff,
   sun: Sun,
   table: Table,
   tag: Tag,
@@ -312,9 +358,12 @@ const icons = {
   x: X,
   zap: Zap,
   workflow: Workflow,
+  "worktree-enter": GitFork,
+  "worktree-leave": ArrowLeft,
+  "worktree-list": LayoutGrid,
 }
 
-export type IconName = keyof typeof icons
+export type IconName = keyof typeof icons | string
 
 export interface IconProps extends Omit<ComponentProps<"svg">, "name"> {
   name: IconName
@@ -323,19 +372,49 @@ export interface IconProps extends Omit<ComponentProps<"svg">, "name"> {
 
 export function Icon(props: IconProps) {
   const [local, others] = splitProps(props, ["name", "size", "class", "classList"])
-  const Component = () => icons[local.name]
+
+  // Check registry for a plugin-contributed icon with actual SVG markup
+  const entry = () => getIcon(local.name)
+  const pluginSvg = () => entry()?.svgContent
+
+  // Fall back to Lucide component map for built-ins
+  const Component = () => icons[local.name as keyof typeof icons]
 
   return (
     <div data-component="icon" data-size={local.size || "normal"}>
-      <Dynamic
-        component={Component()}
-        data-slot="icon-svg"
-        class={local.class}
-        classList={local.classList}
-        size="100%"
-        strokeWidth={1.5}
-        {...others}
-      />
+      {(() => {
+        const svg = pluginSvg()
+        if (svg) {
+          // Plugin icon: render raw SVG markup through innerHTML
+          return (
+            <span
+              data-slot="icon-svg"
+              class={local.class}
+              classList={local.classList}
+              // SVG content is sanitized during icon registration
+              innerHTML={svg}
+              style="width: 100%; height: 100%; display: inline-flex; align-items: center; justify-content: center;"
+              {...(others as any)}
+            />
+          )
+        }
+        const lucide = Component()
+        if (lucide) {
+          return (
+            <Dynamic
+              component={lucide}
+              data-slot="icon-svg"
+              class={local.class}
+              classList={local.classList}
+              size="100%"
+              strokeWidth={1.5}
+              {...(others as any)}
+            />
+          )
+        }
+        // Neither plugin icon nor built-in — render nothing
+        return null
+      })()}
     </div>
   )
 }

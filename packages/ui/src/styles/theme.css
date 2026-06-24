@@ -3,14 +3,18 @@
   --font-family-sans--font-feature-settings: "ss03" 1;
   --font-family-mono: "IBM Plex Mono", "IBM Plex Mono Fallback";
   --font-family-mono--font-feature-settings: "ss01" 1;
+  --font-feature-settings-mono: "liga" 0, "calt" 0;
 
-  --font-size-small: 13px;
-  --font-size-base: 14px;
-  --font-size-large: 16px;
-  --font-size-x-large: 20px;
+  --font-size-small: 14px;
+  --font-size-base: 16px;
+  --font-size-large: 18px;
+  --font-size-x-large: 24px;
+  --font-size-x-small: 12px;
   --font-weight-regular: 400;
   --font-weight-medium: 500;
+  --font-weight-semibold: 600;
   --line-height-large: 150%;
+  --line-height-normal: 1.5;
   --line-height-x-large: 180%;
   --line-height-2x-large: 200%;
   --letter-spacing-normal: 0;
@@ -46,6 +50,9 @@
   --radius-lg: 0.5rem;
   --radius-xl: 0.625rem;
   --radius-2xl: 0.875rem;
+  --radius-full: 9999px;
+
+  --shadow-sm: 0 1px 2px rgb(15 23 42 / 0.08), 0 1px 1px rgb(15 23 42 / 0.04);
 
   --shadow-xs:
     0 1px 2px -0.5px light-dark(hsl(0 0% 0% / 0.04), hsl(0 0% 0% / 0.06)),
@@ -74,15 +81,24 @@
     0 1px 2px 0 rgba(19, 16, 16, 0.08), 0 1px 3px 0 rgba(19, 16, 16, 0.12), 0 0 0 2px var(--background-weak, #f1f0f0),
     0 0 0 3px var(--border-selected, rgba(0, 74, 255, 0.99));
 
+  --motion-duration-fast: 120ms;
+  --motion-duration-base: 180ms;
+  --motion-duration-slow: 240ms;
+  --motion-ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --motion-ease-emphasized: cubic-bezier(0.16, 1, 0.3, 1);
+
   color-scheme: light;
   --text-mix-blend-mode: multiply;
+}
 
+:root:not([data-color-scheme]) {
   --background-base: #f8f7f7;
   --background-weak: var(--smoke-light-3);
   --background-strong: var(--smoke-light-1);
-  --background-stronger: #fcfcfc;
+  --background-stronger: #f1f0f0;
   --surface-base: var(--smoke-light-alpha-2);
   --base: var(--smoke-light-alpha-2);
+  --surface-hover-base: #0500000f;
   --surface-base-hover: #0500000f;
   --surface-base-active: var(--smoke-light-alpha-3);
   --surface-base-interactive-active: var(--cobalt-light-alpha-3);
@@ -149,6 +165,7 @@
   --text-base: var(--smoke-light-11);
   --text-weak: var(--smoke-light-9);
   --text-weaker: var(--smoke-light-8);
+  --text-subtle: var(--smoke-light-7);
   --text-strong: var(--smoke-light-12);
   --text-invert-base: var(--smoke-dark-alpha-11);
   --text-invert-weak: var(--smoke-dark-alpha-9);
@@ -326,12 +343,13 @@
   --avatar-text-purple: #8445bc;
   --avatar-text-cyan: #0894b3;
   --avatar-text-lime: #5d770d;
+}
 
-  @media (prefers-color-scheme: dark) {
+@media (prefers-color-scheme: dark) {
+  :root:not([data-color-scheme]) {
     color-scheme: dark;
     --text-mix-blend-mode: plus-lighter;
 
-    /* OC-1 fallback variables (dark) */
     --background-base: var(--smoke-dark-1);
     --background-weak: var(--smoke-dark-2);
     --background-strong: var(--smoke-dark-2);
@@ -341,6 +359,7 @@
     --surface-base-hover: var(--smoke-dark-4);
     --surface-base-active: var(--smoke-dark-5);
     --surface-base-interactive-active: var(--cobalt-dark-alpha-2);
+    --surface-hover-base: var(--smoke-dark-4);
     --base2: var(--smoke-dark-3);
     --base3: var(--smoke-dark-3);
     --surface-inset-base: var(--smoke-dark-alpha-3);
@@ -404,6 +423,7 @@
     --text-base: var(--smoke-dark-10);
     --text-weak: var(--smoke-dark-9);
     --text-weaker: var(--smoke-dark-8);
+    --text-subtle: var(--smoke-dark-7);
     --text-strong: var(--smoke-dark-12);
     --text-invert-base: var(--smoke-dark-alpha-11);
     --text-invert-weak: var(--smoke-dark-alpha-9);

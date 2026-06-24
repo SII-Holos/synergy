@@ -7,7 +7,8 @@ import z from "zod"
 import * as Formatter from "./formatter"
 import { Config } from "../config/config"
 import { mergeDeep } from "remeda"
-import { Instance } from "../scope/instance"
+import { ScopeContext } from "../scope/context"
+import { ScopedState } from "../scope/scoped-state"
 
 export namespace Format {
   const log = Log.create({ service: "format" })
@@ -23,9 +24,9 @@ export namespace Format {
     })
   export type Status = z.infer<typeof Status>
 
-  const state = Instance.state(async () => {
+  const state = ScopedState.create(async () => {
     const enabled: Record<string, boolean> = {}
-    const cfg = await Config.get()
+    const cfg = await Config.current()
 
     const formatters: Record<string, Formatter.Info> = {}
     if (cfg.formatter === false) {
@@ -108,36 +109,43 @@ export namespace Format {
 
   export function init() {
     log.info("init")
-    Bus.subscribe(File.Event.Edited, async (payload) => {
-      const file = payload.properties.file
-      log.info("formatting", { file })
-      const ext = path.extname(file)
+    const fmtState = ScopedState.create(
+      () => {
+        const unsub = Bus.subscribe(File.Event.Edited, async (payload) => {
+          const file = payload.properties.file
+          log.info("formatting", { file })
+          const ext = path.extname(file)
 
-      for (const item of await getFormatter(ext)) {
-        log.info("running", { command: item.command })
-        try {
-          const proc = Bun.spawn({
-            cmd: item.command.map((x) => x.replace("$FILE", file)),
-            cwd: Instance.directory,
-            env: { ...process.env, ...item.environment },
-            stdout: "ignore",
-            stderr: "ignore",
-          })
-          const exit = await proc.exited
-          if (exit !== 0)
-            log.error("failed", {
-              command: item.command,
-              ...item.environment,
-            })
-        } catch (error) {
-          log.error("failed to format file", {
-            error,
-            command: item.command,
-            ...item.environment,
-            file,
-          })
-        }
-      }
-    })
+          for (const item of await getFormatter(ext)) {
+            log.info("running", { command: item.command })
+            try {
+              const proc = Bun.spawn({
+                cmd: item.command.map((x) => x.replace("$FILE", file)),
+                cwd: ScopeContext.current.directory,
+                env: { ...process.env, ...item.environment },
+                stdout: "ignore",
+                stderr: "ignore",
+              })
+              const exit = await proc.exited
+              if (exit !== 0)
+                log.error("failed", {
+                  command: item.command,
+                  ...item.environment,
+                })
+            } catch (error) {
+              log.error("failed to format file", {
+                error,
+                command: item.command,
+                ...item.environment,
+                file,
+              })
+            }
+          }
+        })
+        return { unsub }
+      },
+      async (s) => s.unsub(),
+    )
+    void fmtState()
   }
 }

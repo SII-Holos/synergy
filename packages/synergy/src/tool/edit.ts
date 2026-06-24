@@ -13,7 +13,7 @@ import { File } from "../file"
 import { Bus } from "../bus"
 import { FileTime } from "../file/time"
 import { Filesystem } from "../util/filesystem"
-import { Instance } from "../scope/instance"
+import { ScopeContext } from "../scope/context"
 import { Snapshot } from "@/session/snapshot"
 import { RuntimeReload } from "../runtime/reload"
 
@@ -40,20 +40,10 @@ export const EditTool = Tool.define("edit", {
       throw new Error("oldString and newString must be different")
     }
 
-    const filePath = path.isAbsolute(params.filePath) ? params.filePath : path.join(Instance.directory, params.filePath)
-    const displayPath = path.relative(Instance.directory, filePath)
-
-    if (!Instance.contains(filePath)) {
-      const parentDir = path.dirname(filePath)
-      await ctx.ask({
-        permission: "external_directory",
-        patterns: [parentDir, path.join(parentDir, "*")],
-        metadata: {
-          filepath: filePath,
-          parentDir,
-        },
-      })
-    }
+    const filePath = path.isAbsolute(params.filePath)
+      ? params.filePath
+      : path.join(ScopeContext.current.directory, params.filePath)
+    const displayPath = path.relative(ScopeContext.current.directory, filePath)
 
     let diff = ""
     let contentOld = ""

@@ -1,12 +1,16 @@
-Create a new note or update an existing one. Content should be provided in markdown format — it will be automatically converted for storage.
+Create a new note or update an existing one. A Blueprint is not a separate document type; it is a note with kind:"blueprint". Content should be provided in markdown format — it will be converted to the internal ProseMirror JSON format for storage.
 
 Three modes are available:
 - "create" (default): Creates a new note. Requires `title` and `content`.
-- "append": Adds content to the end of an existing note. Requires `id` and `content`.
+- "append": Adds content to the end of an existing note. Requires `id` and `content`. The new content is appended as additional blocks after the existing document's blocks.
 - "replace": Overwrites the content of an existing note. Requires `id` and `content`.
 
 The `scope` parameter controls where new notes are created:
 - "current" (default): Creates in the current project scope
-- "global": Creates in the global scope (visible from all projects)
+- "home": Creates in the home scope (visible from all projects)
+
+Use `kind:"blueprint"` when the note should become executable through BlueprintLoop. Use `kind:"note"` to convert a Blueprint note back to a plain note. Blueprint notes may include `description` and `defaultAgent` metadata; Blueprint run state lives on BlueprintLoop, not on the note itself.
 
 When updating (append/replace), the note is found automatically regardless of scope. The `tags` parameter can be provided to set or update tags on any mode.
+
+Note: For surgical edits to specific parts of a note without rewriting the whole document, use `note_edit` instead.

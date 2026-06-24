@@ -26,7 +26,7 @@ After writing config changes, use `runtime_reload` to apply without restarting.
 |---|---|---|
 | API key in credential store | `provider` | Directly reloads provider SDKs with new key |
 | Provider config in JSONC | `config` | Detects `provider` field change → cascades to `provider` → `agent` |
-| Model role fields | `config` | Live-applied: `model`, `nano_model`, `mini_model`, `mid_model`, `thinking_model`, `long_context_model`, `creative_model`, `holos_friend_reply_model`, `vision_model` |
+| Model role fields | `config` | Live-applied: `model`, `nano_model`, `mini_model`, `mid_model`, `thinking_model`, `long_context_model`, `creative_model`, `vision_model` |
 | `default_agent` | `config` | Live-applied |
 | MCP server config in JSONC | `config` or `mcp` | Config detects `mcp` field → cascades to `mcp` → `command` |
 | Agent config in JSONC | `config` | Detects `agent` field → cascades to `agent` |
@@ -87,20 +87,18 @@ runtime_reload(target: "config", scope: "auto")
 | Scope | Behavior |
 |---|---|
 | `auto` (default) | Reloads project config if project config file exists, otherwise global |
-| `global` | Only reloads global config (active Config Set) |
+| `global` | Only reloads global domain config |
 | `project` | Only reloads project config |
 
 Project config files are detected at:
-- `<project>/.synergy/synergy.jsonc`
-- `<project>/.synergy/synergy.json`
-- `<project>/synergy.jsonc`
-- `<project>/synergy.json`
+- `<project>/.synergy/synergy.d/*.jsonc`
+- `<project>/.synergy/synergy.d/*.json`
 
 ## File watcher behavior
 
 Synergy watches for changes to config-related files and auto-triggers appropriate reloads:
 
-- **Config files** (synergy.jsonc, synergy.json) → `config` reload with auto-cascade
+- **Config domain files** (`synergy.d/*.jsonc`, `synergy.d/*.json`) → `config` reload with auto-cascade
 - **SKILL.md files** in skill directories → `skill` reload
 - **Tool files** (.ts/.js in tool directories) → `tool_registry` reload
 - **Agent .md files** → detected via config reload cascade

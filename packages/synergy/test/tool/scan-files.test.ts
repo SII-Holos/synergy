@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import path from "path"
 import { ScanFilesTool } from "../../src/tool/scan-files"
-import { Instance } from "../../src/scope/instance"
+import { ScopeContext } from "../../src/scope/context"
 import { tmpdir } from "../fixture/fixture"
 import { computeTag } from "../../src/hashline/tag"
 
@@ -25,7 +25,7 @@ describe("tool.scan_files", () => {
           await Bun.write(path.join(dir, "b.ts"), "const c = 3\n")
         },
       })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const tool = await ScanFilesTool.init()
@@ -49,7 +49,7 @@ describe("tool.scan_files", () => {
           await Bun.write(path.join(dir, "b.ts"), "const b = 2\n")
         },
       })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const tool = await ScanFilesTool.init()
@@ -68,7 +68,7 @@ describe("tool.scan_files", () => {
           await Bun.write(path.join(dir, "a.ts"), "const a = 1\n")
         },
       })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const tool = await ScanFilesTool.init()
@@ -87,7 +87,7 @@ describe("tool.scan_files", () => {
           await Bun.write(path.join(dir, "builtin-legacy-subagents.ts"), 'name: "developer"\n')
         },
       })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const tool = await ScanFilesTool.init()
@@ -111,7 +111,7 @@ describe("tool.scan_files", () => {
           )
         },
       })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const tool = await ScanFilesTool.init()
@@ -140,7 +140,7 @@ describe("tool.scan_files", () => {
           await Bun.write(path.join(dir, "data.txt"), "hello world\n")
         },
       })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const tool = await ScanFilesTool.init()
@@ -161,7 +161,7 @@ describe("tool.scan_files", () => {
           await Bun.write(path.join(dir, "b.ts"), "export const b = 2\n")
         },
       })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const tool = await ScanFilesTool.init()
@@ -186,7 +186,7 @@ describe("tool.scan_files", () => {
           )
         },
       })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const tool = await ScanFilesTool.init()
@@ -208,7 +208,7 @@ describe("tool.scan_files", () => {
           await Bun.write(path.join(dir, "x.ts"), "export const x = 1\nimport y from 'y'\n")
         },
       })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const tool = await ScanFilesTool.init()
@@ -230,7 +230,7 @@ describe("tool.scan_files", () => {
           await Bun.write(path.join(dir, "c.ts"), "hit\n")
         },
       })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const tool = await ScanFilesTool.init()
@@ -251,7 +251,7 @@ describe("tool.scan_files", () => {
           await Bun.write(path.join(dir, "narrow.ts"), "before\nhit\nafter\n")
         },
       })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const tool = await ScanFilesTool.init()

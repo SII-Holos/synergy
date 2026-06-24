@@ -31,7 +31,7 @@ export function useStats() {
   const [data, { refetch, mutate }] = createResource(async (): Promise<StatsSnapshot | null> => {
     try {
       setError(null)
-      const res = await sdk.client.stats.get()
+      const res = await sdk.client.global.stats.get()
       return res.data ?? null
     } catch (err) {
       setError(getErrorMessage(err))
@@ -47,7 +47,7 @@ export function useStats() {
     setSyncError(null)
     setProgress({ phase: "scan", current: 0, total: 1, message: "Starting stats sync..." })
 
-    const stream = new EventSource(`${sdk.url}/stats/progress`)
+    const stream = new EventSource(`${sdk.url}/global/stats/progress`)
 
     await new Promise<void>((resolve) => {
       const finish = () => {

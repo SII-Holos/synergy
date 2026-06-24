@@ -1,5 +1,9 @@
-Read the full content of one or more notes by their IDs. Returns each note's title, metadata, and content in markdown format.
+Read the full content of one or more notes by their IDs. Blueprint documents are read with this same tool; they are notes with kind:"blueprint".
 
-Use this after `note_list` or `note_search` to read the full details of specific notes.
+Two output formats:
+- "markdown" (default): Content rendered as Markdown. Some rich elements (Mermaid diagrams, videos, images, tables) may show as placeholder text like "[Mermaid diagram]" or "[Image: url]". This is informational only — the actual content preserved in storage is richer.
+- "blocks": Flattened numbered block list. Each block maps 1:1 to the note's internal document model. Use this format with `note_edit` to reference specific blocks by their index (e.g., `[block:0]`, `[block:1]`).
 
-Supports pagination via `offset` and `limit` (line-based) for reading long notes. If not specified, returns the full content.
+Use this after `note_list` or `note_search` to read the full details of specific notes or Blueprint notes. For BlueprintLoop execution, read the Blueprint note with `note_read({ ids: [...] })` before implementation.
+
+Supports pagination via `offset` and `limit` (line-based) for reading long notes. Pagination is line-based for markdown format and block-filtering for blocks format. If not specified, returns the full content.

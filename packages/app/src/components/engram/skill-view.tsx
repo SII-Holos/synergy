@@ -8,7 +8,7 @@ import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import { createSynergyClient } from "@ericsanchezok/synergy-sdk/client"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { usePlatform } from "@/context/platform"
-import { Panel } from "@/components/panel"
+import { AppPanel } from "@/components/app-panel"
 import type { SkillList } from "@ericsanchezok/synergy-sdk/client"
 import {
   engramActionButtonClass,
@@ -17,6 +17,7 @@ import {
   engramInsetClass,
   engramMenuClass,
   engramMetaLabelClass,
+  EngramFilterChip,
 } from "./shared"
 
 type SkillScope = "all" | "project" | "global" | "builtin"
@@ -116,9 +117,9 @@ export function SkillView(props: {
     try {
       await scopedClient().skill.reload()
       await refetch()
-      showToast({ title: "Skills reloaded", description: "Skill directories rescanned" })
+      showToast({ type: "success", title: "Skills reloaded", description: "Skill directories rescanned" })
     } catch {
-      showToast({ title: "Failed to reload skills" })
+      showToast({ type: "error", title: "Failed to reload skills" })
     }
     setReloading(false)
   }
@@ -153,10 +154,10 @@ export function SkillView(props: {
     try {
       await scopedClient().skill.remove({ name })
       await refetch()
-      showToast({ title: "Skill deleted", description: `Removed "${name}" from disk` })
+      showToast({ type: "info", title: "Skill deleted", description: `Removed "${name}" from disk` })
       return true
     } catch {
-      showToast({ title: "Failed to delete skill" })
+      showToast({ type: "error", title: "Failed to delete skill" })
       return false
     }
   }
@@ -190,9 +191,13 @@ export function SkillView(props: {
       const result = await scopedClient().skill.import({ file, scope })
       await refetch()
       const data = result.data as any
-      showToast({ title: "Skill imported", description: `"${data?.name}" added to ${data?.scope ?? scope}` })
+      showToast({
+        type: "info",
+        title: "Skill imported",
+        description: `"${data?.name}" added to ${data?.scope ?? scope}`,
+      })
     } catch {
-      showToast({ title: "Import failed", description: "Check that the ZIP contains a valid SKILL.md" })
+      showToast({ type: "error", title: "Import failed", description: "Check that the ZIP contains a valid SKILL.md" })
     }
     setImporting(false)
     resetImport()
@@ -207,223 +212,223 @@ export function SkillView(props: {
       const result = await scopedClient().skill.importUrl({ url, scope: "global" })
       await refetch()
       const data = result.data as any
-      showToast({ title: "Skill imported", description: `"${data?.name}" added to ${data?.scope ?? "project"}` })
+      showToast({
+        type: "info",
+        title: "Skill imported",
+        description: `"${data?.name}" added to ${data?.scope ?? "project"}`,
+      })
     } catch {
-      showToast({ title: "Import failed", description: "Failed to download or extract. Check the URL." })
+      showToast({ type: "error", title: "Import failed", description: "Failed to download or extract. Check the URL." })
     }
     setImporting(false)
     resetImport()
   }
 
   return (
-    <>
-      <Panel.SubHeader>
-        <div class="flex items-center gap-1.5 flex-wrap">
-          <Panel.FilterChip active={filter() === "all"} onClick={() => setFilter("all")}>
-            All
-            <Show when={(skills()?.items ?? []).length > 0}>
-              <span class="ml-0.5">{(skills()?.items ?? []).length}</span>
-            </Show>
-          </Panel.FilterChip>
-          <Show when={scopeCounts().project > 0}>
-            <Panel.FilterChip active={filter() === "project"} onClick={() => setFilter("project")}>
-              Project
-              <span class="ml-0.5">{scopeCounts().project}</span>
-            </Panel.FilterChip>
+    <div>
+      <div class="flex items-center gap-1.5 flex-wrap mb-3">
+        <EngramFilterChip active={filter() === "all"} onClick={() => setFilter("all")}>
+          All
+          <Show when={(skills()?.items ?? []).length > 0}>
+            <span class="ml-0.5">{(skills()?.items ?? []).length}</span>
           </Show>
-          <Show when={scopeCounts().global > 0}>
-            <Panel.FilterChip active={filter() === "global"} onClick={() => setFilter("global")}>
-              Global
-              <span class="ml-0.5">{scopeCounts().global}</span>
-            </Panel.FilterChip>
-          </Show>
-          <Show when={scopeCounts().builtin > 0}>
-            <Panel.FilterChip active={filter() === "builtin"} onClick={() => setFilter("builtin")}>
-              Builtin
-              <span class="ml-0.5">{scopeCounts().builtin}</span>
-            </Panel.FilterChip>
-          </Show>
-          <div class="ml-auto flex items-center gap-0.5">
-            <Popover
-              open={importOpen()}
-              onOpenChange={(open) => {
-                setImportOpen(open)
-                if (!open) resetImport()
-              }}
-              placement="bottom-end"
-              gutter={6}
+        </EngramFilterChip>
+        <Show when={scopeCounts().project > 0}>
+          <EngramFilterChip active={filter() === "project"} onClick={() => setFilter("project")}>
+            Project
+            <span class="ml-0.5">{scopeCounts().project}</span>
+          </EngramFilterChip>
+        </Show>
+        <Show when={scopeCounts().global > 0}>
+          <EngramFilterChip active={filter() === "global"} onClick={() => setFilter("global")}>
+            Global
+            <span class="ml-0.5">{scopeCounts().global}</span>
+          </EngramFilterChip>
+        </Show>
+        <Show when={scopeCounts().builtin > 0}>
+          <EngramFilterChip active={filter() === "builtin"} onClick={() => setFilter("builtin")}>
+            Builtin
+            <span class="ml-0.5">{scopeCounts().builtin}</span>
+          </EngramFilterChip>
+        </Show>
+        <div class="ml-auto flex items-center gap-0.5">
+          <Popover
+            open={importOpen()}
+            onOpenChange={(open) => {
+              setImportOpen(open)
+              if (!open) resetImport()
+            }}
+            placement="bottom-end"
+            gutter={6}
+          >
+            <Popover.Trigger
+              as="button"
+              class={`${engramActionButtonClass} ${importing() ? "pointer-events-none text-text-weaker" : ""}`}
+              disabled={importing()}
             >
-              <Popover.Trigger
-                as="button"
-                class={`${engramActionButtonClass} ${importing() ? "pointer-events-none text-text-weaker" : ""}`}
-                disabled={importing()}
-              >
-                <Show when={importing()} fallback={<Icon name="download" size="small" class="opacity-70" />}>
-                  <Spinner class="size-3" />
-                </Show>
-                <span>Import</span>
-              </Popover.Trigger>
-              <Popover.Portal>
-                <Popover.Content class={`w-64 ${engramMenuClass}`}>
-                  <Show when={importMode() === "menu"}>
-                    <div class="p-1.5">
-                      <button
-                        type="button"
-                        class="flex w-full items-center gap-2.5 rounded-[0.9rem] px-3 py-2 text-left text-12-medium text-text-base transition-colors hover:bg-surface-inset-base/55"
-                        onClick={() => {
-                          setImportOpen(false)
-                          fileInputRef.click()
-                        }}
-                      >
-                        <Icon name="folder-plus" size="small" class="text-icon-weak shrink-0" />
-                        <div class="min-w-0">
-                          <div class="text-13-regular text-text-base">Upload ZIP</div>
-                          <div class="text-11-regular text-text-weaker">Import from a local .zip file</div>
-                        </div>
-                      </button>
-                      <button
-                        type="button"
-                        class="flex w-full items-center gap-2.5 rounded-[0.9rem] px-3 py-2 text-left text-12-medium text-text-base transition-colors hover:bg-surface-inset-base/55"
-                        onClick={() => setImportMode("url")}
-                      >
-                        <Icon name="globe" size="small" class="text-icon-weak shrink-0" />
-                        <div class="min-w-0">
-                          <div class="text-13-regular text-text-base">From URL</div>
-                          <div class="text-11-regular text-text-weaker">Download and import a .zip URL</div>
-                        </div>
-                      </button>
-                    </div>
-                  </Show>
-                  <Show when={importMode() === "url"}>
-                    <div class="flex flex-col gap-2.5 p-3">
-                      <div>
-                        <div class={engramMetaLabelClass}>Import</div>
-                        <div class="mt-1 text-12-medium text-text-strong">Import from URL</div>
-                      </div>
-                      <input
-                        type="url"
-                        placeholder="https://example.com/skill.zip"
-                        class="w-full rounded-[0.95rem] border border-border-base/38 bg-surface-inset-base/58 px-3 py-2.5 text-13-regular text-text-base outline-none ring-1 ring-inset ring-border-base/35 transition-colors placeholder:text-text-weak focus:border-text-interactive-base/40 focus:bg-surface-inset-base/7"
-                        value={importUrl()}
-                        onInput={(e) => setImportUrl(e.currentTarget.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") handleUrlImport()
-                        }}
-                        autofocus
-                      />
-                      <div class="flex items-center justify-end gap-2">
-                        <button
-                          type="button"
-                          class="rounded-full px-3 py-1.5 text-11-medium text-text-weak ring-1 ring-inset ring-border-base/45 transition-all hover:bg-surface-inset-base/4 hover:text-text-base"
-                          onClick={() => setImportMode("menu")}
-                        >
-                          Back
-                        </button>
-                        <button
-                          type="button"
-                          classList={{
-                            "rounded-full px-3.5 py-1.5 text-11-medium ring-1 ring-inset transition-all": true,
-                            "bg-text-interactive-base text-white ring-text-interactive-base/15 hover:bg-text-interactive-base/90":
-                              !!importUrl().trim(),
-                            "bg-surface-inset-base/6 text-text-weaker ring-border-base/35 pointer-events-none":
-                              !importUrl().trim(),
-                          }}
-                          disabled={!importUrl().trim()}
-                          onClick={handleUrlImport}
-                        >
-                          Import
-                        </button>
-                      </div>
-                    </div>
-                  </Show>
-                </Popover.Content>
-              </Popover.Portal>
-            </Popover>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".zip,.skill"
-              class="hidden"
-              onChange={(e) => {
-                const file = (e.target as HTMLInputElement).files?.[0]
-                if (file) handleFileImport(file)
-                e.target.value = ""
-              }}
-            />
-            <button
-              type="button"
-              class={`${engramActionButtonClass} ${reloading() ? "pointer-events-none text-text-weaker" : ""}`}
-              onClick={reloadSkills}
-              disabled={reloading()}
-            >
-              <Show when={reloading()} fallback={<Icon name="refresh-ccw" size="small" class="opacity-70" />}>
+              <Show when={importing()} fallback={<Icon name="download" size="small" class="opacity-70" />}>
                 <Spinner class="size-3" />
               </Show>
-              <span>Reload</span>
-            </button>
-          </div>
-        </div>
-      </Panel.SubHeader>
-
-      <Panel.Body>
-        <Show when={skills.loading}>
-          <Panel.Loading />
-        </Show>
-
-        <Show when={!skills.loading}>
-          <Show when={diagnostics().length > 0}>
-            <div class="mb-3 rounded-[1.15rem] border border-border-warning-base/35 bg-[rgba(196,132,36,0.08)] px-4 py-3 shadow-[inset_0_1px_0_rgba(214,204,190,0.07)]">
-              <button
-                type="button"
-                class="flex w-full cursor-pointer items-center gap-2 text-12-medium text-text-strong"
-                onClick={() => setDiagnosticsExpanded((prev) => !prev)}
-              >
-                <Icon name="shield-alert" size="small" class="text-icon-warning-base shrink-0" />
-                <span class="flex-1 text-left">
-                  {diagnostics().length} skill{diagnostics().length === 1 ? "" : "s"} skipped during load
-                </span>
-                <Icon
-                  name="chevron-right"
-                  size="small"
-                  class="shrink-0 text-text-weaker transition-transform duration-200"
-                  classList={{ "rotate-90": diagnosticsExpanded() }}
-                />
-              </button>
-              <Show when={diagnosticsExpanded()}>
-                <div class="mt-2 flex flex-col gap-2">
-                  <For each={diagnostics()}>
-                    {(item) => (
-                      <div class={`rounded-[0.95rem] px-3 py-2 ${engramInsetClass}`}>
-                        <div class="text-11-medium text-text-strong">{item.name}</div>
-                        <div class="mt-0.5 text-11-regular text-text-diff-delete-base break-words">{item.message}</div>
-                        <div class="mt-1 text-10-regular text-text-weaker break-all">{item.path}</div>
+              <span>Import</span>
+            </Popover.Trigger>
+            <Popover.Portal>
+              <Popover.Content class={`w-64 ${engramMenuClass}`}>
+                <Show when={importMode() === "menu"}>
+                  <div class="p-1.5">
+                    <button
+                      type="button"
+                      class="flex w-full items-center gap-2.5 rounded-[0.9rem] px-3 py-2 text-left text-12-medium text-text-base transition-colors hover:bg-surface-inset-base/55"
+                      onClick={() => {
+                        setImportOpen(false)
+                        fileInputRef.click()
+                      }}
+                    >
+                      <Icon name="folder-plus" size="small" class="text-icon-weak shrink-0" />
+                      <div class="min-w-0">
+                        <div class="text-13-regular text-text-base">Upload ZIP</div>
+                        <div class="text-11-regular text-text-weaker">Import from a local .zip file</div>
                       </div>
-                    )}
-                  </For>
-                </div>
-              </Show>
-            </div>
-          </Show>
-
-          <Show
-            when={filtered().length > 0}
-            fallback={
-              <Panel.Empty
-                icon="sparkles"
-                title={props.search ? `No skills match "${props.search}"` : "No skills loaded"}
-                description="Skills are loaded from SKILL.md files in .synergy/skill/ directories. Use Reload to rescan."
-              />
-            }
+                    </button>
+                    <button
+                      type="button"
+                      class="flex w-full items-center gap-2.5 rounded-[0.9rem] px-3 py-2 text-left text-12-medium text-text-base transition-colors hover:bg-surface-inset-base/55"
+                      onClick={() => setImportMode("url")}
+                    >
+                      <Icon name="globe" size="small" class="text-icon-weak shrink-0" />
+                      <div class="min-w-0">
+                        <div class="text-13-regular text-text-base">From URL</div>
+                        <div class="text-11-regular text-text-weaker">Download and import a .zip URL</div>
+                      </div>
+                    </button>
+                  </div>
+                </Show>
+                <Show when={importMode() === "url"}>
+                  <div class="flex flex-col gap-2.5 p-3">
+                    <div>
+                      <div class={engramMetaLabelClass}>Import</div>
+                      <div class="mt-1 text-12-medium text-text-strong">Import from URL</div>
+                    </div>
+                    <input
+                      type="url"
+                      placeholder="https://example.com/skill.zip"
+                      class="w-full rounded-[0.95rem] border border-border-base/38 bg-surface-inset-base/58 px-3 py-2.5 text-13-regular text-text-base outline-none ring-1 ring-inset ring-border-base/35 transition-colors placeholder:text-text-weak focus:border-text-interactive-base/40 focus:bg-surface-inset-base/7"
+                      value={importUrl()}
+                      onInput={(e) => setImportUrl(e.currentTarget.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") handleUrlImport()
+                      }}
+                      autofocus
+                    />
+                    <div class="flex items-center justify-end gap-2">
+                      <button
+                        type="button"
+                        class="rounded-full px-3 py-1.5 text-11-medium text-text-weak ring-1 ring-inset ring-border-base/45 transition-all hover:bg-surface-inset-base/4 hover:text-text-base"
+                        onClick={() => setImportMode("menu")}
+                      >
+                        Back
+                      </button>
+                      <button
+                        type="button"
+                        classList={{
+                          "rounded-full px-3.5 py-1.5 text-11-medium ring-1 ring-inset transition-all": true,
+                          "bg-text-interactive-base text-white ring-text-interactive-base/15 hover:bg-text-interactive-base/90":
+                            !!importUrl().trim(),
+                          "bg-surface-inset-base/6 text-text-weaker ring-border-base/35 pointer-events-none":
+                            !importUrl().trim(),
+                        }}
+                        disabled={!importUrl().trim()}
+                        onClick={handleUrlImport}
+                      >
+                        Import
+                      </button>
+                    </div>
+                  </div>
+                </Show>
+              </Popover.Content>
+            </Popover.Portal>
+          </Popover>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".zip,.skill"
+            class="hidden"
+            onChange={(e) => {
+              const file = (e.target as HTMLInputElement).files?.[0]
+              if (file) handleFileImport(file)
+              e.target.value = ""
+            }}
+          />
+          <button
+            type="button"
+            class={`${engramActionButtonClass} ${reloading() ? "pointer-events-none text-text-weaker" : ""}`}
+            onClick={reloadSkills}
+            disabled={reloading()}
           >
-            <div class="grid grid-cols-1 gap-2.5 sm:grid-cols-2 xl:grid-cols-3">
-              <For each={filtered()}>
-                {(skill: SkillItem) => <SkillCard skill={skill} onOpen={() => openSkillDetail(skill)} />}
-              </For>
-            </div>
-          </Show>
+            <Show when={reloading()} fallback={<Icon name="refresh-ccw" size="small" class="opacity-70" />}>
+              <Spinner class="size-3" />
+            </Show>
+            <span>Reload</span>
+          </button>
+        </div>
+      </div>
+
+      <Show when={skills.loading}>
+        <AppPanel.Loading />
+      </Show>
+
+      <Show when={!skills.loading}>
+        <Show when={diagnostics().length > 0}>
+          <div class="mb-3 rounded-[1.15rem] border border-border-warning-base/35 bg-[rgba(196,132,36,0.08)] px-4 py-3 shadow-[inset_0_1px_0_rgba(214,204,190,0.07)]">
+            <button
+              type="button"
+              class="flex w-full cursor-pointer items-center gap-2 text-12-medium text-text-strong"
+              onClick={() => setDiagnosticsExpanded((prev) => !prev)}
+            >
+              <Icon name="shield-alert" size="small" class="text-icon-warning-base shrink-0" />
+              <span class="flex-1 text-left">
+                {diagnostics().length} skill{diagnostics().length === 1 ? "" : "s"} skipped during load
+              </span>
+              <Icon
+                name="chevron-right"
+                size="small"
+                class="shrink-0 text-text-weaker transition-transform duration-200"
+                classList={{ "rotate-90": diagnosticsExpanded() }}
+              />
+            </button>
+            <Show when={diagnosticsExpanded()}>
+              <div class="mt-2 flex flex-col gap-2">
+                <For each={diagnostics()}>
+                  {(item) => (
+                    <div class={`rounded-[0.95rem] px-3 py-2 ${engramInsetClass}`}>
+                      <div class="text-11-medium text-text-strong">{item.name}</div>
+                      <div class="mt-0.5 text-11-regular text-text-diff-delete-base break-words">{item.message}</div>
+                      <div class="mt-1 text-10-regular text-text-weaker break-all">{item.path}</div>
+                    </div>
+                  )}
+                </For>
+              </div>
+            </Show>
+          </div>
         </Show>
-      </Panel.Body>
-    </>
+
+        <Show
+          when={filtered().length > 0}
+          fallback={
+            <AppPanel.Empty
+              icon="sparkles"
+              title={props.search ? `No skills match "${props.search}"` : "No skills loaded"}
+              description="Skills are loaded from SKILL.md files in .synergy/skill/ directories. Use Reload to rescan."
+            />
+          }
+        >
+          <div class="grid grid-cols-1 gap-2.5 sm:grid-cols-2 xl:grid-cols-3">
+            <For each={filtered()}>
+              {(skill: SkillItem) => <SkillCard skill={skill} onOpen={() => openSkillDetail(skill)} />}
+            </For>
+          </div>
+        </Show>
+      </Show>
+    </div>
   )
 }
 

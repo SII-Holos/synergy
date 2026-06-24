@@ -1,1 +1,4 @@
 sst-env.d.ts
+.synergy/worktrees/
+# Symlinked static assets (checked out as plain files on Windows)
+packages/app/public/

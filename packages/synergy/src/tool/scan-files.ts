@@ -3,9 +3,8 @@ import DESCRIPTION from "./scan-files.txt"
 import { Tool } from "./tool"
 import { Ripgrep } from "../file/ripgrep"
 import { conflictWarning, detectConflicts } from "../conflict/detect"
-import { Instance } from "../scope/instance"
+import { ScopeContext } from "../scope/context"
 import {
-  assertInsideOrAsk,
   displayPath,
   formatRecordedBlock,
   formatSelectedLines,
@@ -13,6 +12,7 @@ import {
   readTextFileUnderSnapshotCap,
   resolveFilePath,
   splitDisplayLines,
+  recordSeenSessionLines,
 } from "./anchored-file"
 
 const DEFAULT_FILE_LIMIT = 20
@@ -106,8 +106,7 @@ export const ScanFilesTool = Tool.define("scan_files", {
       metadata: { pattern: params.pattern, path: params.path, include: params.include, globs: params.globs },
     })
 
-    const searchPath = params.path ? resolveFilePath(params.path) : Instance.directory
-    await assertInsideOrAsk(searchPath, ctx)
+    const searchPath = params.path ? resolveFilePath(params.path) : ScopeContext.current.directory
     const rgPath = await Ripgrep.filepath()
     const perFileLimit = normalizePositiveInt(params.perFileLimit, DEFAULT_PER_FILE_LIMIT, SINGLE_FILE_PER_FILE_LIMIT)
     const limitFiles = normalizePositiveInt(params.limitFiles, DEFAULT_FILE_LIMIT, DEFAULT_FILE_LIMIT)
@@ -207,6 +206,7 @@ export const ScanFilesTool = Tool.define("scan_files", {
       blocks.push(`${warning ? `${warning}\n` : ""}${outputMode === "files" ? body : body}`)
       files.push(pathLabel)
       matchLines[pathLabel] = lines
+      recordSeenSessionLines(ctx.sessionID, filePath, lines, tag)
       tags[pathLabel] = tag
       if (conflict.hasConflicts) conflicts[pathLabel] = conflict.conflicts
     }

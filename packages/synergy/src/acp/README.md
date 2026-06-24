@@ -28,7 +28,7 @@ The implementation follows a clean separation of concerns:
 - **`server.ts`** - ACP server startup and lifecycle
   - Sets up JSON-RPC over stdio using the official library
   - Manages graceful shutdown on SIGTERM/SIGINT
-  - Provides Instance context for the agent
+  - Provides explicit scope context for the agent
 
 - **`types.ts`** - Type definitions for internal use
 

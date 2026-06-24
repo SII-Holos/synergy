@@ -7,7 +7,7 @@ import { BunProc } from "../util/bun"
 import { $, readableStreamToText } from "bun"
 import fs from "fs/promises"
 import { Filesystem } from "../util/filesystem"
-import { Instance } from "../scope/instance"
+import { ScopeContext } from "../scope/context"
 import { Flag } from "../flag/flag"
 import { Archive } from "../util/archive"
 
@@ -32,7 +32,7 @@ export namespace LSPServer {
         const excludedFiles = Filesystem.up({
           targets: excludePatterns,
           start: path.dirname(file),
-          stop: Instance.directory,
+          stop: ScopeContext.current.directory,
         })
         const excluded = await excludedFiles.next()
         await excludedFiles.return()
@@ -41,11 +41,11 @@ export namespace LSPServer {
       const files = Filesystem.up({
         targets: includePatterns,
         start: path.dirname(file),
-        stop: Instance.directory,
+        stop: ScopeContext.current.directory,
       })
       const first = await files.next()
       await files.return()
-      if (!first.value) return Instance.directory
+      if (!first.value) return ScopeContext.current.directory
       return path.dirname(first.value)
     }
   }
@@ -64,7 +64,7 @@ export namespace LSPServer {
       const files = Filesystem.up({
         targets: ["deno.json", "deno.jsonc"],
         start: path.dirname(file),
-        stop: Instance.directory,
+        stop: ScopeContext.current.directory,
       })
       const first = await files.next()
       await files.return()
@@ -94,7 +94,7 @@ export namespace LSPServer {
     ),
     extensions: [".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".mts", ".cts"],
     async spawn(root) {
-      const tsserver = await Bun.resolve("typescript/lib/tsserver.js", Instance.directory).catch(() => {})
+      const tsserver = await Bun.resolve("typescript/lib/tsserver.js", ScopeContext.current.directory).catch(() => {})
       log.info("typescript server", { tsserver })
       if (!tsserver) return
       const proc = spawn(BunProc.which(), ["x", "typescript-language-server", "--stdio"], {
@@ -169,7 +169,7 @@ export namespace LSPServer {
     root: NearestRoot(["package-lock.json", "bun.lockb", "bun.lock", "pnpm-lock.yaml", "yarn.lock"]),
     extensions: [".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".mts", ".cts", ".vue"],
     async spawn(root) {
-      const eslint = await Bun.resolve("eslint", Instance.directory).catch(() => {})
+      const eslint = await Bun.resolve("eslint", ScopeContext.current.directory).catch(() => {})
       if (!eslint) return
       log.info("spawning eslint server")
       const serverPath = path.join(Global.Path.bin, "vscode-eslint", "server", "out", "eslintServer.js")
@@ -247,7 +247,7 @@ export namespace LSPServer {
         const candidates = Filesystem.up({
           targets: [target],
           start: root,
-          stop: Instance.directory,
+          stop: ScopeContext.current.directory,
         })
         const first = await candidates.next()
         await candidates.return()
@@ -870,7 +870,7 @@ export namespace LSPServer {
         currentDir = parentDir
 
         // Stop if we've gone above the app root
-        if (!currentDir.startsWith(Instance.directory)) break
+        if (!currentDir.startsWith(ScopeContext.current.directory)) break
       }
 
       return crateRoot
@@ -1081,7 +1081,7 @@ export namespace LSPServer {
     extensions: [".astro"],
     root: NearestRoot(["package-lock.json", "bun.lockb", "bun.lock", "pnpm-lock.yaml", "yarn.lock"]),
     async spawn(root) {
-      const tsserver = await Bun.resolve("typescript/lib/tsserver.js", Instance.directory).catch(() => {})
+      const tsserver = await Bun.resolve("typescript/lib/tsserver.js", ScopeContext.current.directory).catch(() => {})
       if (!tsserver) {
         log.info("typescript not found, required for Astro language server")
         return
@@ -1589,7 +1589,7 @@ export namespace LSPServer {
   export const BashLS: Info = {
     id: "bash",
     extensions: [".sh", ".bash", ".zsh", ".ksh"],
-    root: async () => Instance.directory,
+    root: async () => ScopeContext.current.directory,
     async spawn(root) {
       let binary = Bun.which("bash-language-server")
       const args: string[] = []
@@ -1808,7 +1808,7 @@ export namespace LSPServer {
   export const DockerfileLS: Info = {
     id: "dockerfile",
     extensions: [".dockerfile", "Dockerfile"],
-    root: async () => Instance.directory,
+    root: async () => ScopeContext.current.directory,
     async spawn(root) {
       let binary = Bun.which("docker-langserver")
       const args: string[] = []
@@ -1889,13 +1889,14 @@ export namespace LSPServer {
     root: async (file) => {
       // First, look for flake.nix - the most reliable Nix project root indicator
       const flakeRoot = await NearestRoot(["flake.nix"])(file)
-      if (flakeRoot && flakeRoot !== Instance.directory) return flakeRoot
+      if (flakeRoot && flakeRoot !== ScopeContext.current.directory) return flakeRoot
 
       // If no flake.nix, fall back to git repository root
-      if (Instance.worktree && Instance.worktree !== Instance.directory) return Instance.worktree
+      if (ScopeContext.current.worktree && ScopeContext.current.worktree !== ScopeContext.current.directory)
+        return ScopeContext.current.worktree
 
       // Finally, use the instance directory as fallback
-      return Instance.directory
+      return ScopeContext.current.directory
     },
     async spawn(root) {
       const nixd = Bun.which("nixd")

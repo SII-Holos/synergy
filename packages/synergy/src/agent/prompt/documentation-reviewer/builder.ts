@@ -10,7 +10,7 @@ export function createDocumentationReviewerAgent(ctx: BuiltinAgentContext) {
   return createSubagent(ctx, {
     name: "documentation-reviewer",
     description:
-      "Reviews documentation correctness and terminology. Use after docs changes or code changes with user-facing behavior. Provide changed docs or summary if available; the agent inspects missing implementation evidence and returns inconsistencies, missing docs, stale terminology, blockers, and reusable context.",
+      "Reviews documentation correctness and terminology. Use after docs changes or code changes with user-facing behavior. Provide changed docs or summary if available; the agent inspects missing implementation evidence and returns inconsistencies, missing docs, stale terminology, blockers, and reusable context. NOT for writing documentation (use documentation-engineer), reviewing code quality (use appropriate reviewer agent), or verifying implementation correctness (use quality-gatekeeper).",
     prompt: buildDocumentationReviewerPrompt(),
     model: "mid",
     permission: "review",

@@ -6,7 +6,7 @@ import path from "path"
 import fs from "fs/promises"
 import { BlobReader, BlobWriter, ZipReader } from "@zip.js/zip.js"
 import { Skill } from "../skill/skill"
-import { Instance } from "../scope/instance"
+import { ScopeContext } from "../scope/context"
 import { Global } from "../global"
 import { errors } from "./error"
 import { RuntimeReload } from "../runtime/reload"
@@ -14,14 +14,14 @@ import { RuntimeReload } from "../runtime/reload"
 function resolveScope(skill: Skill.Info): Skill.Scope {
   if (skill.scope) return skill.scope
   if (skill.builtin) return "builtin"
-  const projectDir = Instance.directory
-  if (skill.location.startsWith(projectDir + "/")) return "project"
+  const projectDir = ScopeContext.current.directory
+  if (skill.location.startsWith(projectDir + path.sep)) return "project"
   return "global"
 }
 
 function resolveBaseDir(scope: "project" | "global") {
   return scope === "project"
-    ? path.join(Instance.directory, ".synergy", "skill")
+    ? path.join(ScopeContext.current.directory, ".synergy", "skill")
     : path.join(Global.Path.config, "skill")
 }
 

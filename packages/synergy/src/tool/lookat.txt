@@ -1,12 +1,12 @@
 Analyze image files (screenshots, diagrams, charts, UI mockups, photos) that require visual interpretation.
-Supports batch processing — pass an array of file paths to analyze multiple images in one call.
+Accepts up to 5 images per call — all images are analyzed together in a single session.
 
 This is a model-visible analysis tool: it lets you inspect an image and use the findings in your reasoning. It does not show the image to the user unless `show_to_user` is true. Use `attach` when the user should receive or inspect the file itself.
 
 Use this tool when:
 - You need to understand the content of an image (screenshots, diagrams, charts, UI mockups)
 - You need to extract text or data from a screenshot
-- You need to classify or process multiple image files at once
+- You need to classify or process multiple image files at once (up to 5)
 - You generated a visual result and need to verify it before showing it to the user
 
 When NOT to use this tool:
@@ -16,7 +16,7 @@ When NOT to use this tool:
 - For simple file reading where no interpretation is needed
 
 Parameters:
-- file_path: Absolute path or array of paths to the file(s) to analyze
+- file_path: Absolute path or array of up to 5 paths to the image(s) to analyze
 - goal: What specific information to extract (be specific!)
 - timeout: Optional timeout in seconds (default: 120). Increase for large or high-resolution images.
 - show_to_user: Optional boolean. Set true when the user should see the same image(s) you are analyzing; leave false when the image is only for your internal inspection.

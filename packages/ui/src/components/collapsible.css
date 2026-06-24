@@ -27,9 +27,6 @@
     line-height: var(--line-height-large); /* 166.667% */
     letter-spacing: var(--letter-spacing-normal);
 
-    /* &:hover { */
-    /*   background-color: var(--surface-base); */
-    /* } */
     &:focus-visible {
       outline: none;
     }
@@ -65,9 +62,6 @@
       border: none;
       padding: 0;
 
-      /* &:hover { */
-      /*   color: var(--text-strong); */
-      /* } */
       &:focus-visible {
         outline: none;
       }
@@ -78,24 +72,20 @@
   }
 
   &[data-variant="tool"] {
-    background-color: transparent;
-    border: none;
-    border-radius: 0;
-    border-left: 2px solid var(--tool-accent, var(--border-weak-base));
-    padding-left: 0;
-    overflow: clip;
+    background-color: var(--surface-raised-base);
+    border: 1px solid var(--border-weaker-base);
+    border-radius: var(--radius-2xl);
     transition:
-      border-color 0.2s ease,
-      background-color 0.2s ease,
-      border-radius 0.2s ease;
+      border-color var(--motion-duration-base) var(--motion-ease-standard),
+      background-color var(--motion-duration-base) var(--motion-ease-standard);
 
     > [data-slot="collapsible-trigger"] {
       padding: 6px 8px 6px 12px;
       border-radius: 0;
-      transition: background-color 0.15s ease;
+      transition: background-color var(--motion-duration-fast) var(--motion-ease-standard);
 
       &:hover {
-        background-color: var(--surface-inset-base);
+        background-color: var(--surface-base-hover);
       }
 
       &:focus-visible {
@@ -109,14 +99,12 @@
 
     /* Expanded state: form a soft container */
     &[data-expanded] {
-      border-radius: 0 var(--radius-md) var(--radius-md) 0;
-
       > [data-slot="collapsible-trigger"] {
-        background-color: var(--surface-inset-base);
+        background-color: var(--surface-base-hover);
       }
 
       > [data-slot="collapsible-trigger"]:hover {
-        background-color: var(--surface-base);
+        background-color: var(--surface-base-active);
       }
     }
   }

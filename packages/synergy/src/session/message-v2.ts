@@ -16,6 +16,9 @@ import { type SystemError } from "bun"
 import type { Scope } from "@/scope"
 import { Attachment } from "@/attachment"
 
+function isTLSError(message: string) {
+  return /certificate|SSL|TLS|ERR_SSL|UNABLE_TO_VERIFY|CERT_HAS_EXPIRED|DEPTH_ZERO|self[- ]signed/i.test(message)
+}
 export namespace MessageV2 {
   async function requireSession(sessionID: string) {
     const { SessionManager } = await import("./manager")
@@ -43,6 +46,14 @@ export namespace MessageV2 {
     }),
   )
   export type APIError = z.infer<typeof APIError.Schema>
+  export const SessionTerminalError = NamedError.create(
+    "SessionTerminalError",
+    z.object({
+      message: z.string(),
+      errorName: z.string(),
+    }),
+  )
+  export type SessionTerminalError = z.infer<typeof SessionTerminalError.Schema>
 
   const PartBase = z.object({
     id: z.string(),
@@ -450,11 +461,49 @@ export namespace MessageV2 {
     return options?.maxLength ? joined.slice(0, options.maxLength) : joined
   }
 
-  export function toModelMessage(input: WithParts[]): ModelMessage[] {
+  export function isPromptVisible(msg: WithParts) {
+    const metadata = msg.info.metadata
+    if (metadata?.promptVisible === false) return false
+    const command = metadata?.command
+    if (command && typeof command === "object" && "promptVisible" in command && command.promptVisible === false)
+      return false
+    return true
+  }
+
+  export function toModelMessage(input: WithParts[], opts?: { maxHistoryImages?: number }): ModelMessage[] {
+    // Pass 1: collect unique image hashes in order of first appearance
+    const imageHashSet = new Set<string>()
+    const orderedHashes: string[] = []
+    for (const msg of input) {
+      if (msg.info.role !== "user" || !isPromptVisible(msg)) continue
+      for (const part of msg.parts) {
+        if (part.type !== "file") continue
+        if (Attachment.isText(part.mime) || part.mime === "application/x-directory") continue
+        const hash = new Bun.CryptoHasher("sha256").update(part.url).digest("hex").slice(0, 16)
+        if (!imageHashSet.has(hash)) {
+          imageHashSet.add(hash)
+          orderedHashes.push(hash)
+        }
+      }
+    }
+
+    let keptHashes: Set<string>
+    if (opts?.maxHistoryImages !== undefined) {
+      const keepCount = Math.max(0, opts.maxHistoryImages)
+      if (keepCount === 0) {
+        keptHashes = new Set()
+      } else {
+        const kept = orderedHashes.slice(-keepCount)
+        keptHashes = new Set(kept)
+      }
+    } else {
+      keptHashes = imageHashSet
+    }
+
     const result: UIMessage[] = []
 
     for (const msg of input) {
-      if (msg.parts.length === 0) continue
+      if (msg.parts.length === 0 || !isPromptVisible(msg)) continue
 
       if (msg.info.role === "user") {
         const userMessage: UIMessage = {
@@ -469,7 +518,14 @@ export namespace MessageV2 {
               type: "text",
               text: part.text,
             })
-          // text files and directories are converted into text parts, ignore them
+          if (part.type === "file" && Attachment.isText(part.mime) && !part.url.startsWith("data:")) {
+            userMessage.parts.push({
+              type: "file",
+              url: part.url,
+              mediaType: part.mime,
+              filename: part.filename,
+            })
+          }
           if (part.type === "file" && !Attachment.isText(part.mime) && part.mime !== "application/x-directory") {
             if (part.localPath) {
               userMessage.parts.push({
@@ -477,12 +533,21 @@ export namespace MessageV2 {
                 text: `[The user attached a file: ${part.filename || path.basename(part.localPath)} (${part.mime}). Local path: ${part.localPath}]`,
               })
             }
-            userMessage.parts.push({
-              type: "file",
-              url: part.url,
-              mediaType: part.mime,
-              filename: part.filename,
-            })
+            const hash = new Bun.CryptoHasher("sha256").update(part.url).digest("hex").slice(0, 16)
+            if (keptHashes.has(hash)) {
+              userMessage.parts.push({
+                type: "file",
+                url: part.url,
+                mediaType: part.mime,
+                filename: part.filename,
+              })
+            } else {
+              const displayName = part.filename || "unnamed"
+              userMessage.parts.push({
+                type: "text",
+                text: `[Image: ${displayName} — previously shared]`,
+              })
+            }
           }
         }
       }
@@ -608,6 +673,11 @@ export namespace MessageV2 {
       const results = await Storage.readMany<MessageV2.Part>(keys)
       const parts = results.filter((p): p is MessageV2.Part => p !== undefined)
       parts.sort((a, b) => (a.id > b.id ? 1 : -1))
+      for (const part of parts) {
+        if (part.type === "tool" && part.state.status === "completed" && part.state.time.compacted) {
+          part.state.output = ""
+        }
+      }
       return parts
     },
   )
@@ -684,6 +754,16 @@ export namespace MessageV2 {
               syscall: (e as SystemError).syscall ?? "",
               message: (e as SystemError).message ?? "",
             },
+          },
+          { cause: e },
+        ).toObject()
+      case e instanceof Error &&
+        typeof (e as SystemError).message === "string" &&
+        isTLSError((e as SystemError).message):
+        return new MessageV2.APIError(
+          {
+            message: (e as SystemError).message,
+            isRetryable: true,
           },
           { cause: e },
         ).toObject()

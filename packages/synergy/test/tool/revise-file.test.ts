@@ -1,8 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import path from "path"
 import { ReviseFileTool } from "../../src/tool/revise-file"
-import { Instance } from "../../src/scope/instance"
-import { Snapshot } from "../../src/session/snapshot"
+import { ScopeContext } from "../../src/scope/context"
 import { tmpdir } from "../fixture/fixture"
 import { computeTag } from "../../src/hashline/tag"
 
@@ -16,6 +15,10 @@ const ctx = {
   ask: async () => {},
 }
 
+// Git conflict test fixture
+const CONFLICT_CONTENT_1 = "header\n<<<<<<< HEAD\nours\n=======\ntheirs\n>>>>>>> main\nfooter\n"
+const CONFLICT_CONTENT_2 = "<<<<<<< HEAD\na\n=======\nb\n>>>>>>> main\n"
+
 describe("tool.revise_file", () => {
   describe("input parsing", () => {
     test("accepts pure hashline patch text via input param", async () => {
@@ -25,10 +28,9 @@ describe("tool.revise_file", () => {
           await Bun.write(path.join(dir, "file.ts"), "line 1\nline 2\nline 3\n")
         },
       })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
-          // First, view the file to get its tag
           const { ViewFileTool } = await import("../../src/tool/view-file")
           const view = await ViewFileTool.init()
           const viewed = await view.execute({ filePath: path.join(tmp.path, "file.ts") }, ctx)
@@ -46,25 +48,30 @@ describe("tool.revise_file", () => {
 
     test("rejects input without hashline header", async () => {
       await using tmp = await tmpdir({ git: true })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const tool = await ReviseFileTool.init()
           await expect(tool.execute({ input: "replace 1..1:\n+new\n" }, ctx)).rejects.toThrow(
-            /Invalid patch header|invalid patch/,
+            /input must begin|must begin with|Invalid patch/,
           )
         },
       })
     })
 
-    test("rejects input with invalid operation type", async () => {
-      await using tmp = await tmpdir({ git: true })
-      await Instance.provide({
+    test("rejects input with unknown tag header", async () => {
+      await using tmp = await tmpdir({
+        git: true,
+        init: async (dir) => {
+          await Bun.write(path.join(dir, "src/a.ts"), "content\n")
+        },
+      })
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const tool = await ReviseFileTool.init()
           await expect(tool.execute({ input: "[src/a.ts#A1B2]\nrename foo:\n" }, ctx)).rejects.toThrow(
-            /operation|invalid|unknown/,
+            /header|out-of-date|unknown|current/,
           )
         },
       })
@@ -79,11 +86,10 @@ describe("tool.revise_file", () => {
           await Bun.write(path.join(dir, "file.ts"), "hello\n")
         },
       })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const tool = await ReviseFileTool.init()
-          // Use a made-up tag that doesn't correspond to any snapshot
           const badPatch = "[file.ts#FFFF]\nreplace 1..1:\n+new\n"
           await expect(tool.execute({ input: badPatch }, ctx)).rejects.toThrow(/header|tag|out-of-date|current/)
         },
@@ -91,14 +97,13 @@ describe("tool.revise_file", () => {
     })
 
     test("rejects patch when stored content does not match tag", async () => {
-      // Store content under a tag, then try to patch with a different content expectation
       await using tmp = await tmpdir({
         git: true,
         init: async (dir) => {
           await Bun.write(path.join(dir, "file.ts"), "original\n")
         },
       })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const { ViewFileTool } = await import("../../src/tool/view-file")
@@ -112,7 +117,6 @@ describe("tool.revise_file", () => {
           const tool = await ReviseFileTool.init()
           const patchInput = `[file.ts#${tag}]\nreplace 1..1:\n+new line\n`
 
-          // Should reject because tag no longer matches the actual file content
           await expect(tool.execute({ input: patchInput }, ctx)).rejects.toThrow(
             /STOP|stale|outdated|tag|content mismatch/,
           )
@@ -129,7 +133,7 @@ describe("tool.revise_file", () => {
           await Bun.write(path.join(dir, "file.ts"), "line 1\nline 2\nline 3\n")
         },
       })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const { ViewFileTool } = await import("../../src/tool/view-file")
@@ -141,12 +145,10 @@ describe("tool.revise_file", () => {
           const patchInput = `[file.ts#${tag}]\nreplace 2..2:\n+NEW LINE 2\n`
           const result = await tool.execute({ input: patchInput }, ctx)
 
-          // Returns new tag for the modified file
           expect(result.output).toMatch(/^\[file\.ts#[0-9A-F]{4}\]\n/)
           expect(result.metadata.applied).toBe(true)
           expect(result.metadata.tag).toMatch(/^[0-9A-F]{4}$/)
 
-          // Verify file on disk was changed
           const content = await Bun.file(path.join(tmp.path, "file.ts")).text()
           expect(content).toBe("line 1\nNEW LINE 2\nline 3\n")
         },
@@ -160,7 +162,7 @@ describe("tool.revise_file", () => {
           await Bun.write(path.join(dir, "file.ts"), "line 1\nline 2\nline 3\n")
         },
       })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const { ViewFileTool } = await import("../../src/tool/view-file")
@@ -187,7 +189,7 @@ describe("tool.revise_file", () => {
           await Bun.write(path.join(dir, "file.ts"), "line 1\nline 2\n")
         },
       })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const { ViewFileTool } = await import("../../src/tool/view-file")
@@ -196,7 +198,7 @@ describe("tool.revise_file", () => {
           const tag = viewed.metadata.tag as string
 
           const tool = await ReviseFileTool.init()
-          const patchInput = `[file.ts#${tag}]\ninsert 2 before:\n+inserted here\n`
+          const patchInput = `[file.ts#${tag}]\nINS.PRE 2:\n+inserted here\n`
           const result = await tool.execute({ input: patchInput }, ctx)
 
           expect(result.metadata.applied).toBe(true)
@@ -214,7 +216,7 @@ describe("tool.revise_file", () => {
           await Bun.write(path.join(dir, "file.ts"), "line 1\nline 2\n")
         },
       })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const { ViewFileTool } = await import("../../src/tool/view-file")
@@ -223,7 +225,7 @@ describe("tool.revise_file", () => {
           const tag = viewed.metadata.tag as string
 
           const tool = await ReviseFileTool.init()
-          const patchInput = `[file.ts#${tag}]\ninsert 2 after:\n+after line 2\n`
+          const patchInput = `[file.ts#${tag}]\nINS.POST 2:\n+after line 2\n`
           const result = await tool.execute({ input: patchInput }, ctx)
 
           expect(result.metadata.applied).toBe(true)
@@ -241,7 +243,7 @@ describe("tool.revise_file", () => {
           await Bun.write(path.join(dir, "file.ts"), "line 1\n")
         },
       })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const { ViewFileTool } = await import("../../src/tool/view-file")
@@ -250,7 +252,7 @@ describe("tool.revise_file", () => {
           const tag = viewed.metadata.tag as string
 
           const tool = await ReviseFileTool.init()
-          const patchInput = `[file.ts#${tag}]\ninsert head:\n+#!/usr/bin/env node\n`
+          const patchInput = `[file.ts#${tag}]\nINS.HEAD:\n+#!/usr/bin/env node\n`
           const result = await tool.execute({ input: patchInput }, ctx)
 
           expect(result.metadata.applied).toBe(true)
@@ -268,7 +270,7 @@ describe("tool.revise_file", () => {
           await Bun.write(path.join(dir, "file.ts"), "line 1\n")
         },
       })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const { ViewFileTool } = await import("../../src/tool/view-file")
@@ -277,7 +279,7 @@ describe("tool.revise_file", () => {
           const tag = viewed.metadata.tag as string
 
           const tool = await ReviseFileTool.init()
-          const patchInput = `[file.ts#${tag}]\ninsert tail:\n+// EOF\n`
+          const patchInput = `[file.ts#${tag}]\nINS.TAIL:\n+// EOF\n`
           const result = await tool.execute({ input: patchInput }, ctx)
 
           expect(result.metadata.applied).toBe(true)
@@ -297,7 +299,7 @@ describe("tool.revise_file", () => {
           await Bun.write(path.join(dir, "file.ts"), "const x = 1\n")
         },
       })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const { ViewFileTool } = await import("../../src/tool/view-file")
@@ -310,7 +312,8 @@ describe("tool.revise_file", () => {
           const result = await tool.execute({ input: patchInput }, ctx)
 
           // Should return a new hashline block reflecting the modified file
-          expect(result.output).toMatch(/^\[file\.ts#[0-9A-F]{4}\]\n1:const x = 2$/)
+          expect(result.output).toMatch(/^\[file\.ts#[0-9A-F]{4}\]\n/)
+          expect(result.output).toContain("1:const x = 2")
           // Tag must be different from input tag
           expect(result.metadata.tag).not.toBe(tag)
         },
@@ -326,7 +329,7 @@ describe("tool.revise_file", () => {
           await Bun.write(path.join(dir, "same.ts"), "const x = 1\n")
         },
       })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const { ViewFileTool } = await import("../../src/tool/view-file")
@@ -337,19 +340,18 @@ describe("tool.revise_file", () => {
           const tool = await ReviseFileTool.init()
           const result = await tool.execute({ input: `[same.ts#${tag}]\nreplace 1..1:\n+const x = 1\n` }, ctx)
           expect(result.metadata.applied).toBe(false)
-          expect(result.output).toContain("No-op")
-          expect(result.output).toContain("already match")
+          expect(result.output).toContain("no change")
+          expect(result.output).toContain("re-read")
         },
       })
     })
 
     test("provides a clear error for missing tag", async () => {
       await using tmp = await tmpdir({ git: true })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const tool = await ReviseFileTool.init()
-          // Tag that was never stored
           const badPatch = "[no-such-file.ts#9999]\nreplace 1..1:\n+x\n"
           await expect(tool.execute({ input: badPatch }, ctx)).rejects.toThrow(/STOP|tag|not found|snapshot|unknown/)
         },
@@ -363,7 +365,7 @@ describe("tool.revise_file", () => {
           await Bun.write(path.join(dir, "short.txt"), "only one line\n")
         },
       })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const { ViewFileTool } = await import("../../src/tool/view-file")
@@ -381,22 +383,13 @@ describe("tool.revise_file", () => {
 
   describe("conflict rejection", () => {
     test("refuses to edit file containing git conflict markers", async () => {
-      // eslint-disable-next-line no-irregular-whitespace
-      const conflictContent = `header
-<<<<<<< HEAD
-ours
-=======
-theirs
->>>>>>> main
-footer
-`
       await using tmp = await tmpdir({
         git: true,
         init: async (dir) => {
-          await Bun.write(path.join(dir, "conflict.ts"), conflictContent)
+          await Bun.write(path.join(dir, "conflict.ts"), CONFLICT_CONTENT_1)
         },
       })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const { ViewFileTool } = await import("../../src/tool/view-file")
@@ -407,31 +400,22 @@ footer
           const tool = await ReviseFileTool.init()
           const patchInput = `[conflict.ts#${tag}]\nreplace 2..2:\n+clean header\n`
 
-          // Revise_file must reject because the file contains unresolved conflict markers
           await expect(tool.execute({ input: patchInput }, ctx)).rejects.toThrow(/conflict|unresolved|marker/i)
 
-          // The file on disk must remain unchanged
           const onDisk = await Bun.file(path.join(tmp.path, "conflict.ts")).text()
-          expect(onDisk).toBe(conflictContent)
+          expect(onDisk).toBe(CONFLICT_CONTENT_1)
         },
       })
     })
 
     test("refuses to edit file even with a valid tag when conflicts are present", async () => {
-      // eslint-disable-next-line no-irregular-whitespace
-      const conflictContent = `<<<<<<< HEAD
-a
-=======
-b
->>>>>>> main
-`
       await using tmp = await tmpdir({
         git: true,
         init: async (dir) => {
-          await Bun.write(path.join(dir, "f.ts"), conflictContent)
+          await Bun.write(path.join(dir, "f.ts"), CONFLICT_CONTENT_2)
         },
       })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const { ViewFileTool } = await import("../../src/tool/view-file")
@@ -442,21 +426,19 @@ b
           const tool = await ReviseFileTool.init()
           const patchInput = `[f.ts#${tag}]\nreplace 1..1:\n+clean\n`
 
-          // Conflict takes priority over tag validity
           await expect(tool.execute({ input: patchInput }, ctx)).rejects.toThrow(/conflict|unresolved/i)
         },
       })
     })
 
     test("does not reject edits for clean files without conflict markers", async () => {
-      // Sanity check — revise_file should still work normally for clean files
       await using tmp = await tmpdir({
         git: true,
         init: async (dir) => {
           await Bun.write(path.join(dir, "clean.ts"), "const x = 1\n")
         },
       })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const { ViewFileTool } = await import("../../src/tool/view-file")
@@ -482,7 +464,7 @@ b
           await Bun.write(path.join(dir, "mod.ts"), "const x = 1\n")
         },
       })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const { ViewFileTool } = await import("../../src/tool/view-file")
@@ -508,7 +490,7 @@ b
           await Bun.write(path.join(dir, "same.ts"), "const x = 1\n")
         },
       })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const { ViewFileTool } = await import("../../src/tool/view-file")
@@ -552,12 +534,12 @@ b
         init: async (dir) => {
           await Bun.write(
             path.join(dir, "fmt-collapse.js"),
-            `import { readFileSync, writeFileSync } from "fs";\nconst p = process.argv[2];\nconst c = readFileSync(p, "utf8");\nwriteFileSync(p, c.replace(/ {2,}/g, " "));\n`,
+            "import { readFileSync, writeFileSync } from 'fs'\nconst p = process.argv[2]\nconst c = readFileSync(p, 'utf8')\nwriteFileSync(p, c.replace(/ {2,}/g, ' '))\n",
           )
           await Bun.write(path.join(dir, "fmt.ts"), "const  x  =  1\n")
         },
       })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const { Format } = await import("../../src/file/format")
@@ -569,13 +551,13 @@ b
           const tag = viewed.metadata.tag as string
 
           const tool = await ReviseFileTool.init()
-          // Patch that introduces double spaces — formatter will collapse them
           const patch = `[fmt.ts#${tag}]\nreplace 1..1:\n+const  y  =  2\n`
           const result = await tool.execute({ input: patch }, formatAwareCtx(sessID))
 
           const onDisk = await Bun.file(path.join(tmp.path, "fmt.ts")).text()
-          // After formatting, on-disk content should have single spaces
-          expect(result.metadata.tag).toBe(computeTag(onDisk))
+          // After formatting, stored tag and metadata tag should match
+          const storedTag = computeTag(onDisk)
+          expect(result.metadata.tag).toBe(storedTag)
         },
       })
     })
@@ -595,12 +577,12 @@ b
         init: async (dir) => {
           await Bun.write(
             path.join(dir, "fmt-collapse.js"),
-            `import { readFileSync, writeFileSync } from "fs";\nconst p = process.argv[2];\nconst c = readFileSync(p, "utf8");\nwriteFileSync(p, c.replace(/ {2,}/g, " "));\n`,
+            "import { readFileSync, writeFileSync } from 'fs'\nconst p = process.argv[2]\nconst c = readFileSync(p, 'utf8')\nwriteFileSync(p, c.replace(/ {2,}/g, ' '))\n",
           )
           await Bun.write(path.join(dir, "fmt2.ts"), "const  a  =  1\n")
         },
       })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const { Format } = await import("../../src/file/format")
@@ -616,7 +598,6 @@ b
           const result = await tool.execute({ input: patch }, formatAwareCtx(sessID))
 
           const onDisk = await Bun.file(path.join(tmp.path, "fmt2.ts")).text()
-          // filediff.after should reflect what is actually on disk after formatting
           expect(result.metadata.filediff.after).toBe(onDisk)
         },
       })

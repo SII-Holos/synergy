@@ -1,209 +1,212 @@
-import { Flag } from "@/flag/flag"
-import { Config } from "@/config/config"
-import { HolosProfile } from "@/holos/profile"
-import { HolosRequest } from "@/holos/request"
-import { Log } from "@/util/log"
+// TODO: Migrate Agora to an independent Synergy plugin or MCP tool.
+// The Holos auth chain is fake — Holos does not actually validate these requests.
+// For now, AgoraClient is preserved as a reference implementation with a
+// stub auth path. Future: extract to plugin, remove from core.
 
-const log = Log.create({ service: "agora" })
+// import { Flag } from "@/flag/flag"
+// import { Config } from "@/config/config"
+// import { HolosAuth } from "@/holos/auth"
+// import { Log } from "@/util/log"
 
-const DEFAULT_AGORA_URL = "https://agora.holosai.io"
-const DEFAULT_AGORA_TOKEN_URL = "https://www.holosai.io"
-const TOKEN_EXCHANGE_PATH = "/api/v1/holos/agora/agent/token"
+// const log = Log.create({ service: "agora" })
 
-interface TokenCache {
-  token: string
-  expiresAt: number
-}
+// const DEFAULT_AGORA_URL = "https://agora.holosai.io"
+// const DEFAULT_AGORA_TOKEN_URL = "https://www.holosai.io"
+// const TOKEN_EXCHANGE_PATH = "/api/v1/holos/agora/agent/token"
 
-let tokenCache: TokenCache | undefined
-let actorRegistered = false
+// interface TokenCache {
+//   token: string
+//   expiresAt: number
+// }
 
-export namespace AgoraClient {
-  export interface AgoraConfig {
-    url: string
-    tokenUrl: string
-  }
+// let tokenCache: TokenCache | undefined
+// let actorRegistered = false
 
-  export async function getConfig(): Promise<AgoraConfig> {
-    const config = await Config.get()
-    const agora = config.agora
+// export namespace AgoraClient {
+//   export interface AgoraConfig {
+//     url: string
+//     tokenUrl: string
+//   }
 
-    const url = Flag.SYNERGY_AGORA_URL ?? agora?.url ?? DEFAULT_AGORA_URL
-    const tokenUrl = Flag.SYNERGY_AGORA_TOKEN_URL ?? agora?.tokenUrl ?? DEFAULT_AGORA_TOKEN_URL
+//   export async function getConfig(): Promise<AgoraConfig> {
+//     const config = await Config.current()
+//     const agora = config.agora
 
-    return {
-      url: url.replace(/\/+$/, ""),
-      tokenUrl: tokenUrl.replace(/\/+$/, ""),
-    }
-  }
+//     const url = Flag.SYNERGY_AGORA_URL ?? agora?.url ?? DEFAULT_AGORA_URL
+//     const tokenUrl = Flag.SYNERGY_AGORA_TOKEN_URL ?? agora?.tokenUrl ?? DEFAULT_AGORA_TOKEN_URL
 
-  async function getToken(config: AgoraConfig): Promise<string> {
-    const now = Math.floor(Date.now() / 1000)
+//     return {
+//       url: url.replace(/\/+$/, ""),
+//       tokenUrl: tokenUrl.replace(/\/+$/, ""),
+//     }
+//   }
 
-    if (tokenCache && tokenCache.expiresAt > now + 30) {
-      return tokenCache.token
-    }
+//   async function getToken(config: AgoraConfig): Promise<string> {
+//     const now = Math.floor(Date.now() / 1000)
 
-    const res = await HolosRequest.fetch(
-      `${config.tokenUrl}${TOKEN_EXCHANGE_PATH}`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: "{}",
-      },
-      { capability: "agora" },
-    )
+//     if (tokenCache && tokenCache.expiresAt > now + 30) {
+//       return tokenCache.token
+//     }
 
-    if (!res.ok) {
-      const text = await res.text()
-      throw new Error(`Failed to get Agora token (${res.status}): ${text}`)
-    }
+//     // Stub auth: Holos does not validate these requests.
+//     // Future plugin should use its own auth mechanism.
+//     const credentials = await HolosAuth.getCredentialOrThrow()
+//     const res = await fetch(`${config.tokenUrl}${TOKEN_EXCHANGE_PATH}`, {
+//       method: "POST",
+//       headers: {
+//         "Content-Type": "application/json",
+//         Authorization: `Bearer ${credentials.agentSecret}`,
+//       },
+//       body: "{}",
+//     })
 
-    const json = await res.json()
-    if (json.code !== 0) {
-      throw new Error(`Failed to get Agora token: ${json.message}`)
-    }
+//     if (!res.ok) {
+//       const text = await res.text()
+//       throw new Error(`Failed to get Agora token (${res.status}): ${text}`)
+//     }
 
-    const { access_token, expires_in } = json.data
-    tokenCache = {
-      token: access_token,
-      expiresAt: now + (expires_in ?? 300),
-    }
-    log.info("obtained agora token from holos", { expiresIn: expires_in })
-    return access_token
-  }
+//     const json = await res.json()
+//     if (json.code !== 0) {
+//       throw new Error(`Failed to get Agora token: ${json.message}`)
+//     }
 
-  async function registerActor(config: AgoraConfig, token: string): Promise<void> {
-    const profile = await HolosProfile.get()
-    const displayName = profile?.name || "Synergy Agent"
+//     const { access_token, expires_in } = json.data
+//     tokenCache = {
+//       token: access_token,
+//       expiresAt: now + (expires_in ?? 300),
+//     }
+//     log.info("obtained agora token from holos", { expiresIn: expires_in })
+//     return access_token
+//   }
 
-    const res = await fetch(`${config.url}/api/actors`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        display_name: displayName,
-        meta: {},
-      }),
-    })
+//   async function registerActor(config: AgoraConfig, token: string): Promise<void> {
+//     const displayName = process.env.USER || process.env.USERNAME || "Synergy Agent"
 
-    if (!res.ok) {
-      const text = await res.text()
-      throw new Error(`Failed to register Agora actor (${res.status}): ${text}`)
-    }
+//     const res = await fetch(`${config.url}/api/actors`, {
+//       method: "POST",
+//       headers: {
+//         Authorization: `Bearer ${token}`,
+//         "Content-Type": "application/json",
+//       },
+//       body: JSON.stringify({
+//         display_name: displayName,
+//         meta: {},
+//       }),
+//     })
 
-    const json = await res.json()
-    if (json.code !== 0) {
-      throw new Error(`Failed to register Agora actor: ${json.message}`)
-    }
+//     if (!res.ok) {
+//       const text = await res.text()
+//       throw new Error(`Failed to register Agora actor (${res.status}): ${text}`)
+//     }
 
-    actorRegistered = true
-    log.info("registered agora actor", { displayName, actorId: json.data?.id })
-  }
+//     const json = await res.json()
+//     if (json.code !== 0) {
+//       throw new Error(`Failed to register Agora actor: ${json.message}`)
+//     }
 
-  async function executeRequest<T>(
-    config: AgoraConfig,
-    token: string,
-    method: string,
-    path: string,
-    options?: {
-      body?: Record<string, any> | FormData
-      params?: Record<string, string | number | undefined>
-      abort?: AbortSignal
-      timeout?: number
-    },
-  ): Promise<{ response: Response; timeoutId: ReturnType<typeof setTimeout> }> {
-    const url = new URL(`${config.url}${path}`)
-    if (options?.params) {
-      for (const [key, value] of Object.entries(options.params)) {
-        if (value !== undefined) url.searchParams.set(key, String(value))
-      }
-    }
+//     actorRegistered = true
+//     log.info("registered agora actor", { displayName, actorId: json.data?.id })
+//   }
 
-    const headers: Record<string, string> = {
-      Authorization: `Bearer ${token}`,
-    }
+//   async function executeRequest<T>(
+//     config: AgoraConfig,
+//     token: string,
+//     method: string,
+//     path: string,
+//     options?: {
+//       body?: Record<string, any> | FormData
+//       params?: Record<string, string | number | undefined>
+//       abort?: AbortSignal
+//       timeout?: number
+//     },
+//   ): Promise<{ response: Response; timeoutId: ReturnType<typeof setTimeout> }> {
+//     const url = new URL(`${config.url}${path}`)
+//     if (options?.params) {
+//       for (const [key, value] of Object.entries(options.params)) {
+//         if (value !== undefined) url.searchParams.set(key, String(value))
+//       }
+//     }
 
-    let body: string | FormData | undefined
-    if (options?.body) {
-      if (options.body instanceof FormData) {
-        body = options.body
-      } else {
-        headers["Content-Type"] = "application/json"
-        body = JSON.stringify(options.body)
-      }
-    }
+//     const headers: Record<string, string> = {
+//       Authorization: `Bearer ${token}`,
+//     }
 
-    const controller = new AbortController()
-    const timeoutMs = options?.timeout ?? 30000
-    const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
+//     let body: string | FormData | undefined
+//     if (options?.body) {
+//       if (options.body instanceof FormData) {
+//         body = options.body
+//       } else {
+//         headers["Content-Type"] = "application/json"
+//         body = JSON.stringify(options.body)
+//       }
+//     }
 
-    const signals = options?.abort ? AbortSignal.any([controller.signal, options.abort]) : controller.signal
+//     const controller = new AbortController()
+//     const timeoutMs = options?.timeout ?? 30000
+//     const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
 
-    const response = await fetch(url.toString(), {
-      method,
-      headers,
-      body,
-      signal: signals,
-    }).catch((error) => {
-      clearTimeout(timeoutId)
-      if (error instanceof Error && error.name === "AbortError") {
-        throw new Error("Agora request timed out")
-      }
-      throw error
-    })
+//     const signals = options?.abort ? AbortSignal.any([controller.signal, options.abort]) : controller.signal
 
-    return { response, timeoutId }
-  }
+//     const response = await fetch(url.toString(), {
+//       method,
+//       headers,
+//       body,
+//       signal: signals,
+//     }).catch((error) => {
+//       clearTimeout(timeoutId)
+//       if (error instanceof Error && error.name === "AbortError") {
+//         throw new Error("Agora request timed out")
+//       }
+//       throw error
+//     })
 
-  export async function request<T = any>(
-    method: string,
-    path: string,
-    options?: {
-      body?: Record<string, any> | FormData
-      params?: Record<string, string | number | undefined>
-      abort?: AbortSignal
-      timeout?: number
-    },
-  ): Promise<T> {
-    const config = await getConfig()
-    const token = await getToken(config)
+//     return { response, timeoutId }
+//   }
 
-    let { response, timeoutId } = await executeRequest(config, token, method, path, options)
-    clearTimeout(timeoutId)
+//   export async function request<T = any>(
+//     method: string,
+//     path: string,
+//     options?: {
+//       body?: Record<string, any> | FormData
+//       params?: Record<string, string | number | undefined>
+//       abort?: AbortSignal
+//       timeout?: number
+//     },
+//   ): Promise<T> {
+//     const config = await getConfig()
+//     const token = await getToken(config)
 
-    if (response.status === 401 && !actorRegistered) {
-      const errorText = await response.text()
-      if (errorText.includes("not registered") || errorText.includes("actor")) {
-        log.info("actor not registered on agora, auto-registering")
-        await registerActor(config, token)
-        const retry = await executeRequest(config, token, method, path, options)
-        clearTimeout(retry.timeoutId)
-        response = retry.response
-      } else {
-        throw new Error(`Agora API error (${response.status}): ${errorText}`)
-      }
-    }
+//     let { response, timeoutId } = await executeRequest(config, token, method, path, options)
+//     clearTimeout(timeoutId)
 
-    if (!response.ok) {
-      const errorText = await response.text()
-      throw new Error(`Agora API error (${response.status}): ${errorText}`)
-    }
+//     if (response.status === 401 && !actorRegistered) {
+//       const errorText = await response.text()
+//       if (errorText.includes("not registered") || errorText.includes("actor")) {
+//         log.info("actor not registered on agora, auto-registering")
+//         await registerActor(config, token)
+//         const retry = await executeRequest(config, token, method, path, options)
+//         clearTimeout(retry.timeoutId)
+//         response = retry.response
+//       } else {
+//         throw new Error(`Agora API error (${response.status}): ${errorText}`)
+//       }
+//     }
 
-    const json = await response.json()
-    if (json.code !== 0) {
-      throw new Error(`Agora API error: ${json.message}`)
-    }
+//     if (!response.ok) {
+//       const errorText = await response.text()
+//       throw new Error(`Agora API error (${response.status}): ${errorText}`)
+//     }
 
-    return json.data as T
-  }
+//     const json = await response.json()
+//     if (json.code !== 0) {
+//       throw new Error(`Agora API error: ${json.message}`)
+//     }
 
-  export function resetAuth() {
-    tokenCache = undefined
-    actorRegistered = false
-  }
-}
+//     return json.data as T
+//   }
+
+//   export function resetAuth() {
+//     tokenCache = undefined
+//     actorRegistered = false
+//   }
+// }

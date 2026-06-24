@@ -1,5 +1,5 @@
+import { createMemo, Show } from "solid-js"
 import type { Accessor } from "solid-js"
-import { Show } from "solid-js"
 import { useNavigate } from "@solidjs/router"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { Tooltip } from "@ericsanchezok/synergy-ui/tooltip"
@@ -9,17 +9,19 @@ import { NewSessionGreeting } from "./session-new-view"
 import { QuestionPrompt } from "./question-prompt"
 import { PermissionDock } from "./permission-dock"
 import { SubagentDock } from "./subagent-dock"
+import { SessionProgressPanel } from "./session-progress-panel"
 import { SubagentSessionFooter } from "./subagent-session-footer"
+import { type SessionMeta } from "@/composables/use-session-meta"
 import type { usePrompt } from "@/context/prompt"
 import type { useSync } from "@/context/sync"
 import type { useSDK } from "@/context/sdk"
-import type { SessionCortexDelegation } from "@ericsanchezok/synergy-sdk/client"
 
 export function PromptDock(props: {
   ref: (el: HTMLDivElement) => void
   inputRef: (el: HTMLDivElement) => void
   isNewSession: Accessor<boolean>
   showTabs: Accessor<boolean>
+  workspaceOpen?: Accessor<boolean>
   isGlobal: boolean
   sessionID: string | undefined
   prompt: ReturnType<typeof usePrompt>
@@ -27,23 +29,23 @@ export function PromptDock(props: {
   sdk: ReturnType<typeof useSDK>
   navigate: (path: string) => void
   handoffPrompt: string
-  parentSession: Accessor<{ id: string; title?: string } | undefined>
+  meta: Accessor<SessionMeta>
+  parentTitle?: string
   backPath?: Accessor<string | undefined>
   newSessionWorktree: Accessor<string>
   onNewSessionWorktreeReset: () => void
   scopeName: Accessor<string>
   branch: Accessor<string | undefined>
   lastModified: Accessor<string | null | undefined>
-  cortex?: Accessor<SessionCortexDelegation | undefined>
-  parentID?: Accessor<string | undefined>
 }) {
   const nav = useNavigate()
+  const workspaceOpen = createMemo(() => props.workspaceOpen?.() ?? false)
   return (
     <div
       ref={props.ref}
       classList={{
-        "absolute inset-x-0 bottom-0 flex flex-col justify-center items-center z-50 px-0 pointer-events-none safe-bottom pb-0 md:pb-1.5": true,
-        "pt-12 bg-gradient-to-t from-background-stronger via-background-stronger to-transparent": !props.isNewSession(),
+        "absolute inset-x-0 bottom-0 flex flex-col justify-center items-center z-50 px-0 pointer-events-none safe-bottom pb-0 md:pb-3": true,
+        "pt-12": !props.isNewSession(),
       }}
       style={{
         transform: props.isNewSession() ? "translateY(-35vh)" : "translateY(0)",
@@ -52,10 +54,21 @@ export function PromptDock(props: {
     >
       <div
         classList={{
-          "w-full min-w-0 md:px-6 pointer-events-auto": true,
-          "md:max-w-200": !props.showTabs(),
+          "w-full min-w-0 md:px-6 pointer-events-auto relative": true,
+          "md:max-w-[50rem]": !props.showTabs() && !workspaceOpen(),
+          "md:max-w-[34rem]": !props.showTabs() && workspaceOpen(),
         }}
       >
+        {/* Out-of-flow overlay anchored to the top of the content area:
+            subagent dock sits above, progress island below. Both float
+            outside normal flow so expanding the island never changes
+            --prompt-height. */}
+        <Show when={props.sessionID}>
+          <div class="absolute inset-x-0 bottom-full flex flex-col items-center pointer-events-none">
+            <SubagentDock sessionID={props.sessionID!} />
+            <SessionProgressPanel sessionID={props.sessionID!} />
+          </div>
+        </Show>
         <Show when={props.isNewSession()}>
           <NewSessionGreeting />
         </Show>
@@ -67,12 +80,9 @@ export function PromptDock(props: {
             </div>
           }
         >
-          {(() => {
-            const c = props.cortex?.()
-            if (c && !props.isNewSession()) {
-              return <SubagentSessionFooter cortex={c} parentSessionID={props.parentID?.()} />
-            }
-            return (
+          <Show
+            when={props.meta().isReadOnly}
+            fallback={
               <>
                 <Show when={props.sessionID}>
                   <PermissionDock sessionID={props.sessionID!} />
@@ -84,43 +94,38 @@ export function PromptDock(props: {
                     </div>
                   )}
                 </Show>
-                <Show when={props.sessionID}>
-                  <SubagentDock sessionID={props.sessionID!} />
+                <Show when={props.meta().showBackToParent}>
+                  <div class="flex items-center justify-center pb-2">
+                    <Tooltip value={props.parentTitle || "Parent session"} placement="top">
+                      <button
+                        type="button"
+                        class="flex items-center justify-center gap-1.5 h-8 px-3 rounded-full
+                        border border-border-base bg-surface-raised-stronger-non-alpha
+                        shadow-sm
+                        text-12-medium text-text-weak hover:text-text-base
+                        hover:bg-surface-raised-stronger-hover
+                        active:scale-95
+                        transition-all duration-150"
+                        onClick={() => props.navigate(props.meta().parentID!)}
+                      >
+                        <Icon name="arrow-left" size="small" />
+                        <span>Back to parent</span>
+                      </button>
+                    </Tooltip>
+                  </div>
                 </Show>
-                <Show when={props.parentSession()}>
-                  {(parent) => (
-                    <div class="flex items-center justify-center pb-2">
-                      <Tooltip value={parent().title || "Parent session"} placement="top">
-                        <button
-                          type="button"
-                          class="flex items-center justify-center gap-1.5 h-8 px-3 rounded-full
-                            border border-border-base bg-surface-raised-stronger-non-alpha
-                            shadow-sm
-                            text-12-medium text-text-weak hover:text-text-base
-                            hover:bg-surface-raised-stronger-hover
-                            active:scale-95
-                            transition-all duration-150"
-                          onClick={() => props.navigate(parent().id)}
-                        >
-                          <Icon name="arrow-left" size="small" />
-                          <span>Back to parent</span>
-                        </button>
-                      </Tooltip>
-                    </div>
-                  )}
-                </Show>
-                <Show when={!props.parentSession() && props.backPath?.()}>
+                <Show when={!props.meta().isSubsession && props.backPath?.()}>
                   {(from) => (
                     <div class="flex items-center justify-center pb-2">
                       <button
                         type="button"
                         class="flex items-center justify-center gap-1.5 h-8 px-3 rounded-full
-                          border border-border-base bg-surface-raised-stronger-non-alpha
-                          shadow-sm
-                          text-12-medium text-text-weak hover:text-text-base
-                          hover:bg-surface-raised-stronger-hover
-                          active:scale-95
-                          transition-all duration-150"
+                        border border-border-base bg-surface-raised-stronger-non-alpha
+                        shadow-sm
+                        text-12-medium text-text-weak hover:text-text-base
+                        hover:bg-surface-raised-stronger-hover
+                        active:scale-95
+                        transition-all duration-150"
                         onClick={() => nav(from())}
                       >
                         <Icon name="arrow-left" size="small" />
@@ -130,25 +135,21 @@ export function PromptDock(props: {
                   )}
                 </Show>
                 <div class="relative">
-                  <Show when={props.isGlobal}>
-                    <div
-                      class="absolute -inset-6 rounded-[48px] pointer-events-none"
-                      style={{
-                        background: "radial-gradient(ellipse at center, var(--surface-brand-base) 0%, transparent 70%)",
-                        opacity: 0.35,
-                        filter: "blur(32px)",
-                      }}
-                    />
-                  </Show>
                   <PromptInput
                     ref={props.inputRef}
                     newSessionWorktree={props.newSessionWorktree()}
                     onNewSessionWorktreeReset={props.onNewSessionWorktreeReset}
+                    hideAgentSelector={!props.meta().showInputBar}
                   />
                 </div>
               </>
-            )
-          })()}
+            }
+          >
+            <Show when={props.sessionID}>
+              <PermissionDock sessionID={props.sessionID!} />
+            </Show>
+            <SubagentSessionFooter cortex={props.meta().cortex!} parentSessionID={props.meta().parentID ?? undefined} />
+          </Show>
         </Show>
         <Show when={props.isNewSession() && !props.isGlobal}>
           <div class="flex items-center justify-center gap-1.5 pt-3 text-12-regular text-text-subtle pointer-events-none">
@@ -164,9 +165,11 @@ export function PromptDock(props: {
             </Show>
           </div>
         </Show>
-        <div class="hidden md:block pointer-events-auto">
-          <StatusBar />
-        </div>
+        <Show when={!props.isNewSession()}>
+          <div class="hidden md:block pointer-events-auto">
+            <StatusBar />
+          </div>
+        </Show>
       </div>
     </div>
   )

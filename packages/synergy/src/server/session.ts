@@ -2,6 +2,7 @@ import { Hono } from "hono"
 import { describeRoute, validator, resolver } from "hono-openapi"
 import { stream } from "hono/streaming"
 import z from "zod"
+import { Command } from "../command/command"
 import { Session } from "../session"
 import { SessionManager } from "../session/manager"
 import { SessionInvoke, InvokeInput } from "../session/invoke"
@@ -13,11 +14,13 @@ import { Todo } from "../session/todo"
 import { Dag } from "../session/dag"
 import { Snapshot } from "../session/snapshot"
 import { Agent } from "../agent/agent"
-import { Instance } from "../scope/instance"
+import { ScopeContext } from "../scope/context"
 import { Log } from "../util/log"
+import { AgendaStore, AgendaTypes } from "../agenda"
 import { errors } from "./error"
 
 const log = Log.create({ service: "session" })
+const ControlProfileId = z.enum(["guarded", "autonomous", "full_access"])
 
 export const SessionRoute = new Hono()
   .get(
@@ -103,7 +106,7 @@ export const SessionRoute = new Hono()
       },
     }),
     async (c) => {
-      const result = SessionManager.listStatuses(Instance.scope.id)
+      const result = await SessionManager.listStatuses(ScopeContext.current.scope.id)
       return c.json(result)
     },
   )
@@ -230,6 +233,50 @@ export const SessionRoute = new Hono()
       return c.json(nodes)
     },
   )
+  .get(
+    "/:sessionID/agenda",
+    describeRoute({
+      summary: "Get session agenda wakeups",
+      description: "Retrieve agenda items that can wake the specified session.",
+      operationId: "session.agenda",
+      responses: {
+        200: {
+          description: "Session agenda wakeups",
+          content: {
+            "application/json": {
+              schema: resolver(AgendaTypes.SessionAgendaResponse),
+            },
+          },
+        },
+        ...errors(400, 404),
+      },
+    }),
+    validator(
+      "param",
+      z.object({
+        sessionID: z.string().meta({ description: "Session ID" }),
+      }),
+    ),
+    validator(
+      "query",
+      z.object({
+        limit: z.coerce.number().int().min(0).max(50).default(6),
+        offset: z.coerce.number().int().min(0).default(0),
+      }),
+    ),
+    async (c) => {
+      const { sessionID } = c.req.valid("param")
+      const { limit, offset } = c.req.valid("query")
+      const session = await Session.get(sessionID)
+      const result = await AgendaStore.listForSessionWakeups({
+        sessionID,
+        scopeID: session.scope.id,
+        limit,
+        offset,
+      })
+      return c.json(result)
+    },
+  )
   .post(
     "/",
     describeRoute({
@@ -255,6 +302,7 @@ export const SessionRoute = new Hono()
           parentID: z.string().optional(),
           title: z.string().optional(),
           id: z.string().optional(),
+          controlProfile: ControlProfileId.optional(),
         })
         .optional(),
     ),
@@ -323,6 +371,7 @@ export const SessionRoute = new Hono()
       z.object({
         title: z.string().optional(),
         pinned: z.number().optional(),
+        controlProfile: ControlProfileId.optional(),
         time: z
           .object({
             archived: z.number().optional(),
@@ -334,11 +383,16 @@ export const SessionRoute = new Hono()
       const sessionID = c.req.valid("param").sessionID
       const updates = c.req.valid("json")
 
-      const updatedSession = await Session.update(sessionID, (session) => {
+      const applyOtherUpdates = (session: Session.Info) => {
         if (updates.title !== undefined) session.title = updates.title
         if (updates.pinned !== undefined) session.pinned = updates.pinned
         if (updates.time?.archived !== undefined) session.time.archived = updates.time.archived
-      })
+      }
+
+      const updatedSession =
+        updates.controlProfile === undefined
+          ? await Session.update(sessionID, applyOtherUpdates)
+          : await Session.updateControlProfile(sessionID, updates.controlProfile, applyOtherUpdates)
 
       return c.json(updatedSession)
     },
@@ -793,8 +847,17 @@ export const SessionRoute = new Hono()
     async (c) => {
       const sessionID = c.req.valid("param").sessionID
       const body = c.req.valid("json")
-      // Fire and forget — errors are surfaced to the client via session event bus.
-      SessionInvoke.command({ ...body, sessionID }).catch(() => {})
+      const command = await Command.require(body.command)
+      if (command.kind === "action") {
+        SessionManager.assertIdle(sessionID)
+        await SessionInvoke.command({ ...body, sessionID })
+        return c.body(null, 204)
+      }
+      // Prompt commands are fire-and-forget because they may run a full model loop.
+      // Keep errors visible in logs instead of silently swallowing them.
+      SessionInvoke.command({ ...body, sessionID }).catch((error) => {
+        log.error("failed to execute async command", { command: body.command, sessionID, error })
+      })
       return c.body(null, 204)
     },
   )

@@ -1,4 +1,6 @@
 export namespace NoteMarkdown {
+  const DEFAULT_PREVIEW_BLOCKS = 16
+
   interface TipTapNode {
     type: string
     attrs?: Record<string, any>
@@ -441,5 +443,231 @@ export namespace NoteMarkdown {
     }
 
     return nodes.length > 0 ? nodes : [{ type: "text", text }]
+  }
+
+  // --- Safe HTML preview (for metadata thumbnail generation) ---
+
+  function escapeHtml(text: string): string {
+    return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;")
+  }
+
+  function trustedPreviewImageSrc(src: unknown): string | undefined {
+    if (typeof src !== "string") return undefined
+    const trimmed = src.trim()
+    if (!trimmed) return undefined
+    if (/^data:image\/(?:png|jpe?g|gif|webp);base64,/i.test(trimmed)) return trimmed
+    if (trimmed.startsWith("/asset/") || trimmed.startsWith("/assets/")) return trimmed
+
+    try {
+      const url = new URL(trimmed)
+      if ((url.protocol === "http:" || url.protocol === "https:") && url.pathname.startsWith("/asset/")) {
+        return trimmed
+      }
+      if ((url.protocol === "http:" || url.protocol === "https:") && url.pathname.startsWith("/assets/")) {
+        return trimmed
+      }
+    } catch {
+      return undefined
+    }
+
+    return undefined
+  }
+
+  function renderPreviewMediaPlaceholder(kind: string, label?: string): string {
+    const detail = label?.trim()
+    return `<div class="note-preview-media-placeholder"><span>${escapeHtml(kind)}</span>${detail ? `<small>${escapeHtml(detail)}</small>` : ""}</div>`
+  }
+
+  function normalizePreviewText(text: string): string {
+    return text.replace(/\s+/g, " ").trim().toLowerCase()
+  }
+
+  function previewPlainText(node: TipTapNode): string {
+    switch (node.type) {
+      case "paragraph":
+      case "heading":
+        return (node.content ?? []).map(previewPlainText).join("")
+      case "text":
+        return node.text ?? ""
+      case "hardBreak":
+        return " "
+      case "inlineMath":
+        return node.attrs?.latex ?? ""
+      case "image":
+        return node.attrs?.alt ?? ""
+      default:
+        return ""
+    }
+  }
+
+  function renderPreviewImage(node: TipTapNode, mode: "block" | "inline"): string {
+    const src = trustedPreviewImageSrc(node.attrs?.src)
+    const alt = typeof node.attrs?.alt === "string" ? node.attrs.alt : ""
+    if (!src) {
+      return mode === "inline"
+        ? `<span class="note-preview-media-chip">Image</span>`
+        : renderPreviewMediaPlaceholder("Image", alt || "Preview unavailable")
+    }
+
+    const img = `<img src="${escapeHtml(src)}" alt="${escapeHtml(alt)}" loading="lazy" decoding="async">`
+    if (mode === "inline") return `<span class="note-preview-image-inline">${img}</span>`
+    const caption = alt ? `<figcaption>${escapeHtml(alt)}</figcaption>` : ""
+    return `<figure class="note-preview-figure">${img}${caption}</figure>`
+  }
+
+  function renderPreviewInline(nodes: TipTapNode[]): string {
+    let result = ""
+    for (const node of nodes) {
+      if (node.type === "text") {
+        let text = escapeHtml(node.text ?? "")
+        if (node.marks) {
+          for (const mark of node.marks) {
+            switch (mark.type) {
+              case "bold":
+                text = `<strong>${text}</strong>`
+                break
+              case "italic":
+                text = `<em>${text}</em>`
+                break
+              case "code":
+                text = `<code>${text}</code>`
+                break
+              case "strike":
+                text = `<s>${text}</s>`
+                break
+              case "link":
+                text = `<span class="note-preview-link">${text}</span>`
+                break
+            }
+          }
+        }
+        result += text
+      } else if (node.type === "hardBreak") {
+        result += "<br>"
+      } else if (node.type === "inlineMath") {
+        const latex = escapeHtml(node.attrs?.latex ?? "")
+        const display = node.attrs?.display === "yes"
+        result += `<span class="${display ? "note-preview-math note-preview-math--display" : "note-preview-math"}">${display ? "$$" : "$"}${latex}${display ? "$$" : "$"}</span>`
+      } else if (node.type === "image") {
+        result += renderPreviewImage(node, "inline")
+      }
+    }
+    return result
+  }
+
+  function renderPreviewCell(node: TipTapNode): string {
+    if (node.type === "paragraph") return renderPreviewInline(node.content ?? [])
+    const firstChild = node.content?.[0]
+    if (firstChild?.type === "paragraph") return renderPreviewInline(firstChild.content ?? [])
+    if (node.content) return renderPreviewHtml(node.content, 2)
+    return renderPreviewInline([node])
+  }
+
+  function renderPreviewTable(node: TipTapNode): string {
+    const rows = node.content ?? []
+    const visibleRows = rows.slice(0, 4)
+    const html = visibleRows
+      .map((row) => {
+        const cells = (row.content ?? []).slice(0, 4)
+        return `<tr>${cells
+          .map((cell) => {
+            const tag = cell.type === "tableHeader" ? "th" : "td"
+            return `<${tag}>${renderPreviewCell(cell)}</${tag}>`
+          })
+          .join("")}</tr>`
+      })
+      .join("")
+    const overflow =
+      rows.length > visibleRows.length
+        ? `<div class="note-preview-table-more">+${rows.length - visibleRows.length} rows</div>`
+        : ""
+    return `<div class="note-preview-table-wrap"><table>${html}</table>${overflow}</div>`
+  }
+
+  function renderPreviewBlock(node: TipTapNode): string {
+    switch (node.type) {
+      case "paragraph":
+        return `<p>${renderPreviewInline(node.content ?? [])}</p>`
+      case "heading": {
+        const level = Math.min(node.attrs?.level ?? 1, 6)
+        return `<h${level}>${renderPreviewInline(node.content ?? [])}</h${level}>`
+      }
+      case "bulletList":
+        return `<ul>${(node.content ?? [])
+          .map(
+            (item: TipTapNode) =>
+              `<li>${renderPreviewBlock((item.content ?? [])[0] ?? { type: "paragraph", content: [] })}</li>`,
+          )
+          .join("")}</ul>`
+      case "orderedList":
+        return `<ol>${(node.content ?? [])
+          .map(
+            (item: TipTapNode) =>
+              `<li>${renderPreviewBlock((item.content ?? [])[0] ?? { type: "paragraph", content: [] })}</li>`,
+          )
+          .join("")}</ol>`
+      case "taskList":
+        return `<ul class="note-preview-task-list">${(node.content ?? [])
+          .map((item: TipTapNode) => {
+            const checked = item.attrs?.checked ? " checked" : ""
+            const inner = renderPreviewBlock((item.content ?? [])[0] ?? { type: "paragraph", content: [] })
+            return `<li><input type="checkbox"${checked} disabled>${inner}</li>`
+          })
+          .join("")}</ul>`
+      case "blockquote":
+        return `<blockquote>${renderPreviewHtml(node.content ?? [], 10)}</blockquote>`
+      case "codeBlock": {
+        const rawCode = (node.content ?? ([] as TipTapNode[])).map((c: TipTapNode) => c.text ?? "").join("\n")
+        const lines = rawCode.split("\n")
+        const preview = lines.length > 4 ? [...lines.slice(0, 4), "…"].join("\n") : rawCode
+        return `<pre><code>${escapeHtml(preview)}</code></pre>`
+      }
+      case "horizontalRule":
+        return `<hr>`
+      case "image":
+        return renderPreviewImage(node, "block")
+      case "video":
+        return renderPreviewMediaPlaceholder("Video")
+      case "mermaid": {
+        const firstLine = String(node.attrs?.content ?? "")
+          .trim()
+          .split("\n")[0]
+        return `<div class="note-preview-diagram"><span>Diagram</span>${firstLine ? `<code>${escapeHtml(firstLine)}</code>` : ""}</div>`
+      }
+      case "table":
+        return renderPreviewTable(node)
+      default:
+        if (node.content) return renderPreviewHtml(node.content, 10)
+        return ""
+    }
+  }
+
+  function renderPreviewHtml(nodes: TipTapNode[], maxBlocks: number, options?: { title?: string }): string {
+    let count = 0
+    let result = ""
+    const normalizedTitle = normalizePreviewText(options?.title ?? "")
+    for (let index = 0; index < nodes.length; index++) {
+      const node = nodes[index]
+      if (index === 0 && normalizedTitle && normalizePreviewText(previewPlainText(node)) === normalizedTitle) {
+        continue
+      }
+      if (count >= maxBlocks) break
+      const html = renderPreviewBlock(node)
+      if (html) count++
+      result += html
+    }
+    return result
+  }
+
+  /**
+   * Generate safe, escaped HTML snippet from Tiptap JSON for note card thumbnails.
+   * Produces a compact multi-block preview. Text is HTML-escaped, media is limited
+   * to trusted image sources, and no external HTML is rendered.
+   */
+  export function toPreviewHtml(content: any, options?: { title?: string; maxBlocks?: number }): string {
+    if (!content || typeof content !== "object") return ""
+    const doc = content as TipTapNode
+    if (doc.type !== "doc") return ""
+    return renderPreviewHtml(doc.content ?? [], options?.maxBlocks ?? DEFAULT_PREVIEW_BLOCKS, { title: options?.title })
   }
 }
