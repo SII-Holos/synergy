@@ -234,7 +234,9 @@ function NoteCard(props: {
           }
         >
           <div class="flex items-center gap-2">
-            <span class="min-w-0 truncate text-10-medium uppercase tracking-[0.08em] text-text-weaker">Run history</span>
+            <span class="min-w-0 truncate text-10-medium uppercase tracking-[0.08em] text-text-weaker">
+              Run history
+            </span>
             <span class="min-w-0 flex-1 truncate text-10-regular text-text-weaker">{blueprintState().detail}</span>
             <Show when={props.note.pinned}>
               <Icon name="pin" size="small" class="size-3 shrink-0 text-text-weak" />
