@@ -283,7 +283,9 @@ export const PluginUpdateCommand = cmd({
           // Find the config spec matching this plugin
           const matchedSpec = await findConfigSpec(targetPlugin.pluginDir, configSpecs)
           if (!matchedSpec) {
-            UI.error(`Could not find config entry for plugin "${targetId}". Update the spec manually in synergy.jsonc.`)
+            UI.error(
+              `Could not find config entry for plugin "${targetId}". Update the spec manually in 50-plugins.jsonc.`,
+            )
             return
           }
           specsToUpdate.push({ spec: matchedSpec, id: targetId })

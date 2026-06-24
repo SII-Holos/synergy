@@ -294,7 +294,7 @@ test("updates config and writes to file", async () => {
       const newConfig = { model: "updated/model" }
       await Config.update(newConfig as any)
 
-      const filepath = path.join(tmp.path, ".synergy", "synergy.jsonc")
+      const filepath = path.join(tmp.path, ".synergy", "synergy.d", "10-models.jsonc")
       const writtenConfig = parseJsonc(await Bun.file(filepath).text(), [], { allowTrailingComma: true }) as any
       expect(writtenConfig.model).toBe("updated/model")
     },

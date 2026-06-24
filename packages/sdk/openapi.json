@@ -1393,7 +1393,7 @@
           }
         ],
         "summary": "Get global configuration",
-        "description": "Retrieve only the active global Config Set raw configuration (without project or remote layers).",
+        "description": "Retrieve only the canonical global domain configuration.",
         "responses": {
           "200": {
             "description": "Get global config info",
@@ -1414,9 +1414,9 @@
         ]
       }
     },
-    "/config/sets": {
+    "/config/domains": {
       "get": {
-        "operationId": "config.set.list",
+        "operationId": "config.domain.list",
         "parameters": [
           {
             "in": "query",
@@ -1426,17 +1426,17 @@
             }
           }
         ],
-        "summary": "List Config Sets",
-        "description": "List all global Config Sets and indicate which one is active.",
+        "summary": "List config domains",
+        "description": "List canonical config domains and their current global fragments.",
         "responses": {
           "200": {
-            "description": "List of Config Sets",
+            "description": "List of config domains",
             "content": {
               "application/json": {
                 "schema": {
                   "type": "array",
                   "items": {
-                    "$ref": "#/components/schemas/ConfigSetSummary"
+                    "$ref": "#/components/schemas/ConfigDomainSummary"
                   }
                 }
               }
@@ -1446,65 +1446,14 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.config.set.list({\n  ...\n})"
-          }
-        ]
-      },
-      "post": {
-        "operationId": "config.set.create",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "directory",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "summary": "Create Config Set",
-        "description": "Create a new global Config Set, defaulting to a copy of the current active raw global config.",
-        "responses": {
-          "200": {
-            "description": "Created Config Set",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ConfigSetWithConfig"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Bad request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BadRequestError"
-                }
-              }
-            }
-          }
-        },
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ConfigSetCreateInput"
-              }
-            }
-          }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.config.set.create({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.config.domain.list({\n  ...\n})"
           }
         ]
       }
     },
-    "/config/sets/{name}": {
+    "/config/domains/{domain}": {
       "get": {
-        "operationId": "config.set.get",
+        "operationId": "config.domain.get",
         "parameters": [
           {
             "in": "query",
@@ -1515,22 +1464,37 @@
           },
           {
             "in": "path",
-            "name": "name",
+            "name": "domain",
             "schema": {
-              "$ref": "#/components/schemas/ConfigSetName"
+              "type": "string",
+              "enum": [
+                "general",
+                "models",
+                "providers",
+                "engram",
+                "mcp",
+                "plugins",
+                "agents",
+                "commands",
+                "permissions",
+                "channels",
+                "holos",
+                "email",
+                "runtime"
+              ]
             },
             "required": true
           }
         ],
-        "summary": "Get Config Set",
-        "description": "Read a global Config Set and its raw configuration.",
+        "summary": "Get config domain",
+        "description": "Read one canonical global config domain fragment.",
         "responses": {
           "200": {
-            "description": "Config Set",
+            "description": "Config domain fragment",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ConfigSetWithConfig"
+                  "$ref": "#/components/schemas/Config"
                 }
               }
             }
@@ -1549,12 +1513,12 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.config.set.get({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.config.domain.get({\n  ...\n})"
           }
         ]
       },
       "patch": {
-        "operationId": "config.set.update",
+        "operationId": "config.domain.update",
         "parameters": [
           {
             "in": "query",
@@ -1565,22 +1529,37 @@
           },
           {
             "in": "path",
-            "name": "name",
+            "name": "domain",
             "schema": {
-              "$ref": "#/components/schemas/ConfigSetName"
+              "type": "string",
+              "enum": [
+                "general",
+                "models",
+                "providers",
+                "engram",
+                "mcp",
+                "plugins",
+                "agents",
+                "commands",
+                "permissions",
+                "channels",
+                "holos",
+                "email",
+                "runtime"
+              ]
             },
             "required": true
           }
         ],
-        "summary": "Update Config Set",
-        "description": "Patch a global Config Set raw configuration.",
+        "summary": "Update config domain",
+        "description": "Update one canonical global config domain fragment.",
         "responses": {
           "200": {
-            "description": "Updated Config Set",
+            "description": "Updated config domain fragment",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ConfigSetWithConfig"
+                  "$ref": "#/components/schemas/Config"
                 }
               }
             }
@@ -1600,7 +1579,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/Config"
+                "$ref": "#/components/schemas/ConfigDomainUpdateInput"
               }
             }
           }
@@ -1608,175 +1587,14 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.config.set.update({\n  ...\n})"
-          }
-        ]
-      },
-      "delete": {
-        "operationId": "config.set.delete",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "directory",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "path",
-            "name": "name",
-            "schema": {
-              "$ref": "#/components/schemas/ConfigSetName"
-            },
-            "required": true
-          }
-        ],
-        "summary": "Delete Config Set",
-        "description": "Delete an inactive non-default global Config Set.",
-        "responses": {
-          "200": {
-            "description": "Deleted Config Set",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ConfigSetSummary"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Bad request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BadRequestError"
-                }
-              }
-            }
-          }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.config.set.delete({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.config.domain.update({\n  ...\n})"
           }
         ]
       }
     },
-    "/config/sets/{name}/raw": {
-      "get": {
-        "operationId": "config.set.raw.get",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "directory",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "path",
-            "name": "name",
-            "schema": {
-              "$ref": "#/components/schemas/ConfigSetName"
-            },
-            "required": true
-          }
-        ],
-        "summary": "Get Config Set raw",
-        "description": "Read a global Config Set raw JSONC source and parsed preview.",
-        "responses": {
-          "200": {
-            "description": "Config Set raw source",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ConfigSetRaw"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Bad request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BadRequestError"
-                }
-              }
-            }
-          }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.config.set.raw.get({\n  ...\n})"
-          }
-        ]
-      },
-      "put": {
-        "operationId": "config.set.raw.save",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "directory",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "path",
-            "name": "name",
-            "schema": {
-              "$ref": "#/components/schemas/ConfigSetName"
-            },
-            "required": true
-          }
-        ],
-        "summary": "Save Config Set raw",
-        "description": "Save raw JSONC for a global Config Set after validation and optionally reload runtime if active.",
-        "responses": {
-          "200": {
-            "description": "Saved Config Set raw source",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ConfigSetRawSaveResult"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Bad request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BadRequestError"
-                }
-              }
-            }
-          }
-        },
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ConfigSetRawSaveInput"
-              }
-            }
-          }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.config.set.raw.save({\n  ...\n})"
-          }
-        ]
-      }
-    },
-    "/config/sets/{name}/raw/validate": {
+    "/config/import/plan": {
       "post": {
-        "operationId": "config.set.raw.validate",
+        "operationId": "config.import.plan",
         "parameters": [
           {
             "in": "query",
@@ -1784,25 +1602,17 @@
             "schema": {
               "type": "string"
             }
-          },
-          {
-            "in": "path",
-            "name": "name",
-            "schema": {
-              "$ref": "#/components/schemas/ConfigSetName"
-            },
-            "required": true
           }
         ],
-        "summary": "Validate Config Set raw",
-        "description": "Validate raw JSONC for a global Config Set without saving it.",
+        "summary": "Plan config import",
+        "description": "Create a dry-run plan for importing selected config domains.",
         "responses": {
           "200": {
-            "description": "Validation result",
+            "description": "Config import plan",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ConfigRawValidationResult"
+                  "$ref": "#/components/schemas/ConfigDomainImportPlan"
                 }
               }
             }
@@ -1822,7 +1632,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/ConfigSetRawValidateInput"
+                "$ref": "#/components/schemas/ConfigDomainImportPlanInput"
               }
             }
           }
@@ -1830,14 +1640,14 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.config.set.raw.validate({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.config.import.plan({\n  ...\n})"
           }
         ]
       }
     },
-    "/config/sets/{name}/activate": {
+    "/config/import/apply": {
       "post": {
-        "operationId": "config.set.activate",
+        "operationId": "config.import.apply",
         "parameters": [
           {
             "in": "query",
@@ -1845,25 +1655,17 @@
             "schema": {
               "type": "string"
             }
-          },
-          {
-            "in": "path",
-            "name": "name",
-            "schema": {
-              "$ref": "#/components/schemas/ConfigSetName"
-            },
-            "required": true
           }
         ],
-        "summary": "Activate Config Set",
-        "description": "Activate a global Config Set and reload global runtime configuration.",
+        "summary": "Apply config import",
+        "description": "Apply a selected-domain config import plan.",
         "responses": {
           "200": {
-            "description": "Activated Config Set",
+            "description": "Applied config import plan",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ConfigSetActivateResult"
+                  "$ref": "#/components/schemas/ConfigDomainImportPlan"
                 }
               }
             }
@@ -1879,10 +1681,53 @@
             }
           }
         },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "config": {
+                    "$ref": "#/components/schemas/Config"
+                  },
+                  "only": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "enum": [
+                        "general",
+                        "models",
+                        "providers",
+                        "engram",
+                        "mcp",
+                        "plugins",
+                        "agents",
+                        "commands",
+                        "permissions",
+                        "channels",
+                        "holos",
+                        "email",
+                        "runtime"
+                      ]
+                    }
+                  },
+                  "mode": {
+                    "type": "string",
+                    "enum": ["merge", "replace-domain", "append"]
+                  },
+                  "yes": {
+                    "type": "boolean"
+                  }
+                },
+                "required": ["config"]
+              }
+            }
+          }
+        },
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.config.set.activate({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.config.import.apply({\n  ...\n})"
           }
         ]
       }
@@ -15918,246 +15763,189 @@
         },
         "additionalProperties": false
       },
-      "ConfigSetName": {
-        "type": "string",
-        "minLength": 1,
-        "maxLength": 64,
-        "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]*$"
-      },
-      "ConfigSetSummary": {
+      "ConfigDomainSummary": {
         "type": "object",
         "properties": {
-          "name": {
-            "$ref": "#/components/schemas/ConfigSetName"
+          "id": {
+            "type": "string",
+            "enum": [
+              "general",
+              "models",
+              "providers",
+              "engram",
+              "mcp",
+              "plugins",
+              "agents",
+              "commands",
+              "permissions",
+              "channels",
+              "holos",
+              "email",
+              "runtime"
+            ]
           },
-          "active": {
-            "type": "boolean"
-          },
-          "isDefault": {
-            "type": "boolean"
-          },
-          "path": {
+          "filename": {
             "type": "string"
-          }
-        },
-        "required": ["name", "active", "isDefault", "path"]
-      },
-      "ConfigSetWithConfig": {
-        "type": "object",
-        "properties": {
-          "name": {
-            "$ref": "#/components/schemas/ConfigSetName"
           },
-          "active": {
-            "type": "boolean"
-          },
-          "isDefault": {
-            "type": "boolean"
+          "label": {
+            "type": "string"
           },
           "path": {
             "type": "string"
           },
-          "config": {
-            "$ref": "#/components/schemas/Config"
-          }
-        },
-        "required": ["name", "active", "isDefault", "path", "config"]
-      },
-      "ConfigSetCreateInput": {
-        "type": "object",
-        "properties": {
-          "name": {
-            "$ref": "#/components/schemas/ConfigSetName"
+          "ownedKeys": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           },
-          "config": {
-            "$ref": "#/components/schemas/Config"
-          }
-        },
-        "required": ["name"]
-      },
-      "ConfigSetRaw": {
-        "type": "object",
-        "properties": {
-          "name": {
-            "$ref": "#/components/schemas/ConfigSetName"
+          "mergePolicy": {
+            "type": "string",
+            "enum": ["merge", "replace-domain", "append"]
           },
-          "path": {
+          "reloadTargets": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "uiSection": {
             "type": "string"
           },
-          "raw": {
-            "type": "string"
-          },
-          "config": {
-            "$ref": "#/components/schemas/Config"
-          },
-          "active": {
-            "type": "boolean"
-          },
-          "isDefault": {
-            "type": "boolean"
-          }
-        },
-        "required": ["name", "path", "raw", "active", "isDefault"]
-      },
-      "ConfigRawValidationResult": {
-        "type": "object",
-        "properties": {
-          "valid": {
+          "importable": {
             "type": "boolean"
           },
           "config": {
             "$ref": "#/components/schemas/Config"
-          },
-          "errors": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "warnings": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          }
-        },
-        "required": ["valid", "errors", "warnings"]
-      },
-      "ConfigSetRawValidateInput": {
-        "type": "object",
-        "properties": {
-          "raw": {
-            "type": "string"
-          }
-        },
-        "required": ["raw"]
-      },
-      "RuntimeReloadTarget": {
-        "type": "string",
-        "enum": [
-          "config",
-          "skill",
-          "provider",
-          "agent",
-          "plugin",
-          "mcp",
-          "lsp",
-          "formatter",
-          "watcher",
-          "channel",
-          "holos",
-          "command",
-          "tool_registry",
-          "all"
-        ]
-      },
-      "RuntimeReloadResult": {
-        "type": "object",
-        "properties": {
-          "success": {
-            "type": "boolean"
-          },
-          "requested": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/RuntimeReloadTarget"
-            }
-          },
-          "executed": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/RuntimeReloadTarget"
-            }
-          },
-          "cascaded": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/RuntimeReloadTarget"
-            }
-          },
-          "changedFields": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "restartRequired": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "liveApplied": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "warnings": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
           }
         },
         "required": [
-          "success",
-          "requested",
-          "executed",
-          "cascaded",
-          "changedFields",
-          "restartRequired",
-          "liveApplied",
-          "warnings"
+          "id",
+          "filename",
+          "label",
+          "path",
+          "ownedKeys",
+          "mergePolicy",
+          "reloadTargets",
+          "uiSection",
+          "importable"
         ]
       },
-      "ConfigSetRawSaveResult": {
+      "ConfigDomainUpdateInput": {
         "type": "object",
         "properties": {
-          "configSet": {
-            "$ref": "#/components/schemas/ConfigSetRaw"
+          "config": {
+            "$ref": "#/components/schemas/Config"
           },
-          "validation": {
-            "$ref": "#/components/schemas/ConfigRawValidationResult"
-          },
-          "saved": {
-            "type": "boolean"
-          },
-          "runtimeReload": {
-            "$ref": "#/components/schemas/RuntimeReloadResult"
+          "mode": {
+            "type": "string",
+            "enum": ["merge", "replace-domain", "append"]
           }
         },
-        "required": ["configSet", "validation", "saved"]
+        "required": ["config"]
       },
-      "ConfigSetRawSaveInput": {
+      "ConfigDomainImportChange": {
         "type": "object",
         "properties": {
-          "raw": {
+          "key": {
             "type": "string"
           },
-          "reload": {
+          "before": {},
+          "after": {},
+          "conflict": {
             "type": "boolean"
           }
         },
-        "required": ["raw"]
+        "required": ["key", "conflict"]
       },
-      "ConfigSetActivateResult": {
+      "ConfigDomainImportPlan": {
         "type": "object",
         "properties": {
-          "previous": {
-            "$ref": "#/components/schemas/ConfigSetName"
+          "domains": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "enum": [
+                    "general",
+                    "models",
+                    "providers",
+                    "engram",
+                    "mcp",
+                    "plugins",
+                    "agents",
+                    "commands",
+                    "permissions",
+                    "channels",
+                    "holos",
+                    "email",
+                    "runtime"
+                  ]
+                },
+                "filename": {
+                  "type": "string"
+                },
+                "path": {
+                  "type": "string"
+                },
+                "mode": {
+                  "type": "string",
+                  "enum": ["merge", "replace-domain", "append"]
+                },
+                "changes": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ConfigDomainImportChange"
+                  }
+                }
+              },
+              "required": ["id", "filename", "path", "mode", "changes"]
+            }
           },
-          "active": {
-            "$ref": "#/components/schemas/ConfigSetName"
-          },
-          "changed": {
-            "type": "boolean"
-          },
-          "runtimeReload": {
-            "$ref": "#/components/schemas/RuntimeReloadResult"
+          "conflicts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ConfigDomainImportChange"
+            }
           }
         },
-        "required": ["previous", "active", "changed", "runtimeReload"]
+        "required": ["domains", "conflicts"]
+      },
+      "ConfigDomainImportPlanInput": {
+        "type": "object",
+        "properties": {
+          "config": {
+            "$ref": "#/components/schemas/Config"
+          },
+          "only": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "general",
+                "models",
+                "providers",
+                "engram",
+                "mcp",
+                "plugins",
+                "agents",
+                "commands",
+                "permissions",
+                "channels",
+                "holos",
+                "email",
+                "runtime"
+              ]
+            }
+          },
+          "mode": {
+            "type": "string",
+            "enum": ["merge", "replace-domain", "append"]
+          }
+        },
+        "required": ["config"]
       },
       "Model": {
         "type": "object",
@@ -16420,6 +16208,85 @@
           }
         },
         "required": ["id", "name", "source", "env", "options", "models"]
+      },
+      "RuntimeReloadTarget": {
+        "type": "string",
+        "enum": [
+          "config",
+          "skill",
+          "provider",
+          "agent",
+          "plugin",
+          "mcp",
+          "lsp",
+          "formatter",
+          "watcher",
+          "channel",
+          "holos",
+          "command",
+          "tool_registry",
+          "all"
+        ]
+      },
+      "RuntimeReloadResult": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "requested": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RuntimeReloadTarget"
+            }
+          },
+          "executed": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RuntimeReloadTarget"
+            }
+          },
+          "cascaded": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RuntimeReloadTarget"
+            }
+          },
+          "changedFields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "restartRequired": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "liveApplied": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "success",
+          "requested",
+          "executed",
+          "cascaded",
+          "changedFields",
+          "restartRequired",
+          "liveApplied",
+          "warnings"
+        ]
       },
       "RuntimeReloadScope": {
         "type": "string",
@@ -21876,28 +21743,6 @@
         },
         "required": ["type", "properties"]
       },
-      "Event.config.set.activated": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "config.set.activated"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "previous": {
-                "$ref": "#/components/schemas/ConfigSetName"
-              },
-              "active": {
-                "$ref": "#/components/schemas/ConfigSetName"
-              }
-            },
-            "required": ["previous", "active"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
       "Event.server.instance.disposed": {
         "type": "object",
         "properties": {
@@ -23263,9 +23108,6 @@
           },
           {
             "$ref": "#/components/schemas/Event.config.updated"
-          },
-          {
-            "$ref": "#/components/schemas/Event.config.set.activated"
           },
           {
             "$ref": "#/components/schemas/Event.server.instance.disposed"

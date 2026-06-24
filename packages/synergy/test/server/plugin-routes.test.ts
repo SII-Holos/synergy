@@ -287,8 +287,8 @@ describe("PATCH /plugin/:pluginId/config", () => {
     ;(Config as any).get = mock(async () => ({
       pluginConfig: { "test-plugin": currentConfig },
     }))
-    const updateGlobalSpy = mock(async () => {})
-    ;(Config as any).updateGlobal = updateGlobalSpy
+    const domainUpdateSpy = mock(async () => {})
+    ;(Config as any).domainUpdate = domainUpdateSpy
 
     await Instance.provide({
       scope: await tmp.scope(),
@@ -302,8 +302,9 @@ describe("PATCH /plugin/:pluginId/config", () => {
         expect(res.status).toBe(200)
         const body = await res.json()
         expect(body).toEqual({ theme: "light", refreshInterval: 30 })
-        expect(updateGlobalSpy).toHaveBeenCalledTimes(1)
-        const updateArg = (updateGlobalSpy as any).mock.calls[0][0]
+        expect(domainUpdateSpy).toHaveBeenCalledTimes(1)
+        expect((domainUpdateSpy as any).mock.calls[0][0]).toBe("plugins")
+        const updateArg = (domainUpdateSpy as any).mock.calls[0][1]
         expect(updateArg).toEqual({
           pluginConfig: { "test-plugin": { theme: "light", refreshInterval: 30 } },
         })
@@ -316,8 +317,8 @@ describe("PATCH /plugin/:pluginId/config", () => {
     const plugin = buildLoadedPlugin()
     ;(Plugin as any).get = mock(async () => plugin)
     ;(Config as any).get = mock(async () => ({}))
-    const updateGlobalSpy = mock(async () => {})
-    ;(Config as any).updateGlobal = updateGlobalSpy
+    const domainUpdateSpy = mock(async () => {})
+    ;(Config as any).domainUpdate = domainUpdateSpy
 
     await Instance.provide({
       scope: await tmp.scope(),
@@ -369,8 +370,8 @@ describe("PATCH /plugin/:pluginId/config", () => {
     const plugin = buildLoadedPlugin()
     ;(Plugin as any).get = mock(async () => plugin)
     ;(Config as any).get = mock(async () => ({}))
-    const updateGlobalSpy = mock(async () => {})
-    ;(Config as any).updateGlobal = updateGlobalSpy
+    const domainUpdateSpy = mock(async () => {})
+    ;(Config as any).domainUpdate = domainUpdateSpy
 
     // Build a payload under 65536 bytes when re-stringified by the validator
     const valueLen = 65520
@@ -388,7 +389,8 @@ describe("PATCH /plugin/:pluginId/config", () => {
           body: serialized,
         })
         expect(res.status).toBe(200)
-        expect(updateGlobalSpy).toHaveBeenCalledTimes(1)
+        expect(domainUpdateSpy).toHaveBeenCalledTimes(1)
+        expect((domainUpdateSpy as any).mock.calls[0][0]).toBe("plugins")
       },
     })
   })

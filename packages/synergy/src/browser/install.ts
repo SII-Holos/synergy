@@ -116,7 +116,7 @@ export namespace BrowserInstall {
     if (discovered) return discovered
 
     try {
-      // @ts-expect-error — playwright-core is an optional peer dependency
+      // @ts-ignore — playwright-core is an optional peer dependency
       const { chromium } = await import("playwright-core")
       const execPath = chromium.executablePath()
       if (await fileExists(execPath)) return execPath

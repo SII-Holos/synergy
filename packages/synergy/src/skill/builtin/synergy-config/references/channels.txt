@@ -1,4 +1,4 @@
-# Channels and Config Sets
+# Channels
 
 ## Channels
 
@@ -11,7 +11,7 @@ Channels integrate Synergy with external messaging platforms.
 3. **Configure event subscription** — Set the request URL to your Synergy server's public endpoint: `https://<your-server>/api/channel/feishu/webhook`. Enable events: `im.message.receive_v1`.
 4. **Add permissions** — Grant these scopes: `im:message`, `im:message:send_as_bot`, `im:chat:readonly`, `im:resource`. For sender name resolution: `contact:user.base:readonly`.
 5. **Publish the app** — Submit for review or use in development mode for testing.
-6. **Configure Synergy** — Add the channel config (see below) with your App ID and App Secret.
+6. **Configure Synergy** — Add the channel config to `90-channels.jsonc` with your App ID and App Secret.
 7. **Reload** — `runtime_reload(target: "channel")`.
 
 ### Feishu/Lark channel
@@ -93,64 +93,16 @@ Top-level `domain` and `streaming` on the channel object set defaults for all ac
 runtime_reload(target: "channel")
 ```
 
----
+## Domain file
 
-## Config Sets
-
-Config Sets allow switching between different global configurations (e.g., work vs personal).
-
-### Concept
-
-- **Default set**: `~/.synergy/config/synergy.jsonc`
-- **Named sets**: `~/.synergy/config/config-sets/<name>/synergy.jsonc`
-- Each set has its own config directory and can have its own agents, skills, commands, plugins
-- Only one set is active at a time
-- Active set tracked in `~/.synergy/config/config-set.json` as `{ "active": "<name>" }`
-
-### File structure
+Channel config belongs only in:
 
 ```
-~/.synergy/config/
-├── synergy.jsonc              # default Config Set
-├── config-set.json            # { "active": "work" }
-├── config-sets/
-│   ├── work/
-│   │   ├── synergy.jsonc
-│   │   ├── agent/
-│   │   └── skill/
-│   └── personal/
-│       └── synergy.jsonc
-├── agent/                     # agents for default set
-├── skill/                     # skills for default set
-└── command/                   # commands for default set
+~/.synergy/config/synergy.d/90-channels.jsonc
+<project>/.synergy/synergy.d/90-channels.jsonc
 ```
 
-### Naming rules
-
-Must match: `^[A-Za-z0-9][A-Za-z0-9_-]*$`
-- Start with letter or number
-- Letters, numbers, hyphens, underscores only
-- Max 64 characters
-
-### Managing Config Sets
-
-Use the Synergy CLI or Web UI to manage Config Sets.
-
-**CLI commands:**
-- `synergy config-set list` — list all Config Sets
-- `synergy config-set create <name>` — create a new named Config Set
-- `synergy config-set switch <name>` — switch to a named Config Set
-- `synergy config-set delete <name>` — delete a named Config Set (cannot delete default or active)
-
-After switching, a full config reload picks up the new set's configuration.
-
-**Web UI:** Navigate to Settings → Config Sets in the web interface.
-
-### Key behaviors
-
-- Named sets inherit nothing from default — they are independent configurations
-- The active set name is returned by `ConfigSet.activeName()`
-- `default` is a reserved name for `~/.synergy/config/synergy.jsonc`
+Do not edit model, provider, email, Holos, or runtime domain files when importing or updating channels.
 
 ---
 
@@ -163,9 +115,3 @@ After switching, a full config reload picks up the new set's configuration.
 - **Streaming not working** — check `streaming` is true; some older Feishu versions may not support streaming cards; try `streaming: false` for compatibility
 - **Sender names showing as IDs** — set `resolveSenderNames: true` and ensure the app has `contact:user.base:readonly` scope
 - **Webhook not receiving events** — verify the Feishu app's event subscription URL is correct and publicly accessible; check the server is running and the `/api/channel/feishu/webhook` endpoint responds
-
-### Config Sets
-
-- **Config Set not switching** — verify the set name matches `^[A-Za-z0-9][A-Za-z0-9_-]*$`; cannot delete the active set — switch to another first; cannot delete "default"
-- **Changes not applying after switch** — reload with `runtime_reload(target: "config")`; named sets are independent from default — they do not inherit
-- **Config Set directory empty** — create `synergy.jsonc` inside the set directory; the set only activates config from its own directory

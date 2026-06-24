@@ -227,27 +227,37 @@ Treat schema and data migrations as a first-class architectural concern.
 
 ### Current config locations
 
-Primary global config uses the active global Config Set under:
+Primary global config uses one canonical domain directory under:
 
 ```bash
-~/.synergy/config
+~/.synergy/config/synergy.d/
 ```
 
-The `default` Config Set maps to:
+The domain files are:
 
 ```bash
-~/.synergy/config/synergy.jsonc
+00-general.jsonc
+10-models.jsonc
+20-providers.jsonc
+30-engram.jsonc
+40-mcp.jsonc
+50-plugins.jsonc
+60-agents.jsonc
+70-commands.jsonc
+80-permissions.jsonc
+90-channels.jsonc
+100-holos.jsonc
+110-email.jsonc
+120-runtime.jsonc
 ```
 
-Project-level config is resolved from the working tree and may include:
+Project-level config uses the same domain layout under:
 
 ```bash
-synergy.jsonc
-synergy.json
-.synergy/
+<project>/.synergy/synergy.d/
 ```
 
-When editing or documenting config, prefer `synergy.jsonc` as the primary file name unless you are specifically describing compatibility behavior.
+Legacy monolithic config files are migration inputs only. Do not add new runtime load paths or long-term compatibility branches for them.
 
 ### Config-aware work
 

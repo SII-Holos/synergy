@@ -285,7 +285,7 @@ export const PluginRoute = new Hono()
       const config = await Config.get()
       const current = (config.pluginConfig?.[pluginId] as Record<string, any>) ?? {}
       const merged = { ...current, ...values }
-      await Config.updateGlobal({ pluginConfig: { [pluginId]: merged } } as any)
+      await Config.domainUpdate("plugins", { pluginConfig: { [pluginId]: merged } } as any)
       return c.json(merged)
     },
   )

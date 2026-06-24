@@ -222,7 +222,6 @@ export function StatusBar() {
   const branch = createMemo(() => workspaceField(session(), "branch") || store()?.vcs?.branch)
   const scopeLabel = createMemo(() => getScopeLabel(scope(), directory()))
   const runtime = createMemo(() => runtimeLabel(status(), waiting()))
-  const activeConfig = createMemo(() => globalSync.configSets.find((set) => set.active)?.name ?? "default")
 
   // Inline accessors for panel connection stats
   const lspConnected = () => {
@@ -300,7 +299,6 @@ export function StatusBar() {
         <PanelRow>
           Server · {server.name} ({serverStatusLabel(server.healthy())})
         </PanelRow>
-        <PanelRow>Config · {activeConfig()}</PanelRow>
       </PanelSection>
     </div>
   )

@@ -357,7 +357,7 @@ test("parseModel handles model IDs with slashes", () => {
   expect(result.modelID).toBe("anthropic/claude-3-opus")
 })
 
-test("defaultModel returns first available model when no config set", async () => {
+test("defaultModel returns first available model when no model config is set", async () => {
   await using tmp = await tmpdir({
     init: async (dir) => {
       await Bun.write(

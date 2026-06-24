@@ -11,22 +11,14 @@ import { useGlobalSDK } from "@/context/global-sdk"
 import { useInput, type SendShortcut } from "@/context/input"
 import { useGlobalSync } from "@/context/global-sync"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
-import type { Config, ConfigSetSummary, ControlProfileSummary, SandboxStatus } from "@ericsanchezok/synergy-sdk/client"
+import type { ControlProfileSummary, SandboxStatus } from "@ericsanchezok/synergy-sdk/client"
 import { DialogConfirm } from "@/components/dialog/dialog-confirm"
 import { DialogSelectModel } from "@/components/dialog/dialog-select-model"
 import { getSettingsSections, type SettingsSection, loadPluginExport, getPluginContribution } from "@/plugin"
 import { SandboxShell } from "@/plugin/sandbox"
 import { AppPanel } from "@/components/app-panel"
 import "./settings-dialog.css"
-import type {
-  ProviderModel,
-  McpEntry,
-  EmailSettings,
-  ChannelSettings,
-  RawValidationState,
-  SettingsEditMode,
-  DialogSettingsProps,
-} from "./types"
+import type { ProviderModel, McpEntry, EmailSettings, ChannelSettings, DialogSettingsProps } from "./types"
 import { groupByProvider, emptyMcp } from "./types"
 import { ensureInit } from "./hooks/useSettingsForm"
 import { buildPatch } from "./hooks/useConfigPatch"
@@ -38,9 +30,8 @@ import { PluginsPanel } from "./panels/PluginsPanel"
 import { AdvancedPanel } from "./panels/AdvancedPanel"
 import { IdentityPanel } from "./panels/IdentityPanel"
 import { ChannelsPanel } from "./panels/ChannelsPanel"
-import { ConfigSetsPanel } from "./panels/ConfigSetsPanel"
 import { EmailPanel } from "./panels/EmailPanel"
-import { RawEditorPanel } from "./panels/RawEditorPanel"
+import { ImportPanel } from "./panels/ImportPanel"
 
 export function SettingsDialog(props: DialogSettingsProps) {
   const dialog = useDialog()
@@ -49,42 +40,14 @@ export function SettingsDialog(props: DialogSettingsProps) {
   const input = useInput()
 
   const [activeTab, setActiveTab] = createSignal(props.initialTab ?? "general")
-  const [selectedSetName, setSelectedSetName] = createSignal<string>()
   const [initialized, setInitialized] = createSignal(false)
   const [saving, setSaving] = createSignal(false)
   const [refreshing, setRefreshing] = createSignal(false)
-  const [creatingSet, setCreatingSet] = createSignal(false)
-  const [createSetName, setCreateSetName] = createSignal("")
-  const [editMode, setEditMode] = createSignal<SettingsEditMode>("form")
-  const [rawText, setRawText] = createSignal("")
-  const [rawLoadedForSet, setRawLoadedForSet] = createSignal<string>()
-  const [validatingRaw, setValidatingRaw] = createSignal(false)
-  const [rawValidation, setRawValidation] = createStore<RawValidationState>({
-    valid: true,
-    errors: [],
-    warnings: [],
-  })
 
-  const activeSet = createMemo(() => globalSync.configSets.find((set) => set.active))
-  const selectedSet = createMemo<ConfigSetSummary | undefined>(() => {
-    const requested = selectedSetName()
-    if (requested) return globalSync.configSets.find((set) => set.name === requested)
-    return activeSet()
+  const [config, { refetch: refetchConfig }] = createResource(async () => {
+    const res = await globalSDK.client.config.global()
+    return res.data!
   })
-  const selectedSetIsActive = createMemo(() => selectedSet()?.name === activeSet()?.name)
-
-  const [config, { refetch: refetchConfig }] = createResource(
-    () => ({ name: selectedSet()?.name, activeName: activeSet()?.name }),
-    async (source) => {
-      if (!source.name) throw new Error("No Config Set selected")
-      if (source.name === source.activeName) {
-        const res = await globalSDK.client.config.global()
-        return res.data!
-      }
-      const res = await globalSDK.client.config.set.get({ name: source.name })
-      return res.data!.config as Config
-    },
-  )
 
   const providerModels = createMemo(() => {
     const data = globalSync.data.provider
@@ -102,15 +65,6 @@ export function SettingsDialog(props: DialogSettingsProps) {
     }
     return list
   })
-
-  const [rawConfig, { refetch: refetchRawConfig }] = createResource(
-    () => selectedSet()?.name,
-    async (name) => {
-      if (!name) throw new Error("No Config Set selected")
-      const response = await globalSDK.client.config.set.raw.get({ name })
-      return response.data!
-    },
-  )
 
   const [controlProfiles] = createResource(async () => {
     const res = await globalSDK.client.controlProfile.list()
@@ -191,7 +145,7 @@ export function SettingsDialog(props: DialogSettingsProps) {
   const doEnsureInit = () => {
     const result = ensureInit({
       cfg: config(),
-      setName: selectedSet()?.name,
+      setName: "global",
       refreshing,
       initialized,
       initializedForSet,
@@ -216,17 +170,7 @@ export function SettingsDialog(props: DialogSettingsProps) {
 
   createEffect(() => {
     config()
-    selectedSet()?.name
     doEnsureInit()
-  })
-
-  createEffect(() => {
-    const active = activeSet()?.name
-    const selected = selectedSet()?.name
-    if (!active || !selected) return
-    if (selected === active && initializedForSet !== active) {
-      resetEditor()
-    }
   })
 
   const cancelDebouncesRef = { current: () => {} }
@@ -234,8 +178,6 @@ export function SettingsDialog(props: DialogSettingsProps) {
   function resetEditor() {
     setInitialized(false)
     initializedForSet = undefined
-    setRawLoadedForSet(undefined)
-    setRawValidation({ valid: true, errors: [], warnings: [] })
   }
 
   async function refreshAfterConfigChange() {
@@ -243,13 +185,13 @@ export function SettingsDialog(props: DialogSettingsProps) {
     setRefreshing(true)
     resetEditor()
     await globalSync.refreshAllConfigs()
-    await Promise.all([refetchConfig(), refetchRawConfig()])
+    await refetchConfig()
     setRefreshing(false)
     doEnsureInit()
   }
 
   const serverPatch = createMemo<Record<string, unknown>>(() => {
-    if (!initialized() || !config() || !selectedSet()?.name) return {}
+    if (!initialized() || !config()) return {}
     return buildPatch({
       cfg: config()!,
       general,
@@ -264,55 +206,8 @@ export function SettingsDialog(props: DialogSettingsProps) {
     })
   })
   const hasServerChanges = createMemo(() => Object.keys(serverPatch()).length > 0)
-  const editingLabel = createMemo(() => selectedSet()?.name ?? activeSet()?.name ?? "default")
-
-  const hasRawChanges = createMemo(() => {
-    const rc = rawConfig()
-    if (!rc) return false
-    return rawLoadedForSet() === selectedSet()?.name && rawText() !== rc.raw
-  })
-
-  const hasAnyChanges = createMemo(() => {
-    if (editMode() === "raw") return hasRawChanges()
-    return hasServerChanges()
-  })
-
-  createEffect(() => {
-    const rc = rawConfig()
-    const setName = selectedSet()?.name
-    if (!rc || !setName || rawLoadedForSet() === setName) return
-    setRawText(rc.raw)
-    setRawLoadedForSet(setName)
-    setRawValidation({ valid: true, errors: [], warnings: [] })
-  })
-
-  async function validateRawConfig() {
-    const setName = selectedSet()?.name
-    if (!setName) return false
-    setValidatingRaw(true)
-    try {
-      const response = await globalSDK.client.config.set.raw.validate({
-        name: setName,
-        configSetRawValidateInput: { raw: rawText() },
-      })
-      const data = response.data
-      if (!data) {
-        setRawValidation({ valid: false, errors: ["Validation returned no data"], warnings: [] })
-        return false
-      }
-      setRawValidation({
-        valid: data.valid,
-        errors: data.errors ?? [],
-        warnings: data.warnings ?? [],
-      })
-      return data.valid as boolean
-    } catch (error: any) {
-      setRawValidation({ valid: false, errors: [error.message], warnings: [] })
-      return false
-    } finally {
-      setValidatingRaw(false)
-    }
-  }
+  const editingLabel = createMemo(() => "Global Config")
+  const hasAnyChanges = createMemo(() => hasServerChanges())
 
   function showConfirm(params: {
     title: string
@@ -335,24 +230,10 @@ export function SettingsDialog(props: DialogSettingsProps) {
 
   const save = useSettingsSave({
     serverPatch,
-    hasServerChanges,
-    hasRawChanges,
     hasAnyChanges,
-    selectedSet,
-    activeSet,
-    selectedSetIsActive,
     editingLabel,
-    editMode,
-    setEditMode,
     setSaving,
-    setSelectedSetName,
-    setActiveTab,
-    resetEditor,
     refreshAfterConfigChange,
-    rawText,
-    setRawValidation,
-    setValidatingRaw,
-    validateRawConfig,
     closeDialog: () => dialog.close(),
     showConfirm,
   })
@@ -397,9 +278,9 @@ export function SettingsDialog(props: DialogSettingsProps) {
     "plugins",
     "channels",
     "email",
+    "import",
     "identity",
     "advanced",
-    "config-sets",
   ])
   const pluginSections = createMemo(() => settingsSections().filter((s) => !BUILTIN_IDS.has(s.id)))
 
@@ -408,17 +289,9 @@ export function SettingsDialog(props: DialogSettingsProps) {
       {ready() ? (
         <AppPanel.Root class="h-full min-h-0">
           <AppPanel.Nav>
-            {/* Config set info */}
             <div class="px-3 pt-4 pb-2 flex flex-col gap-0.5">
-              <div class="text-14-medium text-text-strong truncate">
-                {selectedSet()?.name ?? activeSet()?.name ?? "default"}
-              </div>
+              <div class="text-14-medium text-text-strong truncate">Global Config</div>
               <div class="flex items-center gap-1.5 flex-wrap">
-                <Show when={editMode() === "form" && !selectedSetIsActive()}>
-                  <span class="px-1.5 py-px rounded-full text-12-regular text-text-weak bg-border-weaker-base/40">
-                    Inactive
-                  </span>
-                </Show>
                 <Show when={save.explicitDirty()}>
                   <span class="px-1.5 py-px rounded-full text-12-medium text-text-strong bg-icon-warning-base/18">
                     Unsaved
@@ -427,11 +300,6 @@ export function SettingsDialog(props: DialogSettingsProps) {
                 <Show when={save.autoStatus() === "saved"}>
                   <span class="px-1.5 py-px rounded-full text-12-regular text-text-weak bg-icon-success-base/14">
                     Saved
-                  </span>
-                </Show>
-                <Show when={editMode() === "raw"}>
-                  <span class="px-1.5 py-px rounded-full text-12-regular text-text-weak bg-border-weaker-base/40">
-                    Raw
                   </span>
                 </Show>
               </div>
@@ -456,23 +324,11 @@ export function SettingsDialog(props: DialogSettingsProps) {
                 )}
               </For>
             </div>
-
-            {/* Form/JSON toggle */}
-            <div class="px-2 pb-2 pt-1 border-t border-border-weaker-base/30">
-              <button
-                type="button"
-                class="flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-13-medium text-text-weak hover:text-text-base hover:bg-surface-raised-base-hover transition-colors w-full text-left"
-                onClick={() => save.switchToEditMode(editMode() === "raw" ? "form" : "raw")}
-              >
-                <Icon name={editMode() === "raw" ? "layout-grid" : "code"} size="small" class="shrink-0" />
-                <span>{editMode() === "raw" ? "Form" : "JSON"}</span>
-              </button>
-            </div>
           </AppPanel.Nav>
 
           <AppPanel.Content>
             <AppPanel.Body padding={false}>
-              <Show when={editMode() === "form" && activeTab() === "general"}>
+              <Show when={activeTab() === "general"}>
                 <GeneralPanel
                   editingLabel={editingLabel()}
                   snapshot={general.snapshot}
@@ -484,7 +340,7 @@ export function SettingsDialog(props: DialogSettingsProps) {
                 />
               </Show>
 
-              <Show when={editMode() === "form" && activeTab() === "models"}>
+              <Show when={activeTab() === "models"}>
                 <ModelsPanel
                   models={models}
                   providerModels={providerModels}
@@ -493,7 +349,7 @@ export function SettingsDialog(props: DialogSettingsProps) {
                 />
               </Show>
 
-              <Show when={editMode() === "form" && activeTab() === "mcp"}>
+              <Show when={activeTab() === "mcp"}>
                 <McpPanel
                   entries={mcps.entries}
                   onAdd={() => setMcps("entries", (prev) => [...prev, emptyMcp()])}
@@ -509,7 +365,7 @@ export function SettingsDialog(props: DialogSettingsProps) {
                 />
               </Show>
 
-              <Show when={editMode() === "form" && activeTab() === "plugins"}>
+              <Show when={activeTab() === "plugins"}>
                 <PluginsPanel
                   entries={plugins.entries}
                   onAdd={() => setPlugins("entries", (prev) => [...prev, { value: "" }])}
@@ -525,22 +381,26 @@ export function SettingsDialog(props: DialogSettingsProps) {
                 />
               </Show>
 
-              <Show when={editMode() === "form" && activeTab() === "channels"}>
+              <Show when={activeTab() === "channels"}>
                 <ChannelsPanel
                   channels={channels}
                   onChannelToggle={(index, value) => setChannels("feishuAccounts", index, "enabled", value)}
                 />
               </Show>
 
-              <Show when={editMode() === "form" && activeTab() === "email"}>
+              <Show when={activeTab() === "email"}>
                 <EmailPanel email={email} onEmailChange={(key, value) => setEmail(key, value as never)} />
               </Show>
 
-              <Show when={editMode() === "form" && activeTab() === "identity"}>
+              <Show when={activeTab() === "import"}>
+                <ImportPanel onImported={refreshAfterConfigChange} />
+              </Show>
+
+              <Show when={activeTab() === "identity"}>
                 <IdentityPanel identity={identity} onIdentityChange={(key, value) => setIdentity(key, value)} />
               </Show>
 
-              <Show when={editMode() === "form" && activeTab() === "advanced"}>
+              <Show when={activeTab() === "advanced"}>
                 <AdvancedPanel
                   advanced={advanced}
                   controlProfiles={controlProfiles() ?? []}
@@ -549,74 +409,13 @@ export function SettingsDialog(props: DialogSettingsProps) {
                 />
               </Show>
 
-              <Show when={editMode() === "form" && activeTab() === "config-sets"}>
-                <ConfigSetsPanel
-                  configSets={globalSync.configSets}
-                  selectedSetName={selectedSetName}
-                  activeSetName={() => activeSet()?.name}
-                  createSetName={createSetName}
-                  creatingSet={creatingSet}
-                  onOpenSet={(name) => {
-                    if (name !== selectedSet()?.name && hasAnyChanges()) {
-                      save.runDiscardGuard(`open ${name}`, async () => {
-                        setSelectedSetName(name)
-                        setActiveTab("general")
-                        resetEditor()
-                        const isActive = globalSync.configSets.find((s) => s.name === name)?.active
-                        showToast({
-                          type: "info",
-                          title: `Opened ${name}`,
-                          description: isActive
-                            ? "You are now editing the active Config Set. Save changes to update runtime config."
-                            : "You are now editing an inactive Config Set. Save changes here, then activate it when ready.",
-                        })
-                      })
-                      return
-                    }
-                    setSelectedSetName(name)
-                    setActiveTab("general")
-                    resetEditor()
-                    const isActive = globalSync.configSets.find((s) => s.name === name)?.active
-                    showToast({
-                      type: "info",
-                      title: `Opened ${name}`,
-                      description: isActive
-                        ? "You are now editing the active Config Set. Save changes to update runtime config."
-                        : "You are now editing an inactive Config Set. Save changes here, then activate it when ready.",
-                    })
-                  }}
-                  onActivateSet={save.handleSwitchSet}
-                  onDeleteSet={save.handleDeleteSet}
-                  onCreateSetNameChange={setCreateSetName}
-                  onCreateSet={() => save.handleCreateSet(createSetName())}
-                />
-              </Show>
-
-              {/* Plugin-contributed sections — lazy-loaded via Dynamic */}
               <For each={pluginSections()}>
                 {(section) => (
-                  <Show when={editMode() === "form" && activeTab() === section.id}>
+                  <Show when={activeTab() === section.id}>
                     <PluginSettingsContent section={section} />
                   </Show>
                 )}
               </For>
-
-              <Show when={editMode() === "raw"}>
-                <RawEditorPanel
-                  rawPath={rawConfig()?.path}
-                  rawText={rawText}
-                  rawValidation={rawValidation}
-                  validatingRaw={validatingRaw}
-                  hasRawChanges={hasRawChanges}
-                  onValidate={validateRawConfig}
-                  onTextChange={(value) => {
-                    setRawText(value)
-                    if (!rawValidation.valid || rawValidation.errors.length > 0) {
-                      setRawValidation({ valid: true, errors: [], warnings: [] })
-                    }
-                  }}
-                />
-              </Show>
             </AppPanel.Body>
 
             <AppPanel.Footer>
@@ -637,75 +436,16 @@ export function SettingsDialog(props: DialogSettingsProps) {
               <Button type="button" variant="ghost" size="large" onClick={save.closeWithGuard}>
                 Cancel
               </Button>
-              <Show when={editMode() === "raw"}>
-                <Show
-                  when={!selectedSetIsActive()}
-                  fallback={
-                    <Button
-                      type="button"
-                      variant="primary"
-                      size="large"
-                      disabled={saving() || !hasRawChanges()}
-                      onClick={() => void save.saveRawConfig({ close: true })}
-                    >
-                      {saving() ? "Saving..." : "Save Changes"}
-                    </Button>
-                  }
+              <Show when={save.explicitDirty()}>
+                <Button
+                  type="button"
+                  variant="primary"
+                  size="large"
+                  disabled={saving()}
+                  onClick={() => void save.saveServerChanges({ close: true })}
                 >
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    size="large"
-                    disabled={saving() || !hasRawChanges()}
-                    onClick={() => void save.saveRawConfig({ close: true })}
-                  >
-                    {saving() ? "Saving..." : `Save to ${editingLabel()}`}
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="primary"
-                    size="large"
-                    disabled={saving()}
-                    onClick={() => void save.saveRawConfig({ activate: true, close: true })}
-                  >
-                    {saving() ? "Saving..." : `Save & Activate ${editingLabel()}`}
-                  </Button>
-                </Show>
-              </Show>
-              <Show when={editMode() === "form" && save.explicitDirty()}>
-                <Show
-                  when={!selectedSetIsActive()}
-                  fallback={
-                    <Button
-                      type="button"
-                      variant="primary"
-                      size="large"
-                      disabled={saving()}
-                      onClick={() => void save.saveServerChanges({ close: true })}
-                    >
-                      {saving() ? "Saving..." : "Save Changes"}
-                    </Button>
-                  }
-                >
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    size="large"
-                    disabled={saving()}
-                    onClick={() => void save.saveServerChanges({ close: true })}
-                  >
-                    {saving() ? "Saving..." : `Save to ${editingLabel()}`}
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="primary"
-                    size="large"
-                    disabled={saving()}
-                    onClick={() => void save.saveServerChanges({ activate: true, close: true })}
-                  >
-                    {saving() ? "Saving..." : `Save & Activate ${editingLabel()}`}
-                  </Button>
-                </Show>
+                  {saving() ? "Saving..." : "Save Changes"}
+                </Button>
               </Show>
             </AppPanel.Footer>
           </AppPanel.Content>

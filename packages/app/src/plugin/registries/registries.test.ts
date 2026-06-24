@@ -443,17 +443,7 @@ describe("PanelRegistry", () => {
 
 describe("SettingsRegistry", () => {
   // Note: settings-registry registers 9 built-in sections at module init.
-  const BUILTIN_IDS = [
-    "general",
-    "models",
-    "mcp",
-    "plugins",
-    "email",
-    "channels",
-    "identity",
-    "advanced",
-    "config-sets",
-  ]
+  const BUILTIN_IDS = ["general", "models", "mcp", "plugins", "email", "channels", "import", "identity", "advanced"]
 
   test("registerSettingsSection adds entry and returns disposer", () => {
     const disposer = registerSettingsSection({
