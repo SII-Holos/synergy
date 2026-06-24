@@ -13010,7 +13010,7 @@
           }
         ],
         "summary": "Install plugin from registry",
-        "description": "Install a plugin from the local registry store. Looks up the plugin and version in the registry, then installs it via Bun's package manager and loads it into the runtime.",
+        "description": "Install a plugin from the local registry store. Looks up the plugin and version in the registry, then installs the version archive or package spec and loads it into the runtime.",
         "responses": {
           "200": {
             "description": "Install result with plugin status",

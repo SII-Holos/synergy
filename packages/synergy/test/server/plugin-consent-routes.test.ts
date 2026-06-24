@@ -107,7 +107,7 @@ describe("POST /api/plugins/:pluginId/approve-install", () => {
       scope: await tmp.scope(),
       fn: async () => {
         const app = Server.App()
-        const res = await app.request("/api/plugins/test-plugin/approve-install", {
+        const res = await app.request("/api/plugins/installed-plugin/approve-install", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -117,7 +117,7 @@ describe("POST /api/plugins/:pluginId/approve-install", () => {
         })
         expect(res.status).toBe(200)
         const body = await res.json()
-        expect(body.pluginId).toBe("test-plugin")
+        expect(body.pluginId).toBe("installed-plugin")
         expect(body.approvedBy).toBe("user")
         expect(body.version).toBe("1.0.0")
         expect(body.approvedCapabilities).toContain("filesystem:read")
@@ -206,7 +206,7 @@ describe("POST /api/plugins/:pluginId/approve-update", () => {
       scope: await tmp.scope(),
       fn: async () => {
         const app = Server.App()
-        const res = await app.request("/api/plugins/test-plugin/approve-update", {
+        const res = await app.request("/api/plugins/updated-plugin/approve-update", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -216,7 +216,7 @@ describe("POST /api/plugins/:pluginId/approve-update", () => {
         })
         expect(res.status).toBe(200)
         const body = await res.json()
-        expect(body.pluginId).toBe("test-plugin")
+        expect(body.pluginId).toBe("updated-plugin")
         expect(body.version).toBe("2.0.0")
         expect(body.risk).toBe("high") // network without domains
       },
@@ -241,7 +241,7 @@ describe("GET /api/plugins/:pluginId/approval", () => {
       fn: async () => {
         const app = Server.App()
         // First, create the approval
-        await app.request("/api/plugins/test-plugin/approve-install", {
+        await app.request("/api/plugins/approved-plugin/approve-install", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -250,10 +250,10 @@ describe("GET /api/plugins/:pluginId/approval", () => {
           }),
         })
         // Then, retrieve it
-        const res = await app.request("/api/plugins/test-plugin/approval", { method: "GET" })
+        const res = await app.request("/api/plugins/approved-plugin/approval", { method: "GET" })
         expect(res.status).toBe(200)
         const body = await res.json()
-        expect(body.pluginId).toBe("test-plugin")
+        expect(body.pluginId).toBe("approved-plugin")
         expect(body.approvedBy).toBe("user")
       },
     })

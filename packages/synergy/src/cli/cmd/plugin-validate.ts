@@ -13,6 +13,7 @@ import fs from "fs"
 import { validateRuntimeDiscovery } from "../../plugin/validate-runtime-discovery"
 import type { PluginDescriptor, PluginInput, PluginHooks } from "@ericsanchezok/synergy-plugin"
 import type { Argv } from "yargs"
+import { assertCanonicalPluginIdentity, importUrlForEntry, resolveEntryFromPluginDir } from "../../plugin/spec-resolver"
 
 // ---------------------------------------------------------------------------
 // TypeScript export scanning (lightweight regex)
@@ -47,8 +48,9 @@ function scanExports(source: string): string[] {
   if (/^export\s+default\s+(?:function|class|async\s+function)\b/m.test(source)) {
     names.add("default")
   }
-  // Also "export default <identifier>" (re-export default from another binding)
-  // but that's not usable as a named export, so skip
+  if (/^export\s+default\s+[$A-Z_a-z][$\w]*\s*;?$/m.test(source)) {
+    names.add("default")
+  }
 
   return [...names]
 }
@@ -92,6 +94,11 @@ function isValidJsonSchema(obj: unknown): boolean {
     "pattern",
   ]
   return keywords.some((k) => k in schema)
+}
+
+function findUiSource(pluginDir: string): string | undefined {
+  const candidates = ["src/ui.tsx", "src/ui/index.tsx", "src/ui.ts", "src/ui/index.ts"]
+  return candidates.map((candidate) => path.join(pluginDir, candidate)).find((candidate) => fs.existsSync(candidate))
 }
 
 // ---------------------------------------------------------------------------
@@ -230,14 +237,20 @@ export const PluginValidateCommand = cmd({
         const entryPath = path.resolve(pluginDir, ui.entry)
         if (fs.existsSync(entryPath)) {
           results.push({ type: "pass", message: `UI entry ${ui.entry} exists` })
+        } else if (findUiSource(pluginDir)) {
+          results.push({
+            type: "pass",
+            message: `UI entry ${ui.entry} will be built from ${path.relative(pluginDir, findUiSource(pluginDir)!)}`,
+          })
         } else {
           results.push({ type: "error", message: `UI entry ${ui.entry} not found` })
         }
 
-        // Check exportNames if entry is TypeScript
-        if (fs.existsSync(entryPath) && /\.tsx?$/i.test(ui.entry)) {
+        // Check exportNames against the conventional UI source during development.
+        const uiSource = findUiSource(pluginDir)
+        if (uiSource) {
           try {
-            const source = fs.readFileSync(entryPath, "utf-8")
+            const source = fs.readFileSync(uiSource, "utf-8")
             const exports = scanExports(source)
 
             const checkExport = (
@@ -338,23 +351,8 @@ export const PluginValidateCommand = cmd({
     // ── runtime discovery (--runtime-discovery flag) ──
     if (doRuntimeDiscovery) {
       const manifestToolNames = (m.contributes?.tools ?? []).map((t) => t.name)
-      const buildPath = path.join(pluginDir, "dist", "index.js")
-      const mainPath = m.main ? path.resolve(pluginDir, m.main) : buildPath
-
-      // Determine the entry point: prefer dist/index.js, then configured main, then src/index.ts
-      let entryPath: string | null = null
-      if (fs.existsSync(buildPath)) {
-        entryPath = buildPath
-      } else if (fs.existsSync(mainPath)) {
-        entryPath = mainPath
-      } else {
-        // Maybe a TypeScript source file exists for dev mode
-        const tsMain = m.main ? path.resolve(pluginDir, m.main as string) : buildPath
-        const tsAlt = tsMain.replace(/\.js$/, ".ts")
-        if (fs.existsSync(tsAlt)) {
-          entryPath = tsAlt
-        }
-      }
+      const resolvedEntry = resolveEntryFromPluginDir(pluginDir, m)
+      const entryPath = fs.existsSync(resolvedEntry) ? resolvedEntry : null
 
       if (!entryPath) {
         results.push({
@@ -363,7 +361,7 @@ export const PluginValidateCommand = cmd({
         })
       } else {
         try {
-          const mod = await import(entryPath)
+          const mod = await import(importUrlForEntry(entryPath, Date.now()))
           const descriptors: PluginDescriptor[] = []
           for (const [, v] of Object.entries(mod)) {
             if (v && typeof v === "object" && !Array.isArray(v) && "id" in v && "init" in v) {
@@ -378,6 +376,15 @@ export const PluginValidateCommand = cmd({
             })
           } else {
             for (const desc of descriptors) {
+              try {
+                assertCanonicalPluginIdentity({ manifest: m, descriptor: desc })
+              } catch (error) {
+                results.push({
+                  type: "error",
+                  message: error instanceof Error ? error.message : String(error),
+                })
+                continue
+              }
               const pluginId = desc.id
               let hooks: PluginHooks | undefined
               let loadError: string | undefined

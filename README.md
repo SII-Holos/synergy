@@ -228,6 +228,21 @@ Synergy also supports project-scoped extension directories under:
 
 That scoped directory is where project-specific agents, commands, plugins, skills, and related assets may live.
 
+### Plugins
+
+Plugins are managed through the plugin toolchain and the `50-plugins.jsonc` config domain. New plugins should use the object descriptor API from `@ericsanchezok/synergy-plugin`:
+
+```bash
+synergy plugin create my-plugin
+cd my-plugin
+bun install
+synergy plugin validate --runtime-discovery
+synergy plugin build
+synergy plugin pack
+```
+
+Install local development plugins with `synergy plugin add file:///absolute/path/to/my-plugin`. The descriptor `id`, `plugin.json.name`, registry id, and approval id must match.
+
 ### Session commands
 
 Synergy uses one command registry with two command kinds:

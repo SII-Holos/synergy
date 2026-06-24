@@ -57,7 +57,7 @@ const MIME_MAP: Record<string, string> = {
 }
 
 /** Directories that plugins are allowed to serve static files from. */
-const ALLOWED_ASSET_DIRS = new Set(["dist", "public", "assets"])
+const ALLOWED_ASSET_DIRS = new Set(["dist", "public", "assets", "ui", "themes", "icons"])
 
 /** Check that the relative path starts within an allowed asset root. */
 function isAllowedAssetDir(relative: string): boolean {
@@ -628,6 +628,12 @@ export const ApiPluginRoute = new Hono()
       const plugin = await Plugin.get(pluginId)
       const { manifest, capabilities } = c.req.valid("json")
       const m = manifest as PluginManifestType
+      if (m.name !== pluginId) {
+        return c.json(
+          { message: `Plugin identity mismatch: URL id "${pluginId}" does not match manifest name "${m.name}"` },
+          400,
+        )
+      }
       const source = plugin ? derivePluginSource(plugin.pluginDir) : "local"
       const risk = computeRisk(capabilities)
       const record: PluginApprovalRecord = {
@@ -714,6 +720,12 @@ export const ApiPluginRoute = new Hono()
       const plugin = await Plugin.get(pluginId)
       const { manifest, capabilities } = c.req.valid("json")
       const m = manifest as PluginManifestType
+      if (m.name !== pluginId) {
+        return c.json(
+          { message: `Plugin identity mismatch: URL id "${pluginId}" does not match manifest name "${m.name}"` },
+          400,
+        )
+      }
       const source = plugin ? derivePluginSource(plugin.pluginDir) : "local"
       const risk = computeRisk(capabilities)
       const record: PluginApprovalRecord = {
@@ -802,7 +814,7 @@ export const ApiPluginRoute = new Hono()
       summary: "Install plugin from registry",
       description:
         "Install a plugin from the local registry store. Looks up the plugin and version in the registry, " +
-        "then installs it via Bun's package manager and loads it into the runtime.",
+        "then installs the version archive or package spec and loads it into the runtime.",
       operationId: "api.plugins.installFromRegistry",
       responses: {
         200: {
@@ -844,8 +856,7 @@ export const ApiPluginRoute = new Hono()
       const targetVersion = entry.versions?.find((v: any) => v.version === version)
       if (!targetVersion) return c.json({ message: `Version not found in registry: ${id}@${version}` }, 404)
 
-      // Install using the plugin name as the npm package spec
-      const spec = entry.name ?? id
+      const spec = targetVersion.downloadUrl ?? entry.name ?? id
       let loadedPlugin: Plugin.LoadedPlugin
       try {
         loadedPlugin = await Plugin.add(spec, { autoReload: true })

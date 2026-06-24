@@ -4,13 +4,15 @@ import type { Info as ScopeInfo } from "../scope/types.js"
 
 export type HostToPlugin =
   | { type: "init"; pluginId: string; input: IsolatedPluginInputData }
-  | { type: "invokeTool"; requestId: string; toolId: string; args: unknown }
+  | { type: "invokeTool"; requestId: string; toolId: string; args: unknown; context?: RuntimeToolContextData }
   | { type: "triggerHook"; requestId: string; hook: string; input: unknown; output: unknown }
   | { type: "bridgeResponse"; requestId: string; ok: true; value: unknown }
   | { type: "bridgeResponse"; requestId: string; ok: false; error: SerializedError }
   | { type: "reload" }
   | { type: "shutdown" }
   | { type: "ping" }
+
+export type RuntimeRequestMessage = Extract<HostToPlugin, { type: "invokeTool" | "triggerHook" }>
 
 // === Direction: Plugin → Host ===
 
@@ -32,6 +34,7 @@ export type HostBridgeMethod =
   | "secret.delete"
   | "cache.get"
   | "cache.set"
+  | "cache.delete"
   | "file.read"
   | "file.write"
   | "network.fetch"
@@ -57,6 +60,13 @@ export interface RuntimeToolDescriptor {
   description: string
   schema?: unknown
   capabilities?: string[]
+}
+
+export interface RuntimeToolContextData {
+  sessionID: string
+  messageID: string
+  agent: string
+  directory?: string
 }
 
 export interface SerializedError {

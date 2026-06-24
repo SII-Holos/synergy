@@ -19,6 +19,7 @@ export const BRIDGE_METHOD_CAPABILITY: Record<HostBridgeMethod, string> = {
   "secret.delete": "plugin_secret_read",
   "cache.get": "plugin_invoke",
   "cache.set": "plugin_invoke",
+  "cache.delete": "plugin_invoke",
   "file.read": "plugin_file_read",
   "file.write": "plugin_file_write",
   "network.fetch": "plugin_network",
@@ -60,7 +61,9 @@ export function createBridgeEnforcementHandler(
     if (!requiredCap) {
       return { allowed: false, reason: `Unknown bridge method: ${method}` }
     }
-    if (!capabilities.includes(requiredCap)) {
+    const approved =
+      capabilities.includes(requiredCap) || capabilities.includes(GATE_TO_MANIFEST_CAP[requiredCap] ?? "")
+    if (!approved) {
       return {
         allowed: false,
         reason: `Capability "${requiredCap}" not approved for plugin "${pluginId}"`,
@@ -68,4 +71,17 @@ export function createBridgeEnforcementHandler(
     }
     return { allowed: true }
   }
+}
+
+const GATE_TO_MANIFEST_CAP: Record<string, string> = {
+  plugin_file_read: "filesystem:read",
+  plugin_file_write: "filesystem:write",
+  plugin_shell: "shell",
+  plugin_network: "network",
+  plugin_session_read: "session_data",
+  plugin_workspace_read: "workspace_data",
+  plugin_config_read: "config:read",
+  plugin_config_write: "config:write",
+  plugin_secret_read: "secrets",
+  plugin_invoke: "plugin_invoke",
 }

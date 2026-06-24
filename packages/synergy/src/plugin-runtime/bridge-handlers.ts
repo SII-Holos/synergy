@@ -93,6 +93,12 @@ export async function executeBridgeMethod(input: BridgeHandlerInput): Promise<un
       await store.set(key, value, typeof ttl === "number" ? ttl : undefined)
       return undefined
     }
+    case "cache.delete": {
+      const store = createCacheStore(pluginId)
+      const key = (params as any)?.key
+      if (typeof key === "string") await store.delete(key)
+      return undefined
+    }
 
     // ── file ─────────────────────────────────────────────────
     case "file.read": {
@@ -167,9 +173,11 @@ export async function executeBridgeMethod(input: BridgeHandlerInput): Promise<un
       const requestedTimeout: number = typeof (params as any)?.timeout === "number" ? (params as any).timeout : 30_000
       const shellTimeout = Math.min(Math.max(requestedTimeout, 1), 60_000)
 
+      const cwdParam = (params as any)?.cwd
+      const cwd = typeof cwdParam === "string" && cwdParam ? resolveContainedPath(pluginDir, cwdParam) : pluginDir
       const proc = Bun.spawn({
         cmd: ["bash", "-c", cmd],
-        cwd: pluginDir,
+        cwd,
         stdout: "pipe",
         stderr: "pipe",
       })

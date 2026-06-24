@@ -26,6 +26,8 @@ export {
   stopRuntime,
   reloadRuntime,
   killRuntime,
+  invokeRuntimeTool,
+  triggerRuntimeHook,
   restoreRuntimeState,
 } from "./supervisor.js"
 

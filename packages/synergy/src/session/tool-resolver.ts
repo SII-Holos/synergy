@@ -9,6 +9,9 @@ import { PermissionRules } from "@/permission/rules"
 import { RiskClassifier } from "@/permission/classifier"
 import { Plugin } from "@/plugin"
 import { PluginToolId } from "../plugin/ids.js"
+import { toolCapabilities } from "../plugin/capability"
+import { computeRisk } from "../plugin/consent/risk"
+import { getApproval, type PluginApprovalRecord } from "../plugin/consent/approval-store"
 import { ProviderTransform } from "@/provider/transform"
 import type { Provider } from "@/provider/provider"
 import { Tool } from "@/tool/tool"
@@ -77,6 +80,10 @@ export namespace ToolResolver {
 
   /** Cached plugin tool IDs (prefixed) for enforcement gate registration. */
   let _cachedPluginToolIds: Set<string> | null = null
+  let _cachedPluginGateData: {
+    toolCapabilities: Record<string, { capabilities: string[]; risk: "low" | "medium" | "high" }>
+    approvals: Record<string, PluginApprovalRecord>
+  } | null = null
   async function cachedPluginToolIds(): Promise<Set<string>> {
     if (_cachedPluginToolIds === null) {
       const ids = new Set<string>()
@@ -88,6 +95,27 @@ export namespace ToolResolver {
       _cachedPluginToolIds = ids
     }
     return _cachedPluginToolIds
+  }
+
+  async function cachedPluginGateData() {
+    if (_cachedPluginGateData === null) {
+      const caps: Record<string, { capabilities: string[]; risk: "low" | "medium" | "high" }> = {}
+      const approvals: Record<string, PluginApprovalRecord> = {}
+      for (const plugin of await Plugin.getLoaded()) {
+        const manifest = await Plugin.manifest(plugin.id).catch(() => null)
+        const risk = manifest ? computeRisk(toolCapabilities(manifest, ""), manifest) : "low"
+        for (const toolId of Object.keys(plugin.hooks.tool ?? {})) {
+          caps[PluginToolId.format(plugin.id, toolId)] = {
+            capabilities: toolCapabilities(manifest, toolId),
+            risk,
+          }
+        }
+        const approval = await getApproval(plugin.id)
+        if (approval) approvals[plugin.id] = approval
+      }
+      _cachedPluginGateData = { toolCapabilities: caps, approvals }
+    }
+    return _cachedPluginGateData
   }
 
   /**
@@ -667,12 +695,15 @@ export namespace ToolResolver {
                 const profileId = resolveEffectiveProfile(runtimeInput.agent, topLevelProfile, sessionProfile)
                 const synergyRoot = Global.Path.root
                 const pluginToolIds = await cachedPluginToolIds()
+                const pluginGateData = await cachedPluginGateData()
                 const gate = await EnforcementGate.create({
                   activeWorkspace: workspace,
                   workspaceType: workspaceInfo?.type === "git_worktree" ? "worktree" : "main",
                   interactionMode,
                   originalCheckout: (workspaceInfo as any)?.originalCheckout,
                   registeredPluginTools: pluginToolIds,
+                  pluginToolCapabilities: pluginGateData.toolCapabilities,
+                  pluginApprovals: pluginGateData.approvals,
                   profileId,
                   readRoots: [synergyRoot],
                 })
@@ -837,6 +868,7 @@ export namespace ToolResolver {
                     : undefined
                   const profileId = resolveEffectiveProfile(runtimeInput.agent, topLevelProfile, sessionProfile)
                   const pluginToolIds = await cachedPluginToolIds()
+                  const pluginGateData = await cachedPluginGateData()
                   const gate = await EnforcementGate.create({
                     activeWorkspace: workspace,
                     workspaceType: workspaceInfo?.type === "git_worktree" ? "worktree" : "main",
@@ -844,6 +876,8 @@ export namespace ToolResolver {
                     originalCheckout: (workspaceInfo as any)?.originalCheckout,
                     registeredMcpTools: mcpToolNames,
                     registeredPluginTools: pluginToolIds,
+                    pluginToolCapabilities: pluginGateData.toolCapabilities,
+                    pluginApprovals: pluginGateData.approvals,
                     profileId,
                   })
                   const envelope = gate.evaluate(key, args as Record<string, any>)

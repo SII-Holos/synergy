@@ -18,6 +18,10 @@ import { registerWorkspacePanel } from "./registries/workspace-registry"
 import { registerGlobalPanel } from "./registries/panel-registry"
 import { registerSettingsSection } from "./registries/settings-registry"
 import { registerChatComponent } from "./registries/chat-registry"
+import { registerTheme } from "./registries/theme-registry"
+import { registerIcon } from "./registries/icon-registry"
+import { registerPluginRoute } from "./registries/route-registry"
+import { registerPluginCommand } from "./registries/command-registry"
 import { loadPluginExport } from "./loaders"
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -58,6 +62,11 @@ export function PluginHostProvider(props: ParentProps) {
    * sandbox plugins get sandbox metadata only.
    */
   function activateContributions(contributions: PluginContribution[]) {
+    const assetUrl = (contrib: PluginContribution, filePath: string) =>
+      `/plugin/assets/${contrib.pluginId}/${contrib.version}/${filePath.replace(/^\.\//, "")}`
+    const pluginToolId = (pluginId: string, toolId: string) =>
+      toolId.startsWith("plugin__") ? toolId : `plugin__${pluginId}__${toolId}`
+
     for (const contrib of contributions) {
       const ui = contrib.ui
       if (!ui) continue
@@ -67,17 +76,16 @@ export function PluginHostProvider(props: ParentProps) {
       // ── Tool renderers ──
       if (ui.toolRenderers) {
         for (const tr of ui.toolRenderers) {
-          const toolId = tr.tool
+          const toolId = pluginToolId(contrib.pluginId, tr.tool)
           if (toolRendererRegistry.has(toolId)) continue
           disposers.push(
             toolRendererRegistry.register(toolId, {
               loader:
                 isTrusted && ui.entry
                   ? () => {
-                      const assetsBaseUrl = `/plugin/assets/${contrib.pluginId}/${contrib.version}/${ui.entry}`
                       return loadPluginExport<ToolRenderer>(
                         contrib.pluginId,
-                        assetsBaseUrl,
+                        assetUrl(contrib, ui.entry!),
                         tr.exportName ?? "default",
                         ui.minUIApiVersion ?? "",
                       )
@@ -98,10 +106,9 @@ export function PluginHostProvider(props: ParentProps) {
               undefined,
               isTrusted && ui.entry
                 ? () => {
-                    const assetsBaseUrl = `/plugin/assets/${contrib.pluginId}/${contrib.version}/${ui.entry}`
                     return loadPluginExport<Component>(
                       contrib.pluginId,
-                      assetsBaseUrl,
+                      assetUrl(contrib, ui.entry!),
                       pr.exportName ?? "default",
                       ui.minUIApiVersion ?? "",
                     )
@@ -123,10 +130,9 @@ export function PluginHostProvider(props: ParentProps) {
               loader:
                 isTrusted && ui.entry
                   ? () => {
-                      const assetsBaseUrl = `/plugin/assets/${contrib.pluginId}/${contrib.version}/${ui.entry}`
                       return loadPluginExport<Component>(
                         contrib.pluginId,
-                        assetsBaseUrl,
+                        assetUrl(contrib, ui.entry!),
                         wp.exportName ?? "default",
                         ui.minUIApiVersion ?? "",
                       )
@@ -152,10 +158,9 @@ export function PluginHostProvider(props: ParentProps) {
               loader:
                 isTrusted && ui.entry
                   ? () => {
-                      const assetsBaseUrl = `/plugin/assets/${contrib.pluginId}/${contrib.version}/${ui.entry}`
                       return loadPluginExport<Component>(
                         contrib.pluginId,
-                        assetsBaseUrl,
+                        assetUrl(contrib, ui.entry!),
                         gp.exportName ?? "default",
                         ui.minUIApiVersion ?? "",
                       )
@@ -182,10 +187,9 @@ export function PluginHostProvider(props: ParentProps) {
               loader:
                 isTrusted && ui.entry
                   ? () => {
-                      const assetsBaseUrl = `/plugin/assets/${contrib.pluginId}/${contrib.version}/${ui.entry}`
                       return loadPluginExport<Component>(
                         contrib.pluginId,
-                        assetsBaseUrl,
+                        assetUrl(contrib, ui.entry!),
                         s.exportName ?? "default",
                         ui.minUIApiVersion ?? "",
                       )
@@ -211,16 +215,89 @@ export function PluginHostProvider(props: ParentProps) {
               loader:
                 isTrusted && ui.entry
                   ? () => {
-                      const assetsBaseUrl = `/plugin/assets/${contrib.pluginId}/${contrib.version}/${ui.entry}`
                       return loadPluginExport<Component>(
                         contrib.pluginId,
-                        assetsBaseUrl,
+                        assetUrl(contrib, ui.entry!),
                         cc.exportName ?? "default",
                         ui.minUIApiVersion ?? "",
                       )
                     }
                   : undefined,
               pluginId: contrib.pluginId,
+            }),
+          )
+        }
+      }
+
+      // ── Themes ──
+      if (ui.themes) {
+        for (const theme of ui.themes) {
+          disposers.push(
+            registerTheme({
+              id: `${contrib.pluginId}:${theme.id}`,
+              label: theme.label,
+              variables: {},
+              cssUrl: assetUrl(contrib, theme.path),
+              pluginId: contrib.pluginId,
+            }),
+          )
+        }
+      }
+
+      // ── Icons ──
+      if (ui.icons) {
+        for (const icon of ui.icons) {
+          let disposed = false
+          let disposeIcon: (() => void) | undefined
+          disposers.push(() => {
+            disposed = true
+            disposeIcon?.()
+          })
+          fetch(assetUrl(contrib, icon.path))
+            .then((res) => (res.ok ? res.text() : ""))
+            .then((svgContent) => {
+              if (disposed || !svgContent) return
+              disposeIcon = registerIcon({ name: icon.name, svgContent, pluginId: contrib.pluginId })
+            })
+            .catch(() => {})
+        }
+      }
+
+      // ── Routes ──
+      if (ui.routes) {
+        for (const route of ui.routes) {
+          disposers.push(
+            registerPluginRoute({
+              path: route.path,
+              label: route.label,
+              icon: route.icon,
+              entry: assetUrl(contrib, route.entry),
+              pluginId: contrib.pluginId,
+            }),
+          )
+        }
+      }
+
+      // ── Commands ──
+      if (ui.commands) {
+        for (const command of ui.commands) {
+          disposers.push(
+            registerPluginCommand({
+              id: `${contrib.pluginId}:${command.id}`,
+              label: command.label,
+              description: command.description,
+              icon: command.icon,
+              pluginId: contrib.pluginId,
+              loader:
+                isTrusted && ui.entry && command.exportName
+                  ? () =>
+                      loadPluginExport(
+                        contrib.pluginId,
+                        assetUrl(contrib, ui.entry!),
+                        command.exportName!,
+                        ui.minUIApiVersion ?? "",
+                      )
+                  : undefined,
             }),
           )
         }

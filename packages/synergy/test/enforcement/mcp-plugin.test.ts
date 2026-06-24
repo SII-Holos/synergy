@@ -154,6 +154,65 @@ describe("EnforcementGate plugin opaque strategy", () => {
     // Unattended mode must NOT auto-approve plugin opaque externalIO
     expect(envelope.decision).toBe("ask")
   })
+
+  test("known plugin tools decompose manifest capabilities into gate capabilities", async () => {
+    const gate = await EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+      pluginToolCapabilities: {
+        plugin__data_export__publish: {
+          capabilities: ["plugin_invoke", "filesystem:read", "filesystem:write", "network", "shell"],
+          risk: "high",
+        },
+      },
+    })
+
+    const result = gate.classify("plugin__data_export__publish", {})
+    const classes = result.capabilities.map((cap: any) => cap.class)
+
+    expect(classes).toContain("plugin_invoke")
+    expect(classes).toContain("plugin_file_read")
+    expect(classes).toContain("plugin_file_write")
+    expect(classes).toContain("plugin_network")
+    expect(classes).toContain("plugin_shell")
+    expect(result.capabilities.find((cap: any) => cap.class === "plugin_invoke")?.opaque).toBe(false)
+  })
+
+  test("plugin approval records are keyed by canonical plugin id and mark unapproved sub-capabilities", async () => {
+    const gate = await EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+      pluginToolCapabilities: {
+        plugin__data_export__publish: {
+          capabilities: ["plugin_invoke", "filesystem:read", "filesystem:write", "network"],
+          risk: "high",
+        },
+      },
+      pluginApprovals: {
+        data_export: {
+          pluginId: "data_export",
+          source: "npm",
+          version: "1.0.0",
+          manifestHash: "manifest",
+          permissionsHash: "permissions",
+          approvedAt: 1700000000000,
+          approvedBy: "user",
+          trustTier: "sandbox",
+          approvedCapabilities: ["plugin_invoke", "filesystem:read"],
+          approvedNetworkDomains: [],
+          approvedUISurfaces: [],
+          risk: "high",
+        },
+      },
+    })
+
+    const result = gate.classify("plugin__data_export__publish", {})
+
+    expect(result.capabilities.find((cap: any) => cap.class === "plugin_file_read")?.approved).toBe(true)
+    expect(result.capabilities.find((cap: any) => cap.class === "plugin_file_write")?.approved).toBe(false)
+    expect(result.capabilities.find((cap: any) => cap.class === "plugin_file_write")?.reason).toBe("unapproved")
+    expect(result.capabilities.find((cap: any) => cap.class === "plugin_network")?.approved).toBe(false)
+  })
 })
 
 // ------------------------------------------------------------------

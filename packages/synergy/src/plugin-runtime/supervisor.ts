@@ -1,6 +1,6 @@
 import { Log } from "@/util/log"
 import { recordEvent } from "../plugin/audit.js"
-import type { IsolatedPluginInputData, HostBridgeHandler } from "./protocol.js"
+import type { HostToPlugin, IsolatedPluginInputData, HostBridgeHandler, RuntimeToolContextData } from "./protocol.js"
 import { resolveRuntimeMode } from "./mode-resolver.js"
 import { spawnPluginProcess } from "./process-host.js"
 import { spawnPluginWorker } from "./worker-host.js"
@@ -132,6 +132,48 @@ export class PluginRuntimeSupervisor {
 
   #saveState(): void {
     void this.#persist.save(this.#registry.list())
+  }
+
+  #attachRuntimeClient(
+    pluginId: string,
+    entry: RuntimeEntry,
+    runtime: { onMessage(handler: (msg: any) => void): void; send(msg: HostToPlugin): void },
+  ): void {
+    const pending = new Map<
+      string,
+      { resolve(value: unknown): void; reject(error: Error): void; timeout: ReturnType<typeof setTimeout> }
+    >()
+    runtime.onMessage((msg) => {
+      if (msg.type === "ready") {
+        entry.tools = msg.tools ?? []
+        entry.hooks = msg.hooks ?? []
+        this.#saveState()
+        return
+      }
+      if (msg.type !== "response") return
+      const waiter = pending.get(msg.requestId)
+      if (!waiter) return
+      pending.delete(msg.requestId)
+      clearTimeout(waiter.timeout)
+      if (msg.ok) {
+        waiter.resolve(msg.value)
+      } else {
+        const error = new Error(msg.error?.message ?? "Plugin runtime request failed")
+        error.name = msg.error?.name ?? "PluginRuntimeRequestError"
+        error.stack = msg.error?.stack
+        waiter.reject(error)
+      }
+    })
+    entry.send = runtime.send
+    entry.request = (message) =>
+      new Promise((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          pending.delete(message.requestId)
+          reject(new Error(`Plugin runtime request timed out for "${pluginId}"`))
+        }, DEFAULT_LIMITS.REQUEST_TIMEOUT_MS)
+        pending.set(message.requestId, { resolve, reject, timeout })
+        runtime.send(message as HostToPlugin)
+      })
   }
 
   async #createBridgeHandler(pluginId: string, pluginDir: string): Promise<HostBridgeHandler> {
@@ -364,6 +406,7 @@ export class PluginRuntimeSupervisor {
 
       entry.worker = spawned.worker
       entry.pid = spawned.worker.threadId
+      this.#attachRuntimeClient(pluginId, entry, spawned)
 
       this.#enforceStartupTimeout(pluginId, entry.startedAt!, resolvedStartupTimeoutMs, (timedOutPluginId) => {
         log.error("startup timeout", { pluginId: timedOutPluginId })
@@ -481,6 +524,7 @@ export class PluginRuntimeSupervisor {
 
       entry.process = spawned.process
       entry.pid = spawned.process.pid
+      this.#attachRuntimeClient(pluginId, entry, spawned)
 
       // Start heartbeat monitor
       this.#stopHeartbeatMonitor(pluginId)
@@ -580,6 +624,11 @@ export class PluginRuntimeSupervisor {
 
     this.#stopHeartbeatMonitor(pluginId)
     entry.memoryMonitor?.stop()
+    if (graceful) {
+      try {
+        entry.send?.({ type: "shutdown" })
+      } catch {}
+    }
 
     if (entry.worker) {
       this.#forceStop(entry)
@@ -649,6 +698,35 @@ export class PluginRuntimeSupervisor {
       serverUrl: options?.serverUrl ?? entry.serverUrl,
     })
   }
+
+  async invokeTool(
+    pluginId: string,
+    toolId: string,
+    args: unknown,
+    context?: RuntimeToolContextData,
+  ): Promise<unknown> {
+    const entry = this.#registry.get(pluginId)
+    if (!entry?.request) throw new Error(`Plugin runtime is not running: ${pluginId}`)
+    return entry.request({
+      type: "invokeTool",
+      requestId: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`,
+      toolId,
+      args,
+      context,
+    })
+  }
+
+  async triggerHook(pluginId: string, hook: string, input: unknown, output: unknown): Promise<unknown> {
+    const entry = this.#registry.get(pluginId)
+    if (!entry?.request) return output
+    return entry.request({
+      type: "triggerHook",
+      requestId: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`,
+      hook,
+      input,
+      output,
+    })
+  }
 }
 
 // === Default singleton ===
@@ -672,3 +750,7 @@ export const stopRuntime = (pluginId: string, graceful: boolean) =>
   defaultPluginRuntimeSupervisor.stop(pluginId, graceful)
 export const reloadRuntime = (pluginId: string) => defaultPluginRuntimeSupervisor.reload(pluginId)
 export const killRuntime = (pluginId: string) => defaultPluginRuntimeSupervisor.kill(pluginId)
+export const invokeRuntimeTool = (pluginId: string, toolId: string, args: unknown, context?: RuntimeToolContextData) =>
+  defaultPluginRuntimeSupervisor.invokeTool(pluginId, toolId, args, context)
+export const triggerRuntimeHook = (pluginId: string, hook: string, input: unknown, output: unknown) =>
+  defaultPluginRuntimeSupervisor.triggerHook(pluginId, hook, input, output)

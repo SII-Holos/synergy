@@ -7074,7 +7074,7 @@ export class Plugins extends HeyApiClient {
   /**
    * Install plugin from registry
    *
-   * Install a plugin from the local registry store. Looks up the plugin and version in the registry, then installs it via Bun's package manager and loads it into the runtime.
+   * Install a plugin from the local registry store. Looks up the plugin and version in the registry, then installs the version archive or package spec and loads it into the runtime.
    */
   public installFromRegistry<ThrowOnError extends boolean = false>(
     parameters?: {

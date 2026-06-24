@@ -5,6 +5,7 @@ export interface ThemeDefinition {
   label: string
   appearance?: "dark" | "light"
   variables: Record<string, string> // CSS custom properties
+  cssUrl?: string
   pluginId?: string
 }
 

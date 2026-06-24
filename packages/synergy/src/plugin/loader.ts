@@ -7,7 +7,7 @@ import type {
   PluginAgent,
 } from "@ericsanchezok/synergy-plugin"
 import path from "path"
-import { existsSync } from "fs"
+import { fileURLToPath } from "url"
 import { Config } from "../config/config"
 import { Log } from "../util/log"
 import { createSynergyClient } from "@ericsanchezok/synergy-sdk"
@@ -18,6 +18,13 @@ import { ScopedState } from "../scope/scoped-state"
 import { Global } from "../global"
 import { createConfigAccessor, createAuthStore, createCacheStore } from "./store"
 import { StartupReporter } from "../cli/startup-reporter"
+import { Installation } from "../global/installation"
+import { baseCapabilities } from "./capability"
+import { computeRisk } from "./consent/risk"
+import { resolveRuntimeMode } from "../plugin-runtime/mode-resolver"
+import type { RuntimeMode } from "../plugin-runtime/registry"
+import type { PluginSource } from "./trust"
+import { assertCanonicalPluginIdentity, findPackageRoot, importUrlForEntry, resolvePluginSpec } from "./spec-resolver"
 
 const log = Log.create({ service: "plugin.loader" })
 // ---------------------------------------------------------------------------
@@ -40,27 +47,25 @@ export interface LoadedPlugin {
   name?: string
   hooks: PluginHooks
   pluginDir: string
+  entryPath?: string
+  source?: PluginSource
+  runtimeMode?: RuntimeMode
   cli?: Record<string, PluginCLIEntry>
   skills?: PluginSkill[]
   agents?: Record<string, PluginAgent>
 }
 
-/** Walk up from a file path to find the nearest directory containing package.json. */
-export function findPackageRoot(entryPath: string): string {
-  let dir = existsSync(path.join(entryPath, "package.json")) ? entryPath : path.dirname(entryPath)
-  for (let i = 0; i < 10; i++) {
-    if (existsSync(path.join(dir, "package.json"))) return dir
-    const parent = path.dirname(dir)
-    if (parent === dir) break
-    dir = parent
-  }
-  return path.dirname(entryPath)
-}
+export { findPackageRoot }
 
 /** Resolve a config plugin spec to the package root Synergy should load from. */
 export function resolveSpecPluginDir(spec: string): string {
   if (spec.startsWith("file://")) {
-    const filePath = spec.slice("file://".length)
+    let filePath: string
+    try {
+      filePath = fileURLToPath(spec)
+    } catch {
+      filePath = spec.slice("file://".length)
+    }
     const absolute = path.isAbsolute(filePath) ? filePath : path.resolve(ScopeContext.current.directory, filePath)
     return findPackageRoot(absolute)
   }
@@ -104,34 +109,24 @@ export const state = ScopedState.create(async (): Promise<LoaderState> => {
     const name = PluginSpec.displayName(configPath)
     const showInstallUI = !printedPluginPaths.has(configPath)
 
-    let importPath: string
-    let pluginDir: string
-
-    if (!configPath.startsWith("file://")) {
-      const { pkg, version } = PluginSpec.parse(configPath)
-
+    let resolved: Awaited<ReturnType<typeof resolvePluginSpec>>
+    try {
       if (showInstallUI) {
         StartupReporter.active()?.plugin({ name, status: "loaded" })
       }
-      const result = await BunProc.install(pkg, version).catch((err) => {
-        if (showInstallUI) {
-          StartupReporter.active()?.plugin({ name, status: "failed", error: err.message ?? String(err) })
-        }
-        log.warn("plugin install failed, skipping", { name, error: err.message ?? err })
-        return undefined
+      resolved = await resolvePluginSpec(configPath, {
+        cwd: ScopeContext.current.directory,
+        install: !configPath.startsWith("file://"),
       })
-
-      if (!result) continue
       if (showInstallUI) {
-        StartupReporter.active()?.plugin({ name, status: result.cached ? "cached" : "installed" })
+        StartupReporter.active()?.plugin({ name, status: resolved.cached ? "cached" : "installed" })
       }
-      importPath = result.entryPath
-      pluginDir = findPackageRoot(importPath)
-    } else {
-      const filePath = configPath.slice("file://".length)
-      const absolute = path.isAbsolute(filePath) ? filePath : path.resolve(ScopeContext.current.directory, filePath)
-      importPath = absolute
-      pluginDir = findPackageRoot(absolute)
+    } catch (err: any) {
+      if (showInstallUI) {
+        StartupReporter.active()?.plugin({ name, status: "failed", error: err.message ?? String(err) })
+      }
+      log.warn("plugin resolve failed, skipping", { name, error: err.message ?? err })
+      continue
     }
 
     if (showInstallUI) {
@@ -139,7 +134,7 @@ export const state = ScopedState.create(async (): Promise<LoaderState> => {
     }
 
     const isLocal = configPath.startsWith("file://")
-    const importUrl = isLocal ? `${importPath}?t=${reloadVersion}` : importPath
+    const importUrl = importUrlForEntry(resolved.entryPath, isLocal ? reloadVersion : undefined)
     const mod = await import(importUrl)
 
     const seen = new Set<PluginDescriptor>()
@@ -148,13 +143,22 @@ export const state = ScopedState.create(async (): Promise<LoaderState> => {
       if (!descriptor || typeof descriptor !== "object" || !descriptor.id || !descriptor.init) continue
       if (seen.has(descriptor)) continue
       seen.add(descriptor)
+      assertCanonicalPluginIdentity({ spec: configPath, manifest: resolved.manifest, descriptor })
 
       const pluginId = descriptor.id
       const showLoadedUI = !printedPluginIds.has(pluginId)
+      const risk = resolved.manifest ? computeRisk(baseCapabilities(resolved.manifest), resolved.manifest) : "low"
+      const runtimeMode = resolveRuntimeMode({
+        source: resolved.source,
+        manifestMode: resolved.manifest?.runtime?.mode,
+        devMode: Installation.CHANNEL === "local",
+        userTrusted: resolved.source === "local" || resolved.source === "builtin",
+        risk,
+      })
 
       const input: PluginInput = {
         ...baseInput,
-        pluginDir,
+        pluginDir: resolved.pluginDir,
         config: createConfigAccessor(pluginId),
         auth: createAuthStore(pluginId),
         cache: createCacheStore(pluginId),
@@ -164,17 +168,26 @@ export const state = ScopedState.create(async (): Promise<LoaderState> => {
         id: pluginId,
         name: descriptor.name,
         hooks,
-        pluginDir,
+        pluginDir: resolved.pluginDir,
+        entryPath: resolved.entryPath,
+        source: resolved.source,
+        runtimeMode,
         cli: hooks.cli,
         skills: hooks.skills,
         agents: hooks.agents,
       })
+      specToPluginId.set(configPath, pluginId)
 
       if (showLoadedUI) {
         printedPluginIds.add(pluginId)
         StartupReporter.active()?.plugin({ name: descriptor.name ?? pluginId, status: "loaded" })
       }
-      log.info("loaded plugin", { id: pluginId, name: descriptor.name, pluginDir })
+      log.info("loaded plugin", {
+        id: pluginId,
+        name: descriptor.name,
+        pluginDir: resolved.pluginDir,
+        runtimeMode,
+      })
     }
   }
 
@@ -193,8 +206,26 @@ export async function getPlugin(pluginId: string): Promise<LoadedPlugin | undefi
   return state().then((x) => x.loaded.find((p) => p.id === pluginId))
 }
 
-export async function getHooks(): Promise<Array<{ id: string; hooks: PluginHooks }>> {
-  return state().then((x) => x.loaded.map((p) => ({ id: p.id, hooks: p.hooks })))
+export async function getHooks(): Promise<
+  Array<{
+    id: string
+    hooks: PluginHooks
+    pluginDir: string
+    entryPath?: string
+    source?: PluginSource
+    runtimeMode?: RuntimeMode
+  }>
+> {
+  return state().then((x) =>
+    x.loaded.map((p) => ({
+      id: p.id,
+      hooks: p.hooks,
+      pluginDir: p.pluginDir,
+      entryPath: p.entryPath,
+      source: p.source,
+      runtimeMode: p.runtimeMode,
+    })),
+  )
 }
 
 export async function getHooksList() {
@@ -243,6 +274,6 @@ export async function lookupSpec(spec: string): Promise<LoadedPlugin | undefined
   if (pluginId) return getPlugin(pluginId)
 
   const loaded = await getLoadedPlugins()
-  const expectedDir = resolveSpecPluginDir(spec)
+  const expectedDir = (await resolvePluginSpec(spec, { cwd: ScopeContext.current.directory, install: false })).pluginDir
   return loaded.find((p) => p.pluginDir === expectedDir)
 }

@@ -1,6 +1,7 @@
 import { createRuntimeHealth } from "./health.js"
 import type { Worker } from "node:worker_threads"
 import type { ConcurrencyLimiter, LogRateLimiter } from "./resource-limits.js"
+import type { HostToPlugin, RuntimeRequestMessage, RuntimeToolDescriptor } from "./protocol.js"
 
 // === Types ===
 
@@ -40,6 +41,10 @@ export interface RuntimeEntry {
   startedAt?: number
   lastError?: string
   warnings: RuntimeWarning[]
+  tools?: RuntimeToolDescriptor[]
+  hooks?: string[]
+  send?: (message: HostToPlugin) => void
+  request?: (message: RuntimeRequestMessage) => Promise<unknown>
   process?: Bun.Subprocess
   worker?: Worker
   concurrencyLimiter?: ConcurrencyLimiter
@@ -161,6 +166,8 @@ export class RuntimeRegistry {
         startedAt: persisted.startedAt,
         lastError: persisted.lastError,
         warnings: [],
+        tools: [],
+        hooks: [],
       }
       this.entries.set(persisted.pluginId, entry)
     }

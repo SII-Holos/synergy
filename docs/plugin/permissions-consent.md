@@ -1,105 +1,94 @@
-# Permissions & Consent
+# Plugin Permissions And Consent
 
-**Audience:** Plugin authors, operators
-**Source of truth:** `packages/synergy/src/plugin/consent/` module, `packages/synergy/src/server/plugin-routes.ts`
+Plugin consent is keyed by canonical plugin id. The same id must be used in:
 
----
+- `PluginDescriptor.id`
+- `plugin.json.name`
+- registry entry id
+- lockfile id
+- approval record id
 
-## Manifest permissions
+Installation and validation fail when `plugin.json.name` and descriptor `id` differ.
 
-Plugins declare required permissions in `plugin.json`:
+## Capability Sources
+
+Capabilities come from `plugin.json`:
 
 ```jsonc
 {
   "permissions": {
     "tools": {
-      "shell": false, // Execute shell commands [high risk]
-      "filesystem": false, // Read/write workspace files [medium-high]
-      "network": false, // Outbound network requests [medium]
+      "invoke": true,
+      "filesystem": "read",
+      "network": true,
+      "shell": false,
+      "mcp": "none",
     },
     "data": {
-      "session": "none", // "none" | "metadata" | "read"
-      "workspace": "none", // "none" | "metadata" | "read"
-      "config": "plugin", // "plugin" | "global"
-      "secrets": false, // Credential store access [high]
+      "session": "metadata",
+      "workspace": "read",
+      "config": "plugin",
+      "secrets": "own",
     },
-    "hooks": {
-      "promptTransform": false, // Modify LLM prompts [high]
-      "toolExecute": "none", // "none" | "own" | "declared" | "all"
-      "permissionAsk": "none", // "none" | "own" | "all"
-    },
+  },
+  "contributes": {
+    "tools": [
+      {
+        "name": "search",
+        "description": "Search an API",
+        "capabilities": {
+          "network": true,
+          "filesystem": "none",
+          "shell": false,
+        },
+      },
+    ],
   },
 }
 ```
 
-All fields default to safe values. Full schema: `packages/plugin/src/manifest.ts`.
+Plugin-wide permissions provide defaults. `contributes.tools[].capabilities` can narrow or override per-tool capability declarations.
 
-## Diff computation
+## Gate Mapping
 
-`diffPermissions()` compares two manifests (install or update):
+At execution time Synergy registers plugin tools as `plugin__<pluginId>__<toolName>`. The enforcement gate decomposes manifest capabilities into gate capabilities:
 
-- **New install:** all permissions are `added`, `requiresApproval` is `true`.
-- **Update:** computes added, removed, unchanged, and changed (severity shift) permission sets.
-- `requiresApproval` is `true` when there are additions, removals, severity changes, or risk changes.
+| Manifest capability | Gate capability         |
+| ------------------- | ----------------------- |
+| `plugin_invoke`     | `plugin_invoke`         |
+| `filesystem:read`   | `plugin_file_read`      |
+| `filesystem:write`  | `plugin_file_write`     |
+| `shell`             | `plugin_shell`          |
+| `network`           | `plugin_network`        |
+| `session_data`      | `plugin_session_read`   |
+| `workspace_data`    | `plugin_workspace_read` |
+| `config:read`       | `plugin_config_read`    |
+| `config:write`      | `plugin_config_write`   |
+| `secrets`           | `plugin_secret_read`    |
 
-Source: `packages/synergy/src/plugin/consent/diff.ts:14-115`.
+Unknown or undeclared plugin tools remain opaque and require user approval.
 
-The diff is exposed via API:
+## Approval Records
 
-```bash
-# Preview install
-POST /api/plugins/preview-install  { manifest: {...} }
+Approval records store:
 
-# Preview update
-POST /api/plugins/:pluginId/preview-update  { manifest: {...} }
-```
+- canonical plugin id
+- source (`local`, `npm`, `git`, `url`, `official`)
+- version
+- manifest hash
+- permissions hash
+- approved manifest capability strings
+- approved UI surfaces
+- risk
 
-## Install/update approval flow
+If the manifest or permissions hash changes, the approval is no longer valid and Synergy asks again.
 
-1. `synergy plugin add <spec>` installs the package and reads the manifest.
-2. `evaluatePolicy()` checks configured rules (deny high-risk third-party, auto-approve builtin, require signature).
-3. If policy does not auto-approve, the install throws requiring manual approval.
-4. User runs `synergy plugin approve <pluginId>` which calls `POST /:pluginId/approve-install` or `POST /:pluginId/approve-update`.
-5. `saveApproval()` persists a `PluginApprovalRecord` to `~/.synergy/data/plugin-approvals.json`.
+## Install Consent
 
-Source: `packages/synergy/src/plugin/install.ts:49-287`, `packages/synergy/src/plugin/consent/approval-store.ts`.
+`synergy plugin add <spec>` resolves the spec, reads `plugin.json`, verifies the descriptor id, computes capabilities, and checks the approval store. Missing approval for medium/high risk plugins blocks install and returns an approval-required response.
 
-## Approval policy config
+Registry installs follow the same path and never pass a hidden consent bypass flag.
 
-Configure in `synergy.jsonc`:
+## Runtime Bridge Consent
 
-```jsonc
-{
-  "pluginApprovalPolicy": {
-    "allowUnsignedLocal": true,
-    "autoApproveBuiltin": true,
-    "denyHighRiskThirdParty": true,
-    "requireSignatureForMarketplace": false,
-  },
-}
-```
-
-| Field                            | Default | Description                                           |
-| -------------------------------- | ------- | ----------------------------------------------------- |
-| `allowUnsignedLocal`             | `true`  | Allow unsigned local plugins with user consent        |
-| `autoApproveBuiltin`             | `true`  | Auto-approve builtin plugins                          |
-| `denyHighRiskThirdParty`         | `true`  | Block third-party plugins with high-risk capabilities |
-| `requireSignatureForMarketplace` | `false` | Require cryptographic signature for non-local plugins |
-
-Schema: `packages/synergy/src/config/schema.ts:973-1001`, policy evaluation: `packages/synergy/src/plugin/consent/policy.ts:30-88`.
-
-## Audit log viewing
-
-Every install, update, and policy decision is recorded in `~/.synergy/data/plugin-audit.json`.
-
-```bash
-# View all audit events
-GET /api/plugins/:pluginId/audit
-
-# Via CLI (planned)
-synergy plugin audit [pluginId]
-```
-
-Audit event types: `install_requested`, `install_approved`, `install_blocked`, `update_requested`, `update_approved`, `update_blocked`, `update_failed_rolled_back`, `capability_denied`, `runtime_started`, `runtime_killed`, `runtime_crashed`.
-
-Source: `packages/synergy/src/plugin/audit.ts`.
+Worker/process plugins use a host bridge for config, secrets, cache, file, shell, network, session, and workspace access. The bridge checks the same approved manifest capabilities. This avoids split semantics such as approving `filesystem:read` in the manifest while requiring a separate bridge-only name.

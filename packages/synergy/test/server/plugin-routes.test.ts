@@ -324,6 +324,51 @@ describe("POST /api/plugins/install-from-registry", () => {
       },
     )
   })
+
+  test("installs registry versions from their published tarball downloadUrl", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const addMock = mock(async () =>
+      buildLoadedPlugin({ id: "registry-plugin", name: "Registry Plugin", pluginDir: tmp.path }),
+    )
+    ;(Plugin as any).add = addMock
+    ;(Plugin as any).manifest = mock(async () => ({ name: "registry-plugin", version: "1.0.0" }))
+
+    await withRegistryFile(
+      {
+        plugins: [
+          {
+            id: "registry-plugin",
+            name: "registry-plugin-package",
+            versions: [
+              {
+                version: "1.0.0",
+                downloadUrl: "file:///tmp/registry-plugin-1.0.0.synergy-plugin.tgz",
+                integrity: "sha256-test",
+              },
+            ],
+          },
+        ],
+      },
+      async () => {
+        await ScopeContext.provide({
+          scope: await tmp.scope(),
+          fn: async () => {
+            const app = Server.App()
+            const res = await app.request("/api/plugins/install-from-registry", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ id: "registry-plugin", version: "1.0.0" }),
+            })
+
+            expect(res.status).toBe(200)
+            expect(addMock).toHaveBeenCalledTimes(1)
+            expect((addMock as any).mock.calls[0][0]).toBe("file:///tmp/registry-plugin-1.0.0.synergy-plugin.tgz")
+            expect((addMock as any).mock.calls[0][1]).toEqual({ autoReload: true })
+          },
+        })
+      },
+    )
+  })
 })
 
 // ---------------------------------------------------------------------------

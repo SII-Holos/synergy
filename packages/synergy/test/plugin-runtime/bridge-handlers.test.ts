@@ -244,6 +244,12 @@ describe("bridge-enforcement (denied methods still throw)", () => {
     expect(result.allowed).toBe(true)
   })
 
+  test("enforcer accepts manifest capability names as approval records", () => {
+    const enforcer = createBridgeEnforcementHandler("plugin-x", ["filesystem:read", "network"])
+    expect(enforcer("file.read", {}).allowed).toBe(true)
+    expect(enforcer("network.fetch", {}).allowed).toBe(true)
+  })
+
   test("enforcer denies unknown bridge method", () => {
     const enforcer = createBridgeEnforcementHandler("plugin-x", ["plugin_file_read"])
     const result = enforcer("nonexistent.bridge.method" as any, {})

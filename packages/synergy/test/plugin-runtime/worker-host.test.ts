@@ -6,6 +6,8 @@ import type {
   IsolatedPluginInputData,
   HostBridgeMethod,
 } from "../../src/plugin-runtime/protocol"
+import { spawnPluginWorker, setWorkerFactoryForTest } from "../../src/plugin-runtime/worker-host"
+import type { SpawnedWorkerRuntime } from "../../src/plugin-runtime/worker-host"
 
 // ---------------------------------------------------------------------------
 // Mock node:worker_threads Worker
@@ -20,28 +22,18 @@ class MockWorker extends EventEmitter {
   postMessage: ReturnType<typeof mock>
   terminate: ReturnType<typeof mock>
   readonly filename: string
-  readonly workerData: IsolatedPluginInputData
+  readonly workerData: { entryPath: string; input: IsolatedPluginInputData }
 
-  constructor(filename: string, options?: { workerData?: IsolatedPluginInputData }) {
+  constructor(filename: string, options?: { workerData?: { entryPath: string; input: IsolatedPluginInputData } }) {
     super()
     this.filename = filename
-    this.workerData = options?.workerData ?? ({} as IsolatedPluginInputData)
+    this.workerData = options?.workerData ?? ({} as { entryPath: string; input: IsolatedPluginInputData })
     this.threadId = 99999
     this.postMessage = mock((_msg: unknown) => {})
     this.terminate = mock(() => {})
     currentMockWorker = this
   }
 }
-
-mock.module("node:worker_threads", () => ({
-  Worker: MockWorker,
-}))
-
-// ---------------------------------------------------------------------------
-// Dynamic import after mock — ensures the mock is in place before resolution
-// ---------------------------------------------------------------------------
-const { spawnPluginWorker } = await import("../../src/plugin-runtime/worker-host")
-import type { SpawnedWorkerRuntime } from "../../src/plugin-runtime/worker-host"
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -95,15 +87,20 @@ function hostRequestMessage(
 // ---------------------------------------------------------------------------
 
 describe("spawnPluginWorker", () => {
+  beforeEach(() => {
+    setWorkerFactoryForTest((filename, options) => new MockWorker(filename, options) as any)
+  })
+
   afterEach(() => {
     currentMockWorker = null
+    setWorkerFactoryForTest()
   })
 
   // -----------------------------------------------------------------------
   // Happy path: init → ready
   // -----------------------------------------------------------------------
   describe("happy path: init → ready", () => {
-    test("spawns a worker with the correct entryPath", async () => {
+    test("spawns the Synergy plugin runtime runner", async () => {
       const input = buildInput()
       const runtime = await spawnPluginWorker({
         pluginId: "test-plugin",
@@ -112,10 +109,10 @@ describe("spawnPluginWorker", () => {
         input,
       })
       expect(currentMockWorker).not.toBeNull()
-      expect(currentMockWorker!.filename).toBe("/tmp/test-plugin/worker.js")
+      expect(currentMockWorker!.filename).toContain("plugin-runtime/runner.ts")
     })
 
-    test("passes input as workerData to the Worker constructor", async () => {
+    test("passes plugin entryPath and input as workerData to the runner", async () => {
       const input = buildInput()
       await spawnPluginWorker({
         pluginId: "test-plugin",
@@ -124,7 +121,10 @@ describe("spawnPluginWorker", () => {
         input,
       })
       expect(currentMockWorker).not.toBeNull()
-      expect(currentMockWorker!.workerData).toEqual(input)
+      expect(currentMockWorker!.workerData).toEqual({
+        entryPath: "/tmp/test-plugin/worker.js",
+        input,
+      })
     })
 
     test("returns a SpawnedWorkerRuntime with all fields", async () => {

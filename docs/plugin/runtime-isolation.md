@@ -1,85 +1,62 @@
 # Plugin Runtime Isolation
 
-**Audience:** Plugin developers, operators
-**Source of truth:** `packages/synergy/src/plugin-runtime/mode-resolver.ts`, `packages/synergy/src/plugin-runtime/supervisor.ts`
+Synergy can run a plugin in one of three modes:
 
----
+| Mode         | Runtime                | Typical source                                   |
+| ------------ | ---------------------- | ------------------------------------------------ |
+| `in-process` | Synergy server process | trusted local and built-in plugins               |
+| `worker`     | Bun/Node worker thread | trusted isolated plugins                         |
+| `process`    | separate Bun process   | third-party, high-risk, or policy-forced plugins |
 
-## Isolation modes
+Runtime mode is resolved from plugin source, manifest policy, user trust, and risk. Third-party npm/git/url plugins do not run in-process unless policy explicitly allows it.
 
-Synergy runs plugins in one of three modes, determined by the `resolveRuntimeMode()` function.
+## Runner Contract
 
-| Mode         | Name          | Mechanism                                | Use case                                                                |
-| ------------ | ------------- | ---------------------------------------- | ----------------------------------------------------------------------- |
-| `in-process` | In-process    | Same Bun process, same memory space      | Builtin, official, and local plugins with low risk                      |
-| `worker`     | Worker thread | `Node.js Worker` (`node:worker_threads`) | User-trusted plugins that request isolation without OS process overhead |
-| `process`    | OS process    | `Bun.spawn()` separate process           | Third-party plugins, high-risk plugins, any plugin forced by policy     |
+Isolated plugins do not execute their normal entrypoint as the host process. Synergy starts `plugin-runtime/runner.ts` in the worker/process and passes:
 
-## Default strategy
+- `entryPath`
+- plugin id
+- plugin directory
+- active Scope data
+- server URL
 
-Rules are evaluated first-match:
+The runner imports the plugin descriptor, verifies the descriptor id, calls `init()`, reports tools and hook names to the host, and then handles:
 
-1. `forceProcess` flag → `process`
-2. Risk `"high"` → `process`
-3. Manifest `"process"` → `process`
-4. Manifest `"worker"` + `userTrusted` → `worker`
-5. Manifest `"in-process"` + third-party source → forced to `process`
-6. Default by source:
-   - `builtin`, `official`, `local` → `in-process`
-   - `npm`, `git`, `url` → `process`
+- `invokeTool`
+- `triggerHook`
+- `reload`
+- `shutdown`
+- `ping` / heartbeat
 
-Third-party plugins (npm, git, url) **never** run in-process. Worker mode is only granted to user-trusted plugins.
+Tool calls and hook calls are proxied back to the isolated runtime through `PluginRuntimeSupervisor`.
 
-Source: `packages/synergy/src/plugin-runtime/mode-resolver.ts:54-82`.
+## Bridge Enforcement
 
-## How to configure
+Worker/process plugins access host services through a bridge. Every bridge method maps to the same manifest capability semantics used by the permission gate:
 
-Set `pluginRuntimePolicy` in `synergy.jsonc`:
+| Bridge area       | Manifest capability                   |
+| ----------------- | ------------------------------------- |
+| cache             | `plugin_invoke`                       |
+| config read/write | `config:read`, `config:write`         |
+| secrets           | `secrets`                             |
+| file read/write   | `filesystem:read`, `filesystem:write` |
+| shell             | `shell`                               |
+| network           | `network`                             |
+| session data      | `session_data`                        |
+| workspace data    | `workspace_data`                      |
 
-```jsonc
-{
-  "pluginRuntimePolicy": {
-    "thirdPartyDefaultMode": "process",
-    "highRiskRequiresProcess": true,
-    "allowThirdPartyInProcess": false,
-    "allowWorkerMode": true,
-    "allowLocalInProcess": true,
-  },
-}
-```
+Approval records store manifest capability names under the canonical plugin id. The bridge accepts those manifest names and does not require callers to know gate-internal names such as `plugin_file_read`.
 
-| Field                      | Default     | Description                                      |
-| -------------------------- | ----------- | ------------------------------------------------ |
-| `thirdPartyDefaultMode`    | `"process"` | Default mode for npm/git/url plugins             |
-| `highRiskRequiresProcess`  | `true`      | Always isolate high-risk plugins                 |
-| `allowThirdPartyInProcess` | `false`     | Allow third-party plugins to request in-process  |
-| `allowWorkerMode`          | `true`      | Allow plugins to request worker thread isolation |
-| `allowLocalInProcess`      | `true`      | Allow local plugins to run in-process            |
-
-Schema: `packages/synergy/src/config/schema.ts:1002-1032`.
-
-## Dev mode testing
+## Development Commands
 
 ```bash
-synergy plugin dev [path]
-```
-
-Starts a file watcher that re-validates the manifest and reloads plugin state on changes. Use `--sandbox-preview` to print sandbox iframe URLs for UI panels:
-
-```bash
+synergy plugin validate --runtime-discovery
 synergy plugin dev --sandbox-preview
+synergy plugin status <id>
 ```
 
-The dev command prints the resolved runtime mode, health snapshot (PID, state, memory, heartbeat), and a log tail from the shared `PluginLogBuffer`.
+Runtime status is exposed under plugin runtime routes, including `/api/plugins/:pluginId/runtime/status`.
 
-Source: `packages/synergy/src/cli/cmd/plugin-dev.ts`.
+## Hook Behavior
 
-## Migration plan
-
-| Version      | Worker support                                           | In-process for third-party    |
-| ------------ | -------------------------------------------------------- | ----------------------------- |
-| v4.0         | Not supported                                            | Allowed                       |
-| v4.1         | Supported (opt-in via manifest `runtime.mode: "worker"`) | Denied by default             |
-| v5 (planned) | Default for user-trusted third-party                     | Fully removed for npm/git/url |
-
-API route for runtime status: `GET /api/plugins/:pluginId/runtime/status`. See `plugin-runtime-routes.ts`.
+Hooks receive `(input, output)` where `output` is mutable. The isolated runner returns the mutated `output`; if a hook returns a replacement value, that value is used. This keeps worker/process hooks aligned with in-process plugin behavior while preserving the mutation-first convention.

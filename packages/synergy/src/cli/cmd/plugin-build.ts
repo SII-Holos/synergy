@@ -28,6 +28,30 @@ function copyDir(src: string, dest: string) {
   }
 }
 
+function copyFilePreserve(pluginDir: string, distDir: string, relativePath: string) {
+  const normalized = relativePath.replace(/^\.\//, "")
+  const src = path.resolve(pluginDir, normalized)
+  if (!fs.existsSync(src) || !fs.statSync(src).isFile()) return
+  const dest = path.join(distDir, normalized)
+  ensureDir(path.dirname(dest))
+  fs.copyFileSync(src, dest)
+}
+
+function findUiSource(pluginDir: string): string | undefined {
+  const candidates = ["src/ui.tsx", "src/ui/index.tsx", "src/ui.ts", "src/ui/index.ts"]
+  return candidates.map((candidate) => path.join(pluginDir, candidate)).find((candidate) => fs.existsSync(candidate))
+}
+
+function packagedManifest(manifest: PluginManifestType): PluginManifestType {
+  const next = structuredClone(manifest) as PluginManifestType
+  next.main = "./runtime/index.js"
+  if (next.contributes?.ui?.entry) {
+    next.contributes.ui.entry = next.contributes.ui.entry.replace(/^\.\//, "").replace(/^dist\//, "./")
+    if (!next.contributes.ui.entry.startsWith(".")) next.contributes.ui.entry = `./${next.contributes.ui.entry}`
+  }
+  return next
+}
+
 function permissionSummary(manifest: PluginManifestType): Record<string, unknown> {
   const perms = manifest.permissions ?? {}
   const result: Record<string, unknown> = {}
@@ -109,6 +133,7 @@ export const PluginBuildCommand = cmd({
     UI.println(`  ${UI.Style.TEXT_DIM}Source:${UI.Style.TEXT_NORMAL} ${pluginDir}`)
 
     const distDir = path.join(pluginDir, "dist")
+    fs.rmSync(distDir, { recursive: true, force: true })
     ensureDir(distDir)
 
     // 2. Backend build
@@ -120,6 +145,7 @@ export const PluginBuildCommand = cmd({
       entrypoints: [entryPath],
       outdir: runtimeOutdir,
       target: "bun",
+      naming: "index.js",
       external: ["@ericsanchezok/synergy-plugin", "@ericsanchezok/synergy-sdk", "@ericsanchezok/synergy-util"],
     })
     if (!backendResult.success) {
@@ -134,14 +160,16 @@ export const PluginBuildCommand = cmd({
     // 3. Frontend build if ui entry exists
     const uiEntry = manifest.contributes?.ui?.entry
     if (uiEntry) {
-      const uiEntryPath = path.resolve(pluginDir, uiEntry)
-      if (fs.existsSync(uiEntryPath)) {
-        const uiOutdir = path.join(distDir, "ui")
+      const uiSourcePath = findUiSource(pluginDir)
+      const uiOutputPath = path.resolve(pluginDir, uiEntry)
+      if (uiSourcePath) {
+        const uiOutdir = path.dirname(uiOutputPath)
         spinner("Building frontend")
         const frontendResult = await Bun.build({
-          entrypoints: [uiEntryPath],
+          entrypoints: [uiSourcePath],
           outdir: uiOutdir,
           target: "browser",
+          naming: path.basename(uiOutputPath),
         })
         if (!frontendResult.success) {
           for (const log of frontendResult.logs) {
@@ -151,13 +179,28 @@ export const PluginBuildCommand = cmd({
           process.exitCode = 1
           return
         }
+      } else if (!fs.existsSync(uiOutputPath)) {
+        UI.error(`UI source not found. Expected one of src/ui.tsx or src/ui/index.tsx for ${uiEntry}`)
+        process.exitCode = 1
+        return
       }
     }
 
     // 4. Normalize manifest
     spinner("Normalizing manifest")
+    const distManifest = packagedManifest(manifest)
+    const distManifestPath = path.join(distDir, "plugin.json")
+    fs.writeFileSync(distManifestPath, JSON.stringify(distManifest, null, 2))
     const normalizedPath = path.join(distDir, "plugin.normalized.json")
-    fs.writeFileSync(normalizedPath, JSON.stringify(manifest, null, 2))
+    fs.writeFileSync(normalizedPath, JSON.stringify(distManifest, null, 2))
+
+    const packageJsonPath = path.join(pluginDir, "package.json")
+    if (fs.existsSync(packageJsonPath)) {
+      const pkg = JSON.parse(fs.readFileSync(packageJsonPath, "utf-8"))
+      pkg.main = "./runtime/index.js"
+      pkg.exports = { ".": "./runtime/index.js" }
+      fs.writeFileSync(path.join(distDir, "package.json"), JSON.stringify(pkg, null, 2))
+    }
 
     // 5. Permission summary
     spinner("Generating permission summary")
@@ -172,6 +215,12 @@ export const PluginBuildCommand = cmd({
       spinner("Copying assets")
       copyDir(publicAssetsPath, distAssetsPath)
     }
+    for (const theme of manifest.contributes?.ui?.themes ?? []) {
+      copyFilePreserve(pluginDir, distDir, theme.path)
+    }
+    for (const icon of manifest.contributes?.ui?.icons ?? []) {
+      copyFilePreserve(pluginDir, distDir, icon.path)
+    }
 
     // 7. Integrity hashes
     spinner("Computing integrity hashes")
@@ -182,7 +231,7 @@ export const PluginBuildCommand = cmd({
       permissions: string
     }
     const integrity: IntegrityMap = {
-      manifest: sha256File(normalizedPath),
+      manifest: sha256File(distManifestPath),
       permissions: sha256JSON(summary),
     }
 
@@ -192,7 +241,7 @@ export const PluginBuildCommand = cmd({
     }
 
     if (uiEntry) {
-      const uiIndex = path.join(distDir, "ui", "index.js")
+      const uiIndex = path.resolve(pluginDir, uiEntry)
       if (fs.existsSync(uiIndex)) {
         integrity.ui = sha256File(uiIndex)
       }

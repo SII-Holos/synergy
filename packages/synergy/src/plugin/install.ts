@@ -9,11 +9,12 @@ import { BunProc } from "../util/bun"
 import { PluginSpec } from "../util/plugin-spec"
 import { Installation } from "../global/installation"
 import * as Lockfile from "./lockfile"
-import { findPackageRoot, resolveSpecPluginDir, state, specToPluginId } from "./loader"
+import { resolveSpecPluginDir, state, specToPluginId } from "./loader"
 import { reload } from "./lifecycle"
 import { baseCapabilities } from "./capability"
 import { computeRisk } from "./consent/risk"
 import { resolveRuntimeMode } from "../plugin-runtime/mode-resolver.js"
+import { resolvePluginSpec } from "./spec-resolver"
 import {
   type PluginApprovalRecord,
   computePermissionsHash,
@@ -50,29 +51,25 @@ export async function add(
   spec: string,
   opts: { autoReload?: boolean; skipConsent?: boolean } = {},
 ): Promise<LoadedPlugin> {
-  const { pkg, version } = PluginSpec.parse(spec)
+  const parsedSpec = spec.startsWith("file://") ? { pkg: spec, version: "latest" } : PluginSpec.parse(spec)
+  const { pkg, version } = parsedSpec
 
   // Audit: install requested
   void recordEvent({ pluginId: spec, type: "install_requested", details: { spec, version } })
 
   try {
-    // Explicit installs should refresh cached registry/git packages.
-    await BunProc.invalidateCache(pkg)
-
-    // Install the plugin package
-    const result = await BunProc.install(pkg, version)
-
-    // Read and validate plugin.json manifest if it exists
-    const pluginDir = findPackageRoot(result.entryPath)
-    const pluginJsonPath = path.join(pluginDir, "plugin.json")
-    let manifestData: z.infer<typeof PluginManifest> | null = null
-    try {
-      const raw = await Bun.file(pluginJsonPath).text()
-      const parsed = JSON.parse(raw)
-      manifestData = PluginManifest.parse(parsed)
+    const resolved = await resolvePluginSpec(spec, {
+      cwd: process.cwd(),
+      install: !spec.startsWith("file://"),
+      refresh: !spec.startsWith("file://"),
+    })
+    const pluginDir = resolved.pluginDir
+    const manifestData: z.infer<typeof PluginManifest> | null = resolved.manifest
+    const canonicalPluginId = manifestData?.name ?? resolved.pkg
+    if (manifestData) {
       log.info("plugin manifest loaded", { path: spec, manifest: manifestData })
-    } catch (err) {
-      log.warn("no valid plugin.json found, skipping manifest check", { path: spec, err: String(err) })
+    } else {
+      log.warn("no valid plugin.json found, skipping manifest check", { path: spec })
     }
 
     // Check minSynergyVersion compatibility
@@ -102,9 +99,7 @@ export async function add(
     let risk: "low" | "medium" | "high" = "low"
 
     // Derive plugin source from spec (does not depend on manifest)
-    const nonRegistry = PluginSpec.isNonRegistry(spec)
-    const isLocal = spec.startsWith("file://")
-    const source: PluginSource = isLocal ? "local" : nonRegistry ? "git" : "npm"
+    const source: PluginSource = resolved.source
     const devMode = Installation.CHANNEL === "local"
 
     if (manifestData) {
@@ -163,7 +158,7 @@ export async function add(
 
       if (!autoApprove) {
         // Check for existing approval
-        const existingApproval = await getApproval(pkg)
+        const existingApproval = await getApproval(canonicalPluginId)
         if (existingApproval && verifyApproval(existingApproval, manifestData, capabilities)) {
           log.info("plugin consent: existing approval matches", { plugin: spec })
         } else {
@@ -184,9 +179,9 @@ export async function add(
               ? "builtin"
               : "user"
       await saveApproval({
-        pluginId: pkg,
+        pluginId: canonicalPluginId,
         source,
-        version,
+        version: manifestData.version ?? version,
         manifestHash,
         permissionsHash,
         approvedAt: Date.now(),
@@ -210,7 +205,7 @@ export async function add(
 
     // Update lockfile with installed plugin entry (including integrity + consent hashes)
     const lockfile = await Lockfile.read()
-    const integrity = await Lockfile.computeIntegrity(result.entryPath)
+    const integrity = await Lockfile.computeIntegrity(resolved.entryPath)
     const runtimeMode = resolveRuntimeMode({
       source,
       manifestMode: manifestData?.runtime?.mode,
@@ -218,16 +213,16 @@ export async function add(
       userTrusted: false,
       risk,
     })
-    const updatedLockfile = Lockfile.addEntry(lockfile, pkg, {
+    const updatedLockfile = Lockfile.addEntry(lockfile, canonicalPluginId, {
       spec,
-      version,
-      resolved: result.entryPath,
+      version: manifestData?.version ?? version,
+      resolved: resolved.entryPath,
       ...(integrity ? { integrity } : {}),
       ...(permissionsHash ? { permissionsHash } : {}),
       ...(manifestHash ? { manifestHash } : {}),
       ...(sigMeta ? { signature: Signature.toLockfileSignature(sigMeta) } : {}),
       runtimeMode,
-      ...(manifestData ? { approvalId: pkg } : {}),
+      ...(manifestData ? { approvalId: canonicalPluginId } : {}),
     })
     await Lockfile.write(updatedLockfile)
 
@@ -267,7 +262,7 @@ export async function add(
       pluginId: plugin.id,
       mode: runtimeMode,
       source,
-      entryPath: result.entryPath,
+      entryPath: resolved.entryPath,
       pluginDir,
     }).catch((err) => {
       log.warn("autoStartRuntime promise rejection (should not happen)", {
@@ -328,7 +323,10 @@ export async function remove(pluginId: string, opts: { autoReload?: boolean } = 
   let lockfile = await Lockfile.read()
   for (const [key, value] of specToPluginId) {
     if (value === pluginId) {
-      lockfile = Lockfile.removeEntry(lockfile, PluginSpec.parse(key).pkg)
+      lockfile = Lockfile.removeEntry(lockfile, pluginId)
+      if (!key.startsWith("file://")) {
+        lockfile = Lockfile.removeEntry(lockfile, PluginSpec.parse(key).pkg)
+      }
       specToPluginId.delete(key)
     }
   }

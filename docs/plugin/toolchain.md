@@ -1,127 +1,130 @@
 # Plugin Toolchain
 
-**Audience:** Plugin developers
-**Source of truth:** `packages/synergy/src/cli/cmd/plugin-{create,build,pack,sign,publish,dev,validate}.ts`
+**Source of truth:** `packages/synergy/src/cli/cmd/plugin-*.ts`
 
----
-
-All commands are subcommands of `synergy plugin`:
+The supported plugin development flow is:
 
 ```bash
-synergy plugin <command> [options]
+synergy plugin create <name> --template <template>
+cd <name>
+bun install
+synergy plugin validate --runtime-discovery
+synergy plugin build
+synergy plugin pack
+synergy plugin sign <name>-<version>.synergy-plugin.tgz
+synergy plugin publish <name>-<version>.synergy-plugin.tgz
 ```
 
-## create — Scaffold a new plugin
+Local installation uses the same resolver as runtime loading:
 
 ```bash
-synergy plugin create <name> [--template <template>]
+synergy plugin add file:///absolute/path/to/plugin
+synergy plugin add file:///absolute/path/to/plugin/src/index.ts
+synergy plugin add file:///absolute/path/to/plugin-0.1.0.synergy-plugin.tgz
+synergy plugin add npm-package-name
+synergy plugin add github:owner/repo
 ```
 
-Generates a complete project directory with `plugin.json`, `package.json`, `tsconfig.json`, and template source files.
+## Descriptor Contract
 
-| Template            | Use case                                             |
-| ------------------- | ---------------------------------------------------- |
-| `tool-ui` (default) | Tool definitions + SolidJS tool card renderer        |
-| `workspace-panel`   | SolidJS workspace panel with no tools                |
-| `api-connector`     | Network-enabled tools (fetchData, getJSON, postJSON) |
-| `theme-icon`        | Theme and icon contributions only                    |
+Plugin runtime code exports a `PluginDescriptor` object:
+
+```ts
+import type { PluginDescriptor } from "@ericsanchezok/synergy-plugin"
+
+export const plugin: PluginDescriptor = {
+  id: "my-plugin",
+  async init(input) {
+    return {}
+  },
+}
+
+export default plugin
+```
+
+`plugin.id` must match `plugin.json.name`. Validation and loading fail on mismatch.
+
+## create
 
 ```bash
-synergy plugin create my-plugin --template api-connector
-cd my-plugin && bun install
+synergy plugin create <name> [--template tool-ui|workspace-panel|api-connector|theme-icon]
 ```
 
-Source: `packages/synergy/src/cli/cmd/plugin-create.ts:432`.
+Generated projects include `plugin.json`, `package.json`, `tsconfig.json`, runtime source, and any template UI/assets.
 
-## dev — Development mode with file watching
+Templates:
 
-```bash
-synergy plugin dev [path] [--sandbox-preview]
-```
+| Template          | Output                                                       |
+| ----------------- | ------------------------------------------------------------ |
+| `tool-ui`         | Runtime tool plus Solid tool renderer source at `src/ui.tsx` |
+| `workspace-panel` | Workspace panel UI source at `src/ui.tsx`                    |
+| `api-connector`   | Network-enabled runtime tools plus tool renderers            |
+| `theme-icon`      | Theme CSS and SVG icon assets with no UI JS entry            |
 
-Validates the manifest, prints permissions preview and runtime health snapshot, then watches `src/` for changes. On file change, re-validates the manifest and reloads plugin state.
-
-```bash
-synergy plugin dev --sandbox-preview
-# → outputs sandbox iframe URLs for declared panels
-```
-
-Source: `packages/synergy/src/cli/cmd/plugin-dev.ts:269`.
-
-## validate — Check manifest correctness
+## validate
 
 ```bash
 synergy plugin validate [path] [--runtime-discovery]
 ```
 
-Validates `plugin.json` against the `PluginManifest` Zod schema. With `--runtime-discovery`, safely loads the plugin's runtime code in dev mode, collects registered tools, and compares them against the manifest's tool declarations.
+Validation checks:
+
+- manifest schema and required identity fields
+- canonical plugin id consistency
+- UI entry/export declarations
+- runtime policy warnings
+- declared tool capabilities
+- with `--runtime-discovery`, the descriptor is imported, `init()` is called in a dev-safe context, and runtime tools are compared with `contributes.tools`
+
+## dev
 
 ```bash
-synergy plugin validate --runtime-discovery
+synergy plugin dev [path] [--sandbox-preview]
 ```
 
-Source: `packages/synergy/src/cli/cmd/plugin-validate.ts:107`.
+Development mode validates the manifest, prints permission and runtime previews, watches plugin source, and reloads plugin state on changes.
 
-## build — Compile and normalize
+## build
 
 ```bash
 synergy plugin build [path]
 ```
 
-1. Validates the manifest.
-2. Builds the backend entrypoint with `Bun.build` (target: bun).
-3. Builds the frontend UI bundle with `Bun.build` (target: browser), if `contributes.ui.entry` exists.
-4. Writes `dist/plugin.normalized.json` (canonical manifest).
-5. Writes `dist/permissions.summary.json` (capability summary).
-6. Copies `public/assets/` to `dist/assets/`.
-7. Writes `dist/integrity.json` (SHA-256 hashes of runtime, UI, manifest, permissions).
+Build output is written to `dist/`:
 
-```bash
-synergy plugin build
-```
+- backend runtime bundle: `dist/runtime/index.js`
+- normalized manifest: `dist/plugin.json`
+- UI bundle: the path declared by `contributes.ui.entry`, normally `dist/ui/index.js`
+- copied `public/assets`, `themes`, and `icons`
+- `dist/permissions.summary.json`
+- `dist/integrity.json`
 
-Source: `packages/synergy/src/cli/cmd/plugin-build.ts:72`.
+`contributes.ui.entry` is a distributable JavaScript asset path. If it is declared, build looks for `src/ui.tsx`, `src/ui/index.tsx`, `src/ui.ts`, or `src/ui/index.ts` and compiles that source to the declared entry.
 
-## pack — Package into tarball
+## pack
 
 ```bash
 synergy plugin pack [path]
 ```
 
-Compresses `dist/` into `<name>-<version>.synergy-plugin.tgz`. Requires a successful build first (`dist/` must exist). Prints file size and SHA-256 integrity hash.
+Creates `<name>-<version>.synergy-plugin.tgz` from `dist/`. The archive must contain installable runtime assets, `plugin.json`, UI assets, permission summary, and integrity metadata.
 
-```bash
-synergy plugin pack
-# → Built v1.0.0 → my-plugin-1.0.0.synergy-plugin.tgz (24.5 KB)
-#   Integrity: sha256-<hash>
-```
-
-Source: `packages/synergy/src/cli/cmd/plugin-pack.ts:24`.
-
-## sign — Cryptographically sign a tarball
+## sign
 
 ```bash
 synergy plugin sign <tarball>
 ```
 
-Hashes the tarball, extracts `plugin.normalized.json` and `permissions.summary.json`, hashes both, and signs the combined payload with an Ed25519 key. Outputs JSON signature metadata to stdout.
+Signs the plugin archive metadata with the local Ed25519 signing key under `~/.synergy/keys/signing-key.json`.
 
-```bash
-synergy plugin sign my-plugin-1.0.0.synergy-plugin.tgz
-# → Signed my-plugin v1.0.0
-#   Signer: a1b2c3d4e5f6...
-```
-
-Keys are stored at `~/.synergy/keys/signing-key.json`. Auto-generates a new keypair if none exists.
-
-Source: `packages/synergy/src/cli/cmd/plugin-sign.ts:70`.
-
-## publish — Submit to registry
+## publish
 
 ```bash
 synergy plugin publish <tarball>
 ```
 
-Parses the tarball filename (`<name>-<version>.tar.gz`) and submits the metadata to the local registry at `http://localhost:3000`. See [marketplace.md](marketplace.md) for registry details.
+Accepts `.synergy-plugin.tgz` or `.tgz`, inspects the packaged `plugin.json`, copies the real artifact to the local registry artifact store, computes `sha256-...` integrity, and publishes metadata with a `file://` download URL.
 
-Source: `packages/synergy/src/cli/cmd/plugin-publish.ts:35`.
+## Registry Install
+
+The Web marketplace and `install-from-registry` route install the selected registry version's `downloadUrl` when present. Only older registry entries without an artifact URL fall back to package name/spec installation.

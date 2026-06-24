@@ -37,13 +37,16 @@ function packageJson(name: string): string {
         version: "0.1.0",
         type: "module",
         scripts: {
-          build: "tsc",
+          build: "synergy plugin build",
+          validate: "synergy plugin validate --runtime-discovery",
           dev: "tsc --watch",
         },
         dependencies: {
-          "@ericsanchezok/synergy-plugin": "workspace:*",
+          "@ericsanchezok/synergy-plugin": "^1.1.26",
+          zod: "^4.0.0",
         },
         devDependencies: {
+          "solid-js": "^1.9.0",
           typescript: "^5.0.0",
         },
       },
@@ -90,17 +93,21 @@ Synergy plugin generated with \`synergy plugin create\`.
 
 function indexToolUI(name: string): string {
   return `import type { PluginDescriptor, PluginInput, PluginHooks } from "@ericsanchezok/synergy-plugin"
+import { greet } from "./tools"
 
 export const plugin: PluginDescriptor = {
   id: "${name}",
   name: "${name}",
-  async init(input: PluginInput): Promise<PluginHooks> {
-    const tools = {
-      // Add your tools here
+  async init(_input: PluginInput): Promise<PluginHooks> {
+    return {
+      tool: {
+        greet,
+      },
     }
-    return { tools, hooks: {} }
   }
 }
+
+export default plugin
 `
 }
 
@@ -110,37 +117,33 @@ function indexWorkspacePanel(name: string): string {
 export const plugin: PluginDescriptor = {
   id: "${name}",
   name: "${name}",
-  async init(input: PluginInput): Promise<PluginHooks> {
-    return { tools: {}, hooks: {} }
+  async init(_input: PluginInput): Promise<PluginHooks> {
+    return {}
   }
 }
+
+export default plugin
 `
 }
 
 function indexApiConnector(name: string): string {
   return `import type { PluginDescriptor, PluginInput, PluginHooks } from "@ericsanchezok/synergy-plugin"
-import { tool } from "@ericsanchezok/synergy-plugin"
+import { getJSON, postJSON } from "./tools"
 
 export const plugin: PluginDescriptor = {
   id: "${name}",
   name: "${name}",
-  async init(input: PluginInput): Promise<PluginHooks> {
-    const fetchData = tool({
-      description: "Fetch data from an API endpoint",
-      args: {
-        url: tool.schema.string().describe("The API endpoint URL"),
+  async init(_input: PluginInput): Promise<PluginHooks> {
+    return {
+      tool: {
+        getJSON,
+        postJSON,
       },
-      async execute(args, ctx) {
-        const res = await fetch(args.url)
-        const text = await res.text()
-        return { output: text }
-      },
-    })
-
-    const tools = { fetchData }
-    return { tools, hooks: {} }
+    }
   }
 }
+
+export default plugin
 `
 }
 
@@ -150,10 +153,12 @@ function indexThemeIcon(name: string): string {
 export const plugin: PluginDescriptor = {
   id: "${name}",
   name: "${name}",
-  async init(input: PluginInput): Promise<PluginHooks> {
-    return { tools: {}, hooks: {} }
+  async init(_input: PluginInput): Promise<PluginHooks> {
+    return {}
   }
 }
+
+export default plugin
 `
 }
 
@@ -162,7 +167,7 @@ export const plugin: PluginDescriptor = {
 // ---------------------------------------------------------------------------
 
 function toolsToolUI(_name: string): string {
-  return `import { tool } from "@ericsanchezok/synergy-plugin"
+  return `import { tool } from "@ericsanchezok/synergy-plugin/tool"
 
 export const greet = tool({
   description: "Greet a user by name",
@@ -177,7 +182,7 @@ export const greet = tool({
 }
 
 function toolsApiConnector(_name: string): string {
-  return `import { tool } from "@ericsanchezok/synergy-plugin"
+  return `import { tool } from "@ericsanchezok/synergy-plugin/tool"
 
 export const getJSON = tool({
   description: "Fetch and parse JSON from an API endpoint",
@@ -248,16 +253,30 @@ export default WorkspacePanel
 
 function manifestToolUI(name: string): object {
   return {
+    permissions: {
+      tools: {
+        invoke: true,
+        shell: false,
+        filesystem: "none",
+        network: false,
+        mcp: "none",
+      },
+    },
     contributes: {
       tools: [
         {
           name: "greet",
           title: "Greet",
           description: "Greet a user by name",
+          capabilities: {
+            filesystem: "none",
+            network: false,
+            shell: false,
+          },
         },
       ],
       ui: {
-        entry: "./src/ui.tsx",
+        entry: "./dist/ui/index.js",
         toolRenderers: [
           {
             tool: "greet",
@@ -272,7 +291,7 @@ function manifestWorkspacePanel(name: string): object {
   return {
     contributes: {
       ui: {
-        entry: "./src/ui.tsx",
+        entry: "./dist/ui/index.js",
         workspacePanels: [
           {
             id: `${name}-panel`,
@@ -288,6 +307,13 @@ function manifestWorkspacePanel(name: string): object {
 function manifestApiConnector(name: string): object {
   return {
     permissions: {
+      tools: {
+        invoke: true,
+        network: true,
+        shell: false,
+        filesystem: "none",
+        mcp: "none",
+      },
       network: {
         connectDomains: ["*"],
       },
@@ -298,15 +324,25 @@ function manifestApiConnector(name: string): object {
           name: "getJSON",
           title: "Get JSON",
           description: "Fetch and parse JSON from an API endpoint",
+          capabilities: {
+            network: true,
+            filesystem: "none",
+            shell: false,
+          },
         },
         {
           name: "postJSON",
           title: "Post JSON",
           description: "POST JSON to an API endpoint",
+          capabilities: {
+            network: true,
+            filesystem: "none",
+            shell: false,
+          },
         },
       ],
       ui: {
-        entry: "./src/ui.tsx",
+        entry: "./dist/ui/index.js",
         toolRenderers: [{ tool: "getJSON" }, { tool: "postJSON" }],
       },
     },
@@ -375,7 +411,18 @@ const TEMPLATE_DEFS: Record<TemplateName, TemplateDef> = {
   "theme-icon": {
     label: "Theme & Icon — themes and icon contributions",
     manifest: manifestThemeIcon,
-    files: [{ relativePath: "src/index.ts", content: indexThemeIcon }],
+    files: [
+      { relativePath: "src/index.ts", content: indexThemeIcon },
+      {
+        relativePath: "themes/default.css",
+        content: () => ":root { --plugin-accent: #2563eb; }\\n",
+      },
+      {
+        relativePath: "icons/logo.svg",
+        content: () =>
+          '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="currentColor"/></svg>\\n',
+      },
+    ],
   },
 }
 

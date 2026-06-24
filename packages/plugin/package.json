@@ -32,6 +32,11 @@
       "types": "./src/hooks.ts",
       "import": "./dist/hooks.js"
     },
+    "./shell": {
+      "bun": "./src/shell.ts",
+      "types": "./src/shell.ts",
+      "import": "./dist/shell.js"
+    },
     "./ui": {
       "bun": "./src/ui.ts",
       "types": "./src/ui.ts",

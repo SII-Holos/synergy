@@ -87,8 +87,9 @@ export const PluginRuntimeRoute = new Hono()
       } catch (err: any) {
         // If reloadRuntime threw because the plugin wasn't registered, start it fresh
         await startRuntime(pluginId, {
-          mode: "in-process",
-          entryPath: plugin.pluginDir,
+          mode: plugin.runtimeMode ?? "in-process",
+          source: plugin.source,
+          entryPath: plugin.entryPath ?? plugin.pluginDir,
           pluginDir: plugin.pluginDir,
         })
         return c.json(runtimeToResponse(pluginId))
@@ -146,8 +147,9 @@ export const PluginRuntimeRoute = new Hono()
       if (!plugin) return c.json({ message: `Plugin not found: ${pluginId}` }, 404)
 
       await startRuntime(pluginId, {
-        mode: "in-process",
-        entryPath: plugin.pluginDir,
+        mode: plugin.runtimeMode ?? "in-process",
+        source: plugin.source,
+        entryPath: plugin.entryPath ?? plugin.pluginDir,
         pluginDir: plugin.pluginDir,
       })
       return c.json(runtimeToResponse(pluginId))

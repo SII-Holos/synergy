@@ -1,16 +1,12 @@
 import type { Argv } from "yargs"
 import type { PluginDescriptor, PluginCLIEntry, PluginCLICommand, PluginCLIGroup } from "@ericsanchezok/synergy-plugin"
 import { Config } from "../config/config"
-import { PluginSpec } from "../util/plugin-spec"
-import { BunProc } from "../util/bun"
-import { Global } from "../global"
 import { Plugin } from "../plugin"
 import { UI } from "./ui"
 import { withScopeRuntime } from "./scope"
 import { cmd } from "./cmd/cmd"
-import path from "path"
-import { existsSync } from "fs"
 import { EOL } from "os"
+import { assertCanonicalPluginIdentity, importUrlForEntry, resolvePluginSpec } from "../plugin/spec-resolver"
 
 // ---------------------------------------------------------------------------
 // Discovery — lightweight, no scope runtime dependency
@@ -55,23 +51,6 @@ const BUILTIN_COMMANDS = new Set([
 ])
 
 /**
- * Resolve the package root directory for an installed plugin spec.
- * Returns undefined if the plugin is not installed.
- */
-function resolveInstalledPath(spec: string): string | undefined {
-  if (spec.startsWith("file://")) {
-    const filePath = spec.slice("file://".length)
-    const absolute = path.isAbsolute(filePath) ? filePath : path.resolve(process.cwd(), filePath)
-    return existsSync(absolute) ? absolute : undefined
-  }
-
-  const { pkg } = PluginSpec.parse(spec)
-  const modDir = PluginSpec.isNonRegistry(spec) ? BunProc.resolvePkgName(pkg) : pkg
-  const pkgRoot = path.join(Global.Path.cache, "node_modules", modDir)
-  return existsSync(pkgRoot) ? pkgRoot : undefined
-}
-
-/**
  * Discover installed plugin descriptors from global config.
  * Uses Config.global() which reads the config file directly — no scope runtime needed.
  */
@@ -89,13 +68,13 @@ async function discoverPlugins(): Promise<DiscoveredPlugin[]> {
 
   for (const spec of specs) {
     try {
-      const importTarget = resolveInstalledPath(spec)
-      if (!importTarget) continue
+      const resolved = await resolvePluginSpec(spec, { cwd: process.cwd(), install: false })
 
-      const mod = await import(importTarget)
+      const mod = await import(importUrlForEntry(resolved.entryPath))
       for (const exported of Object.values(mod)) {
         const desc = exported as PluginDescriptor
         if (!desc?.id || typeof desc?.init !== "function") continue
+        assertCanonicalPluginIdentity({ spec, manifest: resolved.manifest, descriptor: desc })
         if (seen.has(desc.id) || BUILTIN_COMMANDS.has(desc.id)) continue
         seen.add(desc.id)
         result.push({ id: desc.id, name: desc.name })

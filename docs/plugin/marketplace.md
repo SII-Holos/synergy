@@ -1,99 +1,81 @@
-# Plugin Marketplace
+# Plugin Marketplace And Registry
 
-**Audience:** Plugin publishers, operators
-**Source of truth:** `packages/synergy/src/server/plugin-registry-routes.ts`, `packages/synergy/src/server/plugin-routes.ts`
+Synergy's current registry is local-first. The registry index lives at:
 
----
+```text
+~/.synergy/data/registry/plugins.json
+```
 
-## Registry metadata
+Published plugin artifacts are copied under:
 
-The local registry is stored at `~/.synergy/data/registry/plugins.json`. Each entry follows the `RegistryPluginEntry` schema:
+```text
+~/.synergy/data/registry/artifacts/<pluginId>/<version>/
+```
 
-```json
+## Publish Flow
+
+```bash
+synergy plugin build
+synergy plugin pack
+synergy plugin sign my-plugin-0.1.0.synergy-plugin.tgz
+synergy plugin publish my-plugin-0.1.0.synergy-plugin.tgz
+```
+
+`plugin publish` reads the packaged `plugin.json`, computes manifest and permission hashes, stores the real tarball artifact, computes `sha256-...` integrity, and publishes a registry version with a `downloadUrl` pointing to the stored artifact.
+
+Registry entries use the plugin's canonical id:
+
+```jsonc
 {
   "id": "my-plugin",
-  "name": "My Plugin",
-  "description": "Example plugin",
-  "author": { "name": "Author", "email": "", "url": "" },
-  "verified": false,
-  "official": false,
-  "keywords": ["synergy-plugin"],
-  "compatibility": { "synergy": ">=1.0.0" },
+  "name": "my-plugin",
   "versions": [
     {
-      "version": "1.0.0",
-      "manifestHash": "sha256:...",
-      "permissionsHash": "sha256:...",
-      "integrity": "sha256:...",
-      "risk": "low",
-      "permissionsSummary": [],
-      "publishedAt": 1718000000000
-    }
+      "version": "0.1.0",
+      "downloadUrl": "file:///Users/me/.synergy/data/registry/artifacts/my-plugin/0.1.0/my-plugin-0.1.0.synergy-plugin.tgz",
+      "integrity": "sha256-...",
+      "manifestHash": "...",
+      "permissionsHash": "...",
+      "risk": "medium",
+    },
   ],
-  "risk": "low",
-  "trustTier": "sandbox",
-  "runtimeMode": "process",
-  "permissionsSummary": [],
-  "uiSurfaces": [],
-  "tools": [],
-  "downloads": 0
 }
 ```
 
-Registry API endpoints:
+## Install Flow
 
-| Method | Path                                                   | Description                  |
-| ------ | ------------------------------------------------------ | ---------------------------- |
-| `GET`  | `/api/registry/plugins/search?q=`                      | Search by keyword            |
-| `GET`  | `/api/registry/plugins/:id`                            | Full entry with all versions |
-| `GET`  | `/api/registry/plugins/:id/versions`                   | All published versions       |
-| `GET`  | `/api/registry/plugins/:id/versions/:version`          | Specific version metadata    |
-| `GET`  | `/api/registry/plugins/:id/versions/:version/download` | Download tarball             |
+Marketplace install resolves the selected registry version and installs `version.downloadUrl` when present:
 
-Source: `packages/synergy/src/server/plugin-registry-routes.ts`.
-
-## Verified badge
-
-Entries have two boolean flags:
-
-- `verified` — Set to `true` for plugins whose integrity has been cryptographically verified against a known signing key. The trust module checks for a valid `plugin.sig` file during installation.
-- `official` — Set to `true` for plugins published by the Synergy team. These are treated as `trusted-import` by the `decideTrust()` function regardless of source.
-
-Source: `packages/synergy/src/plugin/trust.ts:54-57`.
-
-## Publish flow
-
-1. Build and pack: `synergy plugin build && synergy plugin pack`
-2. Sign (optional): `synergy plugin sign my-plugin-1.0.0.synergy-plugin.tgz`
-3. Publish: `synergy plugin publish my-plugin-1.0.0.synergy-plugin.tgz`
-
-The publish command extracts metadata from the filename (`<name>-<version>.tar.gz`) and submits to `POST /api/registry/plugins/publish`. The registry stores the entry and its version history. Currently the registry is local-only; remote registry support is planned.
-
-Source: `packages/synergy/src/cli/cmd/plugin-publish.ts:35`.
-
-## Update flow
-
-Updates go through the same consent pipeline as installs:
-
-1. `synergy plugin update [id]` resolves the latest version for each plugin.
-2. Before applying, it calls `POST /:pluginId/preview-update` to compute the permission diff.
-3. If `requiresApproval` is true, the operator must approve: `synergy plugin approve <pluginId>`.
-4. The update removes the old plugin, installs the new one, and records an audit event.
-
-Source: `packages/synergy/src/cli/cmd/plugin.ts:380-500`.
-
-## Rollback
-
-On update failure, the CLI automatically restores the previous lockfile entry:
-
-```
-↩ Rolled back lockfile for my-plugin
+```text
+registry detail -> selected version -> downloadUrl -> Plugin.add(downloadUrl)
 ```
 
-Audit events record the failure: `update_failed_rolled_back` with the old and new versions and a flag indicating whether rollback succeeded.
+Older registry entries that do not have `downloadUrl` fall back to `entry.name` or the registry id. New published entries should always include a real tarball URL and integrity.
 
-For manual rollback, restore the previous entry in `~/.synergy/data/synergy-lock.json` and re-install the earlier version:
+Consent is never bypassed for registry installs. If the manifest requests capabilities that do not have a valid approval record, installation returns a consent-required response.
 
-```bash
-synergy plugin add my-plugin@1.0.0
+## Registry Routes
+
+Current routes:
+
+| Method | Route                                                  | Purpose                           |
+| ------ | ------------------------------------------------------ | --------------------------------- |
+| `GET`  | `/api/registry/plugins/search?q=`                      | Search registry entries           |
+| `GET`  | `/api/registry/plugins/:id`                            | Full entry with all versions      |
+| `GET`  | `/api/registry/plugins/:id/versions`                   | List versions                     |
+| `GET`  | `/api/registry/plugins/:id/versions/:version`          | Version metadata                  |
+| `GET`  | `/api/registry/plugins/:id/versions/:version/download` | Download the stored artifact      |
+| `POST` | `/api/registry/plugins/publish`                        | Publish metadata                  |
+| `POST` | `/api/plugins/install-from-registry`                   | Install selected registry version |
+
+The app should use generated SDK methods for internal Synergy API calls. Browser-native loading remains appropriate for artifact, script, and asset URLs.
+
+## Update Flow
+
+Updates compare the installed manifest and approval record with the target registry version:
+
+```text
+installed manifest + approval -> registry version -> permission diff -> approve -> install artifact
 ```
+
+The permission diff is keyed by canonical plugin id. A package name, registry display name, or tarball filename must not be used as the approval key.

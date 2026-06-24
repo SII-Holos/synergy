@@ -48,6 +48,14 @@ export {
 } from "./registries/route-registry"
 
 export {
+  type PluginCommandEntry,
+  registerPluginCommand,
+  listPluginCommands,
+  getPluginCommand,
+  clearPluginCommands,
+} from "./registries/command-registry"
+
+export {
   ToolRendererRegistry,
   toolRendererRegistry,
   type ToolRendererEntry,

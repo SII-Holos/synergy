@@ -63,6 +63,7 @@ import { type ToolDefinition } from "@ericsanchezok/synergy-plugin"
 import z from "zod"
 import { Plugin } from "../plugin"
 import { PluginToolId } from "../plugin/ids.js"
+import { getRuntime, invokeRuntimeTool } from "../plugin-runtime/supervisor"
 import { WebSearchTool } from "./websearch"
 import { ArxivSearchTool, ArxivDownloadTool } from "./arxiv"
 import { Flag } from "@/flag/flag"
@@ -128,7 +129,13 @@ export namespace ToolRegistry {
     const plugins = await Plugin.perPluginHooks()
     for (const plugin of plugins) {
       for (const [id, def] of Object.entries(plugin.hooks.tool ?? {})) {
-        custom.push(fromPlugin(id, def, plugin.id))
+        const runtime = getRuntime(plugin.id)
+        const runtimeMode = plugin.runtimeMode ?? runtime?.mode ?? "in-process"
+        if (runtimeMode !== "in-process") {
+          custom.push(fromRuntimePlugin(id, def, plugin.id))
+        } else {
+          custom.push(fromPlugin(id, def, plugin.id))
+        }
       }
     }
 
@@ -159,34 +166,58 @@ export namespace ToolRegistry {
               ctx.ask({ ...input, metadata: input.metadata ?? {} }),
           }
           const raw = await def.execute(args as any, pluginCtx)
-          if (typeof raw === "object" && raw !== null && "output" in raw) {
-            const structured = raw as {
-              title?: string
-              output: string
-              metadata?: Record<string, any>
-              attachments?: any
-            }
-            const out = await Truncate.output(structured.output, {}, initCtx?.agent)
-            return {
-              title: structured.title ?? "",
-              output: out.truncated ? out.content : structured.output,
-              metadata: {
-                ...structured.metadata,
-                truncated: out.truncated,
-                outputPath: out.truncated ? out.outputPath : undefined,
-              },
-              attachments: structured.attachments,
-            }
-          }
-          const text = raw as string
-          const out = await Truncate.output(text, {}, initCtx?.agent)
-          return {
-            title: "",
-            output: out.truncated ? out.content : text,
-            metadata: { truncated: out.truncated, outputPath: out.truncated ? out.outputPath : undefined },
-          }
+          return normalizePluginResult(raw, initCtx?.agent)
         },
       }),
+    }
+  }
+
+  function fromRuntimePlugin(id: string, def: ToolDefinition, pluginId: string): Tool.Info {
+    const fullId = PluginToolId.format(pluginId, id)
+    return {
+      id: fullId,
+      init: async (initCtx) => ({
+        parameters: z.object(def.args),
+        description: def.description,
+        execute: async (args, ctx) => {
+          const raw = await invokeRuntimeTool(pluginId, id, args, {
+            sessionID: ctx.sessionID,
+            messageID: ctx.messageID,
+            agent: ctx.agent,
+            directory: ScopeContext.current.directory,
+          })
+          return normalizePluginResult(raw, initCtx?.agent)
+        },
+      }),
+    }
+  }
+
+  async function normalizePluginResult(raw: unknown, agent?: Agent.Info) {
+    if (typeof raw === "object" && raw !== null && "output" in raw) {
+      const structured = raw as {
+        title?: string
+        output: string
+        metadata?: Record<string, any>
+        attachments?: any
+      }
+      const out = await Truncate.output(structured.output, {}, agent)
+      return {
+        title: structured.title ?? "",
+        output: out.truncated ? out.content : structured.output,
+        metadata: {
+          ...structured.metadata,
+          truncated: out.truncated,
+          outputPath: out.truncated ? out.outputPath : undefined,
+        },
+        attachments: structured.attachments,
+      }
+    }
+    const text = raw as string
+    const out = await Truncate.output(text, {}, agent)
+    return {
+      title: "",
+      output: out.truncated ? out.content : text,
+      metadata: { truncated: out.truncated, outputPath: out.truncated ? out.outputPath : undefined },
     }
   }
 

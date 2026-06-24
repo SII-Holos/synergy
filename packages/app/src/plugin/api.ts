@@ -1,4 +1,5 @@
 import type { PluginManifest } from "@ericsanchezok/synergy-plugin"
+import { createSynergyClient } from "@ericsanchezok/synergy-sdk/client"
 
 /** UI contributions shape matching the manifest's contributes.ui schema (all optional). */
 export type PluginUIContributions = NonNullable<NonNullable<PluginManifest["contributes"]>["ui"]>
@@ -22,9 +23,7 @@ export interface PluginContribution {
  * The server exposes this at /plugin/ui/contributions (mounted from PluginRoute).
  */
 export async function fetchUIContributions(serverUrl: string): Promise<PluginContribution[]> {
-  const res = await fetch(`${serverUrl}/plugin/ui/contributions`)
-  if (!res.ok) {
-    throw new Error(`Failed to fetch plugin UI contributions: ${res.status}`)
-  }
-  return res.json() as Promise<PluginContribution[]>
+  const sdk = createSynergyClient({ baseUrl: serverUrl, throwOnError: true })
+  const res = await sdk.plugin.listUiContributions()
+  return (res.data ?? []) as PluginContribution[]
 }

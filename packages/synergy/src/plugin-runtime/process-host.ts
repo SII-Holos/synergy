@@ -10,6 +10,9 @@ import { deserializeError, classifyRuntimeExit } from "./errors.js"
 import type { RuntimeExit, PluginRuntimeError } from "./errors.js"
 import type { PluginLogEntry } from "./logs.js"
 import type { ConcurrencyLimiter } from "./resource-limits.js"
+import { fileURLToPath } from "url"
+
+const RUNNER_PATH = fileURLToPath(new URL("./runner.ts", import.meta.url))
 
 // ── Plugin process state ─────────────────────────────────────────
 
@@ -171,7 +174,7 @@ export async function spawnPluginProcess(options: SpawnPluginProcessOptions): Pr
   // ── Spawn subprocess ─────────────────────────────────────────
 
   const proc = Bun.spawn({
-    cmd: ["bun", "run", entryPath],
+    cmd: ["bun", "run", RUNNER_PATH, entryPath],
     cwd: pluginDir,
     ipc: (message: string) => {
       try {

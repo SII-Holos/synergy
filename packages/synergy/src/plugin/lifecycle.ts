@@ -7,7 +7,8 @@ import { ScopedState } from "../scope/scoped-state"
 import { startForPlugin, stopForPlugin } from "./mcp"
 import * as ManifestReader from "./manifest-reader"
 import { state, getPlugin, incrementReloadVersion } from "./loader"
-import { restoreRuntimeState } from "../plugin-runtime/supervisor.js"
+import { restoreRuntimeState, startRuntime } from "../plugin-runtime/supervisor.js"
+import { getRuntime, triggerRuntimeHook } from "../plugin-runtime/supervisor.js"
 import { PluginToolId } from "./ids"
 
 const log = Log.create({ service: "plugin.lifecycle" })
@@ -27,7 +28,7 @@ export async function trigger<
   if (!name) return output
   const isToolHook = name === "tool.execute.before" || name === "tool.execute.after"
   const isPermissionAsk = name === "permission.ask"
-  for (const { id, hooks, pluginDir } of await state().then((x) => x.loaded)) {
+  for (const { id, hooks, pluginDir, runtimeMode } of await state().then((x) => x.loaded)) {
     const fn = hooks[name]
     if (!fn) continue
 
@@ -69,6 +70,17 @@ export async function trigger<
       }
     }
 
+    if (runtimeMode && runtimeMode !== "in-process") {
+      const runtime = getRuntime(id)
+      if (runtime?.hooks?.includes(String(name))) {
+        const nextOutput = await triggerRuntimeHook(id, String(name), input, output)
+        if (nextOutput && typeof nextOutput === "object" && output && typeof output === "object") {
+          Object.assign(output as any, nextOutput)
+        }
+      }
+      continue
+    }
+
     // @ts-expect-error - hook signature variance
     await fn(input, output)
   }
@@ -101,8 +113,18 @@ export async function init() {
   const config = await Config.current()
 
   const loaded = await state().then((x) => x.loaded)
-  for (const { id, hooks } of loaded) {
+  const { Server } = await import("../server/server")
+  for (const { id, hooks, runtimeMode, source, entryPath, pluginDir } of loaded) {
     await hooks.config?.(config)
+    if (runtimeMode && runtimeMode !== "in-process" && entryPath && source) {
+      void startRuntime(id, {
+        mode: runtimeMode,
+        source,
+        entryPath,
+        pluginDir,
+        serverUrl: Server.url().toString(),
+      }).catch((err) => log.error("plugin runtime start error", { id, err }))
+    }
     const m = await manifest(id)
     if (m?.contributes?.mcp) {
       // Plugin-contributed MCP servers may spawn network-backed `npx` processes.

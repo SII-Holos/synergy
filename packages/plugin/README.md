@@ -1,487 +1,167 @@
 # Synergy Plugin SDK
 
-`@ericsanchezok/synergy-plugin` is the server-side plugin SDK for Synergy.
+`@ericsanchezok/synergy-plugin` is the authoring SDK for Synergy plugins.
 
-A plugin extends the runtime with one or more of these capabilities:
+Plugins extend the Synergy server runtime and can also contribute Web UI surfaces through `plugin.json`. The current API is intentionally strict: a plugin module exports an object descriptor with a canonical `id` and an `init()` method. The descriptor id, `plugin.json.name`, registry id, lockfile key, and approval key must all be the same canonical plugin id.
 
-- custom tools
-- lifecycle hooks around sessions, agenda runs, notes, engram search, and tool execution
-- provider auth integration
-- config and event observers
+## Recommended Flow
 
-This package is for developers who want to add behavior to the Synergy runtime itself. Plugins do **not** run in the Web client. They run on the server/runtime side, inside the active Scope context, and can access:
+```bash
+synergy plugin create my-plugin --template tool-ui
+cd my-plugin
+bun install
+synergy plugin validate --runtime-discovery
+synergy plugin build
+synergy plugin pack
+synergy plugin sign my-plugin-0.1.0.synergy-plugin.tgz
+synergy plugin publish my-plugin-0.1.0.synergy-plugin.tgz
+```
 
-- `ctx.client` — a Synergy SDK client pointed at the current server
-- `ctx.scope` — the resolved Scope
-- `ctx.directory` / `ctx.worktree` — the current workspace paths
-- `ctx.serverUrl` — the current server URL
-- `ctx.$` — Bun shell access for local runtime-side commands
+During local development you can also install directly:
 
-If you want the smallest possible example, see [`src/example.ts`](./src/example.ts). It is intentionally minimal. The example in this README shows a more realistic shape.
+```bash
+synergy plugin add file:///absolute/path/to/my-plugin
+```
 
-## What a plugin looks like
+## Runtime Descriptor
 
-A plugin module exports one or more async functions of type `PluginDescriptor`.
-Each function is initialized once and returns a set of hooks and capabilities.
-In practice, most plugins should export a single default plugin function.
+Every runtime entry exports a `PluginDescriptor` object:
 
 ```ts
 import type { PluginDescriptor } from "@ericsanchezok/synergy-plugin"
+import { tool } from "@ericsanchezok/synergy-plugin/tool"
 
-const MyPlugin: PluginDescriptor = async (ctx) => {
-  return {
-    // hooks, tools, auth, config observer, event observer
-  }
+export const plugin: PluginDescriptor = {
+  id: "my-plugin",
+  name: "My Plugin",
+  async init(input) {
+    return {
+      tool: {
+        greet: tool({
+          description: "Greet a user by name",
+          args: {
+            name: tool.schema.string(),
+          },
+          async execute(args, context) {
+            return {
+              output: `Hello, ${args.name}. Session: ${context.sessionID}`,
+            }
+          },
+        }),
+      },
+      async "session.turn.after"(event) {
+        console.log("turn completed", event.sessionID)
+      },
+    }
+  },
 }
 
-export default MyPlugin
+export default plugin
 ```
 
-A plugin function receives this runtime context:
+There is no compatibility layer for legacy descriptor shapes. `plugin.json.name` must match `plugin.id`; Synergy fails validation or loading if they differ.
+
+## Plugin Input
+
+`init(input)` receives runtime services scoped to the active Synergy Scope:
 
 ```ts
 type PluginInput = {
   client: ReturnType<typeof createSynergyClient>
-  scope: {
-    type: "global" | "project"
-    id: string
-    directory: string
-    worktree: string
-    // ...other scope metadata
-  }
+  scope: unknown
   directory: string
   worktree: string
   serverUrl: URL
   $: BunShell
+  pluginDir: string
+  config: { get(): Promise<Record<string, unknown>>; set(values: Record<string, unknown>): Promise<void> }
+  auth: { get(key: string): Promise<string | undefined>; set(key: string, value: string): Promise<void> }
+  cache: { get<T>(key: string): Promise<T | undefined>; set(key: string, value: unknown, ttl?: number): Promise<void> }
 }
 ```
 
-## Setup
+For isolated worker/process plugins, these services are proxied through the host bridge and checked against the plugin approval record.
 
-For an external plugin package:
+## Manifest
 
-```bash
-bun add @ericsanchezok/synergy-plugin zod
-```
-
-Use ESM and export your plugin from your package entrypoint.
-A typical package entry might look like this:
-
-```ts
-import type { PluginDescriptor } from "@ericsanchezok/synergy-plugin"
-
-const MyPlugin: PluginDescriptor = async () => ({})
-
-export default MyPlugin
-```
-
-If you are writing a local plugin directly in a Synergy config directory such as `.synergy/plugin/` or `~/.synergy/config/plugin/`, Synergy will install `@ericsanchezok/synergy-plugin` in that config directory automatically. Any additional dependencies declared in that directory's `package.json` are installed there as well.
-
-## How plugins are loaded
-
-Synergy loads plugins from two places:
-
-### 1. Explicit plugin entries in `synergy.jsonc`
-
-The config schema includes a top-level `plugin` field:
+Each distributable plugin has a root `plugin.json`:
 
 ```jsonc
 {
-  "plugin": ["your-plugin-package"],
-}
-```
-
-Those entries are resolved as module specifiers and loaded by the runtime.
-Published plugin packages are installed automatically when needed.
-
-### 2. Auto-discovered local plugin files
-
-Synergy also scans these directories for `*.ts` and `*.js` files:
-
-- project scope: `<project>/.synergy/plugin/` and `<project>/.synergy/plugins/`
-- global config: `~/.synergy/config/plugin/` and `~/.synergy/config/plugins/`
-
-This makes local development straightforward:
-
-```text
-my-project/
-  .synergy/
-    plugin/
-      my-plugin.ts
-```
-
-A few practical details:
-
-- plugins are initialized in the current runtime Scope
-- every exported plugin function in a module is loaded once
-- `default` export is the safest convention unless you intentionally want multiple plugin instances from one file
-- reloading plugin state also reloads plugin-provided tools
-
-## Minimal plugin
-
-This is the smallest useful plugin: one observation hook and no custom tools.
-
-```ts
-import type { PluginDescriptor } from "@ericsanchezok/synergy-plugin"
-
-const SessionLogger: PluginDescriptor = async () => {
-  return {
-    async "session.turn.after"(input) {
-      if (input.error) {
-        console.error("session turn failed", input.sessionID, input.error)
-        return
-      }
-
-      console.log("session turn completed", input.sessionID, input.assistantMessageID)
+  "name": "my-plugin",
+  "version": "0.1.0",
+  "description": "Example Synergy plugin",
+  "main": "./src/index.ts",
+  "permissions": {
+    "tools": {
+      "invoke": true,
+      "filesystem": "none",
+      "network": false,
+      "shell": false,
+      "mcp": "none",
     },
-  }
-}
-
-export default SessionLogger
-```
-
-## Custom tools
-
-Plugins can register tools by returning a `tool` map.
-Use the `tool()` helper to define the tool schema and execution function.
-
-```ts
-import type { PluginDescriptor } from "@ericsanchezok/synergy-plugin"
-import { tool } from "@ericsanchezok/synergy-plugin/tool"
-
-const GitPlugin: PluginDescriptor = async (ctx) => {
-  return {
-    tool: {
-      current_branch: tool({
-        description: "Get the current git branch",
-        args: {},
-        async execute(_args, toolCtx) {
-          const out = await ctx.$`git rev-parse --abbrev-ref HEAD`.cwd(ctx.worktree).quiet().text()
-
-          return [`session: ${toolCtx.sessionID}`, `agent: ${toolCtx.agent}`, `branch: ${out.trim()}`].join("\n")
+  },
+  "contributes": {
+    "tools": [
+      {
+        "name": "greet",
+        "title": "Greet",
+        "description": "Greet a user by name",
+        "capabilities": {
+          "filesystem": "none",
+          "network": false,
+          "shell": false,
         },
-      }),
+      },
+    ],
+    "ui": {
+      "entry": "./dist/ui/index.js",
+      "toolRenderers": [{ "tool": "greet" }],
     },
-  }
-}
-
-export default GitPlugin
-```
-
-Tool execution receives a narrower context:
-
-```ts
-type ToolContext = {
-  sessionID: string
-  messageID: string
-  agent: string
-  abort: AbortSignal
+  },
 }
 ```
 
-A few things to know about plugin tools:
+`contributes.ui.entry` is a runtime-loadable JavaScript asset. Source files such as `src/ui.tsx` are only build inputs. `synergy plugin build` uses the conventional UI source path and writes the compiled bundle to the declared entry.
 
-- tool args are defined with Zod shapes
-- the helper returns plain text output; Synergy wraps it into the runtime tool result format
-- long output may be truncated by the runtime, just like built-in tools
-- if you need runtime context like Scope paths or shell access, close over the outer plugin `ctx`
+## UI Types
 
-## Hooks overview
-
-If you want a current CLI list instead of reading source, run `synergy plugin hooks` or `synergy plugin hooks --json`.
-
-Hooks fall into two broad categories.
-
-### Observation hooks
-
-These let you react to runtime events without changing the main result.
-They either have no mutable output object, or their output is not used to drive the main flow.
-
-Common examples:
-
-- `event`
-- `config`
-- `session.turn.after`
-- `cortex.task.after`
-- `agenda.run.after`
-- `agenda.run.error`
-- `engram.experience.encode.after`
-
-Use these for logging, metrics, side effects, external notifications, and indexing.
-
-### Mutation hooks
-
-These can shape what Synergy does by mutating the `output` object passed as the second argument.
-The runtime passes an object, your hook edits it in place, and the updated object continues through the pipeline.
-
-Common examples:
-
-- `chat.message`
-- `chat.params`
-- `permission.ask`
-- `tool.execute.before`
-- `tool.execute.after`
-- `agenda.run.before`
-- `note.create.before`
-- `note.update.before`
-- `note.search.before`
-- `note.search.after`
-- `engram.memory.search.before`
-- `engram.memory.search.after`
-- `experimental.*` transform hooks
-
-The rule of thumb is simple: treat `input` as context, and treat `output` as the thing you may change.
-
-## Hook reference
-
-### Core capabilities
-
-| Hook / field | Purpose                                    | Typical use                                  |
-| ------------ | ------------------------------------------ | -------------------------------------------- |
-| `tool`       | Register custom tools                      | Runtime-side integrations, project utilities |
-| `auth`       | Add provider auth methods and auth loaders | Custom providers, OAuth, API key flows       |
-| `config`     | Observe loaded config                      | Initialize plugin state from current config  |
-| `event`      | Observe 72 runtime bus events (see below)  | Logging, metrics, passive integrations       |
-
-#### `event` — observable bus events
-
-The `event` hook lets you subscribe to any of the following runtime bus events by matching `event.type` in your handler. Run `synergy plugin hooks --json` for the full machine-readable list.
-
-**Installation & scope**
-
-```
-installation.updated  installation.update_available
-scope.updated  scope.removed
-```
-
-**Config & server**
-
-```
-config.updated  config.set_activated
-server.connected  scope.runtime.disposed  global.disposed
-```
-
-**File & LSP**
-
-```
-file.edited  file.watcher.updated
-lsp.updated  lsp.client_diagnostics
-```
-
-**MCP & command**
-
-```
-mcp.ready  mcp.tools_changed  mcp.prompts_changed  mcp.resources_changed
-command.executed
-vcs.branch.updated
-```
-
-**Permission & note**
-
-```
-permission.asked  permission.replied  permission.allow_all_changed
-note.created  note.updated  note.deleted
-```
-
-**Session & message**
-
-```
-session.created  session.updated  session.deleted  session.diff
-session.error  session.status  session.idle  session.compacted
-message.updated  message.removed  message.part.updated  message.part.removed
-question.asked  question.replied  question.rejected
-runtime.reloaded
-todo.updated  dag.updated
-```
-
-**Cortex & agenda**
-
-```
-cortex.task.created  cortex.task.completed  cortex.tasks.updated
-agenda.item.created  agenda.item.updated  agenda.item.deleted
-```
-
-**PTY**
-
-```
-pty.created  pty.updated  pty.exited  pty.deleted
-```
-
-**Channel**
-
-```
-channel.command.executed  channel.connected  channel.disconnected
-channel.message.received
-```
-
-**App & Holos**
-
-```
-app.push
-holos.profile.updated
-holos.contact.added  holos.contact.removed  holos.contact.updated  holos.contact.config_updated
-holos.friend_request.created  holos.friend_request.updated  holos.friend_request.removed
-holos.queue.enqueued  holos.queue.delivered  holos.queue.expired
-holos.connected  holos.connection_status.changed  holos.presence
-```
-
-### Chat and session hooks
-
-| Hook                                   | Mutates output? | Notes                                                            |
-| -------------------------------------- | --------------- | ---------------------------------------------------------------- |
-| `chat.message`                         | Yes             | Inspect or rewrite incoming user message parts before processing |
-| `chat.params`                          | Yes             | Adjust model parameters and provider options before LLM calls    |
-| `session.turn.after`                   | No              | Observe the completed turn, including error state if present     |
-| `experimental.chat.messages.transform` | Yes             | Rewrite the message history sent to the model                    |
-| `experimental.chat.system.transform`   | Yes             | Rewrite the assembled system prompt                              |
-| `experimental.session.compacting`      | Yes             | Add compaction context or replace the compaction prompt          |
-| `experimental.text.complete`           | Yes             | Rewrite a text completion result                                 |
-
-### Permission and tool hooks
-
-| Hook                  | Mutates output? | Notes                                                   |
-| --------------------- | --------------- | ------------------------------------------------------- |
-| `permission.ask`      | Yes             | Override `ask` / `deny` / `allow` decisions             |
-| `tool.execute.before` | Yes             | Rewrite tool args before execution                      |
-| `tool.execute.after`  | Yes             | Rewrite tool output, title, or metadata after execution |
-
-### Cortex and agenda hooks
-
-| Hook                | Mutates output? | Notes                                                     |
-| ------------------- | --------------- | --------------------------------------------------------- |
-| `cortex.task.after` | No              | Observe completed Cortex task execution                   |
-| `agenda.run.before` | Yes             | Skip a run or replace the `AgendaItem` used for execution |
-| `agenda.run.after`  | No              | Observe a successful agenda run                           |
-| `agenda.run.error`  | No              | Observe a failed agenda run                               |
-
-### Note hooks
-
-| Hook                 | Mutates output? | Notes                                                               |
-| -------------------- | --------------- | ------------------------------------------------------------------- |
-| `note.create.before` | Yes             | Rewrite note creation input before storage                          |
-| `note.create.after`  | Usually no      | Observe the created note after persistence                          |
-| `note.update.before` | Yes             | Rewrite the patch before update logic runs                          |
-| `note.update.after`  | Usually no      | Observe the updated note after persistence                          |
-| `note.search.before` | Yes             | Rewrite search pattern, scope, date filters, tags, or pinned filter |
-| `note.search.after`  | Yes             | Filter or reorder returned notes                                    |
-
-### Engram hooks
-
-| Hook                             | Mutates output? | Notes                                                                      |
-| -------------------------------- | --------------- | -------------------------------------------------------------------------- |
-| `engram.memory.search.before`    | Yes             | Rewrite query, vector, top-k, categories, recall modes, or rerank behavior |
-| `engram.memory.search.after`     | Yes             | Filter or rerank returned engram memory results                            |
-| `engram.experience.encode.after` | No              | Observe whether an experience was encoded, skipped, or deduplicated        |
-
-### Experimental hooks
-
-Hooks under `experimental.*` are available, but they are less stable than the core hook surface. Use them when you need them, but expect them to evolve more quickly than the main plugin API.
-
-## Short example
-
-This example combines a custom tool with two hooks:
-
-- `session.turn.after` for observation
-- `note.search.after` for result shaping
+UI contribution types are exported separately:
 
 ```ts
-import type { PluginDescriptor } from "@ericsanchezok/synergy-plugin"
+import type { PluginToolRendererProps, PluginPanelProps } from "@ericsanchezok/synergy-plugin/ui"
+```
+
+Supported UI surfaces are tool renderers, part renderers, workspace panels, global panels, settings sections, chat components, themes, icons, routes, and commands. The Web client loads aggregated UI metadata with the generated SDK method `plugin.listUiContributions()`, which maps to `/plugin/ui/contributions`; plugin JS and assets are still loaded through browser-native asset URLs.
+
+## Runtime Modes
+
+Synergy resolves each plugin to one runtime mode:
+
+- `in-process` for trusted local or built-in plugins.
+- `worker` for isolated plugins that do not need a separate OS process.
+- `process` for third-party, high-risk, or policy-forced isolation.
+
+Worker and process plugins are started through Synergy's plugin runner. The runner imports the descriptor, calls `init()`, reports tools and hooks to the host, and proxies tool and hook calls over the runtime protocol.
+
+## Packaging
+
+`synergy plugin build` writes a distributable `dist/` directory:
+
+- `dist/plugin.json`
+- `dist/runtime/index.js`
+- `dist/ui/index.js` when UI entry is declared
+- copied theme/icon/assets files
+- `dist/permissions.summary.json`
+- `dist/integrity.json`
+
+`synergy plugin pack` archives `dist/` into `<name>-<version>.synergy-plugin.tgz`. `synergy plugin publish` accepts that tarball, stores the real artifact, records its `downloadUrl` and `sha256-...` integrity, and publishes registry metadata.
+
+## Exports
+
+```ts
+import type { PluginDescriptor, PluginInput } from "@ericsanchezok/synergy-plugin"
 import { tool } from "@ericsanchezok/synergy-plugin/tool"
-
-const ExamplePlugin: PluginDescriptor = async (ctx) => {
-  return {
-    tool: {
-      scope_info: tool({
-        description: "Show the current Scope and worktree",
-        args: {},
-        async execute() {
-          return [
-            `scope: ${ctx.scope.id}`,
-            `scopeType: ${ctx.scope.type}`,
-            `directory: ${ctx.directory}`,
-            `worktree: ${ctx.worktree}`,
-          ].join("\n")
-        },
-      }),
-    },
-
-    async "session.turn.after"(input) {
-      if (!input.error) {
-        console.log("assistant replied in session", input.sessionID)
-      }
-    },
-
-    async "note.search.after"(_input, output) {
-      output.notes = output.notes.filter((note) => !note.tags.includes("private"))
-    },
-  }
-}
-
-export default ExamplePlugin
+import type { BunShell } from "@ericsanchezok/synergy-plugin/shell"
+import type { PluginToolRendererProps } from "@ericsanchezok/synergy-plugin/ui"
 ```
-
-## Best practices
-
-### Keep hooks fast
-
-Most hooks run inline with real user work. If a hook blocks, the user feels it.
-Do the minimum in the hook path. Push slow work to another system when possible.
-
-### Be conservative with mutation
-
-If you mutate an output object, make the change narrow and obvious.
-A good plugin should be easy to reason about six months later.
-
-### Treat Scope as real context
-
-Plugins run inside a resolved Scope. Prefer `ctx.scope`, `ctx.directory`, and `ctx.worktree` over guessing from process state.
-
-### Use `ctx.$` carefully
-
-`ctx.$` is useful for local runtime-side commands, but it also makes it easy to couple a plugin to one machine or one repository layout. Shell out when that is the simplest correct answer, not by default.
-
-### Prefer observation hooks for telemetry and indexing
-
-If you only need to watch what happened, use an after-hook or `event` hook instead of intercepting earlier stages.
-
-### Be explicit about note and engram behavior
-
-Hooks like `note.search.after` and `engram.memory.search.after` can quietly change what users see. Document those policies in the plugin itself and keep them predictable.
-
-### Expect experimental hooks to move
-
-If your plugin depends on an `experimental.*` hook, isolate that logic so future API changes are easy to update.
-
-### Export one plugin by default
-
-A single default export keeps module behavior obvious. Multiple exported plugin functions are supported, but they are loaded independently.
-
-## Auth plugins
-
-A plugin can also provide `auth` for a custom provider. That is how plugins participate in provider-specific API key or OAuth flows and, when needed, compute provider options through an auth loader.
-
-If you only need custom tools or hooks, you can ignore `auth` entirely.
-
-## When to use a plugin vs other extension points
-
-Use a plugin when you need runtime behavior:
-
-- add a tool
-- intercept a session, agenda, note, or engram lifecycle step
-- integrate provider auth
-- react to runtime events
-
-Use other extension points when the problem is simpler:
-
-- use `.synergy/command/` for reusable prompt commands
-- use `.synergy/skill/` for domain instructions and workflows
-- use config in `synergy.jsonc` for static runtime configuration
-
-## Development notes
-
-- local plugin files can live under `.synergy/plugin/` or `.synergy/plugins/`
-- global plugin files can live under `~/.synergy/config/plugin/` or `~/.synergy/config/plugins/`
-- explicit package plugins can be listed in `synergy.jsonc` under `plugin`
-- plugin reload also refreshes plugin-provided tools
-
-That is the core model: a plugin is an async server-side module that receives runtime context, returns hooks and tools, and participates directly in Scope-aware execution.

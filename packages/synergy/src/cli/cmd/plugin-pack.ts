@@ -17,6 +17,10 @@ function formatSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
+function safePackageName(name: string): string {
+  return name.replace(/[^a-zA-Z0-9_.-]/g, "-")
+}
+
 // ---------------------------------------------------------------------------
 // pack [path]
 // ---------------------------------------------------------------------------
@@ -62,9 +66,14 @@ export const PluginPackCommand = cmd({
       process.exitCode = 1
       return
     }
+    if (!fs.existsSync(path.join(distDir, "plugin.json"))) {
+      UI.error(`dist/plugin.json not found at ${distDir}. Run "synergy plugin build" first.`)
+      process.exitCode = 1
+      return
+    }
 
     // 3. Create tarball
-    const tgzName = `${manifest.name}-${manifest.version}.synergy-plugin.tgz`
+    const tgzName = `${safePackageName(manifest.name)}-${manifest.version}.synergy-plugin.tgz`
     const spinner = (message: string) => {
       process.stderr.write(`${UI.Style.TEXT_DIM}  ${message}...${UI.Style.TEXT_NORMAL}${EOL}`)
     }

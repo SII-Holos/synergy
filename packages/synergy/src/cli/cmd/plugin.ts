@@ -397,7 +397,7 @@ export const PluginUpdateCommand = cmd({
           try {
             const { pkg } = PluginSpec.parse(spec)
             const currentLockfile = await Lockfile.read()
-            backupEntry = currentLockfile.plugins[pkg] ?? null
+            backupEntry = currentLockfile.plugins[current.id] ?? currentLockfile.plugins[pkg] ?? null
           } catch {
             // No existing lockfile entry
           }
@@ -448,7 +448,7 @@ export const PluginUpdateCommand = cmd({
               try {
                 const { pkg } = PluginSpec.parse(spec)
                 const currentLockfile = await Lockfile.read()
-                const restoredLockfile = Lockfile.addEntry(currentLockfile, pkg, backupEntry)
+                const restoredLockfile = Lockfile.addEntry(currentLockfile, id, backupEntry)
                 await Lockfile.write(restoredLockfile)
                 UI.println(
                   `  ${UI.Style.TEXT_WARNING}↩${UI.Style.TEXT_NORMAL} Rolled back lockfile for ${SpecToDisplay(spec)}`,
@@ -804,7 +804,7 @@ async function writeUpdatedPackageLock(current: ConfiguredPluginPackage, resolve
   })
   const lockfile = await Lockfile.read()
   const integrity = await Lockfile.computeIntegrity(resolved.entryPath)
-  const updatedLockfile = Lockfile.addEntry(lockfile, resolved.pkg, {
+  const updatedLockfile = Lockfile.addEntry(lockfile, current.id, {
     spec: current.spec,
     version: manifest?.version ?? resolved.version,
     resolved: resolved.entryPath,

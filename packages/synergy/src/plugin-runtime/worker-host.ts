@@ -1,4 +1,5 @@
 import { Worker } from "node:worker_threads"
+import { fileURLToPath } from "url"
 import type {
   PluginToHost,
   HostToPlugin,
@@ -10,6 +11,20 @@ import type { PluginLogEntry } from "./logs.js"
 import type { RuntimeExit } from "./errors.js"
 import { classifyRuntimeExit, PluginRuntimeError } from "./errors.js"
 import type { ConcurrencyLimiter } from "./resource-limits.js"
+
+const RUNNER_PATH = fileURLToPath(new URL("./runner.ts", import.meta.url))
+
+type WorkerFactory = (
+  filename: string,
+  options: { workerData: { entryPath: string; input: IsolatedPluginInputData } },
+) => Worker
+
+const defaultWorkerFactory: WorkerFactory = (filename, options) => new Worker(filename, options)
+let workerFactory = defaultWorkerFactory
+
+export function setWorkerFactoryForTest(factory?: WorkerFactory): void {
+  workerFactory = factory ?? defaultWorkerFactory
+}
 
 // ---------------------------------------------------------------------------
 // Worker state
@@ -148,8 +163,8 @@ export async function spawnPluginWorker(options: SpawnPluginWorkerOptions): Prom
 
   // ── Spawn worker ────────────────────────────────────
 
-  const worker = new Worker(entryPath, {
-    workerData: input,
+  const worker = workerFactory(RUNNER_PATH, {
+    workerData: { entryPath, input },
   })
 
   worker.on("message", (msg: unknown) => {
