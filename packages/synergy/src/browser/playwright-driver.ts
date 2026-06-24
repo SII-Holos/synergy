@@ -53,6 +53,7 @@ export class PlaywrightBrowserDriver implements BrowserDriver.Driver {
       const executablePath = await BrowserInstall.discoverChromium()
       this._browser = await playwright.chromium.launch({
         headless: true,
+        timeout: 10_000,
         ...(executablePath ? { executablePath } : {}),
         args: this.launchArgs(),
       })

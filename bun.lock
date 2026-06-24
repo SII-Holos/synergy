@@ -213,6 +213,7 @@
         "nodemailer": "8.0.3",
         "open": "10.1.2",
         "playwright": "1.61.0",
+        "playwright-core": "1.61.0",
         "remeda": "catalog:",
         "sqlite-vec": "0.1.7-alpha.2",
         "sqlite-vec-darwin-arm64": "0.1.7-alpha.2",
