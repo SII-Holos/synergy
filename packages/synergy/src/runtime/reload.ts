@@ -338,8 +338,11 @@ export namespace RuntimeReload {
   }
 
   function hasProjectConfig() {
-    return ConfigDomain.definitions.some((domain) =>
-      existsSync(path.join(Instance.directory, ".synergy", "synergy.d", domain.filename)),
+    return (
+      projectLegacyConfigFiles().some((file) => existsSync(file)) ||
+      ConfigDomain.definitions.some((domain) =>
+        existsSync(path.join(Instance.directory, ".synergy", "synergy.d", domain.filename)),
+      )
     )
   }
 
@@ -480,8 +483,26 @@ export namespace RuntimeReload {
     return roots.some((root) => normalized.startsWith(root + path.sep))
   }
 
+  function globalLegacyConfigFiles() {
+    return [path.join(Global.Path.config, "synergy.jsonc"), path.join(Global.Path.config, "synergy.json")].map((file) =>
+      path.resolve(file),
+    )
+  }
+
+  function projectLegacyConfigFiles() {
+    return [
+      path.join(Instance.directory, "synergy.jsonc"),
+      path.join(Instance.directory, "synergy.json"),
+      path.join(Instance.directory, ".synergy", "synergy.jsonc"),
+      path.join(Instance.directory, ".synergy", "synergy.json"),
+    ].map((file) => path.resolve(file))
+  }
+
   export function detectScopeForFile(filePath: string): Scope | undefined {
     const normalized = path.resolve(filePath)
+
+    if (globalLegacyConfigFiles().includes(normalized)) return "global"
+    if (projectLegacyConfigFiles().includes(normalized)) return "project"
 
     const globalDomainDir = path.resolve(ConfigDomain.directory())
     if (normalized.startsWith(globalDomainDir + path.sep) && ConfigDomain.domainForFile(normalized)) return "global"
@@ -517,6 +538,10 @@ export namespace RuntimeReload {
   export function detectTargetsForFile(filePath: string): Target[] {
     const normalized = path.resolve(filePath)
     const targets = [] as Target[]
+
+    if (globalLegacyConfigFiles().includes(normalized) || projectLegacyConfigFiles().includes(normalized)) {
+      targets.push("config")
+    }
 
     const globalDomainDir = path.resolve(ConfigDomain.directory())
     const projectDomainDir = path.resolve(path.join(Instance.directory, ".synergy", "synergy.d"))

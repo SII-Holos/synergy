@@ -288,6 +288,10 @@ export namespace Config {
       result.plugin.push(...(await loadPlugin(dir)))
     }
 
+    result = mergeConfigConcatArrays(result, await loadLegacyProjectConfigFiles(Instance.directory))
+    result.agent ??= {}
+    result.plugin ??= []
+
     if (Flag.SYNERGY_PERMISSION) {
       result.permission = mergeDeep(result.permission ?? {}, JSON.parse(Flag.SYNERGY_PERMISSION))
     }
@@ -634,6 +638,23 @@ export namespace Config {
         })
       })
     }
+  }
+
+  async function loadLegacyProjectConfigFiles(projectRoot: string): Promise<Info> {
+    const synergyDir = path.join(projectRoot, ".synergy")
+    const candidates = [
+      path.join(projectRoot, "synergy.jsonc"),
+      path.join(projectRoot, "synergy.json"),
+      path.join(synergyDir, "synergy.jsonc"),
+      path.join(synergyDir, "synergy.json"),
+    ]
+
+    let result: Info = {}
+    for (const candidate of candidates) {
+      if (!(await Bun.file(candidate).exists())) continue
+      result = mergeConfigConcatArrays(result, await loadFile(candidate))
+    }
+    return result
   }
 
   async function loadFile(filepath: string, options: { addSchema?: boolean } = {}): Promise<Info> {

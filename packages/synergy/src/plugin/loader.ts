@@ -74,18 +74,21 @@ const printedPluginPaths = new Set<string>()
 
 export interface LoaderState {
   loaded: LoadedPlugin[]
-  baseInput: Omit<PluginInput, "config" | "auth" | "cache" | "pluginDir">
 }
 
 export const state = Instance.state(async (): Promise<LoaderState> => {
+  const config = await Config.get()
+  const loaded: LoadedPlugin[] = []
+  const pluginPaths = [...(config.plugin ?? [])]
+
+  if (pluginPaths.length === 0) return { loaded }
+
   const { Server } = await import("../server/server")
   const client = createSynergyClient({
     baseUrl: Server.url().toString(),
     // @ts-ignore - fetch type incompatibility
     fetch: async (...args) => Server.App().fetch(...args),
   })
-  const config = await Config.get()
-  const loaded: LoadedPlugin[] = []
   const baseInput: Omit<PluginInput, "config" | "auth" | "cache" | "pluginDir"> = {
     client,
     scope: Instance.scope,
@@ -94,8 +97,6 @@ export const state = Instance.state(async (): Promise<LoaderState> => {
     serverUrl: Server.url(),
     $: Bun.$,
   }
-
-  const pluginPaths = [...(config.plugin ?? [])]
 
   let installedCount = 0
   let failedCount = 0
@@ -192,7 +193,7 @@ export const state = Instance.state(async (): Promise<LoaderState> => {
     UI.println(`  Plugins: ${parts.join(", ")}`)
   }
 
-  return { loaded, baseInput }
+  return { loaded }
 })
 
 // ---------------------------------------------------------------------------
