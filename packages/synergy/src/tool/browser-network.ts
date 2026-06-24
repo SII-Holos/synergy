@@ -13,46 +13,54 @@ export const BrowserNetworkTool = Tool.define("browser_network", {
   }),
   async execute(params, ctx) {
     const tab = await BrowserToolHelper.resolveTab(ctx, params.tabId)
+    return BrowserToolHelper.withActivity(
+      ctx,
+      tab,
+      "reading",
+      "browser_network",
+      "Reading network requests",
+      async () => {
+        const requests = await tab.networkRequests(params.maxEntries ?? 20)
 
-    const requests = await tab.networkRequests(params.maxEntries ?? 20)
+        let filtered = requests
+        if (params.filter) {
+          let filterRegex: RegExp
+          try {
+            filterRegex = new RegExp(params.filter, "i")
+          } catch {
+            throw new Error(`Invalid regex filter: ${params.filter}`)
+          }
+          filtered = requests.filter((r) => filterRegex.test(r.url))
+        }
 
-    let filtered = requests
-    if (params.filter) {
-      let filterRegex: RegExp
-      try {
-        filterRegex = new RegExp(params.filter, "i")
-      } catch {
-        throw new Error(`Invalid regex filter: ${params.filter}`)
-      }
-      filtered = requests.filter((r) => filterRegex.test(r.url))
-    }
+        // Strip sensitive headers before formatting output
+        const sanitized = filtered.map((r) => ({
+          ...r,
+          responseHeaders: r.responseHeaders ? BrowserPolicy.sanitizeHeaders(r.responseHeaders) : undefined,
+        }))
 
-    // Strip sensitive headers before formatting output
-    const sanitized = filtered.map((r) => ({
-      ...r,
-      responseHeaders: r.responseHeaders ? BrowserPolicy.sanitizeHeaders(r.responseHeaders) : undefined,
-    }))
+        if (sanitized.length === 0) {
+          return {
+            title: `Network requests (0, tab: ${tab.id})`,
+            output: "No network requests captured.",
+            metadata: { requestCount: 0 },
+          }
+        }
 
-    if (sanitized.length === 0) {
-      return {
-        title: `Network requests (0, tab: ${tab.id})`,
-        output: "No network requests captured.",
-        metadata: { requestCount: 0 },
-      }
-    }
+        const lines = sanitized.map((req) => {
+          const ts = new Date(req.timestamp).toISOString()
+          const method = req.method.padEnd(7)
+          const status = req.status != null ? String(req.status).padStart(3) : "---"
+          const type = req.mimeType ?? "---"
+          return `[${ts}] ${status} ${method} ${type} ${req.url}`
+        })
 
-    const lines = sanitized.map((req) => {
-      const ts = new Date(req.timestamp).toISOString()
-      const method = req.method.padEnd(7)
-      const status = req.status != null ? String(req.status).padStart(3) : "---"
-      const type = req.mimeType ?? "---"
-      return `[${ts}] ${status} ${method} ${type} ${req.url}`
-    })
-
-    return {
-      title: `Network requests (${sanitized.length}, tab: ${tab.id})`,
-      output: lines.join("\n"),
-      metadata: { requestCount: sanitized.length },
-    }
+        return {
+          title: `Network requests (${sanitized.length}, tab: ${tab.id})`,
+          output: lines.join("\n"),
+          metadata: { requestCount: sanitized.length },
+        }
+      },
+    )
   },
 })

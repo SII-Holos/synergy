@@ -34,143 +34,147 @@ export const BrowserReadTool = Tool.define<typeof parameters, BrowserReadMetadat
   parameters,
   async execute(params, ctx) {
     const tab = await BrowserToolHelper.resolveTab(ctx, params.tabId)
+    await BrowserToolHelper.markActivity(ctx, tab, "reading", "browser_read", `Reading ${params.type}`)
+    try {
+      switch (params.type) {
+        case "accessibility": {
+          const snap = await tab.snapshot()
+          const text = formatSnapshotText(snap.elements, { interactiveOnly: false })
 
-    switch (params.type) {
-      case "accessibility": {
-        const snap = await tab.snapshot()
-        const text = formatSnapshotText(snap.elements, { interactiveOnly: false })
+          let output = text || "(empty page)"
+          const truncated = output.length > params.maxBytes || snap.truncated
+          output = truncateHTML(output, params.maxBytes)
 
-        let output = text || "(empty page)"
-        const truncated = output.length > params.maxBytes || snap.truncated
-        output = truncateHTML(output, params.maxBytes)
+          return {
+            title: `Page structure of ${tab.url || tab.title || "page"}`,
+            output,
+            metadata: {
+              url: tab.url,
+              tabId: tab.id,
+              type: "accessibility",
+              elementsCount: snap.elements.length,
+              truncated,
+            },
+          }
+        }
 
-        return {
-          title: `Page structure of ${tab.url || tab.title || "page"}`,
-          output,
-          metadata: {
-            url: tab.url,
-            tabId: tab.id,
-            type: "accessibility",
-            elementsCount: snap.elements.length,
-            truncated,
-          },
+        case "dom": {
+          const html = await readDOM(tab, params.locator)
+          const truncated = Buffer.byteLength(html, "utf-8") > params.maxBytes
+          const output = domSnapshot(html, params.maxBytes)
+
+          return {
+            title: `DOM of ${tab.url || tab.title || "page"}`,
+            output,
+            metadata: {
+              url: tab.url,
+              tabId: tab.id,
+              type: "dom",
+              byteLength: Buffer.byteLength(html, "utf-8"),
+              truncated,
+            },
+          }
+        }
+
+        case "text": {
+          const html = params.locator
+            ? await readDOM(tab, params.locator)
+            : ((await tab.evaluate("document.body.innerText")) as string) || ""
+          const rawText = pageText(html)
+          const truncated = Buffer.byteLength(rawText, "utf-8") > params.maxBytes
+          const output = truncateHTML(rawText, params.maxBytes)
+
+          return {
+            title: `Text of ${tab.url || tab.title || "page"}`,
+            output: output || "(no visible text)",
+            metadata: {
+              url: tab.url,
+              tabId: tab.id,
+              type: "text",
+              byteLength: Buffer.byteLength(rawText, "utf-8"),
+              truncated,
+            },
+          }
+        }
+
+        case "attributes": {
+          if (!params.locator) throw new Error("locator is required for attributes read type")
+          const attrs = await resolveAttributes(tab, params.locator)
+          const lines = Object.keys(attrs).length
+            ? Object.entries(attrs)
+                .map(([k, v]) => `${k}: ${v}`)
+                .join("\n")
+            : "(no attributes)"
+          const output = truncateHTML(lines, params.maxBytes)
+
+          return {
+            title: `Attributes of element on ${tab.url || tab.title || "page"}`,
+            output,
+            metadata: {
+              url: tab.url,
+              tabId: tab.id,
+              type: "attributes",
+              attributeCount: Object.keys(attrs).length,
+              truncated: false,
+            },
+          }
+        }
+
+        case "style": {
+          if (!params.locator) throw new Error("locator is required for style read type")
+          const styles = await resolveComputedStyles(tab, params.locator)
+          const lines = Object.keys(styles).length
+            ? Object.entries(styles)
+                .map(([k, v]) => `${k}: ${v}`)
+                .join("\n")
+            : "(no computed styles)"
+          const output = truncateHTML(lines, params.maxBytes)
+
+          return {
+            title: `Computed style of element on ${tab.url || tab.title || "page"}`,
+            output,
+            metadata: {
+              url: tab.url,
+              tabId: tab.id,
+              type: "style",
+              propertyCount: Object.keys(styles).length,
+              truncated: false,
+            },
+          }
+        }
+
+        case "visibleDom": {
+          const snap = await tab.snapshot()
+          const elements = snap.elements
+          const filtered = visibleDOM(
+            elements.map((el) => ({
+              ...el,
+              style: {} as Record<string, string>,
+              bounds: { x: 0, y: 0, width: 0, height: 0 },
+            })),
+            1920,
+            1080,
+          )
+          const text = formatSnapshotText(filtered, { interactiveOnly: false })
+          let output = text || "(no visible elements)"
+          const truncated = output.length > params.maxBytes || snap.truncated
+          output = truncateHTML(output, params.maxBytes)
+
+          return {
+            title: `Visible DOM of ${tab.url || tab.title || "page"}`,
+            output,
+            metadata: {
+              url: tab.url,
+              tabId: tab.id,
+              type: "visibleDom",
+              elementsCount: filtered.length,
+              truncated,
+            },
+          }
         }
       }
-
-      case "dom": {
-        const html = await readDOM(tab, params.locator)
-        const truncated = Buffer.byteLength(html, "utf-8") > params.maxBytes
-        const output = domSnapshot(html, params.maxBytes)
-
-        return {
-          title: `DOM of ${tab.url || tab.title || "page"}`,
-          output,
-          metadata: {
-            url: tab.url,
-            tabId: tab.id,
-            type: "dom",
-            byteLength: Buffer.byteLength(html, "utf-8"),
-            truncated,
-          },
-        }
-      }
-
-      case "text": {
-        const html = params.locator
-          ? await readDOM(tab, params.locator)
-          : ((await tab.evaluate("document.body.innerText")) as string) || ""
-        const rawText = pageText(html)
-        const truncated = Buffer.byteLength(rawText, "utf-8") > params.maxBytes
-        const output = truncateHTML(rawText, params.maxBytes)
-
-        return {
-          title: `Text of ${tab.url || tab.title || "page"}`,
-          output: output || "(no visible text)",
-          metadata: {
-            url: tab.url,
-            tabId: tab.id,
-            type: "text",
-            byteLength: Buffer.byteLength(rawText, "utf-8"),
-            truncated,
-          },
-        }
-      }
-
-      case "attributes": {
-        if (!params.locator) throw new Error("locator is required for attributes read type")
-        const attrs = await resolveAttributes(tab, params.locator)
-        const lines = Object.keys(attrs).length
-          ? Object.entries(attrs)
-              .map(([k, v]) => `${k}: ${v}`)
-              .join("\n")
-          : "(no attributes)"
-        const output = truncateHTML(lines, params.maxBytes)
-
-        return {
-          title: `Attributes of element on ${tab.url || tab.title || "page"}`,
-          output,
-          metadata: {
-            url: tab.url,
-            tabId: tab.id,
-            type: "attributes",
-            attributeCount: Object.keys(attrs).length,
-            truncated: false,
-          },
-        }
-      }
-
-      case "style": {
-        if (!params.locator) throw new Error("locator is required for style read type")
-        const styles = await resolveComputedStyles(tab, params.locator)
-        const lines = Object.keys(styles).length
-          ? Object.entries(styles)
-              .map(([k, v]) => `${k}: ${v}`)
-              .join("\n")
-          : "(no computed styles)"
-        const output = truncateHTML(lines, params.maxBytes)
-
-        return {
-          title: `Computed style of element on ${tab.url || tab.title || "page"}`,
-          output,
-          metadata: {
-            url: tab.url,
-            tabId: tab.id,
-            type: "style",
-            propertyCount: Object.keys(styles).length,
-            truncated: false,
-          },
-        }
-      }
-
-      case "visibleDom": {
-        const snap = await tab.snapshot()
-        const elements = snap.elements
-        const filtered = visibleDOM(
-          elements.map((el) => ({
-            ...el,
-            style: {} as Record<string, string>,
-            bounds: { x: 0, y: 0, width: 0, height: 0 },
-          })),
-          1920,
-          1080,
-        )
-        const text = formatSnapshotText(filtered, { interactiveOnly: false })
-        let output = text || "(no visible elements)"
-        const truncated = output.length > params.maxBytes || snap.truncated
-        output = truncateHTML(output, params.maxBytes)
-
-        return {
-          title: `Visible DOM of ${tab.url || tab.title || "page"}`,
-          output,
-          metadata: {
-            url: tab.url,
-            tabId: tab.id,
-            type: "visibleDom",
-            elementsCount: filtered.length,
-            truncated,
-          },
-        }
-      }
+    } finally {
+      await BrowserToolHelper.markIdle(ctx, tab, "browser_read")
     }
   },
 })

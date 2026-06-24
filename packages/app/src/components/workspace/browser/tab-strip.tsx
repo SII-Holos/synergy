@@ -1,4 +1,5 @@
 import { Show } from "solid-js"
+import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import type { BrowserTab } from "./browser-store"
 
 export type TabStripProps = {
@@ -26,9 +27,7 @@ export function TabStrip(props: TabStripProps) {
         onClick={props.onAddTab}
         aria-label="New tab"
       >
-        <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-          <path d="M7 3V11M3 7H11" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
-        </svg>
+        <Icon name="plus" size="small" />
       </button>
     </div>
   )
@@ -52,21 +51,20 @@ function TabItem(props: TabItemProps) {
       }}
       onClick={props.onSwitch}
     >
-      <Show when={props.tab.isLoading} fallback={<span class="w-2" />}>
+      <Show when={props.tab.isLoading} fallback={<Icon name="globe" size="small" class="text-icon-weak" />}>
         <span class="block size-2 rounded-full bg-surface-interactive-base animate-pulse" />
       </Show>
       <span class="max-w-[120px] truncate">{props.tab.title || "Untitled"}</span>
       <span
-        class="flex items-center justify-center size-4 rounded text-icon-weak opacity-0 group-hover:opacity-100 hover:text-icon-base hover:bg-surface-raised-stronger-non-alpha transition-opacity"
+        class="flex size-5 items-center justify-center rounded text-icon-weak opacity-0 transition-opacity hover:bg-surface-raised-stronger-non-alpha hover:text-icon-base group-hover:opacity-100"
         classList={{ "opacity-100": props.isActive }}
         onClick={(e) => {
           e.stopPropagation()
           props.onClose()
         }}
+        aria-label="Close tab"
       >
-        <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-          <path d="M3 3L9 9M9 3L3 9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
-        </svg>
+        <Icon name="x" size="small" />
       </span>
     </button>
   )
