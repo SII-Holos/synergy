@@ -101,7 +101,17 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   const info = createMemo(() => (params.id ? sync.session.get(params.id) : undefined))
   const status = createMemo(() => sync.data.session_status[params.id ?? ""] ?? idle)
   const working = createMemo(() => status()?.type !== "idle")
-  const planMode = createMemo(() => info()?.blueprint?.planMode ?? false)
+  const [pendingPlanMode, setPendingPlanMode] = createSignal(false)
+  const planMode = createMemo(() => (params.id ? (info()?.blueprint?.planMode ?? false) : pendingPlanMode()))
+
+  createEffect(
+    on(
+      () => params.id,
+      (id) => {
+        if (id) setPendingPlanMode(false)
+      },
+    ),
+  )
 
   const [sessionLoop] = createResource(
     () => (params.id ? info()?.blueprint?.loopID : null),
@@ -294,8 +304,11 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   }
 
   const togglePlanMode = async () => {
-    if (!params.id) return
     const current = planMode()
+    if (!params.id) {
+      setPendingPlanMode(!current)
+      return
+    }
     try {
       await sdk.client.blueprint.session.planMode({
         id: params.id,
@@ -864,6 +877,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     sessionAttachments,
     activeFile,
     selectedControlProfile,
+    planMode,
     localArmedLoop,
     setLocalArmedLoop,
     setBlueprintLoading,
@@ -1140,16 +1154,14 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                         <Icon name="paperclip" size="small" class="text-icon-base" />
                         <DropdownMenu.ItemLabel>Add files</DropdownMenu.ItemLabel>
                       </DropdownMenu.Item>
-                      <Show when={params.id}>
-                        <DropdownMenu.Item disabled={planMode()} onSelect={() => void togglePlanMode()}>
-                          <Icon
-                            name={planMode() ? "check" : "list-checks"}
-                            size="small"
-                            class={planMode() ? "text-icon-weak" : "text-icon-base"}
-                          />
-                          <DropdownMenu.ItemLabel>Plan mode</DropdownMenu.ItemLabel>
-                        </DropdownMenu.Item>
-                      </Show>
+                      <DropdownMenu.Item disabled={planMode()} onSelect={() => void togglePlanMode()}>
+                        <Icon
+                          name={planMode() ? "check" : "list-checks"}
+                          size="small"
+                          class={planMode() ? "text-icon-weak" : "text-icon-base"}
+                        />
+                        <DropdownMenu.ItemLabel>Plan mode</DropdownMenu.ItemLabel>
+                      </DropdownMenu.Item>
                     </DropdownMenu.Content>
                   </DropdownMenu.Portal>
                 </DropdownMenu>

@@ -42,6 +42,7 @@ type PromptSubmitInput = {
   sessionAttachments: Accessor<SessionAttachmentPart[]>
   activeFile: Accessor<string | undefined>
   selectedControlProfile: Accessor<ControlProfileId>
+  planMode: Accessor<boolean>
   localArmedLoop: Accessor<BlueprintSlot | null>
   setLocalArmedLoop: Setter<BlueprintSlot | null>
   setBlueprintLoading: Setter<boolean>
@@ -183,6 +184,27 @@ export function usePromptSubmit(input: PromptSubmitInput) {
         .update({ sessionID: session.id, controlProfile: input.selectedControlProfile() })
         .then((x) => x.data ?? session)
         .catch(() => session)
+    }
+    if (!session) return
+    if (input.planMode() && !session.blueprint?.planMode) {
+      const sessionID = session.id
+      const fallbackSession = session
+      session = await client.blueprint.session
+        .planMode({ id: sessionID, planMode: true })
+        .then((x) => x.data ?? fallbackSession)
+        .catch(async (err) => {
+          showToast({
+            type: "error",
+            title: "Failed to toggle Plan Mode",
+            description: errorMessage(err),
+          })
+          if (createdSessionForSubmit) {
+            await client.session.delete({ sessionID }).catch(() => undefined)
+            navigate(`/${base64Encode(currentScopeKey)}/session`, { replace: true })
+          }
+          return undefined
+        })
+      if (!session) return
     }
     const activeSession = session!
 
