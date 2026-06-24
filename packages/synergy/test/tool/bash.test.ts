@@ -52,6 +52,33 @@ describe("tool.bash", () => {
     })
   })
 
+  test("promotes printed local artifacts as attachments", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const bash = await BashTool.init()
+        const result = await bash.execute(
+          {
+            command: "printf 'fake image' > contact-sheet.png; printf '%s\\n' \"$PWD/contact-sheet.png\"",
+            description: "Create contact sheet",
+          },
+          {
+            ...ctx,
+            messageID: "message_test",
+          },
+        )
+
+        expect(result.metadata.exit).toBe(0)
+        expect(result.output).toContain("contact-sheet.png")
+        expect(result.attachments).toHaveLength(1)
+        expect(result.attachments?.[0].filename).toBe("contact-sheet.png")
+        expect(result.attachments?.[0].mime).toBe("image/png")
+        expect(result.attachments?.[0].url.startsWith("asset://")).toBe(true)
+      },
+    })
+  })
+
   test("treats local env aliases as local execution", async () => {
     await ScopeContext.provide({
       scope: (await Scope.fromDirectory(projectRoot)).scope,

@@ -30,7 +30,6 @@ import {
 import { useData } from "../context"
 import { useDiffComponent } from "../context/diff"
 import { useCodeComponent } from "../context/code"
-import { useDialog } from "../context/dialog"
 import { BasicTool } from "./basic-tool"
 import { SmartTool } from "./basic-tool"
 import { Card } from "./card"
@@ -40,9 +39,7 @@ import { Checkbox } from "./checkbox"
 import { DagGraph } from "./dag-graph"
 import { DiffChanges } from "./diff-changes"
 import { Markdown } from "./markdown"
-import { ImagePreview } from "./image-preview"
-import { FileIcon } from "./file-icon"
-import { AttachmentList } from "./attachment-card"
+import { ArtifactGallery, type ArtifactFile } from "./attachment-card"
 import { ErrorCard } from "./error-card"
 import { getDirectory as _getDirectory, getFilename } from "@ericsanchezok/synergy-util/path"
 import { checksum } from "@ericsanchezok/synergy-util/encode"
@@ -1453,7 +1450,7 @@ export function AssistantMessageDisplay(props: { message: AssistantMessage; part
 }
 
 export function UserMessageDisplay(props: { message: UserMessage; parts: PartType[] }) {
-  const dialog = useDialog()
+  const data = useData()
 
   const textPart = createMemo(
     () => props.parts?.find((p) => p.type === "text" && !(p as TextPart).synthetic) as TextPart | undefined,
@@ -1484,73 +1481,13 @@ export function UserMessageDisplay(props: { message: UserMessage; parts: PartTyp
     }),
   )
 
-  const openImagePreview = (url: string, alt?: string) => {
-    dialog.show(() => <ImagePreview src={url} alt={alt} />)
-  }
-
   return (
     <div data-component="user-message">
       <Show when={attachments().length > 0 || noteAttachments().length > 0 || sessionAttachments().length > 0}>
         <div data-slot="user-message-attachments">
-          <For each={attachments()}>
-            {(file) => (
-              <div
-                data-slot="user-message-attachment"
-                data-type={file.mime.startsWith("image/") ? "image" : "file"}
-                data-clickable={file.mime.startsWith("image/") && !!file.url}
-                onClick={() => {
-                  if (file.mime.startsWith("image/") && file.url) {
-                    openImagePreview(file.url, file.filename)
-                  }
-                }}
-              >
-                <Show
-                  when={file.mime.startsWith("image/") && file.url}
-                  fallback={
-                    <div data-slot="user-message-attachment-file">
-                      <FileIcon
-                        node={{ path: file.filename ?? "file", type: "file" }}
-                        data-slot="user-message-attachment-file-icon"
-                      />
-                      <span data-slot="user-message-attachment-filename">{file.filename ?? "file"}</span>
-                    </div>
-                  }
-                >
-                  <img data-slot="user-message-attachment-image" src={file.url} alt={file.filename ?? "attachment"} />
-                </Show>
-              </div>
-            )}
-          </For>
-          <For each={noteAttachments()}>
-            {(file) => (
-              <div data-slot="user-message-attachment" data-type="note">
-                <div data-slot="user-message-note-attachment">
-                  <Icon name="notebook-pen" data-slot="user-message-note-icon" />
-                  <div data-slot="user-message-note-copy">
-                    <span data-slot="user-message-note-title">
-                      {(file.metadata?.title as string | undefined) || file.filename || "Untitled"}
-                    </span>
-                    <span data-slot="user-message-note-subtitle">Note</span>
-                  </div>
-                </div>
-              </div>
-            )}
-          </For>
-          <For each={sessionAttachments()}>
-            {(file) => (
-              <div data-slot="user-message-attachment" data-type="session">
-                <div data-slot="user-message-note-attachment">
-                  <Icon name="message-square" data-slot="user-message-note-icon" />
-                  <div data-slot="user-message-note-copy">
-                    <span data-slot="user-message-note-title">
-                      {(file.metadata?.title as string | undefined) || file.filename || "Untitled"}
-                    </span>
-                    <span data-slot="user-message-note-subtitle">Session</span>
-                  </div>
-                </div>
-              </div>
-            )}
-          </For>
+          <ArtifactGallery files={attachments()} serverUrl={data.serverUrl} />
+          <For each={noteAttachments()}>{(file) => <SpecialFileAttachment file={file} kind="note" />}</For>
+          <For each={sessionAttachments()}>{(file) => <SpecialFileAttachment file={file} kind="session" />}</For>
         </div>
       </Show>
       <Show when={text()}>
@@ -1558,6 +1495,23 @@ export function UserMessageDisplay(props: { message: UserMessage; parts: PartTyp
           <HighlightedText text={text()} references={inlineFiles()} />
         </div>
       </Show>
+    </div>
+  )
+}
+
+function SpecialFileAttachment(props: { file: FilePart; kind: "note" | "session" }) {
+  const title = createMemo(
+    () => (props.file.metadata?.title as string | undefined) || props.file.filename || "Untitled",
+  )
+  return (
+    <div data-slot="user-message-attachment" data-type={props.kind}>
+      <div data-slot="user-message-note-attachment">
+        <Icon name={props.kind === "note" ? "notebook-pen" : "message-square"} data-slot="user-message-note-icon" />
+        <div data-slot="user-message-note-copy">
+          <span data-slot="user-message-note-title">{title()}</span>
+          <span data-slot="user-message-note-subtitle">{props.kind === "note" ? "Note" : "Session"}</span>
+        </div>
+      </div>
     </div>
   )
 }
@@ -1665,13 +1619,52 @@ export {
 function ToolAttachments(props: { attachments: FilePart[] }) {
   const data = useData()
   const files = createMemo(() =>
-    props.attachments.map((f) => ({
-      mime: f.mime,
-      filename: f.filename,
-      url: f.url,
-    })),
+    props.attachments.map(
+      (f): ArtifactFile => ({
+        mime: f.mime,
+        filename: f.filename,
+        url: f.url,
+        localPath: f.localPath,
+        metadata: f.metadata,
+        source: f.source,
+      }),
+    ),
   )
-  return <AttachmentList files={files()} serverUrl={data.serverUrl} />
+  return <ArtifactGallery files={files()} serverUrl={data.serverUrl} />
+}
+
+PART_MAPPING["file"] = function FilePartDisplay(props) {
+  const data = useData()
+  const file = createMemo(() => props.part as FilePart)
+  const isInlineReference = createMemo(() => file().source?.text?.start !== undefined)
+  const isNoteAttachment = createMemo(() => file().metadata?.kind === "note")
+  const isSessionAttachment = createMemo(() => file().metadata?.kind === "session")
+
+  return (
+    <Show when={!isInlineReference()}>
+      <div data-component="file-part">
+        <Switch>
+          <Match when={isNoteAttachment()}>
+            <div data-component="user-message">
+              <div data-slot="user-message-attachments">
+                <SpecialFileAttachment file={file()} kind="note" />
+              </div>
+            </div>
+          </Match>
+          <Match when={isSessionAttachment()}>
+            <div data-component="user-message">
+              <div data-slot="user-message-attachments">
+                <SpecialFileAttachment file={file()} kind="session" />
+              </div>
+            </div>
+          </Match>
+          <Match when={true}>
+            <ArtifactGallery files={[file()]} serverUrl={data.serverUrl} />
+          </Match>
+        </Switch>
+      </div>
+    </Show>
+  )
 }
 
 PART_MAPPING["tool"] = function ToolPartDisplay(props) {

@@ -12,6 +12,9 @@ import { truncateMetadataOutput } from "./shared"
 import { SandboxBackend } from "@/sandbox/backend"
 import { EnforcementError } from "@/enforcement/errors"
 import { ShellSafety } from "@/enforcement/shell-safety"
+import { ArtifactPromotion } from "../artifact-promotion"
+import type { MessageV2 } from "@/session/message-v2"
+import type { BashResult } from "./shared"
 
 /**
  * Derive a human-readable abort reason from an AbortSignal's .reason.
@@ -116,6 +119,20 @@ export const LocalBashBackend: BashBackend = {
     const sandboxFallback = (ctx.extra as any)?.sandboxFallback as "deny" | "warn" | "allow" | undefined
     const sandboxWarning = (ctx.extra as any)?.sandboxWarning as string | undefined
     const warnOutput = (base: string) => (sandboxWarning ? `[Sandbox unavailable: ${sandboxWarning}]\n\n${base}` : base)
+    const withArtifacts = async (result: BashResult): Promise<BashResult> => {
+      const attachments = await ArtifactPromotion.promote({
+        output: result.output,
+        cwd,
+        sessionID: ctx.sessionID,
+        messageID: ctx.messageID,
+        tool: "bash",
+      }).catch((): MessageV2.FilePart[] => [])
+      if (attachments.length === 0) return result
+      return {
+        ...result,
+        attachments: [...(result.attachments ?? []), ...attachments],
+      }
+    }
 
     // Build sandbox-safe environment from the backend allowlist
     const sandboxEnv: Record<string, string> = {}
@@ -204,7 +221,7 @@ export const LocalBashBackend: BashBackend = {
         }
 
         ProcessRegistry.remove(regProc.id)
-        return {
+        return withArtifacts({
           title: params.description,
           metadata: {
             output: truncateMetadataOutput(regProc.output),
@@ -213,7 +230,7 @@ export const LocalBashBackend: BashBackend = {
             backend: "local",
           },
           output: warnOutput(regProc.output),
-        }
+        })
       } catch (e: unknown) {
         ProcessRegistry.remove(regProc.id)
         if (e instanceof EnforcementError.SandboxBlocked) throw e
@@ -393,7 +410,7 @@ export const LocalBashBackend: BashBackend = {
       }
     }
 
-    return {
+    return withArtifacts({
       title: params.description,
       metadata: {
         output: truncateMetadataOutput(output),
@@ -402,6 +419,6 @@ export const LocalBashBackend: BashBackend = {
         backend: "local",
       },
       output: warnOutput(output),
-    }
+    })
   },
 }

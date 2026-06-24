@@ -1,0 +1,210 @@
+import path from "path"
+import { fileURLToPath } from "url"
+import { stat, realpath } from "fs/promises"
+import { Asset } from "@/asset/asset"
+import { Identifier } from "@/id/id"
+import { ScopeContext } from "@/scope/context"
+import { Filesystem } from "@/util/filesystem"
+import type { MessageV2 } from "@/session/message-v2"
+
+const MAX_ARTIFACTS = 8
+const MAX_TOTAL_BYTES = 25 * 1024 * 1024
+
+const MIME_BY_EXT: Record<string, string> = {
+  png: "image/png",
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  webp: "image/webp",
+  gif: "image/gif",
+  svg: "image/svg+xml",
+  pdf: "application/pdf",
+  html: "text/html",
+  htm: "text/html",
+  csv: "text/csv",
+  docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  zip: "application/zip",
+}
+
+const SUPPORTED_EXTENSIONS = new Set(Object.keys(MIME_BY_EXT))
+const EXTENSION_PATTERN = Object.keys(MIME_BY_EXT)
+  .sort((a, b) => b.length - a.length)
+  .join("|")
+
+export namespace ArtifactPromotion {
+  export interface Candidate {
+    value: string
+    detectedFrom: "markdown" | "file_url" | "line" | "path"
+  }
+
+  export interface PromoteOptions {
+    output: string
+    cwd: string
+    sessionID: string
+    messageID: string
+    tool: string
+    maxArtifacts?: number
+    maxTotalBytes?: number
+  }
+
+  export function extractCandidates(output: string): Candidate[] {
+    const cleaned = stripAnsi(output)
+    const candidates: Candidate[] = []
+
+    const markdownPattern = /!?\[[^\]\n]*\]\(([^)\n]+)\)/g
+    for (const match of cleaned.matchAll(markdownPattern)) {
+      addCandidate(candidates, match[1], "markdown")
+    }
+
+    const fileUrlPattern = /file:\/\/(?:[^\s<>'")\]]|%[0-9a-fA-F]{2})+/g
+    for (const match of cleaned.matchAll(fileUrlPattern)) {
+      addCandidate(candidates, match[0], "file_url")
+    }
+
+    const linePattern = new RegExp(`\\.(?:${EXTENSION_PATTERN})(?:[?#][^\\s]*)?$`, "i")
+    for (const line of cleaned.split(/\r?\n/)) {
+      const value = normalizeCandidateText(line)
+      if (value && looksLikeStandalonePath(value) && linePattern.test(value)) {
+        addCandidate(candidates, value, "line")
+      }
+    }
+
+    const pathPattern = new RegExp(
+      `(?:^|[\\s:=('"\\\`<])((?:~|\\.{1,2}|/|[A-Za-z]:[\\\\/])[^'"\\\`<>\\r\\n]*?\\.(?:${EXTENSION_PATTERN})(?:[?#][^\\s'"\\\`<>)]*)?)`,
+      "gi",
+    )
+    for (const match of cleaned.matchAll(pathPattern)) {
+      const value = match[1]
+      const valueStart = match.index + match[0].lastIndexOf(value)
+      if (cleaned.slice(Math.max(0, valueStart - 5), valueStart) === "file:") continue
+      addCandidate(candidates, match[1], "path")
+    }
+
+    const seen = new Set<string>()
+    return candidates.filter((candidate) => {
+      const key = candidate.value
+      if (seen.has(key)) return false
+      seen.add(key)
+      return true
+    })
+  }
+
+  export async function promote(options: PromoteOptions): Promise<MessageV2.FilePart[]> {
+    const limit = options.maxArtifacts ?? MAX_ARTIFACTS
+    const totalLimit = options.maxTotalBytes ?? MAX_TOTAL_BYTES
+    const root = await canonicalPath(ScopeContext.current.directory)
+    const attachments: MessageV2.FilePart[] = []
+    const seen = new Set<string>()
+    let totalSize = 0
+
+    for (const candidate of extractCandidates(options.output)) {
+      if (attachments.length >= limit) break
+
+      const resolved = resolveCandidate(candidate.value, options.cwd)
+      if (!resolved) continue
+
+      const canonical = await canonicalPath(resolved).catch(() => undefined)
+      if (!canonical || seen.has(canonical)) continue
+      seen.add(canonical)
+
+      if (!Filesystem.contains(root, canonical)) continue
+
+      const ext = path.extname(canonical).slice(1).toLowerCase()
+      if (!SUPPORTED_EXTENSIONS.has(ext)) continue
+
+      const info = await stat(canonical).catch(() => undefined)
+      if (!info?.isFile()) continue
+      if (info.size > totalLimit || totalSize + info.size > totalLimit) continue
+
+      const buffer = Buffer.from(await Bun.file(canonical).arrayBuffer())
+      const filename = path.basename(canonical)
+      const mime = MIME_BY_EXT[ext] ?? Asset.mimeFromExt(ext)
+      const assetId = await Asset.write(buffer, mime, filename)
+      totalSize += info.size
+
+      attachments.push({
+        id: Identifier.ascending("part"),
+        sessionID: options.sessionID,
+        messageID: options.messageID,
+        type: "file",
+        mime,
+        filename,
+        url: `asset://${assetId}`,
+        localPath: canonical,
+        metadata: {
+          kind: "artifact",
+          artifact: {
+            originTool: options.tool,
+            sourcePath: canonical,
+            size: info.size,
+            detectedFrom: candidate.detectedFrom,
+          },
+        },
+      })
+    }
+
+    return attachments
+  }
+}
+
+function stripAnsi(input: string): string {
+  return input.replace(/\u001b\[[0-9;]*m/g, "")
+}
+
+function normalizeCandidateText(input: string | undefined): string | undefined {
+  if (!input) return undefined
+  let value = input.trim()
+  if (!value) return undefined
+  if (value.startsWith("<") && value.endsWith(">")) value = value.slice(1, -1)
+  value = value.replace(/^["'`]+|["'`]+$/g, "")
+  value = value.replace(/[),.;:!?]+$/g, "")
+  return value || undefined
+}
+
+function addCandidate(
+  candidates: ArtifactPromotion.Candidate[],
+  raw: string | undefined,
+  detectedFrom: ArtifactPromotion.Candidate["detectedFrom"],
+) {
+  const value = normalizeCandidateText(raw)
+  if (!value) return
+  candidates.push({ value, detectedFrom })
+}
+
+function looksLikeStandalonePath(value: string): boolean {
+  if (value.startsWith("file://")) return true
+  if (value.startsWith("/") || value.startsWith("./") || value.startsWith("../") || value.startsWith("~/")) return true
+  if (/^[A-Za-z]:[\\/]/.test(value)) return true
+  return !/\s/.test(value) && !/[()[\]]/.test(value)
+}
+
+function resolveCandidate(raw: string, cwd: string): string | undefined {
+  const withoutQuery = raw.replace(/[?#].*$/, "")
+  if (withoutQuery.startsWith("file://")) {
+    try {
+      return fileURLToPath(withoutQuery)
+    } catch {
+      return undefined
+    }
+  }
+
+  let value = withoutQuery
+  if (value.includes("%")) {
+    try {
+      value = decodeURIComponent(value)
+    } catch {
+      value = withoutQuery
+    }
+  }
+
+  if (value.startsWith("~/")) {
+    return path.join(process.env.HOME ?? "", value.slice(2))
+  }
+  if (path.isAbsolute(value)) return value
+  return path.resolve(cwd, value)
+}
+
+async function canonicalPath(input: string): Promise<string> {
+  return Filesystem.sanitizePath(await realpath(input))
+}
