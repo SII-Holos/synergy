@@ -21,14 +21,14 @@ If you want the smallest possible example, see [`src/example.ts`](./src/example.
 
 ## What a plugin looks like
 
-A plugin module exports one or more async functions of type `Plugin`.
+A plugin module exports one or more async functions of type `PluginDescriptor`.
 Each function is initialized once and returns a set of hooks and capabilities.
 In practice, most plugins should export a single default plugin function.
 
 ```ts
-import type { Plugin } from "@ericsanchezok/synergy-plugin"
+import type { PluginDescriptor } from "@ericsanchezok/synergy-plugin"
 
-const MyPlugin: Plugin = async (ctx) => {
+const MyPlugin: PluginDescriptor = async (ctx) => {
   return {
     // hooks, tools, auth, config observer, event observer
   }
@@ -68,9 +68,9 @@ Use ESM and export your plugin from your package entrypoint.
 A typical package entry might look like this:
 
 ```ts
-import type { Plugin } from "@ericsanchezok/synergy-plugin"
+import type { PluginDescriptor } from "@ericsanchezok/synergy-plugin"
 
-const MyPlugin: Plugin = async () => ({})
+const MyPlugin: PluginDescriptor = async () => ({})
 
 export default MyPlugin
 ```
@@ -122,9 +122,9 @@ A few practical details:
 This is the smallest useful plugin: one observation hook and no custom tools.
 
 ```ts
-import type { Plugin } from "@ericsanchezok/synergy-plugin"
+import type { PluginDescriptor } from "@ericsanchezok/synergy-plugin"
 
-const SessionLogger: Plugin = async () => {
+const SessionLogger: PluginDescriptor = async () => {
   return {
     async "session.turn.after"(input) {
       if (input.error) {
@@ -146,10 +146,10 @@ Plugins can register tools by returning a `tool` map.
 Use the `tool()` helper to define the tool schema and execution function.
 
 ```ts
-import type { Plugin } from "@ericsanchezok/synergy-plugin"
+import type { PluginDescriptor } from "@ericsanchezok/synergy-plugin"
 import { tool } from "@ericsanchezok/synergy-plugin/tool"
 
-const GitPlugin: Plugin = async (ctx) => {
+const GitPlugin: PluginDescriptor = async (ctx) => {
   return {
     tool: {
       current_branch: tool({
@@ -385,10 +385,10 @@ This example combines a custom tool with two hooks:
 - `note.search.after` for result shaping
 
 ```ts
-import type { Plugin } from "@ericsanchezok/synergy-plugin"
+import type { PluginDescriptor } from "@ericsanchezok/synergy-plugin"
 import { tool } from "@ericsanchezok/synergy-plugin/tool"
 
-const ExamplePlugin: Plugin = async (ctx) => {
+const ExamplePlugin: PluginDescriptor = async (ctx) => {
   return {
     tool: {
       scope_info: tool({

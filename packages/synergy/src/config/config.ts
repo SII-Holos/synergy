@@ -243,7 +243,6 @@ export namespace Config {
 
     result.agent = result.agent || {}
     result.plugin = result.plugin || []
-
     const directories = [
       Global.Path.config,
       ...(await Array.fromAsync(

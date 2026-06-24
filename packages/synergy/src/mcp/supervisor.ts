@@ -20,6 +20,7 @@ import { Bus } from "../bus"
 import { BusEvent } from "../bus/bus-event"
 import { NamedError } from "@ericsanchezok/synergy-util/error"
 import { McpOAuthProvider } from "./oauth-provider"
+import { PluginId } from "../plugin/ids.js"
 
 // ---------------------------------------------------------------------------
 // Bus events — defined here, re-exported by index.ts for back-compat
@@ -551,7 +552,7 @@ class McpSupervisorImpl {
         continue
       }
 
-      const scopedKey = `${pluginId}::${serverKey}`
+      const scopedKey = PluginId.mcpServerKey(pluginId, serverKey)
 
       // Skip if already registered (e.g. from a prior init/reload cycle)
       if (this.get(scopedKey)) {
@@ -574,7 +575,7 @@ class McpSupervisorImpl {
    * Disconnects and removes every handle whose name starts with `{pluginId}::`.
    */
   async unregisterPluginServers(pluginId: string): Promise<void> {
-    const prefix = `${pluginId}::`
+    const prefix = PluginId.mcpServerKey(pluginId, "")
     const handles = this.getAll().filter((h) => h.name.startsWith(prefix))
     await Promise.all(handles.map((h) => this.disconnect(h.name)))
     for (const h of handles) {

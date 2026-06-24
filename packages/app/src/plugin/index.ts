@@ -48,6 +48,9 @@ export {
 } from "./registries/route-registry"
 
 export {
+  ToolRendererRegistry,
+  toolRendererRegistry,
+  type ToolRendererEntry,
   type ToolFallbackMeta,
   type ToolRendererProps,
   type ToolRenderer,
@@ -58,24 +61,18 @@ export {
   onToolLoaded,
   clearAllToolRenderers,
 } from "./registries/tool-registry"
-
 export { type PartRenderer, registerPartRenderer, getPartRenderer, hasPartRenderer } from "./registries/part-registry"
-export {
-  fetchContributions,
-  type PluginContribution,
-  type PluginUIContributions,
-  type PluginPermissions,
-} from "./contributions-fetcher"
-export { loadPluginBundle, loadPluginExport, type PluginBundleExports } from "./loaders"
-export {
-  discoverAndActivate,
-  deactivatePlugin,
-  getActivePlugins,
-  getPluginContribution,
-  type PluginInstance,
-  type PluginLifecycleState,
-  HOST_UI_API_VERSION,
-} from "./lifecycle"
+export { type PluginContribution, type PluginUIContributions, type PluginPermissions } from "./api"
+export { loadPluginExport, isCompatibleUIVersion, CURRENT_UI_API_VERSION } from "./loaders"
 export { PluginToolBridge } from "./bridge"
 export { PluginErrorBoundary } from "./components/plugin-error-boundary"
 export { initDevReload } from "./dev-reload"
+export { PluginHostProvider, usePluginHost, type PluginUIStatus, type PluginUIError } from "./host"
+export { fetchUIContributions } from "./api"
+
+// Consent UI components
+export { PermissionDiffList, PermissionRiskBadge, TrustTierExplanation, InstallConsentDialog } from "./consent"
+export type { PermissionItem, PermissionSeverity, PermissionChange, PluginPermissionDiff, TrustTier } from "./consent"
+
+// Marketplace components
+export { VerifiedBadge, MarketplacePage, PluginDetailPage } from "./marketplace"

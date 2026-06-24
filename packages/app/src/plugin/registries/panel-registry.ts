@@ -5,6 +5,7 @@ export interface GlobalPanelEntry {
   label: string
   icon: string
   component?: Component
+  loader?: () => Promise<{ default: Component }> // lazy-load for Tier 2
   sandbox?: boolean
   sandboxUrl?: string
   pluginId: string

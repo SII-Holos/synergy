@@ -7,12 +7,12 @@ export interface SettingsSection {
   icon: string
   group: string
   component?: Component
+  loader?: () => Promise<{ default: Component }> // lazy-load for Tier 2
   sandbox?: boolean
   sandboxUrl?: string
   pluginId?: string // undefined for built-in
   exportName?: string // named export from the plugin UI bundle (for lazy loading)
 }
-
 const sections: SettingsSection[] = []
 
 export function registerSettingsSection(section: SettingsSection): () => void {

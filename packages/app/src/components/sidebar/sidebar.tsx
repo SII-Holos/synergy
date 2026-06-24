@@ -424,6 +424,21 @@ export function Sidebar(props: SidebarProps) {
           </button>
         </Tooltip>
       </div>
+      <Tooltip value="Plugins" placement="right">
+        <button
+          type="button"
+          classList={{
+            "sb-global-btn": true,
+            "sb-global-active": params.dir === "plugins",
+          }}
+          onClick={() => navigate("/plugins/marketplace")}
+        >
+          <Icon name="package-open" size="normal" />
+          <Show when={isExpanded()}>
+            <span class="sb-action-label">Plugins</span>
+          </Show>
+        </button>
+      </Tooltip>
 
       {/* Unified scroll region */}
       <Show

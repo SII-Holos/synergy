@@ -63,7 +63,13 @@ export namespace ConfigDomain {
     def("providers", "20-providers.jsonc", "Providers", ["provider", "enabled_providers", "disabled_providers"]),
     def("engram", "30-engram.jsonc", "Engram", ["embedding", "rerank", "engram"]),
     def("mcp", "40-mcp.jsonc", "MCP", ["mcp", "mcpDefaults"]),
-    def("plugins", "50-plugins.jsonc", "Plugins", ["plugin", "pluginConfig"], "append"),
+    def(
+      "plugins",
+      "50-plugins.jsonc",
+      "Plugins",
+      ["plugin", "pluginConfig", "pluginApprovalPolicy", "pluginRuntimePolicy"],
+      "append",
+    ),
     def("agents", "60-agents.jsonc", "Agents", [
       "default_agent",
       "agent",
