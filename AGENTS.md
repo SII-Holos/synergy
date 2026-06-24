@@ -18,14 +18,14 @@ Synergy is an AI agent platform with multiple product surfaces. The current prod
 - MCP integration
 - channels and Holos-related identity flows
 - agenda and automation features
-- note, memory/engram, and community-facing capabilities
+- note, library, and community-facing capabilities
 
 ## Current Architecture Vocabulary
 
 Use current terms consistently.
 
 - Prefer `Scope` over older `Project`-centric descriptions when referring to current scope resolution and workspace context.
-- Prefer current `engram` terminology for the knowledge/memory subsystem rather than older historical naming.
+- Prefer current `library` terminology for the knowledge/memory subsystem rather than older historical naming.
 - Prefer current session management terminology and current CLI command names.
 - Do not reintroduce old names in new docs unless you are explicitly documenting migration history.
 
@@ -55,7 +55,7 @@ Current work commonly touches these domains:
 - `control-profile/` — resolved permission/sandbox profile definitions and compiler
 - `cortex/` — task orchestration and background execution
 - `enforcement/` — capability classification and centralized tool boundary gate
-- `engram/` — memory/knowledge infrastructure
+- `library/` — memory/knowledge infrastructure
 - `mcp/` — MCP support
 - `note/` — notes system
 - `permission/` — permission model
@@ -240,7 +240,7 @@ The domain files are:
 00-general.jsonc
 10-models.jsonc
 20-providers.jsonc
-30-engram.jsonc
+30-library.jsonc
 40-mcp.jsonc
 50-plugins.jsonc
 60-agents.jsonc
@@ -349,7 +349,7 @@ You must review docs when a change affects:
 - config paths or config schema
 - server / client startup flow
 - package ownership or package responsibilities
-- user-facing product areas such as MCP, channels, login, identity, agenda, notes, memory/engram, Agora, or Web behavior
+- user-facing product areas such as MCP, channels, login, identity, agenda, notes, library, Agora, or Web behavior
 
 At minimum, check whether `README.md` and `AGENTS.md` need updates.
 

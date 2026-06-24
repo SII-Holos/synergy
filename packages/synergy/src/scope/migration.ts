@@ -1,7 +1,7 @@
 import { Storage } from "../storage/storage"
 import { StoragePath } from "../storage/path"
 import { Identifier } from "@/id/id"
-import { EngramDB } from "@/engram/database"
+import { LibraryDB } from "@/library/database"
 import { Global } from "@/global"
 import type { Migration } from "@/migration"
 import type { Info as SessionInfo } from "../session/types"
@@ -60,9 +60,9 @@ export const migrations: Migration[] = [
         }
       }
 
-      // Also check engram for scopeIDs
+      // Also check library for scopeIDs
       try {
-        const conn = EngramDB.connection()
+        const conn = LibraryDB.connection()
         const rows = conn.prepare("SELECT DISTINCT scope_id FROM experience").all() as { scope_id: string }[]
         for (const row of rows) dataScopeIDs.add(row.scope_id)
       } catch {}
@@ -117,7 +117,7 @@ export const migrations: Migration[] = [
       })
 
       // 5. Move file-based data for each orphan scope
-      const totalSteps = orphanIDs.length + 2 // +1 session info patching, +1 engram cleanup
+      const totalSteps = orphanIDs.length + 2 // +1 session info patching, +1 library cleanup
       let done = 0
 
       for (const orphanID of orphanIDs) {
@@ -166,24 +166,24 @@ export const migrations: Migration[] = [
       done++
       progress(done, totalSteps)
 
-      // 7. Clean up engram experiences for all orphan scopes
+      // 7. Clean up library experiences for all orphan scopes
       // Orphan experiences are unreachable — no active scope will ever query them.
       // Rather than reassigning scope_id (which requires vec table surgery),
       // we delete them. The session history in Reclaimed scope preserves context.
       let totalRemoved = 0
       for (const orphanID of orphanIDs) {
         try {
-          const removed = EngramDB.Experience.removeByScope(orphanID)
+          const removed = LibraryDB.Experience.removeByScope(orphanID)
           totalRemoved += removed
         } catch (err) {
-          log.warn("failed to remove orphan engram experiences", { scopeID: orphanID, error: err })
+          log.warn("failed to remove orphan library experiences", { scopeID: orphanID, error: err })
         }
       }
-      if (totalRemoved > 0) log.info("removed orphan engram experiences", { total: totalRemoved })
+      if (totalRemoved > 0) log.info("removed orphan library experiences", { total: totalRemoved })
 
       done++
       progress(done, totalSteps)
-      log.info("orphan scope reclaim complete", { scopes: orphanIDs.length, engramRemoved: totalRemoved })
+      log.info("orphan scope reclaim complete", { scopes: orphanIDs.length, libraryRemoved: totalRemoved })
     },
   },
   {
@@ -251,7 +251,7 @@ export const migrations: Migration[] = [
       done++
       progress(done, steps)
 
-      await renameEngramScope()
+      await renameLibraryScope()
       done++
       progress(done, steps)
 
@@ -445,19 +445,19 @@ async function patchHomeBlueprintLoops() {
   }
 }
 
-async function renameEngramScope() {
+async function renameLibraryScope() {
   try {
-    const changed = EngramDB.Experience.renameScope(LEGACY_GLOBAL_SCOPE_ID, HOME_SCOPE_ID)
-    if (changed > 0) log.info("renamed engram experience scope", { changed })
+    const changed = LibraryDB.Experience.renameScope(LEGACY_GLOBAL_SCOPE_ID, HOME_SCOPE_ID)
+    if (changed > 0) log.info("renamed library experience scope", { changed })
   } catch (err) {
-    log.warn("failed to rename engram experience scope", { error: String(err) })
+    log.warn("failed to rename library experience scope", { error: String(err) })
   }
 }
 
 async function clearStatsCaches() {
   await Storage.remove(StoragePath.statsWatermark()).catch(() => undefined)
   await Storage.remove(StoragePath.statsSnapshot()).catch(() => undefined)
-  await Storage.remove(StoragePath.engramSnapshot()).catch(() => undefined)
+  await Storage.remove(StoragePath.librarySnapshot()).catch(() => undefined)
   await Storage.removeTree(StoragePath.statsDigestsRoot()).catch(() => undefined)
   await Storage.removeTree(StoragePath.statsDailyRoot()).catch(() => undefined)
 }

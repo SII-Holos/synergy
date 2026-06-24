@@ -43,7 +43,7 @@ Read `AGENTS.md` before changing this repository. That file is for Synergy sourc
 
 ## Source Code Map
 
-- [packages/synergy](packages/synergy): core runtime, server, CLI, sessions, tools, permissions, plugin loading, plugin runtime isolation, MCP, channels, config, scope, and engram.
+- [packages/synergy](packages/synergy): core runtime, server, CLI, sessions, tools, permissions, plugin loading, plugin runtime isolation, MCP, channels, config, scope, and library.
 - [packages/app](packages/app): Web client and plugin UI host.
 - [packages/plugin](packages/plugin): plugin authoring SDK published as `@ericsanchezok/synergy-plugin`.
 - [packages/sdk/js](packages/sdk/js): generated TypeScript SDK for Synergy server APIs.
@@ -55,7 +55,7 @@ Read `AGENTS.md` before changing this repository. That file is for Synergy sourc
 ## Current Synergy Terminology
 
 - Prefer `Scope` for workspace/context resolution in current source and docs.
-- Prefer `engram` for the memory/knowledge subsystem.
+- Prefer `library` for the memory/knowledge subsystem.
 - The built-in primary orchestrators are `synergy` and `synergy-max`.
 - Do not reintroduce `master` as a built-in agent name.
 

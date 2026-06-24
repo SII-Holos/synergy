@@ -10,7 +10,7 @@ import { setActiveMigrationContext } from "./context"
 import "../agenda/migration"
 import "../browser/migration"
 import "../config/migration"
-import "../engram/migration"
+import "../library/migration"
 import "../scope/migration"
 import "../session/migration"
 import "../note/migration"
@@ -21,6 +21,20 @@ import type { Migration, RunOptions, MigrationContext, MigrationSummary } from "
 export type { Migration, RunOptions, RunResult, MigrationContext, MigrationSummary, MigrationReporter } from "./types"
 
 const log = Log.create({ service: "migration" })
+
+const LEGACY_LIBRARY_MIGRATION_IDS: Record<string, string> = {
+  "20260324-engram-experience-source-model": "20260324-library-experience-source-model",
+  "20260405-engram-memory-recall-mode": "20260405-library-memory-recall-mode",
+  "20260415-engram-purge-invalid-experiences": "20260415-library-purge-invalid-experiences",
+  "20260423-engram-purge-tool-hallucination-intents": "20260423-library-purge-tool-hallucination-intents",
+  "20260424-engram-q-updated-at-integer": "20260424-library-q-updated-at-integer",
+  "20260425-engram-purge-oversized-tool-log-intents": "20260425-library-purge-oversized-tool-log-intents",
+  "20260425b-engram-purge-assistant-reasoning-intents": "20260425b-library-purge-assistant-reasoning-intents",
+}
+
+const MODERN_LIBRARY_MIGRATION_IDS = new Map(
+  Object.entries(LEGACY_LIBRARY_MIGRATION_IDS).map(([legacy, modern]) => [modern, legacy]),
+)
 
 let runningMigrations: Promise<MigrationSummary> | undefined
 let migrationsCompleted = false
@@ -50,6 +64,11 @@ async function migrateOldTrackingData(): Promise<void> {
     for (const m of migrations) {
       if (m.id in oldData) {
         domainData[m.id] = oldData[m.id]
+        continue
+      }
+      const legacyId = MODERN_LIBRARY_MIGRATION_IDS.get(m.id)
+      if (legacyId && legacyId in oldData) {
+        domainData[m.id] = oldData[legacyId]
       }
     }
     if (Object.keys(domainData).length > 0) {
@@ -61,6 +80,29 @@ async function migrateOldTrackingData(): Promise<void> {
   // Delete old log
   await Storage.remove(oldLogKey)
   log.info("removed old migration log")
+}
+
+async function migrateLegacyLibraryTrackingData(): Promise<void> {
+  const oldKey = StoragePath.metaMigrationLogDomain("engram")
+  const oldData = await Storage.read<Record<string, number>>(oldKey).catch(() => null)
+  if (!oldData) return
+
+  const libraryKey = StoragePath.metaMigrationLogDomain("library")
+  const libraryData: Record<string, number> = await Storage.read<Record<string, number>>(libraryKey).catch(() => ({}))
+  let changed = false
+
+  for (const [id, timestamp] of Object.entries(oldData)) {
+    const modernId = LEGACY_LIBRARY_MIGRATION_IDS[id] ?? id.replace("-engram-", "-library-")
+    if (libraryData[modernId] !== undefined) continue
+    libraryData[modernId] = timestamp
+    changed = true
+  }
+
+  if (changed) {
+    await Storage.write(libraryKey, libraryData)
+    log.info("migrated legacy engram migration tracking to library", { count: Object.keys(oldData).length })
+  }
+  await Storage.remove(oldKey)
 }
 
 export async function ensureMigrations(options?: RunOptions): Promise<MigrationSummary> {
@@ -86,6 +128,7 @@ export function resetMigrations(): void {
 
 export async function runMigrations(options?: RunOptions): Promise<MigrationSummary> {
   await migrateOldTrackingData()
+  await migrateLegacyLibraryTrackingData()
 
   const dryRun = options?.dryRun ?? false
   const output = options?.output ?? "interactive"

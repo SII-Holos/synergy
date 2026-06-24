@@ -11,10 +11,11 @@ import {
   shortenPath,
   dirExists,
   copyDirSkipExisting,
-  getEngramInfo,
-  mergeEngramDB,
+  getLibraryInfo,
+  mergeLibraryDB,
+  resolveLibraryDB,
   dataRoot,
-  type EngramConflictStrategy,
+  type LibraryConflictStrategy,
 } from "./shared"
 
 interface SourceInfo {
@@ -29,12 +30,13 @@ interface SourceInfo {
 interface PackManifest {
   version: number
   createdAt: string
-  engram: {
+  library: {
     dimensions: number | null
     embeddingModel: string | null
     memoryCount: number
     experienceCount: number
   } | null
+  engram?: PackManifest["library"]
 }
 
 export const DataMergeCommand = cmd({
@@ -72,19 +74,20 @@ export const DataMergeCommand = cmd({
       prompts.log.info(`Source: ${shortenPath(source.path)} (${formatSize(srcTotal)})`)
       prompts.log.info(`Target: ${shortenPath(targetRoot)} (current)`)
 
-      // Check engram compatibility from manifest or direct scan
-      const srcEngram = path.join(source.dataDir, "data", "engram.db")
-      const tgtEngram = path.join(targetRoot, "data", "engram.db")
-      let srcEngramInfo = await getEngramInfo(srcEngram)
-      let engramStrategy: EngramConflictStrategy = "text_only"
+      // Check library compatibility from manifest or direct scan
+      const srcLibrary = await resolveLibraryDB(source.dataDir)
+      const tgtLibrary = path.join(targetRoot, "data", "library.db")
+      let srcLibraryInfo = await getLibraryInfo(srcLibrary)
+      let libraryStrategy: LibraryConflictStrategy = "text_only"
 
       // If we have a manifest, show it
       if (source.manifest) {
         const m = source.manifest
         prompts.log.info(`Archive created: ${m.createdAt}`)
-        if (m.engram) {
+        const manifestLibrary = m.library ?? m.engram
+        if (manifestLibrary) {
           prompts.log.info(
-            `Source engram: ${m.engram.dimensions ?? "no"} dimensions${m.engram.embeddingModel ? ` (${m.engram.embeddingModel})` : ""}, ${m.engram.memoryCount} memories`,
+            `Source library: ${manifestLibrary.dimensions ?? "no"} dimensions${manifestLibrary.embeddingModel ? ` (${manifestLibrary.embeddingModel})` : ""}, ${manifestLibrary.memoryCount} memories`,
           )
         }
       }
@@ -122,33 +125,33 @@ export const DataMergeCommand = cmd({
         return
       }
 
-      // Step 3: Handle engram dimension mismatch
-      if (selectedKeys.has("core") && srcEngramInfo.exists) {
-        const tgtEngramInfo = await getEngramInfo(tgtEngram)
+      // Step 3: Handle library dimension mismatch
+      if (selectedKeys.has("core") && srcLibraryInfo.exists) {
+        const tgtLibraryInfo = await getLibraryInfo(tgtLibrary)
 
         if (
-          tgtEngramInfo.exists &&
-          srcEngramInfo.dimensions &&
-          tgtEngramInfo.dimensions &&
-          srcEngramInfo.dimensions !== tgtEngramInfo.dimensions
+          tgtLibraryInfo.exists &&
+          srcLibraryInfo.dimensions &&
+          tgtLibraryInfo.dimensions &&
+          srcLibraryInfo.dimensions !== tgtLibraryInfo.dimensions
         ) {
           prompts.log.warn("Vector dimension mismatch:")
           prompts.log.info(
-            `  Source: ${srcEngramInfo.dimensions}d${srcEngramInfo.embeddingModel ? ` (${srcEngramInfo.embeddingModel})` : ""}`,
+            `  Source: ${srcLibraryInfo.dimensions}d${srcLibraryInfo.embeddingModel ? ` (${srcLibraryInfo.embeddingModel})` : ""}`,
           )
           prompts.log.info(
-            `  Target: ${tgtEngramInfo.dimensions}d${tgtEngramInfo.embeddingModel ? ` (${tgtEngramInfo.embeddingModel})` : ""}`,
+            `  Target: ${tgtLibraryInfo.dimensions}d${tgtLibraryInfo.embeddingModel ? ` (${tgtLibraryInfo.embeddingModel})` : ""}`,
           )
 
           const choice = await prompts.select({
-            message: "How should engram data be handled?",
+            message: "How should library data be handled?",
             options: [
               {
                 value: "text_only" as const,
                 label: "Merge text only, discard source vectors",
                 hint: "Source memories added without vector search until re-embedded",
               },
-              { value: "skip" as const, label: "Skip engram entirely", hint: "Source memories are not imported" },
+              { value: "skip" as const, label: "Skip library entirely", hint: "Source memories are not imported" },
               {
                 value: "replace_vectors" as const,
                 label: "Replace: use source vectors, drop target vectors",
@@ -160,16 +163,16 @@ export const DataMergeCommand = cmd({
             prompts.cancel("Cancelled")
             return
           }
-          engramStrategy = choice as EngramConflictStrategy
+          libraryStrategy = choice as LibraryConflictStrategy
         } else {
-          engramStrategy = "text_only"
+          libraryStrategy = "text_only"
         }
       }
 
       // Step 4: Execute merge
       UI.empty()
       const errors: string[] = []
-      let engramMerged = false
+      let libraryMerged = false
 
       for (const cat of selectedCategories) {
         for (const subdir of cat.subdirs) {
@@ -178,23 +181,23 @@ export const DataMergeCommand = cmd({
 
           if (!(await dirExists(src))) continue
 
-          // Special: engram.db merge
-          if (subdir === "data" && engramStrategy !== "skip" && !engramMerged) {
-            const targetEngExists = await dirExists(tgtEngram)
+          // Special: library.db merge
+          if (subdir === "data" && libraryStrategy !== "skip" && !libraryMerged) {
+            const targetLibraryExists = await dirExists(tgtLibrary)
 
-            if (targetEngExists && srcEngramInfo.exists) {
-              const engSpinner = prompts.spinner()
-              engSpinner.start("Merging engram.db...")
+            if (targetLibraryExists && srcLibraryInfo.exists) {
+              const librarySpinner = prompts.spinner()
+              librarySpinner.start("Merging library.db...")
 
               try {
-                const result = await mergeEngramDB(srcEngram, tgtEngram, engramStrategy)
-                engSpinner.stop(
-                  `Engram: ${result.memoriesMerged} memories merged, ${result.experiencesMerged} experiences merged${result.memoriesSkipped > 0 ? `, ${result.memoriesSkipped} duplicates skipped` : ""}`,
+                const result = await mergeLibraryDB(srcLibrary, tgtLibrary, libraryStrategy)
+                librarySpinner.stop(
+                  `Library: ${result.memoriesMerged} memories merged, ${result.experiencesMerged} experiences merged${result.memoriesSkipped > 0 ? `, ${result.memoriesSkipped} duplicates skipped` : ""}`,
                 )
-                engramMerged = true
+                libraryMerged = true
               } catch (e) {
-                engSpinner.stop("Failed to merge engram.db", 1)
-                errors.push(`engram.db: ${e instanceof Error ? e.message : String(e)}`)
+                librarySpinner.stop("Failed to merge library.db", 1)
+                errors.push(`library.db: ${e instanceof Error ? e.message : String(e)}`)
               }
             }
           }

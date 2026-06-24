@@ -45,7 +45,7 @@ The target behavior is simple:
 
 This proposal does not attempt to:
 
-- redesign the entire memory/engram system
+- redesign the entire library system
 - solve all prompt-quality issues in compaction summaries
 - unify every provider's tokenizer exactly
 - remove all provider-specific usage fields from telemetry or pricing
@@ -236,7 +236,7 @@ That prompt includes:
 - custom system prompt parts
 - cortex execution context
 - cortex reminder
-- memory/engram injection
+- library injection
 - resolved tool schemas
 - the visible session messages after compaction filtering and any transforms
 - any synthetic runtime reminders added before inference

@@ -1,7 +1,7 @@
 import { cmd } from "./cmd"
 import * as prompts from "@clack/prompts"
 import { UI } from "../ui"
-import { Embedding } from "../../engram/embedding"
+import { Embedding } from "../../vector/embedding"
 
 export const EmbedCommand = cmd({
   command: "embed",

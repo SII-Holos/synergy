@@ -128,28 +128,6 @@ import type {
   CortexListResponses,
   CortexOutputErrors,
   CortexOutputResponses,
-  EngramExperienceApplyRewardErrors,
-  EngramExperienceApplyRewardResponses,
-  EngramExperienceGetErrors,
-  EngramExperienceGetResponses,
-  EngramExperienceListResponses,
-  EngramExperiencePageErrors,
-  EngramExperiencePageResponses,
-  EngramExperienceRemoveErrors,
-  EngramExperienceRemoveResponses,
-  EngramExperienceSearchErrors,
-  EngramExperienceSearchResponses,
-  EngramGetErrors,
-  EngramGetResponses,
-  EngramListResponses,
-  EngramRemoveErrors,
-  EngramRemoveResponses,
-  EngramResetErrors,
-  EngramResetResponses,
-  EngramSearchErrors,
-  EngramSearchResponses,
-  EngramStatsErrors,
-  EngramStatsResponses,
   EventSubscribeResponses,
   ExperienceListFilter,
   ExperienceListSort,
@@ -212,6 +190,28 @@ import type {
   HolosStatusResponses,
   HolosThreadGetResponses,
   HolosVerifyResponses,
+  LibraryExperienceApplyRewardErrors,
+  LibraryExperienceApplyRewardResponses,
+  LibraryExperienceGetErrors,
+  LibraryExperienceGetResponses,
+  LibraryExperienceListResponses,
+  LibraryExperiencePageErrors,
+  LibraryExperiencePageResponses,
+  LibraryExperienceRemoveErrors,
+  LibraryExperienceRemoveResponses,
+  LibraryExperienceSearchErrors,
+  LibraryExperienceSearchResponses,
+  LibraryGetErrors,
+  LibraryGetResponses,
+  LibraryListResponses,
+  LibraryRemoveErrors,
+  LibraryRemoveResponses,
+  LibraryResetErrors,
+  LibraryResetResponses,
+  LibrarySearchErrors,
+  LibrarySearchResponses,
+  LibraryStatsErrors,
+  LibraryStatsResponses,
   LspStatusResponses,
   McpAddErrors,
   McpAddResponses,
@@ -3641,7 +3641,7 @@ export class Domain extends HeyApiClient {
         | "general"
         | "models"
         | "providers"
-        | "engram"
+        | "library"
         | "mcp"
         | "plugins"
         | "agents"
@@ -3686,7 +3686,7 @@ export class Domain extends HeyApiClient {
         | "general"
         | "models"
         | "providers"
-        | "engram"
+        | "library"
         | "mcp"
         | "plugins"
         | "agents"
@@ -3780,7 +3780,7 @@ export class Import extends HeyApiClient {
         | "general"
         | "models"
         | "providers"
-        | "engram"
+        | "library"
         | "mcp"
         | "plugins"
         | "agents"
@@ -5310,11 +5310,11 @@ export class Experience extends HeyApiClient {
       ],
     )
     return (options?.client ?? this.client).post<
-      EngramExperienceSearchResponses,
-      EngramExperienceSearchErrors,
+      LibraryExperienceSearchResponses,
+      LibraryExperienceSearchErrors,
       ThrowOnError
     >({
-      url: "/engram/experience/search",
+      url: "/library/experience/search",
       ...options,
       ...params,
       headers: {
@@ -5359,11 +5359,11 @@ export class Experience extends HeyApiClient {
       ],
     )
     return (options?.client ?? this.client).get<
-      EngramExperiencePageResponses,
-      EngramExperiencePageErrors,
+      LibraryExperiencePageResponses,
+      LibraryExperiencePageErrors,
       ThrowOnError
     >({
-      url: "/engram/experience/page",
+      url: "/library/experience/page",
       ...options,
       ...params,
     })
@@ -5395,11 +5395,11 @@ export class Experience extends HeyApiClient {
       ],
     )
     return (options?.client ?? this.client).delete<
-      EngramExperienceRemoveResponses,
-      EngramExperienceRemoveErrors,
+      LibraryExperienceRemoveResponses,
+      LibraryExperienceRemoveErrors,
       ThrowOnError
     >({
-      url: "/engram/experience/{id}",
+      url: "/library/experience/{id}",
       ...options,
       ...params,
     })
@@ -5430,8 +5430,12 @@ export class Experience extends HeyApiClient {
         },
       ],
     )
-    return (options?.client ?? this.client).get<EngramExperienceGetResponses, EngramExperienceGetErrors, ThrowOnError>({
-      url: "/engram/experience/{id}",
+    return (options?.client ?? this.client).get<
+      LibraryExperienceGetResponses,
+      LibraryExperienceGetErrors,
+      ThrowOnError
+    >({
+      url: "/library/experience/{id}",
       ...options,
       ...params,
     })
@@ -5467,11 +5471,11 @@ export class Experience extends HeyApiClient {
       ],
     )
     return (options?.client ?? this.client).put<
-      EngramExperienceApplyRewardResponses,
-      EngramExperienceApplyRewardErrors,
+      LibraryExperienceApplyRewardResponses,
+      LibraryExperienceApplyRewardErrors,
       ThrowOnError
     >({
-      url: "/engram/experience/{id}/reward",
+      url: "/library/experience/{id}/reward",
       ...options,
       ...params,
       headers: {
@@ -5505,19 +5509,19 @@ export class Experience extends HeyApiClient {
         },
       ],
     )
-    return (options?.client ?? this.client).get<EngramExperienceListResponses, unknown, ThrowOnError>({
-      url: "/engram/experience",
+    return (options?.client ?? this.client).get<LibraryExperienceListResponses, unknown, ThrowOnError>({
+      url: "/library/experience",
       ...options,
       ...params,
     })
   }
 }
 
-export class Engram extends HeyApiClient {
+export class Library extends HeyApiClient {
   /**
-   * Get engram stats
+   * Get library stats
    *
-   * Get statistics about the engram database. By default returns a summary with counts and DB size. Use ?recompute=true to force a full analytics recompute and return the extended snapshot.
+   * Get statistics about the library database. By default returns a summary with counts and DB size. Use ?recompute=true to force a full analytics recompute and return the extended snapshot.
    */
   public stats<ThrowOnError extends boolean = false>(
     parameters?: {
@@ -5539,8 +5543,8 @@ export class Engram extends HeyApiClient {
         },
       ],
     )
-    return (options?.client ?? this.client).get<EngramStatsResponses, EngramStatsErrors, ThrowOnError>({
-      url: "/engram/stats",
+    return (options?.client ?? this.client).get<LibraryStatsResponses, LibraryStatsErrors, ThrowOnError>({
+      url: "/library/stats",
       ...options,
       ...params,
     })
@@ -5577,8 +5581,8 @@ export class Engram extends HeyApiClient {
         },
       ],
     )
-    return (options?.client ?? this.client).post<EngramSearchResponses, EngramSearchErrors, ThrowOnError>({
-      url: "/engram/search",
+    return (options?.client ?? this.client).post<LibrarySearchResponses, LibrarySearchErrors, ThrowOnError>({
+      url: "/library/search",
       ...options,
       ...params,
       headers: {
@@ -5626,8 +5630,8 @@ export class Engram extends HeyApiClient {
         },
       ],
     )
-    return (options?.client ?? this.client).post<EngramResetResponses, EngramResetErrors, ThrowOnError>({
-      url: "/engram/reset",
+    return (options?.client ?? this.client).post<LibraryResetResponses, LibraryResetErrors, ThrowOnError>({
+      url: "/library/reset",
       ...options,
       ...params,
       headers: {
@@ -5663,8 +5667,8 @@ export class Engram extends HeyApiClient {
         },
       ],
     )
-    return (options?.client ?? this.client).delete<EngramRemoveResponses, EngramRemoveErrors, ThrowOnError>({
-      url: "/engram/{id}",
+    return (options?.client ?? this.client).delete<LibraryRemoveResponses, LibraryRemoveErrors, ThrowOnError>({
+      url: "/library/{id}",
       ...options,
       ...params,
     })
@@ -5695,8 +5699,8 @@ export class Engram extends HeyApiClient {
         },
       ],
     )
-    return (options?.client ?? this.client).get<EngramGetResponses, EngramGetErrors, ThrowOnError>({
-      url: "/engram/{id}",
+    return (options?.client ?? this.client).get<LibraryGetResponses, LibraryGetErrors, ThrowOnError>({
+      url: "/library/{id}",
       ...options,
       ...params,
     })
@@ -5729,8 +5733,8 @@ export class Engram extends HeyApiClient {
         },
       ],
     )
-    return (options?.client ?? this.client).get<EngramListResponses, unknown, ThrowOnError>({
-      url: "/engram",
+    return (options?.client ?? this.client).get<LibraryListResponses, unknown, ThrowOnError>({
+      url: "/library",
       ...options,
       ...params,
     })
@@ -8329,7 +8333,7 @@ export class SynergyClient extends HeyApiClient {
 
   file = new File({ client: this.client })
 
-  engram = new Engram({ client: this.client })
+  library = new Library({ client: this.client })
 
   note = new Note({ client: this.client })
 

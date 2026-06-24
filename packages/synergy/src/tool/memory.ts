@@ -1,9 +1,9 @@
 import { formatLocalDateTime } from "@/util/time-format"
 import z from "zod"
 import { Tool } from "./tool"
-import { EngramDB } from "../engram/database"
-import { Embedding } from "../engram/embedding"
-import { MemoryRecall } from "../engram/memory-recall"
+import { LibraryDB } from "../library/database"
+import { Embedding } from "../vector/embedding"
+import { MemoryRecall } from "../library/memory-recall"
 import { Identifier } from "../id/id"
 import { Log } from "../util/log"
 import { Config } from "../config/config"
@@ -14,8 +14,8 @@ import DESCRIPTION_GET from "./memory-get.txt"
 
 const log = Log.create({ service: "tool.memory" })
 
-const categorySchema = z.enum(EngramDB.Memory.CATEGORIES)
-const recallModeSchema = z.enum(EngramDB.Memory.RECALL_MODES)
+const categorySchema = z.enum(LibraryDB.Memory.CATEGORIES)
+const recallModeSchema = z.enum(LibraryDB.Memory.RECALL_MODES)
 
 const writeParams = z.object({
   title: z.string().describe("A concise title summarizing the memory (10 words max)"),
@@ -46,7 +46,7 @@ export const MemoryWriteTool = Tool.define("memory_write", {
     }
 
     const config = await Config.current()
-    const dedupThreshold = (config as any).engram?.memory?.dedup?.threshold ?? 0.75
+    const dedupThreshold = (config as any).library?.memory?.dedup?.threshold ?? 0.75
 
     const similar = MemoryRecall.findSimilar(embedding.vector, dedupThreshold)
 
@@ -68,7 +68,7 @@ export const MemoryWriteTool = Tool.define("memory_write", {
       }
     }
 
-    EngramDB.Memory.insert(
+    LibraryDB.Memory.insert(
       {
         id,
         title: params.title,
@@ -104,7 +104,7 @@ export const MemoryEditTool = Tool.define("memory_edit", {
   description: DESCRIPTION_EDIT,
   parameters: editParams,
   async execute(params: z.infer<typeof editParams>) {
-    const existing = EngramDB.Memory.get(params.id)
+    const existing = LibraryDB.Memory.get(params.id)
     if (!existing) {
       return {
         title: "memory_edit",
@@ -126,7 +126,7 @@ export const MemoryEditTool = Tool.define("memory_edit", {
       }
     }
 
-    const updated = EngramDB.Memory.update(
+    const updated = LibraryDB.Memory.update(
       {
         id: params.id,
         title: params.title,
@@ -186,7 +186,7 @@ export const MemorySearchTool = Tool.define("memory_search", {
     }
 
     if (results.length === 0) {
-      const vecReady = EngramDB.isMemoryVecReady()
+      const vecReady = LibraryDB.isMemoryVecReady()
       const output = vecReady
         ? "No memories found."
         : "No memories found. (Vector search is currently unavailable — memory recall may be degraded.)"
@@ -218,7 +218,7 @@ export const MemoryGetTool = Tool.define("memory_get", {
   description: DESCRIPTION_GET,
   parameters: getParams,
   async execute(params: z.infer<typeof getParams>) {
-    const rows = EngramDB.Memory.getMany(params.ids)
+    const rows = LibraryDB.Memory.getMany(params.ids)
     if (rows.length === 0) {
       return {
         title: "memory_get",

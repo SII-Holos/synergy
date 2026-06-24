@@ -58,8 +58,8 @@ import { ScopeContext } from "../scope/context"
 import { Scope } from "@/scope"
 import { LoopJob } from "./loop-job"
 import "./loop-signals"
-import "../engram/chronicler"
-import { ExperienceEncoder } from "../engram/experience-encoder"
+import "../library/chronicler"
+import { ExperienceEncoder } from "../library/experience-encoder"
 import { GitHealth } from "../project/git-health"
 import { BlueprintLoopStore } from "../blueprint/loop-store"
 
@@ -158,7 +158,7 @@ export namespace SessionInvoke {
     if (step === 1 && isTopSession) {
       SessionManager.setStatus(sessionID, { type: "busy", description: "Flashing back..." })
       const cfg = await Config.current()
-      return withTimeout(buildMemoryContext(sessionID, scopeID, sessionMessages, cfg.engram), RECALL_TIMEOUT_MS).catch(
+      return withTimeout(buildMemoryContext(sessionID, scopeID, sessionMessages, cfg.library), RECALL_TIMEOUT_MS).catch(
         (err: any) => {
           log.warn("recall failed or timed out", { sessionID, error: err })
           return undefined
@@ -174,7 +174,7 @@ export namespace SessionInvoke {
     }
     if (step === 1 && !isTopSession) {
       const cfg = await Config.current()
-      if (cfg.engram?.memory?.enabled !== false) {
+      if (cfg.library?.memory?.enabled !== false) {
         const alwaysContext = buildAlwaysOnlyMemoryContext()
         return alwaysContext ? { context: alwaysContext, injection: {} as InjectionInfo } : undefined
       }

@@ -904,7 +904,7 @@ export const ExperienceConfig = z
   .meta({ ref: "ExperienceConfig" })
 export type ExperienceConfig = z.infer<typeof ExperienceConfig>
 
-export const EngramConfig = z
+export const LibraryConfig = z
   .object({
     memory: MemoryConfig.optional(),
     experience: ExperienceConfig.optional(),
@@ -915,8 +915,8 @@ export const EngramConfig = z
   })
   .strict()
   .optional()
-  .meta({ ref: "EngramConfig" })
-export type EngramConfig = z.infer<typeof EngramConfig>
+  .meta({ ref: "LibraryConfig" })
+export type LibraryConfig = z.infer<typeof LibraryConfig>
 
 export const Provider = ModelsDev.Provider.partial()
   .extend({
@@ -1228,7 +1228,7 @@ export const Info = z
     provider: z.record(z.string(), Provider).optional().describe("Custom provider configurations and model overrides"),
     embedding: EmbeddingConfig,
     rerank: RerankConfig,
-    engram: EngramConfig,
+    library: LibraryConfig,
     mcp: z
       .record(
         z.string(),

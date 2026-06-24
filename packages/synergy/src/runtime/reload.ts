@@ -45,7 +45,7 @@ export namespace RuntimeReload {
     "tools",
     "embedding",
     "rerank",
-    "engram",
+    "library",
     "external_agent",
     "email",
   ])
@@ -247,17 +247,17 @@ export namespace RuntimeReload {
         for (const cascadedTarget of inferConfigCascades(result.changedFields)) {
           await executeTarget(cascadedTarget, ctx)
         }
-        // P11: Handle engram → autonomy/anima sync (migrated from Config.reload)
-        if (result.changedFields.includes("engram") && result.oldConfig) {
-          const oldAutonomy = result.oldConfig.engram?.autonomy !== false
-          const newAutonomy = result.config.engram?.autonomy !== false
+        // P11: Handle library → autonomy/anima sync (migrated from Config.reload)
+        if (result.changedFields.includes("library") && result.oldConfig) {
+          const oldAutonomy = result.oldConfig.library?.autonomy !== false
+          const newAutonomy = result.config.library?.autonomy !== false
           if (oldAutonomy !== newAutonomy) {
             try {
               const { AgendaBootstrap } = await import("../agenda/bootstrap")
               await AgendaBootstrap.syncAnima(newAutonomy)
             } catch (err) {
               ctx.warnings.push(
-                `Failed to sync anima after engram change: ${err instanceof Error ? err.message : String(err)}`,
+                `Failed to sync anima after library change: ${err instanceof Error ? err.message : String(err)}`,
               )
             }
           }
@@ -383,7 +383,7 @@ export namespace RuntimeReload {
       // Category configs can specify model overrides that reference different providers
       cascaded.push("provider", "agent")
     }
-    if (changed.has("agent") || changed.has("permission") || changed.has("engram") || changed.has("external_agent")) {
+    if (changed.has("agent") || changed.has("permission") || changed.has("library") || changed.has("external_agent")) {
       cascaded.push("agent")
     }
     if (changed.has("default_agent") || changed.has("instructions")) {

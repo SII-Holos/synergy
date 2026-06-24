@@ -25,7 +25,7 @@ import { SessionCommand } from "./cli/cmd/session"
 import { ChannelCommand } from "./cli/cmd/channel"
 import { HolosCommand } from "./cli/cmd/holos"
 import { ConfigCommand } from "./cli/cmd/config"
-import { EngramCommand } from "./cli/cmd/engram"
+import { LibraryCommand } from "./cli/cmd/library"
 import { EmbedCommand } from "./cli/cmd/embed"
 import { StartCommand } from "./cli/cmd/start"
 import { StopCommand } from "./cli/cmd/stop"
@@ -149,7 +149,7 @@ const cli = yargs(hideBin(process.argv))
   .command(ChannelCommand)
   .command(HolosCommand)
   .command(ConfigCommand)
-  .command(EngramCommand)
+  .command(LibraryCommand)
   .command(EmbedCommand)
   .command(StartCommand)
   .command(StopCommand)

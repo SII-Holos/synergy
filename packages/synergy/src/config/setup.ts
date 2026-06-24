@@ -64,7 +64,7 @@ export namespace ConfigSetup {
     coreValidation?: RequiredCoreValidationResult
   }
 
-  export interface IdentityModelInput {
+  export interface VectorModelInput {
     baseURL: string
     apiKey: string
     model: string
@@ -150,8 +150,8 @@ export namespace ConfigSetup {
   export interface SetupDraft {
     model?: string
     vision_model?: string
-    embedding?: IdentityModelInput
-    rerank?: IdentityModelInput
+    embedding?: VectorModelInput
+    rerank?: VectorModelInput
     nano_model?: string
     mini_model?: string
     mid_model?: string
@@ -912,8 +912,8 @@ export namespace ConfigSetup {
     }
   }
 
-  async function verifyIdentityModel(
-    input: IdentityModelInput,
+  async function verifyVectorModel(
+    input: VectorModelInput,
     type: "embedding" | "rerank",
   ): Promise<FieldValidationResult> {
     const startedAt = now()
@@ -1093,7 +1093,7 @@ export namespace ConfigSetup {
     return `${label} probe failed for "${modelRef}": ${raw}`
   }
 
-  async function probeEmbeddingModel(input: IdentityModelInput): Promise<FieldValidationResult> {
+  async function probeEmbeddingModel(input: VectorModelInput): Promise<FieldValidationResult> {
     const startedAt = now()
     if (!input.baseURL || !input.apiKey || !input.model) {
       return withTiming(startedAt, {
@@ -1138,7 +1138,7 @@ export namespace ConfigSetup {
     }
   }
 
-  async function probeRerankModel(input: IdentityModelInput): Promise<FieldValidationResult> {
+  async function probeRerankModel(input: VectorModelInput): Promise<FieldValidationResult> {
     const startedAt = now()
     const baseURL = input.baseURL.replace(/\/+$/, "")
 
@@ -1229,16 +1229,16 @@ export namespace ConfigSetup {
     }
   }
 
-  function disableEngramForMissingEmbedding(
-    next: { engram?: Record<string, unknown> },
+  function disableLibraryForMissingEmbedding(
+    next: { library?: Record<string, unknown> },
     validation: RequiredCoreValidationResult,
   ): void {
     const embeddingFailed = validation.fields.embedding.failedRecommended
     const rerankFailed = validation.fields.rerank.failedRecommended
     if (!embeddingFailed && !rerankFailed) return
-    if (!next.engram) next.engram = {}
-    next.engram.memory = { enabled: false }
-    next.engram.experience = { encode: false, retrieve: false }
+    if (!next.library) next.library = {}
+    next.library.memory = { enabled: false }
+    next.library.experience = { encode: false, retrieve: false }
   }
 
   export async function validateRequiredCore(config: SetupDraft): Promise<RequiredCoreValidationResult> {
@@ -1256,10 +1256,10 @@ export namespace ConfigSetup {
           })
         : recommendedSkipped("No vision model configured — look_at will be disabled"),
       embedding: embedding
-        ? await verifyIdentityModel(embedding, "embedding")
+        ? await verifyVectorModel(embedding, "embedding")
         : recommendedSkipped("No embedding configured — using local model"),
       rerank: rerank
-        ? downgradeRecommended(await verifyIdentityModel(rerank, "rerank"))
+        ? downgradeRecommended(await verifyVectorModel(rerank, "rerank"))
         : recommendedSkipped("No rerank configured — reranking disabled"),
     }
 
@@ -1319,10 +1319,10 @@ export namespace ConfigSetup {
           })
         : Promise.resolve(recommendedSkipped("No vision model configured — look_at will be disabled")),
       embedding
-        ? verifyIdentityModel(embedding, "embedding")
+        ? verifyVectorModel(embedding, "embedding")
         : Promise.resolve(recommendedSkipped("No embedding configured — using local model")),
       rerank
-        ? verifyIdentityModel(rerank, "rerank")
+        ? verifyVectorModel(rerank, "rerank")
         : Promise.resolve(recommendedSkipped("No rerank configured — reranking disabled")),
     ])
 
@@ -1409,8 +1409,8 @@ export namespace ConfigSetup {
       delete next.rerank
     }
 
-    // Engram — always enabled (local embedding always works)
-    next.engram = { memory: { enabled: true }, experience: { encode: true, retrieve: true }, autonomy: true }
+    // Library — always enabled (local embedding always works)
+    next.library = { memory: { enabled: true }, experience: { encode: true, retrieve: true }, autonomy: true }
     if (draft.provider) {
       const provider = { ...(base.provider ?? {}) }
       for (const [providerID, config] of Object.entries(draft.provider)) {
@@ -1451,7 +1451,7 @@ export namespace ConfigSetup {
     const current = await Config.globalRaw()
     const built = applySetupDraft(current, config)
 
-    disableEngramForMissingEmbedding(built as { engram?: Record<string, unknown> }, resolvedValidation)
+    disableLibraryForMissingEmbedding(built as { library?: Record<string, unknown> }, resolvedValidation)
 
     const parsed = Config.Info.safeParse(built)
     if (!parsed.success) {

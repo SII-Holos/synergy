@@ -1331,7 +1331,7 @@ export type ExperienceConfig = {
   learning?: LearningConfig
 }
 
-export type EngramConfig = {
+export type LibraryConfig = {
   memory?: MemoryConfig
   experience?: ExperienceConfig
   /**
@@ -1990,7 +1990,7 @@ export type Config = {
   }
   embedding?: EmbeddingConfig
   rerank?: RerankConfig
-  engram?: EngramConfig
+  library?: LibraryConfig
   /**
    * MCP (Model Context Protocol) server configurations
    */
@@ -2145,7 +2145,7 @@ export type ConfigDomainSummary = {
     | "general"
     | "models"
     | "providers"
-    | "engram"
+    | "library"
     | "mcp"
     | "plugins"
     | "agents"
@@ -2184,7 +2184,7 @@ export type ConfigDomainImportPlan = {
       | "general"
       | "models"
       | "providers"
-      | "engram"
+      | "library"
       | "mcp"
       | "plugins"
       | "agents"
@@ -2208,7 +2208,7 @@ export type ConfigDomainImportPlanInput = {
     | "general"
     | "models"
     | "providers"
-    | "engram"
+    | "library"
     | "mcp"
     | "plugins"
     | "agents"
@@ -5881,7 +5881,7 @@ export type ConfigDomainGetData = {
       | "general"
       | "models"
       | "providers"
-      | "engram"
+      | "library"
       | "mcp"
       | "plugins"
       | "agents"
@@ -5924,7 +5924,7 @@ export type ConfigDomainUpdateData = {
       | "general"
       | "models"
       | "providers"
-      | "engram"
+      | "library"
       | "mcp"
       | "plugins"
       | "agents"
@@ -5995,7 +5995,7 @@ export type ConfigImportApplyData = {
       | "general"
       | "models"
       | "providers"
-      | "engram"
+      | "library"
       | "mcp"
       | "plugins"
       | "agents"
@@ -8258,7 +8258,7 @@ export type FileStatusResponses = {
 
 export type FileStatusResponse = FileStatusResponses[keyof FileStatusResponses]
 
-export type EngramExperienceSearchData = {
+export type LibraryExperienceSearchData = {
   body?: {
     /**
      * Search query text
@@ -8278,28 +8278,28 @@ export type EngramExperienceSearchData = {
     directory?: string
     scopeID?: string
   }
-  url: "/engram/experience/search"
+  url: "/library/experience/search"
 }
 
-export type EngramExperienceSearchErrors = {
+export type LibraryExperienceSearchErrors = {
   /**
    * Bad request
    */
   400: BadRequestError
 }
 
-export type EngramExperienceSearchError = EngramExperienceSearchErrors[keyof EngramExperienceSearchErrors]
+export type LibraryExperienceSearchError = LibraryExperienceSearchErrors[keyof LibraryExperienceSearchErrors]
 
-export type EngramExperienceSearchResponses = {
+export type LibraryExperienceSearchResponses = {
   /**
    * Search results ranked by hybrid score
    */
   200: Array<ExperienceSearchResult>
 }
 
-export type EngramExperienceSearchResponse = EngramExperienceSearchResponses[keyof EngramExperienceSearchResponses]
+export type LibraryExperienceSearchResponse = LibraryExperienceSearchResponses[keyof LibraryExperienceSearchResponses]
 
-export type EngramExperiencePageData = {
+export type LibraryExperiencePageData = {
   body?: never
   path?: never
   query?: {
@@ -8323,28 +8323,28 @@ export type EngramExperiencePageData = {
      */
     offset?: number
   }
-  url: "/engram/experience/page"
+  url: "/library/experience/page"
 }
 
-export type EngramExperiencePageErrors = {
+export type LibraryExperiencePageErrors = {
   /**
    * Bad request
    */
   400: BadRequestError
 }
 
-export type EngramExperiencePageError = EngramExperiencePageErrors[keyof EngramExperiencePageErrors]
+export type LibraryExperiencePageError = LibraryExperiencePageErrors[keyof LibraryExperiencePageErrors]
 
-export type EngramExperiencePageResponses = {
+export type LibraryExperiencePageResponses = {
   /**
    * Paginated experience list
    */
   200: ExperienceListPage
 }
 
-export type EngramExperiencePageResponse = EngramExperiencePageResponses[keyof EngramExperiencePageResponses]
+export type LibraryExperiencePageResponse = LibraryExperiencePageResponses[keyof LibraryExperiencePageResponses]
 
-export type EngramExperienceRemoveData = {
+export type LibraryExperienceRemoveData = {
   body?: never
   path: {
     /**
@@ -8356,28 +8356,28 @@ export type EngramExperienceRemoveData = {
     directory?: string
     scopeID?: string
   }
-  url: "/engram/experience/{id}"
+  url: "/library/experience/{id}"
 }
 
-export type EngramExperienceRemoveErrors = {
+export type LibraryExperienceRemoveErrors = {
   /**
    * Bad request
    */
   400: BadRequestError
 }
 
-export type EngramExperienceRemoveError = EngramExperienceRemoveErrors[keyof EngramExperienceRemoveErrors]
+export type LibraryExperienceRemoveError = LibraryExperienceRemoveErrors[keyof LibraryExperienceRemoveErrors]
 
-export type EngramExperienceRemoveResponses = {
+export type LibraryExperienceRemoveResponses = {
   /**
    * Deleted
    */
   200: boolean
 }
 
-export type EngramExperienceRemoveResponse = EngramExperienceRemoveResponses[keyof EngramExperienceRemoveResponses]
+export type LibraryExperienceRemoveResponse = LibraryExperienceRemoveResponses[keyof LibraryExperienceRemoveResponses]
 
-export type EngramExperienceGetData = {
+export type LibraryExperienceGetData = {
   body?: never
   path: {
     /**
@@ -8389,10 +8389,10 @@ export type EngramExperienceGetData = {
     directory?: string
     scopeID?: string
   }
-  url: "/engram/experience/{id}"
+  url: "/library/experience/{id}"
 }
 
-export type EngramExperienceGetErrors = {
+export type LibraryExperienceGetErrors = {
   /**
    * Bad request
    */
@@ -8403,18 +8403,18 @@ export type EngramExperienceGetErrors = {
   404: NotFoundError
 }
 
-export type EngramExperienceGetError = EngramExperienceGetErrors[keyof EngramExperienceGetErrors]
+export type LibraryExperienceGetError = LibraryExperienceGetErrors[keyof LibraryExperienceGetErrors]
 
-export type EngramExperienceGetResponses = {
+export type LibraryExperienceGetResponses = {
   /**
    * Experience detail
    */
   200: ExperienceDetailInfo
 }
 
-export type EngramExperienceGetResponse = EngramExperienceGetResponses[keyof EngramExperienceGetResponses]
+export type LibraryExperienceGetResponse = LibraryExperienceGetResponses[keyof LibraryExperienceGetResponses]
 
-export type EngramExperienceApplyRewardData = {
+export type LibraryExperienceApplyRewardData = {
   body?: {
     /**
      * Direct composite reward value [-1, 1]
@@ -8432,10 +8432,10 @@ export type EngramExperienceApplyRewardData = {
     directory?: string
     scopeID?: string
   }
-  url: "/engram/experience/{id}/reward"
+  url: "/library/experience/{id}/reward"
 }
 
-export type EngramExperienceApplyRewardErrors = {
+export type LibraryExperienceApplyRewardErrors = {
   /**
    * Bad request
    */
@@ -8446,20 +8446,20 @@ export type EngramExperienceApplyRewardErrors = {
   404: NotFoundError
 }
 
-export type EngramExperienceApplyRewardError =
-  EngramExperienceApplyRewardErrors[keyof EngramExperienceApplyRewardErrors]
+export type LibraryExperienceApplyRewardError =
+  LibraryExperienceApplyRewardErrors[keyof LibraryExperienceApplyRewardErrors]
 
-export type EngramExperienceApplyRewardResponses = {
+export type LibraryExperienceApplyRewardResponses = {
   /**
    * Reward applied
    */
   200: ApplyRewardResult
 }
 
-export type EngramExperienceApplyRewardResponse =
-  EngramExperienceApplyRewardResponses[keyof EngramExperienceApplyRewardResponses]
+export type LibraryExperienceApplyRewardResponse =
+  LibraryExperienceApplyRewardResponses[keyof LibraryExperienceApplyRewardResponses]
 
-export type EngramExperienceListData = {
+export type LibraryExperienceListData = {
   body?: never
   path?: never
   query?: {
@@ -8469,19 +8469,19 @@ export type EngramExperienceListData = {
      */
     scopeID?: string
   }
-  url: "/engram/experience"
+  url: "/library/experience"
 }
 
-export type EngramExperienceListResponses = {
+export type LibraryExperienceListResponses = {
   /**
    * List of experiences
    */
   200: Array<ExperienceInfo>
 }
 
-export type EngramExperienceListResponse = EngramExperienceListResponses[keyof EngramExperienceListResponses]
+export type LibraryExperienceListResponse = LibraryExperienceListResponses[keyof LibraryExperienceListResponses]
 
-export type EngramStatsData = {
+export type LibraryStatsData = {
   body?: never
   path?: never
   query?: {
@@ -8492,28 +8492,28 @@ export type EngramStatsData = {
      */
     recompute?: "true" | "false"
   }
-  url: "/engram/stats"
+  url: "/library/stats"
 }
 
-export type EngramStatsErrors = {
+export type LibraryStatsErrors = {
   /**
    * Bad request
    */
   400: BadRequestError
 }
 
-export type EngramStatsError = EngramStatsErrors[keyof EngramStatsErrors]
+export type LibraryStatsError = LibraryStatsErrors[keyof LibraryStatsErrors]
 
-export type EngramStatsResponses = {
+export type LibraryStatsResponses = {
   /**
-   * Engram statistics
+   * Library statistics
    */
   200: MemoryStats
 }
 
-export type EngramStatsResponse = EngramStatsResponses[keyof EngramStatsResponses]
+export type LibraryStatsResponse = LibraryStatsResponses[keyof LibraryStatsResponses]
 
-export type EngramSearchData = {
+export type LibrarySearchData = {
   body?: {
     /**
      * Search query text
@@ -8537,28 +8537,28 @@ export type EngramSearchData = {
     directory?: string
     scopeID?: string
   }
-  url: "/engram/search"
+  url: "/library/search"
 }
 
-export type EngramSearchErrors = {
+export type LibrarySearchErrors = {
   /**
    * Bad request
    */
   400: BadRequestError
 }
 
-export type EngramSearchError = EngramSearchErrors[keyof EngramSearchErrors]
+export type LibrarySearchError = LibrarySearchErrors[keyof LibrarySearchErrors]
 
-export type EngramSearchResponses = {
+export type LibrarySearchResponses = {
   /**
    * Search results ranked by similarity
    */
   200: Array<MemorySearchResult>
 }
 
-export type EngramSearchResponse = EngramSearchResponses[keyof EngramSearchResponses]
+export type LibrarySearchResponse = LibrarySearchResponses[keyof LibrarySearchResponses]
 
-export type EngramResetData = {
+export type LibraryResetData = {
   body?: {
     /**
      * What to reset
@@ -8578,28 +8578,28 @@ export type EngramResetData = {
     directory?: string
     scopeID?: string
   }
-  url: "/engram/reset"
+  url: "/library/reset"
 }
 
-export type EngramResetErrors = {
+export type LibraryResetErrors = {
   /**
    * Bad request
    */
   400: BadRequestError
 }
 
-export type EngramResetError = EngramResetErrors[keyof EngramResetErrors]
+export type LibraryResetError = LibraryResetErrors[keyof LibraryResetErrors]
 
-export type EngramResetResponses = {
+export type LibraryResetResponses = {
   /**
    * Reset result with deletion counts
    */
   200: MemoryResetResult
 }
 
-export type EngramResetResponse = EngramResetResponses[keyof EngramResetResponses]
+export type LibraryResetResponse = LibraryResetResponses[keyof LibraryResetResponses]
 
-export type EngramRemoveData = {
+export type LibraryRemoveData = {
   body?: never
   path: {
     /**
@@ -8611,28 +8611,28 @@ export type EngramRemoveData = {
     directory?: string
     scopeID?: string
   }
-  url: "/engram/{id}"
+  url: "/library/{id}"
 }
 
-export type EngramRemoveErrors = {
+export type LibraryRemoveErrors = {
   /**
    * Bad request
    */
   400: BadRequestError
 }
 
-export type EngramRemoveError = EngramRemoveErrors[keyof EngramRemoveErrors]
+export type LibraryRemoveError = LibraryRemoveErrors[keyof LibraryRemoveErrors]
 
-export type EngramRemoveResponses = {
+export type LibraryRemoveResponses = {
   /**
    * Deleted
    */
   200: boolean
 }
 
-export type EngramRemoveResponse = EngramRemoveResponses[keyof EngramRemoveResponses]
+export type LibraryRemoveResponse = LibraryRemoveResponses[keyof LibraryRemoveResponses]
 
-export type EngramGetData = {
+export type LibraryGetData = {
   body?: never
   path: {
     /**
@@ -8644,10 +8644,10 @@ export type EngramGetData = {
     directory?: string
     scopeID?: string
   }
-  url: "/engram/{id}"
+  url: "/library/{id}"
 }
 
-export type EngramGetErrors = {
+export type LibraryGetErrors = {
   /**
    * Bad request
    */
@@ -8658,18 +8658,18 @@ export type EngramGetErrors = {
   404: NotFoundError
 }
 
-export type EngramGetError = EngramGetErrors[keyof EngramGetErrors]
+export type LibraryGetError = LibraryGetErrors[keyof LibraryGetErrors]
 
-export type EngramGetResponses = {
+export type LibraryGetResponses = {
   /**
    * Memory detail
    */
   200: MemoryInfo
 }
 
-export type EngramGetResponse = EngramGetResponses[keyof EngramGetResponses]
+export type LibraryGetResponse = LibraryGetResponses[keyof LibraryGetResponses]
 
-export type EngramListData = {
+export type LibraryListData = {
   body?: never
   path?: never
   query?: {
@@ -8678,17 +8678,17 @@ export type EngramListData = {
     category?: MemoryCategory
     recallMode?: MemoryRecallMode
   }
-  url: "/engram"
+  url: "/library"
 }
 
-export type EngramListResponses = {
+export type LibraryListResponses = {
   /**
    * List of memories
    */
   200: Array<MemoryInfo>
 }
 
-export type EngramListResponse = EngramListResponses[keyof EngramListResponses]
+export type LibraryListResponse = LibraryListResponses[keyof LibraryListResponses]
 
 export type AgendaActivityData = {
   body?: never

@@ -43,8 +43,8 @@ export namespace Global {
       return path.join(root(), "state")
     },
 
-    get engramDB() {
-      return path.join(root(), "data", "engram.db")
+    get libraryDB() {
+      return path.join(root(), "data", "library.db")
     },
     get auth() {
       return path.join(root(), "data", "auth")
@@ -85,8 +85,8 @@ export namespace Global {
     get media() {
       return path.join(root(), "data", "media")
     },
-    get engramDebug() {
-      return path.join(root(), "data", "engram")
+    get libraryDebug() {
+      return path.join(root(), "data", "library")
     },
     get lspPids() {
       return path.join(root(), "state", "lsp-pids.json")
