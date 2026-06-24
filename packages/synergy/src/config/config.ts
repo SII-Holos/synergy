@@ -112,8 +112,8 @@ export namespace Config {
   export type MemoryConfig = Schema.MemoryConfig
   export const ExperienceConfig = Schema.ExperienceConfig
   export type ExperienceConfig = Schema.ExperienceConfig
-  export const EngramConfig = Schema.EngramConfig
-  export type EngramConfig = Schema.EngramConfig
+  export const LibraryConfig = Schema.LibraryConfig
+  export type LibraryConfig = Schema.LibraryConfig
   export const Provider = Schema.Provider
   export type Provider = Schema.Provider
   export const Info = Schema.Info
@@ -328,18 +328,18 @@ export namespace Config {
       if (result.compaction.overflowThreshold === undefined) result.compaction.overflowThreshold = 0.85
       if (result.compaction.maxHistoryImages === undefined) result.compaction.maxHistoryImages = 8
     }
-    if (result.engram) {
-      if (result.engram.memory === undefined) result.engram.memory = { enabled: true }
-      if (result.engram.memory && !result.engram.memory.retrieval) {
-        result.engram.memory.retrieval = { simThreshold: 0.7, topK: 3 }
+    if (result.library) {
+      if (result.library.memory === undefined) result.library.memory = { enabled: true }
+      if (result.library.memory && !result.library.memory.retrieval) {
+        result.library.memory.retrieval = { simThreshold: 0.7, topK: 3 }
       }
-      if (result.engram.memory && !result.engram.memory.dedup) {
-        result.engram.memory.dedup = { threshold: 0.75 }
+      if (result.library.memory && !result.library.memory.dedup) {
+        result.library.memory.dedup = { threshold: 0.75 }
       }
-      if (result.engram.experience === undefined) {
-        result.engram.experience = { encode: true, retrieve: true, learning: { ...LEARNING_DEFAULTS } }
+      if (result.library.experience === undefined) {
+        result.library.experience = { encode: true, retrieve: true, learning: { ...LEARNING_DEFAULTS } }
       }
-      if (result.engram.autonomy === undefined) result.engram.autonomy = true
+      if (result.library.autonomy === undefined) result.library.autonomy = true
     }
 
     if (!result.username) result.username = os.userInfo().username

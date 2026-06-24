@@ -4,7 +4,15 @@ import os from "os"
 import * as prompts from "@clack/prompts"
 import { cmd } from "../cmd"
 import { UI } from "../../ui"
-import { CATEGORIES, scanCategories, formatSize, shortenPath, dataRoot, getEngramInfo } from "./shared"
+import {
+  CATEGORIES,
+  scanCategories,
+  formatSize,
+  shortenPath,
+  dataRoot,
+  getLibraryInfo,
+  resolveLibraryDB,
+} from "./shared"
 
 export const DataPackCommand = cmd({
   command: "pack [output]",
@@ -58,16 +66,16 @@ export const DataPackCommand = cmd({
       : path.join(os.homedir(), defaultName)
 
     // Step 3: Build manifest
-    const engramInfo = await getEngramInfo(path.join(root, "data", "engram.db"))
+    const libraryInfo = await getLibraryInfo(await resolveLibraryDB(root))
     const manifest = {
       version: 1,
       createdAt: new Date().toISOString(),
-      engram: engramInfo.exists
+      library: libraryInfo.exists
         ? {
-            dimensions: engramInfo.dimensions,
-            embeddingModel: engramInfo.embeddingModel,
-            memoryCount: engramInfo.memoryCount,
-            experienceCount: engramInfo.experienceCount,
+            dimensions: libraryInfo.dimensions,
+            embeddingModel: libraryInfo.embeddingModel,
+            memoryCount: libraryInfo.memoryCount,
+            experienceCount: libraryInfo.experienceCount,
           }
         : null,
     }

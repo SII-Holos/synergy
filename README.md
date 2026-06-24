@@ -36,12 +36,12 @@ Synergy currently spans several product surfaces and workflows:
 - A `web` client for browser-based interaction
 - A built-in Browser workspace backed by Playwright/Chromium for interactive page control
 - A `send` command for one-off, non-interactive execution
-- CLI commands for session, config, identity, and operational workflows
+- CLI commands for session, config, library, Holos identity, and operational workflows
 - Configurable agents for orchestration, coding, research, writing, search, and review
 - Session persistence and session management commands
 - MCP integration for external tool ecosystems
 - Channel integrations such as Feishu / Lark
-- Identity, login, notes, memory/engram, agenda, and community-facing capabilities
+- Holos identity, login, notes, library, agenda, and community-facing capabilities
 
 ### Built-In Browser Workspace
 
@@ -181,14 +181,14 @@ synergy web                    # Open the web UI and attach to a server
 synergy send "message"         # Run a one-off prompt
 ```
 
-### Configuration and identity
+### Configuration, library, and Holos
 
 ```bash
 synergy config              # Manage configuration
 synergy config path         # Show config paths
 synergy config import       # Import selected config domains
-synergy login               # Bind to Holos platform
-synergy identity            # Work with identity-related features
+synergy library             # Manage library memory and learning
+synergy holos login         # Bind to Holos platform
 ```
 
 ### Models, sessions, and exports

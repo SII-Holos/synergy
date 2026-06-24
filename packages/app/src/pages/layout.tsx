@@ -26,7 +26,7 @@ import { Sidebar } from "@/components/sidebar/sidebar"
 import { GlobalSearchModal } from "@/components/search/global-search-modal"
 import { GlobalPanelOverlay } from "@/components/overlay/global-panel-overlay"
 import { MobileDrawer } from "@/components/mobile-drawer"
-import { EngramPanel } from "@/components/engram"
+import { LibraryPanel } from "@/components/library"
 import { AgendaPanel } from "@/components/agenda"
 
 import { LucidPanel } from "@/components/lucid-panel"
@@ -465,8 +465,8 @@ function GlobalPanelSwitch() {
   const panel = usePanel()
   return (
     <Switch>
-      <Match when={panel.active() === "engram"}>
-        <EngramPanel />
+      <Match when={panel.active() === "library"}>
+        <LibraryPanel />
       </Match>
       <Match when={panel.active() === "agenda"}>
         <AgendaPanel />

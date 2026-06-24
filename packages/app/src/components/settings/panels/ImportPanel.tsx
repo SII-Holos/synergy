@@ -10,7 +10,7 @@ type DomainId =
   | "general"
   | "models"
   | "providers"
-  | "engram"
+  | "library"
   | "mcp"
   | "plugins"
   | "agents"
@@ -25,7 +25,7 @@ const DOMAINS: Array<{ id: DomainId; label: string }> = [
   { id: "general", label: "General" },
   { id: "models", label: "Models" },
   { id: "providers", label: "Providers" },
-  { id: "engram", label: "Engram" },
+  { id: "library", label: "Library" },
   { id: "mcp", label: "MCP" },
   { id: "plugins", label: "Plugins" },
   { id: "agents", label: "Agents" },

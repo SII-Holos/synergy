@@ -16,7 +16,7 @@ export interface Category {
 export const CATEGORIES: Category[] = [
   {
     key: "core",
-    label: "Core data (sessions, notes, agenda, engram, auth, holos)",
+    label: "Core data (sessions, notes, agenda, library, auth, holos)",
     subdirs: ["data"],
     required: true,
     defaultValue: true,
@@ -352,7 +352,7 @@ export async function removeShellProfile(): Promise<{ removed: boolean; file: st
   return { removed: false, file: null }
 }
 
-export async function getEngramInfo(dbPath: string): Promise<{
+export async function getLibraryInfo(dbPath: string): Promise<{
   exists: boolean
   dimensions: number | null
   embeddingModel: string | null
@@ -397,7 +397,13 @@ export async function getEngramInfo(dbPath: string): Promise<{
   }
 }
 
-export interface EngramMergeResult {
+export async function resolveLibraryDB(root: string): Promise<string> {
+  const libraryPath = path.join(root, "data", "library.db")
+  if (await dirExists(libraryPath)) return libraryPath
+  return path.join(root, "data", "engram.db")
+}
+
+export interface LibraryMergeResult {
   memoriesMerged: number
   memoriesSkipped: number
   experiencesMerged: number
@@ -405,17 +411,17 @@ export interface EngramMergeResult {
   vecDropped: boolean
 }
 
-export type EngramConflictStrategy = "text_only" | "skip" | "replace_vectors"
+export type LibraryConflictStrategy = "text_only" | "skip" | "replace_vectors"
 
-/** Merge source engram.db into target engram.db. */
-export async function mergeEngramDB(
+/** Merge source library.db into target library.db. */
+export async function mergeLibraryDB(
   sourceDbPath: string,
   targetDbPath: string,
-  strategy: EngramConflictStrategy,
-): Promise<EngramMergeResult> {
+  strategy: LibraryConflictStrategy,
+): Promise<LibraryMergeResult> {
   const { Database } = await import("bun:sqlite")
 
-  const result: EngramMergeResult = {
+  const result: LibraryMergeResult = {
     memoriesMerged: 0,
     memoriesSkipped: 0,
     experiencesMerged: 0,

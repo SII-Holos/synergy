@@ -239,7 +239,7 @@ const PATTERN_FALLBACKS: { pattern: RegExp; kind: ToolKind; traits?: ToolTraits 
   { pattern: /^(run|exec|execute|shell|bash|sh|cmd|terminal|command)/i, kind: "code.execute" },
   { pattern: /[-_](command|exec|shell|terminal)$/i, kind: "code.execute" },
   { pattern: /^(look|analyze|vision|describe|inspect|examine)/i, kind: "code.analyze" },
-  { pattern: /^(memory|engram|remember|recall)/i, kind: "knowledge.memory" },
+  { pattern: /^(memory|library|remember|recall)/i, kind: "knowledge.memory" },
   { pattern: /^note[-_]/i, kind: "knowledge.note" },
   { pattern: /^skill/i, kind: "knowledge.skill" },
   { pattern: /^(task|delegate|dispatch|spawn)/i, kind: "orchestration.task" },

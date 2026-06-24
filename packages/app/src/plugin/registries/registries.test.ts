@@ -357,14 +357,14 @@ describe("WorkspaceRegistry", () => {
 // ═══════════════════════════════════════════════════════════════════
 
 describe("PanelRegistry", () => {
-  // Note: panel-registry has 3 built-in panels (engram, agenda, lucid) registered at module init.
+  // Note: panel-registry has 3 built-in panels (library, agenda, lucid) registered at module init.
   const BUILTIN_COUNT = 3
 
   beforeEach(() => {
     clearGlobalPanels()
     // Re-register built-ins (they get cleared by clearGlobalPanels())
     const builtins = [
-      { id: "engram", label: "Library", icon: "book-open", pluginId: "" },
+      { id: "library", label: "Library", icon: "book-open", pluginId: "" },
       { id: "agenda", label: "Agenda", icon: "clipboard-list", pluginId: "" },
       { id: "lucid", label: "Lucid", icon: "sparkles", pluginId: "" },
     ]
@@ -403,7 +403,7 @@ describe("PanelRegistry", () => {
     const list = listGlobalPanels()
     expect(list.length).toBe(BUILTIN_COUNT + 1)
     const ids = list.map((e) => e.id)
-    expect(ids).toContain("engram")
+    expect(ids).toContain("library")
     expect(ids).toContain("agenda")
     expect(ids).toContain("lucid")
     expect(ids).toContain("p1")
@@ -414,7 +414,7 @@ describe("PanelRegistry", () => {
   })
 
   test("getGlobalPanel finds built-in panel", () => {
-    const panel = getGlobalPanel("engram")
+    const panel = getGlobalPanel("library")
     expect(panel).toBeDefined()
     expect(panel!.label).toBe("Library")
   })
@@ -443,7 +443,7 @@ describe("PanelRegistry", () => {
 
 describe("SettingsRegistry", () => {
   // Note: settings-registry registers 9 built-in sections at module init.
-  const BUILTIN_IDS = ["general", "models", "mcp", "plugins", "email", "channels", "import", "identity", "advanced"]
+  const BUILTIN_IDS = ["general", "models", "mcp", "plugins", "email", "channels", "import", "library", "advanced"]
 
   test("registerSettingsSection adds entry and returns disposer", () => {
     const disposer = registerSettingsSection({

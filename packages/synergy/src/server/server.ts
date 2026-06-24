@@ -48,7 +48,7 @@ import { FileRoute } from "./file"
 import { File as SynergyFile } from "../file"
 import { ConfigRoute } from "./config-route"
 import { ChannelRoute } from "./channel"
-import { EngramRoute } from "./engram"
+import { LibraryRoute } from "./library"
 import { AgendaRoute } from "./agenda"
 import { NoteRoute } from "./note"
 import { AssetRoute } from "./asset"
@@ -897,7 +897,7 @@ export namespace Server {
         .route("/skill", SkillRoute)
         .route("/find", FindRoute)
         .route("/file", FileRoute)
-        .route("/engram", EngramRoute)
+        .route("/library", LibraryRoute)
         .route("/agenda", AgendaRoute)
         .route("/note", NoteRoute)
         .route("/blueprint", BlueprintRoute)

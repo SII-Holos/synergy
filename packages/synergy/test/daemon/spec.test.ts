@@ -222,7 +222,7 @@ describe("daemon.spec", () => {
 
     const migrated = await readMigratedLegacyConfig(target)
     expect(migrated.identity).toBeUndefined()
-    expect(migrated.engram).toEqual({
+    expect(migrated.library).toEqual({
       memory: {
         enabled: false,
       },

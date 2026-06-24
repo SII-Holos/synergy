@@ -7,7 +7,7 @@ export type HookCategory =
   | "cortex"
   | "agenda"
   | "note"
-  | "engram"
+  | "library"
   | "experimental"
 
 export interface HookDescriptor {
@@ -139,20 +139,20 @@ export const HOOKS: HookDescriptor[] = [
     summary: "Filter or reorder note search results",
   },
   {
-    name: "engram.memory.search.before",
-    category: "engram",
+    name: "library.memory.search.before",
+    category: "library",
     mutatesOutput: true,
-    summary: "Rewrite engram memory search query and options",
+    summary: "Rewrite library memory search query and options",
   },
   {
-    name: "engram.memory.search.after",
-    category: "engram",
+    name: "library.memory.search.after",
+    category: "library",
     mutatesOutput: true,
-    summary: "Filter or reorder engram memory results",
+    summary: "Filter or reorder library memory results",
   },
   {
-    name: "engram.experience.encode.after",
-    category: "engram",
+    name: "library.experience.encode.after",
+    category: "library",
     mutatesOutput: false,
     summary: "Observe experience encoding outcomes",
   },
@@ -296,6 +296,6 @@ export const HOOK_CATEGORIES: HookCategory[] = [
   "cortex",
   "agenda",
   "note",
-  "engram",
+  "library",
   "experimental",
 ]

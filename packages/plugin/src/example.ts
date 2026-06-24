@@ -85,7 +85,7 @@ export const ExamplePlugin: PluginDescriptor = {
         output.note.title = output.note.title.trim() || "Untitled note"
         output.note.tags = mergeTags(output.note.tags)
       },
-      async "engram.memory.search.after"(input, output) {
+      async "library.memory.search.after"(input, output) {
         output.results = output.results
           .slice()
           .sort((left, right) => right.similarity - left.similarity)

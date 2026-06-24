@@ -14,7 +14,7 @@ import type { Provider } from "@/provider/provider"
 import { LLM } from "./llm"
 import { Config } from "@/config/config"
 import { PermissionNext } from "@/permission/next"
-import { ExperienceEncoder } from "@/engram/experience-encoder"
+import { ExperienceEncoder } from "@/library/experience-encoder"
 import { Question } from "@/question"
 import { Observability } from "@/observability"
 

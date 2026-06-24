@@ -349,7 +349,7 @@ const PATTERN_FALLBACKS: { pattern: RegExp; category: SemanticCategory }[] = [
   { pattern: /^(run|exec|execute|shell|bash|sh|cmd|terminal|command)/i, category: "shell" },
   { pattern: /[-_](command|exec|shell|terminal)$/i, category: "shell" },
   { pattern: /^(look|analyze|vision|describe|inspect|examine)/i, category: "analyze" },
-  { pattern: /^(memory|engram|remember|recall)/i, category: "memory" },
+  { pattern: /^(memory|library|remember|recall)/i, category: "memory" },
   { pattern: /^note[-_]/i, category: "note" },
   { pattern: /^skill/i, category: "skill" },
   { pattern: /^(task|delegate|dispatch|spawn)/i, category: "task" },

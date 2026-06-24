@@ -57,7 +57,7 @@ export namespace Agent {
   const state = ScopedState.create(async () => {
     const cfg = await Config.current()
     const evolutionActive =
-      ((cfg as any).engram?.memory?.enabled ?? true) && (cfg as any).engram?.experience?.encode !== false
+      ((cfg as any).library?.memory?.enabled ?? true) && (cfg as any).library?.experience?.encode !== false
     const role = (r: Provider.ModelRole) => Provider.resolveRoleModelSync(cfg, r)
 
     const defaults = PermissionNext.fromConfig({

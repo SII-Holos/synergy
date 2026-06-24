@@ -1,9 +1,9 @@
 import { Log } from "../util/log"
 import { MessageV2 } from "./message-v2"
-import { ExperienceRecall } from "../engram/experience-recall"
-import { EngramDB } from "../engram/database"
-import { MemoryRecall } from "../engram/memory-recall"
-import { Embedding } from "../engram/embedding"
+import { ExperienceRecall } from "../library/experience-recall"
+import { LibraryDB } from "../library/database"
+import { MemoryRecall } from "../library/memory-recall"
+import { Embedding } from "../vector/embedding"
 import { Config } from "../config/config"
 
 const log = Log.create({ service: "session.recall" })
@@ -37,7 +37,7 @@ export async function buildMemoryContext(
   sessionID: string,
   scopeID: string,
   messages: MessageV2.WithParts[],
-  engram?: {
+  library?: {
     memory?: {
       enabled?: boolean
       retrieval?: {
@@ -60,8 +60,8 @@ export async function buildMemoryContext(
     ? await Embedding.generate({ id: "search-query", text: userText }).catch(() => undefined)
     : undefined
 
-  const memory = engram?.memory
-  const experience = engram?.experience
+  const memory = library?.memory
+  const experience = library?.experience
   const active = memory?.enabled ?? true
   const retrieve = experience?.retrieve !== false
   const activeRetrieval = resolveActiveRetrieval(memory?.retrieval)
@@ -95,7 +95,7 @@ function extractLastUserText(messages: MessageV2.WithParts[]): string | undefine
   return text.trim() || undefined
 }
 
-const CATEGORY_INSTRUCTIONS: Record<EngramDB.Memory.Category, string> = {
+const CATEGORY_INSTRUCTIONS: Record<LibraryDB.Memory.Category, string> = {
   user: "Stable facts about the user — identity, background, responsibilities, and enduring context.",
   self: "Your persistent identity, role, and operating commitments. Stay aligned with this self-knowledge.",
   relationship: "Established collaboration patterns and expectations between you and the user. Use these as defaults.",
@@ -112,11 +112,11 @@ const CATEGORY_INSTRUCTIONS: Record<EngramDB.Memory.Category, string> = {
   general: "Other durable information worth preserving when it does not fit a more specific category.",
 }
 
-function formatCategorySection(category: EngramDB.Memory.Category, entries: string[]): string {
+function formatCategorySection(category: LibraryDB.Memory.Category, entries: string[]): string {
   return `<category name="${category}" instruction="${CATEGORY_INSTRUCTIONS[category]}">\n${entries.join("\n")}\n</category>`
 }
 
-function formatStoredMemoryEntry(entry: EngramDB.Memory.Row): string {
+function formatStoredMemoryEntry(entry: LibraryDB.Memory.Row): string {
   return `<entry title="${entry.title}">\n${entry.content}\n</entry>`
 }
 
@@ -124,7 +124,7 @@ function formatRetrievedMemoryEntry(entry: MemoryRecall.Result): string {
   return `<entry title="${entry.title}" similarity="${entry.similarity.toFixed(3)}">\n${entry.content}\n</entry>`
 }
 
-function renderMemoryBlock(groupedEntries: Map<EngramDB.Memory.Category, string[]>): string | undefined {
+function renderMemoryBlock(groupedEntries: Map<LibraryDB.Memory.Category, string[]>): string | undefined {
   const sections = [...groupedEntries.entries()]
     .filter(([, entries]) => entries.length > 0)
     .map(([category, entries]) => formatCategorySection(category, entries))
@@ -132,9 +132,9 @@ function renderMemoryBlock(groupedEntries: Map<EngramDB.Memory.Category, string[
   return ["<active-memory>", ...sections, "</active-memory>"].join("\n")
 }
 
-function groupAlwaysRows(): Map<EngramDB.Memory.Category, string[]> {
-  const grouped = new Map<EngramDB.Memory.Category, string[]>()
-  for (const row of EngramDB.Memory.list({ recallModes: ["always"] })) {
+function groupAlwaysRows(): Map<LibraryDB.Memory.Category, string[]> {
+  const grouped = new Map<LibraryDB.Memory.Category, string[]>()
+  for (const row of LibraryDB.Memory.list({ recallModes: ["always"] })) {
     const items = grouped.get(row.category) ?? []
     items.push(formatStoredMemoryEntry(row))
     grouped.set(row.category, items)
@@ -176,10 +176,10 @@ async function buildActiveMemoryContext(
   queryVector?: number[],
 ): Promise<{ context: string; memoryBlock?: string }> {
   const parts: string[] = []
-  const categories = Object.keys(activeRetrieval.categories) as EngramDB.Memory.Category[]
+  const categories = Object.keys(activeRetrieval.categories) as LibraryDB.Memory.Category[]
   const groupedEntries = groupAlwaysRows()
 
-  const appendEntry = (category: EngramDB.Memory.Category, entry: string) => {
+  const appendEntry = (category: LibraryDB.Memory.Category, entry: string) => {
     const items = groupedEntries.get(category) ?? []
     items.push(entry)
     groupedEntries.set(category, items)
@@ -283,8 +283,8 @@ function resolveActiveRetrieval(retrieval?: {
   const simThreshold = retrieval?.simThreshold ?? 0.7
   const topK = retrieval?.topK ?? 3
   const overrides = retrieval?.categories
-  const categories = {} as Record<EngramDB.Memory.Category, CategoryRetrieval>
-  for (const category of EngramDB.Memory.CATEGORIES) {
+  const categories = {} as Record<LibraryDB.Memory.Category, CategoryRetrieval>
+  for (const category of LibraryDB.Memory.CATEGORIES) {
     const override = overrides?.[category]
     categories[category] = {
       simThreshold: override?.simThreshold ?? simThreshold,
@@ -296,7 +296,7 @@ function resolveActiveRetrieval(retrieval?: {
 
 interface ActiveRetrieval {
   enabled: boolean
-  categories: Record<EngramDB.Memory.Category, CategoryRetrieval>
+  categories: Record<LibraryDB.Memory.Category, CategoryRetrieval>
 }
 
 interface CategoryRetrieval {

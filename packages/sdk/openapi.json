@@ -2285,7 +2285,7 @@
                 "general",
                 "models",
                 "providers",
-                "engram",
+                "library",
                 "mcp",
                 "plugins",
                 "agents",
@@ -2357,7 +2357,7 @@
                 "general",
                 "models",
                 "providers",
-                "engram",
+                "library",
                 "mcp",
                 "plugins",
                 "agents",
@@ -2533,7 +2533,7 @@
                         "general",
                         "models",
                         "providers",
-                        "engram",
+                        "library",
                         "mcp",
                         "plugins",
                         "agents",
@@ -7827,9 +7827,9 @@
         ]
       }
     },
-    "/engram/experience/search": {
+    "/library/experience/search": {
       "post": {
-        "operationId": "engram.experience.search",
+        "operationId": "library.experience.search",
         "parameters": [
           {
             "in": "query",
@@ -7900,14 +7900,14 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.engram.experience.search({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.library.experience.search({\n  ...\n})"
           }
         ]
       }
     },
-    "/engram/experience/page": {
+    "/library/experience/page": {
       "get": {
-        "operationId": "engram.experience.page",
+        "operationId": "library.experience.page",
         "parameters": [
           {
             "in": "query",
@@ -7996,14 +7996,14 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.engram.experience.page({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.library.experience.page({\n  ...\n})"
           }
         ]
       }
     },
-    "/engram/experience/{id}": {
+    "/library/experience/{id}": {
       "get": {
-        "operationId": "engram.experience.get",
+        "operationId": "library.experience.get",
         "parameters": [
           {
             "in": "query",
@@ -8066,12 +8066,12 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.engram.experience.get({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.library.experience.get({\n  ...\n})"
           }
         ]
       },
       "delete": {
-        "operationId": "engram.experience.remove",
+        "operationId": "library.experience.remove",
         "parameters": [
           {
             "in": "query",
@@ -8124,14 +8124,14 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.engram.experience.remove({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.library.experience.remove({\n  ...\n})"
           }
         ]
       }
     },
-    "/engram/experience/{id}/reward": {
+    "/library/experience/{id}/reward": {
       "put": {
-        "operationId": "engram.experience.applyReward",
+        "operationId": "library.experience.applyReward",
         "parameters": [
           {
             "in": "query",
@@ -8214,14 +8214,14 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.engram.experience.applyReward({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.library.experience.applyReward({\n  ...\n})"
           }
         ]
       }
     },
-    "/engram/experience": {
+    "/library/experience": {
       "get": {
-        "operationId": "engram.experience.list",
+        "operationId": "library.experience.list",
         "parameters": [
           {
             "in": "query",
@@ -8259,14 +8259,14 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.engram.experience.list({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.library.experience.list({\n  ...\n})"
           }
         ]
       }
     },
-    "/engram/stats": {
+    "/library/stats": {
       "get": {
-        "operationId": "engram.stats",
+        "operationId": "library.stats",
         "parameters": [
           {
             "in": "query",
@@ -8293,11 +8293,11 @@
             "description": "Set to 'true' to force a full analytics recompute"
           }
         ],
-        "summary": "Get engram stats",
-        "description": "Get statistics about the engram database. By default returns a summary with counts and DB size. Use ?recompute=true to force a full analytics recompute and return the extended snapshot.",
+        "summary": "Get library stats",
+        "description": "Get statistics about the library database. By default returns a summary with counts and DB size. Use ?recompute=true to force a full analytics recompute and return the extended snapshot.",
         "responses": {
           "200": {
-            "description": "Engram statistics",
+            "description": "Library statistics",
             "content": {
               "application/json": {
                 "schema": {
@@ -8320,14 +8320,14 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.engram.stats({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.library.stats({\n  ...\n})"
           }
         ]
       }
     },
-    "/engram/search": {
+    "/library/search": {
       "post": {
-        "operationId": "engram.search",
+        "operationId": "library.search",
         "parameters": [
           {
             "in": "query",
@@ -8408,14 +8408,14 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.engram.search({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.library.search({\n  ...\n})"
           }
         ]
       }
     },
-    "/engram/reset": {
+    "/library/reset": {
       "post": {
-        "operationId": "engram.reset",
+        "operationId": "library.reset",
         "parameters": [
           {
             "in": "query",
@@ -8485,14 +8485,14 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.engram.reset({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.library.reset({\n  ...\n})"
           }
         ]
       }
     },
-    "/engram/{id}": {
+    "/library/{id}": {
       "get": {
-        "operationId": "engram.get",
+        "operationId": "library.get",
         "parameters": [
           {
             "in": "query",
@@ -8555,12 +8555,12 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.engram.get({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.library.get({\n  ...\n})"
           }
         ]
       },
       "delete": {
-        "operationId": "engram.remove",
+        "operationId": "library.remove",
         "parameters": [
           {
             "in": "query",
@@ -8613,14 +8613,14 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.engram.remove({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.library.remove({\n  ...\n})"
           }
         ]
       }
     },
-    "/engram": {
+    "/library": {
       "get": {
-        "operationId": "engram.list",
+        "operationId": "library.list",
         "parameters": [
           {
             "in": "query",
@@ -8671,7 +8671,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.engram.list({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.library.list({\n  ...\n})"
           }
         ]
       }
@@ -18201,7 +18201,7 @@
         },
         "additionalProperties": false
       },
-      "EngramConfig": {
+      "LibraryConfig": {
         "type": "object",
         "properties": {
           "memory": {
@@ -19185,8 +19185,8 @@
           "rerank": {
             "$ref": "#/components/schemas/RerankConfig"
           },
-          "engram": {
-            "$ref": "#/components/schemas/EngramConfig"
+          "library": {
+            "$ref": "#/components/schemas/LibraryConfig"
           },
           "mcp": {
             "description": "MCP (Model Context Protocol) server configurations",
@@ -19523,7 +19523,7 @@
               "general",
               "models",
               "providers",
-              "engram",
+              "library",
               "mcp",
               "plugins",
               "agents",
@@ -19623,7 +19623,7 @@
                     "general",
                     "models",
                     "providers",
-                    "engram",
+                    "library",
                     "mcp",
                     "plugins",
                     "agents",
@@ -19678,7 +19678,7 @@
                 "general",
                 "models",
                 "providers",
-                "engram",
+                "library",
                 "mcp",
                 "plugins",
                 "agents",

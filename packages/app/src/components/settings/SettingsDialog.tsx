@@ -28,7 +28,7 @@ import { ModelsPanel } from "./panels/ModelsPanel"
 import { McpPanel } from "./panels/McpPanel"
 import { PluginsPanel } from "./panels/PluginsPanel"
 import { AdvancedPanel } from "./panels/AdvancedPanel"
-import { IdentityPanel } from "./panels/IdentityPanel"
+import { LibrarySettingsPanel } from "./panels/LibrarySettingsPanel"
 import { ChannelsPanel } from "./panels/ChannelsPanel"
 import { EmailPanel } from "./panels/EmailPanel"
 import { ImportPanel } from "./panels/ImportPanel"
@@ -104,8 +104,8 @@ export function SettingsDialog(props: DialogSettingsProps) {
     entries: [] as McpEntry[],
   })
 
-  const [identity, setIdentity] = createStore({
-    evolution: "" as string,
+  const [library, setLibrary] = createStore({
+    learning: "" as string,
     autonomy: "" as string,
     memorySimThreshold: "" as string,
     memoryTopK: "" as string,
@@ -158,7 +158,7 @@ export function SettingsDialog(props: DialogSettingsProps) {
       setAdvanced: (v) => setAdvanced(v),
       setEmail: (v) => setEmail(v),
       setChannels: (v) => setChannels(v),
-      setIdentity: (v) => setIdentity(v),
+      setLibrary: (v) => setLibrary(v),
       setInitialized,
       originalMcpsRef,
     })
@@ -202,7 +202,7 @@ export function SettingsDialog(props: DialogSettingsProps) {
       advanced,
       email,
       channels,
-      identity,
+      library,
       originalMcps: originalMcpsRef.current,
     })
   })
@@ -280,7 +280,7 @@ export function SettingsDialog(props: DialogSettingsProps) {
     "channels",
     "email",
     "import",
-    "identity",
+    "library",
     "advanced",
   ])
   const pluginSections = createMemo(() => settingsSections().filter((s) => !BUILTIN_IDS.has(s.id)))
@@ -397,8 +397,8 @@ export function SettingsDialog(props: DialogSettingsProps) {
                 <ImportPanel onImported={refreshAfterConfigChange} />
               </Show>
 
-              <Show when={activeTab() === "identity"}>
-                <IdentityPanel identity={identity} onIdentityChange={(key, value) => setIdentity(key, value)} />
+              <Show when={activeTab() === "library"}>
+                <LibrarySettingsPanel library={library} onLibraryChange={(key, value) => setLibrary(key, value)} />
               </Show>
 
               <Show when={activeTab() === "advanced"}>

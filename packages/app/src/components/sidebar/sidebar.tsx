@@ -413,9 +413,9 @@ export function Sidebar(props: SidebarProps) {
             type="button"
             classList={{
               "sb-global-btn": true,
-              "sb-global-active": panel.active() === "engram",
+              "sb-global-active": panel.active() === "library",
             }}
-            onClick={() => panel.toggle("engram")}
+            onClick={() => panel.toggle("library")}
           >
             <Icon name="book-open" size="normal" />
             <Show when={isExpanded()}>

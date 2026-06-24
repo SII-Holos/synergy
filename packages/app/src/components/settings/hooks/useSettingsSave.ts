@@ -23,7 +23,7 @@ const FIELD_DOMAIN: Record<string, string> = {
   thinking_model: "models",
   long_context_model: "models",
   creative_model: "models",
-  engram: "engram",
+  library: "library",
   mcp: "mcp",
   plugin: "plugins",
   permission: "permissions",
@@ -63,7 +63,7 @@ export const FIELD_SAVE_STRATEGY: Record<string, "auto" | "background" | "explic
   mcp: "explicit",
   plugin: "explicit",
   email: "explicit",
-  identity: "explicit",
+  library: "explicit",
 }
 
 export function useSettingsSave(ctx: SaveContext) {
