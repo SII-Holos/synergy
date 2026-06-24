@@ -935,7 +935,7 @@ function SidebarAgentHub(props: {
   let loginMessageHandler: ((event: MessageEvent) => void) | undefined
   let loginMessageTimeout: ReturnType<typeof setTimeout> | undefined
 
-  const avatarSrc = () => assetPath("/agent-avatars/synergy-companion.svg")
+  const avatarSrc = () => assetPath("/agent-avatars/synergy-agent-icon.png")
 
   const callbackUrl = () => new URL("/holos/callback", props.globalSDK.url).toString()
   const callbackOrigin = () => new URL(props.globalSDK.url).origin
