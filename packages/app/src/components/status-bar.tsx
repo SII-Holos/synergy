@@ -4,6 +4,7 @@ import { useHolos } from "@/context/holos"
 import { useServer } from "@/context/server"
 import { useGlobalSync } from "@/context/global-sync"
 import { useSync } from "@/context/sync"
+import { ContextBar } from "@/components/context-bar"
 import { SessionLspIndicator, SessionMcpIndicator, SessionCortexIndicator } from "@/components/session"
 import { Icon, type IconName } from "@ericsanchezok/synergy-ui/icon"
 import { Tooltip } from "@ericsanchezok/synergy-ui/tooltip"
@@ -319,6 +320,7 @@ export function StatusBar() {
           <SessionMcpIndicator />
           <Show when={params.id}>
             <SessionCortexIndicator sessionID={params.id!} />
+            <ContextBar />
           </Show>
 
           <div class="w-px h-4 bg-border-weak" />

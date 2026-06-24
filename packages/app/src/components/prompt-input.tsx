@@ -36,6 +36,7 @@ import { useSync } from "@/context/sync"
 import { FileIcon } from "@ericsanchezok/synergy-ui/file-icon"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { IconButton } from "@ericsanchezok/synergy-ui/icon-button"
+import { DropdownMenu } from "@ericsanchezok/synergy-ui/dropdown-menu"
 import { Tooltip } from "@ericsanchezok/synergy-ui/tooltip"
 import { getDirectory, getFilename } from "@ericsanchezok/synergy-util/path"
 import { useCommand } from "@/context/command"
@@ -47,7 +48,6 @@ import { getAgentVisual } from "@/components/agent-visual"
 import type { Message, Part } from "@ericsanchezok/synergy-sdk/client"
 import { Binary } from "@ericsanchezok/synergy-util/binary"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
-import { ContextBar } from "@/components/context-bar"
 import { QuickActions } from "@/components/quick-actions"
 import { isHomeScope } from "@/utils/scope"
 import { computeWorkingPhrase, titlecaseStatusLabel } from "@ericsanchezok/synergy-ui/session-status"
@@ -1097,18 +1097,6 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                     )}
                   </ToolbarSelectorPopover>
                 </Show>
-                <Tooltip placement="top" value="Attach file">
-                  <button
-                    type="button"
-                    class="flex items-center justify-center size-7 rounded-full border border-border-weak-base bg-surface-base hover:bg-surface-raised-base-hover transition-colors"
-                    onClick={() => fileInputRef.click()}
-                  >
-                    <Icon name="paperclip" size="small" class="text-icon-base" />
-                  </button>
-                </Tooltip>
-                <Show when={params.id}>
-                  <ContextBar />
-                </Show>
                 <PermissionModeSelector
                   working={working}
                   switching={() => store.switchingProfile}
@@ -1116,6 +1104,55 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                   selectedProfile={selectedControlProfile}
                   updateProfile={updateControlProfile}
                 />
+                <Show when={planMode()}>
+                  <Tooltip placement="top" value="Exit Plan Mode">
+                    <button
+                      type="button"
+                      aria-label="Exit Plan Mode"
+                      class="group flex h-7 items-center gap-1.5 rounded-full border border-border-weak-base bg-surface-base px-2.5 text-text-weak transition-colors hover:bg-surface-raised-base-hover hover:text-text-base focus:outline-none focus-visible:ring-2 focus-visible:ring-border-strong-base/35"
+                      onClick={() => void togglePlanMode()}
+                    >
+                      <span class="relative flex size-4 shrink-0 items-center justify-center">
+                        <span class="absolute inset-0 flex items-center justify-center opacity-100 transition-opacity group-hover:opacity-0">
+                          <Icon name="list-checks" size="small" class="text-icon-weak" />
+                        </span>
+                        <span class="absolute inset-0 flex items-center justify-center opacity-0 transition-opacity group-hover:opacity-100">
+                          <Icon name="x" size="small" class="text-icon-base" />
+                        </span>
+                      </span>
+                      <span class="text-12-medium leading-none">Plan</span>
+                    </button>
+                  </Tooltip>
+                </Show>
+                <DropdownMenu placement="top-start" gutter={8}>
+                  <Tooltip placement="top" value="Add">
+                    <DropdownMenu.Trigger
+                      type="button"
+                      aria-label="Add"
+                      class="flex items-center justify-center size-7 rounded-full border border-border-weak-base bg-surface-base text-icon-base hover:bg-surface-raised-base-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-border-strong-base/35 transition-colors"
+                    >
+                      <Icon name="plus" size="small" />
+                    </DropdownMenu.Trigger>
+                  </Tooltip>
+                  <DropdownMenu.Portal>
+                    <DropdownMenu.Content class="w-44 bg-surface-raised-stronger-non-alpha">
+                      <DropdownMenu.Item onSelect={() => fileInputRef.click()}>
+                        <Icon name="paperclip" size="small" class="text-icon-base" />
+                        <DropdownMenu.ItemLabel>Add files</DropdownMenu.ItemLabel>
+                      </DropdownMenu.Item>
+                      <Show when={params.id}>
+                        <DropdownMenu.Item disabled={planMode()} onSelect={() => void togglePlanMode()}>
+                          <Icon
+                            name={planMode() ? "check" : "list-checks"}
+                            size="small"
+                            class={planMode() ? "text-icon-weak" : "text-icon-base"}
+                          />
+                          <DropdownMenu.ItemLabel>Plan mode</DropdownMenu.ItemLabel>
+                        </DropdownMenu.Item>
+                      </Show>
+                    </DropdownMenu.Content>
+                  </DropdownMenu.Portal>
+                </DropdownMenu>
               </Match>
             </Switch>
           </div>
