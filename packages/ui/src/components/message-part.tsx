@@ -28,6 +28,7 @@ import {
   Todo,
 } from "@ericsanchezok/synergy-sdk"
 import { useData } from "../context"
+import { useResourceOpen } from "../context/resource-open"
 import { useDiffComponent } from "../context/diff"
 import { useCodeComponent } from "../context/code"
 import { BasicTool } from "./basic-tool"
@@ -1516,16 +1517,27 @@ function SpecialFileAttachment(props: { file: FilePart; kind: "note" | "session"
   )
 }
 
-type HighlightSegment = { text: string; type?: "file" }
+type HighlightSegment = { text: string; type?: "file"; file?: FilePart }
+
+function fileReferencePath(file: FilePart) {
+  const source = file.source as { path?: unknown } | undefined
+  return typeof source?.path === "string" && source.path ? source.path : file.url
+}
 
 function HighlightedText(props: { text: string; references: FilePart[] }) {
+  const resourceOpen = useResourceOpen()
   const segments = createMemo(() => {
     const text = props.text
 
-    const allRefs: { start: number; end: number; type: "file" }[] = [
+    const allRefs: { start: number; end: number; type: "file"; file: FilePart }[] = [
       ...props.references
         .filter((r) => r.source?.text?.start !== undefined && r.source?.text?.end !== undefined)
-        .map((r) => ({ start: r.source!.text!.start, end: r.source!.text!.end, type: "file" as const })),
+        .map((r) => ({
+          start: r.source!.text!.start,
+          end: r.source!.text!.end,
+          type: "file" as const,
+          file: r,
+        })),
     ].sort((a, b) => a.start - b.start)
 
     const result: HighlightSegment[] = []
@@ -1538,7 +1550,7 @@ function HighlightedText(props: { text: string; references: FilePart[] }) {
         result.push({ text: text.slice(lastIndex, ref.start) })
       }
 
-      result.push({ text: text.slice(ref.start, ref.end), type: ref.type })
+      result.push({ text: text.slice(ref.start, ref.end), type: ref.type, file: ref.file })
       lastIndex = ref.end
     }
 
@@ -1552,13 +1564,38 @@ function HighlightedText(props: { text: string; references: FilePart[] }) {
   return (
     <For each={segments()}>
       {(segment) => (
-        <span
-          classList={{
-            "text-syntax-property": segment.type === "file",
-          }}
+        <Show
+          when={resourceOpen ? segment.file : undefined}
+          fallback={
+            <span
+              classList={{
+                "text-syntax-property": segment.type === "file",
+              }}
+            >
+              {segment.text}
+            </span>
+          }
         >
-          {segment.text}
-        </span>
+          {(file) => (
+            <button
+              type="button"
+              class="inline text-left align-baseline text-syntax-property hover:underline decoration-dotted"
+              onClick={() =>
+                resourceOpen?.open(
+                  {
+                    kind: "workspace-file",
+                    path: fileReferencePath(file()),
+                    mime: file().mime,
+                    filename: file().filename,
+                  },
+                  { prefer: "workspace" },
+                )
+              }
+            >
+              {segment.text}
+            </button>
+          )}
+        </Show>
       )}
     </For>
   )

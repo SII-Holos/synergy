@@ -1,5 +1,6 @@
 import { createMemo, createSignal, For, Show, type JSX } from "solid-js"
 import { useDialog } from "../context/dialog"
+import { useResourceOpen } from "../context/resource-open"
 import { FileIcon } from "./file-icon"
 import { Icon } from "./icon"
 import { ImagePreview } from "./image-preview"
@@ -18,16 +19,28 @@ export {
   artifactColumns,
   artifactKind,
   formatArtifactSize,
+  isImageArtifact,
   joinServerUrl,
   resolveArtifactUrl,
 } from "./artifact-card-utils"
 
 export function ArtifactCard(props: { file: ArtifactFile; serverUrl: string }) {
   const dialog = useDialog()
+  const resourceOpen = useResourceOpen()
   const [imageFailed, setImageFailed] = createSignal(false)
   const url = createMemo(() => resolveArtifactUrl(props.serverUrl, props.file))
   const filename = createMemo(() => props.file.filename ?? (isPdfArtifact(props.file) ? "file.pdf" : "file"))
   const meta = createMemo(() => artifactMeta(props.file))
+  const openArtifact = () => {
+    if (resourceOpen?.openArtifact(props.file, { serverUrl: props.serverUrl })) return
+    const href = url()
+    if (!href) return
+    if (isImageArtifact(props.file)) {
+      dialog.show(() => <ImagePreview src={href} alt={filename()} />)
+      return
+    }
+    window.open(href, "_blank", "noopener,noreferrer")
+  }
 
   return (
     <Show
@@ -38,6 +51,7 @@ export function ArtifactCard(props: { file: ArtifactFile; serverUrl: string }) {
           filename={filename()}
           type={isPdfArtifact(props.file) ? "pdf" : "file"}
           downloadable={!isPdfArtifact(props.file) && !isHtmlArtifact(props.file)}
+          onOpen={resourceOpen ? openArtifact : undefined}
         >
           <span data-slot="attachment-card-preview">
             <FileIcon node={{ path: filename(), type: "file" }} />
@@ -61,7 +75,7 @@ export function ArtifactCard(props: { file: ArtifactFile; serverUrl: string }) {
         data-type="image"
         aria-label={`Preview ${filename()}`}
         title={filename()}
-        onClick={() => dialog.show(() => <ImagePreview src={url()!} alt={filename()} />)}
+        onClick={openArtifact}
       >
         <img src={url()!} alt={filename()} loading="lazy" onError={() => setImageFailed(true)} />
       </button>
@@ -74,28 +88,40 @@ function DynamicArtifactLink(props: {
   filename: string
   type: "pdf" | "file"
   downloadable: boolean
+  onOpen?: () => void
   children: JSX.Element
 }) {
   return (
     <Show
-      when={props.url}
+      when={props.onOpen}
       fallback={
-        <div data-component="attachment-card" data-type={props.type} data-disabled="true">
-          {props.children}
-        </div>
+        <Show
+          when={props.url}
+          fallback={
+            <div data-component="attachment-card" data-type={props.type} data-disabled="true">
+              {props.children}
+            </div>
+          }
+        >
+          {(url) => (
+            <a
+              data-component="attachment-card"
+              data-type={props.type}
+              href={url()}
+              download={props.downloadable ? props.filename : undefined}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              {props.children}
+            </a>
+          )}
+        </Show>
       }
     >
-      {(url) => (
-        <a
-          data-component="attachment-card"
-          data-type={props.type}
-          href={url()}
-          download={props.downloadable ? props.filename : undefined}
-          target="_blank"
-          rel="noopener noreferrer"
-        >
+      {(onOpen) => (
+        <button data-component="attachment-card" data-type={props.type} type="button" onClick={onOpen()}>
           {props.children}
-        </a>
+        </button>
       )}
     </Show>
   )
