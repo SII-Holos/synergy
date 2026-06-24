@@ -116,10 +116,19 @@ describe("BlueprintLoop tools", () => {
 
         expect(deliveries).toHaveLength(1)
         expect(deliveries[0].target).toBe(session.id)
-        expect(deliveries[0].mail.type).toBe("user")
-        expect(deliveries[0].mail.metadata?.source).toBe("blueprint_loop_restart")
-        expect(deliveries[0].mail.metadata?.sourceSessionID).toBe(session.id)
-        expect(deliveries[0].mail.parts[0].type).toBe("text")
+        const mail = deliveries[0].mail
+        expect(mail.type).toBe("user")
+        if (mail.type !== "user") throw new Error("expected user mail")
+        expect(mail.summary?.title).toBe("Blueprint audit requested changes")
+        expect(mail.metadata?.source).toBe("blueprint_loop_restart")
+        expect(mail.metadata?.sourceSessionID).toBe(session.id)
+        expect(mail.metadata?.loopID).toBe(loop.id)
+        expect(mail.metadata?.noteID).toBe(loop.noteID)
+        expect(mail.metadata?.title).toBe(loop.title)
+        expect(mail.metadata?.reason).toBe("Missing tests")
+        expect(mail.metadata?.remaining).toBe("Add test coverage")
+        expect(mail.metadata?.mailbox).toBeUndefined()
+        expect(mail.parts[0].type).toBe("text")
       },
     })
   })

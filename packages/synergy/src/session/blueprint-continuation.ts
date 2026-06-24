@@ -45,6 +45,9 @@ export namespace BlueprintContinuation {
       target: sessionID,
       mail: {
         type: "user",
+        summary: {
+          title: `Continue ${loop.title} blueprint`,
+        },
         parts: [
           {
             id: Identifier.ascending("part"),
@@ -58,6 +61,9 @@ export namespace BlueprintContinuation {
         metadata: {
           source: "blueprint_loop_continuation",
           loopID: loop.id,
+          noteID: loop.noteID,
+          title: loop.title,
+          status: loop.status,
         },
       },
     })

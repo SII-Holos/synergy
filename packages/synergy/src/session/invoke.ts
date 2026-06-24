@@ -288,6 +288,7 @@ export namespace SessionInvoke {
               parts: partsFromMail(mail),
               noReply: mail.noReply,
               summary: mail.summary,
+              metadata: mail.metadata,
             })
             msgs.push(created)
           }
@@ -727,6 +728,7 @@ export namespace SessionInvoke {
             parts: partsFromMail(mail),
             noReply: !needsReply,
             summary: mail.summary,
+            metadata: mail.metadata,
           })
         }
         if (needsReply) continue outer
