@@ -6,6 +6,18 @@ It combines a stateless server, browser-based and CLI workflows, configurable ag
 
 Synergy is open source under the [MIT License](LICENSE). Contributions, bug reports, and feature ideas are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md) to get started.
 
+## AI And LLM Entry Points
+
+If you are an external coding agent or LLM tool reading this repository, start with [llms.txt](llms.txt). It routes plugin authors, source contributors, and architecture readers to the right documents.
+
+Plugin authors do not need to clone this repository or read `AGENTS.md`. Use the installed Synergy CLI, `@ericsanchezok/synergy-plugin`, and the plugin authoring docs:
+
+- [docs/plugins/agent-quickstart.md](docs/plugins/agent-quickstart.md)
+- [docs/plugins/development-kit.md](docs/plugins/development-kit.md)
+- [packages/plugin/README.md](packages/plugin/README.md)
+
+Only read [AGENTS.md](AGENTS.md) when you are modifying Synergy source code.
+
 ---
 
 ### About Shanghai Innovation Institute
@@ -230,7 +242,9 @@ That scoped directory is where project-specific agents, commands, plugins, skill
 
 ### Plugins
 
-Plugins are managed through the plugin toolchain and the `50-plugins.jsonc` config domain. New plugins should use the object descriptor API from `@ericsanchezok/synergy-plugin`:
+Plugins are managed through the plugin toolchain and the `50-plugins.jsonc` config domain. Plugin authors should use the installed Synergy CLI and `@ericsanchezok/synergy-plugin`; a Synergy source checkout is only needed when changing the platform itself.
+
+New plugins should use the object descriptor API from `@ericsanchezok/synergy-plugin`:
 
 ```bash
 synergy plugin create my-plugin

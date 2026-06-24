@@ -4,6 +4,8 @@ These docs describe the current plugin platform. Older v2/v3/v4 migration notes 
 
 Start here:
 
+- [agent-quickstart.md](agent-quickstart.md) — shortest path for external agents and plugin authors
+- [development-kit.md](development-kit.md) — CLI, SDK, templates, and source-checkout boundary
 - [01-platform-overview.md](01-platform-overview.md)
 - [02-manifest-reference.md](02-manifest-reference.md)
 - [03-trust-tiers.md](03-trust-tiers.md)
@@ -26,3 +28,5 @@ synergy plugin pack
 synergy plugin sign my-plugin-0.1.0.synergy-plugin.tgz
 synergy plugin publish my-plugin-0.1.0.synergy-plugin.tgz
 ```
+
+Plugin authors do not need to read the repository root `AGENTS.md` unless they are modifying Synergy itself.

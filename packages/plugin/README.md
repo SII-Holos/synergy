@@ -4,6 +4,8 @@
 
 Plugins extend the Synergy server runtime and can also contribute Web UI surfaces through `plugin.json`. The current API is intentionally strict: a plugin module exports an object descriptor with a canonical `id` and an `init()` method. The descriptor id, `plugin.json.name`, registry id, lockfile key, and approval key must all be the same canonical plugin id.
 
+Plugin authors should use the installed Synergy CLI and this SDK from a standalone plugin project. Cloning the Synergy source repository is only needed when changing or debugging the plugin platform itself.
+
 ## Recommended Flow
 
 ```bash
