@@ -1,5 +1,6 @@
 import { createMemo, For, Match, Show, Switch } from "solid-js"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
+import { Markdown } from "@ericsanchezok/synergy-ui/markdown"
 import { Popover } from "@ericsanchezok/synergy-ui/popover"
 import { Tooltip } from "@ericsanchezok/synergy-ui/tooltip"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
@@ -21,10 +22,10 @@ const labelByKind: Record<SessionInboxItem["kind"], string> = {
   agent_update: "Agent updates",
 }
 
-const iconByKind: Record<SessionInboxItem["kind"], "message-square" | "zap" | "mail"> = {
+const iconByKind: Record<SessionInboxItem["kind"], "message-square" | "zap" | "megaphone"> = {
   queued_user: "message-square",
   guiding: "zap",
-  agent_update: "mail",
+  agent_update: "megaphone",
 }
 
 function timingLabel(item: SessionInboxItem) {
@@ -40,9 +41,13 @@ function detailText(item: SessionInboxItem) {
 
 function InboxDetail(props: { item: SessionInboxItem }) {
   return (
-    <div class="max-w-80">
+    <div class="session-inbox-detail">
       <div class="text-12-medium text-text-strong">{labelByKind[props.item.kind]}</div>
-      <div class="mt-1 whitespace-pre-wrap text-12-regular text-text-base">{detailText(props.item)}</div>
+      <Markdown
+        text={detailText(props.item)}
+        cacheKey={`session-inbox-detail-${props.item.id}`}
+        class="session-inbox-detail-markdown"
+      />
       <div class="mt-2 flex items-center gap-1.5 text-10-regular text-text-weak">
         <span>{props.item.source.label ?? props.item.source.type}</span>
         <span>·</span>
@@ -60,13 +65,13 @@ function InboxRow(props: {
   const canInteract = () => isInboxItemInteractive(props.item)
   return (
     <Tooltip placement="left" value={<InboxDetail item={props.item} />}>
-      <div class="session-inbox-row group" data-kind={props.item.kind}>
+      <div class="session-inbox-row group" data-kind={props.item.kind} data-interactive={canInteract()}>
         <Icon
           name={iconByKind[props.item.kind]}
           size="small"
           classList={{
             "text-icon-weak": props.item.kind !== "guiding",
-            "text-icon-interactive-base": props.item.kind === "guiding",
+            "text-icon-base": props.item.kind === "guiding",
           }}
         />
         <div class="min-w-0">
@@ -94,7 +99,7 @@ function InboxRow(props: {
             </button>
             <button
               type="button"
-              class="session-inbox-action opacity-0 transition-opacity group-hover:opacity-100 focus:opacity-100"
+              class="session-inbox-action session-inbox-action-secondary"
               aria-label="Remove queued message"
               onClick={(event) => {
                 event.stopPropagation()
@@ -153,7 +158,7 @@ export function SessionInbox(props: SessionInboxProps) {
         trigger={
           <button
             type="button"
-            class="session-inbox-trigger statusbar-glass relative flex size-9 items-center justify-center rounded-full transition-colors hover:bg-surface-raised-base-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-border-strong-base/35"
+            class="session-inbox-trigger statusbar-glass relative flex size-9 items-center justify-center rounded-full focus:outline-none"
             data-active={count() > 0}
             aria-label="Session inbox"
           >
