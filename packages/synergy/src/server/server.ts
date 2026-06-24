@@ -155,6 +155,8 @@ export namespace Server {
       pathname.startsWith("/assets/") ||
       pathname === "/global" ||
       pathname.startsWith("/global/") ||
+      pathname === "/asset" ||
+      pathname.startsWith("/asset/") ||
       pathname === "/scope" ||
       pathname === "/scope/index" ||
       pathname === "/holos" ||
@@ -193,8 +195,6 @@ export namespace Server {
       pathname.startsWith("/note/") ||
       pathname === "/blueprint" ||
       pathname.startsWith("/blueprint/") ||
-      pathname === "/asset" ||
-      pathname.startsWith("/asset/") ||
       pathname === "/lsp" ||
       pathname.startsWith("/lsp/") ||
       pathname === "/formatter" ||
