@@ -182,7 +182,7 @@ export namespace Snapshot {
     let all
     try {
       const { Session } = await import(".")
-      all = await Session.messages({ sessionID })
+      all = await Session.messages({ sessionID, raw: true })
     } catch {
       // session not found — no patches to restore, no-op
       return

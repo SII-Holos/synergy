@@ -48,7 +48,7 @@ export function GeneralPanel(props: {
         </p>
         <SettingRow
           title="Snapshot"
-          description="Save file snapshots for undo/redo"
+          description="Save file snapshots for explicit file restore"
           trailing={<Switch checked={props.snapshot} onChange={props.onSnapshotChange} />}
         />
         <SettingRow

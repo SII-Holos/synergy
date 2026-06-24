@@ -531,8 +531,8 @@ export const Keybinds = z
     messages_previous: z.string().optional().default("none").describe("Navigate to previous message"),
     messages_last_user: z.string().optional().default("none").describe("Navigate to last user message"),
     messages_copy: z.string().optional().default("<leader>y").describe("Copy message"),
-    messages_undo: z.string().optional().default("<leader>u").describe("Undo message"),
-    messages_redo: z.string().optional().default("<leader>r").describe("Redo message"),
+    messages_undo: z.string().optional().default("<leader>u").describe("Undo message history only"),
+    messages_redo: z.string().optional().default("<leader>r").describe("Redo message history only"),
     messages_toggle_conceal: z
       .string()
       .optional()

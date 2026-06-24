@@ -4,6 +4,7 @@ type ScopeID = Identifier.ScopeID
 type SessionID = Identifier.SessionID
 type MessageID = Identifier.MessageID
 type PartID = Identifier.PartID
+type HistoryID = Identifier.HistoryID
 
 export namespace StoragePath {
   const endpointSessionStorageKey = (endpointKey: string) => encodeURIComponent(endpointKey)
@@ -48,6 +49,14 @@ export namespace StoragePath {
   export const sessionMessagesRoot = (scopeID: ScopeID, sessionID: SessionID) => [
     ...sessionRoot(scopeID, sessionID),
     "messages",
+  ]
+  export const sessionHistoryRoot = (scopeID: ScopeID, sessionID: SessionID) => [
+    ...sessionRoot(scopeID, sessionID),
+    "history",
+  ]
+  export const sessionHistoryEvent = (scopeID: ScopeID, sessionID: SessionID, historyID: HistoryID) => [
+    ...sessionHistoryRoot(scopeID, sessionID),
+    historyID as string,
   ]
 
   export const messageInfo = (scopeID: ScopeID, sessionID: SessionID, messageID: MessageID) => [

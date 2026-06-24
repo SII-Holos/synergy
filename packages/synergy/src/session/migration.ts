@@ -134,6 +134,98 @@ async function repairPendingReplyFlags(progress: (current: number, total: number
   log.info("pendingReply repair complete", { checked: tasks.length, cleared })
 }
 
+async function migrateActiveRevertState(progress: (current: number, total: number) => void) {
+  const scopeIDs = await Storage.scan(["sessions"]).catch(() => [])
+  const tasks: Array<{ scopeID: string; sessionID: string; info: any }> = []
+
+  for (const scopeID of scopeIDs) {
+    const scope = Identifier.asScopeID(scopeID)
+    const sessionIDs = await Storage.scan(StoragePath.sessionsRoot(scope)).catch(() => [])
+    const sessions = await Storage.readMany<any>(
+      sessionIDs.map((sessionID) => StoragePath.sessionInfo(scope, Identifier.asSessionID(sessionID))),
+    )
+    for (const info of sessions) {
+      if (!info?.revert?.messageID) continue
+      tasks.push({ scopeID, sessionID: info.id, info })
+    }
+  }
+
+  if (tasks.length === 0) return
+
+  let done = 0
+  for (const { scopeID, sessionID, info } of tasks) {
+    const scope = Identifier.asScopeID(scopeID)
+    const sid = Identifier.asSessionID(sessionID)
+    const messageIDs = await Storage.scan(StoragePath.sessionMessagesRoot(scope, sid)).catch(() => [])
+    const cutoff = messageIDs.findIndex((messageID) => messageID >= info.revert.messageID)
+    const droppedIDs = cutoff >= 0 ? messageIDs.slice(cutoff) : []
+    const droppedUserIDs: string[] = []
+    const files = new Set<string>()
+    const patchPartIDs: string[] = []
+
+    for (const messageID of droppedIDs) {
+      const mid = Identifier.asMessageID(messageID)
+      const msg = await Storage.read<MessageV2.Info>(StoragePath.messageInfo(scope, sid, mid)).catch(() => undefined)
+      if (msg?.role === "user" && (msg as MessageV2.User).metadata?.synthetic !== true) droppedUserIDs.push(messageID)
+
+      const partIDs = await Storage.scan(StoragePath.messageParts(scope, sid, mid)).catch(() => [])
+      const parts = await Storage.readMany<MessageV2.Part>(
+        partIDs.map((partID) => StoragePath.messagePart(scope, sid, mid, Identifier.asPartID(partID))),
+      )
+      for (const part of parts) {
+        if (part?.type !== "patch") continue
+        patchPartIDs.push(part.id)
+        for (const file of part.files) files.add(file)
+      }
+    }
+
+    const eventID = Identifier.ascending("history")
+    const history = droppedIDs.length
+      ? {
+          rollback: {
+            id: eventID,
+            numTurns: Math.max(1, droppedUserIDs.length),
+            created: Date.now(),
+            messageID: droppedUserIDs[0],
+            droppedMessageIDs: droppedIDs,
+            droppedUserMessageIDs: droppedUserIDs,
+            files: Array.from(files),
+            patchPartIDs,
+            canUnrollback: true,
+          },
+        }
+      : undefined
+
+    if (history) {
+      await Storage.write(StoragePath.sessionHistoryEvent(scope, sid, Identifier.asHistoryID(eventID)), {
+        id: eventID,
+        sessionID,
+        type: "rollback",
+        time: {
+          created: history.rollback.created,
+        },
+        numTurns: history.rollback.numTurns,
+        droppedMessageIDs: history.rollback.droppedMessageIDs,
+        droppedUserMessageIDs: history.rollback.droppedUserMessageIDs,
+        files: history.rollback.files,
+        patchPartIDs: history.rollback.patchPartIDs,
+      })
+    }
+
+    const rest = { ...info }
+    delete rest.revert
+    await Storage.write(StoragePath.sessionInfo(scope, sid), {
+      ...rest,
+      history,
+    })
+
+    done++
+    progress(done, tasks.length)
+  }
+
+  log.info("active revert state migrated to rollback history", { total: tasks.length })
+}
+
 export const migrations: Migration[] = [
   {
     id: "20260411-session-endpoint-index",
@@ -513,6 +605,13 @@ export const migrations: Migration[] = [
         log.warn("failed to rebuild home nav index after scope rename", { error: String(error) })
       })
       progress(1, 1)
+    },
+  },
+  {
+    id: "20260625-session-rollback-history",
+    description: "Migrate active session revert state into history-only rollback events",
+    async up(progress) {
+      await migrateActiveRevertState(progress)
     },
   },
 ]

@@ -591,11 +591,11 @@ export type KeybindsConfig = {
    */
   messages_copy?: string
   /**
-   * Undo message
+   * Undo message history only
    */
   messages_undo?: string
   /**
-   * Redo message
+   * Redo message history only
    */
   messages_redo?: string
   /**
@@ -2488,6 +2488,20 @@ export type SessionInteraction = {
   source?: string
 }
 
+export type SessionHistoryInfo = {
+  rollback?: {
+    id: string
+    numTurns: number
+    created: number
+    messageID?: string
+    droppedMessageIDs: Array<string>
+    droppedUserMessageIDs: Array<string>
+    files: Array<string>
+    patchPartIDs: Array<string>
+    canUnrollback: boolean
+  }
+}
+
 export type SessionCortexDelegation = {
   parentSessionID: string
   parentMessageID: string
@@ -2531,6 +2545,11 @@ export type Session = {
   id: string
   scope: SessionScope
   parentID?: string
+  forkedFrom?: {
+    sessionID: string
+    messageID?: string
+    title?: string
+  }
   category?: "project" | "home" | "channel" | "background"
   endpoint?: SessionEndpoint
   summary?: {
@@ -2563,12 +2582,7 @@ export type Session = {
     user?: string
     assistant?: string
   }
-  revert?: {
-    messageID: string
-    partID?: string
-    snapshot?: string
-    diff?: string
-  }
+  history?: SessionHistoryInfo
   cortex?: SessionCortexDelegation
   working?: SessionWorkingInfo
   workspace?: SessionWorkspace
@@ -3084,6 +3098,82 @@ export type FilePartInput = {
   metadata?: {
     [key: string]: unknown
   }
+}
+
+export type SessionRollbackEvent = {
+  id: string
+  sessionID: string
+  type: "rollback"
+  time: {
+    created: number
+  }
+  numTurns: number
+  droppedMessageIDs: Array<string>
+  droppedUserMessageIDs: Array<string>
+  files: Array<string>
+  patchPartIDs: Array<string>
+}
+
+export type SessionUnrollbackEvent = {
+  id: string
+  sessionID: string
+  type: "unrollback"
+  time: {
+    created: number
+  }
+  rollbackID: string
+}
+
+export type SessionRollbackSummary = {
+  id: string
+  numTurns: number
+  created: number
+  messageID?: string
+  droppedMessageIDs: Array<string>
+  droppedUserMessageIDs: Array<string>
+  files: Array<string>
+  patchPartIDs: Array<string>
+  canUnrollback: boolean
+}
+
+export type NoteInfo = {
+  id: string
+  title: string
+  content: unknown
+  pinned: boolean
+  global: boolean
+  originScope?: string
+  tags: Array<string>
+  kind?: "note" | "blueprint"
+  blueprint?: {
+    description?: string
+    defaultAgent?: string
+    activeLoopID?: string
+    runCount?: number
+    lastRunAt?: number
+  }
+  version: number
+  time: {
+    created: number
+    updated: number
+  }
+}
+
+export type NoteConflictError = {
+  name: "NoteConflictError"
+  data: {
+    noteID: string
+    expectedVersion: number
+    note: NoteInfo
+  }
+}
+
+export type SessionFileRestoreResult = {
+  restoredFiles: Array<string>
+  patchPartIDs: Array<string>
+  rollbackID?: string
+  messageID?: string
+  partID?: string
 }
 
 export type PermissionRequest = {
@@ -3610,29 +3700,6 @@ export type NoteMetaScopeGroup = {
   notes: Array<NoteMetaInfo>
 }
 
-export type NoteInfo = {
-  id: string
-  title: string
-  content: unknown
-  pinned: boolean
-  global: boolean
-  originScope?: string
-  tags: Array<string>
-  kind?: "note" | "blueprint"
-  blueprint?: {
-    description?: string
-    defaultAgent?: string
-    activeLoopID?: string
-    runCount?: number
-    lastRunAt?: number
-  }
-  version: number
-  time: {
-    created: number
-    updated: number
-  }
-}
-
 export type NoteScopeGroup = {
   scopeID: string
   scopeType: "home" | "project"
@@ -3650,15 +3717,6 @@ export type NoteCreateInput = {
     activeLoopID?: string
     runCount?: number
     lastRunAt?: number
-  }
-}
-
-export type NoteConflictError = {
-  name: "NoteConflictError"
-  data: {
-    noteID: string
-    expectedVersion: number
-    note: NoteInfo
   }
 }
 
@@ -6783,6 +6841,30 @@ export type SessionInitResponse = SessionInitResponses[keyof SessionInitResponse
 export type SessionForkData = {
   body?: {
     messageID?: string
+    position?:
+      | {
+          type: "current"
+        }
+      | {
+          type: "before"
+          messageID: string
+        }
+    workspace?:
+      | {
+          mode: "current"
+        }
+      | {
+          mode: "existing"
+          target: string
+          force?: boolean
+        }
+      | {
+          mode: "create"
+          name?: string
+          baseRef?: "current" | "fresh"
+        }
+    title?: string
+    controlProfile?: "guarded" | "autonomous" | "full_access"
   }
   path: {
     sessionID: string
@@ -6890,6 +6972,7 @@ export type SessionMessagesData = {
     directory?: string
     scopeID?: string
     limit?: number
+    raw?: boolean
   }
   url: "/session/{sessionID}/message"
 }
@@ -7313,10 +7396,9 @@ export type SessionShellResponses = {
 
 export type SessionShellResponse = SessionShellResponses[keyof SessionShellResponses]
 
-export type SessionRevertData = {
+export type SessionRollbackData = {
   body?: {
-    messageID: string
-    partID?: string
+    numTurns: number
   }
   path: {
     sessionID: string
@@ -7325,10 +7407,10 @@ export type SessionRevertData = {
     directory?: string
     scopeID?: string
   }
-  url: "/session/{sessionID}/revert"
+  url: "/session/{sessionID}/rollback"
 }
 
-export type SessionRevertErrors = {
+export type SessionRollbackErrors = {
   /**
    * Bad request
    */
@@ -7339,18 +7421,18 @@ export type SessionRevertErrors = {
   404: NotFoundError
 }
 
-export type SessionRevertError = SessionRevertErrors[keyof SessionRevertErrors]
+export type SessionRollbackError = SessionRollbackErrors[keyof SessionRollbackErrors]
 
-export type SessionRevertResponses = {
+export type SessionRollbackResponses = {
   /**
-   * Updated session
+   * Rollback event
    */
-  200: Session
+  200: SessionRollbackEvent
 }
 
-export type SessionRevertResponse = SessionRevertResponses[keyof SessionRevertResponses]
+export type SessionRollbackResponse = SessionRollbackResponses[keyof SessionRollbackResponses]
 
-export type SessionUnrevertData = {
+export type SessionUnrollbackData = {
   body?: never
   path: {
     sessionID: string
@@ -7359,10 +7441,57 @@ export type SessionUnrevertData = {
     directory?: string
     scopeID?: string
   }
-  url: "/session/{sessionID}/unrevert"
+  url: "/session/{sessionID}/unrollback"
 }
 
-export type SessionUnrevertErrors = {
+export type SessionUnrollbackErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Conflict
+   */
+  409: NoteConflictError
+}
+
+export type SessionUnrollbackError = SessionUnrollbackErrors[keyof SessionUnrollbackErrors]
+
+export type SessionUnrollbackResponses = {
+  /**
+   * Unrollback event or current rollback state
+   */
+  200:
+    | SessionUnrollbackEvent
+    | {
+        rollback: SessionRollbackSummary
+      }
+}
+
+export type SessionUnrollbackResponse = SessionUnrollbackResponses[keyof SessionUnrollbackResponses]
+
+export type SessionFilesRestoreData = {
+  body?: {
+    rollbackID?: string
+    messageID?: string
+    partID?: string
+    files?: Array<string>
+  }
+  path: {
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/session/{sessionID}/files/restore"
+}
+
+export type SessionFilesRestoreErrors = {
   /**
    * Bad request
    */
@@ -7373,16 +7502,16 @@ export type SessionUnrevertErrors = {
   404: NotFoundError
 }
 
-export type SessionUnrevertError = SessionUnrevertErrors[keyof SessionUnrevertErrors]
+export type SessionFilesRestoreError = SessionFilesRestoreErrors[keyof SessionFilesRestoreErrors]
 
-export type SessionUnrevertResponses = {
+export type SessionFilesRestoreResponses = {
   /**
-   * Updated session
+   * Restored files
    */
-  200: Session
+  200: SessionFileRestoreResult
 }
 
-export type SessionUnrevertResponse = SessionUnrevertResponses[keyof SessionUnrevertResponses]
+export type SessionFilesRestoreResponse = SessionFilesRestoreResponses[keyof SessionFilesRestoreResponses]
 
 export type PermissionRespondData = {
   body?: {

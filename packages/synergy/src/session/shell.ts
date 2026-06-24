@@ -2,7 +2,6 @@ import path from "path"
 import z from "zod"
 import { Identifier } from "../id/id"
 import { MessageV2 } from "./message-v2"
-import { SessionRevert } from "./revert"
 import { BusyError } from "./error"
 import { Session } from "."
 import { Agent } from "../agent/agent"
@@ -44,7 +43,6 @@ export async function shell(input: ShellInput) {
 }
 
 async function shellInSession(input: ShellInput) {
-  const session = await Session.get(input.sessionID)
   const directory = ScopeContext.current.directory
 
   SessionManager.registerRuntime(input.sessionID)
@@ -56,9 +54,6 @@ async function shellInSession(input: ShellInput) {
     SessionManager.release(input.sessionID).catch(() => {})
   })
 
-  if (session.revert) {
-    SessionRevert.cleanup(session)
-  }
   const agent = await Agent.get(input.agent)
   const model = input.model ?? (await Agent.getAvailableModel(agent)) ?? (await lastModel(input.sessionID))
   const userMsg: MessageV2.User = {
