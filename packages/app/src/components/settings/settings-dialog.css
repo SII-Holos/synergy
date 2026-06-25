@@ -82,6 +82,32 @@
   margin: 0 0 8px;
 }
 
+.ds-settings-search {
+  height: 32px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 9px;
+  border-radius: 8px;
+  background: var(--surface-raised-base);
+  border: 1px solid color-mix(in oklch, var(--border-weak-base) 64%, transparent);
+  color: var(--text-weaker);
+}
+
+.ds-settings-search input {
+  min-width: 0;
+  flex: 1;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--text-base);
+  font-size: 12px;
+}
+
+.ds-settings-search input::placeholder {
+  color: var(--text-weaker);
+}
+
 /* ===== Setting sections and subsections ===== */
 
 .ds-setting-section {
@@ -261,6 +287,96 @@
 .ds-sandbox-status-ok {
   color: var(--text-base);
   background: color-mix(in oklch, var(--icon-success-base) 12%, transparent);
+}
+
+.ds-checkbox-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(148px, 1fr));
+  gap: 8px 12px;
+}
+
+.ds-theme-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
+}
+
+.ds-summary-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ds-summary-row {
+  min-height: 50px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid color-mix(in oklch, var(--border-base) 28%, transparent);
+  background: var(--surface-raised-base);
+}
+
+.ds-path-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 12px;
+  border-radius: 10px;
+  border: 1px solid color-mix(in oklch, var(--border-base) 28%, transparent);
+  background: var(--surface-raised-base);
+}
+
+.ds-path-row + .ds-path-row {
+  margin-top: 8px;
+}
+
+.ds-path-text {
+  margin-top: 5px;
+  padding: 6px 8px;
+  border-radius: 7px;
+  background: var(--surface-inset-base);
+  color: var(--text-weak);
+  font-size: 12px;
+  line-height: 1.35;
+  word-break: break-all;
+}
+
+.ds-key-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 7px;
+}
+
+.ds-key-list span {
+  padding: 2px 6px;
+  border-radius: 9999px;
+  color: var(--text-weaker);
+  background: color-mix(in oklch, var(--border-base) 18%, transparent);
+  font-size: 11px;
+  line-height: 1.3;
+}
+
+.ds-path-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+@media (max-width: 840px) {
+  .ds-path-row,
+  .ds-summary-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .ds-path-actions {
+    justify-content: flex-start;
+  }
 }
 
 @media (max-width: 840px) {

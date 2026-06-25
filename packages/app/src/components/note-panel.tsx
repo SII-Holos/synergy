@@ -193,7 +193,7 @@ function NoteCard(props: {
         when={hasContent()}
         fallback={
           <div class="flex flex-1 items-center justify-center text-text-weaker opacity-35">
-            <Icon name="notebook-pen" size="large" />
+            <Icon name={getSemanticIcon("notes.main")} size="large" />
           </div>
         }
       >
@@ -439,7 +439,7 @@ function ScopeSection(props: {
         </button>
         <Show when={!props.group.archived}>
           <button type="button" class="note-scope-new-button" onClick={props.onCreateNote} title="New note">
-            <Icon name="plus" size="small" />
+            <Icon name={getSemanticIcon("action.add")} size="small" />
           </button>
         </Show>
       </div>
@@ -702,7 +702,7 @@ export function NotePanel() {
         <div class="flex flex-col h-full">
           <div class="shrink-0 px-4 pt-3 pb-2">
             <div class="flex items-center gap-2.5 rounded-xl bg-surface-inset-base/60 px-3.5 py-2.5 transition-colors">
-              <Icon name="search" size="small" class="text-icon-weak shrink-0" />
+              <Icon name={getSemanticIcon("notes.search")} size="small" class="text-icon-weak shrink-0" />
               <input
                 type="text"
                 placeholder="Search notes..."
@@ -717,7 +717,7 @@ export function NotePanel() {
                   aria-label="Clear search"
                   onClick={() => setSearch("")}
                 >
-                  <Icon name="x" size="small" />
+                  <Icon name={getSemanticIcon("action.close")} size="small" />
                 </button>
               </Show>
               <div class="note-kind-filter ml-1 flex shrink-0 items-center gap-0.5 rounded-lg bg-surface-base/62 p-0.5">
@@ -1368,7 +1368,7 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
               onClick={handleBack}
               title="Back to list"
             >
-              <Icon name="arrow-left" size="normal" />
+              <Icon name={getSemanticIcon("navigation.back")} size="normal" />
             </button>
 
             <div class="min-w-0 flex-1 px-2 py-1.5">
@@ -1420,7 +1420,7 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
               }}
               onClick={toggleGlobal}
             >
-              <Icon name="globe" size="small" />
+              <Icon name={getSemanticIcon("browser.main")} size="small" />
               <span>{baseNote()!.global ? "Global" : "Local"}</span>
             </button>
 
@@ -1449,7 +1449,10 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
               disabled={convertingBlueprint()}
             >
               <Show when={!convertingBlueprint()} fallback={<Spinner class="size-3.5" />}>
-                <Icon name={isBlueprint() ? "notebook-pen" : getSemanticIcon("orchestration.blueprint")} size="small" />
+                <Icon
+                  name={isBlueprint() ? getSemanticIcon("notes.main") : getSemanticIcon("orchestration.blueprint")}
+                  size="small"
+                />
               </Show>
               <span>{isBlueprint() ? "To Note" : "To Blueprint"}</span>
             </button>
@@ -1460,7 +1463,7 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
               onClick={deleteNote}
               title="Delete"
             >
-              <Icon name="trash-2" size="small" />
+              <Icon name={getSemanticIcon("action.remove")} size="small" />
             </button>
           </div>
         </div>

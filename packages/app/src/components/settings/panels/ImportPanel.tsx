@@ -4,46 +4,15 @@ import { Button } from "@ericsanchezok/synergy-ui/button"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import { useGlobalSDK } from "@/context/global-sdk"
-import type { ConfigDomainImportPlan } from "@ericsanchezok/synergy-sdk/client"
+import type { ConfigDomainImportPlan, ConfigDomainSummary } from "@ericsanchezok/synergy-sdk/client"
 
-type DomainId =
-  | "general"
-  | "models"
-  | "providers"
-  | "library"
-  | "mcp"
-  | "plugins"
-  | "agents"
-  | "commands"
-  | "permissions"
-  | "channels"
-  | "holos"
-  | "email"
-  | "runtime"
-
-const DOMAINS: Array<{ id: DomainId; label: string }> = [
-  { id: "general", label: "General" },
-  { id: "models", label: "Models" },
-  { id: "providers", label: "Providers" },
-  { id: "library", label: "Library" },
-  { id: "mcp", label: "MCP" },
-  { id: "plugins", label: "Plugins" },
-  { id: "agents", label: "Agents" },
-  { id: "commands", label: "Commands" },
-  { id: "permissions", label: "Permissions" },
-  { id: "channels", label: "Channels" },
-  { id: "holos", label: "Holos" },
-  { id: "email", label: "Email" },
-  { id: "runtime", label: "Runtime" },
-]
-
-export function ImportPanel(props: { onImported: () => Promise<void> }) {
+export function ImportPanel(props: { domains: ConfigDomainSummary[]; onImported: () => Promise<void> }) {
   const globalSDK = useGlobalSDK()
   const [sourceLabel, setSourceLabel] = createSignal("")
   const [url, setUrl] = createSignal("")
   const [config, setConfig] = createSignal<Record<string, unknown> | undefined>()
   const [plan, setPlan] = createSignal<ConfigDomainImportPlan | undefined>()
-  const [selected, setSelected] = createSignal<DomainId[]>([])
+  const [selected, setSelected] = createSignal<Array<ConfigDomainSummary["id"]>>([])
   const [loading, setLoading] = createSignal(false)
   const [applying, setApplying] = createSignal(false)
 
@@ -54,9 +23,8 @@ export function ImportPanel(props: { onImported: () => Promise<void> }) {
     () => plan()?.conflicts.filter((change) => selectedSet().has(domainForKey(change.key))) ?? [],
   )
 
-  function domainForKey(key: string): DomainId {
-    return (plan()?.domains.find((domain) => domain.changes.some((change) => change.key === key))?.id ??
-      "general") as DomainId
+  function domainForKey(key: string): ConfigDomainSummary["id"] {
+    return plan()?.domains.find((domain) => domain.changes.some((change) => change.key === key))?.id ?? "general"
   }
 
   function parseInput(text: string) {
@@ -114,7 +82,7 @@ export function ImportPanel(props: { onImported: () => Promise<void> }) {
     }
   }
 
-  function toggleDomain(id: DomainId, enabled: boolean) {
+  function toggleDomain(id: ConfigDomainSummary["id"], enabled: boolean) {
     if (enabled) {
       setSelected((prev) => (prev.includes(id) ? prev : [...prev, id]))
       return
@@ -197,7 +165,7 @@ export function ImportPanel(props: { onImported: () => Promise<void> }) {
           </div>
 
           <div class="ds-import-domain-grid">
-            <For each={DOMAINS}>
+            <For each={props.domains}>
               {(domain) => (
                 <label
                   class="ds-import-domain-toggle"

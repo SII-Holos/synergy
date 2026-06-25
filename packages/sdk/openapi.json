@@ -2413,6 +2413,90 @@
         ]
       }
     },
+    "/config/domains/{domain}/open": {
+      "post": {
+        "operationId": "config.domain.open",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "domain",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "general",
+                "models",
+                "providers",
+                "library",
+                "mcp",
+                "plugins",
+                "agents",
+                "commands",
+                "permissions",
+                "channels",
+                "holos",
+                "email",
+                "runtime"
+              ]
+            },
+            "required": true
+          }
+        ],
+        "summary": "Open config domain file",
+        "description": "Materialize and open one canonical global config domain file with the operating system default.",
+        "responses": {
+          "200": {
+            "description": "Opened config domain file",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfigDomainOpenResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Unsupported platform",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfigDomainOpenError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Failed to open config domain file",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfigDomainOpenError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.config.domain.open({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/config/import/plan": {
       "post": {
         "operationId": "config.import.plan",
@@ -19966,6 +20050,38 @@
           }
         },
         "required": ["config"]
+      },
+      "ConfigDomainOpenResponse": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "const": true
+          },
+          "path": {
+            "type": "string"
+          }
+        },
+        "required": ["success", "path"]
+      },
+      "ConfigDomainOpenError": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "const": false
+          },
+          "error": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          }
+        },
+        "required": ["success", "error", "message"]
       },
       "ConfigDomainImportChange": {
         "type": "object",

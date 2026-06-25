@@ -1,5 +1,6 @@
 import { Button } from "@ericsanchezok/synergy-ui/button"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
+import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { createEffect, onCleanup, onMount, Show } from "solid-js"
 import { useBrowser, type BrowserFrameEntry } from "./browser-store"
 
@@ -238,7 +239,7 @@ export function BrowserSurface() {
         when={activeFrame()}
         fallback={
           <div class="flex flex-col items-center gap-3 text-text-weak text-13 select-none">
-            <Icon name="globe" class="size-14 text-icon-weaker" />
+            <Icon name={getSemanticIcon("browser.main")} class="size-14 text-icon-weaker" />
             <span class="text-14-medium text-text-base">Start browsing</span>
             <span class="text-12 text-text-weak">Enter a URL to open a page</span>
             <span class="text-11 text-text-weaker">{browser.session.connectionStatus}</span>

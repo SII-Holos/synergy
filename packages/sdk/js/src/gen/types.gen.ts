@@ -2206,6 +2206,18 @@ export type ConfigDomainUpdateInput = {
   mode?: "merge" | "replace-domain" | "append"
 }
 
+export type ConfigDomainOpenResponse = {
+  success: true
+  path: string
+}
+
+export type ConfigDomainOpenError = {
+  success: false
+  error: string
+  message: string
+  path?: string
+}
+
 export type ConfigDomainImportChange = {
   key: string
   before?: unknown
@@ -6120,6 +6132,53 @@ export type ConfigDomainUpdateResponses = {
 }
 
 export type ConfigDomainUpdateResponse = ConfigDomainUpdateResponses[keyof ConfigDomainUpdateResponses]
+
+export type ConfigDomainOpenData = {
+  body?: never
+  path: {
+    domain:
+      | "general"
+      | "models"
+      | "providers"
+      | "library"
+      | "mcp"
+      | "plugins"
+      | "agents"
+      | "commands"
+      | "permissions"
+      | "channels"
+      | "holos"
+      | "email"
+      | "runtime"
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/config/domains/{domain}/open"
+}
+
+export type ConfigDomainOpenErrors = {
+  /**
+   * Unsupported platform
+   */
+  400: ConfigDomainOpenError
+  /**
+   * Failed to open config domain file
+   */
+  500: ConfigDomainOpenError
+}
+
+export type ConfigDomainOpenError2 = ConfigDomainOpenErrors[keyof ConfigDomainOpenErrors]
+
+export type ConfigDomainOpenResponses = {
+  /**
+   * Opened config domain file
+   */
+  200: ConfigDomainOpenResponse
+}
+
+export type ConfigDomainOpenResponse2 = ConfigDomainOpenResponses[keyof ConfigDomainOpenResponses]
 
 export type ConfigImportPlanData = {
   body?: ConfigDomainImportPlanInput

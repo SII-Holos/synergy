@@ -1,11 +1,19 @@
 import type { Component } from "solid-js"
-import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
+import type { SemanticIconTokenName } from "@ericsanchezok/synergy-ui/semantic-icon"
+import { BUILTIN_SETTINGS_SECTIONS } from "@/components/settings/catalog"
 
 export interface SettingsSection {
   id: string
   label: string
-  icon: string
+  icon?: string
+  iconToken?: SemanticIconTokenName
   group: string
+  order?: number
+  description?: string
+  keywords?: string[]
+  domainIds?: string[]
+  rowLabels?: string[]
+  hidden?: boolean
   component?: Component
   loader?: () => Promise<{ default: Component }> // lazy-load for Tier 2
   sandbox?: boolean
@@ -33,17 +41,7 @@ export function getSettingsSection(id: string): SettingsSection | undefined {
 }
 
 // Built-in settings sections — registered at module init, consumed by SettingsDialog via getSettingsSections()
-const BUILTIN_SECTIONS: SettingsSection[] = [
-  { id: "general", label: "General", icon: "sliders-horizontal", group: "Core" },
-  { id: "models", label: "Models", icon: "cpu", group: "Core" },
-  { id: "mcp", label: "MCP", icon: getSemanticIcon("connection.mcp"), group: "Integrations" },
-  { id: "plugins", label: "Plugins", icon: "package", group: "Integrations" },
-  { id: "email", label: "Email", icon: "mail", group: "Integrations" },
-  { id: "channels", label: "Channels", icon: "globe", group: "Integrations" },
-  { id: "import", label: "Import", icon: "upload", group: "System" },
-  { id: "library", label: "Library", icon: "book-open", group: "Library" },
-  { id: "advanced", label: "System", icon: "sliders-horizontal", group: "System" },
-]
+const BUILTIN_SECTIONS: SettingsSection[] = BUILTIN_SETTINGS_SECTIONS.map((section) => ({ ...section }))
 
 for (const section of BUILTIN_SECTIONS) {
   registerSettingsSection(section)

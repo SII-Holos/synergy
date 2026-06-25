@@ -247,6 +247,8 @@ Useful command:
 synergy config path
 ```
 
+The Web Settings UI uses the same canonical domains. Common settings are editable as forms, and low-frequency or nested domains can be opened directly from Settings with the system default editor.
+
 ### Project config
 
 Project-level config uses the same domain layout under:

@@ -4,6 +4,7 @@ import { mapValues } from "remeda"
 import z from "zod"
 import { Config } from "../config/config"
 import { ConfigDomain } from "../config/domain"
+import { ConfigDomainOpen } from "../config/domain-open"
 import { Provider } from "../provider/provider"
 import { RuntimeReload } from "../runtime/reload"
 import { Log } from "../util/log"
@@ -21,6 +22,39 @@ const DomainUpdateInput = z
     mode: ConfigDomain.MergeMode.optional(),
   })
   .meta({ ref: "ConfigDomainUpdateInput" })
+
+const DomainOpenResponse = z
+  .object({
+    success: z.literal(true),
+    path: z.string(),
+  })
+  .meta({ ref: "ConfigDomainOpenResponse" })
+
+const DomainOpenError = z
+  .object({
+    success: z.literal(false),
+    error: z.string(),
+    message: z.string(),
+    path: z.string().optional(),
+  })
+  .meta({ ref: "ConfigDomainOpenError" })
+
+function domainOpenError(error: unknown) {
+  if (error instanceof ConfigDomainOpen.UnsupportedPlatformError) {
+    return { status: 400 as const, body: { success: false as const, error: error.name, message: error.message } }
+  }
+  if (error instanceof ConfigDomainOpen.OpenerMissingError) {
+    return { status: 500 as const, body: { success: false as const, error: error.name, message: error.message } }
+  }
+  if (error instanceof ConfigDomainOpen.OpenFailedError) {
+    return {
+      status: 500 as const,
+      body: { success: false as const, error: error.name, message: error.message, path: error.filepath },
+    }
+  }
+  const message = error instanceof Error ? error.message : String(error)
+  return { status: 500 as const, body: { success: false as const, error: "ConfigDomainOpenError", message } }
+}
 
 export const ConfigRoute = new Hono()
   .get(
@@ -137,6 +171,38 @@ export const ConfigRoute = new Hono()
       const result = await Config.domainUpdate(domain, body.config, { mode: body.mode })
       await reloadAfterConfigChange(changedFields, `config.domain.update:${domain}`)
       return c.json(result)
+    },
+  )
+  .post(
+    "/domains/:domain/open",
+    describeRoute({
+      summary: "Open config domain file",
+      description: "Materialize and open one canonical global config domain file with the operating system default.",
+      operationId: "config.domain.open",
+      responses: {
+        200: {
+          description: "Opened config domain file",
+          content: { "application/json": { schema: resolver(DomainOpenResponse) } },
+        },
+        400: {
+          description: "Unsupported platform",
+          content: { "application/json": { schema: resolver(DomainOpenError) } },
+        },
+        500: {
+          description: "Failed to open config domain file",
+          content: { "application/json": { schema: resolver(DomainOpenError) } },
+        },
+      },
+    }),
+    validator("param", z.object({ domain: ConfigDomain.Id })),
+    async (c) => {
+      const { domain } = c.req.valid("param")
+      try {
+        return c.json(await ConfigDomainOpen.open(domain))
+      } catch (error) {
+        const result = domainOpenError(error)
+        return c.json(result.body, result.status)
+      }
     },
   )
   .post(

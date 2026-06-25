@@ -105,6 +105,8 @@ import type {
   ConfigDomainGetResponses,
   ConfigDomainImportPlanInput,
   ConfigDomainListResponses,
+  ConfigDomainOpenErrors,
+  ConfigDomainOpenResponses,
   ConfigDomainUpdateErrors,
   ConfigDomainUpdateInput,
   ConfigDomainUpdateResponses,
@@ -4000,6 +4002,51 @@ export class Domain extends HeyApiClient {
         ...options?.headers,
         ...params.headers,
       },
+    })
+  }
+
+  /**
+   * Open config domain file
+   *
+   * Materialize and open one canonical global config domain file with the operating system default.
+   */
+  public open<ThrowOnError extends boolean = false>(
+    parameters: {
+      domain:
+        | "general"
+        | "models"
+        | "providers"
+        | "library"
+        | "mcp"
+        | "plugins"
+        | "agents"
+        | "commands"
+        | "permissions"
+        | "channels"
+        | "holos"
+        | "email"
+        | "runtime"
+      directory?: string
+      scopeID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "domain" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<ConfigDomainOpenResponses, ConfigDomainOpenErrors, ThrowOnError>({
+      url: "/config/domains/{domain}/open",
+      ...options,
+      ...params,
     })
   }
 }

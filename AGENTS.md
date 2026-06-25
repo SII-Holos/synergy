@@ -144,6 +144,15 @@ Frontend code should use the generated SDK for Synergy server APIs instead of ha
 - Keep raw browser APIs only for cases the SDK should not abstract: WebSocket/EventSource streams, external URLs, browser downloads/uploads where no SDK route exists, local file/blob handling, and platform-provided `fetch` injection into the SDK client.
 - When replacing raw `fetch()` with SDK calls, preserve auth behavior, directory/scope parameters, error semantics, and response URL formats such as asset URLs.
 
+### Frontend icon semantics
+
+Non-tool product UI icons must use semantic tokens from `packages/ui/src/components/semantic-icon.tsx`.
+
+- Add a token before introducing icons for new app shell, sidebar, status bar, settings, notes, browser, navigation, state, or action semantics.
+- Reuse a token only when the UI element has the same meaning. If a Lucide glyph appears under multiple tokens, the overlap must be intentional and covered by semantic icon tests.
+- Raw Lucide icon literals are allowed only for narrow generic actions or local legacy cleanup with an explicit reason. Prefer tokens such as `action.close`, `action.add`, `action.search`, `navigation.back`, and section-specific `settings.*` tokens.
+- Tool cards remain governed by the tool registry, `message-part` metadata, `tool-renders`, taxonomy, and classifier rules below.
+
 ## Code Style
 
 ### General principles
