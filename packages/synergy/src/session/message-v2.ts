@@ -19,6 +19,49 @@ import { Attachment } from "@/attachment"
 function isTLSError(message: string) {
   return /certificate|SSL|TLS|ERR_SSL|UNABLE_TO_VERIFY|CERT_HAS_EXPIRED|DEPTH_ZERO|self[- ]signed/i.test(message)
 }
+
+const RETRYABLE_NETWORK_ERROR_CODES = new Set([
+  "ConnectionRefused",
+  "ConnectionClosed",
+  "FailedToOpenSocket",
+  "ECONNREFUSED",
+  "ETIMEDOUT",
+  "EPIPE",
+  "ENETUNREACH",
+  "ECONNABORTED",
+  "EAI_AGAIN",
+])
+
+function systemErrorCode(error: unknown) {
+  const code = (error as Partial<SystemError> | undefined)?.code
+  return typeof code === "string" ? code : undefined
+}
+
+function retryableNetworkMessage(message: string) {
+  return (
+    /^(fetch failed|failed to fetch)$/i.test(message) ||
+    /unable to connect\. is the computer able to access the url\?/i.test(message) ||
+    /^(network error|connection error)$/i.test(message)
+  )
+}
+
+function isRetryableNetworkError(error: unknown) {
+  if (!(error instanceof Error)) return false
+  const code = systemErrorCode(error)
+  if (code && RETRYABLE_NETWORK_ERROR_CODES.has(code)) return true
+  return retryableNetworkMessage(error.message)
+}
+
+function networkErrorMetadata(error: Error) {
+  const metadata: Record<string, string> = {
+    message: error.message,
+  }
+  const code = systemErrorCode(error)
+  if (code) metadata.code = code
+  const syscall = (error as Partial<SystemError>).syscall
+  if (typeof syscall === "string") metadata.syscall = syscall
+  return metadata
+}
 export namespace MessageV2 {
   async function requireSession(sessionID: string) {
     const { SessionManager } = await import("./manager")
@@ -757,6 +800,15 @@ export namespace MessageV2 {
           },
           { cause: e },
         ).toObject()
+      case isRetryableNetworkError(e):
+        return new MessageV2.APIError(
+          {
+            message: (e as Error).message,
+            isRetryable: true,
+            metadata: networkErrorMetadata(e as Error),
+          },
+          { cause: e },
+        ).toObject()
       case e instanceof Error &&
         typeof (e as SystemError).message === "string" &&
         isTLSError((e as SystemError).message):
@@ -797,12 +849,13 @@ export namespace MessageV2 {
 
           return `${msg}: ${e.responseBody}`
         }).trim()
+        const cause = (e as Error & { cause?: unknown }).cause
 
         return new MessageV2.APIError(
           {
             message,
             statusCode: e.statusCode,
-            isRetryable: e.isRetryable,
+            isRetryable: e.isRetryable || retryableNetworkMessage(message) || isRetryableNetworkError(cause),
             responseHeaders: e.responseHeaders,
             responseBody: e.responseBody,
           },

@@ -571,6 +571,19 @@ Anchored editing discipline:
 
 Use `scan_files` for text search and `parse_code` for AST-aware code search when the result may feed an edit.
 
+## Dynamic Tool Expansion
+
+Some long-tail capability groups are not always resident in your visible toolkit. If you need a known capability domain, expand it directly with `expand_tools({ groups: [...] })`; if you are unsure what exists, call `search_tools` first, then expand the returned group or activate the returned search-only tool.
+
+Known groups:
+- `browser` for interactive/JS-heavy pages, screenshots, page state checks, browser debugging, clicking, typing, console and network inspection.
+- `agenda` for one-time wake-ups, recursive monitoring, recurring schedules, automation management, and execution logs.
+- `session` for browsing, searching, reading, controlling, or messaging sessions.
+- `note` for project/global notes, Blueprint notes, evolving plans, and research records.
+- `memory` for explicit long-term knowledge search, read, write, or correction.
+
+Expansion changes only the current session's tool visibility. It persists across future turns, restore, and compaction, but it does not execute external actions or bypass permissions. Denied or disabled tools stay hidden.
+
 ## Shell Commands
 
 When using `bash`:
@@ -629,6 +642,8 @@ Use memory and note tools directly for storing and retrieving persistent context
 Use session tools directly for quick targeted lookups. Route to `session-historian` when recovering context requires searching multiple sessions or resolving historical conflicts.
 
 ## Agenda
+
+If agenda tools are not visible, expand the `agenda` group before scheduling or inspecting automations.
 
 `agenda_watch` sets a one-time delayed wake-up in this session. Use it for:
 - **Recursive adaptive monitoring**: check an external process/experiment/pipeline, assess health, then set another watch with an adjusted delay if more monitoring is needed. Start short (3-5min), stretch as health stabilizes (e.g. 3min → 10min → 30min). Always include in your watch prompt whether another watch should follow and under what conditions.

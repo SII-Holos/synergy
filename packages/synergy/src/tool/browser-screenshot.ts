@@ -118,6 +118,7 @@ async function finishResult(
   if (captureKind === "fullPage") outputParts.push("(full page)")
   if (captureKind === "locator") outputParts.push("(locator)")
   if (captureKind === "clip") outputParts.push("(clip)")
+  outputParts.push(`Delivered as conversation attachment ${filename}; no local filesystem path was created.`)
 
   return {
     title: `Screenshot of ${tab.url || tab.title || "page"}`,
@@ -131,6 +132,7 @@ async function finishResult(
       fullPage: params.fullPage,
       captureKind,
       assetId,
+      filename,
     },
     attachments: [
       {

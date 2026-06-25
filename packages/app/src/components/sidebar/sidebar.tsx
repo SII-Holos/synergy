@@ -8,7 +8,7 @@ import { useGlobalSDK } from "@/context/global-sdk"
 import { usePanel } from "@/context/panel"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { useTheme } from "@ericsanchezok/synergy-ui/theme"
-import { Icon, type IconName } from "@ericsanchezok/synergy-ui/icon"
+import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { Tooltip } from "@ericsanchezok/synergy-ui/tooltip"
 import { assetPath } from "@/utils/proxy"
@@ -26,70 +26,25 @@ import { DialogScopeEdit } from "@/components/dialog/dialog-scope-edit"
 import { DialogConfirm } from "@/components/dialog/dialog-confirm"
 import type { LocalScope, NavEntry } from "@/context/layout"
 import { createStore } from "solid-js/store"
+import {
+  resolveSessionVisualState,
+  scopeKeyForNavEntry,
+  type SessionVisualState,
+  type SessionVisualStore,
+} from "@/components/sidebar/session-visual-state"
 import "./sidebar.css"
 
 interface SidebarProps {
   onSearchOpen: () => void
 }
 
-type SessionVisualState = {
-  icon: IconName
-  label: string
-  tone: "default" | "active" | "waiting" | "worktree" | "muted"
-  pulse?: boolean
-}
-
-interface SessionStoreSlice {
-  session_status: Record<string, { type?: string } | undefined>
-  permission: Record<string, unknown[] | undefined>
-  question: Record<string, unknown[] | undefined>
-  cortex: { parentSessionID?: string; status?: string }[]
-  session: { id: string; parentID?: string; category?: string; workspace?: { type?: string } }[]
-}
-
-function resolveSessionVisualState(store: SessionStoreSlice | undefined, entry: NavEntry): SessionVisualState {
-  if (store) {
-    const status = store.session_status[entry.id]
-    const waiting = !!store.permission[entry.id]?.length || !!store.question[entry.id]?.length
-    const running = status?.type === "busy" || status?.type === "retry"
-    const childTasksRunning = store.cortex.some(
-      (task) => task.parentSessionID === entry.id && task.status === "running",
-    )
-    const fullSession = store.session.find((session) => session.id === entry.id)
-
-    if (entry.category === "home") return { icon: "home", label: "Home session", tone: "default" }
-    if (running || childTasksRunning)
-      return { icon: getSemanticIcon("session.running"), label: "Running session", tone: "active", pulse: true }
-    if (waiting)
-      return { icon: getSemanticIcon("session.waiting"), label: "Waiting for you", tone: "waiting", pulse: true }
-    if (fullSession?.workspace?.type === "git_worktree")
-      return { icon: getSemanticIcon("workspace.worktree"), label: "Worktree session", tone: "worktree" }
-    if (entry.parentID) return { icon: getSemanticIcon("session.child"), label: "Child session", tone: "muted" }
-    if (entry.category === "background")
-      return { icon: getSemanticIcon("session.background"), label: "Background session", tone: "muted" }
-    if (entry.category === "channel")
-      return { icon: getSemanticIcon("session.channel"), label: "Channel session", tone: "muted" }
-    return { icon: getSemanticIcon("session.default"), label: "Session", tone: "default" }
-  }
-  // Fallback when store is unavailable (category-only)
-  if (entry.category === "background")
-    return { icon: getSemanticIcon("session.background"), label: "Background session", tone: "muted" }
-  if (entry.category === "channel")
-    return { icon: getSemanticIcon("session.channel"), label: "Channel session", tone: "muted" }
-  if (entry.category === "home") return { icon: "home", label: "Home session", tone: "default" }
-  return { icon: getSemanticIcon("session.default"), label: "Session", tone: "default" }
-}
-
 function getStoreForEntry(
   globalSync: ReturnType<typeof useGlobalSync>,
   entry: NavEntry,
-): SessionStoreSlice | undefined {
-  if (entry.scopeType === "home" || entry.scopeID === "home") {
-    return globalSync.peekScopeState("home")?.[0]
-  }
-  const scope = globalSync.data.scope.find((s) => s.id === entry.scopeID)
-  if (!scope?.worktree) return undefined
-  return globalSync.peekScopeState(scope.worktree)?.[0]
+): SessionVisualStore | undefined {
+  const scopeKey = scopeKeyForNavEntry(entry, globalSync.data.scope)
+  if (!scopeKey) return undefined
+  return globalSync.peekScopeState(scopeKey)?.[0]
 }
 
 export function Sidebar(props: SidebarProps) {

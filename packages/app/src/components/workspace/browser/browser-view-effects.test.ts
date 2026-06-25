@@ -1,5 +1,9 @@
 import { describe, expect, test } from "bun:test"
-import { applyBrowserViewCommand, type BrowserWorkspaceController } from "./browser-view-command"
+import {
+  applyBrowserViewCommand,
+  shouldAutoShowBrowserTool,
+  type BrowserWorkspaceController,
+} from "./browser-view-command"
 
 function controller() {
   const calls: string[] = []
@@ -38,5 +42,18 @@ describe("applyBrowserViewCommand", () => {
     const status = controller()
     expect(applyBrowserViewCommand({ workspaceCommand: "status" }, status.workspace)).toBe(false)
     expect(status.calls).toEqual([])
+  })
+})
+
+describe("shouldAutoShowBrowserTool", () => {
+  test("shows Browser workspace for completed browser tool metadata with tab identity", () => {
+    expect(shouldAutoShowBrowserTool("browser_navigate", { tabId: "tab-1" })).toBe(true)
+    expect(shouldAutoShowBrowserTool("browser_tab", { tab: { id: "tab-1" } })).toBe(true)
+    expect(shouldAutoShowBrowserTool("browser_tab", { activeTabId: "tab-1" })).toBe(true)
+  })
+
+  test("ignores non-browser tools and browser metadata without a tab identity", () => {
+    expect(shouldAutoShowBrowserTool("read", { tabId: "tab-1" })).toBe(false)
+    expect(shouldAutoShowBrowserTool("browser_navigate", {})).toBe(false)
   })
 })

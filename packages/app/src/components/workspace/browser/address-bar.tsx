@@ -1,6 +1,7 @@
 import { For, Show, createMemo, createSignal } from "solid-js"
 import { IconButton } from "@ericsanchezok/synergy-ui/icon-button"
 import { useBrowser, type DevPanel } from "./browser-store"
+import { browserDebug } from "./browser-debug"
 
 export type AddressBarProps = {
   activeUrl: () => string
@@ -37,6 +38,7 @@ export function AddressBar(props: AddressBarProps) {
   const [menuOpen, setMenuOpen] = createSignal(false)
 
   const selectedViewport = createMemo(() => {
+    if (browser.viewportMode() === "fit") return "Fit"
     const current = VIEWPORT_PRESETS.find(
       (preset) => preset.width === browser.viewportWidth() && preset.height === browser.viewportHeight(),
     )
@@ -45,13 +47,26 @@ export function AddressBar(props: AddressBarProps) {
 
   function handleNavigate() {
     const raw = inputEl?.value.trim() ?? ""
-    if (!raw) return
+    browserDebug("address.navigate", {
+      raw,
+      activeUrl: props.activeUrl(),
+      activeTabId: browser.activeTabId(),
+      connectionStatus: browser.session.connectionStatus,
+      tabCount: browser.session.tabs.length,
+    })
+    if (!raw) {
+      browserDebug("address.navigate.ignored", { reason: "empty" })
+      return
+    }
     props.onNavigate(raw)
     inputEl?.blur()
   }
 
   function handleKeyDown(e: KeyboardEvent) {
-    if (e.key === "Enter") handleNavigate()
+    if (e.key === "Enter") {
+      browserDebug("address.keydown.enter", { value: inputEl?.value ?? "" })
+      handleNavigate()
+    }
   }
 
   function requestPanel(panel: DevPanel) {
@@ -133,6 +148,21 @@ export function AddressBar(props: AddressBarProps) {
             <div class="border-b border-border-weak-base/60 px-2 py-1">
               <div class="px-1 py-1 text-11 text-text-weakest">Viewport · {selectedViewport()}</div>
               <div class="flex gap-1 px-1 pb-1">
+                <button
+                  type="button"
+                  class="h-6 rounded px-2 text-11 transition-colors"
+                  classList={{
+                    "bg-surface-interactive-base text-surface-interactive-text": browser.viewportMode() === "fit",
+                    "text-text-weak hover:bg-surface-raised-base-hover hover:text-text-base":
+                      browser.viewportMode() !== "fit",
+                  }}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    browser.setViewport(browser.viewportWidth(), browser.viewportHeight(), { mode: "fit" })
+                  }}
+                >
+                  Fit
+                </button>
                 <For each={VIEWPORT_PRESETS}>
                   {(preset) => (
                     <button

@@ -1,38 +1,158 @@
 import { onCleanup, onMount } from "solid-js"
 import { useSDK } from "@/context/sdk"
 import type { BrowserStoreAPI } from "./browser-store"
+import { browserDebug, shouldLogBrowserMessage, summarizeBrowserMessage } from "./browser-debug"
 
 const MAX_RECONNECT_ATTEMPTS = 10
 const RECONNECT_DELAY = 2000
+const MAX_PENDING_MESSAGES = 50
 
-export function createBrowserWebSocket(store: BrowserStoreAPI, sessionID: string) {
+type BrowserSocket = {
+  readyState: number
+  send(data: string): void
+}
+
+type BrowserWebSocketOptions = {
+  sessionID: string
+  routeDirectory?: string
+}
+
+type BrowserWebSocketUrlOptions = {
+  serverUrl: string
+  sessionID: string
+  routeDirectory?: string
+  directory?: string
+  scopeID?: string
+  scopeKey?: string
+}
+
+export function createBrowserWebSocketUrl(options: BrowserWebSocketUrlOptions) {
+  const pathDirectory = options.routeDirectory ?? options.directory ?? options.scopeID ?? options.scopeKey
+  if (!pathDirectory) return null
+
+  const params = new URLSearchParams({
+    mode: "session",
+    sessionID: options.sessionID,
+  })
+  if (options.scopeID) params.set("scopeID", options.scopeID)
+  else if (options.directory) params.set("directory", options.directory)
+
+  return (
+    options.serverUrl.replace(/^http/, "ws") +
+    `/${encodeURIComponent(pathDirectory)}/browser/connect?${params.toString()}`
+  )
+}
+
+export function createQueuedBrowserSender(
+  getSocket: () => BrowserSocket | undefined,
+  options: { openState?: number; maxPending?: number } = {},
+) {
+  const openState = options.openState ?? WebSocket.OPEN
+  const maxPending = options.maxPending ?? MAX_PENDING_MESSAGES
+  const pending: Record<string, unknown>[] = []
+
+  function send(msg: Record<string, unknown>) {
+    const socket = getSocket()
+    if (socket?.readyState === openState) {
+      if (shouldLogBrowserMessage(msg)) browserDebug("ws.send", summarizeBrowserMessage(msg))
+      socket.send(JSON.stringify(msg))
+      return
+    }
+
+    if (shouldLogBrowserMessage(msg)) {
+      browserDebug("ws.queue", {
+        ...summarizeBrowserMessage(msg),
+        readyState: socket?.readyState ?? "missing",
+        pendingBefore: pending.length,
+      })
+    }
+    pending.push(msg)
+    if (pending.length > maxPending) {
+      const dropped = pending.shift()
+      if (dropped && shouldLogBrowserMessage(dropped)) browserDebug("ws.queue.drop", summarizeBrowserMessage(dropped))
+    }
+  }
+
+  function flush() {
+    const socket = getSocket()
+    if (socket?.readyState !== openState) {
+      browserDebug("ws.flush.skipped", { readyState: socket?.readyState ?? "missing", pending: pending.length })
+      return
+    }
+    const messages = pending.splice(0)
+    browserDebug("ws.flush", { count: messages.length })
+    for (const msg of messages) {
+      if (shouldLogBrowserMessage(msg)) browserDebug("ws.send.queued", summarizeBrowserMessage(msg))
+      socket.send(JSON.stringify(msg))
+    }
+  }
+
+  function clear() {
+    browserDebug("ws.queue.clear", { count: pending.length })
+    pending.length = 0
+  }
+
+  function size() {
+    return pending.length
+  }
+
+  return { send, flush, clear, size }
+}
+
+export function createBrowserWebSocket(store: BrowserStoreAPI, options: BrowserWebSocketOptions | string) {
   const sdk = useSDK()
+  const sessionID = typeof options === "string" ? options : options.sessionID
+  const routeDirectory = typeof options === "string" ? undefined : options.routeDirectory
   let ws: WebSocket | undefined
   let reconnectTimer: ReturnType<typeof setTimeout> | undefined
   let disposed = false
   let reconnectAttempts = 0
-
-  const send = (msg: Record<string, unknown>) => {
-    if (ws?.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify(msg))
-    }
-  }
+  const queued = createQueuedBrowserSender(() => ws)
+  const send = queued.send
 
   store._setSend(send)
 
   const connect = () => {
-    if (disposed) return
-    if (!sdk.directory) return
+    if (disposed) {
+      browserDebug("ws.connect.skipped", { reason: "disposed" })
+      return
+    }
+    const wsUrl = createBrowserWebSocketUrl({
+      serverUrl: sdk.url,
+      sessionID,
+      routeDirectory,
+      directory: sdk.directory,
+      scopeID: sdk.scopeID,
+      scopeKey: sdk.scopeKey,
+    })
+    if (!wsUrl) {
+      browserDebug("ws.connect.skipped", {
+        reason: "missing scope",
+        sessionID,
+        routeDirectory,
+        directory: sdk.directory,
+        scopeID: sdk.scopeID,
+        scopeKey: sdk.scopeKey,
+      })
+      return
+    }
     store.setSession("connectionStatus", "connecting")
-    const wsUrl =
-      sdk.url.replace(/^http/, "ws") +
-      `/${encodeURIComponent(sdk.directory)}/browser/connect?mode=session&sessionID=${encodeURIComponent(sessionID)}`
+    browserDebug("ws.connect", {
+      sessionID,
+      url: wsUrl,
+      routeDirectory,
+      directory: sdk.directory,
+      scopeID: sdk.scopeID,
+      scopeKey: sdk.scopeKey,
+    })
     const socket = new WebSocket(wsUrl)
     ws = socket
 
     socket.addEventListener("open", () => {
       reconnectAttempts = 0
       store.setSession("connectionStatus", "connected")
+      browserDebug("ws.open", { sessionID, pending: queued.size() })
+      queued.flush()
     })
 
     socket.addEventListener("message", (event) => {
@@ -41,9 +161,11 @@ export function createBrowserWebSocket(store: BrowserStoreAPI, sessionID: string
         msg = JSON.parse(event.data)
       } catch (e) {
         console.warn("Invalid browser WS message", String(e))
+        browserDebug("ws.message.invalid", { error: String(e), dataLength: String(event.data ?? "").length })
         return
       }
 
+      if (shouldLogBrowserMessage(msg)) browserDebug("ws.message", summarizeBrowserMessage(msg))
       switch (msg.type) {
         case "session.state": {
           if (msg.tabs) store.setSession("tabs", msg.tabs)
@@ -180,35 +302,54 @@ export function createBrowserWebSocket(store: BrowserStoreAPI, sessionID: string
             message: msg.message ?? "Browser operation failed",
           })
           console.error("Browser WS error:", msg.message)
+          browserDebug("ws.message.error", summarizeBrowserMessage(msg))
           break
         }
       }
     })
 
-    socket.addEventListener("error", () => {
+    socket.addEventListener("error", (event) => {
       // Handled by close event.
+      browserDebug("ws.error", { sessionID, eventType: event.type })
     })
 
-    socket.addEventListener("close", () => {
+    socket.addEventListener("close", (event) => {
       store.setSession("connectionStatus", "disconnected")
       ws = undefined
+      browserDebug("ws.close", {
+        sessionID,
+        code: event.code,
+        reason: event.reason,
+        wasClean: event.wasClean,
+        disposed,
+        reconnectAttempts,
+      })
       if (disposed) return
       reconnectAttempts++
       if (reconnectAttempts > MAX_RECONNECT_ATTEMPTS) {
         store.setSession("connectionStatus", "failed")
+        browserDebug("ws.reconnect.failed", { sessionID, reconnectAttempts })
         return
       }
+      browserDebug("ws.reconnect.schedule", {
+        sessionID,
+        reconnectAttempts,
+        delay: RECONNECT_DELAY * Math.min(4, reconnectAttempts),
+      })
       reconnectTimer = setTimeout(connect, RECONNECT_DELAY * Math.min(4, reconnectAttempts))
     })
   }
 
   onMount(() => {
+    browserDebug("ws.mount", { sessionID })
     connect()
   })
 
   onCleanup(() => {
+    browserDebug("ws.cleanup", { sessionID, hasSocket: Boolean(ws), pending: queued.size() })
     disposed = true
     if (reconnectTimer) clearTimeout(reconnectTimer)
+    queued.clear()
     ws?.close()
     ws = undefined
   })

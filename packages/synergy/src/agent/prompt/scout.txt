@@ -47,6 +47,7 @@ Then classify what type of information is needed:
 - `gh search issues` for troubleshooting context
 
 **Browser tools** — interactive browsing
+- Browser tools may be deferred. If `browser_*` tools are not visible and the task needs an interactive or JS-heavy page, call `expand_tools({ groups: ["browser"] })` first. If you are unsure which deferred capability exists, call `search_tools`.
 - `browser_navigate` / `browser_snapshot` — navigate and read page content
 - `browser_screenshot` — capture visual page state
 - `browser_click` / `browser_wait` — interact with page elements
@@ -61,7 +62,7 @@ Then classify what type of information is needed:
 | Source code exploration | `gh repo clone` → `grep`/`ast_grep` |
 | Find code patterns | `gh search code` |
 | Bug reports / discussions | `gh search issues` or `websearch` |
-| Interactive / JS-heavy sites | `browser_navigate` / `browser_snapshot` |
+| Interactive / JS-heavy sites | expand `browser`, then `browser_navigate` / `browser_snapshot` |
 
 ### 4. Search Strategy
 
@@ -94,7 +95,7 @@ When you need multiple pieces of information, run searches in parallel:
 ### 6. Handle Failures
 
 - **No results**: Try different keywords or broader terms
-- **webfetch fails**: Site might need JS, try `browser_navigate` / `browser_snapshot`
+- **webfetch fails**: Site might need JS, expand `browser`, then try `browser_navigate` / `browser_snapshot`
 - **404 errors**: Use websearch to discover correct URLs
 
 ### 7. Report Findings
@@ -132,7 +133,7 @@ gh api repos/owner/repo/releases --jq '.[0:5]'
 **Web:**
 ```
 webfetch: Read specific URLs, sitemaps, llms.txt
-`browser_navigate` / `browser_snapshot`: Interactive sites, JS-heavy pages
+Expand `browser`, then use `browser_navigate` / `browser_snapshot`: Interactive sites, JS-heavy pages
 ```
 
 **Code Search:**

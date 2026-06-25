@@ -53,3 +53,86 @@ describe("createBrowserStore follow agent", () => {
     })
   })
 })
+
+describe("createBrowserStore navigate", () => {
+  test("creates a tab with the URL when no tab is open", () => {
+    createRoot((dispose) => {
+      const store = createBrowserStore()
+      const sent: Record<string, unknown>[] = []
+      store._setSend((msg) => sent.push(msg))
+
+      store.navigate("www.google.com")
+
+      expect(sent).toEqual([
+        { type: "setFollowAgent", enabled: false },
+        { type: "createTab", url: "www.google.com" },
+      ])
+      dispose()
+    })
+  })
+
+  test("navigates the active tab when one is open", () => {
+    createRoot((dispose) => {
+      const store = createBrowserStore()
+      const sent: Record<string, unknown>[] = []
+      store._setSend((msg) => sent.push(msg))
+      store.setSession("tabs", [{ id: "tab-1", title: "Start", url: "about:blank", isLoading: false }])
+      store.setSession("activeTabId", "tab-1")
+
+      store.navigate("www.google.com")
+
+      expect(store.session.tabs[0]?.isLoading).toBe(true)
+      expect(sent).toEqual([
+        { type: "setFollowAgent", enabled: false },
+        { type: "navigate", source: "user", url: "www.google.com", tabId: "tab-1" },
+      ])
+      dispose()
+    })
+  })
+})
+
+describe("createBrowserStore viewport", () => {
+  test("starts in fit mode and records manual viewport changes as fixed", () => {
+    createRoot((dispose) => {
+      const store = createBrowserStore()
+      const sent: Record<string, unknown>[] = []
+      store._setSend((msg) => sent.push(msg))
+
+      expect(store.viewportMode()).toBe("fit")
+
+      store.setViewport(375.4, 667.6)
+
+      expect(store.viewportMode()).toBe("fixed")
+      expect(store.viewportWidth()).toBe(375)
+      expect(store.viewportHeight()).toBe(668)
+      expect(sent.at(-1)).toEqual({
+        type: "input.resize",
+        tabId: null,
+        width: 375,
+        height: 668,
+        deviceScaleFactor: 1,
+      })
+      dispose()
+    })
+  })
+
+  test("keeps fit mode for surface-driven viewport changes", () => {
+    createRoot((dispose) => {
+      const store = createBrowserStore()
+      const sent: Record<string, unknown>[] = []
+      store._setSend((msg) => sent.push(msg))
+
+      store.setViewport(900, 640, { mode: "fit" })
+
+      expect(store.viewportMode()).toBe("fit")
+      expect(store.viewportWidth()).toBe(900)
+      expect(store.viewportHeight()).toBe(640)
+      expect(sent.at(-1)).toMatchObject({
+        type: "input.resize",
+        width: 900,
+        height: 640,
+      })
+      dispose()
+    })
+  })
+})

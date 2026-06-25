@@ -269,6 +269,8 @@ const TOOL_CATEGORIES: Record<string, SemanticCategory> = {
   research_timeline: "research",
 
   // platform
+  search_tools: "search",
+  expand_tools: "config",
   runtime_reload: "config",
   profile_get: "config",
   profile_update: "config",
