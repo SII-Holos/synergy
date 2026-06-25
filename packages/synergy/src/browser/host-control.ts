@@ -46,9 +46,14 @@ export namespace BrowserHostControl {
     timer: ReturnType<typeof setTimeout>
   }
 
-  const hosts = new Map<string, HostConnection>()
+  const ownerHosts = new Map<string, HostConnection>()
+  const tabHosts = new Map<string, Map<string, HostConnection>>()
   const observers = new Map<string, Set<(event: EventPayload) => void>>()
   let nextRequestId = 1
+
+  export interface AttachOptions {
+    tabId?: string | null
+  }
 
   export class HostConnection {
     private pending = new Map<string, PendingRequest>()
@@ -58,6 +63,7 @@ export namespace BrowserHostControl {
     constructor(
       readonly owner: BrowserOwner.Info,
       private socket: BrowserHostControlSocket,
+      readonly tabId: string | null = null,
     ) {}
 
     execute(command: BrowserControl.Command, timeoutMs = 30_000): Promise<BrowserControl.Result> {
@@ -122,45 +128,78 @@ export namespace BrowserHostControl {
     }
   }
 
-  export function attach(owner: BrowserOwner.Info, socket: BrowserHostControlSocket): HostConnection {
+  export function attach(
+    owner: BrowserOwner.Info,
+    socket: BrowserHostControlSocket,
+    options?: AttachOptions,
+  ): HostConnection {
     BrowserOwner.assertValid(owner)
     const key = BrowserOwner.key(owner)
-    hosts.get(key)?.close()
-    const connection = new HostConnection(owner, socket)
-    hosts.set(key, connection)
+    const tabId = options?.tabId ?? null
+    const connection = new HostConnection(owner, socket, tabId)
+    if (tabId) {
+      const tabs = tabHosts.get(key) ?? new Map<string, HostConnection>()
+      tabs.get(tabId)?.close()
+      tabs.set(tabId, connection)
+      tabHosts.set(key, tabs)
+      return connection
+    }
+    ownerHosts.get(key)?.close()
+    ownerHosts.set(key, connection)
     return connection
   }
 
   export function detach(owner: BrowserOwner.Info, connection: HostConnection): void {
     const key = BrowserOwner.key(owner)
-    if (hosts.get(key) !== connection) return
-    hosts.delete(key)
+    if (connection.tabId) {
+      const tabs = tabHosts.get(key)
+      if (tabs?.get(connection.tabId) !== connection) return
+      tabs.delete(connection.tabId)
+      if (tabs.size === 0) tabHosts.delete(key)
+    } else {
+      if (ownerHosts.get(key) !== connection) return
+      ownerHosts.delete(key)
+    }
     connection.close()
-    emit(owner, {
-      type: "error",
-      severity: "warning",
-      code: "browser_host_disconnected",
-      message: "Native Browser Host disconnected.",
-    })
+    if (!has(owner)) {
+      emit(owner, {
+        type: "error",
+        severity: "warning",
+        code: "browser_host_disconnected",
+        message: "Native Browser Host disconnected.",
+      })
+    }
   }
 
-  export function get(owner: BrowserOwner.Info): HostConnection | undefined {
-    return hosts.get(BrowserOwner.key(owner))
+  export function get(owner: BrowserOwner.Info, tabId?: string | null): HostConnection | undefined {
+    const key = BrowserOwner.key(owner)
+    if (tabId) {
+      const tabHost = tabHosts.get(key)?.get(tabId)
+      if (tabHost) return tabHost
+    }
+    return ownerHosts.get(key)
   }
 
   export function has(owner: BrowserOwner.Info): boolean {
-    return Boolean(get(owner))
+    const key = BrowserOwner.key(owner)
+    return Boolean(ownerHosts.get(key) || tabHosts.get(key)?.size)
   }
 
   export function sessionState(owner: BrowserOwner.Info): BrowserControl.SessionState | null {
-    return get(owner)?.session ?? null
+    const key = BrowserOwner.key(owner)
+    const sessions = [
+      ownerHosts.get(key)?.session ?? null,
+      ...Array.from(tabHosts.get(key)?.values() ?? []).map((connection) => connection.session),
+    ].filter((session): session is BrowserControl.SessionState => Boolean(session))
+    if (sessions.length === 0) return null
+    return mergeSessions(sessions)
   }
 
   export async function execute(
     owner: BrowserOwner.Info,
     command: BrowserControl.Command,
   ): Promise<BrowserControl.Result> {
-    const host = get(owner)
+    const host = resolveHost(owner, command)
     if (!host) throw new Error("Browser Host control is not attached")
     return host.execute(command)
   }
@@ -177,8 +216,12 @@ export namespace BrowserHostControl {
   }
 
   export function resetForTest(): void {
-    for (const connection of hosts.values()) connection.close()
-    hosts.clear()
+    for (const connection of ownerHosts.values()) connection.close()
+    for (const tabs of tabHosts.values()) {
+      for (const connection of tabs.values()) connection.close()
+    }
+    ownerHosts.clear()
+    tabHosts.clear()
     observers.clear()
     nextRequestId = 1
   }
@@ -187,6 +230,34 @@ export namespace BrowserHostControl {
     const set = observers.get(BrowserOwner.key(owner))
     if (!set) return
     for (const listener of set) listener(event)
+  }
+
+  function resolveHost(owner: BrowserOwner.Info, command: BrowserControl.Command): HostConnection | undefined {
+    const key = BrowserOwner.key(owner)
+    if ("tabId" in command && command.tabId) {
+      const tabHost = tabHosts.get(key)?.get(command.tabId)
+      if (tabHost) return tabHost
+    }
+    const ownerHost = ownerHosts.get(key)
+    if (ownerHost) return ownerHost
+    const session = sessionState(owner)
+    if (session?.activeTabId) {
+      const activeHost = tabHosts.get(key)?.get(session.activeTabId)
+      if (activeHost) return activeHost
+    }
+    const tabs = tabHosts.get(key)
+    if (tabs?.size === 1) return tabs.values().next().value
+    return undefined
+  }
+
+  function mergeSessions(sessions: BrowserControl.SessionState[]): BrowserControl.SessionState {
+    const tabs = new Map<string, BrowserControl.TabState>()
+    let activeTabId: string | null = null
+    for (const session of sessions) {
+      for (const tab of session.tabs) tabs.set(tab.id, tab)
+      activeTabId = session.activeTabId ?? activeTabId
+    }
+    return { tabs: Array.from(tabs.values()), activeTabId }
   }
 
   function mergeReadySession(

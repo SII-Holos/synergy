@@ -166,6 +166,102 @@ describe("BrowserHostControl", () => {
     })
   })
 
+  test("routes commands across per-tab Browser Host connections", async () => {
+    const host1 = socket()
+    const host2 = socket()
+    const connection1 = BrowserHostControl.attach(owner, host1.peer, { tabId: "tab_1" })
+    const connection2 = BrowserHostControl.attach(owner, host2.peer, { tabId: "tab_2" })
+
+    connection1.handleMessage({
+      type: "browser.host.ready",
+      session: {
+        tabs: [
+          {
+            id: "tab_1",
+            url: "https://example.com/",
+            title: "Example",
+            isLoading: false,
+            pinned: false,
+            kept: false,
+            lastActiveAt: null,
+          },
+        ],
+        activeTabId: "tab_1",
+      },
+    })
+    connection2.handleMessage({
+      type: "browser.host.ready",
+      session: {
+        tabs: [
+          {
+            id: "tab_2",
+            url: "https://example.org/",
+            title: "Example Org",
+            isLoading: false,
+            pinned: false,
+            kept: false,
+            lastActiveAt: null,
+          },
+        ],
+        activeTabId: "tab_2",
+      },
+    })
+
+    expect(BrowserHostControl.sessionState(owner)).toMatchObject({
+      tabs: [{ id: "tab_1" }, { id: "tab_2" }],
+      activeTabId: "tab_2",
+    })
+
+    const navigatePromise = BrowserHostControl.execute(owner, {
+      type: "navigate",
+      tabId: "tab_1",
+      url: "https://example.com/docs",
+    })
+    const navigateRequest = host1.messages.find((message) => message.type === "browser.host.command")!
+    expect(navigateRequest).toMatchObject({ command: { type: "navigate", tabId: "tab_1" } })
+    expect(host2.messages.find((message) => message.type === "browser.host.command")).toBeUndefined()
+    connection1.handleMessage({
+      type: "browser.host.result",
+      id: navigateRequest.id,
+      result: {
+        type: "navigation",
+        url: "https://example.com/docs",
+        title: "Docs",
+        tab: {
+          id: "tab_1",
+          url: "https://example.com/docs",
+          title: "Docs",
+          isLoading: false,
+          pinned: false,
+          kept: false,
+          lastActiveAt: null,
+        },
+      },
+    })
+    await expect(navigatePromise).resolves.toMatchObject({ type: "navigation", tab: { id: "tab_1" } })
+
+    const createPromise = BrowserHostControl.execute(owner, { type: "createTab", url: "https://example.net/" })
+    const createRequest = host2.messages.find((message) => message.type === "browser.host.command")!
+    expect(createRequest).toMatchObject({ command: { type: "createTab", url: "https://example.net/" } })
+    connection2.handleMessage({
+      type: "browser.host.result",
+      id: createRequest.id,
+      result: {
+        type: "tab",
+        tab: {
+          id: "tab_3",
+          url: "https://example.net/",
+          title: "Example Net",
+          isLoading: false,
+          pinned: false,
+          kept: false,
+          lastActiveAt: null,
+        },
+      },
+    })
+    await expect(createPromise).resolves.toMatchObject({ type: "tab", tab: { id: "tab_3" } })
+  })
+
   test("BrowserHost routes tab creation through an attached host", async () => {
     const host = socket()
     const connection = BrowserHostControl.attach(owner, host.peer)

@@ -56,6 +56,7 @@ function createHostControlUrl(options: BrowserWebRTCHostOptions) {
     presentation: "webrtc",
     client: "desktop",
     sameHost: "1",
+    tabId: options.tabId,
   })
   if (options.scopeID) params.set("scopeID", options.scopeID)
   else if (options.directory) params.set("directory", options.directory)
@@ -76,8 +77,9 @@ export class BrowserWebRTCHost {
   private readonly browserWindowTitle: string
   private diagnostics: BrowserHostDiagnostics | null = null
   private refMap = new Map<string, { backendNodeId: number; x: number; y: number; width: number; height: number }>()
-  private activeTabId: string
+  private activeTabId: string | null
   private tabs = new Map<string, BrowserHostTabState>()
+  private closedTabIds = new Set<string>()
 
   constructor(private options: BrowserWebRTCHostOptions) {
     this.inputChannel = `browser-host:${options.tabId}:input`
@@ -328,12 +330,14 @@ export class BrowserWebRTCHost {
         return { type: "tab", tab }
       }
       case "closeTab": {
-        const tabId = String(command.tabId ?? this.activeTabId)
+        const tabId = String(command.tabId ?? this.activeTabId ?? "")
         this.tabs.delete(tabId)
+        this.closedTabIds.add(tabId)
         if (this.activeTabId === tabId) {
-          this.activeTabId = this.tabs.keys().next().value ?? this.options.tabId
+          this.activeTabId = this.tabs.keys().next().value ?? null
         }
         this.sendHostSession()
+        if (tabId === this.options.tabId) setTimeout(() => this.destroy(), 0)
         return { type: "session", session: this.sessionState() }
       }
       case "switchTab": {
@@ -540,6 +544,9 @@ export class BrowserWebRTCHost {
   }
 
   private tabState(): BrowserHostTabState {
+    if (this.closedTabIds.has(this.options.tabId)) {
+      return this.createTabState(this.options.tabId, "", "", false)
+    }
     const contents = this.browserWindow?.webContents
     const tab = this.createTabState(
       this.options.tabId,
@@ -564,7 +571,7 @@ export class BrowserWebRTCHost {
   }
 
   private sessionState() {
-    this.tabState()
+    if (!this.closedTabIds.has(this.options.tabId)) this.tabState()
     return { tabs: Array.from(this.tabs.values()), activeTabId: this.activeTabId }
   }
 

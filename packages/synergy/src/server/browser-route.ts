@@ -308,14 +308,16 @@ export const BrowserRoute = new Hono()
       }
 
       let connection: BrowserHostControl.HostConnection | undefined
+      const hostTabId = c.req.query("tabId")
 
       return {
         onOpen(_event: any, ws: BrowserWS) {
-          connection = BrowserHostControl.attach(state.owner, ws)
+          connection = BrowserHostControl.attach(state.owner, ws, { tabId: hostTabId })
           log.info("browser host control connected", {
             directory: state.directory,
             ownerKey: BrowserOwner.key(state.owner),
             presentation: state.presentation.kind,
+            tabId: hostTabId,
           })
           send(ws, { type: "browser.host.attached", protocolVersion: BrowserHost.protocolVersion })
         },
@@ -425,8 +427,10 @@ export const BrowserRoute = new Hono()
 
       return {
         onOpen: async (_e: any, ws: BrowserWS) => {
-          const session = await ensureSession(state.owner, { createInitialTab: true })
-          attachedTabId = attachedTabId || session.activeTab?.id || null
+          const hostSession = BrowserHostControl.sessionState(state.owner)
+          const session =
+            hostSession ?? BrowserControl.sessionState(await ensureSession(state.owner, { createInitialTab: true }))
+          attachedTabId = attachedTabId || session.activeTabId || null
           if (!attachedTabId) {
             send(ws, { type: "error", code: "browser_webrtc_host_missing_tab", message: "Missing WebRTC host tab id" })
             ws.close(1008, "Missing WebRTC host tab id")
@@ -436,7 +440,7 @@ export const BrowserRoute = new Hono()
           send(ws, {
             type: "webrtc.host.signaling.ready",
             presentation: state.presentation,
-            session: BrowserControl.sessionState(session),
+            session,
             tabId: attachedTabId,
           })
         },
