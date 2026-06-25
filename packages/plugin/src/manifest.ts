@@ -147,7 +147,7 @@ const PluginPermissionsSchema = z
       .object({
         session: z.enum(["none", "metadata", "read"]).default("none"),
         workspace: z.enum(["none", "metadata", "read"]).default("none"),
-        config: z.enum(["plugin", "global"]).default("plugin"),
+        config: z.enum(["none", "plugin", "global"]).default("plugin"),
         secrets: z.enum(["none", "own"]).default("none"),
       })
       .optional(),

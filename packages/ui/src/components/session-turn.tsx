@@ -1,5 +1,6 @@
 import {
   AssistantMessage,
+  FilePart,
   Message as MessageType,
   Part as PartType,
   type PermissionRequest,
@@ -18,6 +19,8 @@ import { createEffect, createMemo, createSignal, For, Match, on, onCleanup, Pare
 import { DiffChanges } from "./diff-changes"
 import { Typewriter } from "./typewriter"
 import { Message, Part } from "./message-part"
+import { ArtifactGallery } from "./attachment-card"
+import { isArtifactOnlyToolPart, primaryToolAttachments } from "./tool-result-presentation"
 import "./session-turn.css"
 import "./tool-renders"
 import { Markdown } from "./markdown"
@@ -262,7 +265,7 @@ export function SessionTurn(
       const msgParts = data.store.part[m.id]
       if (!msgParts) continue
       for (const p of msgParts) {
-        if (p?.type === "tool") return true
+        if (p?.type === "tool" && !isArtifactOnlyToolPart(p)) return true
       }
     }
     return false
@@ -274,7 +277,7 @@ export function SessionTurn(
       const msgParts = data.store.part[m.id]
       if (!msgParts) continue
       for (const p of msgParts) {
-        if (p?.type === "tool") count++
+        if (p?.type === "tool" && !isArtifactOnlyToolPart(p)) count++
       }
     }
     return count
@@ -388,6 +391,24 @@ export function SessionTurn(
     if (!msg || !msg.summary) return undefined
     return msg.metadata?.chroniclerSessionID as string | undefined
   })
+  const primaryResultAttachments = createMemo<FilePart[]>(() => {
+    const attachments: FilePart[] = []
+    for (const m of assistantMessages()) {
+      const msgParts = data.store.part[m.id]
+      if (!msgParts) continue
+      for (const p of msgParts) {
+        if (isArtifactOnlyToolPart(p)) attachments.push(...primaryToolAttachments(p))
+      }
+    }
+    return attachments
+  })
+  const hasPrimaryResultAttachments = createMemo(() => primaryResultAttachments().length > 0)
+  const onlyPrimaryResult = createMemo(
+    () => hasPrimaryResultAttachments() && !response() && !hasDiffs() && !hasSteps() && !chroniclerSessionID(),
+  )
+  const showStepsRow = createMemo(
+    () => working() || hasSteps() || chroniclerSessionID() || (assistantMessages().length > 0 && !onlyPrimaryResult()),
+  )
 
   const injectedContext = createMemo(() => getInjectedContext(message() as UserMessage | undefined))
 
@@ -588,7 +609,7 @@ export function SessionTurn(
                       )}
                     </Show>
                     {/* Steps trigger */}
-                    <Show when={working() || hasSteps() || chroniclerSessionID() || assistantMessages().length > 0}>
+                    <Show when={showStepsRow()}>
                       <div data-slot="session-turn-steps-row">
                         <div
                           data-slot="session-turn-steps-trigger"
@@ -696,15 +717,20 @@ export function SessionTurn(
                       </div>
                     </Show>
                     {/* Response — no label, just content */}
-                    <Show when={!working() && (response() || hasDiffs())}>
+                    <Show when={!working() && (response() || hasDiffs() || hasPrimaryResultAttachments())}>
                       <div data-slot="session-turn-response-section">
-                        <div data-slot="session-turn-response-body">
-                          <Markdown
-                            data-slot="session-turn-markdown"
-                            text={response() ?? ""}
-                            cacheKey={responsePartId()}
-                          />
-                        </div>
+                        <Show when={response()}>
+                          <div data-slot="session-turn-response-body">
+                            <Markdown
+                              data-slot="session-turn-markdown"
+                              text={response() ?? ""}
+                              cacheKey={responsePartId()}
+                            />
+                          </div>
+                        </Show>
+                        <Show when={hasPrimaryResultAttachments()}>
+                          <ArtifactGallery files={primaryResultAttachments()} serverUrl={data.serverUrl} variant="result" />
+                        </Show>
                         <Accordion
                           data-slot="session-turn-accordion"
                           multiple

@@ -45,7 +45,7 @@ During `synergy-plugin build`, the runtime entry is bundled to `dist/runtime/ind
     "data": {
       "session": "none",
       "workspace": "none",
-      "config": "plugin",
+      "config": "none",
       "secrets": "none",
     },
     "network": {
@@ -68,6 +68,8 @@ During `synergy-plugin build`, the runtime entry is bundled to `dist/runtime/ind
   },
 }
 ```
+
+`data.config` may be `none`, `plugin`, or `global`. Use `none` when the plugin does not read Synergy plugin config.
 
 Per-tool capabilities live under `contributes.tools[].capabilities` and are merged with plugin-wide defaults.
 

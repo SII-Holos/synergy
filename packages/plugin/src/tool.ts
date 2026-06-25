@@ -10,10 +10,25 @@ export type ToolContext = {
   ask?(input: { permission: string; patterns: string[]; metadata?: Record<string, any> }): Promise<void>
 }
 
+export interface ToolResultDisplay {
+  /**
+   * `artifact-only` hides the completed tool card and promotes primary
+   * attachments into the final turn response area. Running and failed tool
+   * states still render normally so progress and errors remain visible.
+   */
+  presentation?: "default" | "artifact-only"
+  primaryAttachmentIds?: string[]
+}
+
+export type ToolResultMetadata = Record<string, any> & {
+  display?: ToolResultDisplay
+  primaryAttachmentIds?: string[]
+}
+
 export interface ToolResult {
   title?: string
   output: string
-  metadata?: Record<string, any>
+  metadata?: ToolResultMetadata
   attachments?: Array<{
     type: "file"
     id: string
