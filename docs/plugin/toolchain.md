@@ -59,6 +59,35 @@ metadata: {
 
 The Web client hides the completed tool card and promotes those attachments into the final turn response area. Running and failed states still render as normal tool cards. Use `input.client.asset.upload()` or the public `/asset` route to create `asset://...` URLs; plugins should not import Synergy internal asset modules.
 
+For generated media, also declare display metadata on the tool definition and in `plugin.json`:
+
+```ts
+tool({
+  description: "Generate an image",
+  display: {
+    kind: "media-generation",
+    visibility: "media",
+    presentation: "artifact-only",
+    media: {
+      type: "image",
+      actionLabel: "Create image",
+      pendingTitle: "Generating image",
+      pendingDescription: "Preparing the image...",
+      promptField: "prompt",
+      aspectRatio: "1:1",
+    },
+  },
+  args: {
+    prompt: tool.schema.string(),
+  },
+  async execute(args, context) {
+    // Upload the artifact and return metadata.display.primaryAttachmentIds.
+  },
+})
+```
+
+`media-generation` tools use Synergy's built-in placeholder while running. Completed success states are hidden from the normal step list when they return promoted attachments; error states still render as normal tool cards.
+
 ## create
 
 ```bash

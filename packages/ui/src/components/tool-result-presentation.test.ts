@@ -1,5 +1,12 @@
 import { describe, expect, test } from "bun:test"
-import { isArtifactOnlyToolPart, primaryToolAttachments, toolResultPresentation } from "./tool-result-presentation"
+import {
+  isActiveMediaGenerationToolPart,
+  isArtifactOnlyToolPart,
+  isPromotedToolResultPart,
+  primaryToolAttachments,
+  shouldHideToolPart,
+  toolResultPresentation,
+} from "./tool-result-presentation"
 
 const image = {
   id: "part-image",
@@ -84,5 +91,70 @@ describe("tool result presentation", () => {
     }
 
     expect(primaryToolAttachments(part)).toEqual([text, image])
+  })
+
+  test("hides active media-generation tools for the dedicated media surface", () => {
+    const part = {
+      type: "tool",
+      state: {
+        status: "running",
+        input: { prompt: "make a meme" },
+        metadata: {
+          display: {
+            kind: "media-generation",
+            visibility: "media",
+            media: { type: "image", promptField: "prompt" },
+          },
+        },
+      },
+    }
+
+    expect(isActiveMediaGenerationToolPart(part)).toBe(true)
+    expect(shouldHideToolPart(part)).toBe(true)
+  })
+
+  test("promotes completed media-generation attachments", () => {
+    const part = {
+      type: "tool",
+      state: {
+        status: "completed",
+        metadata: {
+          display: {
+            kind: "media-generation",
+            visibility: "media",
+            presentation: "artifact-only",
+          },
+        },
+        attachments: [image],
+      },
+    }
+
+    expect(isPromotedToolResultPart(part)).toBe(true)
+    expect(shouldHideToolPart(part)).toBe(true)
+    expect(primaryToolAttachments(part)).toEqual([image])
+  })
+
+  test("does not hide media-generation errors or completed media without attachments", () => {
+    expect(
+      shouldHideToolPart({
+        type: "tool",
+        state: {
+          status: "error",
+          metadata: { display: { kind: "media-generation", visibility: "media" } },
+          error: "failed",
+        },
+      }),
+    ).toBe(false)
+
+    expect(
+      shouldHideToolPart({
+        type: "tool",
+        state: {
+          status: "completed",
+          metadata: { display: { kind: "media-generation", visibility: "media" } },
+          attachments: [],
+        },
+      }),
+    ).toBe(false)
   })
 })

@@ -47,7 +47,7 @@ import { checksum } from "@ericsanchezok/synergy-util/encode"
 import { parsePartialJson } from "@ericsanchezok/synergy-util/json"
 import { createAutoScroll, createTypewriter, createAnimatedNumber } from "../hooks"
 import { getApprovalAudit } from "../utils/approval-audit"
-import { isArtifactOnlyToolPart } from "./tool-result-presentation"
+import { shouldHideToolPart } from "./tool-result-presentation"
 
 interface Diagnostic {
   range: {
@@ -1457,7 +1457,7 @@ export function AssistantMessageDisplay(props: { message: AssistantMessage; part
       props.parts.filter((x) => {
         return (
           x.type !== "tool" ||
-          ((x as ToolPart).tool !== "todoread" && (x as ToolPart).tool !== "dagread" && !isArtifactOnlyToolPart(x))
+          ((x as ToolPart).tool !== "todoread" && (x as ToolPart).tool !== "dagread" && !shouldHideToolPart(x))
         )
       }),
     emptyParts,

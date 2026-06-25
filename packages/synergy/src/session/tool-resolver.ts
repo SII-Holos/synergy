@@ -18,6 +18,7 @@ import { Tool } from "@/tool/tool"
 import { ToolRegistry } from "@/tool/registry"
 import { ToolTimeout } from "@/tool/timeout"
 import { ToolExposure } from "@/tool/exposure"
+import type { ToolDisplay } from "@ericsanchezok/synergy-plugin/tool"
 import { Log } from "@/util/log"
 import { TimeoutConfig } from "@/util/timeout-config"
 import { Session } from "."
@@ -55,6 +56,7 @@ export namespace ToolResolver {
   export interface Definition {
     id: string
     exposure?: ToolExposure.Info
+    display?: ToolDisplay
     description: string
     inputSchema: JSONSchema7
     createRuntimeTool?(input: Input): AITool
@@ -800,6 +802,7 @@ export namespace ToolResolver {
       result.push({
         id: item.id,
         exposure: item.exposure,
+        display: item.display,
         description: item.description,
         inputSchema: schema,
         createRuntimeTool(runtimeInput) {

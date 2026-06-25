@@ -84,6 +84,7 @@ Per-tool capabilities live under `contributes.tools[].capabilities` and are merg
         "title": "Greet",
         "description": "Greet a user",
         "exposure": { "mode": "resident" },
+        "display": { "kind": "default" },
         "capabilities": {
           "filesystem": "none",
           "network": false,
@@ -102,6 +103,36 @@ for related low-frequency tools that should be expanded together. Use
 discoverable through `search_tools` and activated explicitly with `expand_tools`.
 
 `synergy-plugin validate --runtime-discovery` imports the descriptor, calls `init()`, reads returned runtime tools, and compares them with `contributes.tools`.
+
+### Tool Display
+
+`contributes.tools[].display` describes host-rendered presentation behavior. It must match the runtime tool definition when the tool uses a non-default display:
+
+```jsonc
+{
+  "name": "generate_image",
+  "description": "Generate an image",
+  "display": {
+    "kind": "media-generation",
+    "visibility": "media",
+    "presentation": "artifact-only",
+    "media": {
+      "type": "image",
+      "actionLabel": "Create image",
+      "pendingTitle": "Generating image",
+      "pendingDescription": "Preparing the image...",
+      "promptField": "prompt",
+      "aspectRatio": "1:1",
+    },
+  },
+}
+```
+
+- `kind: "media-generation"` uses Synergy's built-in image/video/audio generation placeholder while the tool is running.
+- `visibility: "media"` hides running and completed success states from the ordinary tool transcript so the media surface owns the experience.
+- `presentation: "artifact-only"` promotes returned `attachments` into the final answer area instead of showing a completed tool card.
+- `primaryAttachmentIds` may be returned from `metadata.display` at runtime to choose which attachment ids are promoted.
+- Error states are never hidden.
 
 ## UI Contributions
 

@@ -1,4 +1,5 @@
 import type { Info as ScopeInfo } from "../scope/types.js"
+import type { ToolDisplay } from "@ericsanchezok/synergy-plugin/tool"
 
 // === Direction: Host → Plugin ===
 
@@ -58,6 +59,7 @@ export interface IsolatedPluginInputData {
 export interface RuntimeToolDescriptor {
   id: string
   description: string
+  display?: ToolDisplay
   schema?: unknown
   capabilities?: string[]
 }

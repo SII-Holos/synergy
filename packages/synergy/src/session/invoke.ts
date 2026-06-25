@@ -63,6 +63,7 @@ import "../library/chronicler"
 import { ExperienceEncoder } from "../library/experience-encoder"
 import { GitHealth } from "../project/git-health"
 import { BlueprintLoopStore } from "../blueprint/loop-store"
+import type { ToolDisplay } from "@ericsanchezok/synergy-plugin/tool"
 
 export { InvokeInput, resolveInputParts } from "./input"
 
@@ -453,6 +454,7 @@ export namespace SessionInvoke {
 
         const userMetadata = (lastUser.metadata ?? undefined) as Record<string, unknown> | undefined
         const channelPush = !!(userMetadata?.mailbox || userMetadata?.channelPush)
+        const toolDisplayByName = new Map<string, ToolDisplay>()
         const processor = SessionProcessor.create({
           assistantMessage: (await Session.updateMessage({
             id: Identifier.ascending("message"),
@@ -482,6 +484,7 @@ export namespace SessionInvoke {
           sessionID: sessionID,
           model,
           abort,
+          toolDisplay: (toolName) => toolDisplayByName.get(toolName),
         })
 
         // Shallow structural copy: duplicates message/part references but shares
@@ -544,6 +547,10 @@ export namespace SessionInvoke {
           buildAgendaReminder(sessionID, scopeID),
           recallMemory(step, sessionID, scopeID, sessionMessages, isTopSession),
         ])
+
+        for (const def of toolDefinitions) {
+          if (def.display) toolDisplayByName.set(def.id, def.display)
+        }
 
         // Layered system prompt assembly: stable → semi-stable → dynamic
         // This ordering maximizes prompt caching by keeping static content first.

@@ -92,6 +92,37 @@ return {
 
 Running and failed tool states still render normally, so progress, approvals, and errors remain visible.
 
+For image, video, or audio generation tools, declare the display protocol on the tool definition as well. This lets Synergy show its built-in media generation placeholder as soon as the tool starts, then replace it with the promoted attachment when the tool completes:
+
+```ts
+const mediaDisplay = {
+  kind: "media-generation",
+  visibility: "media",
+  presentation: "artifact-only",
+  media: {
+    type: "image",
+    actionLabel: "Create image",
+    pendingTitle: "Generating image",
+    pendingDescription: "Preparing the image...",
+    promptField: "prompt",
+    aspectRatio: "1:1",
+  },
+} as const
+
+tool({
+  description: "Generate an image",
+  display: mediaDisplay,
+  args: {
+    prompt: tool.schema.string(),
+  },
+  async execute(args, context) {
+    // Upload the generated image, then return metadata.display with primaryAttachmentIds.
+  },
+})
+```
+
+Use `visibility: "media"` for tools whose running and completed success states should be represented by the media surface instead of the ordinary tool transcript. Error states still fall back to normal tool cards.
+
 ## Plugin Input
 
 `init(input)` receives runtime services scoped to the active Synergy Scope:
@@ -138,6 +169,9 @@ Each distributable plugin has a root `plugin.json`:
         "name": "greet",
         "title": "Greet",
         "description": "Greet a user by name",
+        "display": {
+          "kind": "default",
+        },
         "capabilities": {
           "filesystem": "none",
           "network": false,

@@ -121,6 +121,26 @@ const ToolExposureDef = z.discriminatedUnion("mode", [
     .strict(),
 ])
 
+const ToolDisplayDef = z
+  .object({
+    kind: z.enum(["default", "media-generation"]).optional(),
+    visibility: z.enum(["default", "media", "hidden-unless-error"]).optional(),
+    presentation: z.enum(["default", "artifact-only"]).optional(),
+    media: z
+      .object({
+        type: z.enum(["image", "video", "audio"]),
+        actionLabel: z.string().min(1).max(80).optional(),
+        pendingTitle: z.string().min(1).max(120).optional(),
+        pendingDescription: z.string().min(1).max(200).optional(),
+        promptField: z.string().min(1).max(64).optional(),
+        aspectRatio: z.enum(["1:1", "4:3", "16:9", "auto"]).optional(),
+      })
+      .strict()
+      .optional(),
+    primaryAttachmentIds: z.array(z.string().min(1)).optional(),
+  })
+  .strict()
+
 const UIContribution = z
   .object({
     entry: z
@@ -266,6 +286,7 @@ export const PluginManifest = z
               category: z.string().optional(),
               kind: z.string().optional(),
               exposure: ToolExposureDef.optional(),
+              display: ToolDisplayDef.optional(),
               capabilities: z
                 .object({
                   filesystem: z.enum(["none", "read", "write"]).optional(),

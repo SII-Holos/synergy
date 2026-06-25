@@ -24,6 +24,7 @@ import type { BunShell } from "./shell"
 import type { ToolDefinition, ToolResult } from "./tool"
 
 export * from "./tool"
+export type { ToolDisplay, ToolMediaDisplay } from "./display"
 export type { ToolResult }
 export * from "./manifest"
 export type { BunShell, BunShellOutput, BunShellPromise, ShellExpression, ShellFunction } from "./shell"

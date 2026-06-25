@@ -59,7 +59,7 @@ import { ScopeContext } from "../scope/context"
 import { ScopedState } from "../scope/scoped-state"
 import { Config } from "../config/config"
 import path from "path"
-import { type ToolDefinition } from "@ericsanchezok/synergy-plugin"
+import { type ToolDefinition, type ToolDisplay } from "@ericsanchezok/synergy-plugin"
 import z from "zod"
 import { Plugin } from "../plugin"
 import { PluginToolId } from "../plugin/ids.js"
@@ -134,12 +134,13 @@ export namespace ToolRegistry {
       const manifest = await Plugin.manifest(plugin.id).catch(() => null)
       for (const [id, def] of Object.entries(plugin.hooks.tool ?? {})) {
         const exposure = pluginToolExposure(def, id, manifest)
+        const display = pluginToolDisplay(def, id, manifest)
         const runtime = getRuntime(plugin.id)
         const runtimeMode = plugin.runtimeMode ?? runtime?.mode ?? "in-process"
         if (runtimeMode !== "in-process") {
-          custom.push(fromRuntimePlugin(id, def, plugin.id, exposure))
+          custom.push(fromRuntimePlugin(id, def, plugin.id, exposure, display))
         } else {
-          custom.push(fromPlugin(id, def, plugin.id, exposure))
+          custom.push(fromPlugin(id, def, plugin.id, exposure, display))
         }
       }
     }
@@ -164,11 +165,42 @@ export namespace ToolRegistry {
     return manifestTool?.exposure as ToolExposure.Info | undefined
   }
 
-  function fromPlugin(id: string, def: ToolDefinition, pluginId?: string, exposure?: ToolExposure.Info): Tool.Info {
+  function pluginToolDisplay(
+    def: ToolDefinition,
+    id: string,
+    manifest: Awaited<ReturnType<typeof Plugin.manifest>>,
+  ): ToolDisplay | undefined {
+    const manifestTool = manifest?.contributes?.tools?.find((tool) => tool.id === id || tool.name === id)
+    const manifestDisplay = manifestTool?.display as ToolDisplay | undefined
+    const explicit = (def as ToolDefinition & { display?: ToolDisplay }).display
+    if (!explicit) return manifestDisplay
+    const media = (
+      manifestDisplay?.media || explicit.media
+        ? {
+            ...manifestDisplay?.media,
+            ...explicit.media,
+          }
+        : undefined
+    ) as ToolDisplay["media"]
+    return {
+      ...manifestDisplay,
+      ...explicit,
+      ...(media ? { media } : {}),
+    }
+  }
+
+  function fromPlugin(
+    id: string,
+    def: ToolDefinition,
+    pluginId?: string,
+    exposure?: ToolExposure.Info,
+    display?: ToolDisplay,
+  ): Tool.Info {
     const fullId = pluginId ? PluginToolId.format(pluginId, id) : id
     return {
       id: fullId,
       exposure,
+      display: display ?? (def as ToolDefinition & { display?: ToolDisplay }).display,
       init: async (initCtx) => ({
         parameters: z.object(def.args),
         description: def.description,
@@ -194,11 +226,13 @@ export namespace ToolRegistry {
     def: ToolDefinition,
     pluginId: string,
     exposure?: ToolExposure.Info,
+    display?: ToolDisplay,
   ): Tool.Info {
     const fullId = PluginToolId.format(pluginId, id)
     return {
       id: fullId,
       exposure,
+      display: display ?? (def as ToolDefinition & { display?: ToolDisplay }).display,
       init: async (initCtx) => ({
         parameters: z.object(def.args),
         description: def.description,
@@ -387,7 +421,7 @@ export namespace ToolRegistry {
       tools.map(async (t) => {
         using _ = log.time(t.id)
         const def = await t.init({ agent })
-        return { id: t.id, exposure: ToolExposure.normalize(t.id, t.exposure), ...def }
+        return { id: t.id, exposure: ToolExposure.normalize(t.id, t.exposure), display: t.display, ...def }
       }),
     )
 

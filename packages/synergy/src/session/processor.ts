@@ -18,6 +18,7 @@ import { ExperienceEncoder } from "@/library/experience-encoder"
 import { Question } from "@/question"
 import { ToolTimeout } from "@/tool/timeout"
 import { Observability } from "@/observability"
+import type { ToolDisplay } from "@ericsanchezok/synergy-plugin/tool"
 
 export namespace SessionProcessor {
   const DOOM_LOOP_THRESHOLD = 3
@@ -54,6 +55,7 @@ export namespace SessionProcessor {
     sessionID: string
     model: Provider.Model
     abort: AbortSignal
+    toolDisplay?: (toolName: string) => ToolDisplay | undefined
   }) {
     const toolcalls: Record<string, MessageV2.ToolPart> = {}
     const pendingExecutions = new Map<string, Promise<ToolOutcome>>()
@@ -77,6 +79,34 @@ export namespace SessionProcessor {
       }
       return part.state.time.start
     }
+
+    function providerMetadataObject(metadata: unknown): Record<string, any> | undefined {
+      if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) return undefined
+      return metadata as Record<string, any>
+    }
+
+    function runningToolMetadata(toolName: string, providerMetadata: unknown): Record<string, any> | undefined {
+      const metadata = providerMetadataObject(providerMetadata)
+      const display = input.toolDisplay?.(toolName)
+      if (!display) return metadata
+      const existingDisplay = metadata?.display as { media?: Record<string, any> } | undefined
+      const media =
+        existingDisplay?.media || display.media
+          ? {
+              ...existingDisplay?.media,
+              ...display.media,
+            }
+          : undefined
+      return {
+        ...metadata,
+        display: {
+          ...metadata?.display,
+          ...display,
+          ...(media ? { media } : {}),
+        },
+      }
+    }
+
     async function settleToolPart(part: MessageV2.ToolPart, outcome: ToolOutcome) {
       const startTime = toolStartTime(part)
       await Observability.emit("tool.settle.start", {
@@ -273,6 +303,7 @@ export namespace SessionProcessor {
 
                 case "tool-call": {
                   const match = toolcalls[value.toolCallId]
+                  const display = input.toolDisplay?.(value.toolName)
                   const part = await Session.updatePart({
                     ...(match ?? {
                       id: Identifier.ascending("part"),
@@ -285,6 +316,8 @@ export namespace SessionProcessor {
                     state: {
                       status: "running",
                       input: value.input,
+                      title: display?.media?.pendingTitle,
+                      metadata: runningToolMetadata(value.toolName, value.providerMetadata),
                       time: {
                         start: Date.now(),
                       },
