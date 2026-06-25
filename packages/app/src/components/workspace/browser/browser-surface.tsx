@@ -43,6 +43,7 @@ export function BrowserSurface(props: { sessionID: string; routeDirectory?: stri
   let composing = false
   let pendingFitFrame: number | undefined
   let lastFitViewportKey = ""
+  let lastWebRTCResizeKey = ""
 
   const browser = useBrowser()
   const platform = usePlatform()
@@ -149,6 +150,21 @@ export function BrowserSurface(props: { sessionID: string; routeDirectory?: stri
     browser.viewportMode()
     browser.activeTabId()
     scheduleFitViewport()
+  })
+
+  createEffect(() => {
+    if (!webrtcPresentation()) {
+      lastWebRTCResizeKey = ""
+      return
+    }
+    const tabId = browser.activeTabId()
+    const width = browser.viewportWidth()
+    const height = browser.viewportHeight()
+    if (!tabId) return
+    const key = `${tabId}:${width}x${height}`
+    if (key === lastWebRTCResizeKey) return
+    lastWebRTCResizeKey = key
+    webrtcClient?.sendInput({ type: "input.resize", tabId, width, height })
   })
 
   function syncNativeNavigation(tabId: string, url?: string) {

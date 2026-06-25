@@ -142,7 +142,11 @@ export class BrowserWebRTCHost {
               callback({})
               return
             }
-            callback({ video: source })
+            callback({
+              video: source,
+              audio: this.browserWindow?.webContents.mainFrame,
+              enableLocalEcho: true,
+            })
           })
           .catch(() => callback({}))
       },
@@ -611,13 +615,13 @@ function send(message) {
 async function startCapture() {
   if (stream) return stream
   if (streamPromise) return streamPromise
-  streamPromise = navigator.mediaDevices.getDisplayMedia({
-    audio: false,
-    video: {
-      width: { ideal: ${this.options.width ?? 1280} },
-      height: { ideal: ${this.options.height ?? 720} },
-      frameRate: { ideal: 60, max: 60 }
-    }
+  const video = {
+    width: { ideal: ${this.options.width ?? 1280} },
+    height: { ideal: ${this.options.height ?? 720} },
+    frameRate: { ideal: 60, max: 60 }
+  }
+  streamPromise = navigator.mediaDevices.getDisplayMedia({ audio: true, video }).catch(() => {
+    return navigator.mediaDevices.getDisplayMedia({ audio: false, video })
   }).then((nextStream) => {
     stream = nextStream
     preview.srcObject = stream

@@ -49,6 +49,8 @@ export class BrowserWebRTCClient {
   private pc: RTCPeerConnection | null = null
   private input: RTCDataChannel | null = null
   private closed = false
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null
+  private negotiating: Promise<void> | null = null
 
   constructor(private options: BrowserWebRTCClientOptions) {}
 
@@ -56,6 +58,26 @@ export class BrowserWebRTCClient {
     if (this.closed) throw new Error("Browser WebRTC client is closed")
     this.options.onStatus?.("signaling")
 
+    this.createPeer()
+    this.connectSignaling()
+  }
+
+  sendInput(payload: unknown): void {
+    if (this.input?.readyState !== "open") return
+    this.input.send(JSON.stringify(payload))
+  }
+
+  close(): void {
+    this.closed = true
+    if (this.reconnectTimer) clearTimeout(this.reconnectTimer)
+    this.sendSignal({ type: "webrtc.close", tabId: this.options.tabId })
+    this.closePeer()
+    this.ws?.close()
+    this.ws = null
+  }
+
+  private createPeer(): RTCPeerConnection {
+    if (this.pc) return this.pc
     const pc = new RTCPeerConnection(this.options.rtcConfiguration)
     this.pc = pc
     pc.addTransceiver("video", { direction: "recvonly" })
@@ -66,25 +88,30 @@ export class BrowserWebRTCClient {
       const stream = event.streams[0] ?? new MediaStream([event.track])
       this.options.onStream?.(stream)
     }
+    pc.onicecandidate = (event) => {
+      if (!event.candidate) return
+      this.sendSignal({
+        type: "webrtc.ice",
+        tabId: this.options.tabId,
+        candidate: event.candidate.toJSON(),
+      })
+    }
     pc.onconnectionstatechange = () => {
       if (pc.connectionState === "connected") this.options.onStatus?.("connected")
       if (pc.connectionState === "failed") this.options.onStatus?.("error", { connectionState: pc.connectionState })
       if (pc.connectionState === "closed") this.options.onStatus?.("closed")
     }
+    return pc
+  }
 
+  private connectSignaling(): void {
+    if (this.closed) return
+    this.options.onStatus?.("signaling")
     const ws = new WebSocket(this.options.signalingUrl)
     this.ws = ws
 
     ws.addEventListener("open", () => {
-      pc.onicecandidate = (event) => {
-        if (!event.candidate) return
-        this.sendSignal({
-          type: "webrtc.ice",
-          tabId: this.options.tabId,
-          candidate: event.candidate.toJSON(),
-        })
-      }
-      void this.negotiate()
+      this.createPeer()
     })
 
     ws.addEventListener("message", (event) => {
@@ -92,7 +119,9 @@ export class BrowserWebRTCClient {
     })
 
     ws.addEventListener("close", () => {
+      if (this.ws === ws) this.ws = null
       this.options.onStatus?.("closed")
+      if (!this.closed) this.reconnectTimer = setTimeout(() => this.connectSignaling(), 1000)
     })
 
     ws.addEventListener("error", (event) => {
@@ -100,25 +129,28 @@ export class BrowserWebRTCClient {
     })
   }
 
-  sendInput(payload: unknown): void {
-    if (this.input?.readyState !== "open") return
-    this.input.send(JSON.stringify(payload))
-  }
-
-  close(): void {
-    this.closed = true
-    this.sendSignal({ type: "webrtc.close", tabId: this.options.tabId })
+  private closePeer(): void {
     this.input?.close()
     this.pc?.close()
-    this.ws?.close()
     this.input = null
     this.pc = null
-    this.ws = null
   }
 
   private async negotiate(): Promise<void> {
-    const pc = this.pc
-    if (!pc) return
+    if (this.negotiating) return this.negotiating
+    this.negotiating = this.negotiateOnce().finally(() => {
+      this.negotiating = null
+    })
+    return this.negotiating
+  }
+
+  private async negotiateOnce(): Promise<void> {
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return
+    let pc = this.createPeer()
+    if (pc.signalingState !== "stable") {
+      this.closePeer()
+      pc = this.createPeer()
+    }
     this.options.onStatus?.("negotiating")
     const offer = await pc.createOffer()
     await pc.setLocalDescription(offer)
@@ -135,6 +167,10 @@ export class BrowserWebRTCClient {
     }
 
     this.options.onMessage?.(msg)
+    if (msg.type === "webrtc.host.ready") {
+      await this.negotiate()
+      return
+    }
     if (msg.type === "webrtc.answer" && typeof msg.sdp === "string") {
       await this.pc?.setRemoteDescription({ type: "answer", sdp: msg.sdp })
       return
