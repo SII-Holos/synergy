@@ -1,4 +1,4 @@
-import { BrowserWindow, ipcMain } from "electron"
+import { BrowserWindow, desktopCapturer, ipcMain } from "electron"
 
 export interface BrowserWebRTCHostOptions {
   serverUrl: string
@@ -38,9 +38,11 @@ export class BrowserWebRTCHost {
   private browserWindow: BrowserWindow | null = null
   private rtcWindow: BrowserWindow | null = null
   private inputChannel: string
+  private readonly browserWindowTitle: string
 
   constructor(private options: BrowserWebRTCHostOptions) {
     this.inputChannel = `browser-host:${options.tabId}:input`
+    this.browserWindowTitle = `Synergy Browser Host ${options.sessionID} ${options.tabId}`
   }
 
   async start(): Promise<void> {
@@ -49,17 +51,23 @@ export class BrowserWebRTCHost {
     const signalingUrl = createHostSignalingUrl(this.options)
 
     this.browserWindow = new BrowserWindow({
-      show: false,
+      show: process.env.SYNERGY_BROWSER_HOST_SHOW !== "0",
       width,
       height,
+      title: this.browserWindowTitle,
+      skipTaskbar: true,
+      backgroundColor: "#111214",
       webPreferences: {
-        offscreen: true,
         contextIsolation: true,
         nodeIntegration: false,
         sandbox: true,
       },
     })
-    this.browserWindow.webContents.setFrameRate(60)
+    this.browserWindow.setMenuBarVisibility(false)
+    this.browserWindow.webContents.on("page-title-updated", (event) => {
+      event.preventDefault()
+      this.browserWindow?.setTitle(this.browserWindowTitle)
+    })
 
     this.rtcWindow = new BrowserWindow({
       show: false,
@@ -71,17 +79,24 @@ export class BrowserWebRTCHost {
         sandbox: false,
       },
     })
-
-    this.browserWindow.webContents.on("paint", (_event, _dirty, image) => {
-      const target = this.rtcWindow?.webContents
-      if (!target || target.isDestroyed()) return
-      const size = image.getSize()
-      target.send("browser-host:frame", {
-        width: size.width,
-        height: size.height,
-        png: image.toPNG(),
-      })
-    })
+    this.rtcWindow.webContents.session.setDisplayMediaRequestHandler(
+      (_request, callback) => {
+        desktopCapturer
+          .getSources({ types: ["window"], thumbnailSize: { width: 0, height: 0 }, fetchWindowIcons: false })
+          .then((sources) => {
+            const source =
+              sources.find((item) => item.name === this.browserWindowTitle) ??
+              sources.find((item) => item.name.includes(this.options.tabId))
+            if (!source) {
+              callback({})
+              return
+            }
+            callback({ video: source })
+          })
+          .catch(() => callback({}))
+      },
+      { useSystemPicker: false },
+    )
 
     ipcMain.on(this.inputChannel, (_event, payload) => {
       this.dispatchInput(payload as Record<string, unknown>)
@@ -174,26 +189,48 @@ export class BrowserWebRTCHost {
     return `<!doctype html>
 <html>
 <body style="margin:0;overflow:hidden;background:#111">
-<canvas id="browser" width="${this.options.width ?? 1280}" height="${this.options.height ?? 720}"></canvas>
+<video id="preview" autoplay muted playsinline style="width:1px;height:1px;opacity:0;position:fixed;left:-10px;top:-10px"></video>
 <script>
 const { ipcRenderer } = require("electron")
 const signalingUrl = ${JSON.stringify(signalingUrl)}
 const tabId = ${JSON.stringify(this.options.tabId)}
 const inputChannel = ${JSON.stringify(this.inputChannel)}
-const canvas = document.getElementById("browser")
-const ctx = canvas.getContext("2d", { alpha: false })
+const preview = document.getElementById("preview")
 let pc = null
 let ws = null
-let stream = canvas.captureStream(60)
+let streamPromise = null
+let stream = null
 
 function send(message) {
   if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(message))
 }
 
-function ensurePeer() {
+async function startCapture() {
+  if (stream) return stream
+  if (streamPromise) return streamPromise
+  streamPromise = navigator.mediaDevices.getDisplayMedia({
+    audio: false,
+    video: {
+      width: { ideal: ${this.options.width ?? 1280} },
+      height: { ideal: ${this.options.height ?? 720} },
+      frameRate: { ideal: 60, max: 60 }
+    }
+  }).then((nextStream) => {
+    stream = nextStream
+    preview.srcObject = stream
+    void preview.play().catch(() => {})
+    return stream
+  }).finally(() => {
+    streamPromise = null
+  })
+  return streamPromise
+}
+
+async function ensurePeer() {
   if (pc) return pc
+  const mediaStream = await startCapture()
   pc = new RTCPeerConnection()
-  for (const track of stream.getTracks()) pc.addTrack(track, stream)
+  for (const track of mediaStream.getTracks()) pc.addTrack(track, mediaStream)
   pc.onicecandidate = (event) => {
     if (event.candidate) send({ type: "webrtc.ice", tabId, candidate: event.candidate.toJSON() })
   }
@@ -209,7 +246,7 @@ function ensurePeer() {
 
 async function handleSignal(message) {
   if (message.type === "webrtc.offer") {
-    const peer = ensurePeer()
+    const peer = await ensurePeer()
     await peer.setRemoteDescription({ type: "offer", sdp: message.sdp })
     const answer = await peer.createAnswer()
     await peer.setLocalDescription(answer)
@@ -223,17 +260,12 @@ async function handleSignal(message) {
   if (message.type === "webrtc.close" && pc) {
     pc.close()
     pc = null
+    if (stream) {
+      for (const track of stream.getTracks()) track.stop()
+      stream = null
+    }
   }
 }
-
-ipcRenderer.on("browser-host:frame", async (_event, frame) => {
-  const blob = new Blob([frame.png], { type: "image/png" })
-  const bitmap = await createImageBitmap(blob)
-  if (canvas.width !== frame.width) canvas.width = frame.width
-  if (canvas.height !== frame.height) canvas.height = frame.height
-  ctx.drawImage(bitmap, 0, 0, frame.width, frame.height)
-  if (typeof bitmap.close === "function") bitmap.close()
-})
 
 function connect() {
   ws = new WebSocket(signalingUrl)
