@@ -6,12 +6,14 @@ import {
   type BrowserNativeAttachRequest,
   type BrowserNativeBounds,
 } from "./browser-native-view.js"
+import { BrowserWebRTCHost } from "./browser-webrtc-host.js"
 
 const dirname = path.dirname(fileURLToPath(import.meta.url))
 const appURL = process.env.SYNERGY_DESKTOP_APP_URL ?? "http://localhost:3000"
 
 let mainWindow: BrowserWindow | null = null
 let nativeViews: BrowserNativeViewManager | null = null
+let browserHost: BrowserWebRTCHost | null = null
 
 async function createWindow() {
   mainWindow = new BrowserWindow({
@@ -42,6 +44,30 @@ async function createWindow() {
   await mainWindow.loadURL(appURL)
 }
 
+async function createBrowserHost() {
+  const serverUrl = process.env.SYNERGY_BROWSER_HOST_SERVER_URL
+  const sessionID = process.env.SYNERGY_BROWSER_HOST_SESSION_ID
+  const tabId = process.env.SYNERGY_BROWSER_HOST_TAB_ID
+
+  if (!serverUrl || !sessionID || !tabId) {
+    throw new Error("Browser Host mode requires SYNERGY_BROWSER_HOST_SERVER_URL, SESSION_ID, and TAB_ID")
+  }
+
+  browserHost = new BrowserWebRTCHost({
+    serverUrl,
+    sessionID,
+    tabId,
+    routeDirectory: process.env.SYNERGY_BROWSER_HOST_ROUTE_DIRECTORY,
+    directory: process.env.SYNERGY_BROWSER_HOST_DIRECTORY,
+    scopeID: process.env.SYNERGY_BROWSER_HOST_SCOPE_ID,
+    scopeKey: process.env.SYNERGY_BROWSER_HOST_SCOPE_KEY,
+    url: process.env.SYNERGY_BROWSER_HOST_URL,
+    width: Number(process.env.SYNERGY_BROWSER_HOST_WIDTH ?? 1280),
+    height: Number(process.env.SYNERGY_BROWSER_HOST_HEIGHT ?? 720),
+  })
+  await browserHost.start()
+}
+
 ipcMain.handle("browser-native:attach", async (_event, input: BrowserNativeAttachRequest) => {
   await nativeViews?.attach(input)
 })
@@ -63,8 +89,18 @@ app.on("window-all-closed", () => {
 })
 
 app.on("activate", () => {
+  if (process.env.SYNERGY_DESKTOP_MODE === "browser-host") return
   if (!mainWindow) void createWindow()
 })
 
+app.on("before-quit", () => {
+  browserHost?.destroy()
+  browserHost = null
+})
+
 await app.whenReady()
-await createWindow()
+if (process.env.SYNERGY_DESKTOP_MODE === "browser-host") {
+  await createBrowserHost()
+} else {
+  await createWindow()
+}

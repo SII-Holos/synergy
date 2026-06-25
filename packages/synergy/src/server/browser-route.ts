@@ -9,6 +9,7 @@ import { upgradeWebSocket } from "hono/bun"
 import { Log } from "../util/log"
 import { BrowserOwner } from "../browser/owner.js"
 import { BrowserControl } from "../browser/control.js"
+import { BrowserElectronHostProcess } from "../browser/electron-host-process.js"
 import { BrowserHost } from "../browser/host.js"
 import { BrowserWebRTCSignaling } from "../browser/webrtc-signaling.js"
 import { ScopeContext } from "../scope/context"
@@ -115,6 +116,15 @@ function isCrossOriginRequest(c: { req: { header(name: string): string | undefin
 function isLegacyStreamRequest(c: BrowserRouteContext): boolean {
   const query = c.req.query("legacyStream")
   return query === "1" || query === "true" || process.env.SYNERGY_BROWSER_LEGACY_STREAM === "1"
+}
+
+function requestOrigin(c: { req: { url: string; header(name: string): string | undefined } }): string {
+  try {
+    return new URL(c.req.url).origin
+  } catch {
+    const host = c.req.header("host") ?? "localhost"
+    return `http://${host}`
+  }
 }
 
 function routeState(c: BrowserRouteContext): BrowserRouteState {
@@ -284,6 +294,13 @@ export const BrowserRoute = new Hono()
           if (tabId) {
             attachedTabId = tabId
             BrowserWebRTCSignaling.attachViewer(state.owner, tabId, ws)
+            BrowserElectronHostProcess.ensure({
+              owner: state.owner,
+              tabId,
+              serverUrl: requestOrigin(c),
+              routeDirectory: state.directory,
+              url: session.activeTab?.url,
+            })
           }
           send(ws, {
             type: "webrtc.signaling.ready",
