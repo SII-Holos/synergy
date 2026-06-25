@@ -1,22 +1,22 @@
 type BrowserDebugDetails = Record<string, unknown>
 
 function browserDebugEnabled() {
-  if (import.meta.env.DEV) return true
+  if (import.meta.env.MODE === "test") return false
   if (typeof window === "undefined") return false
   try {
-    return window.localStorage.getItem("synergy.browser.debug") === "1"
+    return window.localStorage.getItem("synergy.browser.debug") !== "0"
   } catch {
-    return false
+    return true
   }
 }
 
 export function browserDebug(event: string, details?: BrowserDebugDetails) {
   if (!browserDebugEnabled()) return
   if (details) {
-    console.debug(`[browser] ${event}`, details)
+    console.log(`[browser] ${event}`, details)
     return
   }
-  console.debug(`[browser] ${event}`)
+  console.log(`[browser] ${event}`)
 }
 
 export function summarizeBrowserMessage(msg: Record<string, unknown>): BrowserDebugDetails {
