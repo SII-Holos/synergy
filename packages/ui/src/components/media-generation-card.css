@@ -22,7 +22,7 @@
   padding: 5px 9px;
   border: 1px solid var(--border-base);
   border-radius: var(--radius-full);
-  background: var(--surface-base);
+  background: var(--workbench-control-bg, var(--surface-base));
   color: var(--text-strong);
   font-size: var(--font-size-small);
   font-weight: var(--font-weight-medium);
@@ -62,7 +62,12 @@
   overflow: hidden;
   border: 1px solid var(--border-base);
   border-radius: 8px;
-  background: linear-gradient(110deg, var(--surface-base) 0%, var(--surface-raised-base) 44%, var(--surface-base) 100%);
+  background: linear-gradient(
+    110deg,
+    var(--workbench-card-bg, var(--surface-base)) 0%,
+    var(--workbench-control-bg, var(--surface-raised-base)) 44%,
+    var(--workbench-card-bg, var(--surface-base)) 100%
+  );
   isolation: isolate;
 }
 
@@ -103,9 +108,9 @@
   background: linear-gradient(
     100deg,
     transparent 0%,
-    color-mix(in srgb, var(--surface-raised-base) 0%, transparent) 22%,
+    color-mix(in srgb, var(--workbench-control-bg, var(--surface-raised-base)) 0%, transparent) 22%,
     color-mix(in srgb, var(--text-base) 7%, transparent) 50%,
-    color-mix(in srgb, var(--surface-raised-base) 0%, transparent) 78%,
+    color-mix(in srgb, var(--workbench-control-bg, var(--surface-raised-base)) 0%, transparent) 78%,
     transparent 100%
   );
   animation: media-generation-shimmer 2.6s ease-in-out infinite;

@@ -60,7 +60,7 @@ export function MarketplacePage() {
   })
 
   return (
-    <div class="flex flex-col h-full min-h-0">
+    <div class="synergy-workbench-canvas flex flex-col h-full min-h-0 bg-background-stronger text-text-base">
       {/* ── Header ── */}
       <div class="shrink-0 px-6 pt-6 pb-3 flex flex-col gap-3.5 border-b border-border-weaker-base/40">
         <div class="flex items-center gap-2">
@@ -75,7 +75,7 @@ export function MarketplacePage() {
                 type="button"
                 classList={{
                   "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-12-medium transition-colors": true,
-                  "bg-surface-raised-base text-text-strong shadow-sm": source() === item,
+                  "workbench-selected-surface bg-surface-raised-base text-text-strong shadow-sm": source() === item,
                   "text-text-weak hover:text-text-base": source() !== item,
                 }}
                 onClick={() => setSource(item)}

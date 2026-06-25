@@ -100,27 +100,81 @@ a:active,
   100% {
     opacity: 1;
     box-shadow:
-      0 0 0 1px var(--surface-raised-base),
-      0 0 0 2px color-mix(in srgb, currentColor 12%, transparent);
+      0 0 0 1px var(--workbench-control-bg, var(--surface-raised-base)),
+      0 0 0 2px color-mix(in srgb, currentColor 8%, transparent);
   }
   50% {
-    opacity: 0.78;
+    opacity: 0.72;
     box-shadow:
-      0 0 0 1px var(--surface-raised-base),
-      0 0 0 2.5px color-mix(in srgb, currentColor 8%, transparent);
+      0 0 0 1px var(--workbench-control-bg, var(--surface-raised-base)),
+      0 0 0 2px color-mix(in srgb, currentColor 5%, transparent);
   }
 }
 
 .statusbar-glass {
   position: relative;
-  background: var(--surface-raised-base);
-  border: 1px solid var(--border-weaker-base);
-  box-shadow: var(--shadow-xs);
+  background: var(--workbench-control-bg, var(--surface-raised-base));
+  border: 1px solid var(--workbench-border, var(--border-weaker-base));
+  box-shadow: none;
 }
 
 .statusbar-glass > * {
   position: relative;
   z-index: 1;
+}
+
+.synergy-workbench-canvas {
+  --workbench-canvas-bg: light-dark(rgb(243 244 246), rgb(24 24 27));
+  --workbench-panel-bg: light-dark(rgb(239 240 242), rgb(34 34 36));
+  --workbench-panel-bg-hover: light-dark(rgb(232 234 237), rgb(42 42 45));
+  --workbench-card-bg: light-dark(rgb(233 235 239), rgb(52 52 54));
+  --workbench-card-bg-hover: light-dark(rgb(226 229 234), rgb(60 60 63));
+  --workbench-card-secondary-bg: light-dark(rgb(228 231 235), rgb(48 48 51));
+  --workbench-control-bg: light-dark(rgb(228 231 235), rgb(64 64 67));
+  --workbench-control-bg-hover: light-dark(rgb(219 223 229), rgb(72 72 75));
+  --workbench-selected-bg: light-dark(rgb(213 219 228), rgb(78 78 82));
+  --workbench-selected-bg-hover: light-dark(rgb(205 212 222), rgb(86 86 90));
+  --workbench-border: light-dark(rgba(17, 24, 39, 0.08), rgba(244, 244, 245, 0.08));
+  background-color: var(--workbench-canvas-bg);
+}
+
+.synergy-workbench-canvas :where(.bg-background-stronger) {
+  background-color: var(--workbench-canvas-bg);
+}
+
+.synergy-workbench-canvas :where(.bg-background-base) {
+  background-color: var(--workbench-panel-bg);
+}
+
+.synergy-workbench-canvas :where(.bg-surface-raised-base, .bg-surface-base, .bg-surface-raised-stronger-non-alpha) {
+  background-color: var(--workbench-card-bg);
+}
+
+.synergy-workbench-canvas
+  :where(.bg-surface-inset-base, .bg-surface-raised-base-hover, .bg-surface-raised-stronger-hover) {
+  background-color: var(--workbench-control-bg);
+}
+
+.synergy-workbench-canvas
+  :where(
+    .hover\:bg-surface-raised-base-hover:hover,
+    .hover\:bg-surface-inset-base:hover,
+    .hover\:bg-surface-raised-stronger-hover:hover,
+    .hover\:bg-background-base:hover
+  ) {
+  background-color: var(--workbench-control-bg-hover);
+}
+
+.synergy-workbench-canvas :where(.shadow-sm, .shadow-xs) {
+  box-shadow: none;
+}
+
+.synergy-workbench-canvas :where(.workbench-selected-surface) {
+  background-color: var(--workbench-selected-bg);
+}
+
+.synergy-workbench-canvas :where(.workbench-selected-surface:hover) {
+  background-color: var(--workbench-selected-bg-hover);
 }
 .statusbar-indicator-value {
   display: inline-block;

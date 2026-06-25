@@ -105,7 +105,7 @@
     justify-content: center;
     padding: 3px;
     border-radius: var(--radius-full);
-    background: var(--surface-base);
+    background: var(--workbench-control-bg, var(--surface-base));
     border: none;
     color: var(--text-weak);
     cursor: pointer;
@@ -114,7 +114,7 @@
       color var(--motion-duration-base) var(--motion-ease-standard);
 
     &:hover {
-      background: var(--surface-hover-base);
+      background: var(--workbench-control-bg-hover, var(--surface-hover-base));
       color: var(--text-base);
     }
   }
@@ -125,7 +125,7 @@
     gap: 6px;
     padding: 3px 8px;
     border-radius: var(--radius-full);
-    background: var(--surface-base);
+    background: var(--workbench-control-bg, var(--surface-base));
     font-size: var(--font-size-small);
     line-height: var(--line-height-large);
     color: var(--text-weak);
@@ -141,7 +141,7 @@
     }
 
     &[data-expandable="true"]:hover {
-      background: var(--surface-hover-base);
+      background: var(--workbench-control-bg-hover, var(--surface-hover-base));
       color: var(--text-base);
     }
 

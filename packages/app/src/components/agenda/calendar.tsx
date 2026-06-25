@@ -14,7 +14,7 @@ import {
 export type ViewMode = "day" | "week" | "month"
 
 const HOUR_HEIGHT = 58
-const TIME_COL = 68
+const TIME_COL = 78
 const HOURS = Array.from({ length: 24 }, (_, i) => i)
 const EVENT_DURATION_MS = 30 * 60_000
 const MONTH_MAX_EVENTS = 4

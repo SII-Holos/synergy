@@ -275,7 +275,7 @@ export function PluginDetailPage() {
   const pluginData = () => summary()
 
   return (
-    <div class="flex flex-col h-full min-h-0">
+    <div class="synergy-workbench-canvas flex flex-col h-full min-h-0 bg-background-stronger text-text-base">
       {/* ── Header ── */}
       <div class="shrink-0 px-6 pt-6 pb-3 border-b border-border-weaker-base/40">
         <div class="flex items-start justify-between gap-3">

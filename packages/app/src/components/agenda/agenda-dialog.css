@@ -207,13 +207,13 @@
 }
 
 .agenda-main-surface {
-  --agenda-panel-bg: light-dark(rgb(239 240 242), rgb(34 34 36));
-  --agenda-panel-bg-hover: light-dark(rgb(232 234 237), rgb(42 42 45));
-  --agenda-content-bg: light-dark(rgb(233 235 239), rgb(52 52 54));
-  --agenda-content-bg-hover: light-dark(rgb(226 229 234), rgb(60 60 63));
-  --agenda-control-bg: light-dark(rgb(228 231 235), rgb(64 64 67));
-  --agenda-control-bg-hover: light-dark(rgb(219 223 229), rgb(72 72 75));
-  --agenda-grid-bg: light-dark(rgb(236 238 241), rgb(38 38 40));
+  --agenda-panel-bg: var(--workbench-panel-bg, light-dark(rgb(239 240 242), rgb(34 34 36)));
+  --agenda-panel-bg-hover: var(--workbench-panel-bg-hover, light-dark(rgb(232 234 237), rgb(42 42 45)));
+  --agenda-content-bg: var(--workbench-card-bg, light-dark(rgb(233 235 239), rgb(52 52 54)));
+  --agenda-content-bg-hover: var(--workbench-card-bg-hover, light-dark(rgb(226 229 234), rgb(60 60 63)));
+  --agenda-control-bg: var(--workbench-control-bg, light-dark(rgb(228 231 235), rgb(64 64 67)));
+  --agenda-control-bg-hover: var(--workbench-control-bg-hover, light-dark(rgb(219 223 229), rgb(72 72 75)));
+  --agenda-grid-bg: var(--workbench-panel-bg, light-dark(rgb(236 238 241), rgb(38 38 40)));
 
   border-radius: 14px;
   background: var(--agenda-panel-bg);
@@ -226,13 +226,13 @@
 }
 
 .agenda-calendar-frame {
-  --agenda-panel-bg: light-dark(rgb(239 240 242), rgb(34 34 36));
-  --agenda-panel-bg-hover: light-dark(rgb(232 234 237), rgb(42 42 45));
-  --agenda-content-bg: light-dark(rgb(233 235 239), rgb(52 52 54));
-  --agenda-content-bg-hover: light-dark(rgb(226 229 234), rgb(60 60 63));
-  --agenda-control-bg: light-dark(rgb(228 231 235), rgb(64 64 67));
-  --agenda-control-bg-hover: light-dark(rgb(219 223 229), rgb(72 72 75));
-  --agenda-grid-bg: light-dark(rgb(236 238 241), rgb(38 38 40));
+  --agenda-panel-bg: var(--workbench-panel-bg, light-dark(rgb(239 240 242), rgb(34 34 36)));
+  --agenda-panel-bg-hover: var(--workbench-panel-bg-hover, light-dark(rgb(232 234 237), rgb(42 42 45)));
+  --agenda-content-bg: var(--workbench-card-bg, light-dark(rgb(233 235 239), rgb(52 52 54)));
+  --agenda-content-bg-hover: var(--workbench-card-bg-hover, light-dark(rgb(226 229 234), rgb(60 60 63)));
+  --agenda-control-bg: var(--workbench-control-bg, light-dark(rgb(228 231 235), rgb(64 64 67)));
+  --agenda-control-bg-hover: var(--workbench-control-bg-hover, light-dark(rgb(219 223 229), rgb(72 72 75)));
+  --agenda-grid-bg: var(--workbench-panel-bg, light-dark(rgb(236 238 241), rgb(38 38 40)));
 
   border-radius: 14px;
   background: var(--agenda-panel-bg);
@@ -255,20 +255,20 @@
 }
 
 .agenda-grid-scroll {
-  padding-left: 10px;
+  padding-left: 16px;
   border-bottom-right-radius: 14px;
   border-bottom-left-radius: 14px;
 }
 
 .agenda-time-header {
-  padding-left: 10px;
+  padding-left: 16px;
 }
 
 .agenda-activity-surface {
-  --agenda-content-bg: light-dark(rgb(233 235 239), rgb(52 52 54));
-  --agenda-content-bg-hover: light-dark(rgb(226 229 234), rgb(60 60 63));
-  --agenda-control-bg: light-dark(rgb(228 231 235), rgb(64 64 67));
-  --agenda-control-bg-hover: light-dark(rgb(219 223 229), rgb(72 72 75));
+  --agenda-content-bg: var(--workbench-card-bg, light-dark(rgb(233 235 239), rgb(52 52 54)));
+  --agenda-content-bg-hover: var(--workbench-card-bg-hover, light-dark(rgb(226 229 234), rgb(60 60 63)));
+  --agenda-control-bg: var(--workbench-control-bg, light-dark(rgb(228 231 235), rgb(64 64 67)));
+  --agenda-control-bg-hover: var(--workbench-control-bg-hover, light-dark(rgb(219 223 229), rgb(72 72 75)));
 }
 
 .agenda-main-surface .bg-surface-raised-base,

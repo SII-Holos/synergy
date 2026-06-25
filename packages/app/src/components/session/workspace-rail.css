@@ -9,8 +9,8 @@
   gap: 6px;
   padding: 10px 5px;
   border-radius: 14px;
-  background: var(--surface-raised-base);
-  border: 1px solid var(--border-weak-base);
+  background: var(--workbench-control-bg, var(--surface-raised-base));
+  border: 1px solid var(--workbench-border, var(--border-weak-base));
   box-shadow: none;
   z-index: 60;
   transition:
@@ -23,8 +23,8 @@
 .workspace-rail--open {
   border-radius: 12px 0 0 12px;
   border-right: none;
-  background: var(--background-stronger);
-  border-color: var(--border-weak-base);
+  background: var(--workbench-panel-bg, var(--background-stronger));
+  border-color: var(--workbench-border, var(--border-weak-base));
   box-shadow: none;
 }
 
@@ -46,12 +46,12 @@
 
 .workspace-rail-btn:hover {
   color: var(--icon-base);
-  background: color-mix(in srgb, var(--surface-raised-base-hover) 72%, transparent);
+  background: color-mix(in srgb, var(--workbench-control-bg-hover, var(--surface-raised-base-hover)) 82%, transparent);
 }
 
 .workspace-rail-btn--active {
   color: var(--icon-base);
-  background: var(--surface-raised-base-hover);
+  background: var(--workbench-selected-bg, var(--surface-raised-base-hover));
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--border-weaker-base) 82%, transparent);
 }
 
