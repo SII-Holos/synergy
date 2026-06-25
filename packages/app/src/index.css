@@ -124,19 +124,19 @@ a:active,
 }
 
 .synergy-workbench-canvas {
-  --workbench-canvas-bg: light-dark(rgb(243 244 246), rgb(24 24 27));
-  --workbench-panel-bg: light-dark(rgb(239 240 242), rgb(34 34 36));
-  --workbench-panel-bg-hover: light-dark(rgb(232 234 237), rgb(42 42 45));
-  --workbench-card-bg: light-dark(rgb(233 235 239), rgb(52 52 54));
-  --workbench-card-bg-hover: light-dark(rgb(226 229 234), rgb(60 60 63));
-  --workbench-card-secondary-bg: light-dark(rgb(228 231 235), rgb(48 48 51));
-  --workbench-control-bg: light-dark(rgb(228 231 235), rgb(64 64 67));
-  --workbench-control-bg-hover: light-dark(rgb(219 223 229), rgb(72 72 75));
-  --workbench-input-bg: light-dark(rgb(224 228 233), rgb(58 58 61));
-  --workbench-input-bg-hover: light-dark(rgb(216 221 228), rgb(66 66 70));
-  --workbench-popover-bg: light-dark(rgb(238 240 243), rgb(42 42 45));
-  --workbench-selected-bg: light-dark(rgb(213 219 228), rgb(78 78 82));
-  --workbench-selected-bg-hover: light-dark(rgb(205 212 222), rgb(86 86 90));
+  --workbench-canvas-bg: light-dark(rgb(240 241 244), rgb(24 24 27));
+  --workbench-panel-bg: light-dark(rgb(235 237 240), rgb(34 34 36));
+  --workbench-panel-bg-hover: light-dark(rgb(228 231 235), rgb(42 42 45));
+  --workbench-card-bg: light-dark(rgb(229 232 236), rgb(52 52 54));
+  --workbench-card-bg-hover: light-dark(rgb(222 226 232), rgb(60 60 63));
+  --workbench-card-secondary-bg: light-dark(rgb(224 228 233), rgb(48 48 51));
+  --workbench-control-bg: light-dark(rgb(223 227 233), rgb(64 64 67));
+  --workbench-control-bg-hover: light-dark(rgb(214 220 228), rgb(72 72 75));
+  --workbench-input-bg: light-dark(rgb(221 226 232), rgb(58 58 61));
+  --workbench-input-bg-hover: light-dark(rgb(212 219 227), rgb(66 66 70));
+  --workbench-popover-bg: light-dark(rgb(236 238 241), rgb(42 42 45));
+  --workbench-selected-bg: light-dark(rgb(207 215 225), rgb(78 78 82));
+  --workbench-selected-bg-hover: light-dark(rgb(198 207 219), rgb(86 86 90));
   --workbench-border: light-dark(rgba(17, 24, 39, 0.08), rgba(244, 244, 245, 0.08));
   --workbench-tab-shadow: none;
   background-color: var(--workbench-canvas-bg);
