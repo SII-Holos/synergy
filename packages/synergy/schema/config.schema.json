@@ -686,8 +686,8 @@
       },
       "additionalProperties": false
     },
-    "engram": {
-      "ref": "EngramConfig",
+    "library": {
+      "ref": "LibraryConfig",
       "type": "object",
       "properties": {
         "memory": {
@@ -1682,6 +1682,36 @@
       },
       "additionalProperties": false
     },
+    "observability": {
+      "description": "Local logs, traces, and diagnostics settings",
+      "ref": "ObservabilityConfig",
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "description": "Enable local observability trace JSONL events (default: true)",
+          "type": "boolean"
+        },
+        "retentionDays": {
+          "description": "Days to retain local trace files (default: 7)",
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
+        },
+        "maxBytes": {
+          "description": "Maximum total trace storage in bytes (default: 250MB)",
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
+        },
+        "stalledToolMs": {
+          "description": "Milliseconds without tool activity before emitting a stalled-tool trace event",
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
+        }
+      },
+      "additionalProperties": false
+    },
     "controlProfile": {
       "description": "Default control profile applied to all agents",
       "ref": "ControlProfileId",
@@ -1922,6 +1952,19 @@
       "items": {
         "type": "string"
       }
+    },
+    "project_doc_fallback_filenames": {
+      "description": "Ordered fallback instruction filenames to try when AGENTS.md is missing in a directory",
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "project_doc_max_bytes": {
+      "description": "Maximum bytes to include from each automatically discovered instruction file (default: 32768; 0 disables automatic discovery)",
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
     },
     "layout": {
       "description": "@deprecated Always uses stretch layout.",

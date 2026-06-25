@@ -1,18 +1,13 @@
 import { Session } from "../session"
 import { Ripgrep } from "../file/ripgrep"
-import { Global } from "../global"
-import { Filesystem } from "../util/filesystem"
-import { Config } from "../config/config"
 import { formatLocalDate, formatLocalDateTime } from "../util/time-format"
 
 import { ScopeContext } from "../scope/context"
 import { SessionEndpoint } from "./endpoint"
-import path from "path"
-import os from "os"
 
 import PROMPT_FALLBACK from "./prompt/fallback.txt"
 import type { Provider } from "@/provider/provider"
-import { Flag } from "@/flag/flag"
+import { InstructionFiles } from "./instruction-files"
 
 export namespace SystemPrompt {
   export function provider(_model: Provider.Model) {
@@ -124,85 +119,7 @@ export namespace SystemPrompt {
     ]
   }
 
-  const LOCAL_RULE_FILES = [
-    "AGENTS.md",
-    "CLAUDE.md",
-    "CONTEXT.md", // deprecated
-  ]
-  const GLOBAL_RULE_FILES = [path.join(Global.Path.config, "AGENTS.md")]
-  if (!Flag.SYNERGY_DISABLE_CLAUDE_CODE_PROMPT) {
-    GLOBAL_RULE_FILES.push(path.join(os.homedir(), ".claude", "CLAUDE.md"))
-  }
-
-  if (Flag.SYNERGY_CONFIG_DIR) {
-    GLOBAL_RULE_FILES.push(path.join(Flag.SYNERGY_CONFIG_DIR, "AGENTS.md"))
-  }
-
   export async function custom() {
-    const config = await Config.current()
-    const paths = new Set<string>()
-
-    for (const localRuleFile of LOCAL_RULE_FILES) {
-      const matches = await Filesystem.findUp(
-        localRuleFile,
-        ScopeContext.current.directory,
-        ScopeContext.current.directory,
-      )
-      if (matches.length > 0) {
-        matches.forEach((path) => paths.add(path))
-        break
-      }
-    }
-
-    for (const globalRuleFile of GLOBAL_RULE_FILES) {
-      if (await Bun.file(globalRuleFile).exists()) {
-        paths.add(globalRuleFile)
-        break
-      }
-    }
-
-    const urls: string[] = []
-    if (config.instructions) {
-      for (let instruction of config.instructions) {
-        if (instruction.startsWith("https://") || instruction.startsWith("http://")) {
-          urls.push(instruction)
-          continue
-        }
-        if (instruction.startsWith("~/")) {
-          instruction = path.join(os.homedir(), instruction.slice(2))
-        }
-        let matches: string[] = []
-        if (path.isAbsolute(instruction)) {
-          matches = await Array.fromAsync(
-            new Bun.Glob(path.basename(instruction)).scan({
-              cwd: path.dirname(instruction),
-              absolute: true,
-              onlyFiles: true,
-            }),
-          ).catch(() => [])
-        } else {
-          matches = await Filesystem.globUp(
-            instruction,
-            ScopeContext.current.directory,
-            ScopeContext.current.directory,
-          ).catch(() => [])
-        }
-        matches.forEach((path) => paths.add(path))
-      }
-    }
-
-    const foundFiles = Array.from(paths).map((p) =>
-      Bun.file(p)
-        .text()
-        .catch(() => "")
-        .then((x) => "Instructions from: " + p + "\n" + x),
-    )
-    const foundUrls = urls.map((url) =>
-      fetch(url, { signal: AbortSignal.timeout(5000) })
-        .then((res) => (res.ok ? res.text() : ""))
-        .catch(() => "")
-        .then((x) => (x ? "Instructions from: " + url + "\n" + x : "")),
-    )
-    return Promise.all([...foundFiles, ...foundUrls]).then((result) => result.filter(Boolean))
+    return InstructionFiles.load()
   }
 }

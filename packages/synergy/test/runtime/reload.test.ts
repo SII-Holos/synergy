@@ -260,12 +260,18 @@ describe("runtime.reload", () => {
     expect(categoryCascade).toContain("provider")
     expect(categoryCascade).toContain("agent")
 
-    // Verify default_agent and instructions cascade to agent
+    // Verify default_agent and instruction file settings cascade to agent
     const defaultAgentCascade = RuntimeReload.inferConfigCascades(["default_agent"])
     expect(defaultAgentCascade).toContain("agent")
 
     const instructionsCascade = RuntimeReload.inferConfigCascades(["instructions"])
     expect(instructionsCascade).toContain("agent")
+
+    const projectDocFallbackCascade = RuntimeReload.inferConfigCascades(["project_doc_fallback_filenames"])
+    expect(projectDocFallbackCascade).toContain("agent")
+
+    const projectDocMaxBytesCascade = RuntimeReload.inferConfigCascades(["project_doc_max_bytes"])
+    expect(projectDocMaxBytesCascade).toContain("agent")
 
     // Verify tools changes cascade to tool_registry
     const toolsCascade = RuntimeReload.inferConfigCascades(["tools"])

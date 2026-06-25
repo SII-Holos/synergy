@@ -408,14 +408,14 @@ Before making tool calls, send a brief preamble explaining what you're about to 
 
 ## Instructions Files
 
-Repos often contain instruction files (`AGENTS.md`, `CLAUDE.md`, or `CONTEXT.md`). These files provide project-specific instructions:
+Repos often contain instruction files (`AGENTS.override.md`, `AGENTS.md`, `CLAUDE.md`, or `CONTEXT.md`). These files provide project-specific instructions:
 
 - The scope of an instruction file is the entire directory tree rooted at the folder that contains it.
 - For every file you touch, you must obey instructions in any instruction file whose scope includes that file.
 - More-deeply-nested instruction files take precedence in case of conflicts.
 - Direct system/developer/user instructions take precedence over instruction file contents.
-- The system automatically searches for and includes instruction files. You don't need to re-read them unless working in a subdirectory outside the original scope.
-- Global instruction files may exist at `~/.synergy/config/AGENTS.md` or `~/.claude/CLAUDE.md`.
+- The system automatically includes instruction files discovered inside the active Scope, ordered from the Scope root to the current working directory when applicable. You don't need to re-read them unless working in a subdirectory outside the active Scope.
+- Global instruction files may exist at `~/.synergy/config/AGENTS.override.md`, `~/.synergy/config/AGENTS.md`, or `~/.claude/CLAUDE.md`.
 
 # Presenting Your Work
 

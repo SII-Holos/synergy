@@ -351,7 +351,7 @@ export namespace RuntimeReload {
   // P10: Ensured all config fields cascade correctly.
   // - model role changes → provider + agent (model may reference unloaded provider)
   // - category changes → provider + agent (category.model may reference different provider)
-  // - default_agent, instructions → agent
+  // - default_agent, instruction files → agent
   // - tools → tool_registry
 
   export function inferConfigCascades(fields: string[]) {
@@ -386,7 +386,12 @@ export namespace RuntimeReload {
     if (changed.has("agent") || changed.has("permission") || changed.has("library") || changed.has("external_agent")) {
       cascaded.push("agent")
     }
-    if (changed.has("default_agent") || changed.has("instructions")) {
+    if (
+      changed.has("default_agent") ||
+      changed.has("instructions") ||
+      changed.has("project_doc_fallback_filenames") ||
+      changed.has("project_doc_max_bytes")
+    ) {
       cascaded.push("agent")
     }
     if (changed.has("plugin")) {

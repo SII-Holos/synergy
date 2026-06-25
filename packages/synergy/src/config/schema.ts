@@ -1322,6 +1322,18 @@ export const Info = z
         },
       ),
     instructions: z.array(z.string()).optional().describe("Additional instruction files or patterns to include"),
+    project_doc_fallback_filenames: z
+      .array(z.string())
+      .optional()
+      .describe("Ordered fallback instruction filenames to try when AGENTS.md is missing in a directory"),
+    project_doc_max_bytes: z
+      .number()
+      .int()
+      .min(0)
+      .optional()
+      .describe(
+        "Maximum bytes to include from each automatically discovered instruction file (default: 32768; 0 disables automatic discovery)",
+      ),
     layout: Layout.optional().describe("@deprecated Always uses stretch layout."),
     permission: Permission.optional(),
     smartAllow: z

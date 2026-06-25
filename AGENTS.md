@@ -258,6 +258,8 @@ Project-level config uses the same domain layout under:
 <project>/.synergy/synergy.d/
 ```
 
+Project instruction discovery is configured in the agents domain. `AGENTS.override.md` is preferred over `AGENTS.md`; `project_doc_fallback_filenames` can add fallback names such as `PRODUCT.md` or `WORKFLOW.md`; `instructions` remains an explicit append list.
+
 Legacy monolithic config files are migration inputs only. Do not add new runtime load paths or long-term compatibility branches for them.
 
 ### Config-aware work

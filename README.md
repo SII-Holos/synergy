@@ -263,6 +263,29 @@ Synergy also supports project-scoped extension directories under:
 
 That scoped directory is where project-specific agents, commands, plugins, skills, and related assets may live.
 
+### Project instruction files
+
+For every turn, Synergy includes instruction files discovered inside the active Scope. In each directory from the Scope root to the current working directory, it uses the first matching file in this order:
+
+```text
+AGENTS.override.md
+AGENTS.md
+<project_doc_fallback_filenames entries>
+CLAUDE.md
+CONTEXT.md
+```
+
+`AGENTS.override.md` is useful for local-only overrides. Configure fallback filenames, such as `PRODUCT.md` or `WORKFLOW.md`, in `60-agents.jsonc`:
+
+```jsonc
+{
+  "project_doc_fallback_filenames": ["PRODUCT.md", "WORKFLOW.md"],
+  "project_doc_max_bytes": 32768,
+}
+```
+
+`instructions` remains the explicit include list for extra files, globs, or URLs; it appends content and does not participate in the fallback order.
+
 ### Plugins
 
 Plugins are managed through the plugin toolchain and the `50-plugins.jsonc` config domain. Plugin authors should use `@ericsanchezok/synergy-plugin-kit` and `@ericsanchezok/synergy-plugin`; a Synergy source checkout is only needed when changing the platform itself.

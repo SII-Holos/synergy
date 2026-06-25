@@ -77,6 +77,8 @@ export namespace ConfigDomain {
       "agent",
       "external_agent",
       "instructions",
+      "project_doc_fallback_filenames",
+      "project_doc_max_bytes",
       "category",
     ]),
     def("commands", "70-commands.jsonc", "Commands", ["command"]),

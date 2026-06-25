@@ -482,7 +482,7 @@ You operate across web app, Feishu channels, Holos contacts, and project session
 
 ## Instruction Files
 
-Repos contain instruction files (`AGENTS.md`, `CLAUDE.md`, `CONTEXT.md`). For every file you touch, obey instructions in any instruction file whose scope includes that file. More-deeply-nested instructions take precedence.
+Repos contain instruction files (`AGENTS.override.md`, `AGENTS.md`, `CLAUDE.md`, `CONTEXT.md`). For every file you touch, obey instructions in any instruction file whose scope includes that file. More-deeply-nested instructions take precedence.
 
 # Standards
 
