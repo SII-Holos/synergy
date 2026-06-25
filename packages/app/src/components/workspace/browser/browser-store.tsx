@@ -1,4 +1,5 @@
 import { createContext, createSignal, useContext, type ParentProps } from "solid-js"
+import type { BrowserPresentationSelection } from "@ericsanchezok/synergy-util/browser-protocol"
 import { createStore, produce, type SetStoreFunction } from "solid-js/store"
 import { browserDebug, shouldLogBrowserMessage, summarizeBrowserMessage } from "./browser-debug"
 
@@ -147,6 +148,7 @@ export function createBrowserStore() {
   const [annotationMode, setAnnotationMode] = createSignal(false)
   const [viewportMode, setViewportMode] = createSignal<ViewportMode>("fit")
   const [viewportWidth, setViewportWidth] = createSignal(1280)
+  const [presentation, setPresentation] = createSignal<BrowserPresentationSelection | null>(null)
 
   const [viewportHeight, setViewportHeight] = createSignal(720)
   const [annotationTarget, setAnnotationTarget] = createSignal<AnnotationTarget | null>(null)
@@ -272,7 +274,6 @@ export function createBrowserStore() {
     if (!activity.tabId) return
     setFollowAgent(true)
     setSession("visibleTabId", activity.tabId)
-    send({ type: "stream.start", tabId: activity.tabId })
   }
 
   function applyAgentActivity(activity: AgentActivity) {
@@ -280,7 +281,6 @@ export function createBrowserStore() {
     if (activity.kind === "idle" || !activity.tabId) return
     if (followAgent()) {
       setSession("visibleTabId", activity.tabId)
-      send({ type: "stream.start", tabId: activity.tabId })
     }
   }
 
@@ -366,6 +366,8 @@ export function createBrowserStore() {
     viewportMode,
     viewportWidth,
     viewportHeight,
+    presentation,
+    setPresentation,
     setViewport,
     downloads,
     setDownloads,

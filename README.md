@@ -34,7 +34,7 @@ Synergy currently spans several product surfaces and workflows:
 
 - A central `server` process that handles requests independently of a single working directory
 - A `web` client for browser-based interaction
-- A built-in Browser workspace backed by Playwright/Chromium for interactive page control
+- A built-in Browser workspace backed by Chromium, with shared control state for humans and browser tools
 - A `send` command for one-off, non-interactive execution
 - CLI commands for session, config, library, Holos identity, and operational workflows
 - Configurable agents for orchestration, coding, research, writing, search, and review
@@ -45,7 +45,9 @@ Synergy currently spans several product surfaces and workflows:
 
 ### Built-In Browser Workspace
 
-The Web client includes a right-side Browser workspace that runs a real Playwright Chromium page, not an iframe or a screenshot-only mock. Users can navigate, search, click, type, scroll, upload, and download in the workspace while browser tools operate on the same underlying page and BrowserContext.
+The Web client includes a right-side Browser workspace that runs a real Chromium page, not an iframe or a screenshot-only mock. Users can navigate, search, click, type, scroll, upload, and download in the workspace while browser tools operate on the same underlying tab/session state.
+
+Browser control and Browser presentation are intentionally separate. The shared control protocol owns sessions, tabs, navigation, screenshots, snapshots, diagnostics, downloads, dialogs, and tool actions. Interactive presentation negotiates a mode: local desktop clients are designed to use a native Chromium surface, while remote Web clients are designed to use WebRTC media plus input data channels. The legacy image-frame stream remains only as a migration adapter until native and WebRTC presentations fully replace it.
 
 Browser contexts are isolated by Synergy owner/session and persist tab state plus browser storage state. User-explicit navigation and page interaction run without approval prompts but still pass hard safety checks such as invalid protocols, sensitive local ports, and out-of-scope `file://` access. Agent-driven browser tools continue to use the active control profile, so guarded/autonomous/full-access behavior remains consistent with the rest of Synergy.
 

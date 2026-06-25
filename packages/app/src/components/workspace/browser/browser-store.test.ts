@@ -23,7 +23,7 @@ describe("createBrowserStore follow agent", () => {
       })
 
       expect(store.activeTabId()).toBe("agent-tab")
-      expect(sent.at(-1)).toEqual({ type: "stream.start", tabId: "agent-tab" })
+      expect(sent).toEqual([])
       dispose()
     })
   })

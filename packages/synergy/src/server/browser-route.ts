@@ -1,5 +1,10 @@
 import type { BrowserSession } from "../browser/types.js"
 import type { BrowserTab, BrowserUploadFile } from "../browser/tab.js"
+import {
+  parseBrowserPresentationPreference,
+  selectBrowserPresentation,
+  type BrowserPresentationSelection,
+} from "@ericsanchezok/synergy-util/browser-protocol"
 import { Hono } from "hono"
 import { upgradeWebSocket } from "hono/bun"
 import { Log } from "../util/log"
@@ -27,12 +32,17 @@ function tabPayload(tab: BrowserTab) {
   }
 }
 
-function sessionPayload(session: BrowserSession, runtimeHealth?: Awaited<ReturnType<typeof BrowserRuntime.health>>) {
+function sessionPayload(
+  session: BrowserSession,
+  presentation: BrowserPresentationSelection,
+  runtimeHealth?: Awaited<ReturnType<typeof BrowserRuntime.health>>,
+) {
   return {
     type: "session.state",
     tabs: session.tabs.map(tabPayload),
     activeTabId: session.activeTab?.id ?? null,
     connection: { status: "connected" },
+    presentation,
     runtimeHealth,
   }
 }
@@ -79,6 +89,15 @@ export const BrowserRoute = new Hono().get(
 
     const mode = (c.req.query("mode") ?? "session") as BrowserOwner.Mode
     const sessionID = c.req.query("sessionID")
+    const client = c.req.query("client") === "desktop" ? "desktop" : "web"
+    const sameHostQuery = c.req.query("sameHost")
+    const sameHost = sameHostQuery === "1" || sameHostQuery === "true"
+    const presentation = selectBrowserPresentation({
+      desktop: client === "desktop",
+      sameHost,
+      remote: client !== "desktop" || !sameHost,
+      requested: parseBrowserPresentationPreference(c.req.query("presentation")),
+    })
     const scopeID = ScopeContext.current.scope.id
     const owner = BrowserOwner.fromRoute({ directory: ScopeContext.current.directory, scopeID, sessionID, mode })
     BrowserOwner.assertValid(owner)
@@ -105,7 +124,12 @@ export const BrowserRoute = new Hono().get(
       })
     }
 
-    log.info("browser WebSocket connected", { directory, ownerKey: BrowserOwner.key(owner) })
+    log.info("browser WebSocket connected", {
+      directory,
+      ownerKey: BrowserOwner.key(owner),
+      presentation: presentation.kind,
+      presentationReason: presentation.reason,
+    })
 
     return {
       onOpen: async (_e: any, ws: BrowserWS) => {
@@ -159,7 +183,7 @@ export const BrowserRoute = new Hono().get(
           if (session.tabs.length === 0) {
             await session.createTab()
           }
-          send(ws, sessionPayload(session, await BrowserRuntime.health()))
+          send(ws, sessionPayload(session, presentation, await BrowserRuntime.health()))
         } catch (e: any) {
           log.error("browser WS onOpen error", { error: e?.message ?? String(e) })
           send(ws, {

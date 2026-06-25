@@ -1,4 +1,5 @@
 import { onCleanup, onMount } from "solid-js"
+import type { BrowserPresentationPreference } from "@ericsanchezok/synergy-util/browser-protocol"
 import { useSDK } from "@/context/sdk"
 import type { BrowserStoreAPI } from "./browser-store"
 import { browserDebug, shouldLogBrowserMessage, summarizeBrowserMessage } from "./browser-debug"
@@ -24,6 +25,8 @@ type BrowserWebSocketUrlOptions = {
   directory?: string
   scopeID?: string
   scopeKey?: string
+  presentation?: BrowserPresentationPreference
+  client?: "web" | "desktop"
 }
 
 export function createBrowserWebSocketUrl(options: BrowserWebSocketUrlOptions) {
@@ -33,6 +36,8 @@ export function createBrowserWebSocketUrl(options: BrowserWebSocketUrlOptions) {
   const params = new URLSearchParams({
     mode: "session",
     sessionID: options.sessionID,
+    presentation: options.presentation ?? "auto",
+    client: options.client ?? "web",
   })
   if (options.scopeID) params.set("scopeID", options.scopeID)
   else if (options.directory) params.set("directory", options.directory)
@@ -168,11 +173,11 @@ export function createBrowserWebSocket(store: BrowserStoreAPI, options: BrowserW
       if (shouldLogBrowserMessage(msg)) browserDebug("ws.message", summarizeBrowserMessage(msg))
       switch (msg.type) {
         case "session.state": {
+          if (msg.presentation) store.setPresentation(msg.presentation)
           if (msg.tabs) store.setSession("tabs", msg.tabs)
           if (msg.activeTabId !== undefined) {
             store.setSession("activeTabId", msg.activeTabId)
             if (!store.session.visibleTabId) store.setSession("visibleTabId", msg.activeTabId)
-            if (msg.activeTabId) send({ type: "stream.start", tabId: msg.activeTabId })
           }
           break
         }

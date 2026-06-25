@@ -17,6 +17,8 @@ describe("createBrowserWebSocketUrl", () => {
     expect(parsed.pathname).toBe("/aG9tZQ/browser/connect")
     expect(parsed.searchParams.get("mode")).toBe("session")
     expect(parsed.searchParams.get("sessionID")).toBe("ses_1")
+    expect(parsed.searchParams.get("presentation")).toBe("auto")
+    expect(parsed.searchParams.get("client")).toBe("web")
     expect(parsed.searchParams.get("scopeID")).toBe("home")
     expect(parsed.searchParams.has("directory")).toBe(false)
   })
@@ -36,8 +38,26 @@ describe("createBrowserWebSocketUrl", () => {
     expect(parsed.pathname).toBe("/project-route/browser/connect")
     expect(parsed.searchParams.get("mode")).toBe("session")
     expect(parsed.searchParams.get("sessionID")).toBe("ses_2")
+    expect(parsed.searchParams.get("presentation")).toBe("auto")
+    expect(parsed.searchParams.get("client")).toBe("web")
     expect(parsed.searchParams.get("directory")).toBe("/Users/eric/project")
     expect(parsed.searchParams.has("scopeID")).toBe(false)
+  })
+
+  test("can request native presentation for a desktop client", () => {
+    const url = createBrowserWebSocketUrl({
+      serverUrl: "http://localhost:4096",
+      sessionID: "ses_3",
+      routeDirectory: "aG9tZQ",
+      scopeID: "home",
+      presentation: "native",
+      client: "desktop",
+    })
+
+    expect(url).not.toBeNull()
+    const parsed = new URL(url!)
+    expect(parsed.searchParams.get("presentation")).toBe("native")
+    expect(parsed.searchParams.get("client")).toBe("desktop")
   })
 
   test("returns null when no route or scope is available", () => {

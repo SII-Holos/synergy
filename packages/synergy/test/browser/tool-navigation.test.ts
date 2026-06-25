@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test"
 import { BrowserToolHelper, BrowserTabNotFoundError } from "../../src/tool/browser-shared"
+import { BrowserControl } from "../../src/browser/control"
 import { BlockedURLNavigationError, type BrowserTab } from "../../src/browser/tab"
+import type { BrowserSession } from "../../src/browser/types"
 import type { Tool } from "../../src/tool/tool"
 
 function tab(id: string): BrowserTab {
@@ -136,5 +138,57 @@ describe("browser tool navigation helpers", () => {
     expect(asks).toHaveLength(1)
     expect(visited).toEqual(["https://www.google.com/"])
     expect(result).toEqual({ url: "https://www.google.com/", title: "Google" })
+  })
+})
+
+describe("BrowserControl", () => {
+  test("executes navigation through the shared control interface", async () => {
+    const fakeTab = {
+      ...tab("tab-1"),
+      async navigateForUser(url: string) {
+        fakeTab.url = `${url}/`
+        fakeTab.title = "Example"
+        return { url: fakeTab.url, title: fakeTab.title }
+      },
+    }
+    const saved: string[] = []
+    const notified: string[] = []
+    const session = {
+      tabs: [fakeTab],
+      activeTab: fakeTab,
+      getTab(id: string) {
+        return id === fakeTab.id ? fakeTab : undefined
+      },
+      async save() {
+        saved.push("save")
+      },
+      async notifyTabNavigated(tab: BrowserTab) {
+        notified.push(tab.id)
+      },
+    }
+
+    const result = await BrowserControl.execute(session as unknown as BrowserSession, {
+      type: "navigate",
+      source: "user",
+      tabId: "tab-1",
+      url: "https://example.com",
+    })
+
+    expect(result).toEqual({
+      type: "navigation",
+      tab: {
+        id: "tab-1",
+        url: "https://example.com/",
+        title: "Example",
+        isLoading: false,
+        pinned: false,
+        kept: false,
+        lastActiveAt: null,
+      },
+      url: "https://example.com/",
+      title: "Example",
+    })
+    expect(saved).toEqual(["save"])
+    expect(notified).toEqual(["tab-1"])
   })
 })

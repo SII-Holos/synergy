@@ -4,6 +4,7 @@ import { BrowserRuntime } from "../browser/runtime"
 import type { BrowserSession } from "../browser/types.js"
 import { BlockedURLNavigationError, type BrowserTab } from "../browser/tab"
 import { BrowserOwner } from "../browser/owner"
+import { BrowserControl } from "../browser/control"
 
 // ── Shared error classes ───────────────────────────────────────────────
 
@@ -45,13 +46,12 @@ export namespace BrowserToolHelper {
     session: Pick<BrowserSession, "activeTab" | "createTab" | "getTab">,
     tabID?: string,
   ): Promise<BrowserTab> {
-    if (tabID) {
-      const tab = session.getTab(tabID)
-      if (!tab) throw new BrowserTabNotFoundError(tabID)
-      return tab
+    try {
+      return await BrowserControl.resolveOrCreateTab(session, tabID)
+    } catch (err) {
+      if (err instanceof BrowserControl.TabNotFoundError) throw new BrowserTabNotFoundError(tabID)
+      throw err
     }
-    if (session.activeTab) return session.activeTab
-    return session.createTab()
   }
 
   export async function getOrCreateTab(
