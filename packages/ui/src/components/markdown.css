@@ -111,7 +111,7 @@
     border-left: 3px solid var(--markdown-block-quote);
     border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
     color: var(--text-weak);
-    background-color: color-mix(in srgb, var(--surface-inset-base) 42%, transparent);
+    background-color: color-mix(in srgb, var(--workbench-control-bg, var(--surface-inset-base)) 42%, transparent);
   }
 
   blockquote > :last-child {
@@ -134,7 +134,11 @@
     overflow: hidden;
     border: 1px solid color-mix(in srgb, var(--border-weak-base) 64%, transparent);
     border-radius: var(--radius-lg);
-    background-color: color-mix(in srgb, var(--surface-inset-base) 92%, var(--background-base));
+    background-color: color-mix(
+      in srgb,
+      var(--workbench-control-bg, var(--surface-inset-base)) 92%,
+      var(--workbench-canvas-bg, var(--background-base))
+    );
   }
 
   [data-slot="markdown-code-header"] {
@@ -145,7 +149,11 @@
     min-width: 0;
     padding: 0.3125rem 0.5rem;
     border-bottom: 1px solid color-mix(in srgb, var(--border-weaker-base) 54%, transparent);
-    background-color: color-mix(in srgb, var(--surface-raised-base-hover) 14%, transparent);
+    background-color: color-mix(
+      in srgb,
+      var(--workbench-card-bg-hover, var(--surface-raised-base-hover)) 28%,
+      transparent
+    );
   }
 
   [data-slot="markdown-code-header"][data-has-label="false"] {
@@ -167,7 +175,7 @@
     appearance: none;
     border: 1px solid color-mix(in srgb, var(--border-weaker-base) 40%, transparent);
     border-radius: var(--radius-sm);
-    background: color-mix(in srgb, var(--background-base) 58%, transparent);
+    background: color-mix(in srgb, var(--workbench-panel-bg, var(--background-base)) 58%, transparent);
     color: var(--text-weak);
     cursor: pointer;
     flex-shrink: 0;
@@ -183,7 +191,11 @@
   }
 
   [data-slot="markdown-code-copy"]:hover {
-    background-color: color-mix(in srgb, var(--surface-raised-base-hover) 56%, transparent);
+    background-color: color-mix(
+      in srgb,
+      var(--workbench-control-bg-hover, var(--surface-raised-base-hover)) 76%,
+      transparent
+    );
     border-color: color-mix(in srgb, var(--border-weaker-base) 76%, transparent);
     color: var(--text-base);
   }
@@ -197,7 +209,11 @@
   }
 
   [data-slot="markdown-code-copy"][data-copied="true"] {
-    background-color: color-mix(in srgb, var(--surface-raised-base-hover) 46%, transparent);
+    background-color: color-mix(
+      in srgb,
+      var(--workbench-selected-bg, var(--surface-raised-base-hover)) 66%,
+      transparent
+    );
     border-color: color-mix(in srgb, var(--border-weaker-base) 70%, transparent);
     color: var(--text-strong);
   }
@@ -250,7 +266,7 @@
     display: inline;
     border: 1px solid color-mix(in srgb, var(--border-weaker-base) 78%, transparent);
     border-radius: calc(var(--radius-sm) - 1px);
-    background-color: color-mix(in srgb, var(--surface-inset-base) 62%, transparent);
+    background-color: color-mix(in srgb, var(--workbench-control-bg, var(--surface-inset-base)) 72%, transparent);
     padding: 0.0625rem 0.3125rem;
     font-family: var(--font-family-mono);
     font-feature-settings: var(--font-family-mono--font-feature-settings);
@@ -283,7 +299,7 @@
     font-size: var(--font-size-base);
     border: 1px solid var(--border-weaker-base);
     border-radius: var(--radius-md);
-    background-color: var(--surface-inset-base);
+    background-color: var(--workbench-control-bg, var(--surface-inset-base));
     overflow: hidden;
   }
 
@@ -306,7 +322,11 @@
   th {
     color: var(--text-strong);
     font-weight: var(--font-weight-medium);
-    background-color: color-mix(in srgb, var(--surface-raised-base-hover) 70%, transparent);
+    background-color: color-mix(
+      in srgb,
+      var(--workbench-selected-bg, var(--surface-raised-base-hover)) 76%,
+      transparent
+    );
   }
 
   tbody tr:last-child td {

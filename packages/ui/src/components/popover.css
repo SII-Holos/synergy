@@ -7,7 +7,7 @@
   min-width: 200px;
   max-width: 320px;
   border-radius: var(--radius-xl);
-  background-color: var(--surface-raised-stronger-non-alpha);
+  background-color: var(--workbench-popover-bg, var(--surface-raised-stronger-non-alpha));
 
   border: 1px solid color-mix(in oklch, var(--border-base) 25%, transparent);
   box-shadow: var(--shadow-lg);
@@ -70,7 +70,7 @@
   }
 
   [data-slot="popover-arrow"] {
-    fill: var(--surface-raised-stronger-non-alpha);
+    fill: var(--workbench-popover-bg, var(--surface-raised-stronger-non-alpha));
   }
 }
 

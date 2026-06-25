@@ -3,7 +3,7 @@
   height: 100%;
   display: flex;
   flex-direction: column;
-  background-color: var(--background-stronger);
+  background-color: var(--workbench-panel-bg, var(--background-stronger));
   overflow: clip;
 
   [data-slot="tabs-list"] {
@@ -28,7 +28,7 @@
       flex-grow: 1;
       height: 100%;
       border-bottom: 1px solid var(--border-weak-base);
-      background-color: var(--background-base);
+      background-color: var(--workbench-panel-bg, var(--background-base));
     }
 
     &:empty::after {
@@ -56,7 +56,7 @@
     flex-shrink: 0;
     border-bottom: 1px solid var(--border-weak-base);
     border-right: 1px solid var(--border-weak-base);
-    background-color: var(--background-base);
+    background-color: var(--workbench-control-bg, var(--background-base));
 
     [data-slot="tabs-trigger"] {
       display: flex;
@@ -96,7 +96,7 @@
     }
     &:has([data-selected]) {
       color: var(--text-strong);
-      background-color: transparent;
+      background-color: var(--workbench-selected-bg, transparent);
       border-bottom-color: transparent;
       [data-slot="tabs-trigger-close-button"] {
         opacity: 1;
@@ -211,7 +211,7 @@
       padding: 4px;
       gap: 4px;
       border-bottom: none;
-      background-color: var(--surface-raised-base);
+      background-color: var(--workbench-control-bg, var(--surface-raised-base));
       border-radius: var(--radius-xl);
       box-shadow: inset 0 0 0 1px var(--border-weak-base);
 
@@ -255,15 +255,15 @@
 
       &:has([data-selected]) {
         color: var(--text-strong);
-        background-color: var(--surface-raised-stronger-non-alpha);
+        background-color: var(--workbench-selected-bg, var(--surface-raised-stronger-non-alpha));
         box-shadow:
-          var(--shadow-sm),
+          var(--workbench-tab-shadow, var(--shadow-sm)),
           0 0 0 1px var(--border-base);
       }
 
       &:hover:not(:disabled):not([data-selected]) {
         color: var(--text-strong);
-        background-color: var(--surface-raised-base-hover);
+        background-color: var(--workbench-control-bg-hover, var(--surface-raised-base-hover));
       }
 
       &:has([data-slot="tabs-trigger-close-button"]) {

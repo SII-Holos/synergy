@@ -75,7 +75,7 @@
 
   &:hover:not([data-disabled], [data-readonly]) [data-slot="checkbox-checkbox-control"] {
     border-color: var(--border-hover);
-    background-color: var(--surface-hover);
+    background-color: var(--workbench-control-bg-hover, var(--surface-hover));
   }
 
   &:focus-within:not([data-readonly]) [data-slot="checkbox-checkbox-control"] {
@@ -86,13 +86,13 @@
   &[data-checked] [data-slot="checkbox-checkbox-control"],
   &[data-indeterminate] [data-slot="checkbox-checkbox-control"] {
     border-color: var(--border-base);
-    background-color: var(--surface-weak);
+    background-color: var(--workbench-selected-bg, var(--surface-weak));
   }
 
   &[data-checked]:hover:not([data-disabled], [data-readonly]) [data-slot="checkbox-checkbox-control"],
   &[data-indeterminate]:hover:not([data-disabled]) [data-slot="checkbox-checkbox-control"] {
     border-color: var(--border-hover);
-    background-color: var(--surface-hover);
+    background-color: var(--workbench-selected-bg-hover, var(--surface-hover));
   }
 
   &[data-checked] [data-slot="checkbox-checkbox-indicator"],

@@ -46,7 +46,7 @@
       background-color 150ms ease;
 
     &:hover {
-      background: var(--surface-raised-base-hover);
+      background: var(--workbench-control-bg-hover, var(--surface-raised-base-hover));
       color: var(--icon-base);
     }
   }
