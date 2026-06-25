@@ -141,7 +141,7 @@ function ScopeListView(props: {
         type="button"
         classList={{
           "w-full flex items-center gap-3 px-4 py-2.5 transition-colors": true,
-          "bg-surface-interactive-base/8 text-text-interactive-base": isHomeActive(),
+          "bg-surface-raised-base-hover text-text-strong": isHomeActive(),
           "text-text-base hover:bg-surface-raised-base-hover": !isHomeActive(),
         }}
         onClick={props.onNavigateHome}
@@ -170,7 +170,7 @@ function ScopeListView(props: {
               type="button"
               classList={{
                 "w-full flex items-center gap-3 px-4 py-2.5 transition-colors": true,
-                "bg-surface-interactive-base/8": isActive(),
+                "bg-surface-raised-base-hover": isActive(),
                 "hover:bg-surface-raised-base-hover": !isActive(),
               }}
               onClick={() => props.onSelectScope(scope)}
@@ -179,7 +179,7 @@ function ScopeListView(props: {
               <span
                 classList={{
                   "text-14-medium truncate": true,
-                  "text-text-interactive-base": isActive(),
+                  "text-text-strong": isActive(),
                   "text-text-base": !isActive(),
                 }}
               >
@@ -205,7 +205,7 @@ function ScopeListView(props: {
               type="button"
               classList={{
                 "flex flex-col items-center gap-1 py-2.5 rounded-xl transition-colors": true,
-                "bg-surface-interactive-base/8 text-text-interactive-base":
+                "bg-surface-raised-base-hover text-text-strong":
                   tool.id === "plugins" ? location.pathname.startsWith("/plugins") : location.pathname === tool.href,
                 "text-text-weak hover:text-text-base hover:bg-surface-raised-base-hover":
                   tool.id === "plugins" ? !location.pathname.startsWith("/plugins") : location.pathname !== tool.href,
@@ -300,7 +300,7 @@ function SessionListDrawerView(props: {
       {/* New session */}
       <button
         type="button"
-        class="flex items-center gap-2.5 mx-3 mt-2.5 mb-1 px-3 py-2 rounded-xl border border-dashed border-border-base/50 text-13-medium text-text-weak hover:text-text-interactive-base hover:border-text-interactive-base/30 hover:bg-surface-interactive-base/5 transition-all"
+        class="flex items-center gap-2.5 mx-3 mt-2.5 mb-1 px-3 py-2 rounded-xl border border-dashed border-border-base/50 text-13-medium text-text-weak hover:text-text-strong hover:border-border-base hover:bg-surface-raised-base-hover transition-all"
         onClick={props.onNewSession}
       >
         <Icon name="plus" size="small" />

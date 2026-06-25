@@ -88,26 +88,18 @@ a:active,
   0%,
   100% {
     opacity: 1;
-    box-shadow: 0 0 0 2px color-mix(in srgb, currentColor 20%, transparent);
   }
   50% {
-    opacity: 0.6;
-    box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 10%, transparent);
+    opacity: 0.64;
   }
 }
 @keyframes statusbarDotPulse {
   0%,
   100% {
     opacity: 1;
-    box-shadow:
-      0 0 0 1px var(--workbench-control-bg, var(--surface-raised-base)),
-      0 0 0 2px color-mix(in srgb, currentColor 8%, transparent);
   }
   50% {
     opacity: 0.72;
-    box-shadow:
-      0 0 0 1px var(--workbench-control-bg, var(--surface-raised-base)),
-      0 0 0 2px color-mix(in srgb, currentColor 5%, transparent);
   }
 }
 
@@ -235,6 +227,32 @@ a:active,
 
 .synergy-workbench-canvas
   :where(
+    .bg-surface-raised-base\/98,
+    .bg-surface-raised-base\/95,
+    .bg-surface-raised-base\/90,
+    .bg-surface-raised-base\/80,
+    .bg-surface-raised-base\/78,
+    .bg-surface-raised-base\/70,
+    .bg-surface-raised-base\/60,
+    .bg-surface-raised-base\/55,
+    .bg-surface-raised-base\/50,
+    .bg-surface-raised-stronger-non-alpha\/90,
+    .bg-surface-raised-stronger-non-alpha\/80,
+    .bg-surface-raised-stronger-non-alpha\/70,
+    .bg-surface-raised-stronger-non-alpha\/65,
+    .bg-surface-base\/74,
+    .bg-surface-base\/70,
+    .bg-surface-base\/62,
+    .bg-surface-base\/55,
+    .bg-surface-base\/45,
+    .bg-surface-base\/38,
+    .bg-surface-base\/34
+  ) {
+  background-color: var(--workbench-card-bg);
+}
+
+.synergy-workbench-canvas
+  :where(
     .bg-surface-inset-base,
     .bg-surface-base-hover,
     .bg-surface-raised-base-hover,
@@ -244,6 +262,40 @@ a:active,
   background-color: var(--workbench-control-bg);
 }
 
+.synergy-workbench-canvas
+  :where(
+    .bg-surface-inset-base\/80,
+    .bg-surface-inset-base\/72,
+    .bg-surface-inset-base\/70,
+    .bg-surface-inset-base\/68,
+    .bg-surface-inset-base\/65,
+    .bg-surface-inset-base\/60,
+    .bg-surface-inset-base\/52,
+    .bg-surface-inset-base\/50,
+    .bg-surface-inset-base\/45,
+    .bg-surface-inset-base\/42,
+    .bg-surface-inset-base\/40,
+    .bg-surface-inset-base\/35,
+    .bg-background-base\/90,
+    .bg-background-base\/72,
+    .bg-background-base\/55,
+    .bg-background-base\/50
+  ) {
+  background-color: var(--workbench-control-bg);
+}
+
+.synergy-workbench-canvas
+  :where(
+    .bg-surface-interactive-base\/15,
+    .bg-surface-interactive-base\/12,
+    .bg-surface-interactive-base\/10,
+    .bg-surface-interactive-base\/8,
+    .bg-surface-interactive-base\/5,
+    .bg-surface-interactive-selected-weak\/70
+  ) {
+  background-color: var(--workbench-selected-bg);
+}
+
 .synergy-workbench-canvas :where(.bg-input-base, .bg-input-hover) {
   background-color: var(--workbench-input-bg);
 }
@@ -251,7 +303,10 @@ a:active,
 .synergy-workbench-canvas
   :where(
     .hover\:bg-surface-raised-base-hover:hover,
+    .hover\:bg-surface-raised-base\/98:hover,
+    .hover\:bg-surface-raised-base\/60:hover,
     .hover\:bg-surface-inset-base:hover,
+    .hover\:bg-surface-inset-base\/40:hover,
     .hover\:bg-surface-base-hover:hover,
     .hover\:bg-surface-raised-stronger-hover:hover,
     .hover\:bg-background-base:hover,

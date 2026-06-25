@@ -220,7 +220,7 @@ export function SessionRow(props: SessionRowProps) {
     <div
       class="group/row relative flex cursor-pointer transition-colors duration-100 hover:bg-surface-raised-base-hover"
       classList={{
-        "bg-surface-interactive-base/8": props.isActive,
+        "bg-surface-raised-base-hover": props.isActive,
         "bg-surface-raised-base/50": !props.isActive && !!props.even,
       }}
       onClick={props.onSelect}

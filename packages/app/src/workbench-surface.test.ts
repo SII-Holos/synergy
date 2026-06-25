@@ -1,0 +1,59 @@
+import { describe, expect, test } from "bun:test"
+
+type Rgb = [number, number, number]
+
+const css = await Bun.file(new URL("./index.css", import.meta.url)).text()
+
+function parseWorkbenchToken(name: string, mode: "light" | "dark"): Rgb {
+  const pattern = new RegExp(
+    `--${name}:\\s*light-dark\\(rgb\\((\\d+) (\\d+) (\\d+)\\), rgb\\((\\d+) (\\d+) (\\d+)\\)\\);`,
+  )
+  const match = css.match(pattern)
+  if (!match) throw new Error(`Missing workbench token: ${name}`)
+  const offset = mode === "light" ? 1 : 4
+  return [Number(match[offset]), Number(match[offset + 1]), Number(match[offset + 2])]
+}
+
+function luminance([r, g, b]: Rgb) {
+  const channels = [r, g, b].map((value) => {
+    const channel = value / 255
+    return channel <= 0.03928 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4
+  })
+  return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2]
+}
+
+describe("workbench surface polarity", () => {
+  const tokenOrder = [
+    "workbench-canvas-bg",
+    "workbench-panel-bg",
+    "workbench-card-bg",
+    "workbench-control-bg",
+    "workbench-selected-bg",
+  ]
+
+  test("light mode steps inward by getting darker", () => {
+    const values = tokenOrder.map((name) => luminance(parseWorkbenchToken(name, "light")))
+    for (let i = 0; i < values.length - 1; i++) {
+      expect(values[i + 1]).toBeLessThan(values[i])
+    }
+  })
+
+  test("dark mode steps inward by getting brighter", () => {
+    const values = tokenOrder.map((name) => luminance(parseWorkbenchToken(name, "dark")))
+    for (let i = 0; i < values.length - 1; i++) {
+      expect(values[i + 1]).toBeGreaterThan(values[i])
+    }
+  })
+
+  test("opaque workbench mappings include common translucent surface utilities", () => {
+    for (const className of [
+      ".bg-surface-raised-base\\/80",
+      ".bg-surface-inset-base\\/70",
+      ".bg-surface-interactive-base\\/8",
+      ".bg-background-base\\/55",
+      ".hover\\:bg-surface-inset-base\\/40:hover",
+    ]) {
+      expect(css).toContain(className)
+    }
+  })
+})
