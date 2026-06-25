@@ -1,5 +1,6 @@
 import { BrowserWindow, WebContentsView } from "electron"
 import { randomUUID } from "node:crypto"
+import { BrowserHostDiagnostics, type BrowserHostUploadFile } from "./browser-host-diagnostics.js"
 
 export interface BrowserNativeBounds {
   x: number
@@ -30,6 +31,7 @@ export type BrowserNativeViewEvent =
 
 export class BrowserNativeViewManager {
   private views = new Map<string, WebContentsView>()
+  private diagnostics = new Map<string, BrowserHostDiagnostics>()
   private controlConnections = new Map<string, BrowserNativeHostControlConnection>()
   private activeTabId: string | null = null
   private lastBounds: BrowserNativeBounds | null = null
@@ -60,6 +62,8 @@ export class BrowserNativeViewManager {
       this.window.contentView.removeChildView(view)
       this.activeTabId = null
     }
+    this.diagnostics.get(tabId)?.dispose()
+    this.diagnostics.delete(tabId)
     view.webContents.close()
     this.views.delete(tabId)
     this.sendHostSessions()
@@ -95,6 +99,7 @@ export class BrowserNativeViewManager {
       getSessionState: () => this.sessionState(),
       getActiveTabId: () => this.activeTabId,
       getView: (tabId?: string | null) => this.views.get(tabId || this.activeTabId || ""),
+      getDiagnostics: (tabId?: string | null) => this.diagnostics.get(tabId || this.activeTabId || ""),
       createTab: (url?: string) => this.createManagedTab(input, url),
       closeTab: async (tabId: string) => {
         this.detach(tabId)
@@ -168,6 +173,13 @@ export class BrowserNativeViewManager {
     contents.on("did-fail-load", (_event, code, message, url) => {
       this.emit({ type: "native.error", tabId, code, message, url })
     })
+    const diagnostics = new BrowserHostDiagnostics({
+      tabId,
+      contents,
+      emitHostEvent: (event) => this.emitHostEvent(event),
+    })
+    diagnostics.start()
+    this.diagnostics.set(tabId, diagnostics)
     return view
   }
 
@@ -175,6 +187,10 @@ export class BrowserNativeViewManager {
     for (const connection of this.controlConnections.values()) connection.emitNativeEvent(event)
     if (this.window.isDestroyed()) return
     this.window.webContents.send("browser-native:event", event)
+  }
+
+  private emitHostEvent(event: Record<string, unknown>): void {
+    for (const connection of this.controlConnections.values()) connection.emitHostEvent(event)
   }
 
   private sessionState(): BrowserNativeSessionState {
@@ -218,6 +234,7 @@ interface BrowserNativeHostCallbacks {
   getSessionState(): BrowserNativeSessionState
   getActiveTabId(): string | null
   getView(tabId?: string | null): WebContentsView | undefined
+  getDiagnostics(tabId?: string | null): BrowserHostDiagnostics | undefined
   createTab(url?: string): Promise<BrowserNativeTabState>
   closeTab(tabId: string): Promise<BrowserNativeSessionState>
   switchTab(tabId: string): BrowserNativeTabState
@@ -227,7 +244,6 @@ class BrowserNativeHostControlConnection {
   private ws: WebSocket | null = null
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null
   private closed = false
-  private consoleEntries: { level: string; text: string; timestamp: number; stackTrace?: string }[] = []
   private refMap = new Map<string, { backendNodeId: number; x: number; y: number; width: number; height: number }>()
 
   constructor(
@@ -271,15 +287,6 @@ class BrowserNativeHostControlConnection {
   }
 
   emitNativeEvent(event: BrowserNativeViewEvent): void {
-    if (event.type === "native.console") {
-      this.consoleEntries.push({
-        level: String(event.level),
-        text: event.message,
-        timestamp: Date.now(),
-      })
-      if (this.consoleEntries.length > 200) this.consoleEntries.splice(0, this.consoleEntries.length - 200)
-    }
-
     switch (event.type) {
       case "native.loading":
         this.send({ type: "browser.host.event", event: { type: "page.loading", tabId: event.tabId, url: event.url } })
@@ -355,6 +362,7 @@ class BrowserNativeHostControlConnection {
     const tabId = typeof command.tabId === "string" ? command.tabId : this.host.getActiveTabId()
     const view = this.host.getView(tabId)
     if (!view) throw new Error(tabId ? `Browser tab not found: ${tabId}` : "No active browser tab")
+    const diagnostics = this.host.getDiagnostics(tabId)
     const contents = view.webContents
     switch (command.type) {
       case "navigate": {
@@ -420,11 +428,32 @@ class BrowserNativeHostControlConnection {
         return { type: "resolvedRef", tabId: tabId!, ref, box: this.refMap.get(ref) ?? null }
       }
       case "console":
-        return { type: "console", tabId: tabId!, entries: this.consoleEntries.slice(-50) }
+        return {
+          type: "console",
+          tabId: tabId!,
+          entries: diagnostics?.consoleEntries(Number(command.maxEntries ?? 50)) ?? [],
+        }
       case "network":
-        return { type: "network", tabId: tabId!, requests: [] }
+        return {
+          type: "network",
+          tabId: tabId!,
+          requests: diagnostics?.networkRequests(Number(command.maxEntries ?? 100)) ?? [],
+        }
       case "assets":
         return { type: "assets", tabId: tabId!, assets: [] }
+      case "filechooser.select":
+        await diagnostics?.respondToFileChooser(
+          String(command.requestId ?? ""),
+          (command.files as BrowserHostUploadFile[]) ?? [],
+        )
+        return { type: "void" }
+      case "dialog.respond":
+        await diagnostics?.respondToDialog(
+          String(command.requestId ?? ""),
+          Boolean(command.accept),
+          typeof command.promptText === "string" ? command.promptText : undefined,
+        )
+        return { type: "void" }
       case "screenshot": {
         const image = await contents.capturePage()
         const size = image.getSize()
@@ -437,7 +466,7 @@ class BrowserNativeHostControlConnection {
         }
       }
       case "clearDiagnostics":
-        this.consoleEntries = []
+        diagnostics?.clear()
         return { type: "diagnostics.cleared", tabId: tabId! }
       default:
         throw new UnsupportedNativeCommandError(String(command.type ?? "unknown"))

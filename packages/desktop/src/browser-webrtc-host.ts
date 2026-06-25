@@ -1,5 +1,6 @@
 import { BrowserWindow, desktopCapturer, ipcMain } from "electron"
 import { randomUUID } from "node:crypto"
+import { BrowserHostDiagnostics, type BrowserHostUploadFile } from "./browser-host-diagnostics.js"
 
 export interface BrowserWebRTCHostOptions {
   serverUrl: string
@@ -73,7 +74,7 @@ export class BrowserWebRTCHost {
   private closed = false
   private inputChannel: string
   private readonly browserWindowTitle: string
-  private consoleEntries: { level: string; text: string; timestamp: number; stackTrace?: string }[] = []
+  private diagnostics: BrowserHostDiagnostics | null = null
   private refMap = new Map<string, { backendNodeId: number; x: number; y: number; width: number; height: number }>()
   private activeTabId: string
   private tabs = new Map<string, BrowserHostTabState>()
@@ -110,6 +111,12 @@ export class BrowserWebRTCHost {
       this.browserWindow?.setTitle(this.browserWindowTitle)
     })
     this.installBrowserEvents()
+    this.diagnostics = new BrowserHostDiagnostics({
+      tabId: this.options.tabId,
+      contents: this.browserWindow.webContents,
+      emitHostEvent: (event) => this.emitHostEvent(event),
+    })
+    this.diagnostics.start()
 
     this.rtcWindow = new BrowserWindow({
       show: false,
@@ -158,6 +165,8 @@ export class BrowserWebRTCHost {
     if (this.controlReconnectTimer) clearTimeout(this.controlReconnectTimer)
     this.controlWs?.close()
     this.controlWs = null
+    this.diagnostics?.dispose()
+    this.diagnostics = null
     this.browserWindow?.destroy()
     this.rtcWindow?.destroy()
     this.browserWindow = null
@@ -255,10 +264,6 @@ export class BrowserWebRTCHost {
     contents.on("did-navigate-in-page", () => {
       this.emitHostEvent({ type: "tab.updated", tab: this.tabState() })
       this.sendHostSession()
-    })
-    contents.on("console-message", (_event, level, message) => {
-      this.consoleEntries.push({ level: String(level), text: message, timestamp: Date.now() })
-      if (this.consoleEntries.length > 200) this.consoleEntries.splice(0, this.consoleEntries.length - 200)
     })
     contents.on("did-fail-load", (_event, _code, message, url) => {
       this.emitHostEvent({
@@ -405,11 +410,32 @@ export class BrowserWebRTCHost {
         return { type: "resolvedRef", tabId: this.options.tabId, ref, box: this.refMap.get(ref) ?? null }
       }
       case "console":
-        return { type: "console", tabId: this.options.tabId, entries: this.consoleEntries.slice(-50) }
+        return {
+          type: "console",
+          tabId: this.options.tabId,
+          entries: this.diagnostics?.consoleEntries(Number(command.maxEntries ?? 50)) ?? [],
+        }
       case "network":
-        return { type: "network", tabId: this.options.tabId, requests: [] }
+        return {
+          type: "network",
+          tabId: this.options.tabId,
+          requests: this.diagnostics?.networkRequests(Number(command.maxEntries ?? 100)) ?? [],
+        }
       case "assets":
         return { type: "assets", tabId: this.options.tabId, assets: [] }
+      case "filechooser.select":
+        await this.diagnostics?.respondToFileChooser(
+          String(command.requestId ?? ""),
+          (command.files as BrowserHostUploadFile[]) ?? [],
+        )
+        return { type: "void" }
+      case "dialog.respond":
+        await this.diagnostics?.respondToDialog(
+          String(command.requestId ?? ""),
+          Boolean(command.accept),
+          typeof command.promptText === "string" ? command.promptText : undefined,
+        )
+        return { type: "void" }
       case "screenshot": {
         const image = await contents.capturePage()
         const size = image.getSize()
@@ -422,7 +448,7 @@ export class BrowserWebRTCHost {
         }
       }
       case "clearDiagnostics":
-        this.consoleEntries = []
+        this.diagnostics?.clear()
         return { type: "diagnostics.cleared", tabId: this.options.tabId }
       default:
         throw new UnsupportedHostCommandError(String(command.type ?? "unknown"))
