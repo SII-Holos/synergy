@@ -8,9 +8,14 @@ import type { AuthHook, AuthOuathResult } from "@ericsanchezok/synergy-plugin"
 import { NamedError } from "@ericsanchezok/synergy-util/error"
 import { Auth } from "@/provider/api-key"
 import { CodexProvider } from "./codex"
+import { AnthropicOAuthProvider } from "./anthropic-oauth"
+import { CopilotProvider } from "./copilot"
+import { MiniMaxProvider } from "./minimax"
+import { registerBuiltinProviderProfiles } from "./builtin"
 
 export namespace ProviderAuth {
   const state = ScopedState.create(async () => {
+    registerBuiltinProviderProfiles()
     const pluginMethods = pipe(
       await Plugin.allHooks(),
       filter((x) => x.auth?.provider !== undefined),
@@ -25,6 +30,58 @@ export namespace ProviderAuth {
             type: "oauth" as const,
             label: "Login with ChatGPT",
             authorize: () => CodexProvider.authorizeDeviceCode(),
+          },
+        ],
+      },
+      [AnthropicOAuthProvider.PROVIDER_ID]: {
+        provider: AnthropicOAuthProvider.PROVIDER_ID,
+        methods: [
+          {
+            type: "oauth" as const,
+            label: "Login with Claude Pro/Max",
+            authorize: () => AnthropicOAuthProvider.authorizeOAuth(),
+          },
+          {
+            type: "api" as const,
+            label: "API key",
+          },
+        ],
+      },
+      [CopilotProvider.PROVIDER_ID]: {
+        provider: CopilotProvider.PROVIDER_ID,
+        methods: [
+          {
+            type: "oauth" as const,
+            label: "Login with GitHub Copilot",
+            authorize: () => CopilotProvider.authorizeDeviceCode(CopilotProvider.PROVIDER_ID),
+          },
+          {
+            type: "api" as const,
+            label: "GitHub token",
+          },
+        ],
+      },
+      [CopilotProvider.ENTERPRISE_PROVIDER_ID]: {
+        provider: CopilotProvider.ENTERPRISE_PROVIDER_ID,
+        methods: [
+          {
+            type: "oauth" as const,
+            label: "Login with GitHub Copilot Enterprise",
+            authorize: () => CopilotProvider.authorizeDeviceCode(CopilotProvider.ENTERPRISE_PROVIDER_ID),
+          },
+          {
+            type: "api" as const,
+            label: "GitHub token",
+          },
+        ],
+      },
+      [MiniMaxProvider.PROVIDER_ID]: {
+        provider: MiniMaxProvider.PROVIDER_ID,
+        methods: [
+          {
+            type: "oauth" as const,
+            label: "Login with MiniMax",
+            authorize: () => MiniMaxProvider.authorizeOAuth(),
           },
         ],
       },
@@ -108,18 +165,26 @@ export namespace ProviderAuth {
 
       if (result?.type === "success") {
         if ("key" in result) {
-          await Auth.set(input.providerID, {
-            type: "api",
-            key: result.key,
-          })
+          await Auth.set(
+            input.providerID,
+            {
+              type: "api",
+              key: result.key,
+            },
+            { source: "web" },
+          )
         }
         if ("refresh" in result) {
-          await Auth.set(input.providerID, {
-            type: "oauth",
-            access: result.access,
-            refresh: result.refresh,
-            expires: result.expires,
-          })
+          await Auth.set(
+            input.providerID,
+            {
+              type: "oauth",
+              access: result.access,
+              refresh: result.refresh,
+              expires: result.expires,
+            },
+            { source: "web" },
+          )
         }
         return
       }
@@ -134,10 +199,14 @@ export namespace ProviderAuth {
       key: z.string(),
     }),
     async (input) => {
-      await Auth.set(input.providerID, {
-        type: "api",
-        key: input.key,
-      })
+      await Auth.set(
+        input.providerID,
+        {
+          type: "api",
+          key: input.key,
+        },
+        { source: "web" },
+      )
     },
   )
 

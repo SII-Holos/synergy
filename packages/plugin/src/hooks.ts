@@ -31,6 +31,12 @@ export const HOOKS: HookDescriptor[] = [
     summary: "Add provider auth methods and auth loaders",
   },
   {
+    name: "provider",
+    category: "core",
+    mutatesOutput: false,
+    summary: "Register provider catalog/runtime profiles",
+  },
+  {
     name: "config",
     category: "core",
     mutatesOutput: false,

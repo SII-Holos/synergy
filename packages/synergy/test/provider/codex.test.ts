@@ -5,6 +5,7 @@ import { ProviderAuth } from "../../src/provider/auth"
 import { CodexProvider } from "../../src/provider/codex"
 import { ModelsDev } from "../../src/provider/models"
 import { Provider } from "../../src/provider/provider"
+import { ProviderCatalog } from "../../src/provider/catalog"
 import { ScopeContext } from "../../src/scope/context"
 import { tmpdir } from "../fixture/fixture"
 
@@ -269,8 +270,8 @@ test("fetchModelIDs sorts visible Codex models and sends Codex headers", async (
   expect(ids).toEqual(["gpt-5.4-mini", "gpt-5.5"])
 })
 
-test("models.dev catalog includes OpenAI Codex before login", async () => {
-  const catalog = await ModelsDev.get()
+test("provider catalog includes OpenAI Codex before login", async () => {
+  const catalog = await ProviderCatalog.resolve({ forceRefresh: true })
   const codex = catalog[CodexProvider.PROVIDER_ID]
 
   expect(codex).toBeDefined()

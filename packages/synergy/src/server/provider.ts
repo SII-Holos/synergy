@@ -9,6 +9,9 @@ import { ModelsDev } from "../provider/models"
 import { ProviderAuth } from "../provider/auth"
 import { Log } from "../util/log"
 import { errors } from "./error"
+import { ProviderCatalog } from "@/provider/catalog"
+import { ProviderUsage } from "@/provider/usage-service"
+import { AccountUsage } from "@/provider/usage"
 
 const log = Log.create({ service: "provider" })
 
@@ -43,7 +46,7 @@ export const ProviderRoute = new Hono()
       const disabled = new Set(config.disabled_providers ?? [])
       const enabled = config.enabled_providers ? new Set(config.enabled_providers) : undefined
 
-      const allProviders = await ModelsDev.get()
+      const allProviders = await ProviderCatalog.resolve({ config, includeLive: false })
       const filteredProviders: Record<string, (typeof allProviders)[string]> = {}
       for (const [key, value] of Object.entries(allProviders)) {
         if ((enabled ? enabled.has(key) : true) && !disabled.has(key)) {
@@ -67,6 +70,56 @@ export const ProviderRoute = new Hono()
         connected: Object.keys(connected),
         configProviders,
       })
+    },
+  )
+  .get(
+    "/usage",
+    describeRoute({
+      summary: "List provider account usage",
+      description: "Retrieve account usage snapshots for connected providers that expose usage information.",
+      operationId: "provider.usage.list",
+      responses: {
+        200: {
+          description: "Provider account usage snapshots",
+          content: {
+            "application/json": {
+              schema: resolver(z.record(z.string(), AccountUsage.Snapshot)),
+            },
+          },
+        },
+      },
+    }),
+    async (c) => {
+      return c.json(await ProviderUsage.all())
+    },
+  )
+  .get(
+    "/:providerID/usage",
+    describeRoute({
+      summary: "Get provider account usage",
+      description: "Retrieve account usage and quota windows for a provider.",
+      operationId: "provider.usage.get",
+      responses: {
+        200: {
+          description: "Provider account usage snapshot",
+          content: {
+            "application/json": {
+              schema: resolver(AccountUsage.Snapshot),
+            },
+          },
+        },
+        ...errors(400),
+      },
+    }),
+    validator(
+      "param",
+      z.object({
+        providerID: z.string().meta({ description: "Provider ID" }),
+      }),
+    ),
+    async (c) => {
+      const providerID = c.req.valid("param").providerID
+      return c.json(await ProviderUsage.get(providerID))
     },
   )
   .get(

@@ -255,6 +255,33 @@ export type AuthOuathResult = { url: string; instructions: string } & (
 )
 
 // ---------------------------------------------------------------------------
+// Provider profiles
+// ---------------------------------------------------------------------------
+
+export type ProviderProfileHook = {
+  id: string
+  name: string
+  aliases?: string[]
+  description?: string
+  signupUrl?: string
+  env?: string[]
+  baseURL?: string
+  modelsURL?: string
+  apiMode?: "chat_completions" | "responses" | "anthropic_messages" | "codex_responses" | "external_process"
+  authKind?: "api_key" | "oauth" | "oauth_external" | "copilot" | "wellknown" | "none"
+  aiSdkPackage?: string
+  modelFactory?: "languageModel" | "openaiResponses" | "openaiChat" | "call" | "copilotAuto" | "anthropicMessages"
+  modelsDevProviderID?: string
+  fallbackModels?: string[]
+  defaultAuxModel?: string
+  usageKind?: "codex" | "anthropic-oauth" | "openrouter" | "unsupported"
+  healthCheck?: "models" | "none"
+  runtimeOptions?: (input: { auth?: Auth; provider?: Provider }) => Promise<Record<string, any>>
+  getModel?: (input: { sdk: any; modelID: string; options?: Record<string, any> }) => Promise<any>
+  fetchModels?: (input: { auth?: Auth; fetch?: typeof fetch; baseURL?: string }) => Promise<string[]>
+}
+
+// ---------------------------------------------------------------------------
 // PluginInput — context provided to every plugin's init()
 // ---------------------------------------------------------------------------
 
@@ -312,6 +339,8 @@ export interface PluginHooks {
   tool?: Record<string, ToolDefinition>
   /** Provider auth integration */
   auth?: AuthHook
+  /** Provider runtime/catalog profiles */
+  provider?: ProviderProfileHook | ProviderProfileHook[]
   /** Observe runtime bus events */
   event?(input: { event: Event }): Promise<void>
   /** Observe the loaded runtime config */

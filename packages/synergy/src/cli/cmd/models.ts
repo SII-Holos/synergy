@@ -6,6 +6,7 @@ import { ModelsDev } from "../../provider/models"
 import { cmd } from "./cmd"
 import { UI } from "../ui"
 import { EOL } from "os"
+import { ProviderCatalog } from "@/provider/catalog"
 
 export const ModelsCommand = cmd({
   command: "models [provider]",
@@ -29,7 +30,8 @@ export const ModelsCommand = cmd({
   handler: async (args) => {
     if (args.refresh) {
       await ModelsDev.refresh()
-      UI.println(UI.Style.TEXT_SUCCESS_BOLD + "Models cache refreshed" + UI.Style.TEXT_NORMAL)
+      await ProviderCatalog.resolve({ forceRefresh: true, includeLive: true }).catch(() => {})
+      UI.println(UI.Style.TEXT_SUCCESS_BOLD + "Provider catalog refreshed" + UI.Style.TEXT_NORMAL)
     }
 
     await ScopeContext.provide({

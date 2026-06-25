@@ -298,6 +298,9 @@ import type {
   ProviderOauthAuthorizeResponses,
   ProviderOauthCallbackErrors,
   ProviderOauthCallbackResponses,
+  ProviderUsageGetErrors,
+  ProviderUsageGetResponses,
+  ProviderUsageListResponses,
   PtyConnectErrors,
   PtyConnectResponses,
   PtyCreateErrors,
@@ -5067,6 +5070,70 @@ export class Command extends HeyApiClient {
   }
 }
 
+export class Usage extends HeyApiClient {
+  /**
+   * List provider account usage
+   *
+   * Retrieve account usage snapshots for connected providers that expose usage information.
+   */
+  public list<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      scopeID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<ProviderUsageListResponses, unknown, ThrowOnError>({
+      url: "/provider/usage",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Get provider account usage
+   *
+   * Retrieve account usage and quota windows for a provider.
+   */
+  public get<ThrowOnError extends boolean = false>(
+    parameters: {
+      providerID: string
+      directory?: string
+      scopeID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "providerID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<ProviderUsageGetResponses, ProviderUsageGetErrors, ThrowOnError>({
+      url: "/provider/{providerID}/usage",
+      ...options,
+      ...params,
+    })
+  }
+}
+
 export class Oauth extends HeyApiClient {
   /**
    * OAuth authorize
@@ -5217,6 +5284,8 @@ export class Provider extends HeyApiClient {
       ...params,
     })
   }
+
+  usage = new Usage({ client: this.client })
 
   oauth = new Oauth({ client: this.client })
 }

@@ -933,6 +933,32 @@ export type PluginMarketplaceConfig = {
   offlineCache?: boolean
 }
 
+/**
+ * Signed remote provider catalog configuration
+ */
+export type ProviderCatalogConfig = {
+  /**
+   * Enable signed remote provider catalog updates
+   */
+  enabled?: boolean
+  /**
+   * Signed provider catalog URL. The signature is fetched from the same URL plus .sig.
+   */
+  registryUrl?: string
+  /**
+   * Base64 Ed25519 public key used to verify provider catalog signatures
+   */
+  publicKey?: string
+  /**
+   * Provider catalog cache TTL in milliseconds
+   */
+  cacheTtlMs?: number
+  /**
+   * Use the last verified provider catalog when offline
+   */
+  offlineCache?: boolean
+}
+
 export type PermissionActionConfig = "ask" | "allow" | "deny"
 
 export type PermissionObjectConfig = {
@@ -1948,6 +1974,7 @@ export type Config = {
    * When set, ONLY these providers will be enabled. All other providers will be ignored
    */
   enabled_providers?: Array<string>
+  providerCatalog?: ProviderCatalogConfig
   /**
    * Default model in the format of provider/model, eg anthropic/claude-sonnet-4-5
    */
@@ -3394,6 +3421,34 @@ export type Command = {
   hints: Array<string>
 }
 
+export type AccountUsageWindow = {
+  label: string
+  usedPercent?: number
+  remainingPercent?: number
+  resetAt?: string
+  detail?: string
+}
+
+export type AccountUsageCredits = {
+  hasCredits?: boolean
+  balance?: number
+  unlimited?: boolean
+  currency?: string
+}
+
+export type AccountUsageSnapshot = {
+  providerID: string
+  status: "available" | "unavailable" | "error"
+  source?: string
+  fetchedAt: string
+  plan?: string
+  windows: Array<AccountUsageWindow>
+  details: Array<string>
+  credits?: AccountUsageCredits
+  reloginRequired?: boolean
+  unavailableReason?: string
+}
+
 export type ProviderAuthMethod = {
   type: "oauth" | "api"
   label: string
@@ -4436,23 +4491,35 @@ export type OAuth = {
   access: string
   expires: number
   enterpriseUrl?: string
+  metadata?: {
+    [key: string]: unknown
+  }
 }
 
 export type ApiAuth = {
   type: "api"
   key: string
+  metadata?: {
+    [key: string]: unknown
+  }
 }
 
 export type WellKnownAuth = {
   type: "wellknown"
   key: string
   token: string
+  metadata?: {
+    [key: string]: unknown
+  }
 }
 
 export type HolosAuth = {
   type: "holos"
   agentId: string
   agentSecret: string
+  metadata?: {
+    [key: string]: unknown
+  }
 }
 
 export type Auth = OAuth | ApiAuth | WellKnownAuth | HolosAuth
@@ -8348,6 +8415,60 @@ export type ProviderListResponses = {
 }
 
 export type ProviderListResponse = ProviderListResponses[keyof ProviderListResponses]
+
+export type ProviderUsageListData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/provider/usage"
+}
+
+export type ProviderUsageListResponses = {
+  /**
+   * Provider account usage snapshots
+   */
+  200: {
+    [key: string]: AccountUsageSnapshot
+  }
+}
+
+export type ProviderUsageListResponse = ProviderUsageListResponses[keyof ProviderUsageListResponses]
+
+export type ProviderUsageGetData = {
+  body?: never
+  path: {
+    /**
+     * Provider ID
+     */
+    providerID: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/provider/{providerID}/usage"
+}
+
+export type ProviderUsageGetErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type ProviderUsageGetError = ProviderUsageGetErrors[keyof ProviderUsageGetErrors]
+
+export type ProviderUsageGetResponses = {
+  /**
+   * Provider account usage snapshot
+   */
+  200: AccountUsageSnapshot
+}
+
+export type ProviderUsageGetResponse = ProviderUsageGetResponses[keyof ProviderUsageGetResponses]
 
 export type ProviderAuthData = {
   body?: never

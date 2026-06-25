@@ -9,6 +9,7 @@ import { Flag } from "../flag/flag"
 import { Log } from "../util/log"
 import { MEMORY_CATEGORIES } from "./schema"
 import { ConfigDomain } from "./domain"
+import { Auth } from "../provider/api-key"
 
 const log = Log.create({ service: "config.migration" })
 
@@ -760,6 +761,16 @@ async function migrateLegacyLibraryConfig(): Promise<number> {
   return changed
 }
 
+async function ensureProviderCatalogConfig(): Promise<boolean> {
+  const providersFile = ConfigDomain.filepath("providers", Global.Path.config)
+  return mergeTopLevelKey(providersFile, "providerCatalog", {
+    enabled: true,
+    registryUrl: "https://raw.githubusercontent.com/SII-Holos/synergy-provider-registry/main/catalog.v1.json",
+    offlineCache: true,
+    cacheTtlMs: 3600000,
+  })
+}
+
 export const migrations: Migration[] = [
   {
     id: "20260410-config-holos-top-level",
@@ -972,6 +983,25 @@ export const migrations: Migration[] = [
     async up(progress) {
       progress(0, 1)
       await migrateLegacyLibraryConfig()
+      progress(1, 1)
+    },
+  },
+  {
+    id: "20260625-provider-auth-v2",
+    description: "Migrate provider credentials to the v2 provider auth store",
+    async up(progress) {
+      progress(0, 1)
+      const result = await Auth.migrateLegacy({ backup: true })
+      if (result.migrated) log.info("migrated provider credentials to v2 auth store", { count: result.count })
+      progress(1, 1)
+    },
+  },
+  {
+    id: "20260625-provider-catalog-config",
+    description: "Add signed provider catalog configuration",
+    async up(progress) {
+      progress(0, 1)
+      await ensureProviderCatalogConfig()
       progress(1, 1)
     },
   },

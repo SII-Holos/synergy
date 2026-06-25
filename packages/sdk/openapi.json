@@ -7385,6 +7385,113 @@
         ]
       }
     },
+    "/provider/usage": {
+      "get": {
+        "operationId": "provider.usage.list",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "List provider account usage",
+        "description": "Retrieve account usage snapshots for connected providers that expose usage information.",
+        "responses": {
+          "200": {
+            "description": "Provider account usage snapshots",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {
+                    "$ref": "#/components/schemas/AccountUsageSnapshot"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.provider.usage.list({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/provider/{providerID}/usage": {
+      "get": {
+        "operationId": "provider.usage.get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "providerID",
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "description": "Provider ID"
+          }
+        ],
+        "summary": "Get provider account usage",
+        "description": "Retrieve account usage and quota windows for a provider.",
+        "responses": {
+          "200": {
+            "description": "Provider account usage snapshot",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountUsageSnapshot"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.provider.usage.get({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/provider/auth": {
       "get": {
         "operationId": "provider.auth",
@@ -17932,6 +18039,36 @@
         },
         "additionalProperties": false
       },
+      "ProviderCatalogConfig": {
+        "description": "Signed remote provider catalog configuration",
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "description": "Enable signed remote provider catalog updates",
+            "type": "boolean"
+          },
+          "registryUrl": {
+            "description": "Signed provider catalog URL. The signature is fetched from the same URL plus .sig.",
+            "type": "string",
+            "format": "uri"
+          },
+          "publicKey": {
+            "description": "Base64 Ed25519 public key used to verify provider catalog signatures",
+            "type": "string"
+          },
+          "cacheTtlMs": {
+            "description": "Provider catalog cache TTL in milliseconds",
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "offlineCache": {
+            "description": "Use the last verified provider catalog when offline",
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
       "PermissionActionConfig": {
         "type": "string",
         "enum": ["ask", "allow", "deny"]
@@ -19542,6 +19679,9 @@
               "type": "string"
             }
           },
+          "providerCatalog": {
+            "$ref": "#/components/schemas/ProviderCatalogConfig"
+          },
           "model": {
             "description": "Default model in the format of provider/model, eg anthropic/claude-sonnet-4-5",
             "type": "string"
@@ -19821,6 +19961,19 @@
             "items": {
               "type": "string"
             }
+          },
+          "project_doc_fallback_filenames": {
+            "description": "Ordered fallback instruction filenames to try when AGENTS.md is missing in a directory",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "project_doc_max_bytes": {
+            "description": "Maximum bytes to include from each automatically discovered instruction file (default: 32768; 0 disables automatic discovery)",
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
           },
           "layout": {
             "$ref": "#/components/schemas/LayoutConfig"
@@ -23385,6 +23538,90 @@
         },
         "required": ["name", "hints"]
       },
+      "AccountUsageWindow": {
+        "type": "object",
+        "properties": {
+          "label": {
+            "type": "string"
+          },
+          "usedPercent": {
+            "type": "number",
+            "minimum": 0
+          },
+          "remainingPercent": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "resetAt": {
+            "type": "string"
+          },
+          "detail": {
+            "type": "string"
+          }
+        },
+        "required": ["label"]
+      },
+      "AccountUsageCredits": {
+        "type": "object",
+        "properties": {
+          "hasCredits": {
+            "type": "boolean"
+          },
+          "balance": {
+            "type": "number"
+          },
+          "unlimited": {
+            "type": "boolean"
+          },
+          "currency": {
+            "type": "string"
+          }
+        }
+      },
+      "AccountUsageSnapshot": {
+        "type": "object",
+        "properties": {
+          "providerID": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["available", "unavailable", "error"]
+          },
+          "source": {
+            "type": "string"
+          },
+          "fetchedAt": {
+            "type": "string"
+          },
+          "plan": {
+            "type": "string"
+          },
+          "windows": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AccountUsageWindow"
+            }
+          },
+          "details": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "credits": {
+            "$ref": "#/components/schemas/AccountUsageCredits"
+          },
+          "reloginRequired": {
+            "type": "boolean"
+          },
+          "unavailableReason": {
+            "type": "string"
+          }
+        },
+        "required": ["providerID", "status", "fetchedAt", "windows", "details"]
+      },
       "ProviderAuthMethod": {
         "type": "object",
         "properties": {
@@ -26606,6 +26843,13 @@
           },
           "enterpriseUrl": {
             "type": "string"
+          },
+          "metadata": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {}
           }
         },
         "required": ["type", "refresh", "access", "expires"]
@@ -26619,6 +26863,13 @@
           },
           "key": {
             "type": "string"
+          },
+          "metadata": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {}
           }
         },
         "required": ["type", "key"]
@@ -26635,6 +26886,13 @@
           },
           "token": {
             "type": "string"
+          },
+          "metadata": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {}
           }
         },
         "required": ["type", "key", "token"]
@@ -26651,6 +26909,13 @@
           },
           "agentSecret": {
             "type": "string"
+          },
+          "metadata": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {}
           }
         },
         "required": ["type", "agentId", "agentSecret"]

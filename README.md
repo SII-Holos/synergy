@@ -195,6 +195,9 @@ synergy holos login         # Bind to Holos platform
 
 ```bash
 synergy models              # List available models
+synergy models --refresh    # Refresh provider catalog, models.dev metadata, and live model discovery
+synergy auth login          # Connect a model provider
+synergy auth usage          # Show provider account usage and quota windows when available
 synergy session list        # List sessions
 synergy export <sessionID>  # Export session data
 synergy import <file>       # Import session data
@@ -270,10 +273,14 @@ That scoped directory is where project-specific agents, commands, plugins, skill
 Use `synergy auth login` or the Web UI's **Connect provider** dialog to connect model providers. Provider credentials are stored in Synergy's own credential file:
 
 ```bash
-~/.synergy/data/auth/api-key.json
+~/.synergy/data/auth/provider-auth.json
 ```
 
+Provider discovery is no longer limited to `models.dev`. Synergy resolves providers from a built-in provider profile registry, an optional signed remote catalog, `models.dev` metadata, live model discovery, and user config overrides. The remote catalog is data-only and must verify with the configured Ed25519 public key before Synergy uses it; provider-specific auth and transport behavior comes from built-in code or explicitly installed plugins, not remote executable code.
+
 `openai-codex` is the built-in OpenAI Codex provider for ChatGPT/Codex subscription login. It uses a ChatGPT/Codex device-code sign-in and the Codex backend, then exposes account-visible Codex models such as `gpt-5.4-mini` in `synergy models openai-codex` and the model picker. This is separate from the normal `openai` provider: OpenAI Platform API keys still use `openai` and follow Platform API billing.
+
+Synergy also supports subscription-style provider profiles such as Claude Pro/Max OAuth, GitHub Copilot, MiniMax OAuth, and usage-aware providers such as OpenRouter. Run `synergy auth usage [provider]` to inspect quota or credit snapshots when a provider exposes a reliable endpoint. Providers without a reliable usage endpoint report usage as unavailable instead of guessing.
 
 When `CODEX_HOME` or `~/.codex/auth.json` exists, the CLI can copy valid Codex CLI credentials into Synergy. Synergy does not share or write back to the Codex CLI auth file, so refresh-token rotation stays isolated between the two tools.
 

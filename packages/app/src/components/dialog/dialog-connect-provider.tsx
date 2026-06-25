@@ -1,4 +1,4 @@
-import type { ProviderAuthAuthorization } from "@ericsanchezok/synergy-sdk/client"
+import type { AccountUsageSnapshot, ProviderAuthAuthorization } from "@ericsanchezok/synergy-sdk/client"
 import { Button } from "@ericsanchezok/synergy-ui/button"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { Dialog } from "@ericsanchezok/synergy-ui/dialog"
@@ -10,7 +10,7 @@ import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
 import { TextField } from "@ericsanchezok/synergy-ui/text-field"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import { iife } from "@ericsanchezok/synergy-util/iife"
-import { createMemo, Match, onCleanup, onMount, Switch } from "solid-js"
+import { createMemo, For, Match, onCleanup, onMount, Show, Switch } from "solid-js"
 import { createStore, produce } from "solid-js/store"
 import { Link } from "@/components/link"
 import { useGlobalSDK } from "@/context/global-sdk"
@@ -37,11 +37,46 @@ export function DialogConnectProvider(props: { provider: string }) {
   const [store, setStore] = createStore({
     methodIndex: undefined as undefined | number,
     authorization: undefined as undefined | ProviderAuthAuthorization,
+    usage: undefined as undefined | AccountUsageSnapshot,
+    usageState: "idle" as "idle" | "pending" | "complete" | "error",
     state: "pending" as undefined | "pending" | "complete" | "error",
     error: undefined as string | undefined,
   })
 
   const method = createMemo(() => (store.methodIndex !== undefined ? methods().at(store.methodIndex!) : undefined))
+  const connected = createMemo(() => globalSync.data.provider.connected.includes(props.provider))
+  const usageSupported = createMemo(() => ["anthropic", "openai-codex", "openrouter"].includes(props.provider))
+
+  function formatPercent(value: number | undefined) {
+    if (value === undefined) return undefined
+    return `${Math.round(value)}%`
+  }
+
+  function formatReset(value: string | undefined) {
+    if (!value) return undefined
+    const date = new Date(value)
+    if (Number.isNaN(date.getTime())) return undefined
+    return date.toLocaleString(undefined, {
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+    })
+  }
+
+  async function loadUsage() {
+    if (!connected() || !usageSupported()) return
+    setStore("usageState", "pending")
+    await globalSDK.client.provider.usage
+      .get({ providerID: props.provider }, { throwOnError: true })
+      .then((x) => {
+        setStore("usage", x.data)
+        setStore("usageState", "complete")
+      })
+      .catch(() => {
+        setStore("usageState", "error")
+      })
+  }
 
   async function selectMethod(index: number) {
     const method = methods()[index]
@@ -99,6 +134,7 @@ export function DialogConnectProvider(props: { provider: string }) {
     if (methods().length === 1) {
       selectMethod(0)
     }
+    loadUsage()
     document.addEventListener("keydown", handleKey)
     onCleanup(() => {
       document.removeEventListener("keydown", handleKey)
@@ -148,6 +184,67 @@ export function DialogConnectProvider(props: { provider: string }) {
             </Switch>
           </div>
         </div>
+        <Show when={connected()}>
+          <div class="mx-2.5 flex flex-col gap-3 rounded-md border border-border-base bg-surface-base px-3 py-2.5">
+            <div class="flex items-center gap-2 text-13-medium text-text-strong">
+              <Icon name="circle-check" class="text-icon-success-base" />
+              <span>Connected</span>
+            </div>
+            <Show when={usageSupported()}>
+              <Switch>
+                <Match when={store.usageState === "pending"}>
+                  <div class="flex items-center gap-2 text-13-regular text-text-weak">
+                    <Spinner />
+                    <span>Loading account usage...</span>
+                  </div>
+                </Match>
+                <Match when={store.usageState === "error"}>
+                  <div class="text-13-regular text-text-weak">Usage is unavailable right now.</div>
+                </Match>
+                <Match when={store.usage}>
+                  {(usage) => (
+                    <div class="flex flex-col gap-2 text-13-regular text-text-base">
+                      <Show when={usage().plan}>
+                        <div class="text-text-weak">Plan: {usage().plan}</div>
+                      </Show>
+                      <Show when={usage().status === "unavailable"}>
+                        <div class="text-text-weak">{usage().unavailableReason ?? "Usage is unavailable."}</div>
+                      </Show>
+                      <Show when={usage().status === "error"}>
+                        <div class="text-text-weak">{usage().unavailableReason ?? "Usage request failed."}</div>
+                      </Show>
+                      <Show when={usage().credits}>
+                        {(credits) => (
+                          <div>
+                            Credits:{" "}
+                            {credits().unlimited
+                              ? "unlimited"
+                              : credits().balance !== undefined
+                                ? `${credits().balance}${credits().currency ? ` ${credits().currency}` : ""}`
+                                : credits().hasCredits === false
+                                  ? "none"
+                                  : "available"}
+                          </div>
+                        )}
+                      </Show>
+                      <For each={usage().windows}>
+                        {(window) => (
+                          <div class="flex items-center justify-between gap-3">
+                            <span>{window.label}</span>
+                            <span class="text-text-weak">
+                              {formatPercent(window.remainingPercent) ?? formatPercent(window.usedPercent) ?? "n/a"}
+                              {formatReset(window.resetAt) ? ` resets ${formatReset(window.resetAt)}` : ""}
+                            </span>
+                          </div>
+                        )}
+                      </For>
+                    </div>
+                  )}
+                </Match>
+              </Switch>
+            </Show>
+          </div>
+        </Show>
         <div class="px-2.5 pb-10 flex flex-col gap-6">
           <Switch>
             <Match when={store.methodIndex === undefined}>

@@ -116,6 +116,8 @@ export namespace Config {
   export type LibraryConfig = Schema.LibraryConfig
   export const Provider = Schema.Provider
   export type Provider = Schema.Provider
+  export const ProviderCatalog = Schema.ProviderCatalog
+  export type ProviderCatalog = Schema.ProviderCatalog
   export const Info = Schema.Info
   export type Info = Schema.Info
 

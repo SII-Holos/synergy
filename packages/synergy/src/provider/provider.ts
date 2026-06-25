@@ -38,6 +38,8 @@ import { createPerplexity } from "@ai-sdk/perplexity"
 import { createVercel } from "@ai-sdk/vercel"
 import { ProviderTransform } from "./transform"
 import { CodexProvider } from "./codex"
+import { ProviderCatalog } from "./catalog"
+import { ProviderProfile } from "./profile"
 
 export namespace Provider {
   const log = Log.create({ service: "provider" })
@@ -613,11 +615,7 @@ export namespace Provider {
       return true
     }
 
-    const modelsDev = { ...(await ModelsDev.get()) }
-    if (isProviderAllowed(CodexProvider.PROVIDER_ID)) {
-      const codexModelIDs = await CodexProvider.runtimeModelIDs()
-      modelsDev[CodexProvider.PROVIDER_ID] = CodexProvider.modelsDevProvider(codexModelIDs, modelsDev.openai?.models)
-    }
+    const modelsDev = { ...(await ProviderCatalog.resolve({ config, includeLive: true })) }
     const database = mapValues(modelsDev, fromModelsDevProvider)
 
     const providers: { [providerID: string]: Info } = {}
@@ -630,20 +628,6 @@ export namespace Provider {
     log.info("init")
 
     const configProviders = Object.entries(config.provider ?? {})
-
-    // Add GitHub Copilot Enterprise provider that inherits from GitHub Copilot
-    if (database["github-copilot"]) {
-      const githubCopilot = database["github-copilot"]
-      database["github-copilot-enterprise"] = {
-        ...githubCopilot,
-        id: "github-copilot-enterprise",
-        name: "GitHub Copilot Enterprise",
-        models: mapValues(githubCopilot.models, (model) => ({
-          ...model,
-          providerID: "github-copilot-enterprise",
-        })),
-      }
-    }
 
     function mergeProvider(providerID: string, provider: Partial<Info>) {
       const existing = providers[providerID]
@@ -812,6 +796,27 @@ export namespace Provider {
       }
     }
 
+    for (const profile of ProviderProfile.all()) {
+      const providerID = profile.id
+      if (disabled.has(providerID)) continue
+      const base = database[providerID]
+      if (!base) continue
+      const auth = await Auth.get(providerID)
+      const shouldMerge = !!auth || !!providers[providerID]
+      if (!shouldMerge) continue
+      const options = (await profile.runtimeOptions?.({ auth, provider: modelsDev[providerID] })) ?? {}
+      if (profile.getModel || profile.modelFactory) {
+        modelLoaders[providerID] = async (sdk: any, modelID: string, modelOptions?: Record<string, any>) => {
+          if (profile.getModel) return profile.getModel({ sdk, modelID, options: modelOptions })
+          return ProviderProfile.defaultModelFactory(profile.modelFactory, { sdk, modelID, options: modelOptions })
+        }
+      }
+      mergeProvider(providerID, {
+        source: "custom",
+        options,
+      })
+    }
+
     for (const [providerID, fn] of Object.entries(CUSTOM_LOADERS)) {
       if (disabled.has(providerID)) continue
       const result = await fn(database[providerID])
@@ -891,6 +896,7 @@ export namespace Provider {
 
   export async function reload() {
     log.info("reloading provider state")
+    ProviderCatalog.reset()
     await state.resetAll()
     log.info("provider state reloaded")
   }
