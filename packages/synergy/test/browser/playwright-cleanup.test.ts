@@ -10,8 +10,7 @@ const PKG_JSON = path.join(import.meta.dirname ?? __dirname, "../../package.json
 // ── CDP staleness enforcement ───────────────────────────────────
 // After Playwright migration, the hand-rolled CDP layer must be
 // removed. A tiny CDPSession adapter may remain for features that
-// Playwright intentionally exposes through CDP, such as screencast
-// fallback and IME-safe text insertion.
+// Playwright intentionally exposes through CDP.
 
 const CDP_FILE = path.join(BROWSER_SRC, "cdp.ts")
 

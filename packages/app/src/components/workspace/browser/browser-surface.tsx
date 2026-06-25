@@ -4,9 +4,8 @@ import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { createEffect, createSignal, onCleanup, onMount, Show } from "solid-js"
 import { usePlatform } from "@/context/platform"
 import { useSDK } from "@/context/sdk"
-import { useBrowser, type BrowserFrameEntry } from "./browser-store"
+import { useBrowser } from "./browser-store"
 import { BrowserWebRTCClient, createBrowserWebRTCSignalingUrl, type BrowserWebRTCStatus } from "./browser-webrtc"
-import { isLegacyBrowserStreamEnabled } from "./browser-ws"
 
 const MIN_FIT_VIEWPORT_WIDTH = 320
 const MIN_FIT_VIEWPORT_HEIGHT = 240
@@ -38,7 +37,6 @@ function arrayBufferToBase64(buffer: ArrayBuffer): string {
 
 export function BrowserSurface(props: { sessionID: string; routeDirectory?: string }) {
   let wrapperRef: HTMLDivElement | undefined
-  let canvasRef: HTMLCanvasElement | undefined
   let videoRef: HTMLVideoElement | undefined
   let fileInputRef: HTMLInputElement | undefined
   let webrtcClient: BrowserWebRTCClient | null = null
@@ -49,7 +47,6 @@ export function BrowserSurface(props: { sessionID: string; routeDirectory?: stri
   const browser = useBrowser()
   const platform = usePlatform()
   const sdk = useSDK()
-  const legacyStreamEnabled = isLegacyBrowserStreamEnabled()
   const [webrtcStatus, setWebrtcStatus] = createSignal<BrowserWebRTCStatus>("idle")
   const [webrtcDetail, setWebrtcDetail] = createSignal<unknown>(null)
 
@@ -58,20 +55,8 @@ export function BrowserSurface(props: { sessionID: string; routeDirectory?: stri
   }
 
   const webrtcPresentation = () => {
-    return browser.presentation()?.kind === "webrtc" && !legacyStreamEnabled
+    return browser.presentation()?.kind === "webrtc"
   }
-
-  const activeFrame = (): BrowserFrameEntry | undefined => {
-    const id = browser.activeTabId()
-    if (!id) return undefined
-    return browser.tabFrames[id]
-  }
-
-  createEffect(() => {
-    if (!legacyStreamEnabled || nativePresentation() || webrtcPresentation()) return
-    const tabId = browser.activeTabId()
-    if (tabId) browser.send({ type: "stream.start", tabId })
-  })
 
   createEffect(() => {
     const tabId = browser.activeTabId()
@@ -257,47 +242,16 @@ export function BrowserSurface(props: { sessionID: string; routeDirectory?: stri
     })
   }
 
-  createEffect(() => {
-    const frame = activeFrame()
-    const canvas = canvasRef
-    if (!frame || !canvas) return
-
-    const img = new Image()
-    img.onload = () => {
-      const width = frame.metadata.width || img.width
-      const height = frame.metadata.height || img.height
-      canvas.width = width
-      canvas.height = height
-      const ctx = canvas.getContext("2d")
-      if (!ctx) return
-      ctx.clearRect(0, 0, width, height)
-      ctx.drawImage(img, 0, 0, width, height)
-    }
-    img.src = frame.src
-  })
-
   function point(e: MouseEvent | WheelEvent) {
-    if (webrtcPresentation()) {
-      const target = videoRef ?? wrapperRef
-      if (!target) return null
-      const rect = target.getBoundingClientRect()
-      if (rect.width <= 0 || rect.height <= 0) return null
-      const width = videoRef?.videoWidth || browser.viewportWidth()
-      const height = videoRef?.videoHeight || browser.viewportHeight()
-      return {
-        x: Math.round(((e.clientX - rect.left) / rect.width) * width),
-        y: Math.round(((e.clientY - rect.top) / rect.height) * height),
-      }
-    }
-
-    const canvas = canvasRef
-    const frame = activeFrame()
-    if (!canvas || !frame) return null
-    const rect = canvas.getBoundingClientRect()
+    const target = videoRef ?? wrapperRef
+    if (!target) return null
+    const rect = target.getBoundingClientRect()
     if (rect.width <= 0 || rect.height <= 0) return null
+    const width = videoRef?.videoWidth || browser.viewportWidth()
+    const height = videoRef?.videoHeight || browser.viewportHeight()
     return {
-      x: Math.round(((e.clientX - rect.left) / rect.width) * frame.metadata.width),
-      y: Math.round(((e.clientY - rect.top) / rect.height) * frame.metadata.height),
+      x: Math.round(((e.clientX - rect.left) / rect.width) * width),
+      y: Math.round(((e.clientY - rect.top) / rect.height) * height),
     }
   }
 
@@ -315,7 +269,7 @@ export function BrowserSurface(props: { sessionID: string; routeDirectory?: stri
     const p = point(e)
     if (!tabId || !p) return
     if (action === "down") {
-      ;(webrtcPresentation() ? videoRef : canvasRef)?.focus()
+      videoRef?.focus()
       if (browser.annotationMode()) {
         const wrapper = wrapperRef?.getBoundingClientRect()
         browser.setAnnotationTarget({
@@ -418,7 +372,7 @@ export function BrowserSurface(props: { sessionID: string; routeDirectory?: stri
   }
 
   function hasInteractiveSurface() {
-    return nativePresentation() || webrtcPresentation() || activeFrame()
+    return nativePresentation() || webrtcPresentation()
   }
 
   function webrtcStatusMessage() {
@@ -450,32 +404,7 @@ export function BrowserSurface(props: { sessionID: string; routeDirectory?: stri
         }
       >
         <Show when={!nativePresentation()} fallback={<div class="absolute inset-0" onPointerDown={focusNativeView} />}>
-          <Show
-            when={webrtcPresentation()}
-            fallback={
-              <canvas
-                ref={canvasRef}
-                tabIndex={0}
-                class="max-w-full max-h-full outline-none cursor-default"
-                onMouseMove={(e) => handleMouse("move", e)}
-                onMouseDown={(e) => handleMouse("down", e)}
-                onMouseUp={(e) => handleMouse("up", e)}
-                onWheel={handleWheel}
-                onKeyDown={(e) => handleKey("down", e)}
-                onKeyUp={(e) => handleKey("up", e)}
-                onCompositionStart={() => {
-                  composing = true
-                }}
-                onCompositionEnd={(e) => {
-                  composing = false
-                  const text = e.data
-                  const tabId = browser.activeTabId()
-                  if (tabId && text) sendInteractiveInput({ type: "input.text", tabId, text })
-                }}
-                onPaste={handlePaste}
-              />
-            }
-          >
+          <Show when={webrtcPresentation()}>
             <video
               ref={videoRef}
               tabIndex={0}

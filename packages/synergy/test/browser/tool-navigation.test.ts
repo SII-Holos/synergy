@@ -38,8 +38,6 @@ function tab(id: string): BrowserTab {
     async insertText() {},
     async respondToFileChooser() {},
     async respondToDialog() {},
-    async startFrameStream() {},
-    async stopFrameStream() {},
     async ensureCDP() {
       throw new Error("not implemented")
     },

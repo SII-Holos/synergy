@@ -4,14 +4,11 @@ import {
   browserControlCommandFromMessage,
   createBrowserControlUrl,
   createBrowserEventsWebSocketUrl,
-  createBrowserWebSocketUrl,
-  createQueuedBrowserSender,
-  selectBrowserClientTransport,
 } from "./browser-ws"
 
 describe("createBrowserWebSocketUrl", () => {
   test("uses the route directory and scope id for home scope", () => {
-    const url = createBrowserWebSocketUrl({
+    const url = createBrowserEventsWebSocketUrl({
       serverUrl: "http://localhost:4096",
       sessionID: "ses_1",
       routeDirectory: "aG9tZQ",
@@ -22,18 +19,17 @@ describe("createBrowserWebSocketUrl", () => {
     expect(url).not.toBeNull()
     const parsed = new URL(url!)
     expect(parsed.protocol).toBe("ws:")
-    expect(parsed.pathname).toBe("/aG9tZQ/browser/connect")
+    expect(parsed.pathname).toBe("/aG9tZQ/browser/events")
     expect(parsed.searchParams.get("mode")).toBe("session")
     expect(parsed.searchParams.get("sessionID")).toBe("ses_1")
     expect(parsed.searchParams.get("presentation")).toBe("auto")
     expect(parsed.searchParams.get("client")).toBe("web")
     expect(parsed.searchParams.get("scopeID")).toBe("home")
-    expect(parsed.searchParams.get("legacyStream")).toBe("1")
     expect(parsed.searchParams.has("directory")).toBe(false)
   })
 
   test("uses the route directory and directory query for project scope", () => {
-    const url = createBrowserWebSocketUrl({
+    const url = createBrowserEventsWebSocketUrl({
       serverUrl: "https://synergy.local",
       sessionID: "ses_2",
       routeDirectory: "project-route",
@@ -44,18 +40,17 @@ describe("createBrowserWebSocketUrl", () => {
     expect(url).not.toBeNull()
     const parsed = new URL(url!)
     expect(parsed.protocol).toBe("wss:")
-    expect(parsed.pathname).toBe("/project-route/browser/connect")
+    expect(parsed.pathname).toBe("/project-route/browser/events")
     expect(parsed.searchParams.get("mode")).toBe("session")
     expect(parsed.searchParams.get("sessionID")).toBe("ses_2")
     expect(parsed.searchParams.get("presentation")).toBe("auto")
     expect(parsed.searchParams.get("client")).toBe("web")
     expect(parsed.searchParams.get("directory")).toBe("/Users/eric/project")
-    expect(parsed.searchParams.get("legacyStream")).toBe("1")
     expect(parsed.searchParams.has("scopeID")).toBe(false)
   })
 
   test("can request native presentation for a desktop client", () => {
-    const url = createBrowserWebSocketUrl({
+    const url = createBrowserEventsWebSocketUrl({
       serverUrl: "http://localhost:4096",
       sessionID: "ses_3",
       routeDirectory: "aG9tZQ",
@@ -139,7 +134,7 @@ describe("createBrowserWebSocketUrl", () => {
   })
 
   test("returns null when no route or scope is available", () => {
-    expect(createBrowserWebSocketUrl({ serverUrl: "http://localhost:4096", sessionID: "ses_1" })).toBeNull()
+    expect(createBrowserEventsWebSocketUrl({ serverUrl: "http://localhost:4096", sessionID: "ses_1" })).toBeNull()
   })
 })
 
@@ -155,61 +150,5 @@ describe("browserControlCommandFromMessage", () => {
       tabId: "tab_1",
       url: "www.google.com",
     })
-  })
-
-  test("keeps old live frame messages out of host control", () => {
-    expect(browserControlCommandFromMessage({ type: "stream.start", tabId: "tab_1" })).toBeNull()
-    expect(browserControlCommandFromMessage({ type: "stream.stop", tabId: "tab_1" })).toBeNull()
-  })
-})
-
-describe("selectBrowserClientTransport", () => {
-  test("defaults to control transport so auto presentation can choose native or WebRTC", () => {
-    expect(selectBrowserClientTransport({})).toBe("control")
-  })
-
-  test("keeps the legacy frame stream behind an explicit migration flag", () => {
-    expect(selectBrowserClientTransport({ legacyStreamEnabled: true })).toBe("legacy")
-    expect(selectBrowserClientTransport({ requested: "legacy" })).toBe("legacy")
-  })
-})
-
-describe("createQueuedBrowserSender", () => {
-  test("queues messages until the socket opens", () => {
-    const sent: string[] = []
-    const socket = {
-      readyState: 0,
-      send: (data: string) => sent.push(data),
-    }
-    const sender = createQueuedBrowserSender(() => socket, { openState: 1 })
-
-    sender.send({ type: "createTab", url: "www.google.com" })
-
-    expect(sent).toEqual([])
-    expect(sender.size()).toBe(1)
-
-    socket.readyState = 1
-    sender.flush()
-
-    expect(sent.map((item) => JSON.parse(item))).toEqual([{ type: "createTab", url: "www.google.com" }])
-    expect(sender.size()).toBe(0)
-  })
-
-  test("keeps the newest messages when the queue is full", () => {
-    const sent: string[] = []
-    const socket = {
-      readyState: 0,
-      send: (data: string) => sent.push(data),
-    }
-    const sender = createQueuedBrowserSender(() => socket, { openState: 1, maxPending: 2 })
-
-    sender.send({ type: "first" })
-    sender.send({ type: "second" })
-    sender.send({ type: "third" })
-
-    socket.readyState = 1
-    sender.flush()
-
-    expect(sent.map((item) => JSON.parse(item))).toEqual([{ type: "second" }, { type: "third" }])
   })
 })

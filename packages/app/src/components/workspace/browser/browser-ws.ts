@@ -7,20 +7,12 @@ import { browserDebug, shouldLogBrowserMessage, summarizeBrowserMessage } from "
 
 const MAX_RECONNECT_ATTEMPTS = 10
 const RECONNECT_DELAY = 2000
-const MAX_PENDING_MESSAGES = 50
-const LEGACY_STREAM_ENV = "VITE_SYNERGY_BROWSER_LEGACY_STREAM"
-
-type BrowserSocket = {
-  readyState: number
-  send(data: string): void
-}
 
 type BrowserWebSocketOptions = {
   sessionID: string
   routeDirectory?: string
   client?: "web" | "desktop"
   sameHost?: boolean
-  transport?: BrowserClientTransport
 }
 
 type BrowserWebSocketUrlOptions = {
@@ -35,24 +27,6 @@ type BrowserWebSocketUrlOptions = {
   sameHost?: boolean
 }
 
-export type BrowserClientTransport = "legacy" | "control"
-
-export function isLegacyBrowserStreamEnabled(env: Record<string, unknown> = import.meta.env): boolean {
-  return env[LEGACY_STREAM_ENV] === "1" || env[LEGACY_STREAM_ENV] === "true"
-}
-
-export function selectBrowserClientTransport(options: {
-  requested?: BrowserClientTransport
-  legacyStreamEnabled?: boolean
-}): BrowserClientTransport {
-  if (options.requested) return options.requested
-  return options.legacyStreamEnabled ? "legacy" : "control"
-}
-
-export function createBrowserWebSocketUrl(options: BrowserWebSocketUrlOptions) {
-  return createBrowserRouteUrl(options, "connect", "ws")
-}
-
 export function createBrowserEventsWebSocketUrl(options: BrowserWebSocketUrlOptions) {
   return createBrowserRouteUrl(options, "events", "ws")
 }
@@ -63,7 +37,7 @@ export function createBrowserControlUrl(options: BrowserWebSocketUrlOptions) {
 
 function createBrowserRouteUrl(
   options: BrowserWebSocketUrlOptions,
-  route: "connect" | "events" | "control",
+  route: "events" | "control",
   scheme: "ws" | "http",
 ) {
   const pathDirectory = options.routeDirectory ?? options.directory ?? options.scopeID ?? options.scopeKey
@@ -78,66 +52,9 @@ function createBrowserRouteUrl(
   if (options.scopeID) params.set("scopeID", options.scopeID)
   else if (options.directory) params.set("directory", options.directory)
   if (options.sameHost) params.set("sameHost", "1")
-  if (route === "connect") params.set("legacyStream", "1")
 
   const baseUrl = scheme === "ws" ? options.serverUrl.replace(/^http/, "ws") : options.serverUrl
   return baseUrl + `/${encodeURIComponent(pathDirectory)}/browser/${route}?${params.toString()}`
-}
-
-export function createQueuedBrowserSender(
-  getSocket: () => BrowserSocket | undefined,
-  options: { openState?: number; maxPending?: number } = {},
-) {
-  const openState = options.openState ?? WebSocket.OPEN
-  const maxPending = options.maxPending ?? MAX_PENDING_MESSAGES
-  const pending: Record<string, unknown>[] = []
-
-  function send(msg: Record<string, unknown>) {
-    const socket = getSocket()
-    if (socket?.readyState === openState) {
-      if (shouldLogBrowserMessage(msg)) browserDebug("ws.send", summarizeBrowserMessage(msg))
-      socket.send(JSON.stringify(msg))
-      return
-    }
-
-    if (shouldLogBrowserMessage(msg)) {
-      browserDebug("ws.queue", {
-        ...summarizeBrowserMessage(msg),
-        readyState: socket?.readyState ?? "missing",
-        pendingBefore: pending.length,
-      })
-    }
-    pending.push(msg)
-    if (pending.length > maxPending) {
-      const dropped = pending.shift()
-      if (dropped && shouldLogBrowserMessage(dropped)) browserDebug("ws.queue.drop", summarizeBrowserMessage(dropped))
-    }
-  }
-
-  function flush() {
-    const socket = getSocket()
-    if (socket?.readyState !== openState) {
-      browserDebug("ws.flush.skipped", { readyState: socket?.readyState ?? "missing", pending: pending.length })
-      return
-    }
-    const messages = pending.splice(0)
-    browserDebug("ws.flush", { count: messages.length })
-    for (const msg of messages) {
-      if (shouldLogBrowserMessage(msg)) browserDebug("ws.send.queued", summarizeBrowserMessage(msg))
-      socket.send(JSON.stringify(msg))
-    }
-  }
-
-  function clear() {
-    browserDebug("ws.queue.clear", { count: pending.length })
-    pending.length = 0
-  }
-
-  function size() {
-    return pending.length
-  }
-
-  return { send, flush, clear, size }
 }
 
 export function browserControlCommandFromMessage(msg: Record<string, unknown>): Record<string, unknown> | null {
@@ -209,8 +126,6 @@ export function browserControlCommandFromMessage(msg: Record<string, unknown>): 
       return { type: "clearDiagnostics", tabId: msg.tabId }
     case "setFollowAgent":
     case "followAgentNow":
-    case "stream.start":
-    case "stream.stop":
       return null
     default:
       return null
@@ -304,15 +219,10 @@ export function createBrowserWebSocket(store: BrowserStoreAPI, options: BrowserW
   const routeDirectory = typeof options === "string" ? undefined : options.routeDirectory
   const client = typeof options === "string" ? "web" : (options.client ?? "web")
   const sameHost = typeof options === "string" ? false : (options.sameHost ?? false)
-  const transport = selectBrowserClientTransport({
-    requested: typeof options === "string" ? undefined : options.transport,
-    legacyStreamEnabled: isLegacyBrowserStreamEnabled(),
-  })
   let ws: WebSocket | undefined
   let reconnectTimer: ReturnType<typeof setTimeout> | undefined
   let disposed = false
   let reconnectAttempts = 0
-  const queued = createQueuedBrowserSender(() => ws)
   const controlSender = createBrowserHttpControlSender(store, {
     serverUrl: sdk.url,
     sessionID,
@@ -324,7 +234,7 @@ export function createBrowserWebSocket(store: BrowserStoreAPI, options: BrowserW
     sameHost,
     fetch: platform.fetch,
   })
-  const send = transport === "control" ? controlSender.send : queued.send
+  const send = controlSender.send
 
   store._setSend(send)
 
@@ -333,8 +243,7 @@ export function createBrowserWebSocket(store: BrowserStoreAPI, options: BrowserW
       browserDebug("ws.connect.skipped", { reason: "disposed" })
       return
     }
-    const createUrl = transport === "control" ? createBrowserEventsWebSocketUrl : createBrowserWebSocketUrl
-    const wsUrl = createUrl({
+    const wsUrl = createBrowserEventsWebSocketUrl({
       serverUrl: sdk.url,
       sessionID,
       routeDirectory,
@@ -360,7 +269,6 @@ export function createBrowserWebSocket(store: BrowserStoreAPI, options: BrowserW
       sessionID,
       url: wsUrl,
       routeDirectory,
-      transport,
       directory: sdk.directory,
       scopeID: sdk.scopeID,
       scopeKey: sdk.scopeKey,
@@ -371,8 +279,7 @@ export function createBrowserWebSocket(store: BrowserStoreAPI, options: BrowserW
     socket.addEventListener("open", () => {
       reconnectAttempts = 0
       store.setSession("connectionStatus", "connected")
-      browserDebug("ws.open", { sessionID, pending: queued.size() })
-      if (transport !== "control") queued.flush()
+      browserDebug("ws.open", { sessionID })
     })
 
     socket.addEventListener("message", (event) => {
@@ -434,13 +341,6 @@ export function createBrowserWebSocket(store: BrowserStoreAPI, options: BrowserW
         case "page.error": {
           store.setTabLoading(msg.tabId, false)
           store.setBrowserError({ severity: "error", message: msg.message ?? "Browser page error" })
-          break
-        }
-        case "frame": {
-          store.setFrame(msg.tabId, {
-            src: `data:${msg.mime ?? "image/jpeg"};base64,${msg.data}`,
-            metadata: msg.metadata,
-          })
           break
         }
         case "screenshot": {
@@ -566,10 +466,9 @@ export function createBrowserWebSocket(store: BrowserStoreAPI, options: BrowserW
   })
 
   onCleanup(() => {
-    browserDebug("ws.cleanup", { sessionID, hasSocket: Boolean(ws), pending: queued.size() })
+    browserDebug("ws.cleanup", { sessionID, hasSocket: Boolean(ws) })
     disposed = true
     if (reconnectTimer) clearTimeout(reconnectTimer)
-    if (transport !== "control") queued.clear()
     ws?.close()
     ws = undefined
   })

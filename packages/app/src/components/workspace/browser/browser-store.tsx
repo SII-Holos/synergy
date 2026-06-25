@@ -19,21 +19,6 @@ export interface ScreenshotEntry {
   height: number
 }
 
-export interface BrowserFrameMetadata {
-  width: number
-  height: number
-  deviceScaleFactor: number
-  pageScaleFactor?: number
-  scrollOffsetX?: number
-  scrollOffsetY?: number
-  timestamp: number
-}
-
-export interface BrowserFrameEntry {
-  src: string
-  metadata: BrowserFrameMetadata
-}
-
 export interface ConsoleEntry {
   level: string
   text: string
@@ -128,7 +113,6 @@ export function createBrowserStore() {
   })
 
   const [tabScreenshots, setTabScreenshots] = createStore<Record<string, ScreenshotEntry>>({})
-  const [tabFrames, setTabFrames] = createStore<Record<string, BrowserFrameEntry>>({})
   const [consoleEntries, setConsoleEntries] = createStore<Record<string, ConsoleEntry[]>>({})
   const [networkRequests, setNetworkRequests] = createStore<Record<string, NetworkEntry[]>>({})
   const [elements, setElements] = createStore<Record<string, AccessibilityElement[]>>({})
@@ -309,10 +293,6 @@ export function createBrowserStore() {
     }
   }
 
-  function setFrame(tabId: string, frame: BrowserFrameEntry) {
-    setTabFrames(tabId, frame)
-  }
-
   function addDownload(tabId: string, entry: DownloadEntry) {
     const current = downloads[tabId] ?? []
     const index = current.findIndex((item) => item.id === entry.id)
@@ -343,9 +323,6 @@ export function createBrowserStore() {
     toggleDevPanel,
     tabScreenshots,
     setTabScreenshots,
-    tabFrames,
-    setTabFrames,
-    setFrame,
     consoleEntries,
     setConsoleEntries,
     networkRequests,
