@@ -4,13 +4,20 @@ export type BrowserNativeViewRequest = {
   sessionID: string
   routeDirectory?: string
   tabId: string
+  url?: string
+  bounds?: {
+    x: number
+    y: number
+    width: number
+    height: number
+  }
 }
 
 export type BrowserNativeViewBridge = {
   attachView(input: BrowserNativeViewRequest): Promise<void>
   detachView(input: { tabId: string }): Promise<void>
   focusView(input: { tabId: string }): Promise<void>
-  resizeView(input: { tabId: string; width: number; height: number }): Promise<void>
+  resizeView(input: { tabId: string; width: number; height: number; x?: number; y?: number }): Promise<void>
 }
 
 export type Platform = {
