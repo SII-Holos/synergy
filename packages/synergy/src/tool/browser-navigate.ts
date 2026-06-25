@@ -1,7 +1,6 @@
 import z from "zod"
 import { Tool } from "./tool"
 import { BrowserToolHelper } from "./browser-shared"
-import { BrowserRuntime } from "../browser/runtime"
 import { BrowserOwner } from "../browser/owner"
 import type { BrowserTab } from "../browser/tab"
 
@@ -13,7 +12,6 @@ export const BrowserNavigateTool = Tool.define("browser_navigate", {
     tabId: z.string().optional().describe("Tab ID. Uses the active tab if omitted."),
   }),
   async execute(params, ctx) {
-    await BrowserRuntime.ensure()
     const owner = BrowserOwner.fromToolContext(ctx)
     let tab: BrowserTab | undefined
 
@@ -22,7 +20,7 @@ export const BrowserNavigateTool = Tool.define("browser_navigate", {
       const session = resolved.session
       tab = resolved.tab
       await BrowserToolHelper.markActivity(ctx, tab, "acting", "browser_navigate", `Navigating to ${params.url}`)
-      const result = await BrowserToolHelper.navigateWithPolicyApproval(ctx, tab, params.url)
+      const result = await BrowserToolHelper.navigateWithPolicyApproval(ctx, tab, params.url, owner)
 
       // Notify frontend before snapshot — snapshot may fail if Playwright
       // is unavailable but navigation is already done and must be surfaced.

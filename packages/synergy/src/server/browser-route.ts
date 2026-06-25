@@ -2,15 +2,14 @@ import type { BrowserSession } from "../browser/types.js"
 import type { BrowserTab } from "../browser/tab.js"
 import {
   parseBrowserPresentationPreference,
-  selectBrowserPresentation,
   type BrowserPresentationSelection,
 } from "@ericsanchezok/synergy-util/browser-protocol"
 import { Hono } from "hono"
 import { upgradeWebSocket } from "hono/bun"
 import { Log } from "../util/log"
 import { BrowserOwner } from "../browser/owner.js"
-import { BrowserRuntime } from "../browser/runtime.js"
 import { BrowserControl } from "../browser/control.js"
+import { BrowserHost } from "../browser/host.js"
 import { ScopeContext } from "../scope/context"
 
 const log = Log.create({ service: "browser.route" })
@@ -41,7 +40,7 @@ function tabPayload(tab: BrowserTab) {
 function sessionPayload(
   session: BrowserSession,
   presentation: BrowserPresentationSelection,
-  runtimeHealth?: Awaited<ReturnType<typeof BrowserRuntime.health>>,
+  runtimeHealth?: Awaited<ReturnType<typeof BrowserHost.health>>,
 ) {
   return {
     type: "session.state",
@@ -69,7 +68,7 @@ function routeState(c: BrowserRouteContext): BrowserRouteState {
   const client = c.req.query("client") === "desktop" ? "desktop" : "web"
   const sameHostQuery = c.req.query("sameHost")
   const sameHost = sameHostQuery === "1" || sameHostQuery === "true"
-  const presentation = selectBrowserPresentation({
+  const presentation = BrowserHost.presentation({
     desktop: client === "desktop",
     sameHost,
     remote: client !== "desktop" || !sameHost,
@@ -85,13 +84,11 @@ function routeState(c: BrowserRouteContext): BrowserRouteState {
   return { directory, owner, presentation }
 }
 
-async function ensureSession(owner: BrowserOwner.Info): Promise<BrowserSession> {
-  await BrowserRuntime.ensure()
-  const session = await BrowserRuntime.getOrCreateSession(owner)
-  if (session.tabs.length === 0) {
-    await BrowserControl.execute(session, { type: "createTab" })
-  }
-  return session
+async function ensureSession(
+  owner: BrowserOwner.Info,
+  options?: BrowserHost.EnsureSessionOptions,
+): Promise<BrowserSession> {
+  return BrowserHost.ensureSession(owner, options)
 }
 
 async function readControlCommand(c: BrowserRouteContext): Promise<BrowserControl.Command> {
@@ -108,8 +105,8 @@ export const BrowserRoute = new Hono()
   .get("/:directory/browser/session", async (c) => {
     try {
       const { owner, presentation } = routeState(c)
-      const session = await ensureSession(owner)
-      return c.json(sessionPayload(session, presentation, await BrowserRuntime.health()))
+      const session = await ensureSession(owner, { createInitialTab: true })
+      return c.json(sessionPayload(session, presentation, await BrowserHost.health()))
     } catch (e: any) {
       log.error("browser session route error", { error: e?.message ?? String(e) })
       return c.json({ type: "error", code: "browser_session_failed", message: e?.message ?? "Browser error" }, 500)
@@ -118,9 +115,8 @@ export const BrowserRoute = new Hono()
   .post("/:directory/browser/control", async (c) => {
     try {
       const { owner } = routeState(c)
-      const session = await ensureSession(owner)
       const command = await readControlCommand(c)
-      const result = await BrowserControl.execute(session, command)
+      const result = await BrowserHost.execute(owner, command)
       return c.json({ type: "control.result", result })
     } catch (e: any) {
       log.error("browser control route error", { error: e?.message ?? String(e) })
@@ -146,7 +142,7 @@ export const BrowserRoute = new Hono()
 
       return {
         onOpen: async (_e: any, ws: BrowserWS) => {
-          const session = await ensureSession(state.owner)
+          const session = await ensureSession(state.owner, { createInitialTab: true })
           send(ws, {
             type: "webrtc.signaling.ready",
             presentation: state.presentation,
@@ -242,8 +238,7 @@ export const BrowserRoute = new Hono()
       return {
         onOpen: async (_e: any, ws: BrowserWS) => {
           try {
-            await BrowserRuntime.ensure()
-            const session = await BrowserRuntime.getOrCreateSession(owner)
+            const session = await ensureSession(owner, { createInitialTab: true })
             unsubscribe = session.addObserver({
               onTabCreated: (tab) => {
                 send(ws, { type: "tab.created", tab: tabPayload(tab), active: session.activeTab === tab })
@@ -288,10 +283,7 @@ export const BrowserRoute = new Hono()
               },
             })
 
-            if (session.tabs.length === 0) {
-              await session.createTab()
-            }
-            send(ws, sessionPayload(session, presentation, await BrowserRuntime.health()))
+            send(ws, sessionPayload(session, presentation, await BrowserHost.health()))
           } catch (e: any) {
             log.error("browser WS onOpen error", { error: e?.message ?? String(e) })
             send(ws, {
@@ -313,10 +305,10 @@ export const BrowserRoute = new Hono()
           }
 
           try {
-            const session = await BrowserRuntime.getOrCreateSession(owner)
+            const session = await ensureSession(owner)
             switch (msg.type) {
               case "navigate": {
-                await BrowserControl.execute(session, {
+                await BrowserHost.execute(owner, {
                   type: "navigate",
                   source: "user",
                   tabId: msg.tabId,
@@ -325,16 +317,16 @@ export const BrowserRoute = new Hono()
                 break
               }
               case "reload": {
-                await BrowserControl.execute(session, { type: "reload", tabId: msg.tabId })
+                await BrowserHost.execute(owner, { type: "reload", tabId: msg.tabId })
                 break
               }
               case "stop": {
-                await BrowserControl.execute(session, { type: "stop", tabId: msg.tabId })
+                await BrowserHost.execute(owner, { type: "stop", tabId: msg.tabId })
                 break
               }
               case "history": {
                 if (msg.direction !== "back" && msg.direction !== "forward") break
-                await BrowserControl.execute(session, {
+                await BrowserHost.execute(owner, {
                   type: "history",
                   tabId: msg.tabId,
                   direction: msg.direction,
@@ -342,11 +334,11 @@ export const BrowserRoute = new Hono()
                 break
               }
               case "createTab": {
-                const created = await BrowserControl.execute(session, { type: "createTab" })
+                const created = await BrowserHost.execute(owner, { type: "createTab" })
                 if (created.type !== "tab") break
                 const tab = BrowserControl.resolveTab(session, created.tab.id)
                 if (msg.url) {
-                  await BrowserControl.execute(session, {
+                  await BrowserHost.execute(owner, {
                     type: "navigate",
                     source: "user",
                     tabId: tab.id,
@@ -359,11 +351,11 @@ export const BrowserRoute = new Hono()
               }
               case "closeTab": {
                 if (msg.tabId === streamedTabId) await stopStream(session, msg.tabId)
-                await BrowserControl.execute(session, { type: "closeTab", tabId: String(msg.tabId) })
+                await BrowserHost.execute(owner, { type: "closeTab", tabId: String(msg.tabId) })
                 break
               }
               case "switchTab": {
-                const result = await BrowserControl.execute(session, { type: "switchTab", tabId: String(msg.tabId) })
+                const result = await BrowserHost.execute(owner, { type: "switchTab", tabId: String(msg.tabId) })
                 if (result.type === "tab")
                   await startStream(ws, session, BrowserControl.resolveTab(session, result.tab.id))
                 break
@@ -379,7 +371,7 @@ export const BrowserRoute = new Hono()
                 break
               }
               case "input.resize": {
-                const result = await BrowserControl.execute(session, {
+                const result = await BrowserHost.execute(owner, {
                   type: "setViewport",
                   tabId: msg.tabId,
                   width: Number(msg.width),
@@ -392,7 +384,7 @@ export const BrowserRoute = new Hono()
               case "input.mouse": {
                 if (msg.action !== "move" && msg.action !== "down" && msg.action !== "up" && msg.action !== "wheel")
                   break
-                await BrowserControl.execute(session, {
+                await BrowserHost.execute(owner, {
                   type: "mouse",
                   tabId: msg.tabId,
                   action: msg.action,
@@ -402,7 +394,7 @@ export const BrowserRoute = new Hono()
               }
               case "input.key": {
                 if (msg.action !== "down" && msg.action !== "up") break
-                await BrowserControl.execute(session, {
+                await BrowserHost.execute(owner, {
                   type: "key",
                   tabId: msg.tabId,
                   action: msg.action,
@@ -411,7 +403,7 @@ export const BrowserRoute = new Hono()
                 break
               }
               case "input.text": {
-                await BrowserControl.execute(session, {
+                await BrowserHost.execute(owner, {
                   type: "insertText",
                   tabId: msg.tabId,
                   text: String(msg.text ?? ""),
@@ -419,7 +411,7 @@ export const BrowserRoute = new Hono()
                 break
               }
               case "requestConsole": {
-                const result = await BrowserControl.execute(session, {
+                const result = await BrowserHost.execute(owner, {
                   type: "console",
                   tabId: msg.tabId,
                   maxEntries: msg.maxEntries,
@@ -430,7 +422,7 @@ export const BrowserRoute = new Hono()
                 break
               }
               case "requestNetwork": {
-                const result = await BrowserControl.execute(session, {
+                const result = await BrowserHost.execute(owner, {
                   type: "network",
                   tabId: msg.tabId,
                   maxEntries: msg.maxEntries,
@@ -441,7 +433,7 @@ export const BrowserRoute = new Hono()
                 break
               }
               case "requestSnapshot": {
-                const result = await BrowserControl.execute(session, { type: "snapshot", tabId: msg.tabId })
+                const result = await BrowserHost.execute(owner, { type: "snapshot", tabId: msg.tabId })
                 if (result.type === "snapshot") {
                   send(ws, {
                     type: "snapshot.result",
@@ -453,7 +445,7 @@ export const BrowserRoute = new Hono()
                 break
               }
               case "requestAssets": {
-                const result = await BrowserControl.execute(session, {
+                const result = await BrowserHost.execute(owner, {
                   type: "assets",
                   tabId: msg.tabId,
                   maxEntries: msg.maxEntries,
@@ -464,12 +456,12 @@ export const BrowserRoute = new Hono()
                 break
               }
               case "requestScreenshot": {
-                const result = await BrowserControl.execute(session, { type: "screenshot", tabId: msg.tabId })
+                const result = await BrowserHost.execute(owner, { type: "screenshot", tabId: msg.tabId })
                 if (result.type === "screenshot") send(ws, result)
                 break
               }
               case "filechooser.select": {
-                await BrowserControl.execute(session, {
+                await BrowserHost.execute(owner, {
                   type: "filechooser.select",
                   tabId: msg.tabId,
                   requestId: String(msg.requestId),
@@ -478,7 +470,7 @@ export const BrowserRoute = new Hono()
                 break
               }
               case "dialog.respond": {
-                await BrowserControl.execute(session, {
+                await BrowserHost.execute(owner, {
                   type: "dialog.respond",
                   tabId: msg.tabId,
                   requestId: String(msg.requestId),
@@ -501,7 +493,7 @@ export const BrowserRoute = new Hono()
               case "followAgentNow":
                 break
               case "clearLogs": {
-                const result = await BrowserControl.execute(session, { type: "clearDiagnostics", tabId: msg.tabId })
+                const result = await BrowserHost.execute(owner, { type: "clearDiagnostics", tabId: msg.tabId })
                 if (result.type === "diagnostics.cleared") send(ws, result)
                 break
               }
@@ -520,7 +512,7 @@ export const BrowserRoute = new Hono()
         },
         onClose: async (_e: any, _ws: BrowserWS) => {
           try {
-            const session = await BrowserRuntime.getOrCreateSession(owner)
+            const session = await ensureSession(owner)
             await stopStream(session)
           } catch {
             // ignore close cleanup errors

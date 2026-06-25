@@ -1,10 +1,10 @@
 import type { Tool } from "./tool"
 
-import { BrowserRuntime } from "../browser/runtime"
 import type { BrowserSession } from "../browser/types.js"
 import { BlockedURLNavigationError, type BrowserTab } from "../browser/tab"
 import { BrowserOwner } from "../browser/owner"
 import { BrowserControl } from "../browser/control"
+import { BrowserHost } from "../browser/host"
 
 // ── Shared error classes ───────────────────────────────────────────────
 
@@ -18,7 +18,14 @@ export class BrowserTabNotFoundError extends Error {
 export namespace BrowserToolHelper {
   /** Resolve a BrowserSession from a BrowserOwner. Creates one if needed. */
   export async function getOrCreateSession(owner: BrowserOwner.Info): Promise<BrowserSession> {
-    return BrowserRuntime.getOrCreateSession(owner)
+    return BrowserHost.ensureSession(owner)
+  }
+
+  export async function executeControl(
+    owner: BrowserOwner.Info,
+    command: BrowserControl.Command,
+  ): Promise<BrowserControl.Result> {
+    return BrowserHost.execute(owner, command)
   }
 
   /** Resolve the active tab, or throw BrowserTabNotFoundError. */
@@ -67,8 +74,14 @@ export namespace BrowserToolHelper {
     ctx: Tool.Context,
     tab: BrowserTab,
     url: string,
+    owner?: BrowserOwner.Info,
   ): Promise<{ url: string; title: string }> {
     try {
+      if (owner) {
+        const result = await executeControl(owner, { type: "navigate", tabId: tab.id, url })
+        if (result.type !== "navigation") throw new Error("Browser navigate command returned an unexpected result")
+        return { url: result.url, title: result.title }
+      }
       return await tab.navigate(url)
     } catch (err) {
       if (!(err instanceof BlockedURLNavigationError)) throw err
@@ -81,13 +94,22 @@ export namespace BrowserToolHelper {
           reason: err.message,
         },
       })
+      if (owner) {
+        const result = await executeControl(owner, {
+          type: "navigate",
+          tabId: tab.id,
+          url: err.url,
+          policyOverride: true,
+        })
+        if (result.type !== "navigation") throw new Error("Browser navigate command returned an unexpected result")
+        return { url: result.url, title: result.title }
+      }
       return tab.navigateWithOverride(err.url)
     }
   }
 
   /** One-call convenience: ensure runtime, derive owner, resolve tab. */
   export async function resolveTab(ctx: Tool.Context, tabId?: string): Promise<BrowserTab> {
-    await BrowserRuntime.ensure()
     return getTab(BrowserOwner.fromToolContext(ctx), tabId)
   }
 

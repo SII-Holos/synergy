@@ -1,6 +1,7 @@
 import z from "zod"
 import { Tool } from "./tool"
 import { BrowserToolHelper } from "./browser-shared"
+import { BrowserOwner } from "../browser/owner"
 
 export const BrowserNavigationTool = Tool.define("browser_navigation", {
   description:
@@ -11,6 +12,7 @@ export const BrowserNavigationTool = Tool.define("browser_navigation", {
     tabId: z.string().optional(),
   }),
   async execute(params, ctx) {
+    const owner = BrowserOwner.fromToolContext(ctx)
     const tab = await BrowserToolHelper.resolveTab(ctx, params.tabId)
     const kind = params.action === "current" ? "reading" : "acting"
     return BrowserToolHelper.withActivity(
@@ -22,16 +24,20 @@ export const BrowserNavigationTool = Tool.define("browser_navigation", {
       async () => {
         switch (params.action) {
           case "back":
-            await tab.goBack()
+            await BrowserToolHelper.executeControl(owner, { type: "history", tabId: tab.id, direction: "back" })
             break
           case "forward":
-            await tab.goForward()
+            await BrowserToolHelper.executeControl(owner, { type: "history", tabId: tab.id, direction: "forward" })
             break
           case "reload":
-            await tab.reload(params.ignoreCache)
+            await BrowserToolHelper.executeControl(owner, {
+              type: "reload",
+              tabId: tab.id,
+              ignoreCache: params.ignoreCache,
+            })
             break
           case "stop":
-            await tab.stop()
+            await BrowserToolHelper.executeControl(owner, { type: "stop", tabId: tab.id })
             break
         }
 

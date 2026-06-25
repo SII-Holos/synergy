@@ -5,6 +5,7 @@ import { BrowserToolHelper } from "./browser-shared"
 import { BrowserAssets } from "../browser/assets"
 import { ScopeContext } from "../scope/context"
 import { Filesystem } from "../util/filesystem"
+import { BrowserOwner } from "../browser/owner"
 
 export const BrowserAssetsTool = Tool.define("browser_assets", {
   description:
@@ -19,6 +20,7 @@ export const BrowserAssetsTool = Tool.define("browser_assets", {
     outputDir: z.string().describe("Directory to write exported assets. Required for export action.").optional(),
   }),
   async execute(params, ctx) {
+    const owner = BrowserOwner.fromToolContext(ctx)
     const tab = await BrowserToolHelper.resolveTab(ctx, params.tabId)
     return BrowserToolHelper.withActivity(
       ctx,
@@ -27,8 +29,9 @@ export const BrowserAssetsTool = Tool.define("browser_assets", {
       "browser_assets",
       `${params.action} page assets`,
       async () => {
-        const requests = await tab.networkRequests()
-        let assets = BrowserAssets.fromNetworkBuffer(requests, tab.id)
+        const result = await BrowserToolHelper.executeControl(owner, { type: "assets", tabId: tab.id })
+        if (result.type !== "assets") throw new Error("Browser assets command returned an unexpected result")
+        let assets = result.assets
 
         if (params.types && params.types.length > 0) {
           assets = BrowserAssets.filterByType(assets, params.types)

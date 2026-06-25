@@ -30,7 +30,7 @@ export namespace BrowserControl {
     | { type: "createTab"; url?: string }
     | { type: "closeTab"; tabId: string }
     | { type: "switchTab"; tabId: string }
-    | { type: "navigate"; tabId?: string; url: string; source?: "agent" | "user" }
+    | { type: "navigate"; tabId?: string; url: string; source?: "agent" | "user"; policyOverride?: boolean }
     | { type: "reload"; tabId?: string; ignoreCache?: boolean }
     | { type: "stop"; tabId?: string }
     | { type: "history"; tabId?: string; direction: "back" | "forward" }
@@ -133,8 +133,11 @@ export namespace BrowserControl {
       }
       case "navigate": {
         const tab = resolveTab(session, command.tabId)
-        const result =
-          command.source === "user" ? await tab.navigateForUser(command.url) : await tab.navigate(command.url)
+        const result = command.policyOverride
+          ? await tab.navigateWithOverride(command.url)
+          : command.source === "user"
+            ? await tab.navigateForUser(command.url)
+            : await tab.navigate(command.url)
         await session.save()
         await session.notifyTabNavigated(tab)
         return { type: "navigation", tab: tabState(tab), url: result.url, title: result.title }

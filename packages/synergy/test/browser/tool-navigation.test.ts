@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import { BrowserToolHelper, BrowserTabNotFoundError } from "../../src/tool/browser-shared"
 import { BrowserControl } from "../../src/browser/control"
+import { BrowserHost } from "../../src/browser/host"
 import { BlockedURLNavigationError, type BrowserTab } from "../../src/browser/tab"
 import type { BrowserSession } from "../../src/browser/types"
 import type { Tool } from "../../src/tool/tool"
@@ -315,5 +316,57 @@ describe("BrowserControl", () => {
     })
     expect(cleared).toBe(true)
     expect(clearedResult).toEqual({ type: "diagnostics.cleared", tabId: "tab-2" })
+  })
+
+  test("BrowserHost executes commands through its runtime-backed control adapter", async () => {
+    let ensureCalls = 0
+    const fakeTab = {
+      ...tab("tab-3"),
+      async networkRequests() {
+        return [
+          {
+            requestId: "req-host",
+            url: "https://example.com/app.js",
+            method: "GET",
+            mimeType: "text/javascript",
+            timestamp: 10,
+          },
+        ]
+      },
+    }
+    const session = controlSession(fakeTab)
+    const restore = BrowserHost.useRuntimeForTest({
+      async ensure() {
+        ensureCalls++
+      },
+      async health() {
+        return { running: true, chromiumPath: "/chromium", installed: true, version: "test" }
+      },
+      async getOrCreateSession(owner) {
+        expect(owner).toEqual(session.owner)
+        return session
+      },
+    })
+
+    try {
+      const result = await BrowserHost.execute(session.owner, { type: "network", tabId: "tab-3" })
+
+      expect(ensureCalls).toBe(1)
+      expect(result).toEqual({
+        type: "network",
+        tabId: "tab-3",
+        requests: [
+          {
+            requestId: "req-host",
+            url: "https://example.com/app.js",
+            method: "GET",
+            mimeType: "text/javascript",
+            timestamp: 10,
+          },
+        ],
+      })
+    } finally {
+      restore()
+    }
   })
 })
