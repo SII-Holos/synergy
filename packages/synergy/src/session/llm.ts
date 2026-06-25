@@ -1,6 +1,7 @@
 import { Provider } from "@/provider/provider"
 import { Log } from "@/util/log"
 import {
+  stepCountIs,
   streamText,
   wrapLanguageModel,
   type ModelMessage,
@@ -243,6 +244,7 @@ export namespace LLM {
       providerOptions: ProviderTransform.providerOptions(input.model, params.options),
       activeTools: Object.keys(tools).filter((x) => x !== "invalid"),
       tools,
+      stopWhen: stepCountIs(1),
       maxOutputTokens,
       abortSignal: input.abort,
       headers: input.model.headers,

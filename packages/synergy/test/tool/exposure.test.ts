@@ -186,6 +186,7 @@ describe("tool exposure", () => {
           toolContext(session.id),
         )
         expect(result.metadata.availableNextStep).toBe(true)
+        expect(result.metadata.availableOn).toBe("next_model_request")
         expect(result.metadata.newlyVisibleTools).toContain("browser_navigate")
         expect(result.metadata.newlyVisibleTools).not.toContain("search_tools")
         expect(result.metadata.visibleTools).toBeUndefined()

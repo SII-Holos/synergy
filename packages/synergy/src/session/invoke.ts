@@ -276,14 +276,16 @@ export namespace SessionInvoke {
     const runtime = SessionManager.registerRuntime(sessionID)
     let step = 0
     let emergencyCompactionTriggered = false
-    const session = await Session.get(sessionID)
-    const scopeID = (session.scope as Scope).id
+    let session = await Session.get(sessionID)
+    let scopeID = (session.scope as Scope).id
 
     outer: while (true) {
       while (true) {
         SessionManager.setStatus(sessionID, { type: "busy" })
         log.info("loop", { step, sessionID })
         if (abort.aborted) break
+        session = await Session.get(sessionID)
+        scopeID = (session.scope as Scope).id
         let msgs = await effectiveCompactedMessages(sessionID)
 
         let lastUser: MessageV2.User | undefined

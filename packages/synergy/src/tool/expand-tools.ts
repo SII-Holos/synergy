@@ -25,7 +25,7 @@ export const ExpandToolsTool = Tool.define("expand_tools", async (initCtx) => ({
     "Known built-in groups:",
     ToolExposure.groupTable(),
     "Usage guidance: if the capability domain is known, call expand_tools({ groups: [...] }) directly. If the tool or group name is uncertain, call search_tools first, then expand the returned group or activate the returned search-only tool.",
-    "Important timing: expanded tools become visible when Synergy builds the tool list for the next model step or a subsequent turn. Do not assume a newly expanded tool can be called inside the same tool call.",
+    "Important timing: expanded tools become visible when Synergy builds the tool list for the next model request. They cannot appear in later tool calls inside the current model request.",
   ].join("\n\n"),
   parameters,
   formatValidationError(error) {
@@ -162,6 +162,7 @@ export const ExpandToolsTool = Tool.define("expand_tools", async (initCtx) => ({
       visibleToolCount: updatedVisibleTools.length,
       alreadyActive: ToolExposure.unique(alreadyActive),
       availableNextStep,
+      availableOn: "next_model_request",
       issues,
       guidance,
     }
@@ -174,6 +175,7 @@ export const ExpandToolsTool = Tool.define("expand_tools", async (initCtx) => ({
           : "No new tool visibility state was added; requested capabilities were already active or need a corrected request.",
         "",
         `availableNextStep: ${availableNextStep}`,
+        "availableOn: next_model_request",
         params.reason ? `Reason recorded: ${params.reason}` : undefined,
         "",
         `expandedGroups: ${result.expandedGroups.length ? result.expandedGroups.join(", ") : "(none)"}`,
@@ -238,4 +240,4 @@ function guidanceFor(input: {
   return lines.join("\n")
 }
 
-const DEFAULT_GUIDANCE = "Continue with the newly visible tools on the next model step or later turn."
+const DEFAULT_GUIDANCE = "Continue with the newly visible tools on the next model request or later turn."

@@ -15,7 +15,7 @@ const MATCHED_TOOL_PREVIEW_LIMIT = 8
 export const SearchToolsTool = Tool.define("search_tools", async (initCtx) => ({
   description: [
     "Discover non-resident tool capabilities that are not currently visible to the model. This tool searches deferred groups and search-only tools; it does not enable, expand, activate, execute, or grant permission to any tool.",
-    'When a result has type="group" or includes a group field, prefer expand_tools({ groups: [group] }) so the whole capability group becomes available on the next model step or subsequent turns.',
+    'When a result has type="group" or includes a group field, prefer expand_tools({ groups: [group] }) so the whole capability group becomes available on the next model request or subsequent turns.',
     "When a result is a search-only individual tool with no group, use expand_tools({ tools: [id] }) to activate it. If you already know the capability domain, call expand_tools directly instead of searching first.",
   ].join("\n\n"),
   parameters,
