@@ -368,6 +368,31 @@ describe("BrowserHostControl", () => {
       })
 
       await expect(screenshotPromise).resolves.toEqual({ buffer: Buffer.from("ok"), width: 10, height: 20 })
+
+      const cdp = await tab.ensureCDP()
+      const cdpPromise = cdp.send("Runtime.evaluate", { expression: "1 + 1" })
+      const cdpRequest = host.messages.find(
+        (message) => message.type === "browser.host.command" && (message.command as { type?: string }).type === "cdp",
+      )!
+      expect(cdpRequest).toMatchObject({
+        command: {
+          type: "cdp",
+          tabId: "tab_1",
+          method: "Runtime.evaluate",
+          params: { expression: "1 + 1" },
+        },
+      })
+      connection.handleMessage({
+        type: "browser.host.result",
+        id: cdpRequest.id,
+        result: {
+          type: "cdp",
+          tabId: "tab_1",
+          value: { result: { value: 2 } },
+        },
+      })
+
+      await expect(cdpPromise).resolves.toEqual({ result: { value: 2 } })
     } finally {
       restore()
     }

@@ -42,6 +42,7 @@ export namespace BrowserControl {
     | { type: "key"; tabId?: string; action: "down" | "up"; input: BrowserKeyInput }
     | { type: "insertText"; tabId?: string; text: string }
     | { type: "evaluate"; tabId?: string; expression: string; throwOnSideEffect?: boolean }
+    | { type: "cdp"; tabId?: string; method: string; params?: Record<string, unknown> }
     | { type: "resolveRef"; tabId?: string; ref: string }
     | { type: "console"; tabId?: string; maxEntries?: number }
     | { type: "network"; tabId?: string; maxEntries?: number }
@@ -75,6 +76,7 @@ export namespace BrowserControl {
     | { type: "assets"; tabId: string; assets: BrowserAssets.PageAsset[] }
     | { type: "screenshot"; tabId: string; dataUrl: string; width: number; height: number }
     | { type: "evaluation"; tabId: string; value: unknown }
+    | { type: "cdp"; tabId: string; value: unknown }
     | {
         type: "resolvedRef"
         tabId: string
@@ -220,6 +222,15 @@ export namespace BrowserControl {
           type: "evaluation",
           tabId: tab.id,
           value: await tab.evaluate(command.expression, { throwOnSideEffect: command.throwOnSideEffect }),
+        }
+      }
+      case "cdp": {
+        const tab = resolveTab(session, command.tabId)
+        const cdp = await tab.ensureCDP()
+        return {
+          type: "cdp",
+          tabId: tab.id,
+          value: await cdp.send(command.method, command.params),
         }
       }
       case "resolveRef": {

@@ -31,6 +31,7 @@ interface SmokeServerState {
   ready: boolean
   navigated: boolean
   evaluatedTitle: string | null
+  cdpValue: number | null
   evaluatedInput: string | null
 }
 
@@ -129,12 +130,14 @@ async function withSmokeServer(
     ready: false,
     navigated: false,
     evaluatedTitle: null,
+    cdpValue: null,
     evaluatedInput: null,
   }
   let appPage = ""
   let commandSeq = 0
   let navigateId: string | null = null
   let evaluateId: string | null = null
+  let cdpEvaluateId: string | null = null
   let inputEvaluateId: string | null = null
   let controlSocket: ServerWebSocket<{ kind: "control" | "host-signaling" | "viewer-signaling" }> | null = null
   let hostSignal: ServerWebSocket<{ kind: "control" | "host-signaling" | "viewer-signaling" }> | null = null
@@ -256,7 +259,18 @@ async function withSmokeServer(
         if (message.id === evaluateId) {
           const result = message.result as { value?: unknown } | undefined
           state.evaluatedTitle = typeof result?.value === "string" ? result.value : null
+          cdpEvaluateId = sendCommand(ws, {
+            type: "cdp",
+            tabId: mode === "native" ? "native-smoke-tab" : "webrtc-smoke-tab",
+            method: "Runtime.evaluate",
+            params: { expression: "40 + 2", returnByValue: true },
+          })
           requestInputEvaluation()
+          checkComplete()
+        }
+        if (message.id === cdpEvaluateId) {
+          const result = message.result as { value?: { result?: { value?: unknown } } } | undefined
+          state.cdpValue = typeof result?.value?.result?.value === "number" ? result.value.result.value : null
           checkComplete()
         }
         if (message.id === inputEvaluateId) {
@@ -313,6 +327,7 @@ async function withSmokeServer(
 
   function checkComplete() {
     if (!state.controlOpened || !state.ready || !state.navigated || state.evaluatedTitle !== title) return
+    if (state.cdpValue !== 42) return
     if (mode === "webrtc" && !state.signalingOpened) return
     if (options.requireViewer && !state.viewerSignalingOpened) return
     if (options.requireMedia && !state.mediaReady) return
@@ -581,6 +596,7 @@ describe("Electron browser runtime smoke", () => {
           ready: true,
           navigated: true,
           evaluatedTitle: "Native Browser Host Smoke",
+          cdpValue: 42,
         })
       })
     },
@@ -610,6 +626,7 @@ describe("Electron browser runtime smoke", () => {
           ready: true,
           navigated: true,
           evaluatedTitle: "WebRTC Browser Host Smoke",
+          cdpValue: 42,
         })
       })
     },
@@ -657,6 +674,7 @@ describe("Electron browser runtime smoke", () => {
             mediaReady: true,
             dataInputSent: true,
             evaluatedTitle: "WebRTC Browser Host Smoke",
+            cdpValue: 42,
             evaluatedInput: "remote-data-channel",
           })
         },

@@ -7,6 +7,7 @@ import { BrowserOwner } from "../browser/owner"
 import { BrowserControl } from "../browser/control"
 import { BrowserHost } from "../browser/host"
 import { BrowserHostControl } from "../browser/host-control"
+import type { CDPHandle } from "../browser/cdp"
 import type { BrowserKeyInput, BrowserMouseInput } from "../browser/input"
 
 // ── Shared error classes ───────────────────────────────────────────────
@@ -279,6 +280,19 @@ function controlBackedSession(owner: BrowserOwner.Info): BrowserSession {
 }
 
 function controlBackedTab(owner: BrowserOwner.Info, initial: BrowserControl.TabState): BrowserTab {
+  const cdp: CDPHandle = {
+    async send<T = unknown>(method: string, params?: Record<string, unknown>) {
+      const result = await BrowserHost.execute(owner, { type: "cdp", tabId: tab.id, method, params })
+      if (result.type !== "cdp") throw new Error("Browser CDP command returned an unexpected result")
+      syncFromState(result.tabId)
+      return result.value as T
+    },
+    on() {
+      return () => {}
+    },
+    async detach() {},
+  }
+
   const tab: BrowserTab = {
     id: initial.id,
     url: initial.url,
@@ -287,7 +301,7 @@ function controlBackedTab(owner: BrowserOwner.Info, initial: BrowserControl.TabS
     pinned: initial.pinned,
     kept: initial.kept,
     lastActiveAt: initial.lastActiveAt,
-    cdp: null,
+    cdp,
     async navigate(url: string) {
       return navigate(url)
     },
@@ -337,9 +351,11 @@ function controlBackedTab(owner: BrowserOwner.Info, initial: BrowserControl.TabS
       await BrowserHost.execute(owner, { type: "dialog.respond", tabId: tab.id, requestId, accept, promptText })
     },
     async ensureCDP() {
-      throw new Error("CDP is not available through Browser Host control")
+      return cdp
     },
-    async detachCDP() {},
+    async detachCDP() {
+      await cdp.detach()
+    },
     async screenshot(format, quality, fullPage, clip) {
       const result = await BrowserHost.execute(owner, {
         type: "screenshot",

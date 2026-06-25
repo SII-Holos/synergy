@@ -257,6 +257,16 @@ export class BrowserWebRTCHost {
     return "left"
   }
 
+  private async sendCDP(
+    contents: Electron.WebContents,
+    method: string,
+    params?: Record<string, unknown>,
+  ): Promise<unknown> {
+    if (!method) throw new Error("Missing CDP method")
+    if (!contents.debugger.isAttached()) contents.debugger.attach("1.3")
+    return contents.debugger.sendCommand(method, params)
+  }
+
   private installBrowserEvents(): void {
     const contents = this.browserWindow?.webContents
     if (!contents) return
@@ -412,6 +422,12 @@ export class BrowserWebRTCHost {
           type: "evaluation",
           tabId: this.options.tabId,
           value: await contents.executeJavaScript(String(command.expression ?? ""), true),
+        }
+      case "cdp":
+        return {
+          type: "cdp",
+          tabId: this.options.tabId,
+          value: await this.sendCDP(contents, String(command.method ?? ""), command.params as Record<string, unknown>),
         }
       case "snapshot": {
         const snapshot = await this.snapshot(contents)

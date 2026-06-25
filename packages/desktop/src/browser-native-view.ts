@@ -420,6 +420,12 @@ class BrowserNativeHostControlConnection {
           tabId: tabId!,
           value: await contents.executeJavaScript(String(command.expression ?? ""), true),
         }
+      case "cdp":
+        return {
+          type: "cdp",
+          tabId: tabId!,
+          value: await this.sendCDP(contents, String(command.method ?? ""), command.params as Record<string, unknown>),
+        }
       case "snapshot": {
         const snapshot = await this.snapshot(view)
         return { type: "snapshot", tabId: tabId!, elements: snapshot.elements, truncated: snapshot.truncated }
@@ -603,6 +609,16 @@ class BrowserNativeHostControlConnection {
     if (button === "middle") return "middle"
     if (button === "right") return "right"
     return "left"
+  }
+
+  private async sendCDP(
+    contents: Electron.WebContents,
+    method: string,
+    params?: Record<string, unknown>,
+  ): Promise<unknown> {
+    if (!method) throw new Error("Missing CDP method")
+    if (!contents.debugger.isAttached()) contents.debugger.attach("1.3")
+    return contents.debugger.sendCommand(method, params)
   }
 
   private tabState(tabId: string, view: WebContentsView): BrowserNativeTabState {
