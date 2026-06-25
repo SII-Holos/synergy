@@ -3,6 +3,8 @@ import { Portal } from "solid-js/web"
 import { useNavigate, useParams } from "@solidjs/router"
 import { Icon, type IconName } from "@ericsanchezok/synergy-ui/icon"
 import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
+import { Dialog } from "@ericsanchezok/synergy-ui/dialog"
+import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { base64Decode, base64Encode } from "@ericsanchezok/synergy-util/encode"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { useGlobalSync } from "@/context/global-sync"
@@ -22,6 +24,7 @@ import {
   type AgendaActivityState,
 } from "./activity-state"
 import { agendaRunStatusTone, agendaStatusTone, formatAgendaDuration } from "./shared"
+import "./agenda-dialog.css"
 
 function triggerSummary(triggers: AgendaItem["triggers"]): string {
   if (!triggers || triggers.length === 0) return "Manual"
@@ -49,18 +52,16 @@ function triggerSummary(triggers: AgendaItem["triggers"]): string {
     .join(", ")
 }
 
-type PanelView = "main" | "form"
 type PanelTab = "schedule" | "activity"
 
 export function AgendaPanel() {
   const sdk = useGlobalSDK()
   const globalSync = useGlobalSync()
+  const dialog = useDialog()
   const navigate = useNavigate()
   const params = useParams()
 
-  const [view, setView] = createSignal<PanelView>("main")
   const [tab, setTab] = createSignal<PanelTab>("schedule")
-  const [editingItem, setEditingItem] = createSignal<AgendaItem | undefined>()
   const [popoverItem, setPopoverItem] = createSignal<AgendaItem | undefined>()
   const [popoverRect, setPopoverRect] = createSignal<DOMRect | undefined>()
   const [runsCache, setRunsCache] = createSignal<Record<string, AgendaRunLog[]>>({})
@@ -157,34 +158,25 @@ export function AgendaPanel() {
   const isLoading = (id: string, action: string) => actionLoading().has(`${id}-${action}`)
   const isDone = (id: string, action: string) => actionDone().has(`${id}-${action}`)
 
-  async function refresh() {
-    await globalSync.loadGlobalAgenda()
-    const pi = popoverItem()
-    if (pi) {
-      setRunsCache((prev) => {
-        const next = { ...prev }
-        delete next[pi.id]
-        return next
-      })
-      loadRuns(pi.id)
-    }
-    if (tab() === "activity") void loadActivity({ reset: true })
-  }
-
-  function formDirectory(): string {
-    const item = editingItem()
+  function formDirectory(item?: AgendaItem): string {
     if (item) return directoryForItem(item) ?? directory() ?? globalSync.data.paths.home
     return directory() ?? globalSync.data.paths.home
   }
 
+  function openForm(item?: AgendaItem) {
+    dialog.show(() => (
+      <Dialog class="agenda-form-dialog">
+        <AgendaForm directory={formDirectory(item)} item={item} presentation="dialog" onBack={() => dialog.close()} />
+      </Dialog>
+    ))
+  }
+
   function openCreate() {
-    setEditingItem(undefined)
-    setView("form")
+    openForm()
   }
 
   function openEdit(item: AgendaItem) {
-    setEditingItem(item)
-    setView("form")
+    openForm(item)
   }
 
   function openDetail(item: AgendaItem, rect?: DOMRect) {
@@ -247,125 +239,122 @@ export function AgendaPanel() {
 
   return (
     <AppPanel.Root>
-      <Show when={view() === "form"}>
-        <AppPanel.Content>
-          <AgendaForm directory={formDirectory()} item={editingItem()} onBack={() => setView("main")} />
-        </AppPanel.Content>
-      </Show>
-      <Show when={view() === "main"}>
-        <AppPanel.Content>
-          <AppPanel.Header>
-            <AppPanel.HeaderRow>
-              <AppPanel.Title>Agenda</AppPanel.Title>
-              <AppPanel.Actions>
-                <AppPanel.Action icon="refresh-ccw" title="Refresh" onClick={refresh} />
-                <AppPanel.Action icon="plus" title="New item" onClick={openCreate} />
-              </AppPanel.Actions>
-            </AppPanel.HeaderRow>
-            <AppPanel.SegmentedNav
-              items={[
-                { id: "schedule", label: "Schedule" },
-                { id: "activity", label: "Activity" },
-              ]}
-              active={tab()}
-              onChange={(id) => setTab(id as PanelTab)}
-            />
-          </AppPanel.Header>
+      <AppPanel.Content>
+        <AppPanel.Header>
+          <AppPanel.HeaderRow>
+            <AppPanel.Title>Agenda</AppPanel.Title>
+            <button
+              type="button"
+              class="inline-flex h-9 items-center gap-2 rounded-xl bg-text-strong px-3.5 text-13-medium text-background-base shadow-sm transition-colors hover:bg-text-base"
+              onClick={openCreate}
+            >
+              <Icon name="plus" size="small" />
+              <span>New Agenda</span>
+            </button>
+          </AppPanel.HeaderRow>
+          <AppPanel.SegmentedNav
+            items={[
+              { id: "schedule", label: "Schedule" },
+              { id: "activity", label: "History" },
+            ]}
+            active={tab()}
+            onChange={(id) => setTab(id as PanelTab)}
+          />
+        </AppPanel.Header>
 
-          <Show when={tab() === "schedule"}>
-            <AppPanel.Body padding={false} class="!px-4">
-              <div class="grid grid-cols-[auto_minmax(0,1fr)] items-start gap-3 pb-3">
-                <div class="rounded-[1.15rem] bg-surface-inset-base/42 p-3 ring-1 ring-inset ring-border-base/45 shadow-[inset_0_1px_0_rgba(214,204,190,0.07)] self-start">
-                  <MiniCalendar anchor={anchor()} viewMode={viewMode()} onDateClick={handleDateClick} />
-                </div>
-                <div class="min-w-0 flex flex-col self-start rounded-[1.15rem] bg-surface-inset-base/38 p-3 ring-1 ring-inset ring-border-base/40 shadow-[inset_0_1px_0_rgba(214,204,190,0.06)]">
-                  <Show
-                    when={todoItems().length > 0}
-                    fallback={
-                      <div class="flex-1 flex items-center justify-center rounded-[0.95rem] bg-surface-raised-base/88 px-3 py-4 shadow-[inset_0_1px_0_rgba(214,204,190,0.08),inset_0_-1px_0_rgba(24,28,38,0.04)]">
-                        <span class="text-10-medium text-text-weaker/60">No todo items</span>
-                      </div>
-                    }
-                  >
-                    <div class="flex items-center justify-between gap-2 mb-2 px-0.5">
-                      <div class="flex items-center gap-1.5 min-w-0">
-                        <span class="text-[9px] font-medium uppercase tracking-[0.18em] text-text-weaker">Todo</span>
-                        <span class="inline-flex items-center rounded-full bg-surface-raised-stronger-non-alpha px-2 py-0.5 text-[10px] font-medium text-text-weaker ring-1 ring-inset ring-border-base/45">
-                          {todoItems().length}
-                        </span>
-                      </div>
-                    </div>
-                    <div class="max-h-[15rem] overflow-y-auto flex flex-col gap-1.5 rounded-[0.95rem] bg-surface-raised-base/90 p-1.5 shadow-[inset_0_1px_0_rgba(214,204,190,0.08),inset_0_-1px_0_rgba(24,28,38,0.04)]">
-                      <For each={todoItems()}>
-                        {(item) => (
-                          <TodoCard
-                            item={item}
-                            onClick={(e) => openDetail(item, (e.target as HTMLElement).getBoundingClientRect())}
-                          />
-                        )}
-                      </For>
-                    </div>
-                  </Show>
-                </div>
+        <Show when={tab() === "schedule"}>
+          <AppPanel.Body padding={false} class="!px-5 flex flex-col gap-4">
+            <div class="grid max-w-[920px] grid-cols-1 items-start gap-3 pb-1 xl:grid-cols-[minmax(320px,380px)_minmax(280px,500px)]">
+              <div class="self-start rounded-xl bg-surface-inset-base p-3.5 ring-1 ring-inset ring-border-base/45">
+                <MiniCalendar anchor={anchor()} viewMode={viewMode()} onDateClick={handleDateClick} />
               </div>
-
-              <div class="flex flex-col flex-1 min-h-0 relative">
-                <CalendarGrid
-                  viewMode={viewMode()}
-                  anchor={anchor()}
-                  events={calendarEvents()}
-                  onViewModeChange={setViewMode}
-                  onAnchorChange={setAnchor}
-                  onEventClick={handleEventClick}
-                  onRangeChange={(start, end) => setCalendarRange({ start, end })}
-                />
-
-                <Show when={popoverItem()}>
-                  <Portal>
-                    <DetailPopover
-                      anchor={popoverRect()}
-                      item={popoverItem()!}
-                      runs={runsCache()[popoverItem()!.id]}
-                      isLoading={isLoading}
-                      isDone={isDone}
-                      onClose={() => setPopoverItem(undefined)}
-                      onAction={(action) => performAction(popoverItem()!.id, action)}
-                      onEdit={() => {
-                        const pi = popoverItem()!
-                        setPopoverItem(undefined)
-                        openEdit(pi)
-                      }}
-                    />
-                  </Portal>
+              <div class="min-w-0 flex flex-col self-start rounded-xl bg-surface-inset-base p-3 ring-1 ring-inset ring-border-base/40">
+                <Show
+                  when={todoItems().length > 0}
+                  fallback={
+                    <div class="flex min-h-28 items-center justify-center rounded-lg bg-surface-raised-base px-3 py-4">
+                      <span class="text-10-medium text-text-weaker/60">No todo items</span>
+                    </div>
+                  }
+                >
+                  <div class="flex items-center justify-between gap-2 mb-2 px-0.5">
+                    <div class="flex items-center gap-1.5 min-w-0">
+                      <span class="text-[9px] font-medium uppercase tracking-[0.18em] text-text-weaker">Todo</span>
+                      <span class="inline-flex items-center rounded-full bg-surface-raised-stronger-non-alpha px-2 py-0.5 text-[10px] font-medium text-text-weaker ring-1 ring-inset ring-border-base/45">
+                        {todoItems().length}
+                      </span>
+                    </div>
+                  </div>
+                  <div class="max-h-[16rem] overflow-y-auto flex flex-col gap-1.5 rounded-lg bg-surface-raised-base p-1.5 [scrollbar-width:thin]">
+                    <For each={todoItems()}>
+                      {(item) => (
+                        <TodoCard
+                          item={item}
+                          onClick={(e) => openDetail(item, (e.target as HTMLElement).getBoundingClientRect())}
+                        />
+                      )}
+                    </For>
+                  </div>
                 </Show>
               </div>
-            </AppPanel.Body>
-          </Show>
+            </div>
 
-          <Show when={tab() === "activity"}>
-            <AppPanel.Body padding={false}>
-              <ActivityView
-                items={activity().items}
-                total={activity().total}
-                hasMore={activity().hasMore}
-                loading={activityLoading()}
-                query={activityQuery()}
-                error={activityError()}
-                onQueryChange={(value: string) => {
-                  setActivityQuery(value)
-                  void loadActivity({ reset: true, query: value })
-                }}
-                onLoadMore={() => void loadActivity({ append: true })}
-                onNavigate={navigateToSession}
-                onItemClick={(itemId) => {
-                  const item = itemById(itemId)
-                  if (item) openDetail(item)
-                }}
+            <div class="relative flex min-h-[720px] flex-1 flex-col">
+              <CalendarGrid
+                viewMode={viewMode()}
+                anchor={anchor()}
+                events={calendarEvents()}
+                onViewModeChange={setViewMode}
+                onAnchorChange={setAnchor}
+                onEventClick={handleEventClick}
+                onRangeChange={(start, end) => setCalendarRange({ start, end })}
               />
-            </AppPanel.Body>
-          </Show>
-        </AppPanel.Content>
-      </Show>
+
+              <Show when={popoverItem()}>
+                <Portal>
+                  <DetailPopover
+                    anchor={popoverRect()}
+                    item={popoverItem()!}
+                    runs={runsCache()[popoverItem()!.id]}
+                    isLoading={isLoading}
+                    isDone={isDone}
+                    onClose={() => setPopoverItem(undefined)}
+                    onAction={(action) => performAction(popoverItem()!.id, action)}
+                    onEdit={() => {
+                      const pi = popoverItem()!
+                      setPopoverItem(undefined)
+                      openEdit(pi)
+                    }}
+                  />
+                </Portal>
+              </Show>
+            </div>
+          </AppPanel.Body>
+        </Show>
+
+        <Show when={tab() === "activity"}>
+          <AppPanel.Body padding={false}>
+            <ActivityView
+              items={activity().items}
+              total={activity().total}
+              hasMore={activity().hasMore}
+              loading={activityLoading()}
+              query={activityQuery()}
+              error={activityError()}
+              onQueryChange={(value: string) => {
+                setActivityQuery(value)
+                void loadActivity({ reset: true, query: value })
+              }}
+              onLoadMore={() => void loadActivity({ append: true })}
+              onNavigate={navigateToSession}
+              onItemClick={(itemId) => {
+                const item = itemById(itemId)
+                if (item) openDetail(item)
+              }}
+            />
+          </AppPanel.Body>
+        </Show>
+      </AppPanel.Content>
     </AppPanel.Root>
   )
 }
@@ -373,14 +362,14 @@ export function AgendaPanel() {
 function TodoCard(props: { item: AgendaItem; onClick: (e: MouseEvent) => void }) {
   return (
     <div
-      class="flex items-center gap-2.5 rounded-[0.9rem] bg-surface-raised-base/92 px-2.5 py-2 ring-1 ring-inset ring-border-base/35 hover:bg-surface-raised-base transition-colors cursor-pointer shadow-[inset_0_1px_0_rgba(214,204,190,0.08),inset_0_-1px_0_rgba(24,28,38,0.04)]"
+      class="flex cursor-pointer items-center gap-2.5 rounded-lg bg-surface-raised-stronger-non-alpha px-2.5 py-2 ring-1 ring-inset ring-border-base/35 transition-colors hover:bg-surface-raised-base-hover"
       onClick={props.onClick}
     >
       <span
         class={`shrink-0 w-1.5 h-1.5 rounded-full ${props.item.status === "active" ? "bg-icon-success-base" : props.item.status === "paused" ? "bg-icon-warning-base" : props.item.status === "done" ? "bg-text-weaker" : "bg-border-interactive-base"}`}
       />
-      <span class="text-11-regular text-text-strong flex-1 min-w-0 truncate">{props.item.title}</span>
-      <span class="inline-flex items-center rounded-full bg-surface-inset-base/72 px-2 py-0.5 text-[9px] font-medium text-text-weaker ring-1 ring-inset ring-border-base/35 shrink-0">
+      <span class="min-w-0 flex-1 truncate text-12-regular text-text-strong">{props.item.title}</span>
+      <span class="inline-flex shrink-0 items-center rounded-full bg-surface-inset-base px-2 py-0.5 text-[9px] font-medium text-text-weaker ring-1 ring-inset ring-border-base/35">
         {triggerSummary(props.item.triggers)}
       </span>
     </div>

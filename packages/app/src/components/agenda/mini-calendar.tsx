@@ -94,20 +94,20 @@ export function MiniCalendar(props: MiniCalendarProps) {
   }
 
   return (
-    <div class="flex flex-col gap-2 select-none min-w-[224px]">
+    <div class="flex min-w-[304px] select-none flex-col gap-3">
       <div class="flex items-center justify-between px-0.5">
-        <span class="text-11-medium text-text-strong">{headerLabel()}</span>
-        <div class="flex items-center gap-1 rounded-full bg-surface-raised-base/92 p-0.5 ring-1 ring-inset ring-border-base/40 shadow-[inset_0_1px_0_rgba(214,204,190,0.08),inset_0_-1px_0_rgba(24,28,38,0.04)]">
+        <span class="text-13-medium text-text-strong">{headerLabel()}</span>
+        <div class="flex items-center gap-1 rounded-full bg-surface-raised-base p-0.5 ring-1 ring-inset ring-border-base/40">
           <button
             type="button"
-            class="size-5 flex items-center justify-center rounded-full text-text-weaker hover:text-text-weak hover:bg-surface-raised-base-hover transition-colors"
+            class="flex size-6 items-center justify-center rounded-full text-text-weaker transition-colors hover:bg-surface-raised-base-hover hover:text-text-weak"
             onClick={prevMonth}
           >
             ‹
           </button>
           <button
             type="button"
-            class="size-5 flex items-center justify-center rounded-full text-text-weaker hover:text-text-weak hover:bg-surface-raised-base-hover transition-colors"
+            class="flex size-6 items-center justify-center rounded-full text-text-weaker transition-colors hover:bg-surface-raised-base-hover hover:text-text-weak"
             onClick={nextMonth}
           >
             ›
@@ -115,11 +115,11 @@ export function MiniCalendar(props: MiniCalendarProps) {
         </div>
       </div>
 
-      <div class="flex flex-col gap-1.5 rounded-[1rem] bg-surface-raised-base/92 p-2 ring-1 ring-inset ring-border-base/42 shadow-[inset_0_1px_0_rgba(214,204,190,0.08),inset_0_-1px_0_rgba(24,28,38,0.04)]">
+      <div class="flex flex-col gap-1.5 rounded-xl bg-surface-raised-base p-2.5 ring-1 ring-inset ring-border-base/42">
         <div class="grid grid-cols-7">
           <For each={DAY_LABELS_MINI}>
             {(label) => (
-              <div class="w-7 h-6 flex items-center justify-center text-10-medium text-text-weaker">{label}</div>
+              <div class="flex h-7 w-10 items-center justify-center text-11-medium text-text-weaker">{label}</div>
             )}
           </For>
         </div>
@@ -131,7 +131,7 @@ export function MiniCalendar(props: MiniCalendarProps) {
                 {(ts) => (
                   <button
                     type="button"
-                    class={`w-7 h-7 flex items-center justify-center rounded-full text-[11px] leading-none transition-colors ${cellClass(ts)}`}
+                    class={`flex h-9 w-10 items-center justify-center rounded-lg text-12-medium leading-none transition-colors ${cellClass(ts)}`}
                     onClick={() => props.onDateClick?.(ts)}
                   >
                     {new Date(ts).getDate()}

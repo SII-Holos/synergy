@@ -57,7 +57,7 @@ export function ActivityView(props: {
           <input
             value={props.query}
             onInput={(e) => props.onQueryChange(e.currentTarget.value)}
-            placeholder="Search activity, agenda title, errors..."
+            placeholder="Search history, agenda title, errors..."
             class="h-9 w-full rounded-[0.9rem] border border-border-base/40 bg-surface-raised-base/92 pl-3 pr-3 text-12-regular text-text-strong outline-none placeholder:text-text-weaker shadow-[inset_0_1px_0_rgba(214,204,190,0.08)]"
           />
         </div>
@@ -80,7 +80,7 @@ export function ActivityView(props: {
             fallback={
               <div class="flex flex-col items-center justify-center py-16 gap-2 rounded-[1.05rem] bg-surface-inset-base/24 ring-1 ring-inset ring-border-base/35">
                 <Icon name="clock" size="large" class="text-icon-weak" />
-                <span class="text-12-regular text-text-weaker">{props.error ?? "No activity found"}</span>
+                <span class="text-12-regular text-text-weaker">{props.error ?? "No history found"}</span>
               </div>
             }
           >

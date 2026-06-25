@@ -177,10 +177,16 @@ function pad2(n: number): string {
 // AgendaForm
 // ---------------------------------------------------------------------------
 
-export function AgendaForm(props: { directory: string; item?: AgendaItem; onBack: () => void }) {
+export function AgendaForm(props: {
+  directory: string
+  item?: AgendaItem
+  onBack: () => void
+  presentation?: "panel" | "dialog"
+}) {
   const sdk = useGlobalSDK()
   const globalSync = useGlobalSync()
   const isEdit = () => !!props.item
+  const isDialog = () => props.presentation === "dialog"
 
   const parsed = parseTriggersToSchedule(props.item?.triggers ?? [])
 
@@ -288,10 +294,12 @@ export function AgendaForm(props: { directory: string; item?: AgendaItem; onBack
 
   return (
     <>
-      <AppPanel.Header>
+      <AppPanel.Header class={isDialog() ? "!px-5 !pt-5 !pb-3" : undefined}>
         <AppPanel.HeaderRow>
-          <AppPanel.Action icon="arrow-left" title="Back" onClick={props.onBack} />
-          <AppPanel.Title>{isEdit() ? "Edit" : "New Item"}</AppPanel.Title>
+          <Show when={!isDialog()}>
+            <AppPanel.Action icon="arrow-left" title="Back" onClick={props.onBack} />
+          </Show>
+          <AppPanel.Title>{isEdit() ? "Edit Agenda" : "New Agenda"}</AppPanel.Title>
           <div class="flex items-center gap-1.5">
             <button
               type="button"
@@ -318,11 +326,12 @@ export function AgendaForm(props: { directory: string; item?: AgendaItem; onBack
         </AppPanel.HeaderRow>
       </AppPanel.Header>
 
-      <AppPanel.Body padding={false} class="!px-5">
-        <div class="flex flex-col gap-0 rounded-[1.25rem] bg-surface-inset-base/38 p-3 ring-1 ring-inset ring-border-base/45 shadow-[inset_0_1px_0_rgba(214,204,190,0.07)]">
-          <div class="rounded-[1rem] bg-surface-raised-base/94 px-3.5 py-3 shadow-[inset_0_1px_0_rgba(214,204,190,0.08),inset_0_-1px_0_rgba(24,28,38,0.04)]">
+      <AppPanel.Body padding={false} class={isDialog() ? "!px-5 !pb-5" : "!px-5"}>
+        <div class="flex flex-col gap-0 rounded-xl bg-surface-inset-base p-3 ring-1 ring-inset ring-border-base/45">
+          <div class="rounded-lg bg-surface-raised-base px-3.5 py-3 ring-1 ring-inset ring-border-base/28">
             <input
               type="text"
+              autofocus
               class="w-full bg-transparent text-15-medium text-text-strong outline-none py-1 placeholder:text-text-weaker/50"
               placeholder="Add title"
               value={title()}
@@ -330,7 +339,7 @@ export function AgendaForm(props: { directory: string; item?: AgendaItem; onBack
             />
           </div>
 
-          <div class="mt-2 rounded-[1rem] bg-surface-raised-base/94 px-3.5 py-3 shadow-[inset_0_1px_0_rgba(214,204,190,0.08),inset_0_-1px_0_rgba(24,28,38,0.04)]">
+          <div class="mt-2 rounded-lg bg-surface-raised-base px-3.5 py-3 ring-1 ring-inset ring-border-base/28">
             <div class="flex items-start gap-2.5">
               <div class="shrink-0 mt-0.5 text-icon-weak">
                 <Icon name="sparkles" size="small" />
@@ -371,7 +380,7 @@ export function AgendaForm(props: { directory: string; item?: AgendaItem; onBack
                 </button>
               }
             >
-              <div class="flex-1 min-w-0 flex items-center gap-1.5 flex-wrap rounded-[0.95rem] bg-surface-raised-base/92 px-2.5 py-2 shadow-[inset_0_1px_0_rgba(214,204,190,0.08),inset_0_-1px_0_rgba(24,28,38,0.04)]">
+              <div class="flex-1 min-w-0 flex items-center gap-1.5 flex-wrap rounded-lg bg-surface-raised-base px-2.5 py-2 ring-1 ring-inset ring-border-base/28">
                 <DatePicker value={date()} onChange={setDate} />
                 <TimePicker hour={hour()} minute={minute()} onHourChange={setHour} onMinuteChange={setMinute} />
                 <button
@@ -394,7 +403,7 @@ export function AgendaForm(props: { directory: string; item?: AgendaItem; onBack
               <div class="shrink-0 text-icon-weak">
                 <Icon name="repeat" size="small" />
               </div>
-              <div class="flex-1 min-w-0 rounded-[0.95rem] bg-surface-raised-base/92 px-2.5 py-2 shadow-[inset_0_1px_0_rgba(214,204,190,0.08),inset_0_-1px_0_rgba(24,28,38,0.04)]">
+              <div class="flex-1 min-w-0 rounded-lg bg-surface-raised-base px-2.5 py-2 ring-1 ring-inset ring-border-base/28">
                 <RepeatControl
                   mode={repeatMode()}
                   count={intervalCount()}
@@ -435,7 +444,7 @@ export function AgendaForm(props: { directory: string; item?: AgendaItem; onBack
               <div class="shrink-0 mt-0.5 text-icon-weak">
                 <Icon name="file-text" size="small" />
               </div>
-              <div class="flex-1 rounded-[0.95rem] bg-surface-raised-base/92 px-2.5 py-2 shadow-[inset_0_1px_0_rgba(214,204,190,0.08),inset_0_-1px_0_rgba(24,28,38,0.04)]">
+              <div class="flex-1 rounded-lg bg-surface-raised-base px-2.5 py-2 ring-1 ring-inset ring-border-base/28">
                 <textarea
                   class="w-full bg-transparent text-12-regular text-text-base outline-none resize-none min-h-14 placeholder:text-text-weaker/50"
                   placeholder="Description..."
@@ -455,7 +464,7 @@ export function AgendaForm(props: { directory: string; item?: AgendaItem; onBack
               <div class="shrink-0 text-icon-weak">
                 <Icon name="tag" size="small" />
               </div>
-              <div class="flex-1 rounded-[0.95rem] bg-surface-raised-base/92 px-2.5 py-2 shadow-[inset_0_1px_0_rgba(214,204,190,0.08),inset_0_-1px_0_rgba(24,28,38,0.04)]">
+              <div class="flex-1 rounded-lg bg-surface-raised-base px-2.5 py-2 ring-1 ring-inset ring-border-base/28">
                 <input
                   type="text"
                   class="w-full bg-transparent text-12-regular text-text-base outline-none placeholder:text-text-weaker/50"
