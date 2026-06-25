@@ -1,4 +1,4 @@
-import { BrowserWindow, desktopCapturer, ipcMain } from "electron"
+import { BrowserWindow, ipcMain } from "electron"
 import fs from "node:fs/promises"
 import { randomUUID } from "node:crypto"
 import os from "node:os"
@@ -78,7 +78,6 @@ export class BrowserWebRTCHost {
   private controlReconnectTimer: ReturnType<typeof setTimeout> | null = null
   private closed = false
   private inputChannel: string
-  private captureChannel: string
   private readonly browserWindowTitle: string
   private diagnostics: BrowserHostDiagnostics | null = null
   private refMap = new Map<string, { backendNodeId: number; x: number; y: number; width: number; height: number }>()
@@ -89,7 +88,6 @@ export class BrowserWebRTCHost {
 
   constructor(private options: BrowserWebRTCHostOptions) {
     this.inputChannel = `browser-host:${options.tabId}:input`
-    this.captureChannel = `browser-host:${options.tabId}:capture`
     this.browserWindowTitle = `Synergy Browser Host ${options.sessionID} ${options.tabId}`
     this.activeTabId = options.tabId
     this.tabs.set(options.tabId, this.createTabState(options.tabId, options.url || "about:blank", "", false))
@@ -138,36 +136,27 @@ export class BrowserWebRTCHost {
         sandbox: false,
       },
     })
-    this.rtcWindow.webContents.session.setDisplayMediaRequestHandler(
-      (_request, callback) => {
-        desktopCapturer
-          .getSources({ types: ["window"], thumbnailSize: { width: 0, height: 0 }, fetchWindowIcons: false })
-          .then((sources) => {
-            const source =
-              sources.find((item) => item.name === this.browserWindowTitle) ??
-              sources.find((item) => item.name.includes(this.options.tabId)) ??
-              sources.find((item) => item.name.includes("Synergy Browser Host")) ??
-              sources[0]
-            if (!source) {
-              callback({})
-              return
-            }
-            callback({ video: source, audio: "loopback" })
-          })
-          .catch(() => callback({}))
-      },
-      { useSystemPicker: false },
-    )
-
+    this.rtcWindow.webContents.session.setPermissionCheckHandler((webContents, permission) => {
+      const requestedPermission = String(permission)
+      return webContents === this.rtcWindow?.webContents && this.isControllerMediaPermission(requestedPermission)
+    })
+    this.rtcWindow.webContents.session.setPermissionRequestHandler((webContents, permission, callback) => {
+      callback(webContents === this.rtcWindow?.webContents && this.isControllerMediaPermission(String(permission)))
+    })
+    this.rtcWindow.webContents.session.setDisplayMediaRequestHandler((request, callback) => {
+      const frame = this.browserWindow?.webContents.mainFrame
+      if (!frame) {
+        callback({})
+        return
+      }
+      callback({
+        video: request.videoRequested ? frame : undefined,
+        audio: request.audioRequested ? frame : undefined,
+        enableLocalEcho: true,
+      })
+    })
     ipcMain.on(this.inputChannel, (_event, payload) => {
       this.dispatchInput(payload as Record<string, unknown>)
-    })
-    ipcMain.handle(this.captureChannel, async () => {
-      const contents = this.browserWindow?.webContents
-      if (!contents || contents.isDestroyed()) return null
-      const image = await contents.capturePage()
-      const size = image.getSize()
-      return { dataUrl: image.toDataURL(), width: size.width, height: size.height }
     })
 
     const controllerPath = await this.writeControllerHtml(signalingUrl)
@@ -180,7 +169,6 @@ export class BrowserWebRTCHost {
   destroy(): void {
     this.closed = true
     ipcMain.removeAllListeners(this.inputChannel)
-    ipcMain.removeHandler(this.captureChannel)
     if (this.controlReconnectTimer) clearTimeout(this.controlReconnectTimer)
     this.controlWs?.close()
     this.controlWs = null
@@ -222,6 +210,10 @@ export class BrowserWebRTCHost {
     if (payload.type === "input.key") {
       this.dispatchKey(payload, contents)
     }
+  }
+
+  private isControllerMediaPermission(permission: string): boolean {
+    return permission === "media" || permission === "display-capture"
   }
 
   private dispatchMouse(payload: Record<string, unknown>, contents: Electron.WebContents): void {
@@ -623,7 +615,6 @@ const { ipcRenderer } = require("electron")
 const signalingUrl = ${JSON.stringify(signalingUrl)}
 const tabId = ${JSON.stringify(this.options.tabId)}
 const inputChannel = ${JSON.stringify(this.inputChannel)}
-const captureChannel = ${JSON.stringify(this.captureChannel)}
 const preview = document.getElementById("preview")
 let pc = null
 let ws = null
@@ -638,15 +629,10 @@ async function startCapture() {
   if (stream) return stream
   if (streamPromise) return streamPromise
   if (!navigator.mediaDevices?.getDisplayMedia) {
-    streamPromise = startCanvasCapture().finally(() => {
-      streamPromise = null
-    })
-    return streamPromise
+    throw new Error("Browser Host mediaDevices.getDisplayMedia is unavailable")
   }
   streamPromise = navigator.mediaDevices.getDisplayMedia({ audio: true, video: true }).catch(() => {
     return navigator.mediaDevices.getDisplayMedia({ audio: false, video: true })
-  }).catch(() => {
-    return startCanvasCapture()
   }).then((nextStream) => {
     stream = nextStream
     preview.srcObject = stream
@@ -656,55 +642,6 @@ async function startCapture() {
     streamPromise = null
   })
   return streamPromise
-}
-
-async function startCanvasCapture() {
-  const canvas = document.createElement("canvas")
-  canvas.width = ${this.options.width ?? 1280}
-  canvas.height = ${this.options.height ?? 720}
-  const context = canvas.getContext("2d", { alpha: false })
-  if (!context || !canvas.captureStream) {
-    throw new Error("Browser Host canvas capture fallback is unavailable")
-  }
-  const canvasStream = canvas.captureStream(30)
-  let active = true
-  for (const track of canvasStream.getTracks()) {
-    track.addEventListener("ended", () => {
-      active = false
-    })
-  }
-
-  async function drawFrame() {
-    if (!active || stream !== canvasStream) return
-    try {
-      const frame = await ipcRenderer.invoke(captureChannel)
-      if (frame?.dataUrl) {
-        await drawDataUrl(frame.dataUrl, Number(frame.width || canvas.width), Number(frame.height || canvas.height))
-      }
-    } catch {}
-    if (active && stream === canvasStream) setTimeout(drawFrame, 33)
-  }
-
-  async function drawDataUrl(dataUrl, width, height) {
-    const image = new Image()
-    image.src = dataUrl
-    if (image.decode) {
-      await image.decode().catch(() => {})
-    } else {
-      await new Promise((resolve, reject) => {
-        image.onload = resolve
-        image.onerror = reject
-      }).catch(() => {})
-    }
-    if (!image.complete) return
-    if (canvas.width !== width) canvas.width = width
-    if (canvas.height !== height) canvas.height = height
-    context.drawImage(image, 0, 0, canvas.width, canvas.height)
-  }
-
-  stream = canvasStream
-  void drawFrame()
-  return canvasStream
 }
 
 async function ensurePeer() {
