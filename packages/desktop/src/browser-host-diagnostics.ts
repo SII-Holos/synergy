@@ -44,11 +44,37 @@ export interface BrowserHostNetworkRequest {
   timestamp: number
 }
 
+export interface BrowserHostPageAsset {
+  id: string
+  tabID: string
+  url: string
+  type: "image" | "script" | "stylesheet" | "font" | "media" | "document" | "other"
+  mimeType?: string
+  status?: number
+  size?: number
+  initiator?: string
+}
+
 export interface BrowserHostUploadFile {
   name: string
   mimeType?: string
   data: string
 }
+
+const MIME_TO_ASSET_TYPE: [RegExp, BrowserHostPageAsset["type"]][] = [
+  [/^image\//, "image"],
+  [/^text\/javascript$/, "script"],
+  [/^application\/javascript$/, "script"],
+  [/^application\/x-javascript$/, "script"],
+  [/^text\/css$/, "stylesheet"],
+  [/^font\//, "font"],
+  [/^application\/font-/, "font"],
+  [/^video\//, "media"],
+  [/^audio\//, "media"],
+  [/^text\/html$/, "document"],
+  [/^application\/xhtml\+xml$/, "document"],
+  [/^application\/pdf$/, "document"],
+]
 
 type BrowserHostDownloadState = "in_progress" | "completed" | "cancelled" | "interrupted" | "blocked"
 
@@ -129,6 +155,19 @@ export class BrowserHostDiagnostics {
 
   networkRequests(maxEntries = 100): BrowserHostNetworkRequest[] {
     return this.networkBuffer.slice(-maxEntries)
+  }
+
+  pageAssets(tabId = this.options.tabId, maxEntries = 100): BrowserHostPageAsset[] {
+    return this.networkRequests(maxEntries).map((request) => ({
+      id: request.requestId,
+      tabID: tabId,
+      url: request.url,
+      type: classifyAssetByMime(request.mimeType ?? ""),
+      mimeType: request.mimeType,
+      status: request.status,
+      size: undefined,
+      initiator: undefined,
+    }))
   }
 
   clear(): void {
@@ -342,6 +381,15 @@ function isDangerousDownload(mimeType?: string, filename?: string): boolean {
   if (normalizedMime && BLOCKED_DOWNLOAD_MIMES.has(normalizedMime)) return true
   const ext = path.extname(filename?.trim().toLowerCase() ?? "")
   return Boolean(ext && BLOCKED_DOWNLOAD_EXTENSIONS.has(ext))
+}
+
+function classifyAssetByMime(mimeType: string): BrowserHostPageAsset["type"] {
+  const normalized = mimeType.trim().split(";")[0]?.toLowerCase() ?? ""
+  if (!normalized) return "other"
+  for (const [pattern, type] of MIME_TO_ASSET_TYPE) {
+    if (pattern.test(normalized)) return type
+  }
+  return "other"
 }
 
 function firstHeader(headers: Record<string, string[]> | undefined, name: string): string | undefined {

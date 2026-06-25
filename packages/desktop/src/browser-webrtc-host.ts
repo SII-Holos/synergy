@@ -430,7 +430,11 @@ export class BrowserWebRTCHost {
           requests: this.diagnostics?.networkRequests(Number(command.maxEntries ?? 100)) ?? [],
         }
       case "assets":
-        return { type: "assets", tabId: this.options.tabId, assets: [] }
+        return {
+          type: "assets",
+          tabId: this.options.tabId,
+          assets: this.diagnostics?.pageAssets(this.options.tabId, Number(command.maxEntries ?? 100)) ?? [],
+        }
       case "filechooser.select":
         await this.diagnostics?.respondToFileChooser(
           String(command.requestId ?? ""),

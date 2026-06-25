@@ -440,7 +440,11 @@ class BrowserNativeHostControlConnection {
           requests: diagnostics?.networkRequests(Number(command.maxEntries ?? 100)) ?? [],
         }
       case "assets":
-        return { type: "assets", tabId: tabId!, assets: [] }
+        return {
+          type: "assets",
+          tabId: tabId!,
+          assets: diagnostics?.pageAssets(tabId!, Number(command.maxEntries ?? 100)) ?? [],
+        }
       case "filechooser.select":
         await diagnostics?.respondToFileChooser(
           String(command.requestId ?? ""),
