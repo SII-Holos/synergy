@@ -27,9 +27,11 @@ interface SmokeServerState {
   controlOpened: boolean
   signalingOpened: boolean
   mediaReady: boolean
+  dataInputSent: boolean
   ready: boolean
   navigated: boolean
   evaluatedTitle: string | null
+  evaluatedInput: string | null
 }
 
 interface Deferred<T> {
@@ -95,13 +97,21 @@ waitForDesktopBridge().then((browserNative) => {
 }
 
 function smokeDocument(title: string) {
-  return `data:text/html;charset=utf-8,${encodeURIComponent(`<!doctype html><title>${title}</title><main>${title}</main>`)}`
+  return `data:text/html;charset=utf-8,${encodeURIComponent(`<!doctype html>
+<title>${title}</title>
+<style>
+  body { margin: 0; font: 16px system-ui; min-height: 1200px; }
+  input { position: fixed; left: 8px; top: 8px; width: 260px; height: 32px; }
+  main { padding: 64px 16px; }
+</style>
+<input id="webrtc-input" autofocus />
+<main>${title}</main>`)}`
 }
 
 async function withSmokeServer(
   mode: "native" | "webrtc",
   run: (input: { serverUrl: string; state: SmokeServerState; done: Promise<void> }) => Promise<void>,
-  options: { requireViewer?: boolean; requireMedia?: boolean } = {},
+  options: { requireViewer?: boolean; requireMedia?: boolean; requireDataInput?: boolean } = {},
 ) {
   const done = deferred<void>()
   const title = mode === "native" ? "Native Browser Host Smoke" : "WebRTC Browser Host Smoke"
@@ -115,14 +125,18 @@ async function withSmokeServer(
     controlOpened: false,
     signalingOpened: false,
     mediaReady: false,
+    dataInputSent: false,
     ready: false,
     navigated: false,
     evaluatedTitle: null,
+    evaluatedInput: null,
   }
   let appPage = ""
   let commandSeq = 0
   let navigateId: string | null = null
   let evaluateId: string | null = null
+  let inputEvaluateId: string | null = null
+  let controlSocket: ServerWebSocket<{ kind: "control" | "host-signaling" | "viewer-signaling" }> | null = null
   let hostSignal: ServerWebSocket<{ kind: "control" | "host-signaling" | "viewer-signaling" }> | null = null
   let viewerSignal: ServerWebSocket<{ kind: "control" | "host-signaling" | "viewer-signaling" }> | null = null
 
@@ -136,6 +150,12 @@ async function withSmokeServer(
       }
       if (url.pathname === "/media-ready") {
         state.mediaReady = true
+        checkComplete()
+        return new Response("ok")
+      }
+      if (url.pathname === "/data-input-sent") {
+        state.dataInputSent = true
+        setTimeout(requestInputEvaluation, 100)
         checkComplete()
         return new Response("ok")
       }
@@ -185,6 +205,7 @@ async function withSmokeServer(
           checkComplete()
           return
         }
+        controlSocket = ws
         state.controlOpened = true
       },
       message(ws, raw) {
@@ -235,10 +256,17 @@ async function withSmokeServer(
         if (message.id === evaluateId) {
           const result = message.result as { value?: unknown } | undefined
           state.evaluatedTitle = typeof result?.value === "string" ? result.value : null
+          requestInputEvaluation()
+          checkComplete()
+        }
+        if (message.id === inputEvaluateId) {
+          const result = message.result as { value?: unknown } | undefined
+          state.evaluatedInput = typeof result?.value === "string" ? result.value : null
           checkComplete()
         }
       },
       close(ws) {
+        if (ws.data.kind === "control" && controlSocket === ws) controlSocket = null
         if (ws.data.kind === "host-signaling" && hostSignal === ws) hostSignal = null
         if (ws.data.kind === "viewer-signaling" && viewerSignal === ws) viewerSignal = null
       },
@@ -288,7 +316,18 @@ async function withSmokeServer(
     if (mode === "webrtc" && !state.signalingOpened) return
     if (options.requireViewer && !state.viewerSignalingOpened) return
     if (options.requireMedia && !state.mediaReady) return
+    if (options.requireDataInput && state.evaluatedInput !== "remote-data-channel") return
     done.resolve()
+  }
+
+  function requestInputEvaluation() {
+    if (!options.requireDataInput || inputEvaluateId || !controlSocket || !state.dataInputSent || !state.evaluatedTitle)
+      return
+    inputEvaluateId = sendCommand(controlSocket, {
+      type: "evaluate",
+      tabId: mode === "native" ? "native-smoke-tab" : "webrtc-smoke-tab",
+      expression: "document.querySelector('#webrtc-input')?.value ?? ''",
+    })
   }
 
   try {
@@ -356,7 +395,7 @@ async function runDesktop(env: Record<string, string | undefined>, done: Promise
   }
 }
 
-function viewerScript(signalingUrl: string, mediaReadyUrl: string, mediaLogUrl: string): string {
+function viewerScript(signalingUrl: string, mediaReadyUrl: string, mediaLogUrl: string, dataInputUrl: string): string {
   const html = `<!doctype html>
 <html>
 <body style="margin:0;background:#111">
@@ -365,9 +404,11 @@ function viewerScript(signalingUrl: string, mediaReadyUrl: string, mediaLogUrl: 
 const signalingUrl = ${JSON.stringify(signalingUrl)}
 const mediaReadyUrl = ${JSON.stringify(mediaReadyUrl)}
 const mediaLogUrl = ${JSON.stringify(mediaLogUrl)}
+const dataInputUrl = ${JSON.stringify(dataInputUrl)}
 const video = document.getElementById("video")
 let ws
 let pc
+let inputChannel
 
 function send(message) {
   if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(message))
@@ -379,6 +420,14 @@ function reportReady() {
 
 function reportLog(message, detail) {
   fetch(mediaLogUrl, { method: "POST", body: JSON.stringify({ message, detail }) }).catch(() => {})
+}
+
+function reportInputSent() {
+  fetch(dataInputUrl, { method: "POST" }).catch(() => {})
+}
+
+function sendInput(message) {
+  if (inputChannel?.readyState === "open") inputChannel.send(JSON.stringify(message))
 }
 
 function watchVideo() {
@@ -399,7 +448,14 @@ async function negotiate() {
   pc = new RTCPeerConnection()
   pc.addTransceiver("video", { direction: "recvonly" })
   pc.addTransceiver("audio", { direction: "recvonly" })
-  pc.createDataChannel("browser-input", { ordered: true })
+  inputChannel = pc.createDataChannel("browser-input", { ordered: true })
+  inputChannel.onopen = () => {
+    sendInput({ type: "input.resize", width: 360, height: 260 })
+    sendInput({ type: "input.mouse", action: "down", x: 32, y: 24, button: "left", clickCount: 1 })
+    sendInput({ type: "input.mouse", action: "up", x: 32, y: 24, button: "left", clickCount: 1 })
+    sendInput({ type: "input.text", text: "remote-data-channel" })
+    setTimeout(reportInputSent, 100)
+  }
   pc.ontrack = (event) => {
     const stream = event.streams[0] || new MediaStream([event.track])
     if (event.track.kind === "video") {
@@ -467,12 +523,13 @@ async function runViewer(
   signalingUrl: string,
   mediaReadyUrl: string,
   mediaLogUrl: string,
+  dataInputUrl: string,
   done: Promise<void>,
   state: SmokeServerState,
 ) {
   const tmp = await mkdtemp(path.join(os.tmpdir(), "synergy-webrtc-viewer-"))
   const entry = path.join(tmp, "main.mjs")
-  await Bun.write(entry, viewerScript(signalingUrl, mediaReadyUrl, mediaLogUrl))
+  await Bun.write(entry, viewerScript(signalingUrl, mediaReadyUrl, mediaLogUrl, dataInputUrl))
   const proc = Bun.spawn([ELECTRON_BIN, entry], {
     cwd: DESKTOP_DIR,
     stdout: "pipe",
@@ -584,17 +641,26 @@ describe("Electron browser runtime smoke", () => {
               done,
               state,
             ),
-            runViewer(signalingUrl, `${serverUrl}/media-ready`, `${serverUrl}/media-log`, done, state),
+            runViewer(
+              signalingUrl,
+              `${serverUrl}/media-ready`,
+              `${serverUrl}/media-log`,
+              `${serverUrl}/data-input-sent`,
+              done,
+              state,
+            ),
           ])
           expect(state).toMatchObject({
             controlOpened: true,
             signalingOpened: true,
             viewerSignalingOpened: true,
             mediaReady: true,
+            dataInputSent: true,
             evaluatedTitle: "WebRTC Browser Host Smoke",
+            evaluatedInput: "remote-data-channel",
           })
         },
-        { requireViewer: true, requireMedia: true },
+        { requireViewer: true, requireMedia: true, requireDataInput: true },
       )
     },
     90_000,
