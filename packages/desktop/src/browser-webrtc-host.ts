@@ -152,7 +152,7 @@ export class BrowserWebRTCHost {
               callback({})
               return
             }
-            callback({ video: source })
+            callback({ video: source, audio: "loopback" })
           })
           .catch(() => callback({}))
       },
@@ -643,7 +643,9 @@ async function startCapture() {
     })
     return streamPromise
   }
-  streamPromise = navigator.mediaDevices.getDisplayMedia({ audio: false, video: true }).catch(() => {
+  streamPromise = navigator.mediaDevices.getDisplayMedia({ audio: true, video: true }).catch(() => {
+    return navigator.mediaDevices.getDisplayMedia({ audio: false, video: true })
+  }).catch(() => {
     return startCanvasCapture()
   }).then((nextStream) => {
     stream = nextStream
