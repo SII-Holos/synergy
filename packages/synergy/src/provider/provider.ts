@@ -37,6 +37,7 @@ import { createTogetherAI } from "@ai-sdk/togetherai"
 import { createPerplexity } from "@ai-sdk/perplexity"
 import { createVercel } from "@ai-sdk/vercel"
 import { ProviderTransform } from "./transform"
+import { CodexProvider } from "./codex"
 
 export namespace Provider {
   const log = Log.create({ service: "provider" })
@@ -89,6 +90,25 @@ export namespace Provider {
           return sdk.responses(modelID)
         },
         options: {},
+      }
+    },
+    [CodexProvider.PROVIDER_ID]: async () => {
+      const access = await CodexProvider.resolveToken({ allowMissing: true }).catch((error) => {
+        log.warn("failed to resolve codex credentials", { error })
+        return undefined
+      })
+      if (!access) return { autoload: false }
+      return {
+        autoload: true,
+        async getModel(sdk: any, modelID: string, _options?: Record<string, any>) {
+          return sdk.responses(modelID)
+        },
+        options: {
+          apiKey: "synergy-codex-oauth",
+          baseURL: CodexProvider.runtimeBaseURL(),
+          fetch: CodexProvider.codexFetch,
+          setCacheKey: true,
+        },
       }
     },
     "github-copilot": async () => {
@@ -584,9 +604,6 @@ export namespace Provider {
   const state = ScopedState.create(async () => {
     using _ = log.time("state")
     const config = await Config.current()
-    const modelsDev = await ModelsDev.get()
-    const database = mapValues(modelsDev, fromModelsDevProvider)
-
     const disabled = new Set(config.disabled_providers ?? [])
     const enabled = config.enabled_providers ? new Set(config.enabled_providers) : null
 
@@ -595,6 +612,13 @@ export namespace Provider {
       if (disabled.has(providerID)) return false
       return true
     }
+
+    const modelsDev = { ...(await ModelsDev.get()) }
+    if (isProviderAllowed(CodexProvider.PROVIDER_ID)) {
+      const codexModelIDs = await CodexProvider.runtimeModelIDs()
+      modelsDev[CodexProvider.PROVIDER_ID] = CodexProvider.modelsDevProvider(codexModelIDs, modelsDev.openai?.models)
+    }
+    const database = mapValues(modelsDev, fromModelsDevProvider)
 
     const providers: { [providerID: string]: Info } = {}
     const models = new Map<string, { instance: LanguageModelV2; createdAt: number }>()

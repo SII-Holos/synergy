@@ -2075,6 +2075,14 @@ export type Config = {
    * Additional instruction files or patterns to include
    */
   instructions?: Array<string>
+  /**
+   * Ordered fallback instruction filenames to try when AGENTS.md is missing in a directory
+   */
+  project_doc_fallback_filenames?: Array<string>
+  /**
+   * Maximum bytes to include from each automatically discovered instruction file (default: 32768; 0 disables automatic discovery)
+   */
+  project_doc_max_bytes?: number
   layout?: LayoutConfig
   permission?: PermissionConfig
   /**

@@ -4,18 +4,32 @@ import { Plugin } from "../plugin"
 import { map, filter, pipe, fromEntries, mapValues } from "remeda"
 import z from "zod"
 import { fn } from "@/util/fn"
-import type { AuthOuathResult } from "@ericsanchezok/synergy-plugin"
+import type { AuthHook, AuthOuathResult } from "@ericsanchezok/synergy-plugin"
 import { NamedError } from "@ericsanchezok/synergy-util/error"
 import { Auth } from "@/provider/api-key"
+import { CodexProvider } from "./codex"
 
 export namespace ProviderAuth {
   const state = ScopedState.create(async () => {
-    const methods = pipe(
+    const pluginMethods = pipe(
       await Plugin.allHooks(),
       filter((x) => x.auth?.provider !== undefined),
       map((x) => [x.auth!.provider, x.auth!] as const),
       fromEntries(),
-    )
+    ) as Record<string, AuthHook>
+    const builtinMethods: Record<string, AuthHook> = {
+      [CodexProvider.PROVIDER_ID]: {
+        provider: CodexProvider.PROVIDER_ID,
+        methods: [
+          {
+            type: "oauth" as const,
+            label: "Login with ChatGPT",
+            authorize: () => CodexProvider.authorizeDeviceCode(),
+          },
+        ],
+      },
+    }
+    const methods: Record<string, AuthHook> = { ...builtinMethods, ...pluginMethods }
     return { methods, pending: {} as Record<string, AuthOuathResult> }
   })
 

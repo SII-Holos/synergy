@@ -262,6 +262,8 @@ Project instruction discovery is configured in the agents domain. `AGENTS.overri
 
 Legacy monolithic config files are migration inputs only. Do not add new runtime load paths or long-term compatibility branches for them.
 
+Provider auth paths are distinct. The built-in `openai-codex` provider uses ChatGPT/Codex OAuth device-code credentials and the Codex backend; the normal `openai` provider remains the OpenAI Platform API-key path. Do not merge their config, auth storage semantics, or billing language.
+
 ### Config-aware work
 
 If you change:

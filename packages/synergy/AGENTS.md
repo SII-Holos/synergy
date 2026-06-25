@@ -28,6 +28,7 @@
 - **Storage**: Use `Storage` namespace for persistence
 - **Migrations**: Put versioned schema/data upgrades in the dedicated migration modules and runner. Fresh-install table creation can live with database initialization, but legacy upgrades, backfills, and data rewrites must not be scattered through runtime or request code.
 - **API Client**: When modifying server endpoints in `packages/synergy/src/server/server.ts`, run `./script/generate.ts` to regenerate the SDK.
+- **Provider auth**: Keep `openai-codex` as the ChatGPT/Codex OAuth device-code provider. Do not mix it with the `openai` Platform API-key provider or share/write Codex CLI `auth.json` credentials directly.
 
 ### Sandbox Architecture
 

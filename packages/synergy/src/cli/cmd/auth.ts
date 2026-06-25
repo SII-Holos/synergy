@@ -12,6 +12,7 @@ import { Plugin } from "../../plugin"
 import { ScopeContext } from "../../scope/context"
 import { Scope } from "@/scope"
 import type { PluginHooks } from "@ericsanchezok/synergy-plugin"
+import { CodexProvider } from "@/provider/codex"
 
 type PluginAuth = NonNullable<PluginHooks["auth"]>
 
@@ -160,6 +161,63 @@ async function handlePluginAuth(plugin: { auth: PluginAuth }, provider: string):
   return false
 }
 
+async function handleCodexAuth(): Promise<boolean> {
+  const existing = await CodexProvider.resolveToken({ allowMissing: true }).catch(() => undefined)
+  if (existing) {
+    const reuse = await prompts.confirm({
+      message: "Existing OpenAI Codex credentials found. Use them?",
+      initialValue: true,
+    })
+    if (prompts.isCancel(reuse)) throw new UI.CancelledError()
+    if (reuse) {
+      prompts.log.success("OpenAI Codex is already connected")
+      prompts.outro("Done")
+      return true
+    }
+  }
+
+  const imported = await CodexProvider.importCodexCliAuth()
+  if (imported) {
+    prompts.log.info(`Found existing Codex CLI credentials at ${CodexProvider.codexHome()}/auth.json`)
+    prompts.log.info("Synergy will copy them into its own credential store to avoid refresh-token conflicts.")
+    const shouldImport = await prompts.confirm({
+      message: "Import Codex CLI credentials?",
+      initialValue: false,
+    })
+    if (prompts.isCancel(shouldImport)) throw new UI.CancelledError()
+    if (shouldImport) {
+      await CodexProvider.saveImportedToken(imported)
+      prompts.log.success("OpenAI Codex credentials imported")
+      prompts.outro("Done")
+      return true
+    }
+  }
+
+  const authorize = await CodexProvider.authorizeDeviceCode()
+  if (authorize.method !== "auto") return false
+  prompts.log.info("Open: " + authorize.url)
+  prompts.log.info("Enter code: " + authorize.instructions)
+  const spinner = prompts.spinner()
+  spinner.start("Waiting for ChatGPT sign-in...")
+  const result = await authorize.callback()
+  if (result.type === "failed") {
+    spinner.stop("Failed to authorize", 1)
+    prompts.outro("Done")
+    return true
+  }
+  if ("refresh" in result) {
+    await Auth.set(CodexProvider.PROVIDER_ID, {
+      type: "oauth",
+      access: result.access,
+      refresh: result.refresh,
+      expires: result.expires,
+    })
+  }
+  spinner.stop("Login successful")
+  prompts.outro("Done")
+  return true
+}
+
 export const AuthCommand = cmd({
   command: "auth",
   describe: "manage credentials",
@@ -271,11 +329,12 @@ export const AuthLoginCommand = cmd({
 
         const priority: Record<string, number> = {
           anthropic: 1,
-          "github-copilot": 2,
-          openai: 3,
-          google: 4,
-          openrouter: 5,
-          vercel: 6,
+          [CodexProvider.PROVIDER_ID]: 2,
+          "github-copilot": 3,
+          openai: 4,
+          google: 5,
+          openrouter: 6,
+          vercel: 7,
         }
         let provider = await prompts.autocomplete({
           message: "Select provider",
@@ -291,7 +350,12 @@ export const AuthLoginCommand = cmd({
               map((x) => ({
                 label: x.name,
                 value: x.id,
-                hint: ({ anthropic: "Claude Max or API key" } as Record<string, string | undefined>)[x.id],
+                hint: (
+                  {
+                    anthropic: "Claude Max or API key",
+                    [CodexProvider.PROVIDER_ID]: "ChatGPT/Codex subscription",
+                  } as Record<string, string | undefined>
+                )[x.id],
               })),
             ),
             {
@@ -302,6 +366,11 @@ export const AuthLoginCommand = cmd({
         })
 
         if (prompts.isCancel(provider)) throw new UI.CancelledError()
+
+        if (provider === CodexProvider.PROVIDER_ID) {
+          const handled = await handleCodexAuth()
+          if (handled) return
+        }
 
         const plugin = await Plugin.allHooks().then((x) => x.find((x) => x.auth?.provider === provider))
         if (plugin && plugin.auth) {

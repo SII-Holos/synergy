@@ -41,6 +41,9 @@ export const DialogSelectProvider: Component = () => {
             <Show when={i.id === "anthropic"}>
               <div class="text-14-regular text-text-weak">Connect with Claude Pro/Max or API key</div>
             </Show>
+            <Show when={i.id === "openai-codex"}>
+              <div class="text-14-regular text-text-weak">Connect with ChatGPT/Codex</div>
+            </Show>
           </div>
         )}
       </List>

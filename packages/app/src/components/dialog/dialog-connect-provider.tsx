@@ -143,6 +143,7 @@ export function DialogConnectProvider(props: { provider: string }) {
               <Match when={props.provider === "anthropic" && method()?.label?.toLowerCase().includes("max")}>
                 Login with Claude Pro/Max
               </Match>
+              <Match when={props.provider === "openai-codex"}>Login with ChatGPT/Codex</Match>
               <Match when={true}>Connect {provider().name}</Match>
             </Switch>
           </div>

@@ -263,6 +263,18 @@ Synergy also supports project-scoped extension directories under:
 
 That scoped directory is where project-specific agents, commands, plugins, skills, and related assets may live.
 
+### Provider authentication
+
+Use `synergy auth login` or the Web UI's **Connect provider** dialog to connect model providers. Provider credentials are stored in Synergy's own credential file:
+
+```bash
+~/.synergy/data/auth/api-key.json
+```
+
+`openai-codex` is the built-in OpenAI Codex provider for ChatGPT/Codex subscription login. It uses a ChatGPT/Codex device-code sign-in and the Codex backend, then exposes account-visible Codex models such as `gpt-5.4-mini` in `synergy models openai-codex` and the model picker. This is separate from the normal `openai` provider: OpenAI Platform API keys still use `openai` and follow Platform API billing.
+
+When `CODEX_HOME` or `~/.codex/auth.json` exists, the CLI can copy valid Codex CLI credentials into Synergy. Synergy does not share or write back to the Codex CLI auth file, so refresh-token rotation stays isolated between the two tools.
+
 ### Project instruction files
 
 For every turn, Synergy includes instruction files discovered inside the active Scope. In each directory from the Scope root to the current working directory, it uses the first matching file in this order:
