@@ -1,5 +1,6 @@
 import { Show } from "solid-js"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
+import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import type { BrowserTab } from "./browser-store"
 
 export type TabStripProps = {
@@ -27,7 +28,7 @@ export function TabStrip(props: TabStripProps) {
         onClick={props.onAddTab}
         aria-label="New tab"
       >
-        <Icon name="plus" size="small" />
+        <Icon name={getSemanticIcon("action.add")} size="small" />
       </button>
     </div>
   )
@@ -51,7 +52,10 @@ function TabItem(props: TabItemProps) {
       }}
       onClick={props.onSwitch}
     >
-      <Show when={props.tab.isLoading} fallback={<Icon name="globe" size="small" class="text-icon-weak" />}>
+      <Show
+        when={props.tab.isLoading}
+        fallback={<Icon name={getSemanticIcon("browser.main")} size="small" class="text-icon-weak" />}
+      >
         <span class="block size-2 rounded-full bg-surface-interactive-base animate-pulse" />
       </Show>
       <span class="max-w-[120px] truncate">{props.tab.title || "Untitled"}</span>
@@ -64,7 +68,7 @@ function TabItem(props: TabItemProps) {
         }}
         aria-label="Close tab"
       >
-        <Icon name="x" size="small" />
+        <Icon name={getSemanticIcon("action.close")} size="small" />
       </span>
     </button>
   )

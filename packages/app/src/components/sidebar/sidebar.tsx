@@ -1109,7 +1109,7 @@ function SidebarAgentHub(props: {
               props.dialog.show(() => <SettingsDialog />)
             }}
           >
-            <Icon name="settings" size="small" />
+            <Icon name={getSemanticIcon("settings.general")} size="small" />
             <span>Settings</span>
           </button>
           <button
@@ -1121,7 +1121,7 @@ function SidebarAgentHub(props: {
               props.dialog.show(() => <DialogSelectProvider />)
             }}
           >
-            <Icon name="cable" size="small" />
+            <Icon name={getSemanticIcon("settings.providers")} size="small" />
             <span>Connect Provider</span>
           </button>
           <Show

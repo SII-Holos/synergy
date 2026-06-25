@@ -1,93 +1,89 @@
+import { For } from "solid-js"
+import { Checkbox } from "@ericsanchezok/synergy-ui/checkbox"
 import { Switch } from "@ericsanchezok/synergy-ui/switch"
-import { useTheme, type ColorScheme } from "@ericsanchezok/synergy-ui/theme"
-import type { SendShortcut } from "@/context/input"
+import { TextField } from "@ericsanchezok/synergy-ui/text-field"
 import { SettingRow } from "../components/SettingRow"
-import { SectionLabel } from "../components/SectionLabel"
 import { SegmentPill } from "../components/SegmentPill"
+import { SettingsFieldGrid, SettingsPage, SettingsSection } from "../components/SettingsPrimitives"
+import type { GeneralStore } from "../types"
 
-const schemeOptions: { value: ColorScheme; label: string }[] = [
-  { value: "system", label: "System" },
-  { value: "light", label: "Light" },
-  { value: "dark", label: "Dark" },
-]
+const toastTypes = ["info", "success", "warning", "error"] as const
 
 export function GeneralPanel(props: {
-  editingLabel: string
-  snapshot: boolean
-  autoupdate: string
-  sendShortcut: SendShortcut
-  onSnapshotChange: (value: boolean) => void
-  onAutoupdateChange: (value: string) => void
-  onSendShortcutChange: (value: SendShortcut) => void
+  general: GeneralStore
+  onGeneralChange: <K extends keyof GeneralStore>(key: K, value: GeneralStore[K]) => void
 }) {
-  const theme = useTheme()
+  function toggleMutedToast(type: string, enabled: boolean) {
+    const next = enabled
+      ? [...props.general.mutedToasts, type]
+      : props.general.mutedToasts.filter((item) => item !== type)
+    props.onGeneralChange("mutedToasts", Array.from(new Set(next)))
+  }
 
   return (
-    <div class="ds-content-inner">
-      <h1 class="ds-content-title">General</h1>
+    <SettingsPage title="General" description="Common behavior and notification preferences.">
+      <SettingsSection title="Profile">
+        <SettingsFieldGrid>
+          <TextField
+            label="Username"
+            type="text"
+            value={props.general.username}
+            placeholder="Display name"
+            onChange={(value) => props.onGeneralChange("username", value)}
+          />
+        </SettingsFieldGrid>
+      </SettingsSection>
 
-      <div class="ds-setting-section">
-        <SectionLabel title="Appearance" />
-        <SettingRow
-          title="Color Scheme"
-          description="Choose light, dark, or follow your system setting"
-          trailing={
-            <SegmentPill
-              value={theme.colorScheme()}
-              options={schemeOptions}
-              onChange={(value) => theme.setColorScheme(value as ColorScheme)}
-            />
-          }
-        />
-      </div>
-
-      <div class="ds-setting-section">
-        <SectionLabel title="Server-backed" />
-        <p class="ds-section-hint">
-          These settings are saved to <strong>{props.editingLabel}</strong> and sync immediately.
-        </p>
+      <SettingsSection title="Behavior">
         <SettingRow
           title="Snapshot"
           description="Save file snapshots for explicit file restore"
-          trailing={<Switch checked={props.snapshot} onChange={props.onSnapshotChange} />}
+          trailing={
+            <Switch checked={props.general.snapshot} onChange={(value) => props.onGeneralChange("snapshot", value)} />
+          }
         />
         <SettingRow
           title="Auto Update"
-          description="How updates are handled"
+          description="How product updates are handled"
           trailing={
             <SegmentPill
-              value={props.autoupdate}
+              value={props.general.autoupdate}
               options={[
                 { value: "true", label: "On" },
                 { value: "false", label: "Off" },
                 { value: "notify", label: "Notify" },
               ]}
-              onChange={props.onAutoupdateChange}
+              onChange={(value) => props.onGeneralChange("autoupdate", value)}
               showReset
               defaultValue="notify"
-              onReset={() => props.onAutoupdateChange("notify")}
+              onReset={() => props.onGeneralChange("autoupdate", "notify")}
             />
           }
         />
-      </div>
-      <div class="ds-setting-section">
-        <SectionLabel title="Local Preference" />
-        <p class="ds-section-hint">Stored only in this client and never written to global config.</p>
-        <SettingRow
-          title="Send Shortcut"
-          description="Choose whether Enter sends immediately or inserts a newline"
-          trailing={
-            <SegmentPill
-              value={props.sendShortcut}
-              options={[
-                { value: "enter", label: "Enter Sends" },
-                { value: "mod-enter", label: "⌘/Ctrl Sends" },
-              ]}
-              onChange={(value) => props.onSendShortcutChange(value as SendShortcut)}
-            />
-          }
+      </SettingsSection>
+
+      <SettingsSection title="Toasts" description="Suppress specific notification types or override durations in ms.">
+        <div class="ds-checkbox-grid">
+          <For each={toastTypes}>
+            {(type) => (
+              <Checkbox
+                checked={props.general.mutedToasts.includes(type)}
+                onChange={(checked) => toggleMutedToast(type, checked)}
+              >
+                Mute {type}
+              </Checkbox>
+            )}
+          </For>
+        </div>
+        <TextField
+          label="Duration Overrides"
+          multiline
+          value={props.general.toastDurations}
+          placeholder={"success=3000\nerror=8000"}
+          description="One entry per line. Supported keys: info, success, warning, error."
+          onChange={(value) => props.onGeneralChange("toastDurations", value)}
         />
-      </div>
-    </div>
+      </SettingsSection>
+    </SettingsPage>
   )
 }

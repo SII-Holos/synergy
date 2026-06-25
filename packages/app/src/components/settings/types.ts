@@ -32,11 +32,17 @@ export const MODEL_DEFAULTS: Record<ModelKey, string> = {
 /** Defaults used by frontend form fallbacks, kept in sync with backend Config.state() defaults. */
 export const UI_DEFAULTS = {
   autoupdate: "true" as string, // backend injects true → UI shows "true" / On
+  theme: "" as string,
+  username: "" as string,
   snapshot: true,
   permission: "ask" as string, // resolved from backend { "*": "ask" } object
+  sandboxEnabled: "true" as string,
+  sandboxFallbackPolicy: "warn" as string,
   questionTimeout: 1800,
   compactionAuto: "true" as string,
+  compactionPrune: "true" as string,
   compactionOverflowThreshold: "0.85" as string,
+  compactionMaxHistoryImages: "8" as string,
   libraryLearning: "true" as string,
   libraryAutonomy: "true" as string,
   memorySimThreshold: "0.7" as string,
@@ -45,6 +51,14 @@ export const UI_DEFAULTS = {
   experienceTopK: "8" as string,
   experienceEpsilon: "0.1" as string,
   controlProfile: "guarded" as string,
+  invokeTimeout: "" as string,
+  providerTtfbTimeout: "" as string,
+  providerIdleTimeout: "" as string,
+  providerWallTimeout: "" as string,
+  toolDefaultTimeout: "" as string,
+  toolOverrides: "" as string,
+  watcherIgnore: "" as string,
+  logLevel: "" as string,
 } as const
 
 /** Resolve Config.permission (object or string) into a simple UI string. */
@@ -152,6 +166,10 @@ export function groupByProvider(list: ProviderModel[]): ProviderGroup[] {
 export type GeneralStore = {
   snapshot: boolean
   autoupdate: string
+  username: string
+  theme: string
+  mutedToasts: string[]
+  toastDurations: string
   sendShortcut: SendShortcut
 }
 
@@ -184,11 +202,127 @@ export type LibrarySettingsStore = {
   experienceEpsilon: string
 }
 
-export type AdvancedStore = {
+export type ProvidersStore = {
+  enabledProviders: string
+  disabledProviders: string
+}
+
+export type SafetyStore = {
   controlProfile: string
-  compaction_auto: string
-  compaction_overflow_threshold: string
   permission: string
-  question_timeout: string
   smartAllow: string
+  sandboxEnabled: string
+  sandboxFallbackPolicy: string
+}
+
+export type RuntimeStore = {
+  questionTimeout: string
+  compactionAuto: string
+  compactionPrune: string
+  compactionOverflowThreshold: string
+  compactionMaxHistoryImages: string
+  invokeTimeout: string
+  providerTtfbTimeout: string
+  providerIdleTimeout: string
+  providerWallTimeout: string
+  toolDefaultTimeout: string
+  toolOverrides: string
+  watcherIgnore: string
+  logLevel: string
+}
+
+export type SettingsState = {
+  general: GeneralStore
+  models: ModelsStore
+  providers: ProvidersStore
+  plugins: PluginsStore
+  mcps: McpsStore
+  library: LibrarySettingsStore
+  safety: SafetyStore
+  runtime: RuntimeStore
+  email: EmailSettings
+  channels: ChannelSettings
+}
+
+export function defaultSettingsState(sendShortcut: SendShortcut): SettingsState {
+  return {
+    general: {
+      snapshot: UI_DEFAULTS.snapshot,
+      autoupdate: UI_DEFAULTS.autoupdate,
+      username: UI_DEFAULTS.username,
+      theme: UI_DEFAULTS.theme,
+      mutedToasts: [],
+      toastDurations: "",
+      sendShortcut,
+    },
+    models: {
+      model: MODEL_DEFAULTS.model,
+      nano_model: MODEL_DEFAULTS.nano_model,
+      mini_model: MODEL_DEFAULTS.mini_model,
+      mid_model: MODEL_DEFAULTS.mid_model,
+      vision_model: MODEL_DEFAULTS.vision_model,
+      thinking_model: MODEL_DEFAULTS.thinking_model,
+      long_context_model: MODEL_DEFAULTS.long_context_model,
+      creative_model: MODEL_DEFAULTS.creative_model,
+    },
+    providers: {
+      enabledProviders: "",
+      disabledProviders: "",
+    },
+    plugins: {
+      entries: [],
+    },
+    mcps: {
+      entries: [],
+    },
+    library: {
+      learning: UI_DEFAULTS.libraryLearning,
+      autonomy: UI_DEFAULTS.libraryAutonomy,
+      memorySimThreshold: UI_DEFAULTS.memorySimThreshold,
+      memoryTopK: UI_DEFAULTS.memoryTopK,
+      experienceSimThreshold: UI_DEFAULTS.experienceSimThreshold,
+      experienceTopK: UI_DEFAULTS.experienceTopK,
+      experienceEpsilon: UI_DEFAULTS.experienceEpsilon,
+    },
+    safety: {
+      controlProfile: UI_DEFAULTS.controlProfile,
+      permission: UI_DEFAULTS.permission,
+      smartAllow: "false",
+      sandboxEnabled: UI_DEFAULTS.sandboxEnabled,
+      sandboxFallbackPolicy: UI_DEFAULTS.sandboxFallbackPolicy,
+    },
+    runtime: {
+      questionTimeout: String(UI_DEFAULTS.questionTimeout),
+      compactionAuto: UI_DEFAULTS.compactionAuto,
+      compactionPrune: UI_DEFAULTS.compactionPrune,
+      compactionOverflowThreshold: UI_DEFAULTS.compactionOverflowThreshold,
+      compactionMaxHistoryImages: UI_DEFAULTS.compactionMaxHistoryImages,
+      invokeTimeout: UI_DEFAULTS.invokeTimeout,
+      providerTtfbTimeout: UI_DEFAULTS.providerTtfbTimeout,
+      providerIdleTimeout: UI_DEFAULTS.providerIdleTimeout,
+      providerWallTimeout: UI_DEFAULTS.providerWallTimeout,
+      toolDefaultTimeout: UI_DEFAULTS.toolDefaultTimeout,
+      toolOverrides: UI_DEFAULTS.toolOverrides,
+      watcherIgnore: UI_DEFAULTS.watcherIgnore,
+      logLevel: UI_DEFAULTS.logLevel,
+    },
+    email: {
+      enabled: true,
+      fromAddress: "",
+      fromName: "",
+      smtpHost: "",
+      smtpPort: "",
+      smtpSecure: true,
+      smtpUsername: "",
+      smtpPassword: "",
+      imapHost: "",
+      imapPort: "",
+      imapSecure: true,
+      imapUsername: "",
+      imapPassword: "",
+    },
+    channels: {
+      feishuAccounts: [],
+    },
+  }
 }

@@ -43,6 +43,7 @@ import { registerGlobalPanel, listGlobalPanels, getGlobalPanel, clearGlobalPanel
 
 // ── Settings Registry ──────────────────────────────────────────────
 import { registerSettingsSection, getSettingsSections, getSettingsSection } from "./settings-registry"
+import { BUILTIN_SETTINGS_IDS } from "@/components/settings/catalog"
 
 // ── Theme Registry ─────────────────────────────────────────────────
 import { registerTheme, listThemes, getTheme, activateTheme, getActiveThemeId, getActiveTheme } from "./theme-registry"
@@ -442,9 +443,6 @@ describe("PanelRegistry", () => {
 // ═══════════════════════════════════════════════════════════════════
 
 describe("SettingsRegistry", () => {
-  // Note: settings-registry registers 9 built-in sections at module init.
-  const BUILTIN_IDS = ["general", "models", "mcp", "plugins", "email", "channels", "import", "library", "advanced"]
-
   test("registerSettingsSection adds entry and returns disposer", () => {
     const disposer = registerSettingsSection({
       id: "custom-setting",
@@ -483,7 +481,7 @@ describe("SettingsRegistry", () => {
     })
     const list = getSettingsSections()
     const ids = list.map((s) => s.id)
-    for (const bid of BUILTIN_IDS) {
+    for (const bid of BUILTIN_SETTINGS_IDS) {
       expect(ids).toContain(bid)
     }
     expect(ids).toContain("extra-setting")

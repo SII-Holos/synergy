@@ -1,9 +1,8 @@
 import { For, Show } from "solid-js"
-import { produce } from "solid-js/store"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { IconButton } from "@ericsanchezok/synergy-ui/icon-button"
+import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import type { McpEntry } from "../types"
-import { emptyMcp } from "../types"
 import { McpCard } from "../components/McpCard"
 
 export function McpPanel(props: {
@@ -19,7 +18,7 @@ export function McpPanel(props: {
           <h1 class="ds-content-title">MCP Servers</h1>
           <p class="ds-section-hint">Configure local (stdio) or remote (HTTP/SSE) servers.</p>
         </div>
-        <IconButton icon="plus" variant="ghost" onClick={props.onAdd} />
+        <IconButton icon={getSemanticIcon("action.add")} variant="ghost" onClick={props.onAdd} />
       </div>
       <For each={props.entries}>
         {(entry, index) => (
@@ -32,7 +31,7 @@ export function McpPanel(props: {
       </For>
       <Show when={props.entries.length === 0}>
         <div class="ds-empty-state">
-          <Icon name="server" size="normal" class="text-text-weaker" />
+          <Icon name={getSemanticIcon("settings.mcp")} size="normal" class="text-text-weaker" />
           <span>No MCP servers configured</span>
           <span class="text-text-weaker">Click + to add one</span>
         </div>

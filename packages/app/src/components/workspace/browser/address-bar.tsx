@@ -1,5 +1,6 @@
 import { For, Show, createMemo, createSignal } from "solid-js"
 import { IconButton } from "@ericsanchezok/synergy-ui/icon-button"
+import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { useBrowser, type DevPanel } from "./browser-store"
 import { browserDebug } from "./browser-debug"
 
@@ -81,10 +82,20 @@ export function AddressBar(props: AddressBarProps) {
 
   return (
     <div class="flex h-10 shrink-0 items-center gap-1.5 border-b border-border-weak-base bg-surface-raised-base px-2">
-      <IconButton icon="arrow-left" variant="ghost" title="Back" onClick={() => props.onHistory("back")} />
-      <IconButton icon="arrow-right" variant="ghost" title="Forward" onClick={() => props.onHistory("forward")} />
       <IconButton
-        icon={props.isLoading() ? "circle-stop" : "refresh-ccw"}
+        icon={getSemanticIcon("browser.back")}
+        variant="ghost"
+        title="Back"
+        onClick={() => props.onHistory("back")}
+      />
+      <IconButton
+        icon={getSemanticIcon("browser.forward")}
+        variant="ghost"
+        title="Forward"
+        onClick={() => props.onHistory("forward")}
+      />
+      <IconButton
+        icon={props.isLoading() ? getSemanticIcon("browser.stop") : getSemanticIcon("browser.refresh")}
         variant="ghost"
         title={props.isLoading() ? "Stop" : "Reload"}
         classList={{ "animate-spin": props.isLoading() }}
@@ -118,7 +129,12 @@ export function AddressBar(props: AddressBarProps) {
       />
 
       <div class="relative shrink-0">
-        <IconButton icon="ellipsis" variant="ghost" title="Browser options" onClick={() => setMenuOpen((v) => !v)} />
+        <IconButton
+          icon={getSemanticIcon("action.more")}
+          variant="ghost"
+          title="Browser options"
+          onClick={() => setMenuOpen((v) => !v)}
+        />
         <Show when={menuOpen()}>
           <div
             class="absolute right-0 top-full z-50 mt-1 w-[240px] rounded-lg border border-border-weak-base bg-surface-raised-stronger-non-alpha py-1 text-12 shadow-lg"
