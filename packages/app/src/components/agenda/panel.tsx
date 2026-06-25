@@ -265,14 +265,14 @@ export function AgendaPanel() {
         <Show when={tab() === "schedule"}>
           <AppPanel.Body padding={false} class="!px-5 flex flex-col gap-4">
             <div class="grid w-full grid-cols-1 items-stretch gap-3 pb-1 xl:grid-cols-[minmax(320px,380px)_minmax(0,1fr)]">
-              <div class="h-full rounded-xl bg-surface-inset-base p-3.5 ring-1 ring-inset ring-border-base/45">
+              <div class="agenda-main-surface h-full p-3.5">
                 <MiniCalendar anchor={anchor()} viewMode={viewMode()} onDateClick={handleDateClick} />
               </div>
-              <div class="min-w-0 flex h-full flex-col rounded-xl bg-surface-inset-base p-3 ring-1 ring-inset ring-border-base/40">
+              <div class="agenda-main-surface min-w-0 flex h-full flex-col p-3">
                 <Show
                   when={todoItems().length > 0}
                   fallback={
-                    <div class="flex min-h-0 flex-1 items-center justify-center rounded-lg bg-surface-raised-base px-3 py-4">
+                    <div class="agenda-inner-surface flex min-h-0 flex-1 items-center justify-center px-3 py-4">
                       <span class="text-10-medium text-text-weaker/60">No todo items</span>
                     </div>
                   }
@@ -280,12 +280,12 @@ export function AgendaPanel() {
                   <div class="flex items-center justify-between gap-2 mb-2 px-0.5">
                     <div class="flex items-center gap-1.5 min-w-0">
                       <span class="text-[9px] font-medium uppercase tracking-[0.18em] text-text-weaker">Todo</span>
-                      <span class="inline-flex items-center rounded-full bg-surface-raised-stronger-non-alpha px-2 py-0.5 text-[10px] font-medium text-text-weaker ring-1 ring-inset ring-border-base/45">
+                      <span class="inline-flex items-center rounded-full bg-surface-raised-stronger-non-alpha/70 px-2 py-0.5 text-[10px] font-medium text-text-weaker">
                         {todoItems().length}
                       </span>
                     </div>
                   </div>
-                  <div class="min-h-0 flex-1 overflow-y-auto flex flex-col gap-1.5 rounded-lg bg-surface-raised-base p-1.5 [scrollbar-width:thin]">
+                  <div class="min-h-0 flex-1 overflow-y-auto flex flex-col gap-1.5 [scrollbar-width:thin]">
                     <For each={todoItems()}>
                       {(item) => (
                         <TodoCard
@@ -362,14 +362,14 @@ export function AgendaPanel() {
 function TodoCard(props: { item: AgendaItem; onClick: (e: MouseEvent) => void }) {
   return (
     <div
-      class="flex cursor-pointer items-center gap-2.5 rounded-lg bg-surface-raised-stronger-non-alpha px-2.5 py-2 ring-1 ring-inset ring-border-base/35 transition-colors hover:bg-surface-raised-base-hover"
+      class="agenda-inner-surface flex cursor-pointer items-center gap-2.5 px-2.5 py-2 transition-colors hover:bg-surface-raised-base-hover"
       onClick={props.onClick}
     >
       <span
         class={`shrink-0 w-1.5 h-1.5 rounded-full ${props.item.status === "active" ? "bg-icon-success-base" : props.item.status === "paused" ? "bg-icon-warning-base" : props.item.status === "done" ? "bg-text-weaker" : "bg-border-base"}`}
       />
       <span class="min-w-0 flex-1 truncate text-12-regular text-text-strong">{props.item.title}</span>
-      <span class="inline-flex shrink-0 items-center rounded-full bg-surface-inset-base px-2 py-0.5 text-[9px] font-medium text-text-weaker ring-1 ring-inset ring-border-base/35">
+      <span class="inline-flex shrink-0 items-center rounded-full bg-surface-inset-base/70 px-2 py-0.5 text-[9px] font-medium text-text-weaker">
         {triggerSummary(props.item.triggers)}
       </span>
     </div>

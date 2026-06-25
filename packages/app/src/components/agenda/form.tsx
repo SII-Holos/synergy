@@ -333,13 +333,13 @@ export function AgendaForm(props: {
       <AppPanel.Body padding={false} class={isDialog() ? "!px-6 !pb-3" : "!px-5"}>
         <div
           classList={{
-            "flex flex-col": true,
+            "agenda-form-surface flex flex-col": true,
             "gap-4": isDialog(),
-            "gap-0 rounded-xl bg-surface-inset-base p-3 ring-1 ring-inset ring-border-base/45": !isDialog(),
+            "gap-0 rounded-xl bg-surface-inset-base p-3": !isDialog(),
           }}
         >
           <Field label="Title">
-            <div class="rounded-lg bg-input-base px-3.5 py-3 ring-1 ring-inset ring-border-base/28 shadow-[inset_0_1px_0_rgba(255,255,255,0.035)] transition-colors focus-within:bg-input-hover focus-within:ring-border-base/65">
+            <div class="agenda-control-surface px-3.5 py-3">
               <input
                 type="text"
                 autofocus
@@ -372,7 +372,7 @@ export function AgendaForm(props: {
                   </button>
                 }
               >
-                <div class="flex-1 min-w-0 flex items-center gap-1.5 flex-wrap rounded-lg bg-input-base px-2.5 py-2 ring-1 ring-inset ring-border-base/28 shadow-[inset_0_1px_0_rgba(255,255,255,0.035)] transition-colors focus-within:bg-input-hover focus-within:ring-border-base/65">
+                <div class="agenda-control-surface agenda-schedule-control flex-1 min-w-0 flex items-center gap-2.5 flex-wrap px-3.5 py-2.5">
                   <DatePicker value={date()} onChange={setDate} />
                   <TimePicker hour={hour()} minute={minute()} onHourChange={setHour} onMinuteChange={setMinute} />
                   <button
@@ -393,7 +393,7 @@ export function AgendaForm(props: {
           {/* Repeat */}
           <Show when={hasSchedule()}>
             <Field label="Repeat">
-              <div class="min-w-0 rounded-lg bg-input-base px-2.5 py-2 ring-1 ring-inset ring-border-base/28 shadow-[inset_0_1px_0_rgba(255,255,255,0.035)] transition-colors focus-within:bg-input-hover focus-within:ring-border-base/65">
+              <div class="agenda-control-surface min-w-0 px-3 py-2.5">
                 <RepeatControl
                   mode={repeatMode()}
                   count={intervalCount()}
@@ -408,14 +408,14 @@ export function AgendaForm(props: {
               <div class="flex flex-col gap-1.5">
                 <input
                   type="text"
-                  class="w-full bg-input-base text-12-regular text-text-base outline-none px-2.5 py-1.5 rounded-[0.95rem] ring-1 ring-inset ring-border-base/28 focus:bg-input-hover focus:ring-border-base/65 shadow-[inset_0_1px_0_rgba(255,255,255,0.035)]"
+                  class="agenda-control-surface w-full text-12-regular text-text-base outline-none px-3 py-2"
                   placeholder="Cron expression, e.g. 0 9 * * 1-5"
                   value={customCron()}
                   onInput={(e) => setCustomCron(e.currentTarget.value)}
                 />
                 <input
                   type="text"
-                  class="w-full bg-input-base text-11-regular text-text-weaker outline-none px-2.5 py-1.5 rounded-[0.95rem] ring-1 ring-inset ring-border-base/28 focus:bg-input-hover focus:ring-border-base/65 shadow-[inset_0_1px_0_rgba(255,255,255,0.035)]"
+                  class="agenda-control-surface w-full text-11-regular text-text-weaker outline-none px-3 py-2"
                   placeholder="Timezone (e.g. Asia/Shanghai)"
                   value={cronTz()}
                   onInput={(e) => setCronTz(e.currentTarget.value)}
@@ -427,7 +427,7 @@ export function AgendaForm(props: {
           <Divider />
 
           <Field label="Prompt">
-            <div class="rounded-lg bg-input-base px-3.5 py-3 ring-1 ring-inset ring-border-base/28 shadow-[inset_0_1px_0_rgba(255,255,255,0.035)] transition-colors focus-within:bg-input-hover focus-within:ring-border-base/65">
+            <div class="agenda-control-surface px-3.5 py-3">
               <textarea
                 class="w-full bg-transparent text-12-regular text-text-base outline-none resize-none min-h-24 placeholder:text-text-weaker/50"
                 placeholder="What should the agent do?"
@@ -440,7 +440,7 @@ export function AgendaForm(props: {
 
           <Show when={showDesc()} fallback={<ExpandRow label="Add description" onClick={() => setShowDesc(true)} />}>
             <Field label="Description">
-              <div class="rounded-lg bg-input-base px-2.5 py-2 ring-1 ring-inset ring-border-base/28 shadow-[inset_0_1px_0_rgba(255,255,255,0.035)] transition-colors focus-within:bg-input-hover focus-within:ring-border-base/65">
+              <div class="agenda-control-surface px-3 py-2.5">
                 <textarea
                   class="w-full bg-transparent text-12-regular text-text-base outline-none resize-none min-h-20 placeholder:text-text-weaker/50"
                   placeholder="Description..."
@@ -454,7 +454,7 @@ export function AgendaForm(props: {
 
           <Show when={showTags()} fallback={<ExpandRow label="Add tags" onClick={() => setShowTags(true)} />}>
             <Field label="Tags">
-              <div class="rounded-lg bg-input-base px-2.5 py-2 ring-1 ring-inset ring-border-base/28 shadow-[inset_0_1px_0_rgba(255,255,255,0.035)] transition-colors focus-within:bg-input-hover focus-within:ring-border-base/65">
+              <div class="agenda-control-surface px-3 py-2.5">
                 <input
                   type="text"
                   class="w-full bg-transparent text-12-regular text-text-base outline-none placeholder:text-text-weaker/50"
@@ -470,7 +470,7 @@ export function AgendaForm(props: {
 
           <button
             type="button"
-            class="flex items-center gap-3 rounded-lg bg-input-base px-3.5 py-3 w-full text-left ring-1 ring-inset ring-border-base/28 shadow-[inset_0_1px_0_rgba(255,255,255,0.035)] transition-colors hover:bg-input-hover"
+            class="agenda-control-surface flex items-center gap-3 px-3.5 py-3 w-full text-left"
             onClick={() => setShowAdvanced((v) => !v)}
           >
             <span class="flex min-w-0 flex-1 flex-col gap-0.5">
@@ -592,31 +592,31 @@ function DatePicker(props: { value: number; onChange: (ts: number) => void }) {
     <div ref={containerRef} class="relative">
       <button
         type="button"
-        class="px-2.5 py-1 rounded-full text-12-medium text-text-base border border-border-base/45 bg-surface-raised-base/94 hover:border-border-base transition-colors"
+        class="agenda-picker-trigger agenda-schedule-trigger text-13-medium"
+        data-open={open() ? "true" : undefined}
         onClick={() => setOpen((v) => !v)}
       >
         {formatDate(props.value)}
       </button>
 
       <Show when={open()}>
-        <div
-          class="absolute top-full left-0 mt-1 z-50 border border-border-base/65 bg-background-base/92 backdrop-blur-xl rounded-[1rem] shadow-[0_18px_46px_-34px_rgba(0,0,0,0.68)] p-3 select-none"
-          style={{ width: "224px" }}
-        >
-          <div class="flex items-center justify-between mb-2">
-            <span class="text-12-medium text-text-strong">
+        <div class="agenda-picker-popover agenda-date-popover select-none">
+          <div class="flex items-center justify-between mb-3">
+            <span class="text-14-medium text-text-strong">
               {MONTH_NAMES_SHORT[new Date(displayMonth()).getMonth()]} {new Date(displayMonth()).getFullYear()}
             </span>
-            <div class="flex items-center gap-0.5">
+            <div class="flex items-center gap-1">
               <NavBtn onClick={() => setDisplayMonth((m) => addMonths(m, -1))}>{"‹"}</NavBtn>
               <NavBtn onClick={() => setDisplayMonth((m) => addMonths(m, 1))}>{"›"}</NavBtn>
             </div>
           </div>
 
-          <div class="grid grid-cols-7 mb-0.5">
+          <div class="grid grid-cols-7 mb-1">
             <For each={DAY_LABELS_MINI}>
               {(label) => (
-                <div class="w-7 h-6 flex items-center justify-center text-10-medium text-text-weaker">{label}</div>
+                <div class="agenda-date-cell flex items-center justify-center text-11-medium text-text-weaker">
+                  {label}
+                </div>
               )}
             </For>
           </div>
@@ -625,7 +625,7 @@ function DatePicker(props: { value: number; onChange: (ts: number) => void }) {
               {(ts) => (
                 <button
                   type="button"
-                  class={`w-7 h-7 flex items-center justify-center rounded-full text-[11px] leading-none transition-colors ${cellClass(ts)}`}
+                  class={`agenda-date-cell flex items-center justify-center text-12-medium leading-none transition-colors ${cellClass(ts)}`}
                   onClick={() => {
                     props.onChange(ts)
                     setOpen(false)
@@ -639,7 +639,7 @@ function DatePicker(props: { value: number; onChange: (ts: number) => void }) {
 
           <button
             type="button"
-            class="mt-2 text-11-medium text-text-strong hover:text-text-base"
+            class="mt-3 h-8 rounded-lg px-2.5 text-12-medium text-text-strong transition-colors hover:bg-surface-raised-base-hover"
             onClick={() => {
               props.onChange(today())
               setDisplayMonth(today())
@@ -699,27 +699,22 @@ function TimePicker(props: {
     <div ref={containerRef} class="relative">
       <button
         type="button"
-        class="px-2.5 py-1 rounded-full text-12-medium text-text-base border border-border-base/45 bg-surface-raised-base/94 hover:border-border-strong-base/60 transition-colors tabular-nums"
+        class="agenda-picker-trigger agenda-schedule-trigger text-13-medium tabular-nums"
+        data-open={open() ? "true" : undefined}
         onClick={() => setOpen((v) => !v)}
       >
         {pad2(props.hour)}:{pad2(props.minute)}
       </button>
 
       <Show when={open()}>
-        <div
-          class="absolute top-full left-0 mt-1 z-50 border border-border-base/65 bg-background-base/92 backdrop-blur-xl rounded-[1rem] shadow-[0_18px_46px_-34px_rgba(0,0,0,0.68)] flex overflow-hidden"
-          style={{ height: "200px" }}
-        >
-          <div
-            ref={hourListRef}
-            class="overflow-y-auto [scrollbar-width:thin] w-14 border-r border-border-weaker-base/50"
-          >
+        <div class="agenda-picker-popover agenda-time-popover">
+          <div ref={hourListRef} class="agenda-time-column border-r border-border-weaker-base/35">
             <For each={HOURS}>
               {(h) => (
                 <button
                   type="button"
                   classList={{
-                    "w-full px-2 py-1.5 text-12-regular text-center transition-colors tabular-nums": true,
+                    "agenda-time-option text-14-regular text-center transition-colors tabular-nums": true,
                     "bg-text-strong text-background-base": h === props.hour,
                     "text-text-base hover:bg-surface-raised-base-hover/70": h !== props.hour,
                   }}
@@ -730,13 +725,13 @@ function TimePicker(props: {
               )}
             </For>
           </div>
-          <div ref={minuteListRef} class="overflow-y-auto [scrollbar-width:thin] w-14">
+          <div ref={minuteListRef} class="agenda-time-column">
             <For each={MINUTES}>
               {(m) => (
                 <button
                   type="button"
                   classList={{
-                    "w-full px-2 py-1.5 text-12-regular text-center transition-colors tabular-nums": true,
+                    "agenda-time-option text-14-regular text-center transition-colors tabular-nums": true,
                     "bg-text-strong text-background-base": m === props.minute,
                     "text-text-base hover:bg-surface-raised-base-hover/70": m !== props.minute,
                   }}
@@ -785,7 +780,7 @@ function RepeatControl(props: {
           type="text"
           inputmode="numeric"
           pattern="[0-9]*"
-          class="w-12 bg-surface-inset-base/65 text-12-medium text-text-strong text-center outline-none px-1 py-0.5 rounded-full border border-border-base/45 focus:border-border-strong-base tabular-nums"
+          class="agenda-picker-trigger h-8 w-14 px-2 text-12-medium text-text-strong text-center outline-none tabular-nums"
           value={props.count}
           onInput={(e) => {
             const raw = e.currentTarget.value.replace(/[^0-9]/g, "")
@@ -805,14 +800,15 @@ function RepeatControl(props: {
         <div ref={unitRef} class="relative">
           <button
             type="button"
-            class="flex items-center gap-1 px-2.5 py-0.5 rounded-full text-12-regular text-text-base border border-border-base/45 bg-surface-raised-base/94 hover:border-border-strong-base/60 transition-colors"
+            class="agenda-picker-trigger gap-1 px-3 py-1 text-12-regular"
+            data-open={unitOpen() ? "true" : undefined}
             onClick={() => setUnitOpen((v) => !v)}
           >
             {props.unit}
             <Icon name="chevron-down" size="small" class="text-icon-weak" />
           </button>
           <Show when={unitOpen()}>
-            <div class="absolute top-full left-0 mt-1 z-50 border border-border-base/65 bg-background-base/92 backdrop-blur-xl rounded-[1rem] shadow-[0_18px_46px_-34px_rgba(0,0,0,0.68)] overflow-hidden min-w-28">
+            <div class="agenda-picker-popover agenda-menu-popover">
               <For each={INTERVAL_UNITS}>
                 {(u) => (
                   <button
@@ -914,7 +910,7 @@ function ScopePicker(props: {
     <div ref={containerRef} class="relative">
       <button
         type="button"
-        class="w-full flex items-center justify-between px-2.5 py-1.5 rounded-[0.95rem] text-12-regular text-text-base border border-border-base/45 bg-surface-raised-base/94 hover:border-border-strong-base/60 transition-colors"
+        class="agenda-control-surface w-full flex items-center justify-between px-3 py-2 text-12-regular text-text-base"
         onClick={() => setOpen((v) => !v)}
       >
         <span class="truncate">{activeLabel()}</span>
@@ -922,7 +918,7 @@ function ScopePicker(props: {
       </button>
 
       <Show when={open()}>
-        <div class="absolute top-full left-0 right-0 mt-1 z-50 border border-border-base/65 bg-background-base/92 backdrop-blur-xl rounded-[1rem] shadow-[0_18px_46px_-34px_rgba(0,0,0,0.68)] overflow-hidden max-h-48 overflow-y-auto [scrollbar-width:thin]">
+        <div class="agenda-picker-popover agenda-menu-popover left-0 right-0 max-h-48 overflow-y-auto [scrollbar-width:thin]">
           <For each={props.scopes}>
             {(scope) => (
               <button
@@ -964,7 +960,7 @@ function Field(props: { label: string; children: JSX.Element }) {
 }
 
 function Divider() {
-  return <div class="border-b border-border-weaker-base/40 my-2" />
+  return <div class="agenda-soft-divider" />
 }
 
 function ExpandRow(props: { label: string; onClick: () => void }) {
@@ -983,7 +979,7 @@ function NavBtn(props: { onClick: () => void; children: string }) {
   return (
     <button
       type="button"
-      class="w-6 h-6 flex items-center justify-center rounded-full text-text-weaker hover:text-text-weak hover:bg-surface-raised-base-hover transition-colors"
+      class="w-8 h-8 flex items-center justify-center rounded-full text-16-regular text-text-weaker hover:text-text-weak hover:bg-surface-raised-base-hover transition-colors"
       onClick={props.onClick}
     >
       {props.children}

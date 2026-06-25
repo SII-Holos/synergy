@@ -272,10 +272,10 @@ function NavBar(props: {
   const labels: Record<ViewMode, string> = { day: "Day", week: "Week", month: "Month" }
 
   return (
-    <div class="flex shrink-0 items-center gap-2 rounded-xl bg-surface-inset-base px-3.5 py-3 ring-1 ring-inset ring-border-base/45">
+    <div class="agenda-calendar-frame flex shrink-0 items-center gap-2 px-3.5 py-3">
       <button
         type="button"
-        class="rounded-full bg-surface-raised-base px-2.5 py-1 text-10-medium text-text-strong ring-1 ring-inset ring-border-base/55 transition-colors hover:bg-surface-raised-base-hover"
+        class="rounded-full bg-surface-raised-stronger-non-alpha/70 px-2.5 py-1 text-10-medium text-text-strong transition-colors hover:bg-surface-raised-base-hover"
         onClick={props.onToday}
       >
         Today
@@ -295,7 +295,7 @@ function NavBar(props: {
         ›
       </button>
       <span class="min-w-0 flex-1 truncate text-13-medium text-text-strong">{props.title}</span>
-      <div class="flex items-center overflow-hidden rounded-lg bg-surface-raised-base p-0.75 ring-1 ring-inset ring-border-base/45">
+      <div class="flex items-center overflow-hidden rounded-lg bg-surface-raised-stronger-non-alpha/70 p-0.75">
         <For each={modes}>
           {(mode) => (
             <button
@@ -328,10 +328,10 @@ function TimeGrid(props: {
   const colTemplate = () => `${TIME_COL}px repeat(${props.columns.length}, 1fr)`
 
   return (
-    <div class="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl bg-surface-raised-base ring-1 ring-inset ring-border-base/45">
+    <div class="agenda-calendar-frame flex min-h-0 flex-1 flex-col overflow-hidden">
       <Show when={props.columns.length > 1}>
         <div
-          class="grid shrink-0 border-b border-border-weaker-base/45 bg-surface-inset-base"
+          class="grid shrink-0 border-b border-border-weaker-base/28 bg-transparent"
           style={{ "grid-template-columns": colTemplate() }}
         >
           <div />
@@ -361,7 +361,7 @@ function TimeGrid(props: {
 
       <div ref={props.ref} class="flex-1 min-h-0 overflow-y-auto overflow-x-hidden rounded-b-[1.15rem]">
         <div
-          class="relative grid bg-surface-raised-stronger-non-alpha"
+          class="agenda-grid-surface relative grid"
           style={{ "grid-template-columns": colTemplate(), height: `${24 * HOUR_HEIGHT}px` }}
         >
           <div class="relative">
@@ -479,13 +479,13 @@ function MonthGrid(props: {
   })
 
   return (
-    <div class="min-h-0 flex-1 overflow-y-auto rounded-xl bg-surface-raised-base ring-1 ring-inset ring-border-base/45">
-      <div class="grid grid-cols-7 border-b border-border-weaker-base/45 bg-surface-inset-base">
+    <div class="agenda-calendar-frame min-h-0 flex-1 overflow-y-auto">
+      <div class="grid grid-cols-7 border-b border-border-weaker-base/28 bg-transparent">
         <For each={DAY_LABELS_SHORT}>
           {(label) => <div class="py-2.5 text-center text-11-medium text-text-weaker">{label}</div>}
         </For>
       </div>
-      <div class="grid grid-cols-7 bg-surface-raised-stronger-non-alpha">
+      <div class="agenda-grid-surface grid grid-cols-7">
         <For each={weeks()}>
           {(week) => (
             <For each={week}>

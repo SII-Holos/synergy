@@ -77,7 +77,7 @@ export function MiniCalendar(props: MiniCalendarProps) {
       return "bg-text-strong text-background-base ring-1 ring-white/12"
     }
     if (isAnchorDay) {
-      return "bg-surface-raised-base text-text-strong ring-1 ring-inset ring-border-base/65"
+      return "bg-surface-raised-base text-text-strong"
     }
 
     const base = isCurrentMonth ? "text-text-base" : "text-text-weaker/40"
@@ -88,16 +88,14 @@ export function MiniCalendar(props: MiniCalendarProps) {
   }
 
   function weekRowClass(ts: number): string {
-    return isInAnchorWeek(ts)
-      ? "rounded-[0.9rem] bg-surface-inset-base/70 ring-1 ring-inset ring-border-base/32 shadow-[inset_0_1px_0_rgba(214,204,190,0.05)]"
-      : ""
+    return isInAnchorWeek(ts) ? "rounded-[0.9rem] bg-surface-raised-base-hover/45" : ""
   }
 
   return (
     <div class="flex min-w-[304px] select-none flex-col gap-3">
       <div class="flex items-center justify-between px-0.5">
         <span class="text-13-medium text-text-strong">{headerLabel()}</span>
-        <div class="flex items-center gap-1 rounded-full bg-surface-raised-base p-0.5 ring-1 ring-inset ring-border-base/40">
+        <div class="flex items-center gap-1 rounded-full bg-surface-raised-stronger-non-alpha/60 p-0.5">
           <button
             type="button"
             class="flex size-6 items-center justify-center rounded-full text-text-weaker transition-colors hover:bg-surface-raised-base-hover hover:text-text-weak"
@@ -115,7 +113,7 @@ export function MiniCalendar(props: MiniCalendarProps) {
         </div>
       </div>
 
-      <div class="flex flex-col gap-1.5 rounded-xl bg-surface-raised-base p-2.5 ring-1 ring-inset ring-border-base/42">
+      <div class="agenda-inner-surface flex flex-col gap-1.5 p-2.5">
         <div class="grid grid-cols-7">
           <For each={DAY_LABELS_MINI}>
             {(label) => (
