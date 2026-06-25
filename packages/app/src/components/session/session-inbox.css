@@ -30,22 +30,20 @@
 
 .session-inbox-trigger:hover {
   color: var(--icon-strong-base);
-  background: color-mix(in srgb, var(--surface-raised-base-hover) 82%, var(--surface-raised-base));
-  border-color: var(--border-weak-hover);
-  box-shadow:
-    var(--shadow-xs),
-    0 0 0 1px color-mix(in srgb, var(--border-weaker-hover) 82%, transparent);
+  background: var(--workbench-control-bg-hover, var(--surface-raised-base-hover));
+  border-color: color-mix(in srgb, var(--border-base) 24%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--border-base) 16%, transparent);
 }
 
 .session-inbox-trigger:focus-visible {
   color: var(--icon-strong-base);
-  background: var(--surface-raised-base-hover);
+  background: var(--workbench-control-bg-hover, var(--surface-raised-base-hover));
   border-color: var(--border-strong-base);
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--border-strong-base) 38%, transparent);
 }
 
 .session-inbox-trigger:active {
-  background: var(--surface-raised-base-active);
+  background: var(--workbench-selected-bg, var(--surface-raised-base-active));
   border-color: var(--border-weak-active);
 }
 
@@ -105,7 +103,7 @@
   padding: 0.5rem 0.625rem;
   border-radius: var(--radius-lg);
   border: 1px solid var(--border-weaker-base);
-  background: var(--surface-raised-base);
+  background: var(--workbench-card-bg, var(--surface-raised-base));
   transition:
     background-color var(--motion-duration-fast) var(--motion-ease-standard),
     border-color var(--motion-duration-fast) var(--motion-ease-standard),
@@ -115,26 +113,35 @@
 
 .session-inbox-row[data-kind="guiding"] {
   border-color: color-mix(in srgb, var(--border-strong-base) 86%, transparent);
-  background: color-mix(in srgb, var(--surface-raised-base-hover) 72%, var(--surface-raised-base));
+  background: var(
+    --workbench-selected-bg,
+    color-mix(in srgb, var(--surface-raised-base-hover) 72%, var(--surface-raised-base))
+  );
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--border-weaker-base) 76%, transparent);
 }
 
 .session-inbox-row[data-kind="agent_update"] {
-  background: var(--surface-base);
+  background: var(--workbench-control-bg, var(--surface-base));
   color: var(--text-weak);
 }
 
 .session-inbox-row:hover,
 .session-inbox-row:focus-within {
   border-color: var(--border-weak-hover);
-  background: color-mix(in srgb, var(--surface-raised-base-hover) 86%, var(--surface-raised-base));
+  background: var(
+    --workbench-card-bg-hover,
+    color-mix(in srgb, var(--surface-raised-base-hover) 86%, var(--surface-raised-base))
+  );
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--border-weaker-hover) 82%, transparent);
 }
 
 .session-inbox-row[data-kind="guiding"]:hover,
 .session-inbox-row[data-kind="guiding"]:focus-within {
   border-color: var(--border-strong-hover);
-  background: color-mix(in srgb, var(--surface-raised-base-active) 62%, var(--surface-raised-base-hover));
+  background: var(
+    --workbench-selected-bg-hover,
+    color-mix(in srgb, var(--surface-raised-base-active) 62%, var(--surface-raised-base-hover))
+  );
 }
 
 .session-inbox-row[data-interactive="true"]:hover .session-inbox-action-secondary,

@@ -427,7 +427,7 @@ export function ExperienceView(props: {
                           type="button"
                           classList={{
                             "w-full rounded-[0.8rem] px-3 py-2 text-left text-12-medium transition-colors": true,
-                            "bg-surface-inset-base text-text-interactive-base": sort() === key,
+                            "workbench-selected-surface text-text-strong": sort() === key,
                             "text-text-base hover:bg-surface-inset-base": sort() !== key,
                           }}
                           onClick={() => {
@@ -494,7 +494,7 @@ export function ExperienceView(props: {
                           <Show when={pageError() && !loadingMore()}>
                             <button
                               type="button"
-                              class="px-1.5 py-0.5 rounded-md text-text-interactive-base hover:bg-surface-raised-base-hover transition-colors"
+                              class="px-1.5 py-0.5 rounded-md text-text-base hover:bg-surface-raised-base-hover transition-colors"
                               onClick={() => void loadPage(false)}
                             >
                               Retry
@@ -663,8 +663,7 @@ function ExperienceCard(props: {
         [`${libraryCardBaseClass} cursor-pointer`]: true,
         [libraryCardExpandedClass]: props.expanded && !props.selecting,
         [libraryCardHoverClass]: !props.expanded && !props.selecting,
-        "bg-surface-interactive-base/12 ring-1 ring-inset ring-text-interactive-base/28 shadow-[inset_0_1px_0_rgba(214,204,190,0.08)]":
-          props.selecting && props.selected,
+        "workbench-selected-surface ring-1 ring-inset ring-border-base/32": props.selecting && props.selected,
         "hover:bg-surface-raised-base/98": props.selecting && !props.selected,
       }}
       onClick={props.onToggle}
@@ -688,14 +687,14 @@ function ExperienceCard(props: {
           </div>
           <div class="flex shrink-0 items-center gap-1.5 self-start">
             <Show when={props.searching && props.similarity !== undefined}>
-              <span class="rounded-full bg-surface-interactive-base/10 px-2.5 py-1 text-[10px] font-medium text-text-interactive-base ring-1 ring-inset ring-text-interactive-base/12">
+              <span class="rounded-full bg-surface-inset-base px-2.5 py-1 text-[10px] font-medium text-text-base ring-1 ring-inset ring-border-base/35">
                 {Math.round((props.similarity ?? 0) * 100)}%
               </span>
             </Show>
             <Show when={props.expanded && !props.selecting}>
               <button
                 type="button"
-                class="flex size-6 items-center justify-center rounded-full bg-surface-inset-base text-icon-weak ring-1 ring-inset ring-border-base/35 transition-all hover:bg-surface-raised-base-hover hover:text-text-interactive-base"
+                class="flex size-6 items-center justify-center rounded-full bg-surface-inset-base text-icon-weak ring-1 ring-inset ring-border-base/35 transition-all hover:bg-surface-raised-base-hover hover:text-icon-base"
                 onClick={copyExperience}
                 title="Copy all content"
               >
@@ -731,7 +730,7 @@ function ExperienceCard(props: {
                   R {reward()!.toFixed(2)}
                 </span>
               </Show>
-              <span class="rounded-full bg-text-interactive-base/10 px-2.5 py-1 text-[10px] font-medium text-text-interactive-base ring-1 ring-inset ring-text-interactive-base/12">
+              <span class="rounded-full bg-surface-inset-base px-2.5 py-1 text-[10px] font-medium text-text-base ring-1 ring-inset ring-border-base/35">
                 Q {qValue().toFixed(2)}
               </span>
               <span class="rounded-full bg-surface-inset-base px-2.5 py-1 text-[10px] font-medium text-text-weaker ring-1 ring-inset ring-border-base/35">

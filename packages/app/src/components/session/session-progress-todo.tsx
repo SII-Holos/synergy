@@ -122,7 +122,7 @@ export function SessionProgressTodo(props: SessionProgressTodoProps) {
                     }}
                     class="workbench-control-surface-hover flex items-center gap-2 px-2.5 py-1.5 transition-colors cursor-pointer select-none"
                     classList={{
-                      "workbench-selected-surface ring-1 ring-inset ring-text-interactive-base/12": isActive(),
+                      "workbench-selected-surface ring-1 ring-inset ring-border-base/32": isActive(),
                     }}
                   >
                     {/* Status icon */}

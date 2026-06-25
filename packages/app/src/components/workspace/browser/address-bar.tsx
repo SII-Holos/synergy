@@ -147,7 +147,7 @@ export function AddressBar(props: AddressBarProps) {
                   type="button"
                   class="h-6 rounded px-2 text-11 transition-colors"
                   classList={{
-                    "bg-surface-interactive-base text-surface-interactive-text": browser.followAgent(),
+                    "workbench-selected-surface text-text-strong": browser.followAgent(),
                     "text-text-weak hover:bg-surface-raised-base-hover hover:text-text-base": !browser.followAgent(),
                   }}
                   onClick={(e) => {
@@ -168,7 +168,7 @@ export function AddressBar(props: AddressBarProps) {
                   type="button"
                   class="h-6 rounded px-2 text-11 transition-colors"
                   classList={{
-                    "bg-surface-interactive-base text-surface-interactive-text": browser.viewportMode() === "fit",
+                    "workbench-selected-surface text-text-strong": browser.viewportMode() === "fit",
                     "text-text-weak hover:bg-surface-raised-base-hover hover:text-text-base":
                       browser.viewportMode() !== "fit",
                   }}
@@ -185,8 +185,7 @@ export function AddressBar(props: AddressBarProps) {
                       type="button"
                       class="h-6 rounded px-2 text-11 transition-colors"
                       classList={{
-                        "bg-surface-interactive-base text-surface-interactive-text":
-                          selectedViewport() === preset.label,
+                        "workbench-selected-surface text-text-strong": selectedViewport() === preset.label,
                         "text-text-weak hover:bg-surface-raised-base-hover hover:text-text-base":
                           selectedViewport() !== preset.label,
                       }}

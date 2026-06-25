@@ -140,6 +140,35 @@ a:active,
   --workbench-border: light-dark(rgba(17, 24, 39, 0.08), rgba(244, 244, 245, 0.08));
   --workbench-popover-shadow: 0 14px 34px light-dark(rgba(15, 23, 42, 0.1), rgba(0, 0, 0, 0.24));
   --workbench-tab-shadow: none;
+  --background-stronger: var(--workbench-canvas-bg);
+  --background-base: var(--workbench-panel-bg);
+  --surface-base: var(--workbench-card-bg);
+  --surface-base-hover: var(--workbench-card-bg-hover);
+  --surface-base-active: var(--workbench-selected-bg);
+  --surface-hover-base: var(--workbench-card-bg-hover);
+  --surface-inset-base: var(--workbench-control-bg);
+  --surface-inset-base-hover: var(--workbench-control-bg-hover);
+  --surface-raised-base: var(--workbench-card-bg);
+  --surface-raised-base-hover: var(--workbench-card-bg-hover);
+  --surface-raised-base-active: var(--workbench-selected-bg);
+  --surface-raised-strong: var(--workbench-card-bg);
+  --surface-raised-strong-hover: var(--workbench-card-bg-hover);
+  --surface-raised-stronger: var(--workbench-card-bg);
+  --surface-raised-stronger-hover: var(--workbench-card-bg-hover);
+  --surface-raised-stronger-non-alpha: var(--workbench-popover-bg);
+  --button-secondary-base: var(--workbench-control-bg);
+  --button-secondary-hover: var(--workbench-control-bg-hover);
+  --input-base: var(--workbench-input-bg);
+  --input-hover: var(--workbench-input-bg-hover);
+  --surface-focus: color-mix(in srgb, var(--text-strong) 8%, transparent);
+  --border-selected: color-mix(in srgb, var(--text-strong) 28%, transparent);
+  --border-weak-selected: color-mix(in srgb, var(--text-strong) 13%, transparent);
+  --border-strong-selected: color-mix(in srgb, var(--text-strong) 34%, transparent);
+  --border-interactive-selected: color-mix(in srgb, var(--text-strong) 30%, transparent);
+  --shadow-xs-border: inset 0 0 0 1px var(--workbench-border);
+  --shadow-xs-border-base: inset 0 0 0 1px var(--workbench-border);
+  --shadow-xs-border-select: inset 0 0 0 1px color-mix(in srgb, var(--text-strong) 20%, transparent);
+  --shadow-xs-border-focus: 0 0 0 2px color-mix(in srgb, var(--text-strong) 12%, transparent);
   background-color: var(--workbench-canvas-bg);
 }
 
@@ -233,48 +262,6 @@ a:active,
 }
 
 .synergy-workbench-canvas :where(.shadow-sm, .shadow-xs, .shadow-md, .shadow-lg) {
-  box-shadow: none;
-}
-
-.synergy-workbench-canvas :where(.workbench-panel-surface) {
-  background-color: var(--workbench-panel-bg);
-  border-color: var(--workbench-border);
-  box-shadow: none;
-}
-
-.synergy-workbench-canvas :where(.workbench-card-surface) {
-  background-color: var(--workbench-card-bg);
-  border-color: var(--workbench-border);
-  box-shadow: none;
-}
-
-.synergy-workbench-canvas :where(.workbench-card-surface:hover, .workbench-card-surface-hover:hover) {
-  background-color: var(--workbench-card-bg-hover);
-}
-
-.synergy-workbench-canvas :where(.workbench-control-surface) {
-  background-color: var(--workbench-control-bg);
-  border-color: var(--workbench-border);
-  box-shadow: none;
-}
-
-.synergy-workbench-canvas :where(.workbench-control-surface:hover, .workbench-control-surface-hover:hover) {
-  background-color: var(--workbench-control-bg-hover);
-}
-
-.synergy-workbench-canvas :where(.workbench-input-surface) {
-  background-color: var(--workbench-input-bg);
-  border-color: var(--workbench-border);
-  box-shadow: none;
-}
-
-.synergy-workbench-canvas :where(.workbench-input-surface:hover, .workbench-input-surface:focus-within) {
-  background-color: var(--workbench-input-bg-hover);
-}
-
-.synergy-workbench-canvas :where(.workbench-popover-surface) {
-  background-color: var(--workbench-popover-bg);
-  border-color: var(--workbench-border);
   box-shadow: none;
 }
 

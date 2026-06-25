@@ -15,7 +15,7 @@ function SyncBar(props: { syncing: boolean; syncError: string | null; onSync: ()
       </div>
       <button
         type="button"
-        class="shrink-0 rounded-full bg-surface-raised-stronger-non-alpha px-3 py-1.5 text-11-medium text-text-interactive-base ring-1 ring-inset ring-border-base/50 transition hover:bg-surface-raised-base-hover hover:text-text-interactive-hover disabled:cursor-default disabled:opacity-60"
+        class="shrink-0 rounded-full bg-surface-raised-stronger-non-alpha px-3 py-1.5 text-11-medium text-text-base ring-1 ring-inset ring-border-base/50 transition hover:bg-surface-raised-base-hover hover:text-text-strong disabled:cursor-default disabled:opacity-60"
         disabled={props.syncing}
         onClick={() => void props.onSync()}
       >

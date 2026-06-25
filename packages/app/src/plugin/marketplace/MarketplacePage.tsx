@@ -98,7 +98,7 @@ export function MarketplacePage() {
             value={query()}
             onInput={(e) => handleInput(e.currentTarget.value)}
             placeholder="Search plugins..."
-            class="w-full pl-9 pr-4 py-2 rounded-lg bg-surface-inset-base text-text-base text-13-regular border border-border-weaker-base/40 focus:outline-none focus:ring-2 focus:ring-border-action/30 placeholder:text-text-weaker transition-colors"
+            class="w-full pl-9 pr-4 py-2 rounded-lg bg-surface-inset-base text-text-base text-13-regular border border-border-weaker-base/40 focus:outline-none focus:ring-2 focus:ring-border-base/30 placeholder:text-text-weaker transition-colors"
           />
         </div>
       </div>
@@ -136,7 +136,7 @@ export function MarketplacePage() {
               {(plugin) => (
                 <button
                   type="button"
-                  class="flex flex-col gap-3 px-4 py-3.5 rounded-xl text-left w-full transition-colors bg-surface-raised-base hover:bg-surface-raised-base-hover cursor-pointer ring-1 ring-transparent hover:ring-border-action/20"
+                  class="flex flex-col gap-3 px-4 py-3.5 rounded-xl text-left w-full transition-colors bg-surface-raised-base hover:bg-surface-raised-base-hover cursor-pointer ring-1 ring-transparent hover:ring-border-base/25"
                   onClick={() =>
                     navigate(
                       `/plugins/${encodeURIComponent(plugin.id)}?source=${encodeURIComponent(

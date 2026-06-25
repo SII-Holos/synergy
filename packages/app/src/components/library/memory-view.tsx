@@ -244,7 +244,7 @@ export function MemoryView(props: {
                         type="button"
                         classList={{
                           "w-full rounded-[0.8rem] px-3 py-2 text-left text-12-medium transition-colors": true,
-                          "bg-surface-inset-base text-text-interactive-base": sort() === key,
+                          "workbench-selected-surface text-text-strong": sort() === key,
                           "text-text-base hover:bg-surface-inset-base": sort() !== key,
                         }}
                         onClick={() => {
@@ -338,8 +338,7 @@ function MemoryCard(props: {
         [`${libraryCardBaseClass} cursor-pointer`]: true,
         [libraryCardExpandedClass]: props.expanded && !props.selecting,
         [libraryCardHoverClass]: !props.expanded && !props.selecting,
-        "bg-surface-interactive-base/12 ring-1 ring-inset ring-text-interactive-base/28 shadow-[inset_0_1px_0_rgba(214,204,190,0.08)]":
-          props.selecting && props.selected,
+        "workbench-selected-surface ring-1 ring-inset ring-border-base/32": props.selecting && props.selected,
         "hover:bg-surface-raised-base/98": props.selecting && !props.selected,
       }}
       onClick={props.onToggle}
@@ -374,7 +373,7 @@ function MemoryCard(props: {
               </span>
             </Show>
             <Show when={props.searching && props.similarity !== undefined}>
-              <span class="rounded-full bg-surface-interactive-base/10 px-2.5 py-1 text-[10px] font-medium text-text-interactive-base ring-1 ring-inset ring-text-interactive-base/12">
+              <span class="rounded-full bg-surface-inset-base px-2.5 py-1 text-[10px] font-medium text-text-base ring-1 ring-inset ring-border-base/35">
                 {Math.round(props.similarity! * 100)}%
               </span>
             </Show>

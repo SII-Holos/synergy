@@ -77,7 +77,7 @@ export const recallModeLabels: Record<MemoryRecallMode, string> = {
 }
 
 export const recallModeColors: Record<MemoryRecallMode, string> = {
-  always: "bg-surface-interactive-base/12 text-text-interactive-base",
+  always: "workbench-selected-surface text-text-strong ring-border-base/20",
   contextual: "bg-surface-positive-base/10 text-text-positive-base",
   search_only: "bg-surface-inset-base text-text-weaker",
 }
@@ -149,7 +149,7 @@ export function SelectionBar(props: {
         <Show when={props.count < props.total}>
           <button
             type="button"
-            class="rounded-full px-2.5 py-1 text-11-medium text-text-interactive-base ring-1 ring-inset ring-text-interactive-base/15 transition-colors hover:bg-surface-interactive-base/12"
+            class="rounded-full px-2.5 py-1 text-11-medium text-text-base ring-1 ring-inset ring-border-base/35 transition-colors hover:bg-surface-raised-base-hover"
             onClick={props.onSelectAll}
           >
             Select all
@@ -224,8 +224,7 @@ export function SelectionCheckbox(props: { selected: boolean }) {
     <div
       classList={{
         "flex size-4 shrink-0 items-center justify-center rounded-[0.45rem] border ring-1 ring-inset transition-colors": true,
-        "border-text-interactive-base/40 bg-surface-interactive-base text-text-on-interactive-base ring-text-interactive-base/12":
-          props.selected,
+        "border-border-base/55 bg-text-strong text-background-base ring-border-base/20": props.selected,
         "workbench-control-surface border-border-base/40 bg-surface-raised-base text-transparent ring-border-base/25":
           !props.selected,
       }}
