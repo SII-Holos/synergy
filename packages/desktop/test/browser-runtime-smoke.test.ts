@@ -1,4 +1,6 @@
 import { describe, expect, test } from "bun:test"
+import { mkdtemp, rm } from "node:fs/promises"
+import os from "node:os"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
 
@@ -17,10 +19,14 @@ const ELECTRON_BIN =
 
 interface SmokeServerState {
   httpRequests: string[]
+  signalingMessages: string[]
+  mediaLogs: string[]
   controlUpgradeAttempts: number
   signalingUpgradeAttempts: number
+  viewerSignalingOpened: boolean
   controlOpened: boolean
   signalingOpened: boolean
+  mediaReady: boolean
   ready: boolean
   navigated: boolean
   evaluatedTitle: string | null
@@ -95,15 +101,20 @@ function smokeDocument(title: string) {
 async function withSmokeServer(
   mode: "native" | "webrtc",
   run: (input: { serverUrl: string; state: SmokeServerState; done: Promise<void> }) => Promise<void>,
+  options: { requireViewer?: boolean; requireMedia?: boolean } = {},
 ) {
   const done = deferred<void>()
   const title = mode === "native" ? "Native Browser Host Smoke" : "WebRTC Browser Host Smoke"
   const state: SmokeServerState = {
     httpRequests: [],
+    signalingMessages: [],
+    mediaLogs: [],
     controlUpgradeAttempts: 0,
     signalingUpgradeAttempts: 0,
+    viewerSignalingOpened: false,
     controlOpened: false,
     signalingOpened: false,
+    mediaReady: false,
     ready: false,
     navigated: false,
     evaluatedTitle: null,
@@ -112,14 +123,30 @@ async function withSmokeServer(
   let commandSeq = 0
   let navigateId: string | null = null
   let evaluateId: string | null = null
+  let hostSignal: ServerWebSocket<{ kind: "control" | "host-signaling" | "viewer-signaling" }> | null = null
+  let viewerSignal: ServerWebSocket<{ kind: "control" | "host-signaling" | "viewer-signaling" }> | null = null
 
-  const server = Bun.serve<{ kind: "control" | "signaling" }>({
+  const server = Bun.serve<{ kind: "control" | "host-signaling" | "viewer-signaling" }>({
     port: 0,
     fetch(req, server) {
       const url = new URL(req.url)
       state.httpRequests.push(`${req.method} ${url.pathname}`)
       if (url.pathname === "/native-page") {
         return new Response(appPage, { headers: { "content-type": "text/html" } })
+      }
+      if (url.pathname === "/media-ready") {
+        state.mediaReady = true
+        checkComplete()
+        return new Response("ok")
+      }
+      if (url.pathname === "/media-log") {
+        void req
+          .text()
+          .then((text) => {
+            state.mediaLogs.push(text.slice(0, 500))
+          })
+          .catch(() => {})
+        return new Response("ok")
       }
       if (url.pathname.endsWith("/browser/host/control")) {
         state.controlUpgradeAttempts++
@@ -129,7 +156,13 @@ async function withSmokeServer(
       }
       if (url.pathname.endsWith("/browser/webrtc/host")) {
         state.signalingUpgradeAttempts++
-        return server.upgrade(req, { data: { kind: "signaling" } })
+        return server.upgrade(req, { data: { kind: "host-signaling" } })
+          ? undefined
+          : new Response("signaling upgrade failed", { status: 400 })
+      }
+      if (url.pathname.endsWith("/browser/webrtc/connect")) {
+        state.signalingUpgradeAttempts++
+        return server.upgrade(req, { data: { kind: "viewer-signaling" } })
           ? undefined
           : new Response("signaling upgrade failed", { status: 400 })
       }
@@ -137,14 +170,35 @@ async function withSmokeServer(
     },
     websocket: {
       open(ws) {
-        if (ws.data.kind === "signaling") {
+        if (ws.data.kind === "host-signaling") {
+          hostSignal = ws
           state.signalingOpened = true
+          if (viewerSignal) sendSignal(viewerSignal, { type: "webrtc.host.ready", tabId: "webrtc-smoke-tab" })
+          checkComplete()
+          return
+        }
+        if (ws.data.kind === "viewer-signaling") {
+          viewerSignal = ws
+          state.viewerSignalingOpened = true
+          if (hostSignal) sendSignal(ws, { type: "webrtc.host.ready", tabId: "webrtc-smoke-tab" })
+          else sendSignal(ws, { type: "webrtc.host.pending", tabId: "webrtc-smoke-tab" })
           checkComplete()
           return
         }
         state.controlOpened = true
       },
       message(ws, raw) {
+        if (ws.data.kind === "host-signaling") {
+          state.signalingMessages.push(`host:${signalType(raw)}`)
+          if (viewerSignal) sendRawSignal(viewerSignal, String(raw))
+          return
+        }
+        if (ws.data.kind === "viewer-signaling") {
+          state.signalingMessages.push(`viewer:${signalType(raw)}`)
+          if (hostSignal) sendRawSignal(hostSignal, String(raw))
+          else sendSignal(ws, { type: "webrtc.host.pending", tabId: "webrtc-smoke-tab" })
+          return
+        }
         if (ws.data.kind !== "control") return
         let message: Record<string, unknown>
         try {
@@ -184,28 +238,65 @@ async function withSmokeServer(
           checkComplete()
         }
       },
+      close(ws) {
+        if (ws.data.kind === "host-signaling" && hostSignal === ws) hostSignal = null
+        if (ws.data.kind === "viewer-signaling" && viewerSignal === ws) viewerSignal = null
+      },
     },
   })
 
   const serverUrl = `http://127.0.0.1:${server.port}`
   appPage = smokePage(serverUrl)
 
-  function sendCommand(ws: ServerWebSocket<{ kind: "control" | "signaling" }>, command: Record<string, unknown>) {
+  function sendCommand(
+    ws: ServerWebSocket<{ kind: "control" | "host-signaling" | "viewer-signaling" }>,
+    command: Record<string, unknown>,
+  ) {
     const id = `${mode}-command-${++commandSeq}`
     ws.send(JSON.stringify({ type: "browser.host.command", id, command }))
     return id
   }
 
+  function sendSignal(
+    ws: ServerWebSocket<{ kind: "control" | "host-signaling" | "viewer-signaling" }>,
+    message: Record<string, unknown>,
+  ) {
+    sendRawSignal(ws, JSON.stringify(message))
+  }
+
+  function sendRawSignal(
+    ws: ServerWebSocket<{ kind: "control" | "host-signaling" | "viewer-signaling" }>,
+    message: string,
+  ) {
+    try {
+      ws.send(message)
+    } catch {}
+  }
+
+  function signalType(raw: string | Buffer) {
+    try {
+      const parsed = JSON.parse(String(raw))
+      if (parsed?.type === "webrtc.error") return `webrtc.error:${String(parsed.message ?? "")}`
+      return typeof parsed?.type === "string" ? parsed.type : "unknown"
+    } catch {
+      return "invalid"
+    }
+  }
+
   function checkComplete() {
     if (!state.controlOpened || !state.ready || !state.navigated || state.evaluatedTitle !== title) return
     if (mode === "webrtc" && !state.signalingOpened) return
+    if (options.requireViewer && !state.viewerSignalingOpened) return
+    if (options.requireMedia && !state.mediaReady) return
     done.resolve()
   }
 
   try {
     await run({ serverUrl, state, done: done.promise })
   } finally {
-    server.stop(true)
+    try {
+      server.stop(true)
+    } catch {}
   }
 }
 
@@ -265,6 +356,156 @@ async function runDesktop(env: Record<string, string | undefined>, done: Promise
   }
 }
 
+function viewerScript(signalingUrl: string, mediaReadyUrl: string, mediaLogUrl: string): string {
+  const html = `<!doctype html>
+<html>
+<body style="margin:0;background:#111">
+<video id="video" autoplay playsinline muted style="width:320px;height:240px"></video>
+<script>
+const signalingUrl = ${JSON.stringify(signalingUrl)}
+const mediaReadyUrl = ${JSON.stringify(mediaReadyUrl)}
+const mediaLogUrl = ${JSON.stringify(mediaLogUrl)}
+const video = document.getElementById("video")
+let ws
+let pc
+
+function send(message) {
+  if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(message))
+}
+
+function reportReady() {
+  fetch(mediaReadyUrl, { method: "POST", body: JSON.stringify({ width: video.videoWidth, height: video.videoHeight }) }).catch(() => {})
+}
+
+function reportLog(message, detail) {
+  fetch(mediaLogUrl, { method: "POST", body: JSON.stringify({ message, detail }) }).catch(() => {})
+}
+
+function watchVideo() {
+  if (video.requestVideoFrameCallback) {
+    video.requestVideoFrameCallback(() => reportReady())
+    return
+  }
+  const timer = setInterval(() => {
+    if (video.videoWidth > 0 && video.videoHeight > 0) {
+      clearInterval(timer)
+      reportReady()
+    }
+  }, 100)
+}
+
+async function negotiate() {
+  if (pc) pc.close()
+  pc = new RTCPeerConnection()
+  pc.addTransceiver("video", { direction: "recvonly" })
+  pc.addTransceiver("audio", { direction: "recvonly" })
+  pc.createDataChannel("browser-input", { ordered: true })
+  pc.ontrack = (event) => {
+    const stream = event.streams[0] || new MediaStream([event.track])
+    if (event.track.kind === "video") {
+    video.srcObject = stream
+      reportLog("track", { kind: event.track.kind, streams: event.streams.length })
+      video.onloadedmetadata = () => {
+        reportLog("metadata", { width: video.videoWidth, height: video.videoHeight })
+        void video.play().catch(() => {})
+        watchVideo()
+      }
+    }
+  }
+  pc.onicecandidate = (event) => {
+    if (event.candidate) send({ type: "webrtc.ice", tabId: "webrtc-smoke-tab", candidate: event.candidate.toJSON() })
+  }
+  pc.onconnectionstatechange = () => reportLog("connection", pc.connectionState)
+  pc.oniceconnectionstatechange = () => reportLog("ice", pc.iceConnectionState)
+  const offer = await pc.createOffer()
+  await pc.setLocalDescription(offer)
+  send({ type: "webrtc.offer", tabId: "webrtc-smoke-tab", sdp: offer.sdp || "" })
+}
+
+async function handle(message) {
+  if (message.type === "webrtc.host.ready") {
+    await negotiate()
+    return
+  }
+  if (message.type === "webrtc.answer" && pc) {
+    reportLog("answer", { length: String(message.sdp || "").length })
+    await pc.setRemoteDescription({ type: "answer", sdp: message.sdp })
+    return
+  }
+  if (message.type === "webrtc.ice" && pc && message.candidate) {
+    await pc.addIceCandidate(message.candidate)
+  }
+}
+
+ws = new WebSocket(signalingUrl)
+ws.onmessage = (event) => {
+  try {
+    void handle(JSON.parse(event.data))
+  } catch {}
+}
+</script>
+</body>
+</html>`
+
+  return `import { app, BrowserWindow } from "electron"
+
+const html = ${JSON.stringify(html)}
+
+app.whenReady().then(async () => {
+  const win = new BrowserWindow({
+    show: false,
+    width: 360,
+    height: 280,
+    webPreferences: { contextIsolation: false, nodeIntegration: false, sandbox: false },
+  })
+  await win.loadURL("data:text/html;charset=utf-8," + encodeURIComponent(html))
+})
+`
+}
+
+async function runViewer(
+  signalingUrl: string,
+  mediaReadyUrl: string,
+  mediaLogUrl: string,
+  done: Promise<void>,
+  state: SmokeServerState,
+) {
+  const tmp = await mkdtemp(path.join(os.tmpdir(), "synergy-webrtc-viewer-"))
+  const entry = path.join(tmp, "main.mjs")
+  await Bun.write(entry, viewerScript(signalingUrl, mediaReadyUrl, mediaLogUrl))
+  const proc = Bun.spawn([ELECTRON_BIN, entry], {
+    cwd: DESKTOP_DIR,
+    stdout: "pipe",
+    stderr: "pipe",
+    env: {
+      ...process.env,
+      ELECTRON_DISABLE_SECURITY_WARNINGS: "1",
+      ELECTRON_ENABLE_LOGGING: "1",
+    },
+  })
+  try {
+    await withTimeout(
+      Promise.race([
+        done,
+        proc.exited.then((code) => {
+          throw new Error(`Electron WebRTC viewer process exited before smoke completed: ${code}`)
+        }),
+      ]),
+      30_000,
+      "Electron WebRTC viewer smoke",
+    )
+  } catch (error) {
+    await stopDesktop(proc)
+    const logs = [await readPipe(proc.stdout), await readPipe(proc.stderr)].filter(Boolean).join("\n")
+    throw new Error(
+      `${error instanceof Error ? error.message : String(error)}\nstate=${JSON.stringify(state)}\n${logs}`,
+    )
+  } finally {
+    await stopDesktop(proc)
+    await rm(tmp, { recursive: true, force: true })
+  }
+}
+
 describe("Electron browser runtime smoke", () => {
   runtimeTest(
     "native WebContentsView host accepts control commands",
@@ -314,6 +555,47 @@ describe("Electron browser runtime smoke", () => {
           evaluatedTitle: "WebRTC Browser Host Smoke",
         })
       })
+    },
+    90_000,
+  )
+
+  runtimeTest(
+    "WebRTC Browser Host negotiates a media stream to a viewer",
+    async () => {
+      await withSmokeServer(
+        "webrtc",
+        async ({ serverUrl, state, done }) => {
+          const signalingUrl =
+            serverUrl.replace(/^http/, "ws") +
+            "/aG9tZQ/browser/webrtc/connect?mode=session&sessionID=webrtc-smoke-session&presentation=webrtc&client=web&tabId=webrtc-smoke-tab"
+          await Promise.all([
+            runDesktop(
+              {
+                SYNERGY_DESKTOP_MODE: "browser-host",
+                SYNERGY_BROWSER_HOST_SHOW: "1",
+                SYNERGY_BROWSER_HOST_SERVER_URL: serverUrl,
+                SYNERGY_BROWSER_HOST_SESSION_ID: "webrtc-smoke-session",
+                SYNERGY_BROWSER_HOST_TAB_ID: "webrtc-smoke-tab",
+                SYNERGY_BROWSER_HOST_ROUTE_DIRECTORY: "aG9tZQ",
+                SYNERGY_BROWSER_HOST_URL: "about:blank",
+                SYNERGY_BROWSER_HOST_WIDTH: "320",
+                SYNERGY_BROWSER_HOST_HEIGHT: "240",
+              },
+              done,
+              state,
+            ),
+            runViewer(signalingUrl, `${serverUrl}/media-ready`, `${serverUrl}/media-log`, done, state),
+          ])
+          expect(state).toMatchObject({
+            controlOpened: true,
+            signalingOpened: true,
+            viewerSignalingOpened: true,
+            mediaReady: true,
+            evaluatedTitle: "WebRTC Browser Host Smoke",
+          })
+        },
+        { requireViewer: true, requireMedia: true },
+      )
     },
     90_000,
   )
