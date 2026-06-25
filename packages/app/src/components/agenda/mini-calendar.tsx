@@ -77,18 +77,18 @@ export function MiniCalendar(props: MiniCalendarProps) {
       return "bg-text-strong text-background-base ring-1 ring-white/12"
     }
     if (isAnchorDay) {
-      return "bg-surface-raised-base text-text-strong"
+      return "workbench-selected-surface text-text-strong"
     }
 
     const base = isCurrentMonth ? "text-text-base" : "text-text-weaker/40"
     if (inWeek) {
-      return `bg-surface-raised-base-hover ${base}`
+      return `workbench-selected-surface ${base}`
     }
     return `${base} hover:bg-surface-raised-base-hover`
   }
 
   function weekRowClass(ts: number): string {
-    return isInAnchorWeek(ts) ? "rounded-[0.9rem] bg-surface-raised-base-hover" : ""
+    return isInAnchorWeek(ts) ? "rounded-[0.9rem] workbench-selected-surface" : ""
   }
 
   return (

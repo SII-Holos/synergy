@@ -252,18 +252,46 @@
   box-shadow: none;
 }
 
+.agenda-calendar-toolbar + .agenda-calendar-body {
+  margin-top: -1px;
+}
+
 .agenda-grid-surface {
   background: var(--agenda-grid-bg);
 }
 
 .agenda-grid-scroll {
-  padding-left: 42px;
+  padding-left: 56px;
   border-bottom-right-radius: 14px;
   border-bottom-left-radius: 14px;
 }
 
 .agenda-time-header {
-  padding-left: 30px;
+  padding-left: 44px;
+  background: var(--agenda-panel-bg);
+}
+
+.agenda-event-surface {
+  background: var(--agenda-control-bg);
+  border: 1px solid color-mix(in oklab, var(--border-base) 18%, transparent);
+}
+
+.agenda-event-surface:hover {
+  background: var(--agenda-control-bg-hover);
+}
+
+.agenda-event-paused {
+  background: color-mix(in oklab, var(--icon-warning-base) 10%, var(--agenda-control-bg));
+  border-color: color-mix(in oklab, var(--icon-warning-base) 20%, transparent);
+}
+
+.agenda-event-cancelled {
+  background: color-mix(in oklab, var(--text-diff-delete-base) 9%, var(--agenda-control-bg));
+  border-color: color-mix(in oklab, var(--text-diff-delete-base) 18%, transparent);
+}
+
+.agenda-event-muted {
+  color: var(--text-weak);
 }
 
 .agenda-activity-surface {

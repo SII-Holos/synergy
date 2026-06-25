@@ -120,11 +120,11 @@ function eventHeight(): number {
 }
 
 const TIME_EVENT_COLORS: Record<string, string> = {
-  active: "workbench-card-surface bg-surface-raised-base border border-border-base/45 border-l-text-strong",
-  paused: "bg-icon-warning-base/18 border border-icon-warning-base/15 border-l-icon-warning-base",
-  pending: "workbench-control-surface bg-surface-inset-base border border-border-base/38 border-l-text-weaker",
-  done: "workbench-control-surface bg-surface-inset-base border border-border-base/35 border-l-text-weaker",
-  cancelled: "bg-text-diff-delete-base/12 border border-text-diff-delete-base/10 border-l-text-diff-delete-base",
+  active: "agenda-event-surface",
+  paused: "agenda-event-surface agenda-event-paused",
+  pending: "agenda-event-surface agenda-event-muted",
+  done: "agenda-event-surface agenda-event-muted",
+  cancelled: "agenda-event-surface agenda-event-cancelled",
 }
 
 const MONTH_DOT_COLORS: Record<string, string> = {
@@ -399,7 +399,7 @@ function TimeGrid(props: {
                       const leftPct = le.col * widthPct
                       return (
                         <div
-                          class={`absolute cursor-pointer overflow-hidden rounded-md border-l-2 px-1.5 py-1 transition-opacity hover:opacity-90 ${colors}`}
+                          class={`absolute cursor-pointer overflow-hidden rounded-md px-1.5 py-1 transition-opacity hover:opacity-90 ${colors}`}
                           style={{
                             top: `${top}px`,
                             height: `${Math.max(height, 18)}px`,
