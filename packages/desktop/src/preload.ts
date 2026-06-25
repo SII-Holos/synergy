@@ -1,5 +1,5 @@
-import { contextBridge, ipcRenderer } from "electron"
-import type { BrowserNativeAttachRequest, BrowserNativeBounds } from "./browser-native-view.js"
+import { contextBridge, ipcRenderer, type IpcRendererEvent } from "electron"
+import type { BrowserNativeAttachRequest, BrowserNativeBounds, BrowserNativeViewEvent } from "./browser-native-view.js"
 
 const browserNative = {
   attachView(input: BrowserNativeAttachRequest) {
@@ -19,6 +19,11 @@ const browserNative = {
       height: input.height,
     }
     return ipcRenderer.invoke("browser-native:resize", { tabId: input.tabId, bounds }) as Promise<void>
+  },
+  onEvent(listener: (event: BrowserNativeViewEvent) => void) {
+    const wrapped = (_event: IpcRendererEvent, payload: BrowserNativeViewEvent) => listener(payload)
+    ipcRenderer.on("browser-native:event", wrapped)
+    return () => ipcRenderer.off("browser-native:event", wrapped)
   },
 }
 

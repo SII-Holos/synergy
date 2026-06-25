@@ -117,7 +117,7 @@ function BrowserPanelInner(props: {
                     <div class="flex items-center justify-center h-full text-text-weak text-14">No tab open</div>
                   }
                 >
-                  <BrowserSurface />
+                  <BrowserSurface sessionID={props.sessionID} routeDirectory={props.routeDirectory} />
                 </Show>
               }
             >

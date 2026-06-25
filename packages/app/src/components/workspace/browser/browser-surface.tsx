@@ -2,6 +2,7 @@ import { Button } from "@ericsanchezok/synergy-ui/button"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { createEffect, onCleanup, onMount, Show } from "solid-js"
+import { usePlatform } from "@/context/platform"
 import { useBrowser, type BrowserFrameEntry } from "./browser-store"
 
 const MIN_FIT_VIEWPORT_WIDTH = 320
@@ -32,7 +33,7 @@ function arrayBufferToBase64(buffer: ArrayBuffer): string {
   return btoa(binary)
 }
 
-export function BrowserSurface() {
+export function BrowserSurface(props: { sessionID: string; routeDirectory?: string }) {
   let wrapperRef: HTMLDivElement | undefined
   let canvasRef: HTMLCanvasElement | undefined
   let fileInputRef: HTMLInputElement | undefined
@@ -41,6 +42,11 @@ export function BrowserSurface() {
   let lastFitViewportKey = ""
 
   const browser = useBrowser()
+  const platform = usePlatform()
+
+  const nativePresentation = () => {
+    return browser.presentation()?.kind === "native" && platform.browserNative
+  }
 
   const activeFrame = (): BrowserFrameEntry | undefined => {
     const id = browser.activeTabId()
@@ -49,6 +55,7 @@ export function BrowserSurface() {
   }
 
   createEffect(() => {
+    if (nativePresentation()) return
     const tabId = browser.activeTabId()
     if (tabId) browser.send({ type: "stream.start", tabId })
   })
@@ -66,6 +73,7 @@ export function BrowserSurface() {
     pendingFitFrame = undefined
     if (browser.viewportMode() !== "fit") {
       lastFitViewportKey = ""
+      syncNativeBounds()
       return
     }
 
@@ -77,6 +85,7 @@ export function BrowserSurface() {
     if (key === lastFitViewportKey) return
     lastFitViewportKey = key
     browser.setViewport(size.width, size.height, { mode: "fit" })
+    syncNativeBounds()
   }
 
   function scheduleFitViewport() {
@@ -95,11 +104,80 @@ export function BrowserSurface() {
     const observer = new ResizeObserver(scheduleFitViewport)
     observer.observe(wrapperRef)
     scheduleFitViewport()
+    const unsubscribeNative = platform.browserNative?.onEvent?.((event) => {
+      if (event.tabId !== browser.activeTabId()) return
+      switch (event.type) {
+        case "native.loading": {
+          browser.setTabLoading(event.tabId, true)
+          if (event.url) browser.setTabUrl(event.tabId, event.url)
+          break
+        }
+        case "native.loaded": {
+          browser.setTabLoading(event.tabId, false)
+          if (event.url) browser.setTabUrl(event.tabId, event.url)
+          if (event.title) browser.setTabTitle(event.tabId, event.title)
+          break
+        }
+        case "native.navigated": {
+          browser.setTabUrl(event.tabId, event.url)
+          break
+        }
+        case "native.title": {
+          browser.setTabTitle(event.tabId, event.title)
+          break
+        }
+        case "native.error": {
+          browser.setTabLoading(event.tabId, false)
+          browser.setBrowserError({ severity: "error", message: event.message, code: String(event.code ?? "") })
+          break
+        }
+      }
+    })
     onCleanup(() => {
+      unsubscribeNative?.()
       observer.disconnect()
       if (pendingFitFrame !== undefined) cancelAnimationFrame(pendingFitFrame)
     })
   })
+
+  createEffect(() => {
+    const bridge = nativePresentation()
+    const tab = browser.activeTab()
+    if (!bridge || !tab || !wrapperRef) return
+
+    const rect = wrapperRef.getBoundingClientRect()
+    void bridge.attachView({
+      sessionID: props.sessionID,
+      routeDirectory: props.routeDirectory,
+      tabId: tab.id,
+      url: tab.url || undefined,
+      bounds: {
+        x: rect.x,
+        y: rect.y,
+        width: rect.width,
+        height: rect.height,
+      },
+    })
+  })
+
+  onCleanup(() => {
+    const tabId = browser.activeTabId()
+    if (tabId) void platform.browserNative?.detachView({ tabId })
+  })
+
+  function syncNativeBounds() {
+    const bridge = nativePresentation()
+    const tabId = browser.activeTabId()
+    if (!bridge || !tabId || !wrapperRef) return
+    const rect = wrapperRef.getBoundingClientRect()
+    void bridge.resizeView({
+      tabId,
+      x: rect.x,
+      y: rect.y,
+      width: rect.width,
+      height: rect.height,
+    })
+  }
 
   createEffect(() => {
     const frame = activeFrame()
@@ -133,6 +211,7 @@ export function BrowserSurface() {
   }
 
   function handleMouse(action: "move" | "down" | "up", e: MouseEvent) {
+    if (nativePresentation()) return
     const tabId = browser.activeTabId()
     const p = point(e)
     if (!tabId || !p) return
@@ -164,6 +243,7 @@ export function BrowserSurface() {
   }
 
   function handleWheel(e: WheelEvent) {
+    if (nativePresentation()) return
     const tabId = browser.activeTabId()
     const p = point(e)
     if (!tabId || !p) return
@@ -181,6 +261,7 @@ export function BrowserSurface() {
   }
 
   function handleKey(action: "down" | "up", e: KeyboardEvent) {
+    if (nativePresentation()) return
     const tabId = browser.activeTabId()
     if (!tabId || composing) return
     browser.send({
@@ -197,11 +278,18 @@ export function BrowserSurface() {
   }
 
   function handlePaste(e: ClipboardEvent) {
+    if (nativePresentation()) return
     const tabId = browser.activeTabId()
     const text = e.clipboardData?.getData("text/plain")
     if (!tabId || !text) return
     browser.send({ type: "input.text", tabId, text })
     e.preventDefault()
+  }
+
+  function focusNativeView() {
+    const tabId = browser.activeTabId()
+    if (!tabId) return
+    void platform.browserNative?.focusView({ tabId })
   }
 
   async function chooseFiles(files: FileList | null) {
@@ -236,7 +324,7 @@ export function BrowserSurface() {
       class="relative w-full h-full overflow-hidden bg-background-strong flex items-center justify-center"
     >
       <Show
-        when={activeFrame()}
+        when={nativePresentation() || activeFrame()}
         fallback={
           <div class="flex flex-col items-center gap-3 text-text-weak text-13 select-none">
             <Icon name={getSemanticIcon("browser.main")} class="size-14 text-icon-weaker" />
@@ -246,27 +334,29 @@ export function BrowserSurface() {
           </div>
         }
       >
-        <canvas
-          ref={canvasRef}
-          tabIndex={0}
-          class="max-w-full max-h-full outline-none cursor-default"
-          onMouseMove={(e) => handleMouse("move", e)}
-          onMouseDown={(e) => handleMouse("down", e)}
-          onMouseUp={(e) => handleMouse("up", e)}
-          onWheel={handleWheel}
-          onKeyDown={(e) => handleKey("down", e)}
-          onKeyUp={(e) => handleKey("up", e)}
-          onCompositionStart={() => {
-            composing = true
-          }}
-          onCompositionEnd={(e) => {
-            composing = false
-            const text = e.data
-            const tabId = browser.activeTabId()
-            if (tabId && text) browser.send({ type: "input.text", tabId, text })
-          }}
-          onPaste={handlePaste}
-        />
+        <Show when={!nativePresentation()} fallback={<div class="absolute inset-0" onPointerDown={focusNativeView} />}>
+          <canvas
+            ref={canvasRef}
+            tabIndex={0}
+            class="max-w-full max-h-full outline-none cursor-default"
+            onMouseMove={(e) => handleMouse("move", e)}
+            onMouseDown={(e) => handleMouse("down", e)}
+            onMouseUp={(e) => handleMouse("up", e)}
+            onWheel={handleWheel}
+            onKeyDown={(e) => handleKey("down", e)}
+            onKeyUp={(e) => handleKey("up", e)}
+            onCompositionStart={() => {
+              composing = true
+            }}
+            onCompositionEnd={(e) => {
+              composing = false
+              const text = e.data
+              const tabId = browser.activeTabId()
+              if (tabId && text) browser.send({ type: "input.text", tabId, text })
+            }}
+            onPaste={handlePaste}
+          />
+        </Show>
       </Show>
 
       <Show when={browser.browserError()}>
