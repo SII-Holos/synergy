@@ -1,8 +1,12 @@
 import { createSimpleContext } from "@ericsanchezok/synergy-ui/context"
 
 export type BrowserNativeViewRequest = {
+  serverUrl?: string
   sessionID: string
   routeDirectory?: string
+  directory?: string
+  scopeID?: string
+  scopeKey?: string
   tabId: string
   url?: string
   bounds?: {

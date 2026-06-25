@@ -210,8 +210,12 @@ export function BrowserSurface(props: { sessionID: string; routeDirectory?: stri
 
     const rect = wrapperRef.getBoundingClientRect()
     void bridge.attachView({
+      serverUrl: sdk.url,
       sessionID: props.sessionID,
       routeDirectory: props.routeDirectory,
+      directory: sdk.directory,
+      scopeID: sdk.scopeID,
+      scopeKey: sdk.scopeKey,
       tabId: tab.id,
       url: tab.url || undefined,
       bounds: {

@@ -11,6 +11,7 @@ import { BrowserOwner } from "../browser/owner.js"
 import { BrowserControl } from "../browser/control.js"
 import { BrowserElectronHostProcess } from "../browser/electron-host-process.js"
 import { BrowserHost } from "../browser/host.js"
+import { BrowserHostControl } from "../browser/host-control.js"
 import { BrowserWebRTCSignaling } from "../browser/webrtc-signaling.js"
 import { ScopeContext } from "../scope/context"
 
@@ -47,6 +48,21 @@ function sessionPayload(
   return {
     type: "session.state",
     ...BrowserControl.sessionState(session),
+    connection: { status: "connected" },
+    presentation,
+    runtimeHealth,
+  }
+}
+
+function sessionStatePayload(
+  session: BrowserControl.SessionState,
+  presentation: BrowserPresentationSelection,
+  runtimeHealth?: Awaited<ReturnType<typeof BrowserHost.health>>,
+) {
+  return {
+    type: "session.state",
+    tabs: session.tabs,
+    activeTabId: session.activeTabId,
     connection: { status: "connected" },
     presentation,
     runtimeHealth,
@@ -168,6 +184,10 @@ export const BrowserRoute = new Hono()
   .get("/:directory/browser/session", async (c) => {
     try {
       const { owner, presentation } = routeState(c)
+      const hostSession = BrowserHostControl.sessionState(owner)
+      if (hostSession) {
+        return c.json(sessionStatePayload(hostSession, presentation, await BrowserHost.health()))
+      }
       const session = await ensureSession(owner, { createInitialTab: true })
       return c.json(sessionPayload(session, presentation, await BrowserHost.health()))
     } catch (e: any) {
@@ -219,6 +239,7 @@ export const BrowserRoute = new Hono()
 
       const { directory, owner, presentation } = state
       let unsubscribe: (() => void) | undefined
+      let unsubscribeHost: (() => void) | undefined
 
       log.info("browser events WebSocket connected", {
         directory,
@@ -230,6 +251,12 @@ export const BrowserRoute = new Hono()
       return {
         onOpen: async (_e: any, ws: BrowserWS) => {
           try {
+            unsubscribeHost = BrowserHostControl.addObserver(owner, (event) => send(ws, event))
+            const hostSession = BrowserHostControl.sessionState(owner)
+            if (hostSession) {
+              send(ws, sessionStatePayload(hostSession, presentation, await BrowserHost.health()))
+              return
+            }
             const session = await ensureSession(owner, { createInitialTab: true })
             unsubscribe = subscribeBrowserEvents(ws, session)
             send(ws, sessionPayload(session, presentation, await BrowserHost.health()))
@@ -254,10 +281,55 @@ export const BrowserRoute = new Hono()
         },
         onClose() {
           unsubscribe?.()
+          unsubscribeHost?.()
           log.info("browser events WebSocket disconnected")
         },
         onError(_e: any) {
           log.warn("browser events WebSocket error", { error: String(_e) })
+        },
+      }
+    }),
+  )
+  .get(
+    "/:directory/browser/host/control",
+    upgradeWebSocket((c) => {
+      let state: BrowserRouteState
+      try {
+        state = routeState(c)
+      } catch (e: any) {
+        return {
+          onOpen(_e: any, ws: BrowserWS) {
+            send(ws, { type: "error", code: "browser_host_route_failed", message: e?.message ?? String(e) })
+            ws.close(1008, "Invalid browser host route")
+          },
+          onMessage() {},
+          onClose() {},
+        }
+      }
+
+      let connection: BrowserHostControl.HostConnection | undefined
+
+      return {
+        onOpen(_event: any, ws: BrowserWS) {
+          connection = BrowserHostControl.attach(state.owner, ws)
+          log.info("browser host control connected", {
+            directory: state.directory,
+            ownerKey: BrowserOwner.key(state.owner),
+            presentation: state.presentation.kind,
+          })
+          send(ws, { type: "browser.host.attached", protocolVersion: BrowserHost.protocolVersion })
+        },
+        onMessage(event: any) {
+          if (!connection) return
+          try {
+            connection.handleMessage(JSON.parse(event.data as string))
+          } catch {
+            /* ignore malformed host messages */
+          }
+        },
+        onClose() {
+          if (connection) BrowserHostControl.detach(state.owner, connection)
+          log.info("browser host control disconnected")
         },
       }
     }),

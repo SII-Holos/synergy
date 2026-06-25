@@ -10,6 +10,7 @@ import { BrowserOwner } from "./owner.js"
 import { BrowserRuntime } from "./runtime.js"
 import type { BrowserSession } from "./types.js"
 import { BrowserControl } from "./control.js"
+import { BrowserHostControl, BrowserHostControlUnsupportedCommandError } from "./host-control.js"
 
 export namespace BrowserHost {
   export interface RuntimeAdapter {
@@ -73,6 +74,13 @@ export namespace BrowserHost {
     owner: BrowserOwner.Info,
     command: BrowserControl.Command,
   ): Promise<BrowserControl.Result> {
+    if (BrowserHostControl.has(owner) && command.type !== "createTab") {
+      try {
+        return await BrowserHostControl.execute(owner, command)
+      } catch (error) {
+        if (!(error instanceof BrowserHostControlUnsupportedCommandError)) throw error
+      }
+    }
     const session = await ensureSession(owner)
     return BrowserControl.execute(session, command)
   }
