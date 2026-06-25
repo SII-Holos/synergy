@@ -646,7 +646,7 @@ describe("Electron browser runtime smoke", () => {
             runDesktop(
               {
                 SYNERGY_DESKTOP_MODE: "browser-host",
-                SYNERGY_BROWSER_HOST_SHOW: "1",
+                SYNERGY_BROWSER_HOST_SHOW: process.env.SYNERGY_DESKTOP_RUNTIME_SHOW === "1" ? "1" : "0",
                 SYNERGY_BROWSER_HOST_SERVER_URL: serverUrl,
                 SYNERGY_BROWSER_HOST_SESSION_ID: "webrtc-smoke-session",
                 SYNERGY_BROWSER_HOST_TAB_ID: "webrtc-smoke-tab",

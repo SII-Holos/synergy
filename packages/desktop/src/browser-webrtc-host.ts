@@ -100,7 +100,7 @@ export class BrowserWebRTCHost {
     const signalingUrl = createHostSignalingUrl(this.options)
 
     this.browserWindow = new BrowserWindow({
-      show: process.env.SYNERGY_BROWSER_HOST_SHOW !== "0",
+      show: process.env.SYNERGY_BROWSER_HOST_SHOW === "1",
       width,
       height,
       title: this.browserWindowTitle,
