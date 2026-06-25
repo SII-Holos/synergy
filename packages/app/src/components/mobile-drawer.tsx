@@ -1,5 +1,5 @@
 import { createMemo, createSignal, For, Show, onMount } from "solid-js"
-import { A, useNavigate, useParams } from "@solidjs/router"
+import { A, useLocation, useNavigate, useParams } from "@solidjs/router"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { base64Decode, base64Encode } from "@ericsanchezok/synergy-util/encode"
 import { createSynergyClient } from "@ericsanchezok/synergy-sdk/client"
@@ -13,7 +13,6 @@ import { getScopeLabel, isHomeScope } from "@/utils/scope"
 import { ActiveZone } from "@/components/scopes/active-zone"
 import { SessionRow } from "@/components/scopes/session-row"
 import { PaginationBar } from "@/components/scopes/pagination-bar"
-import { usePanel, PANELS } from "@/context/panel"
 import type { Session } from "@ericsanchezok/synergy-sdk/client"
 
 export function MobileDrawer() {
@@ -105,8 +104,11 @@ export function MobileDrawer() {
   )
 }
 
-// Tools grid uses shared PANELS (excluding lucid which is desktop-only for now)
-const DRAWER_TOOLS = PANELS.filter((p) => p.id !== "lucid")
+const DRAWER_TOOLS = [
+  { id: "agenda", label: "Agenda", icon: "clock", href: "/agenda" },
+  { id: "library", label: "Library", icon: "book-open", href: "/library" },
+  { id: "plugins", label: "Plugins", icon: "package", href: "/plugins/marketplace" },
+] as const
 
 function ScopeListView(props: {
   currentDir: string | undefined
@@ -115,8 +117,9 @@ function ScopeListView(props: {
   onClose: () => void
 }) {
   const layout = useLayout()
-  const panel = usePanel()
   const globalSync = useGlobalSync()
+  const navigate = useNavigate()
+  const location = useLocation()
 
   const scopes = createMemo(() => {
     const homePath = globalSync.data.paths?.home
@@ -202,12 +205,14 @@ function ScopeListView(props: {
               type="button"
               classList={{
                 "flex flex-col items-center gap-1 py-2.5 rounded-xl transition-colors": true,
-                "bg-surface-interactive-base/8 text-text-interactive-base": panel.active() === tool.id,
-                "text-text-weak hover:text-text-base hover:bg-surface-raised-base-hover": panel.active() !== tool.id,
+                "bg-surface-interactive-base/8 text-text-interactive-base":
+                  tool.id === "plugins" ? location.pathname.startsWith("/plugins") : location.pathname === tool.href,
+                "text-text-weak hover:text-text-base hover:bg-surface-raised-base-hover":
+                  tool.id === "plugins" ? !location.pathname.startsWith("/plugins") : location.pathname !== tool.href,
               }}
               onClick={() => {
+                navigate(tool.href)
                 props.onClose()
-                panel.toggle(tool.id)
               }}
             >
               <Icon name={tool.icon} size="normal" />

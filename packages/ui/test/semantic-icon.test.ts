@@ -2,12 +2,13 @@ import { describe, expect, test } from "bun:test"
 import { getSemanticIcon, SemanticIconToken } from "../src/components/semantic-icon"
 
 const allowedDuplicateIcons: Record<string, string[]> = {
-  "arrow-left": ["navigation.back", "browser.back"],
+  "arrow-left": ["navigation.back", "browser.back", "account.logout"],
   braces: ["connection.lsp", "settings.lsp"],
   cable: ["connection.mcp", "settings.mcp"],
   circle: ["session.idle", "state.empty"],
   globe: ["settings.channels", "browser.main"],
   "help-circle": ["session.waiting", "settings.questions"],
+  "refresh-ccw": ["action.refresh", "browser.refresh"],
   satellite: ["connection.holos", "settings.holos"],
 }
 

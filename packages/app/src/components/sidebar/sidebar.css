@@ -742,9 +742,8 @@
 .sidebar-account-card {
   position: relative;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr);
   align-items: center;
-  gap: 6px;
   min-height: 54px;
   padding: 4px;
   border-radius: 12px;
@@ -762,8 +761,7 @@
   text-align: left;
 }
 
-.sidebar-account-card-main:hover,
-.sidebar-account-card-add:hover {
+.sidebar-account-card-main:hover {
   background: var(--sb-hover-bg);
 }
 
@@ -792,20 +790,10 @@
   white-space: nowrap;
 }
 
-.sidebar-account-card-add {
-  width: 30px;
-  height: 30px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 9px;
-  color: var(--text-weak);
-}
-
-.sidebar-account-popover,
-.sidebar-account-add-popover {
+.sidebar-account-popover {
   position: absolute;
   left: calc(100% + 8px);
+  top: 8px;
   z-index: 95;
   width: 236px;
   padding: 6px;
@@ -816,14 +804,6 @@
   display: flex;
   flex-direction: column;
   gap: 2px;
-}
-
-.sidebar-account-popover {
-  top: 8px;
-}
-
-.sidebar-account-add-popover {
-  top: 56px;
 }
 
 .sidebar-account-menuItem {

@@ -418,7 +418,7 @@ export function PluginDetailPage() {
                   />
                   <MetaBox icon="calendar" label="Updated" value={timeAgo(pluginData()!.updatedAt)} />
                   <MetaBox icon="download" label="Downloads" value={pluginData()!.downloads?.toLocaleString() ?? "0"} />
-                  <MetaBox icon="package-open" label="Source" value={source() === "local" ? "Local" : "Official"} />
+                  <MetaBox icon="package" label="Source" value={source() === "local" ? "Local" : "Official"} />
                   <MetaBox icon="key-round" label="Signer" value={formatSigner(latestVersion()?.signature?.signer)} />
                 </div>
 

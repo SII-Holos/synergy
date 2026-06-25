@@ -1,6 +1,9 @@
 /* [data-component="dialog-trigger"] { } */
 
+[data-component="dialog-overlay"],
 [data-slot="dialog-overlay"] {
+  position: fixed;
+  inset: 0;
   background-color: color-mix(in srgb, var(--background-base) 42%, rgba(0, 0, 0, 0.38));
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);

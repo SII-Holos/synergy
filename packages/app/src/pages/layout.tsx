@@ -1,7 +1,4 @@
-import { ErrorBoundary } from "solid-js"
-import { createEffect, createMemo, createSignal, onCleanup, onMount, ParentProps, Show, Switch, Match } from "solid-js"
-import { Dynamic } from "solid-js/web"
-import type { Component } from "solid-js"
+import { createEffect, createMemo, createSignal, onCleanup, onMount, ParentProps, Show } from "solid-js"
 import { useNavigate, useParams } from "@solidjs/router"
 import { useLayout } from "@/context/layout"
 import { useGlobalSync } from "@/context/global-sync"
@@ -10,32 +7,20 @@ import { base64Decode, base64Encode } from "@ericsanchezok/synergy-util/encode"
 import { getFilename } from "@ericsanchezok/synergy-util/path"
 import { usePlatform } from "@/context/platform"
 import { createStore } from "solid-js/store"
-import { showToast, Toast, toaster, setToastConfig, type ToastConfig } from "@ericsanchezok/synergy-ui/toast"
+import { showToast, Toast, toaster, setToastConfig } from "@ericsanchezok/synergy-ui/toast"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { useNotification } from "@/context/notification"
-import { PanelProvider, usePanel, PANELS } from "@/context/panel"
 
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { useTheme, type ColorScheme } from "@ericsanchezok/synergy-ui/theme"
-import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { DialogSelectServer, DialogSelectDirectory } from "@/components/dialog"
 import { SettingsDialog } from "@/components/settings"
 import { useCommand, type CommandOption } from "@/context/command"
 import { navStart } from "@/utils/perf"
-import { useServer } from "@/context/server"
 import { Sidebar } from "@/components/sidebar/sidebar"
 import { GlobalSearchModal } from "@/components/search/global-search-modal"
-import { GlobalPanelOverlay } from "@/components/overlay/global-panel-overlay"
 import { MobileDrawer } from "@/components/mobile-drawer"
-import { LibraryPanel } from "@/components/library"
-import { AgendaPanel } from "@/components/agenda"
-
-import { LucidPanel } from "@/components/lucid-panel"
-import { DiagnosticsPanel } from "@/components/diagnostics-panel"
 import { ConnectionBanner } from "@/components/connection-banner"
-import { getGlobalPanel } from "@/plugin"
-import { SandboxIframe } from "@/plugin/sandbox"
-import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
 
 export default function Layout(props: ParentProps) {
   const [store, setStore] = createStore({
@@ -47,7 +32,6 @@ export default function Layout(props: ParentProps) {
   const globalSync = useGlobalSync()
   const layout = useLayout()
   const platform = usePlatform()
-  const server = useServer()
   const notification = useNotification()
   const navigate = useNavigate()
   const dialog = useDialog()
@@ -449,139 +433,13 @@ export default function Layout(props: ParentProps) {
   })
 
   return (
-    <PanelProvider>
-      <LayoutContent
-        searchOpen={searchOpen()}
-        onSearchClose={() => setSearchOpen(false)}
-        onSearchOpen={() => setSearchOpen(true)}
-      >
-        {props.children}
-      </LayoutContent>
-    </PanelProvider>
-  )
-}
-
-function GlobalPanelSwitch() {
-  const params = useParams()
-  const panel = usePanel()
-  return (
-    <Switch>
-      <Match when={panel.active() === "library"}>
-        <LibraryPanel />
-      </Match>
-      <Match when={panel.active() === "agenda"}>
-        <AgendaPanel />
-      </Match>
-      <Match when={panel.active() === "lucid"}>
-        <LucidPanel />
-      </Match>
-      <Match when={panel.active() === "diagnostics"}>
-        <DiagnosticsPanel />
-      </Match>
-      <Match when={panel.hasSlot(panel.active()!)}>{panel.slot(panel.active()!)}</Match>
-      <Match when={!!getGlobalPanel(panel.active()!)}>
-        <PluginGlobalPanelContent panelId={panel.active()!} />
-      </Match>
-    </Switch>
-  )
-}
-
-/** Wrapper that shows a spinner while lazy-loading a plugin global panel component. */
-function PluginGlobalPanelContent(props: { panelId: string }) {
-  const [comp, setComp] = createSignal<Component | null>(null)
-  const [loading, setLoading] = createSignal(true)
-  const [entry, setEntry] = createSignal<ReturnType<typeof getGlobalPanel>>(undefined)
-
-  onMount(() => {
-    const e = getGlobalPanel(props.panelId)
-    setEntry(e)
-    if (!e) {
-      setLoading(false)
-      return
-    }
-    if (e.component) {
-      setComp(() => e.component!)
-      setLoading(false)
-      return
-    }
-    if (e.sandbox) {
-      setLoading(false)
-      return
-    }
-    if (e.loader) {
-      e.loader().then(
-        (mod) => {
-          setComp(() => mod.default)
-          setLoading(false)
-        },
-        () => setLoading(false),
-      )
-      return
-    }
-    setLoading(false)
-  })
-
-  const isSandbox = () => entry()?.sandbox && entry()?.sandboxUrl
-
-  return (
-    <Show
-      when={!loading()}
-      fallback={
-        <div class="flex items-center justify-center h-full">
-          <Spinner class="size-5" />
-        </div>
-      }
+    <LayoutContent
+      searchOpen={searchOpen()}
+      onSearchClose={() => setSearchOpen(false)}
+      onSearchOpen={() => setSearchOpen(true)}
     >
-      <Show when={isSandbox()}>
-        <ErrorBoundary
-          fallback={(error) => (
-            <div class="flex items-center justify-center h-full text-14 text-icon-critical-base p-4">
-              {error.message}
-            </div>
-          )}
-        >
-          <SandboxIframe src={entry()!.sandboxUrl!} pluginId={entry()!.pluginId} panelId={entry()!.id} />
-        </ErrorBoundary>
-      </Show>
-      <Show when={!isSandbox()}>
-        <Show
-          when={comp()}
-          fallback={<div class="flex items-center justify-center h-full text-text-weak text-14">Panel unavailable</div>}
-        >
-          {(c) => <Dynamic component={c()} />}
-        </Show>
-      </Show>
-    </Show>
-  )
-}
-
-function MobilePanelOverlay() {
-  const panel = usePanel()
-  const layout = useLayout()
-  const isOpen = () => !layout.isDesktop() && !!panel.active()
-  const label = () => PANELS.find((p) => p.id === panel.active())?.label ?? panel.active()
-
-  return (
-    <Show when={isOpen()}>
-      <div
-        class="md:hidden fixed inset-0 z-[90] flex flex-col bg-background-stronger"
-        style={{ animation: "mobileDrawerFadeIn 200ms ease-out both" }}
-      >
-        <div class="flex items-center justify-between px-4 h-11 shrink-0 border-b border-border-weaker-base/60">
-          <span class="text-14-medium text-text-strong">{label()}</span>
-          <button
-            type="button"
-            class="flex items-center justify-center size-8 rounded-lg text-icon-weak hover:text-icon-base hover:bg-surface-raised-base-hover transition-colors"
-            onClick={() => panel.close()}
-          >
-            <Icon name="x" size="normal" />
-          </button>
-        </div>
-        <div class="flex-1 min-h-0 overflow-hidden">
-          <GlobalPanelSwitch />
-        </div>
-      </div>
-    </Show>
+      {props.children}
+    </LayoutContent>
   )
 }
 
@@ -598,11 +456,11 @@ function LayoutContent(
         <Show when={layout.isDesktop()}>
           <Sidebar onSearchOpen={props.onSearchOpen} />
         </Show>
-        <main class="flex-1 min-h-0 min-w-0 overflow-x-hidden flex flex-col contain-strict">{props.children}</main>
+        <main class="relative flex-1 min-h-0 min-w-0 overflow-hidden flex flex-col contain-strict">
+          {props.children}
+        </main>
       </div>
-      <MobilePanelOverlay />
       <GlobalSearchModal open={props.searchOpen} onClose={props.onSearchClose} />
-      <GlobalPanelOverlay panelContent={() => <GlobalPanelSwitch />} />
       <Toast.Region limit={5} swipeDirection="right" pauseOnInteraction={true} />
     </div>
   )

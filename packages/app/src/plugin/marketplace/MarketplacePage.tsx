@@ -64,7 +64,7 @@ export function MarketplacePage() {
       {/* ── Header ── */}
       <div class="shrink-0 px-6 pt-6 pb-3 flex flex-col gap-3.5 border-b border-border-weaker-base/40">
         <div class="flex items-center gap-2">
-          <Icon name="package-open" size="normal" class="text-icon-weak shrink-0" />
+          <Icon name="package" size="normal" class="text-icon-weak shrink-0" />
           <span class="text-15-medium text-text-strong flex-1">Plugin Marketplace</span>
         </div>
         <p class="text-12-regular text-text-weak -mt-1">Browse and install plugins for Synergy</p>
@@ -115,7 +115,7 @@ export function MarketplacePage() {
         {/* Empty state */}
         <Show when={isEmpty()}>
           <div class="flex flex-col items-center justify-center py-16 gap-3 text-center">
-            <Icon name="package-open" size="large" class="text-icon-weak" />
+            <Icon name="package" size="large" class="text-icon-weak" />
             <div>
               <p class="text-14-medium text-text-weak">
                 {debouncedQuery() ? "No plugins found" : "No plugins available"}

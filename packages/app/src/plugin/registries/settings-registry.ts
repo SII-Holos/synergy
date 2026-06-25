@@ -40,7 +40,7 @@ export function getSettingsSection(id: string): SettingsSection | undefined {
   return sections.find((s) => s.id === id)
 }
 
-// Built-in settings sections — registered at module init, consumed by SettingsDialog via getSettingsSections()
+// Built-in settings sections — registered at module init, consumed by SettingsPanel via getSettingsSections()
 const BUILTIN_SECTIONS: SettingsSection[] = BUILTIN_SETTINGS_SECTIONS.map((section) => ({ ...section }))
 
 for (const section of BUILTIN_SECTIONS) {

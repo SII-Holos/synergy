@@ -235,7 +235,9 @@ export const DialogSelectModel: Component<{ provider?: string }> = (props) => {
           class="h-7 -my-1 text-14-medium"
           icon="plus"
           tabIndex={-1}
-          onClick={() => dialog.show(() => <SettingsDialog initialTab="providers" />)}
+          onClick={() => {
+            dialog.show(() => <SettingsDialog initialTab="providers" />)
+          }}
         >
           Connect provider
         </Button>

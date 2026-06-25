@@ -11,19 +11,6 @@ a:active,
   transition-duration: 80ms;
 }
 
-[data-slot="dialog-container"]:has(.dialog-settings-v2) {
-  width: min(calc(100vw - 48px), 1180px);
-  height: min(calc(100vh - 56px), 820px);
-  max-width: 1180px;
-  max-height: 820px;
-}
-
-[data-slot="dialog-container"]:has(.dialog-settings-v2) [data-slot="dialog-body"] {
-  flex: 1;
-  min-height: 0;
-  overflow: hidden;
-}
-
 [data-slot="dialog-container"]:has(.dialog-session-export) {
   width: min(calc(100vw - 16px), 520px);
 }
@@ -188,13 +175,6 @@ a:active,
 @media (max-width: 767px) {
   .safe-bottom {
     padding-bottom: env(safe-area-inset-bottom, 0px);
-  }
-
-  [data-slot="dialog-container"]:has(.dialog-settings-v2) {
-    width: 100vw;
-    height: 100dvh;
-    max-width: none;
-    max-height: none;
   }
 
   [data-slot="dialog-container"]:has(.dialog-skill-detail) {

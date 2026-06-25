@@ -1,11 +1,10 @@
 import { createEffect, createMemo, createSignal, For, on, onCleanup, Show } from "solid-js"
 import { FlipList } from "@/components/flip-list"
 import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
-import { A, useNavigate, useParams } from "@solidjs/router"
+import { A, useLocation, useNavigate, useParams } from "@solidjs/router"
 import { useLayout } from "@/context/layout"
 import { useGlobalSync } from "@/context/global-sync"
 import { useGlobalSDK } from "@/context/global-sdk"
-import { usePanel } from "@/context/panel"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { useTheme } from "@ericsanchezok/synergy-ui/theme"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
@@ -14,7 +13,6 @@ import { Tooltip } from "@ericsanchezok/synergy-ui/tooltip"
 import { assetPath } from "@/utils/proxy"
 import { base64Encode } from "@ericsanchezok/synergy-util/encode"
 import { getScopeLabel } from "@/utils/scope"
-import { SettingsDialog } from "@/components/settings"
 import { useHolos } from "@/context/holos"
 import { DialogSelectDirectory } from "@/components/dialog/dialog-select-directory"
 import { DialogScopeEdit } from "@/components/dialog/dialog-scope-edit"
@@ -22,6 +20,7 @@ import { DialogConfirm } from "@/components/dialog/dialog-confirm"
 import type { LocalScope, NavEntry } from "@/context/layout"
 import { usePlatform } from "@/context/platform"
 import { useHolosAgentActions } from "@/components/holos/agent-actions"
+import { SettingsDialog } from "@/components/settings"
 import {
   resolveSessionVisualState,
   scopeKeyForNavEntry,
@@ -47,10 +46,10 @@ export function Sidebar(props: SidebarProps) {
   const layout = useLayout()
   const globalSync = useGlobalSync()
   const globalSDK = useGlobalSDK()
-  const panel = usePanel()
   const dialog = useDialog()
   const theme = useTheme()
   const navigate = useNavigate()
+  const location = useLocation()
   const params = useParams()
 
   const isExpanded = () => layout.sidebar.opened()
@@ -307,7 +306,7 @@ export function Sidebar(props: SidebarProps) {
             </Tooltip>
           }
         >
-          <A href={`/${base64Encode("home")}/session`} class="sb-logo" onClick={() => panel.close()}>
+          <A href={`/${base64Encode("home")}/session`} class="sb-logo">
             <img
               src={isDark() ? assetPath("/holos-logo-white.svg") : assetPath("/holos-logo.svg")}
               alt="HOLOS"
@@ -349,9 +348,9 @@ export function Sidebar(props: SidebarProps) {
             type="button"
             classList={{
               "sb-global-btn": true,
-              "sb-global-active": panel.active() === "agenda",
+              "sb-global-active": location.pathname === "/agenda",
             }}
-            onClick={() => panel.toggle("agenda")}
+            onClick={() => navigate("/agenda")}
           >
             <Icon name="clock" size="normal" />
             <Show when={isExpanded()}>
@@ -364,9 +363,9 @@ export function Sidebar(props: SidebarProps) {
             type="button"
             classList={{
               "sb-global-btn": true,
-              "sb-global-active": panel.active() === "library",
+              "sb-global-active": location.pathname === "/library",
             }}
-            onClick={() => panel.toggle("library")}
+            onClick={() => navigate("/library")}
           >
             <Icon name="book-open" size="normal" />
             <Show when={isExpanded()}>
@@ -374,37 +373,22 @@ export function Sidebar(props: SidebarProps) {
             </Show>
           </button>
         </Tooltip>
-        <Tooltip value="Diagnostics" placement="right">
+        <Tooltip value="Plugins" placement="right">
           <button
             type="button"
             classList={{
               "sb-global-btn": true,
-              "sb-global-active": panel.active() === "diagnostics",
+              "sb-global-active": location.pathname.startsWith("/plugins"),
             }}
-            onClick={() => panel.toggle("diagnostics")}
+            onClick={() => navigate("/plugins/marketplace")}
           >
-            <Icon name="stethoscope" size="normal" />
+            <Icon name={getSemanticIcon("app.plugins")} size="normal" />
             <Show when={isExpanded()}>
-              <span class="sb-action-label">Diagnostics</span>
+              <span class="sb-action-label">Plugins</span>
             </Show>
           </button>
         </Tooltip>
       </div>
-      <Tooltip value="Plugins" placement="right">
-        <button
-          type="button"
-          classList={{
-            "sb-global-btn": true,
-            "sb-global-active": params.dir === "plugins",
-          }}
-          onClick={() => navigate("/plugins/marketplace")}
-        >
-          <Icon name="package-open" size="normal" />
-          <Show when={isExpanded()}>
-            <span class="sb-action-label">Plugins</span>
-          </Show>
-        </button>
-      </Tooltip>
 
       {/* Unified scroll region */}
       <Show
@@ -736,7 +720,7 @@ export function Sidebar(props: SidebarProps) {
       </Show>
 
       {/* Bottom: Agent Hub */}
-      <SidebarAgentHub isExpanded={isExpanded()} globalSDK={globalSDK} dialog={dialog} />
+      <SidebarAgentHub isExpanded={isExpanded()} globalSDK={globalSDK} />
 
       {/* Projects flyout (collapsed mode only) */}
       <Show when={!isExpanded() && projectsFlyoutOpen()}>
@@ -891,17 +875,13 @@ function SessionRowIcon(props: { entry: NavEntry; scope?: LocalScope }) {
 
 // --- SidebarAgentHub: bottom avatar/identity trigger + dropdown menu ---
 
-function SidebarAgentHub(props: {
-  isExpanded: boolean
-  globalSDK: ReturnType<typeof useGlobalSDK>
-  dialog: ReturnType<typeof useDialog>
-}) {
+function SidebarAgentHub(props: { isExpanded: boolean; globalSDK: ReturnType<typeof useGlobalSDK> }) {
   const holos = useHolos()
   const platform = usePlatform()
+  const dialog = useDialog()
   const agentActions = useHolosAgentActions(props.globalSDK)
   const [menuOpen, setMenuOpen] = createSignal(false)
   const [agentSwitcherOpen, setAgentSwitcherOpen] = createSignal(false)
-  const [agentAddOpen, setAgentAddOpen] = createSignal(false)
 
   const avatarSrc = () => assetPath("/agent-avatars/synergy-agent-icon.png")
 
@@ -937,7 +917,6 @@ function SidebarAgentHub(props: {
   const closeMenu = () => {
     setMenuOpen(false)
     setAgentSwitcherOpen(false)
-    setAgentAddOpen(false)
     document.removeEventListener("keydown", handleEscape)
   }
 
@@ -995,7 +974,7 @@ function SidebarAgentHub(props: {
 
   const openSettings = (initialTab: string, providerFocusID?: string) => {
     closeMenu()
-    props.dialog.show(() => <SettingsDialog initialTab={initialTab} providerFocusID={providerFocusID} />)
+    dialog.show(() => <SettingsDialog initialTab={initialTab} providerFocusID={providerFocusID} />)
   }
 
   const openRepository = () => {
@@ -1058,19 +1037,6 @@ function SidebarAgentHub(props: {
               </span>
               <Icon name={agentSwitcherOpen() ? "chevron-up" : "chevron-down"} size="small" />
             </button>
-            <Show when={holos.state.identity.loggedIn}>
-              <button
-                type="button"
-                class="sidebar-account-card-add"
-                aria-label="Add agent"
-                onClick={(event) => {
-                  event.stopPropagation()
-                  setAgentAddOpen((value) => !value)
-                }}
-              >
-                <Icon name={getSemanticIcon("action.add")} size="small" />
-              </button>
-            </Show>
           </div>
 
           <Show when={agentSwitcherOpen()}>
@@ -1104,32 +1070,6 @@ function SidebarAgentHub(props: {
                   </button>
                 )}
               </For>
-              <button
-                type="button"
-                class="sidebar-account-menuItem sidebar-account-menuItem--add"
-                role="menuitem"
-                onClick={() => {
-                  closeMenu()
-                  void agentActions.createAgent()
-                }}
-              >
-                <Icon name={getSemanticIcon("account.create")} size="small" />
-                <span>Create Agent</span>
-              </button>
-              <button
-                type="button"
-                class="sidebar-account-menuItem sidebar-account-menuItem--add"
-                role="menuitem"
-                onClick={openImportExistingAgentDialog}
-              >
-                <Icon name={getSemanticIcon("account.import")} size="small" />
-                <span>Import Agent</span>
-              </button>
-            </div>
-          </Show>
-
-          <Show when={agentAddOpen()}>
-            <div class="sidebar-account-add-popover" role="menu">
               <button
                 type="button"
                 class="sidebar-account-menuItem sidebar-account-menuItem--add"
@@ -1189,6 +1129,15 @@ function SidebarAgentHub(props: {
             >
               <Icon name={getSemanticIcon("settings.account")} size="small" />
               <span>Account</span>
+            </button>
+            <button
+              type="button"
+              class="sidebar-account-menuItem"
+              role="menuitem"
+              onClick={() => openSettings("general")}
+            >
+              <Icon name={getSemanticIcon("settings.general")} size="small" />
+              <span>Settings</span>
             </button>
             <button
               type="button"
