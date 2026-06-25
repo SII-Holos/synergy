@@ -4,14 +4,24 @@ import "../../src/migration"
 import { MigrationRegistry } from "../../src/migration/registry"
 
 describe("MigrationRegistry", () => {
-  test("registers all 7 domains", () => {
+  test("registers all domains", () => {
     const domainCount = MigrationRegistry.list().size
-    expect(domainCount).toBe(7)
+    expect(domainCount).toBe(9)
   })
 
   test("has expected domain names", () => {
     const domains = [...MigrationRegistry.list().keys()].sort()
-    expect(domains).toEqual(["agenda", "config", "engram", "holos", "note", "scope", "session"])
+    expect(domains).toEqual([
+      "agenda",
+      "blueprint_loop",
+      "browser",
+      "config",
+      "holos",
+      "library",
+      "note",
+      "scope",
+      "session",
+    ])
   })
 
   test("each domain has at least one migration", () => {

@@ -3,7 +3,7 @@ import { Tool } from "./tool"
 import { Ripgrep } from "../file/ripgrep"
 
 import DESCRIPTION from "./grep.txt"
-import { Instance } from "../scope/instance"
+import { ScopeContext } from "../scope/context"
 import path from "path"
 
 const MAX_LINE_LENGTH = 2000
@@ -33,8 +33,8 @@ export const GrepTool = Tool.define("grep", {
     const searchPath = params.path
       ? path.isAbsolute(params.path)
         ? params.path
-        : path.resolve(Instance.directory, params.path)
-      : Instance.directory
+        : path.resolve(ScopeContext.current.directory, params.path)
+      : ScopeContext.current.directory
 
     const rgPath = await Ripgrep.filepath()
     const args = ["-nH", "--field-match-separator=|", "--regexp", params.pattern]

@@ -1,5 +1,5 @@
 import { Snapshot } from "../../../session/snapshot"
-import { bootstrap } from "../../bootstrap"
+import { withScopeContext } from "../../scope"
 import { cmd } from "../cmd"
 
 export const SnapshotCommand = cmd({
@@ -15,7 +15,7 @@ const TrackCommand = cmd({
   builder: (yargs) =>
     yargs.option("session", { type: "string", description: "Session ID for per-session snapshot isolation" }),
   async handler(args) {
-    await bootstrap(process.cwd(), async () => {
+    await withScopeContext(process.cwd(), async () => {
       console.log(await Snapshot.track(args.session ?? "default"))
     })
   },
@@ -33,7 +33,7 @@ const PatchCommand = cmd({
       })
       .option("session", { type: "string", description: "Session ID for per-session snapshot isolation" }),
   async handler(args) {
-    await bootstrap(process.cwd(), async () => {
+    await withScopeContext(process.cwd(), async () => {
       console.log(await Snapshot.patch(args.hash, args.session ?? "default"))
     })
   },
@@ -51,7 +51,7 @@ const DiffCommand = cmd({
       })
       .option("session", { type: "string", description: "Session ID for per-session snapshot isolation" }),
   async handler(args) {
-    await bootstrap(process.cwd(), async () => {
+    await withScopeContext(process.cwd(), async () => {
       console.log(await Snapshot.diff(args.hash, args.session ?? "default"))
     })
   },

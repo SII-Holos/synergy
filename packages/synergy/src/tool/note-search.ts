@@ -3,7 +3,7 @@ import { Tool } from "./tool"
 import { NoteStore } from "../note"
 import { NoteMarkdown } from "../note"
 import { NoteTypes } from "../note"
-import { Instance } from "../scope/instance"
+import { ScopeContext } from "../scope/context"
 import DESCRIPTION from "./note-search.txt"
 import { Plugin } from "../plugin"
 
@@ -13,6 +13,10 @@ const parameters = z.object({
     .enum(["current", "global", "all"])
     .default("all")
     .describe("Which scope to search: 'current', 'global', or 'all'."),
+  kind: z
+    .enum(["all", "note", "blueprint"])
+    .default("all")
+    .describe("Filter by document kind. Blueprints are executable notes."),
   since: z
     .string()
     .optional()
@@ -53,7 +57,7 @@ export const NoteSearchTool = Tool.define("note_search", {
   description: DESCRIPTION,
   parameters,
   async execute(params: z.infer<typeof parameters>) {
-    const currentScopeID = Instance.scope.id
+    const currentScopeID = ScopeContext.current.scope.id
     const search = await Plugin.trigger(
       "note.search.before",
       {
@@ -66,6 +70,7 @@ export const NoteSearchTool = Tool.define("note_search", {
         before: params.before,
         tags: params.tags,
         pinned: params.pinned,
+        kind: params.kind,
       },
     )
 
@@ -97,6 +102,7 @@ export const NoteSearchTool = Tool.define("note_search", {
         if (!search.tags.every((tag) => note.tags.includes(tag))) return false
       }
       if (search.pinned !== undefined && note.pinned !== search.pinned) return false
+      if (search.kind && search.kind !== "all" && (note.kind ?? "note") !== search.kind) return false
       return true
     })
 
@@ -142,6 +148,7 @@ export const NoteSearchTool = Tool.define("note_search", {
       totalMatches += contentMatchCount
 
       const header: string[] = [`[${meta.id}] "${meta.title}"`]
+      if ((meta.kind ?? "note") === "blueprint") header.push("[blueprint]")
       if (meta.pinned) header.push("[pinned]")
       if (meta.global) header.push("[global]")
 
@@ -194,7 +201,12 @@ export const NoteSearchTool = Tool.define("note_search", {
     return {
       title: search.pattern,
       output,
-      metadata: { matchCount: totalMatches, noteCount: matchedNotes, pattern: search.pattern } as Record<string, any>,
+      metadata: {
+        matchCount: totalMatches,
+        noteCount: matchedNotes,
+        pattern: search.pattern,
+        kind: search.kind,
+      } as Record<string, any>,
     }
   },
 })

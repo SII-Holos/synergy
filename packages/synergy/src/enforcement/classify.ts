@@ -1,5 +1,91 @@
 import path from "path"
 import { Filesystem } from "../util/filesystem"
+/**
+ * Paths that are ALWAYS protected regardless of permission profile/mode.
+ * Touching these triggers an ask even in full_access mode. This is a hard
+ * security boundary that cannot be overridden by profile, Smart allow, or
+ * session-level memory.
+ */
+export const PROTECTED_WRITE_PATHS = [
+  ".git/",
+  ".env",
+  ".env.local",
+  ".env.production",
+  ".env.development",
+  ".vscode/",
+  ".idea/",
+  ".claude/",
+  ".synergy/",
+  ".husky/",
+  ".devcontainer/",
+]
+
+export const PROTECTED_READ_PATHS = [".ssh/", ".aws/", ".config/git/", ".gnupg/"]
+
+export const PROTECTED_FILE_PATTERNS = [
+  /(^|\/)\.env(\.|$)/i,
+  /\.pem$/i,
+  /\.key$/i,
+  /\.p12$/i,
+  /\.pfx$/i,
+  /(^|\/)id_rsa/i,
+  /(^|\/)id_ed25519/i,
+  /(^|\/)credentials$/i,
+]
+
+export interface ProtectedMatch {
+  matched: boolean
+  reason?: string
+  category?: "vcs" | "config" | "credentials" | "secrets"
+}
+
+export function checkProtectedPath(path: string, mode: "read" | "write"): ProtectedMatch {
+  if (!path) return { matched: false }
+  const normalized = path.replace(/^~\//, "").replace(/^\.\//, "")
+  const lower = normalized.toLowerCase()
+
+  for (const pattern of PROTECTED_FILE_PATTERNS) {
+    if (pattern.test(lower)) {
+      return {
+        matched: true,
+        reason: `Path matches protected pattern (credentials/secrets)`,
+        category: lower.includes(".env") ? "secrets" : "credentials",
+      }
+    }
+  }
+
+  if (mode === "read") {
+    for (const prefix of PROTECTED_READ_PATHS) {
+      if (lower.startsWith(prefix) || lower.includes("/" + prefix)) {
+        return {
+          matched: true,
+          reason: `Reading from protected directory (${prefix})`,
+          category: "credentials",
+        }
+      }
+    }
+  }
+
+  if (mode === "write") {
+    for (const prefix of PROTECTED_WRITE_PATHS) {
+      const trimmed = prefix.endsWith("/") ? prefix : prefix + "/"
+      if (lower === prefix || lower.startsWith(trimmed) || lower.includes("/" + trimmed)) {
+        const category: ProtectedMatch["category"] = prefix.startsWith(".git")
+          ? "vcs"
+          : prefix.startsWith(".env")
+            ? "secrets"
+            : "config"
+        return {
+          matched: true,
+          reason: `Writing to protected path (${prefix})`,
+          category,
+        }
+      }
+    }
+  }
+
+  return { matched: false }
+}
 
 export namespace PathClassifier {
   export type Boundary = "inside" | "outside"

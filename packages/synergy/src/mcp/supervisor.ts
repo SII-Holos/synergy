@@ -13,13 +13,15 @@ import { mergeDeep } from "remeda"
 import z from "zod"
 import { Config } from "../config/config"
 import { Log } from "../util/log"
-import { Instance } from "../scope/instance"
+import { ScopeContext } from "../scope/context"
 import { Installation } from "../global/installation"
+import { Global } from "../global"
 import { withTimeout } from "../util/timeout"
 import { Bus } from "../bus"
 import { BusEvent } from "../bus/bus-event"
 import { NamedError } from "@ericsanchezok/synergy-util/error"
 import { McpOAuthProvider } from "./oauth-provider"
+import { PluginId } from "../plugin/ids.js"
 
 // ---------------------------------------------------------------------------
 // Bus events — defined here, re-exported by index.ts for back-compat
@@ -198,6 +200,13 @@ function redactUrl(url: string): string {
   } catch {
     return url
   }
+}
+
+function localServerCwd(config: Extract<Config.Mcp, { type: "local" }>): string {
+  if (config.cwd) return config.cwd
+  const scope = ScopeContext.tryScope()
+  if (scope?.type === "project") return scope.directory
+  return Global.Path.home
 }
 
 async function closeFailedClient(client: Client, name: string, phase: string): Promise<void> {
@@ -533,7 +542,7 @@ class McpSupervisorImpl {
    * supervisor handles scheduling independently.
    */
   async registerPluginServers(pluginId: string, manifestMcp: Record<string, unknown>): Promise<void> {
-    const cfg = await Config.get()
+    const cfg = await Config.current()
     const userMcp = cfg.mcp ?? {}
     const defaults =
       typeof manifestMcp.defaults === "object" && manifestMcp.defaults !== null
@@ -551,7 +560,7 @@ class McpSupervisorImpl {
         continue
       }
 
-      const scopedKey = `${pluginId}::${serverKey}`
+      const scopedKey = PluginId.mcpServerKey(pluginId, serverKey)
 
       // Skip if already registered (e.g. from a prior init/reload cycle)
       if (this.get(scopedKey)) {
@@ -574,7 +583,7 @@ class McpSupervisorImpl {
    * Disconnects and removes every handle whose name starts with `{pluginId}::`.
    */
   async unregisterPluginServers(pluginId: string): Promise<void> {
-    const prefix = `${pluginId}::`
+    const prefix = PluginId.mcpServerKey(pluginId, "")
     const handles = this.getAll().filter((h) => h.name.startsWith(prefix))
     await Promise.all(handles.map((h) => this.disconnect(h.name)))
     for (const h of handles) {
@@ -585,7 +594,7 @@ class McpSupervisorImpl {
   // ── Internal ────────────────────────────────────────────────────────
 
   private async initFromConfig(): Promise<void> {
-    const cfg = await Config.get()
+    const cfg = await Config.current()
     const config = cfg.mcp ?? {}
 
     for (const [key, mcp] of Object.entries(config)) {
@@ -733,7 +742,7 @@ class McpSupervisorImpl {
 
     if (config.type === "local") {
       const [cmd, ...args] = config.command
-      const cwd = Instance.directory
+      const cwd = localServerCwd(config)
       const transport = new StdioClientTransport({
         stderr: "ignore",
         command: cmd,

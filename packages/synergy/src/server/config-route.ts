@@ -3,53 +3,24 @@ import { describeRoute, resolver, validator } from "hono-openapi"
 import { mapValues } from "remeda"
 import z from "zod"
 import { Config } from "../config/config"
-import { ConfigSet } from "../config/set"
+import { ConfigDomain } from "../config/domain"
 import { Provider } from "../provider/provider"
 import { RuntimeReload } from "../runtime/reload"
-import { RuntimeSchema } from "../runtime/schema"
 import { Log } from "../util/log"
 import { errors } from "./error"
 
 const log = Log.create({ service: "config-route" })
 
-/** Extract top-level keys from the raw request body so we only classify
- *  fields the user actually sent — not Config.Info defaults filled by Zod. */
 function classifyChangedFields(rawBody: Record<string, unknown>): Set<string> {
   return new Set(Object.keys(rawBody))
 }
 
-const ConfigSetWithConfig = ConfigSet.Summary.extend({
-  config: Config.Info,
-}).meta({ ref: "ConfigSetWithConfig" })
-
-const ConfigSetCreateInput = z
+const DomainUpdateInput = z
   .object({
-    name: ConfigSet.Name,
-    config: Config.Info.optional(),
+    config: Config.Info,
+    mode: ConfigDomain.MergeMode.optional(),
   })
-  .meta({ ref: "ConfigSetCreateInput" })
-
-const ConfigSetActivateResult = z
-  .object({
-    previous: ConfigSet.Name,
-    active: ConfigSet.Name,
-    changed: z.boolean(),
-    runtimeReload: RuntimeSchema.ReloadResult,
-  })
-  .meta({ ref: "ConfigSetActivateResult" })
-
-const ConfigSetRawValidateInput = z
-  .object({
-    raw: z.string(),
-  })
-  .meta({ ref: "ConfigSetRawValidateInput" })
-
-const ConfigSetRawSaveInput = z
-  .object({
-    raw: z.string(),
-    reload: z.boolean().optional(),
-  })
-  .meta({ ref: "ConfigSetRawSaveInput" })
+  .meta({ ref: "ConfigDomainUpdateInput" })
 
 export const ConfigRoute = new Hono()
   .get(
@@ -61,17 +32,11 @@ export const ConfigRoute = new Hono()
       responses: {
         200: {
           description: "Get config info",
-          content: {
-            "application/json": {
-              schema: resolver(Config.Info),
-            },
-          },
+          content: { "application/json": { schema: resolver(Config.Info) } },
         },
       },
     }),
-    async (c) => {
-      return c.json(Config.redactForClient(await Config.get()))
-    },
+    async (c) => c.json(Config.redactForClient(await Config.current())),
   )
   .patch(
     "/",
@@ -82,327 +47,135 @@ export const ConfigRoute = new Hono()
       responses: {
         200: {
           description: "Successfully updated config",
-          content: {
-            "application/json": {
-              schema: resolver(Config.Info),
-            },
-          },
+          content: { "application/json": { schema: resolver(Config.Info) } },
         },
         ...errors(400),
       },
     }),
     validator("json", z.object({ config: Config.Info })),
     async (c) => {
-      // Keep the wrapper shape stable for SDK clients while preserving the exact
-      // user-sent config object for changed-field classification.
       const rawBody = c.req.valid("json").config as Record<string, unknown>
       const changedFields = classifyChangedFields(rawBody)
-
-      // Merge redacted sentinels from client back to stored secrets
-      const storedConfig = await Config.get()
+      const storedConfig = await Config.current()
       const validated = Config.Info.parse(rawBody)
       const merged = Config.mergeRedactedSecrets(validated, storedConfig)
       await Config.updateGlobal(merged)
-
-      // Field-level triage: skip unnecessary cascading
-      const hasCascade = RuntimeReload.inferConfigCascades([...changedFields]).length > 0
-      const allClientSide =
-        changedFields.size > 0 && [...changedFields].every((f) => RuntimeReload.CONFIG_CLIENT_SIDE.has(f))
-      const allLiveNoCascade =
-        changedFields.size > 0 &&
-        [...changedFields].every((f) => RuntimeReload.CONFIG_LIVE_APPLIED.has(f)) &&
-        !hasCascade
-
-      if (allClientSide) {
-        log.info("config updated (client-side only, skipping reload)", {
-          changedFields: [...changedFields],
-        })
-      } else if (allLiveNoCascade) {
-        await Config.reload("global")
-        log.info("config updated (live-applied, no cascade)", {
-          changedFields: [...changedFields],
-        })
-      } else {
-        const result = await RuntimeReload.reload({
-          targets: ["config"],
-          scope: "global",
-          reason: "config.update route",
-        })
-        log.info("config updated", {
-          changedFields: result.changedFields,
-          restartRequired: result.restartRequired,
-          warnings: result.warnings,
-        })
-      }
-      return c.json(Config.redactForClient(await Config.get()))
+      await reloadAfterConfigChange(changedFields, "config.update route")
+      return c.json(Config.redactForClient(await Config.current()))
     },
   )
   .get(
     "/global",
     describeRoute({
       summary: "Get global configuration",
-      description: "Retrieve only the active global Config Set raw configuration (without project or remote layers).",
+      description: "Retrieve only the canonical global domain configuration.",
       operationId: "config.global",
       responses: {
         200: {
           description: "Get global config info",
-          content: {
-            "application/json": {
-              schema: resolver(Config.Info),
-            },
-          },
+          content: { "application/json": { schema: resolver(Config.Info) } },
         },
       },
     }),
-    async (c) => {
-      const globalConfig = await Config.globalRaw()
-      return c.json(Config.redactForClient(globalConfig))
-    },
+    async (c) => c.json(Config.redactForClient(await Config.globalRaw())),
   )
   .get(
-    "/sets",
+    "/domains",
     describeRoute({
-      summary: "List Config Sets",
-      description: "List all global Config Sets and indicate which one is active.",
-      operationId: "config.set.list",
+      summary: "List config domains",
+      description: "List canonical config domains and their current global fragments.",
+      operationId: "config.domain.list",
       responses: {
         200: {
-          description: "List of Config Sets",
-          content: {
-            "application/json": {
-              schema: resolver(ConfigSet.Summary.array()),
-            },
-          },
+          description: "List of config domains",
+          content: { "application/json": { schema: resolver(Config.DomainSummary.array()) } },
         },
       },
     }),
-    async (c) => {
-      return c.json(await Config.configSetList())
-    },
+    async (c) => c.json(await Config.domainList()),
   )
-  .post(
-    "/sets",
+  .get(
+    "/domains/:domain",
     describeRoute({
-      summary: "Create Config Set",
-      description: "Create a new global Config Set, defaulting to a copy of the current active raw global config.",
-      operationId: "config.set.create",
+      summary: "Get config domain",
+      description: "Read one canonical global config domain fragment.",
+      operationId: "config.domain.get",
       responses: {
         200: {
-          description: "Created Config Set",
-          content: {
-            "application/json": {
-              schema: resolver(ConfigSetWithConfig),
-            },
-          },
+          description: "Config domain fragment",
+          content: { "application/json": { schema: resolver(Config.Info) } },
         },
         ...errors(400),
       },
     }),
-    validator("json", ConfigSetCreateInput),
+    validator("param", z.object({ domain: ConfigDomain.Id })),
     async (c) => {
-      const body = c.req.valid("json")
-      return c.json(await Config.configSetCreate(body.name, body.config))
-    },
-  )
-  .get(
-    "/sets/:name",
-    describeRoute({
-      summary: "Get Config Set",
-      description: "Read a global Config Set and its raw configuration.",
-      operationId: "config.set.get",
-      responses: {
-        200: {
-          description: "Config Set",
-          content: {
-            "application/json": {
-              schema: resolver(ConfigSetWithConfig),
-            },
-          },
-        },
-        ...errors(400),
-      },
-    }),
-    validator("param", z.object({ name: ConfigSet.Name })),
-    async (c) => {
-      const { name } = c.req.valid("param")
-      return c.json(await Config.configSetGet(name))
+      const { domain } = c.req.valid("param")
+      return c.json(Config.redactForClient(await Config.domainGet(domain)))
     },
   )
   .patch(
-    "/sets/:name",
+    "/domains/:domain",
     describeRoute({
-      summary: "Update Config Set",
-      description: "Patch a global Config Set raw configuration.",
-      operationId: "config.set.update",
+      summary: "Update config domain",
+      description: "Update one canonical global config domain fragment.",
+      operationId: "config.domain.update",
       responses: {
         200: {
-          description: "Updated Config Set",
-          content: {
-            "application/json": {
-              schema: resolver(ConfigSetWithConfig),
-            },
-          },
+          description: "Updated config domain fragment",
+          content: { "application/json": { schema: resolver(Config.Info) } },
         },
         ...errors(400),
       },
     }),
-    validator("param", z.object({ name: ConfigSet.Name })),
-    validator("json", Config.Info),
+    validator("param", z.object({ domain: ConfigDomain.Id })),
+    validator("json", DomainUpdateInput),
     async (c) => {
-      const { name } = c.req.valid("param")
+      const { domain } = c.req.valid("param")
       const body = c.req.valid("json")
-      return c.json(await Config.configSetUpdate(name, body))
-    },
-  )
-  .get(
-    "/sets/:name/raw",
-    describeRoute({
-      summary: "Get Config Set raw",
-      description: "Read a global Config Set raw JSONC source and parsed preview.",
-      operationId: "config.set.raw.get",
-      responses: {
-        200: {
-          description: "Config Set raw source",
-          content: {
-            "application/json": {
-              schema: resolver(Config.RawSet),
-            },
-          },
-        },
-        ...errors(400),
-      },
-    }),
-    validator("param", z.object({ name: ConfigSet.Name })),
-    async (c) => {
-      const { name } = c.req.valid("param")
-      return c.json(await Config.configSetGetRaw(name))
-    },
-  )
-  .post(
-    "/sets/:name/raw/validate",
-    describeRoute({
-      summary: "Validate Config Set raw",
-      description: "Validate raw JSONC for a global Config Set without saving it.",
-      operationId: "config.set.raw.validate",
-      responses: {
-        200: {
-          description: "Validation result",
-          content: {
-            "application/json": {
-              schema: resolver(Config.RawValidationResult),
-            },
-          },
-        },
-        ...errors(400),
-      },
-    }),
-    validator("param", z.object({ name: ConfigSet.Name })),
-    validator("json", ConfigSetRawValidateInput),
-    async (c) => {
-      const { name } = c.req.valid("param")
-      const body = c.req.valid("json")
-      await ConfigSet.assertExists(name)
-      return c.json(await Config.validateRaw(body.raw, ConfigSet.filePath(name)))
-    },
-  )
-  .put(
-    "/sets/:name/raw",
-    describeRoute({
-      summary: "Save Config Set raw",
-      description: "Save raw JSONC for a global Config Set after validation and optionally reload runtime if active.",
-      operationId: "config.set.raw.save",
-      responses: {
-        200: {
-          description: "Saved Config Set raw source",
-          content: {
-            "application/json": {
-              schema: resolver(Config.RawSaveResult),
-            },
-          },
-        },
-        ...errors(400),
-      },
-    }),
-    validator("param", z.object({ name: ConfigSet.Name })),
-    validator("json", ConfigSetRawSaveInput),
-    async (c) => {
-      const { name } = c.req.valid("param")
-      const body = c.req.valid("json")
-      const result = await Config.configSetSaveRaw(name, body.raw, body.reload ?? true)
-      if (result.runtimeReload) {
-        log.info("config set raw saved", {
-          name,
-          changedFields: result.runtimeReload.changedFields,
-          restartRequired: result.runtimeReload.restartRequired,
-          warnings: result.runtimeReload.warnings,
-        })
-      }
+      const changedFields = classifyChangedFields(body.config as Record<string, unknown>)
+      const result = await Config.domainUpdate(domain, body.config, { mode: body.mode })
+      await reloadAfterConfigChange(changedFields, `config.domain.update:${domain}`)
       return c.json(result)
     },
   )
-  .delete(
-    "/sets/:name",
+  .post(
+    "/import/plan",
     describeRoute({
-      summary: "Delete Config Set",
-      description: "Delete an inactive non-default global Config Set.",
-      operationId: "config.set.delete",
+      summary: "Plan config import",
+      description: "Create a dry-run plan for importing selected config domains.",
+      operationId: "config.import.plan",
       responses: {
         200: {
-          description: "Deleted Config Set",
-          content: {
-            "application/json": {
-              schema: resolver(ConfigSet.Summary),
-            },
-          },
+          description: "Config import plan",
+          content: { "application/json": { schema: resolver(Config.DomainImportPlan) } },
         },
         ...errors(400),
       },
     }),
-    validator("param", z.object({ name: ConfigSet.Name })),
-    async (c) => {
-      const { name } = c.req.valid("param")
-      return c.json(await Config.configSetDelete(name))
-    },
+    validator("json", Config.DomainImportPlanInput),
+    async (c) => c.json(await Config.domainImportPlan(c.req.valid("json"))),
   )
   .post(
-    "/sets/:name/activate",
+    "/import/apply",
     describeRoute({
-      summary: "Activate Config Set",
-      description: "Activate a global Config Set and reload global runtime configuration.",
-      operationId: "config.set.activate",
+      summary: "Apply config import",
+      description: "Apply a selected-domain config import plan.",
+      operationId: "config.import.apply",
       responses: {
         200: {
-          description: "Activated Config Set",
-          content: {
-            "application/json": {
-              schema: resolver(ConfigSetActivateResult),
-            },
-          },
+          description: "Applied config import plan",
+          content: { "application/json": { schema: resolver(Config.DomainImportPlan) } },
         },
         ...errors(400),
       },
     }),
-    validator("param", z.object({ name: ConfigSet.Name })),
+    validator("json", Config.DomainImportPlanInput.extend({ yes: z.boolean().optional() })),
     async (c) => {
-      const { name } = c.req.valid("param")
-      const activation = await Config.configSetActivate(name)
-      const runtimeReload = await RuntimeReload.reload({
-        targets: ["all"],
-        scope: "global",
-        reason: `config.set.activate:${activation.active}`,
-      })
-      log.info("config set activated", {
-        previous: activation.previous,
-        active: activation.active,
-        changed: activation.changed,
-        changedFields: runtimeReload.changedFields,
-        restartRequired: runtimeReload.restartRequired,
-        warnings: runtimeReload.warnings,
-      })
-      return c.json({
-        ...activation,
-        runtimeReload,
-      })
+      const plan = await Config.domainImportApply(c.req.valid("json"))
+      const changedFields = new Set(plan.domains.flatMap((domain) => domain.changes.map((change) => change.key)))
+      await reloadAfterConfigChange(changedFields, "config.import.apply")
+      return c.json(plan)
     },
   )
   .get(
@@ -436,3 +209,31 @@ export const ConfigRoute = new Hono()
       })
     },
   )
+
+async function reloadAfterConfigChange(changedFields: Set<string>, reason: string) {
+  const hasCascade = RuntimeReload.inferConfigCascades([...changedFields]).length > 0
+  const allClientSide =
+    changedFields.size > 0 && [...changedFields].every((f) => RuntimeReload.CONFIG_CLIENT_SIDE.has(f))
+  const allLiveNoCascade =
+    changedFields.size > 0 && [...changedFields].every((f) => RuntimeReload.CONFIG_LIVE_APPLIED.has(f)) && !hasCascade
+
+  if (allClientSide) {
+    log.info("config updated (client-side only, skipping reload)", { changedFields: [...changedFields] })
+    return
+  }
+  if (allLiveNoCascade) {
+    await Config.reload("global")
+    log.info("config updated (live-applied, no cascade)", { changedFields: [...changedFields] })
+    return
+  }
+  const result = await RuntimeReload.reload({
+    targets: ["config"],
+    scope: "global",
+    reason,
+  })
+  log.info("config updated", {
+    changedFields: result.changedFields,
+    restartRequired: result.restartRequired,
+    warnings: result.warnings,
+  })
+}

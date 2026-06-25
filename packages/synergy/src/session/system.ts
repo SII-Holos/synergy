@@ -5,7 +5,7 @@ import { Filesystem } from "../util/filesystem"
 import { Config } from "../config/config"
 import { formatLocalDate, formatLocalDateTime } from "../util/time-format"
 
-import { Instance } from "../scope/instance"
+import { ScopeContext } from "../scope/context"
 import { SessionEndpoint } from "./endpoint"
 import path from "path"
 import os from "os"
@@ -34,17 +34,17 @@ export namespace SystemPrompt {
       interaction?: { mode: string; source?: string }
     }
   }) {
-    const scope = Instance.scope
+    const scope = ScopeContext.current.scope
     const endpointType = options?.endpointType
     const session = options?.session
     const envLines = [
-      `  Working directory: ${Instance.directory}`,
+      `  Working directory: ${ScopeContext.current.directory}`,
       `  Is directory a git repo: ${scope.type === "project" && scope.vcs === "git" ? "yes" : "no"}`,
       `  Platform: ${process.platform}`,
       `  Today's date: ${formatLocalDate(Date.now())}`,
     ]
 
-    const workspace = Instance.workspace
+    const workspace = ScopeContext.current.workspace
     if (workspace) {
       envLines.push(`  Workspace type: ${workspace.type}`)
       envLines.push(`  Workspace path: ${workspace.path}`)
@@ -65,7 +65,7 @@ export namespace SystemPrompt {
       }
     }
 
-    if (scope.type === "global") {
+    if (scope.type === "home") {
       if (!endpointType) {
         envLines.push(`  Scope: home`)
       }
@@ -95,7 +95,7 @@ export namespace SystemPrompt {
         const parent = await Session.get(session.parentID).catch(() => undefined)
         if (parent) {
           const parentWs = (parent as any).workspace
-          const childWs = Instance.workspace
+          const childWs = ScopeContext.current.workspace
           if (parentWs && childWs && parentWs.path !== childWs.path) {
             envLines.push(`  Parent workspace type: ${parentWs.type}`)
             envLines.push(`  Parent workspace path: ${parentWs.path}`)
@@ -114,7 +114,7 @@ export namespace SystemPrompt {
         `  ${
           scope.type === "project" && scope.vcs === "git" && false
             ? await Ripgrep.tree({
-                cwd: Instance.directory,
+                cwd: ScopeContext.current.directory,
                 limit: 200,
               })
             : ""
@@ -139,11 +139,15 @@ export namespace SystemPrompt {
   }
 
   export async function custom() {
-    const config = await Config.get()
+    const config = await Config.current()
     const paths = new Set<string>()
 
     for (const localRuleFile of LOCAL_RULE_FILES) {
-      const matches = await Filesystem.findUp(localRuleFile, Instance.directory, Instance.directory)
+      const matches = await Filesystem.findUp(
+        localRuleFile,
+        ScopeContext.current.directory,
+        ScopeContext.current.directory,
+      )
       if (matches.length > 0) {
         matches.forEach((path) => paths.add(path))
         break
@@ -177,7 +181,11 @@ export namespace SystemPrompt {
             }),
           ).catch(() => [])
         } else {
-          matches = await Filesystem.globUp(instruction, Instance.directory, Instance.directory).catch(() => [])
+          matches = await Filesystem.globUp(
+            instruction,
+            ScopeContext.current.directory,
+            ScopeContext.current.directory,
+          ).catch(() => [])
         }
         matches.forEach((path) => paths.add(path))
       }

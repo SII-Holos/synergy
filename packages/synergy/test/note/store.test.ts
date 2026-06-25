@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import { tmpdir } from "../fixture/fixture"
-import { Instance } from "../../src/scope/instance"
+import { ScopeContext } from "../../src/scope/context"
 import { Scope } from "../../src/scope"
 import { NoteError, NoteStore } from "../../src/note"
 import { Storage } from "../../src/storage/storage"
@@ -15,18 +15,18 @@ describe("NoteStore", () => {
     await using tmp = await tmpdir()
     const scope = (await Scope.fromDirectory(tmp.path)).scope
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope,
       fn: async () => {
         const note = await NoteStore.create(
           {
             title: "Global note",
           },
-          { scopeID: "global" },
+          { scopeID: "home" },
         )
 
         expect(note.global).toBe(true)
-        const globalNote = await NoteStore.get("global", note.id)
+        const globalNote = await NoteStore.get("home", note.id)
         expect(globalNote.id).toBe(note.id)
       },
     })
@@ -36,7 +36,7 @@ describe("NoteStore", () => {
     await using tmp = await tmpdir()
     const scope = (await Scope.fromDirectory(tmp.path)).scope
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope,
       fn: async () => {
         const created = await NoteStore.create({
@@ -59,7 +59,7 @@ describe("NoteStore", () => {
     await using tmp = await tmpdir()
     const scope = (await Scope.fromDirectory(tmp.path)).scope
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope,
       fn: async () => {
         const created = await NoteStore.create({
@@ -83,7 +83,7 @@ describe("NoteStore", () => {
     await using tmp = await tmpdir()
     const scope = (await Scope.fromDirectory(tmp.path)).scope
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope,
       fn: async () => {
         const noteID = Identifier.ascending("note")
@@ -108,11 +108,37 @@ describe("NoteStore", () => {
     })
   })
 
+  test("getAny resolves notes outside the active and home scopes", async () => {
+    await using sourceTmp = await tmpdir()
+    await using activeTmp = await tmpdir()
+    const sourceScope = (await Scope.fromDirectory(sourceTmp.path)).scope
+    const activeScope = (await Scope.fromDirectory(activeTmp.path)).scope
+
+    let noteID = ""
+    await ScopeContext.provide({
+      scope: sourceScope,
+      fn: async () => {
+        const note = await NoteStore.create({
+          title: "Archived source note",
+        })
+        noteID = note.id
+      },
+    })
+
+    await ScopeContext.provide({
+      scope: activeScope,
+      fn: async () => {
+        const note = await NoteStore.getAny(activeScope.id, noteID)
+        expect(note.title).toBe("Archived source note")
+      },
+    })
+  })
+
   test("listMetaGrouped returns grouped note metadata without content and with searchText", async () => {
     await using tmp = await tmpdir()
     const scope = (await Scope.fromDirectory(tmp.path)).scope
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope,
       fn: async () => {
         const globalNote = await NoteStore.create(
@@ -123,7 +149,7 @@ describe("NoteStore", () => {
               content: [{ type: "paragraph", content: [{ type: "text", text: "Global content here" }] }],
             },
           },
-          { scopeID: "global" },
+          { scopeID: "home" },
         )
         const projectNote = await NoteStore.create({
           title: "Project note",
@@ -161,14 +187,14 @@ describe("NoteStore", () => {
         }
 
         // Verify searchText contains actual note text (pre-computed markdown from index)
-        const globalGroup = groups.find((g) => g.scopeID === "global")
+        const globalGroup = groups.find((g) => g.scopeID === "home")
         expect(globalGroup).toBeDefined()
         const globalMeta = globalGroup!.notes.find((n) => n.id === globalNote.id)
         expect(globalMeta).toBeDefined()
         expect(globalMeta!.searchText).toContain("Global content")
 
         // Verify project note is present in its project scope group
-        const projectGroup = groups.find((g) => g.scopeID !== "global" && g.notes.some((n) => n.id === projectNote.id))
+        const projectGroup = groups.find((g) => g.scopeID !== "home" && g.notes.some((n) => n.id === projectNote.id))
         expect(projectGroup).toBeDefined()
       },
     })
@@ -178,7 +204,7 @@ describe("NoteStore", () => {
     await using tmp = await tmpdir()
     const scope = (await Scope.fromDirectory(tmp.path)).scope
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope,
       fn: async () => {
         await NoteStore.create({

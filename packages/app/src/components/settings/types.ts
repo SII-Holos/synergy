@@ -1,4 +1,3 @@
-import type { Config, ConfigSetSummary } from "@ericsanchezok/synergy-sdk/client"
 import type { SendShortcut } from "@/context/input"
 
 export type ProviderModel = {
@@ -18,7 +17,7 @@ export type ModelKey =
   | "long_context_model"
   | "creative_model"
 
-/** Resolved defaults returned by Config.get() (Phase 1 backend). These are the actual active defaults, never undefined. */
+/** Resolved defaults returned by Config.current()/Config.forScope(). These are the actual active defaults, never undefined. */
 export const MODEL_DEFAULTS: Record<ModelKey, string> = {
   model: "synergy",
   nano_model: "",
@@ -38,8 +37,8 @@ export const UI_DEFAULTS = {
   questionTimeout: 1800,
   compactionAuto: "true" as string,
   compactionOverflowThreshold: "0.85" as string,
-  identityEvolution: "true" as string,
-  identityAutonomy: "true" as string,
+  libraryLearning: "true" as string,
+  libraryAutonomy: "true" as string,
   memorySimThreshold: "0.7" as string,
   memoryTopK: "3" as string,
   experienceSimThreshold: "0.7" as string,
@@ -127,14 +126,6 @@ export function emptyMcp(): McpEntry {
   return { key: "", type: "local", enabled: true, command: "", url: "", timeout: "", environment: "", headers: "" }
 }
 
-export type RawValidationState = {
-  valid: boolean
-  errors: string[]
-  warnings: string[]
-}
-
-export type SettingsEditMode = "form" | "raw"
-
 export type DialogSettingsProps = {
   initialTab?: string
 }
@@ -183,8 +174,8 @@ export type McpsStore = {
   entries: McpEntry[]
 }
 
-export type IdentityStore = {
-  evolution: string
+export type LibrarySettingsStore = {
+  learning: string
   autonomy: string
   memorySimThreshold: string
   memoryTopK: string
@@ -199,4 +190,5 @@ export type AdvancedStore = {
   compaction_overflow_threshold: string
   permission: string
   question_timeout: string
+  smartAllow: string
 }

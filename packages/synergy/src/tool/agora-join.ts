@@ -4,7 +4,7 @@
 // import { Tool } from "./tool"
 // import { AgoraClient, AgoraSSH, AgoraWorkspace } from "../agora"
 // import type { AgoraTypes } from "../agora"
-// import { Instance } from "../scope/instance"
+// import { ScopeContext } from "../scope/context"
 // import DESCRIPTION from "./agora-join.txt"
 //
 // const parameters = z
@@ -185,9 +185,9 @@
 //     })
 //     repoName = repoName ?? post.repo_name
 //
-//     const directory = path.resolve(Instance.directory, params.directory ?? defaultDirectory(repoName, branch, answerId))
-//     const displayPath = path.relative(Instance.directory, directory)
-//     const permissionPath = Instance.contains(directory) ? displayPath || path.basename(directory) : directory
+//     const directory = path.resolve(ScopeContext.current.directory, params.directory ?? defaultDirectory(repoName, branch, answerId))
+//     const displayPath = path.relative(ScopeContext.current.directory, directory)
+//     const permissionPath = ScopeContext.contains(directory) ? displayPath || path.basename(directory) : directory
 //
 //     if (await exists(directory)) {
 //       throw new Error(`Target path already exists: ${permissionPath}`)
@@ -206,7 +206,7 @@
 //     const access = await AgoraSSH.ensureAccess({ cloneUrl, abort: ctx.abort })
 //     const rewrittenCloneUrl = access.cloneUrl ?? cloneUrl
 //     const proc = Bun.spawn(["git", "clone", "--branch", branch, "--single-branch", rewrittenCloneUrl, directory], {
-//       cwd: Instance.directory,
+//       cwd: ScopeContext.current.directory,
 //       stdout: "pipe",
 //       stderr: "pipe",
 //       stdin: "ignore",

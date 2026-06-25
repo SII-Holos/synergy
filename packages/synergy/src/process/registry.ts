@@ -1,6 +1,7 @@
 import type { ChildProcess } from "child_process"
 import { Log } from "../util/log"
 import { Identifier } from "../id/id"
+import { Observability } from "../observability"
 
 const log = Log.create({ service: "process.registry" })
 
@@ -34,6 +35,7 @@ export namespace ProcessRegistry {
     exitSignal?: NodeJS.Signals | number | null
     exited: boolean
     backgrounded: boolean
+    lastOutputAt?: number
   }
 
   export interface FinishedProcess {
@@ -83,6 +85,15 @@ export namespace ProcessRegistry {
     running.set(id, proc)
     startSweeper()
     log.info("process created", { id, command: opts.command })
+    void Observability.emit("process.created", {
+      processId: id,
+      pid: proc.pid,
+      cwd: opts.cwd,
+      data: {
+        command: opts.command,
+        description: opts.description,
+      },
+    })
     return proc
   }
 
@@ -103,11 +114,20 @@ export namespace ProcessRegistry {
       proc.output = newOutput
     }
     proc.tail = proc.output.slice(-TAIL_CHARS)
+    proc.lastOutputAt = Date.now()
   }
 
   export function markBackgrounded(proc: Process) {
     proc.backgrounded = true
     log.info("process backgrounded", { id: proc.id })
+    void Observability.emit("process.backgrounded", {
+      processId: proc.id,
+      pid: proc.pid,
+      cwd: proc.cwd,
+      data: {
+        command: proc.command,
+      },
+    })
   }
 
   export function markExited(proc: Process, exitCode: number | null, exitSignal: NodeJS.Signals | number | null) {
@@ -139,15 +159,47 @@ export namespace ProcessRegistry {
     }
 
     log.info("process exited", { id: proc.id, status, exitCode, exitSignal })
+    void Observability.emit("process.exit", {
+      processId: proc.id,
+      pid: proc.pid,
+      cwd: proc.cwd,
+      level: status === "failed" ? "error" : "info",
+      data: {
+        status,
+        command: proc.command,
+        exitCode,
+        exitSignal,
+        outputChars: proc.output.length,
+        tail: proc.tail,
+        truncated: proc.truncated,
+      },
+    })
   }
 
   export function remove(id: string) {
+    const proc = running.get(id)
     running.delete(id)
     finished.delete(id)
+    if (proc) {
+      void Observability.emit("process.removed", {
+        processId: proc.id,
+        pid: proc.pid,
+        cwd: proc.cwd,
+        data: {
+          command: proc.command,
+          outputChars: proc.output.length,
+          tail: proc.tail,
+        },
+      })
+    }
   }
 
   export function listRunning(): Process[] {
     return Array.from(running.values()).filter((s) => s.backgrounded)
+  }
+
+  export function listActive(): Process[] {
+    return Array.from(running.values()).sort((a, b) => b.startedAt - a.startedAt)
   }
 
   export function listFinished(): FinishedProcess[] {
@@ -194,16 +246,44 @@ export namespace ProcessRegistry {
     const procs = Array.from(running.values()).filter((p) => !p.exited && p.child)
     if (procs.length === 0) return
     log.info("killing all running processes", { count: procs.length })
+    void Observability.emit("process.kill_all.start", {
+      data: {
+        count: procs.length,
+        processIds: procs.map((proc) => proc.id),
+      },
+    })
     await Promise.all(
       procs.map(async (proc) => {
         if (!proc.child) return
         try {
           const { Shell } = await import("../util/shell")
+          await Observability.emit("process.kill", {
+            processId: proc.id,
+            pid: proc.pid,
+            cwd: proc.cwd,
+            data: {
+              command: proc.command,
+            },
+          })
           await Shell.killTree(proc.child, { exited: () => proc.exited })
         } catch (err) {
           log.error("failed to kill process", { id: proc.id, error: err })
+          void Observability.emit("process.kill.error", {
+            processId: proc.id,
+            pid: proc.pid,
+            cwd: proc.cwd,
+            level: "error",
+            data: {
+              error: err instanceof Error ? { name: err.name, message: err.message, stack: err.stack } : String(err),
+            },
+          })
         }
       }),
     )
+    void Observability.emit("process.kill_all.end", {
+      data: {
+        count: procs.length,
+      },
+    })
   }
 }

@@ -72,7 +72,7 @@ export const AssetRoute = new Hono()
       }
       c.header("Cache-Control", "public, immutable, max-age=31536000")
       return c.body(file.stream(), {
-        headers: { "Content-Type": file.type || "application/octet-stream" },
+        headers: { "Content-Type": file.type || Asset.mimeFromExt(Asset.extFromId(id)) },
       })
     },
   )

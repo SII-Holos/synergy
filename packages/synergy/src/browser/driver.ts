@@ -22,6 +22,7 @@ export namespace BrowserDriver {
     stop(): Promise<void>
     contextFor(owner: BrowserOwner.Info): Promise<BrowserContextHandle>
     newPage(owner: BrowserOwner.Info, url?: string): Promise<Page>
+    saveContextStorage(owner: BrowserOwner.Info): Promise<void>
     closePage(owner: BrowserOwner.Info, pageId: string): Promise<void>
     getPage(owner: BrowserOwner.Info, pageId: string): Page | undefined
     listOwners(): BrowserOwner.Info[]

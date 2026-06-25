@@ -11,6 +11,14 @@ import { resolveNetworkOptions } from "../../src/cli/network"
 const originalEnv = { ...process.env }
 const originalArgv = [...process.argv]
 
+async function readMigratedLegacyConfig(filepath: string) {
+  const direct = Bun.file(filepath)
+  if (await direct.exists()) return parseJsonc(await direct.text()) as Record<string, any>
+
+  const archived = Bun.file(path.join(path.dirname(filepath), "archive", path.basename(filepath)))
+  return parseJsonc(await archived.text()) as Record<string, any>
+}
+
 describe("daemon.spec", () => {
   let home: string
 
@@ -125,7 +133,7 @@ describe("daemon.spec", () => {
     expect(network.hostname).toBe("0.0.0.0")
     expect(network.port).toBe(4321)
 
-    const migrated = parseJsonc(await Bun.file(target).text()) as Record<string, unknown>
+    const migrated = await readMigratedLegacyConfig(target)
     expect(migrated.holos).toEqual({
       enabled: true,
       apiUrl: "https://www.holosai.io",
@@ -169,7 +177,7 @@ describe("daemon.spec", () => {
     const network = await DaemonSpec.resolveNetwork()
     expect(network.port).toBe(4321)
 
-    const migrated = parseJsonc(await Bun.file(target).text()) as Record<string, any>
+    const migrated = await readMigratedLegacyConfig(target)
     expect(migrated.holos).toEqual({
       enabled: true,
       apiUrl: "https://api.holosai.io",
@@ -212,9 +220,9 @@ describe("daemon.spec", () => {
     expect(network.hostname).toBe("0.0.0.0")
     expect(network.port).toBe(4321)
 
-    const migrated = parseJsonc(await Bun.file(target).text()) as Record<string, any>
+    const migrated = await readMigratedLegacyConfig(target)
     expect(migrated.identity).toBeUndefined()
-    expect(migrated.engram).toEqual({
+    expect(migrated.library).toEqual({
       memory: {
         enabled: false,
       },
@@ -251,7 +259,7 @@ describe("daemon.spec", () => {
     expect(network.hostname).toBe("0.0.0.0")
     expect(network.port).toBe(4321)
 
-    const migrated = parseJsonc(await Bun.file(target).text()) as Record<string, any>
+    const migrated = await readMigratedLegacyConfig(target)
     expect(migrated.holos_friend_reply_model).toBeUndefined()
     expect(migrated.server).toEqual({
       hostname: "0.0.0.0",

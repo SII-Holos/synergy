@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test"
 import path from "path"
 import { SkillTool } from "../../src/tool/skill"
 import { ToolRegistry } from "../../src/tool/registry"
-import { Instance } from "../../src/scope/instance"
+import { ScopeContext } from "../../src/scope/context"
 import { tmpdir } from "../fixture/fixture"
 
 const ctx = {
@@ -19,7 +19,7 @@ describe.serial("tool.skill", () => {
   test("builtin skill output does not expose source-only script paths", async () => {
     await using tmp = await tmpdir({ git: true })
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const tool = await SkillTool.init()
@@ -54,7 +54,7 @@ description: bad: yaml: here
       },
     })
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const tool = await SkillTool.init()
@@ -89,7 +89,7 @@ command-dispatch: tool
     process.env.SYNERGY_TEST_HOME = tmp.path
 
     try {
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const tool = await SkillTool.init()

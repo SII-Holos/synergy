@@ -1,7 +1,7 @@
 import z from "zod"
 import { Tool } from "./tool"
 import { BlueprintLoopStore, LoopError } from "../blueprint"
-import { Instance } from "../scope/instance"
+import { ScopeContext } from "../scope/context"
 import { SessionManager } from "../session/manager"
 import { MessageV2 } from "../session/message-v2"
 import { Identifier } from "../id/id"
@@ -21,7 +21,7 @@ export const BlueprintLoopRestartTool = Tool.define("blueprint_loop_restart", {
   description: DESCRIPTION,
   parameters,
   async execute(params: z.infer<typeof parameters>, ctx) {
-    const scopeID = Instance.scope.id
+    const scopeID = ScopeContext.current.scope.id
 
     let loop
     try {
@@ -74,10 +74,19 @@ export const BlueprintLoopRestartTool = Tool.define("blueprint_loop_restart", {
     const mail: SessionManager.SessionMail.User = {
       type: "user",
       parts: [textPart],
+      summary: {
+        title: `Blueprint audit requested changes`,
+      },
       metadata: {
-        mailbox: true,
         source: "blueprint_loop_restart",
         sourceSessionID: ctx.sessionID,
+        loopID: loop.id,
+        noteID: loop.noteID,
+        title: loop.title,
+        reason: params.reason,
+        completed: params.completed,
+        remaining: params.remaining,
+        instructions: params.instructions,
       },
     }
 

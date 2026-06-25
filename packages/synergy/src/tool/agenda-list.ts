@@ -2,7 +2,7 @@ import { formatLocalDateTime } from "@/util/time-format"
 import z from "zod"
 import { Tool } from "./tool"
 import { AgendaStore, AgendaTypes } from "../agenda"
-import { Instance } from "../scope/instance"
+import { ScopeContext } from "../scope/context"
 import DESCRIPTION from "./agenda-list.txt"
 
 const parameters = z.object({
@@ -72,7 +72,7 @@ export const AgendaListTool = Tool.define("agenda_list", {
   parameters,
   async execute(params: z.infer<typeof parameters>) {
     const scopeFilter = params.scope ?? "all"
-    const currentScopeID = Instance.scope.id
+    const currentScopeID = ScopeContext.current.scope.id
 
     let items: AgendaTypes.Item[]
     switch (scopeFilter) {

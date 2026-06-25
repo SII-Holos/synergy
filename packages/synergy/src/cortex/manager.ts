@@ -85,7 +85,7 @@ export namespace Cortex {
       executionRole,
     })
 
-    const config = await Config.get()
+    const config = await Config.current()
     const parent = await Session.get(input.parentSessionID)
     const blockedTools = Array.from(
       new Set([...(config.experimental?.primary_tools ?? []), ...DEFAULT_SUBAGENT_BLOCKED_TOOLS]),
@@ -181,6 +181,7 @@ export namespace Cortex {
         lastUpdate: Date.now(),
         recentTools: [],
       },
+      notifyParentOnComplete: input.notifyParentOnComplete,
     }
 
     tasks.set(taskID, task)
@@ -372,8 +373,10 @@ export namespace Cortex {
       }
       taskWaiters.delete(taskID)
       log.info("task result delivered to waiters, skipping mail", { taskID, waiterCount: waiters.size })
-    } else {
+    } else if (task.notifyParentOnComplete !== false) {
       notifyParentSession(task)
+    } else {
+      log.info("task parent notification suppressed", { taskID })
     }
 
     void cleanupChildWorktree(task)

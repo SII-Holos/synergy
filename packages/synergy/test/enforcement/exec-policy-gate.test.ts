@@ -8,7 +8,7 @@ import { describe, expect, test } from "bun:test"
 // system before the gate produces its final enforcement decision.
 // ---------------------------------------------------------------------------
 
-import { Instance } from "../../src/scope/instance"
+import { ScopeContext } from "../../src/scope/context"
 import { tmpdir } from "../fixture/fixture"
 
 // ------------------------------------------------------------------
@@ -19,14 +19,14 @@ describe("EnforcementGate exec-policy integration", () => {
     await using tmp = await tmpdir()
     const scope = await tmp.scope()
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope,
       fn: async () => {
         const { EnforcementGate } = await import("../../src/enforcement/gate")
         const { parsePrefixRule } = await import("../../src/enforcement/exec-policy")
 
         const gate = await EnforcementGate.create({
-          activeWorkspace: Instance.directory,
+          activeWorkspace: ScopeContext.current.directory,
           workspaceType: "main",
           profileId: "guarded",
           execPolicy: { rules: [parsePrefixRule("allow git status")!] },
@@ -34,7 +34,7 @@ describe("EnforcementGate exec-policy integration", () => {
 
         const envelope = gate.evaluate("bash", {
           command: "git status",
-          workdir: Instance.directory,
+          workdir: ScopeContext.current.directory,
         })
 
         // When execPolicy says "allow", the gate should not escalate to shell
@@ -51,14 +51,14 @@ describe("EnforcementGate exec-policy integration", () => {
     await using tmp = await tmpdir()
     const scope = await tmp.scope()
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope,
       fn: async () => {
         const { EnforcementGate } = await import("../../src/enforcement/gate")
         const { parsePrefixRule } = await import("../../src/enforcement/exec-policy")
 
         const gate = await EnforcementGate.create({
-          activeWorkspace: Instance.directory,
+          activeWorkspace: ScopeContext.current.directory,
           workspaceType: "main",
           profileId: "guarded",
           execPolicy: { rules: [parsePrefixRule("forbid rm -rf")!] },
@@ -82,14 +82,14 @@ describe("EnforcementGate exec-policy integration", () => {
     await using tmp = await tmpdir()
     const scope = await tmp.scope()
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope,
       fn: async () => {
         const { EnforcementGate } = await import("../../src/enforcement/gate")
         const { parsePrefixRule } = await import("../../src/enforcement/exec-policy")
 
         const gate = await EnforcementGate.create({
-          activeWorkspace: Instance.directory,
+          activeWorkspace: ScopeContext.current.directory,
           workspaceType: "main",
           profileId: "guarded",
           execPolicy: { rules: [parsePrefixRule("ask bun run build")!] },
@@ -97,7 +97,7 @@ describe("EnforcementGate exec-policy integration", () => {
 
         const envelope = gate.evaluate("bash", {
           command: "bun run build 2>&1 | head -30",
-          workdir: Instance.directory,
+          workdir: ScopeContext.current.directory,
         })
 
         // When execPolicy says "ask" (prompt), the gate should still perform

@@ -48,6 +48,7 @@ export namespace CortexTypes {
       result: z.string().optional(),
       error: z.string().optional(),
       progress: TaskProgress.optional(),
+      notifyParentOnComplete: z.boolean().optional(),
     })
     .meta({ ref: "CortexTask" })
   export type Task = z.infer<typeof Task>
@@ -75,6 +76,7 @@ export namespace CortexTypes {
         baseRef: z.enum(["current", "fresh"]).optional().default("current"),
       })
       .optional(),
+    notifyParentOnComplete: z.boolean().optional(),
   })
   export type LaunchInput = z.infer<typeof LaunchInput>
 }

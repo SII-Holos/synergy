@@ -84,12 +84,12 @@ function getStoreForEntry(
   globalSync: ReturnType<typeof useGlobalSync>,
   entry: NavEntry,
 ): SessionStoreSlice | undefined {
-  if (entry.scopeType === "global" || entry.scopeID === "global") {
-    return globalSync.child("global")[0]
+  if (entry.scopeType === "home" || entry.scopeID === "home") {
+    return globalSync.peekScopeState("home")?.[0]
   }
   const scope = globalSync.data.scope.find((s) => s.id === entry.scopeID)
   if (!scope?.worktree) return undefined
-  return globalSync.child(scope.worktree)[0]
+  return globalSync.peekScopeState(scope.worktree)?.[0]
 }
 
 export function Sidebar(props: SidebarProps) {
@@ -218,9 +218,9 @@ export function Sidebar(props: SidebarProps) {
     }
     return undefined
   })
-  const currentDirectory = createMemo(() => (dir() === "global" ? undefined : dir()))
+  const currentDirectory = createMemo(() => (dir() === "home" ? undefined : dir()))
   const handleNewSession = () => {
-    navigate(`/${base64Encode("global")}/session`)
+    navigate(`/${base64Encode("home")}/session`)
   }
 
   const handleProjectClick = (worktree: string) => {
@@ -255,8 +255,8 @@ export function Sidebar(props: SidebarProps) {
         description={`Delete "${getScopeLabel(scope)}"? This archives the project on the server.`}
         confirmLabel="Delete"
         onConfirm={async () => {
-          if (scope.id) await globalSDK.client.scope.remove({ scopeID: scope.id })
-          else await globalSDK.client.scope.remove({ scopeID: scope.worktree })
+          if (scope.id) await globalSDK.client.scope.remove({ path_scopeID: scope.id })
+          else await globalSDK.client.scope.remove({ path_scopeID: scope.worktree })
         }}
       />
     ))
@@ -294,7 +294,7 @@ export function Sidebar(props: SidebarProps) {
   }
 
   const resolveEntryRouteDirectory = (entry: NavEntry): string => {
-    if (entry.scopeID === "global" || entry.scopeType === "global") return "global"
+    if (entry.scopeID === "home" || entry.scopeType === "home") return "home"
     const metadata = globalSync.data.scope.find((s) => s.id === entry.scopeID)
     if (metadata?.worktree) return metadata.worktree
     return entry.scopeID
@@ -306,11 +306,11 @@ export function Sidebar(props: SidebarProps) {
 
   const handleFlyoutSessionClick = (entry: NavEntry, worktree: string) => {
     setProjectsFlyoutOpen(false)
-    navigate(`/${base64Encode(worktree === "global" ? "global" : worktree)}/session/${entry.id}`)
+    navigate(`/${base64Encode(worktree === "home" ? "home" : worktree)}/session/${entry.id}`)
   }
 
   const sessionVisualState = (scope: LocalScope, entry: NavEntry): SessionVisualState =>
-    resolveSessionVisualState(globalSync.child(scope.worktree)[0], entry)
+    resolveSessionVisualState(globalSync.peekScopeState(scope.worktree)?.[0], entry)
 
   const SessionIcon = (props: { scope: LocalScope; entry: NavEntry; flyout?: boolean }) => {
     const visual = createMemo(() => sessionVisualState(props.scope, props.entry))
@@ -356,7 +356,7 @@ export function Sidebar(props: SidebarProps) {
             </Tooltip>
           }
         >
-          <A href={`/${base64Encode("global")}/session`} class="sb-logo" onClick={() => panel.close()}>
+          <A href={`/${base64Encode("home")}/session`} class="sb-logo" onClick={() => panel.close()}>
             <img
               src={isDark() ? assetPath("/holos-logo-white.svg") : assetPath("/holos-logo.svg")}
               alt="HOLOS"
@@ -413,9 +413,9 @@ export function Sidebar(props: SidebarProps) {
             type="button"
             classList={{
               "sb-global-btn": true,
-              "sb-global-active": panel.active() === "engram",
+              "sb-global-active": panel.active() === "library",
             }}
-            onClick={() => panel.toggle("engram")}
+            onClick={() => panel.toggle("library")}
           >
             <Icon name="book-open" size="normal" />
             <Show when={isExpanded()}>
@@ -423,7 +423,37 @@ export function Sidebar(props: SidebarProps) {
             </Show>
           </button>
         </Tooltip>
+        <Tooltip value="Diagnostics" placement="right">
+          <button
+            type="button"
+            classList={{
+              "sb-global-btn": true,
+              "sb-global-active": panel.active() === "diagnostics",
+            }}
+            onClick={() => panel.toggle("diagnostics")}
+          >
+            <Icon name="stethoscope" size="normal" />
+            <Show when={isExpanded()}>
+              <span class="sb-action-label">Diagnostics</span>
+            </Show>
+          </button>
+        </Tooltip>
       </div>
+      <Tooltip value="Plugins" placement="right">
+        <button
+          type="button"
+          classList={{
+            "sb-global-btn": true,
+            "sb-global-active": params.dir === "plugins",
+          }}
+          onClick={() => navigate("/plugins/marketplace")}
+        >
+          <Icon name="package-open" size="normal" />
+          <Show when={isExpanded()}>
+            <span class="sb-action-label">Plugins</span>
+          </Show>
+        </button>
+      </Tooltip>
 
       {/* Unified scroll region */}
       <Show
@@ -622,10 +652,18 @@ export function Sidebar(props: SidebarProps) {
                 <div ref={scopeListRef}>
                   <For each={scopes()}>
                     {(scope) => {
-                      const isActive = () => scope.worktree === currentDirectory()
                       const [menuOpen, setMenuOpen] = createSignal(false)
                       const isSupplemental = layout.scopes.isSupplemental(scope)
                       const navLoaded = () => !!layout.nav.navEntries()[scope.worktree]
+                      const activeSessionVisible = createMemo(() => {
+                        const activeID = params.id
+                        if (!scope.expanded || !activeID) return false
+                        if (isSupplemental && !navLoaded()) return false
+                        return layout.nav.projectNavEntries(scope).some((entry) => entry.id === activeID)
+                      })
+                      const isActive = createMemo(
+                        () => scope.worktree === currentDirectory() && !activeSessionVisible(),
+                      )
 
                       return (
                         <div class="sb-project-group" data-scope-id={scope.id || scope.worktree}>
@@ -879,7 +917,7 @@ function SessionRowIcon(props: { entry: NavEntry; scope?: LocalScope }) {
   const globalSync = useGlobalSync()
 
   const visual = createMemo(() => {
-    if (props.scope) return resolveSessionVisualState(globalSync.child(props.scope.worktree)[0], props.entry)
+    if (props.scope) return resolveSessionVisualState(globalSync.peekScopeState(props.scope.worktree)?.[0], props.entry)
     return resolveSessionVisualState(getStoreForEntry(globalSync, props.entry), props.entry)
   })
 
@@ -912,7 +950,7 @@ function SidebarAgentHub(props: {
   let loginMessageHandler: ((event: MessageEvent) => void) | undefined
   let loginMessageTimeout: ReturnType<typeof setTimeout> | undefined
 
-  const avatarSrc = () => assetPath("/agent-avatars/synergy-companion.svg")
+  const avatarSrc = () => assetPath("/agent-avatars/synergy-agent-icon.png")
 
   const callbackUrl = () => new URL("/holos/callback", props.globalSDK.url).toString()
   const callbackOrigin = () => new URL(props.globalSDK.url).origin

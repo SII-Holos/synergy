@@ -25,7 +25,7 @@ import { SessionCommand } from "./cli/cmd/session"
 import { ChannelCommand } from "./cli/cmd/channel"
 import { HolosCommand } from "./cli/cmd/holos"
 import { ConfigCommand } from "./cli/cmd/config"
-import { EngramCommand } from "./cli/cmd/engram"
+import { LibraryCommand } from "./cli/cmd/library"
 import { EmbedCommand } from "./cli/cmd/embed"
 import { StartCommand } from "./cli/cmd/start"
 import { StopCommand } from "./cli/cmd/stop"
@@ -33,12 +33,14 @@ import { PrepareCommand, BuildCommand } from "./cli/cmd/prepare"
 import { StatusCommand } from "./cli/cmd/status"
 import { LogsCommand } from "./cli/cmd/logs"
 import { DoctorCommand } from "./cli/cmd/doctor"
+import { DiagnosticsCommand } from "./cli/cmd/diagnostics"
 
 import { PluginCommand } from "./cli/cmd/plugin"
 import { DataCommand, MigrateCommand } from "./cli/cmd/data"
 import { MigrationCommand } from "./cli/cmd/migration"
-import { ConfigSet } from "./config/set"
+import { ConfigDomain } from "./config/domain"
 import { registerPluginCommands } from "./cli/plugin-dispatch"
+import { parse as parseJsonc } from "jsonc-parser"
 
 async function flushCliOutput() {
   await Bun.sleep(25)
@@ -95,11 +97,11 @@ const cli = yargs(hideBin(process.argv))
   .middleware(async (opts) => {
     let configLogLevel: string | undefined
     try {
-      const configText = await Bun.file(ConfigSet.defaultFilePath())
+      const configText = await Bun.file(ConfigDomain.filepath("general"))
         .text()
         .catch(() => "")
       if (configText) {
-        const config = JSON.parse(configText)
+        const config = parseJsonc(configText)
         if (config.logLevel && ["DEBUG", "INFO", "WARN", "ERROR"].includes(config.logLevel)) {
           configLogLevel = config.logLevel
         }
@@ -108,7 +110,7 @@ const cli = yargs(hideBin(process.argv))
 
     await Log.init({
       print: process.argv.includes("--print-logs"),
-      dev: Installation.isLocal(),
+      dev: Installation.isLocal() && isServerCommand(),
       level: (() => {
         if (opts.logLevel) return opts.logLevel as Log.Level
         if (process.env.LOG_LEVEL && ["DEBUG", "INFO", "WARN", "ERROR"].includes(process.env.LOG_LEVEL))
@@ -148,7 +150,7 @@ const cli = yargs(hideBin(process.argv))
   .command(ChannelCommand)
   .command(HolosCommand)
   .command(ConfigCommand)
-  .command(EngramCommand)
+  .command(LibraryCommand)
   .command(EmbedCommand)
   .command(StartCommand)
   .command(StopCommand)
@@ -156,6 +158,7 @@ const cli = yargs(hideBin(process.argv))
   .command(BuildCommand)
   .command(StatusCommand)
   .command(LogsCommand)
+  .command(DiagnosticsCommand)
   .command(PluginCommand)
   .command(DataCommand)
   .command(DoctorCommand)
@@ -197,6 +200,10 @@ function isLongRunningCommand() {
     return process.argv.includes("-f") || process.argv.includes("--follow")
   }
   return false
+}
+
+function isServerCommand() {
+  return (firstPositionalArg() ?? "server") === "server"
 }
 
 try {

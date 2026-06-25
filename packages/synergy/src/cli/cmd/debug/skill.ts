@@ -1,6 +1,6 @@
 import { EOL } from "os"
 import { Skill } from "../../../skill"
-import { bootstrap } from "../../bootstrap"
+import { withScopeContext } from "../../scope"
 import { cmd } from "../cmd"
 
 export const SkillCommand = cmd({
@@ -8,7 +8,7 @@ export const SkillCommand = cmd({
   describe: "list all available skills",
   builder: (yargs) => yargs,
   async handler() {
-    await bootstrap(process.cwd(), async () => {
+    await withScopeContext(process.cwd(), async () => {
       const skills = await Skill.all()
       process.stdout.write(JSON.stringify(skills, null, 2) + EOL)
     })

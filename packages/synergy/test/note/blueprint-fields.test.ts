@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import { tmpdir } from "../fixture/fixture"
-import { Instance } from "../../src/scope/instance"
+import { ScopeContext } from "../../src/scope/context"
 import { Scope } from "../../src/scope"
 import { NoteStore } from "../../src/note"
 
@@ -22,7 +22,7 @@ describe("Note blueprint fields", () => {
     await using tmp = await tmpdir({ git: true })
     const scope = (await Scope.fromDirectory(tmp.path)).scope
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope,
       fn: async () => {
         const note = await NoteStore.create({
@@ -52,7 +52,7 @@ describe("Note blueprint fields", () => {
     await using tmp = await tmpdir({ git: true })
     const scope = (await Scope.fromDirectory(tmp.path)).scope
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope,
       fn: async () => {
         const note = await NoteStore.create({
@@ -77,7 +77,7 @@ describe("Note blueprint fields", () => {
     await using tmp = await tmpdir({ git: true })
     const scope = (await Scope.fromDirectory(tmp.path)).scope
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope,
       fn: async () => {
         const note = await NoteStore.create({
@@ -109,7 +109,7 @@ describe("Note blueprint fields", () => {
     await using tmp = await tmpdir({ git: true })
     const scope = (await Scope.fromDirectory(tmp.path)).scope
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope,
       fn: async () => {
         const note = await NoteStore.create({
@@ -144,7 +144,7 @@ describe("Note blueprint fields", () => {
     await using tmp = await tmpdir({ git: true })
     const scope = (await Scope.fromDirectory(tmp.path)).scope
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope,
       fn: async () => {
         await NoteStore.create({
@@ -184,7 +184,7 @@ describe("Note blueprint fields", () => {
     await using tmp = await tmpdir({ git: true })
     const scope = (await Scope.fromDirectory(tmp.path)).scope
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope,
       fn: async () => {
         const note = await NoteStore.create({

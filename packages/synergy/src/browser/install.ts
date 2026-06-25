@@ -74,18 +74,35 @@ export namespace BrowserInstall {
     const platform = os.platform()
     const home = os.homedir()
 
-    // 1. Synergy-managed chromium directory
-    const synergyResult = await findChromiumInDir(chromiumDir())
-    if (synergyResult) return synergyResult
-
-    // 2. $CHROMIUM_PATH env
+    // 1. $CHROMIUM_PATH env
     if (Bun.env.CHROMIUM_PATH) {
       if (await fileExists(Bun.env.CHROMIUM_PATH)) {
         return Bun.env.CHROMIUM_PATH
       }
     }
 
-    // 3. System paths
+    // 2. Synergy-managed chromium directory
+    const synergyResult = await findChromiumInDir(chromiumDir())
+    if (synergyResult) return synergyResult
+
+    // 3. Playwright caches
+    const playwrightDir =
+      platform === "darwin"
+        ? path.join(home, "Library", "Caches", "ms-playwright")
+        : path.join(home, ".cache", "ms-playwright")
+
+    const playwrightResult = await findPlaywrightChromium(playwrightDir, platform)
+    if (playwrightResult) return playwrightResult
+
+    try {
+      const { chromium } = await import("playwright-core")
+      const execPath = chromium.executablePath()
+      if (await fileExists(execPath)) return execPath
+    } catch {
+      // playwright-core not available
+    }
+
+    // 4. System paths
     const systemPaths =
       platform === "darwin"
         ? [
@@ -97,15 +114,6 @@ export namespace BrowserInstall {
       if (await fileExists(sysPath)) return sysPath
     }
 
-    // 4. Playwright caches
-    const playwrightDir =
-      platform === "darwin"
-        ? path.join(home, "Library", "Caches", "ms-playwright")
-        : path.join(home, ".cache", "ms-playwright")
-
-    const playwrightResult = await findPlaywrightChromium(playwrightDir, platform)
-    if (playwrightResult) return playwrightResult
-
     // 5. Not found
     return null
   }
@@ -116,7 +124,7 @@ export namespace BrowserInstall {
     if (discovered) return discovered
 
     try {
-      // @ts-expect-error — playwright-core is an optional peer dependency
+      // @ts-ignore — playwright-core is an optional peer dependency
       const { chromium } = await import("playwright-core")
       const execPath = chromium.executablePath()
       if (await fileExists(execPath)) return execPath

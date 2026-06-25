@@ -10,7 +10,8 @@ import { ModelsDev } from "./models"
 import { NamedError } from "@ericsanchezok/synergy-util/error"
 import { Auth } from "./api-key"
 import { Env } from "../util/env"
-import { Instance } from "../scope/instance"
+import { ScopeContext } from "../scope/context"
+import { ScopedState } from "../scope/scoped-state"
 import { SYNERGY_REFERER } from "../holos/constants" // DISABLED — inlined below
 import { TimeoutConfig } from "@/util/timeout-config"
 import { iife } from "@/util/iife"
@@ -144,7 +145,7 @@ export namespace Provider {
       }
     },
     "amazon-bedrock": async () => {
-      const config = await Config.get()
+      const config = await Config.current()
       const providerConfig = config.provider?.["amazon-bedrock"]
 
       const auth = await Auth.get("amazon-bedrock")
@@ -580,9 +581,9 @@ export namespace Provider {
     }
   }
 
-  const state = Instance.state(async () => {
+  const state = ScopedState.create(async () => {
     using _ = log.time("state")
-    const config = await Config.get()
+    const config = await Config.current()
     const modelsDev = await ModelsDev.get()
     const database = mapValues(modelsDev, fromModelsDevProvider)
 
@@ -740,7 +741,7 @@ export namespace Provider {
       }
     }
 
-    for (const plugin of await Plugin.list()) {
+    for (const plugin of await Plugin.allHooks()) {
       if (!plugin.auth) continue
       const providerID = plugin.auth.provider
       if (disabled.has(providerID)) continue
@@ -876,9 +877,9 @@ export namespace Provider {
 
   /**
    * Create an SDK instance from a model spec and explicit provider info.
-   * This is the stateless core of SDK creation — no Instance context or caching.
+   * This is the stateless core of SDK creation — no scope context or caching.
    * Used by both the normal `getSDK` (which wraps this with caching) and
-   * the import probe path (which has no Instance scope).
+   * the import probe path (which has no scope context).
    */
   export function createSDKFromSpec(model: Model, provider: { options?: Record<string, unknown>; key?: string }): SDK {
     const options: Record<string, any> = { ...provider.options, ...model.options }
@@ -1185,7 +1186,7 @@ export namespace Provider {
   }
 
   export async function defaultModel() {
-    const cfg = await Config.get()
+    const cfg = await Config.current()
     if (cfg.model) return parseModel(cfg.model)
 
     const provider = await list()
@@ -1250,7 +1251,7 @@ export namespace Provider {
   }
 
   export async function resolveRoleModel(role: ModelRole): Promise<ModelRef | undefined> {
-    const cfg = await Config.get()
+    const cfg = await Config.current()
     const chain = ROLE_FALLBACK_CHAINS[role]
     for (const field of chain) {
       const value = cfg[field]

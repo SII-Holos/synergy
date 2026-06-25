@@ -1,6 +1,5 @@
 import type { Argv } from "yargs"
 import { cmd } from "./cmd"
-import { bootstrap } from "../bootstrap"
 import { UI } from "../ui"
 import { Engine } from "@/stats"
 import type { StatsSnapshot, ProgressCallback } from "@/stats"
@@ -37,48 +36,46 @@ export const StatsCommand = cmd({
       })
   },
   handler: async (args) => {
-    await bootstrap(process.cwd(), async () => {
-      const onProgress: ProgressCallback = (event) => {
-        if (args.json) return
-        const pct = event.total > 0 ? Math.round((event.current / event.total) * 100) : 0
-        const bar = UI.progressBar({ ratio: event.current / Math.max(1, event.total), width: 30, brackets: true })
-        const msg = event.message ?? event.phase
-        process.stdout.write(`\r  ${bar} ${pct}% ${msg}`)
-        if (event.current === event.total && event.phase === "snapshot") {
-          process.stdout.write("\r\x1B[K")
-        }
+    const onProgress: ProgressCallback = (event) => {
+      if (args.json) return
+      const pct = event.total > 0 ? Math.round((event.current / event.total) * 100) : 0
+      const bar = UI.progressBar({ ratio: event.current / Math.max(1, event.total), width: 30, brackets: true })
+      const msg = event.message ?? event.phase
+      process.stdout.write(`\r  ${bar} ${pct}% ${msg}`)
+      if (event.current === event.total && event.phase === "snapshot") {
+        process.stdout.write("\r\x1B[K")
       }
+    }
 
-      let snapshot: StatsSnapshot
+    let snapshot: StatsSnapshot
 
-      if (args.project !== undefined) {
-        console.log("Note: project-scoped filtering requires full recomputation.")
-        snapshot = await Engine.recompute(onProgress)
-      } else if (args.recompute) {
-        snapshot = await Engine.recompute(onProgress)
-      } else {
-        snapshot = await Engine.get(onProgress)
-      }
+    if (args.project !== undefined) {
+      console.log("Note: project-scoped filtering requires full recomputation.")
+      snapshot = await Engine.recompute(onProgress)
+    } else if (args.recompute) {
+      snapshot = await Engine.recompute(onProgress)
+    } else {
+      snapshot = await Engine.get(onProgress)
+    }
 
-      // Apply --days filter client-side on time series
-      if (args.days !== undefined) {
-        snapshot = filterByDays(snapshot, args.days)
-      }
+    // Apply --days filter client-side on time series
+    if (args.days !== undefined) {
+      snapshot = filterByDays(snapshot, args.days)
+    }
 
-      if (args.json) {
-        console.log(JSON.stringify(snapshot, null, 2))
-        return
-      }
+    if (args.json) {
+      console.log(JSON.stringify(snapshot, null, 2))
+      return
+    }
 
-      let modelLimit: number | undefined
-      if (args.models === true) {
-        modelLimit = Infinity
-      } else if (typeof args.models === "number") {
-        modelLimit = args.models
-      }
+    let modelLimit: number | undefined
+    if (args.models === true) {
+      modelLimit = Infinity
+    } else if (typeof args.models === "number") {
+      modelLimit = args.models
+    }
 
-      displayStats(snapshot, args.tools, modelLimit)
-    })
+    displayStats(snapshot, args.tools, modelLimit)
   },
 })
 

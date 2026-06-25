@@ -60,7 +60,7 @@ export namespace SessionExport {
 
   async function collectSessionData(session: Session.Info): Promise<SessionData> {
     const [messages, dag, todos, diffs] = await Promise.all([
-      Session.messages({ sessionID: session.id }),
+      Session.messages({ sessionID: session.id, raw: true }),
       Dag.get(session.id),
       Todo.get(session.id),
       Session.diff(session.id),
@@ -112,7 +112,7 @@ export namespace SessionExport {
     let messageCount = 0
     let estimatedBytes = 0
     for (const session of sessions) {
-      const messages = await Session.messages({ sessionID: session.id })
+      const messages = await Session.messages({ sessionID: session.id, raw: true })
       messageCount += messages.length
       estimatedBytes += JSON.stringify(messages).length
     }

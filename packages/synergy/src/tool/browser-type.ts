@@ -12,37 +12,45 @@ export const BrowserTypeTool = Tool.define("browser_type", {
   }),
   async execute(params, ctx) {
     const tab = await BrowserToolHelper.resolveTab(ctx, params.tabId)
-
-    // Focus the target element
-    if (params.selector.startsWith("@e")) {
-      const resolved = await tab.resolveRef(params.selector)
-      if (!resolved) {
-        throw new Error(`Element ${params.selector} not found. Take a new snapshot.`)
-      }
-      const cx = resolved.x + resolved.width / 2
-      const cy = resolved.y + resolved.height / 2
-      await tab.click(cx, cy)
-    } else {
-      // CSS selector: focus via evaluate
-      const focused = (await tab.evaluate(
-        `(() => {
+    return BrowserToolHelper.withActivity(
+      ctx,
+      tab,
+      "acting",
+      "browser_type",
+      `Typing into ${params.selector}`,
+      async () => {
+        // Focus the target element
+        if (params.selector.startsWith("@e")) {
+          const resolved = await tab.resolveRef(params.selector)
+          if (!resolved) {
+            throw new Error(`Element ${params.selector} not found. Take a new snapshot.`)
+          }
+          const cx = resolved.x + resolved.width / 2
+          const cy = resolved.y + resolved.height / 2
+          await tab.click(cx, cy)
+        } else {
+          // CSS selector: focus via evaluate
+          const focused = (await tab.evaluate(
+            `(() => {
           const el = document.querySelector(${JSON.stringify(params.selector)});
           if (!el) return false;
           el.focus();
           return true;
         })()`,
-      )) as boolean
+          )) as boolean
 
-      if (!focused) {
-        throw new Error(`Element "${params.selector}" not found on the page.`)
-      }
-    }
+          if (!focused) {
+            throw new Error(`Element "${params.selector}" not found on the page.`)
+          }
+        }
 
-    await tab.type(params.text)
-    return {
-      title: "Typed",
-      output: `Typed ${JSON.stringify(params.text)} into ${params.selector}`,
-      metadata: {},
-    }
+        await tab.type(params.text)
+        return {
+          title: "Typed",
+          output: `Typed ${JSON.stringify(params.text)} into ${params.selector}`,
+          metadata: {},
+        }
+      },
+    )
   },
 })

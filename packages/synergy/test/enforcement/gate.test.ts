@@ -497,53 +497,6 @@ describe("EnforcementGate network classification", () => {
 // 4. Gate produces execution envelope and audit
 // ------------------------------------------------------------------
 describe("EnforcementGate execution envelope", () => {
-  test("evaluate returns envelope with profile and capabilities", async () => {
-    const gate = await EnforcementGate.create({
-      activeWorkspace: "/Users/test/synergy-control-profile",
-      workspaceType: "worktree",
-      profileId: "guarded",
-    })
-
-    const envelope = gate.evaluate("read", {
-      filePath: "/Users/test/synergy-control-profile/src/index.ts",
-    })
-
-    expect(envelope).toBeDefined()
-    expect(typeof envelope.canAutoApprove).toBe("function")
-
-    // In workspace profile, inside-workspace reads are low-risk
-    expect(envelope.canAutoApprove()).toBe(true)
-  })
-
-  test("evaluate for external read produces non-auto-approvable envelope", async () => {
-    const gate = await EnforcementGate.create({
-      activeWorkspace: "/Users/test/synergy-control-profile",
-      workspaceType: "worktree",
-      profileId: "guarded",
-    })
-
-    const envelope = gate.evaluate("read", {
-      filePath: "/Users/test/synergy/src/main.ts",
-    })
-
-    // External reads are nonBypassable => cannot auto-approve
-    expect(envelope.canAutoApprove()).toBe(false)
-  })
-
-  test("evaluate on shell_destructive cannot auto-approve", async () => {
-    const gate = await EnforcementGate.create({
-      activeWorkspace: "/Users/test/synergy-control-profile",
-      workspaceType: "worktree",
-      profileId: "guarded",
-    })
-
-    const envelope = gate.evaluate("bash", {
-      command: "rm -rf /some/path",
-    })
-
-    expect(envelope.canAutoApprove()).toBe(false)
-  })
-
   test("audit record is produced for each evaluation", async () => {
     const gate = await EnforcementGate.create({
       activeWorkspace: "/Users/test/synergy-control-profile",
@@ -999,7 +952,7 @@ describe("EnforcementGate readRoots", () => {
     expect(envelope.decision).toBe("allow")
   })
 
-  test("autonomous allows external file reads with readRoots", async () => {
+  test("autonomous asks before reading protected credential paths", async () => {
     const gate = await EnforcementGate.create({
       activeWorkspace: "/Users/test/my-project",
       workspaceType: "main",
@@ -1011,8 +964,8 @@ describe("EnforcementGate readRoots", () => {
       file_path: "/Users/test/.ssh/id_rsa",
     })
 
-    // autonomous allows file_external — reading outside workspace is permitted
-    expect(envelope.decision).toBe("allow")
+    expect(envelope.decision).toBe("ask")
+    expect(envelope.capabilities.some((cap: any) => cap.class === "protected_op")).toBe(true)
   })
 
   test("scan_document inside readRoots is allowed in autonomous mode", async () => {
@@ -2332,7 +2285,6 @@ describe("EnforcementGate new tool classification", () => {
   })
 })
 
-// ------------------------------------------------------------------
 // 16. file_external split — read vs write distinction
 // ------------------------------------------------------------------
 describe("EnforcementGate file_external split", () => {
@@ -2398,5 +2350,61 @@ describe("EnforcementGate file_external split", () => {
 
     // file_external_read should be allowed by autonomous profile
     expect(envelope.decision).toBe("allow")
+  })
+})
+
+describe("security invariants: nonBypassable permission boundaries", () => {
+  test("autonomous denies git push and keeps shell_destructive nonBypassable", async () => {
+    const gate = await EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+      profileId: "autonomous",
+    })
+
+    const envelope = gate.evaluate("bash", { command: "git push" })
+    expect(envelope.decision).toBe("deny")
+
+    const caps = envelope.capabilities.filter((c: any) => c.class === "shell_destructive")
+    expect(caps.length).toBeGreaterThan(0)
+    expect(caps.every((c: any) => c.nonBypassable === true)).toBe(true)
+  })
+
+  test("classifyBashRisk shell_destructive path sets nonBypassable=true", async () => {
+    const gate = await EnforcementGate.create({
+      activeWorkspace: "/Users/test",
+      workspaceType: "main",
+    })
+
+    const result = gate.classify("bash", { command: "git push" })
+    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")
+    expect(destructive).toBeDefined()
+    expect(destructive!.nonBypassable).toBe(true)
+  })
+
+  test("shell and shell_read remain bypassable", async () => {
+    const gate = await EnforcementGate.create({
+      activeWorkspace: "/Users/test",
+      workspaceType: "main",
+    })
+
+    const result = gate.classify("bash", { command: "npm run build" })
+    const shell = result.capabilities.find((c: any) => c.class === "shell")
+    expect(shell).toBeDefined()
+    expect(shell!.nonBypassable).toBe(false)
+  })
+
+  test("revise_file detects protected paths from hashline patch headers", async () => {
+    const gate = await EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+      profileId: "full_access",
+    })
+
+    const result = gate.classify("revise_file", {
+      input: "[.env#abcd]\nSWAP 1..1:\n+SECRET=x\n",
+    })
+    const protectedOp = result.capabilities.find((c: any) => c.class === "protected_op")
+    expect(protectedOp).toBeDefined()
+    expect(protectedOp!.nonBypassable).toBe(true)
   })
 })

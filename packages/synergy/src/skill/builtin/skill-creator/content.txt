@@ -432,7 +432,7 @@ If you created or edited the skill directly under a scanned directory such as `.
 
 Use the `runtime_reload` tool with target `skill` when available.
 
-#### Sharing with another user or another Synergy instance
+#### Sharing with another user or another environment
 
 Package the skill as a distributable `.skill` archive only when you need to move it between environments. The `.skill` file is a zip archive with a `.skill` extension and should preserve the skill directory structure.
 

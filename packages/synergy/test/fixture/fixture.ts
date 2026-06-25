@@ -3,6 +3,7 @@ import * as fs from "fs/promises"
 import os from "os"
 import path from "path"
 import type { Config } from "../../src/config/config"
+import { ConfigDomain } from "../../src/config/domain"
 import { Scope } from "../../src/scope"
 import { Filesystem } from "../../src/util/filesystem"
 
@@ -23,13 +24,14 @@ export async function tmpdir<T>(options?: TmpDirOptions<T>) {
     await $`git commit --allow-empty -m ${"root commit " + commitId}`.cwd(dirpath).quiet()
   }
   if (options?.config) {
-    await Bun.write(
-      path.join(dirpath, "synergy.json"),
-      JSON.stringify({
-        $schema: "https://synergy.holosai.io/config.json",
-        ...options.config,
-      }),
-    )
+    const fragments = ConfigDomain.split({
+      $schema: "https://synergy.holosai.io/config.json",
+      ...options.config,
+    })
+    await ConfigDomain.ensureDir(path.join(dirpath, ".synergy"))
+    for (const [id, config] of fragments) {
+      await Bun.write(ConfigDomain.filepath(id, path.join(dirpath, ".synergy")), JSON.stringify(config, null, 2))
+    }
   }
   const extra = await options?.init?.(dirpath)
   // Pre-create node_modules in .synergy so Config.installDependencies skips the await

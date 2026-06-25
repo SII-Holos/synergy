@@ -1,7 +1,7 @@
 import { EOL } from "os"
 import { basename } from "path"
 import { Agent } from "../../../agent/agent"
-import { bootstrap } from "../../bootstrap"
+import { withScopeContext } from "../../scope"
 import { cmd } from "../cmd"
 
 export const AgentCommand = cmd({
@@ -14,7 +14,7 @@ export const AgentCommand = cmd({
       description: "Agent name",
     }),
   async handler(args) {
-    await bootstrap(process.cwd(), async () => {
+    await withScopeContext(process.cwd(), async () => {
       const agentName = args.name as string
       const agent = await Agent.get(agentName)
       if (!agent) {

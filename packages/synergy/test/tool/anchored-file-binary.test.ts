@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import path from "path"
 import { ViewFileTool } from "../../src/tool/view-file"
-import { Instance } from "../../src/scope/instance"
+import { ScopeContext } from "../../src/scope/context"
 import { tmpdir } from "../fixture/fixture"
 
 const ctx = {
@@ -23,7 +23,7 @@ describe("tool.view_file binary file blocking", () => {
         await Bun.write(path.join(dir, "doc.pdf"), "%PDF-1.4\n%EOF\n")
       },
     })
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const tool = await ViewFileTool.init()
@@ -41,7 +41,7 @@ describe("tool.view_file binary file blocking", () => {
         await Bun.write(path.join(dir, "report.docx"), "PK\u0003\u0004")
       },
     })
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const tool = await ViewFileTool.init()
@@ -59,7 +59,7 @@ describe("tool.view_file binary file blocking", () => {
         await Bun.write(path.join(dir, "sheet.xlsx"), "PK\u0003\u0004")
       },
     })
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const tool = await ViewFileTool.init()
@@ -77,7 +77,7 @@ describe("tool.view_file binary file blocking", () => {
         await Bun.write(path.join(dir, "deck.pptx"), "PK\u0003\u0004")
       },
     })
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const tool = await ViewFileTool.init()
@@ -95,7 +95,7 @@ describe("tool.view_file binary file blocking", () => {
         await Bun.write(path.join(dir, "app.exe"), "MZ\x90\x00")
       },
     })
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const tool = await ViewFileTool.init()
@@ -113,7 +113,7 @@ describe("tool.view_file binary file blocking", () => {
         await Bun.write(path.join(dir, "lib.dll"), "MZ\x90\x00")
       },
     })
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const tool = await ViewFileTool.init()
@@ -131,7 +131,7 @@ describe("tool.view_file binary file blocking", () => {
         await Bun.write(path.join(dir, "lib.so"), "\x7fELF")
       },
     })
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const tool = await ViewFileTool.init()
@@ -149,7 +149,7 @@ describe("tool.view_file binary file blocking", () => {
         await Bun.write(path.join(dir, "notes.txt"), "meeting notes here\n")
       },
     })
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const tool = await ViewFileTool.init()

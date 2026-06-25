@@ -3,7 +3,9 @@ import { BusEvent } from "@/bus/bus-event"
 import { Config } from "@/config/config"
 import { Identifier } from "@/id/id"
 import { isNonBypassableMetadata } from "@/enforcement/capability"
-import { Instance } from "@/scope/instance"
+import { PermissionRules } from "@/permission/rules"
+import { ScopeContext } from "@/scope/context"
+import { ScopedState } from "@/scope/scoped-state"
 import { SessionInteraction } from "@/session/interaction"
 import { fn } from "@/util/fn"
 import { Log } from "@/util/log"
@@ -86,7 +88,7 @@ export namespace PermissionNext {
 
   export type Request = z.infer<typeof Request>
 
-  export const Reply = z.enum(["once", "reject"])
+  export const Reply = z.enum(["once", "session", "always", "reject"])
   export type Reply = z.infer<typeof Reply>
 
   export const Event = {
@@ -105,7 +107,7 @@ export namespace PermissionNext {
     return isNonBypassableMetadata(request.metadata)
   }
 
-  const state = Instance.state(async () => {
+  const state = ScopedState.create(async () => {
     const pending: Record<
       string,
       {
@@ -224,6 +226,22 @@ export namespace PermissionNext {
             pending.reject(new RejectedError())
           }
         }
+        return
+      }
+      if (input.reply === "session" || input.reply === "always") {
+        for (const pattern of existing.info.patterns) {
+          const rule = {
+            permission: existing.info.permission,
+            pattern,
+            action: "allow" as const,
+          }
+          if (input.reply === "session") {
+            PermissionRules.addSessionRule(existing.info.sessionID, rule)
+          } else {
+            await PermissionRules.addUserRule(rule)
+          }
+        }
+        existing.resolve()
         return
       }
       if (input.reply === "once") {

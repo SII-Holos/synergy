@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import path from "path"
 import { ReadTool } from "../../src/tool/read"
-import { Instance } from "../../src/scope/instance"
+import { ScopeContext } from "../../src/scope/context"
 import { Scope } from "../../src/scope"
 import { tmpdir } from "../fixture/fixture"
 import { PermissionNext } from "../../src/permission/next"
@@ -26,7 +26,7 @@ describe("tool.read external_directory permission", () => {
         await Bun.write(path.join(dir, "test.txt"), "hello world")
       },
     })
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const read = await ReadTool.init()
@@ -42,7 +42,7 @@ describe("tool.read external_directory permission", () => {
         await Bun.write(path.join(dir, "subdir", "test.txt"), "nested content")
       },
     })
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const read = await ReadTool.init()
@@ -59,7 +59,7 @@ describe("tool.read external_directory permission", () => {
       },
     })
     await using tmp = await tmpdir({ git: true })
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const read = await ReadTool.init()
@@ -79,7 +79,7 @@ describe("tool.read external_directory permission", () => {
 
   test("does not emit external_directory directly when reading relative path outside project", async () => {
     await using tmp = await tmpdir({ git: true })
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const read = await ReadTool.init()
@@ -103,7 +103,7 @@ describe("tool.read external_directory permission", () => {
         await Bun.write(path.join(dir, "internal.txt"), "internal content")
       },
     })
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const read = await ReadTool.init()
@@ -138,7 +138,7 @@ describe("tool.read env file blocking", () => {
       await using tmp = await tmpdir({
         init: (dir) => Bun.write(path.join(dir, filename), "content"),
       })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const agent = await Agent.get(agentName)
@@ -177,7 +177,7 @@ describe("tool.read truncation", () => {
         await Bun.write(path.join(dir, "large.json"), content)
       },
     })
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const read = await ReadTool.init()
@@ -196,7 +196,7 @@ describe("tool.read truncation", () => {
         await Bun.write(path.join(dir, "many-lines.txt"), lines)
       },
     })
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const read = await ReadTool.init()
@@ -216,7 +216,7 @@ describe("tool.read truncation", () => {
         await Bun.write(path.join(dir, "small.txt"), "hello world")
       },
     })
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const read = await ReadTool.init()
@@ -234,7 +234,7 @@ describe("tool.read truncation", () => {
         await Bun.write(path.join(dir, "offset.txt"), lines)
       },
     })
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const read = await ReadTool.init()
@@ -254,7 +254,7 @@ describe("tool.read truncation", () => {
         await Bun.write(path.join(dir, "long-line.txt"), longLine)
       },
     })
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const read = await ReadTool.init()
@@ -276,7 +276,7 @@ describe("tool.read truncation", () => {
         await Bun.write(path.join(dir, "image.png"), png)
       },
     })
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const read = await ReadTool.init()
@@ -289,7 +289,7 @@ describe("tool.read truncation", () => {
   })
 
   test("large image files are properly attached without error", async () => {
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: (await Scope.fromDirectory(FIXTURES_DIR)).scope,
       fn: async () => {
         const read = await ReadTool.init()

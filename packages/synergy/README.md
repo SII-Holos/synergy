@@ -14,7 +14,7 @@ This is the engine behind Synergy. It provides:
 - **MCP integration** — connect external tool ecosystems via the Model Context Protocol
 - **Provider support** — multi-provider LLM integration (OpenAI, Anthropic, Google, and many others)
 - **Config system** — layered configuration with global, project, and runtime scopes
-- **Engram** — long-term memory and knowledge infrastructure
+- **Library** — long-term memory and knowledge infrastructure
 - **Notes, Agenda, Channels** — persistent notes, scheduled automation, and messaging integrations
 
 ## Installation

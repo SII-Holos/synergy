@@ -1,4 +1,5 @@
 import { MetaProtocolEnv, MetaProtocolProcess } from "@ericsanchezok/meta-protocol"
+import type { MessageV2 } from "@/session/message-v2"
 
 export interface ProcessParams {
   action: MetaProtocolProcess.Action
@@ -13,4 +14,6 @@ export interface ProcessParams {
 }
 
 export type ProcessMetadata = MetaProtocolProcess.ResultMetadata
-export type ProcessResult = MetaProtocolProcess.Result
+export type ProcessResult = MetaProtocolProcess.Result & {
+  attachments?: MessageV2.FilePart[]
+}

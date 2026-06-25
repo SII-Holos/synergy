@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, test } from "bun:test"
 import { Cortex, CortexConcurrency } from "../../src/cortex"
-import { Instance } from "../../src/scope/instance"
+import { ScopeContext } from "../../src/scope/context"
 import { Session } from "../../src/session"
 import { tmpdir } from "../fixture/fixture"
 
@@ -12,7 +12,7 @@ describe("Cortex non-blocking cancel", () => {
 
   test("cancel returns without waiting for task processor settle", async () => {
     await using tmp = await tmpdir({ git: true })
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const parentSession = await Session.create({ title: "nonblock-cancel" })
@@ -39,7 +39,7 @@ describe("Cortex non-blocking cancel", () => {
 
   test("cancelAll returns without cascading waits across descendants", async () => {
     await using tmp = await tmpdir({ git: true })
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const parentSession = await Session.create({ title: "nonblock-cancel-all" })

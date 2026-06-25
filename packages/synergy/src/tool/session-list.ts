@@ -36,7 +36,7 @@ interface TimeFilter {
 const QueryLimit = 10000
 
 function formatScopeLabel(scope: Scope): string {
-  if (scope.type === "global") return `Home [${scope.id}]`
+  if (scope.type === "home") return `Home [${scope.id}]`
   const name = scope.name ?? path.basename(scope.directory) ?? scope.id
   return `${name} [${scope.id}] — ${scope.directory}`
 }

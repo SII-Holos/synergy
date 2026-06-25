@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import path from "path"
 import { ReadTool } from "../../src/tool/read"
-import { Instance } from "../../src/scope/instance"
+import { ScopeContext } from "../../src/scope/context"
 import { tmpdir } from "../fixture/fixture"
 
 const ctx = {
@@ -34,7 +34,7 @@ describe("tool.read offset=0 fix", () => {
         await Bun.write(path.join(dir, "data.txt"), manyLines(150))
       },
     })
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const read = await ReadTool.init()
@@ -74,7 +74,7 @@ describe("tool.read offset=0 fix", () => {
         await Bun.write(path.join(dir, "offset.txt"), manyLines(150))
       },
     })
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const read = await ReadTool.init()
@@ -100,7 +100,7 @@ describe("tool.read offset=0 fix", () => {
         await Bun.write(path.join(dir, "same.txt"), manyLines(200))
       },
     })
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const read = await ReadTool.init()

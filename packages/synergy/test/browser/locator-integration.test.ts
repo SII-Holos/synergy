@@ -2,6 +2,7 @@ import { describe, test, expect, mock } from "bun:test"
 import { BrowserLocator } from "../../src/browser/locator"
 import { BrowserWait } from "../../src/browser/wait"
 import type { BrowserTab, AccessibilityElement } from "../../src/browser/tab"
+import type { CDPHandle } from "../../src/browser/cdp"
 
 // ── helpers ──────────────────────────────────────────────────────────────
 
@@ -16,18 +17,37 @@ function mockTab(overrides?: Partial<BrowserTab>): BrowserTab {
     lastActiveAt: null,
     cdp: null,
     navigate: mock(async () => ({ url: "", title: "" })),
+    navigateForUser: mock(async () => ({ url: "", title: "" })),
     navigateWithOverride: mock(async () => ({ url: "", title: "" })),
     reload: mock(async () => {}),
     goBack: mock(async () => {}),
     goForward: mock(async () => {}),
     stop: mock(async () => {}),
+    setViewport: mock(async () => {}),
     click: mock(async () => {}),
     type: mock(async () => {}),
     scroll: mock(async () => {}),
+    dispatchMouse: mock(async () => {}),
+    dispatchKey: mock(async () => {}),
+    insertText: mock(async () => {}),
+    respondToFileChooser: mock(async () => {}),
+    respondToDialog: mock(async () => {}),
+    startFrameStream: mock(async () => {}),
+    stopFrameStream: mock(async () => {}),
+    ensureCDP: mock(
+      async () =>
+        ({
+          send: mock(async () => null),
+          on: mock(() => () => {}),
+          detach: mock(async () => {}),
+        }) as CDPHandle,
+    ),
+    detachCDP: mock(async () => {}),
     screenshot: mock(async () => ({ buffer: Buffer.alloc(0), width: 800, height: 600 })),
     snapshot: mock(async () => ({ elements: [], truncated: false })),
     consoleEntries: mock(async () => []),
     networkRequests: mock(async () => []),
+    clearDiagnostics: mock(async () => {}),
     resolveRef: mock(async () => null),
     evaluate: mock(async () => null),
     waitFor: mock(async () => false),

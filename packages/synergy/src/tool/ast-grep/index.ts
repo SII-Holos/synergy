@@ -1,6 +1,6 @@
 import z from "zod"
 import { Tool } from "../tool"
-import { Instance } from "../../scope/instance"
+import { ScopeContext } from "../../scope/context"
 import { runSg, formatSearchResult } from "./cli"
 import { AST_GREP_LANGUAGES, type AstGrepLanguage } from "./types"
 import DESCRIPTION from "./index.txt"
@@ -63,7 +63,7 @@ export const AstGrepTool = Tool.define("ast_grep", {
       },
     })
 
-    const cwd = Instance.directory
+    const cwd = ScopeContext.current.directory
     const result = await runSg({
       pattern: params.pattern,
       lang: params.lang,

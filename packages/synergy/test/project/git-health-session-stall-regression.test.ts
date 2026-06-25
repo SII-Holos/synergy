@@ -7,7 +7,7 @@
 // Root cause context:
 //   1. loop-signals.ts calls GitHealth.invalidate() (global, no args) after
 //      every bash command, which bumps _generation and clears _refreshing
-//      for ALL directories — not just the current Instance.directory.
+//      for ALL directories — not just the current ScopeContext.current.directory.
 //   2. This kills in-flight refresh deduplication and discards cache-write
 //      results for unrelated directories.
 //   3. Combined with Snapshot.track() hanging on git add (no timeout),
@@ -20,7 +20,7 @@
 //       b) Bump _generation globally (discards in-flight scan cache writes)
 //   - invalidate() (no args, global) MAY clear everything, but the
 //     git_health_cache_invalidator in loop-signals.ts should be changed
-//     to use the scoped form: invalidate(Instance.directory).
+//     to use the scoped form: invalidate(ScopeContext.current.directory).
 // ---------------------------------------------------------------------------
 
 import { describe, expect, test, beforeAll } from "bun:test"

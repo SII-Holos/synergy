@@ -2,7 +2,7 @@ import z from "zod"
 import { Tool } from "./tool"
 import * as path from "path"
 import DESCRIPTION from "./ls.txt"
-import { Instance } from "../scope/instance"
+import { ScopeContext } from "../scope/context"
 import { Ripgrep } from "../file/ripgrep"
 
 export const IGNORE_PATTERNS = [
@@ -41,7 +41,7 @@ export const ListTool = Tool.define("list", {
     ignore: z.array(z.string()).describe("List of glob patterns to ignore").optional(),
   }),
   async execute(params, ctx) {
-    const searchPath = path.resolve(Instance.directory, params.path || ".")
+    const searchPath = path.resolve(ScopeContext.current.directory, params.path || ".")
 
     await ctx.ask({
       permission: "list",
@@ -130,7 +130,7 @@ export const ListTool = Tool.define("list", {
     const output = `${searchPath}/\n` + renderDir(".", 0)
 
     return {
-      title: path.relative(Instance.directory, searchPath),
+      title: path.relative(ScopeContext.current.directory, searchPath),
       metadata: {
         count: files.length,
         truncated: files.length >= LIMIT,

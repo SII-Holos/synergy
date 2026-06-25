@@ -1,9 +1,10 @@
 /**
  * Session-scoped seen-lines store adapter.
- * Wraps SeenStore with Instance.state + Bus SessionEvent.Deleted cleanup.
+ * Wraps SeenStore with ScopedState + Bus SessionEvent.Deleted cleanup.
  */
 import { Bus } from "../bus"
-import { Instance } from "../scope/instance"
+import { ScopeContext } from "../scope/context"
+import { ScopedState } from "../scope/scoped-state"
 import { SessionEvent } from "../session/event"
 
 export interface SeenRange {
@@ -52,7 +53,7 @@ export class SeenStore {
 }
 
 export namespace SessionSeenStore {
-  const state = Instance.state(() => new Map<string, SeenStore>())
+  const state = ScopedState.create(() => new Map<string, SeenStore>())
 
   let cleanupSubscribed = false
 

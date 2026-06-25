@@ -90,4 +90,15 @@ describe("Config schema accepts controlProfile", () => {
     })
     expect(result.success).toBe(true)
   })
+
+  test("smartAllow accepts boolean values", () => {
+    const result = Info.safeParse({
+      $schema: "file:///test/schema.json",
+      smartAllow: true,
+    })
+    expect(result.success).toBe(true)
+    if (result.success) {
+      expect(result.data.smartAllow).toBe(true)
+    }
+  })
 })

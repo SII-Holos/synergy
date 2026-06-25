@@ -106,14 +106,33 @@
     background-color var(--motion-duration-base) var(--motion-ease-standard);
 }
 
+.note-card-preview {
+  position: relative;
+}
+
+.note-card-preview::after {
+  position: absolute;
+  right: 0.875rem;
+  bottom: 0;
+  left: 0.875rem;
+  height: 1.6rem;
+  pointer-events: none;
+  background: linear-gradient(to bottom, transparent, color-mix(in srgb, var(--surface-raised-base) 92%, transparent));
+  content: "";
+}
+
+.note-card--blueprint .note-card-preview::after {
+  background: linear-gradient(to bottom, transparent, color-mix(in srgb, var(--surface-inset-base) 64%, transparent));
+}
+
 .note-card--blueprint {
-  border-color: color-mix(in srgb, var(--border-strong-base) 18%, var(--border-weaker-base));
-  background: color-mix(in srgb, var(--surface-inset-base) 22%, var(--surface-raised-base));
+  border-color: color-mix(in srgb, var(--border-strong-base) 24%, var(--border-weaker-base));
+  background: color-mix(in srgb, var(--surface-inset-base) 30%, var(--surface-raised-base));
 }
 
 .note-card--blueprint:hover {
-  border-color: color-mix(in srgb, var(--border-strong-base) 30%, var(--border-weak-hover));
-  background: color-mix(in srgb, var(--surface-inset-base) 30%, var(--surface-raised-base-hover));
+  border-color: color-mix(in srgb, var(--border-strong-base) 38%, var(--border-weak-hover));
+  background: color-mix(in srgb, var(--surface-inset-base) 38%, var(--surface-raised-base-hover));
 }
 
 .note-card--blueprint-running,
@@ -143,7 +162,51 @@
 }
 
 .note-card--blueprint .note-card-footer {
-  background: color-mix(in srgb, var(--surface-inset-base) 30%, transparent);
+  background: color-mix(in srgb, var(--surface-inset-base) 46%, transparent);
+}
+
+.note-blueprint-card-header {
+  display: flex;
+  min-height: 2.45rem;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.65rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--border-weaker-base) 72%, transparent);
+  background: color-mix(in srgb, var(--surface-inset-base) 58%, transparent);
+  padding: 0.55rem 0.75rem 0.5rem;
+}
+
+.note-blueprint-card-header--running,
+.note-blueprint-card-header--auditing {
+  border-bottom-color: color-mix(in srgb, var(--border-success-base) 20%, var(--border-weaker-base));
+  background: color-mix(in srgb, var(--surface-success-base) 8%, var(--surface-inset-base));
+}
+
+.note-blueprint-card-header--waiting {
+  border-bottom-color: color-mix(in srgb, var(--border-warning-base) 20%, var(--border-weaker-base));
+  background: color-mix(in srgb, var(--surface-warning-base) 7%, var(--surface-inset-base));
+}
+
+.note-blueprint-card-header--failed {
+  border-bottom-color: color-mix(in srgb, var(--border-diff-delete-base) 20%, var(--border-weaker-base));
+  background: color-mix(in srgb, var(--surface-diff-delete-base) 7%, var(--surface-inset-base));
+}
+
+.note-blueprint-card-header--completed {
+  border-bottom-color: color-mix(in srgb, var(--border-diff-add-base) 18%, var(--border-weaker-base));
+  background: color-mix(in srgb, var(--surface-diff-add-base) 6%, var(--surface-inset-base));
+}
+
+.note-blueprint-card-kicker {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.35rem;
+  color: var(--text-base);
+  font-size: 0.71875rem;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
 }
 
 .note-card-origin {
@@ -211,29 +274,6 @@
   box-shadow:
     0 8px 22px rgba(0, 0, 0, 0.12),
     0 0 0 1px color-mix(in srgb, var(--border-weaker-base) 80%, transparent);
-}
-
-/* Horizontal scrollbar for the tag filter bar when tags overflow */
-.notes-tag-bar {
-  scrollbar-width: thin;
-  scrollbar-color: var(--icon-weak-base) transparent;
-}
-
-.notes-tag-bar::-webkit-scrollbar {
-  height: 4px;
-}
-
-.notes-tag-bar::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.notes-tag-bar::-webkit-scrollbar-thumb {
-  background-color: var(--icon-weak-base);
-  border-radius: var(--radius-full);
-}
-
-.notes-tag-bar::-webkit-scrollbar-thumb:hover {
-  background-color: var(--icon-weak-hover);
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -19,7 +19,8 @@ export interface ApprovalMetadata {
     | "auto_denied"
     | "policy_denied"
     | "sandbox_blocked"
-  source: "profile" | "automatic" | "user" | "sandbox"
+    | "pre_authorized"
+  source: "profile" | "automatic" | "user" | "sandbox" | "provenance" | "smart_allow"
   mode?: ProfileApproval["mode"]
   risk?: RiskLevel
   reason?: string
@@ -41,10 +42,16 @@ const HIGH_RISK = new Set([
 
   "mcp_invoke",
   "plugin_invoke",
+  "plugin_file_read",
+  "plugin_file_write",
+  "plugin_shell",
+  "plugin_network",
+  "plugin_secret_read",
   "identity_act",
   "communication_email",
   "channel_outbound",
   "platform_control",
+  "protected_op",
 ])
 
 const MEDIUM_RISK = new Set(["file_write", "shell", "network_request"])

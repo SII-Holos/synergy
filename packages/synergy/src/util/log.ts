@@ -55,7 +55,21 @@ export namespace Log {
     return logpath
   }
 
+  export function devFile() {
+    return path.join(Global.Path.log, "dev.log")
+  }
+
+  export async function listDevArchives() {
+    return (await listArchives(Global.Path.log, /^dev\.\d{8}-\d{6}(?:\.\d+)?\.log$/)).map((item) => item.path)
+  }
+
+  let initialized = false
+  const buffered: string[] = []
   let write = (msg: string) => {
+    if (!initialized) {
+      buffered.push(msg)
+      return
+    }
     process.stderr.write(msg)
   }
 
@@ -64,12 +78,30 @@ export namespace Log {
   export async function init(options: Options) {
     if (options.level) level = options.level
     cleanup(Global.Path.log).catch(() => {})
-    if (options.print) return
+    if (options.print) {
+      write = (msg: string) => {
+        process.stderr.write(msg)
+      }
+      initialized = true
+      flushBuffered()
+      return
+    }
     logpath = path.join(
       Global.Path.log,
       options.dev ? "dev.log" : new Date().toISOString().split(".")[0].replace(/:/g, "") + ".log",
     )
+    if (options.dev) {
+      await archiveDevLog(logpath)
+    }
     await openWriter(logpath)
+    initialized = true
+    flushBuffered()
+  }
+
+  function flushBuffered() {
+    if (buffered.length === 0) return
+    const pending = buffered.splice(0)
+    for (const msg of pending) write(msg)
   }
 
   async function openWriter(filePath: string) {
@@ -93,6 +125,45 @@ export namespace Log {
     } catch {
       write = (msg: string) => {
         process.stderr.write(msg)
+      }
+    }
+  }
+
+  async function archiveDevLog(filePath: string) {
+    const stat = await fs.stat(filePath).catch(() => undefined)
+    if (!stat || stat.size === 0) return
+    const timestamp = new Date().toISOString().replace(/[-:]/g, "").replace("T", "-").slice(0, 15)
+    const archivePath = path.join(path.dirname(filePath), `dev.${timestamp}.log`)
+    await fs.rename(filePath, archivePath).catch(async () => {
+      const fallback = path.join(path.dirname(filePath), `dev.${timestamp}.${process.pid}.log`)
+      await fs.rename(filePath, fallback).catch(() => {})
+    })
+    await cleanupDevArchives(path.dirname(filePath))
+  }
+
+  async function listArchives(dir: string, pattern: RegExp) {
+    const entries = await fs.readdir(dir).catch((): string[] => [])
+    const archives = await Promise.all(
+      entries
+        .filter((name) => pattern.test(name))
+        .map(async (name) => ({
+          name,
+          path: path.join(dir, name),
+          stat: await fs.stat(path.join(dir, name)).catch(() => undefined),
+        })),
+    )
+    return archives
+      .filter((item): item is { name: string; path: string; stat: NonNullable<(typeof item)["stat"]> } => !!item.stat)
+      .sort((a, b) => b.stat.mtimeMs - a.stat.mtimeMs)
+  }
+
+  async function cleanupDevArchives(dir: string) {
+    const archives = await listArchives(dir, /^dev\.\d{8}-\d{6}(?:\.\d+)?\.log$/)
+    let total = 0
+    for (let i = 0; i < archives.length; i++) {
+      total += archives[i].stat.size
+      if (i >= 10 || total > 200 * 1024 * 1024) {
+        await fs.rm(archives[i].path, { force: true }).catch(() => {})
       }
     }
   }

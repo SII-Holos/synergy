@@ -11,7 +11,7 @@ export namespace AppChannel {
 
   export async function session(): Promise<Session.Info> {
     return Session.create({
-      scope: Scope.global(),
+      scope: Scope.home(),
       interaction: SessionInteraction.interactive("channel:app"),
     })
   }

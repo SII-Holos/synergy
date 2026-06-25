@@ -6,21 +6,35 @@ import { Command } from "../command/command"
 import { Session } from "../session"
 import { SessionManager } from "../session/manager"
 import { SessionInvoke, InvokeInput } from "../session/invoke"
+import { SessionInbox } from "../session/inbox"
 import { shell as invokeShell, ShellInput } from "../session/shell"
-import { SessionRevert } from "../session/revert"
+import { SessionHistory } from "../session/history"
 import { MessageV2 } from "../session/message-v2"
 import { Identifier } from "../id/id"
 import { Todo } from "../session/todo"
 import { Dag } from "../session/dag"
 import { Snapshot } from "../session/snapshot"
 import { Agent } from "../agent/agent"
-import { Instance } from "../scope/instance"
+import { ScopeContext } from "../scope/context"
 import { Log } from "../util/log"
 import { AgendaStore, AgendaTypes } from "../agenda"
 import { errors } from "./error"
 
 const log = Log.create({ service: "session" })
 const ControlProfileId = z.enum(["guarded", "autonomous", "full_access"])
+
+async function submitInput(input: InvokeInput): Promise<SessionInbox.InputResult> {
+  const messageID = input.messageID ?? Identifier.ascending("message")
+  const next = { ...input, messageID }
+  if (SessionManager.isRunning(input.sessionID)) {
+    const item = await SessionInbox.enqueueUser(next)
+    return { status: "queued", item }
+  }
+  SessionInvoke.invoke(next).catch((error) => {
+    log.error("failed to execute async input", { sessionID: input.sessionID, error })
+  })
+  return { status: "started", messageID }
+}
 
 export const SessionRoute = new Hono()
   .get(
@@ -106,7 +120,7 @@ export const SessionRoute = new Hono()
       },
     }),
     async (c) => {
-      const result = await SessionManager.listStatuses(Instance.scope.id)
+      const result = await SessionManager.listStatuses(ScopeContext.current.scope.id)
       return c.json(result)
     },
   )
@@ -494,6 +508,124 @@ export const SessionRoute = new Hono()
     },
   )
 
+  .get(
+    "/:sessionID/inbox",
+    describeRoute({
+      summary: "List session inbox items",
+      description: "Get active queued user messages and agent updates for a session.",
+      operationId: "session.inbox",
+      responses: {
+        200: {
+          description: "Session inbox items",
+          content: {
+            "application/json": {
+              schema: resolver(SessionInbox.Item.array()),
+            },
+          },
+        },
+        ...errors(400, 404),
+      },
+    }),
+    validator(
+      "param",
+      z.object({
+        sessionID: z.string().meta({ description: "Session ID" }),
+      }),
+    ),
+    async (c) => {
+      const sessionID = c.req.valid("param").sessionID
+      return c.json(await SessionInbox.list(sessionID))
+    },
+  )
+  .post(
+    "/:sessionID/input",
+    describeRoute({
+      summary: "Submit session input",
+      description:
+        "Submit user input to a session. If the session is running, the input is queued in the session inbox; otherwise a new turn starts immediately.",
+      operationId: "session.input",
+      responses: {
+        200: {
+          description: "Input accepted",
+          content: {
+            "application/json": {
+              schema: resolver(SessionInbox.InputResult),
+            },
+          },
+        },
+        ...errors(400, 404),
+      },
+    }),
+    validator(
+      "param",
+      z.object({
+        sessionID: z.string().meta({ description: "Session ID" }),
+      }),
+    ),
+    validator("json", InvokeInput.omit({ sessionID: true })),
+    async (c) => {
+      const sessionID = c.req.valid("param").sessionID
+      const body = c.req.valid("json")
+      return c.json(await submitInput({ ...body, sessionID }))
+    },
+  )
+  .post(
+    "/:sessionID/inbox/:itemID/guide",
+    describeRoute({
+      summary: "Guide current run with inbox item",
+      description: "Promote a queued user message so it is added before the next model request in the current run.",
+      operationId: "session.inbox_guide",
+      responses: {
+        200: {
+          description: "Promoted inbox item",
+          content: {
+            "application/json": {
+              schema: resolver(SessionInbox.Item),
+            },
+          },
+        },
+        ...errors(400, 404),
+      },
+    }),
+    validator(
+      "param",
+      z.object({
+        sessionID: z.string().meta({ description: "Session ID" }),
+        itemID: z.string().meta({ description: "Inbox item ID" }),
+      }),
+    ),
+    async (c) => {
+      const params = c.req.valid("param")
+      return c.json(await SessionInbox.guide(params))
+    },
+  )
+  .delete(
+    "/:sessionID/inbox/:itemID",
+    describeRoute({
+      summary: "Remove inbox item",
+      description: "Remove a queued user message from the session inbox.",
+      operationId: "session.inbox_remove",
+      responses: {
+        204: {
+          description: "Inbox item removed",
+        },
+        ...errors(400, 404),
+      },
+    }),
+    validator(
+      "param",
+      z.object({
+        sessionID: z.string().meta({ description: "Session ID" }),
+        itemID: z.string().meta({ description: "Inbox item ID" }),
+      }),
+    ),
+    async (c) => {
+      const params = c.req.valid("param")
+      await SessionInbox.remove(params)
+      return c.body(null, 204)
+    },
+  )
+
   .post(
     "/:sessionID/summarize",
     describeRoute({
@@ -529,8 +661,6 @@ export const SessionRoute = new Hono()
     async (c) => {
       const sessionID = c.req.valid("param").sessionID
       const body = c.req.valid("json")
-      const session = await Session.get(sessionID)
-      await SessionRevert.cleanup(session)
       const msgs = await Session.messages({ sessionID })
       let currentAgent = await Agent.defaultAgent()
       for (let i = msgs.length - 1; i >= 0; i--) {
@@ -599,6 +729,7 @@ export const SessionRoute = new Hono()
       "query",
       z.object({
         limit: z.coerce.number().optional(),
+        raw: z.coerce.boolean().optional(),
       }),
     ),
     async (c) => {
@@ -606,6 +737,7 @@ export const SessionRoute = new Hono()
       const messages = await Session.messages({
         sessionID: c.req.valid("param").sessionID,
         limit: query.limit,
+        raw: query.raw,
       })
       return c.json(messages)
     },
@@ -819,7 +951,7 @@ export const SessionRoute = new Hono()
       return stream(c, async () => {
         const sessionID = c.req.valid("param").sessionID
         const body = c.req.valid("json")
-        SessionInvoke.invoke({ ...body, sessionID })
+        await submitInput({ ...body, sessionID })
       })
     },
   )
@@ -894,17 +1026,17 @@ export const SessionRoute = new Hono()
     },
   )
   .post(
-    "/:sessionID/revert",
+    "/:sessionID/rollback",
     describeRoute({
-      summary: "Revert message",
-      description: "Revert a specific message in a session, undoing its effects and restoring the previous state.",
-      operationId: "session.revert",
+      summary: "Rollback session history",
+      description: "Hide the latest user turn(s) from effective message history without modifying local files.",
+      operationId: "session.rollback",
       responses: {
         200: {
-          description: "Updated session",
+          description: "Rollback event",
           content: {
             "application/json": {
-              schema: resolver(Session.Info),
+              schema: resolver(SessionHistory.RollbackEvent),
             },
           },
         },
@@ -914,32 +1046,76 @@ export const SessionRoute = new Hono()
     validator(
       "param",
       z.object({
-        sessionID: z.string(),
+        sessionID: Session.rollback.schema.shape.sessionID,
       }),
     ),
-    validator("json", SessionRevert.RevertInput.omit({ sessionID: true })),
+    validator("json", Session.rollback.schema.omit({ sessionID: true })),
     async (c) => {
       const sessionID = c.req.valid("param").sessionID
-      log.info("session.revert", { sessionID, messageID: c.req.valid("json").messageID })
-      const session = await SessionRevert.revert({
-        sessionID,
-        ...c.req.valid("json"),
-      })
-      return c.json(session)
+      const body = c.req.valid("json")
+      log.info("session.rollback", { sessionID, numTurns: body.numTurns })
+      const event = await Session.rollback({ sessionID, ...body })
+      return c.json(event)
     },
   )
   .post(
-    "/:sessionID/unrevert",
+    "/:sessionID/unrollback",
     describeRoute({
-      summary: "Restore reverted messages",
-      description: "Restore all previously reverted messages in a session.",
-      operationId: "session.unrevert",
+      summary: "Restore rolled-back session history",
+      description: "Restore the latest rollback when no new user or assistant turn has been added after it.",
+      operationId: "session.unrollback",
       responses: {
         200: {
-          description: "Updated session",
+          description: "Unrollback event or current rollback state",
           content: {
             "application/json": {
-              schema: resolver(Session.Info),
+              schema: resolver(
+                z.union([
+                  SessionHistory.UnrollbackEvent,
+                  z
+                    .object({
+                      rollback: SessionHistory.RollbackSummary,
+                    })
+                    .optional(),
+                ]),
+              ),
+            },
+          },
+        },
+        ...errors(400, 404, 409),
+      },
+    }),
+    validator(
+      "param",
+      z.object({
+        sessionID: Session.unrollback.schema.shape.sessionID,
+      }),
+    ),
+    async (c) => {
+      const sessionID = c.req.valid("param").sessionID
+      const body = await c.req.json().catch(() => ({}))
+      const parsed = Session.unrollback.schema.omit({ sessionID: true }).parse(body)
+      try {
+        const event = await Session.unrollback({ sessionID, ...parsed })
+        return c.json(event)
+      } catch (error) {
+        if (error instanceof SessionHistory.UnrollbackConflictError) return c.json(error.toObject(), 409)
+        throw error
+      }
+    },
+  )
+  .post(
+    "/:sessionID/files/restore",
+    describeRoute({
+      summary: "Restore session files",
+      description: "Explicitly restore files from session patch data. Message rollback never calls this automatically.",
+      operationId: "session.files.restore",
+      responses: {
+        200: {
+          description: "Restored files",
+          content: {
+            "application/json": {
+              schema: resolver(SessionHistory.FileRestoreResult),
             },
           },
         },
@@ -949,12 +1125,19 @@ export const SessionRoute = new Hono()
     validator(
       "param",
       z.object({
-        sessionID: z.string(),
+        sessionID: Session.restoreFiles.schema.shape.sessionID,
       }),
     ),
+    validator("json", Session.restoreFiles.schema.omit({ sessionID: true })),
     async (c) => {
       const sessionID = c.req.valid("param").sessionID
-      const session = await SessionRevert.unrevert({ sessionID })
-      return c.json(session)
+      const body = c.req.valid("json")
+      try {
+        const result = await Session.restoreFiles({ sessionID, ...body })
+        return c.json(result)
+      } catch (error) {
+        if (error instanceof SessionHistory.FileRestoreMissingPatchDataError) return c.json(error.toObject(), 400)
+        throw error
+      }
     },
   )

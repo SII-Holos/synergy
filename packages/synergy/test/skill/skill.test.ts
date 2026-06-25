@@ -1,7 +1,7 @@
 import { describe, test, expect } from "bun:test"
 import { Skill } from "../../src/skill"
 import { BUILTIN_SKILLS } from "../../src/skill/builtin"
-import { Instance } from "../../src/scope/instance"
+import { ScopeContext } from "../../src/scope/context"
 import { tmpdir } from "../fixture/fixture"
 import path from "path"
 import fs from "fs/promises"
@@ -31,7 +31,7 @@ async function createSkill(baseDir: string, relativeDir: string, content: string
   await Bun.write(path.join(skillDir, filename), content)
 }
 
-// Skill discovery tests share global state (process.env, Instance.state)
+// Skill discovery tests share global state (process.env, ScopedState)
 // and must run serially to avoid interference between concurrent tests.
 describe.serial("skill discovery", () => {
   test("discovers skills from .synergy/skill/ directory", async () => {
@@ -54,7 +54,7 @@ Instructions here.
       },
     })
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const skills = await Skill.all()
@@ -99,7 +99,7 @@ description: Second test skill.
       },
     })
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const skills = await Skill.all()
@@ -130,7 +130,7 @@ Instructions here.
       },
     })
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const skills = await Skill.all()
@@ -158,7 +158,7 @@ Just some content without YAML frontmatter.
       },
     })
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const [skills, diagnostics] = await Promise.all([Skill.all(), Skill.diagnostics()])
@@ -199,7 +199,7 @@ description: bad: yaml: here
       },
     })
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const [skills, diagnostics] = await Promise.all([Skill.all(), Skill.diagnostics()])
@@ -228,7 +228,7 @@ description: A skill in the .claude/skills directory.
       },
     })
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const skills = await Skill.all()
@@ -248,7 +248,7 @@ description: A skill in the .claude/skills directory.
 
     try {
       await createGlobalSkill(tmp.path)
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const skills = await Skill.all()
@@ -267,7 +267,7 @@ description: A skill in the .claude/skills directory.
   test("returns only builtin skills when no user skills exist", async () => {
     await using tmp = await tmpdir({ git: true })
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const skills = await Skill.all()
@@ -285,7 +285,7 @@ description: A skill in the .claude/skills directory.
   test("reload discovers project-local skill created after initial config state", async () => {
     await using tmp = await tmpdir({ git: true })
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const initial = await Skill.all()
@@ -325,7 +325,7 @@ description: A project-local skill created after startup.
       await (await import("../../src/scope")).Scope.fromDirectory(path.join(tmp.path, "packages", "app"))
     ).scope
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: subdirScope,
       fn: async () => {
         const skillDir = path.join(tmp.path, ".synergy", "skill", "root-skill")
@@ -387,7 +387,7 @@ command-dispatch: tool
 `,
       )
 
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const skills = await Skill.all()
@@ -432,7 +432,7 @@ description: Codex skill file.
       },
     })
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const skills = await Skill.all()
@@ -474,7 +474,7 @@ description: Synergy version.
       },
     })
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const [skills, diagnostics] = await Promise.all([Skill.all(), Skill.diagnostics()])

@@ -1,7 +1,7 @@
 import { Hono } from "hono"
 import { describeRoute, validator } from "hono-openapi"
 import { resolver } from "hono-openapi"
-import { Instance } from "../scope/instance"
+import { ScopeContext } from "../scope/context"
 import { Scope } from "../scope"
 import z from "zod"
 import { errors } from "./error"
@@ -48,7 +48,7 @@ export const ScopeRoute = new Hono()
       },
     }),
     async (c) => {
-      return c.json(Instance.scope)
+      return c.json(ScopeContext.current.scope)
     },
   )
   .get(

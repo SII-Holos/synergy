@@ -4,12 +4,14 @@ export type ClientOptions = {
   baseUrl: `${string}://${string}` | (string & {})
 }
 
-export type HolosLoginResponse = {
-  url: string
-}
-
-export type HolosCredentialsResponse = {
-  success: true
+export type GlobalPaths = {
+  home: string
+  root: string
+  data: string
+  config: string
+  state: string
+  cache: string
+  log: string
 }
 
 export type BadRequestError = {
@@ -18,6 +20,156 @@ export type BadRequestError = {
     [key: string]: unknown
   }>
   success: false
+}
+
+export type StatsSnapshot = {
+  overview: {
+    totalSessions: number
+    activeSessions: number
+    archivedSessions: number
+    totalMessages: number
+    totalTurns: number
+    totalDays: number
+    longestStreak: number
+    currentStreak: number
+    projectCount: number
+  }
+  tokenCost: {
+    tokens: {
+      input: number
+      output: number
+      reasoning: number
+      cache: {
+        read: number
+        write: number
+      }
+    }
+    cost: number
+    cacheHitRate: number
+    avgCostPerTurn: number
+    avgTokensPerTurn: number
+    dailyCost: number
+    dailyTokens: number
+  }
+  models: {
+    models: Array<{
+      providerID: string
+      modelID: string
+      messages: number
+      turns: number
+      tokens: {
+        input: number
+        output: number
+        reasoning: number
+        cache: {
+          read: number
+          write: number
+        }
+      }
+      cost: number
+      avgResponseMs: number
+    }>
+  }
+  agents: {
+    agents: Array<{
+      agent: string
+      messages: number
+      sessions: number
+      tokens: {
+        input: number
+        output: number
+        reasoning: number
+        cache: {
+          read: number
+          write: number
+        }
+      }
+      cost: number
+      subagentInvocations: number
+    }>
+    totalSubagentCalls: number
+  }
+  tools: {
+    tools: Array<{
+      tool: string
+      calls: number
+      successes: number
+      errors: number
+      avgDurationMs: number
+    }>
+  }
+  codeChanges: {
+    totalAdditions: number
+    totalDeletions: number
+    totalFiles: number
+    netLines: number
+    dailyAdditions: number
+    dailyDeletions: number
+  }
+  lifecycle: {
+    pinnedCount: number
+    avgTurnsPerSession: number
+    medianTurnsPerSession: number
+    compactionCount: number
+    retryCount: number
+    errorCount: number
+    errorRate: number
+    durationBuckets: {
+      short: number
+      medium: number
+      long: number
+    }
+  }
+  channels: {
+    channels: Array<{
+      channel: string
+      sessions: number
+      messages: number
+    }>
+    interactiveSessions: number
+    unattendedSessions: number
+  }
+  timeSeries: {
+    days: Array<{
+      day: string
+      sessions: number
+      turns: number
+      tokens: {
+        input: number
+        output: number
+        reasoning: number
+        cache: {
+          read: number
+          write: number
+        }
+      }
+      cost: number
+      additions: number
+      deletions: number
+      files: number
+      toolCalls: number
+      errors: number
+    }>
+    hours: Array<{
+      hour: string
+      turns: number
+    }>
+    hourlyActivity: Array<number>
+  }
+  computedAt: number
+  watermark: number
+}
+
+export type DiagnosticsSummary = {
+  [key: string]: unknown
+}
+
+export type HolosLoginResponse = {
+  url: string
+}
+
+export type HolosCredentialsResponse = {
+  success: true
 }
 
 export type HolosLogoutResponse = {
@@ -254,7 +406,7 @@ export type AgendaItem = {
 export type SessionNavEntry = {
   id: string
   scopeID: string
-  scopeType: "global" | "project"
+  scopeType: "home" | "project"
   title: string
   category: "project" | "home" | "channel" | "background"
   lastActivityAt: number
@@ -286,7 +438,7 @@ export type AgendaWebhookResult = {
 
 export type Scope = {
   id: string
-  type: "global" | "project"
+  type: "home" | "project"
   directory: string
   worktree: string
   vcs?: "git"
@@ -306,7 +458,7 @@ export type Scope = {
 
 export type ScopeNavEntry = {
   scopeID: string
-  scopeType: "global" | "project"
+  scopeType: "home" | "project"
   name?: string
   directory: string
   latestActivityAt: number
@@ -443,11 +595,11 @@ export type KeybindsConfig = {
    */
   messages_copy?: string
   /**
-   * Undo message
+   * Undo message history only
    */
   messages_undo?: string
   /**
-   * Redo message
+   * Redo message history only
    */
   messages_redo?: string
   /**
@@ -705,6 +857,80 @@ export type ServerConfig = {
    * Additional domains to allow for CORS
    */
   cors?: Array<string>
+}
+
+/**
+ * Plugin approval policy configuration
+ */
+export type PluginApprovalPolicyConfig = {
+  /**
+   * Allow unsigned local plugins with user consent
+   */
+  allowUnsignedLocal?: boolean
+  /**
+   * Auto-approve builtin plugins without user consent
+   */
+  autoApproveBuiltin?: boolean
+  /**
+   * Block third-party plugins with high-risk capabilities
+   */
+  denyHighRiskThirdParty?: boolean
+  /**
+   * Require cryptographic signature for non-local plugins
+   */
+  requireSignatureForMarketplace?: boolean
+}
+
+/**
+ * Plugin runtime isolation policy configuration
+ */
+export type PluginRuntimePolicyConfig = {
+  /**
+   * Default isolation mode for third-party plugins (npm, git, url)
+   */
+  thirdPartyDefaultMode?: "process" | "worker"
+  /**
+   * Require process isolation for high-risk plugins regardless of source
+   */
+  highRiskRequiresProcess?: boolean
+  /**
+   * Allow third-party plugins to request in-process mode (not recommended)
+   */
+  allowThirdPartyInProcess?: boolean
+  /**
+   * Allow plugins to request worker thread isolation
+   */
+  allowWorkerMode?: boolean
+  /**
+   * Allow local plugins to run in-process
+   */
+  allowLocalInProcess?: boolean
+}
+
+/**
+ * Public plugin marketplace registry configuration
+ */
+export type PluginMarketplaceConfig = {
+  /**
+   * Enable the public GitHub-backed plugin marketplace
+   */
+  enabled?: boolean
+  /**
+   * URL of the official plugin registry.json index
+   */
+  registryUrl?: string
+  /**
+   * Include the local development registry in marketplace search and detail routes
+   */
+  includeLocalRegistry?: boolean
+  /**
+   * Remote marketplace cache TTL in milliseconds
+   */
+  cacheTtlMs?: number
+  /**
+   * Use stale marketplace cache for browsing when the remote registry cannot be reached
+   */
+  offlineCache?: boolean
 }
 
 export type PermissionActionConfig = "ask" | "allow" | "deny"
@@ -1109,7 +1335,7 @@ export type ExperienceConfig = {
   learning?: LearningConfig
 }
 
-export type EngramConfig = {
+export type LibraryConfig = {
   memory?: MemoryConfig
   experience?: ExperienceConfig
   /**
@@ -1191,6 +1417,10 @@ export type McpLocalConfig = {
    * Command and arguments to run the MCP server
    */
   command: Array<string>
+  /**
+   * Working directory for local MCP servers
+   */
+  cwd?: string
   /**
    * Environment variables to set when running the MCP server
    */
@@ -1494,6 +1724,28 @@ export type SandboxConfig = {
 }
 
 /**
+ * Local logs, traces, and diagnostics settings
+ */
+export type ObservabilityConfig = {
+  /**
+   * Enable local observability trace JSONL events (default: true)
+   */
+  enabled?: boolean
+  /**
+   * Days to retain local trace files (default: 7)
+   */
+  retentionDays?: number
+  /**
+   * Maximum total trace storage in bytes (default: 250MB)
+   */
+  maxBytes?: number
+  /**
+   * Milliseconds without tool activity before emitting a stalled-tool trace event
+   */
+  stalledToolMs?: number
+}
+
+/**
  * Holos platform configuration
  */
 export type HolosConfig = {
@@ -1680,6 +1932,9 @@ export type Config = {
     ignore?: Array<string>
   }
   plugin?: Array<string>
+  pluginApprovalPolicy?: PluginApprovalPolicyConfig
+  pluginRuntimePolicy?: PluginRuntimePolicyConfig
+  pluginMarketplace?: PluginMarketplaceConfig
   snapshot?: boolean
   /**
    * Automatically update to the latest version. Set to true to auto-update, false to disable, or 'notify' to show update notifications
@@ -1761,7 +2016,7 @@ export type Config = {
   }
   embedding?: EmbeddingConfig
   rerank?: RerankConfig
-  engram?: EngramConfig
+  library?: LibraryConfig
   /**
    * MCP (Model Context Protocol) server configurations
    */
@@ -1781,6 +2036,7 @@ export type Config = {
     [key: string]: ChannelFeishuConfig
   }
   sandbox?: SandboxConfig
+  observability?: ObservabilityConfig
   controlProfile?: ControlProfileId
   holos?: HolosConfig
   email?: EmailConfig
@@ -1821,6 +2077,10 @@ export type Config = {
   instructions?: Array<string>
   layout?: LayoutConfig
   permission?: PermissionConfig
+  /**
+   * Use the Smart allow internal agent to auto-allow safe asks and soft denies
+   */
+  smartAllow?: boolean
   tools?: {
     [key: string]: boolean
   }
@@ -1907,92 +2167,86 @@ export type Config = {
   }
 }
 
-export type ConfigSetName = string
-
-export type ConfigSetSummary = {
-  name: ConfigSetName
-  active: boolean
-  isDefault: boolean
+export type ConfigDomainSummary = {
+  id:
+    | "general"
+    | "models"
+    | "providers"
+    | "library"
+    | "mcp"
+    | "plugins"
+    | "agents"
+    | "commands"
+    | "permissions"
+    | "channels"
+    | "holos"
+    | "email"
+    | "runtime"
+  filename: string
+  label: string
   path: string
+  ownedKeys: Array<string>
+  mergePolicy: "merge" | "replace-domain" | "append"
+  reloadTargets: Array<string>
+  uiSection: string
+  importable: boolean
+  config?: Config
 }
 
-export type ConfigSetWithConfig = {
-  name: ConfigSetName
-  active: boolean
-  isDefault: boolean
-  path: string
+export type ConfigDomainUpdateInput = {
   config: Config
+  mode?: "merge" | "replace-domain" | "append"
 }
 
-export type ConfigSetCreateInput = {
-  name: ConfigSetName
-  config?: Config
+export type ConfigDomainImportChange = {
+  key: string
+  before?: unknown
+  after?: unknown
+  conflict: boolean
 }
 
-export type ConfigSetRaw = {
-  name: ConfigSetName
-  path: string
-  raw: string
-  config?: Config
-  active: boolean
-  isDefault: boolean
+export type ConfigDomainImportPlan = {
+  domains: Array<{
+    id:
+      | "general"
+      | "models"
+      | "providers"
+      | "library"
+      | "mcp"
+      | "plugins"
+      | "agents"
+      | "commands"
+      | "permissions"
+      | "channels"
+      | "holos"
+      | "email"
+      | "runtime"
+    filename: string
+    path: string
+    mode: "merge" | "replace-domain" | "append"
+    changes: Array<ConfigDomainImportChange>
+  }>
+  conflicts: Array<ConfigDomainImportChange>
 }
 
-export type ConfigRawValidationResult = {
-  valid: boolean
-  config?: Config
-  errors: Array<string>
-  warnings: Array<string>
-}
-
-export type ConfigSetRawValidateInput = {
-  raw: string
-}
-
-export type RuntimeReloadTarget =
-  | "config"
-  | "skill"
-  | "provider"
-  | "agent"
-  | "plugin"
-  | "mcp"
-  | "lsp"
-  | "formatter"
-  | "watcher"
-  | "channel"
-  | "holos"
-  | "command"
-  | "tool_registry"
-  | "all"
-
-export type RuntimeReloadResult = {
-  success: boolean
-  requested: Array<RuntimeReloadTarget>
-  executed: Array<RuntimeReloadTarget>
-  cascaded: Array<RuntimeReloadTarget>
-  changedFields: Array<string>
-  restartRequired: Array<string>
-  liveApplied: Array<string>
-  warnings: Array<string>
-}
-
-export type ConfigSetRawSaveResult = {
-  configSet: ConfigSetRaw
-  validation: ConfigRawValidationResult
-  saved: boolean
-  runtimeReload?: RuntimeReloadResult
-}
-
-export type ConfigSetRawSaveInput = {
-  raw: string
-  reload?: boolean
-}
-
-export type ConfigSetActivateResult = {
-  previous: ConfigSetName
-  active: ConfigSetName
-  changed: boolean
-  runtimeReload: RuntimeReloadResult
+export type ConfigDomainImportPlanInput = {
+  config: Config
+  only?: Array<
+    | "general"
+    | "models"
+    | "providers"
+    | "library"
+    | "mcp"
+    | "plugins"
+    | "agents"
+    | "commands"
+    | "permissions"
+    | "channels"
+    | "holos"
+    | "email"
+    | "runtime"
+  >
+  mode?: "merge" | "replace-domain" | "append"
 }
 
 export type Model = {
@@ -2078,6 +2332,33 @@ export type Provider = {
   models: {
     [key: string]: Model
   }
+}
+
+export type RuntimeReloadTarget =
+  | "config"
+  | "skill"
+  | "provider"
+  | "agent"
+  | "plugin"
+  | "mcp"
+  | "lsp"
+  | "formatter"
+  | "watcher"
+  | "channel"
+  | "holos"
+  | "command"
+  | "tool_registry"
+  | "all"
+
+export type RuntimeReloadResult = {
+  success: boolean
+  requested: Array<RuntimeReloadTarget>
+  executed: Array<RuntimeReloadTarget>
+  cascaded: Array<RuntimeReloadTarget>
+  changedFields: Array<string>
+  restartRequired: Array<string>
+  liveApplied: Array<string>
+  warnings: Array<string>
 }
 
 export type RuntimeReloadScope = "auto" | "global" | "project"
@@ -2234,6 +2515,20 @@ export type SessionInteraction = {
   source?: string
 }
 
+export type SessionHistoryInfo = {
+  rollback?: {
+    id: string
+    numTurns: number
+    created: number
+    messageID?: string
+    droppedMessageIDs: Array<string>
+    droppedUserMessageIDs: Array<string>
+    files: Array<string>
+    patchPartIDs: Array<string>
+    canUnrollback: boolean
+  }
+}
+
 export type SessionCortexDelegation = {
   parentSessionID: string
   parentMessageID: string
@@ -2277,6 +2572,11 @@ export type Session = {
   id: string
   scope: SessionScope
   parentID?: string
+  forkedFrom?: {
+    sessionID: string
+    messageID?: string
+    title?: string
+  }
   category?: "project" | "home" | "channel" | "background"
   endpoint?: SessionEndpoint
   summary?: {
@@ -2296,6 +2596,10 @@ export type Session = {
   pinned?: number
   permission?: PermissionRuleset
   controlProfile?: "guarded" | "autonomous" | "full_access"
+  /**
+   * Tool names pre-authorized by the user via system scheduling (e.g. agenda wake). Bypasses the ask gate for these tools within this session only.
+   */
+  preAuthorizedActions?: Array<string>
   pendingReply?: boolean
   interaction?: SessionInteraction
   agenda?: {
@@ -2305,12 +2609,7 @@ export type Session = {
     user?: string
     assistant?: string
   }
-  revert?: {
-    messageID: string
-    partID?: string
-    snapshot?: string
-    diff?: string
-  }
+  history?: SessionHistoryInfo
   cortex?: SessionCortexDelegation
   working?: SessionWorkingInfo
   workspace?: SessionWorkspace
@@ -2446,6 +2745,114 @@ export type SessionAgendaResponse = {
   limit: number
   total: number
   hasMore: boolean
+}
+
+export type SessionInboxItemSource = {
+  type: string
+  label?: string
+  [key: string]: unknown | string | undefined
+}
+
+export type SessionInboxItem = {
+  id: string
+  sessionID: string
+  kind: "queued_user" | "guiding" | "agent_update"
+  state: "queued" | "guiding"
+  deliveryTarget: "after_turn" | "next_model_call"
+  summary: {
+    title: string
+    preview?: string
+  }
+  detail?: {
+    text?: string
+    attachments?: Array<string>
+  }
+  source: SessionInboxItemSource
+  time: {
+    created: number
+    updated?: number
+  }
+  orderKey: string
+  messageID?: string
+}
+
+export type SessionInputResult =
+  | {
+      status: "started"
+      messageID: string
+    }
+  | {
+      status: "queued"
+      item: SessionInboxItem
+    }
+
+export type TextPartInput = {
+  id?: string
+  type: "text"
+  text: string
+  synthetic?: boolean
+  ignored?: boolean
+  time?: {
+    start: number
+    end?: number
+  }
+  metadata?: {
+    [key: string]: unknown
+  }
+}
+
+export type FilePartSourceText = {
+  value: string
+  start: number
+  end: number
+}
+
+export type FileSource = {
+  text: FilePartSourceText
+  type: "file"
+  path: string
+}
+
+export type Range = {
+  start: {
+    line: number
+    character: number
+  }
+  end: {
+    line: number
+    character: number
+  }
+}
+
+export type SymbolSource = {
+  text: FilePartSourceText
+  type: "symbol"
+  path: string
+  range: Range
+  name: string
+  kind: number
+}
+
+export type ResourceSource = {
+  text: FilePartSourceText
+  type: "resource"
+  clientName: string
+  uri: string
+}
+
+export type FilePartSource = FileSource | SymbolSource | ResourceSource
+
+export type FilePartInput = {
+  id?: string
+  type: "file"
+  mime: string
+  filename?: string
+  url: string
+  localPath?: string
+  source?: FilePartSource
+  metadata?: {
+    [key: string]: unknown
+  }
 }
 
 export type UserMessage = {
@@ -2588,47 +2995,6 @@ export type ReasoningPart = {
     end?: number
   }
 }
-
-export type FilePartSourceText = {
-  value: string
-  start: number
-  end: number
-}
-
-export type FileSource = {
-  text: FilePartSourceText
-  type: "file"
-  path: string
-}
-
-export type Range = {
-  start: {
-    line: number
-    character: number
-  }
-  end: {
-    line: number
-    character: number
-  }
-}
-
-export type SymbolSource = {
-  text: FilePartSourceText
-  type: "symbol"
-  path: string
-  range: Range
-  name: string
-  kind: number
-}
-
-export type ResourceSource = {
-  text: FilePartSourceText
-  type: "resource"
-  clientName: string
-  uri: string
-}
-
-export type FilePartSource = FileSource | SymbolSource | ResourceSource
 
 export type FilePart = {
   id: string
@@ -2800,32 +3166,80 @@ export type Part =
   | RetryPart
   | CompactionPart
 
-export type TextPartInput = {
-  id?: string
-  type: "text"
-  text: string
-  synthetic?: boolean
-  ignored?: boolean
-  time?: {
-    start: number
-    end?: number
+export type SessionRollbackEvent = {
+  id: string
+  sessionID: string
+  type: "rollback"
+  time: {
+    created: number
   }
-  metadata?: {
-    [key: string]: unknown
+  numTurns: number
+  droppedMessageIDs: Array<string>
+  droppedUserMessageIDs: Array<string>
+  files: Array<string>
+  patchPartIDs: Array<string>
+}
+
+export type SessionUnrollbackEvent = {
+  id: string
+  sessionID: string
+  type: "unrollback"
+  time: {
+    created: number
+  }
+  rollbackID: string
+}
+
+export type SessionRollbackSummary = {
+  id: string
+  numTurns: number
+  created: number
+  messageID?: string
+  droppedMessageIDs: Array<string>
+  droppedUserMessageIDs: Array<string>
+  files: Array<string>
+  patchPartIDs: Array<string>
+  canUnrollback: boolean
+}
+
+export type NoteInfo = {
+  id: string
+  title: string
+  content: unknown
+  pinned: boolean
+  global: boolean
+  originScope?: string
+  tags: Array<string>
+  kind?: "note" | "blueprint"
+  blueprint?: {
+    description?: string
+    defaultAgent?: string
+    activeLoopID?: string
+    runCount?: number
+    lastRunAt?: number
+  }
+  version: number
+  time: {
+    created: number
+    updated: number
   }
 }
 
-export type FilePartInput = {
-  id?: string
-  type: "file"
-  mime: string
-  filename?: string
-  url: string
-  localPath?: string
-  source?: FilePartSource
-  metadata?: {
-    [key: string]: unknown
+export type NoteConflictError = {
+  name: "NoteConflictError"
+  data: {
+    noteID: string
+    expectedVersion: number
+    note: NoteInfo
   }
+}
+
+export type SessionFileRestoreResult = {
+  restoredFiles: Array<string>
+  patchPartIDs: Array<string>
+  rollbackID?: string
+  messageID?: string
+  partID?: string
 }
 
 export type PermissionRequest = {
@@ -2938,6 +3352,7 @@ export type CortexTask = {
       updatedAt: number
     }>
   }
+  notifyParentOnComplete?: boolean
 }
 
 export type Command = {
@@ -3348,36 +3763,13 @@ export type NoteMetaInfo = {
 
 export type NoteMetaScopeGroup = {
   scopeID: string
-  scopeType: "global" | "project"
+  scopeType: "home" | "project"
   notes: Array<NoteMetaInfo>
-}
-
-export type NoteInfo = {
-  id: string
-  title: string
-  content: unknown
-  pinned: boolean
-  global: boolean
-  originScope?: string
-  tags: Array<string>
-  kind?: "note" | "blueprint"
-  blueprint?: {
-    description?: string
-    defaultAgent?: string
-    activeLoopID?: string
-    runCount?: number
-    lastRunAt?: number
-  }
-  version: number
-  time: {
-    created: number
-    updated: number
-  }
 }
 
 export type NoteScopeGroup = {
   scopeID: string
-  scopeType: "global" | "project"
+  scopeType: "home" | "project"
   notes: Array<NoteInfo>
 }
 
@@ -3392,15 +3784,6 @@ export type NoteCreateInput = {
     activeLoopID?: string
     runCount?: number
     lastRunAt?: number
-  }
-}
-
-export type NoteConflictError = {
-  name: "NoteConflictError"
-  data: {
-    noteID: string
-    expectedVersion: number
-    note: NoteInfo
   }
 }
 
@@ -3499,144 +3882,6 @@ export type AssetInfo = {
   url: string
   mime: string
   size: number
-}
-
-export type StatsSnapshot = {
-  overview: {
-    totalSessions: number
-    activeSessions: number
-    archivedSessions: number
-    totalMessages: number
-    totalTurns: number
-    totalDays: number
-    longestStreak: number
-    currentStreak: number
-    projectCount: number
-  }
-  tokenCost: {
-    tokens: {
-      input: number
-      output: number
-      reasoning: number
-      cache: {
-        read: number
-        write: number
-      }
-    }
-    cost: number
-    cacheHitRate: number
-    avgCostPerTurn: number
-    avgTokensPerTurn: number
-    dailyCost: number
-    dailyTokens: number
-  }
-  models: {
-    models: Array<{
-      providerID: string
-      modelID: string
-      messages: number
-      turns: number
-      tokens: {
-        input: number
-        output: number
-        reasoning: number
-        cache: {
-          read: number
-          write: number
-        }
-      }
-      cost: number
-      avgResponseMs: number
-    }>
-  }
-  agents: {
-    agents: Array<{
-      agent: string
-      messages: number
-      sessions: number
-      tokens: {
-        input: number
-        output: number
-        reasoning: number
-        cache: {
-          read: number
-          write: number
-        }
-      }
-      cost: number
-      subagentInvocations: number
-    }>
-    totalSubagentCalls: number
-  }
-  tools: {
-    tools: Array<{
-      tool: string
-      calls: number
-      successes: number
-      errors: number
-      avgDurationMs: number
-    }>
-  }
-  codeChanges: {
-    totalAdditions: number
-    totalDeletions: number
-    totalFiles: number
-    netLines: number
-    dailyAdditions: number
-    dailyDeletions: number
-  }
-  lifecycle: {
-    pinnedCount: number
-    avgTurnsPerSession: number
-    medianTurnsPerSession: number
-    compactionCount: number
-    retryCount: number
-    errorCount: number
-    errorRate: number
-    durationBuckets: {
-      short: number
-      medium: number
-      long: number
-    }
-  }
-  channels: {
-    channels: Array<{
-      channel: string
-      sessions: number
-      messages: number
-    }>
-    interactiveSessions: number
-    unattendedSessions: number
-  }
-  timeSeries: {
-    days: Array<{
-      day: string
-      sessions: number
-      turns: number
-      tokens: {
-        input: number
-        output: number
-        reasoning: number
-        cache: {
-          read: number
-          write: number
-        }
-      }
-      cost: number
-      additions: number
-      deletions: number
-      files: number
-      toolCalls: number
-      errors: number
-    }>
-    hours: Array<{
-      hour: string
-      turns: number
-    }>
-    hourlyActivity: Array<number>
-  }
-  computedAt: number
-  watermark: number
 }
 
 export type HolosCredentialsStatusResponse = {
@@ -3758,7 +4003,7 @@ export type PluginUiContribution = {
   pluginId: string
   name?: string
   version: string
-  trustTier: "trusted" | "sandbox"
+  trustTier: "declarative" | "trusted-import" | "sandbox"
   ui?: {
     [key: string]: unknown
   } | null
@@ -3781,15 +4026,251 @@ export type PluginConfig = {
 }
 
 export type PluginStatus = {
-  pluginId: string
-  loaded: boolean
+  id: string
   name?: string
   version?: string
+  source: "local" | "npm" | "git" | "url" | "builtin" | "official"
+  trust: {
+    tier: "declarative" | "trusted-import" | "sandbox"
+    source: "local" | "npm" | "git" | "url" | "builtin" | "official"
+    userTrusted: boolean
+    verifiedIntegrity: boolean
+    reason: string
+  }
+  loaded: boolean
+  loadError?: string
+  manifestValid: boolean
+  integrity: "verified" | "unverified" | "failed"
+  permissions: {
+    base: Array<string>
+    tools: {
+      [key: string]: Array<string>
+    }
+    overallRisk: "low" | "medium" | "high"
+    warnings: Array<{
+      type: string
+      message: string
+      toolId?: string
+    }>
+  }
+  routes: Array<string>
+  tools: Array<{
+    id: string
+    fullId: string
+    capabilities: Array<string>
+    warnings: Array<string>
+  }>
+  ui: {
+    contributions: number
+    errors: Array<string>
+  }
+  stores: {
+    config: boolean
+    secrets: "none" | "plaintext" | "keychain"
+    cacheBytes?: number
+  }
+  runtime?: {
+    mode: string
+    pid?: number
+    state: string
+    restarts: number
+    lastHeartbeatAt?: number
+    memoryMb?: number
+    limits: {
+      [key: string]: unknown
+    }
+    lastError?: string
+    runtimeDecision?: string
+  }
+  warnings: Array<{
+    type: string
+    message: string
+    toolId?: string
+  }>
+}
+
+export type ApiPluginInfo = {
+  pluginId: string
+  name?: string
+  version?: string
+  trustTier: "declarative" | "trusted-import" | "sandbox"
   hasManifest: boolean
-  trustTier: "trusted" | "sandbox"
+  pluginDir: string
+  cliCommands: Array<string>
+  skillCount: number
+  agentCount: number
+}
+
+export type ApiPluginDetail = {
+  pluginId: string
+  name?: string
+  version?: string
+  trustTier: "declarative" | "trusted-import" | "sandbox"
+  hasManifest: boolean
+  pluginDir: string
   manifest?: {
     [key: string]: unknown
   } | null
+  cliCommands: Array<string>
+  skills: Array<string>
+  agents: Array<string>
+}
+
+export type PluginRuntimeInfo = {
+  mode: "in-process" | "worker" | "process"
+  pid?: number
+  state: "starting" | "ready" | "unhealthy" | "stopped" | "crashed"
+  restarts: number
+  lastHeartbeatAt?: number
+  memoryMb?: number
+  limits: {
+    STARTUP_TIMEOUT_MS: number
+    REQUEST_TIMEOUT_MS: number
+    SHUTDOWN_GRACE_MS: number
+    CONCURRENT_REQUESTS: number
+    MAX_LOG_BYTES_PER_MINUTE: number
+    MEMORY_MB: number
+    HEARTBEAT_INTERVAL_MS: number
+    HEARTBEAT_MISSES_BEFORE_KILL: number
+  }
+  lastError?: string
+}
+
+export type PluginRuntimeLogEntry = {
+  timestamp: number
+  level: string
+  message: string
+}
+
+export type RegistryPluginSummary = {
+  id: string
+  name: string
+  description: string
+  repo?: string
+  author: {
+    name: string
+    email?: string
+    url?: string
+  }
+  verified: boolean
+  official: boolean
+  keywords: Array<string>
+  latestVersion?: string
+  updatedAt: number
+  risk: "low" | "medium" | "high"
+  trustTier: "declarative" | "trusted-import" | "sandbox"
+  runtimeMode: "in-process" | "worker" | "process"
+  uiSurfaces: Array<string>
+  tools: Array<string>
+  downloads: number
+  rating?: number
+  source: "official" | "local"
+}
+
+export type RegistryPluginSignature = {
+  algorithm: "ed25519"
+  signer: string
+}
+
+export type RegistryPermissionItem = {
+  key: string
+  description: string
+  risk: "low" | "medium" | "high"
+  granted?: boolean
+}
+
+export type RegistryPluginVersion = {
+  version: string
+  manifestHash: string
+  permissionsHash: string
+  signature?: RegistryPluginSignature
+  signatureUrl?: string
+  downloadUrl?: string
+  integrity: string
+  risk: "low" | "medium" | "high"
+  runtimeMode?: "in-process" | "worker" | "process"
+  permissionsSummary: Array<RegistryPermissionItem>
+  tools?: Array<string>
+  uiSurfaces?: Array<string>
+  publishedAt: number
+  changelog?: string
+  source?: "official" | "local"
+}
+
+export type RegistryPermissionSummary = {
+  key: string
+  category: string
+  severity: string
+  title: string
+  description: string
+}
+
+export type RegistryPluginEntry = {
+  id: string
+  name: string
+  description: string
+  repo?: string
+  homepage?: string
+  author: {
+    name: string
+    email?: string
+    url?: string
+  }
+  verified: boolean
+  official: boolean
+  keywords: Array<string>
+  compatibility: {
+    synergy: string
+  }
+  versions: Array<RegistryPluginVersion>
+  createdAt: number
+  updatedAt: number
+  risk: "low" | "medium" | "high"
+  trustTier: "declarative" | "trusted-import" | "sandbox"
+  runtimeMode: "in-process" | "worker" | "process"
+  permissionsSummary: Array<RegistryPermissionSummary>
+  uiSurfaces: Array<string>
+  tools: Array<string>
+  downloads: number
+  rating?: number
+  ratingCount?: number
+  changelog?: string
+  source?: "official" | "local"
+  entryUrl?: string
+  yankedVersions?: Array<string>
+}
+
+export type RegistryPublishInput = {
+  id: string
+  name: string
+  description: string
+  repo?: string
+  homepage?: string
+  author: {
+    name: string
+    email?: string
+    url?: string
+  }
+  verified: boolean
+  official: boolean
+  keywords: Array<string>
+  compatibility: {
+    synergy: string
+  }
+  versions: Array<RegistryPluginVersion>
+  risk: "low" | "medium" | "high"
+  trustTier: "declarative" | "trusted-import" | "sandbox"
+  runtimeMode: "in-process" | "worker" | "process"
+  permissionsSummary: Array<RegistryPermissionSummary>
+  uiSurfaces: Array<string>
+  tools: Array<string>
+  downloads: number
+  rating?: number
+  ratingCount?: number
+  changelog?: string
+  source?: "official" | "local"
+  entryUrl?: string
+  yankedVersions?: Array<string>
 }
 
 export type ExternalAgentInfo = {
@@ -3964,6 +4445,14 @@ export type EventScopeRemoved = {
   }
 }
 
+export type EventScopeRuntimeDisposed = {
+  type: "scope.runtime.disposed"
+  properties: {
+    scopeID: string
+    directory?: string
+  }
+}
+
 export type EventInstallationUpdated = {
   type: "installation.updated"
   properties: {
@@ -3983,21 +4472,6 @@ export type EventConfigUpdated = {
   properties: {
     scope: "global" | "project"
     changedFields: Array<string>
-  }
-}
-
-export type EventConfigSetActivated = {
-  type: "config.set.activated"
-  properties: {
-    previous: ConfigSetName
-    active: ConfigSetName
-  }
-}
-
-export type EventServerInstanceDisposed = {
-  type: "server.instance.disposed"
-  properties: {
-    directory: string
   }
 }
 
@@ -4037,10 +4511,28 @@ export type EventMcpFailed = {
   }
 }
 
+export type EventCommandExecuted = {
+  type: "command.executed"
+  properties: {
+    name: string
+    sessionID: string
+    arguments: string
+    messageID: string
+  }
+}
+
 export type EventFileEdited = {
   type: "file.edited"
   properties: {
     file: string
+  }
+}
+
+export type EventFileWatcherUpdated = {
+  type: "file.watcher.updated"
+  properties: {
+    file: string
+    event: "add" | "change" | "unlink"
   }
 }
 
@@ -4059,28 +4551,42 @@ export type EventLspUpdated = {
   }
 }
 
-export type EventFileWatcherUpdated = {
-  type: "file.watcher.updated"
-  properties: {
-    file: string
-    event: "add" | "change" | "unlink"
-  }
-}
-
-export type EventCommandExecuted = {
-  type: "command.executed"
-  properties: {
-    name: string
-    sessionID: string
-    arguments: string
-    messageID: string
-  }
-}
-
 export type EventVcsBranchUpdated = {
   type: "vcs.branch.updated"
   properties: {
     branch?: string
+  }
+}
+
+export type EventMessageUpdated = {
+  type: "message.updated"
+  properties: {
+    info: Message
+  }
+}
+
+export type EventMessageRemoved = {
+  type: "message.removed"
+  properties: {
+    sessionID: string
+    messageID: string
+  }
+}
+
+export type EventMessagePartUpdated = {
+  type: "message.part.updated"
+  properties: {
+    part: Part
+    delta?: string
+  }
+}
+
+export type EventMessagePartRemoved = {
+  type: "message.part.removed"
+  properties: {
+    sessionID: string
+    messageID: string
+    partID: string
   }
 }
 
@@ -4094,29 +4600,7 @@ export type EventPermissionReplied = {
   properties: {
     sessionID: string
     requestID: string
-    reply: "once" | "reject"
-  }
-}
-
-export type EventNoteCreated = {
-  type: "note.created"
-  properties: {
-    note: NoteInfo
-  }
-}
-
-export type EventNoteUpdated = {
-  type: "note.updated"
-  properties: {
-    note: NoteInfo
-  }
-}
-
-export type EventNoteDeleted = {
-  type: "note.deleted"
-  properties: {
-    id: string
-    scopeID: string
+    reply: "once" | "session" | "always" | "reject"
   }
 }
 
@@ -4165,6 +4649,36 @@ export type EventSessionIdle = {
   }
 }
 
+export type EventSessionInboxUpdated = {
+  type: "session.inbox.updated"
+  properties: {
+    sessionID: string
+    items: Array<SessionInboxItem>
+  }
+}
+
+export type EventNoteCreated = {
+  type: "note.created"
+  properties: {
+    note: NoteInfo
+  }
+}
+
+export type EventNoteUpdated = {
+  type: "note.updated"
+  properties: {
+    note: NoteInfo
+  }
+}
+
+export type EventNoteDeleted = {
+  type: "note.deleted"
+  properties: {
+    id: string
+    scopeID: string
+  }
+}
+
 export type EventQuestionAsked = {
   type: "question.asked"
   properties: QuestionRequest
@@ -4201,38 +4715,6 @@ export type EventRuntimeReloaded = {
     executed: Array<RuntimeReloadTarget>
     cascaded: Array<RuntimeReloadTarget>
     changedFields: Array<string>
-  }
-}
-
-export type EventMessageUpdated = {
-  type: "message.updated"
-  properties: {
-    info: Message
-  }
-}
-
-export type EventMessageRemoved = {
-  type: "message.removed"
-  properties: {
-    sessionID: string
-    messageID: string
-  }
-}
-
-export type EventMessagePartUpdated = {
-  type: "message.part.updated"
-  properties: {
-    part: Part
-    delta?: string
-  }
-}
-
-export type EventMessagePartRemoved = {
-  type: "message.part.removed"
-  properties: {
-    sessionID: string
-    messageID: string
-    partID: string
   }
 }
 
@@ -4482,42 +4964,42 @@ export type EventGlobalDisposed = {
 export type Event =
   | EventScopeUpdated
   | EventScopeRemoved
+  | EventScopeRuntimeDisposed
   | EventInstallationUpdated
   | EventInstallationUpdateAvailable
   | EventConfigUpdated
-  | EventConfigSetActivated
-  | EventServerInstanceDisposed
   | EventMcpToolsChanged
   | EventMcpPromptsChanged
   | EventMcpResourcesChanged
   | EventMcpReady
   | EventMcpFailed
+  | EventCommandExecuted
   | EventFileEdited
+  | EventFileWatcherUpdated
   | EventLspClientDiagnostics
   | EventLspUpdated
-  | EventFileWatcherUpdated
-  | EventCommandExecuted
   | EventVcsBranchUpdated
+  | EventMessageUpdated
+  | EventMessageRemoved
+  | EventMessagePartUpdated
+  | EventMessagePartRemoved
   | EventPermissionAsked
   | EventPermissionReplied
-  | EventNoteCreated
-  | EventNoteUpdated
-  | EventNoteDeleted
   | EventSessionUpdated
   | EventSessionDeleted
   | EventSessionDiff
   | EventSessionError
   | EventSessionStatus
   | EventSessionIdle
+  | EventSessionInboxUpdated
+  | EventNoteCreated
+  | EventNoteUpdated
+  | EventNoteDeleted
   | EventQuestionAsked
   | EventQuestionReplied
   | EventQuestionRejected
   | EventQuestionTimedOut
   | EventRuntimeReloaded
-  | EventMessageUpdated
-  | EventMessageRemoved
-  | EventMessagePartUpdated
-  | EventMessagePartRemoved
   | EventDagUpdated
   | EventTodoUpdated
   | EventBlueprintLoopCreated
@@ -4573,6 +5055,287 @@ export type GlobalHealthResponses = {
 }
 
 export type GlobalHealthResponse = GlobalHealthResponses[keyof GlobalHealthResponses]
+
+export type GlobalPathsGetData = {
+  body?: never
+  path?: never
+  query?: never
+  url: "/global/paths"
+}
+
+export type GlobalPathsGetResponses = {
+  /**
+   * Global paths
+   */
+  200: GlobalPaths
+}
+
+export type GlobalPathsGetResponse = GlobalPathsGetResponses[keyof GlobalPathsGetResponses]
+
+export type GlobalFilesystemBrowseData = {
+  body?: never
+  path?: never
+  query: {
+    path: string
+    query?: string
+    limit?: number
+    depth?: number
+  }
+  url: "/global/filesystem/browse"
+}
+
+export type GlobalFilesystemBrowseResponses = {
+  /**
+   * Directory paths
+   */
+  200: Array<string>
+}
+
+export type GlobalFilesystemBrowseResponse = GlobalFilesystemBrowseResponses[keyof GlobalFilesystemBrowseResponses]
+
+export type GlobalGitInitData = {
+  body?: {
+    /**
+     * Directory path to initialize git in
+     */
+    directory: string
+  }
+  path?: never
+  query?: never
+  url: "/global/git/init"
+}
+
+export type GlobalGitInitErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type GlobalGitInitError = GlobalGitInitErrors[keyof GlobalGitInitErrors]
+
+export type GlobalGitInitResponses = {
+  /**
+   * Git initialization result
+   */
+  200: {
+    /**
+     * Whether a new git repository was initialized
+     */
+    initialized: boolean
+  }
+}
+
+export type GlobalGitInitResponse = GlobalGitInitResponses[keyof GlobalGitInitResponses]
+
+export type GlobalStatsGetData = {
+  body?: never
+  path?: never
+  query?: {
+    /**
+     * Set to 'true' to force a full recompute from scratch
+     */
+    recompute?: "true" | "false"
+  }
+  url: "/global/stats"
+}
+
+export type GlobalStatsGetErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type GlobalStatsGetError = GlobalStatsGetErrors[keyof GlobalStatsGetErrors]
+
+export type GlobalStatsGetResponses = {
+  /**
+   * Stats snapshot
+   */
+  200: StatsSnapshot
+}
+
+export type GlobalStatsGetResponse = GlobalStatsGetResponses[keyof GlobalStatsGetResponses]
+
+export type GlobalStatsProgressData = {
+  body?: never
+  path?: never
+  query?: never
+  url: "/global/stats/progress"
+}
+
+export type GlobalStatsProgressResponses = {
+  /**
+   * Server-sent events containing progress and final snapshot payloads
+   */
+  200: {
+    type: "progress" | "done" | "error"
+    progress?: {
+      phase: "scan" | "digest" | "bucket" | "snapshot"
+      current: number
+      total: number
+      message?: string
+    }
+    snapshot?: {
+      overview: {
+        totalSessions: number
+        activeSessions: number
+        archivedSessions: number
+        totalMessages: number
+        totalTurns: number
+        totalDays: number
+        longestStreak: number
+        currentStreak: number
+        projectCount: number
+      }
+      tokenCost: {
+        tokens: {
+          input: number
+          output: number
+          reasoning: number
+          cache: {
+            read: number
+            write: number
+          }
+        }
+        cost: number
+        cacheHitRate: number
+        avgCostPerTurn: number
+        avgTokensPerTurn: number
+        dailyCost: number
+        dailyTokens: number
+      }
+      models: {
+        models: Array<{
+          providerID: string
+          modelID: string
+          messages: number
+          turns: number
+          tokens: {
+            input: number
+            output: number
+            reasoning: number
+            cache: {
+              read: number
+              write: number
+            }
+          }
+          cost: number
+          avgResponseMs: number
+        }>
+      }
+      agents: {
+        agents: Array<{
+          agent: string
+          messages: number
+          sessions: number
+          tokens: {
+            input: number
+            output: number
+            reasoning: number
+            cache: {
+              read: number
+              write: number
+            }
+          }
+          cost: number
+          subagentInvocations: number
+        }>
+        totalSubagentCalls: number
+      }
+      tools: {
+        tools: Array<{
+          tool: string
+          calls: number
+          successes: number
+          errors: number
+          avgDurationMs: number
+        }>
+      }
+      codeChanges: {
+        totalAdditions: number
+        totalDeletions: number
+        totalFiles: number
+        netLines: number
+        dailyAdditions: number
+        dailyDeletions: number
+      }
+      lifecycle: {
+        pinnedCount: number
+        avgTurnsPerSession: number
+        medianTurnsPerSession: number
+        compactionCount: number
+        retryCount: number
+        errorCount: number
+        errorRate: number
+        durationBuckets: {
+          short: number
+          medium: number
+          long: number
+        }
+      }
+      channels: {
+        channels: Array<{
+          channel: string
+          sessions: number
+          messages: number
+        }>
+        interactiveSessions: number
+        unattendedSessions: number
+      }
+      timeSeries: {
+        days: Array<{
+          day: string
+          sessions: number
+          turns: number
+          tokens: {
+            input: number
+            output: number
+            reasoning: number
+            cache: {
+              read: number
+              write: number
+            }
+          }
+          cost: number
+          additions: number
+          deletions: number
+          files: number
+          toolCalls: number
+          errors: number
+        }>
+        hours: Array<{
+          hour: string
+          turns: number
+        }>
+        hourlyActivity: Array<number>
+      }
+      computedAt: number
+      watermark: number
+    }
+    message?: string
+  }
+}
+
+export type GlobalStatsProgressResponse = GlobalStatsProgressResponses[keyof GlobalStatsProgressResponses]
+
+export type ObservabilityDiagnosticsSummaryData = {
+  body?: never
+  path?: never
+  query?: never
+  url: "/global/diagnostics"
+}
+
+export type ObservabilityDiagnosticsSummaryResponses = {
+  /**
+   * Diagnostics summary
+   */
+  200: DiagnosticsSummary
+}
+
+export type ObservabilityDiagnosticsSummaryResponse =
+  ObservabilityDiagnosticsSummaryResponses[keyof ObservabilityDiagnosticsSummaryResponses]
 
 export type GlobalDisposeData = {
   body?: never
@@ -4769,7 +5532,7 @@ export type GlobalSessionSearchResponses = {
       title: string
       scope: {
         id: string
-        type: "global" | "project"
+        type: "home" | "project"
         directory: string
         worktree: string
         name?: string
@@ -4876,6 +5639,7 @@ export type ScopeListData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/scope"
 }
@@ -4894,6 +5658,7 @@ export type ScopeCurrentData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/scope/current"
 }
@@ -4912,6 +5677,7 @@ export type ScopeIndexData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/scope/index"
 }
@@ -4932,6 +5698,7 @@ export type ScopeRemoveData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/scope/{scopeID}"
 }
@@ -4961,6 +5728,7 @@ export type ScopeUpdateData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/scope/{scopeID}"
 }
@@ -4987,48 +5755,12 @@ export type ScopeUpdateResponses = {
 
 export type ScopeUpdateResponse = ScopeUpdateResponses[keyof ScopeUpdateResponses]
 
-export type GitInitData = {
-  body?: {
-    /**
-     * Directory path to initialize git in
-     */
-    directory: string
-  }
-  path?: never
-  query?: {
-    directory?: string
-  }
-  url: "/git/init"
-}
-
-export type GitInitErrors = {
-  /**
-   * Bad request
-   */
-  400: BadRequestError
-}
-
-export type GitInitError = GitInitErrors[keyof GitInitErrors]
-
-export type GitInitResponses = {
-  /**
-   * Git initialization result
-   */
-  200: {
-    /**
-     * Whether a new git repository was initialized
-     */
-    initialized: boolean
-  }
-}
-
-export type GitInitResponse = GitInitResponses[keyof GitInitResponses]
-
 export type PtyListData = {
   body?: never
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/pty"
 }
@@ -5055,6 +5787,7 @@ export type PtyCreateData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/pty"
 }
@@ -5084,6 +5817,7 @@ export type PtyRemoveData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/pty/{ptyID}"
 }
@@ -5113,6 +5847,7 @@ export type PtyGetData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/pty/{ptyID}"
 }
@@ -5148,6 +5883,7 @@ export type PtyUpdateData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/pty/{ptyID}"
 }
@@ -5177,6 +5913,7 @@ export type PtyConnectData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/pty/{ptyID}/connect"
 }
@@ -5204,6 +5941,7 @@ export type ConfigGetData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/config"
 }
@@ -5224,6 +5962,7 @@ export type ConfigUpdateData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/config"
 }
@@ -5251,6 +5990,7 @@ export type ConfigGlobalData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/config/global"
 }
@@ -5264,259 +6004,192 @@ export type ConfigGlobalResponses = {
 
 export type ConfigGlobalResponse = ConfigGlobalResponses[keyof ConfigGlobalResponses]
 
-export type ConfigSetListData = {
+export type ConfigDomainListData = {
   body?: never
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
-  url: "/config/sets"
+  url: "/config/domains"
 }
 
-export type ConfigSetListResponses = {
+export type ConfigDomainListResponses = {
   /**
-   * List of Config Sets
+   * List of config domains
    */
-  200: Array<ConfigSetSummary>
+  200: Array<ConfigDomainSummary>
 }
 
-export type ConfigSetListResponse = ConfigSetListResponses[keyof ConfigSetListResponses]
+export type ConfigDomainListResponse = ConfigDomainListResponses[keyof ConfigDomainListResponses]
 
-export type ConfigSetCreateData = {
-  body?: ConfigSetCreateInput
+export type ConfigDomainGetData = {
+  body?: never
+  path: {
+    domain:
+      | "general"
+      | "models"
+      | "providers"
+      | "library"
+      | "mcp"
+      | "plugins"
+      | "agents"
+      | "commands"
+      | "permissions"
+      | "channels"
+      | "holos"
+      | "email"
+      | "runtime"
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/config/domains/{domain}"
+}
+
+export type ConfigDomainGetErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type ConfigDomainGetError = ConfigDomainGetErrors[keyof ConfigDomainGetErrors]
+
+export type ConfigDomainGetResponses = {
+  /**
+   * Config domain fragment
+   */
+  200: Config
+}
+
+export type ConfigDomainGetResponse = ConfigDomainGetResponses[keyof ConfigDomainGetResponses]
+
+export type ConfigDomainUpdateData = {
+  body?: ConfigDomainUpdateInput
+  path: {
+    domain:
+      | "general"
+      | "models"
+      | "providers"
+      | "library"
+      | "mcp"
+      | "plugins"
+      | "agents"
+      | "commands"
+      | "permissions"
+      | "channels"
+      | "holos"
+      | "email"
+      | "runtime"
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/config/domains/{domain}"
+}
+
+export type ConfigDomainUpdateErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type ConfigDomainUpdateError = ConfigDomainUpdateErrors[keyof ConfigDomainUpdateErrors]
+
+export type ConfigDomainUpdateResponses = {
+  /**
+   * Updated config domain fragment
+   */
+  200: Config
+}
+
+export type ConfigDomainUpdateResponse = ConfigDomainUpdateResponses[keyof ConfigDomainUpdateResponses]
+
+export type ConfigImportPlanData = {
+  body?: ConfigDomainImportPlanInput
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
-  url: "/config/sets"
+  url: "/config/import/plan"
 }
 
-export type ConfigSetCreateErrors = {
+export type ConfigImportPlanErrors = {
   /**
    * Bad request
    */
   400: BadRequestError
 }
 
-export type ConfigSetCreateError = ConfigSetCreateErrors[keyof ConfigSetCreateErrors]
+export type ConfigImportPlanError = ConfigImportPlanErrors[keyof ConfigImportPlanErrors]
 
-export type ConfigSetCreateResponses = {
+export type ConfigImportPlanResponses = {
   /**
-   * Created Config Set
+   * Config import plan
    */
-  200: ConfigSetWithConfig
+  200: ConfigDomainImportPlan
 }
 
-export type ConfigSetCreateResponse = ConfigSetCreateResponses[keyof ConfigSetCreateResponses]
+export type ConfigImportPlanResponse = ConfigImportPlanResponses[keyof ConfigImportPlanResponses]
 
-export type ConfigSetDeleteData = {
-  body?: never
-  path: {
-    name: ConfigSetName
+export type ConfigImportApplyData = {
+  body?: {
+    config: Config
+    only?: Array<
+      | "general"
+      | "models"
+      | "providers"
+      | "library"
+      | "mcp"
+      | "plugins"
+      | "agents"
+      | "commands"
+      | "permissions"
+      | "channels"
+      | "holos"
+      | "email"
+      | "runtime"
+    >
+    mode?: "merge" | "replace-domain" | "append"
+    yes?: boolean
   }
+  path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
-  url: "/config/sets/{name}"
+  url: "/config/import/apply"
 }
 
-export type ConfigSetDeleteErrors = {
+export type ConfigImportApplyErrors = {
   /**
    * Bad request
    */
   400: BadRequestError
 }
 
-export type ConfigSetDeleteError = ConfigSetDeleteErrors[keyof ConfigSetDeleteErrors]
+export type ConfigImportApplyError = ConfigImportApplyErrors[keyof ConfigImportApplyErrors]
 
-export type ConfigSetDeleteResponses = {
+export type ConfigImportApplyResponses = {
   /**
-   * Deleted Config Set
+   * Applied config import plan
    */
-  200: ConfigSetSummary
+  200: ConfigDomainImportPlan
 }
 
-export type ConfigSetDeleteResponse = ConfigSetDeleteResponses[keyof ConfigSetDeleteResponses]
-
-export type ConfigSetGetData = {
-  body?: never
-  path: {
-    name: ConfigSetName
-  }
-  query?: {
-    directory?: string
-  }
-  url: "/config/sets/{name}"
-}
-
-export type ConfigSetGetErrors = {
-  /**
-   * Bad request
-   */
-  400: BadRequestError
-}
-
-export type ConfigSetGetError = ConfigSetGetErrors[keyof ConfigSetGetErrors]
-
-export type ConfigSetGetResponses = {
-  /**
-   * Config Set
-   */
-  200: ConfigSetWithConfig
-}
-
-export type ConfigSetGetResponse = ConfigSetGetResponses[keyof ConfigSetGetResponses]
-
-export type ConfigSetUpdateData = {
-  body?: Config
-  path: {
-    name: ConfigSetName
-  }
-  query?: {
-    directory?: string
-  }
-  url: "/config/sets/{name}"
-}
-
-export type ConfigSetUpdateErrors = {
-  /**
-   * Bad request
-   */
-  400: BadRequestError
-}
-
-export type ConfigSetUpdateError = ConfigSetUpdateErrors[keyof ConfigSetUpdateErrors]
-
-export type ConfigSetUpdateResponses = {
-  /**
-   * Updated Config Set
-   */
-  200: ConfigSetWithConfig
-}
-
-export type ConfigSetUpdateResponse = ConfigSetUpdateResponses[keyof ConfigSetUpdateResponses]
-
-export type ConfigSetRawGetData = {
-  body?: never
-  path: {
-    name: ConfigSetName
-  }
-  query?: {
-    directory?: string
-  }
-  url: "/config/sets/{name}/raw"
-}
-
-export type ConfigSetRawGetErrors = {
-  /**
-   * Bad request
-   */
-  400: BadRequestError
-}
-
-export type ConfigSetRawGetError = ConfigSetRawGetErrors[keyof ConfigSetRawGetErrors]
-
-export type ConfigSetRawGetResponses = {
-  /**
-   * Config Set raw source
-   */
-  200: ConfigSetRaw
-}
-
-export type ConfigSetRawGetResponse = ConfigSetRawGetResponses[keyof ConfigSetRawGetResponses]
-
-export type ConfigSetRawSaveData = {
-  body?: ConfigSetRawSaveInput
-  path: {
-    name: ConfigSetName
-  }
-  query?: {
-    directory?: string
-  }
-  url: "/config/sets/{name}/raw"
-}
-
-export type ConfigSetRawSaveErrors = {
-  /**
-   * Bad request
-   */
-  400: BadRequestError
-}
-
-export type ConfigSetRawSaveError = ConfigSetRawSaveErrors[keyof ConfigSetRawSaveErrors]
-
-export type ConfigSetRawSaveResponses = {
-  /**
-   * Saved Config Set raw source
-   */
-  200: ConfigSetRawSaveResult
-}
-
-export type ConfigSetRawSaveResponse = ConfigSetRawSaveResponses[keyof ConfigSetRawSaveResponses]
-
-export type ConfigSetRawValidateData = {
-  body?: ConfigSetRawValidateInput
-  path: {
-    name: ConfigSetName
-  }
-  query?: {
-    directory?: string
-  }
-  url: "/config/sets/{name}/raw/validate"
-}
-
-export type ConfigSetRawValidateErrors = {
-  /**
-   * Bad request
-   */
-  400: BadRequestError
-}
-
-export type ConfigSetRawValidateError = ConfigSetRawValidateErrors[keyof ConfigSetRawValidateErrors]
-
-export type ConfigSetRawValidateResponses = {
-  /**
-   * Validation result
-   */
-  200: ConfigRawValidationResult
-}
-
-export type ConfigSetRawValidateResponse = ConfigSetRawValidateResponses[keyof ConfigSetRawValidateResponses]
-
-export type ConfigSetActivateData = {
-  body?: never
-  path: {
-    name: ConfigSetName
-  }
-  query?: {
-    directory?: string
-  }
-  url: "/config/sets/{name}/activate"
-}
-
-export type ConfigSetActivateErrors = {
-  /**
-   * Bad request
-   */
-  400: BadRequestError
-}
-
-export type ConfigSetActivateError = ConfigSetActivateErrors[keyof ConfigSetActivateErrors]
-
-export type ConfigSetActivateResponses = {
-  /**
-   * Activated Config Set
-   */
-  200: ConfigSetActivateResult
-}
-
-export type ConfigSetActivateResponse = ConfigSetActivateResponses[keyof ConfigSetActivateResponses]
+export type ConfigImportApplyResponse = ConfigImportApplyResponses[keyof ConfigImportApplyResponses]
 
 export type ConfigProvidersData = {
   body?: never
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/config/providers"
 }
@@ -5545,6 +6218,7 @@ export type RuntimeReloadData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/runtime/reload"
 }
@@ -5572,6 +6246,7 @@ export type ControlProfileListData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/control-profiles"
 }
@@ -5590,6 +6265,7 @@ export type ControlProfileEffectiveData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
     /**
      * Agent name to resolve profile for
      */
@@ -5621,6 +6297,7 @@ export type SandboxStatusData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/sandbox/status"
 }
@@ -5639,6 +6316,7 @@ export type SandboxReadinessData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/sandbox/readiness"
 }
@@ -5657,6 +6335,7 @@ export type ToolIdsData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/experimental/tool/ids"
 }
@@ -5684,6 +6363,7 @@ export type ToolListData = {
   path?: never
   query: {
     directory?: string
+    scopeID?: string
     provider: string
     model: string
   }
@@ -5708,29 +6388,31 @@ export type ToolListResponses = {
 
 export type ToolListResponse = ToolListResponses[keyof ToolListResponses]
 
-export type InstanceDisposeData = {
+export type ScopeRuntimeDisposeData = {
   body?: never
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
-  url: "/instance/dispose"
+  url: "/scope/runtime/dispose"
 }
 
-export type InstanceDisposeResponses = {
+export type ScopeRuntimeDisposeResponses = {
   /**
-   * Instance disposed
+   * Scope runtime disposed
    */
   200: boolean
 }
 
-export type InstanceDisposeResponse = InstanceDisposeResponses[keyof InstanceDisposeResponses]
+export type ScopeRuntimeDisposeResponse = ScopeRuntimeDisposeResponses[keyof ScopeRuntimeDisposeResponses]
 
 export type PathGetData = {
   body?: never
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/path"
 }
@@ -5749,6 +6431,7 @@ export type WorktreeListData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/experimental/worktree"
 }
@@ -5767,6 +6450,7 @@ export type WorktreeCreateData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/experimental/worktree"
 }
@@ -5794,6 +6478,7 @@ export type VcsGetData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/vcs"
 }
@@ -5837,6 +6522,7 @@ export type SessionListData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
     /**
      * Number of sessions to skip
      */
@@ -5893,6 +6579,7 @@ export type SessionCreateData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/session"
 }
@@ -5920,6 +6607,7 @@ export type SessionStatusData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/session/status"
 }
@@ -5951,6 +6639,7 @@ export type SessionDeleteData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/session/{sessionID}"
 }
@@ -5984,6 +6673,7 @@ export type SessionGetData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/session/{sessionID}"
 }
@@ -6024,6 +6714,7 @@ export type SessionUpdateData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/session/{sessionID}"
 }
@@ -6057,6 +6748,7 @@ export type SessionChildrenData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/session/{sessionID}/children"
 }
@@ -6093,6 +6785,7 @@ export type SessionTodoData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/session/{sessionID}/todo"
 }
@@ -6129,6 +6822,7 @@ export type SessionDagData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/session/{sessionID}/dag"
 }
@@ -6165,6 +6859,7 @@ export type SessionAgendaData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
     limit?: number
     offset?: number
   }
@@ -6207,6 +6902,7 @@ export type SessionInitData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/session/{sessionID}/init"
 }
@@ -6236,12 +6932,37 @@ export type SessionInitResponse = SessionInitResponses[keyof SessionInitResponse
 export type SessionForkData = {
   body?: {
     messageID?: string
+    position?:
+      | {
+          type: "current"
+        }
+      | {
+          type: "before"
+          messageID: string
+        }
+    workspace?:
+      | {
+          mode: "current"
+        }
+      | {
+          mode: "existing"
+          target: string
+          force?: boolean
+        }
+      | {
+          mode: "create"
+          name?: string
+          baseRef?: "current" | "fresh"
+        }
+    title?: string
+    controlProfile?: "guarded" | "autonomous" | "full_access"
   }
   path: {
     sessionID: string
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/session/{sessionID}/fork"
 }
@@ -6262,6 +6983,7 @@ export type SessionAbortData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/session/{sessionID}/abort"
 }
@@ -6288,6 +7010,185 @@ export type SessionAbortResponses = {
 
 export type SessionAbortResponse = SessionAbortResponses[keyof SessionAbortResponses]
 
+export type SessionInboxData = {
+  body?: never
+  path: {
+    /**
+     * Session ID
+     */
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/session/{sessionID}/inbox"
+}
+
+export type SessionInboxErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type SessionInboxError = SessionInboxErrors[keyof SessionInboxErrors]
+
+export type SessionInboxResponses = {
+  /**
+   * Session inbox items
+   */
+  200: Array<SessionInboxItem>
+}
+
+export type SessionInboxResponse = SessionInboxResponses[keyof SessionInboxResponses]
+
+export type SessionInputData = {
+  body?: {
+    messageID?: string
+    model?: {
+      providerID: string
+      modelID: string
+    }
+    agent?: string
+    noReply?: boolean
+    metadata?: {
+      [key: string]: unknown
+    }
+    summary?: {
+      title?: string
+    }
+    /**
+     * Per-prompt tool visibility toggle. Does not affect session permissions.
+     */
+    tools?: {
+      [key: string]: boolean
+    }
+    system?: string
+    variant?: string
+    parts: Array<TextPartInput | FilePartInput>
+  }
+  path: {
+    /**
+     * Session ID
+     */
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/session/{sessionID}/input"
+}
+
+export type SessionInputErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type SessionInputError = SessionInputErrors[keyof SessionInputErrors]
+
+export type SessionInputResponses = {
+  /**
+   * Input accepted
+   */
+  200: SessionInputResult
+}
+
+export type SessionInputResponse = SessionInputResponses[keyof SessionInputResponses]
+
+export type SessionInboxGuideData = {
+  body?: never
+  path: {
+    /**
+     * Session ID
+     */
+    sessionID: string
+    /**
+     * Inbox item ID
+     */
+    itemID: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/session/{sessionID}/inbox/{itemID}/guide"
+}
+
+export type SessionInboxGuideErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type SessionInboxGuideError = SessionInboxGuideErrors[keyof SessionInboxGuideErrors]
+
+export type SessionInboxGuideResponses = {
+  /**
+   * Promoted inbox item
+   */
+  200: SessionInboxItem
+}
+
+export type SessionInboxGuideResponse = SessionInboxGuideResponses[keyof SessionInboxGuideResponses]
+
+export type SessionInboxRemoveData = {
+  body?: never
+  path: {
+    /**
+     * Session ID
+     */
+    sessionID: string
+    /**
+     * Inbox item ID
+     */
+    itemID: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/session/{sessionID}/inbox/{itemID}"
+}
+
+export type SessionInboxRemoveErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type SessionInboxRemoveError = SessionInboxRemoveErrors[keyof SessionInboxRemoveErrors]
+
+export type SessionInboxRemoveResponses = {
+  /**
+   * Inbox item removed
+   */
+  204: void
+}
+
+export type SessionInboxRemoveResponse = SessionInboxRemoveResponses[keyof SessionInboxRemoveResponses]
+
 export type SessionSummarizeData = {
   body?: {
     providerID: string
@@ -6302,6 +7203,7 @@ export type SessionSummarizeData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/session/{sessionID}/summarize"
 }
@@ -6338,7 +7240,9 @@ export type SessionMessagesData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
     limit?: number
+    raw?: boolean
   }
   url: "/session/{sessionID}/message"
 }
@@ -6401,6 +7305,7 @@ export type SessionPromptData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/session/{sessionID}/message"
 }
@@ -6440,6 +7345,7 @@ export type SessionDiffData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/session/{sessionID}/diff"
 }
@@ -6480,6 +7386,7 @@ export type SessionMessageData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/session/{sessionID}/message/{messageID}"
 }
@@ -6527,6 +7434,7 @@ export type PartDeleteData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/session/{sessionID}/message/{messageID}/part/{partID}"
 }
@@ -6571,6 +7479,7 @@ export type PartUpdateData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/session/{sessionID}/message/{messageID}/part/{partID}"
 }
@@ -6630,6 +7539,7 @@ export type SessionPromptAsyncData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/session/{sessionID}/prompt_async"
 }
@@ -6685,6 +7595,7 @@ export type SessionCommandData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/session/{sessionID}/command"
 }
@@ -6728,6 +7639,7 @@ export type SessionShellData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/session/{sessionID}/shell"
 }
@@ -6754,21 +7666,21 @@ export type SessionShellResponses = {
 
 export type SessionShellResponse = SessionShellResponses[keyof SessionShellResponses]
 
-export type SessionRevertData = {
+export type SessionRollbackData = {
   body?: {
-    messageID: string
-    partID?: string
+    numTurns: number
   }
   path: {
     sessionID: string
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
-  url: "/session/{sessionID}/revert"
+  url: "/session/{sessionID}/rollback"
 }
 
-export type SessionRevertErrors = {
+export type SessionRollbackErrors = {
   /**
    * Bad request
    */
@@ -6779,29 +7691,77 @@ export type SessionRevertErrors = {
   404: NotFoundError
 }
 
-export type SessionRevertError = SessionRevertErrors[keyof SessionRevertErrors]
+export type SessionRollbackError = SessionRollbackErrors[keyof SessionRollbackErrors]
 
-export type SessionRevertResponses = {
+export type SessionRollbackResponses = {
   /**
-   * Updated session
+   * Rollback event
    */
-  200: Session
+  200: SessionRollbackEvent
 }
 
-export type SessionRevertResponse = SessionRevertResponses[keyof SessionRevertResponses]
+export type SessionRollbackResponse = SessionRollbackResponses[keyof SessionRollbackResponses]
 
-export type SessionUnrevertData = {
+export type SessionUnrollbackData = {
   body?: never
   path: {
     sessionID: string
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
-  url: "/session/{sessionID}/unrevert"
+  url: "/session/{sessionID}/unrollback"
 }
 
-export type SessionUnrevertErrors = {
+export type SessionUnrollbackErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Conflict
+   */
+  409: NoteConflictError
+}
+
+export type SessionUnrollbackError = SessionUnrollbackErrors[keyof SessionUnrollbackErrors]
+
+export type SessionUnrollbackResponses = {
+  /**
+   * Unrollback event or current rollback state
+   */
+  200:
+    | SessionUnrollbackEvent
+    | {
+        rollback: SessionRollbackSummary
+      }
+}
+
+export type SessionUnrollbackResponse = SessionUnrollbackResponses[keyof SessionUnrollbackResponses]
+
+export type SessionFilesRestoreData = {
+  body?: {
+    rollbackID?: string
+    messageID?: string
+    partID?: string
+    files?: Array<string>
+  }
+  path: {
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/session/{sessionID}/files/restore"
+}
+
+export type SessionFilesRestoreErrors = {
   /**
    * Bad request
    */
@@ -6812,20 +7772,20 @@ export type SessionUnrevertErrors = {
   404: NotFoundError
 }
 
-export type SessionUnrevertError = SessionUnrevertErrors[keyof SessionUnrevertErrors]
+export type SessionFilesRestoreError = SessionFilesRestoreErrors[keyof SessionFilesRestoreErrors]
 
-export type SessionUnrevertResponses = {
+export type SessionFilesRestoreResponses = {
   /**
-   * Updated session
+   * Restored files
    */
-  200: Session
+  200: SessionFileRestoreResult
 }
 
-export type SessionUnrevertResponse = SessionUnrevertResponses[keyof SessionUnrevertResponses]
+export type SessionFilesRestoreResponse = SessionFilesRestoreResponses[keyof SessionFilesRestoreResponses]
 
 export type PermissionRespondData = {
   body?: {
-    response: "once" | "reject"
+    response: "once" | "session" | "always" | "reject"
   }
   path: {
     sessionID: string
@@ -6833,6 +7793,7 @@ export type PermissionRespondData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/session/{sessionID}/permissions/{permissionID}"
 }
@@ -6861,7 +7822,7 @@ export type PermissionRespondResponse = PermissionRespondResponses[keyof Permiss
 
 export type PermissionReplyData = {
   body?: {
-    reply: "once" | "reject"
+    reply: "once" | "session" | "always" | "reject"
     message?: string
   }
   path: {
@@ -6869,6 +7830,7 @@ export type PermissionReplyData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/permission/{requestID}/reply"
 }
@@ -6900,6 +7862,7 @@ export type PermissionListData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/permission"
 }
@@ -6918,6 +7881,7 @@ export type QuestionListData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/question"
 }
@@ -6943,6 +7907,7 @@ export type QuestionReplyData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/question/{requestID}/reply"
 }
@@ -6976,6 +7941,7 @@ export type QuestionRejectData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/question/{requestID}/reject"
 }
@@ -7012,6 +7978,7 @@ export type SessionExportEstimateData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/session/{sessionID}/export/estimate"
 }
@@ -7048,6 +8015,7 @@ export type SessionExportDownloadData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
     mode?: SessionExportMode
   }
   url: "/session/{sessionID}/export"
@@ -7078,6 +8046,7 @@ export type CortexListData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
     sessionID?: string
   }
   url: "/cortex/tasks"
@@ -7108,6 +8077,7 @@ export type CortexGetData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/cortex/tasks/{taskID}"
 }
@@ -7141,6 +8111,7 @@ export type CortexOutputData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/cortex/tasks/{taskID}/output"
 }
@@ -7176,6 +8147,7 @@ export type CortexCancelData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/cortex/tasks/{taskID}/cancel"
 }
@@ -7207,6 +8179,7 @@ export type CommandListData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/command"
 }
@@ -7225,6 +8198,7 @@ export type ProviderListData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/provider"
 }
@@ -7309,6 +8283,7 @@ export type ProviderAuthData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/provider/auth"
 }
@@ -7339,6 +8314,7 @@ export type ProviderOauthAuthorizeData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/provider/{providerID}/oauth/authorize"
 }
@@ -7380,6 +8356,7 @@ export type ProviderOauthCallbackData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/provider/{providerID}/oauth/callback"
 }
@@ -7407,6 +8384,7 @@ export type SkillListData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/skill"
 }
@@ -7425,6 +8403,7 @@ export type SkillReloadData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/skill/reload"
 }
@@ -7445,6 +8424,7 @@ export type SkillRemoveData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/skill/{name}"
 }
@@ -7477,6 +8457,7 @@ export type SkillImportData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/skill/import"
 }
@@ -7511,6 +8492,7 @@ export type SkillImportUrlData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/skill/import-url"
 }
@@ -7537,33 +8519,12 @@ export type SkillImportUrlResponses = {
 
 export type SkillImportUrlResponse = SkillImportUrlResponses[keyof SkillImportUrlResponses]
 
-export type FindBrowseData = {
-  body?: never
-  path?: never
-  query: {
-    directory?: string
-    path: string
-    query?: string
-    limit?: number
-    depth?: number
-  }
-  url: "/find/browse"
-}
-
-export type FindBrowseResponses = {
-  /**
-   * Directory paths
-   */
-  200: Array<string>
-}
-
-export type FindBrowseResponse = FindBrowseResponses[keyof FindBrowseResponses]
-
 export type FindTextData = {
   body?: never
   path?: never
   query: {
     directory?: string
+    scopeID?: string
     pattern: string
   }
   url: "/find"
@@ -7599,6 +8560,7 @@ export type FindFilesData = {
   path?: never
   query: {
     directory?: string
+    scopeID?: string
     query: string
     dirs?: "true" | "false"
     type?: "file" | "directory"
@@ -7621,6 +8583,7 @@ export type FindSymbolsData = {
   path?: never
   query: {
     directory?: string
+    scopeID?: string
     query: string
   }
   url: "/find/symbol"
@@ -7640,6 +8603,7 @@ export type FileListData = {
   path?: never
   query: {
     directory?: string
+    scopeID?: string
     path: string
   }
   url: "/file"
@@ -7659,6 +8623,7 @@ export type FileReadData = {
   path?: never
   query: {
     directory?: string
+    scopeID?: string
     path: string
   }
   url: "/file/content"
@@ -7678,6 +8643,7 @@ export type FileStatusData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/file/status"
 }
@@ -7691,7 +8657,7 @@ export type FileStatusResponses = {
 
 export type FileStatusResponse = FileStatusResponses[keyof FileStatusResponses]
 
-export type EngramExperienceSearchData = {
+export type LibraryExperienceSearchData = {
   body?: {
     /**
      * Search query text
@@ -7709,29 +8675,30 @@ export type EngramExperienceSearchData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
-  url: "/engram/experience/search"
+  url: "/library/experience/search"
 }
 
-export type EngramExperienceSearchErrors = {
+export type LibraryExperienceSearchErrors = {
   /**
    * Bad request
    */
   400: BadRequestError
 }
 
-export type EngramExperienceSearchError = EngramExperienceSearchErrors[keyof EngramExperienceSearchErrors]
+export type LibraryExperienceSearchError = LibraryExperienceSearchErrors[keyof LibraryExperienceSearchErrors]
 
-export type EngramExperienceSearchResponses = {
+export type LibraryExperienceSearchResponses = {
   /**
    * Search results ranked by hybrid score
    */
   200: Array<ExperienceSearchResult>
 }
 
-export type EngramExperienceSearchResponse = EngramExperienceSearchResponses[keyof EngramExperienceSearchResponses]
+export type LibraryExperienceSearchResponse = LibraryExperienceSearchResponses[keyof LibraryExperienceSearchResponses]
 
-export type EngramExperiencePageData = {
+export type LibraryExperiencePageData = {
   body?: never
   path?: never
   query?: {
@@ -7755,28 +8722,28 @@ export type EngramExperiencePageData = {
      */
     offset?: number
   }
-  url: "/engram/experience/page"
+  url: "/library/experience/page"
 }
 
-export type EngramExperiencePageErrors = {
+export type LibraryExperiencePageErrors = {
   /**
    * Bad request
    */
   400: BadRequestError
 }
 
-export type EngramExperiencePageError = EngramExperiencePageErrors[keyof EngramExperiencePageErrors]
+export type LibraryExperiencePageError = LibraryExperiencePageErrors[keyof LibraryExperiencePageErrors]
 
-export type EngramExperiencePageResponses = {
+export type LibraryExperiencePageResponses = {
   /**
    * Paginated experience list
    */
   200: ExperienceListPage
 }
 
-export type EngramExperiencePageResponse = EngramExperiencePageResponses[keyof EngramExperiencePageResponses]
+export type LibraryExperiencePageResponse = LibraryExperiencePageResponses[keyof LibraryExperiencePageResponses]
 
-export type EngramExperienceRemoveData = {
+export type LibraryExperienceRemoveData = {
   body?: never
   path: {
     /**
@@ -7786,29 +8753,30 @@ export type EngramExperienceRemoveData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
-  url: "/engram/experience/{id}"
+  url: "/library/experience/{id}"
 }
 
-export type EngramExperienceRemoveErrors = {
+export type LibraryExperienceRemoveErrors = {
   /**
    * Bad request
    */
   400: BadRequestError
 }
 
-export type EngramExperienceRemoveError = EngramExperienceRemoveErrors[keyof EngramExperienceRemoveErrors]
+export type LibraryExperienceRemoveError = LibraryExperienceRemoveErrors[keyof LibraryExperienceRemoveErrors]
 
-export type EngramExperienceRemoveResponses = {
+export type LibraryExperienceRemoveResponses = {
   /**
    * Deleted
    */
   200: boolean
 }
 
-export type EngramExperienceRemoveResponse = EngramExperienceRemoveResponses[keyof EngramExperienceRemoveResponses]
+export type LibraryExperienceRemoveResponse = LibraryExperienceRemoveResponses[keyof LibraryExperienceRemoveResponses]
 
-export type EngramExperienceGetData = {
+export type LibraryExperienceGetData = {
   body?: never
   path: {
     /**
@@ -7818,11 +8786,12 @@ export type EngramExperienceGetData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
-  url: "/engram/experience/{id}"
+  url: "/library/experience/{id}"
 }
 
-export type EngramExperienceGetErrors = {
+export type LibraryExperienceGetErrors = {
   /**
    * Bad request
    */
@@ -7833,18 +8802,18 @@ export type EngramExperienceGetErrors = {
   404: NotFoundError
 }
 
-export type EngramExperienceGetError = EngramExperienceGetErrors[keyof EngramExperienceGetErrors]
+export type LibraryExperienceGetError = LibraryExperienceGetErrors[keyof LibraryExperienceGetErrors]
 
-export type EngramExperienceGetResponses = {
+export type LibraryExperienceGetResponses = {
   /**
    * Experience detail
    */
   200: ExperienceDetailInfo
 }
 
-export type EngramExperienceGetResponse = EngramExperienceGetResponses[keyof EngramExperienceGetResponses]
+export type LibraryExperienceGetResponse = LibraryExperienceGetResponses[keyof LibraryExperienceGetResponses]
 
-export type EngramExperienceApplyRewardData = {
+export type LibraryExperienceApplyRewardData = {
   body?: {
     /**
      * Direct composite reward value [-1, 1]
@@ -7860,11 +8829,12 @@ export type EngramExperienceApplyRewardData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
-  url: "/engram/experience/{id}/reward"
+  url: "/library/experience/{id}/reward"
 }
 
-export type EngramExperienceApplyRewardErrors = {
+export type LibraryExperienceApplyRewardErrors = {
   /**
    * Bad request
    */
@@ -7875,20 +8845,20 @@ export type EngramExperienceApplyRewardErrors = {
   404: NotFoundError
 }
 
-export type EngramExperienceApplyRewardError =
-  EngramExperienceApplyRewardErrors[keyof EngramExperienceApplyRewardErrors]
+export type LibraryExperienceApplyRewardError =
+  LibraryExperienceApplyRewardErrors[keyof LibraryExperienceApplyRewardErrors]
 
-export type EngramExperienceApplyRewardResponses = {
+export type LibraryExperienceApplyRewardResponses = {
   /**
    * Reward applied
    */
   200: ApplyRewardResult
 }
 
-export type EngramExperienceApplyRewardResponse =
-  EngramExperienceApplyRewardResponses[keyof EngramExperienceApplyRewardResponses]
+export type LibraryExperienceApplyRewardResponse =
+  LibraryExperienceApplyRewardResponses[keyof LibraryExperienceApplyRewardResponses]
 
-export type EngramExperienceListData = {
+export type LibraryExperienceListData = {
   body?: never
   path?: never
   query?: {
@@ -7898,50 +8868,51 @@ export type EngramExperienceListData = {
      */
     scopeID?: string
   }
-  url: "/engram/experience"
+  url: "/library/experience"
 }
 
-export type EngramExperienceListResponses = {
+export type LibraryExperienceListResponses = {
   /**
    * List of experiences
    */
   200: Array<ExperienceInfo>
 }
 
-export type EngramExperienceListResponse = EngramExperienceListResponses[keyof EngramExperienceListResponses]
+export type LibraryExperienceListResponse = LibraryExperienceListResponses[keyof LibraryExperienceListResponses]
 
-export type EngramStatsData = {
+export type LibraryStatsData = {
   body?: never
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
     /**
      * Set to 'true' to force a full analytics recompute
      */
     recompute?: "true" | "false"
   }
-  url: "/engram/stats"
+  url: "/library/stats"
 }
 
-export type EngramStatsErrors = {
+export type LibraryStatsErrors = {
   /**
    * Bad request
    */
   400: BadRequestError
 }
 
-export type EngramStatsError = EngramStatsErrors[keyof EngramStatsErrors]
+export type LibraryStatsError = LibraryStatsErrors[keyof LibraryStatsErrors]
 
-export type EngramStatsResponses = {
+export type LibraryStatsResponses = {
   /**
-   * Engram statistics
+   * Library statistics
    */
   200: MemoryStats
 }
 
-export type EngramStatsResponse = EngramStatsResponses[keyof EngramStatsResponses]
+export type LibraryStatsResponse = LibraryStatsResponses[keyof LibraryStatsResponses]
 
-export type EngramSearchData = {
+export type LibrarySearchData = {
   body?: {
     /**
      * Search query text
@@ -7963,29 +8934,30 @@ export type EngramSearchData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
-  url: "/engram/search"
+  url: "/library/search"
 }
 
-export type EngramSearchErrors = {
+export type LibrarySearchErrors = {
   /**
    * Bad request
    */
   400: BadRequestError
 }
 
-export type EngramSearchError = EngramSearchErrors[keyof EngramSearchErrors]
+export type LibrarySearchError = LibrarySearchErrors[keyof LibrarySearchErrors]
 
-export type EngramSearchResponses = {
+export type LibrarySearchResponses = {
   /**
    * Search results ranked by similarity
    */
   200: Array<MemorySearchResult>
 }
 
-export type EngramSearchResponse = EngramSearchResponses[keyof EngramSearchResponses]
+export type LibrarySearchResponse = LibrarySearchResponses[keyof LibrarySearchResponses]
 
-export type EngramResetData = {
+export type LibraryResetData = {
   body?: {
     /**
      * What to reset
@@ -8003,29 +8975,30 @@ export type EngramResetData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
-  url: "/engram/reset"
+  url: "/library/reset"
 }
 
-export type EngramResetErrors = {
+export type LibraryResetErrors = {
   /**
    * Bad request
    */
   400: BadRequestError
 }
 
-export type EngramResetError = EngramResetErrors[keyof EngramResetErrors]
+export type LibraryResetError = LibraryResetErrors[keyof LibraryResetErrors]
 
-export type EngramResetResponses = {
+export type LibraryResetResponses = {
   /**
    * Reset result with deletion counts
    */
   200: MemoryResetResult
 }
 
-export type EngramResetResponse = EngramResetResponses[keyof EngramResetResponses]
+export type LibraryResetResponse = LibraryResetResponses[keyof LibraryResetResponses]
 
-export type EngramRemoveData = {
+export type LibraryRemoveData = {
   body?: never
   path: {
     /**
@@ -8035,29 +9008,30 @@ export type EngramRemoveData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
-  url: "/engram/{id}"
+  url: "/library/{id}"
 }
 
-export type EngramRemoveErrors = {
+export type LibraryRemoveErrors = {
   /**
    * Bad request
    */
   400: BadRequestError
 }
 
-export type EngramRemoveError = EngramRemoveErrors[keyof EngramRemoveErrors]
+export type LibraryRemoveError = LibraryRemoveErrors[keyof LibraryRemoveErrors]
 
-export type EngramRemoveResponses = {
+export type LibraryRemoveResponses = {
   /**
    * Deleted
    */
   200: boolean
 }
 
-export type EngramRemoveResponse = EngramRemoveResponses[keyof EngramRemoveResponses]
+export type LibraryRemoveResponse = LibraryRemoveResponses[keyof LibraryRemoveResponses]
 
-export type EngramGetData = {
+export type LibraryGetData = {
   body?: never
   path: {
     /**
@@ -8067,11 +9041,12 @@ export type EngramGetData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
-  url: "/engram/{id}"
+  url: "/library/{id}"
 }
 
-export type EngramGetErrors = {
+export type LibraryGetErrors = {
   /**
    * Bad request
    */
@@ -8082,36 +9057,37 @@ export type EngramGetErrors = {
   404: NotFoundError
 }
 
-export type EngramGetError = EngramGetErrors[keyof EngramGetErrors]
+export type LibraryGetError = LibraryGetErrors[keyof LibraryGetErrors]
 
-export type EngramGetResponses = {
+export type LibraryGetResponses = {
   /**
    * Memory detail
    */
   200: MemoryInfo
 }
 
-export type EngramGetResponse = EngramGetResponses[keyof EngramGetResponses]
+export type LibraryGetResponse = LibraryGetResponses[keyof LibraryGetResponses]
 
-export type EngramListData = {
+export type LibraryListData = {
   body?: never
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
     category?: MemoryCategory
     recallMode?: MemoryRecallMode
   }
-  url: "/engram"
+  url: "/library"
 }
 
-export type EngramListResponses = {
+export type LibraryListResponses = {
   /**
    * List of memories
    */
   200: Array<MemoryInfo>
 }
 
-export type EngramListResponse = EngramListResponses[keyof EngramListResponses]
+export type LibraryListResponse = LibraryListResponses[keyof LibraryListResponses]
 
 export type AgendaActivityData = {
   body?: never
@@ -8174,6 +9150,7 @@ export type AgendaSessionsData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/agenda/{id}/sessions"
 }
@@ -8206,6 +9183,7 @@ export type AgendaRunsData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/agenda/{id}/runs"
 }
@@ -8238,6 +9216,7 @@ export type AgendaTriggerData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/agenda/{id}/trigger"
 }
@@ -8270,6 +9249,7 @@ export type AgendaActivateData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/agenda/{id}/activate"
 }
@@ -8302,6 +9282,7 @@ export type AgendaPauseData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/agenda/{id}/pause"
 }
@@ -8334,6 +9315,7 @@ export type AgendaCompleteData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/agenda/{id}/complete"
 }
@@ -8366,6 +9348,7 @@ export type AgendaCancelData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/agenda/{id}/cancel"
 }
@@ -8398,6 +9381,7 @@ export type AgendaRemoveData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/agenda/{id}"
 }
@@ -8430,6 +9414,7 @@ export type AgendaGetData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/agenda/{id}"
 }
@@ -8466,6 +9451,7 @@ export type AgendaUpdateData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/agenda/{id}"
 }
@@ -8525,6 +9511,7 @@ export type AgendaCreateData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/agenda"
 }
@@ -8552,6 +9539,7 @@ export type NoteListMetaData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/note/meta"
 }
@@ -8579,6 +9567,7 @@ export type NoteListAllData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/note/all"
 }
@@ -8611,6 +9600,7 @@ export type NoteExportData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
     /**
      * Export format
      */
@@ -8644,6 +9634,7 @@ export type NoteListData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/note"
 }
@@ -8671,6 +9662,7 @@ export type NoteCreateData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/note"
 }
@@ -8703,6 +9695,7 @@ export type NoteRemoveData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/note/{id}"
 }
@@ -8735,6 +9728,7 @@ export type NoteGetData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/note/{id}"
 }
@@ -8771,6 +9765,7 @@ export type NoteUpdateData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/note/{id}"
 }
@@ -8806,6 +9801,7 @@ export type BlueprintLoopListData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/blueprint/loop"
 }
@@ -8833,6 +9829,7 @@ export type BlueprintLoopCreateData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/blueprint/loop"
 }
@@ -8865,6 +9862,7 @@ export type BlueprintLoopCompleteData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/blueprint/loop/{id}/complete"
 }
@@ -8901,6 +9899,7 @@ export type BlueprintLoopCancelData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/blueprint/loop/{id}/cancel"
 }
@@ -8937,6 +9936,7 @@ export type BlueprintLoopGetData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/blueprint/loop/{id}"
 }
@@ -8978,6 +9978,7 @@ export type BlueprintLoopBindData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/blueprint/loop/{id}/bind"
 }
@@ -9019,6 +10020,7 @@ export type BlueprintLoopStartData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/blueprint/loop/{id}/start"
 }
@@ -9055,6 +10057,7 @@ export type BlueprintLoopWaitData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/blueprint/loop/{id}/wait"
 }
@@ -9091,6 +10094,7 @@ export type BlueprintLoopResumeData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/blueprint/loop/{id}/resume"
 }
@@ -9127,6 +10131,7 @@ export type BlueprintLoopActivityData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/blueprint/loop/{id}/activity"
 }
@@ -9168,6 +10173,7 @@ export type BlueprintSessionPlanModeData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/blueprint/session/{id}/plan-mode"
 }
@@ -9202,6 +10208,7 @@ export type AssetUploadData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/asset"
 }
@@ -9231,6 +10238,7 @@ export type AssetGetData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/asset/{id}"
 }
@@ -9251,206 +10259,12 @@ export type AssetGetResponses = {
   200: unknown
 }
 
-export type StatsGetData = {
-  body?: never
-  path?: never
-  query?: {
-    directory?: string
-    /**
-     * Set to 'true' to force a full recompute from scratch
-     */
-    recompute?: "true" | "false"
-  }
-  url: "/stats"
-}
-
-export type StatsGetErrors = {
-  /**
-   * Bad request
-   */
-  400: BadRequestError
-}
-
-export type StatsGetError = StatsGetErrors[keyof StatsGetErrors]
-
-export type StatsGetResponses = {
-  /**
-   * Stats snapshot
-   */
-  200: StatsSnapshot
-}
-
-export type StatsGetResponse = StatsGetResponses[keyof StatsGetResponses]
-
-export type StatsProgressData = {
-  body?: never
-  path?: never
-  query?: {
-    directory?: string
-  }
-  url: "/stats/progress"
-}
-
-export type StatsProgressResponses = {
-  /**
-   * Server-sent events containing progress and final snapshot payloads
-   */
-  200: {
-    type: "progress" | "done" | "error"
-    progress?: {
-      phase: "scan" | "digest" | "bucket" | "snapshot"
-      current: number
-      total: number
-      message?: string
-    }
-    snapshot?: {
-      overview: {
-        totalSessions: number
-        activeSessions: number
-        archivedSessions: number
-        totalMessages: number
-        totalTurns: number
-        totalDays: number
-        longestStreak: number
-        currentStreak: number
-        projectCount: number
-      }
-      tokenCost: {
-        tokens: {
-          input: number
-          output: number
-          reasoning: number
-          cache: {
-            read: number
-            write: number
-          }
-        }
-        cost: number
-        cacheHitRate: number
-        avgCostPerTurn: number
-        avgTokensPerTurn: number
-        dailyCost: number
-        dailyTokens: number
-      }
-      models: {
-        models: Array<{
-          providerID: string
-          modelID: string
-          messages: number
-          turns: number
-          tokens: {
-            input: number
-            output: number
-            reasoning: number
-            cache: {
-              read: number
-              write: number
-            }
-          }
-          cost: number
-          avgResponseMs: number
-        }>
-      }
-      agents: {
-        agents: Array<{
-          agent: string
-          messages: number
-          sessions: number
-          tokens: {
-            input: number
-            output: number
-            reasoning: number
-            cache: {
-              read: number
-              write: number
-            }
-          }
-          cost: number
-          subagentInvocations: number
-        }>
-        totalSubagentCalls: number
-      }
-      tools: {
-        tools: Array<{
-          tool: string
-          calls: number
-          successes: number
-          errors: number
-          avgDurationMs: number
-        }>
-      }
-      codeChanges: {
-        totalAdditions: number
-        totalDeletions: number
-        totalFiles: number
-        netLines: number
-        dailyAdditions: number
-        dailyDeletions: number
-      }
-      lifecycle: {
-        pinnedCount: number
-        avgTurnsPerSession: number
-        medianTurnsPerSession: number
-        compactionCount: number
-        retryCount: number
-        errorCount: number
-        errorRate: number
-        durationBuckets: {
-          short: number
-          medium: number
-          long: number
-        }
-      }
-      channels: {
-        channels: Array<{
-          channel: string
-          sessions: number
-          messages: number
-        }>
-        interactiveSessions: number
-        unattendedSessions: number
-      }
-      timeSeries: {
-        days: Array<{
-          day: string
-          sessions: number
-          turns: number
-          tokens: {
-            input: number
-            output: number
-            reasoning: number
-            cache: {
-              read: number
-              write: number
-            }
-          }
-          cost: number
-          additions: number
-          deletions: number
-          files: number
-          toolCalls: number
-          errors: number
-        }>
-        hours: Array<{
-          hour: string
-          turns: number
-        }>
-        hourlyActivity: Array<number>
-      }
-      computedAt: number
-      watermark: number
-    }
-    message?: string
-  }
-}
-
-export type StatsProgressResponse = StatsProgressResponses[keyof StatsProgressResponses]
-
 export type HolosCredentialsStatusData = {
   body?: never
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/holos/credentials/status"
 }
@@ -9469,6 +10283,7 @@ export type HolosStateData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/holos/state"
 }
@@ -9487,6 +10302,7 @@ export type HolosVerifyData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/holos/verify"
 }
@@ -9505,6 +10321,7 @@ export type HolosAccountsListData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/holos/accounts"
 }
@@ -9525,6 +10342,7 @@ export type HolosAccountsSwitchData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/holos/accounts/switch"
 }
@@ -9558,6 +10376,7 @@ export type HolosAccountsRemoveData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/holos/accounts/{agentId}"
 }
@@ -9585,6 +10404,7 @@ export type HolosStatusData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/holos/status"
 }
@@ -9603,6 +10423,7 @@ export type HolosContactListData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/holos/contact"
 }
@@ -9624,6 +10445,7 @@ export type HolosContactAddData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/holos/contact"
 }
@@ -9653,6 +10475,7 @@ export type HolosContactRemoveData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/holos/contact/{id}"
 }
@@ -9673,6 +10496,7 @@ export type HolosContactGetData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/holos/contact/{id}"
 }
@@ -9704,6 +10528,7 @@ export type HolosContactToggleBlockData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/holos/contact/{id}/block"
 }
@@ -9731,6 +10556,7 @@ export type HolosPresenceData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/holos/presence"
 }
@@ -9749,6 +10575,7 @@ export type HolosAgentsListData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
     limit?: number
     offset?: number
     need_active?: boolean
@@ -9788,6 +10615,7 @@ export type HolosAgentsGetData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/holos/agents/{agentId}"
 }
@@ -9838,6 +10666,7 @@ export type HolosSendData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/holos/send"
 }
@@ -9858,6 +10687,7 @@ export type HolosSendRetryData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/holos/send/{messageId}/retry"
 }
@@ -9885,6 +10715,7 @@ export type HolosInboxListData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/holos/inbox"
 }
@@ -9903,6 +10734,7 @@ export type HolosOutboxListData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/holos/outbox"
 }
@@ -9923,6 +10755,7 @@ export type HolosThreadGetData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/holos/thread/{contactId}"
 }
@@ -9941,6 +10774,7 @@ export type PluginListUiContributionsData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/plugin/ui/contributions"
 }
@@ -9972,6 +10806,7 @@ export type PluginServeAssetData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/plugin/assets/{pluginId}/{versionHash}/*"
 }
@@ -10004,6 +10839,7 @@ export type PluginSandboxData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/plugin/{pluginId}/sandbox/{panelId}"
 }
@@ -10035,6 +10871,7 @@ export type PluginInteractData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/plugin/{pluginId}/interact"
 }
@@ -10064,6 +10901,7 @@ export type PluginConfigSchemaData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/plugin/{pluginId}/config-schema"
 }
@@ -10086,6 +10924,36 @@ export type PluginConfigSchemaResponses = {
 
 export type PluginConfigSchemaResponse = PluginConfigSchemaResponses[keyof PluginConfigSchemaResponses]
 
+export type PluginGetConfigData = {
+  body?: never
+  path: {
+    pluginId: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/plugin/{pluginId}/config"
+}
+
+export type PluginGetConfigErrors = {
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type PluginGetConfigError = PluginGetConfigErrors[keyof PluginGetConfigErrors]
+
+export type PluginGetConfigResponses = {
+  /**
+   * Plugin config
+   */
+  200: PluginConfig
+}
+
+export type PluginGetConfigResponse = PluginGetConfigResponses[keyof PluginGetConfigResponses]
+
 export type PluginUpdateConfigData = {
   body?: {
     [key: string]: unknown
@@ -10095,6 +10963,7 @@ export type PluginUpdateConfigData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/plugin/{pluginId}/config"
 }
@@ -10128,6 +10997,7 @@ export type PluginStatusData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/plugin/{pluginId}/status"
 }
@@ -10149,6 +11019,700 @@ export type PluginStatusResponses = {
 }
 
 export type PluginStatusResponse = PluginStatusResponses[keyof PluginStatusResponses]
+
+export type ApiPluginsListData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/api/plugins"
+}
+
+export type ApiPluginsListResponses = {
+  /**
+   * List of loaded plugins
+   */
+  200: Array<ApiPluginInfo>
+}
+
+export type ApiPluginsListResponse = ApiPluginsListResponses[keyof ApiPluginsListResponses]
+
+export type ApiPluginsGetData = {
+  body?: never
+  path: {
+    pluginId: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/api/plugins/{pluginId}"
+}
+
+export type ApiPluginsGetErrors = {
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type ApiPluginsGetError = ApiPluginsGetErrors[keyof ApiPluginsGetErrors]
+
+export type ApiPluginsGetResponses = {
+  /**
+   * Plugin detail
+   */
+  200: ApiPluginDetail
+}
+
+export type ApiPluginsGetResponse = ApiPluginsGetResponses[keyof ApiPluginsGetResponses]
+
+export type ApiPluginsStatusData = {
+  body?: never
+  path: {
+    pluginId: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/api/plugins/{pluginId}/status"
+}
+
+export type ApiPluginsStatusErrors = {
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type ApiPluginsStatusError = ApiPluginsStatusErrors[keyof ApiPluginsStatusErrors]
+
+export type ApiPluginsStatusResponses = {
+  /**
+   * Plugin status
+   */
+  200: PluginStatus
+}
+
+export type ApiPluginsStatusResponse = ApiPluginsStatusResponses[keyof ApiPluginsStatusResponses]
+
+export type ApiPluginsPreviewInstallData = {
+  body?: {
+    manifest: {
+      [key: string]: unknown
+    }
+  }
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/api/plugins/preview-install"
+}
+
+export type ApiPluginsPreviewInstallErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type ApiPluginsPreviewInstallError = ApiPluginsPreviewInstallErrors[keyof ApiPluginsPreviewInstallErrors]
+
+export type ApiPluginsPreviewInstallResponses = {
+  /**
+   * Permission diff
+   */
+  200: {
+    [key: string]: unknown
+  }
+}
+
+export type ApiPluginsPreviewInstallResponse =
+  ApiPluginsPreviewInstallResponses[keyof ApiPluginsPreviewInstallResponses]
+
+export type ApiPluginsApproveInstallData = {
+  body?: {
+    manifest: {
+      [key: string]: unknown
+    }
+    capabilities: Array<string>
+    source?: "local" | "official" | "npm" | "git" | "url" | "builtin"
+  }
+  path: {
+    pluginId: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/api/plugins/{pluginId}/approve-install"
+}
+
+export type ApiPluginsApproveInstallErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type ApiPluginsApproveInstallError = ApiPluginsApproveInstallErrors[keyof ApiPluginsApproveInstallErrors]
+
+export type ApiPluginsApproveInstallResponses = {
+  /**
+   * Approval record
+   */
+  200: {
+    [key: string]: unknown
+  }
+}
+
+export type ApiPluginsApproveInstallResponse =
+  ApiPluginsApproveInstallResponses[keyof ApiPluginsApproveInstallResponses]
+
+export type ApiPluginsPreviewUpdateData = {
+  body?: {
+    manifest: {
+      [key: string]: unknown
+    }
+  }
+  path: {
+    pluginId: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/api/plugins/{pluginId}/preview-update"
+}
+
+export type ApiPluginsPreviewUpdateErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type ApiPluginsPreviewUpdateError = ApiPluginsPreviewUpdateErrors[keyof ApiPluginsPreviewUpdateErrors]
+
+export type ApiPluginsPreviewUpdateResponses = {
+  /**
+   * Permission diff
+   */
+  200: {
+    [key: string]: unknown
+  }
+}
+
+export type ApiPluginsPreviewUpdateResponse = ApiPluginsPreviewUpdateResponses[keyof ApiPluginsPreviewUpdateResponses]
+
+export type ApiPluginsApproveUpdateData = {
+  body?: {
+    manifest: {
+      [key: string]: unknown
+    }
+    capabilities: Array<string>
+    source?: "local" | "official" | "npm" | "git" | "url" | "builtin"
+  }
+  path: {
+    pluginId: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/api/plugins/{pluginId}/approve-update"
+}
+
+export type ApiPluginsApproveUpdateErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type ApiPluginsApproveUpdateError = ApiPluginsApproveUpdateErrors[keyof ApiPluginsApproveUpdateErrors]
+
+export type ApiPluginsApproveUpdateResponses = {
+  /**
+   * Approval record
+   */
+  200: {
+    [key: string]: unknown
+  }
+}
+
+export type ApiPluginsApproveUpdateResponse = ApiPluginsApproveUpdateResponses[keyof ApiPluginsApproveUpdateResponses]
+
+export type ApiPluginsGetApprovalData = {
+  body?: never
+  path: {
+    pluginId: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/api/plugins/{pluginId}/approval"
+}
+
+export type ApiPluginsGetApprovalErrors = {
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type ApiPluginsGetApprovalError = ApiPluginsGetApprovalErrors[keyof ApiPluginsGetApprovalErrors]
+
+export type ApiPluginsGetApprovalResponses = {
+  /**
+   * Approval record
+   */
+  200: {
+    [key: string]: unknown
+  }
+}
+
+export type ApiPluginsGetApprovalResponse = ApiPluginsGetApprovalResponses[keyof ApiPluginsGetApprovalResponses]
+
+export type ApiPluginsPermissionDiffData = {
+  body?: never
+  path: {
+    pluginId: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/api/plugins/{pluginId}/permission-diff"
+}
+
+export type ApiPluginsPermissionDiffErrors = {
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type ApiPluginsPermissionDiffError = ApiPluginsPermissionDiffErrors[keyof ApiPluginsPermissionDiffErrors]
+
+export type ApiPluginsPermissionDiffResponses = {
+  /**
+   * Permission diff
+   */
+  200: {
+    [key: string]: unknown
+  }
+}
+
+export type ApiPluginsPermissionDiffResponse =
+  ApiPluginsPermissionDiffResponses[keyof ApiPluginsPermissionDiffResponses]
+
+export type ApiPluginsInstallFromRegistryData = {
+  body?: {
+    id: string
+    version: string
+    source?: "official" | "local"
+  }
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/api/plugins/install-from-registry"
+}
+
+export type ApiPluginsInstallFromRegistryErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Conflict
+   */
+  409: NoteConflictError
+}
+
+export type ApiPluginsInstallFromRegistryError =
+  ApiPluginsInstallFromRegistryErrors[keyof ApiPluginsInstallFromRegistryErrors]
+
+export type ApiPluginsInstallFromRegistryResponses = {
+  /**
+   * Install result with plugin status
+   */
+  200: ApiPluginDetail
+}
+
+export type ApiPluginsInstallFromRegistryResponse =
+  ApiPluginsInstallFromRegistryResponses[keyof ApiPluginsInstallFromRegistryResponses]
+
+export type ApiPluginsUpdateFromRegistryData = {
+  body?: {
+    targetVersion?: string
+  }
+  path: {
+    pluginId: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/api/plugins/{pluginId}/update-from-registry"
+}
+
+export type ApiPluginsUpdateFromRegistryErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type ApiPluginsUpdateFromRegistryError =
+  ApiPluginsUpdateFromRegistryErrors[keyof ApiPluginsUpdateFromRegistryErrors]
+
+export type ApiPluginsUpdateFromRegistryResponses = {
+  /**
+   * Update check result
+   */
+  200: {
+    [key: string]: unknown
+  }
+}
+
+export type ApiPluginsUpdateFromRegistryResponse =
+  ApiPluginsUpdateFromRegistryResponses[keyof ApiPluginsUpdateFromRegistryResponses]
+
+export type PluginRuntimeReloadData = {
+  body?: never
+  path: {
+    pluginId: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/api/plugins/{pluginId}/runtime/reload"
+}
+
+export type PluginRuntimeReloadErrors = {
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type PluginRuntimeReloadError = PluginRuntimeReloadErrors[keyof PluginRuntimeReloadErrors]
+
+export type PluginRuntimeReloadResponses = {
+  /**
+   * Runtime state after reload
+   */
+  200: PluginRuntimeInfo | null
+}
+
+export type PluginRuntimeReloadResponse = PluginRuntimeReloadResponses[keyof PluginRuntimeReloadResponses]
+
+export type PluginRuntimeStopData = {
+  body?: never
+  path: {
+    pluginId: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/api/plugins/{pluginId}/runtime/stop"
+}
+
+export type PluginRuntimeStopErrors = {
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type PluginRuntimeStopError = PluginRuntimeStopErrors[keyof PluginRuntimeStopErrors]
+
+export type PluginRuntimeStopResponses = {
+  /**
+   * Runtime state after stop
+   */
+  200: PluginRuntimeInfo | null
+}
+
+export type PluginRuntimeStopResponse = PluginRuntimeStopResponses[keyof PluginRuntimeStopResponses]
+
+export type PluginRuntimeStartData = {
+  body?: never
+  path: {
+    pluginId: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/api/plugins/{pluginId}/runtime/start"
+}
+
+export type PluginRuntimeStartErrors = {
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type PluginRuntimeStartError = PluginRuntimeStartErrors[keyof PluginRuntimeStartErrors]
+
+export type PluginRuntimeStartResponses = {
+  /**
+   * Runtime state after start
+   */
+  200: PluginRuntimeInfo | null
+}
+
+export type PluginRuntimeStartResponse = PluginRuntimeStartResponses[keyof PluginRuntimeStartResponses]
+
+export type PluginRuntimeLogsData = {
+  body?: never
+  path: {
+    pluginId: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/api/plugins/{pluginId}/runtime/logs"
+}
+
+export type PluginRuntimeLogsErrors = {
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type PluginRuntimeLogsError = PluginRuntimeLogsErrors[keyof PluginRuntimeLogsErrors]
+
+export type PluginRuntimeLogsResponses = {
+  /**
+   * Recent runtime log entries
+   */
+  200: Array<PluginRuntimeLogEntry>
+}
+
+export type PluginRuntimeLogsResponse = PluginRuntimeLogsResponses[keyof PluginRuntimeLogsResponses]
+
+export type RegistryPluginsSearchData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+    q?: string
+    offset?: number
+    limit?: number
+    source?: "official" | "local"
+  }
+  url: "/api/registry/search"
+}
+
+export type RegistryPluginsSearchErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type RegistryPluginsSearchError = RegistryPluginsSearchErrors[keyof RegistryPluginsSearchErrors]
+
+export type RegistryPluginsSearchResponses = {
+  /**
+   * Search results with pagination metadata
+   */
+  200: {
+    plugins: Array<RegistryPluginSummary>
+    total: number
+    offset: number
+    limit: number
+  }
+}
+
+export type RegistryPluginsSearchResponse = RegistryPluginsSearchResponses[keyof RegistryPluginsSearchResponses]
+
+export type RegistryPluginsGetData = {
+  body?: never
+  path: {
+    id: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+    source?: "official" | "local"
+  }
+  url: "/api/registry/{id}"
+}
+
+export type RegistryPluginsGetErrors = {
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type RegistryPluginsGetError = RegistryPluginsGetErrors[keyof RegistryPluginsGetErrors]
+
+export type RegistryPluginsGetResponses = {
+  /**
+   * Plugin registry entry
+   */
+  200: RegistryPluginEntry
+}
+
+export type RegistryPluginsGetResponse = RegistryPluginsGetResponses[keyof RegistryPluginsGetResponses]
+
+export type RegistryPluginsVersionsData = {
+  body?: never
+  path: {
+    id: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+    source?: "official" | "local"
+  }
+  url: "/api/registry/{id}/versions"
+}
+
+export type RegistryPluginsVersionsErrors = {
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type RegistryPluginsVersionsError = RegistryPluginsVersionsErrors[keyof RegistryPluginsVersionsErrors]
+
+export type RegistryPluginsVersionsResponses = {
+  /**
+   * Plugin version list
+   */
+  200: Array<RegistryPluginVersion>
+}
+
+export type RegistryPluginsVersionsResponse = RegistryPluginsVersionsResponses[keyof RegistryPluginsVersionsResponses]
+
+export type RegistryPluginsVersionData = {
+  body?: never
+  path: {
+    id: string
+    version: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+    source?: "official" | "local"
+  }
+  url: "/api/registry/{id}/versions/{version}"
+}
+
+export type RegistryPluginsVersionErrors = {
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type RegistryPluginsVersionError = RegistryPluginsVersionErrors[keyof RegistryPluginsVersionErrors]
+
+export type RegistryPluginsVersionResponses = {
+  /**
+   * Plugin version details
+   */
+  200: RegistryPluginVersion
+}
+
+export type RegistryPluginsVersionResponse = RegistryPluginsVersionResponses[keyof RegistryPluginsVersionResponses]
+
+export type RegistryPluginsDownloadData = {
+  body?: never
+  path: {
+    id: string
+    version: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/api/registry/{id}/download/{version}"
+}
+
+export type RegistryPluginsDownloadErrors = {
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Download not yet implemented for this entry
+   */
+  501: unknown
+}
+
+export type RegistryPluginsDownloadError = RegistryPluginsDownloadErrors[keyof RegistryPluginsDownloadErrors]
+
+export type RegistryPluginsDownloadResponses = {
+  /**
+   * Plugin archive binary
+   */
+  200: unknown
+}
+
+export type RegistryPluginsPublishData = {
+  body?: RegistryPublishInput
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/api/registry/publish"
+}
+
+export type RegistryPluginsPublishErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type RegistryPluginsPublishError = RegistryPluginsPublishErrors[keyof RegistryPluginsPublishErrors]
+
+export type RegistryPluginsPublishResponses = {
+  /**
+   * Published plugin entry
+   */
+  200: RegistryPluginEntry
+}
+
+export type RegistryPluginsPublishResponse = RegistryPluginsPublishResponses[keyof RegistryPluginsPublishResponses]
 
 export type AppLogData = {
   body?: {
@@ -10174,6 +11738,7 @@ export type AppLogData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/log"
 }
@@ -10201,6 +11766,7 @@ export type AppAgentsData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/agent"
 }
@@ -10219,6 +11785,7 @@ export type McpStatusData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/mcp"
 }
@@ -10242,6 +11809,7 @@ export type McpAddData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/mcp"
 }
@@ -10273,6 +11841,7 @@ export type McpAuthRemoveData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/mcp/{name}/auth"
 }
@@ -10304,6 +11873,7 @@ export type McpAuthStartData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/mcp/{name}/auth"
 }
@@ -10347,6 +11917,7 @@ export type McpAuthCallbackData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/mcp/{name}/auth/callback"
 }
@@ -10380,6 +11951,7 @@ export type McpAuthAuthenticateData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/mcp/{name}/auth/authenticate"
 }
@@ -10413,6 +11985,7 @@ export type McpConnectData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/mcp/{name}/connect"
 }
@@ -10433,6 +12006,7 @@ export type McpDisconnectData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/mcp/{name}/disconnect"
 }
@@ -10453,6 +12027,7 @@ export type McpRestartData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/mcp/{name}/restart"
 }
@@ -10482,6 +12057,7 @@ export type McpRefreshData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/mcp/{name}/refresh"
 }
@@ -10511,6 +12087,7 @@ export type McpInspectData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/mcp/{name}/inspect"
 }
@@ -10545,6 +12122,7 @@ export type McpTestData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/mcp/{name}/test"
 }
@@ -10572,6 +12150,7 @@ export type ChannelStatusData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/channel"
 }
@@ -10592,6 +12171,7 @@ export type ChannelStartData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/channel/start"
 }
@@ -10612,6 +12192,7 @@ export type ChannelStopData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/channel/stop"
 }
@@ -10635,6 +12216,7 @@ export type ChannelStartOneData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/channel/{channelType}/{accountId}/start"
 }
@@ -10658,6 +12240,7 @@ export type ChannelStopOneData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/channel/{channelType}/{accountId}/stop"
 }
@@ -10681,6 +12264,7 @@ export type ChannelDisconnectData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/channel/{channelType}/{accountId}/disconnect"
 }
@@ -10701,6 +12285,7 @@ export type ChannelAppSessionData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/channel/app/session"
 }
@@ -10719,6 +12304,7 @@ export type ChannelAppResetData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/channel/app/reset"
 }
@@ -10739,6 +12325,7 @@ export type ExperimentalResourceListData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/experimental/resource"
 }
@@ -10760,6 +12347,7 @@ export type LspStatusData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/lsp"
 }
@@ -10778,6 +12366,7 @@ export type FormatterStatusData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/formatter"
 }
@@ -10798,6 +12387,7 @@ export type AuthSetData = {
   }
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/auth/{providerID}"
 }
@@ -10825,6 +12415,7 @@ export type EventSubscribeData = {
   path?: never
   query?: {
     directory?: string
+    scopeID?: string
   }
   url: "/event"
 }

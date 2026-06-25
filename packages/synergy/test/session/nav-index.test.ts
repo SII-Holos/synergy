@@ -3,7 +3,7 @@ import { tmpdir } from "../fixture/fixture"
 import { Session } from "../../src/session"
 import { SessionNav, type SessionNavEntry, type ScopeNavIndex } from "../../src/session/nav"
 import { Log } from "../../src/util/log"
-import { Instance } from "../../src/scope/instance"
+import { ScopeContext } from "../../src/scope/context"
 import { Storage } from "../../src/storage/storage"
 import { StoragePath } from "../../src/storage/path"
 import { SessionEndpoint } from "../../src/session/endpoint"
@@ -19,7 +19,7 @@ describe("SessionNav.buildNavIndex", () => {
     let sessionA: Session.Info | undefined
     let sessionB: Session.Info | undefined
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope,
       fn: async () => {
         sessionA = await Session.create({ title: "Alpha Session" })
@@ -27,7 +27,7 @@ describe("SessionNav.buildNavIndex", () => {
       },
     })
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope,
       fn: async () => {
         const index = await SessionNav.buildNavIndex(scope.id)
@@ -58,7 +58,7 @@ describe("SessionNav.buildNavIndex", () => {
     await using tmp = await tmpdir({ git: true })
     const scope = await tmp.scope()
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope,
       fn: async () => {
         const session = await Session.create({ title: "Plain Project Session" })
@@ -76,7 +76,7 @@ describe("SessionNav.buildNavIndex", () => {
     await using tmp = await tmpdir({ git: true })
     const scope = await tmp.scope()
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope,
       fn: async () => {
         const parent = await Session.create({ title: "Parent" })
@@ -98,7 +98,7 @@ describe("SessionNav.buildNavIndex", () => {
     await using tmp = await tmpdir({ git: true })
     const scope = await tmp.scope()
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope,
       fn: async () => {
         // Create a valid session first
@@ -133,7 +133,7 @@ describe("SessionNav.buildNavIndex", () => {
     await using tmp = await tmpdir({ git: true })
     const scope = await tmp.scope()
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope,
       fn: async () => {
         const session = await Session.create({ title: "Idempotency Check" })
@@ -164,7 +164,7 @@ describe("SessionNav.buildNavIndex", () => {
     await using tmp = await tmpdir({ git: true })
     const scope = await tmp.scope()
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope,
       fn: async () => {
         const older = await Session.create({ title: "Older" })
@@ -189,7 +189,7 @@ describe("SessionNav.buildNavIndex", () => {
     await using tmp = await tmpdir({ git: true })
     const scope = await tmp.scope()
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope,
       fn: async () => {
         const session = await Session.create({ title: "Will Be Archived" })
@@ -211,7 +211,7 @@ describe("SessionNav.buildNavIndex", () => {
     await using tmp = await tmpdir({ git: true })
     const scope = await tmp.scope()
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope,
       fn: async () => {
         const session = await Session.create({ title: "Pinned Session" })
@@ -233,7 +233,7 @@ describe("SessionNav.buildNavIndex", () => {
     await using tmp = await tmpdir({ git: true })
     const scope = await tmp.scope()
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope,
       fn: async () => {
         const session = await Session.create({ title: "Stale Scope Session" })
@@ -269,13 +269,13 @@ describe("SessionNav.rebuildAllNavIndexes", () => {
     const scopeA = await tmpA.scope()
     const scopeB = await tmpB.scope()
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: scopeA,
       fn: async () => {
         await Session.create({ title: "A1" })
       },
     })
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: scopeB,
       fn: async () => {
         await Session.create({ title: "B1" })
@@ -300,14 +300,14 @@ describe("SessionNav.rebuildAllNavIndexes", () => {
     expect(indexB.entries.length).toBeGreaterThanOrEqual(1)
 
     // Cleanup
-    const sessionsA = await Instance.provide({
+    const sessionsA = await ScopeContext.provide({
       scope: scopeA,
       fn: async () => {
         const s = await Session.list({ limit: 100 })
         return s.data
       },
     })
-    const sessionsB = await Instance.provide({
+    const sessionsB = await ScopeContext.provide({
       scope: scopeB,
       fn: async () => {
         const s = await Session.list({ limit: 100 })
@@ -322,7 +322,7 @@ test("sets endpointKind on entries from session endpoint info", async () => {
   await using tmp = await tmpdir({ git: true })
   const scope = await tmp.scope()
 
-  await Instance.provide({
+  await ScopeContext.provide({
     scope,
     fn: async () => {
       const channelSession = await Session.create({

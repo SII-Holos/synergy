@@ -1,4 +1,4 @@
-import type { Plugin } from "./index"
+import type { PluginDescriptor } from "./index"
 import { tool } from "./tool"
 
 const MAX_NOTE_TAGS = 8
@@ -29,7 +29,7 @@ function preview(text: string, limit = 160) {
   return `${singleLine.slice(0, limit - 1)}…`
 }
 
-export const ExamplePlugin: Plugin = {
+export const ExamplePlugin: PluginDescriptor = {
   id: "example",
   name: "Example Plugin",
   async init(ctx) {
@@ -85,7 +85,7 @@ export const ExamplePlugin: Plugin = {
         output.note.title = output.note.title.trim() || "Untitled note"
         output.note.tags = mergeTags(output.note.tags)
       },
-      async "engram.memory.search.after"(input, output) {
+      async "library.memory.search.after"(input, output) {
         output.results = output.results
           .slice()
           .sort((left, right) => right.similarity - left.similarity)

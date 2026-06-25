@@ -12,12 +12,14 @@ import { generateSchema } from "./nodes/generate-schema"
 import { generateSdk } from "./nodes/generate-sdk"
 import { buildMetaProtocol } from "./nodes/build-meta-protocol"
 import { buildPlugin } from "./nodes/build-plugin"
+import { buildPluginKit } from "./nodes/build-plugin-kit"
 import { buildSynergyBinaries } from "./nodes/build-synergy-binaries"
 import { prepareSynergyPackages } from "./nodes/prepare-synergy-packages"
 import { validateLocalArtifacts } from "./nodes/validate-local-artifacts"
 import { publishSdkCandidate } from "./nodes/publish-sdk-candidate"
 import { publishMetaProtocolCandidate } from "./nodes/publish-meta-protocol-candidate"
 import { publishPluginCandidate } from "./nodes/publish-plugin-candidate"
+import { publishPluginKitCandidate } from "./nodes/publish-plugin-kit-candidate"
 import { publishSynergyCandidate } from "./nodes/publish-synergy-candidate"
 // meta-synergy npm publish removed — package too large for npm registry
 // import { publishMetaSynergyCandidate } from "./nodes/publish-meta-synergy-candidate"
@@ -46,6 +48,7 @@ try {
   await bunInstall()
   await Promise.all([generateSchema(), generateSdk(), buildMetaProtocol()])
   await buildPlugin()
+  await buildPluginKit()
   await buildApp()
   const platformNames = await buildSynergyBinaries(version, channel)
   await prepareSynergyPackages(version, platformNames)
@@ -53,6 +56,7 @@ try {
   await publishSdkCandidate(version, channel)
   await publishMetaProtocolCandidate(version, channel)
   await publishPluginCandidate(version, channel)
+  await publishPluginKitCandidate(version, channel)
   const synergy = await publishSynergyCandidate(version, channel)
   // meta-synergy npm publish removed — package too large for npm registry
   // await publishMetaSynergyCandidate(version, channel)

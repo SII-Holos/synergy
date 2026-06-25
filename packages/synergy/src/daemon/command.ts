@@ -94,6 +94,7 @@ export namespace DaemonCommand {
         "--managed-service",
         "--non-interactive",
         "--no-banner",
+        "--print-logs",
         "--hostname",
         input.hostname,
         "--port",

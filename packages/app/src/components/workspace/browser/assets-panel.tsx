@@ -7,6 +7,7 @@ const TYPE_LABELS: Record<string, string> = {
   stylesheet: "Stylesheets",
   font: "Fonts",
   media: "Media",
+  document: "Documents",
   other: "Other",
 }
 
@@ -16,10 +17,11 @@ const TYPE_ICONS: Record<string, string> = {
   stylesheet: "◇",
   font: "◆",
   media: "◎",
+  document: "□",
   other: "○",
 }
 
-const TYPE_ORDER = ["image", "script", "stylesheet", "font", "media", "other"] as const
+const TYPE_ORDER = ["image", "script", "stylesheet", "font", "media", "document", "other"] as const
 
 function getFileExtension(url: string): string {
   try {

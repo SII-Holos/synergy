@@ -1,7 +1,7 @@
 import { describe, expect, test, mock, afterEach } from "bun:test"
 import { WorktreeLeaveTool } from "../../src/tool/worktree-leave"
 import { Worktree } from "../../src/project/worktree"
-import { Instance } from "../../src/scope/instance"
+import { ScopeContext } from "../../src/scope/context"
 import { PermissionNext } from "../../src/permission/next"
 import { tmpdir } from "../fixture/fixture"
 
@@ -88,7 +88,7 @@ describe("tool.worktree_leave", () => {
   describe("noop: already on main", () => {
     test("returns noop when session has no workspace", async () => {
       await using tmp = await tmpdir({ git: true })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const initialized = await WorktreeLeaveTool.init()
@@ -104,7 +104,7 @@ describe("tool.worktree_leave", () => {
 
     test("returns noop when workspace is not git_worktree type", async () => {
       await using tmp = await tmpdir({ git: true })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         workspace: {
           type: "main",
@@ -129,7 +129,7 @@ describe("tool.worktree_leave", () => {
       ;(Worktree as any).leave = leaveSpy
       ;(Worktree as any).status = statusSpy
 
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const initialized = await WorktreeLeaveTool.init()
@@ -147,7 +147,7 @@ describe("tool.worktree_leave", () => {
   describe("permission denied", () => {
     test("returns semantic denial on RejectedError", async () => {
       await using tmp = await tmpdir({ git: true })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         workspace: {
           type: "git_worktree",
@@ -175,7 +175,7 @@ describe("tool.worktree_leave", () => {
 
     test("returns semantic denial on DeniedError", async () => {
       await using tmp = await tmpdir({ git: true })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         workspace: {
           type: "git_worktree",
@@ -202,7 +202,7 @@ describe("tool.worktree_leave", () => {
 
     test("throws non-permission errors", async () => {
       await using tmp = await tmpdir({ git: true })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         workspace: {
           type: "git_worktree",
@@ -229,7 +229,7 @@ describe("tool.worktree_leave", () => {
   describe("leave with cleanup=keep", () => {
     test("leaves worktree and returns to main without removing", async () => {
       await using tmp = await tmpdir({ git: true })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         workspace: {
           type: "git_worktree",
@@ -261,7 +261,7 @@ describe("tool.worktree_leave", () => {
 
     test("calls Worktree.leave with correct sessionID", async () => {
       await using tmp = await tmpdir({ git: true })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         workspace: {
           type: "git_worktree",
@@ -290,7 +290,7 @@ describe("tool.worktree_leave", () => {
 
     test("does not call Worktree.remove when cleanup=keep", async () => {
       await using tmp = await tmpdir({ git: true })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         workspace: {
           type: "git_worktree",
@@ -318,7 +318,7 @@ describe("tool.worktree_leave", () => {
   describe("leave with cleanup=remove_if_clean", () => {
     test("removes clean worktree after leaving", async () => {
       await using tmp = await tmpdir({ git: true })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         workspace: {
           type: "git_worktree",
@@ -348,7 +348,7 @@ describe("tool.worktree_leave", () => {
 
     test("keeps dirty worktree when cleanup=remove_if_clean", async () => {
       await using tmp = await tmpdir({ git: true })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         workspace: {
           type: "git_worktree",
@@ -378,7 +378,7 @@ describe("tool.worktree_leave", () => {
 
     test("checks Worktree.status before deciding on cleanup", async () => {
       await using tmp = await tmpdir({ git: true })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         workspace: {
           type: "git_worktree",

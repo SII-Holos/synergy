@@ -7,7 +7,7 @@ import { parse as parseJsonc } from "jsonc-parser"
 import { NamedError } from "@ericsanchezok/synergy-util/error"
 import { Session } from "../session"
 import type { Scope } from "../scope"
-import { Instance } from "../scope/instance"
+import { ScopeContext } from "../scope/context"
 import { fn } from "../util/fn"
 import { Log } from "../util/log"
 
@@ -224,11 +224,11 @@ export namespace Worktree {
   }
 
   function ensureGitScope() {
-    const scope = Instance.scope
+    const scope = ScopeContext.current.scope
     if (scope.type !== "project" || scope.vcs !== "git") {
       throw new NotGitError({ message: "Current scope is not a Git repository; git worktree is unavailable." })
     }
-    return { scope, repoRoot: Instance.worktree }
+    return { scope, repoRoot: ScopeContext.current.worktree }
   }
 
   function worktreesRoot(repoRoot = ensureGitScope().repoRoot) {
@@ -436,7 +436,7 @@ export namespace Worktree {
       WORKTREE_PATH: directory,
       WORKTREE_NAME: info.name,
       WORKTREE_BRANCH: info.branch ?? "",
-      SYNERGY_SCOPE_ID: Instance.scope.id,
+      SYNERGY_SCOPE_ID: ScopeContext.current.scope.id,
     }
     for (const command of setup.setup) {
       const ran = process.platform === "win32" ? $`cmd /c ${command}` : $`bash -lc ${command}`
@@ -575,7 +575,7 @@ export namespace Worktree {
       originalCheckout: path.resolve(repoRoot),
     }
     await Session.updateWorkspace(sessionID, workspace)
-    Instance.refreshWorkspace(workspace as import("../session/types").Workspace)
+    ScopeContext.refreshWorkspace(workspace as import("../session/types").Workspace)
     await updateBinding(info, sessionID, "add")
   }
 
@@ -604,7 +604,7 @@ export namespace Worktree {
     const scope = session.scope as Scope
     const mainWorkspace = { type: "main" as const, path: scope.directory, scopeID: scope.id }
     const result = await Session.updateWorkspace(sessionID, mainWorkspace)
-    Instance.refreshWorkspace(mainWorkspace as import("../session/types").Workspace)
+    ScopeContext.refreshWorkspace(mainWorkspace as import("../session/types").Workspace)
     return result
   }
 

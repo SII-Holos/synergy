@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import { ApprovalCache } from "../../src/enforcement/gate"
-import { Instance } from "../../src/scope/instance"
+import { ScopeContext } from "../../src/scope/context"
 import { tmpdir } from "../fixture/fixture"
 
 // ------------------------------------------------------------------
@@ -51,12 +51,12 @@ describe("EnforcementGate approval cache", () => {
     await using tmp = await tmpdir()
     const scope = await tmp.scope()
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope,
       fn: async () => {
         const { EnforcementGate } = await import("../../src/enforcement/gate")
         const gate = await EnforcementGate.create({
-          activeWorkspace: Instance.directory,
+          activeWorkspace: ScopeContext.current.directory,
           workspaceType: "main",
           profileId: "guarded",
         })
@@ -83,12 +83,12 @@ describe("EnforcementGate approval cache", () => {
     await using tmp = await tmpdir()
     const scope = await tmp.scope()
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope,
       fn: async () => {
         const { EnforcementGate } = await import("../../src/enforcement/gate")
         const gate = await EnforcementGate.create({
-          activeWorkspace: Instance.directory,
+          activeWorkspace: ScopeContext.current.directory,
           workspaceType: "main",
           profileId: "guarded",
         })
@@ -119,12 +119,12 @@ describe("EnforcementGate approval cache", () => {
     await using tmp = await tmpdir()
     const scope = await tmp.scope()
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope,
       fn: async () => {
         const { EnforcementGate } = await import("../../src/enforcement/gate")
         const gate = await EnforcementGate.create({
-          activeWorkspace: Instance.directory,
+          activeWorkspace: ScopeContext.current.directory,
           workspaceType: "main",
           profileId: "guarded",
         })
@@ -160,12 +160,12 @@ describe("EnforcementGate approval cache", () => {
     await using tmp = await tmpdir()
     const scope = await tmp.scope()
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope,
       fn: async () => {
         const { EnforcementGate } = await import("../../src/enforcement/gate")
         const gate = await EnforcementGate.create({
-          activeWorkspace: Instance.directory,
+          activeWorkspace: ScopeContext.current.directory,
           workspaceType: "main",
           profileId: "autonomous",
         })

@@ -2,10 +2,33 @@ import { ProcessRegistry } from "../../process/registry"
 import { Shell } from "../../util/shell"
 import { encodeKeySequence } from "../../util/pty-keys"
 import type { ProcessParams, ProcessResult } from "./shared"
+import { ScopeContext } from "@/scope/context"
+import { ArtifactPromotion } from "../artifact-promotion"
+import type { Tool } from "../tool"
+import type { MessageV2 } from "@/session/message-v2"
 
 export namespace LocalProcessBackend {
-  export async function execute(params: ProcessParams): Promise<ProcessResult> {
+  export async function execute(params: ProcessParams, ctx?: Tool.Context): Promise<ProcessResult> {
     const { action, processId } = params
+    const withArtifacts = async (
+      result: ProcessResult,
+      output: string,
+      cwd = ScopeContext.current.directory,
+    ): Promise<ProcessResult> => {
+      if (!ctx || (action !== "poll" && action !== "log")) return result
+      const attachments = await ArtifactPromotion.promote({
+        output,
+        cwd,
+        sessionID: ctx.sessionID,
+        messageID: ctx.messageID,
+        tool: "process",
+      }).catch((): MessageV2.FilePart[] => [])
+      if (attachments.length === 0) return result
+      return {
+        ...result,
+        attachments: [...(result.attachments ?? []), ...attachments],
+      }
+    }
 
     if (action === "list") {
       const all = ProcessRegistry.listAll()
@@ -80,19 +103,24 @@ export namespace LocalProcessBackend {
         }
 
         if (currentFinished) {
-          return {
-            title: `Process ${processId}`,
-            metadata: {
-              action,
-              processId,
-              ...currentInfo,
-              status: currentFinished.status,
-              exitCode: currentFinished.exitCode ?? undefined,
+          const output =
+            (currentFinished.tail || "(no output recorded)") +
+            `\n\nProcess exited with ${currentFinished.exitSignal ? `signal ${currentFinished.exitSignal}` : `code ${currentFinished.exitCode ?? 0}`}.`
+          return withArtifacts(
+            {
+              title: `Process ${processId}`,
+              metadata: {
+                action,
+                processId,
+                ...currentInfo,
+                status: currentFinished.status,
+                exitCode: currentFinished.exitCode ?? undefined,
+              },
+              output,
             },
-            output:
-              (currentFinished.tail || "(no output recorded)") +
-              `\n\nProcess exited with ${currentFinished.exitSignal ? `signal ${currentFinished.exitSignal}` : `code ${currentFinished.exitCode ?? 0}`}.`,
-          }
+            currentFinished.output,
+            currentFinished.cwd,
+          )
         }
 
         return {
@@ -132,11 +160,13 @@ export namespace LocalProcessBackend {
               : "running"
             : target.status
 
-        return {
+        const result: ProcessResult = {
           title: `Log: ${processId}`,
           metadata: { action, processId, ...procInfo, status, backend: "local" },
           output: slice || "(no output)",
         }
+        if (status === "running") return result
+        return withArtifacts(result, slice || output, target.cwd)
       }
 
       case "write": {

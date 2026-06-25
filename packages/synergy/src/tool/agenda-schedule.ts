@@ -4,7 +4,7 @@ import { Tool } from "./tool"
 import { Agenda, AgendaTypes } from "../agenda"
 import { AgendaDedup } from "../agenda/dedup"
 import { SessionManager } from "../session/manager"
-import { Instance } from "../scope/instance"
+import { ScopeContext } from "../scope/context"
 import DESCRIPTION from "./agenda-schedule.txt"
 
 const parameters = z.object({
@@ -48,7 +48,12 @@ export const AgendaScheduleTool = Tool.define("agenda_schedule", {
     const session = await SessionManager.getSession(ctx.sessionID).catch(() => undefined)
     const triggers = [params.trigger as AgendaTypes.Trigger]
 
-    const conflicts = await AgendaDedup.findConflicts(Instance.scope.id, params.title, triggers, params.global)
+    const conflicts = await AgendaDedup.findConflicts(
+      ScopeContext.current.scope.id,
+      params.title,
+      triggers,
+      params.global,
+    )
     if (conflicts.length > 0) {
       return {
         title: "agenda_schedule",

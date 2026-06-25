@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import { Command } from "../../src/command/command"
-import { Instance } from "../../src/scope/instance"
+import { ScopeContext } from "../../src/scope/context"
 import { Session } from "../../src/session"
 import { SessionInvoke } from "../../src/session/invoke"
 import { MessageV2 } from "../../src/session/message-v2"
@@ -69,7 +69,7 @@ describe("command kind architecture", () => {
   test("built-in worktree is an action command and prompt commands stay prompt-visible", async () => {
     await using tmp = await tmpdir({ git: true })
     const scope = await tmp.scope()
-    await Instance.provide({
+    await ScopeContext.provide({
       scope,
       fn: async () => {
         const worktree = await Command.get(Command.Default.WORKTREE)
@@ -152,7 +152,7 @@ describe("command kind architecture", () => {
     await using tmp = await tmpdir({ git: true })
     const scope = await tmp.scope()
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope,
       fn: async () => {
         const session = await Session.create({ title: "Command Action" })

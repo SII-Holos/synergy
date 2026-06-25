@@ -2,18 +2,16 @@ import path from "path"
 import z from "zod"
 import { Identifier } from "../id/id"
 import { MessageV2 } from "./message-v2"
-import { SessionRevert } from "./revert"
 import { BusyError } from "./error"
 import { Session } from "."
 import { Agent } from "../agent/agent"
-import { Instance } from "../scope/instance"
+import { ScopeContext } from "../scope/context"
 import { ulid } from "ulid"
 import { spawn } from "child_process"
 import { defer } from "../util/defer"
 import { SessionManager } from "./manager"
 import { Shell } from "../util/shell"
 import { lastModel } from "./input"
-import { Scope } from "@/scope"
 
 function deriveShellAbortReason(reason: unknown): string {
   if (reason instanceof DOMException) {
@@ -41,8 +39,11 @@ export const ShellInput = z.object({
 export type ShellInput = z.infer<typeof ShellInput>
 
 export async function shell(input: ShellInput) {
-  const session = await Session.get(input.sessionID)
-  const directory = (session.scope as Scope).directory
+  return SessionManager.run(input.sessionID, async () => shellInSession(input))
+}
+
+async function shellInSession(input: ShellInput) {
+  const directory = ScopeContext.current.directory
 
   SessionManager.registerRuntime(input.sessionID)
   const abort = SessionManager.acquire(input.sessionID)
@@ -53,9 +54,6 @@ export async function shell(input: ShellInput) {
     SessionManager.release(input.sessionID).catch(() => {})
   })
 
-  if (session.revert) {
-    SessionRevert.cleanup(session)
-  }
   const agent = await Agent.get(input.agent)
   const model = input.model ?? (await Agent.getAvailableModel(agent)) ?? (await lastModel(input.sessionID))
   const userMsg: MessageV2.User = {
@@ -179,7 +177,7 @@ export async function shell(input: ShellInput) {
   const args = matchingInvocation?.args
 
   const proc = spawn(sh, args, {
-    cwd: Instance.directory,
+    cwd: ScopeContext.current.directory,
     detached: process.platform !== "win32",
     stdio: ["ignore", "pipe", "pipe"],
     env: {

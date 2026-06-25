@@ -3,6 +3,8 @@ import path from "path"
 import { npmAuthArgs, npmEnsureDistTag, npmVersionExists, retry, waitForNpmVersion } from "./runtime"
 import { FIXED_REGISTRY_PACKAGES, NPM_REGISTRY, REPO_ROOT } from "./packages"
 
+export type DependencyVersionMap = Record<string, string>
+
 function distExports(exportsField: Record<string, unknown>) {
   const output: Record<string, unknown> = {}
   for (const [key, value] of Object.entries(exportsField)) {
@@ -42,12 +44,15 @@ function resolveDeps(
   deps: Record<string, string> | undefined,
   version: string,
   catalog: Record<string, string>,
+  dependencyVersions: DependencyVersionMap = {},
 ): Record<string, string> | undefined {
   if (!deps) return deps
   const resolved: Record<string, string> = {}
   for (const [name, spec] of Object.entries(deps)) {
     if (spec.startsWith("workspace:")) {
-      if ((FIXED_REGISTRY_PACKAGES as readonly string[]).includes(name)) {
+      if (dependencyVersions[name]) {
+        resolved[name] = dependencyVersions[name]
+      } else if ((FIXED_REGISTRY_PACKAGES as readonly string[]).includes(name)) {
         resolved[name] = version
       } else {
         throw new Error(
@@ -73,6 +78,7 @@ export async function publishGenericWorkspacePackage(options: {
   name: string
   version: string
   channel: string
+  dependencyVersions?: DependencyVersionMap
 }) {
   const packageJsonPath = path.join(options.dir, "package.json")
   const originalText = await Bun.file(packageJsonPath).text()
@@ -87,9 +93,14 @@ export async function publishGenericWorkspacePackage(options: {
   if (packageJson.exports) {
     packageJson.exports = distExports(packageJson.exports)
   }
-  packageJson.dependencies = resolveDeps(packageJson.dependencies, options.version, catalog)
+  packageJson.dependencies = resolveDeps(packageJson.dependencies, options.version, catalog, options.dependencyVersions)
   delete packageJson.devDependencies
-  packageJson.peerDependencies = resolveDeps(packageJson.peerDependencies, options.version, catalog)
+  packageJson.peerDependencies = resolveDeps(
+    packageJson.peerDependencies,
+    options.version,
+    catalog,
+    options.dependencyVersions,
+  )
   await Bun.write(packageJsonPath, JSON.stringify(packageJson, null, 2))
 
   try {

@@ -2,7 +2,8 @@ import { cmd } from "./cmd"
 import * as prompts from "@clack/prompts"
 import { UI } from "../ui"
 import { Config } from "../../config/config"
-import { Instance } from "../../scope/instance"
+import { ConfigDomain } from "../../config/domain"
+import { ScopeContext } from "../../scope/context"
 import { Scope } from "@/scope"
 import { attachOption, ensureServer, fetchChannelApi, startChannelIfServerRunning } from "./channel-server"
 import * as ChannelTypes from "../../channel/types"
@@ -157,13 +158,13 @@ export const ChannelListCommand = cmd({
   aliases: ["ls"],
   describe: "list configured channels",
   async handler() {
-    await Instance.provide({
-      scope: (await Scope.fromDirectory(process.cwd())).scope,
+    await ScopeContext.provide({
+      scope: Scope.home(),
       async fn() {
         UI.empty()
         prompts.intro("Channels")
 
-        const cfg = await Config.get()
+        const cfg = await Config.current()
         const channels = cfg.channel ?? {}
         const entries = Object.entries(channels) as Array<[string, Config.Channel]>
 
@@ -338,9 +339,8 @@ async function addFeishuChannel(printOnly: boolean, serverUrl: string): Promise<
     prompts.log.message(JSON.stringify(config, null, 2))
   } else {
     await Config.updateGlobal(config)
-    prompts.log.success(`Added feishu/${accountId} to the active global Config Set`)
-    prompts.log.info(`Config file: ${await Config.globalPath()}`)
-    prompts.log.info(`Edit with: synergy config edit`)
+    prompts.log.success(`Added feishu/${accountId} to global channel config`)
+    prompts.log.info(`Config file: ${ConfigDomain.filepath("channels")}`)
 
     const connection = await startChannelIfServerRunning({
       serverUrl,

@@ -1,5 +1,5 @@
 import type { Tool } from "../tool/tool"
-import { Instance } from "../scope/instance"
+import { ScopeContext } from "../scope/context"
 
 export namespace BrowserOwner {
   export type Mode = "session" | "scope"
@@ -30,8 +30,8 @@ export namespace BrowserOwner {
   export function fromToolContext(ctx: Tool.Context): Info {
     return {
       mode: "session",
-      scopeID: Instance.scope.id,
-      directory: Instance.directory,
+      scopeID: ScopeContext.current.scope.id,
+      directory: ScopeContext.current.directory,
       sessionID: ctx.sessionID,
     }
   }

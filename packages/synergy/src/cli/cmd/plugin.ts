@@ -6,19 +6,49 @@ import {
   type HookDescriptor,
 } from "@ericsanchezok/synergy-plugin/hooks"
 import type { PluginManifest } from "@ericsanchezok/synergy-plugin"
+import { PluginRuntimeCommand } from "./plugin-runtime"
+import { PluginTestCommand } from "./plugin-test"
+import { PluginPublishCommand } from "./plugin-publish"
+import { PluginPublishMarketCommand } from "./plugin-publish-market"
+import { PluginEntryCommand } from "./plugin-entry"
+import { PluginInfoCommand } from "./plugin-info"
+import { PluginPermissionsCommand } from "./plugin-permissions"
+import { PluginApproveCommand } from "./plugin-approve"
+import { PluginBuildCommand } from "./plugin-build"
+import { PluginPackCommand } from "./plugin-pack"
+import { PluginValidateCommand } from "./plugin-validate"
+import { PluginSignCommand } from "./plugin-sign"
+import { PluginDevCommand } from "./plugin-dev"
+import { PluginCreateCommand } from "./plugin-create"
 import { cmd } from "./cmd"
 import { UI } from "../ui"
 import { Plugin } from "@/plugin"
 import { PluginSpec } from "../../util/plugin-spec"
+
+import type { Argv } from "yargs"
 import { Config } from "../../config/config"
-import { Instance } from "../../scope/instance"
+import { ScopeContext } from "../../scope/context"
 import { Scope } from "@/scope"
 import { EOL } from "os"
 import path from "path"
 import fs from "fs"
 import * as prompts from "@clack/prompts"
 import { read as readManifestFile } from "../../plugin/manifest-reader"
-import type { Argv } from "yargs"
+import { BunProc } from "../../util/bun"
+import { findPackageRoot } from "../../plugin/loader"
+import { resolveSpecPluginDir } from "../../plugin/loader"
+import { diffPermissions } from "../../plugin/consent/diff"
+import { baseCapabilities } from "../../plugin/capability"
+import { computeRisk } from "../../plugin/consent/risk"
+import { saveApproval, computeManifestHash, computePermissionsHash } from "../../plugin/consent/approval-store"
+import * as Lockfile from "../../plugin/lockfile"
+import { derivePluginSource } from "../../plugin/trust"
+import { recordEvent } from "../../plugin/audit"
+import { Server } from "../../server/server"
+import { isServerReachable } from "../network"
+import { resolveRuntimeMode } from "../../plugin-runtime/mode-resolver"
+import { Installation } from "../../global/installation"
+import type { PluginPermissionDiff } from "../../plugin/consent/schema"
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -154,8 +184,8 @@ export const PluginAddCommand = cmd({
       demandOption: true,
     }),
   async handler(args) {
-    await Instance.provide({
-      scope: (await Scope.fromDirectory(process.cwd())).scope,
+    await ScopeContext.provide({
+      scope: Scope.home(),
       async fn() {
         const spec = args.spec as string
         const spinner = prompts.spinner()
@@ -208,8 +238,8 @@ export const PluginRemoveCommand = cmd({
         default: false,
       }),
   async handler(args) {
-    await Instance.provide({
-      scope: (await Scope.fromDirectory(process.cwd())).scope,
+    await ScopeContext.provide({
+      scope: Scope.home(),
       async fn() {
         const pluginId = args.id as string
 
@@ -254,15 +284,21 @@ export const PluginUpdateCommand = cmd({
   command: "update [id]",
   describe: "update plugins to their latest version",
   builder: (yargs: Argv) =>
-    yargs.positional("id", {
-      type: "string",
-      describe: "plugin id to update (omit to update all)",
-    }),
+    yargs
+      .positional("id", {
+        type: "string",
+        describe: "plugin id to update (omit to update all)",
+      })
+      .option("auto-approve", {
+        type: "boolean",
+        describe: "auto-approve permission changes without prompting (low-security convenience)",
+        default: false,
+      }),
   async handler(args) {
-    await Instance.provide({
-      scope: (await Scope.fromDirectory(process.cwd())).scope,
+    await ScopeContext.provide({
+      scope: Scope.home(),
       async fn() {
-        const config = await Config.get()
+        const config = await Config.globalResolved()
         const configSpecs = config.plugin ?? []
 
         if (configSpecs.length === 0) {
@@ -270,56 +306,132 @@ export const PluginUpdateCommand = cmd({
           return
         }
 
+        const autoApprove = args["auto-approve"] as boolean
+        const isInteractive = interactive()
+
         // Determine which specs to update
-        let specsToUpdate: { spec: string; id: string }[] = []
+        let specsToUpdate: ConfiguredPluginPackage[] = []
+        const configuredPlugins = await Promise.all(configSpecs.map(readConfiguredPluginPackage))
 
         if (args.id) {
           const targetId = args.id as string
-          const targetPlugin = await Plugin.get(targetId)
+          const targetPlugin = configuredPlugins.find((plugin) => pluginMatches(plugin, targetId))
           if (!targetPlugin) {
             UI.error(`Plugin not found: ${targetId}`)
             return
           }
-          // Find the config spec matching this plugin
-          const matchedSpec = await findConfigSpec(targetPlugin.pluginDir, configSpecs)
-          if (!matchedSpec) {
-            UI.error(`Could not find config entry for plugin "${targetId}". Update the spec manually in synergy.jsonc.`)
-            return
-          }
-          specsToUpdate.push({ spec: matchedSpec, id: targetId })
+          specsToUpdate.push(targetPlugin)
         } else {
-          // Update all — find loaded plugin for each config spec
-          for (const spec of configSpecs) {
-            const plugin = await Plugin.lookupSpec(spec)
-            if (plugin) {
-              specsToUpdate.push({ spec, id: plugin.id })
-            }
-          }
+          specsToUpdate = configuredPlugins
         }
 
         if (specsToUpdate.length === 0) {
-          UI.println(UI.Style.TEXT_DIM + "No installed plugins to update." + UI.Style.TEXT_NORMAL)
+          UI.println(UI.Style.TEXT_DIM + "No configured plugins to update." + UI.Style.TEXT_NORMAL)
+          return
+        }
+
+        // Resolve new manifests and compute consent diffs
+        let consented: Array<{ current: ConfiguredPluginPackage; resolved: ResolvedPluginPackage }> = []
+
+        for (const current of specsToUpdate) {
+          const { spec, id } = current
+          const oldManifest = current.manifest
+          const resolved = await resolveNewManifest(spec, { refresh: true })
+
+          if (!resolved?.manifest) {
+            UI.error(`Could not resolve manifest for: ${spec}`)
+            continue
+          }
+          const newManifest = resolved.manifest
+
+          // Compute permission diff
+          const oldCaps = oldManifest ? baseCapabilities(oldManifest) : []
+          const newCaps = baseCapabilities(newManifest)
+          const diff = diffPermissions(id, oldManifest, newManifest, oldCaps, newCaps)
+
+          if (!diff.requiresApproval) {
+            consented.push({ current, resolved })
+            continue
+          }
+
+          printDiff(diff)
+
+          if (autoApprove) {
+            consented.push({ current, resolved })
+            continue
+          }
+
+          // Block in non-interactive mode
+          if (!isInteractive) {
+            UI.println(
+              `${UI.Style.TEXT_WARNING}⚠${UI.Style.TEXT_NORMAL} Permission changes require approval. Run interactively or use \`synergy plugin approve ${id}\`.${EOL}` +
+                `  Use ${UI.Style.TEXT_DIM}--auto-approve${UI.Style.TEXT_NORMAL} to skip prompts (low-security convenience).`,
+            )
+            continue
+          }
+
+          // Prompt for approval
+          const approved = await prompts.confirm({
+            message: `Approve permission changes for ${SpecToDisplay(spec)}?`,
+          })
+          if (approved === true) {
+            consented.push({ current, resolved })
+          } else {
+            UI.println(UI.Style.TEXT_DIM + `Skipped ${SpecToDisplay(spec)}.${UI.Style.TEXT_NORMAL}`)
+          }
+        }
+
+        if (consented.length === 0) {
+          UI.println(UI.Style.TEXT_DIM + "No updates to apply." + UI.Style.TEXT_NORMAL)
           return
         }
 
         let succeeded = 0
         let failed = 0
 
-        // Phase 1: remove all with autoReload: false
-        for (const { spec, id } of specsToUpdate) {
+        for (const { current, resolved } of consented) {
+          const { spec, id } = current
           const spinner = prompts.spinner()
           spinner.start(`Updating ${SpecToDisplay(spec)}`)
 
+          // Save backup of current lockfile entry for rollback
+          let backupEntry: import("../../plugin/lockfile-schema").PluginLockEntry | null = null
           try {
-            const plugin = await Plugin.get(id)
-            const oldVersion = plugin ? readPkgVersion(plugin.pluginDir) : undefined
+            const { pkg } = PluginSpec.parse(spec)
+            const currentLockfile = await Lockfile.read()
+            backupEntry = currentLockfile.plugins[current.id] ?? currentLockfile.plugins[pkg] ?? null
+          } catch {
+            // No existing lockfile entry
+          }
 
-            await Plugin.remove(id, { autoReload: false })
-            await Plugin.add(spec, { autoReload: false })
+          let oldVersion: string | undefined
+          let newVersion: string | undefined
+          try {
+            oldVersion = current.installedVersion
+            newVersion = resolved.manifest?.version ?? readPkgVersion(resolved.pluginDir)
+            await writeUpdatedPackageLock(current, resolved)
 
-            // Read new version after install
-            const updatedPlugin = await Plugin.get(id)
-            const newVersion = updatedPlugin ? readPkgVersion(updatedPlugin.pluginDir) : undefined
+            // Write new approval record
+            const updatedManifest = resolved.manifest
+            if (updatedManifest) {
+              const caps = baseCapabilities(updatedManifest)
+              const source = derivePluginSource(resolved.pluginDir)
+              const risk = computeRisk(caps, updatedManifest)
+              await saveApproval({
+                pluginId: id,
+                source,
+                version: updatedManifest.version ?? "0.0.0",
+                manifestHash: computeManifestHash(updatedManifest),
+                permissionsHash: computePermissionsHash(updatedManifest, caps),
+                approvedAt: Date.now(),
+                approvedBy: "user",
+                trustTier: "trusted-import",
+                approvedCapabilities: caps,
+                approvedNetworkDomains: updatedManifest.permissions?.network?.connectDomains ?? [],
+                approvedUISurfaces: [],
+                risk,
+              })
+            }
 
             const versionInfo =
               oldVersion && newVersion
@@ -332,15 +444,43 @@ export const PluginUpdateCommand = cmd({
             const message = e instanceof Error ? e.message : String(e)
             spinner.stop(`${UI.Style.TEXT_DANGER}✘${UI.Style.TEXT_NORMAL} ${SpecToDisplay(spec)}`)
             UI.println(`${UI.Style.TEXT_DIM}  ${message}${UI.Style.TEXT_NORMAL}`)
+
+            // Rollback: restore old lockfile entry and re-install old version
+            if (backupEntry) {
+              try {
+                const { pkg } = PluginSpec.parse(spec)
+                const currentLockfile = await Lockfile.read()
+                const restoredLockfile = Lockfile.addEntry(currentLockfile, id, backupEntry)
+                await Lockfile.write(restoredLockfile)
+                UI.println(
+                  `  ${UI.Style.TEXT_WARNING}↩${UI.Style.TEXT_NORMAL} Rolled back lockfile for ${SpecToDisplay(spec)}`,
+                )
+              } catch {
+                UI.println(
+                  `  ${UI.Style.TEXT_WARNING}⚠${UI.Style.TEXT_NORMAL} Could not roll back lockfile for ${SpecToDisplay(spec)}`,
+                )
+              }
+            }
+
+            // Record audit event for rollback
+            void recordEvent({
+              pluginId: id,
+              type: "update_failed_rolled_back",
+              details: {
+                spec,
+                oldVersion: oldVersion ?? "unknown",
+                newVersion: newVersion ?? "unknown",
+                error: message,
+                rolledBack: backupEntry != null,
+              },
+            })
             failed++
           }
         }
 
-        // Phase 2: reload once
-        const spinner = prompts.spinner()
-        spinner.start("Reloading plugins")
-        await Plugin.reload()
-        spinner.stop(`${UI.Style.TEXT_SUCCESS}✔${UI.Style.TEXT_NORMAL} Plugins reloaded`)
+        if (succeeded > 0) {
+          await notifyServerPluginReload()
+        }
 
         UI.println(
           `${UI.Style.TEXT_DIM}Updated ${succeeded} plugin${succeeded !== 1 ? "s" : ""}${failed > 0 ? `, ${failed} failed` : ""}${UI.Style.TEXT_NORMAL}`,
@@ -371,12 +511,12 @@ export const PluginListCommand = cmd({
         default: false,
       }),
   async handler(args) {
-    await Instance.provide({
-      scope: (await Scope.fromDirectory(process.cwd())).scope,
+    await ScopeContext.provide({
+      scope: Scope.home(),
       async fn() {
-        const config = await Config.get()
+        const config = await Config.current()
         const configSpecs = config.plugin ?? []
-        const loaded = await Plugin.loaded()
+        const loaded = await Plugin.getLoaded()
         if (args.json) {
           const result = []
           for (const p of loaded) {
@@ -519,16 +659,204 @@ export const PluginSearchCommand = cmd({
 // Helpers (dependency)
 // ---------------------------------------------------------------------------
 
-function SpecToDisplay(spec: string): string {
-  return PluginSpec.displayName(spec)
+// ---------------------------------------------------------------------------
+// Consent gate helpers
+// ---------------------------------------------------------------------------
+
+function severityColor(severity: string): string {
+  switch (severity) {
+    case "high":
+      return UI.Style.TEXT_DANGER
+    case "medium":
+      return UI.Style.TEXT_WARNING
+    default:
+      return UI.Style.TEXT_DIM
+  }
 }
 
-async function findConfigSpec(pluginDir: string, configSpecs: string[]): Promise<string | undefined> {
-  for (const spec of configSpecs) {
-    const plugin = await Plugin.lookupSpec(spec)
-    if (plugin && plugin.pluginDir === pluginDir) return spec
+function severityLabel(severity: string): string {
+  return `${severityColor(severity)}${severity}${UI.Style.TEXT_NORMAL}`
+}
+
+function printDiff(diff: PluginPermissionDiff) {
+  UI.println()
+  UI.println(
+    `${UI.Style.TEXT_NORMAL_BOLD}Permission changes:${UI.Style.TEXT_NORMAL} ${diff.fromVersion ?? "none"} → ${diff.toVersion}`,
+  )
+
+  if (diff.riskBefore || diff.riskAfter) {
+    const before = diff.riskBefore ? severityLabel(diff.riskBefore) : "—"
+    const after = diff.riskAfter ? severityLabel(diff.riskAfter) : "—"
+    UI.println(`  ${UI.Style.TEXT_DIM}Risk:${UI.Style.TEXT_NORMAL} ${before} → ${after}`)
   }
-  return undefined
+
+  if (diff.added.length > 0) {
+    UI.println(`  ${severityColor("high")}Added:${UI.Style.TEXT_NORMAL}`)
+    for (const item of diff.added) {
+      UI.println(
+        `    ${severityLabel(item.severity)} ${item.title}${item.description ? ` — ${UI.Style.TEXT_DIM}${item.description}${UI.Style.TEXT_NORMAL}` : ""}`,
+      )
+    }
+  }
+
+  if (diff.removed.length > 0) {
+    UI.println(`  ${severityColor("low")}Removed:${UI.Style.TEXT_NORMAL}`)
+    for (const item of diff.removed) {
+      UI.println(`    ${item.title}`)
+    }
+  }
+
+  if (diff.unchanged.length > 0) {
+    UI.println(`  ${UI.Style.TEXT_SUCCESS}Unchanged:${UI.Style.TEXT_NORMAL}`)
+    for (const item of diff.unchanged) {
+      UI.println(`    ${severityLabel(item.severity)} ${item.title}`)
+    }
+  }
+
+  if (diff.changed.length > 0) {
+    UI.println(`  ${UI.Style.TEXT_INFO}Changed severity:${UI.Style.TEXT_NORMAL}`)
+    for (const c of diff.changed) {
+      const before = severityLabel(c.before ?? "none")
+      const after = severityLabel(c.after ?? "none")
+      UI.println(`    ${c.key}: ${before} → ${after}`)
+    }
+  }
+
+  UI.println()
+}
+
+/**
+ * Resolve a new plugin manifest from a spec string by installing it to the
+ * cache and reading plugin.json. Returns the manifest, the installed pluginDir,
+ * and the resolved package/version.
+ */
+interface ConfiguredPluginPackage {
+  spec: string
+  id: string
+  pkg: string
+  version: string
+  pluginDir: string
+  manifest: PluginManifest | null
+  installedVersion?: string
+}
+
+interface ResolvedPluginPackage {
+  manifest: PluginManifest | null
+  pluginDir: string
+  pkg: string
+  version: string
+  entryPath: string
+}
+
+async function readConfiguredPluginPackage(spec: string): Promise<ConfiguredPluginPackage> {
+  const { pkg, version } = PluginSpec.parse(spec)
+  const pluginDir = resolveSpecPluginDir(spec)
+  const manifest = await readManifest(pluginDir)
+  return {
+    spec,
+    pkg,
+    version,
+    pluginDir,
+    manifest,
+    id: manifest?.name ?? PluginSpec.displayName(spec),
+    installedVersion: readPkgVersion(pluginDir),
+  }
+}
+
+function pluginMatches(plugin: ConfiguredPluginPackage, target: string): boolean {
+  return (
+    plugin.id === target ||
+    plugin.pkg === target ||
+    plugin.manifest?.name === target ||
+    PluginSpec.displayName(plugin.spec) === target
+  )
+}
+
+async function resolveNewManifest(
+  spec: string,
+  options: { refresh?: boolean } = {},
+): Promise<ResolvedPluginPackage | null> {
+  const { pkg, version } = PluginSpec.parse(spec)
+  try {
+    if (options.refresh) {
+      await BunProc.invalidateCache(pkg)
+    }
+    const result = await BunProc.install(pkg, version)
+    const pluginDir = findPackageRoot(result.entryPath)
+    const manifest = await readManifest(pluginDir)
+    return { manifest, pluginDir, pkg, version, entryPath: result.entryPath }
+  } catch {
+    return null
+  }
+}
+
+async function writeUpdatedPackageLock(current: ConfiguredPluginPackage, resolved: ResolvedPluginPackage) {
+  const manifest = resolved.manifest
+  const capabilities = manifest ? baseCapabilities(manifest) : []
+  const manifestHash = manifest ? computeManifestHash(manifest) : undefined
+  const permissionsHash = manifest ? computePermissionsHash(manifest, capabilities) : undefined
+  const source = derivePluginSource(resolved.pluginDir)
+  const risk = manifest ? computeRisk(capabilities, manifest) : "low"
+  const runtimeMode = resolveRuntimeMode({
+    source,
+    manifestMode: manifest?.runtime?.mode,
+    devMode: Installation.CHANNEL === "local",
+    userTrusted: false,
+    risk,
+  })
+  const lockfile = await Lockfile.read()
+  const integrity = await Lockfile.computeIntegrity(resolved.entryPath)
+  const updatedLockfile = Lockfile.addEntry(lockfile, current.id, {
+    spec: current.spec,
+    version: manifest?.version ?? resolved.version,
+    resolved: resolved.entryPath,
+    ...(integrity ? { integrity } : {}),
+    ...(permissionsHash ? { permissionsHash } : {}),
+    ...(manifestHash ? { manifestHash } : {}),
+    runtimeMode,
+    ...(manifest ? { approvalId: current.id } : {}),
+  })
+  await Lockfile.write(updatedLockfile)
+}
+
+async function notifyServerPluginReload() {
+  if (!(await isServerReachable(Server.DEFAULT_URL))) {
+    UI.println(
+      UI.Style.TEXT_DIM + "Plugins updated. Start or reload the server to activate them." + UI.Style.TEXT_NORMAL,
+    )
+    return
+  }
+
+  const response = await fetch(`${Server.DEFAULT_URL}/runtime/reload`, {
+    method: "POST",
+    headers: { accept: "application/json", "content-type": "application/json" },
+    body: JSON.stringify({
+      targets: ["plugin"],
+      scope: "global",
+      reason: "plugin update",
+    }),
+    signal: AbortSignal.timeout(30_000),
+  }).catch((error) => ({ ok: false, status: 0, text: async () => String(error) }) as Response)
+
+  if (!response.ok) {
+    const text = await response.text().catch(() => "")
+    UI.println(
+      UI.Style.TEXT_WARNING +
+        `Plugin packages updated, but runtime reload failed${response.status ? ` (${response.status})` : ""}.` +
+        UI.Style.TEXT_NORMAL,
+    )
+    if (text) UI.println(UI.Style.TEXT_DIM + text + UI.Style.TEXT_NORMAL)
+    return
+  }
+
+  UI.println(`${UI.Style.TEXT_SUCCESS}✔${UI.Style.TEXT_NORMAL} Server plugin runtime reloaded`)
+}
+
+function interactive(): boolean {
+  return Boolean(process.stdin.isTTY && process.stdout.isTTY)
+}
+function SpecToDisplay(spec: string): string {
+  return PluginSpec.displayName(spec)
 }
 
 // ---------------------------------------------------------------------------
@@ -541,11 +869,25 @@ export const PluginCommand = cmd({
   builder: (yargs: Argv) =>
     yargs
       .command(PluginHooksCommand)
+      .command(PluginCreateCommand)
       .command(PluginAddCommand)
       .command(PluginRemoveCommand)
       .command(PluginUpdateCommand)
+      .command(PluginBuildCommand)
+      .command(PluginSignCommand)
+      .command(PluginPackCommand)
       .command(PluginListCommand)
       .command(PluginSearchCommand)
+      .command(PluginValidateCommand)
+      .command(PluginDevCommand)
+      .command(PluginRuntimeCommand)
+      .command(PluginTestCommand)
+      .command(PluginPublishCommand)
+      .command(PluginPublishMarketCommand)
+      .command(PluginEntryCommand)
+      .command(PluginInfoCommand)
+      .command(PluginPermissionsCommand)
+      .command(PluginApproveCommand)
       .demandCommand(),
   async handler() {},
 })

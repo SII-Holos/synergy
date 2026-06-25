@@ -5,6 +5,7 @@ export interface GlobalPanelEntry {
   label: string
   icon: string
   component?: Component
+  loader?: () => Promise<{ default: Component }> // lazy-load for Tier 2
   sandbox?: boolean
   sandboxUrl?: string
   pluginId: string
@@ -40,7 +41,7 @@ export function clearGlobalPanels(pluginId?: string): void {
 }
 // Built-in panels — register at module init
 const BUILTIN_PANELS: GlobalPanelEntry[] = [
-  { id: "engram", label: "Library", icon: "book-open", pluginId: "" },
+  { id: "library", label: "Library", icon: "book-open", pluginId: "" },
   { id: "agenda", label: "Agenda", icon: "clipboard-list", pluginId: "" },
   { id: "lucid", label: "Lucid", icon: "sparkles", pluginId: "" },
 ]

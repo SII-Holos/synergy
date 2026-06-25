@@ -82,7 +82,7 @@ export function PermissionDock(props: PermissionDockProps) {
     return info.title
   })
 
-  const respond = (response: "once" | "reject") => {
+  const respond = (response: "once" | "session" | "always" | "reject") => {
     const item = activeItem()
     if (!item || !data.respondToPermission) return
     data.respondToPermission({
@@ -91,6 +91,22 @@ export function PermissionDock(props: PermissionDockProps) {
       response,
     })
   }
+
+  const riskReason = createMemo(() => {
+    const item = activeItem()
+    if (!item) return undefined
+    const meta = item.permission.metadata ?? {}
+    const reason = meta.reason ?? meta.why
+    if (typeof reason === "string" && reason.trim()) return reason
+    if (meta.workspaceBoundary || meta.outsideWorkspace) return "Path is outside the workspace boundary"
+    if (meta.protectedCategory === "vcs") return "Writing to version-control metadata (.git)"
+    if (meta.protectedCategory === "credentials") return "Accessing credential directory"
+    if (meta.protectedCategory === "secrets") return "Accessing secrets file (.env / credentials)"
+    if (meta.capability === "shell_destructive") return "Destructive shell command"
+    if (meta.capability === "identity_act") return "Acting with your identity"
+    if (meta.capability === "communication_email") return "Sending email on your behalf"
+    return undefined
+  })
 
   const navigateToChild = () => {
     const item = activeItem()
@@ -157,11 +173,25 @@ export function PermissionDock(props: PermissionDockProps) {
                     <Button variant="ghost" size="small" onClick={() => respond("reject")}>
                       Deny
                     </Button>
+                    <Button variant="ghost" size="small" onClick={() => respond("session")}>
+                      Allow for session
+                    </Button>
+                    <Button variant="ghost" size="small" onClick={() => respond("always")}>
+                      Always allow
+                    </Button>
                     <Button variant="primary" size="small" onClick={() => respond("once")}>
                       Allow once
                     </Button>
                   </div>
                 </div>
+                <Show when={riskReason()}>
+                  {(reason) => (
+                    <div class="flex items-center gap-1.5 text-12-regular text-text-weak">
+                      <Icon name="alert-triangle" size="small" class="shrink-0 text-icon-subtle" />
+                      <span>{reason()}</span>
+                    </div>
+                  )}
+                </Show>
               </div>
             )}
           </Show>

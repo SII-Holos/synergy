@@ -21,7 +21,7 @@ export const StatsRoute = new Hono()
       summary: "Get stats snapshot",
       description:
         "Get the full stats snapshot. Returns cached snapshot if available, otherwise computes incrementally. Use ?recompute=true to force a full recompute from scratch.",
-      operationId: "stats.get",
+      operationId: "global.stats.get",
       responses: {
         200: {
           description: "Stats snapshot",
@@ -50,7 +50,7 @@ export const StatsRoute = new Hono()
     describeRoute({
       summary: "Stream stats recompute progress",
       description: "Force a stats recompute and stream progress updates over SSE until the final snapshot is ready.",
-      operationId: "stats.progress",
+      operationId: "global.stats.progress",
       responses: {
         200: {
           description: "Server-sent events containing progress and final snapshot payloads",

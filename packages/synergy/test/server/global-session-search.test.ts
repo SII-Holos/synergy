@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test"
 import { tmpdir } from "../fixture/fixture"
 import { Session } from "../../src/session"
 import { Log } from "../../src/util/log"
-import { Instance } from "../../src/scope/instance"
+import { ScopeContext } from "../../src/scope/context"
 import { Scope } from "../../src/scope"
 import { Server } from "../../src/server/server"
 
@@ -10,8 +10,8 @@ Log.init({ print: false })
 
 describe("GET /global/session", () => {
   test("returns 200 with expected response shape (data, total, offset, limit)", async () => {
-    await Instance.provide({
-      scope: Scope.global(),
+    await ScopeContext.provide({
+      scope: Scope.home(),
       fn: async () => {
         const app = Server.App()
         const res = await app.request("/global/session")
@@ -36,21 +36,21 @@ describe("GET /global/session", () => {
     let sessionA: Session.Info | undefined
     let sessionB: Session.Info | undefined
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: scopeA,
       fn: async () => {
         sessionA = await Session.create({ title: "Alpha-Scope" })
       },
     })
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: scopeB,
       fn: async () => {
         sessionB = await Session.create({ title: "Beta-Scope" })
       },
     })
 
-    await Instance.provide({
-      scope: Scope.global(),
+    await ScopeContext.provide({
+      scope: Scope.home(),
       fn: async () => {
         const app = Server.App()
         const res = await app.request("/global/session")
@@ -85,22 +85,22 @@ describe("GET /global/session", () => {
     let hay1: Session.Info | undefined
     let hay2: Session.Info | undefined
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: scopeA,
       fn: async () => {
         needle = await Session.create({ title: "FindMe-Here" })
         hay1 = await Session.create({ title: "Other-Session" })
       },
     })
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: scopeB,
       fn: async () => {
         hay2 = await Session.create({ title: "Another-Session" })
       },
     })
 
-    await Instance.provide({
-      scope: Scope.global(),
+    await ScopeContext.provide({
+      scope: Scope.home(),
       fn: async () => {
         const app = Server.App()
         const res = await app.request("/global/session?search=FindMe")
@@ -127,7 +127,7 @@ describe("GET /global/session", () => {
     let parentID: string | undefined
     let childID: string | undefined
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope,
       fn: async () => {
         const parent = await Session.create({ title: "Parent Session" })
@@ -137,8 +137,8 @@ describe("GET /global/session", () => {
       },
     })
 
-    await Instance.provide({
-      scope: Scope.global(),
+    await ScopeContext.provide({
+      scope: Scope.home(),
       fn: async () => {
         const app = Server.App()
 
@@ -169,15 +169,15 @@ describe("GET /global/session", () => {
 
     let session: Session.Info | undefined
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope,
       fn: async () => {
         session = await Session.create({ title: "Contract Check" })
       },
     })
 
-    await Instance.provide({
-      scope: Scope.global(),
+    await ScopeContext.provide({
+      scope: Scope.home(),
       fn: async () => {
         const app = Server.App()
         const res = await app.request("/global/session")

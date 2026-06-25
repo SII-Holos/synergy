@@ -5,7 +5,7 @@ import { MessageV2 } from "../../src/session/message-v2"
 import { PermissionNext } from "../../src/permission/next"
 import { Log } from "../../src/util/log"
 import { tmpdir } from "../fixture/fixture"
-import { Instance } from "../../src/scope/instance"
+import { ScopeContext } from "../../src/scope/context"
 import { Session } from "../../src/session"
 
 const sessionID = "ses_test"

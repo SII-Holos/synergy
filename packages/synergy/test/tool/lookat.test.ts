@@ -2,7 +2,7 @@ import { describe, expect, test, mock, beforeEach, afterEach } from "bun:test"
 import path from "path"
 import { LookAtTool } from "../../src/tool/lookat"
 import { Agent } from "../../src/agent/agent"
-import { Instance } from "../../src/scope/instance"
+import { ScopeContext } from "../../src/scope/context"
 import { tmpdir } from "../fixture/fixture"
 import { Session } from "../../src/session"
 import { SessionInteraction } from "../../src/session/interaction"
@@ -49,7 +49,7 @@ describe("tool.look_at", () => {
       // Restore original for this test since it should return before AI call
       ;(Session.create as any) = originalSessionCreate
       await using tmp = await tmpdir({ git: true })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const lookat = await LookAtTool.init()
@@ -71,7 +71,7 @@ describe("tool.look_at", () => {
           await Bun.write(path.join(dir, "test.png"), png)
         },
       })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const lookat = await LookAtTool.init()
@@ -96,7 +96,7 @@ describe("tool.look_at", () => {
       const originalGetAvailableModel = Agent.getAvailableModel
       ;(Agent.getAvailableModel as any) = mock(async () => ({ providerID: "test", modelID: "model" }))
       try {
-        await Instance.provide({
+        await ScopeContext.provide({
           scope: await tmp.scope(),
           fn: async () => {
             const lookat = await LookAtTool.init()
@@ -123,7 +123,7 @@ describe("tool.look_at", () => {
           }
         },
       })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const lookat = await LookAtTool.init()
@@ -149,7 +149,7 @@ describe("tool.look_at", () => {
           }
         },
       })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const lookat = await LookAtTool.init()
@@ -193,7 +193,7 @@ describe("tool.look_at", () => {
       ;(SessionInvoke.cancel as any) = mock(() => {})
 
       try {
-        await Instance.provide({
+        await ScopeContext.provide({
           scope: await tmp.scope(),
           fn: async () => {
             const lookat = await LookAtTool.init()
@@ -256,7 +256,7 @@ describe("tool.look_at", () => {
       ;(SessionInvoke.cancel as any) = mock(() => {})
 
       try {
-        await Instance.provide({
+        await ScopeContext.provide({
           scope: await tmp.scope(),
           fn: async () => {
             const lookat = await LookAtTool.init()
@@ -294,7 +294,7 @@ describe("tool.look_at", () => {
         },
       })
       await using tmp = await tmpdir({ git: true })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const lookat = await LookAtTool.init()
@@ -327,7 +327,7 @@ describe("tool.look_at", () => {
           await Bun.write(path.join(dir, "internal.png"), png)
         },
       })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const lookat = await LookAtTool.init()

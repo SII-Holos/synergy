@@ -1,11 +1,12 @@
 import { describe, expect, test } from "bun:test"
 import { $ } from "bun"
 import { Snapshot } from "../../src/session/snapshot"
-import { Instance } from "../../src/scope/instance"
+import { ScopeContext } from "../../src/scope/context"
 import { Scope } from "../../src/scope"
 import { tmpdir } from "../fixture/fixture"
 
 async function bootstrap() {
+  const sessionID = `test-${Math.random().toString(36).slice(2)}`
   return tmpdir({
     git: true,
     init: async (dir) => {
@@ -19,6 +20,7 @@ async function bootstrap() {
       return {
         aContent,
         bContent,
+        sessionID,
       }
     },
   })
@@ -27,30 +29,30 @@ async function bootstrap() {
 describe.serial("snapshot", () => {
   test("tracks deleted files correctly", async () => {
     await using tmp = await bootstrap()
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
-        const before = await Snapshot.track("test")
+        const before = await Snapshot.track(tmp.extra.sessionID)
         expect(before).toBeTruthy()
 
         await $`rm ${tmp.path}/a.txt`.quiet()
 
-        expect((await Snapshot.patch(before!, "test")).files).toContain(`${tmp.path}/a.txt`)
+        expect((await Snapshot.patch(before!, tmp.extra.sessionID)).files).toContain(`${tmp.path}/a.txt`)
       },
     })
   })
 
   test("revert should remove new files", async () => {
     await using tmp = await bootstrap()
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
-        const before = await Snapshot.track("test")
+        const before = await Snapshot.track(tmp.extra.sessionID)
         expect(before).toBeTruthy()
 
         await Bun.write(`${tmp.path}/new.txt`, "NEW")
 
-        await Snapshot.revert([await Snapshot.patch(before!, "test")], "test")
+        await Snapshot.revert([await Snapshot.patch(before!, tmp.extra.sessionID)], tmp.extra.sessionID)
 
         expect(await Bun.file(`${tmp.path}/new.txt`).exists()).toBe(false)
       },
@@ -59,16 +61,16 @@ describe.serial("snapshot", () => {
 
   test("revert in subdirectory", async () => {
     await using tmp = await bootstrap()
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
-        const before = await Snapshot.track("test")
+        const before = await Snapshot.track(tmp.extra.sessionID)
         expect(before).toBeTruthy()
 
         await $`mkdir -p ${tmp.path}/sub`.quiet()
         await Bun.write(`${tmp.path}/sub/file.txt`, "SUB")
 
-        await Snapshot.revert([await Snapshot.patch(before!, "test")], "test")
+        await Snapshot.revert([await Snapshot.patch(before!, tmp.extra.sessionID)], tmp.extra.sessionID)
 
         expect(await Bun.file(`${tmp.path}/sub/file.txt`).exists()).toBe(false)
         // Note: revert currently only removes files, not directories
@@ -79,10 +81,10 @@ describe.serial("snapshot", () => {
 
   test("multiple file operations", async () => {
     await using tmp = await bootstrap()
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
-        const before = await Snapshot.track("test")
+        const before = await Snapshot.track(tmp.extra.sessionID)
         expect(before).toBeTruthy()
 
         await $`rm ${tmp.path}/a.txt`.quiet()
@@ -91,7 +93,7 @@ describe.serial("snapshot", () => {
         await Bun.write(`${tmp.path}/dir/d.txt`, "D")
         await Bun.write(`${tmp.path}/b.txt`, "MODIFIED")
 
-        await Snapshot.revert([await Snapshot.patch(before!, "test")], "test")
+        await Snapshot.revert([await Snapshot.patch(before!, tmp.extra.sessionID)], tmp.extra.sessionID)
 
         expect(await Bun.file(`${tmp.path}/a.txt`).text()).toBe(tmp.extra.aContent)
         expect(await Bun.file(`${tmp.path}/c.txt`).exists()).toBe(false)
@@ -104,33 +106,33 @@ describe.serial("snapshot", () => {
 
   test("empty directory handling", async () => {
     await using tmp = await bootstrap()
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
-        const before = await Snapshot.track("test")
+        const before = await Snapshot.track(tmp.extra.sessionID)
         expect(before).toBeTruthy()
 
         await $`mkdir ${tmp.path}/empty`.quiet()
 
-        expect((await Snapshot.patch(before!, "test")).files.length).toBe(0)
+        expect((await Snapshot.patch(before!, tmp.extra.sessionID)).files.length).toBe(0)
       },
     })
   })
 
   test("binary file handling", async () => {
     await using tmp = await bootstrap()
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
-        const before = await Snapshot.track("test")
+        const before = await Snapshot.track(tmp.extra.sessionID)
         expect(before).toBeTruthy()
 
         await Bun.write(`${tmp.path}/image.png`, new Uint8Array([0x89, 0x50, 0x4e, 0x47]))
 
-        const patch = await Snapshot.patch(before!, "test")
+        const patch = await Snapshot.patch(before!, tmp.extra.sessionID)
         expect(patch.files).toContain(`${tmp.path}/image.png`)
 
-        await Snapshot.revert([patch], "test")
+        await Snapshot.revert([patch], tmp.extra.sessionID)
         expect(await Bun.file(`${tmp.path}/image.png`).exists()).toBe(false)
       },
     })
@@ -138,31 +140,31 @@ describe.serial("snapshot", () => {
 
   test("large file handling", async () => {
     await using tmp = await bootstrap()
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
-        const before = await Snapshot.track("test")
+        const before = await Snapshot.track(tmp.extra.sessionID)
         expect(before).toBeTruthy()
 
         await Bun.write(`${tmp.path}/large.txt`, "x".repeat(1024 * 1024))
 
-        expect((await Snapshot.patch(before!, "test")).files).toContain(`${tmp.path}/large.txt`)
+        expect((await Snapshot.patch(before!, tmp.extra.sessionID)).files).toContain(`${tmp.path}/large.txt`)
       },
     })
   })
 
   test("nested directory revert", async () => {
     await using tmp = await bootstrap()
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
-        const before = await Snapshot.track("test")
+        const before = await Snapshot.track(tmp.extra.sessionID)
         expect(before).toBeTruthy()
 
         await $`mkdir -p ${tmp.path}/level1/level2/level3`.quiet()
         await Bun.write(`${tmp.path}/level1/level2/level3/deep.txt`, "DEEP")
 
-        await Snapshot.revert([await Snapshot.patch(before!, "test")], "test")
+        await Snapshot.revert([await Snapshot.patch(before!, tmp.extra.sessionID)], tmp.extra.sessionID)
 
         expect(await Bun.file(`${tmp.path}/level1/level2/level3/deep.txt`).exists()).toBe(false)
       },
@@ -171,31 +173,31 @@ describe.serial("snapshot", () => {
 
   test("revert with empty patches", async () => {
     await using tmp = await bootstrap()
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         // Should not crash with empty patches
-        expect(Snapshot.revert([], "test")).resolves.toBeUndefined()
+        expect(Snapshot.revert([], tmp.extra.sessionID)).resolves.toBeUndefined()
 
         // Should not crash with patches that have empty file lists
-        expect(Snapshot.revert([{ hash: "dummy", files: [] }], "test")).resolves.toBeUndefined()
+        expect(Snapshot.revert([{ hash: "dummy", files: [] }], tmp.extra.sessionID)).resolves.toBeUndefined()
       },
     })
   })
 
   test("patch with invalid hash", async () => {
     await using tmp = await bootstrap()
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
-        const before = await Snapshot.track("test")
+        const before = await Snapshot.track(tmp.extra.sessionID)
         expect(before).toBeTruthy()
 
         // Create a change
         await Bun.write(`${tmp.path}/test.txt`, "TEST")
 
         // Try to patch with invalid hash - should handle gracefully
-        const patch = await Snapshot.patch("invalid-hash-12345", "test")
+        const patch = await Snapshot.patch("invalid-hash-12345", tmp.extra.sessionID)
         expect(patch.files).toEqual([])
         expect(patch.hash).toBe("invalid-hash-12345")
       },
@@ -204,10 +206,10 @@ describe.serial("snapshot", () => {
 
   test("revert non-existent file", async () => {
     await using tmp = await bootstrap()
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
-        const before = await Snapshot.track("test")
+        const before = await Snapshot.track(tmp.extra.sessionID)
         expect(before).toBeTruthy()
 
         // Try to revert a file that doesn't exist in the snapshot
@@ -220,7 +222,7 @@ describe.serial("snapshot", () => {
                 files: [`${tmp.path}/nonexistent.txt`],
               },
             ],
-            "test",
+            tmp.extra.sessionID,
           ),
         ).resolves.toBeUndefined()
       },
@@ -229,10 +231,10 @@ describe.serial("snapshot", () => {
 
   test("unicode filenames", async () => {
     await using tmp = await bootstrap()
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
-        const before = await Snapshot.track("test")
+        const before = await Snapshot.track(tmp.extra.sessionID)
         expect(before).toBeTruthy()
 
         const unicodeFiles = [
@@ -246,7 +248,7 @@ describe.serial("snapshot", () => {
           await Bun.write(file, "unicode content")
         }
 
-        const patch = await Snapshot.patch(before!, "test")
+        const patch = await Snapshot.patch(before!, tmp.extra.sessionID)
         // Note: git escapes unicode characters by default, so we just check that files are detected
         // The actual filenames will be escaped like "caf\303\251.txt" but functionality works
         expect(patch.files.length).toBe(4)
@@ -259,10 +261,10 @@ describe.serial("snapshot", () => {
 
   test("very long filenames", async () => {
     await using tmp = await bootstrap()
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
-        const before = await Snapshot.track("test")
+        const before = await Snapshot.track(tmp.extra.sessionID)
         expect(before).toBeTruthy()
 
         const longName = "a".repeat(200) + ".txt"
@@ -270,10 +272,10 @@ describe.serial("snapshot", () => {
 
         await Bun.write(longFile, "long filename content")
 
-        const patch = await Snapshot.patch(before!, "test")
+        const patch = await Snapshot.patch(before!, tmp.extra.sessionID)
         expect(patch.files).toContain(longFile)
 
-        await Snapshot.revert([patch], "test")
+        await Snapshot.revert([patch], tmp.extra.sessionID)
         expect(await Bun.file(longFile).exists()).toBe(false)
       },
     })
@@ -281,17 +283,17 @@ describe.serial("snapshot", () => {
 
   test("hidden files", async () => {
     await using tmp = await bootstrap()
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
-        const before = await Snapshot.track("test")
+        const before = await Snapshot.track(tmp.extra.sessionID)
         expect(before).toBeTruthy()
 
         await Bun.write(`${tmp.path}/.hidden`, "hidden content")
         await Bun.write(`${tmp.path}/.gitignore`, "*.log")
         await Bun.write(`${tmp.path}/.config`, "config content")
 
-        const patch = await Snapshot.patch(before!, "test")
+        const patch = await Snapshot.patch(before!, tmp.extra.sessionID)
         expect(patch.files).toContain(`${tmp.path}/.hidden`)
         expect(patch.files).toContain(`${tmp.path}/.gitignore`)
         expect(patch.files).toContain(`${tmp.path}/.config`)
@@ -301,10 +303,10 @@ describe.serial("snapshot", () => {
 
   test("nested symlinks", async () => {
     await using tmp = await bootstrap()
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
-        const before = await Snapshot.track("test")
+        const before = await Snapshot.track(tmp.extra.sessionID)
         expect(before).toBeTruthy()
 
         await $`mkdir -p ${tmp.path}/sub/dir`.quiet()
@@ -312,7 +314,7 @@ describe.serial("snapshot", () => {
         await $`ln -s ${tmp.path}/sub/dir/target.txt ${tmp.path}/sub/dir/link.txt`.quiet()
         await $`ln -s ${tmp.path}/sub ${tmp.path}/sub-link`.quiet()
 
-        const patch = await Snapshot.patch(before!, "test")
+        const patch = await Snapshot.patch(before!, tmp.extra.sessionID)
         expect(patch.files).toContain(`${tmp.path}/sub/dir/link.txt`)
         expect(patch.files).toContain(`${tmp.path}/sub-link`)
       },
@@ -321,10 +323,10 @@ describe.serial("snapshot", () => {
 
   test("file permissions and ownership changes", async () => {
     await using tmp = await bootstrap()
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
-        const before = await Snapshot.track("test")
+        const before = await Snapshot.track(tmp.extra.sessionID)
         expect(before).toBeTruthy()
 
         // Change permissions multiple times
@@ -332,7 +334,7 @@ describe.serial("snapshot", () => {
         await $`chmod 755 ${tmp.path}/a.txt`.quiet()
         await $`chmod 644 ${tmp.path}/a.txt`.quiet()
 
-        const patch = await Snapshot.patch(before!, "test")
+        const patch = await Snapshot.patch(before!, tmp.extra.sessionID)
         // Note: git doesn't track permission changes on existing files by default
         // Only tracks executable bit when files are first added
         expect(patch.files.length).toBe(0)
@@ -342,16 +344,16 @@ describe.serial("snapshot", () => {
 
   test("circular symlinks", async () => {
     await using tmp = await bootstrap()
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
-        const before = await Snapshot.track("test")
+        const before = await Snapshot.track(tmp.extra.sessionID)
         expect(before).toBeTruthy()
 
         // Create circular symlink
         await $`ln -s ${tmp.path}/circular ${tmp.path}/circular`.quiet().nothrow()
 
-        const patch = await Snapshot.patch(before!, "test")
+        const patch = await Snapshot.patch(before!, tmp.extra.sessionID)
         expect(patch.files.length).toBeGreaterThanOrEqual(0) // Should not crash
       },
     })
@@ -359,10 +361,10 @@ describe.serial("snapshot", () => {
 
   test("gitignore changes", async () => {
     await using tmp = await bootstrap()
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
-        const before = await Snapshot.track("test")
+        const before = await Snapshot.track(tmp.extra.sessionID)
         expect(before).toBeTruthy()
 
         await Bun.write(`${tmp.path}/.gitignore`, "*.ignored")
@@ -371,7 +373,7 @@ describe.serial("snapshot", () => {
         // Ensure git picks up the new .gitignore before diffing
         await $`git add .`.cwd(tmp.path).quiet().nothrow()
 
-        const patch = await Snapshot.patch(before!, "test")
+        const patch = await Snapshot.patch(before!, tmp.extra.sessionID)
 
         // Should track gitignore itself
         expect(patch.files).toContain(`${tmp.path}/.gitignore`)
@@ -385,10 +387,10 @@ describe.serial("snapshot", () => {
 
   test("concurrent file operations during patch", async () => {
     await using tmp = await bootstrap()
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
-        const before = await Snapshot.track("test")
+        const before = await Snapshot.track(tmp.extra.sessionID)
         expect(before).toBeTruthy()
 
         // Start creating files
@@ -401,7 +403,7 @@ describe.serial("snapshot", () => {
         })()
 
         // Get patch while files are being created
-        const patchPromise = Snapshot.patch(before!, "test")
+        const patchPromise = Snapshot.patch(before!, tmp.extra.sessionID)
 
         await createPromise
         const patch = await patchPromise
@@ -417,22 +419,22 @@ describe.serial("snapshot", () => {
     await using tmp1 = await bootstrap()
     await using tmp2 = await bootstrap()
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp1.scope(),
       fn: async () => {
-        const before1 = await Snapshot.track("test")
+        const before1 = await Snapshot.track(tmp1.extra.sessionID)
         await Bun.write(`${tmp1.path}/project1.txt`, "project1 content")
-        const patch1 = await Snapshot.patch(before1!, "test")
+        const patch1 = await Snapshot.patch(before1!, tmp1.extra.sessionID)
         expect(patch1.files).toContain(`${tmp1.path}/project1.txt`)
       },
     })
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp2.scope(),
       fn: async () => {
-        const before2 = await Snapshot.track("test")
+        const before2 = await Snapshot.track(tmp2.extra.sessionID)
         await Bun.write(`${tmp2.path}/project2.txt`, "project2 content")
-        const patch2 = await Snapshot.patch(before2!, "test")
+        const patch2 = await Snapshot.patch(before2!, tmp2.extra.sessionID)
         expect(patch2.files).toContain(`${tmp2.path}/project2.txt`)
 
         // Ensure project1 files don't appear in project2
@@ -447,23 +449,23 @@ describe.serial("snapshot", () => {
     await $`git worktree add ${worktreePath} HEAD`.cwd(tmp.path).quiet()
 
     try {
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
-          expect(await Snapshot.track("test")).toBeTruthy()
+          expect(await Snapshot.track(tmp.extra.sessionID)).toBeTruthy()
         },
       })
 
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: (await Scope.fromDirectory(worktreePath)).scope,
         fn: async () => {
-          const before = await Snapshot.track("test")
+          const before = await Snapshot.track(tmp.extra.sessionID)
           expect(before).toBeTruthy()
 
           const worktreeFile = `${worktreePath}/worktree.txt`
           await Bun.write(worktreeFile, "worktree content")
 
-          const patch = await Snapshot.patch(before!, "test")
+          const patch = await Snapshot.patch(before!, tmp.extra.sessionID)
           expect(patch.files).toContain(worktreeFile)
         },
       })
@@ -475,30 +477,25 @@ describe.serial("snapshot", () => {
 
   test("revert only removes files in invoking worktree", async () => {
     await using tmp = await bootstrap()
+    const sessionID = "revert-worktree-isolation"
     const worktreePath = `${tmp.path}-worktree`
     await $`git worktree add ${worktreePath} HEAD`.cwd(tmp.path).quiet()
 
     try {
-      await Instance.provide({
-        scope: await tmp.scope(),
-        fn: async () => {
-          expect(await Snapshot.track("test")).toBeTruthy()
-        },
-      })
       const primaryFile = `${tmp.path}/worktree.txt`
       await Bun.write(primaryFile, "primary content")
 
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: (await Scope.fromDirectory(worktreePath)).scope,
         fn: async () => {
-          const before = await Snapshot.track("test")
+          const before = await Snapshot.track(sessionID)
           expect(before).toBeTruthy()
 
           const worktreeFile = `${worktreePath}/worktree.txt`
           await Bun.write(worktreeFile, "worktree content")
 
-          const patch = await Snapshot.patch(before!, "test")
-          await Snapshot.revert([patch], "test")
+          const patch = await Snapshot.patch(before!, sessionID)
+          await Snapshot.revert([patch], sessionID)
 
           expect(await Bun.file(worktreeFile).exists()).toBe(false)
         },
@@ -518,17 +515,17 @@ describe.serial("snapshot", () => {
     await $`git worktree add ${worktreePath} HEAD`.cwd(tmp.path).quiet()
 
     try {
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
-          expect(await Snapshot.track("test")).toBeTruthy()
+          expect(await Snapshot.track(tmp.extra.sessionID)).toBeTruthy()
         },
       })
 
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: (await Scope.fromDirectory(worktreePath)).scope,
         fn: async () => {
-          const before = await Snapshot.track("test")
+          const before = await Snapshot.track(tmp.extra.sessionID)
           expect(before).toBeTruthy()
 
           await Bun.write(`${worktreePath}/worktree-only.txt`, "worktree diff content")
@@ -536,7 +533,7 @@ describe.serial("snapshot", () => {
           await Bun.write(`${tmp.path}/shared.txt`, "primary edit")
           await Bun.write(`${tmp.path}/primary-only.txt`, "primary change")
 
-          const diff = await Snapshot.diff(before!, "test")
+          const diff = await Snapshot.diff(before!, tmp.extra.sessionID)
           expect(diff).toContain("worktree-only.txt")
           expect(diff).toContain("shared.txt")
           expect(diff).not.toContain("primary-only.txt")
@@ -552,18 +549,18 @@ describe.serial("snapshot", () => {
 
   test("track with no changes returns same hash", async () => {
     await using tmp = await bootstrap()
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
-        const hash1 = await Snapshot.track("test")
+        const hash1 = await Snapshot.track(tmp.extra.sessionID)
         expect(hash1).toBeTruthy()
 
         // Track again with no changes
-        const hash2 = await Snapshot.track("test")
+        const hash2 = await Snapshot.track(tmp.extra.sessionID)
         expect(hash2).toBe(hash1!)
 
         // Track again
-        const hash3 = await Snapshot.track("test")
+        const hash3 = await Snapshot.track(tmp.extra.sessionID)
         expect(hash3).toBe(hash1!)
       },
     })
@@ -571,10 +568,10 @@ describe.serial("snapshot", () => {
 
   test("diff function with various changes", async () => {
     await using tmp = await bootstrap()
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
-        const before = await Snapshot.track("test")
+        const before = await Snapshot.track(tmp.extra.sessionID)
         expect(before).toBeTruthy()
 
         // Make various changes
@@ -582,7 +579,7 @@ describe.serial("snapshot", () => {
         await Bun.write(`${tmp.path}/new.txt`, "new content")
         await Bun.write(`${tmp.path}/b.txt`, "modified content")
 
-        const diff = await Snapshot.diff(before!, "test")
+        const diff = await Snapshot.diff(before!, tmp.extra.sessionID)
         expect(diff).toContain("a.txt")
         expect(diff).toContain("b.txt")
         expect(diff).toContain("new.txt")
@@ -592,10 +589,10 @@ describe.serial("snapshot", () => {
 
   test("restore function — per-file restore based on session patches", async () => {
     await using tmp = await bootstrap()
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
-        const before = await Snapshot.track("test")
+        const before = await Snapshot.track(tmp.extra.sessionID)
         expect(before).toBeTruthy()
 
         // Make changes
@@ -604,8 +601,8 @@ describe.serial("snapshot", () => {
         await Bun.write(`${tmp.path}/b.txt`, "modified")
 
         // Revert using session's patch (restores only tracked changes)
-        const patch = await Snapshot.patch(before!, "test")
-        await Snapshot.revert([patch], "test")
+        const patch = await Snapshot.patch(before!, tmp.extra.sessionID)
+        await Snapshot.revert([patch], tmp.extra.sessionID)
 
         // Files in patch should be restored
         expect(await Bun.file(`${tmp.path}/a.txt`).exists()).toBe(true)
@@ -619,23 +616,23 @@ describe.serial("snapshot", () => {
 
   test("revert should not delete files that existed but were deleted in snapshot", async () => {
     await using tmp = await bootstrap()
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
-        const snapshot1 = await Snapshot.track("test")
+        const snapshot1 = await Snapshot.track(tmp.extra.sessionID)
         expect(snapshot1).toBeTruthy()
 
         await $`rm ${tmp.path}/a.txt`.quiet()
 
-        const snapshot2 = await Snapshot.track("test")
+        const snapshot2 = await Snapshot.track(tmp.extra.sessionID)
         expect(snapshot2).toBeTruthy()
 
         await Bun.write(`${tmp.path}/a.txt`, "recreated content")
 
-        const patch = await Snapshot.patch(snapshot2!, "test")
+        const patch = await Snapshot.patch(snapshot2!, tmp.extra.sessionID)
         expect(patch.files).toContain(`${tmp.path}/a.txt`)
 
-        await Snapshot.revert([patch], "test")
+        await Snapshot.revert([patch], tmp.extra.sessionID)
 
         expect(await Bun.file(`${tmp.path}/a.txt`).exists()).toBe(false)
       },
@@ -644,23 +641,23 @@ describe.serial("snapshot", () => {
 
   test("revert preserves file that existed in snapshot when deleted then recreated", async () => {
     await using tmp = await bootstrap()
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         await Bun.write(`${tmp.path}/existing.txt`, "original content")
 
-        const snapshot = await Snapshot.track("test")
+        const snapshot = await Snapshot.track(tmp.extra.sessionID)
         expect(snapshot).toBeTruthy()
 
         await $`rm ${tmp.path}/existing.txt`.quiet()
         await Bun.write(`${tmp.path}/existing.txt`, "recreated")
         await Bun.write(`${tmp.path}/newfile.txt`, "new")
 
-        const patch = await Snapshot.patch(snapshot!, "test")
+        const patch = await Snapshot.patch(snapshot!, tmp.extra.sessionID)
         expect(patch.files).toContain(`${tmp.path}/existing.txt`)
         expect(patch.files).toContain(`${tmp.path}/newfile.txt`)
 
-        await Snapshot.revert([patch], "test")
+        await Snapshot.revert([patch], tmp.extra.sessionID)
 
         expect(await Bun.file(`${tmp.path}/newfile.txt`).exists()).toBe(false)
         expect(await Bun.file(`${tmp.path}/existing.txt`).exists()).toBe(true)
@@ -671,18 +668,18 @@ describe.serial("snapshot", () => {
 
   test("diffFull with new file additions", async () => {
     await using tmp = await bootstrap()
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
-        const before = await Snapshot.track("test")
+        const before = await Snapshot.track(tmp.extra.sessionID)
         expect(before).toBeTruthy()
 
         await Bun.write(`${tmp.path}/new.txt`, "new content")
 
-        const after = await Snapshot.track("test")
+        const after = await Snapshot.track(tmp.extra.sessionID)
         expect(after).toBeTruthy()
 
-        const diffs = await Snapshot.diffFull(before!, after!, "test")
+        const diffs = await Snapshot.diffFull(before!, after!, tmp.extra.sessionID)
         expect(diffs.length).toBe(1)
 
         const newFileDiff = diffs[0]
@@ -697,18 +694,18 @@ describe.serial("snapshot", () => {
 
   test("diffFull with file modifications", async () => {
     await using tmp = await bootstrap()
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
-        const before = await Snapshot.track("test")
+        const before = await Snapshot.track(tmp.extra.sessionID)
         expect(before).toBeTruthy()
 
         await Bun.write(`${tmp.path}/b.txt`, "modified content")
 
-        const after = await Snapshot.track("test")
+        const after = await Snapshot.track(tmp.extra.sessionID)
         expect(after).toBeTruthy()
 
-        const diffs = await Snapshot.diffFull(before!, after!, "test")
+        const diffs = await Snapshot.diffFull(before!, after!, tmp.extra.sessionID)
         expect(diffs.length).toBe(1)
 
         const modifiedFileDiff = diffs[0]
@@ -723,18 +720,18 @@ describe.serial("snapshot", () => {
 
   test("diffFull with file deletions", async () => {
     await using tmp = await bootstrap()
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
-        const before = await Snapshot.track("test")
+        const before = await Snapshot.track(tmp.extra.sessionID)
         expect(before).toBeTruthy()
 
         await $`rm ${tmp.path}/a.txt`.quiet()
 
-        const after = await Snapshot.track("test")
+        const after = await Snapshot.track(tmp.extra.sessionID)
         expect(after).toBeTruthy()
 
-        const diffs = await Snapshot.diffFull(before!, after!, "test")
+        const diffs = await Snapshot.diffFull(before!, after!, tmp.extra.sessionID)
         expect(diffs.length).toBe(1)
 
         const removedFileDiff = diffs[0]
@@ -749,18 +746,18 @@ describe.serial("snapshot", () => {
 
   test("diffFull with multiple line additions", async () => {
     await using tmp = await bootstrap()
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
-        const before = await Snapshot.track("test")
+        const before = await Snapshot.track(tmp.extra.sessionID)
         expect(before).toBeTruthy()
 
         await Bun.write(`${tmp.path}/multi.txt`, "line1\nline2\nline3")
 
-        const after = await Snapshot.track("test")
+        const after = await Snapshot.track(tmp.extra.sessionID)
         expect(after).toBeTruthy()
 
-        const diffs = await Snapshot.diffFull(before!, after!, "test")
+        const diffs = await Snapshot.diffFull(before!, after!, tmp.extra.sessionID)
         expect(diffs.length).toBe(1)
 
         const multiDiff = diffs[0]
@@ -775,19 +772,19 @@ describe.serial("snapshot", () => {
 
   test("diffFull with addition and deletion", async () => {
     await using tmp = await bootstrap()
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
-        const before = await Snapshot.track("test")
+        const before = await Snapshot.track(tmp.extra.sessionID)
         expect(before).toBeTruthy()
 
         await Bun.write(`${tmp.path}/added.txt`, "added content")
         await $`rm ${tmp.path}/a.txt`.quiet()
 
-        const after = await Snapshot.track("test")
+        const after = await Snapshot.track(tmp.extra.sessionID)
         expect(after).toBeTruthy()
 
-        const diffs = await Snapshot.diffFull(before!, after!, "test")
+        const diffs = await Snapshot.diffFull(before!, after!, tmp.extra.sessionID)
         expect(diffs.length).toBe(2)
 
         const addedFileDiff = diffs.find((d) => d.file === "added.txt")
@@ -809,10 +806,10 @@ describe.serial("snapshot", () => {
 
   test("diffFull with multiple additions and deletions", async () => {
     await using tmp = await bootstrap()
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
-        const before = await Snapshot.track("test")
+        const before = await Snapshot.track(tmp.extra.sessionID)
         expect(before).toBeTruthy()
 
         await Bun.write(`${tmp.path}/multi1.txt`, "line1\nline2\nline3")
@@ -820,10 +817,10 @@ describe.serial("snapshot", () => {
         await $`rm ${tmp.path}/a.txt`.quiet()
         await $`rm ${tmp.path}/b.txt`.quiet()
 
-        const after = await Snapshot.track("test")
+        const after = await Snapshot.track(tmp.extra.sessionID)
         expect(after).toBeTruthy()
 
-        const diffs = await Snapshot.diffFull(before!, after!, "test")
+        const diffs = await Snapshot.diffFull(before!, after!, tmp.extra.sessionID)
         expect(diffs.length).toBe(4)
 
         const multi1Diff = diffs.find((d) => d.file === "multi1.txt")
@@ -851,16 +848,16 @@ describe.serial("snapshot", () => {
 
   test("diffFull with no changes", async () => {
     await using tmp = await bootstrap()
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
-        const before = await Snapshot.track("test")
+        const before = await Snapshot.track(tmp.extra.sessionID)
         expect(before).toBeTruthy()
 
-        const after = await Snapshot.track("test")
+        const after = await Snapshot.track(tmp.extra.sessionID)
         expect(after).toBeTruthy()
 
-        const diffs = await Snapshot.diffFull(before!, after!, "test")
+        const diffs = await Snapshot.diffFull(before!, after!, tmp.extra.sessionID)
         expect(diffs.length).toBe(0)
       },
     })
@@ -868,18 +865,18 @@ describe.serial("snapshot", () => {
 
   test("diffFull with binary file changes", async () => {
     await using tmp = await bootstrap()
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
-        const before = await Snapshot.track("test")
+        const before = await Snapshot.track(tmp.extra.sessionID)
         expect(before).toBeTruthy()
 
         await Bun.write(`${tmp.path}/binary.bin`, new Uint8Array([0x00, 0x01, 0x02, 0x03]))
 
-        const after = await Snapshot.track("test")
+        const after = await Snapshot.track(tmp.extra.sessionID)
         expect(after).toBeTruthy()
 
-        const diffs = await Snapshot.diffFull(before!, after!, "test")
+        const diffs = await Snapshot.diffFull(before!, after!, tmp.extra.sessionID)
         expect(diffs.length).toBe(1)
 
         const binaryDiff = diffs[0]
@@ -891,19 +888,19 @@ describe.serial("snapshot", () => {
 
   test("diffFull with whitespace changes", async () => {
     await using tmp = await bootstrap()
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         await Bun.write(`${tmp.path}/whitespace.txt`, "line1\nline2")
-        const before = await Snapshot.track("test")
+        const before = await Snapshot.track(tmp.extra.sessionID)
         expect(before).toBeTruthy()
 
         await Bun.write(`${tmp.path}/whitespace.txt`, "line1\n\nline2\n")
 
-        const after = await Snapshot.track("test")
+        const after = await Snapshot.track(tmp.extra.sessionID)
         expect(after).toBeTruthy()
 
-        const diffs = await Snapshot.diffFull(before!, after!, "test")
+        const diffs = await Snapshot.diffFull(before!, after!, tmp.extra.sessionID)
         expect(diffs.length).toBe(1)
 
         const whitespaceDiff = diffs[0]

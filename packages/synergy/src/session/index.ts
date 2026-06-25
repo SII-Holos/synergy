@@ -10,10 +10,11 @@ import { Storage } from "../storage/storage"
 import { StoragePath } from "../storage/path"
 import { Log } from "../util/log"
 import { MessageV2 } from "./message-v2"
-import { Instance } from "../scope/instance"
+import { ScopeContext } from "../scope/context"
 import { Scope } from "@/scope"
 import { fn } from "@/util/fn"
 import { Snapshot } from "@/session/snapshot"
+import { SessionHistory } from "./history"
 
 import type { Provider } from "@/provider/provider"
 import { PermissionNext } from "@/permission/next"
@@ -105,7 +106,7 @@ export namespace Session {
 
   function toNavEntry(session: Info): SessionNavEntry {
     const scope = session.scope as Scope
-    const scopeType = scope.id === "global" ? "global" : "project"
+    const scopeType = scope.type === "home" ? "home" : "project"
     const category =
       session.category ??
       SessionNav.deriveCategory({
@@ -148,8 +149,10 @@ export namespace Session {
 
   export async function withRuntimeInfo(session: Info): Promise<Info & { working?: WorkingInfoType }> {
     const working = await SessionWorking.resolve(session.id)
-    if (!working) return withoutRuntimeInfo(session)
-    return { ...withoutRuntimeInfo(session), working }
+    const history = await SessionHistory.liveInfo(session.id).catch(() => session.history)
+    const result = { ...withoutRuntimeInfo(session), history }
+    if (!working) return result
+    return { ...result, working }
   }
 
   async function publishInfo(event: typeof SessionEvent.Updated, session: Info) {
@@ -164,14 +167,16 @@ export namespace Session {
     title?: string
     permission?: PermissionNext.Ruleset
     controlProfile?: Info["controlProfile"]
+    preAuthorizedActions?: string[]
     endpoint?: SessionEndpoint.Info
     id?: string
     agenda?: { itemID: string }
     interaction?: SessionInteraction.Info
     cortex?: CortexDelegationInfoType
     workspace?: import("./types").Workspace
+    forkedFrom?: Info["forkedFrom"]
   }) {
-    const scope = input?.scope ?? Instance.scope
+    const scope = input?.scope ?? ScopeContext.current.scope
     const parent = input?.parentID ? await SessionManager.getSession(input.parentID) : undefined
     const workspace: import("./types").Workspace = input?.workspace ??
       parent?.workspace ?? {
@@ -184,7 +189,7 @@ export namespace Session {
 
     const endpoint = input?.endpoint
     const createdAt = Date.now()
-    const scopeType = scope.id === "global" ? "global" : "project"
+    const scopeType = scope.type === "home" ? "home" : "project"
     const category = SessionNav.deriveCategory({
       scopeType,
       endpointKind: endpoint?.kind,
@@ -198,10 +203,12 @@ export namespace Session {
       version: Installation.VERSION,
       scope,
       parentID: input?.parentID,
+      forkedFrom: input?.forkedFrom,
       category,
       title: input?.title ?? createDefaultTitle(!!input?.parentID),
       permission: input?.permission,
       controlProfile,
+      preAuthorizedActions: input?.preAuthorizedActions,
       endpoint,
       interaction: inheritedInteraction,
       agenda: input?.agenda,
@@ -241,17 +248,64 @@ export namespace Session {
     z.object({
       sessionID: Identifier.schema("session"),
       messageID: Identifier.schema("message").optional(),
+      position: z
+        .discriminatedUnion("type", [
+          z.object({
+            type: z.literal("current"),
+          }),
+          z.object({
+            type: z.literal("before"),
+            messageID: Identifier.schema("message"),
+          }),
+        ])
+        .optional(),
+      workspace: z
+        .discriminatedUnion("mode", [
+          z.object({
+            mode: z.literal("current"),
+          }),
+          z.object({
+            mode: z.literal("existing"),
+            target: z.string().min(1),
+            force: z.boolean().optional(),
+          }),
+          z.object({
+            mode: z.literal("create"),
+            name: z.string().optional(),
+            baseRef: z.enum(["current", "fresh"]).optional(),
+          }),
+        ])
+        .optional(),
+      title: z.string().optional(),
+      controlProfile: z.enum(["guarded", "autonomous", "full_access"]).optional(),
     }),
     async (input) => {
       const source = await SessionManager.requireSession(input.sessionID)
-      const session = await create({ workspace: source.workspace })
+      const forkPoint = input.position?.type === "before" ? input.position.messageID : input.messageID
+      let session = await create({
+        scope: source.scope as Scope,
+        workspace: source.workspace,
+        title: input.title,
+        controlProfile: input.controlProfile,
+        forkedFrom: {
+          sessionID: source.id,
+          messageID: forkPoint,
+          title: source.title,
+        },
+      })
       const msgs = await messages({ sessionID: input.sessionID })
+      const messageMap = new Map<string, string>()
       for (const msg of msgs) {
-        if (input.messageID && msg.info.id >= input.messageID) break
+        if (forkPoint && msg.info.id >= forkPoint) break
+        const id = Identifier.ascending("message")
+        messageMap.set(msg.info.id, id)
         const cloned = await updateMessage({
           ...msg.info,
           sessionID: session.id,
-          id: Identifier.ascending("message"),
+          id,
+          ...("parentID" in msg.info && typeof msg.info.parentID === "string"
+            ? { parentID: messageMap.get(msg.info.parentID) ?? msg.info.parentID }
+            : {}),
         })
 
         for (const part of msg.parts) {
@@ -262,6 +316,31 @@ export namespace Session {
             sessionID: session.id,
           })
         }
+      }
+
+      try {
+        if (input.workspace?.mode === "create") {
+          const { Worktree } = await import("../project/worktree")
+          await Worktree.create({
+            sessionID: session.id,
+            name: input.workspace.name,
+            baseRef: input.workspace.baseRef ?? "current",
+            bind: true,
+          })
+          session = await get(session.id)
+        }
+        if (input.workspace?.mode === "existing") {
+          const { Worktree } = await import("../project/worktree")
+          await Worktree.enter({
+            sessionID: session.id,
+            target: input.workspace.target,
+            force: input.workspace.force ?? false,
+          })
+          session = await get(session.id)
+        }
+      } catch (error) {
+        await remove(session.id)
+        throw error
       }
       return session
     },
@@ -363,17 +442,16 @@ export namespace Session {
     z.object({
       sessionID: Identifier.schema("session"),
       limit: z.number().optional(),
+      raw: z.boolean().optional(),
     }),
     async (input) => {
-      const result = [] as MessageV2.WithParts[]
-      for await (const msg of MessageV2.stream({ sessionID: input.sessionID })) {
-        if (input.limit && result.length >= input.limit) break
-        result.push(msg)
-      }
-      result.reverse()
-      return result
+      return SessionHistory.messages(input)
     },
   )
+
+  export const rollback = SessionHistory.rollback
+  export const unrollback = SessionHistory.unrollback
+  export const restoreFiles = SessionHistory.restoreFiles
 
   export type ListResult = {
     data: Info[]
@@ -389,7 +467,7 @@ export namespace Session {
     pinned?: boolean
     parentOnly?: boolean
   }): Promise<ListResult> {
-    const scopeID = asScopeID(Instance.scope.id)
+    const scopeID = asScopeID(ScopeContext.current.scope.id)
     const index = await readPageIndex(scopeID)
     let entries = index.entries.filter((e) => !e.archived)
 
@@ -429,7 +507,7 @@ export namespace Session {
   }
 
   export async function* listAll() {
-    const scopeID = asScopeID(Instance.scope.id)
+    const scopeID = asScopeID(ScopeContext.current.scope.id)
     const ids = await Storage.scan(StoragePath.sessionsRoot(scopeID))
     const keys = ids.map((id) => StoragePath.sessionInfo(scopeID, asSessionID(id)))
     const sessions = await Storage.readMany<Info>(keys)
@@ -476,7 +554,9 @@ export namespace Session {
     const session = await SessionManager.requireSession(sessionID)
     const scopeID = asScopeID((session.scope as Scope).id)
     const lastExchange: NonNullable<Info["lastExchange"]> = {}
-    for await (const msg of MessageV2.stream({ sessionID })) {
+    const msgs = await messages({ sessionID })
+    for (let i = msgs.length - 1; i >= 0; i--) {
+      const msg = msgs[i]
       if (!lastExchange.assistant && msg.info.role === "assistant") {
         const text = MessageV2.extractText(msg.parts, { maxLength: 200 })
         if (text) lastExchange.assistant = text
@@ -504,6 +584,31 @@ export namespace Session {
     })
     return msg
   })
+
+  export const mergeMessageMetadata = fn(
+    z.object({
+      sessionID: Identifier.schema("session"),
+      messageID: Identifier.schema("message"),
+      metadata: z.record(z.string(), z.any()),
+    }),
+    async (input) => {
+      const session = await SessionManager.requireSession(input.sessionID)
+      const scopeID = asScopeID((session.scope as Scope).id)
+      const result = await Storage.update<MessageV2.Info>(
+        StoragePath.messageInfo(scopeID, asSessionID(input.sessionID), asMessageID(input.messageID)),
+        (draft) => {
+          draft.metadata = {
+            ...draft.metadata,
+            ...input.metadata,
+          }
+        },
+      )
+      Bus.publish(MessageV2.Event.Updated, {
+        info: result,
+      })
+      return result
+    },
+  )
 
   export const removeMessage = fn(
     z.object({
@@ -583,15 +688,27 @@ export namespace Session {
       metadata: z.custom<ProviderMetadata>().optional(),
     }),
     (input) => {
-      const cachedInputTokens = input.usage.cachedInputTokens ?? 0
+      const providerCacheHitTokens = providerMetadataNumber(input.metadata, [
+        ["deepseek", "prompt_cache_hit_tokens"],
+        ["openaiCompatible", "prompt_cache_hit_tokens"],
+        ["openai-compatible", "prompt_cache_hit_tokens"],
+        ["openai", "prompt_cache_hit_tokens"],
+      ])
+      const providerCacheMissTokens = providerMetadataNumber(input.metadata, [
+        ["deepseek", "prompt_cache_miss_tokens"],
+        ["openaiCompatible", "prompt_cache_miss_tokens"],
+        ["openai-compatible", "prompt_cache_miss_tokens"],
+        ["openai", "prompt_cache_miss_tokens"],
+      ])
+      const cachedInputTokens = input.usage.cachedInputTokens ?? providerCacheHitTokens ?? 0
       const excludesCachedTokens = !!(input.metadata?.["anthropic"] || input.metadata?.["bedrock"])
-      const adjustedInputTokens = excludesCachedTokens
-        ? (input.usage.inputTokens ?? 0)
-        : (input.usage.inputTokens ?? 0) - cachedInputTokens
       const safe = (value: number) => {
         if (!Number.isFinite(value)) return 0
         return value
       }
+      const adjustedInputTokens =
+        providerCacheMissTokens ??
+        (excludesCachedTokens ? (input.usage.inputTokens ?? 0) : (input.usage.inputTokens ?? 0) - cachedInputTokens)
 
       const tokens = {
         input: safe(adjustedInputTokens),
@@ -626,6 +743,21 @@ export namespace Session {
       }
     },
   )
+
+  function providerMetadataNumber(metadata: ProviderMetadata | undefined, paths: string[][]): number | undefined {
+    for (const path of paths) {
+      let current: unknown = metadata
+      for (const segment of path) {
+        if (!current || typeof current !== "object") {
+          current = undefined
+          break
+        }
+        current = (current as Record<string, unknown>)[segment]
+      }
+      if (typeof current === "number" && Number.isFinite(current)) return current
+    }
+    return undefined
+  }
 
   export async function findForEndpoint(endpoint: SessionEndpoint.Info) {
     return SessionManager.getSession(endpoint)

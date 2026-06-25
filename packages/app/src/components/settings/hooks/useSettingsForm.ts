@@ -6,7 +6,7 @@ import type {
   PluginsStore,
   McpsStore,
   McpEntry,
-  IdentityStore,
+  LibrarySettingsStore,
   AdvancedStore,
   EmailSettings,
   ChannelSettings,
@@ -26,7 +26,7 @@ export type EnsureInitParams = {
   setAdvanced: (values: Partial<AdvancedStore>) => void
   setEmail: (values: Partial<EmailSettings>) => void
   setChannels: (values: Partial<ChannelSettings>) => void
-  setIdentity: (values: Partial<IdentityStore>) => void
+  setLibrary: (values: Partial<LibrarySettingsStore>) => void
   setInitialized: (value: boolean) => void
   originalMcpsRef: { current: Record<string, Record<string, unknown>> }
 }
@@ -106,6 +106,7 @@ export function ensureInit(params: EnsureInitParams): string | undefined {
     ),
     permission: resolvePermissionForUi(cfg.permission),
     question_timeout: String(cfg.question?.timeout ?? UI_DEFAULTS.questionTimeout),
+    smartAllow: cfg.smartAllow === true ? "true" : "false",
   })
 
   params.setEmail({
@@ -134,11 +135,11 @@ export function ensureInit(params: EnsureInitParams): string | undefined {
       : [],
   })
 
-  const engram = cfg.engram
-  const memory = engram?.memory
-  const experience = engram?.experience
-  params.setIdentity({
-    evolution: (() => {
+  const library = cfg.library
+  const memory = library?.memory
+  const experience = library?.experience
+  params.setLibrary({
+    learning: (() => {
       const memoryEnabled = memory?.enabled
       const experienceEncode = experience?.encode
       const experienceRetrieve = experience?.retrieve
@@ -146,8 +147,8 @@ export function ensureInit(params: EnsureInitParams): string | undefined {
       return "true"
     })(),
     autonomy: (() => {
-      if (engram?.autonomy === undefined) return UI_DEFAULTS.identityAutonomy
-      return engram.autonomy ? "true" : "false"
+      if (library?.autonomy === undefined) return UI_DEFAULTS.libraryAutonomy
+      return library.autonomy ? "true" : "false"
     })(),
     memorySimThreshold: (() => {
       const retrieve = typeof memory?.retrieval === "object" ? memory.retrieval : undefined

@@ -1,5 +1,5 @@
 import type { Argv } from "yargs"
-import { Instance } from "../../scope/instance"
+import { ScopeContext } from "../../scope/context"
 import { Scope } from "@/scope"
 import { Provider } from "../../provider/provider"
 import { ModelsDev } from "../../provider/models"
@@ -32,8 +32,8 @@ export const ModelsCommand = cmd({
       UI.println(UI.Style.TEXT_SUCCESS_BOLD + "Models cache refreshed" + UI.Style.TEXT_NORMAL)
     }
 
-    await Instance.provide({
-      scope: (await Scope.fromDirectory(process.cwd())).scope,
+    await ScopeContext.provide({
+      scope: Scope.home(),
       async fn() {
         const providers = await Provider.list()
 

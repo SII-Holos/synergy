@@ -184,6 +184,40 @@ export const migrations: Migration[] = [
       log.info("blueprint status removal complete", { totalNotes, changed, scopes: scopeIDs.length })
     },
   },
+  {
+    id: "20260624-note-rebuild-expanded-preview-html",
+    description: "Rebuild note metadata indices with expanded preview HTML",
+    domain: "note",
+    dependsOn: ["20260624-note-remove-blueprint-status"],
+    async up(progress) {
+      const scopeIDs = await Storage.scan(["notes"])
+      let done = 0
+      for (const sid of scopeIDs) {
+        const s = Identifier.asScopeID(sid)
+        await Storage.remove(StoragePath.note(s, "_index")).catch(() => {})
+        done++
+        progress(done, scopeIDs.length)
+      }
+      log.info("expanded preview metadata index rebuild scheduled", { scopes: scopeIDs.length })
+    },
+  },
+  {
+    id: "20260624-note-rebuild-rich-preview-html",
+    description: "Rebuild note metadata indices with rich preview HTML",
+    domain: "note",
+    dependsOn: ["20260624-note-rebuild-expanded-preview-html"],
+    async up(progress) {
+      const scopeIDs = await Storage.scan(["notes"])
+      let done = 0
+      for (const sid of scopeIDs) {
+        const s = Identifier.asScopeID(sid)
+        await Storage.remove(StoragePath.note(s, "_index")).catch(() => {})
+        done++
+        progress(done, scopeIDs.length)
+      }
+      log.info("rich preview metadata index rebuild scheduled", { scopes: scopeIDs.length })
+    },
+  },
 ]
 
 MigrationRegistry.register("note", migrations)

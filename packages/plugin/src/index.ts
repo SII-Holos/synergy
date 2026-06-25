@@ -26,7 +26,7 @@ import type { ToolDefinition, ToolResult } from "./tool"
 export * from "./tool"
 export type { ToolResult }
 export * from "./manifest"
-export * from "./ui"
+export type { BunShell, BunShellOutput, BunShellPromise, ShellExpression, ShellFunction } from "./shell"
 
 // ---------------------------------------------------------------------------
 // Plugin Config / Auth / Cache accessors
@@ -39,6 +39,13 @@ export interface PluginConfigAccessor {
   set(values: Record<string, any>): Promise<void>
 }
 
+/**
+ * Plugin credential store (plaintext JSON on disk).
+ *
+ * WARNING: Credentials are stored as unencrypted JSON in the plugin data directory
+ * at ~/.synergy/data/plugin/{id}/auth.json. Protect your filesystem.
+ * Future versions will use system keychain encryption.
+ */
 export interface PluginAuthStore {
   /** Read a credential by key */
   get(key: string): Promise<string | undefined>
@@ -254,7 +261,7 @@ export type AuthOuathResult = { url: string; instructions: string } & (
 export type PluginInput = {
   client: ReturnType<typeof createSynergyClient>
   scope: {
-    type: "global" | "project"
+    type: "home" | "project"
     id: string
     directory: string
     worktree: string
@@ -276,10 +283,10 @@ export type PluginInput = {
 }
 
 // ---------------------------------------------------------------------------
-// Plugin — the top-level descriptor exported by a plugin package
+// PluginDescriptor — the top-level descriptor exported by a plugin package
 // ---------------------------------------------------------------------------
 
-export interface Plugin {
+export interface PluginDescriptor {
   /** Unique identifier for this plugin (used as config/auth/cache namespace) */
   id: string
   /** Human-readable display name */
@@ -424,7 +431,7 @@ export interface PluginHooks {
   /** Filter or reorder note search results */
   "note.search.after"?(input: { scopeID: string; pattern: string }, output: { notes: NoteInfo[] }): Promise<void>
   /** Rewrite memory search query */
-  "engram.memory.search.before"?(
+  "library.memory.search.before"?(
     input: {},
     output: {
       query: string
@@ -436,12 +443,12 @@ export interface PluginHooks {
     },
   ): Promise<void>
   /** Filter or reorder memory results */
-  "engram.memory.search.after"?(
+  "library.memory.search.after"?(
     input: { query: string; topK: number },
     output: { results: MemorySearchResult[] },
   ): Promise<void>
   /** Observe experience encoding outcomes */
-  "engram.experience.encode.after"?(
+  "library.experience.encode.after"?(
     input: { sessionID: string; userMessageID: string },
     output: { encoded: boolean; skipped: boolean; duplicateOf?: string; experienceID?: string },
   ): Promise<void>

@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import path from "path"
 import { tmpdir } from "../fixture/fixture"
-import { Instance } from "../../src/scope/instance"
+import { ScopeContext } from "../../src/scope/context"
 import { ReadTool } from "../../src/tool/read"
 
 // ---------------------------------------------------------------------------
@@ -46,7 +46,7 @@ describe("workspace boundary — attach/read tools", () => {
     const originalFile = path.join(originalCheckout, "secret.txt")
     // We'll test that attempting to read from originalCheckout is blocked
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       workspace: {
         type: "git_worktree",
@@ -74,7 +74,7 @@ describe("workspace boundary — attach/read tools", () => {
 
     const originalCheckout = path.resolve(tmp.path, "..", "original-checkout")
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       workspace: {
         type: "git_worktree",
@@ -108,7 +108,7 @@ describe("workspace boundary — attach/read tools", () => {
 
     const originalCheckout = path.resolve(tmp.path, "..", "original-checkout")
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       workspace: {
         type: "git_worktree",
@@ -140,7 +140,7 @@ describe("workspace boundary — attach/read tools", () => {
 
     const originalCheckout = "/tmp/original-checkout-" + Math.random().toString(36).slice(2)
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       workspace: {
         type: "git_worktree",
@@ -174,7 +174,7 @@ describe("workspace boundary — attach/read tools", () => {
       },
     })
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       // No workspace — default behavior
       fn: async () => {
@@ -203,7 +203,7 @@ describe("workspace boundary — anchored tools (view_file, scan_files, parse_co
     await using tmp = await tmpdir({ git: true })
     const originalCheckout = path.resolve(tmp.path, "..", "original-checkout")
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       workspace: {
         type: "git_worktree",
@@ -239,7 +239,7 @@ describe("workspace boundary — workspace type extensibility", () => {
   test("boundary gate handles custom workspace types without crashing", async () => {
     await using tmp = await tmpdir({ git: true })
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       workspace: {
         type: "custom_container" as any,
@@ -267,7 +267,7 @@ describe("workspace boundary — workspace type extensibility", () => {
   test("boundary gate rejects path in unknown workspace types root beyond active path", async () => {
     await using tmp = await tmpdir({ git: true })
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       workspace: {
         type: "custom_container" as any,

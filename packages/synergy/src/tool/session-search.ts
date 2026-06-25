@@ -4,7 +4,7 @@ import { Tool } from "./tool"
 import { Session } from "../session"
 import { MessageV2 } from "../session/message-v2"
 import { Scope } from "@/scope"
-import { Instance } from "@/scope/instance"
+import { ScopeContext } from "@/scope/context"
 import { Identifier } from "../id/id"
 import { Storage } from "../storage/storage"
 import { StoragePath } from "../storage/path"
@@ -53,7 +53,7 @@ function buildSnippet(text: string, matchIndex: number, matchLength: number): st
 }
 
 async function collectSessions(scope: string, sinceMs?: number, beforeMs?: number): Promise<Session.Info[]> {
-  const scopes = scope === "current" ? [Instance.scope] : await Scope.list()
+  const scopes = scope === "current" ? [ScopeContext.current.scope] : await Scope.list()
   const allSessions: Session.Info[] = []
 
   for (const s of scopes) {
@@ -97,7 +97,7 @@ function searchMessage(msg: MessageV2.WithParts, regex: RegExp): Match | undefin
 function formatResult(result: SessionResult): string {
   const scope = result.session.scope as Scope
   const scopeLabel =
-    scope.type === "global"
+    scope.type === "home"
       ? "Home"
       : (scope.name ?? (scope.directory ? path.basename(scope.directory) : undefined) ?? scope.id)
   const updated = formatLocalDateTime(result.session.time.updated)

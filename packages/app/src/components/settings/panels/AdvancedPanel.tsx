@@ -69,6 +69,27 @@ export function AdvancedPanel(props: {
       </div>
 
       <div class="ds-setting-section">
+        <SectionLabel title="Permission" />
+        <SettingRow
+          title="Smart allow"
+          description="Use an internal agent to auto-allow safe asks and soft denies. Hard safety boundaries remain blocked; Autonomous never prompts."
+          trailing={
+            <SegmentPill
+              value={props.advanced.smartAllow}
+              options={[
+                { value: "false", label: "Off" },
+                { value: "true", label: "On" },
+              ]}
+              onChange={(value) => props.onAdvancedChange("smartAllow", value)}
+              showReset
+              defaultValue="false"
+              onReset={() => props.onAdvancedChange("smartAllow", "false")}
+            />
+          }
+        />
+      </div>
+
+      <div class="ds-setting-section">
         <SectionLabel title="Question" />
         <SettingRow
           title="Response Timeout"

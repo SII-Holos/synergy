@@ -1,7 +1,7 @@
 import { describe, expect, test, mock, afterEach } from "bun:test"
 import { WorktreeListTool } from "../../src/tool/worktree-list"
 import { Worktree } from "../../src/project/worktree"
-import { Instance } from "../../src/scope/instance"
+import { ScopeContext } from "../../src/scope/context"
 import { tmpdir } from "../fixture/fixture"
 
 // ---------------------------------------------------------------------------
@@ -14,7 +14,7 @@ import { tmpdir } from "../fixture/fixture"
 //   2. Returns list with active worktree marked
 //   3. Returns cleanup recommendations (keep, safe_to_remove, inspect_dirty,
 //      external_do_not_manage)
-//   4. Active matches by path from Instance.workspace
+//   4. Active matches by path from ScopeContext.current.workspace
 // ---------------------------------------------------------------------------
 
 const baseCtx = {
@@ -48,7 +48,7 @@ describe("tool.worktree_list", () => {
   describe("empty list", () => {
     test("returns listed action with empty worktrees array", async () => {
       await using tmp = await tmpdir({ git: true })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           ;(Worktree as any).list = mock(async () => [])
@@ -68,9 +68,9 @@ describe("tool.worktree_list", () => {
 
   // ---- Active worktree ----
   describe("active worktree", () => {
-    test("marks worktree as active when path matches Instance.workspace", async () => {
+    test("marks worktree as active when path matches ScopeContext.current.workspace", async () => {
       await using tmp = await tmpdir({ git: true })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         workspace: {
           type: "git_worktree",
@@ -108,7 +108,7 @@ describe("tool.worktree_list", () => {
 
     test("active is null when no workspace matches any worktree", async () => {
       await using tmp = await tmpdir({ git: true })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         workspace: {
           type: "git_worktree",
@@ -133,7 +133,7 @@ describe("tool.worktree_list", () => {
 
     test("active is null when no workspace set", async () => {
       await using tmp = await tmpdir({ git: true })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const worktrees = [{ id: "wt_main", name: "main", path: "/tmp/repo", isMain: true, scopeID: "scope_123" }]
@@ -154,7 +154,7 @@ describe("tool.worktree_list", () => {
   describe("cleanup recommendations", () => {
     test("active worktree gets 'keep' recommendation", async () => {
       await using tmp = await tmpdir({ git: true })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         workspace: {
           type: "git_worktree",
@@ -200,7 +200,7 @@ describe("tool.worktree_list", () => {
 
     test("stale managed worktree gets 'safe_to_remove'", async () => {
       await using tmp = await tmpdir({ git: true })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const worktrees = [
@@ -236,7 +236,7 @@ describe("tool.worktree_list", () => {
 
     test("dirty managed worktree gets 'inspect_dirty'", async () => {
       await using tmp = await tmpdir({ git: true })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const worktrees = [
@@ -272,7 +272,7 @@ describe("tool.worktree_list", () => {
 
     test("external (non-managed) worktree gets 'external_do_not_manage'", async () => {
       await using tmp = await tmpdir({ git: true })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const worktrees = [
@@ -307,7 +307,7 @@ describe("tool.worktree_list", () => {
 
     test("not dirty, not stale, not active non-main worktree gets 'keep'", async () => {
       await using tmp = await tmpdir({ git: true })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const worktrees = [
@@ -337,7 +337,7 @@ describe("tool.worktree_list", () => {
     test("stale gets priority over dirty when both set", async () => {
       // If a worktree is both stale and dirty, the stale check comes first
       await using tmp = await tmpdir({ git: true })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const worktrees = [
@@ -369,7 +369,7 @@ describe("tool.worktree_list", () => {
   describe("output message formatting", () => {
     test("uses singular 'worktree' for single result", async () => {
       await using tmp = await tmpdir({ git: true })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const worktrees = [
@@ -389,7 +389,7 @@ describe("tool.worktree_list", () => {
 
     test("uses plural 'worktrees' for multiple results", async () => {
       await using tmp = await tmpdir({ git: true })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const worktrees = [

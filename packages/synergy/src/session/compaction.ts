@@ -245,7 +245,7 @@ export namespace SessionCompaction {
   }
 
   export async function prune(input: { sessionID: string; modelID?: string }) {
-    const config = await Config.get()
+    const config = await Config.current()
     if (config.compaction?.prune === false) return
     log.info("pruning")
     const msgs = await Session.messages({ sessionID: input.sessionID })

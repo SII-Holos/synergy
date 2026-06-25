@@ -27,6 +27,11 @@
     gap: 8px;
   }
 
+  [data-component="artifact-gallery"] {
+    min-width: min(520px, 100%);
+    padding: 0;
+  }
+
   [data-slot="user-message-attachment"] {
     display: flex;
     flex-direction: column;
@@ -167,6 +172,12 @@
     margin-top: 12px;
     font-size: var(--font-size-base);
   }
+}
+
+[data-component="file-part"] {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
 }
 
 [data-component="reasoning-part"] {

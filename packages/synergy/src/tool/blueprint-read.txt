@@ -1,7 +1,0 @@
-Read the full content of one or more blueprint notes by their IDs.
-
-Content is rendered as Markdown. Some rich elements (Mermaid diagrams, videos, images, tables) may show as placeholder text like "[Mermaid diagram]" or "[Image: url]".
-
-Use this after `blueprint_list` or `note_search` to read the full details of specific blueprints.
-
-Supports pagination via `offset` and `limit` (line-based) for reading long blueprints. If not specified, returns the full content.

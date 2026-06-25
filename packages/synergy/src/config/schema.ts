@@ -63,6 +63,7 @@ export const McpLocal = z
   .object({
     type: z.literal("local").describe("Type of MCP server connection"),
     command: z.string().array().describe("Command and arguments to run the MCP server"),
+    cwd: z.string().optional().describe("Working directory for local MCP servers"),
     environment: z
       .record(z.string(), z.string())
       .optional()
@@ -277,6 +278,22 @@ export const SandboxConfig = z
   .strict()
   .meta({ ref: "SandboxConfig" })
 export type SandboxConfig = z.infer<typeof SandboxConfig>
+
+export const ObservabilityConfig = z
+  .object({
+    enabled: z.boolean().optional().describe("Enable local observability trace JSONL events (default: true)"),
+    retentionDays: z.number().int().positive().optional().describe("Days to retain local trace files (default: 7)"),
+    maxBytes: z.number().int().positive().optional().describe("Maximum total trace storage in bytes (default: 250MB)"),
+    stalledToolMs: z
+      .number()
+      .int()
+      .positive()
+      .optional()
+      .describe("Milliseconds without tool activity before emitting a stalled-tool trace event"),
+  })
+  .strict()
+  .meta({ ref: "ObservabilityConfig" })
+export type ObservabilityConfig = z.infer<typeof ObservabilityConfig>
 
 export const Channel = z.discriminatedUnion("type", [ChannelFeishu])
 export type Channel = z.infer<typeof Channel>
@@ -530,8 +547,8 @@ export const Keybinds = z
     messages_previous: z.string().optional().default("none").describe("Navigate to previous message"),
     messages_last_user: z.string().optional().default("none").describe("Navigate to last user message"),
     messages_copy: z.string().optional().default("<leader>y").describe("Copy message"),
-    messages_undo: z.string().optional().default("<leader>u").describe("Undo message"),
-    messages_redo: z.string().optional().default("<leader>r").describe("Redo message"),
+    messages_undo: z.string().optional().default("<leader>u").describe("Undo message history only"),
+    messages_redo: z.string().optional().default("<leader>r").describe("Redo message history only"),
     messages_toggle_conceal: z
       .string()
       .optional()
@@ -903,7 +920,7 @@ export const ExperienceConfig = z
   .meta({ ref: "ExperienceConfig" })
 export type ExperienceConfig = z.infer<typeof ExperienceConfig>
 
-export const EngramConfig = z
+export const LibraryConfig = z
   .object({
     memory: MemoryConfig.optional(),
     experience: ExperienceConfig.optional(),
@@ -914,8 +931,8 @@ export const EngramConfig = z
   })
   .strict()
   .optional()
-  .meta({ ref: "EngramConfig" })
-export type EngramConfig = z.infer<typeof EngramConfig>
+  .meta({ ref: "LibraryConfig" })
+export type LibraryConfig = z.infer<typeof LibraryConfig>
 
 export const Provider = ModelsDev.Provider.partial()
   .extend({
@@ -970,6 +987,105 @@ export const Provider = ModelsDev.Provider.partial()
   })
 export type Provider = z.infer<typeof Provider>
 
+export const PluginApprovalPolicy = z
+  .object({
+    allowUnsignedLocal: z.boolean().optional().default(true).describe("Allow unsigned local plugins with user consent"),
+    autoApproveBuiltin: z
+      .boolean()
+      .optional()
+      .default(true)
+      .describe("Auto-approve builtin plugins without user consent"),
+    denyHighRiskThirdParty: z
+      .boolean()
+      .optional()
+      .default(true)
+      .describe("Block third-party plugins with high-risk capabilities"),
+    requireSignatureForMarketplace: z
+      .boolean()
+      .optional()
+      .default(false)
+      .describe("Require cryptographic signature for non-local plugins"),
+  })
+  .strict()
+  .meta({ ref: "PluginApprovalPolicyConfig" })
+export type PluginApprovalPolicy = z.infer<typeof PluginApprovalPolicy>
+
+export const PLUGIN_APPROVAL_POLICY_DEFAULTS = {
+  allowUnsignedLocal: true,
+  autoApproveBuiltin: true,
+  denyHighRiskThirdParty: true,
+  requireSignatureForMarketplace: false,
+} as const satisfies Required<PluginApprovalPolicy>
+export const PluginRuntimePolicy = z
+  .object({
+    thirdPartyDefaultMode: z
+      .enum(["process", "worker"])
+      .optional()
+      .default("process")
+      .describe("Default isolation mode for third-party plugins (npm, git, url)"),
+    highRiskRequiresProcess: z
+      .boolean()
+      .optional()
+      .default(true)
+      .describe("Require process isolation for high-risk plugins regardless of source"),
+    allowThirdPartyInProcess: z
+      .boolean()
+      .optional()
+      .default(false)
+      .describe("Allow third-party plugins to request in-process mode (not recommended)"),
+    allowWorkerMode: z.boolean().optional().default(true).describe("Allow plugins to request worker thread isolation"),
+    allowLocalInProcess: z.boolean().optional().default(true).describe("Allow local plugins to run in-process"),
+  })
+  .strict()
+  .meta({ ref: "PluginRuntimePolicyConfig" })
+export type PluginRuntimePolicy = z.infer<typeof PluginRuntimePolicy>
+
+export const PLUGIN_RUNTIME_POLICY_DEFAULTS = {
+  thirdPartyDefaultMode: "process" as const,
+  highRiskRequiresProcess: true,
+  allowThirdPartyInProcess: false,
+  allowWorkerMode: true,
+  allowLocalInProcess: true,
+} as const satisfies Required<PluginRuntimePolicy>
+
+export const PluginMarketplace = z
+  .object({
+    enabled: z.boolean().optional().default(true).describe("Enable the public GitHub-backed plugin marketplace"),
+    registryUrl: z
+      .string()
+      .url()
+      .optional()
+      .default("https://raw.githubusercontent.com/SII-Holos/synergy-plugins/main/registry.json")
+      .describe("URL of the official plugin registry.json index"),
+    includeLocalRegistry: z
+      .boolean()
+      .optional()
+      .default(true)
+      .describe("Include the local development registry in marketplace search and detail routes"),
+    cacheTtlMs: z
+      .number()
+      .int()
+      .positive()
+      .optional()
+      .default(300000)
+      .describe("Remote marketplace cache TTL in milliseconds"),
+    offlineCache: z
+      .boolean()
+      .optional()
+      .default(true)
+      .describe("Use stale marketplace cache for browsing when the remote registry cannot be reached"),
+  })
+  .strict()
+  .meta({ ref: "PluginMarketplaceConfig" })
+export type PluginMarketplace = z.infer<typeof PluginMarketplace>
+
+export const PLUGIN_MARKETPLACE_DEFAULTS = {
+  enabled: true,
+  registryUrl: "https://raw.githubusercontent.com/SII-Holos/synergy-plugins/main/registry.json",
+  includeLocalRegistry: true,
+  cacheTtlMs: 300000,
+  offlineCache: true,
+} as const satisfies Required<PluginMarketplace>
 export const Info = z
   .object({
     $schema: z.string().optional().describe("JSON schema reference for configuration validation"),
@@ -1035,6 +1151,9 @@ export const Info = z
       })
       .optional(),
     plugin: z.string().array().optional(),
+    pluginApprovalPolicy: PluginApprovalPolicy.optional().describe("Plugin approval policy configuration"),
+    pluginRuntimePolicy: PluginRuntimePolicy.optional().describe("Plugin runtime isolation policy configuration"),
+    pluginMarketplace: PluginMarketplace.optional().describe("Public plugin marketplace registry configuration"),
     snapshot: z.boolean().optional(),
     autoupdate: z
       .union([z.boolean(), z.literal("notify")])
@@ -1125,7 +1244,7 @@ export const Info = z
     provider: z.record(z.string(), Provider).optional().describe("Custom provider configurations and model overrides"),
     embedding: EmbeddingConfig,
     rerank: RerankConfig,
-    engram: EngramConfig,
+    library: LibraryConfig,
     mcp: z
       .record(
         z.string(),
@@ -1148,6 +1267,7 @@ export const Info = z
       .optional()
       .describe("Channel configurations for messaging platform integrations"),
     sandbox: SandboxConfig.optional().describe("Sandbox configuration for workspace boundary enforcement"),
+    observability: ObservabilityConfig.optional().describe("Local logs, traces, and diagnostics settings"),
     controlProfile: ControlProfileId.optional().describe("Default control profile applied to all agents"),
     holos: Holos.optional().describe("Holos platform configuration"),
     email: Email.optional().describe("Outgoing email configuration"),
@@ -1204,6 +1324,10 @@ export const Info = z
     instructions: z.array(z.string()).optional().describe("Additional instruction files or patterns to include"),
     layout: Layout.optional().describe("@deprecated Always uses stretch layout."),
     permission: Permission.optional(),
+    smartAllow: z
+      .boolean()
+      .optional()
+      .describe("Use the Smart allow internal agent to auto-allow safe asks and soft denies"),
     tools: z.record(z.string(), z.boolean()).optional(),
     enterprise: z
       .object({

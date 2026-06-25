@@ -12,7 +12,7 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
   init: () => {
     const globalSync = useGlobalSync()
     const sdk = useSDK()
-    const [store, setStore] = globalSync.child(sdk.directory)
+    const [store, setStore] = globalSync.ensureScopeState(sdk.scopeKey)
     const absolute = (path: string) => (store.path.directory + "/" + path).replace("//", "/")
     const chunk = 200
     const maxMessages = 500
@@ -100,6 +100,7 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
           delete draft.dag[sessionID]
           if (!draft.permission[sessionID]?.length) delete draft.permission[sessionID]
           delete draft.question[sessionID]
+          delete draft.inbox[sessionID]
         }),
       )
       setMeta(
@@ -175,7 +176,8 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
           hydrateMessages(sessionID)
 
           const hasMessages = store.message[sessionID] !== undefined
-          if (hasSession && hasMessages) return syncPermissions()
+          const hasInbox = store.inbox[sessionID] !== undefined
+          if (hasSession && hasMessages && hasInbox) return syncPermissions()
 
           const pending = inflight.get(sessionID)
           if (pending) return pending
@@ -202,8 +204,15 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
           const messagesReq = hasMessages ? Promise.resolve() : loadMessages(sessionID, limit)
 
           const permissionReq = syncPermissions()
+          const inboxReq = hasInbox
+            ? Promise.resolve()
+            : retry(() => sdk.client.session.inbox({ sessionID }))
+                .then((result) => {
+                  setStore("inbox", sessionID, reconcile(result.data ?? [], { key: "id" }))
+                })
+                .catch(() => {})
 
-          const promise = Promise.all([sessionReq, messagesReq, permissionReq])
+          const promise = Promise.all([sessionReq, messagesReq, permissionReq, inboxReq])
             .then(() => {})
             .finally(() => {
               inflight.delete(sessionID)
@@ -252,7 +261,12 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
           if (pending) return pending
 
           const promise = retry(() =>
-            sdk.client.session.dag({ sessionID, directory: sdk.directory }).then((r) => r.data as any),
+            sdk.client.session
+              .dag({
+                sessionID,
+                ...(sdk.isHome ? { scopeID: sdk.scopeID } : { directory: sdk.directory }),
+              })
+              .then((r) => r.data as any),
           )
             .then((nodes) => {
               setStore("dag", sessionID, reconcile(nodes ?? [], { key: "id" }))
@@ -290,7 +304,7 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
     }
 
     onCleanup(() => {
-      globalSync.releaseChild(sdk.directory)
+      globalSync.releaseScopeState(sdk.scopeKey)
     })
   },
 })

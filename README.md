@@ -6,6 +6,18 @@ It combines a stateless server, browser-based and CLI workflows, configurable ag
 
 Synergy is open source under the [MIT License](LICENSE). Contributions, bug reports, and feature ideas are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md) to get started.
 
+## AI And LLM Entry Points
+
+If you are an external coding agent or LLM tool reading this repository, start with [llms.txt](llms.txt). It routes plugin authors, source contributors, and architecture readers to the right documents.
+
+Plugin authors do not need to clone this repository or read `AGENTS.md`. Use `@ericsanchezok/synergy-plugin-kit`, `@ericsanchezok/synergy-plugin`, and the plugin authoring docs:
+
+- [docs/plugins/agent-quickstart.md](docs/plugins/agent-quickstart.md)
+- [docs/plugins/development-kit.md](docs/plugins/development-kit.md)
+- [packages/plugin/README.md](packages/plugin/README.md)
+
+Only read [AGENTS.md](AGENTS.md) when you are modifying Synergy source code.
+
 ---
 
 ### About Shanghai Innovation Institute
@@ -22,13 +34,30 @@ Synergy currently spans several product surfaces and workflows:
 
 - A central `server` process that handles requests independently of a single working directory
 - A `web` client for browser-based interaction
+- A built-in Browser workspace backed by Playwright/Chromium for interactive page control
 - A `send` command for one-off, non-interactive execution
-- CLI commands for session, config, identity, and operational workflows
+- CLI commands for session, config, library, Holos identity, and operational workflows
 - Configurable agents for orchestration, coding, research, writing, search, and review
 - Session persistence and session management commands
 - MCP integration for external tool ecosystems
 - Channel integrations such as Feishu / Lark
-- Identity, login, notes, memory/engram, agenda, and community-facing capabilities
+- Holos identity, login, notes, library, agenda, and community-facing capabilities
+
+### Built-In Browser Workspace
+
+The Web client includes a right-side Browser workspace that runs a real Playwright Chromium page, not an iframe or a screenshot-only mock. Users can navigate, search, click, type, scroll, upload, and download in the workspace while browser tools operate on the same underlying page and BrowserContext.
+
+Browser contexts are isolated by Synergy owner/session and persist tab state plus browser storage state. User-explicit navigation and page interaction run without approval prompts but still pass hard safety checks such as invalid protocols, sensitive local ports, and out-of-scope `file://` access. Agent-driven browser tools continue to use the active control profile, so guarded/autonomous/full-access behavior remains consistent with the rest of Synergy.
+
+Large browser diagnostics such as console, network, snapshots, assets, and downloads are surfaced in the Browser workspace developer drawer and compact tool cards instead of flooding the normal chat transcript.
+
+### Session History, File Restore, And Forking
+
+Undo and redo operate on message history only. A rollback hides the latest effective user turn(s) from the session history used by the UI, model invocation, summaries, engram recall, and session forks; it does not restore, delete, or otherwise modify local files.
+
+File restoration is an explicit follow-up action. When a rolled-back turn contains patch data, Synergy can restore selected files through the file restore endpoint or Web command. This is the only user-facing flow that applies snapshot patch data back to the workspace.
+
+Forking copies the current effective history by default, so rolled-back turns are excluded. Forked sessions record their source in `forkedFrom` and do not use `parentID`, which remains reserved for background/subagent lineage. Forks can keep the current workspace or bind to a worktree when the calling surface requests it.
 
 ## Quick Start
 
@@ -47,6 +76,21 @@ curl -fsSL https://raw.githubusercontent.com/SII-Holos/synergy/main/install | ba
 ```
 
 The installer places the runtime binary together with the bundled Web UI and schema assets under `~/.synergy/`, so `synergy web` works without requiring a local source checkout.
+
+### Develop Plugins
+
+Plugin authors can create and publish plugins without installing the Synergy source tree:
+
+```bash
+bunx @ericsanchezok/synergy-plugin-kit create my-plugin --template tool-ui
+cd my-plugin
+bun install
+synergy-plugin dev
+synergy-plugin validate --runtime-discovery
+synergy-plugin publish-market
+```
+
+`publish-market` builds, packs, signs, uploads GitHub Release assets when `gh` is available, prepares the official `SII-Holos/synergy-plugins` registry PR, and leaves clear manual steps when a GitHub action cannot be automated.
 
 ### If you already have the CLI installed
 
@@ -93,9 +137,7 @@ Background service management currently supports:
 - Linux via `systemd --user`
 - Windows via `schtasks`
 
-`synergy status` shows whether a managed service is installed, what runtime state is currently observed, and when the installed service differs from your current config. `synergy logs` shows the daemon log file, following the installed service path when it differs from the current config.
-
-Start prints a fuller summary, including the supervisor in use, the server URL, log file location, and suggested next commands.
+`synergy start`, `synergy status`, `synergy stop`, and `synergy logs` print a compact terminal summary with the service state, server URL, log file location, and suggested next commands. The managed service keeps structured logs in the daemon log file instead of mixing them into the startup UI. For foreground debugging, use `synergy server --print-logs` when you want live structured logs alongside the startup summary.
 
 On Linux, user services usually require a working user manager session. To keep the service alive across logout, enable lingering with:
 
@@ -147,14 +189,14 @@ synergy web                    # Open the web UI and attach to a server
 synergy send "message"         # Run a one-off prompt
 ```
 
-### Configuration and identity
+### Configuration, library, and Holos
 
 ```bash
 synergy config              # Manage configuration
 synergy config path         # Show config paths
-synergy config edit         # Open global config in an editor
-synergy login               # Bind to Holos platform
-synergy identity            # Work with identity-related features
+synergy config import       # Import selected config domains
+synergy library             # Manage library memory and learning
+synergy holos login         # Bind to Holos platform
 ```
 
 ### Models, sessions, and exports
@@ -197,22 +239,14 @@ If you update agent names, roles, or recommended usage, update this section and 
 
 ## Configuration
 
-Synergy configuration is layered.
+Synergy configuration is layered and domain-based.
 
 ### Global config
 
-The active global Config Set is loaded from `~/.synergy/config`.
-
-By default, the `default` Config Set uses:
+Global config is loaded from one canonical domain directory:
 
 ```bash
-~/.synergy/config/synergy.jsonc
-```
-
-Additional global Config Sets live under:
-
-```bash
-~/.synergy/config/config-sets/<name>/synergy.jsonc
+~/.synergy/config/synergy.d/
 ```
 
 Useful command:
@@ -223,11 +257,10 @@ synergy config path
 
 ### Project config
 
-Project-level config can be provided in the project tree, typically via:
+Project-level config uses the same domain layout under:
 
 ```bash
-synergy.jsonc
-synergy.json
+<project>/.synergy/synergy.d/
 ```
 
 Synergy also supports project-scoped extension directories under:
@@ -237,6 +270,23 @@ Synergy also supports project-scoped extension directories under:
 ```
 
 That scoped directory is where project-specific agents, commands, plugins, skills, and related assets may live.
+
+### Plugins
+
+Plugins are managed through the plugin toolchain and the `50-plugins.jsonc` config domain. Plugin authors should use `@ericsanchezok/synergy-plugin-kit` and `@ericsanchezok/synergy-plugin`; a Synergy source checkout is only needed when changing the platform itself.
+
+New plugins should use the object descriptor API from `@ericsanchezok/synergy-plugin`:
+
+```bash
+bunx @ericsanchezok/synergy-plugin-kit create my-plugin
+cd my-plugin
+bun install
+synergy-plugin dev
+synergy-plugin validate --runtime-discovery
+synergy-plugin publish-market
+```
+
+Install local development plugins with `synergy plugin add file:///absolute/path/to/my-plugin`. The descriptor `id`, `plugin.json.name`, registry id, and approval id must match.
 
 ### Session commands
 
@@ -287,11 +337,12 @@ After `/worktree new` or `/worktree enter`, the switch applies to subsequent ses
 
 Worktree sessions treat the worktree as the active workspace boundary. File, search, attachment, and local shell tools route through Synergy's control profile gate before they run. In a worktree session, the original checkout and sibling worktrees are outside the active workspace unless the session is using `full_access`; those boundary checks are not skipped by allow-all or unattended execution.
 
-Control profiles are configured in `synergy.jsonc`:
+Control profiles are configured in the permissions domain (`80-permissions.jsonc`):
 
 ```jsonc
 {
   "controlProfile": "guarded",
+  "smartAllow": false,
   "agent": {
     "synergy-max": {
       "controlProfile": "autonomous",
@@ -301,6 +352,8 @@ Control profiles are configured in `synergy.jsonc`:
 ```
 
 **Precedence:** agent config `controlProfile` > top-level config `controlProfile` > default `guarded`.
+
+`smartAllow` enables a hidden internal agent that can auto-allow safe asks and eligible soft denies. It never overrides hard safety boundaries such as protected paths, external writes, identity actions, plugin secrets, destructive shell commands, or hardline commands. In autonomous sessions, failed Smart allow checks deny rather than prompting.
 
 Built-in profiles:
 
@@ -443,6 +496,7 @@ This repository is a Bun monorepo.
 - `packages/synergy` — core runtime, server, agent system, CLI, tools, sessions, permissions, integrations
 - `packages/app` — main web application
 - `packages/plugin` — plugin SDK published as `@ericsanchezok/synergy-plugin` (see `packages/plugin/README.md` for plugin authoring)
+- `packages/plugin-kit` — standalone plugin development CLI published as `@ericsanchezok/synergy-plugin-kit`
 - `packages/sdk/js` — TypeScript SDK published as `@ericsanchezok/synergy-sdk`
 - `packages/ui` — shared UI components
 - `packages/util` — shared utilities and common helpers

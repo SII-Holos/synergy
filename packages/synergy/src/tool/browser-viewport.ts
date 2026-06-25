@@ -16,42 +16,45 @@ export const BrowserViewportTool = Tool.define("browser_viewport", {
   }),
   async execute(params, ctx) {
     const tab = await BrowserToolHelper.resolveTab(ctx, params.tabId)
-    const page = tab.page
-    if (!page) throw new Error("Browser page is not available")
+    const kind = params.action === "status" ? "reading" : "acting"
+    return BrowserToolHelper.withActivity(ctx, tab, kind, "browser_viewport", `Viewport ${params.action}`, async () => {
+      const page = tab.page
+      if (!page) throw new Error("Browser page is not available")
 
-    if (params.action === "status") {
-      const viewport = page.viewportSize?.() ?? null
-      return {
-        title: "Viewport status",
-        output: viewport ? `Viewport: ${viewport.width}x${viewport.height}` : "Viewport status unavailable",
-        metadata: { ...(viewport ?? {}), tabId: tab.id },
+      if (params.action === "status") {
+        const viewport = page.viewportSize?.() ?? null
+        return {
+          title: "Viewport status",
+          output: viewport ? `Viewport: ${viewport.width}x${viewport.height}` : "Viewport status unavailable",
+          metadata: { ...(viewport ?? {}), tabId: tab.id },
+        }
       }
-    }
 
-    if (params.action === "reset") {
-      const config = BrowserViewport.DEFAULT
+      if (params.action === "reset") {
+        const config = BrowserViewport.DEFAULT
+        await page.setViewportSize({ width: config.width, height: config.height })
+        return {
+          title: "Viewport reset",
+          output: `Viewport reset to ${config.width}x${config.height}`,
+          metadata: { width: config.width, height: config.height, tabId: tab.id },
+        }
+      }
+
+      const config = BrowserViewport.createViewportConfig(
+        params.width,
+        params.height,
+        params.deviceScaleFactor,
+        params.mobile,
+      )
+      const validation = BrowserViewport.validateViewport(config)
+      if (!validation.ok) throw new Error(validation.message ?? "Invalid viewport configuration")
+
       await page.setViewportSize({ width: config.width, height: config.height })
       return {
-        title: "Viewport reset",
-        output: `Viewport reset to ${config.width}x${config.height}`,
-        metadata: { width: config.width, height: config.height, tabId: tab.id },
+        title: "Viewport set",
+        output: `Viewport set to ${config.width}x${config.height}${config.mobile ? " (mobile)" : ""}`,
+        metadata: { ...config, tabId: tab.id },
       }
-    }
-
-    const config = BrowserViewport.createViewportConfig(
-      params.width,
-      params.height,
-      params.deviceScaleFactor,
-      params.mobile,
-    )
-    const validation = BrowserViewport.validateViewport(config)
-    if (!validation.ok) throw new Error(validation.message ?? "Invalid viewport configuration")
-
-    await page.setViewportSize({ width: config.width, height: config.height })
-    return {
-      title: "Viewport set",
-      output: `Viewport set to ${config.width}x${config.height}${config.mobile ? " (mobile)" : ""}`,
-      metadata: { ...config, tabId: tab.id },
-    }
+    })
   },
 })

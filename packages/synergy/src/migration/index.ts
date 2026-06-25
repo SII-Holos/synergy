@@ -8,21 +8,37 @@ import { Installation } from "../global/installation"
 import { setActiveMigrationContext } from "./context"
 // Side-effect imports: register domain migrations in MigrationRegistry
 import "../agenda/migration"
+import "../browser/migration"
 import "../config/migration"
-import "../engram/migration"
+import "../library/migration"
 import "../scope/migration"
 import "../session/migration"
 import "../note/migration"
 import "../blueprint/migration"
 import "../holos/migration"
-import type { Migration, RunOptions, MigrationContext } from "./types"
+import type { Migration, RunOptions, MigrationContext, MigrationSummary } from "./types"
 
-export type { Migration, RunOptions, RunResult, MigrationContext } from "./types"
+export type { Migration, RunOptions, RunResult, MigrationContext, MigrationSummary, MigrationReporter } from "./types"
 
 const log = Log.create({ service: "migration" })
 
-let runningMigrations: Promise<void> | undefined
+const LEGACY_LIBRARY_MIGRATION_IDS: Record<string, string> = {
+  "20260324-engram-experience-source-model": "20260324-library-experience-source-model",
+  "20260405-engram-memory-recall-mode": "20260405-library-memory-recall-mode",
+  "20260415-engram-purge-invalid-experiences": "20260415-library-purge-invalid-experiences",
+  "20260423-engram-purge-tool-hallucination-intents": "20260423-library-purge-tool-hallucination-intents",
+  "20260424-engram-q-updated-at-integer": "20260424-library-q-updated-at-integer",
+  "20260425-engram-purge-oversized-tool-log-intents": "20260425-library-purge-oversized-tool-log-intents",
+  "20260425b-engram-purge-assistant-reasoning-intents": "20260425b-library-purge-assistant-reasoning-intents",
+}
+
+const MODERN_LIBRARY_MIGRATION_IDS = new Map(
+  Object.entries(LEGACY_LIBRARY_MIGRATION_IDS).map(([legacy, modern]) => [modern, legacy]),
+)
+
+let runningMigrations: Promise<MigrationSummary> | undefined
 let migrationsCompleted = false
+let lastSummary: MigrationSummary | undefined
 
 function collectByDomain(options?: { targetDomain?: string }): Map<string, Migration[]> {
   const result = new Map<string, Migration[]>()
@@ -48,6 +64,11 @@ async function migrateOldTrackingData(): Promise<void> {
     for (const m of migrations) {
       if (m.id in oldData) {
         domainData[m.id] = oldData[m.id]
+        continue
+      }
+      const legacyId = MODERN_LIBRARY_MIGRATION_IDS.get(m.id)
+      if (legacyId && legacyId in oldData) {
+        domainData[m.id] = oldData[legacyId]
       }
     }
     if (Object.keys(domainData).length > 0) {
@@ -61,26 +82,58 @@ async function migrateOldTrackingData(): Promise<void> {
   log.info("removed old migration log")
 }
 
-export async function ensureMigrations(): Promise<void> {
-  if (migrationsCompleted) return
-  runningMigrations ??= runMigrations().finally(() => {
+async function migrateLegacyLibraryTrackingData(): Promise<void> {
+  const oldKey = StoragePath.metaMigrationLogDomain("engram")
+  const oldData = await Storage.read<Record<string, number>>(oldKey).catch(() => null)
+  if (!oldData) return
+
+  const libraryKey = StoragePath.metaMigrationLogDomain("library")
+  const libraryData: Record<string, number> = await Storage.read<Record<string, number>>(libraryKey).catch(() => ({}))
+  let changed = false
+
+  for (const [id, timestamp] of Object.entries(oldData)) {
+    const modernId = LEGACY_LIBRARY_MIGRATION_IDS[id] ?? id.replace("-engram-", "-library-")
+    if (libraryData[modernId] !== undefined) continue
+    libraryData[modernId] = timestamp
+    changed = true
+  }
+
+  if (changed) {
+    await Storage.write(libraryKey, libraryData)
+    log.info("migrated legacy engram migration tracking to library", { count: Object.keys(oldData).length })
+  }
+  await Storage.remove(oldKey)
+}
+
+export async function ensureMigrations(options?: RunOptions): Promise<MigrationSummary> {
+  if (migrationsCompleted) {
+    const summary = lastSummary ?? emptySummary()
+    options?.reporter?.summary(summary)
+    return summary
+  }
+  runningMigrations ??= runMigrations({ ...options, output: options?.output ?? "silent" }).finally(() => {
     runningMigrations = undefined
     migrationsCompleted = true
   })
-  return runningMigrations
+  const summary = await runningMigrations
+  lastSummary = summary
+  return summary
 }
 
 export function resetMigrations(): void {
   migrationsCompleted = false
   runningMigrations = undefined
+  lastSummary = undefined
 }
 
-export async function runMigrations(options?: RunOptions): Promise<void> {
+export async function runMigrations(options?: RunOptions): Promise<MigrationSummary> {
   await migrateOldTrackingData()
+  await migrateLegacyLibraryTrackingData()
 
   const dryRun = options?.dryRun ?? false
+  const output = options?.output ?? "interactive"
   const domains = collectByDomain({ targetDomain: options?.targetDomain })
-  if (domains.size === 0) return
+  if (domains.size === 0) return emptySummary()
 
   // Set up context for migrations that want it (arity-based detection)
   const ctx: MigrationContext = {
@@ -90,7 +143,7 @@ export async function runMigrations(options?: RunOptions): Promise<void> {
   }
   setActiveMigrationContext(ctx)
   try {
-    await runMigrationsInternal(domains, { dryRun, ctx })
+    return await runMigrationsInternal(domains, { dryRun, ctx, output, reporter: options?.reporter })
   } finally {
     setActiveMigrationContext(undefined)
   }
@@ -98,15 +151,24 @@ export async function runMigrations(options?: RunOptions): Promise<void> {
 
 async function runMigrationsInternal(
   domains: Map<string, Migration[]>,
-  options: { dryRun: boolean; ctx: MigrationContext },
-): Promise<void> {
-  const { dryRun, ctx } = options
+  options: {
+    dryRun: boolean
+    ctx: MigrationContext
+    output: NonNullable<RunOptions["output"]>
+    reporter?: RunOptions["reporter"]
+  },
+): Promise<MigrationSummary> {
+  const { dryRun, ctx, output, reporter } = options
 
   const domainNames = [...domains.keys()].sort()
-  disableWrap()
-  stageWrite("\n")
+  if (output === "interactive") {
+    disableWrap()
+    stageWrite("\n")
+  }
 
   const upToDateDomains: string[] = []
+  const summary = emptySummary()
+  summary.totalDomains = domainNames.length
 
   try {
     for (const domain of domainNames) {
@@ -116,12 +178,16 @@ async function runMigrationsInternal(
 
       if (pending.length === 0) {
         upToDateDomains.push(domain)
+        summary.upToDateDomains++
         continue
       }
 
       for (const migration of pending) {
         if (dryRun) {
-          stageWrite(`  [DRY-RUN] [${domain}] ${migration.description}\n`)
+          summary.dryRun++
+          if (output === "interactive") {
+            stageWrite(`  [DRY-RUN] [${domain}] ${migration.description}\n`)
+          }
           continue
         }
 
@@ -136,10 +202,13 @@ async function runMigrationsInternal(
             const now = Date.now()
             if (now - lastProgressTime < PROGRESS_INTERVAL && current < total) return
             lastProgressTime = now
-            stageWrite(
-              `  ${progressBar(current / total)} [${domain}] ${migration.description} (${current}/${total})`,
-              true,
-            )
+            reporter?.progress?.({ domain, migration, current, total, dryRun })
+            if (output === "interactive") {
+              stageWrite(
+                `  ${progressBar(current / total)} [${domain}] ${migration.description} (${current}/${total})`,
+                true,
+              )
+            }
           }
 
           if (upFn.length === 1) {
@@ -150,13 +219,19 @@ async function runMigrationsInternal(
             await (upFn as any)(ctx, progressCb)
           }
 
-          if (!started) stageWrite(`  ${progressBar(0)} [${domain}] ${migration.description}`, true)
-          stageWrite(`  ${progressBar(1)} [${domain}] ${migration.description} ✓\n`, true)
+          if (output === "interactive") {
+            if (!started) stageWrite(`  ${progressBar(0)} [${domain}] ${migration.description}`, true)
+            stageWrite(`  ${progressBar(1)} [${domain}] ${migration.description} ✓\n`, true)
+          }
           logData[migration.id] = Date.now()
           await saveLogForDomain(domain, logData)
+          summary.completed++
           log.info("completed", { id: migration.id, domain })
         } catch (err) {
-          stageWrite(`  ${progressBar(0)} [${domain}] ${migration.description} ✗\n`, true)
+          summary.failed++
+          if (output === "interactive") {
+            stageWrite(`  ${progressBar(0)} [${domain}] ${migration.description} ✗\n`, true)
+          }
           log.error("failed", { id: migration.id, domain, error: err instanceof Error ? err : new Error(String(err)) })
           throw err
         }
@@ -164,13 +239,25 @@ async function runMigrationsInternal(
     }
 
     // Summary: print "up to date" status once for all domains, not per domain
-    if (upToDateDomains.length > 0) {
+    if (output !== "silent" && upToDateDomains.length > 0) {
       stageWrite(
         `  ${progressBar(1)} ${upToDateDomains.length} domain${upToDateDomains.length === 1 ? "" : "s"} up to date\n`,
       )
     }
+    reporter?.summary(summary)
+    return summary
   } finally {
-    enableWrap()
+    if (output === "interactive") enableWrap()
+  }
+}
+
+function emptySummary(): MigrationSummary {
+  return {
+    totalDomains: 0,
+    upToDateDomains: 0,
+    completed: 0,
+    dryRun: 0,
+    failed: 0,
   }
 }
 

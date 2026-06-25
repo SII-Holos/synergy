@@ -9,7 +9,9 @@ const PKG_JSON = path.join(import.meta.dirname ?? __dirname, "../../package.json
 
 // ── CDP staleness enforcement ───────────────────────────────────
 // After Playwright migration, the hand-rolled CDP layer must be
-// removed and no source file may reference stale CDP primitives.
+// removed. A tiny CDPSession adapter may remain for features that
+// Playwright intentionally exposes through CDP, such as screencast
+// fallback and IME-safe text insertion.
 
 const CDP_FILE = path.join(BROWSER_SRC, "cdp.ts")
 
@@ -24,9 +26,14 @@ const BANNED_TOKENS = [
   "CDPCommand",
 ] as const
 
-describe("playwright cleanup: cdp.ts removal", () => {
-  test("cdp.ts does not exist in src/browser/", () => {
-    expect(existsSync(CDP_FILE)).toBe(false)
+describe("playwright cleanup: cdp.ts compatibility adapter", () => {
+  test("cdp.ts exists only as a Playwright CDPSession adapter", () => {
+    expect(existsSync(CDP_FILE)).toBe(true)
+    const content = readFileSync(CDP_FILE, "utf-8")
+    expect(content).toContain("CDPSession")
+    expect(content).not.toContain("CdpClient")
+    expect(content).not.toContain("Target.createTarget")
+    expect(content).not.toContain("Target.attachToTarget")
   })
 })
 

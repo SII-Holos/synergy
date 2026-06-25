@@ -4,7 +4,7 @@ import { Tool } from "./tool"
 import { runSg } from "./ast-grep/cli"
 import { AST_GREP_LANGUAGES } from "./ast-grep/types"
 import { conflictWarning, detectConflicts } from "../conflict/detect"
-import { Instance } from "../scope/instance"
+import { ScopeContext } from "../scope/context"
 import {
   displayPath,
   formatRecordedBlock,
@@ -101,7 +101,7 @@ export const ParseCodeTool = Tool.define("parse_code", {
       paths: params.paths,
       globs: params.globs,
       context: params.context,
-      cwd: Instance.directory,
+      cwd: ScopeContext.current.directory,
     })
     const limit = normalizeLimit(params.limit)
     const skip = Math.max(params.skip ?? 0, 0)

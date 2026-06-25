@@ -194,7 +194,7 @@ The more explicit your prompt, the better the results.
       return undefined
     }
 
-    const userConfig = await Config.get()
+    const userConfig = await Config.current()
     const userCategories = userConfig.category ?? {}
 
     if (userCategories[name]) {
@@ -220,7 +220,7 @@ The more explicit your prompt, the better the results.
   }
 
   export async function list(): Promise<string[]> {
-    const userConfig = await Config.get()
+    const userConfig = await Config.current()
     const userCategories = Object.keys(userConfig.category ?? {})
     const builtinCategories = Object.keys(BUILTIN)
     return [...new Set([...builtinCategories, ...userCategories])]

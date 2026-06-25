@@ -99,6 +99,9 @@ export function computeStatusFromPart(part: PartType | undefined): string | unde
       case "note_search":
       case "note_write":
         return "Working with notes"
+      case "blueprint_loop_finish":
+      case "blueprint_loop_restart":
+        return "Working with Blueprint"
       case "session_list":
       case "session_read":
       case "session_search":

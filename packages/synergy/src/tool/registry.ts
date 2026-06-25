@@ -24,11 +24,6 @@ import { NoteReadTool } from "./note-read"
 import { NoteSearchTool } from "./note-search"
 import { NoteWriteTool } from "./note-write"
 import { NoteEditTool } from "./note-edit"
-import { BlueprintListTool } from "./blueprint-list"
-import { BlueprintReadTool } from "./blueprint-read"
-import { BlueprintCreateTool } from "./blueprint-create"
-import { BlueprintWriteTool } from "./blueprint-write"
-import { BlueprintDuplicateTool } from "./blueprint-duplicate"
 import { BlueprintLoopFinishTool } from "./blueprint-loop-finish"
 import { BlueprintLoopRestartTool } from "./blueprint-loop-restart"
 import { SessionListTool } from "./session-list"
@@ -60,12 +55,15 @@ import { ScanDocumentTool } from "./scan-document"
 import { AstGrepTool } from "./ast-grep"
 import type { Agent } from "../agent/agent"
 import { Tool } from "./tool"
-import { Instance } from "../scope/instance"
+import { ScopeContext } from "../scope/context"
+import { ScopedState } from "../scope/scoped-state"
 import { Config } from "../config/config"
 import path from "path"
 import { type ToolDefinition } from "@ericsanchezok/synergy-plugin"
 import z from "zod"
 import { Plugin } from "../plugin"
+import { PluginToolId } from "../plugin/ids.js"
+import { getRuntime, invokeRuntimeTool } from "../plugin-runtime/supervisor"
 import { WebSearchTool } from "./websearch"
 import { ArxivSearchTool, ArxivDownloadTool } from "./arxiv"
 import { Flag } from "@/flag/flag"
@@ -109,7 +107,7 @@ import { BrowserAssetsTool } from "./browser-assets"
 export namespace ToolRegistry {
   const log = Log.create({ service: "tool.registry" })
 
-  export const state = Instance.state(async () => {
+  export const state = ScopedState.create(async () => {
     const custom = [] as Tool.Info[]
     const glob = new Bun.Glob("tool/*.{js,ts}")
 
@@ -123,15 +121,21 @@ export namespace ToolRegistry {
         const namespace = path.basename(match, path.extname(match))
         const mod = await import(match)
         for (const [id, def] of Object.entries<ToolDefinition>(mod)) {
-          custom.push(fromPlugin(id === "default" ? namespace : `${namespace}_${id}`, def))
+          custom.push(fromPlugin(`local__${namespace}__${id}`, def))
         }
       }
     }
 
-    const plugins = await Plugin.hooks()
+    const plugins = await Plugin.perPluginHooks()
     for (const plugin of plugins) {
       for (const [id, def] of Object.entries(plugin.hooks.tool ?? {})) {
-        custom.push(fromPlugin(id, def, plugin.id))
+        const runtime = getRuntime(plugin.id)
+        const runtimeMode = plugin.runtimeMode ?? runtime?.mode ?? "in-process"
+        if (runtimeMode !== "in-process") {
+          custom.push(fromRuntimePlugin(id, def, plugin.id))
+        } else {
+          custom.push(fromPlugin(id, def, plugin.id))
+        }
       }
     }
 
@@ -145,7 +149,7 @@ export namespace ToolRegistry {
   }
 
   function fromPlugin(id: string, def: ToolDefinition, pluginId?: string): Tool.Info {
-    const fullId = pluginId ? `plugin__${pluginId}__${id}` : id
+    const fullId = pluginId ? PluginToolId.format(pluginId, id) : id
     return {
       id: fullId,
       init: async (initCtx) => ({
@@ -157,39 +161,63 @@ export namespace ToolRegistry {
             messageID: ctx.messageID,
             agent: ctx.agent,
             abort: ctx.abort,
-            directory: Instance.directory,
+            directory: ScopeContext.current.directory,
             ask: (input: { permission: string; patterns: string[]; metadata?: Record<string, any> }) =>
               ctx.ask({ ...input, metadata: input.metadata ?? {} }),
           }
           const raw = await def.execute(args as any, pluginCtx)
-          if (typeof raw === "object" && raw !== null && "output" in raw) {
-            const structured = raw as {
-              title?: string
-              output: string
-              metadata?: Record<string, any>
-              attachments?: any
-            }
-            const out = await Truncate.output(structured.output, {}, initCtx?.agent)
-            return {
-              title: structured.title ?? "",
-              output: out.truncated ? out.content : structured.output,
-              metadata: {
-                ...structured.metadata,
-                truncated: out.truncated,
-                outputPath: out.truncated ? out.outputPath : undefined,
-              },
-              attachments: structured.attachments,
-            }
-          }
-          const text = raw as string
-          const out = await Truncate.output(text, {}, initCtx?.agent)
-          return {
-            title: "",
-            output: out.truncated ? out.content : text,
-            metadata: { truncated: out.truncated, outputPath: out.truncated ? out.outputPath : undefined },
-          }
+          return normalizePluginResult(raw, initCtx?.agent)
         },
       }),
+    }
+  }
+
+  function fromRuntimePlugin(id: string, def: ToolDefinition, pluginId: string): Tool.Info {
+    const fullId = PluginToolId.format(pluginId, id)
+    return {
+      id: fullId,
+      init: async (initCtx) => ({
+        parameters: z.object(def.args),
+        description: def.description,
+        execute: async (args, ctx) => {
+          const raw = await invokeRuntimeTool(pluginId, id, args, {
+            sessionID: ctx.sessionID,
+            messageID: ctx.messageID,
+            agent: ctx.agent,
+            directory: ScopeContext.current.directory,
+          })
+          return normalizePluginResult(raw, initCtx?.agent)
+        },
+      }),
+    }
+  }
+
+  async function normalizePluginResult(raw: unknown, agent?: Agent.Info) {
+    if (typeof raw === "object" && raw !== null && "output" in raw) {
+      const structured = raw as {
+        title?: string
+        output: string
+        metadata?: Record<string, any>
+        attachments?: any
+      }
+      const out = await Truncate.output(structured.output, {}, agent)
+      return {
+        title: structured.title ?? "",
+        output: out.truncated ? out.content : structured.output,
+        metadata: {
+          ...structured.metadata,
+          truncated: out.truncated,
+          outputPath: out.truncated ? out.outputPath : undefined,
+        },
+        attachments: structured.attachments,
+      }
+    }
+    const text = raw as string
+    const out = await Truncate.output(text, {}, agent)
+    return {
+      title: "",
+      output: out.truncated ? out.content : text,
+      metadata: { truncated: out.truncated, outputPath: out.truncated ? out.outputPath : undefined },
     }
   }
 
@@ -205,7 +233,7 @@ export namespace ToolRegistry {
 
   async function all(): Promise<Tool.Info[]> {
     const custom = await state().then((x) => x.custom)
-    const config = await Config.get()
+    const config = await Config.current()
 
     return [
       InvalidTool,
@@ -249,11 +277,6 @@ export namespace ToolRegistry {
       NoteSearchTool,
       NoteWriteTool,
       NoteEditTool,
-      BlueprintListTool,
-      BlueprintReadTool,
-      BlueprintCreateTool,
-      BlueprintWriteTool,
-      BlueprintDuplicateTool,
       BlueprintLoopFinishTool,
       BlueprintLoopRestartTool,
       SessionListTool,

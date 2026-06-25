@@ -108,7 +108,7 @@ A common pattern is a read-only agent:
 }
 ```
 
-See `references/identity-permissions.txt` for the full permission schema, including path-scoped rules.
+See `references/library-permissions.txt` for the full permission schema, including path-scoped rules.
 
 ## Complete example — code review agent
 

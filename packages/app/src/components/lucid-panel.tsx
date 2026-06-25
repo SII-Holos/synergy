@@ -1,7 +1,7 @@
 import { createSignal, Show } from "solid-js"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { Panel } from "@/components/panel"
-import { ViewTab } from "@/components/engram/shared"
+import { ViewTab } from "@/components/library/shared"
 
 type LucidView = "lucid" | "files"
 

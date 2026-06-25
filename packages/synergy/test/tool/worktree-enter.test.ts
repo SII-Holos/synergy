@@ -1,7 +1,7 @@
 import { describe, expect, test, mock, afterEach } from "bun:test"
 import { WorktreeEnterTool } from "../../src/tool/worktree-enter"
 import { Worktree } from "../../src/project/worktree"
-import { Instance } from "../../src/scope/instance"
+import { ScopeContext } from "../../src/scope/context"
 import { PermissionNext } from "../../src/permission/next"
 import { EnforcementError } from "../../src/enforcement/errors"
 import { tmpdir } from "../fixture/fixture"
@@ -128,7 +128,7 @@ describe("tool.worktree_enter", () => {
   describe("already in a worktree", () => {
     test("noop when target matches current worktree by name", async () => {
       await using tmp = await tmpdir({ git: true })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         workspace: {
           type: "git_worktree",
@@ -155,7 +155,7 @@ describe("tool.worktree_enter", () => {
 
     test("noop when target matches current worktree by ID", async () => {
       await using tmp = await tmpdir({ git: true })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         workspace: {
           type: "git_worktree",
@@ -177,7 +177,7 @@ describe("tool.worktree_enter", () => {
 
     test("noop when target matches current worktree by path", async () => {
       await using tmp = await tmpdir({ git: true })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         workspace: {
           type: "git_worktree",
@@ -199,7 +199,7 @@ describe("tool.worktree_enter", () => {
 
     test("noop when target matches current worktree by branch", async () => {
       await using tmp = await tmpdir({ git: true })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         workspace: {
           type: "git_worktree",
@@ -238,7 +238,7 @@ describe("tool.worktree_enter", () => {
       ;(Worktree as any).enter = enterSpy
       ;(Worktree as any).status = statusSpy
 
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         workspace: {
           type: "git_worktree",
@@ -277,7 +277,7 @@ describe("tool.worktree_enter", () => {
       ;(Worktree as any).create = createSpy
       ;(Worktree as any).status = statusSpy
 
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         workspace: {
           type: "git_worktree",
@@ -308,7 +308,7 @@ describe("tool.worktree_enter", () => {
       ;(Worktree as any).leave = leaveSpy
       ;(Worktree as any).status = statusSpy
 
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         workspace: {
           type: "git_worktree",
@@ -348,7 +348,7 @@ describe("tool.worktree_enter", () => {
       ;(Worktree as any).enter = enterSpy
       ;(Worktree as any).status = statusSpy
 
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         workspace: {
           type: "git_worktree",
@@ -388,7 +388,7 @@ describe("tool.worktree_enter", () => {
       ;(Worktree as any).enter = enterSpy
       ;(Worktree as any).status = statusSpy
 
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         workspace: {
           type: "git_worktree",
@@ -414,7 +414,7 @@ describe("tool.worktree_enter", () => {
   describe("permission denied", () => {
     test("returns denial metadata on RejectedError", async () => {
       await using tmp = await tmpdir({ git: true })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const initialized = await WorktreeEnterTool.init()
@@ -435,7 +435,7 @@ describe("tool.worktree_enter", () => {
 
     test("returns denial with feedback message on CorrectedError", async () => {
       await using tmp = await tmpdir({ git: true })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const initialized = await WorktreeEnterTool.init()
@@ -456,7 +456,7 @@ describe("tool.worktree_enter", () => {
 
     test("returns denial on DeniedError", async () => {
       await using tmp = await tmpdir({ git: true })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const initialized = await WorktreeEnterTool.init()
@@ -477,7 +477,7 @@ describe("tool.worktree_enter", () => {
 
     test("returns denial on EnforcementError.PolicyDenied", async () => {
       await using tmp = await tmpdir({ git: true })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const initialized = await WorktreeEnterTool.init()
@@ -498,7 +498,7 @@ describe("tool.worktree_enter", () => {
 
     test("rethrows non-permission errors", async () => {
       await using tmp = await tmpdir({ git: true })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const initialized = await WorktreeEnterTool.init()
@@ -518,7 +518,7 @@ describe("tool.worktree_enter", () => {
   describe("enter existing worktree", () => {
     test("enters by name match", async () => {
       await using tmp = await tmpdir({ git: true })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const mockWt = {
@@ -547,7 +547,7 @@ describe("tool.worktree_enter", () => {
 
     test("enters by ID match", async () => {
       await using tmp = await tmpdir({ git: true })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const mockWt = {
@@ -572,7 +572,7 @@ describe("tool.worktree_enter", () => {
 
     test("enters by branch match", async () => {
       await using tmp = await tmpdir({ git: true })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const mockWt = {
@@ -596,7 +596,7 @@ describe("tool.worktree_enter", () => {
 
     test("enters by path match", async () => {
       await using tmp = await tmpdir({ git: true })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const mockWt = {
@@ -625,7 +625,7 @@ describe("tool.worktree_enter", () => {
   describe("create new worktree", () => {
     test("creates new worktree when target does not match any existing", async () => {
       await using tmp = await tmpdir({ git: true })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const createdWt = {
@@ -653,7 +653,7 @@ describe("tool.worktree_enter", () => {
 
     test("creates with auto-generated name when no target", async () => {
       await using tmp = await tmpdir({ git: true })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const createdWt = {
@@ -678,7 +678,7 @@ describe("tool.worktree_enter", () => {
 
     test("passes baseRef to Worktree.create", async () => {
       await using tmp = await tmpdir({ git: true })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const createdWt = {
@@ -708,7 +708,7 @@ describe("tool.worktree_enter", () => {
   describe("not git error", () => {
     test("returns denial when list throws NotGitError during match phase", async () => {
       await using tmp = await tmpdir({ git: true })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           ;(Worktree as any).list = mock(async () => {
@@ -728,7 +728,7 @@ describe("tool.worktree_enter", () => {
 
     test("returns denial when create throws NotGitError", async () => {
       await using tmp = await tmpdir({ git: true })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           ;(Worktree as any).list = mock(async () => []) // no match, falls through to create
@@ -751,7 +751,7 @@ describe("tool.worktree_enter", () => {
   describe("setup failure", () => {
     test("returns denial on NameGenerationFailedError", async () => {
       await using tmp = await tmpdir({ git: true })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           ;(Worktree as any).list = mock(async () => [])
@@ -772,7 +772,7 @@ describe("tool.worktree_enter", () => {
 
     test("returns denial on CreateFailedError", async () => {
       await using tmp = await tmpdir({ git: true })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           ;(Worktree as any).list = mock(async () => [])
@@ -793,7 +793,7 @@ describe("tool.worktree_enter", () => {
 
     test("returns denial on SetupConfigError", async () => {
       await using tmp = await tmpdir({ git: true })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           ;(Worktree as any).list = mock(async () => [])
@@ -813,7 +813,7 @@ describe("tool.worktree_enter", () => {
 
     test("returns denial on StartCommandFailedError", async () => {
       await using tmp = await tmpdir({ git: true })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           ;(Worktree as any).list = mock(async () => [])
@@ -834,7 +834,7 @@ describe("tool.worktree_enter", () => {
 
     test("rethrows unknown errors during create", async () => {
       await using tmp = await tmpdir({ git: true })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           ;(Worktree as any).list = mock(async () => [])

@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import path from "path"
 import { tmpdir } from "../fixture/fixture"
-import { Instance } from "../../src/scope/instance"
+import { ScopeContext } from "../../src/scope/context"
 import { Session } from "../../src/session"
 import { SessionManager } from "../../src/session/manager"
 import { Identifier } from "../../src/id/id"
@@ -41,7 +41,7 @@ async function addTerminalAssistantMessage(sessionID: string, parentID: string) 
 describe("session migrations", () => {
   test("repairs stale pendingReply flags without clearing genuinely pending sessions", async () => {
     await using tmp = await tmpdir({ git: true })
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const completed = await Session.create({})

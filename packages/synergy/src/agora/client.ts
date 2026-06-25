@@ -29,7 +29,7 @@
 //   }
 
 //   export async function getConfig(): Promise<AgoraConfig> {
-//     const config = await Config.get()
+//     const config = await Config.current()
 //     const agora = config.agora
 
 //     const url = Flag.SYNERGY_AGORA_URL ?? agora?.url ?? DEFAULT_AGORA_URL

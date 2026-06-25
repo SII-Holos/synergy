@@ -1,12 +1,12 @@
 import { Config } from "../config/config"
 import z from "zod"
 import { Provider } from "../provider/provider"
-import { generateObject, type ModelMessage } from "ai"
-import { SystemPrompt } from "../session/system"
-import { Instance } from "../scope/instance"
+import { Identifier } from "../id/id"
+import { LLM } from "../session/llm"
+import type { MessageV2 } from "../session/message-v2"
+import { ScopedState } from "../scope/scoped-state"
 import { Truncate } from "../tool/truncation"
 
-import PROMPT_GENERATE from "./generate.txt"
 import { createBuiltinInternalAgents } from "./builtin-internal"
 import { createBuiltinLegacySubagents } from "./builtin-legacy-subagents"
 import { createBuiltinPrimaryAgents } from "./builtin-primary"
@@ -54,10 +54,10 @@ export namespace Agent {
     })
   export type Info = z.infer<typeof Info>
 
-  const state = Instance.state(async () => {
-    const cfg = await Config.get()
+  const state = ScopedState.create(async () => {
+    const cfg = await Config.current()
     const evolutionActive =
-      ((cfg as any).engram?.memory?.enabled ?? true) && (cfg as any).engram?.experience?.encode !== false
+      ((cfg as any).library?.memory?.enabled ?? true) && (cfg as any).library?.experience?.encode !== false
     const role = (r: Provider.ModelRole) => Provider.resolveRoleModelSync(cfg, r)
 
     const defaults = PermissionNext.fromConfig({
@@ -277,7 +277,7 @@ export namespace Agent {
   }
 
   export async function list() {
-    const cfg = await Config.get()
+    const cfg = await Config.current()
     return pipe(
       await state(),
       values(),
@@ -290,40 +290,47 @@ export namespace Agent {
   }
 
   export async function generate(input: { description: string; model?: { providerID: string; modelID: string } }) {
-    const cfg = await Config.get()
-    const defaultModel = input.model ?? (await Provider.defaultModel())
-    const model = await Provider.getModel(defaultModel.providerID, defaultModel.modelID)
-    const language = await Provider.getLanguage(model)
-    const system: string[] = []
-    system.push(PROMPT_GENERATE)
+    const agent = await get("agent-generator")
+    if (!agent) throw new Error("agent-generator agent is unavailable")
+
+    const agentModel = input.model ?? (await getAvailableModel(agent)) ?? (await Provider.defaultModel())
+    const model = await Provider.getModel(agentModel.providerID, agentModel.modelID)
+    const sessionID = Identifier.ascending("session")
+    const user: MessageV2.User = {
+      id: Identifier.ascending("message"),
+      sessionID,
+      role: "user",
+      time: { created: Date.now() },
+      agent: agent.name,
+      model: { providerID: model.providerID, modelID: model.id },
+    }
     const existing = await list()
-    const result = await generateObject({
-      experimental_telemetry: {
-        isEnabled: cfg.experimental?.openTelemetry,
-        metadata: {
-          userId: cfg.username ?? "unknown",
-        },
-      },
-      temperature: 0.3,
+    const result = await LLM.stream({
+      agent,
+      user,
+      tools: {},
+      model,
+      small: true,
       messages: [
-        ...system.map(
-          (item): ModelMessage => ({
-            role: "system",
-            content: item,
-          }),
-        ),
         {
           role: "user",
           content: `Create an agent configuration based on this request: \"${input.description}\".\n\nIMPORTANT: The following identifiers already exist and must NOT be used: ${existing.map((i) => i.name).join(", ")}\n  Return ONLY the JSON object, no other text, do not wrap in backticks`,
         },
       ],
-      model: language,
-      schema: z.object({
+      abort: AbortSignal.timeout(30_000),
+      sessionID,
+      system: [],
+      retries: 1,
+    })
+    const text = (await result.text.catch(() => "")) ?? ""
+    const match = text.match(/\{[\s\S]*\}/)
+    if (!match) throw new Error("agent generator did not return JSON")
+    return z
+      .object({
         identifier: z.string(),
         whenToUse: z.string(),
         systemPrompt: z.string(),
-      }),
-    })
-    return result.object
+      })
+      .parse(JSON.parse(match[0]))
   }
 }

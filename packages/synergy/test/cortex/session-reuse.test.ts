@@ -1,7 +1,7 @@
 import { describe, expect, test, beforeEach, afterEach } from "bun:test"
 import { Cortex } from "../../src/cortex"
 import { CortexTypes } from "../../src/cortex/types"
-import { Instance } from "../../src/scope/instance"
+import { ScopeContext } from "../../src/scope/context"
 import { Session } from "../../src/session"
 import { SessionManager } from "../../src/session/manager"
 import { BusyError } from "../../src/session/error"
@@ -20,7 +20,7 @@ describe("Cortex session reuse", () => {
   describe("launch with sessionID", () => {
     test("reuses existing session when it is idle", async () => {
       await using tmp = await tmpdir({ git: true })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const parentSession = await Session.create({})
@@ -47,7 +47,7 @@ describe("Cortex session reuse", () => {
 
     test("rejects reuse when session is busy", async () => {
       await using tmp = await tmpdir({ git: true })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const parentSession = await Session.create({})
@@ -80,7 +80,7 @@ describe("Cortex session reuse", () => {
 
     test("rejects reuse when session parentID does not match launch parentSessionID", async () => {
       await using tmp = await tmpdir({ git: true })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const parentSessionA = await Session.create({})
@@ -104,7 +104,7 @@ describe("Cortex session reuse", () => {
 
     test("rejects reuse when session does not exist", async () => {
       await using tmp = await tmpdir({ git: true })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const parentSession = await Session.create({})
@@ -127,7 +127,7 @@ describe("Cortex session reuse", () => {
   describe("launch without sessionID (regression)", () => {
     test("still creates new session by default", async () => {
       await using tmp = await tmpdir({ git: true })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const parentSession = await Session.create({})

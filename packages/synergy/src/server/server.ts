@@ -3,7 +3,7 @@ import { Bus } from "@/bus"
 import { GlobalBus } from "@/bus/global"
 import { Log } from "../util/log"
 import { describeRoute, generateSpecs, validator, resolver, openAPIRouteHandler } from "hono-openapi"
-import { Hono, type Context, type Next } from "hono"
+import { Hono, type Context, type MiddlewareHandler, type Next } from "hono"
 import { cors } from "hono/cors"
 import { streamSSE } from "hono/streaming"
 import * as fs from "fs"
@@ -12,10 +12,10 @@ import z from "zod"
 import { Provider } from "../provider/provider"
 import { NamedError } from "@ericsanchezok/synergy-util/error"
 import { Config } from "../config/config"
-import { ConfigSet } from "../config/set"
 import { LSP } from "../lsp"
 import { Format } from "../file/format"
-import { Instance } from "../scope/instance"
+import { ScopeContext } from "../scope/context"
+import { ScopeRuntime } from "../scope/runtime"
 import { Scope } from "@/scope"
 import { Vcs } from "../project/vcs"
 import { Agent } from "../agent/agent"
@@ -27,8 +27,6 @@ import { GitRoute } from "./git"
 import { ToolRegistry } from "../tool/registry"
 import { zodToJsonSchema } from "zod-to-json-schema"
 import { lazy } from "../util/lazy"
-import { InstanceBootstrap } from "../project/bootstrap"
-import { Flag } from "../flag/flag"
 import { MCP } from "../mcp"
 import { Storage } from "../storage/storage"
 import type { ContentfulStatusCode } from "hono/utils/http-status"
@@ -47,15 +45,18 @@ import { McpRoute } from "./mcp-route"
 import { PermissionRoute } from "./permission"
 import { FindRoute } from "./find"
 import { FileRoute } from "./file"
+import { File as SynergyFile } from "../file"
 import { ConfigRoute } from "./config-route"
 import { ChannelRoute } from "./channel"
-import { EngramRoute } from "./engram"
+import { LibraryRoute } from "./library"
 import { AgendaRoute } from "./agenda"
 import { NoteRoute } from "./note"
 import { AssetRoute } from "./asset"
-import { PluginRoute } from "./plugin-routes"
+import { PluginRoute, ApiPluginRoute } from "./plugin-routes"
+import { PluginRuntimeRoute } from "./plugin-runtime-routes"
+import { RegistryRoute } from "./plugin-registry-routes"
 import { StatsRoute } from "./stats"
-import { Agenda, AgendaBootstrap, AgendaStore, AgendaTypes, AgendaWebhook } from "../agenda"
+import { AgendaStore, AgendaTypes, AgendaWebhook } from "../agenda"
 import { SkillRoute } from "./skill-route"
 import { HolosRoute, HolosDataRoute } from "./holos"
 import { RuntimeRoute } from "./runtime-route"
@@ -67,6 +68,8 @@ import { SandboxReadinessRoute } from "./sandbox-readiness-route"
 import { BrowserRoute } from "./browser-route"
 import { BlueprintRoute } from "./blueprint"
 import { RuntimeReload } from "../runtime/reload"
+import { ObservabilityRoute } from "./observability-route"
+import { Observability } from "@/observability"
 
 // @ts-ignore This global is needed to prevent ai-sdk from logging warnings to stdout https://github.com/vercel/ai/blob/2dc67e0ef538307f21368db32d5a12345d98831b/packages/ai/src/logger/log-warnings.ts#L85
 globalThis.AI_SDK_LOG_WARNINGS = false
@@ -96,6 +99,7 @@ export namespace Server {
     "img-src 'self' data: https: blob:; " +
     "font-src 'self'; " +
     "connect-src 'self' ws: wss:; " +
+    "frame-src 'self'; " +
     "media-src 'none'; " +
     "object-src 'none'; " +
     "base-uri 'self'; " +
@@ -109,6 +113,18 @@ export namespace Server {
     const sources = [CSP_THEME_SCRIPT_HASH]
     if (nonce) sources.push(`'nonce-${nonce}'`)
     return CSP_BASELINE.replace("script-src 'self'", `script-src 'self' ${sources.join(" ")}`)
+  }
+
+  export function cspMiddleware(): MiddlewareHandler {
+    return async (c, next) => {
+      await next()
+      if (!c.res.headers.get("Content-Security-Policy")) {
+        c.res.headers.set("Content-Security-Policy", CSP_BASELINE)
+      }
+      if (!c.res.headers.get("X-Frame-Options")) {
+        c.res.headers.set("X-Frame-Options", "DENY")
+      }
+    }
   }
 
   let _url: URL | undefined
@@ -135,31 +151,123 @@ export namespace Server {
 
   function isGlobalRoute(pathname: string) {
     return (
+      pathname === "/" ||
+      pathname === "/doc" ||
+      pathname === "/log" ||
+      pathname.startsWith("/assets/") ||
       pathname === "/global" ||
       pathname.startsWith("/global/") ||
+      pathname === "/asset" ||
+      pathname.startsWith("/asset/") ||
+      pathname === "/scope" ||
+      pathname === "/scope/index" ||
       pathname === "/holos" ||
       pathname.startsWith("/holos/") ||
       pathname === "/channel" ||
-      pathname.startsWith("/channel/")
+      pathname.startsWith("/channel/") ||
+      pathname === "/plugin" ||
+      pathname.startsWith("/plugin/") ||
+      pathname === "/api/plugins" ||
+      pathname.startsWith("/api/plugins/") ||
+      pathname === "/api/registry" ||
+      pathname.startsWith("/api/registry/") ||
+      pathname === "/auth" ||
+      pathname.startsWith("/auth/")
     )
   }
 
-  async function resolveScopedRequestScope(c: Context): Promise<Scope> {
-    let directory = c.req.query("directory") || c.req.header("x-synergy-directory") || Flag.SYNERGY_CWD || process.cwd()
+  function isScopeRequiredRoute(pathname: string) {
+    return (
+      pathname === "/scope/current" ||
+      pathname === "/git" ||
+      pathname.startsWith("/git/") ||
+      pathname === "/pty" ||
+      pathname.startsWith("/pty/") ||
+      pathname === "/path" ||
+      pathname.startsWith("/path/") ||
+      pathname === "/experimental/worktree" ||
+      pathname.startsWith("/experimental/worktree/") ||
+      pathname === "/vcs" ||
+      pathname.startsWith("/vcs/") ||
+      pathname === "/find" ||
+      pathname.startsWith("/find/") ||
+      pathname === "/file" ||
+      pathname.startsWith("/file/") ||
+      pathname === "/note" ||
+      pathname.startsWith("/note/") ||
+      pathname === "/blueprint" ||
+      pathname.startsWith("/blueprint/") ||
+      pathname === "/lsp" ||
+      pathname.startsWith("/lsp/") ||
+      pathname === "/formatter" ||
+      pathname.startsWith("/formatter/")
+    )
+  }
+
+  function requestDirectory(c: Context) {
+    const directory = c.req.query("directory") || c.req.header("x-synergy-directory")
+    if (!directory) return undefined
     try {
-      directory = decodeURIComponent(directory)
+      return decodeURIComponent(directory)
     } catch {
-      // fallback to original value
+      return directory
     }
-    if (directory === "global") return Scope.global()
-    return (await Scope.fromDirectory(directory)).scope
+  }
+
+  function requestScopeID(c: Context) {
+    const scopeID = c.req.query("scopeID") || c.req.header("x-synergy-scope-id")
+    if (!scopeID) return undefined
+    try {
+      return decodeURIComponent(scopeID)
+    } catch {
+      return scopeID
+    }
+  }
+
+  async function resolveScopedRequestScope(
+    c: Context,
+    input: { scopeID?: string; directory?: string },
+  ): Promise<Scope | Response> {
+    if (!input.scopeID && !input.directory) {
+      return c.json(
+        {
+          name: "ScopeRequired",
+          data: {
+            message:
+              "This route requires an explicit scopeID, directory, x-synergy-scope-id, or x-synergy-directory header.",
+          },
+        },
+        400,
+      )
+    }
+    if (input.scopeID) {
+      const scope = await Scope.fromID(input.scopeID)
+      if (!scope) {
+        return c.json(
+          {
+            name: "ScopeNotFound",
+            data: {
+              message: `Scope not found: ${input.scopeID}`,
+            },
+          },
+          404,
+        )
+      }
+      return scope
+    }
+    return (await Scope.fromDirectory(input.directory!)).scope
   }
 
   async function provideRequestScope(c: Context, next: Next) {
-    const scope = isGlobalRoute(c.req.path) ? Scope.global() : await resolveScopedRequestScope(c)
-    return Instance.provide({
+    const directory = requestDirectory(c)
+    const scopeID = requestScopeID(c)
+    const scope =
+      isGlobalRoute(c.req.path) || (!directory && !scopeID && !isScopeRequiredRoute(c.req.path))
+        ? Scope.home()
+        : await resolveScopedRequestScope(c, { scopeID, directory })
+    if (scope instanceof Response) return scope
+    return ScopeContext.provide({
       scope,
-      init: InstanceBootstrap,
       async fn() {
         return next()
       },
@@ -190,15 +298,7 @@ export namespace Server {
             if (err instanceof Storage.NotFoundError) status = 404
             else if (err instanceof Provider.ModelNotFoundError) status = 400
             else if (err.name === "ChannelStartError") status = 400
-            else if (ConfigSet.NotFoundError.isInstance(err)) status = 404
-            else if (
-              ConfigSet.ExistsError.isInstance(err) ||
-              ConfigSet.DeleteDefaultError.isInstance(err) ||
-              ConfigSet.DeleteActiveError.isInstance(err) ||
-              err.name.startsWith("Worktree") ||
-              err.name.startsWith("Command")
-            )
-              status = 400
+            else if (err.name.startsWith("Worktree") || err.name.startsWith("Command")) status = 400
             else status = 500
             return c.json(err.toObject(), { status })
           }
@@ -221,6 +321,16 @@ export namespace Server {
                 path: reqPath,
                 status: c.res.status,
                 duration: Date.now() - start,
+              })
+              void Observability.emit("http.request", {
+                rid: requestId,
+                level: c.res.status >= 500 ? "error" : c.res.status >= 400 ? "warn" : "info",
+                data: {
+                  method: c.req.method,
+                  path: reqPath,
+                  status: c.res.status,
+                  duration: Date.now() - start,
+                },
               })
             }
           }
@@ -245,6 +355,7 @@ export namespace Server {
           }),
         )
         .use(provideRequestScope)
+        .use(cspMiddleware())
         .get(
           "/global/health",
           describeRoute({
@@ -281,6 +392,82 @@ export namespace Server {
             return c.json({ healthy: true, version: Installation.VERSION, modelReady })
           },
         )
+        .get(
+          "/global/paths",
+          describeRoute({
+            summary: "Get global server paths",
+            description: "Retrieve process-level Synergy paths that do not require a scope context.",
+            operationId: "global.paths.get",
+            responses: {
+              200: {
+                description: "Global paths",
+                content: {
+                  "application/json": {
+                    schema: resolver(
+                      z
+                        .object({
+                          home: z.string(),
+                          root: z.string(),
+                          data: z.string(),
+                          config: z.string(),
+                          state: z.string(),
+                          cache: z.string(),
+                          log: z.string(),
+                        })
+                        .meta({ ref: "GlobalPaths" }),
+                    ),
+                  },
+                },
+              },
+            },
+          }),
+          async (c) => {
+            return c.json({
+              home: Global.Path.home,
+              root: Global.Path.root,
+              data: Global.Path.data,
+              config: Global.Path.config,
+              state: Global.Path.state,
+              cache: Global.Path.cache,
+              log: Global.Path.log,
+            })
+          },
+        )
+        .get(
+          "/global/filesystem/browse",
+          describeRoute({
+            summary: "Browse server directories",
+            description: "Browse filesystem directories by path with optional fuzzy search. Returns absolute paths.",
+            operationId: "global.filesystem.browse",
+            responses: {
+              200: {
+                description: "Directory paths",
+                content: {
+                  "application/json": {
+                    schema: resolver(z.string().array()),
+                  },
+                },
+              },
+            },
+          }),
+          validator(
+            "query",
+            z.object({
+              path: z.string(),
+              query: z.string().optional(),
+              limit: z.coerce.number().int().min(1).max(200).optional(),
+              depth: z.coerce.number().int().min(1).max(10).optional(),
+            }),
+          ),
+          async (c) => {
+            const { path, query, limit, depth } = c.req.valid("query")
+            const results = await SynergyFile.browse({ path, query, limit: limit ?? 50, depth: depth ?? 4 })
+            return c.json(results)
+          },
+        )
+        .route("/global/git", GitRoute)
+        .route("/global/stats", StatsRoute)
+        .route("/global", ObservabilityRoute)
         .get(
           "/global/event/ws",
           (() => {
@@ -357,8 +544,8 @@ export namespace Server {
         .post(
           "/global/dispose",
           describeRoute({
-            summary: "Dispose instance",
-            description: "Clean up and dispose all Synergy instances, releasing all resources.",
+            summary: "Dispose scope runtimes",
+            description: "Clean up and dispose all scope runtimes, releasing all scoped resources.",
             operationId: "global.dispose",
             responses: {
               200: {
@@ -372,7 +559,7 @@ export namespace Server {
             },
           }),
           async (c) => {
-            await Instance.disposeAll()
+            await ScopeRuntime.disposeAll()
             GlobalBus.emit("event", {
               directory: "global",
               payload: {
@@ -458,10 +645,9 @@ export namespace Server {
             },
           }),
         )
-        .use(validator("query", z.object({ directory: z.string().optional() })))
+        .use(validator("query", z.object({ directory: z.string().optional(), scopeID: z.string().optional() })))
 
         .route("/scope", ScopeRoute)
-        .route("/git", GitRoute)
         .route("/pty", PtyRoute)
         .route("/config", ConfigRoute)
         .route("/runtime", RuntimeRoute)
@@ -542,14 +728,14 @@ export namespace Server {
           },
         )
         .post(
-          "/instance/dispose",
+          "/scope/runtime/dispose",
           describeRoute({
-            summary: "Dispose instance",
-            description: "Clean up and dispose the current Synergy instance, releasing all resources.",
-            operationId: "instance.dispose",
+            summary: "Dispose scope runtime",
+            description: "Clean up and dispose the current scope runtime, releasing scoped resources.",
+            operationId: "scope.runtime.dispose",
             responses: {
               200: {
-                description: "Instance disposed",
+                description: "Scope runtime disposed",
                 content: {
                   "application/json": {
                     schema: resolver(z.boolean()),
@@ -559,7 +745,7 @@ export namespace Server {
             },
           }),
           async (c) => {
-            await Instance.dispose()
+            await ScopeRuntime.dispose()
             return c.json(true)
           },
         )
@@ -568,7 +754,7 @@ export namespace Server {
           describeRoute({
             summary: "Get paths",
             description:
-              "Retrieve the current working directory and related path information for the Synergy instance.",
+              "Retrieve the current working directory and related path information for the active scope context.",
             operationId: "path.get",
             responses: {
               200: {
@@ -598,8 +784,8 @@ export namespace Server {
               home: Global.Path.home,
               state: Global.Path.state,
               config: Global.Path.config,
-              worktree: Instance.worktree,
-              directory: Instance.directory,
+              worktree: ScopeContext.current.worktree,
+              directory: ScopeContext.current.directory,
             })
           },
         )
@@ -711,15 +897,17 @@ export namespace Server {
         .route("/skill", SkillRoute)
         .route("/find", FindRoute)
         .route("/file", FileRoute)
-        .route("/engram", EngramRoute)
+        .route("/library", LibraryRoute)
         .route("/agenda", AgendaRoute)
         .route("/note", NoteRoute)
         .route("/blueprint", BlueprintRoute)
         .route("/asset", AssetRoute)
-        .route("/stats", StatsRoute)
         .route("/holos", HolosDataRoute)
         .route("", BrowserRoute)
         .route("/plugin", PluginRoute)
+        .route("/api/plugins", ApiPluginRoute)
+        .route("/api/plugins", PluginRuntimeRoute)
+        .route("/api/registry", RegistryRoute)
 
         .post(
           "/log",
@@ -928,7 +1116,7 @@ export namespace Server {
                 await stream.writeSSE({
                   data: JSON.stringify(event),
                 })
-                if (event.type === Bus.InstanceDisposed.type) {
+                if (event.type === Bus.ScopeRuntimeDisposed.type) {
                   stream.close()
                 }
               })
@@ -1089,19 +1277,12 @@ export namespace Server {
 
     const originalStop = server.stop.bind(server)
     server.stop = async (closeActiveConnections?: boolean) => {
-      Agenda.stop()
       if (shouldPublishMDNS) MDNS.unpublish()
       _globalEventBroadcastOff?.()
       if (_globalEventHeartbeatInterval) clearInterval(_globalEventHeartbeatInterval)
       _globalEventClients?.clear()
       return originalStop(closeActiveConnections)
     }
-
-    Agenda.start()
-      .then(() => AgendaBootstrap.seed())
-      .catch((err) => {
-        log.error("failed to start agenda", { error: err instanceof Error ? err : new Error(String(err)) })
-      })
 
     return server
   }

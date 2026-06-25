@@ -1,5 +1,4 @@
 import * as path from "path"
-import { MarkItDown } from "markitdown-ts"
 import { withTimeout } from "@/util/timeout"
 
 /** File size cap for document extraction. Larger files are rejected with a clear error. */
@@ -30,12 +29,35 @@ const SUPPORTED_EXTENSIONS = new Set([
   ".zip",
 ])
 
-/** Singleton converter — jsdom/turndown/pdf-parse are expensive to re-instantiate. */
-let _converter: MarkItDown | undefined
+interface MarkItDownResult {
+  markdown?: string
+  title?: string | null
+}
 
-function converter(): MarkItDown {
-  if (!_converter) _converter = new MarkItDown()
-  return _converter
+interface MarkItDownConverter {
+  convert(filepath: string): Promise<MarkItDownResult | null | undefined>
+}
+
+/** Singleton converter — jsdom/turndown/pdf-parse are expensive to re-instantiate. */
+let _converter: MarkItDownConverter | undefined
+
+function conversionEngineError(error: unknown): Error {
+  const message = error instanceof Error ? error.message : String(error)
+  return new Error(
+    `Document conversion engine could not start. Optional document parsing dependencies may be unavailable in this runtime. Cause: ${message}`,
+    { cause: error },
+  )
+}
+
+async function converter(): Promise<MarkItDownConverter> {
+  if (_converter) return _converter
+  try {
+    const { MarkItDown } = await import("markitdown-ts")
+    _converter = new MarkItDown()
+    return _converter
+  } catch (error) {
+    throw conversionEngineError(error)
+  }
 }
 
 export interface Extraction {
@@ -83,7 +105,8 @@ export namespace Document {
       )
     }
 
-    const result = await withTimeout(converter().convert(filepath), timeoutMs)
+    const engine = await converter()
+    const result = await withTimeout(engine.convert(filepath), timeoutMs)
 
     if (!result) return null
 

@@ -39,7 +39,7 @@ export const ProviderRoute = new Hono()
     }),
     async (c) => {
       using _ = log.time("providers")
-      const config = await Config.get()
+      const config = await Config.current()
       const disabled = new Set(config.disabled_providers ?? [])
       const enabled = config.enabled_providers ? new Set(config.enabled_providers) : undefined
 

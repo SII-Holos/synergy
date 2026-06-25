@@ -26,13 +26,14 @@ import { Sidebar } from "@/components/sidebar/sidebar"
 import { GlobalSearchModal } from "@/components/search/global-search-modal"
 import { GlobalPanelOverlay } from "@/components/overlay/global-panel-overlay"
 import { MobileDrawer } from "@/components/mobile-drawer"
-import { EngramPanel } from "@/components/engram"
+import { LibraryPanel } from "@/components/library"
 import { AgendaPanel } from "@/components/agenda"
 
 import { LucidPanel } from "@/components/lucid-panel"
+import { DiagnosticsPanel } from "@/components/diagnostics-panel"
 import { ConnectionBanner } from "@/components/connection-banner"
-import { getGlobalPanel, loadPluginExport, getPluginContribution } from "@/plugin"
-import { SandboxShell } from "@/plugin/sandbox"
+import { getGlobalPanel } from "@/plugin"
+import { SandboxIframe } from "@/plugin/sandbox"
 import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
 
 export default function Layout(props: ParentProps) {
@@ -56,7 +57,7 @@ export default function Layout(props: ParentProps) {
   createEffect(() => {
     const dir = params.dir ? base64Decode(params.dir) : undefined
     if (!dir) return
-    const [store] = globalSync.child(dir)
+    const [store] = globalSync.ensureScopeState(dir)
     const cfg = (store.config as any)?.toast
     setToastConfig(
       cfg
@@ -100,7 +101,7 @@ export default function Layout(props: ParentProps) {
       const directory = e.name
       const perm = e.details.properties
 
-      const [childStore] = globalSync.child(directory)
+      const [childStore] = globalSync.ensureScopeState(directory)
       const session = childStore.session.find((s) => s.id === perm.sessionID)
       const sessionKey = `${directory}:${perm.sessionID}`
 
@@ -159,7 +160,7 @@ export default function Layout(props: ParentProps) {
         toastBySession.delete(sessionKey)
         alertedAtBySession.delete(sessionKey)
       }
-      const [childStore] = globalSync.child(currentDir)
+      const [childStore] = globalSync.ensureScopeState(currentDir)
       const childSessions = childStore.session.filter((s) => s.parentID === currentSession)
       for (const child of childSessions) {
         const childKey = `${currentDir}:${child.id}`
@@ -417,7 +418,7 @@ export default function Layout(props: ParentProps) {
       if (result.initGit) {
         const dirs = Array.isArray(result.directory) ? result.directory : [result.directory]
         for (const dir of dirs) {
-          await globalSDK.client.git.init({ body_directory: dir }).catch(() => {})
+          await globalSDK.client.global.git.init({ directory: dir }).catch(() => {})
         }
       }
 
@@ -464,14 +465,17 @@ function GlobalPanelSwitch() {
   const panel = usePanel()
   return (
     <Switch>
-      <Match when={panel.active() === "engram"}>
-        <EngramPanel />
+      <Match when={panel.active() === "library"}>
+        <LibraryPanel />
       </Match>
       <Match when={panel.active() === "agenda"}>
         <AgendaPanel />
       </Match>
       <Match when={panel.active() === "lucid"}>
         <LucidPanel />
+      </Match>
+      <Match when={panel.active() === "diagnostics"}>
+        <DiagnosticsPanel />
       </Match>
       <Match when={panel.hasSlot(panel.active()!)}>{panel.slot(panel.active()!)}</Match>
       <Match when={!!getGlobalPanel(panel.active()!)}>
@@ -503,17 +507,15 @@ function PluginGlobalPanelContent(props: { panelId: string }) {
       setLoading(false)
       return
     }
-    if (e.pluginId && e.exportName) {
-      const contrib = getPluginContribution(e.pluginId)
-      if (contrib) {
-        loadPluginExport(contrib, e.exportName)
-          .then((c) => {
-            setComp(() => c as Component)
-            setLoading(false)
-          })
-          .catch(() => setLoading(false))
-        return
-      }
+    if (e.loader) {
+      e.loader().then(
+        (mod) => {
+          setComp(() => mod.default)
+          setLoading(false)
+        },
+        () => setLoading(false),
+      )
+      return
     }
     setLoading(false)
   })
@@ -537,7 +539,7 @@ function PluginGlobalPanelContent(props: { panelId: string }) {
             </div>
           )}
         >
-          <SandboxShell src={entry()!.sandboxUrl!} pluginId={entry()!.pluginId} panelId={entry()!.id} />
+          <SandboxIframe src={entry()!.sandboxUrl!} pluginId={entry()!.pluginId} panelId={entry()!.id} />
         </ErrorBoundary>
       </Show>
       <Show when={!isSandbox()}>

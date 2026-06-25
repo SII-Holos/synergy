@@ -22,6 +22,8 @@ export function createBrowserWebSocket(store: BrowserStoreAPI, sessionID: string
 
   const connect = () => {
     if (disposed) return
+    if (!sdk.directory) return
+    store.setSession("connectionStatus", "connecting")
     const wsUrl =
       sdk.url.replace(/^http/, "ws") +
       `/${encodeURIComponent(sdk.directory)}/browser/connect?mode=session&sessionID=${encodeURIComponent(sessionID)}`
@@ -45,30 +47,58 @@ export function createBrowserWebSocket(store: BrowserStoreAPI, sessionID: string
       switch (msg.type) {
         case "session.state": {
           if (msg.tabs) store.setSession("tabs", msg.tabs)
-          if (msg.activeTabId !== undefined) store.setSession("activeTabId", msg.activeTabId)
+          if (msg.activeTabId !== undefined) {
+            store.setSession("activeTabId", msg.activeTabId)
+            if (!store.session.visibleTabId) store.setSession("visibleTabId", msg.activeTabId)
+            if (msg.activeTabId) send({ type: "stream.start", tabId: msg.activeTabId })
+          }
           break
         }
         case "tab.created": {
-          store.setSession("tabs", [...store.session.tabs, msg.tab])
-          if (msg.active) {
-            store.setSession("activeTabId", msg.tab.id)
-          }
+          store.upsertTab(msg.tab)
+          if (msg.active) store.activateTabFromServer(msg.tab.id)
+          break
+        }
+        case "tab.updated": {
+          if (msg.tab) store.upsertTab(msg.tab)
+          break
+        }
+        case "tab.activated": {
+          if (msg.tab) store.upsertTab(msg.tab)
+          if (msg.tabId) store.activateTabFromServer(msg.tabId)
           break
         }
         case "tab.closed": {
-          store.setSession(
-            "tabs",
-            store.session.tabs.filter((t) => t.id !== msg.tabId),
-          )
-          if (store.session.activeTabId === msg.tabId && store.session.tabs.length > 0) {
-            store.setSession("activeTabId", store.session.tabs[0].id)
-          }
+          store.removeTab(msg.tabId)
           break
         }
         case "tab.navigated": {
           store.setTabUrl(msg.tabId, msg.url)
           store.setTabLoading(msg.tabId, false)
           if (msg.title !== undefined) store.setTabTitle(msg.tabId, msg.title)
+          break
+        }
+        case "page.loading": {
+          store.setTabLoading(msg.tabId, true)
+          if (msg.url) store.setTabUrl(msg.tabId, msg.url)
+          break
+        }
+        case "page.loaded": {
+          store.setTabLoading(msg.tabId, false)
+          if (msg.url) store.setTabUrl(msg.tabId, msg.url)
+          if (msg.title !== undefined) store.setTabTitle(msg.tabId, msg.title)
+          break
+        }
+        case "page.error": {
+          store.setTabLoading(msg.tabId, false)
+          store.setBrowserError({ severity: "error", message: msg.message ?? "Browser page error" })
+          break
+        }
+        case "frame": {
+          store.setFrame(msg.tabId, {
+            src: `data:${msg.mime ?? "image/jpeg"};base64,${msg.data}`,
+            metadata: msg.metadata,
+          })
           break
         }
         case "screenshot": {
@@ -79,22 +109,76 @@ export function createBrowserWebSocket(store: BrowserStoreAPI, sessionID: string
           })
           break
         }
-        case "console": {
-          const current = store.consoleEntries[msg.tabId] ?? []
-          store.setConsoleEntries(msg.tabId, [...current, ...msg.entries])
+        case "console":
+        case "console.entries": {
+          store.setConsoleEntries(msg.tabId, msg.entries ?? [])
           break
         }
-        case "network": {
-          const requests = store.networkRequests[msg.tabId] ?? []
-          store.setNetworkRequests(msg.tabId, [...requests, ...msg.requests])
+        case "network":
+        case "network.entries": {
+          store.setNetworkRequests(msg.tabId, msg.requests ?? [])
           break
         }
-        case "agent.action": {
-          store.setAgentActivity(msg.action)
+        case "snapshot.result": {
+          store.setElements(msg.tabId, msg.elements ?? [])
+          break
+        }
+        case "assets.entries": {
+          store.setPageAssets(msg.tabId, msg.assets ?? [])
+          break
+        }
+        case "diagnostics.cleared": {
+          store.setConsoleEntries(msg.tabId, [])
+          store.setNetworkRequests(msg.tabId, [])
+          store.setPageAssets(msg.tabId, [])
+          break
+        }
+        case "agent.action":
+        case "agent.activity": {
+          store.applyAgentActivity({
+            tabId: msg.tabId ?? null,
+            url: msg.url ?? null,
+            title: msg.title,
+            kind: msg.kind ?? "acting",
+            tool: msg.tool,
+            label: msg.label ?? msg.action ?? null,
+          })
+          break
+        }
+        case "control.changed": {
+          store.setSession("controlMode", msg.mode)
+          break
+        }
+        case "downloads.updated": {
+          store.addDownload(msg.tabId, msg.entry)
+          break
+        }
+        case "filechooser.request": {
+          store.setFileChooserRequest({
+            tabId: msg.tabId,
+            requestId: msg.requestId,
+            multiple: Boolean(msg.multiple),
+            accept: msg.accept ?? [],
+          })
+          break
+        }
+        case "dialog.opened": {
+          store.setDialogRequest({
+            tabId: msg.tabId,
+            requestId: msg.requestId,
+            type: msg.dialogType,
+            message: msg.message,
+            defaultValue: msg.defaultValue,
+          })
           break
         }
         case "error": {
           store.setSession("connectionStatus", "error")
+          store.setBrowserError({
+            severity: msg.severity ?? "error",
+            code: msg.code,
+            message: msg.message ?? "Browser operation failed",
+          })
           console.error("Browser WS error:", msg.message)
           break
         }
@@ -102,7 +186,7 @@ export function createBrowserWebSocket(store: BrowserStoreAPI, sessionID: string
     })
 
     socket.addEventListener("error", () => {
-      // Handled by close event
+      // Handled by close event.
     })
 
     socket.addEventListener("close", () => {
@@ -114,7 +198,7 @@ export function createBrowserWebSocket(store: BrowserStoreAPI, sessionID: string
         store.setSession("connectionStatus", "failed")
         return
       }
-      reconnectTimer = setTimeout(connect, RECONNECT_DELAY)
+      reconnectTimer = setTimeout(connect, RECONNECT_DELAY * Math.min(4, reconnectAttempts))
     })
   }
 

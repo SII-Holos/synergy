@@ -70,7 +70,7 @@ export const { use: useHolos, provider: HolosProvider } = createSimpleContext<Ho
     async function runRefresh(version: number) {
       try {
         setError(null)
-        const res = await sdk.client.holos.state({ directory: "global" })
+        const res = await sdk.client.holos.state({ scopeID: "home" })
         if (res.data && version === refreshVersion) {
           setState(res.data as HolosState)
         }

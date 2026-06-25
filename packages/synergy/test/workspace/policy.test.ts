@@ -1,6 +1,6 @@
 import { test, expect, describe } from "bun:test"
 import { tmpdir } from "../fixture/fixture"
-import { Instance } from "../../src/scope/instance"
+import { ScopeContext } from "../../src/scope/context"
 import { Scope } from "../../src/scope"
 import { WorkspacePolicy } from "../../src/workspace/policy"
 import { Session } from "../../src/session"
@@ -17,7 +17,7 @@ describe("WorkspacePolicy", () => {
       await using tmp = await tmpdir({ git: true })
       const scope = await tmp.scope()
 
-      await Instance.provide({
+      await ScopeContext.provide({
         scope,
         fn: () =>
           using(async () => {
@@ -37,7 +37,7 @@ describe("WorkspacePolicy", () => {
       await using tmp = await tmpdir({ git: true })
       const scope = await tmp.scope()
 
-      await Instance.provide({
+      await ScopeContext.provide({
         scope,
         fn: () =>
           using(async () => {
@@ -64,7 +64,7 @@ describe("WorkspacePolicy", () => {
       await using tmp = await tmpdir({ git: true })
       const scope = await tmp.scope()
 
-      await Instance.provide({
+      await ScopeContext.provide({
         scope,
         fn: () =>
           using(async () => {
@@ -91,7 +91,7 @@ describe("WorkspacePolicy", () => {
       await using tmp = await tmpdir({ git: true })
       const scope = await tmp.scope()
 
-      await Instance.provide({
+      await ScopeContext.provide({
         scope,
         fn: () =>
           using(async () => {
@@ -148,14 +148,14 @@ describe("WorkspacePolicy", () => {
   })
 })
 
-describe("Instance.contains workspace awareness", () => {
-  // === Requirement 4: Instance.contains delegates to WorkspacePolicy ===
+describe("ScopeContext.contains workspace awareness", () => {
+  // === Requirement 4: ScopeContext.contains delegates to WorkspacePolicy ===
 
-  test("Instance.contains returns true for files inside the active workspace directory", async () => {
+  test("ScopeContext.contains returns true for files inside the active workspace directory", async () => {
     await using tmp = await tmpdir({ git: true })
     const scope = await tmp.scope()
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope,
       fn: () =>
         using(async () => {
@@ -171,7 +171,7 @@ describe("Instance.contains workspace awareness", () => {
           const session = await Session.create({ workspace: ws })
 
           await SessionManager.run(session.id, async () => {
-            expect(Instance.contains(subfile)).toBe(true)
+            expect(ScopeContext.contains(subfile)).toBe(true)
           })
 
           await Session.remove(session.id)
@@ -179,11 +179,11 @@ describe("Instance.contains workspace awareness", () => {
     })
   })
 
-  test("Instance.contains returns false for original checkout file when workspace is a git_worktree", async () => {
+  test("ScopeContext.contains returns false for original checkout file when workspace is a git_worktree", async () => {
     await using tmp = await tmpdir({ git: true })
     const scope = await tmp.scope()
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope,
       fn: () =>
         using(async () => {
@@ -194,29 +194,29 @@ describe("Instance.contains workspace awareness", () => {
             scopeID: scope.id,
           }
 
-          await Instance.provide({
+          await ScopeContext.provide({
             scope,
             workspace: ws,
             fn: () =>
               using(async () => {
                 // A file in the original checkout is outside the active worktree
                 const originalFile = path.join(scope.directory, "package.json")
-                expect(Instance.contains(originalFile)).toBe(false)
+                expect(ScopeContext.contains(originalFile)).toBe(false)
 
                 // A file in the worktree is inside
                 const worktreeFile = path.join(ws.path, "README.md")
-                expect(Instance.contains(worktreeFile)).toBe(true)
+                expect(ScopeContext.contains(worktreeFile)).toBe(true)
               })(),
           })
         })(),
     })
   })
 
-  test("Instance.contains returns true for worktree file when workspace is a git_worktree", async () => {
+  test("ScopeContext.contains returns true for worktree file when workspace is a git_worktree", async () => {
     await using tmp = await tmpdir({ git: true })
     const scope = await tmp.scope()
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope,
       fn: () =>
         using(async () => {
@@ -227,13 +227,13 @@ describe("Instance.contains workspace awareness", () => {
             scopeID: scope.id,
           }
 
-          await Instance.provide({
+          await ScopeContext.provide({
             scope,
             workspace: ws,
             fn: () =>
               using(async () => {
                 const wf = path.join(ws.path, "feature.ts")
-                expect(Instance.contains(wf)).toBe(true)
+                expect(ScopeContext.contains(wf)).toBe(true)
               })(),
           })
         })(),
@@ -256,7 +256,7 @@ describe("WorkspacePolicy — original checkout boundary", () => {
     await using tmp = await tmpdir({ git: true })
     const scope = await tmp.scope()
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope,
       fn: () =>
         using(async () => {
@@ -287,7 +287,7 @@ describe("WorkspacePolicy — original checkout boundary", () => {
     await using tmp = await tmpdir({ git: true })
     const scope = await tmp.scope()
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope,
       fn: () =>
         using(async () => {
@@ -316,7 +316,7 @@ describe("WorkspacePolicy — original checkout boundary", () => {
     await using tmp = await tmpdir({ git: true })
     const scope = await tmp.scope()
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope,
       fn: () =>
         using(async () => {
@@ -349,7 +349,7 @@ describe("WorkspacePolicy.classifyPath for worktree original checkout", () => {
     await using tmp = await tmpdir({ git: true })
     const scope = await tmp.scope()
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope,
       fn: () =>
         using(async () => {
@@ -387,7 +387,7 @@ describe("WorkspacePolicy.classifyPath for worktree original checkout", () => {
     await using tmp = await tmpdir({ git: true })
     const scope = await tmp.scope()
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope,
       fn: () =>
         using(async () => {

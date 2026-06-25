@@ -1,11 +1,11 @@
 import { test, expect } from "bun:test"
 import { PermissionNext } from "../../src/permission/next"
-import { Instance } from "../../src/scope/instance"
+import { ScopeContext } from "../../src/scope/context"
 import { tmpdir } from "../fixture/fixture"
 
 test("ask - rejects with AbortError when AbortSignal is already aborted", async () => {
   await using tmp = await tmpdir({ git: true })
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
       const abortedSignal = AbortSignal.abort()
@@ -40,7 +40,7 @@ test("ask - rejects with AbortError when AbortSignal is already aborted", async 
 
 test("ask - rejects with AbortError when AbortSignal fires while pending", async () => {
   await using tmp = await tmpdir({ git: true })
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
       const controller = new AbortController()
@@ -77,7 +77,7 @@ test("ask - rejects with AbortError when AbortSignal fires while pending", async
 
 test("ask - resolves normally on reply when no abort signal is provided", async () => {
   await using tmp = await tmpdir({ git: true })
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
       const askPromise = PermissionNext.ask({
@@ -97,7 +97,7 @@ test("ask - resolves normally on reply when no abort signal is provided", async 
 
 test("ask - resolves normally on reply when signal is provided but never fires", async () => {
   await using tmp = await tmpdir({ git: true })
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
       const controller = new AbortController()

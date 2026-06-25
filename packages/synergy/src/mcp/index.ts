@@ -58,13 +58,13 @@ export namespace MCP {
   const DEFAULT_TIMEOUT = 30_000
 
   async function resolveMcpTimeout(serverName?: string): Promise<number> {
-    const cfg = await Config.get()
+    const cfg = await Config.current()
     const perServer = serverName ? (cfg.mcp?.[serverName] as Config.Mcp | undefined)?.timeout : undefined
     return perServer ?? cfg.experimental?.mcp_timeout ?? DEFAULT_TIMEOUT
   }
 
   async function resolveCallTimeout(serverName: string): Promise<number | undefined> {
-    const cfg = await Config.get()
+    const cfg = await Config.current()
     const server = cfg.mcp?.[serverName] as Config.Mcp | undefined
     if (!server || typeof server !== "object") return undefined
     return server.callTimeout ?? cfg.experimental?.mcp_timeout
@@ -98,7 +98,7 @@ export namespace MCP {
     })
   }
 
-  function ensureStarted(): void {
+  export function ensureStarted(): void {
     McpSupervisor.ensureStarted()
   }
 
@@ -115,7 +115,7 @@ export namespace MCP {
 
   export async function status(): Promise<Record<string, Status>> {
     await McpSupervisor.ready()
-    const cfg = await Config.get()
+    const cfg = await Config.current()
     const config = cfg.mcp ?? {}
     const result: Record<string, Status> = {}
 
@@ -144,7 +144,7 @@ export namespace MCP {
 
   export async function connect(name: string) {
     ensureStarted()
-    const cfg = await Config.get()
+    const cfg = await Config.current()
     const config = cfg.mcp ?? {}
     const mcp = config[name]
     if (!mcp) {
@@ -170,7 +170,7 @@ export namespace MCP {
 
   export async function add(name: string, mcp: Config.Mcp) {
     ensureStarted()
-    const cfg = await Config.get()
+    const cfg = await Config.current()
     const server = Config.normalizeMcp(mcp, cfg.mcpDefaults, cfg.experimental?.mcp_timeout)
     const handle = McpSupervisor.add(name, server)
     return { status: mapStatus(handle) }
@@ -214,7 +214,7 @@ export namespace MCP {
   export async function tools(): Promise<Record<string, Tool>> {
     await McpSupervisor.ready()
     const result: Record<string, Tool> = {}
-    const cfg = await Config.get()
+    const cfg = await Config.current()
     const callTimeout = cfg.experimental?.mcp_timeout
 
     for (const handle of McpSupervisor.getAll()) {
@@ -296,7 +296,7 @@ export namespace MCP {
 
   export async function startAuth(mcpName: string): Promise<{ authorizationUrl: string }> {
     ensureStarted()
-    const cfg = await Config.get()
+    const cfg = await Config.current()
     const mcpConfig = cfg.mcp?.[mcpName]
     if (!mcpConfig) throw new Error(`MCP server not found: ${mcpName}`)
     if (typeof mcpConfig !== "object" || mcpConfig === null || !("type" in mcpConfig)) {
@@ -377,7 +377,7 @@ export namespace MCP {
       await transport.finishAuth(authorizationCode)
       await McpAuth.clearCodeVerifier(mcpName)
 
-      const cfg = await Config.get()
+      const cfg = await Config.current()
       const mcpConfig = cfg.mcp?.[mcpName]
       if (!mcpConfig) throw new Error(`MCP server not found: ${mcpName}`)
       if (typeof mcpConfig !== "object" || mcpConfig === null || !("type" in mcpConfig)) {
@@ -404,7 +404,7 @@ export namespace MCP {
   }
 
   export async function supportsOAuth(mcpName: string): Promise<boolean> {
-    const cfg = await Config.get()
+    const cfg = await Config.current()
     const mcpConfig = cfg.mcp?.[mcpName]
     if (!mcpConfig) return false
     if (typeof mcpConfig !== "object" || mcpConfig === null || !("type" in mcpConfig)) return false

@@ -4,6 +4,7 @@ type ScopeID = Identifier.ScopeID
 type SessionID = Identifier.SessionID
 type MessageID = Identifier.MessageID
 type PartID = Identifier.PartID
+type HistoryID = Identifier.HistoryID
 
 export namespace StoragePath {
   const endpointSessionStorageKey = (endpointKey: string) => encodeURIComponent(endpointKey)
@@ -45,9 +46,25 @@ export namespace StoragePath {
   ]
   export const sessionTodo = (scopeID: ScopeID, sessionID: SessionID) => [...sessionRoot(scopeID, sessionID), "todo"]
   export const sessionDag = (scopeID: ScopeID, sessionID: SessionID) => [...sessionRoot(scopeID, sessionID), "dag"]
+  export const sessionInboxRoot = (scopeID: ScopeID, sessionID: SessionID) => [
+    ...sessionRoot(scopeID, sessionID),
+    "inbox",
+  ]
+  export const sessionInboxItem = (scopeID: ScopeID, sessionID: SessionID, itemID: string) => [
+    ...sessionInboxRoot(scopeID, sessionID),
+    itemID,
+  ]
   export const sessionMessagesRoot = (scopeID: ScopeID, sessionID: SessionID) => [
     ...sessionRoot(scopeID, sessionID),
     "messages",
+  ]
+  export const sessionHistoryRoot = (scopeID: ScopeID, sessionID: SessionID) => [
+    ...sessionRoot(scopeID, sessionID),
+    "history",
+  ]
+  export const sessionHistoryEvent = (scopeID: ScopeID, sessionID: SessionID, historyID: HistoryID) => [
+    ...sessionHistoryRoot(scopeID, sessionID),
+    historyID as string,
   ]
 
   export const messageInfo = (scopeID: ScopeID, sessionID: SessionID, messageID: MessageID) => [
@@ -68,6 +85,7 @@ export namespace StoragePath {
   ]
 
   export const permission = (scopeID: ScopeID) => ["permissions", scopeID as string]
+  export const permissionRules = () => ["permission-rules"]
 
   export const share = (shareID: string) => ["shares", shareID]
 
@@ -117,7 +135,7 @@ export namespace StoragePath {
   export const statsRoot = () => ["stats"]
   export const statsWatermark = () => ["stats", "watermark"]
   export const statsSnapshot = () => ["stats", "snapshot"]
-  export const engramSnapshot = () => ["engram", "stats", "snapshot"]
+  export const librarySnapshot = () => ["library", "stats", "snapshot"]
   /** Per-session digest: stats/digests/{sessionID} */
   export const statsDigestsRoot = () => ["stats", "digests"]
   export const statsDigest = (sessionID: SessionID) => ["stats", "digests", sessionID as string]

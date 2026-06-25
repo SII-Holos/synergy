@@ -124,4 +124,11 @@ export namespace State {
     disposalFinished = true
     log.info("state disposal completed", { key })
   }
+
+  export async function disposeAll() {
+    const keys = [...recordsByKey.keys()]
+    for (const key of keys) {
+      await dispose(key)
+    }
+  }
 }

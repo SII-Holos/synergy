@@ -1,4 +1,4 @@
-import { ConfigSet } from "../../config/set"
+import { ConfigDomain } from "../../config/domain"
 import { cmd } from "./cmd"
 import { UI } from "../ui"
 import { withNetworkOptions } from "../network"
@@ -38,21 +38,32 @@ export const StartCommand = cmd({
     }
 
     if (status.runtime === "unknown") {
-      UI.error("Another Synergy process is already active on the configured address")
-      UI.println(`  URL:       ${status.url}`)
-      if (status.detail) UI.println(`  Detail:    ${status.detail}`)
-      UI.println()
-      UI.println("  Next:")
-      UI.println("    Stop the other Synergy instance before starting the background service")
-      UI.println("    synergy status")
-      UI.println("    synergy stop")
+      DaemonOutput.printStartFailure({
+        message: "Another Synergy process is already active on the configured address",
+        manager: status.manager,
+        runtime: status.runtime,
+        url: status.url,
+        logFile: status.logFile,
+        detail: status.detail,
+        notes: ["Stop the other Synergy server process before starting the background service."],
+        next: ["synergy status", "synergy stop"],
+      })
       process.exit(1)
     }
 
     const interactive = !args.nonInteractive && Boolean(process.stdin.isTTY && process.stdout.isTTY)
 
     // Check if this is a first-run with no config — launch wizard
-    const configExists = await Bun.file(ConfigSet.defaultFilePath()).exists()
+    const configExists = await Promise.any(
+      ConfigDomain.definitions.map((domain) =>
+        Bun.file(ConfigDomain.filepath(domain.id))
+          .exists()
+          .then((exists) => {
+            if (!exists) throw new Error("missing")
+            return true
+          }),
+      ),
+    ).catch(() => false)
     if (!configExists && interactive) {
       const { runConfigWizard } = await import("./config")
       const configured = await runConfigWizard()

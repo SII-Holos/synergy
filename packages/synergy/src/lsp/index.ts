@@ -9,7 +9,8 @@ import { LSPServer } from "./server"
 import z from "zod"
 import { Config } from "../config/config"
 import { spawn } from "child_process"
-import { Instance } from "../scope/instance"
+import { ScopeContext } from "../scope/context"
+import { ScopedState } from "../scope/scoped-state"
 import { Flag } from "@/flag/flag"
 import { LSPPid } from "./pid"
 
@@ -78,11 +79,11 @@ export namespace LSP {
     }
   }
 
-  const state = Instance.state(
+  const state = ScopedState.create(
     async () => {
       const clients: LSPClient.Info[] = []
       const servers: Record<string, LSPServer.Info> = {}
-      const cfg = await Config.get()
+      const cfg = await Config.current()
 
       if (cfg.lsp === false) {
         log.info("all LSPs are disabled")
@@ -113,7 +114,7 @@ export namespace LSP {
         servers[name] = {
           ...existing,
           id: name,
-          root: existing?.root ?? (async () => Instance.directory),
+          root: existing?.root ?? (async () => ScopeContext.current.directory),
           extensions: item.extensions ?? existing?.extensions ?? [],
           spawn: async (root) => {
             return {
@@ -183,7 +184,7 @@ export namespace LSP {
         result.push({
           id: client.serverID,
           name: x.servers[client.serverID].id,
-          root: path.relative(Instance.directory, client.root),
+          root: path.relative(ScopeContext.current.directory, client.root),
           status: "connected",
         })
       }

@@ -3,7 +3,7 @@ import { tmpdir } from "../fixture/fixture"
 import { Session } from "../../src/session"
 import { SessionNav } from "../../src/session/nav"
 import { Log } from "../../src/util/log"
-import { Instance } from "../../src/scope/instance"
+import { ScopeContext } from "../../src/scope/context"
 import { Scope } from "../../src/scope"
 import { Server } from "../../src/server/server"
 
@@ -11,8 +11,8 @@ Log.init({ print: false })
 
 describe("GET /global/recent", () => {
   test("returns 200 with expected response shape (items, nextCursor, total)", async () => {
-    await Instance.provide({
-      scope: Scope.global(),
+    await ScopeContext.provide({
+      scope: Scope.home(),
       fn: async () => {
         const app = Server.App()
         const res = await app.request("/global/recent")
@@ -36,21 +36,21 @@ describe("GET /global/recent", () => {
     let sessionA: Session.Info | undefined
     let sessionB: Session.Info | undefined
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: scopeA,
       fn: async () => {
         sessionA = await Session.create({ title: "Alpha Global" })
       },
     })
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: scopeB,
       fn: async () => {
         sessionB = await Session.create({ title: "Beta Global" })
       },
     })
 
-    await Instance.provide({
-      scope: Scope.global(),
+    await ScopeContext.provide({
+      scope: Scope.home(),
       fn: async () => {
         const app = Server.App()
         const res = await app.request("/global/recent")
@@ -71,21 +71,21 @@ describe("GET /global/recent", () => {
     })
   })
 
-  test("returns sessions from all scopes including global", async () => {
+  test("returns sessions from all scopes including home", async () => {
     await using tmpA = await tmpdir({ git: true })
     const scope = await tmpA.scope()
 
     let projectSession: Session.Info | undefined
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope,
       fn: async () => {
         projectSession = await Session.create({ title: "Project Global" })
       },
     })
 
-    await Instance.provide({
-      scope: Scope.global(),
+    await ScopeContext.provide({
+      scope: Scope.home(),
       fn: async () => {
         // Create a home session
         const homeSession = await Session.create({ title: "Home Chat" })
@@ -94,9 +94,9 @@ describe("GET /global/recent", () => {
         const res = await app.request("/global/recent")
         const body = await res.json()
 
-        // Sessions from ALL scopes (global + project) are included
+        // Sessions from ALL scopes (home + project) are included
         for (const item of body.items) {
-          expect(["global", "project"]).toContain(item.scopeType)
+          expect(["home", "project"]).toContain(item.scopeType)
         }
 
         await Session.remove(homeSession.id)
@@ -106,8 +106,8 @@ describe("GET /global/recent", () => {
   })
 
   test("returns 400 for invalid limit", async () => {
-    await Instance.provide({
-      scope: Scope.global(),
+    await ScopeContext.provide({
+      scope: Scope.home(),
       fn: async () => {
         const app = Server.App()
         const res = await app.request("/global/recent?limit=-1")
@@ -119,8 +119,8 @@ describe("GET /global/recent", () => {
 
 describe("GET /global/pinned", () => {
   test("returns 200 with expected response shape", async () => {
-    await Instance.provide({
-      scope: Scope.global(),
+    await ScopeContext.provide({
+      scope: Scope.home(),
       fn: async () => {
         const app = Server.App()
         const res = await app.request("/global/pinned")
@@ -139,7 +139,7 @@ describe("GET /global/pinned", () => {
 
     let pinnedID: string | undefined
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope,
       fn: async () => {
         const session = await Session.create({ title: "Pinned Old" })
@@ -156,8 +156,8 @@ describe("GET /global/pinned", () => {
       },
     })
 
-    await Instance.provide({
-      scope: Scope.global(),
+    await ScopeContext.provide({
+      scope: Scope.home(),
       fn: async () => {
         const app = Server.App()
         const res = await app.request("/global/pinned")
@@ -179,7 +179,7 @@ describe("GET /global/pinned", () => {
 
     const pinnedIDs: string[] = []
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope,
       fn: async () => {
         for (let i = 0; i < 3; i++) {
@@ -192,8 +192,8 @@ describe("GET /global/pinned", () => {
       },
     })
 
-    await Instance.provide({
-      scope: Scope.global(),
+    await ScopeContext.provide({
+      scope: Scope.home(),
       fn: async () => {
         const app = Server.App()
         const res = await app.request("/global/pinned")
@@ -218,7 +218,7 @@ describe("GET /global/pinned", () => {
 
     let sessionID: string | undefined
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope,
       fn: async () => {
         const s = await Session.create({ title: "Pinned Field Check" })
@@ -229,8 +229,8 @@ describe("GET /global/pinned", () => {
       },
     })
 
-    await Instance.provide({
-      scope: Scope.global(),
+    await ScopeContext.provide({
+      scope: Scope.home(),
       fn: async () => {
         const app = Server.App()
         const res = await app.request("/global/pinned")

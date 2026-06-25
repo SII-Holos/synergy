@@ -22,7 +22,7 @@ import { collectWriteDiagnostics } from "./write-quality"
 import { LSP } from "../lsp"
 
 /**
- * Synergy-aware Filesystem that resolves paths using Instance.directory
+ * Synergy-aware Filesystem that resolves paths using ScopeContext.current.directory
  * (consistent with anchored-file.ts resolveFilePath) so that snapshot
  * keys and file operations all agree on canonical paths.
  */

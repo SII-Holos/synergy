@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import path from "path"
 import { ParseCodeTool } from "../../src/tool/parse-code"
-import { Instance } from "../../src/scope/instance"
+import { ScopeContext } from "../../src/scope/context"
 import { tmpdir } from "../fixture/fixture"
 import { computeTag } from "../../src/hashline/tag"
 
@@ -36,7 +36,7 @@ describe("tool.parse_code", () => {
           )
         },
       })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const tool = await ParseCodeTool.init()
@@ -65,7 +65,7 @@ describe("tool.parse_code", () => {
           )
         },
       })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const tool = await ParseCodeTool.init()
@@ -88,7 +88,7 @@ describe("tool.parse_code", () => {
           await Bun.write(path.join(dir, "simple.ts"), "const x = 1\n")
         },
       })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const tool = await ParseCodeTool.init()
@@ -110,7 +110,7 @@ describe("tool.parse_code", () => {
           await Bun.write(path.join(dir, "test.ts"), "const x = 1\n")
         },
       })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const tool = await ParseCodeTool.init()
@@ -130,7 +130,7 @@ describe("tool.parse_code", () => {
           await Bun.write(path.join(dir, "dag.ts"), "export namespace Dag {\n  export const x = 1\n}\n")
         },
       })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const tool = await ParseCodeTool.init()
@@ -154,7 +154,7 @@ describe("tool.parse_code", () => {
           await Bun.write(path.join(dir, "b.ts"), "export function b() { return 2 }\n")
         },
       })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const tool = await ParseCodeTool.init()
@@ -182,7 +182,7 @@ describe("tool.parse_code", () => {
           )
         },
       })
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const tool = await ParseCodeTool.init()

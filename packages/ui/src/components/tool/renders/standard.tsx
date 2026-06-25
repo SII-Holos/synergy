@@ -10,6 +10,12 @@ import { AttachmentList } from "../../attachment-card"
 import { ToolTextOutput } from "../../tool-output-text"
 import { ToolRegistry, getToolInfo, getDirectory } from "../../message-part"
 
+function isBlueprintToolKind(input: any = {}, metadata: any = {}) {
+  if ((metadata.kind || input.kind) === "blueprint") return true
+  const kinds = metadata.kinds
+  return Array.isArray(kinds) && kinds.length > 0 && kinds.every((kind) => kind === "blueprint")
+}
+
 ToolRegistry.register({
   name: "read",
   render(props) {
@@ -972,14 +978,17 @@ ToolRegistry.register({
   render(props) {
     const total = () => props.metadata?.total as number | undefined
     const scope = () => (props.input.scope || props.metadata?.scope || "all") as string
+    const isBlueprint = () => isBlueprintToolKind(props.input, props.metadata)
+    const label = () => (isBlueprint() ? "Blueprint" : "Note")
     return (
       <BasicTool
         {...props}
         trigger={{
-          icon: "notebook-pen",
-          title: "Notes",
+          icon: isBlueprint() ? "stamp" : "notebook-pen",
+          title: isBlueprint() ? "Blueprints" : "Notes",
           subtitle: scope(),
-          tags: total() != null ? [{ label: `${total()} note${total() === 1 ? "" : "s"}` }] : undefined,
+          tags:
+            total() != null ? [{ label: `${total()} ${label().toLowerCase()}${total() === 1 ? "" : "s"}` }] : undefined,
         }}
       >
         <Show when={props.output}>
@@ -998,22 +1007,23 @@ ToolRegistry.register({
   name: "note_read",
   render(props) {
     const titles = () => (props.metadata?.titles ?? []) as string[]
+    const isBlueprint = () => isBlueprintToolKind(props.input, props.metadata)
     const subtitle = () => {
       const t = titles()
       if (t.length === 0) {
         const ids = props.input.ids as string[] | undefined
         if (!ids || ids.length === 0) return ""
-        return ids.length === 1 ? ids[0] : `${ids.length} notes`
+        return ids.length === 1 ? ids[0] : `${ids.length} ${isBlueprint() ? "blueprints" : "notes"}`
       }
       if (t.length === 1) return t[0]
-      return `${t.length} notes`
+      return `${t.length} ${isBlueprint() ? "blueprints" : "notes"}`
     }
     return (
       <BasicTool
         {...props}
         trigger={{
-          icon: "notebook-pen",
-          title: "Read Note",
+          icon: isBlueprint() ? "stamp" : "notebook-pen",
+          title: isBlueprint() ? "Read Blueprint" : "Read Note",
           subtitle: subtitle(),
         }}
       >
@@ -1034,11 +1044,12 @@ ToolRegistry.register({
   render(props) {
     const matchCount = () => props.metadata?.matchCount as number | undefined
     const noteCount = () => props.metadata?.noteCount as number | undefined
+    const isBlueprint = () => isBlueprintToolKind(props.input, props.metadata)
     const args = () => {
       const parts: string[] = []
       if (matchCount() != null && noteCount() != null) {
         parts.push(
-          `${matchCount()} match${matchCount() === 1 ? "" : "es"} in ${noteCount()} note${noteCount() === 1 ? "" : "s"}`,
+          `${matchCount()} match${matchCount() === 1 ? "" : "es"} in ${noteCount()} ${isBlueprint() ? "blueprint" : "note"}${noteCount() === 1 ? "" : "s"}`,
         )
       }
       return parts
@@ -1047,8 +1058,8 @@ ToolRegistry.register({
       <BasicTool
         {...props}
         trigger={{
-          icon: "notebook-pen",
-          title: "Note Search",
+          icon: isBlueprint() ? "stamp" : "notebook-pen",
+          title: isBlueprint() ? "Blueprint Search" : "Note Search",
           subtitle: props.input.pattern || "",
           tags: (() => {
             const a = args()
@@ -1073,6 +1084,8 @@ ToolRegistry.register({
   render(props) {
     const action = () => (props.metadata?.action || props.input.mode || "") as string
     const noteTitle = () => (props.metadata?.title || props.input.title || "") as string
+    const isBlueprint = () => isBlueprintToolKind(props.input, props.metadata)
+    const label = () => (isBlueprint() ? "Blueprint" : "Note")
     const actionLabel = () => {
       switch (action()) {
         case "create":
@@ -1089,8 +1102,8 @@ ToolRegistry.register({
       <BasicTool
         {...props}
         trigger={{
-          icon: "notebook-pen",
-          title: "Write Note",
+          icon: isBlueprint() ? "stamp" : "notebook-pen",
+          title: `Write ${label()}`,
           subtitle: noteTitle(),
           tags: actionLabel() ? [{ label: actionLabel() }] : undefined,
         }}
@@ -1111,15 +1124,16 @@ ToolRegistry.register({
   name: "note_edit",
   render(props) {
     const noteTitle = () => (props.metadata?.title || props.input.title || "") as string
-    const replacements = () => props.metadata?.replacements as number | undefined
+    const opCount = () => (props.metadata?.opCount ?? props.metadata?.replacements) as number | undefined
+    const isBlueprint = () => isBlueprintToolKind(props.input, props.metadata)
     return (
       <BasicTool
         {...props}
         trigger={{
-          icon: "notebook-pen",
-          title: "Edit Note",
+          icon: isBlueprint() ? "stamp" : "notebook-pen",
+          title: isBlueprint() ? "Edit Blueprint" : "Edit Note",
           subtitle: noteTitle(),
-          tags: replacements() ? [{ label: `${replacements()} change(s)` }] : undefined,
+          tags: opCount() ? [{ label: `${opCount()} change(s)` }] : undefined,
         }}
       >
         <Show when={props.output}>
@@ -1131,6 +1145,44 @@ ToolRegistry.register({
         </Show>
       </BasicTool>
     )
+  },
+})
+
+function BlueprintLoopTool(props: any & { action: "finish" | "restart" }) {
+  const title = () => (props.action === "finish" ? "Finish BlueprintLoop" : "Restart BlueprintLoop")
+  const status = () => props.input.status as string | undefined
+  return (
+    <BasicTool
+      {...props}
+      trigger={{
+        icon: "stamp",
+        title: title(),
+        subtitle: (props.input.loopID as string) || "",
+        tags: status() ? [{ label: status()! }] : undefined,
+      }}
+    >
+      <Show when={props.output}>
+        {(output) => (
+          <div data-component="tool-output" data-scrollable>
+            <ToolTextOutput text={output()} />
+          </div>
+        )}
+      </Show>
+    </BasicTool>
+  )
+}
+
+ToolRegistry.register({
+  name: "blueprint_loop_finish",
+  render(props) {
+    return <BlueprintLoopTool {...props} action="finish" />
+  },
+})
+
+ToolRegistry.register({
+  name: "blueprint_loop_restart",
+  render(props) {
+    return <BlueprintLoopTool {...props} action="restart" />
   },
 })
 

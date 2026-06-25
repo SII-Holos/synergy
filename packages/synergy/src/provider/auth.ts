@@ -1,4 +1,5 @@
-import { Instance } from "@/scope/instance"
+import { ScopeContext } from "@/scope/context"
+import { ScopedState } from "@/scope/scoped-state"
 import { Plugin } from "../plugin"
 import { map, filter, pipe, fromEntries, mapValues } from "remeda"
 import z from "zod"
@@ -8,9 +9,9 @@ import { NamedError } from "@ericsanchezok/synergy-util/error"
 import { Auth } from "@/provider/api-key"
 
 export namespace ProviderAuth {
-  const state = Instance.state(async () => {
+  const state = ScopedState.create(async () => {
     const methods = pipe(
-      await Plugin.list(),
+      await Plugin.allHooks(),
       filter((x) => x.auth?.provider !== undefined),
       map((x) => [x.auth!.provider, x.auth!] as const),
       fromEntries(),

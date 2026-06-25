@@ -1,30 +1,25 @@
 import { ensureMigrations } from "../migration"
 import { Server } from "./server"
-import { UI } from "../cli/ui"
 import { Installation } from "../global/installation"
-import { Instance } from "../scope/instance"
+import { ScopeContext } from "../scope/context"
+import { ScopedState } from "../scope/scoped-state"
+import { ScopeRuntime } from "../scope/runtime"
 import { Scope } from "../scope"
 import { ProcessRegistry } from "../process/registry"
 import { Log } from "../util/log"
-import { InstanceBootstrap, ChannelBootstrap, HolosBootstrap } from "../project/bootstrap"
 import * as ChannelTypes from "../channel/types"
 import { Provider } from "../provider/provider"
 import { DaemonLogRotate } from "../daemon/log-rotate"
-import { SingleInstance } from "../daemon/single-instance"
-import { EOL } from "os"
+import { ServerProcessLock } from "../daemon/server-process-lock"
+import { StartupReporter } from "../cli/startup-reporter"
+import { Flag } from "../flag/flag"
+import { GlobalRuntime } from "./global-runtime"
+import { Observability } from "../observability"
 
 const log = Log.create({ service: "server-runtime" })
 
-const DIM = UI.Style.TEXT_DIM
-const RESET = UI.Style.TEXT_NORMAL
-const CYAN = UI.Style.TEXT_HIGHLIGHT
-const CYAN_BOLD = UI.Style.TEXT_HIGHLIGHT_BOLD
-const WARN = UI.Style.TEXT_WARNING
-const GREEN = UI.Style.TEXT_SUCCESS
-
 const CHANNEL_CONNECT_TIMEOUT = 15_000
-const SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
-const SPINNER_INTERVAL = 80
+const STATUS_POLL_INTERVAL = 320
 
 export interface RuntimeOptions {
   interactive: boolean
@@ -38,9 +33,28 @@ export interface RuntimeOptions {
   }
 }
 export async function run(options: RuntimeOptions) {
-  await ensureMigrations()
+  const reporter = options.printBanner ? StartupReporter.create() : undefined
+  const migration = await ensureMigrations({
+    output: "silent",
+    reporter: reporter
+      ? {
+          summary: (summary) => reporter.migration(summary),
+        }
+      : undefined,
+  })
+  reporter?.migration(migration)
 
-  await SingleInstance.acquire()
+  const processLock = await ServerProcessLock.acquire()
+  await Observability.cleanup().catch(() => {})
+  await Observability.emit("server.start", {
+    data: {
+      pid: process.pid,
+      cwd: process.cwd(),
+      launchCwd: startupScopeLabel(),
+      mode: process.env.SYNERGY_DAEMON === "1" ? "daemon" : "server",
+      network: options.network,
+    },
+  })
 
   // Holos login: intentionally skipped at CLI startup.
   // Users can log in via Web UI sidebar Holos panel or 'synergy holos login'.
@@ -56,24 +70,33 @@ export async function run(options: RuntimeOptions) {
 
   Server.mountApp()
   const server = Server.listen(options.network)
+  const statuses: StartupReporter.StatusRow[] = []
 
-  await Instance.provide({
-    scope: Scope.global(),
-    init: InstanceBootstrap,
-    fn: async () => {
-      await Promise.all([ChannelBootstrap(), HolosBootstrap()])
-      if (options.printChannelStatus) {
-        await printConnectionStatusSurfaces()
-      }
-    },
+  await StartupReporter.provide(reporter, async () => {
+    await GlobalRuntime.start()
+    if (options.printChannelStatus) {
+      statuses.push(
+        ...(await ScopeContext.provide({
+          scope: Scope.home(),
+          fn: connectionStatusRows,
+        })),
+      )
+    }
   })
 
   if (options.printBanner) {
-    renderBanner(server)
-    await printModelWarning()
+    if (
+      await ScopeContext.provide({
+        scope: Scope.home(),
+        fn: hasNoModelConfigured,
+      })
+    ) {
+      reporter?.warning("No AI model configured — run synergy config before sending messages.")
+    }
+    renderBanner({ server, network: options.network, reporter: reporter ?? StartupReporter.create(), statuses })
   }
 
-  registerShutdown(server)
+  registerShutdown(server, processLock.release)
 
   if (process.env.SYNERGY_DAEMON === "1") {
     DaemonLogRotate.start()
@@ -82,63 +105,47 @@ export async function run(options: RuntimeOptions) {
   await new Promise(() => {})
 }
 
-function renderBanner(server: { hostname?: string; port?: number }) {
-  const hostname = server.hostname || "localhost"
-  const port = server.port || Server.DEFAULT_PORT
-  const url = `http://${hostname}:${port}`
+function renderBanner(input: {
+  server: { hostname?: string; port?: number }
+  network: RuntimeOptions["network"]
+  reporter: StartupReporter.Reporter
+  statuses: StartupReporter.StatusRow[]
+}) {
+  const hostname = input.server.hostname || input.network.hostname || "localhost"
+  const port = input.server.port || Server.DEFAULT_PORT
+  const url = displayUrl(hostname, port)
+  const bind = `${hostname}:${port}`
   const portExplicitlySet = process.argv.includes("--port")
   const fellBackToRandom = !portExplicitlySet && port !== Server.DEFAULT_PORT
   const attach = port === Server.DEFAULT_PORT ? "" : " --attach " + url
-
-  const kw = 20
-  const label = (text: string) => DIM + "  " + text + " ".repeat(Math.max(0, kw - text.length))
-
-  const lines: string[] = []
-  lines.push("")
-  lines.push(UI.logo("  "))
-  lines.push("")
-  lines.push(label("Server") + CYAN_BOLD + url + RESET)
-  lines.push(label("Version") + RESET + Installation.VERSION)
   if (fellBackToRandom) {
-    lines.push(label("") + WARN + "⚠ Port " + Server.DEFAULT_PORT + " in use — fell back to " + port + RESET)
+    input.reporter.warning(`Port ${Server.DEFAULT_PORT} is busy; using ${port}.`)
   }
-  lines.push("")
-  lines.push(DIM + "  Quick start" + RESET)
-  lines.push(DIM + "    $ " + RESET + "synergy web" + attach)
-  lines.push(DIM + "    $ " + RESET + "synergy send" + attach + ' "your message"')
-  lines.push("")
 
-  Bun.stderr.write(lines.join(EOL) + EOL)
+  input.reporter.render({
+    title: `Synergy ${Installation.VERSION}`,
+    rows: [
+      { label: "Mode", value: "global server" },
+      { label: "Launch cwd", value: startupScopeLabel() },
+      { label: "Server", value: url },
+      { label: "Bind", value: bind },
+      { label: "Logs", value: Log.file() || "stderr" },
+    ],
+    statuses: input.statuses,
+    next: ["synergy web" + attach, "synergy send" + attach + ' "your message"'],
+  })
 }
 
-async function printModelWarning() {
+export function startupScopeLabel() {
+  return Flag.SYNERGY_CWD || process.cwd()
+}
+
+async function hasNoModelConfigured() {
   try {
     const providers = await Provider.list()
-    if (Object.keys(providers).length === 0) {
-      const lines = [
-        WARN + "  ⚠ No AI model configured" + RESET,
-        DIM + "    Run " + RESET + "synergy config edit" + DIM + " to set up a provider before using Synergy" + RESET,
-        "",
-      ]
-      Bun.stderr.write(lines.join(EOL) + EOL)
-    }
+    return Object.keys(providers).length === 0
   } catch {
-    // Provider state not available yet — skip the warning
-  }
-}
-
-function getStatusIcon(status: ChannelTypes.Status["status"]): string {
-  switch (status) {
-    case "connected":
-      return GREEN + "●" + RESET
-    case "connecting":
-      return CYAN + "◌" + RESET
-    case "disconnected":
-      return DIM + "○" + RESET
-    case "disabled":
-      return DIM + "○" + RESET
-    case "failed":
-      return WARN + "●" + RESET
+    return false
   }
 }
 
@@ -147,38 +154,23 @@ function getStatusText(status: ChannelTypes.Status): string {
   return status.status
 }
 
-async function printStatusSection(input: {
-  title: string
+async function resolveStatuses(input: {
   statuses: Record<string, ChannelTypes.Status>
   refresh: () => Promise<Record<string, ChannelTypes.Status>>
-}) {
+}): Promise<Record<string, ChannelTypes.Status>> {
   const entries = Object.entries(input.statuses)
-  if (entries.length === 0) return
+  if (entries.length === 0) return {}
 
-  const formatLine = (key: string, status: ChannelTypes.Status) =>
-    DIM + "    " + getStatusIcon(status.status) + " " + RESET + key + " " + DIM + getStatusText(status) + RESET
-
-  Bun.stderr.write(DIM + `  ${input.title}` + RESET + EOL)
-
-  for (const [key, status] of entries) {
-    if (status.status === "connecting") {
-      let frame = 0
-      const writeSpinner = () => {
-        const icon = CYAN + SPINNER_FRAMES[frame % SPINNER_FRAMES.length] + RESET
-        Bun.stderr.write("\r\x1b[K" + DIM + "    " + icon + " " + RESET + key + " " + DIM + "connecting" + RESET)
-        frame++
-      }
-
-      writeSpinner()
-
-      const finalStatus = await new Promise<ChannelTypes.Status>((resolve) => {
-        const timeout = setTimeout(
-          () => resolve({ status: "failed", error: "connection timeout" } as ChannelTypes.Status),
-          CHANNEL_CONNECT_TIMEOUT,
-        )
-        const spin = setInterval(async () => {
-          writeSpinner()
-          if (frame % 4 === 0) {
+  const result: Record<string, ChannelTypes.Status> = { ...input.statuses }
+  await Promise.all(
+    entries.map(async ([key, status]) => {
+      if (status.status === "connecting") {
+        result[key] = await new Promise<ChannelTypes.Status>((resolve) => {
+          const timeout = setTimeout(
+            () => resolve({ status: "failed", error: "connection timeout" } as ChannelTypes.Status),
+            CHANNEL_CONNECT_TIMEOUT,
+          )
+          const spin = setInterval(async () => {
             const current = await input.refresh().catch(() => ({}) as Record<string, ChannelTypes.Status>)
             const nextStatus = current[key]
             if (nextStatus && nextStatus.status !== "connecting") {
@@ -186,20 +178,15 @@ async function printStatusSection(input: {
               clearTimeout(timeout)
               resolve(nextStatus)
             }
-          }
-        }, SPINNER_INTERVAL)
-      })
-
-      Bun.stderr.write("\r\x1b[K" + formatLine(key, finalStatus) + EOL)
-    } else {
-      Bun.stderr.write(formatLine(key, status) + EOL)
-    }
-  }
-
-  Bun.stderr.write(EOL)
+          }, STATUS_POLL_INTERVAL)
+        })
+      }
+    }),
+  )
+  return result
 }
 
-async function printHolosStatus() {
+async function holosStatusRow(): Promise<StartupReporter.StatusRow> {
   const { HolosRuntime } = await import("../holos/runtime")
   type HolosStatus = Awaited<ReturnType<typeof HolosRuntime.status>>
 
@@ -211,77 +198,56 @@ async function printHolosStatus() {
     return current.status
   }
 
-  const formatLine = (current: HolosStatus) =>
-    DIM + "    " + getStatusIcon(current.status) + " " + RESET + key + " " + DIM + getHolosStatusText(current) + RESET
-
-  Bun.stderr.write(DIM + "  Holos Identity" + RESET + EOL)
-
   if (status.status === "connecting") {
-    let frame = 0
-    const writeSpinner = () => {
-      const icon = CYAN + SPINNER_FRAMES[frame % SPINNER_FRAMES.length] + RESET
-      Bun.stderr.write("\r\x1b[K" + DIM + "    " + icon + " " + RESET + key + " " + DIM + "connecting" + RESET)
-      frame++
-    }
-
-    writeSpinner()
-
     const finalStatus = await new Promise<HolosStatus>((resolve) => {
       const timeout = setTimeout(
         () => resolve({ status: "failed", error: "connection timeout" }),
         CHANNEL_CONNECT_TIMEOUT,
       )
       const spin = setInterval(async () => {
-        writeSpinner()
-        if (frame % 4 === 0) {
-          const nextStatus = await HolosRuntime.status().catch(
-            (): HolosStatus => ({ status: "failed", error: "status unavailable" }),
-          )
-          if (nextStatus.status !== "connecting") {
-            clearInterval(spin)
-            clearTimeout(timeout)
-            resolve(nextStatus)
-          }
+        const nextStatus = await HolosRuntime.status().catch(
+          (): HolosStatus => ({ status: "failed", error: "status unavailable" }),
+        )
+        if (nextStatus.status !== "connecting") {
+          clearInterval(spin)
+          clearTimeout(timeout)
+          resolve(nextStatus)
         }
-      }, SPINNER_INTERVAL)
+      }, STATUS_POLL_INTERVAL)
     })
-
-    Bun.stderr.write("\r\x1b[K" + formatLine(finalStatus) + EOL)
-  } else {
-    Bun.stderr.write(formatLine(status) + EOL)
+    return { label: "Holos", value: `${key} ${getHolosStatusText(finalStatus)}`, kind: statusKind(finalStatus.status) }
   }
 
-  Bun.stderr.write(EOL)
+  return { label: "Holos", value: `${key} ${getHolosStatusText(status)}`, kind: statusKind(status.status) }
 }
 
-async function printConnectionStatusSurfaces() {
+async function connectionStatusRows(): Promise<StartupReporter.StatusRow[]> {
   const { Bus } = await import("../bus")
   const { Channel } = await import("../channel")
 
-  await printStatusSection({
-    title: "Channel Integrations",
-    statuses: await Channel.status(),
-    refresh: () => Channel.status(),
-  })
+  const channelStatuses = await resolveStatuses({ statuses: await Channel.status(), refresh: () => Channel.status() })
+  const rows: StartupReporter.StatusRow[] = [channelStatusRow(channelStatuses), await holosStatusRow()]
 
-  await printHolosStatus()
-
-  const channelState = Instance.state(
+  const channelState = ScopedState.create(
     () => {
       const unsubs: Array<() => void> = []
       unsubs.push(
         Bus.subscribe(Channel.Event.Connected, (event) => {
           const channel = event.properties.channelType + ":" + event.properties.accountId
-          Bun.stderr.write(DIM + "    " + GREEN + "●" + RESET + " " + channel + " " + DIM + "reconnected" + RESET + EOL)
+          StartupReporter.print({
+            title: "Synergy connection update",
+            statuses: [{ label: "Channels", value: `${channel} reconnected`, kind: "success" }],
+          })
         }),
       )
       unsubs.push(
         Bus.subscribe(Channel.Event.Disconnected, (event) => {
           const channel = event.properties.channelType + ":" + event.properties.accountId
           const reason = event.properties.reason ? ": " + event.properties.reason : ""
-          Bun.stderr.write(
-            DIM + "    " + WARN + "●" + RESET + " " + channel + " " + DIM + "disconnected" + reason + RESET + EOL,
-          )
+          StartupReporter.print({
+            title: "Synergy connection update",
+            statuses: [{ label: "Channels", value: `${channel} disconnected${reason}`, kind: "warning" }],
+          })
         }),
       )
       return { unsubs }
@@ -291,36 +257,152 @@ async function printConnectionStatusSurfaces() {
     },
   )
   void channelState()
+  return rows
 }
 
-function registerShutdown(server: { stop: (closeActiveConnections?: boolean) => Promise<void> }) {
+function channelStatusRow(statuses: Record<string, ChannelTypes.Status>): StartupReporter.StatusRow {
+  const entries = Object.entries(statuses)
+  if (entries.length === 0) return { label: "Channels", value: "none configured", kind: "muted" }
+  const failed = entries.filter(([, status]) => status.status === "failed")
+  if (failed.length > 0) {
+    return {
+      label: "Channels",
+      value: failed.map(([key, status]) => `${key} ${getStatusText(status)}`).join(", "),
+      kind: "error",
+    }
+  }
+  const connected = entries.filter(([, status]) => status.status === "connected")
+  if (connected.length === entries.length) {
+    return { label: "Channels", value: connected.map(([key]) => `${key} connected`).join(", "), kind: "success" }
+  }
+  return {
+    label: "Channels",
+    value: entries.map(([key, status]) => `${key} ${getStatusText(status)}`).join(", "),
+    kind: entries.some(([, status]) => status.status === "connecting") ? "pending" : "muted",
+  }
+}
+
+function statusKind(status: ChannelTypes.Status["status"]): StartupReporter.StatusRow["kind"] {
+  if (status === "connected") return "success"
+  if (status === "connecting") return "pending"
+  if (status === "failed") return "error"
+  return "muted"
+}
+
+function displayUrl(hostname: string, port: number) {
+  const displayHost = hostname === "0.0.0.0" ? "localhost" : hostname === "::" ? "::1" : hostname
+  const url = new URL("http://localhost")
+  url.hostname = displayHost
+  url.port = String(port)
+  return url.toString().replace(/\/$/, "")
+}
+
+function registerShutdown(
+  server: { stop: (closeActiveConnections?: boolean) => Promise<void> },
+  releaseLock: () => Promise<void>,
+) {
   let shuttingDown = false
 
   const gracefulShutdown = async (signal: string) => {
     if (shuttingDown) {
+      await Observability.emit("shutdown.force_exit", {
+        level: "error",
+        data: { signal, reason: "duplicate signal" },
+      })
       process.exit(1)
       return
     }
 
     shuttingDown = true
     log.info("received signal, shutting down gracefully", { signal })
+    await Observability.emit("shutdown.signal", {
+      data: {
+        signal,
+        pid: process.pid,
+      },
+    })
+
+    let phase = "start"
 
     const forceExitTimeout = setTimeout(() => {
-      log.warn("graceful shutdown timed out, forcing exit")
-      process.exit(1)
+      void (async () => {
+        log.warn("graceful shutdown timed out, forcing exit")
+        await Observability.emit("shutdown.force_exit", {
+          level: "error",
+          data: {
+            signal,
+            phase,
+            reason: "timeout",
+          },
+        })
+        await releaseLock().catch(() => {})
+        Log.flush()
+        process.exit(1)
+      })()
     }, 5000)
     forceExitTimeout.unref()
 
     try {
+      phase = "stop log rotate"
+      await Observability.emit("shutdown.phase", { data: { phase } })
       DaemonLogRotate.stop()
+
+      phase = "kill running processes"
+      await Observability.emit("shutdown.phase", { data: { phase } })
       await ProcessRegistry.killAllRunning()
-      await Instance.disposeAll()
+
+      phase = "stop global runtime"
+      await Observability.emit("shutdown.phase", { data: { phase } })
+      await GlobalRuntime.stop()
+
+      phase = "dispose scopes"
+      await Observability.emit("shutdown.phase", { data: { phase } })
+      await ScopeRuntime.disposeAll()
+
+      phase = "server stop"
+      await Observability.emit("shutdown.phase", { data: { phase } })
       await server.stop()
+
+      phase = "release lock"
+      await Observability.emit("shutdown.phase", { data: { phase } })
+      await releaseLock()
+
+      phase = "complete"
+      await Observability.emit("server.stop", { data: { signal, pid: process.pid } })
     } catch (error) {
       log.error("error during graceful shutdown", { error })
+      await Observability.emit("shutdown.error", {
+        level: "error",
+        data: {
+          signal,
+          phase,
+          error:
+            error instanceof Error ? { name: error.name, message: error.message, stack: error.stack } : String(error),
+        },
+      })
+    }
+
+    if (phase !== "complete") {
+      try {
+        phase = "release lock"
+        await Observability.emit("shutdown.phase", { data: { phase, afterError: true } })
+        await releaseLock()
+      } catch (error) {
+        log.error("failed to release server process lock", { error })
+        await Observability.emit("shutdown.error", {
+          level: "error",
+          data: {
+            signal,
+            phase,
+            error:
+              error instanceof Error ? { name: error.name, message: error.message, stack: error.stack } : String(error),
+          },
+        })
+      }
     }
 
     clearTimeout(forceExitTimeout)
+    Log.flush()
     process.exit(0)
   }
 

@@ -97,7 +97,7 @@ export const ControlProfileRoute = new Hono()
     ),
     async (c) => {
       const { agent: agentName } = c.req.valid("query")
-      const cfg = await Config.get()
+      const cfg = await Config.current()
       const topLevelProfile = cfg.controlProfile
       let agentProfile: string | undefined
       let resolvedLabel = "Guarded"

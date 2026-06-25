@@ -55,7 +55,7 @@ export const CREDENTIAL_PATHS = (homedir: string): string[] => [
   // Protects against: CBSE config/prompt leak, credential exfiltration
   path.join(homedir, ".synergy", "config"),
   path.join(homedir, ".synergy", "data", "auth"),
-  path.join(homedir, ".synergy", "data", "engram"),
+  path.join(homedir, ".synergy", "data", "library"),
   path.join(homedir, ".synergy", "data", "notes"),
   // ── Network & cloud credentials ─────────────────────────────────
   // Protects against: SSH key theft, cloud credential exfiltration, GPG key compromise

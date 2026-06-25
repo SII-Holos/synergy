@@ -4,9 +4,9 @@ import z from "zod"
 import { BusEvent } from "../bus/bus-event"
 import { GlobalBus } from "../bus/global"
 import { Config } from "../config/config"
-import { ConfigSet } from "../config/set"
+import { ConfigDomain } from "../config/domain"
 import { Global } from "../global"
-import { Instance } from "../scope/instance"
+import { ScopeContext } from "../scope/context"
 import { RuntimeSchema } from "./schema"
 import { SkillPaths } from "../skill/paths"
 import { Log } from "../util/log"
@@ -45,7 +45,7 @@ export namespace RuntimeReload {
     "tools",
     "embedding",
     "rerank",
-    "engram",
+    "library",
     "external_agent",
     "email",
   ])
@@ -109,7 +109,7 @@ export namespace RuntimeReload {
     const liveApplied = new Set<string>()
 
     // P2: Centralized Config cache invalidation — all subsystems that read
-    // Config.get() during their state() initialization will get fresh config.
+    // Config.current() during their state() initialization will get fresh config.
     // This replaces the scattered Config.state.resetAll() calls that were
     // previously in individual subsystem reload() functions.
     const needsConfig = requested.includes("config") || requested.includes("all")
@@ -172,7 +172,7 @@ export namespace RuntimeReload {
     }
 
     GlobalBus.emit("event", {
-      directory: Instance.directory,
+      directory: ScopeContext.current.directory,
       payload: {
         type: Event.Reloaded.type,
         properties: {
@@ -247,17 +247,17 @@ export namespace RuntimeReload {
         for (const cascadedTarget of inferConfigCascades(result.changedFields)) {
           await executeTarget(cascadedTarget, ctx)
         }
-        // P11: Handle engram → autonomy/anima sync (migrated from Config.reload)
-        if (result.changedFields.includes("engram") && result.oldConfig) {
-          const oldAutonomy = result.oldConfig.engram?.autonomy !== false
-          const newAutonomy = result.config.engram?.autonomy !== false
+        // P11: Handle library → autonomy/anima sync (migrated from Config.reload)
+        if (result.changedFields.includes("library") && result.oldConfig) {
+          const oldAutonomy = result.oldConfig.library?.autonomy !== false
+          const newAutonomy = result.config.library?.autonomy !== false
           if (oldAutonomy !== newAutonomy) {
             try {
               const { AgendaBootstrap } = await import("../agenda/bootstrap")
               await AgendaBootstrap.syncAnima(newAutonomy)
             } catch (err) {
               ctx.warnings.push(
-                `Failed to sync anima after engram change: ${err instanceof Error ? err.message : String(err)}`,
+                `Failed to sync anima after library change: ${err instanceof Error ? err.message : String(err)}`,
               )
             }
           }
@@ -281,6 +281,7 @@ export namespace RuntimeReload {
       case "plugin": {
         const { Plugin } = await import("../plugin")
         await Plugin.reload()
+        await Plugin.init()
         return
       }
       case "mcp": {
@@ -338,13 +339,12 @@ export namespace RuntimeReload {
   }
 
   function hasProjectConfig() {
-    const candidates = [
-      path.join(Instance.directory, ".synergy", "synergy.jsonc"),
-      path.join(Instance.directory, ".synergy", "synergy.json"),
-      path.join(Instance.directory, "synergy.jsonc"),
-      path.join(Instance.directory, "synergy.json"),
-    ]
-    return candidates.some((candidate) => existsSync(candidate))
+    return (
+      projectLegacyConfigFiles().some((file) => existsSync(file)) ||
+      ConfigDomain.definitions.some((domain) =>
+        existsSync(path.join(ScopeContext.current.directory, ".synergy", "synergy.d", domain.filename)),
+      )
+    )
   }
 
   // ─── Config cascade inference ────────────────────────────────────────
@@ -383,7 +383,7 @@ export namespace RuntimeReload {
       // Category configs can specify model overrides that reference different providers
       cascaded.push("provider", "agent")
     }
-    if (changed.has("agent") || changed.has("permission") || changed.has("engram") || changed.has("external_agent")) {
+    if (changed.has("agent") || changed.has("permission") || changed.has("library") || changed.has("external_agent")) {
       cascaded.push("agent")
     }
     if (changed.has("default_agent") || changed.has("instructions")) {
@@ -432,7 +432,7 @@ export namespace RuntimeReload {
 
   export function builtinSourceEditWarning(filePath: string) {
     const normalized = path.resolve(filePath)
-    const builtinRoot = path.resolve(path.join(Instance.directory, "packages", "synergy", "src"))
+    const builtinRoot = path.resolve(path.join(ScopeContext.current.directory, "packages", "synergy", "src"))
     if (!normalized.startsWith(builtinRoot + path.sep)) return undefined
     return BUILTIN_SOURCE_RESTART_WARNING
   }
@@ -448,8 +448,8 @@ export namespace RuntimeReload {
         path.resolve(path.join(Global.Path.config, "command")),
         path.resolve(path.join(Global.Path.config, "commands")),
       ],
-      skill: SkillPaths.runtimeSkillRootsSync(Instance.directory).filter(
-        (root) => !root.startsWith(path.resolve(Instance.directory)),
+      skill: SkillPaths.runtimeSkillRootsSync(ScopeContext.current.directory).filter(
+        (root) => !root.startsWith(path.resolve(ScopeContext.current.directory)),
       ),
       tool: [path.resolve(path.join(Global.Path.config, "tool"))],
       plugin: [
@@ -462,20 +462,20 @@ export namespace RuntimeReload {
   function projectConfigRoots() {
     return {
       agent: [
-        path.resolve(path.join(Instance.directory, ".synergy", "agent")),
-        path.resolve(path.join(Instance.directory, ".synergy", "agents")),
+        path.resolve(path.join(ScopeContext.current.directory, ".synergy", "agent")),
+        path.resolve(path.join(ScopeContext.current.directory, ".synergy", "agents")),
       ],
       command: [
-        path.resolve(path.join(Instance.directory, ".synergy", "command")),
-        path.resolve(path.join(Instance.directory, ".synergy", "commands")),
+        path.resolve(path.join(ScopeContext.current.directory, ".synergy", "command")),
+        path.resolve(path.join(ScopeContext.current.directory, ".synergy", "commands")),
       ],
-      skill: SkillPaths.runtimeSkillRootsSync(Instance.directory).filter((root) =>
-        root.startsWith(path.resolve(Instance.directory)),
+      skill: SkillPaths.runtimeSkillRootsSync(ScopeContext.current.directory).filter((root) =>
+        root.startsWith(path.resolve(ScopeContext.current.directory)),
       ),
-      tool: [path.resolve(path.join(Instance.directory, ".synergy", "tool"))],
+      tool: [path.resolve(path.join(ScopeContext.current.directory, ".synergy", "tool"))],
       plugin: [
-        path.resolve(path.join(Instance.directory, ".synergy", "plugin")),
-        path.resolve(path.join(Instance.directory, ".synergy", "plugins")),
+        path.resolve(path.join(ScopeContext.current.directory, ".synergy", "plugin")),
+        path.resolve(path.join(ScopeContext.current.directory, ".synergy", "plugins")),
       ],
     }
   }
@@ -484,35 +484,32 @@ export namespace RuntimeReload {
     return roots.some((root) => normalized.startsWith(root + path.sep))
   }
 
+  function globalLegacyConfigFiles() {
+    return [path.join(Global.Path.config, "synergy.jsonc"), path.join(Global.Path.config, "synergy.json")].map((file) =>
+      path.resolve(file),
+    )
+  }
+
+  function projectLegacyConfigFiles() {
+    return [
+      path.join(ScopeContext.current.directory, "synergy.jsonc"),
+      path.join(ScopeContext.current.directory, "synergy.json"),
+      path.join(ScopeContext.current.directory, ".synergy", "synergy.jsonc"),
+      path.join(ScopeContext.current.directory, ".synergy", "synergy.json"),
+    ].map((file) => path.resolve(file))
+  }
+
   export function detectScopeForFile(filePath: string): Scope | undefined {
     const normalized = path.resolve(filePath)
 
-    // Check global config files
-    const globalFiles = [
-      ConfigSet.defaultFilePath(),
-      path.join(Global.Path.config, "synergy.json"),
-      ConfigSet.metadataPath(),
-    ].map((item) => path.resolve(item))
-    if (globalFiles.includes(normalized)) return "global"
+    if (globalLegacyConfigFiles().includes(normalized)) return "global"
+    if (projectLegacyConfigFiles().includes(normalized)) return "project"
 
-    // Check ConfigSet files
-    const configSetRoot = path.resolve(ConfigSet.directory())
-    if (normalized.startsWith(configSetRoot + path.sep)) {
-      const relative = path.relative(configSetRoot, normalized)
-      const parts = relative.split(path.sep)
-      if (parts.length >= 2 && parts[parts.length - 1] === "synergy.jsonc") {
-        return parts[0] === ConfigSet.activeNameSync() ? "global" : undefined
-      }
-    }
+    const globalDomainDir = path.resolve(ConfigDomain.directory())
+    if (normalized.startsWith(globalDomainDir + path.sep) && ConfigDomain.domainForFile(normalized)) return "global"
 
-    // Check project config files
-    const projectFiles = [
-      path.join(Instance.directory, ".synergy", "synergy.jsonc"),
-      path.join(Instance.directory, ".synergy", "synergy.json"),
-      path.join(Instance.directory, "synergy.jsonc"),
-      path.join(Instance.directory, "synergy.json"),
-    ].map((item) => path.resolve(item))
-    if (projectFiles.includes(normalized)) return "project"
+    const projectDomainDir = path.resolve(path.join(ScopeContext.current.directory, ".synergy", "synergy.d"))
+    if (normalized.startsWith(projectDomainDir + path.sep) && ConfigDomain.domainForFile(normalized)) return "project"
 
     // P3: Check global config directory roots (agent, command, skill, tool, plugin)
     const globalRoots = globalConfigRoots()
@@ -543,31 +540,18 @@ export namespace RuntimeReload {
     const normalized = path.resolve(filePath)
     const targets = [] as Target[]
 
-    // Config files
-    const configFiles = [
-      ConfigSet.defaultFilePath(),
-      path.join(Global.Path.config, "synergy.json"),
-      ConfigSet.metadataPath(),
-      path.join(Instance.directory, ".synergy", "synergy.jsonc"),
-      path.join(Instance.directory, ".synergy", "synergy.json"),
-      path.join(Instance.directory, "synergy.jsonc"),
-      path.join(Instance.directory, "synergy.json"),
-    ].map((item) => path.resolve(item))
-    if (configFiles.includes(normalized)) {
+    if (globalLegacyConfigFiles().includes(normalized) || projectLegacyConfigFiles().includes(normalized)) {
       targets.push("config")
     }
 
-    // ConfigSet files
-    const configSetRoot = path.resolve(ConfigSet.directory())
-    if (normalized.startsWith(configSetRoot + path.sep)) {
-      const relative = path.relative(configSetRoot, normalized)
-      const parts = relative.split(path.sep)
-      if (parts.length >= 2 && parts[parts.length - 1] === "synergy.jsonc") {
-        const setName = parts[0]
-        if (setName === ConfigSet.activeNameSync()) {
-          targets.push("config")
-        }
-      }
+    const globalDomainDir = path.resolve(ConfigDomain.directory())
+    const projectDomainDir = path.resolve(path.join(ScopeContext.current.directory, ".synergy", "synergy.d"))
+    if (
+      (normalized.startsWith(globalDomainDir + path.sep) || normalized.startsWith(projectDomainDir + path.sep)) &&
+      ConfigDomain.domainForFile(normalized)
+    ) {
+      const domain = ConfigDomain.domainForFile(normalized)!
+      targets.push(...(domain.reloadTargets as Target[]))
     }
 
     const gRoots = globalConfigRoots()

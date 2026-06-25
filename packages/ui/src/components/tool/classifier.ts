@@ -17,9 +17,11 @@ export type SemanticCategory =
   | "file-write"
   | "shell"
   | "search"
+  | "browser"
   | "web"
   | "memory"
   | "note"
+  | "blueprint"
   | "task"
   | "dag"
   | "schedule"
@@ -72,6 +74,12 @@ export const CATEGORIES: Record<SemanticCategory, CategorySpec> = {
     subtitleKeys: ["url", "query"],
     argsKeys: ["format", "categories"],
   },
+  browser: {
+    icon: "panel-right",
+    label: "Browser",
+    subtitleKeys: ["url", "title", "tabId", "action", "type"],
+    argsKeys: ["action", "kind", "captureKind"],
+  },
   memory: {
     icon: "brain",
     label: "Memory",
@@ -82,6 +90,12 @@ export const CATEGORIES: Record<SemanticCategory, CategorySpec> = {
     label: "Note",
     subtitleKeys: ["title", "pattern"],
     argsKeys: ["scope", "mode"],
+  },
+  blueprint: {
+    icon: "stamp",
+    label: "Blueprint",
+    subtitleKeys: ["title", "loopID", "id"],
+    argsKeys: ["status"],
   },
   task: {
     icon: "list-todo",
@@ -161,6 +175,29 @@ const TOOL_CATEGORIES: Record<string, SemanticCategory> = {
   // search
   websearch: "web",
   webfetch: "web",
+  browser_navigate: "browser",
+  browser_snapshot: "browser",
+  browser_screenshot: "browser",
+  browser_click: "browser",
+  browser_type: "browser",
+  browser_scroll: "browser",
+  browser_wait: "browser",
+  browser_inspect: "browser",
+  browser_read: "browser",
+  browser_console: "browser",
+  browser_network: "browser",
+  browser_download: "browser",
+  browser_downloads: "browser",
+  browser_tab: "browser",
+  browser_annotate: "browser",
+  browser_action: "browser",
+  browser_clipboard: "browser",
+  browser_eval: "browser",
+  browser_list: "browser",
+  browser_assets: "browser",
+  browser_view: "browser",
+  browser_navigation: "browser",
+  browser_viewport: "browser",
   arxiv_search: "search",
   arxiv_download: "search",
   grep: "search",
@@ -194,6 +231,8 @@ const TOOL_CATEGORIES: Record<string, SemanticCategory> = {
   note_edit: "note",
   note_list: "note",
   note_read: "note",
+  blueprint_loop_finish: "blueprint",
+  blueprint_loop_restart: "blueprint",
   skill: "skill",
 
   // orchestration
@@ -297,6 +336,7 @@ const TOOL_CATEGORIES: Record<string, SemanticCategory> = {
 const PATTERN_FALLBACKS: { pattern: RegExp; category: SemanticCategory }[] = [
   { pattern: /^(web)?search/i, category: "web" },
   { pattern: /^(web)?fetch/i, category: "web" },
+  { pattern: /^browser[-_]/i, category: "browser" },
   { pattern: /^arxiv/i, category: "search" },
   {
     pattern: /^(grep|glob|find|ripgrep|rg|search[-_]?files?|codebase[-_]?search|file[-_]?search)/i,
@@ -309,7 +349,7 @@ const PATTERN_FALLBACKS: { pattern: RegExp; category: SemanticCategory }[] = [
   { pattern: /^(run|exec|execute|shell|bash|sh|cmd|terminal|command)/i, category: "shell" },
   { pattern: /[-_](command|exec|shell|terminal)$/i, category: "shell" },
   { pattern: /^(look|analyze|vision|describe|inspect|examine)/i, category: "analyze" },
-  { pattern: /^(memory|engram|remember|recall)/i, category: "memory" },
+  { pattern: /^(memory|library|remember|recall)/i, category: "memory" },
   { pattern: /^note[-_]/i, category: "note" },
   { pattern: /^skill/i, category: "skill" },
   { pattern: /^(task|delegate|dispatch|spawn)/i, category: "task" },

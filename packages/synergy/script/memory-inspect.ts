@@ -5,13 +5,13 @@ import path from "path"
 import os from "os"
 
 const dataDir = path.join(os.homedir(), ".synergy", "data")
-const dbPath = path.join(dataDir, "engram.db")
+const dbPath = path.join(dataDir, "library.db")
 
 console.log(`\n📂 Database path: ${dbPath}`)
 
 const file = Bun.file(dbPath)
 if (!(await file.exists())) {
-  console.log("❌ engram.db does not exist yet. Run a conversation first.\n")
+  console.log("❌ library.db does not exist yet. Run a conversation first.\n")
   process.exit(1)
 }
 

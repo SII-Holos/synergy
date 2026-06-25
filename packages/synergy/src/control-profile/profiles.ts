@@ -25,10 +25,20 @@ const CAPABILITY_PERMISSIONS = [
   "network_request",
   "mcp_invoke",
   "plugin_invoke",
+  "plugin_file_read",
+  "plugin_file_write",
+  "plugin_shell",
+  "plugin_network",
+  "plugin_session_read",
+  "plugin_workspace_read",
+  "plugin_config_read",
+  "plugin_config_write",
+  "plugin_secret_read",
   "identity_act",
   "communication_email",
   "channel_outbound",
   "platform_control",
+  "protected_op",
 
   "session_state",
 
@@ -50,10 +60,16 @@ const HIGH_RISK_PERMISSIONS = [
 
   "mcp_invoke",
   "plugin_invoke",
+  "plugin_file_read",
+  "plugin_file_write",
+  "plugin_shell",
+  "plugin_network",
+  "plugin_secret_read",
   "identity_act",
   "communication_email",
   "channel_outbound",
   "platform_control",
+  "protected_op",
 ]
 
 function rule(permission: string, action: "allow" | "deny" | "ask", nonBypassable = false) {
@@ -67,6 +83,7 @@ function rulesFor(actions: {
 }) {
   return CAPABILITY_PERMISSIONS.map((permission) => {
     if (permission === "shell_hardline") return rule(permission, "deny", true)
+    if (permission === "protected_op") return rule(permission, "ask", true)
     if (HIGH_RISK_PERMISSIONS.includes(permission)) return rule(permission, actions.high, true)
     if (permission === "file_read" || permission === "shell_read") return rule(permission, actions.low)
     return rule(permission, actions.medium)
@@ -76,6 +93,7 @@ function rulesFor(actions: {
 function guardedRules() {
   return CAPABILITY_PERMISSIONS.map((permission) => {
     if (permission === "shell_hardline") return rule(permission, "deny", true)
+    if (permission === "protected_op") return rule(permission, "ask", true)
     if (HIGH_RISK_PERMISSIONS.includes(permission)) return rule(permission, "ask", true)
     if (permission === "file_read" || permission === "shell_read") return rule(permission, "allow")
     if (
@@ -101,8 +119,9 @@ function autonomousRules() {
     if (permission === "network_request") return rule(permission, "allow")
     if (permission === "browser_interact") return rule(permission, "allow")
     if (permission === "browser_inspect") return rule(permission, "allow")
+    if (permission === "protected_op") return rule(permission, "ask", true)
     if (permission === "mcp_invoke") return rule(permission, "allow")
-    if (permission === "plugin_invoke") return rule(permission, "allow")
+    if (permission.startsWith("plugin_")) return rule(permission, "ask", true)
     if (permission === "identity_act") return rule(permission, "allow")
     if (permission === "communication_email") return rule(permission, "allow")
     if (permission === "channel_outbound") return rule(permission, "allow")
@@ -203,7 +222,7 @@ export async function resolveEffectiveSandbox(profileId: ProfileId): Promise<Pro
 
   let sandboxCfg: any = null
   try {
-    const cfg = await Config.get()
+    const cfg = await Config.current()
     sandboxCfg = cfg.sandbox
   } catch {
     LOG.debug("no config context available for sandbox resolution, using profile defaults", { profile: profileId })

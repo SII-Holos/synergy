@@ -167,52 +167,76 @@ runtime_reload(target: "command")
 
 ## Plugins
 
-Plugins are TypeScript/JavaScript files that extend Synergy's tool and provider capabilities.
+Plugins are TypeScript/JavaScript packages that extend Synergy runtime and optional Web UI capabilities.
 
-### Plugin file locations
+### Plugin config
 
-| Scope | Path pattern |
+Configured plugins live in the plugin config domain:
+
+| Scope | Path |
 |---|---|
-| Project | `<project>/.synergy/{plugin,plugins}/*.{ts,js}` |
-| Global | `~/.synergy/config/{plugin,plugins}/*.{ts,js}` |
+| Project | `<project>/.synergy/synergy.d/50-plugins.jsonc` |
+| Global | `~/.synergy/config/synergy.d/50-plugins.jsonc` |
+
+Example:
+
+```jsonc
+{
+  "plugin": ["file:///absolute/path/to/my-plugin"]
+}
+```
+
+Supported specs include local directories, local entry files, `.synergy-plugin.tgz` archives, npm packages, git specs, and URLs. All specs use the shared plugin resolver.
 
 ### Plugin API
 
-Plugins use the `@ericsanchezok/synergy-plugin` SDK. A plugin file exports a default function:
+Plugins use the `@ericsanchezok/synergy-plugin` SDK. A runtime entry exports an object descriptor. `PluginDescriptor.id` must match `plugin.json.name`.
 
 ```ts
-import { definePlugin } from "@ericsanchezok/synergy-plugin"
+import type { PluginDescriptor } from "@ericsanchezok/synergy-plugin"
+import { tool } from "@ericsanchezok/synergy-plugin/tool"
 
-export default definePlugin({
-  name: "my-metrics",
-  tools: [
-    {
-      name: "query_metrics",
-      description: "Query metrics from the internal monitoring system",
-      parameters: {
-        type: "object",
-        properties: {
-          service: { type: "string", description: "Service name" },
-          period: { type: "string", description: "Time period (e.g., '1h', '24h')" }
-        },
-        required: ["service"]
+const plugin: PluginDescriptor = {
+  id: "my-metrics",
+  async init() {
+    return {
+      tool: {
+        query_metrics: tool({
+          description: "Query metrics from the internal monitoring system",
+          args: {
+            service: tool.schema.string(),
+            period: tool.schema.string().optional(),
+          },
+          async execute(args) {
+            const resp = await fetch(`https://metrics.internal/api/${args.service}?period=${args.period ?? "1h"}`)
+            return { output: JSON.stringify(await resp.json(), null, 2) }
+          },
+        }),
       },
-      execute: async (params) => {
-        const resp = await fetch(`https://metrics.internal/api/${params.service}?period=${params.period}`)
-        return resp.json()
-      }
     }
-  ],
-})
+  },
+}
+
+export default plugin
 ```
 
-Synergy auto-installs the plugin SDK (`@ericsanchezok/synergy-plugin`) in each config directory that has plugins.
+Create a plugin package with:
+
+```bash
+bunx @ericsanchezok/synergy-plugin-kit create my-plugin
+cd my-plugin
+bun install
+bun run validate
+bun run build
+bun run pack
+```
 
 ### Plugin dependencies
 
-Plugins can use external npm packages. Add them to the config directory's `package.json`:
+Plugins can use external npm packages. Add them to the plugin package's `package.json`:
+
 ```bash
-cd .synergy && bun add some-package
+cd my-plugin && bun add some-package
 ```
 
 ### Debugging plugins
@@ -220,8 +244,8 @@ cd .synergy && bun add some-package
 - Plugin `console.log` output appears in the Synergy server process logs (stdout/stderr).
 - If a plugin fails to load, check server startup logs for the error — load failures do not crash the server.
 - After modifying a plugin file, reload: `runtime_reload(target: "plugin")`. This cascades to `tool_registry`.
-- Plugin file must export a default function (using `definePlugin` or directly). Named exports are ignored.
-- Plugin files must be `.ts` or `.js` — other extensions are skipped.
+- Runtime entry must export an object descriptor with `id` and `init()`.
+- Worker/process plugins run through the plugin runner; tools and hooks are proxied through the runtime supervisor.
 
 ### Reload
 

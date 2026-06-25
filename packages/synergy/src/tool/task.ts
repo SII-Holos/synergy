@@ -9,7 +9,7 @@ import { defer } from "@/util/defer"
 import { PermissionNext } from "@/permission/next"
 import { Category } from "../cortex/category"
 import { Provider } from "../provider/provider"
-import { Instance } from "../scope/instance"
+import { ScopeContext } from "../scope/context"
 import { Dag } from "../session/dag"
 
 const parameters = z.object({
@@ -117,7 +117,7 @@ export const TaskTool = Tool.define<typeof parameters, TaskMetadata>("task", asy
       }
 
       const msg = await MessageV2.get({
-        scopeID: Instance.scope.id,
+        scopeID: ScopeContext.current.scope.id,
         sessionID: ctx.sessionID,
         messageID: ctx.messageID,
       })

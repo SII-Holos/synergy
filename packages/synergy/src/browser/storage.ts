@@ -1,10 +1,12 @@
 import path from "path"
-import os from "os"
 import fs from "fs/promises"
 import { BrowserOwner } from "./owner.js"
 import { BrowserMigration } from "./migration.js"
+import { Global } from "../global/index.js"
 
 export namespace BrowserStorage {
+  export const CURRENT_VERSION = 2
+
   export interface StoredAnnotation {
     id: string
     tabURL: string
@@ -18,6 +20,7 @@ export namespace BrowserStorage {
   }
 
   export interface SessionState {
+    version?: number
     tabs: {
       id: string
       url: string
@@ -31,13 +34,36 @@ export namespace BrowserStorage {
     panelWidth?: number
     timestamp: number
     annotations?: StoredAnnotation[]
+    storageStatePath?: string
+    profileDir?: string
+  }
+
+  function ownerSlug(owner: BrowserOwner.Info): string {
+    const suffix = owner.mode === "scope" ? "scope" : `session-${owner.sessionID}`
+    return `${owner.scopeID}-${suffix}`.replace(/[^a-zA-Z0-9._-]/g, "_")
+  }
+
+  function baseDir(owner: BrowserOwner.Info): string {
+    return path.join(Global.Path.data, "browser", "sessions", owner.scopeID)
   }
 
   function stateFilePath(owner: BrowserOwner.Info): string {
-    const base = path.join(os.homedir(), ".synergy", "data", "browser", "sessions", owner.scopeID)
+    const base = baseDir(owner)
     if (owner.mode === "scope") return path.join(base, "scope.json")
     BrowserOwner.assertValid(owner)
     return path.join(base, "session", `${owner.sessionID}.json`)
+  }
+
+  export function profileDir(owner: BrowserOwner.Info): string {
+    return path.join(Global.Path.data, "browser", "profiles", ownerSlug(owner))
+  }
+
+  export function storageStatePath(owner: BrowserOwner.Info): string {
+    return path.join(profileDir(owner), "storage-state.json")
+  }
+
+  export function uploadsDir(owner: BrowserOwner.Info): string {
+    return path.join(Global.Path.data, "browser", "uploads", ownerSlug(owner))
   }
 
   function sanitizeUrl(url: string): string {
@@ -45,8 +71,6 @@ export namespace BrowserStorage {
     try {
       const parsed = new URL(url)
       if (parsed.protocol === "file:") return "[local file]"
-      parsed.search = ""
-      parsed.hash = ""
       return parsed.toString()
     } catch {
       return url
@@ -70,6 +94,9 @@ export namespace BrowserStorage {
   export async function save(owner: BrowserOwner.Info, state: SessionState): Promise<void> {
     const sanitized: SessionState = {
       ...state,
+      version: CURRENT_VERSION,
+      storageStatePath: state.storageStatePath ?? storageStatePath(owner),
+      profileDir: state.profileDir ?? profileDir(owner),
       tabs: state.tabs.map((tab) => ({
         ...tab,
         url: sanitizeUrl(tab.url),
@@ -93,5 +120,11 @@ export namespace BrowserStorage {
   /** Get storage path for an owner. */
   export function pathForOwner(owner: BrowserOwner.Info): string {
     return stateFilePath(owner)
+  }
+
+  export async function ensureOwnerDirs(owner: BrowserOwner.Info): Promise<void> {
+    await fs.mkdir(path.dirname(stateFilePath(owner)), { recursive: true })
+    await fs.mkdir(profileDir(owner), { recursive: true })
+    await fs.mkdir(uploadsDir(owner), { recursive: true })
   }
 }

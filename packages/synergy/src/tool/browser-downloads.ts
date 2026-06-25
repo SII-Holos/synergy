@@ -30,38 +30,55 @@ export const BrowserDownloadsTool = Tool.define<typeof parameters, BrowserDownlo
   description:
     "Manage browser download records: list downloads, wait for one to complete, or remove a download by its ID.",
   parameters,
-  async execute(params, _ctx) {
-    switch (params.action) {
-      case "list": {
-        const records = BrowserDownloads.list()
-        return {
-          title: `Downloads (${records.length})`,
-          output: JSON.stringify(records, null, 2),
-          metadata: { records },
+  async execute(params, ctx) {
+    let activityTab = null as Awaited<ReturnType<typeof BrowserToolHelper.resolveTab>> | null
+    try {
+      activityTab = await BrowserToolHelper.resolveTab(ctx, params.tabId)
+      await BrowserToolHelper.markActivity(
+        ctx,
+        activityTab,
+        "reading",
+        "browser_downloads",
+        `Downloads ${params.action}`,
+      )
+    } catch {
+      activityTab = null
+    }
+    try {
+      switch (params.action) {
+        case "list": {
+          const records = BrowserDownloads.list()
+          return {
+            title: `Downloads (${records.length})`,
+            output: JSON.stringify(records, null, 2),
+            metadata: { records },
+          }
         }
-      }
-      case "remove": {
-        if (!params.id) throw new Error("id is required for remove action")
-        const removed = BrowserDownloads.remove(params.id)
-        if (!removed) throw new Error(`Download record ${params.id} not found`)
-        return {
-          title: "Removed",
-          output: `Removed download record ${params.id}`,
-          metadata: { removed: params.id },
+        case "remove": {
+          if (!params.id) throw new Error("id is required for remove action")
+          const removed = BrowserDownloads.remove(params.id)
+          if (!removed) throw new Error(`Download record ${params.id} not found`)
+          return {
+            title: "Removed",
+            output: `Removed download record ${params.id}`,
+            metadata: { removed: params.id },
+          }
         }
-      }
-      case "wait": {
-        // schema.refine already ensures id is present for wait action
-        const id = params.id!
-        const result = await BrowserDownloads.waitForDownload(id, params.timeoutMs)
-        return {
-          title: `Download ${result.id} (${result.state})`,
-          output: JSON.stringify(result, null, 2),
-          metadata: { download: result },
+        case "wait": {
+          // schema.refine already ensures id is present for wait action
+          const id = params.id!
+          const result = await BrowserDownloads.waitForDownload(id, params.timeoutMs)
+          return {
+            title: `Download ${result.id} (${result.state})`,
+            output: JSON.stringify(result, null, 2),
+            metadata: { download: result },
+          }
         }
+        default:
+          throw new Error(`Unknown action: ${(params as { action: string }).action}`)
       }
-      default:
-        throw new Error(`Unknown action: ${(params as { action: string }).action}`)
+    } finally {
+      if (activityTab) await BrowserToolHelper.markIdle(ctx, activityTab, "browser_downloads")
     }
   },
 })

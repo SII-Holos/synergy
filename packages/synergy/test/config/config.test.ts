@@ -1,6 +1,6 @@
 import { test, expect, mock } from "bun:test"
 import { Config } from "../../src/config/config"
-import { Instance } from "../../src/scope/instance"
+import { ScopeContext } from "../../src/scope/context"
 import { Scope } from "../../src/scope"
 import { Auth } from "../../src/provider/api-key"
 import { tmpdir } from "../fixture/fixture"
@@ -15,10 +15,10 @@ import { StoragePath } from "../../src/storage/path"
 
 test("loads config with defaults when no files exist", async () => {
   await using tmp = await tmpdir()
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
-      const config = await Config.get()
+      const config = await Config.current()
       expect(config.username).toBeDefined()
     },
   })
@@ -37,10 +37,10 @@ test("loads JSON config file", async () => {
       )
     },
   })
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
-      const config = await Config.get()
+      const config = await Config.current()
       expect(config.model).toBe("test/model")
       expect(config.username).toBe("testuser")
     },
@@ -61,10 +61,10 @@ test("loads JSONC config file", async () => {
       )
     },
   })
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
-      const config = await Config.get()
+      const config = await Config.current()
       expect(config.model).toBe("test/model")
       expect(config.username).toBe("testuser")
     },
@@ -91,10 +91,10 @@ test("merges multiple config files with correct precedence", async () => {
       )
     },
   })
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
-      const config = await Config.get()
+      const config = await Config.current()
       expect(config.model).toBe("override")
       expect(config.username).toBe("base")
     },
@@ -117,10 +117,10 @@ test("handles environment variable substitution", async () => {
         )
       },
     })
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
-        const config = await Config.get()
+        const config = await Config.current()
         expect(config.theme).toBe("test_theme")
       },
     })
@@ -146,10 +146,10 @@ test("handles file inclusion substitution", async () => {
       )
     },
   })
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
-      const config = await Config.get()
+      const config = await Config.current()
       expect(config.theme).toBe("test_theme")
     },
   })
@@ -167,11 +167,11 @@ test("validates config schema and throws on invalid fields", async () => {
       )
     },
   })
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
       // Strict schema should throw an error for invalid fields
-      await expect(Config.get()).rejects.toThrow()
+      await expect(Config.current()).rejects.toThrow()
     },
   })
 })
@@ -182,10 +182,10 @@ test("throws error for invalid JSON", async () => {
       await Bun.write(path.join(dir, "synergy.json"), "{ invalid json }")
     },
   })
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
-      await expect(Config.get()).rejects.toThrow()
+      await expect(Config.current()).rejects.toThrow()
     },
   })
 })
@@ -208,10 +208,10 @@ test("handles agent configuration", async () => {
       )
     },
   })
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
-      const config = await Config.get()
+      const config = await Config.current()
       expect(config.agent?.["test_agent"]).toEqual(
         expect.objectContaining({
           model: "test/model",
@@ -241,10 +241,10 @@ test("handles command configuration", async () => {
       )
     },
   })
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
-      const config = await Config.get()
+      const config = await Config.current()
       expect(config.command?.["test_command"]).toEqual({
         template: "test template",
         description: "test command",
@@ -271,10 +271,10 @@ Test agent prompt`,
       )
     },
   })
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
-      const config = await Config.get()
+      const config = await Config.current()
       expect(config.agent?.["test"]).toEqual(
         expect.objectContaining({
           name: "test",
@@ -288,13 +288,13 @@ Test agent prompt`,
 
 test("updates config and writes to file", async () => {
   await using tmp = await tmpdir()
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
       const newConfig = { model: "updated/model" }
       await Config.update(newConfig as any)
 
-      const filepath = path.join(tmp.path, ".synergy", "synergy.jsonc")
+      const filepath = path.join(tmp.path, ".synergy", "synergy.d", "10-models.jsonc")
       const writtenConfig = parseJsonc(await Bun.file(filepath).text(), [], { allowTrailingComma: true }) as any
       expect(writtenConfig.model).toBe("updated/model")
     },
@@ -303,7 +303,7 @@ test("updates config and writes to file", async () => {
 
 test("gets config directories", async () => {
   await using tmp = await tmpdir()
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
       const dirs = await Config.directories()
@@ -353,7 +353,7 @@ test("resolves scoped npm plugins in config", async () => {
     },
   })
 
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
       // Bun 1.3.13: import.meta.resolve from file:/// URLs on Windows fails for
@@ -362,7 +362,7 @@ test("resolves scoped npm plugins in config", async () => {
       // Tracked as: Bun #<unknown> — file:/// scoped package resolution on Windows.
       if (process.platform === "win32") return
 
-      const config = await Config.get()
+      const config = await Config.current()
       const pluginEntries = config.plugin ?? []
 
       const baseUrl = pathToFileURL(path.join(tmp.path, "synergy.json")).href
@@ -404,10 +404,10 @@ test("merges plugin arrays from global and local configs", async () => {
     },
   })
 
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
-      const config = await Config.get()
+      const config = await Config.current()
       const plugins = config.plugin ?? []
 
       // Should contain both root and .synergy plugins
@@ -440,10 +440,10 @@ Helper subagent prompt`,
       )
     },
   })
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
-      const config = await Config.get()
+      const config = await Config.current()
       expect(config.agent?.["helper"]).toMatchObject({
         name: "helper",
         model: "test/model",
@@ -479,11 +479,11 @@ test("merges instructions arrays from global and local configs", async () => {
     },
   })
 
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
       await Config.state.reset()
-      const config = await Config.get()
+      const config = await Config.current()
       const instructions = config.instructions ?? []
 
       expect(instructions).toContain("global-instructions.md")
@@ -519,11 +519,11 @@ test("deduplicates duplicate instructions from global and local configs", async 
     },
   })
 
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
       await Config.state.reset()
-      const config = await Config.get()
+      const config = await Config.current()
       const instructions = config.instructions ?? []
 
       expect(instructions).toContain("global-only.md")
@@ -564,11 +564,11 @@ test("deduplicates duplicate plugins from global and local configs", async () =>
     },
   })
 
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
       await Config.state.reset()
-      const config = await Config.get()
+      const config = await Config.current()
       const plugins = config.plugin ?? []
 
       // Should contain all unique plugins
@@ -610,10 +610,10 @@ test("migrates legacy tools config to permissions - allow", async () => {
       )
     },
   })
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
-      const config = await Config.get()
+      const config = await Config.current()
       expect(config.agent?.["test"]?.permission).toEqual({
         bash: "allow",
         read: "allow",
@@ -641,10 +641,10 @@ test("migrates legacy tools config to permissions - deny", async () => {
       )
     },
   })
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
-      const config = await Config.get()
+      const config = await Config.current()
       expect(config.agent?.["test"]?.permission).toEqual({
         bash: "deny",
         webfetch: "deny",
@@ -671,10 +671,10 @@ test("migrates legacy write tool to edit permission", async () => {
       )
     },
   })
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
-      const config = await Config.get()
+      const config = await Config.current()
       expect(config.agent?.["test"]?.permission).toEqual({
         edit: "allow",
       })
@@ -700,10 +700,10 @@ test("migrates legacy edit tool to edit permission", async () => {
       )
     },
   })
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
-      const config = await Config.get()
+      const config = await Config.current()
       expect(config.agent?.["test"]?.permission).toEqual({
         edit: "deny",
       })
@@ -729,10 +729,10 @@ test("migrates legacy patch tool to edit permission", async () => {
       )
     },
   })
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
-      const config = await Config.get()
+      const config = await Config.current()
       expect(config.agent?.["test"]?.permission).toEqual({
         edit: "allow",
       })
@@ -758,10 +758,10 @@ test("migrates legacy multiedit tool to edit permission", async () => {
       )
     },
   })
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
-      const config = await Config.get()
+      const config = await Config.current()
       expect(config.agent?.["test"]?.permission).toEqual({
         edit: "deny",
       })
@@ -790,10 +790,10 @@ test("migrates mixed legacy tools config", async () => {
       )
     },
   })
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
-      const config = await Config.get()
+      const config = await Config.current()
       expect(config.agent?.["test"]?.permission).toEqual({
         bash: "allow",
         edit: "allow",
@@ -825,10 +825,10 @@ test("merges legacy tools with existing permission config", async () => {
       )
     },
   })
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
-      const config = await Config.get()
+      const config = await Config.current()
       expect(config.agent?.["test"]?.permission).toEqual({
         glob: "allow",
         bash: "allow",
@@ -861,10 +861,10 @@ test("permission config preserves key order", async () => {
       )
     },
   })
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
-      const config = await Config.get()
+      const config = await Config.current()
       expect(Object.keys(config.permission!)).toEqual([
         "*",
         "edit",
@@ -978,7 +978,67 @@ test("removes legacy channel holos config when top-level holos already exists", 
   }
 })
 
-test("migrates legacy identity config to valid engram config", async () => {
+test("migrates legacy auto_classifier config to smartAllow", async () => {
+  const home = path.join(os.tmpdir(), `synergy-config-smart-allow-migration-${Math.random().toString(36).slice(2)}`)
+  const origHome = process.env["SYNERGY_TEST_HOME"]
+  try {
+    process.env["SYNERGY_TEST_HOME"] = home
+    const configHome = path.join(home, ".synergy", "config")
+    await fs.mkdir(configHome, { recursive: true })
+    const target = path.join(configHome, "synergy.jsonc")
+    await Bun.write(
+      target,
+      `{
+  "$schema": "file:///test/config.schema.json",
+  "auto_classifier": true
+}`,
+    )
+
+    resetMigrations()
+    await runMigrations()
+
+    const migrated = parseJsonc(await Bun.file(target).text()) as Record<string, any>
+    expect(migrated.smartAllow).toBe(true)
+    expect(migrated.auto_classifier).toBeUndefined()
+  } finally {
+    process.env["SYNERGY_TEST_HOME"] = origHome
+    await fs.rm(home, { recursive: true, force: true }).catch(() => {})
+  }
+})
+
+test("migrates project permissions domain auto_classifier config to smartAllow", async () => {
+  const home = path.join(os.tmpdir(), `synergy-config-smart-allow-domain-${Math.random().toString(36).slice(2)}`)
+  const project = path.join(home, "project")
+  const origHome = process.env["SYNERGY_TEST_HOME"]
+  const origCwd = process.cwd()
+  try {
+    process.env["SYNERGY_TEST_HOME"] = home
+    const permissionsDir = path.join(project, ".synergy", "synergy.d")
+    await fs.mkdir(permissionsDir, { recursive: true })
+    const target = path.join(permissionsDir, "80-permissions.jsonc")
+    await Bun.write(
+      target,
+      `{
+  "controlProfile": "guarded",
+  "auto_classifier": false
+}`,
+    )
+
+    process.chdir(project)
+    resetMigrations()
+    await runMigrations()
+
+    const migrated = parseJsonc(await Bun.file(target).text()) as Record<string, any>
+    expect(migrated.smartAllow).toBe(false)
+    expect(migrated.auto_classifier).toBeUndefined()
+  } finally {
+    process.chdir(origCwd)
+    process.env["SYNERGY_TEST_HOME"] = origHome
+    await fs.rm(home, { recursive: true, force: true }).catch(() => {})
+  }
+})
+
+test("migrates legacy identity config to valid library config", async () => {
   const home = path.join(os.tmpdir(), `synergy-config-identity-migration-${Math.random().toString(36).slice(2)}`)
   const origHome = process.env["SYNERGY_TEST_HOME"]
   try {
@@ -1044,12 +1104,12 @@ test("migrates legacy identity config to valid engram config", async () => {
       apiKey: "rerank-token",
       model: "rerank-model",
     })
-    expect(migrated.engram.memory.retrieval.simThreshold).toBe(0.6)
-    expect(migrated.engram.memory.retrieval.topK).toBe(5)
-    expect(migrated.engram.memory.retrieval.categories.coding).toEqual({ topK: 2 })
-    expect(migrated.engram.memory.retrieval.categories.user).toEqual({})
-    expect(migrated.engram.memory.dedup).toEqual({ threshold: 0.8 })
-    expect(migrated.engram.experience).toEqual({
+    expect(migrated.library.memory.retrieval.simThreshold).toBe(0.6)
+    expect(migrated.library.memory.retrieval.topK).toBe(5)
+    expect(migrated.library.memory.retrieval.categories.coding).toEqual({ topK: 2 })
+    expect(migrated.library.memory.retrieval.categories.user).toEqual({})
+    expect(migrated.library.memory.dedup).toEqual({ threshold: 0.8 })
+    expect(migrated.library.experience).toEqual({
       encode: false,
       retrieve: {
         topK: 9,
@@ -1058,7 +1118,7 @@ test("migrates legacy identity config to valid engram config", async () => {
         alpha: 0.4,
       },
     })
-    expect(migrated.engram.autonomy).toBe(false)
+    expect(migrated.library.autonomy).toBe(false)
     expect(Config.Info.safeParse(migrated).success).toBe(true)
   } finally {
     process.env["SYNERGY_TEST_HOME"] = origHome
@@ -1066,8 +1126,66 @@ test("migrates legacy identity config to valid engram config", async () => {
   }
 })
 
-test("repairs invalid engram shapes written by legacy identity migration", async () => {
-  const home = path.join(os.tmpdir(), `synergy-config-engram-repair-${Math.random().toString(36).slice(2)}`)
+test("migrates legacy engram domain config to library and general domains", async () => {
+  const home = path.join(os.tmpdir(), `synergy-config-library-domain-migration-${Math.random().toString(36).slice(2)}`)
+  const origHome = process.env["SYNERGY_TEST_HOME"]
+  try {
+    process.env["SYNERGY_TEST_HOME"] = home
+    const domainDir = path.join(home, ".synergy", "config", "synergy.d")
+    await fs.mkdir(domainDir, { recursive: true })
+    const generalFile = path.join(domainDir, "00-general.jsonc")
+    const legacyFile = path.join(domainDir, "30-engram.jsonc")
+    const libraryFile = path.join(domainDir, "30-library.jsonc")
+
+    await Bun.write(generalFile, JSON.stringify({ theme: "system" }))
+    await Bun.write(
+      legacyFile,
+      JSON.stringify({
+        embedding: {
+          baseURL: "https://embedding.example/v1",
+          apiKey: "embedding-token",
+          model: "embed-model",
+        },
+        rerank: {
+          baseURL: "https://rerank.example/v1",
+          apiKey: "rerank-token",
+          model: "rerank-model",
+        },
+        engram: {
+          memory: {
+            enabled: true,
+            retrieval: { simThreshold: 0.6, topK: 4 },
+          },
+          experience: {
+            encode: true,
+            retrieve: { topK: 9 },
+          },
+          autonomy: false,
+        },
+      }),
+    )
+
+    resetMigrations()
+    await runMigrations({ targetDomain: "config" })
+
+    expect(await Bun.file(legacyFile).exists()).toBe(false)
+    const general = parseJsonc(await Bun.file(generalFile).text()) as Record<string, any>
+    const library = parseJsonc(await Bun.file(libraryFile).text()) as Record<string, any>
+    expect(general.theme).toBe("system")
+    expect(general.embedding.model).toBe("embed-model")
+    expect(general.rerank.model).toBe("rerank-model")
+    expect(library.library.memory.retrieval).toEqual({ simThreshold: 0.6, topK: 4 })
+    expect(library.library.experience.retrieve).toEqual({ topK: 9 })
+    expect(library.library.autonomy).toBe(false)
+    expect(Config.Info.safeParse({ ...general, ...library }).success).toBe(true)
+  } finally {
+    process.env["SYNERGY_TEST_HOME"] = origHome
+    await fs.rm(home, { recursive: true, force: true }).catch(() => {})
+  }
+})
+
+test("repairs invalid library shapes written by legacy identity migration", async () => {
+  const home = path.join(os.tmpdir(), `synergy-config-library-repair-${Math.random().toString(36).slice(2)}`)
   const origHome = process.env["SYNERGY_TEST_HOME"]
   try {
     process.env["SYNERGY_TEST_HOME"] = home
@@ -1078,7 +1196,7 @@ test("repairs invalid engram shapes written by legacy identity migration", async
       target,
       JSON.stringify({
         $schema: "file:///test/config.schema.json",
-        engram: {
+        library: {
           memory: {
             retrieval: false,
           },
@@ -1093,9 +1211,9 @@ test("repairs invalid engram shapes written by legacy identity migration", async
     await runMigrations({ targetDomain: "config" })
 
     const migrated = parseJsonc(await Bun.file(target).text()) as Record<string, any>
-    expect(migrated.engram.memory.enabled).toBe(false)
-    expect(migrated.engram.memory.retrieval).toBeUndefined()
-    expect(migrated.engram.experience.learning).toBeUndefined()
+    expect(migrated.library.memory.enabled).toBe(false)
+    expect(migrated.library.memory.retrieval).toBeUndefined()
+    expect(migrated.library.experience.learning).toBeUndefined()
     expect(Config.Info.safeParse(migrated).success).toBe(true)
   } finally {
     process.env["SYNERGY_TEST_HOME"] = origHome
@@ -1143,10 +1261,10 @@ test("project config can override MCP server enabled status", async () => {
       )
     },
   })
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
-      const config = await Config.get()
+      const config = await Config.current()
       // jira should be enabled (overridden by project config)
       expect(config.mcp?.jira).toEqual({
         type: "remote",
@@ -1199,10 +1317,10 @@ test("MCP config deep merges preserving base config properties", async () => {
       )
     },
   })
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
-      const config = await Config.get()
+      const config = await Config.current()
       expect(config.mcp?.myserver).toEqual({
         type: "remote",
         url: "https://myserver.example.com/mcp",
@@ -1250,10 +1368,10 @@ test("local .synergy config can override MCP from project config", async () => {
       )
     },
   })
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
-      const config = await Config.get()
+      const config = await Config.current()
       expect(config.mcp?.docs?.enabled).toBe(true)
     },
   })
@@ -1318,11 +1436,11 @@ test("project config overrides remote well-known config", async () => {
         )
       },
     })
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         await Config.state.reset()
-        const config = await Config.get()
+        const config = await Config.current()
         // Verify fetch was called for wellknown config
         expect(fetchedUrl).toBe("https://example.com/.well-known/synergy")
         // Project config (enabled: true) should override remote (enabled: false)
@@ -1375,10 +1493,10 @@ test("MCP server config accepts new lifecycle fields", async () => {
       )
     },
   })
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
-      const config = await Config.get()
+      const config = await Config.current()
       const sidebar = config.mcp?.sidebar
       expect(sidebar).toBeDefined()
       if (sidebar && "type" in sidebar) {
@@ -1476,10 +1594,10 @@ test("MCP config preserves backward compatibility with old timeout-only shape", 
       )
     },
   })
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
-      const config = await Config.get()
+      const config = await Config.current()
       expect(config.mcp?.oldserver).toBeDefined()
       if (config.mcp?.oldserver && "type" in config.mcp.oldserver) {
         expect(config.mcp.oldserver.timeout).toBe(5000)
@@ -1508,10 +1626,10 @@ test("experimental.mcp_timeout does not break config loading", async () => {
       )
     },
   })
-  await Instance.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
-      const config = await Config.get()
+      const config = await Config.current()
       expect(config.mcp?.mymcp).toBeDefined()
       expect(config.experimental?.mcp_timeout).toBe(60000)
     },

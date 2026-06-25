@@ -231,6 +231,146 @@ export const TIPTAP_STYLES = `
     padding-left: 0.6em;
     color: var(--text-weaker);
   }
+  .note-preview-content hr {
+    border: 0;
+    border-top: 1px solid color-mix(in srgb, var(--border-weaker-base) 76%, transparent);
+    margin: 0.5em 0;
+  }
+  .note-preview-content .note-preview-link {
+    color: var(--text-interactive-base);
+    text-decoration: underline;
+    text-decoration-color: color-mix(in srgb, var(--text-interactive-base) 34%, transparent);
+    text-underline-offset: 0.15em;
+  }
+  .note-preview-content .note-preview-math {
+    display: inline-flex;
+    max-width: 100%;
+    border-radius: 0.35rem;
+    background: color-mix(in srgb, var(--surface-inset-base) 76%, transparent);
+    padding: 0.05em 0.32em;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 0.82em;
+    color: var(--text-weak);
+    vertical-align: baseline;
+  }
+  .note-preview-content .note-preview-math--display {
+    display: flex;
+    width: 100%;
+    overflow: hidden;
+    white-space: nowrap;
+  }
+  .note-preview-content .note-preview-figure {
+    margin: 0.15em 0 0.55em;
+    overflow: hidden;
+    border: 1px solid color-mix(in srgb, var(--border-weaker-base) 80%, transparent);
+    border-radius: 0.65rem;
+    background: var(--surface-inset-base);
+  }
+  .note-preview-content .note-preview-figure img {
+    display: block;
+    width: 100%;
+    max-height: 5.75rem;
+    object-fit: cover;
+  }
+  .note-preview-content .note-preview-figure figcaption {
+    overflow: hidden;
+    padding: 0.32rem 0.48rem;
+    color: var(--text-weaker);
+    font-size: 0.75em;
+    line-height: 1.25;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .note-preview-content .note-preview-image-inline {
+    display: inline-flex;
+    max-width: min(8rem, 100%);
+    overflow: hidden;
+    border-radius: 0.4rem;
+    vertical-align: middle;
+  }
+  .note-preview-content .note-preview-image-inline img {
+    display: block;
+    max-width: 100%;
+    max-height: 2.6rem;
+    object-fit: cover;
+  }
+  .note-preview-content .note-preview-media-placeholder,
+  .note-preview-content .note-preview-diagram {
+    display: flex;
+    min-height: 2.25rem;
+    align-items: center;
+    gap: 0.45rem;
+    overflow: hidden;
+    border: 1px solid color-mix(in srgb, var(--border-weaker-base) 78%, transparent);
+    border-radius: 0.6rem;
+    background: color-mix(in srgb, var(--surface-inset-base) 72%, transparent);
+    padding: 0.45rem 0.55rem;
+    margin-bottom: 0.45em;
+    color: var(--text-weak);
+  }
+  .note-preview-content .note-preview-media-placeholder span,
+  .note-preview-content .note-preview-diagram span {
+    flex-shrink: 0;
+    font-size: 0.78em;
+    font-weight: 600;
+  }
+  .note-preview-content .note-preview-media-placeholder small,
+  .note-preview-content .note-preview-diagram code {
+    min-width: 0;
+    overflow: hidden;
+    color: var(--text-weaker);
+    font-size: 0.76em;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .note-preview-content .note-preview-table-wrap {
+    overflow: hidden;
+    border: 1px solid color-mix(in srgb, var(--border-weaker-base) 80%, transparent);
+    border-radius: 0.6rem;
+    margin-bottom: 0.5em;
+    background: color-mix(in srgb, var(--surface-raised-base) 76%, var(--surface-inset-base));
+  }
+  .note-preview-content .note-preview-table-wrap table {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: fixed;
+  }
+  .note-preview-content .note-preview-table-wrap th,
+  .note-preview-content .note-preview-table-wrap td {
+    overflow: hidden;
+    border-bottom: 1px solid color-mix(in srgb, var(--border-weaker-base) 70%, transparent);
+    border-right: 1px solid color-mix(in srgb, var(--border-weaker-base) 60%, transparent);
+    padding: 0.34rem 0.42rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .note-preview-content .note-preview-table-wrap th {
+    background: color-mix(in srgb, var(--surface-inset-base) 74%, transparent);
+    color: var(--text-weak);
+    font-weight: 600;
+  }
+  .note-preview-content .note-preview-table-wrap tr:last-child td {
+    border-bottom: 0;
+  }
+  .note-preview-content .note-preview-table-wrap th:last-child,
+  .note-preview-content .note-preview-table-wrap td:last-child {
+    border-right: 0;
+  }
+  .note-preview-content .note-preview-table-more {
+    padding: 0.28rem 0.45rem;
+    color: var(--text-weaker);
+    font-size: 0.72em;
+    line-height: 1.2;
+  }
+  .note-preview-content .note-preview-media-chip {
+    display: inline-flex;
+    align-items: center;
+    border-radius: 0.35rem;
+    background: color-mix(in srgb, var(--surface-inset-base) 72%, transparent);
+    padding: 0.08em 0.35em;
+    color: var(--text-weaker);
+    font-size: 0.82em;
+  }
   .note-preview-content .note-preview-task-list {
     list-style: none;
     padding-left: 0;

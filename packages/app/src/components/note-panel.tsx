@@ -127,6 +127,7 @@ function attachNoteDragData(e: DragEvent, note: NoteCardInfo) {
 }
 
 type NoteCardVariant = "compact" | "balanced" | "featured"
+type NoteKindFilter = "all" | "note" | "blueprint"
 
 function NoteCard(props: {
   note: NoteCardInfo
@@ -163,7 +164,20 @@ function NoteCard(props: {
         <span class="sr-only">From {props.originName}</span>
       </Show>
 
-      <div class="px-3.5 pt-3.5">
+      <Show when={isBlueprint()}>
+        <div class={`note-blueprint-card-header note-blueprint-card-header--${blueprintState().tone}`}>
+          <span class="note-blueprint-card-kicker">
+            <Icon name={getSemanticIcon("orchestration.blueprint")} size="small" class="size-3.5" />
+            Blueprint
+          </span>
+          <span class={`note-card-status note-card-status--${blueprintState().tone}`}>
+            <Icon name={blueprintState().icon} size="small" class="size-3" />
+            {blueprintState().label}
+          </span>
+        </div>
+      </Show>
+
+      <div class={isBlueprint() ? "px-3.5 pt-3" : "px-3.5 pt-3.5"}>
         <span
           classList={{
             "line-clamp-2 text-text-strong": true,
@@ -183,7 +197,7 @@ function NoteCard(props: {
           </div>
         }
       >
-        <div class="min-h-0 flex-1 overflow-hidden px-3.5 pt-2">
+        <div class="note-card-preview min-h-0 flex-1 overflow-hidden px-3.5 pt-2">
           <Show
             when={previewHtml()}
             fallback={
@@ -220,9 +234,8 @@ function NoteCard(props: {
           }
         >
           <div class="flex items-center gap-2">
-            <span class={`note-card-status note-card-status--${blueprintState().tone}`}>
-              <Icon name={blueprintState().icon} size="small" class="size-3" />
-              {blueprintState().label}
+            <span class="min-w-0 truncate text-10-medium uppercase tracking-[0.08em] text-text-weaker">
+              Run history
             </span>
             <span class="min-w-0 flex-1 truncate text-10-regular text-text-weaker">{blueprintState().detail}</span>
             <Show when={props.note.pinned}>
@@ -339,6 +352,7 @@ type DisplayGroup = NoteMetaScopeGroup & {
   name: string
   directory: string
   isCurrent: boolean
+  archived?: boolean
 }
 
 function ScopeSection(props: {
@@ -371,10 +385,10 @@ function ScopeSection(props: {
   })
 
   function getOriginName(note: NoteMetaInfo): string | undefined {
-    if (props.group.scopeType !== "global") return undefined
+    if (props.group.scopeType !== "home") return undefined
     const origin = note.originScope
     if (!origin) return undefined
-    return props.scopeLookup.get(origin)?.name ?? origin
+    return props.scopeLookup.get(origin)?.name ?? "Archived project"
   }
 
   return (
@@ -399,11 +413,14 @@ function ScopeSection(props: {
           >
             <Icon name="chevron-right" size="small" />
           </span>
-          <Show when={props.group.scopeType === "global"}>
+          <Show when={props.group.scopeType === "home"}>
             <Icon name="home" size="small" class="text-icon-weak shrink-0" />
           </Show>
-          <Show when={props.group.scopeType === "project"}>
+          <Show when={props.group.scopeType === "project" && !props.group.archived}>
             <Icon name="folder" size="small" class="text-icon-weak shrink-0" />
+          </Show>
+          <Show when={props.group.archived}>
+            <Icon name="archive" size="small" class="text-icon-weak shrink-0" />
           </Show>
           <span class="min-w-0 truncate text-12-medium text-text-strong">{props.group.name}</span>
           <Show when={props.group.isCurrent}>
@@ -420,9 +437,11 @@ function ScopeSection(props: {
             </span>
           </Show>
         </button>
-        <button type="button" class="note-scope-new-button" onClick={props.onCreateNote} title="New note">
-          <Icon name="plus" size="small" />
-        </button>
+        <Show when={!props.group.archived}>
+          <button type="button" class="note-scope-new-button" onClick={props.onCreateNote} title="New note">
+            <Icon name="plus" size="small" />
+          </button>
+        </Show>
       </div>
 
       <Show
@@ -490,19 +509,19 @@ export function NotePanel() {
   const [selectedNoteId, setSelectedNoteId] = createSignal<string | null>(null)
   const [selectedNoteDir, setSelectedNoteDir] = createSignal<string | null>(null)
   const [search, setSearch] = createSignal("")
-  const [selectedTags, setSelectedTags] = createSignal<Set<string>>(new Set())
+  const [kindFilter, setKindFilter] = createSignal<NoteKindFilter>("all")
   const [expandedState, setExpandedState] = createSignal<Record<string, boolean>>({})
 
   const currentScopeID = createMemo(() => {
     const dir = directory()
-    if (!dir || dir === "global") return "global"
+    if (!dir || dir === "home") return "home"
     const scope = globalSync.data.scope.find((s) => s.worktree === dir || (s.sandboxes ?? []).includes(dir))
     return scope?.id ?? ""
   })
 
   const scopeLookup = createMemo(() => {
     const map = new Map<string, { name: string; directory: string }>()
-    map.set("global", { name: getScopeLabel(undefined, "global"), directory: "global" })
+    map.set("home", { name: getScopeLabel(undefined, "home"), directory: "home" })
     for (const scope of globalSync.data.scope) {
       map.set(scope.id, {
         name: getScopeLabel(scope),
@@ -545,41 +564,37 @@ export function NotePanel() {
     return map
   })
 
-  const allTags = createMemo(() => {
-    const freq = new Map<string, number>()
+  const noteStats = createMemo(() => {
+    let total = 0
+    let blueprints = 0
     for (const g of rawGroups() ?? []) {
       for (const n of g.notes) {
-        for (const t of n.tags ?? []) {
-          freq.set(t, (freq.get(t) ?? 0) + 1)
-        }
+        total += 1
+        if (isBlueprintNote(n)) blueprints += 1
       }
     }
-    return [...freq.entries()].sort((a, b) => b[1] - a[1]).map(([tag, count]) => ({ tag, count }))
+    return {
+      total,
+      blueprints,
+      notes: total - blueprints,
+    }
   })
-
-  function toggleTag(tag: string) {
-    setSelectedTags((prev) => {
-      const next = new Set(prev)
-      if (next.has(tag)) next.delete(tag)
-      else next.add(tag)
-      return next
-    })
-  }
 
   const displayGroups = createMemo(() => {
     const groups = rawGroups() ?? []
     const lookup = scopeLookup()
     const curID = currentScopeID()
     const q = search().toLowerCase().trim()
-    const activeTags = selectedTags()
+    const activeKind = kindFilter()
+    const archivedNotes: NoteCardInfo[] = []
 
-    return groups
-      .map((g): DisplayGroup => {
+    const mapped = groups
+      .map((g): DisplayGroup | undefined => {
         const meta = lookup.get(g.scopeID)
         const isCurrent = g.scopeID === curID
-        const groupDirectory =
-          meta?.directory ?? (g.scopeID === "global" ? "global" : isCurrent ? (directory() ?? "") : "")
-        let notes = [...g.notes]
+        const archived = g.scopeType === "project" && !meta && !isCurrent
+        const groupDirectory = meta?.directory ?? (g.scopeID === "home" ? "home" : isCurrent ? (directory() ?? "") : "")
+        let notes: NoteCardInfo[] = [...g.notes]
         if (q) {
           notes = notes.filter((n) => {
             if (n.title.toLowerCase().includes(q)) return true
@@ -587,27 +602,51 @@ export function NotePanel() {
             return searchText.toLowerCase().includes(q)
           })
         }
-        if (activeTags.size > 0) {
-          notes = notes.filter((n) => (n.tags ?? []).some((t) => activeTags.has(t)))
+        if (activeKind !== "all") {
+          notes = notes.filter((n) => (activeKind === "blueprint" ? isBlueprintNote(n) : !isBlueprintNote(n)))
         }
         notes.sort((a, b) => {
           if (a.pinned !== b.pinned) return a.pinned ? -1 : 1
           return b.time.updated - a.time.updated
         })
+        if (archived) {
+          archivedNotes.push(...notes)
+          return undefined
+        }
         return {
           ...g,
           notes,
-          name: meta?.name ?? g.scopeID,
+          name: meta?.name ?? (g.scopeID === "home" ? getScopeLabel(undefined, "home") : "Archived project"),
           directory: groupDirectory,
           isCurrent,
         }
       })
+      .filter((g): g is DisplayGroup => g !== undefined)
+
+    if (archivedNotes.length > 0) {
+      archivedNotes.sort((a, b) => {
+        if (a.pinned !== b.pinned) return a.pinned ? -1 : 1
+        return b.time.updated - a.time.updated
+      })
+      mapped.push({
+        scopeID: "__archived_projects__",
+        scopeType: "project",
+        notes: archivedNotes,
+        name: "Archived projects",
+        directory: directory() ?? "home",
+        isCurrent: false,
+        archived: true,
+      })
+    }
+
+    return mapped
       .filter((g) => {
-        const hasFilters = q || activeTags.size > 0
+        const hasFilters = q || activeKind !== "all"
         return hasFilters ? g.notes.length > 0 : g.notes.length > 0 || g.isCurrent
       })
       .sort((a, b) => {
         if (a.isCurrent !== b.isCurrent) return a.isCurrent ? -1 : 1
+        if ((a.archived ?? false) !== (b.archived ?? false)) return a.archived ? 1 : -1
         const latestA = a.notes[0]?.time.updated ?? 0
         const latestB = b.notes[0]?.time.updated ?? 0
         return latestB - latestA
@@ -615,6 +654,12 @@ export function NotePanel() {
   })
 
   const totalNotes = createMemo(() => (rawGroups() ?? []).reduce((sum, g) => sum + g.notes.length, 0))
+  const visibleNotes = createMemo(() => displayGroups().reduce((sum, g) => sum + g.notes.length, 0))
+  const filterOptions = createMemo(() => [
+    { value: "all" as const, label: "All", count: noteStats().total },
+    { value: "note" as const, label: "Notes", count: noteStats().notes },
+    { value: "blueprint" as const, label: "Blueprints", count: noteStats().blueprints },
+  ])
 
   function isExpanded(scopeID: string, isCurrent: boolean) {
     const state = expandedState()[scopeID]
@@ -675,7 +720,29 @@ export function NotePanel() {
                   <Icon name="x" size="small" />
                 </button>
               </Show>
-              <span class="text-11-regular text-text-weak mr-0.5">{totalNotes()}</span>
+              <div class="note-kind-filter ml-1 flex shrink-0 items-center gap-0.5 rounded-lg bg-surface-base/62 p-0.5">
+                <For each={filterOptions()}>
+                  {(option) => (
+                    <button
+                      type="button"
+                      classList={{
+                        "inline-flex h-7 items-center gap-1.5 rounded-md px-2.5 text-11-medium transition-colors": true,
+                        "bg-surface-raised-stronger-non-alpha text-text-base shadow-[0_1px_0_rgba(255,255,255,0.04)]":
+                          kindFilter() === option.value,
+                        "text-text-weak hover:bg-surface-raised-base-hover hover:text-text-base":
+                          kindFilter() !== option.value,
+                      }}
+                      onClick={() => setKindFilter(option.value)}
+                    >
+                      <span>{option.label}</span>
+                      <span class="text-10-regular opacity-60">{option.count}</span>
+                    </button>
+                  )}
+                </For>
+              </div>
+              <span class="mr-0.5 whitespace-nowrap text-11-regular text-text-weak">
+                {visibleNotes() === totalNotes() ? `${totalNotes()}` : `${visibleNotes()} / ${totalNotes()}`}
+              </span>
               <button
                 type="button"
                 class="flex items-center justify-center size-7 rounded-lg text-icon-weak hover:text-icon-base hover:bg-surface-raised-base-hover transition-colors"
@@ -685,40 +752,6 @@ export function NotePanel() {
                 <Icon name="refresh-ccw" size="small" />
               </button>
             </div>
-
-            <Show when={allTags().length > 0}>
-              <div class="notes-tag-bar mt-2 flex items-center gap-1.5 overflow-x-auto">
-                <Show when={selectedTags().size > 0}>
-                  <button
-                    type="button"
-                    class="shrink-0 flex items-center justify-center size-6 rounded-lg text-icon-weak hover:text-icon-base hover:bg-surface-raised-base-hover transition-colors"
-                    onClick={() => setSelectedTags(new Set())}
-                    aria-label="Clear all filters"
-                  >
-                    <Icon name="x" size="small" />
-                  </button>
-                </Show>
-                <For each={allTags()}>
-                  {({ tag, count }) => (
-                    <button
-                      type="button"
-                      classList={{
-                        "px-2.5 py-1 rounded-lg text-12-medium transition-colors": true,
-                        "bg-surface-raised-base-hover text-text-strong": selectedTags().has(tag),
-                        "text-text-weak hover:text-text-base hover:bg-surface-raised-base-hover":
-                          !selectedTags().has(tag),
-                      }}
-                      onClick={() => toggleTag(tag)}
-                    >
-                      <span class="whitespace-nowrap">
-                        {tag}
-                        <span class="ml-0.5 opacity-60">{count}</span>
-                      </span>
-                    </button>
-                  )}
-                </For>
-              </div>
-            </Show>
           </div>
 
           <div class="flex-1 min-h-0 overflow-y-auto px-4 pb-6 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
@@ -766,7 +799,7 @@ export function NotePanel() {
       <Show when={view() === "editor" && selectedNoteId()}>
         <NoteEditor
           id={selectedNoteId()!}
-          directory={selectedNoteDir() ?? directory() ?? "global"}
+          directory={selectedNoteDir() ?? directory() ?? "home"}
           onBack={() => {
             setView("list")
             refetch()
@@ -1258,7 +1291,7 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
         directory: targetDirectory,
         throwOnError: true,
       })
-      globalSync.child(targetDirectory)
+      globalSync.ensureScopeState(targetDirectory)
     }
 
     const session = await client.session.create({}).then((result) => result.data)

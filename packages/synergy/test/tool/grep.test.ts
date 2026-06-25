@@ -1,7 +1,7 @@
 import { beforeAll, describe, expect, test } from "bun:test"
 import path from "path"
 import { GrepTool } from "../../src/tool/grep"
-import { Instance } from "../../src/scope/instance"
+import { ScopeContext } from "../../src/scope/context"
 import { tmpdir } from "../fixture/fixture"
 
 const ctx = {
@@ -34,7 +34,7 @@ describe("tool.grep", () => {
       },
     })
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const grep = await GrepTool.init()
@@ -63,7 +63,7 @@ describe("tool.grep", () => {
         await Bun.write(path.join(dir, "test.txt"), "hello world")
       },
     })
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const grep = await GrepTool.init()
@@ -93,7 +93,7 @@ describe("tool.grep", () => {
         await Bun.write(path.join(dir, "test.txt"), "line1\nline2\nline3")
       },
     })
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const grep = await GrepTool.init()

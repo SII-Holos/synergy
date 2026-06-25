@@ -1,10 +1,11 @@
 import { afterEach, describe, expect, mock, test } from "bun:test"
 import path from "path"
+import fs from "fs/promises"
 import { tmpdir } from "../fixture/fixture"
-import { Instance } from "../../src/scope/instance"
+import { ScopeContext } from "../../src/scope/context"
 import { RuntimeReload } from "../../src/runtime/reload"
 import { Config } from "../../src/config/config"
-import { ConfigSet } from "../../src/config/set"
+import { ConfigDomain } from "../../src/config/domain"
 import { GlobalBus } from "../../src/bus/global"
 
 const originalConfigReload = Config.reload
@@ -17,11 +18,13 @@ afterEach(() => {
 describe("runtime.reload", () => {
   test("detects config, skill, and custom tool targets by file path", async () => {
     await using tmp = await tmpdir({ git: true })
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         await Bun.write(path.join(tmp.path, ".synergy", "skill", "demo", "SKILL.md"), "---\nname: demo\n---\n")
-        const configTarget = RuntimeReload.detectTargetsForFile(path.join(tmp.path, ".synergy", "synergy.jsonc"))
+        const configTarget = RuntimeReload.detectTargetsForFile(
+          path.join(tmp.path, ".synergy", "synergy.d", "10-models.jsonc"),
+        )
         const skillTarget = RuntimeReload.detectTargetsForFile(
           path.join(tmp.path, ".synergy", "skill", "demo", "SKILL.md"),
         )
@@ -36,7 +39,7 @@ describe("runtime.reload", () => {
 
   test("detects plugin targets by file path", async () => {
     await using tmp = await tmpdir({ git: true })
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const pluginTarget = RuntimeReload.detectTargetsForFile(path.join(tmp.path, ".synergy", "plugin", "demo.ts"))
@@ -60,7 +63,7 @@ describe("runtime.reload", () => {
         "---\nname: compat-demo\ndescription: demo\n---\n",
       )
 
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const globalSkillTarget = RuntimeReload.detectTargetsForFile(
@@ -84,7 +87,7 @@ describe("runtime.reload", () => {
     const originalHome = process.env.SYNERGY_TEST_HOME
     process.env.SYNERGY_TEST_HOME = tmp.path
     try {
-      await Instance.provide({
+      await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const projectAgent = RuntimeReload.detectScopeForFile(path.join(tmp.path, ".synergy", "agent", "custom.md"))
@@ -105,25 +108,29 @@ describe("runtime.reload", () => {
     await using tmp = await tmpdir({
       git: true,
       init: async (dir) => {
+        await fs.mkdir(path.join(dir, ".synergy", "synergy.d"), { recursive: true })
         await Bun.write(
-          path.join(dir, "synergy.jsonc"),
+          path.join(dir, ".synergy", "synergy.d", "10-models.jsonc"),
           JSON.stringify({
-            $schema: "file:///test/config.schema.json",
             model: "openai/gpt-4.1",
           }),
         )
       },
     })
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         await RuntimeReload.reload({ targets: ["config"], scope: "project", reason: "prime" })
         await Bun.write(
-          path.join(tmp.path, "synergy.jsonc"),
+          path.join(tmp.path, ".synergy", "synergy.d", "10-models.jsonc"),
           JSON.stringify({
-            $schema: "file:///test/config.schema.json",
             model: "openai/gpt-5",
+          }),
+        )
+        await Bun.write(
+          path.join(tmp.path, ".synergy", "synergy.d", "120-runtime.jsonc"),
+          JSON.stringify({
             server: { port: 4123 },
           }),
         )
@@ -139,7 +146,7 @@ describe("runtime.reload", () => {
 
   test("all expands into concrete targets", async () => {
     await using tmp = await tmpdir({ git: true })
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const result = await RuntimeReload.reload({ targets: ["all"], scope: "global", reason: "test" })
@@ -154,7 +161,7 @@ describe("runtime.reload", () => {
 
   test("warns when editing built-in source paths", async () => {
     await using tmp = await tmpdir({ git: true })
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const warning = RuntimeReload.builtinSourceEditWarning(
@@ -169,11 +176,15 @@ describe("runtime.reload", () => {
     await using tmp = await tmpdir({
       git: true,
       init: async (dir) => {
-        await Bun.write(path.join(dir, "synergy.jsonc"), JSON.stringify({ model: "openai/gpt-4.1" }))
+        await fs.mkdir(path.join(dir, ".synergy", "synergy.d"), { recursive: true })
+        await Bun.write(
+          path.join(dir, ".synergy", "synergy.d", "10-models.jsonc"),
+          JSON.stringify({ model: "openai/gpt-4.1" }),
+        )
       },
     })
 
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const configReloadMock = mock(async (scope: "global" | "project") => ({
@@ -188,7 +199,7 @@ describe("runtime.reload", () => {
 
         const result = await RuntimeReload.reload({ targets: ["config"], reason: "auto-scope" })
 
-        // Verify auto-scope resolved to project because synergy.jsonc exists
+        // Verify auto-scope resolved to project because a project domain config exists
         expect(configReloadMock).toHaveBeenCalledWith("project")
         expect(result.executed).toContain("config")
         const reloadedEvent = events.find((e) => e.payload?.type === RuntimeReload.Event.Reloaded.type)
@@ -198,17 +209,13 @@ describe("runtime.reload", () => {
     })
   })
 
-  test("detects active config set file as global scope and ignores inactive custom sets", async () => {
+  test("detects global domain config files as global scope", async () => {
     await using tmp = await tmpdir({ git: true })
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
-        await ConfigSet.create("test-set")
-        await ConfigSet.create("other-set")
-        await ConfigSet.activate("test-set")
-
-        expect(RuntimeReload.detectScopeForFile(ConfigSet.filePath("test-set"))).toBe("global")
-        expect(RuntimeReload.detectScopeForFile(ConfigSet.filePath("other-set"))).toBeUndefined()
+        expect(RuntimeReload.detectScopeForFile(ConfigDomain.filepath("models"))).toBe("global")
+        expect(RuntimeReload.detectTargetsForFile(ConfigDomain.filepath("mcp"))).toEqual(["config"])
       },
     })
   })
@@ -266,7 +273,7 @@ describe("runtime.reload", () => {
 
     // Verify email is in restart-required (P13 fix)
     await using tmp = await tmpdir({ git: true })
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const configReloadMock = mock(async () => ({
@@ -288,7 +295,7 @@ describe("runtime.reload", () => {
 
   test("error isolation: reload continues after subsystem failure", async () => {
     await using tmp = await tmpdir({ git: true })
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const result = await RuntimeReload.reload({ targets: ["skill"], scope: "global", reason: "test" })

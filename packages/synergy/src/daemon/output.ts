@@ -1,6 +1,6 @@
-import { UI } from "../cli/ui"
 import { Daemon } from "./index"
 import { DaemonService } from "./service"
+import { StartupReporter } from "../cli/startup-reporter"
 
 export namespace DaemonOutput {
   export function printServiceSummary(input: {
@@ -12,40 +12,46 @@ export namespace DaemonOutput {
     notes?: string[]
     next?: string[]
   }) {
-    UI.println(input.title)
-    UI.println()
-    UI.println(`  Manager:   ${input.manager}`)
-    UI.println(`  URL:       ${input.url}`)
-    UI.println(`  Log:       ${input.logFile}`)
-    if (input.detail) {
-      UI.println(`  Detail:    ${firstLine(input.detail)}`)
-    }
-    printNotes(input.notes)
-    printNext(input.next)
+    StartupReporter.print({
+      title: input.title,
+      rows: [
+        { label: "Manager", value: input.manager },
+        { label: "URL", value: input.url },
+        { label: "Log", value: input.logFile },
+        ...(input.detail ? [{ label: "Detail", value: firstLine(input.detail) }] : []),
+      ],
+      notes: input.notes,
+      next: input.next,
+    })
   }
 
   export function printStatus(status: Daemon.Status) {
-    UI.println("Synergy background service")
-    UI.println()
-    UI.println(`  Manager:    ${status.manager}`)
-    UI.println(`  Installed:  ${status.installed ? "yes" : "no"}`)
-    UI.println(`  Runtime:    ${formatRuntime(status.runtime)}`)
-    UI.println(`  Using:      ${status.specSource === "installed" ? "installed service settings" : "current config"}`)
-    UI.println(`  URL:        ${status.url}`)
-    UI.println(`  Reachable:  ${status.reachable ? "yes" : "no"}`)
-    UI.println(`  Port:       ${status.portListening ? "listening" : "not listening"}`)
-    UI.println(`  Log:        ${status.logFile}`)
-    if (status.drifted) {
-      UI.println(`  Config URL: ${status.desiredUrl}`)
-      if (status.desiredLogFile !== status.logFile) {
-        UI.println(`  Config Log: ${status.desiredLogFile}`)
-      }
-    }
-    if (status.detail) {
-      UI.println(`  Detail:     ${firstLine(status.detail)}`)
-    }
-    printNotes(statusNotes(status))
-    printNext(statusNext(status))
+    StartupReporter.print({
+      title: "Synergy background service",
+      rows: [
+        { label: "Manager", value: status.manager },
+        { label: "Using", value: status.specSource === "installed" ? "installed service settings" : "current config" },
+        { label: "URL", value: status.url },
+        { label: "Log", value: status.logFile },
+        ...(status.drifted ? [{ label: "Config URL", value: status.desiredUrl }] : []),
+        ...(status.drifted && status.desiredLogFile !== status.logFile
+          ? [{ label: "Config Log", value: status.desiredLogFile }]
+          : []),
+        ...(status.detail ? [{ label: "Detail", value: firstLine(status.detail) }] : []),
+      ],
+      statuses: [
+        { label: "Installed", value: status.installed ? "yes" : "no", kind: status.installed ? "success" : "muted" },
+        { label: "Runtime", value: formatRuntime(status.runtime), kind: runtimeKind(status.runtime) },
+        { label: "Reachable", value: status.reachable ? "yes" : "no", kind: status.reachable ? "success" : "warning" },
+        {
+          label: "Port",
+          value: status.portListening ? "listening" : "not listening",
+          kind: status.portListening ? "success" : "muted",
+        },
+      ],
+      notes: statusNotes(status),
+      next: statusNext(status),
+    })
   }
 
   export function printStartFailure(input: {
@@ -58,18 +64,20 @@ export namespace DaemonOutput {
     notes?: string[]
     next?: string[]
   }) {
-    UI.error(input.message)
-    UI.println(`  Manager:   ${input.manager}`)
-    if (input.runtime) {
-      UI.println(`  Runtime:   ${formatRuntime(input.runtime)}`)
-    }
-    UI.println(`  URL:       ${input.url}`)
-    UI.println(`  Log:       ${input.logFile}`)
-    if (input.detail) {
-      UI.println(`  Detail:    ${firstLine(input.detail)}`)
-    }
-    printNotes(input.notes)
-    printNext(input.next ?? ["synergy status", "synergy logs"])
+    StartupReporter.print({
+      title: input.message,
+      rows: [
+        { label: "Manager", value: input.manager },
+        { label: "URL", value: input.url },
+        { label: "Log", value: input.logFile },
+        ...(input.detail ? [{ label: "Detail", value: firstLine(input.detail) }] : []),
+      ],
+      statuses: input.runtime
+        ? [{ label: "Runtime", value: formatRuntime(input.runtime), kind: runtimeKind(input.runtime) }]
+        : [],
+      notes: input.notes,
+      next: input.next ?? ["synergy status", "synergy logs"],
+    })
   }
 
   export function printStopFailure(input: {
@@ -81,33 +89,62 @@ export namespace DaemonOutput {
     notes?: string[]
     next?: string[]
   }) {
-    UI.error(input.message)
-    if (input.runtime) {
-      UI.println(`  Runtime:   ${formatRuntime(input.runtime)}`)
-    }
-    UI.println(`  URL:       ${input.url}`)
-    UI.println(`  Log:       ${input.logFile}`)
-    if (input.detail) {
-      UI.println(`  Detail:    ${firstLine(input.detail)}`)
-    }
-    printNotes(input.notes)
-    printNext(input.next ?? ["synergy status", "synergy logs", "synergy stop"])
+    StartupReporter.print({
+      title: input.message,
+      rows: [
+        { label: "URL", value: input.url },
+        { label: "Log", value: input.logFile },
+        ...(input.detail ? [{ label: "Detail", value: firstLine(input.detail) }] : []),
+      ],
+      statuses: input.runtime
+        ? [{ label: "Runtime", value: formatRuntime(input.runtime), kind: runtimeKind(input.runtime) }]
+        : [],
+      notes: input.notes,
+      next: input.next ?? ["synergy status", "synergy logs", "synergy stop"],
+    })
+  }
+
+  export function printStopSuccess(input?: { portStopped?: boolean; url?: string }) {
+    StartupReporter.print({
+      title: "Synergy background service stopped",
+      statuses: [{ label: "Runtime", value: "stopped", kind: "muted" }],
+      notes:
+        input?.portStopped === false && input.url
+          ? [
+              `The configured address is still active, which may indicate another process is listening there: ${input.url}`,
+            ]
+          : undefined,
+      next: ["synergy start", "synergy status"],
+    })
+  }
+
+  export function printNoService(input?: { activeUrl?: string }) {
+    StartupReporter.print({
+      title: "No managed Synergy background service is installed",
+      rows: input?.activeUrl ? [{ label: "Observed", value: input.activeUrl }] : undefined,
+      statuses: [{ label: "Installed", value: "no", kind: "muted" }],
+      notes: input?.activeUrl
+        ? ["Stop the other process using this address, or change Synergy's server port."]
+        : undefined,
+      next: input?.activeUrl ? ["synergy status"] : ["synergy start"],
+    })
   }
 
   export function printLogHeader(input: { filePath: string; status: Daemon.Status }) {
-    UI.println("Synergy background service logs")
-    UI.println()
-    UI.println(`  File:      ${input.filePath}`)
-    UI.println(`  Runtime:   ${formatRuntime(input.status.runtime)}`)
-    UI.println(`  URL:       ${input.status.url}`)
-    if (input.status.drifted && input.status.desiredLogFile !== input.filePath) {
-      UI.println(`  Config:    ${input.status.desiredLogFile}`)
-    }
-    const notes = logNotes(input.status)
-    if (notes.length > 0) {
-      printNotes(notes)
-    }
-    UI.println()
+    StartupReporter.print({
+      title: "Synergy background service logs",
+      rows: [
+        { label: "File", value: input.filePath },
+        { label: "URL", value: input.status.url },
+        ...(input.status.drifted && input.status.desiredLogFile !== input.filePath
+          ? [{ label: "Config", value: input.status.desiredLogFile }]
+          : []),
+      ],
+      statuses: [
+        { label: "Runtime", value: formatRuntime(input.status.runtime), kind: runtimeKind(input.status.runtime) },
+      ],
+      notes: logNotes(input.status),
+    })
   }
 
   function statusNotes(status: Daemon.Status) {
@@ -179,25 +216,14 @@ export namespace DaemonOutput {
     return "unknown"
   }
 
+  function runtimeKind(runtime: Daemon.Status["runtime"]): "success" | "warning" | "error" | "muted" {
+    if (runtime === "running") return "success"
+    if (runtime === "failed") return "error"
+    if (runtime === "unknown") return "warning"
+    return "muted"
+  }
+
   function firstLine(text: string) {
     return text.split("\n")[0] ?? text
-  }
-
-  function printNotes(notes?: string[]) {
-    if (!notes || notes.length === 0) return
-    UI.println()
-    UI.println("  Note:")
-    for (const note of notes) {
-      UI.println(`    ${note}`)
-    }
-  }
-
-  function printNext(next?: string[]) {
-    if (!next || next.length === 0) return
-    UI.println()
-    UI.println("  Next:")
-    for (const line of next) {
-      UI.println(`    ${line}`)
-    }
   }
 }

@@ -1,7 +1,7 @@
 import { Storage } from "../storage/storage"
 import { StoragePath } from "../storage/path"
 import { Identifier } from "../id/id"
-import { Instance } from "../scope/instance"
+import { ScopeContext } from "../scope/context"
 import { Bus } from "../bus"
 import { NoteEvent } from "./event"
 import { NoteTypes } from "./types"
@@ -12,6 +12,7 @@ import { NoteMarkdown } from "./markdown"
 
 export namespace NoteStore {
   const log = Log.create({ service: "note.store" })
+  const HOME_SCOPE_ID = "home"
 
   export type Metadata = NoteTypes.MetaInfo
 
@@ -42,7 +43,7 @@ export namespace NoteStore {
     const { content, ...meta } = note
     const markdown = NoteMarkdown.toMarkdown(content)
     const searchParts = [note.title, ...(note.tags ?? []), markdown].filter(Boolean)
-    const previewHtml = NoteMarkdown.toPreviewHtml(content) || undefined
+    const previewHtml = NoteMarkdown.toPreviewHtml(content, { title: note.title }) || undefined
     return { ...meta, searchText: searchParts.join("\n"), previewHtml }
   }
 
@@ -123,13 +124,23 @@ export namespace NoteStore {
     } catch {
       // fallthrough
     }
-    if (scopeID !== "global") {
-      const globalSid = Identifier.asScopeID("global")
+    if (scopeID !== HOME_SCOPE_ID) {
+      const globalSid = Identifier.asScopeID(HOME_SCOPE_ID)
       try {
         const note = await Storage.read<NoteTypes.Info>(StoragePath.note(globalSid, noteID))
-        return { scopeID: "global", note: normalize(note) }
+        return { scopeID: HOME_SCOPE_ID, note: normalize(note) }
       } catch {
         // fallthrough
+      }
+    }
+    const scopeIDs = await Storage.scan(["notes"])
+    for (const candidate of scopeIDs) {
+      if (candidate === scopeID || candidate === HOME_SCOPE_ID) continue
+      try {
+        const note = await Storage.read<NoteTypes.Info>(StoragePath.note(Identifier.asScopeID(candidate), noteID))
+        return { scopeID: candidate, note: normalize(note) }
+      } catch {
+        // continue
       }
     }
     throw new Storage.NotFoundError({ message: `Note not found: ${noteID}` })
@@ -138,7 +149,7 @@ export namespace NoteStore {
   // --- Public API: full data ---
 
   export async function create(input: NoteTypes.CreateInput, options?: { scopeID?: string }): Promise<NoteTypes.Info> {
-    const targetScopeID = options?.scopeID ?? Instance.scope.id
+    const targetScopeID = options?.scopeID ?? ScopeContext.current.scope.id
     const create = await Plugin.trigger(
       "note.create.before",
       {
@@ -150,7 +161,7 @@ export namespace NoteStore {
     )
     const id = Identifier.ascending("note")
     const scopeID = Identifier.asScopeID(targetScopeID)
-    const isGlobal = targetScopeID === "global"
+    const isGlobal = targetScopeID === HOME_SCOPE_ID
     const now = Date.now()
     const blueprint = create.note.blueprint as
       | (NonNullable<NoteTypes.CreateInput["blueprint"]> & { status?: unknown })
@@ -212,8 +223,8 @@ export namespace NoteStore {
   }
 
   export async function listWithGlobal(scopeID: string): Promise<NoteTypes.Info[]> {
-    if (scopeID === "global") return list("global")
-    const [local, global] = await Promise.all([list(scopeID), list("global")])
+    if (scopeID === HOME_SCOPE_ID) return list(HOME_SCOPE_ID)
+    const [local, global] = await Promise.all([list(scopeID), list(HOME_SCOPE_ID)])
     return mergeSorted(local, global, comparePinTime)
   }
 
@@ -224,7 +235,7 @@ export namespace NoteStore {
       const notes = await list(sid)
       groups.push({
         scopeID: sid,
-        scopeType: sid === "global" ? "global" : "project",
+        scopeType: sid === HOME_SCOPE_ID ? "home" : "project",
         notes,
       })
     }
@@ -286,11 +297,11 @@ export namespace NoteStore {
 
     const isNowGlobal = note.global ?? false
     if (!wasGlobal && isNowGlobal) {
-      const globalSid = Identifier.asScopeID("global")
+      const globalSid = Identifier.asScopeID(HOME_SCOPE_ID)
       await Storage.write(StoragePath.note(globalSid, noteID), note)
       await Storage.remove(sourcePath)
       await indexRemove(scopeID, noteID)
-      await indexSet("global", note)
+      await indexSet(HOME_SCOPE_ID, note)
       log.info("promoted to global", { id: noteID, from: sid })
     } else if (wasGlobal && !isNowGlobal) {
       const targetSid = Identifier.asScopeID(note.originScope || scopeID)
@@ -333,8 +344,8 @@ export namespace NoteStore {
   }
 
   export async function listMetaWithGlobal(scopeID: string): Promise<Metadata[]> {
-    if (scopeID === "global") return listMeta("global")
-    const [local, global] = await Promise.all([listMeta(scopeID), listMeta("global")])
+    if (scopeID === HOME_SCOPE_ID) return listMeta(HOME_SCOPE_ID)
+    const [local, global] = await Promise.all([listMeta(scopeID), listMeta(HOME_SCOPE_ID)])
     return mergeSorted(local, global, comparePinTime)
   }
 
@@ -350,7 +361,7 @@ export namespace NoteStore {
 
   export async function listMetaGrouped(): Promise<NoteTypes.MetaScopeGroup[]> {
     const scopeIDs = await Storage.scan(["notes"])
-    const currentScopeID = Instance.scope.id
+    const currentScopeID = ScopeContext.current.scope.id
     scopeIDs.sort((a, b) => {
       if (a === currentScopeID) return -1
       if (b === currentScopeID) return 1
@@ -362,7 +373,7 @@ export namespace NoteStore {
         if (metaList.length === 0) return undefined
         return {
           scopeID: sid,
-          scopeType: sid === "global" ? "global" : "project",
+          scopeType: sid === HOME_SCOPE_ID ? "home" : "project",
           notes: metaList,
         }
       }),

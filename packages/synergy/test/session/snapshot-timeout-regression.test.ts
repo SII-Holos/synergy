@@ -25,7 +25,7 @@
 import { describe, expect, test, beforeAll } from "bun:test"
 import path from "path"
 import { Snapshot } from "../../src/session/snapshot"
-import { Instance } from "../../src/scope/instance"
+import { ScopeContext } from "../../src/scope/context"
 import { Global } from "../../src/global"
 import { tmpdir } from "../fixture/fixture"
 import { Identifier } from "../../src/id/id"
@@ -41,7 +41,7 @@ function fakeSessionID(): string {
 describe("Snapshot.track() — completes within reasonable time", () => {
   test("track() on a small git repo returns a hash in under 2 seconds", async () => {
     await using tmp = await tmpdir({ git: true })
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         // Write a few files
@@ -67,7 +67,7 @@ describe("Snapshot.track() — completes within reasonable time", () => {
 
   test("patch() on a small repo completes in under 2 seconds", async () => {
     await using tmp = await tmpdir({ git: true })
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const sessionID = fakeSessionID()

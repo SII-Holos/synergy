@@ -9,7 +9,7 @@ import { useGlobalSDK } from "@/context/global-sdk"
 import { useNotification } from "@/context/notification"
 import { assetPath } from "@/utils/proxy"
 import { useTheme } from "@ericsanchezok/synergy-ui/theme"
-import { getScopeLabel, isGlobalScope } from "@/utils/scope"
+import { getScopeLabel, isHomeScope } from "@/utils/scope"
 import { ActiveZone } from "@/components/scopes/active-zone"
 import { SessionRow } from "@/components/scopes/session-row"
 import { PaginationBar } from "@/components/scopes/pagination-bar"
@@ -79,7 +79,7 @@ export function MobileDrawer() {
                 <ScopeListView
                   currentDir={currentDir()}
                   onSelectScope={setDrilldown}
-                  onNavigateHome={() => navigateAndClose(`/${base64Encode("global")}/session`)}
+                  onNavigateHome={() => navigateAndClose(`/${base64Encode("home")}/session`)}
                   onClose={close}
                 />
               }
@@ -90,9 +90,10 @@ export function MobileDrawer() {
                   currentSessionID={params.id}
                   notification={notification}
                   onBack={() => setDrilldown(null)}
-                  onSelectSession={(session) =>
-                    navigateAndClose(`/${base64Encode(session.scope.directory!)}/session/${session.id}`)
-                  }
+                  onSelectSession={(session) => {
+                    const scopeKey = session.scope.type === "home" ? "home" : session.scope.directory!
+                    navigateAndClose(`/${base64Encode(scopeKey)}/session/${session.id}`)
+                  }}
                   onNewSession={() => navigateAndClose(`/${base64Encode(scope().worktree)}/session`)}
                 />
               )}
@@ -118,7 +119,7 @@ function ScopeListView(props: {
   const globalSync = useGlobalSync()
 
   const scopes = createMemo(() => {
-    const homePath = globalSync.data.path?.home
+    const homePath = globalSync.data.paths?.home
     const seen = new Set<string>()
     return layout.scopes.list().filter((s) => {
       if (s.worktree === homePath) return false
@@ -128,7 +129,7 @@ function ScopeListView(props: {
     })
   })
 
-  const isHomeActive = createMemo(() => (props.currentDir ? isGlobalScope(props.currentDir) : false))
+  const isHomeActive = createMemo(() => (props.currentDir ? isHomeScope(props.currentDir) : false))
 
   return (
     <div class="py-2">

@@ -2,7 +2,6 @@ import { $ } from "bun"
 import path from "path"
 import { currentRepo } from "../../shared/current-repo"
 import {
-  FIXED_REGISTRY_PACKAGES,
   NPM_REGISTRY,
   RELEASE_STATE_DIR,
   RELEASE_TAG_PREFIX,
@@ -10,6 +9,8 @@ import {
   type ReleaseState,
   REPO_ROOT,
 } from "./packages"
+
+const SYNERGY_NPM_PACKAGE = "@ericsanchezok/synergy"
 
 const rootPkgPath = path.join(REPO_ROOT, "package.json")
 const rootPkg = await Bun.file(rootPkgPath).json()
@@ -126,7 +127,7 @@ export async function npmPromoteToLatest(name: string, version: string) {
 }
 
 export async function computeStableVersion(bump: string) {
-  const response = await fetch(`${NPM_REGISTRY}/${FIXED_REGISTRY_PACKAGES[3]}/latest`)
+  const response = await fetch(`${NPM_REGISTRY}/${SYNERGY_NPM_PACKAGE}/latest`)
   if (!response.ok) {
     throw new Error(`failed to fetch latest stable version: ${response.status} ${response.statusText}`)
   }

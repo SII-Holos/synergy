@@ -1,5 +1,5 @@
 import { Global } from "../../../global"
-import { bootstrap } from "../../bootstrap"
+import { withScopeRuntime } from "../../scope"
 import { cmd } from "../cmd"
 import { ConfigCommand } from "./config"
 import { FileCommand } from "./file"
@@ -28,7 +28,7 @@ export const DebugCommand = cmd({
         command: "wait",
         describe: "wait indefinitely (for debugging)",
         async handler() {
-          await bootstrap(process.cwd(), async () => {
+          await withScopeRuntime(process.cwd(), async () => {
             await new Promise((resolve) => setTimeout(resolve, 1_000 * 60 * 60 * 24))
           })
         },

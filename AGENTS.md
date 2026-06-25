@@ -18,14 +18,14 @@ Synergy is an AI agent platform with multiple product surfaces. The current prod
 - MCP integration
 - channels and Holos-related identity flows
 - agenda and automation features
-- note, memory/engram, and community-facing capabilities
+- note, library, and community-facing capabilities
 
 ## Current Architecture Vocabulary
 
 Use current terms consistently.
 
 - Prefer `Scope` over older `Project`-centric descriptions when referring to current scope resolution and workspace context.
-- Prefer current `engram` terminology for the knowledge/memory subsystem rather than older historical naming.
+- Prefer current `library` terminology for the knowledge/memory subsystem rather than older historical naming.
 - Prefer current session management terminology and current CLI command names.
 - Do not reintroduce old names in new docs unless you are explicitly documenting migration history.
 
@@ -36,6 +36,7 @@ Use current terms consistently.
 - `packages/synergy` — core runtime, server, CLI, sessions, tools, permissions, integrations, orchestration
 - `packages/app` — main Web application
 - `packages/plugin` — plugin SDK published as `@ericsanchezok/synergy-plugin`
+- `packages/plugin-kit` — standalone plugin development CLI published as `@ericsanchezok/synergy-plugin-kit`
 - `packages/sdk/js` — TypeScript SDK published as `@ericsanchezok/synergy-sdk`
 - `packages/ui` — shared UI component library
 - `packages/util` — shared utilities and error helpers
@@ -54,7 +55,7 @@ Current work commonly touches these domains:
 - `control-profile/` — resolved permission/sandbox profile definitions and compiler
 - `cortex/` — task orchestration and background execution
 - `enforcement/` — capability classification and centralized tool boundary gate
-- `engram/` — memory/knowledge infrastructure
+- `library/` — memory/knowledge infrastructure
 - `mcp/` — MCP support
 - `note/` — notes system
 - `permission/` — permission model
@@ -229,27 +230,37 @@ Treat schema and data migrations as a first-class architectural concern.
 
 ### Current config locations
 
-Primary global config uses the active global Config Set under:
+Primary global config uses one canonical domain directory under:
 
 ```bash
-~/.synergy/config
+~/.synergy/config/synergy.d/
 ```
 
-The `default` Config Set maps to:
+The domain files are:
 
 ```bash
-~/.synergy/config/synergy.jsonc
+00-general.jsonc
+10-models.jsonc
+20-providers.jsonc
+30-library.jsonc
+40-mcp.jsonc
+50-plugins.jsonc
+60-agents.jsonc
+70-commands.jsonc
+80-permissions.jsonc
+90-channels.jsonc
+100-holos.jsonc
+110-email.jsonc
+120-runtime.jsonc
 ```
 
-Project-level config is resolved from the working tree and may include:
+Project-level config uses the same domain layout under:
 
 ```bash
-synergy.jsonc
-synergy.json
-.synergy/
+<project>/.synergy/synergy.d/
 ```
 
-When editing or documenting config, prefer `synergy.jsonc` as the primary file name unless you are specifically describing compatibility behavior.
+Legacy monolithic config files are migration inputs only. Do not add new runtime load paths or long-term compatibility branches for them.
 
 ### Config-aware work
 
@@ -340,7 +351,7 @@ You must review docs when a change affects:
 - config paths or config schema
 - server / client startup flow
 - package ownership or package responsibilities
-- user-facing product areas such as MCP, channels, login, identity, agenda, notes, memory/engram, Agora, or Web behavior
+- user-facing product areas such as MCP, channels, login, identity, agenda, notes, library, Agora, or Web behavior
 
 At minimum, check whether `README.md` and `AGENTS.md` need updates.
 
@@ -364,6 +375,11 @@ Do not push directly to `main`.
 ### Release process
 
 Releases are triggered through GitHub Actions. Keep versioning and release docs aligned with the actual scripts and workflow in the repo.
+
+The release workflow has two targets:
+
+- `product` for the full Synergy release, including app, schema, binaries, npm wrapper, platform packages, SDK, plugin SDK, plugin kit, and meta-protocol.
+- `packages` for package-only npm releases such as `plugin-kit`, `plugin`, `sdk`, and `meta-protocol`; this path does not build app/binaries or create product GitHub release assets.
 
 If you change release behavior, update the internal documentation in the same task.
 

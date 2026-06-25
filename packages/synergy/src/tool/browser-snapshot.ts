@@ -22,22 +22,30 @@ export const BrowserSnapshotTool = Tool.define("browser_snapshot", {
     await BrowserRuntime.ensure()
     const owner = BrowserOwner.fromToolContext(ctx)
     const tab = await BrowserToolHelper.getTab(owner, params.tabId)
+    return BrowserToolHelper.withActivity(
+      ctx,
+      tab,
+      "reading",
+      "browser_snapshot",
+      "Reading page structure",
+      async () => {
+        const snapshot = await tab.snapshot()
+        const text = formatSnapshotText(snapshot.elements, {
+          interactiveOnly: params.interactiveOnly,
+          maxDepth: params.maxDepth,
+        })
 
-    const snapshot = await tab.snapshot()
-    const text = formatSnapshotText(snapshot.elements, {
-      interactiveOnly: params.interactiveOnly,
-      maxDepth: params.maxDepth,
-    })
-
-    return {
-      title: `Snapshot of ${tab.url || tab.title || "page"}`,
-      output: text,
-      metadata: {
-        url: tab.url,
-        tabId: tab.id,
-        elementsCount: snapshot.elements.length,
-        truncated: snapshot.truncated,
+        return {
+          title: `Snapshot of ${tab.url || tab.title || "page"}`,
+          output: text,
+          metadata: {
+            url: tab.url,
+            tabId: tab.id,
+            elementsCount: snapshot.elements.length,
+            truncated: snapshot.truncated,
+          },
+        }
       },
-    }
+    )
   },
 })

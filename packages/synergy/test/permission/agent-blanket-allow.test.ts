@@ -1,6 +1,6 @@
 import { test, expect, describe } from "bun:test"
 import { PermissionNext } from "../../src/permission/next"
-import { Instance } from "../../src/scope/instance"
+import { ScopeContext } from "../../src/scope/context"
 import { tmpdir } from "../fixture/fixture"
 
 // ---------------------------------------------------------------------------
@@ -36,7 +36,7 @@ import { tmpdir } from "../fixture/fixture"
 describe("nonBypassable defeats blanket external_directory allow", () => {
   test("external_directory ask with nonBypassable stays pending despite allow rule", async () => {
     await using tmp = await tmpdir({ git: true })
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         // This simulates the anima agent: blanket external_directory "allow"
@@ -74,7 +74,7 @@ describe("nonBypassable defeats blanket external_directory allow", () => {
   test("external_directory allow rule resolves when no nonBypassable metadata", async () => {
     // Sanity: without nonBypassable, blanket allow works normally
     await using tmp = await tmpdir({ git: true })
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const result = await PermissionNext.ask({
@@ -92,7 +92,7 @@ describe("nonBypassable defeats blanket external_directory allow", () => {
 
   test("nonBypassable defeats unattended auto-approve with blanket allow rule", async () => {
     await using tmp = await tmpdir({ git: true })
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const promise = PermissionNext.ask({
@@ -132,7 +132,7 @@ describe("nonBypassable defeats blanket external_directory allow", () => {
 describe("blanket allow vs nonBypassable across permission types", () => {
   test("bash blanket allow does not defeat nonBypassable workspace boundary cross", async () => {
     await using tmp = await tmpdir({ git: true })
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const promise = PermissionNext.ask({
@@ -164,7 +164,7 @@ describe("blanket allow vs nonBypassable across permission types", () => {
 
   test("read blanket allow does not defeat nonBypassable workspace boundary cross", async () => {
     await using tmp = await tmpdir({ git: true })
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const promise = PermissionNext.ask({
@@ -198,7 +198,7 @@ describe("blanket allow vs nonBypassable across permission types", () => {
 
   test("write blanket allow does not defeat nonBypassable workspace boundary cross", async () => {
     await using tmp = await tmpdir({ git: true })
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const promise = PermissionNext.ask({
@@ -235,7 +235,7 @@ describe("blanket allow vs nonBypassable across permission types", () => {
 describe("blanket allow resolves when nonBypassable absent — sanity checks", () => {
   test("external_directory blanket allow auto-resolves in-workspace read", async () => {
     await using tmp = await tmpdir({ git: true })
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         // Without nonBypassable metadata, blanket allow works as before
@@ -254,7 +254,7 @@ describe("blanket allow resolves when nonBypassable absent — sanity checks", (
 
   test("bash blanket allow auto-resolves in-workspace command", async () => {
     await using tmp = await tmpdir({ git: true })
-    await Instance.provide({
+    await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const result = await PermissionNext.ask({

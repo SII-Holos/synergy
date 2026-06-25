@@ -1,7 +1,7 @@
 import z from "zod"
 import { Tool } from "./tool"
 import DESCRIPTION from "./bash.txt"
-import { Instance } from "../scope/instance"
+import { ScopeContext } from "../scope/context"
 import { Truncate } from "./truncation"
 import { MetaProtocolEnv } from "@ericsanchezok/meta-protocol"
 import { RemoteExecution } from "./remote-execution"
@@ -50,7 +50,7 @@ function selectBackend(envID?: string): BashBackend {
 // TODO: we may wanna rename this tool so it works better on other shells
 export const BashTool = Tool.define<typeof parameters, BashMetadata>("bash", {
   get description() {
-    return DESCRIPTION.replaceAll("${directory}", Instance.directory)
+    return DESCRIPTION.replaceAll("${directory}", ScopeContext.current.directory)
       .replaceAll("${maxLines}", String(Truncate.MAX_LINES))
       .replaceAll("${maxBytes}", String(Truncate.MAX_BYTES))
   },

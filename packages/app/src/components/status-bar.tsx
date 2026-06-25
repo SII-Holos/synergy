@@ -4,6 +4,7 @@ import { useHolos } from "@/context/holos"
 import { useServer } from "@/context/server"
 import { useGlobalSync } from "@/context/global-sync"
 import { useSync } from "@/context/sync"
+import { ContextBar } from "@/components/context-bar"
 import { SessionLspIndicator, SessionMcpIndicator, SessionCortexIndicator } from "@/components/session"
 import { Icon, type IconName } from "@ericsanchezok/synergy-ui/icon"
 import { Tooltip } from "@ericsanchezok/synergy-ui/tooltip"
@@ -195,8 +196,8 @@ export function StatusBar() {
   const directory = createMemo(() => decodeDirectory(params.dir))
   const store = createMemo(() => {
     const dir = directory()
-    if (!dir || dir === "global") return undefined
-    return globalSync.child(dir)[0]
+    if (!dir || dir === "home") return undefined
+    return globalSync.peekScopeState(dir)?.[0]
   })
   const scope = createMemo(() => {
     const current = store()
@@ -222,7 +223,6 @@ export function StatusBar() {
   const branch = createMemo(() => workspaceField(session(), "branch") || store()?.vcs?.branch)
   const scopeLabel = createMemo(() => getScopeLabel(scope(), directory()))
   const runtime = createMemo(() => runtimeLabel(status(), waiting()))
-  const activeConfig = createMemo(() => globalSync.configSets.find((set) => set.active)?.name ?? "default")
 
   // Inline accessors for panel connection stats
   const lspConnected = () => {
@@ -300,7 +300,6 @@ export function StatusBar() {
         <PanelRow>
           Server · {server.name} ({serverStatusLabel(server.healthy())})
         </PanelRow>
-        <PanelRow>Config · {activeConfig()}</PanelRow>
       </PanelSection>
     </div>
   )
@@ -321,6 +320,7 @@ export function StatusBar() {
           <SessionMcpIndicator />
           <Show when={params.id}>
             <SessionCortexIndicator sessionID={params.id!} />
+            <ContextBar />
           </Show>
 
           <div class="w-px h-4 bg-border-weak" />

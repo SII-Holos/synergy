@@ -3,12 +3,12 @@ import path from "path"
 import { applyEdits, modify, parse as parseJsonc } from "jsonc-parser"
 import type { Migration } from "../migration"
 import { MigrationRegistry } from "../migration/registry"
-import { ConfigSet } from "./set"
 import { Filesystem } from "../util/filesystem"
 import { Global } from "../global"
 import { Flag } from "../flag/flag"
 import { Log } from "../util/log"
 import { MEMORY_CATEGORIES } from "./schema"
+import { ConfigDomain } from "./domain"
 
 const log = Log.create({ service: "config.migration" })
 
@@ -16,11 +16,15 @@ async function findConfigFiles(): Promise<string[]> {
   const files = new Set<string>()
   const workingDirectory = Flag.SYNERGY_CWD || process.cwd()
 
-  files.add(ConfigSet.defaultFilePath())
+  files.add(path.join(Global.Path.config, "synergy.jsonc"))
+  files.add(path.join(Global.Path.config, "synergy.json"))
 
-  const sets = await ConfigSet.list().catch(() => [])
-  for (const set of sets) {
-    files.add(set.path)
+  const configSetsRoot = path.join(Global.Path.config, "config-sets")
+  const configSets = await fs.readdir(configSetsRoot, { withFileTypes: true }).catch(() => [])
+  for (const entry of configSets) {
+    if (!entry.isDirectory()) continue
+    files.add(path.join(configSetsRoot, entry.name, "synergy.jsonc"))
+    files.add(path.join(configSetsRoot, entry.name, "synergy.json"))
   }
 
   for (const file of ["synergy.jsonc", "synergy.json"]) {
@@ -174,6 +178,58 @@ async function removeTopLevelConfigKeys(filepath: string, keys: string[]): Promi
   return true
 }
 
+function addAncestorPermissionDomainFiles(files: Set<string>, start: string) {
+  let current = path.resolve(start)
+  while (true) {
+    files.add(ConfigDomain.filepath("permissions", path.join(current, ".synergy")))
+    const parent = path.dirname(current)
+    if (parent === current) break
+    current = parent
+  }
+}
+
+async function findSmartAllowConfigFiles(): Promise<string[]> {
+  const files = new Set(await findConfigFiles())
+  const workingDirectory = Flag.SYNERGY_CWD || process.cwd()
+
+  files.add(ConfigDomain.filepath("permissions", Global.Path.config))
+  addAncestorPermissionDomainFiles(files, workingDirectory)
+
+  if (Flag.SYNERGY_CONFIG_DIR) {
+    files.add(ConfigDomain.filepath("permissions", Flag.SYNERGY_CONFIG_DIR))
+  }
+
+  return [...files]
+}
+
+async function migrateAutoClassifierToSmartAllow(filepath: string): Promise<boolean> {
+  const file = Bun.file(filepath)
+  if (!(await file.exists())) return false
+
+  const raw = await file.text()
+  if (!raw.trim()) return false
+
+  const parsed = parseJsonc(raw)
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return false
+
+  const config = parsed as Record<string, unknown>
+  if (!("auto_classifier" in config)) return false
+
+  let text = raw
+  const formattingOptions = { tabSize: 2, insertSpaces: true, eol: "\n" } as const
+
+  if (config.smartAllow === undefined && typeof config.auto_classifier === "boolean") {
+    text = applyEdits(text, modify(text, ["smartAllow"], config.auto_classifier, { formattingOptions }))
+  }
+
+  text = applyEdits(text, modify(text, ["auto_classifier"], undefined, { formattingOptions }))
+
+  await fs.mkdir(path.dirname(filepath), { recursive: true })
+  await Bun.write(filepath, text.endsWith("\n") ? text : text + "\n")
+  log.info("migrated auto_classifier config to smartAllow", { path: filepath })
+  return true
+}
+
 async function migrateSiiAuthToPlugin(): Promise<boolean> {
   const home = process.env.HOME || process.env.USERPROFILE || "~"
   const oldInspirePath = path.join(home, ".synergy", "data", "auth", "inspire.json")
@@ -300,6 +356,41 @@ function mergeMissing(existing: unknown, migrated: unknown): unknown {
   return result
 }
 
+async function readConfigObject(
+  filepath: string,
+): Promise<{ raw: string; config: Record<string, unknown> } | undefined> {
+  const file = Bun.file(filepath)
+  if (!(await file.exists())) return undefined
+
+  const raw = await file.text()
+  if (!raw.trim()) return undefined
+
+  const parsed = parseJsonc(raw)
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return undefined
+  return { raw, config: parsed as Record<string, unknown> }
+}
+
+async function writeJsonc(filepath: string, value: Record<string, unknown>) {
+  await fs.mkdir(path.dirname(filepath), { recursive: true })
+  await Bun.write(filepath, JSON.stringify(value, null, 2) + "\n")
+}
+
+async function mergeTopLevelKey(filepath: string, key: string, value: unknown): Promise<boolean> {
+  const current = await readConfigObject(filepath)
+  if (!current) {
+    await writeJsonc(filepath, { [key]: value })
+    return true
+  }
+
+  const merged = mergeMissing(current.config[key], value)
+  if (JSON.stringify(merged) === JSON.stringify(current.config[key])) return false
+
+  const formattingOptions = { tabSize: 2, insertSpaces: true, eol: "\n" } as const
+  const text = applyEdits(current.raw, modify(current.raw, [key], merged, { formattingOptions }))
+  await Bun.write(filepath, text.endsWith("\n") ? text : text + "\n")
+  return true
+}
+
 function sanitizeRetrieval(input: Record<string, unknown>): Record<string, unknown> {
   const retrieval: Record<string, unknown> = {}
   if (typeof input.simThreshold === "number") retrieval.simThreshold = input.simThreshold
@@ -320,7 +411,7 @@ function sanitizeRetrieval(input: Record<string, unknown>): Record<string, unkno
   return retrieval
 }
 
-function engramFromLegacyEvolution(evolution: unknown): Record<string, unknown> {
+function libraryFromLegacyEvolution(evolution: unknown): Record<string, unknown> {
   if (typeof evolution === "boolean") {
     return {
       memory: { enabled: evolution },
@@ -330,7 +421,7 @@ function engramFromLegacyEvolution(evolution: unknown): Record<string, unknown> 
 
   if (!isRecord(evolution)) return {}
 
-  const engram: Record<string, unknown> = {}
+  const library: Record<string, unknown> = {}
   const memory: Record<string, unknown> = {}
   const experience: Record<string, unknown> = {}
 
@@ -362,12 +453,84 @@ function engramFromLegacyEvolution(evolution: unknown): Record<string, unknown> 
     if (isRecord(passive.learning)) experience.learning = passive.learning
   }
 
-  if (Object.keys(memory).length > 0) engram.memory = memory
-  if (Object.keys(experience).length > 0) engram.experience = experience
-  return engram
+  if (Object.keys(memory).length > 0) library.memory = memory
+  if (Object.keys(experience).length > 0) library.experience = experience
+  return library
 }
 
-async function migrateIdentityToEngram(filepath: string): Promise<boolean> {
+function libraryFromLegacyConfig(config: Record<string, unknown>): Record<string, unknown> {
+  let migrated: Record<string, unknown> = {}
+
+  if (isRecord(config.engram)) {
+    migrated = mergeMissing(migrated, config.engram) as Record<string, unknown>
+  }
+
+  const directLibrary: Record<string, unknown> = {}
+  if (isRecord(config.memory)) directLibrary.memory = config.memory
+  if (isRecord(config.experience)) directLibrary.experience = config.experience
+  if (typeof config.autonomy === "boolean") directLibrary.autonomy = config.autonomy
+  if (Object.keys(directLibrary).length > 0) {
+    migrated = mergeMissing(migrated, directLibrary) as Record<string, unknown>
+  }
+
+  const identity = isRecord(config.identity) ? config.identity : undefined
+  if (identity?.evolution !== undefined) {
+    migrated = mergeMissing(migrated, libraryFromLegacyEvolution(identity.evolution)) as Record<string, unknown>
+  }
+  if (identity?.autonomy !== undefined) {
+    migrated = mergeMissing(migrated, { autonomy: identity.autonomy }) as Record<string, unknown>
+  }
+
+  return migrated
+}
+
+async function migrateInlineLibraryConfig(filepath: string): Promise<boolean> {
+  const current = await readConfigObject(filepath)
+  if (!current) return false
+
+  const { raw, config } = current
+  const identity = isRecord(config.identity) ? config.identity : undefined
+  let text = raw
+  let changed = false
+  const formattingOptions = { tabSize: 2, insertSpaces: true, eol: "\n" } as const
+
+  if (identity) {
+    if (isRecord(identity.embedding) && config.embedding === undefined) {
+      text = applyEdits(text, modify(text, ["embedding"], identity.embedding, { formattingOptions }))
+      changed = true
+    }
+
+    if (isRecord(identity.rerank) && config.rerank === undefined) {
+      text = applyEdits(text, modify(text, ["rerank"], identity.rerank, { formattingOptions }))
+      changed = true
+    }
+  }
+
+  const migratedLibrary = libraryFromLegacyConfig(config)
+  if (Object.keys(migratedLibrary).length > 0) {
+    text = applyEdits(
+      text,
+      modify(text, ["library"], mergeMissing(config.library, migratedLibrary), { formattingOptions }),
+    )
+    changed = true
+  }
+
+  for (const key of ["identity", "engram"]) {
+    if (key in config) {
+      text = applyEdits(text, modify(text, [key], undefined, { formattingOptions }))
+      changed = true
+    }
+  }
+
+  if (!changed) return false
+
+  await fs.mkdir(path.dirname(filepath), { recursive: true })
+  await Bun.write(filepath, text.endsWith("\n") ? text : text + "\n")
+  log.info("migrated legacy identity/engram config to library", { path: filepath })
+  return true
+}
+
+async function migrateIdentityToLibrary(filepath: string): Promise<boolean> {
   const file = Bun.file(filepath)
   if (!(await file.exists())) return false
 
@@ -393,22 +556,22 @@ async function migrateIdentityToEngram(filepath: string): Promise<boolean> {
     text = applyEdits(text, modify(text, ["rerank"], identity.rerank, { formattingOptions }))
   }
 
-  let migratedEngram: Record<string, unknown> = {}
+  let migratedLibrary: Record<string, unknown> = {}
   if (identity.evolution !== undefined) {
-    migratedEngram = mergeMissing(migratedEngram, engramFromLegacyEvolution(identity.evolution)) as Record<
+    migratedLibrary = mergeMissing(migratedLibrary, libraryFromLegacyEvolution(identity.evolution)) as Record<
       string,
       unknown
     >
   }
 
   if (identity.autonomy !== undefined) {
-    migratedEngram = mergeMissing(migratedEngram, { autonomy: identity.autonomy }) as Record<string, unknown>
+    migratedLibrary = mergeMissing(migratedLibrary, { autonomy: identity.autonomy }) as Record<string, unknown>
   }
 
-  if (Object.keys(migratedEngram).length > 0) {
+  if (Object.keys(migratedLibrary).length > 0) {
     text = applyEdits(
       text,
-      modify(text, ["engram"], mergeMissing(config.engram, migratedEngram), { formattingOptions }),
+      modify(text, ["library"], mergeMissing(config.library, migratedLibrary), { formattingOptions }),
     )
   }
 
@@ -416,11 +579,11 @@ async function migrateIdentityToEngram(filepath: string): Promise<boolean> {
 
   await fs.mkdir(path.dirname(filepath), { recursive: true })
   await Bun.write(filepath, text.endsWith("\n") ? text : text + "\n")
-  log.info("migrated identity config to embedding/rerank/engram", { path: filepath })
+  log.info("migrated identity config to embedding/rerank/library", { path: filepath })
   return true
 }
 
-async function repairEngramLegacyShapes(filepath: string): Promise<boolean> {
+async function repairLibraryLegacyShapes(filepath: string): Promise<boolean> {
   const file = Bun.file(filepath)
   if (!(await file.exists())) return false
 
@@ -431,9 +594,9 @@ async function repairEngramLegacyShapes(filepath: string): Promise<boolean> {
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return false
 
   const config = parsed as Record<string, unknown>
-  const engram = isRecord(config.engram) ? config.engram : undefined
-  const memory = isRecord(engram?.memory) ? engram.memory : undefined
-  const experience = isRecord(engram?.experience) ? engram.experience : undefined
+  const library = isRecord(config.library) ? config.library : undefined
+  const memory = isRecord(library?.memory) ? library.memory : undefined
+  const experience = isRecord(library?.experience) ? library.experience : undefined
   if (!memory && !experience) return false
 
   let text = raw
@@ -442,9 +605,9 @@ async function repairEngramLegacyShapes(filepath: string): Promise<boolean> {
 
   if (typeof memory?.retrieval === "boolean") {
     if (memory.retrieval === false && memory.enabled === undefined) {
-      text = applyEdits(text, modify(text, ["engram", "memory", "enabled"], false, { formattingOptions }))
+      text = applyEdits(text, modify(text, ["library", "memory", "enabled"], false, { formattingOptions }))
     }
-    text = applyEdits(text, modify(text, ["engram", "memory", "retrieval"], undefined, { formattingOptions }))
+    text = applyEdits(text, modify(text, ["library", "memory", "retrieval"], undefined, { formattingOptions }))
     changed = true
   }
 
@@ -466,22 +629,135 @@ async function repairEngramLegacyShapes(filepath: string): Promise<boolean> {
     if (needsCategoryRepair) {
       text = applyEdits(
         text,
-        modify(text, ["engram", "memory", "retrieval", "categories"], repairedCategories, { formattingOptions }),
+        modify(text, ["library", "memory", "retrieval", "categories"], repairedCategories, { formattingOptions }),
       )
       changed = true
     }
   }
 
   if (typeof experience?.learning === "boolean") {
-    text = applyEdits(text, modify(text, ["engram", "experience", "learning"], undefined, { formattingOptions }))
+    text = applyEdits(text, modify(text, ["library", "experience", "learning"], undefined, { formattingOptions }))
     changed = true
   }
 
   if (!changed) return false
 
   await Bun.write(filepath, text.endsWith("\n") ? text : text + "\n")
-  log.info("repaired legacy engram config shapes", { path: filepath })
+  log.info("repaired legacy library config shapes", { path: filepath })
   return true
+}
+
+async function findConfigDomainDirs(): Promise<string[]> {
+  const roots = new Set<string>()
+  const workingDirectory = Flag.SYNERGY_CWD || process.cwd()
+
+  roots.add(Global.Path.config)
+  roots.add(path.join(workingDirectory, ".synergy"))
+  roots.add(path.join(Global.Path.home, ".synergy", "config"))
+  if (Flag.SYNERGY_CONFIG_DIR) roots.add(Flag.SYNERGY_CONFIG_DIR)
+
+  const configSetsRoot = path.join(Global.Path.config, "config-sets")
+  const configSets = await fs.readdir(configSetsRoot, { withFileTypes: true }).catch(() => [])
+  for (const entry of configSets) {
+    if (entry.isDirectory()) roots.add(path.join(configSetsRoot, entry.name))
+  }
+
+  const dirs = new Set<string>()
+  for (const root of roots) {
+    const dir = path.join(root, "synergy.d")
+    const exists = await fs
+      .access(dir)
+      .then(() => true)
+      .catch(() => false)
+    if (exists) dirs.add(dir)
+  }
+  return [...dirs]
+}
+
+async function migrateLibraryDomainFile(libraryFile: string, generalFile: string): Promise<boolean> {
+  const current = await readConfigObject(libraryFile)
+  if (!current) return false
+
+  let { raw: text } = current
+  const { config } = current
+  let changed = false
+  const formattingOptions = { tabSize: 2, insertSpaces: true, eol: "\n" } as const
+
+  for (const key of ["embedding", "rerank"]) {
+    if (isRecord(config[key])) {
+      await mergeTopLevelKey(generalFile, key, config[key])
+      text = applyEdits(text, modify(text, [key], undefined, { formattingOptions }))
+      changed = true
+    }
+  }
+
+  const migratedLibrary = libraryFromLegacyConfig(config)
+  if (Object.keys(migratedLibrary).length > 0) {
+    text = applyEdits(
+      text,
+      modify(text, ["library"], mergeMissing(config.library, migratedLibrary), { formattingOptions }),
+    )
+    changed = true
+  }
+
+  for (const key of ["identity", "engram", "memory", "experience", "autonomy"]) {
+    if (key in config) {
+      text = applyEdits(text, modify(text, [key], undefined, { formattingOptions }))
+      changed = true
+    }
+  }
+
+  if (!changed) return false
+  await Bun.write(libraryFile, text.endsWith("\n") ? text : text + "\n")
+  log.info("migrated library domain config", { path: libraryFile })
+  return true
+}
+
+async function migrateLegacyLibraryDomainFile(dir: string): Promise<boolean> {
+  const oldFile = path.join(dir, "30-engram.jsonc")
+  const current = await readConfigObject(oldFile)
+  if (!current) return false
+
+  const generalFile = path.join(dir, "00-general.jsonc")
+  const libraryFile = path.join(dir, "30-library.jsonc")
+  const { config } = current
+  let changed = false
+
+  for (const key of ["embedding", "rerank"]) {
+    if (isRecord(config[key])) {
+      await mergeTopLevelKey(generalFile, key, config[key])
+      changed = true
+    }
+  }
+
+  const migratedLibrary = libraryFromLegacyConfig(config)
+  if (Object.keys(migratedLibrary).length > 0) {
+    await mergeTopLevelKey(libraryFile, "library", migratedLibrary)
+    changed = true
+  }
+
+  await fs.rm(oldFile, { force: true })
+  log.info("migrated legacy 30-engram.jsonc to library/general domain files", { path: oldFile })
+  return changed
+}
+
+async function migrateLegacyLibraryConfig(): Promise<number> {
+  let changed = 0
+
+  for (const filepath of await findConfigFiles()) {
+    if (await migrateInlineLibraryConfig(filepath)) changed++
+    if (await repairLibraryLegacyShapes(filepath)) changed++
+  }
+
+  for (const dir of await findConfigDomainDirs()) {
+    if (await migrateLegacyLibraryDomainFile(dir)) changed++
+    const libraryFile = path.join(dir, "30-library.jsonc")
+    const generalFile = path.join(dir, "00-general.jsonc")
+    if (await migrateLibraryDomainFile(libraryFile, generalFile)) changed++
+    if (await repairLibraryLegacyShapes(libraryFile)) changed++
+  }
+
+  return changed
 }
 
 export const migrations: Migration[] = [
@@ -624,8 +900,8 @@ export const migrations: Migration[] = [
   },
 
   {
-    id: "20260617-config-identity-to-engram",
-    description: "Migrate identity config to embedding/rerank/engram fields",
+    id: "20260617-config-identity-to-library",
+    description: "Migrate identity config to embedding/rerank/library fields",
     async up(progress) {
       const files = await findConfigFiles()
       if (files.length === 0) return
@@ -633,7 +909,7 @@ export const migrations: Migration[] = [
       let done = 0
       for (const filepath of files) {
         try {
-          await migrateIdentityToEngram(filepath)
+          await migrateIdentityToLibrary(filepath)
         } catch (err) {
           log.warn("failed to migrate identity config", {
             path: filepath,
@@ -646,15 +922,15 @@ export const migrations: Migration[] = [
     },
   },
   {
-    id: "20260618-config-repair-legacy-engram-shapes",
-    description: "Repair invalid engram config shapes from legacy identity migration",
+    id: "20260618-config-repair-legacy-library-shapes",
+    description: "Repair invalid library config shapes from legacy identity migration",
     async up(progress) {
       const files = await findConfigFiles()
       if (files.length === 0) return
 
       let done = 0
       for (const filepath of files) {
-        await repairEngramLegacyShapes(filepath)
+        await repairLibraryLegacyShapes(filepath)
         done++
         progress(done, files.length)
       }
@@ -673,6 +949,30 @@ export const migrations: Migration[] = [
         done++
         progress(done, files.length)
       }
+    },
+  },
+  {
+    id: "20260625-config-smart-allow",
+    description: "Migrate auto_classifier config to smartAllow",
+    async up(progress) {
+      const files = await findSmartAllowConfigFiles()
+      if (files.length === 0) return
+
+      let done = 0
+      for (const filepath of files) {
+        await migrateAutoClassifierToSmartAllow(filepath)
+        done++
+        progress(done, files.length)
+      }
+    },
+  },
+  {
+    id: "20260625-config-engram-to-library",
+    description: "Migrate legacy engram config domains and keys to library/general",
+    async up(progress) {
+      progress(0, 1)
+      await migrateLegacyLibraryConfig()
+      progress(1, 1)
     },
   },
 ]

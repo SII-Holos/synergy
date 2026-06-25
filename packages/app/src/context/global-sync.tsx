@@ -4,7 +4,6 @@ import {
   type Session,
   type Part,
   type Config,
-  type Path,
   type Scope,
   type FileDiff,
   type Todo,
@@ -19,6 +18,7 @@ import {
   type QuestionRequest,
   type CortexTask,
   type AgendaItem,
+  type SessionInboxItem,
   createSynergyClient,
 } from "@ericsanchezok/synergy-sdk/client"
 import { createStore, produce, reconcile } from "solid-js/store"
@@ -40,8 +40,25 @@ import {
 } from "solid-js"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import { getFilename } from "@ericsanchezok/synergy-util/path"
-import { isGlobalScope } from "@/utils/scope"
-import type { ConfigSetSummary } from "@ericsanchezok/synergy-sdk/client"
+import { HOME_SCOPE_KEY, isHomeScope } from "@/utils/scope"
+
+type GlobalPaths = {
+  home: string
+  root: string
+  data: string
+  config: string
+  state: string
+  cache: string
+  log: string
+}
+
+type ScopedPath = {
+  state: string
+  config: string
+  worktree: string
+  directory: string
+  home: string
+}
 
 type State = {
   status: "loading" | "partial" | "complete"
@@ -50,7 +67,7 @@ type State = {
   scopeID: string
   provider: ProviderListResponse
   config: Config
-  path: Path
+  path: ScopedPath
   session: Session[]
   session_status: {
     [sessionID: string]: SessionStatus
@@ -69,6 +86,9 @@ type State = {
   }
   question: {
     [sessionID: string]: QuestionRequest[]
+  }
+  inbox: {
+    [sessionID: string]: SessionInboxItem[]
   }
   mcp: {
     [name: string]: McpStatus
@@ -97,20 +117,18 @@ function createGlobalSync() {
   const [globalStore, setGlobalStore] = createStore<{
     ready: boolean
     error?: InitError
-    path: Path
+    paths: GlobalPaths
     scope: Scope[]
     provider: ProviderListResponse
     provider_auth: ProviderAuthResponse
     agenda: AgendaItem[]
-    config_sets: ConfigSetSummary[]
   }>({
     ready: false,
-    path: { state: "", config: "", worktree: "", directory: "", home: "" },
+    paths: { home: "", root: "", data: "", config: "", state: "", cache: "", log: "" },
     scope: [],
     provider: { all: [], connected: [], default: {}, configProviders: [] },
     provider_auth: {},
     agenda: [],
-    config_sets: [],
   })
 
   const children: Record<string, ReturnType<typeof createStore<State>>> = {}
@@ -141,34 +159,46 @@ function createGlobalSync() {
     await Promise.all(workers)
   }
 
-  function scheduleBootstrap(directory: string) {
-    if (!directory || !children[directory]) return
-    if (bootstrapActive.has(directory) || bootstrapQueued.has(directory)) return
-    bootstrapQueued.add(directory)
-    bootstrapQueue.push(directory)
+  function createScopedClient(scopeKey: string) {
+    return createSynergyClient({
+      baseUrl: globalSDK.url,
+      ...(isHomeScope(scopeKey) ? { scopeID: HOME_SCOPE_KEY } : { directory: scopeKey }),
+      throwOnError: true,
+    })
+  }
+
+  function scheduleBootstrap(scopeKey: string) {
+    if (!scopeKey || !children[scopeKey]) return
+    if (bootstrapActive.has(scopeKey) || bootstrapQueued.has(scopeKey)) return
+    bootstrapQueued.add(scopeKey)
+    bootstrapQueue.push(scopeKey)
     pumpBootstrapQueue()
   }
 
   function pumpBootstrapQueue() {
     while (bootstrapActive.size < instanceRequestConcurrency) {
-      const directory = bootstrapQueue.shift()
-      if (!directory) return
-      bootstrapQueued.delete(directory)
-      if (!children[directory]) continue
-      bootstrapActive.add(directory)
-      void bootstrapInstance(directory)
+      const scopeKey = bootstrapQueue.shift()
+      if (!scopeKey) return
+      bootstrapQueued.delete(scopeKey)
+      if (!children[scopeKey]) continue
+      bootstrapActive.add(scopeKey)
+      void bootstrapInstance(scopeKey)
         .catch((e) => setGlobalStore("error", e))
         .finally(() => {
-          bootstrapActive.delete(directory)
+          bootstrapActive.delete(scopeKey)
           pumpBootstrapQueue()
         })
     }
   }
 
-  function child(directory: string) {
-    if (!directory) console.error("No directory provided")
-    if (!children[directory]) {
-      children[directory] = createStore<State>({
+  function peekScopeState(scopeKey: string) {
+    return children[scopeKey]
+  }
+
+  function ensureScopeState(scopeKey: string) {
+    if (!scopeKey) console.error("No scope key provided")
+    if (!children[scopeKey]) {
+      children[scopeKey] = createStore<State>({
         scopeID: "",
         provider: { all: [], connected: [], default: {}, configProviders: [] },
         config: {},
@@ -183,6 +213,7 @@ function createGlobalSync() {
         dag: {},
         permission: {},
         question: {},
+        inbox: {},
         mcp: {},
         lsp: [],
         cortex: [],
@@ -192,22 +223,19 @@ function createGlobalSync() {
         message: {},
         part: {},
       })
-      scheduleBootstrap(directory)
+      scheduleBootstrap(scopeKey)
     }
-    return children[directory]
+    return children[scopeKey]
   }
 
-  function releaseChild(directory: string) {
-    // The global event listener calls child() which may recreate the store
-    // if a late event arrives for this directory. The recreated store stays
-    // empty (no bootstrapInstance) and will be collected on the next release.
-    delete children[directory]
-    bootstrapQueued.delete(directory)
+  function releaseScopeState(scopeKey: string) {
+    delete children[scopeKey]
+    bootstrapQueued.delete(scopeKey)
   }
 
-  async function loadAgenda(directory: string) {
-    const [_, setStore] = child(directory)
-    const sdk = createSynergyClient({ baseUrl: globalSDK.url, directory, throwOnError: true })
+  async function loadAgenda(scopeKey: string) {
+    const [_, setStore] = ensureScopeState(scopeKey)
+    const sdk = createScopedClient(scopeKey)
     return sdk.agenda
       .list()
       .then((x) =>
@@ -256,24 +284,9 @@ function createGlobalSync() {
     ]).then(() => undefined)
   }
 
-  async function loadConfigSets() {
-    return globalSDK.client.config.set
-      .list()
-      .then((x) => {
-        setGlobalStore("config_sets", reconcile(x.data ?? [], { key: "name" }))
-      })
-      .catch((err) => {
-        console.error("Failed to load config sets", err)
-      })
-  }
-
-  async function refreshConfig(directory: string) {
-    const [_, setStore] = child(directory)
-    const sdk = createSynergyClient({
-      baseUrl: globalSDK.url,
-      directory,
-      throwOnError: true,
-    })
+  async function refreshConfig(scopeKey: string) {
+    const [_, setStore] = ensureScopeState(scopeKey)
+    const sdk = createScopedClient(scopeKey)
 
     return Promise.all([
       sdk.provider.list().then((x) => {
@@ -303,12 +316,8 @@ function createGlobalSync() {
       refreshAllConfigsPromise = new Promise<void>((resolve) => {
         refreshAllConfigsTimer = setTimeout(() => {
           refreshAllConfigsTimer = undefined
-          const directories = Object.keys(children)
-          Promise.all([
-            loadConfigSets(),
-            loadGlobalProviders(),
-            runInstanceRequests(directories, (directory) => refreshConfig(directory)),
-          ])
+          const scopeKeys = Object.keys(children)
+          Promise.all([loadGlobalProviders(), runInstanceRequests(scopeKeys, (scopeKey) => refreshConfig(scopeKey))])
             .then(() => resolve())
             .catch(() => resolve())
             .finally(() => {
@@ -346,22 +355,17 @@ function createGlobalSync() {
   }
 
   async function doRefreshTargeted(targets: Set<string>) {
-    const directories = Object.keys(children)
+    const scopeKeys = Object.keys(children)
 
     const globalPromises: Promise<unknown>[] = []
 
     if (targets.has("config") || targets.has("provider")) {
       globalPromises.push(loadGlobalProviders())
-      globalPromises.push(loadConfigSets())
     }
 
-    const perScopePromise = runInstanceRequests(directories, async (directory) => {
-      const [_, setStore] = child(directory)
-      const sdk = createSynergyClient({
-        baseUrl: globalSDK.url,
-        directory,
-        throwOnError: true,
-      })
+    const perScopePromise = runInstanceRequests(scopeKeys, async (scopeKey) => {
+      const [_, setStore] = ensureScopeState(scopeKey)
+      const sdk = createScopedClient(scopeKey)
 
       const scopePromises: Promise<unknown>[] = []
 
@@ -408,16 +412,16 @@ function createGlobalSync() {
     await Promise.all([...globalPromises, perScopePromise])
   }
 
-  async function loadSessions(directory: string, sdk?: ReturnType<typeof createSynergyClient>) {
-    const client = sdk ?? createSynergyClient({ baseUrl: globalSDK.url, directory, throwOnError: true })
+  async function loadSessions(scopeKey: string, sdk?: ReturnType<typeof createSynergyClient>) {
+    const client = sdk ?? createScopedClient(scopeKey)
     return client.session
       .list({ parentOnly: false })
       .then((x) => {
         const result = x.data!
         const sessions = (result.data ?? []).filter((s) => !!s?.id && !s.time?.archived)
-        const childStore = children[directory]
-        if (!childStore) return
-        const [, setStore] = childStore
+        const scopeState = children[scopeKey]
+        if (!scopeState) return
+        const [, setStore] = scopeState
         batch(() => {
           setStore("session", reconcile(sessions, { key: "id" }))
           setStore("sessionTotal", result.total)
@@ -426,7 +430,7 @@ function createGlobalSync() {
       .catch((err) => {
         console.error("Failed to load sessions", err)
         if (!sdk) {
-          const project = getFilename(directory)
+          const project = isHomeScope(scopeKey) ? "Home" : getFilename(scopeKey)
           showToast({ type: "error", title: `Failed to load sessions for ${project}`, description: err.message })
         }
       })
@@ -470,15 +474,15 @@ function createGlobalSync() {
     })
   }
 
-  async function resyncInstance(directory: string) {
-    if (!directory || !children[directory]) return
-    const [store, setStore] = children[directory]
+  async function resyncInstance(scopeKey: string) {
+    if (!scopeKey || !children[scopeKey]) return
+    const [store, setStore] = children[scopeKey]
     if (store.status === "loading") return
-    const isGlobal = isGlobalScope(directory)
-    const sdk = createSynergyClient({ baseUrl: globalSDK.url, directory, throwOnError: true })
+    const isHome = isHomeScope(scopeKey)
+    const sdk = createScopedClient(scopeKey)
 
     await Promise.all([
-      loadSessions(directory, sdk),
+      loadSessions(scopeKey, sdk),
       sdk.session.status().then((x) => setStore("session_status", x.data!)),
       sdk.cortex.list({}).then((x) => setStore("cortex", x.data ?? [])),
       sdk.agenda.list().then((x) =>
@@ -494,7 +498,7 @@ function createGlobalSync() {
         .list()
         .then((x) => syncBySession(setStore, "permission", Object.keys(store.permission), x.data ?? [])),
       sdk.question.list().then((x) => syncBySession(setStore, "question", Object.keys(store.question), x.data ?? [])),
-      ...(!isGlobal
+      ...(!isHome
         ? [
             sdk.mcp.status().then((x) => setStore("mcp", x.data!)),
             sdk.lsp.status().then((x) => setStore("lsp", x.data!)),
@@ -503,15 +507,11 @@ function createGlobalSync() {
     ])
   }
 
-  async function bootstrapInstance(directory: string) {
-    if (!directory) return
-    const isGlobal = isGlobalScope(directory)
-    const [store, setStore] = child(directory)
-    const sdk = createSynergyClient({
-      baseUrl: globalSDK.url,
-      directory,
-      throwOnError: true,
-    })
+  async function bootstrapInstance(scopeKey: string) {
+    if (!scopeKey) return
+    const isHome = isHomeScope(scopeKey)
+    const [store, setStore] = ensureScopeState(scopeKey)
+    const sdk = createScopedClient(scopeKey)
 
     const blockingRequests: Record<string, () => Promise<void>> = {
       provider: () =>
@@ -530,8 +530,8 @@ function createGlobalSync() {
       agent: () => sdk.app.agents().then((x) => setStore("agent", x.data ?? [])),
       config: () => sdk.config.get().then((x) => setStore("config", x.data!)),
     }
-    blockingRequests.scopeID = isGlobal
-      ? () => Promise.resolve(setStore("scopeID", "global"))
+    blockingRequests.scopeID = isHome
+      ? () => Promise.resolve(setStore("scopeID", HOME_SCOPE_KEY))
       : () => sdk.scope.current().then((x) => setStore("scopeID", x.data!.id))
     await Promise.all(Object.values(blockingRequests).map((p) => retry(p).catch((e) => setGlobalStore("error", e))))
       .then(async () => {
@@ -540,7 +540,7 @@ function createGlobalSync() {
           sdk.path.get().then((x) => setStore("path", x.data!)),
           sdk.command.list().then((x) => setStore("command", x.data ?? [])),
           sdk.session.status().then((x) => setStore("session_status", x.data!)),
-          loadSessions(directory, sdk),
+          loadSessions(scopeKey, sdk),
           sdk.mcp.status().then((x) => setStore("mcp", x.data!)),
           sdk.cortex.list({}).then((x) => setStore("cortex", x.data ?? [])),
           sdk.agenda.list().then((x) =>
@@ -559,7 +559,7 @@ function createGlobalSync() {
             .list()
             .then((x) => syncBySession(setStore, "question", Object.keys(store.question), x.data ?? [])),
         ]
-        if (!isGlobal) {
+        if (!isHome) {
           requests.push(sdk.lsp.status().then((x) => setStore("lsp", x.data!)))
           requests.push(sdk.vcs.get().then((x) => setStore("vcs", x.data)))
         }
@@ -570,7 +570,7 @@ function createGlobalSync() {
   }
 
   const unsub = globalSDK.event.listen((e) => {
-    const directory = e.name === "global" ? "global" : e.name
+    const scopeKey = e.name
     const event = e.details
 
     if (event?.type === "global.disposed") {
@@ -656,7 +656,7 @@ function createGlobalSync() {
       }
     }
 
-    if (event?.type === "config.updated" || (event as { type?: string }).type === "config.set.activated") {
+    if (event?.type === "config.updated") {
       void refreshAllConfigs()
       return
     }
@@ -670,11 +670,12 @@ function createGlobalSync() {
       }
       return
     }
+    if (e.name === "global") return
 
-    const [store, setStore] = child(directory)
+    const [store, setStore] = ensureScopeState(scopeKey)
     switch (event.type) {
-      case "server.instance.disposed": {
-        scheduleBootstrap(directory)
+      case "scope.runtime.disposed": {
+        scheduleBootstrap(scopeKey)
         break
       }
       case "session.updated": {
@@ -717,6 +718,10 @@ function createGlobalSync() {
       case "session.status": {
         // Handles busy, retry, idle, and recovering statuses
         setStore("session_status", event.properties.sessionID, reconcile(event.properties.status))
+        break
+      }
+      case "session.inbox.updated": {
+        setStore("inbox", event.properties.sessionID, reconcile(event.properties.items, { key: "id" }))
         break
       }
       case "message.updated": {
@@ -869,11 +874,7 @@ function createGlobalSync() {
         break
       }
       case "lsp.updated": {
-        const sdk = createSynergyClient({
-          baseUrl: globalSDK.url,
-          directory,
-          throwOnError: true,
-        })
+        const sdk = createScopedClient(scopeKey)
         sdk.lsp.status().then((x) => setStore("lsp", x.data ?? []))
         break
       }
@@ -949,14 +950,11 @@ function createGlobalSync() {
               }
               delete draft.message[sessionID]
               delete draft.session_diff[sessionID]
+              delete draft.inbox[sessionID]
             }),
           )
         })
-        const sdk = createSynergyClient({
-          baseUrl: globalSDK.url,
-          directory,
-          throwOnError: true,
-        })
+        const sdk = createScopedClient(scopeKey)
         retry(() => sdk.session.messages({ sessionID, limit: 200 }))
           .then((result) => {
             const items = (result.data ?? []).filter((x) => !!x?.info?.id)
@@ -1027,8 +1025,8 @@ function createGlobalSync() {
 
     return Promise.all([
       retry(() =>
-        globalSDK.client.path.get().then((x) => {
-          setGlobalStore("path", x.data!)
+        globalSDK.client.global.paths.get().then((x) => {
+          setGlobalStore("paths", x.data!)
         }),
       ),
       retry(() =>
@@ -1061,7 +1059,6 @@ function createGlobalSync() {
           setGlobalStore("provider_auth", x.data ?? {})
         }),
       ),
-      retry(() => loadConfigSets()),
     ])
       .then(() => {
         setGlobalStore("ready", true)
@@ -1082,19 +1079,16 @@ function createGlobalSync() {
     get error() {
       return globalStore.error
     },
-    child,
-    releaseChild,
+    peekScopeState,
+    ensureScopeState,
+    releaseScopeState,
     bootstrap,
     noteVersion,
     noteUpdate,
     get agenda() {
       return globalStore.agenda
     },
-    get configSets() {
-      return globalStore.config_sets
-    },
     loadGlobalAgenda,
-    loadConfigSets,
     refreshConfig,
     refreshAllConfigs,
     scope: {

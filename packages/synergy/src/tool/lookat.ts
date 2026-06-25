@@ -6,7 +6,7 @@ import { SessionInteraction } from "@/session/interaction"
 import type { MessageV2 } from "../session/message-v2"
 import { Identifier } from "../id/id"
 import { Agent } from "../agent/agent"
-import { Instance } from "../scope/instance"
+import { ScopeContext } from "../scope/context"
 import DESCRIPTION from "./lookat.txt"
 import { Asset } from "../asset/asset"
 
@@ -97,7 +97,7 @@ export const LookAtTool = Tool.define<typeof parameters, LookAtMetadata>("look_a
 
       const files: Array<{ filepath: string; mimeType: string; filename: string }> = []
       for (const raw of paths) {
-        const filepath = path.isAbsolute(raw) ? raw : path.join(Instance.directory, raw)
+        const filepath = path.isAbsolute(raw) ? raw : path.join(ScopeContext.current.directory, raw)
         if (!(await Bun.file(filepath).exists())) {
           return {
             title: "File not found",
@@ -143,7 +143,7 @@ export const LookAtTool = Tool.define<typeof parameters, LookAtMetadata>("look_a
       if (!model) {
         return {
           title: "Model not available",
-          output: `Error: No vision model is configured. The look_at tool requires a vision model to analyze images. Run 'synergy config --advanced' to configure one, or add 'vision_model' to your synergy.jsonc config file.`,
+          output: `Error: No vision model is configured. The look_at tool requires a vision model to analyze images. Run 'synergy config --advanced' to configure one, or add 'vision_model' to 10-models.jsonc.`,
           metadata: { error: "model_not_available" },
         }
       }
