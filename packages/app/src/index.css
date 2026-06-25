@@ -236,6 +236,48 @@ a:active,
   box-shadow: none;
 }
 
+.synergy-workbench-canvas :where(.workbench-panel-surface) {
+  background-color: var(--workbench-panel-bg);
+  border-color: var(--workbench-border);
+  box-shadow: none;
+}
+
+.synergy-workbench-canvas :where(.workbench-card-surface) {
+  background-color: var(--workbench-card-bg);
+  border-color: var(--workbench-border);
+  box-shadow: none;
+}
+
+.synergy-workbench-canvas :where(.workbench-card-surface:hover, .workbench-card-surface-hover:hover) {
+  background-color: var(--workbench-card-bg-hover);
+}
+
+.synergy-workbench-canvas :where(.workbench-control-surface) {
+  background-color: var(--workbench-control-bg);
+  border-color: var(--workbench-border);
+  box-shadow: none;
+}
+
+.synergy-workbench-canvas :where(.workbench-control-surface:hover, .workbench-control-surface-hover:hover) {
+  background-color: var(--workbench-control-bg-hover);
+}
+
+.synergy-workbench-canvas :where(.workbench-input-surface) {
+  background-color: var(--workbench-input-bg);
+  border-color: var(--workbench-border);
+  box-shadow: none;
+}
+
+.synergy-workbench-canvas :where(.workbench-input-surface:hover, .workbench-input-surface:focus-within) {
+  background-color: var(--workbench-input-bg-hover);
+}
+
+.synergy-workbench-canvas :where(.workbench-popover-surface) {
+  background-color: var(--workbench-popover-bg);
+  border-color: var(--workbench-border);
+  box-shadow: none;
+}
+
 .synergy-workbench-canvas :where(.workbench-selected-surface) {
   background-color: var(--workbench-selected-bg);
 }

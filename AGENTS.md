@@ -368,6 +368,8 @@ At minimum, check whether `README.md` and `AGENTS.md` need updates.
 
 When a change affects product design, interaction structure, visual hierarchy, or durable UX taste, also update `packages/app/PRODUCT.md` in the same task. Treat that file as the Web product contract for principles that should survive future frontend refactors.
 
+For frontend surface work, follow the polarity rule in `packages/app/PRODUCT.md`: in dark mode, content and selected surfaces should step brighter than their containers; in light mode, content and selected surfaces should step darker. If a feature cannot use the shared workbench classes directly, add scoped tokens that preserve that same outer-to-inner lightness order rather than leaning on generic raised surfaces.
+
 ## Release and Git Workflow
 
 ### Branching

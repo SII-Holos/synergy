@@ -828,7 +828,7 @@ function SessionPageContent() {
         <WorkspaceBrowserTool />
       </Show>
       <WorkspaceNotesTool />
-      <div class="relative bg-background-base size-full overflow-hidden flex flex-col">
+      <div class="synergy-workbench-canvas relative bg-background-stronger size-full overflow-hidden flex flex-col">
         <div class="flex-1 min-h-0 flex flex-col md:flex-row">
           {/* Mobile tab bar */}
           <Show when={!isDesktop() && hasReview()}>

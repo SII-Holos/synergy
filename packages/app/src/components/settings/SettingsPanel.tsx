@@ -380,7 +380,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
             <AppPanel.Footer>
               <div class="flex-1 flex items-center gap-2">
                 <Show when={save.bgStatus() === "saving"}>
-                  <span class="text-12-medium text-text-interactive-base">Saving...</span>
+                  <span class="text-12-medium text-text-weak">Saving...</span>
                 </Show>
                 <Show when={save.bgStatus() === "saved"}>
                   <span class="flex items-center gap-1 text-12-medium text-text-weak">
