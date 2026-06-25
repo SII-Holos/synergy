@@ -34,11 +34,36 @@ function createHostSignalingUrl(options: BrowserWebRTCHostOptions) {
   )
 }
 
+function createHostControlUrl(options: BrowserWebRTCHostOptions) {
+  const pathDirectory = options.routeDirectory ?? options.directory ?? options.scopeID ?? options.scopeKey
+  if (!pathDirectory) throw new Error("Missing Browser Host route directory")
+
+  const params = new URLSearchParams({
+    mode: "session",
+    sessionID: options.sessionID,
+    presentation: "webrtc",
+    client: "desktop",
+    sameHost: "1",
+  })
+  if (options.scopeID) params.set("scopeID", options.scopeID)
+  else if (options.directory) params.set("directory", options.directory)
+
+  return (
+    options.serverUrl.replace(/^http/, "ws") +
+    `/${encodeURIComponent(pathDirectory)}/browser/host/control?${params.toString()}`
+  )
+}
+
 export class BrowserWebRTCHost {
   private browserWindow: BrowserWindow | null = null
   private rtcWindow: BrowserWindow | null = null
+  private controlWs: WebSocket | null = null
+  private controlReconnectTimer: ReturnType<typeof setTimeout> | null = null
+  private closed = false
   private inputChannel: string
   private readonly browserWindowTitle: string
+  private consoleEntries: { level: string; text: string; timestamp: number; stackTrace?: string }[] = []
+  private refMap = new Map<string, { backendNodeId: number; x: number; y: number; width: number; height: number }>()
 
   constructor(private options: BrowserWebRTCHostOptions) {
     this.inputChannel = `browser-host:${options.tabId}:input`
@@ -46,6 +71,7 @@ export class BrowserWebRTCHost {
   }
 
   async start(): Promise<void> {
+    this.closed = false
     const width = this.options.width ?? 1280
     const height = this.options.height ?? 720
     const signalingUrl = createHostSignalingUrl(this.options)
@@ -68,6 +94,7 @@ export class BrowserWebRTCHost {
       event.preventDefault()
       this.browserWindow?.setTitle(this.browserWindowTitle)
     })
+    this.installBrowserEvents()
 
     this.rtcWindow = new BrowserWindow({
       show: false,
@@ -106,10 +133,15 @@ export class BrowserWebRTCHost {
       `data:text/html;charset=utf-8,${encodeURIComponent(this.controllerHtml(signalingUrl))}`,
     )
     await this.browserWindow.loadURL(this.options.url || "about:blank")
+    this.connectControl()
   }
 
   destroy(): void {
+    this.closed = true
     ipcMain.removeAllListeners(this.inputChannel)
+    if (this.controlReconnectTimer) clearTimeout(this.controlReconnectTimer)
+    this.controlWs?.close()
+    this.controlWs = null
     this.browserWindow?.destroy()
     this.rtcWindow?.destroy()
     this.browserWindow = null
@@ -183,6 +215,288 @@ export class BrowserWebRTCHost {
     if (button === "middle") return "middle"
     if (button === "right") return "right"
     return "left"
+  }
+
+  private installBrowserEvents(): void {
+    const contents = this.browserWindow?.webContents
+    if (!contents) return
+    contents.on("did-start-loading", () => {
+      this.emitHostEvent({ type: "page.loading", tabId: this.options.tabId, url: contents.getURL() })
+    })
+    contents.on("did-stop-loading", () => {
+      this.emitHostEvent({
+        type: "page.loaded",
+        tabId: this.options.tabId,
+        url: contents.getURL(),
+        title: contents.getTitle(),
+      })
+      this.sendHostSession()
+    })
+    contents.on("did-navigate", () => {
+      this.emitHostEvent({ type: "tab.updated", tab: this.tabState() })
+      this.sendHostSession()
+    })
+    contents.on("did-navigate-in-page", () => {
+      this.emitHostEvent({ type: "tab.updated", tab: this.tabState() })
+      this.sendHostSession()
+    })
+    contents.on("console-message", (_event, level, message) => {
+      this.consoleEntries.push({ level: String(level), text: message, timestamp: Date.now() })
+      if (this.consoleEntries.length > 200) this.consoleEntries.splice(0, this.consoleEntries.length - 200)
+    })
+    contents.on("did-fail-load", (_event, _code, message, url) => {
+      this.emitHostEvent({
+        type: "page.error",
+        tabId: this.options.tabId,
+        url,
+        message,
+      })
+    })
+  }
+
+  private connectControl(): void {
+    const ws = new WebSocket(createHostControlUrl(this.options))
+    this.controlWs = ws
+    ws.addEventListener("open", () => {
+      this.sendControl({ type: "browser.host.ready", session: this.sessionState() })
+    })
+    ws.addEventListener("message", (event) => {
+      this.handleControlMessage(event.data).catch((error) => {
+        this.emitHostEvent({
+          type: "error",
+          severity: "warning",
+          code: "browser_webrtc_host_command_failed",
+          message: error instanceof Error ? error.message : String(error),
+        })
+      })
+    })
+    ws.addEventListener("close", () => {
+      if (this.controlWs === ws) this.controlWs = null
+      if (!this.closed) this.controlReconnectTimer = setTimeout(() => this.connectControl(), 1000)
+    })
+  }
+
+  private async handleControlMessage(data: unknown): Promise<void> {
+    const msg = JSON.parse(String(data)) as { id?: string; type?: string; command?: Record<string, unknown> }
+    if (msg.type !== "browser.host.command" || !msg.id || !msg.command) return
+    try {
+      const result = await this.executeControlCommand(msg.command)
+      this.sendControl({ type: "browser.host.result", id: msg.id, result })
+    } catch (error) {
+      this.sendControl({
+        type: "browser.host.result",
+        id: msg.id,
+        error: {
+          code: error instanceof UnsupportedHostCommandError ? "unsupported" : "failed",
+          message: error instanceof Error ? error.message : String(error),
+        },
+      })
+    }
+  }
+
+  private async executeControlCommand(command: Record<string, unknown>): Promise<Record<string, unknown>> {
+    const contents = this.browserWindow?.webContents
+    if (!contents || contents.isDestroyed()) throw new Error("Browser Host webContents is unavailable")
+    switch (command.type) {
+      case "navigate": {
+        const url = String(command.url ?? "about:blank")
+        await contents.loadURL(url)
+        return { type: "navigation", tab: this.tabState(), url: contents.getURL(), title: contents.getTitle() }
+      }
+      case "reload":
+        contents.reload()
+        return { type: "void" }
+      case "stop":
+        contents.stop()
+        return { type: "void" }
+      case "history":
+        if (command.direction === "back" && contents.navigationHistory.canGoBack()) contents.navigationHistory.goBack()
+        if (command.direction === "forward" && contents.navigationHistory.canGoForward()) {
+          contents.navigationHistory.goForward()
+        }
+        return { type: "void" }
+      case "setViewport": {
+        const width = Math.max(1, Math.round(Number(command.width ?? this.options.width ?? 1280)))
+        const height = Math.max(1, Math.round(Number(command.height ?? this.options.height ?? 720)))
+        this.browserWindow?.setSize(width, height)
+        this.rtcWindow?.setSize(width, height)
+        return { type: "tab", tab: this.tabState() }
+      }
+      case "click":
+        this.dispatchMouse({ action: "down", x: command.x, y: command.y, button: "left" }, contents)
+        this.dispatchMouse({ action: "up", x: command.x, y: command.y, button: "left" }, contents)
+        return { type: "void" }
+      case "typeText":
+        await contents.insertText(String(command.text ?? ""))
+        return { type: "void" }
+      case "scroll":
+        this.dispatchMouse({ action: "wheel", deltaX: command.deltaX, deltaY: command.deltaY }, contents)
+        return { type: "void" }
+      case "mouse":
+        this.dispatchMouse((command.input as Record<string, unknown>) ?? command, contents)
+        return { type: "void" }
+      case "key":
+        this.dispatchKey((command.input as Record<string, unknown>) ?? command, contents)
+        return { type: "void" }
+      case "insertText":
+        await contents.insertText(String(command.text ?? ""))
+        return { type: "void" }
+      case "evaluate":
+        return {
+          type: "evaluation",
+          tabId: this.options.tabId,
+          value: await contents.executeJavaScript(String(command.expression ?? ""), true),
+        }
+      case "snapshot": {
+        const snapshot = await this.snapshot(contents)
+        return {
+          type: "snapshot",
+          tabId: this.options.tabId,
+          elements: snapshot.elements,
+          truncated: snapshot.truncated,
+        }
+      }
+      case "resolveRef": {
+        const ref = String(command.ref ?? "")
+        return { type: "resolvedRef", tabId: this.options.tabId, ref, box: this.refMap.get(ref) ?? null }
+      }
+      case "console":
+        return { type: "console", tabId: this.options.tabId, entries: this.consoleEntries.slice(-50) }
+      case "network":
+        return { type: "network", tabId: this.options.tabId, requests: [] }
+      case "assets":
+        return { type: "assets", tabId: this.options.tabId, assets: [] }
+      case "screenshot": {
+        const image = await contents.capturePage()
+        const size = image.getSize()
+        return {
+          type: "screenshot",
+          tabId: this.options.tabId,
+          dataUrl: image.toDataURL(),
+          width: size.width,
+          height: size.height,
+        }
+      }
+      case "clearDiagnostics":
+        this.consoleEntries = []
+        return { type: "diagnostics.cleared", tabId: this.options.tabId }
+      default:
+        throw new UnsupportedHostCommandError(String(command.type ?? "unknown"))
+    }
+  }
+
+  private async snapshot(contents: Electron.WebContents): Promise<{
+    elements: { ref: string; role: string; name: string; value?: string; children: never[] }[]
+    truncated: boolean
+  }> {
+    const result = (await contents.executeJavaScript(
+      `(() => {
+        const selector = [
+          "a[href]",
+          "button",
+          "input",
+          "textarea",
+          "select",
+          "[role]",
+          "[contenteditable='true']",
+          "[tabindex]:not([tabindex='-1'])"
+        ].join(",")
+        const roleFor = (element) => {
+          const explicit = element.getAttribute("role")
+          if (explicit) return explicit
+          const tag = element.tagName.toLowerCase()
+          if (tag === "a") return "link"
+          if (tag === "button") return "button"
+          if (tag === "textarea") return "textbox"
+          if (tag === "select") return "combobox"
+          if (tag === "input") {
+            const type = (element.getAttribute("type") || "text").toLowerCase()
+            if (type === "checkbox") return "checkbox"
+            if (type === "radio") return "radio"
+            if (type === "search") return "searchbox"
+            if (type === "range") return "slider"
+            return "textbox"
+          }
+          return "generic"
+        }
+        const nameFor = (element) => {
+          return element.getAttribute("aria-label")
+            || element.getAttribute("title")
+            || element.getAttribute("placeholder")
+            || element.innerText
+            || element.value
+            || element.textContent
+            || ""
+        }
+        const nodes = Array.from(document.querySelectorAll(selector)).slice(0, 300)
+        return nodes.map((element, index) => {
+          const rect = element.getBoundingClientRect()
+          return {
+            ref: "@n" + (index + 1),
+            role: roleFor(element),
+            name: String(nameFor(element)).replace(/\\s+/g, " ").trim().slice(0, 200),
+            value: "value" in element && typeof element.value === "string" ? element.value : undefined,
+            box: {
+              backendNodeId: index + 1,
+              x: Math.round(rect.left),
+              y: Math.round(rect.top),
+              width: Math.round(rect.width),
+              height: Math.round(rect.height)
+            }
+          }
+        }).filter((item) => item.box.width > 0 && item.box.height > 0 && item.name)
+      })()`,
+      true,
+    )) as {
+      ref: string
+      role: string
+      name: string
+      value?: string
+      box: { backendNodeId: number; x: number; y: number; width: number; height: number }
+    }[]
+
+    this.refMap.clear()
+    const elements = result.map((item) => {
+      this.refMap.set(item.ref, item.box)
+      return {
+        ref: item.ref,
+        role: item.role,
+        name: item.name,
+        value: item.value,
+        children: [],
+      }
+    })
+    return { elements, truncated: result.length >= 300 }
+  }
+
+  private tabState() {
+    const contents = this.browserWindow?.webContents
+    return {
+      id: this.options.tabId,
+      url: contents?.getURL() ?? "",
+      title: contents?.getTitle() ?? "",
+      isLoading: contents?.isLoading() ?? false,
+      pinned: false,
+      kept: false,
+      lastActiveAt: null,
+    }
+  }
+
+  private sessionState() {
+    return { tabs: [this.tabState()], activeTabId: this.options.tabId }
+  }
+
+  private sendHostSession(): void {
+    this.sendControl({ type: "browser.host.session", session: this.sessionState() })
+  }
+
+  private emitHostEvent(event: Record<string, unknown>): void {
+    this.sendControl({ type: "browser.host.event", event })
+  }
+
+  private sendControl(payload: Record<string, unknown>): void {
+    if (this.controlWs?.readyState !== WebSocket.OPEN) return
+    this.controlWs.send(JSON.stringify(payload))
   }
 
   private controllerHtml(signalingUrl: string): string {
@@ -281,5 +595,12 @@ connect()
 </script>
 </body>
 </html>`
+  }
+}
+
+class UnsupportedHostCommandError extends Error {
+  constructor(command: string) {
+    super(command)
+    this.name = "UnsupportedHostCommandError"
   }
 }
