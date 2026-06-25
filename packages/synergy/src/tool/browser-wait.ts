@@ -1,6 +1,7 @@
 import z from "zod"
 import { Tool } from "./tool"
 import { BrowserToolHelper } from "./browser-shared"
+import { ToolTimeout } from "./timeout"
 
 const waitConditionSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("load") }),
@@ -17,9 +18,11 @@ export const BrowserWaitTool = Tool.define("browser_wait", {
       .number()
       .int()
       .min(500)
-      .max(60000)
-      .default(10000)
-      .describe("Timeout in milliseconds. Max 60000. Default 10000."),
+      .max(ToolTimeout.DEFAULTS.browserWaitMaxMs)
+      .default(ToolTimeout.DEFAULTS.browserWaitMs)
+      .describe(
+        `Timeout in milliseconds. Max ${ToolTimeout.DEFAULTS.browserWaitMaxMs}. Default ${ToolTimeout.DEFAULTS.browserWaitMs}.`,
+      ),
     tabId: z.string().optional().describe("Tab ID. Uses the active tab if omitted."),
   }),
   async execute(params, ctx) {

@@ -16,6 +16,7 @@ import { Config } from "@/config/config"
 import { PermissionNext } from "@/permission/next"
 import { ExperienceEncoder } from "@/library/experience-encoder"
 import { Question } from "@/question"
+import { ToolTimeout } from "@/tool/timeout"
 import { Observability } from "@/observability"
 
 export namespace SessionProcessor {
@@ -94,7 +95,10 @@ export namespace SessionProcessor {
             status: "completed",
             input: outcome.input,
             output: outcome.result.output,
-            metadata: outcome.result.metadata,
+            metadata: ToolTimeout.preserveMetadata(
+              part.state.status === "running" ? part.state.metadata : undefined,
+              outcome.result.metadata,
+            )!,
             title: outcome.result.title,
             time: { start: startTime, end: Date.now() },
             attachments: outcome.result.attachments,
@@ -107,7 +111,10 @@ export namespace SessionProcessor {
             status: "error",
             input: outcome.input,
             error: outcome.error,
-            metadata: outcome.metadata,
+            metadata: ToolTimeout.preserveMetadata(
+              part.state.status === "running" ? part.state.metadata : undefined,
+              outcome.metadata,
+            ),
             time: { start: startTime, end: Date.now() },
           },
         })

@@ -36,6 +36,9 @@ ToolRegistry.register({
     return (
       <div data-component="tool-part-wrapper" data-permission={!!childPermission()}>
         <BasicTool
+          status={props.status}
+          metadata={props.metadata}
+          time={props.time}
           defaultOpen={true}
           hideDetails={summary().length === 0}
           trigger={{

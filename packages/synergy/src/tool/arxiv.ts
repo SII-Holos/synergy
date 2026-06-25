@@ -3,8 +3,9 @@ import path from "path"
 import { Tool } from "./tool"
 import { Flag } from "../flag/flag"
 import { ScopeContext } from "../scope/context"
+import { ToolTimeout } from "./timeout"
 
-const DEFAULT_TIMEOUT = 30 * 1000
+const DEFAULT_TIMEOUT = ToolTimeout.DEFAULTS.arxivSearchMs
 const ARXIV_PDF_BASE = "https://arxiv.org/pdf"
 
 interface Paper {
@@ -192,7 +193,7 @@ Examples of valid arXiv IDs:
 
     const url = `${ARXIV_PDF_BASE}/${params.arxivId}.pdf`
     const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), 60 * 1000)
+    const timeoutId = setTimeout(() => controller.abort(), ToolTimeout.DEFAULTS.arxivDownloadMs)
 
     const response = await fetch(url, {
       signal: AbortSignal.any([controller.signal, ctx.abort]),

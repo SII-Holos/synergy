@@ -12,6 +12,7 @@ export interface ToolProps {
   status?: string
   raw?: string
   charsReceived?: number
+  time?: { start?: number; end?: number; compacted?: number }
   hideDetails?: boolean
   defaultOpen?: boolean
   forceOpen?: boolean

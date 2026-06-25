@@ -9,6 +9,7 @@ import { BrowserInputDispatcher, type BrowserKeyInput, type BrowserMouseInput } 
 import { BrowserDownloads } from "./downloads.js"
 import { BrowserStorage } from "./storage.js"
 import type { BrowserOwner } from "./owner.js"
+import { ToolTimeout } from "@/tool/timeout"
 
 export interface AccessibilityElement {
   ref: string
@@ -822,7 +823,7 @@ export class BrowserTabImpl implements BrowserTab {
   // ── wait ───────────────────────────────────────────────────────────
 
   async waitFor(condition: WaitCondition, timeoutMs?: number): Promise<boolean> {
-    const timeout = timeoutMs ?? 10_000
+    const timeout = timeoutMs ?? ToolTimeout.DEFAULTS.browserWaitMs
     const start = Date.now()
 
     while (Date.now() - start < timeout) {

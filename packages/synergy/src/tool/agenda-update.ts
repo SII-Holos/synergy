@@ -4,6 +4,7 @@ import { Tool } from "./tool"
 import { Agenda, AgendaTypes } from "../agenda"
 import { ScopeContext } from "../scope/context"
 import DESCRIPTION from "./agenda-update.txt"
+import { ToolTimeout } from "./timeout"
 
 const parameters = z.object({
   id: z.string().describe("Agenda item ID to update"),
@@ -65,7 +66,12 @@ export const AgendaUpdateTool = Tool.define("agenda_update", {
     return {
       title: item.title,
       output: lines.join("\n"),
-      metadata: { id: item.id, status: item.status } as Record<string, any>,
+      metadata: {
+        id: item.id,
+        status: item.status,
+        scheduledTimeoutMs: item.timeout,
+        scheduledTimeoutLabel: ToolTimeout.scheduledTimeoutLabel(item.timeout),
+      } as Record<string, any>,
     }
   },
 })
