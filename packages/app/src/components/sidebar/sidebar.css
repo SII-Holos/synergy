@@ -728,15 +728,102 @@
   right: 8px;
   bottom: calc(100% + 6px);
   z-index: 90;
-  min-width: 220px;
-  padding: 6px;
+  min-width: 236px;
+  padding: 8px;
   border-radius: 14px;
   background: var(--surface-raised-stronger-non-alpha);
   border: 1px solid var(--border-base);
   box-shadow: 0 10px 32px rgba(0, 0, 0, 0.22);
   display: flex;
   flex-direction: column;
+  gap: 4px;
+}
+
+.sidebar-account-card {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 6px;
+  min-height: 54px;
+  padding: 4px;
+  border-radius: 12px;
+  background: color-mix(in oklch, var(--border-base) 14%, transparent);
+}
+
+.sidebar-account-card-main {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px;
+  border-radius: 10px;
+  color: var(--text-base);
+  text-align: left;
+}
+
+.sidebar-account-card-main:hover,
+.sidebar-account-card-add:hover {
+  background: var(--sb-hover-bg);
+}
+
+.sidebar-account-card-copy {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.sidebar-account-card-name {
+  color: var(--text-strong);
+  font-size: var(--font-size-small);
+  font-weight: 650;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebar-account-card-meta {
+  color: var(--text-weak);
+  font-size: var(--font-size-x-small);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebar-account-card-add {
+  width: 30px;
+  height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9px;
+  color: var(--text-weak);
+}
+
+.sidebar-account-popover,
+.sidebar-account-add-popover {
+  position: absolute;
+  left: calc(100% + 8px);
+  z-index: 95;
+  width: 236px;
+  padding: 6px;
+  border-radius: 13px;
+  background: var(--surface-raised-stronger-non-alpha);
+  border: 1px solid var(--border-base);
+  box-shadow: 0 16px 44px rgba(0, 0, 0, 0.28);
+  display: flex;
+  flex-direction: column;
   gap: 2px;
+}
+
+.sidebar-account-popover {
+  top: 8px;
+}
+
+.sidebar-account-add-popover {
+  top: 56px;
 }
 
 .sidebar-account-menuItem {
@@ -802,6 +889,19 @@
 
 .sidebar-account-menuItem--add {
   color: var(--text-weak);
+}
+
+.sidebar-account-menuItem--danger {
+  color: #ff7474;
+}
+
+.sidebar-account-menuItem--danger:hover:not(:disabled),
+.sidebar-account-menuItem--danger:focus-visible:not(:disabled) {
+  background: rgba(255, 116, 116, 0.1);
+}
+
+.sidebar-account-menuTrailingIcon {
+  color: var(--text-weaker);
 }
 
 .sidebar-agent-import-form {

@@ -142,6 +142,7 @@ export function emptyMcp(): McpEntry {
 
 export type DialogSettingsProps = {
   initialTab?: string
+  providerFocusID?: string
 }
 
 export type ProviderGroup = {

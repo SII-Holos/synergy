@@ -40,6 +40,7 @@ export const SemanticIconToken = {
   "settings.appearance": "sun",
   "settings.models": "cpu",
   "settings.providers": "server",
+  "settings.usage": "gauge",
   "settings.learning": "book-open",
   "settings.memory": "brain",
   "settings.experience": "lightbulb",
@@ -90,8 +91,15 @@ export const SemanticIconToken = {
   "action.more": "ellipsis",
   "action.search": "search",
   "action.remove": "trash-2",
+  "action.refresh": "refresh-ccw",
+  "account.create": "user-plus",
+  "account.import": "key-round",
+  "account.logout": "arrow-left",
+  "account.repository": "github",
   "state.success": "check",
   "state.empty": "circle",
+  "state.warning": "octagon-alert",
+  "state.error": "ban",
 } as const satisfies Record<string, IconName>
 
 export type SemanticIconTokenName = keyof typeof SemanticIconToken

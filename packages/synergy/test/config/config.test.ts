@@ -1222,7 +1222,10 @@ test("repairs invalid library shapes written by legacy identity migration", asyn
 })
 
 test("provider profile normalize migration rewrites known provider aliases", async () => {
-  const home = path.join(os.tmpdir(), `synergy-config-provider-profile-normalize-${Math.random().toString(36).slice(2)}`)
+  const home = path.join(
+    os.tmpdir(),
+    `synergy-config-provider-profile-normalize-${Math.random().toString(36).slice(2)}`,
+  )
   const origHome = process.env["SYNERGY_TEST_HOME"]
   try {
     process.env["SYNERGY_TEST_HOME"] = home

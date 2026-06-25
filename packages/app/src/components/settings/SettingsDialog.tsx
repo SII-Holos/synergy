@@ -25,7 +25,6 @@ import { useInput, type SendShortcut } from "@/context/input"
 import { useGlobalSync } from "@/context/global-sync"
 import { DialogConfirm } from "@/components/dialog/dialog-confirm"
 import { DialogSelectModel } from "@/components/dialog/dialog-select-model"
-import { DialogSelectProvider } from "@/components/dialog/dialog-select-provider"
 import { getSettingsSections, type SettingsSection as RegisteredSettingsSection } from "@/plugin"
 import { SandboxIframe } from "@/plugin/sandbox"
 import { AppPanel } from "@/components/app-panel"
@@ -41,6 +40,8 @@ import { ProfilePanel } from "./panels/ProfilePanel"
 import { AppearancePanel } from "./panels/AppearancePanel"
 import { ModelsPanel } from "./panels/ModelsPanel"
 import { ProvidersPanel } from "./panels/ProvidersPanel"
+import { AccountPanel } from "./panels/AccountPanel"
+import { UsagePanel } from "./panels/UsagePanel"
 import { McpPanel } from "./panels/McpPanel"
 import { PluginsPanel } from "./panels/PluginsPanel"
 import { LearningPanel, MemoryPanel, ExperiencePanel } from "./panels/LibraryPanels"
@@ -54,6 +55,7 @@ import { SettingsPage, SettingsSection } from "./components/SettingsPrimitives"
 
 const legacyInitialTabs: Record<string, string> = {
   advanced: "control-profile",
+  holos: "account",
   library: "learning",
 }
 
@@ -64,6 +66,7 @@ export function SettingsDialog(props: DialogSettingsProps) {
   const input = useInput()
 
   const [activeTab, setActiveTab] = createSignal(normalizeInitialTab(props.initialTab))
+  const [providerFocusID, setProviderFocusID] = createSignal(props.providerFocusID)
   const [search, setSearch] = createSignal("")
   const [initialized, setInitialized] = createSignal(false)
   const [saving, setSaving] = createSignal(false)
@@ -400,32 +403,12 @@ export function SettingsDialog(props: DialogSettingsProps) {
     const active = activeTab()
     switch (active) {
       case "account":
-        return (
-          <ConfigReferencePanel
-            title="Account"
-            description="Account-related identity config is stored in canonical domain files."
-            domains={domainsFor(["holos"])}
-            openingDomain={openingDomain()}
-            onCopyPath={(path) => void copyPath(path)}
-            onOpenDomain={(domain) => void openDomain(domain)}
-          />
-        )
+        return <AccountPanel />
       case "profile":
         return (
           <ProfilePanel
             username={settings.general.username}
             onUsernameChange={(value) => setSettings("general", "username", value)}
-          />
-        )
-      case "holos":
-        return (
-          <ConfigReferencePanel
-            title="Holos"
-            description="Holos identity, accounts, and platform connection."
-            domains={domainsFor(["holos"])}
-            openingDomain={openingDomain()}
-            onCopyPath={(path) => void copyPath(path)}
-            onOpenDomain={(domain) => void openDomain(domain)}
           />
         )
       case "general":
@@ -456,8 +439,18 @@ export function SettingsDialog(props: DialogSettingsProps) {
           <ProvidersPanel
             providers={settings.providers}
             summaries={providerSummaries()}
+            authMethods={globalSync.data.provider_auth}
+            providerFocusID={providerFocusID()}
             onProviderChange={(key, value) => setSettings("providers", key, value)}
-            onConnectProvider={() => dialog.show(() => <DialogSelectProvider />)}
+          />
+        )
+      case "usage":
+        return (
+          <UsagePanel
+            onConnectProvider={(providerID) => {
+              setProviderFocusID(providerID)
+              setActiveTab("providers")
+            }}
           />
         )
       case "learning":

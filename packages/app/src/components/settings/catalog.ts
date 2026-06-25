@@ -16,11 +16,11 @@ export type SettingsGroup = (typeof SETTINGS_GROUP_ORDER)[number] | string
 export const BUILTIN_SETTINGS_IDS = [
   "account",
   "profile",
-  "holos",
   "general",
   "appearance",
   "models",
   "providers",
+  "usage",
   "learning",
   "memory",
   "experience",
@@ -61,11 +61,16 @@ export type SettingsCatalogSection = {
 }
 
 export const BUILTIN_SETTINGS_SECTIONS: SettingsCatalogSection[] = [
-  section("account", "Account", "Personal", 10, "settings.account", "Account status and local identity entry points.", [
-    "user",
-    "identity",
-    "login",
-  ]),
+  section(
+    "account",
+    "Account",
+    "Personal",
+    10,
+    "settings.account",
+    "Holos agent identities and local account controls.",
+    ["user", "identity", "login", "holos", "agent"],
+    ["holos"],
+  ),
   section(
     "profile",
     "Profile",
@@ -75,16 +80,6 @@ export const BUILTIN_SETTINGS_SECTIONS: SettingsCatalogSection[] = [
     "User-facing profile values used by Synergy.",
     ["username", "profile", "display"],
     ["general"],
-  ),
-  section(
-    "holos",
-    "Holos",
-    "Personal",
-    30,
-    "settings.holos",
-    "Holos identity, accounts, and platform connection.",
-    ["identity", "account", "presence"],
-    ["holos"],
   ),
   section(
     "general",
@@ -127,6 +122,16 @@ export const BUILTIN_SETTINGS_SECTIONS: SettingsCatalogSection[] = [
     "settings.providers",
     "Provider availability and connection status.",
     ["provider", "api", "enabled", "disabled"],
+    ["providers"],
+  ),
+  section(
+    "usage",
+    "Usage",
+    "Core",
+    50,
+    "settings.usage",
+    "Provider usage, quota windows, credits, and account health.",
+    ["usage", "quota", "credits", "billing", "codex", "claude"],
     ["providers"],
   ),
   section(
