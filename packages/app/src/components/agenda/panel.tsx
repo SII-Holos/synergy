@@ -421,7 +421,7 @@ function DetailPopover(props: {
   return (
     <div
       ref={cardRef}
-      class="agenda-detail-popover pointer-events-auto fixed z-[102] w-full max-w-sm max-h-[calc(100vh-32px)] flex flex-col overflow-hidden rounded-[1.35rem] border border-border-base/70 bg-background-base shadow-[0_12px_30px_-24px_rgba(0,0,0,0.62)] animate-in fade-in slide-in-from-top-2 duration-150"
+      class="agenda-detail-popover workbench-popover-surface pointer-events-auto fixed z-[102] w-full max-w-sm max-h-[calc(100vh-32px)] flex flex-col overflow-hidden rounded-[1.35rem] border border-border-base/40 bg-background-base animate-in fade-in slide-in-from-top-2 duration-150"
       style={pos()}
     >
       <div class="shrink-0 flex items-center gap-1 px-3.5 pt-3 pb-2">
@@ -452,7 +452,7 @@ function DetailPopover(props: {
       </div>
 
       <div class="flex-1 min-h-0 overflow-y-auto px-3.5 pb-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-        <div class="flex flex-col gap-3 rounded-[1.1rem] bg-surface-raised-base px-3.5 py-3.5 shadow-[inset_0_1px_0_rgba(214,204,190,0.08),inset_0_-1px_0_rgba(24,28,38,0.04)]">
+        <div class="workbench-card-surface flex flex-col gap-3 rounded-[1.1rem] bg-surface-raised-base px-3.5 py-3.5">
           <div class="flex items-start gap-2">
             <span class="text-13-medium text-text-strong flex-1 min-w-0 leading-snug">{props.item.title}</span>
             <span class={`px-1.5 py-0.5 rounded-md text-10-medium shrink-0 ${agendaStatusTone(props.item.status)}`}>
@@ -522,7 +522,7 @@ function DetailPopover(props: {
           </Show>
 
           <Show when={props.item.prompt}>
-            <div class="overflow-hidden rounded-[1rem] bg-surface-inset-base ring-1 ring-inset ring-border-base/40 shadow-[inset_0_1px_0_rgba(214,204,190,0.06)]">
+            <div class="workbench-control-surface overflow-hidden rounded-[1rem] bg-surface-inset-base ring-1 ring-inset ring-border-base/30">
               <div class="px-3 py-2 text-[10px] font-medium uppercase tracking-[0.16em] text-text-weaker border-b border-border-weaker-base/45">
                 Task
               </div>
@@ -542,7 +542,7 @@ function DetailPopover(props: {
           <Show when={props.runs} fallback={<Spinner class="size-3.5 my-1" />}>
             {(runs) => (
               <Show when={runs().length > 0}>
-                <div class="overflow-hidden rounded-[1rem] bg-surface-inset-base ring-1 ring-inset ring-border-base/40 shadow-[inset_0_1px_0_rgba(214,204,190,0.06)]">
+                <div class="workbench-control-surface overflow-hidden rounded-[1rem] bg-surface-inset-base ring-1 ring-inset ring-border-base/30">
                   <div class="px-3 py-2 text-[10px] font-medium uppercase tracking-[0.16em] text-text-weaker border-b border-border-weaker-base/45">
                     Recent runs
                   </div>

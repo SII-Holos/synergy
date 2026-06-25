@@ -106,25 +106,23 @@ export const DISCRETE_DIMENSIONS: Array<{ key: keyof RewardsInfo; short: string;
 ]
 
 export const libraryShellClass =
-  "rounded-[1.2rem] border border-border-base/40 bg-surface-raised-base shadow-[inset_0_1px_0_rgba(214,204,190,0.08),inset_0_-1px_0_rgba(24,28,38,0.04)]"
+  "workbench-panel-surface rounded-[1.2rem] border border-border-base/28 bg-surface-raised-base"
 
 export const libraryInsetClass =
-  "rounded-[1rem] bg-surface-inset-base ring-1 ring-inset ring-border-base/45 shadow-[inset_0_1px_0_rgba(214,204,190,0.07)]"
+  "workbench-control-surface rounded-[1rem] bg-surface-inset-base ring-1 ring-inset ring-border-base/30"
 
 export const libraryCardBaseClass =
-  "flex flex-col overflow-hidden rounded-[1.15rem] border border-border-base/38 bg-surface-raised-base shadow-[inset_0_1px_0_rgba(214,204,190,0.08),inset_0_-1px_0_rgba(24,28,38,0.04)] transition-all"
+  "workbench-card-surface flex flex-col overflow-hidden rounded-[1.15rem] border border-border-base/28 bg-surface-raised-base transition-colors"
 
-export const libraryCardExpandedClass =
-  "border-border-base/55 bg-surface-raised-base shadow-[inset_0_1px_0_rgba(214,204,190,0.1),inset_0_-1px_0_rgba(24,28,38,0.04)]"
+export const libraryCardExpandedClass = "border-border-base/38 bg-surface-raised-base-hover"
 
-export const libraryCardHoverClass =
-  "hover:border-border-base/52 hover:bg-surface-raised-base-hover hover:shadow-[inset_0_1px_0_rgba(214,204,190,0.09),inset_0_-1px_0_rgba(24,28,38,0.04)]"
+export const libraryCardHoverClass = "hover:border-border-base/36 hover:bg-surface-raised-base-hover"
 
 export const libraryActionButtonClass =
-  "flex items-center gap-1 rounded-full bg-surface-inset-base px-2.5 py-1.5 text-11-medium text-text-weak ring-1 ring-inset ring-border-base/45 transition-all hover:bg-surface-raised-base-hover hover:text-text-base"
+  "workbench-control-surface flex items-center gap-1 rounded-full bg-surface-inset-base px-2.5 py-1.5 text-11-medium text-text-weak ring-1 ring-inset ring-border-base/32 transition-colors hover:bg-surface-raised-base-hover hover:text-text-base"
 
 export const libraryMenuClass =
-  "z-50 min-w-36 overflow-hidden rounded-[1rem] border border-border-base/40 bg-surface-raised-base p-1.5 shadow-[0_10px_26px_rgba(0,0,0,0.18),inset_0_1px_0_rgba(214,204,190,0.08)] outline-none"
+  "workbench-popover-surface z-50 min-w-36 overflow-hidden rounded-[1rem] border border-border-base/32 bg-surface-raised-base p-1.5 outline-none"
 
 export const libraryMetaLabelClass = "text-[10px] font-medium uppercase tracking-[0.16em] text-text-weaker"
 
@@ -194,7 +192,7 @@ export function LibraryFilterChip(props: { active: boolean; onClick: () => void;
       type="button"
       classList={{
         "px-2.5 py-1 rounded-lg text-12-medium transition-colors": true,
-        "bg-surface-raised-base-hover text-text-strong": props.active,
+        "workbench-selected-surface bg-surface-raised-base-hover text-text-strong": props.active,
         "text-text-weak hover:text-text-base hover:bg-surface-raised-base-hover": !props.active,
       }}
       onClick={props.onClick}
@@ -210,7 +208,7 @@ export function ViewTab(props: { active: boolean; onClick: () => void; children:
       type="button"
       classList={{
         "flex-1 rounded-[0.8rem] px-3 py-1.5 text-center text-12-medium transition-all duration-200": true,
-        "bg-surface-raised-base text-text-strong shadow-[inset_0_1px_0_rgba(214,204,190,0.08)] scale-[1.01] ring-1 ring-inset ring-border-base/45":
+        "workbench-selected-surface bg-surface-raised-base text-text-strong scale-[1.01] ring-1 ring-inset ring-border-base/32":
           props.active,
         "text-text-weak hover:bg-surface-raised-base-hover hover:text-text-base": !props.active,
       }}
@@ -228,7 +226,8 @@ export function SelectionCheckbox(props: { selected: boolean }) {
         "flex size-4 shrink-0 items-center justify-center rounded-[0.45rem] border ring-1 ring-inset transition-colors": true,
         "border-text-interactive-base/40 bg-surface-interactive-base text-text-on-interactive-base ring-text-interactive-base/12":
           props.selected,
-        "border-border-base/50 bg-surface-raised-base text-transparent ring-border-base/35": !props.selected,
+        "workbench-control-surface border-border-base/40 bg-surface-raised-base text-transparent ring-border-base/25":
+          !props.selected,
       }}
     >
       <Show when={props.selected}>

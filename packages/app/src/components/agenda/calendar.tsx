@@ -14,7 +14,7 @@ import {
 export type ViewMode = "day" | "week" | "month"
 
 const HOUR_HEIGHT = 58
-const TIME_COL = 88
+const TIME_COL = 104
 const HOURS = Array.from({ length: 24 }, (_, i) => i)
 const EVENT_DURATION_MS = 30 * 60_000
 const MONTH_MAX_EVENTS = 4
@@ -120,11 +120,10 @@ function eventHeight(): number {
 }
 
 const TIME_EVENT_COLORS: Record<string, string> = {
-  active:
-    "bg-surface-raised-base border border-border-base/45 border-l-text-strong shadow-[inset_0_1px_0_rgba(214,204,190,0.08)]",
+  active: "workbench-card-surface bg-surface-raised-base border border-border-base/45 border-l-text-strong",
   paused: "bg-icon-warning-base/18 border border-icon-warning-base/15 border-l-icon-warning-base",
-  pending: "bg-surface-inset-base border border-border-base/38 border-l-text-weaker",
-  done: "bg-surface-inset-base border border-border-base/35 border-l-text-weaker",
+  pending: "workbench-control-surface bg-surface-inset-base border border-border-base/38 border-l-text-weaker",
+  done: "workbench-control-surface bg-surface-inset-base border border-border-base/35 border-l-text-weaker",
   cancelled: "bg-text-diff-delete-base/12 border border-text-diff-delete-base/10 border-l-text-diff-delete-base",
 }
 
@@ -275,7 +274,7 @@ function NavBar(props: {
     <div class="agenda-calendar-frame agenda-calendar-toolbar flex shrink-0 items-center gap-2 px-3.5 py-3">
       <button
         type="button"
-        class="rounded-full bg-surface-raised-base px-2.5 py-1 text-10-medium text-text-strong transition-colors hover:bg-surface-raised-base-hover"
+        class="workbench-control-surface rounded-full bg-surface-raised-base px-2.5 py-1 text-10-medium text-text-strong transition-colors hover:bg-surface-raised-base-hover"
         onClick={props.onToday}
       >
         Today
@@ -295,7 +294,7 @@ function NavBar(props: {
         ›
       </button>
       <span class="min-w-0 flex-1 truncate text-13-medium text-text-strong">{props.title}</span>
-      <div class="flex items-center overflow-hidden rounded-lg bg-surface-raised-base p-0.75">
+      <div class="workbench-control-surface flex items-center overflow-hidden rounded-lg bg-surface-raised-base p-0.75">
         <For each={modes}>
           {(mode) => (
             <button
@@ -368,7 +367,7 @@ function TimeGrid(props: {
             <For each={HOURS}>
               {(h) => (
                 <div
-                  class="absolute right-1.5 text-10-medium text-text-weaker leading-none -translate-y-1/2"
+                  class="absolute right-3 text-10-medium text-text-weaker leading-none -translate-y-1/2"
                   style={{ top: `${h * HOUR_HEIGHT}px` }}
                 >
                   {h > 0 ? formatHour(h) : ""}

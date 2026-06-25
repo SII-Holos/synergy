@@ -70,7 +70,7 @@ export function MemoryDistribution(props: {
   }))
 
   return (
-    <div class="mt-4 rounded-[1.25rem] bg-surface-raised-base p-4 shadow-[inset_0_1px_0_rgba(214,204,190,0.06),inset_0_-1px_0_rgba(24,28,38,0.04)]">
+    <div class="workbench-card-surface mt-4 rounded-[1.25rem] bg-surface-raised-base p-4">
       <div class="pb-2">
         <h3 class="text-13-medium text-text-strong">Memory categories</h3>
       </div>
