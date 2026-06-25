@@ -132,7 +132,10 @@ export const ExpandToolsTool = Tool.define("expand_tools", async (initCtx) => ({
       })
     }
 
-    const visibleTools = ToolDiscovery.visibleTools({ ...catalog, state: updatedState })
+    const currentVisibleTools = ToolDiscovery.visibleTools({ ...catalog, state: current })
+    const updatedVisibleTools = ToolDiscovery.visibleTools({ ...catalog, state: updatedState })
+    const currentVisibleToolSet = new Set(currentVisibleTools)
+    const newlyVisibleTools = updatedVisibleTools.filter((toolID) => !currentVisibleToolSet.has(toolID))
     const availableNextStep = changed || alreadyActive.length > 0
     const issues = {
       unknownGroups,
@@ -150,13 +153,15 @@ export const ExpandToolsTool = Tool.define("expand_tools", async (initCtx) => ({
       availableGroups: catalog.groups.map((group) => group.id),
     })
     const result = {
+      changed,
       expandedGroups: updatedState.expandedGroups,
       activatedTools: updatedState.activatedTools,
       newlyExpandedGroups,
       newlyActivatedTools,
+      newlyVisibleTools,
+      visibleToolCount: updatedVisibleTools.length,
       alreadyActive: ToolExposure.unique(alreadyActive),
       availableNextStep,
-      visibleTools,
       issues,
       guidance,
     }
@@ -169,11 +174,12 @@ export const ExpandToolsTool = Tool.define("expand_tools", async (initCtx) => ({
           : "No new tool visibility state was added; requested capabilities were already active or need a corrected request.",
         "",
         `availableNextStep: ${availableNextStep}`,
-        "Expanded tools are available when Synergy builds the tool list for the next model step or later turns. Expansion does not override permissions or disabled tools.",
         params.reason ? `Reason recorded: ${params.reason}` : undefined,
         "",
         `expandedGroups: ${result.expandedGroups.length ? result.expandedGroups.join(", ") : "(none)"}`,
         `activatedTools: ${result.activatedTools.length ? result.activatedTools.join(", ") : "(none)"}`,
+        result.newlyVisibleTools.length ? `newlyVisibleTools: ${result.newlyVisibleTools.join(", ")}` : undefined,
+        `visibleToolCount: ${result.visibleToolCount}`,
         result.alreadyActive.length ? `alreadyActive: ${result.alreadyActive.join(", ")}` : undefined,
         issues.unknownGroups.length
           ? `unknownGroups: ${issues.unknownGroups.join(", ")}. Available groups: ${catalog.groups.map((group) => group.id).join(", ")}.`
@@ -189,12 +195,7 @@ export const ExpandToolsTool = Tool.define("expand_tools", async (initCtx) => ({
         issues.permissionHidden.length
           ? `permissionHidden: ${issues.permissionHidden.join(", ")}. Expansion cannot override permissions; choose another tool or ask the user to adjust permissions.`
           : undefined,
-        "",
-        "Guidance:",
-        guidance,
-        "",
-        "Structured result:",
-        JSON.stringify(result, null, 2),
+        guidance !== DEFAULT_GUIDANCE ? `guidance: ${guidance}` : undefined,
       ]
         .filter((line): line is string => line !== undefined)
         .join("\n"),
@@ -232,7 +233,9 @@ function guidanceFor(input: {
     lines.push("Some requested tools may remain hidden because permissions, user tool settings, or policy deny them.")
   }
   if (lines.length === 0) {
-    lines.push("Continue with the newly visible tools on the next model step or later turn.")
+    lines.push(DEFAULT_GUIDANCE)
   }
   return lines.join("\n")
 }
+
+const DEFAULT_GUIDANCE = "Continue with the newly visible tools on the next model step or later turn."

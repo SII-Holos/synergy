@@ -169,7 +169,15 @@ describe("tool exposure", () => {
       fn: async () => {
         const session = await Session.create({})
         const search = await SearchToolsTool.init({ agent: allowAllAgent })
-        await search.execute({ query: "browser", limit: 5 }, toolContext(session.id))
+        const searchResult = await search.execute({ query: "memory note", limit: 8 }, toolContext(session.id))
+        const searchResults = searchResult.metadata.results as Array<any>
+        const memoryResult = searchResults.find((result) => result.id === "memory")
+        const noteResult = searchResults.find((result) => result.id === "note")
+        expect(memoryResult).toMatchObject({ type: "group", id: "memory" })
+        expect(memoryResult.matchedToolPreview).toContain("memory_search")
+        expect(noteResult).toMatchObject({ type: "group", id: "note" })
+        expect(searchResults.some((result) => result.type === "tool" && result.id.startsWith("memory_"))).toBe(false)
+        expect(searchResult.output).not.toContain("Structured results")
         expect((await Session.get(session.id)).toolState).toBeUndefined()
 
         const expand = await ExpandToolsTool.init({ agent: allowAllAgent })
@@ -178,6 +186,10 @@ describe("tool exposure", () => {
           toolContext(session.id),
         )
         expect(result.metadata.availableNextStep).toBe(true)
+        expect(result.metadata.newlyVisibleTools).toContain("browser_navigate")
+        expect(result.metadata.newlyVisibleTools).not.toContain("search_tools")
+        expect(result.metadata.visibleTools).toBeUndefined()
+        expect(result.output).not.toContain("Structured result")
         expect((await Session.get(session.id)).toolState?.expandedGroups).toEqual(["browser"])
       },
     })
