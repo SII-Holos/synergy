@@ -126,7 +126,7 @@ a:active,
   --workbench-control-bg-hover: light-dark(rgb(214 220 228), rgb(54 54 58));
   --workbench-input-bg: light-dark(rgb(221 226 232), rgb(50 50 54));
   --workbench-input-bg-hover: light-dark(rgb(212 219 227), rgb(56 56 60));
-  --workbench-popover-bg: light-dark(rgb(236 238 241), rgb(38 38 41));
+  --workbench-popover-bg: light-dark(rgb(226 230 235), rgb(46 46 49));
   --workbench-selected-bg: light-dark(rgb(207 215 225), rgb(58 58 63));
   --workbench-selected-bg-hover: light-dark(rgb(198 207 219), rgb(64 64 69));
   --workbench-border: light-dark(rgba(17, 24, 39, 0.08), rgba(244, 244, 245, 0.08));
@@ -219,8 +219,7 @@ a:active,
     .bg-surface-raised-base,
     .bg-surface-raised-strong,
     .bg-surface-raised-stronger,
-    .bg-surface-base,
-    .bg-surface-raised-stronger-non-alpha
+    .bg-surface-base
   ) {
   background-color: var(--workbench-card-bg);
 }
@@ -236,10 +235,6 @@ a:active,
     .bg-surface-raised-base\/60,
     .bg-surface-raised-base\/55,
     .bg-surface-raised-base\/50,
-    .bg-surface-raised-stronger-non-alpha\/90,
-    .bg-surface-raised-stronger-non-alpha\/80,
-    .bg-surface-raised-stronger-non-alpha\/70,
-    .bg-surface-raised-stronger-non-alpha\/65,
     .bg-surface-base\/74,
     .bg-surface-base\/70,
     .bg-surface-base\/62,
@@ -249,6 +244,17 @@ a:active,
     .bg-surface-base\/34
   ) {
   background-color: var(--workbench-card-bg);
+}
+
+.synergy-workbench-canvas
+  :where(
+    .bg-surface-raised-stronger-non-alpha,
+    .bg-surface-raised-stronger-non-alpha\/90,
+    .bg-surface-raised-stronger-non-alpha\/80,
+    .bg-surface-raised-stronger-non-alpha\/70,
+    .bg-surface-raised-stronger-non-alpha\/65
+  ) {
+  background-color: var(--workbench-popover-bg);
 }
 
 .synergy-workbench-canvas

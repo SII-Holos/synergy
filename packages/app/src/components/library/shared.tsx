@@ -78,7 +78,7 @@ export const recallModeLabels: Record<MemoryRecallMode, string> = {
 
 export const recallModeColors: Record<MemoryRecallMode, string> = {
   always: "workbench-selected-surface text-text-strong ring-border-base/20",
-  contextual: "bg-surface-positive-base/10 text-text-positive-base",
+  contextual: "bg-surface-success-base/20 text-on-success-base",
   search_only: "bg-surface-inset-base text-text-weaker",
 }
 

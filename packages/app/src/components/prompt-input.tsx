@@ -1089,8 +1089,8 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
             <Switch>
               <Match when={store.mode === "shell"}>
                 <div class="flex items-center gap-2 px-3 h-7 rounded-full bg-surface-base">
-                  <Icon name="terminal" size="small" class="text-icon-primary" />
-                  <span class="text-12-medium text-text-primary">Shell</span>
+                  <Icon name="terminal" size="small" class="text-icon-interactive-base" />
+                  <span class="text-12-medium text-text-interactive-base">Shell</span>
                   <span class="text-11-regular text-text-subtle">esc to exit</span>
                 </div>
               </Match>

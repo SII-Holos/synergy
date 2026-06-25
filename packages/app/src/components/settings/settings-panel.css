@@ -34,6 +34,7 @@
   --settings-card-bg: light-dark(rgb(229 232 236), rgb(40 40 43));
   --settings-card-bg-hover: light-dark(rgb(222 226 232), rgb(46 46 49));
   --settings-card-secondary-bg: light-dark(rgb(224 228 233), rgb(44 44 47));
+  --settings-popover-bg: light-dark(rgb(226 230 235), rgb(46 46 49));
   --settings-control-bg: light-dark(rgb(223 227 233), rgb(48 48 51));
   --settings-control-bg-hover: light-dark(rgb(214 220 228), rgb(54 54 58));
   --settings-input-bg: light-dark(rgb(221 226 232), rgb(50 50 54));
@@ -88,7 +89,7 @@
   --workbench-control-bg-hover: var(--settings-control-bg-hover);
   --workbench-input-bg: var(--settings-input-bg);
   --workbench-input-bg-hover: var(--settings-input-bg-hover);
-  --workbench-popover-bg: var(--settings-panel-bg);
+  --workbench-popover-bg: var(--settings-popover-bg);
   --workbench-selected-bg: var(--settings-selected-bg);
   --workbench-selected-bg-hover: var(--settings-selected-bg-hover);
   --workbench-border: var(--settings-border);
@@ -96,7 +97,7 @@
   --background-stronger: var(--settings-canvas-bg);
   --surface-raised-base: var(--settings-card-bg);
   --surface-raised-base-hover: var(--settings-card-bg-hover);
-  --surface-raised-stronger-non-alpha: var(--settings-panel-bg);
+  --surface-raised-stronger-non-alpha: var(--settings-popover-bg);
   --surface-inset-base: var(--settings-control-bg);
   --input-base: var(--settings-input-bg);
   --input-hover: var(--settings-input-bg-hover);
