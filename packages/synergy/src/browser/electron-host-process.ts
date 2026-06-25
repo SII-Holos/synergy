@@ -22,7 +22,9 @@ export namespace BrowserElectronHostProcess {
   }
 
   export function enabled(): boolean {
-    return process.env.SYNERGY_BROWSER_HOST_AUTOSTART === "1" || Boolean(process.env.SYNERGY_BROWSER_HOST_COMMAND)
+    const configured = process.env.SYNERGY_BROWSER_HOST_AUTOSTART?.trim().toLowerCase()
+    if (configured === "0" || configured === "false") return false
+    return true
   }
 
   export function ensure(input: EnsureInput): EnsureResult {

@@ -51,6 +51,8 @@ Browser control and Browser presentation are intentionally separate. The shared 
 
 The Browser server boundary follows the same split: session/control endpoints carry tab state and commands, Browser Host control has its own route, and WebRTC signaling has its own route. The old live JPEG/WebSocket frame stream and CDP screencast path are no longer production adapters; one-shot screenshots remain for tools and diagnostics.
 
+Remote WebRTC Browser Hosts autostart by default when a remote Browser viewer connects. Set `SYNERGY_BROWSER_HOST_AUTOSTART=0` to disable server-managed host startup, or set `SYNERGY_BROWSER_HOST_COMMAND` to provide a custom Electron host command.
+
 Browser contexts are isolated by Synergy owner/session and persist tab state plus browser storage state. User-explicit navigation and page interaction run without approval prompts but still pass hard safety checks such as invalid protocols, sensitive local ports, and out-of-scope `file://` access. Agent-driven browser tools continue to use the active control profile, so guarded/autonomous/full-access behavior remains consistent with the rest of Synergy.
 
 Large browser diagnostics such as console, network, snapshots, assets, and downloads are surfaced in the Browser workspace developer drawer and compact tool cards instead of flooding the normal chat transcript.
