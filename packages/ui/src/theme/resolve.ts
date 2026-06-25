@@ -15,44 +15,45 @@ export function resolveThemeVariant(variant: ThemeVariant, isDark: boolean): Res
   const diffDelete = generateScale(seeds.diffDelete, isDark)
 
   const neutralAlpha = generateNeutralAlphaScale(neutral, isDark)
+  const layer = (lightIndex: number, darkIndex: number) => neutral[isDark ? darkIndex : lightIndex]
+  const neutralSelectionBorder = (darkAlpha: number, lightAlpha: number) =>
+    withAlpha(neutral[11], isDark ? darkAlpha : lightAlpha) as ColorValue
 
   const tokens: ResolvedTheme = {}
 
   tokens["background-base"] = neutral[0]
-  tokens["background-weak"] = neutral[2]
+  tokens["background-weak"] = layer(1, 1)
   tokens["background-strong"] = neutral[0]
-  tokens["background-stronger"] = isDark ? neutral[1] : "#fcfcfc"
+  tokens["background-stronger"] = layer(2, 1)
 
-  tokens["surface-base"] = neutralAlpha[1]
-  tokens["base"] = neutralAlpha[1]
-  tokens["surface-base-hover"] = neutralAlpha[2]
-  tokens["surface-base-active"] = neutralAlpha[2]
-  tokens["surface-base-interactive-active"] = withAlpha(interactive[2], 0.3) as ColorValue
-  tokens["base2"] = neutralAlpha[1]
-  tokens["base3"] = neutralAlpha[1]
-  tokens["surface-inset-base"] = neutralAlpha[1]
-  tokens["surface-inset-base-hover"] = neutralAlpha[2]
-  tokens["surface-inset-strong"] = isDark
-    ? (withAlpha(neutral[0], 0.5) as ColorValue)
-    : (withAlpha(neutral[3], 0.09) as ColorValue)
-  tokens["surface-inset-strong-hover"] = tokens["surface-inset-strong"]
-  tokens["surface-raised-base"] = neutralAlpha[0]
-  tokens["surface-float-base"] = isDark ? neutral[0] : neutral[11]
-  tokens["surface-float-base-hover"] = isDark ? neutral[1] : neutral[10]
-  tokens["surface-raised-base-hover"] = neutralAlpha[1]
-  tokens["surface-raised-base-active"] = neutralAlpha[2]
-  tokens["surface-raised-strong"] = isDark ? neutralAlpha[3] : neutral[0]
-  tokens["surface-raised-strong-hover"] = isDark ? neutralAlpha[5] : "#ffffff"
-  tokens["surface-raised-stronger"] = isDark ? neutralAlpha[5] : "#ffffff"
-  tokens["surface-raised-stronger-hover"] = isDark ? neutralAlpha[6] : "#ffffff"
-  tokens["surface-weak"] = neutralAlpha[2]
-  tokens["surface-weaker"] = neutralAlpha[3]
-  tokens["surface-strong"] = isDark ? neutralAlpha[6] : "#ffffff"
-  tokens["surface-raised-stronger-non-alpha"] = isDark ? neutral[2] : "#ffffff"
-  tokens["surface-disabled"] = isDark ? neutralAlpha[5] : neutralAlpha[2]
-  tokens["surface-focus"] = withAlpha(interactive[2], isDark ? 0.24 : 0.18) as ColorValue
-  tokens["surface-hover"] = isDark ? neutralAlpha[3] : neutralAlpha[1]
-  tokens["surface-hover-base"] = isDark ? neutralAlpha[2] : neutralAlpha[0]
+  tokens["surface-base"] = layer(3, 2)
+  tokens["base"] = tokens["surface-base"]
+  tokens["surface-base-hover"] = layer(4, 3)
+  tokens["surface-base-active"] = layer(5, 4)
+  tokens["surface-base-interactive-active"] = layer(5, 4)
+  tokens["base2"] = tokens["surface-base"]
+  tokens["base3"] = tokens["surface-base"]
+  tokens["surface-inset-base"] = layer(4, 2)
+  tokens["surface-inset-base-hover"] = layer(5, 3)
+  tokens["surface-inset-strong"] = layer(6, 3)
+  tokens["surface-inset-strong-hover"] = layer(7, 4)
+  tokens["surface-raised-base"] = layer(3, 2)
+  tokens["surface-float-base"] = isDark ? neutral[2] : neutral[11]
+  tokens["surface-float-base-hover"] = isDark ? neutral[3] : neutral[10]
+  tokens["surface-raised-base-hover"] = layer(4, 3)
+  tokens["surface-raised-base-active"] = layer(5, 4)
+  tokens["surface-raised-strong"] = layer(4, 3)
+  tokens["surface-raised-strong-hover"] = layer(5, 4)
+  tokens["surface-raised-stronger"] = layer(5, 4)
+  tokens["surface-raised-stronger-hover"] = layer(6, 5)
+  tokens["surface-weak"] = layer(4, 3)
+  tokens["surface-weaker"] = layer(5, 4)
+  tokens["surface-strong"] = layer(5, 4)
+  tokens["surface-raised-stronger-non-alpha"] = layer(3, 2)
+  tokens["surface-disabled"] = layer(5, 4)
+  tokens["surface-focus"] = neutralSelectionBorder(0.08, 0.08)
+  tokens["surface-hover"] = layer(4, 3)
+  tokens["surface-hover-base"] = layer(3, 2)
 
   tokens["surface-brand-base"] = primary[8]
   tokens["surface-brand-hover"] = primary[9]
@@ -63,10 +64,8 @@ export function resolveThemeVariant(variant: ThemeVariant, isDark: boolean): Res
   tokens["surface-interactive-weak-hover"] = interactive[2]
   tokens["surface-interactive-solid"] = interactive[8]
   tokens["surface-interactive-solid-hover"] = interactive[9]
-  tokens["surface-interactive-selected"] = isDark ? (withAlpha(interactive[2], 0.3) as ColorValue) : interactive[4]
-  tokens["surface-interactive-selected-weak"] = isDark
-    ? (withAlpha(interactive[2], 0.15) as ColorValue)
-    : interactive[3]
+  tokens["surface-interactive-selected"] = layer(5, 4)
+  tokens["surface-interactive-selected-weak"] = layer(4, 3)
 
   tokens["surface-success-base"] = success[2]
   tokens["surface-success-weak"] = success[1]
@@ -99,12 +98,12 @@ export function resolveThemeVariant(variant: ThemeVariant, isDark: boolean): Res
   tokens["surface-diff-delete-strong"] = diffDelete[isDark ? 4 : 5]
   tokens["surface-diff-delete-stronger"] = diffDelete[isDark ? 10 : 8]
 
-  tokens["input-base"] = isDark ? neutral[1] : neutral[0]
-  tokens["input-hover"] = neutral[1]
-  tokens["input-active"] = interactive[0]
-  tokens["input-selected"] = interactive[3]
-  tokens["input-focus"] = interactive[0]
-  tokens["input-disabled"] = neutral[3]
+  tokens["input-base"] = layer(4, 2)
+  tokens["input-hover"] = layer(5, 3)
+  tokens["input-active"] = layer(5, 4)
+  tokens["input-selected"] = layer(5, 4)
+  tokens["input-focus"] = layer(5, 4)
+  tokens["input-disabled"] = layer(5, 3)
 
   tokens["text-base"] = neutral[10]
   tokens["text-weak"] = neutral[8]
@@ -141,40 +140,40 @@ export function resolveThemeVariant(variant: ThemeVariant, isDark: boolean): Res
   tokens["text-on-brand-weaker"] = neutralAlpha[7]
   tokens["text-on-brand-strong"] = neutralAlpha[11]
 
-  tokens["button-secondary-base"] = isDark ? neutral[2] : neutral[0]
-  tokens["button-secondary-hover"] = isDark ? neutral[3] : neutral[1]
+  tokens["button-secondary-base"] = layer(4, 2)
+  tokens["button-secondary-hover"] = layer(5, 3)
   tokens["button-ghost-hover"] = neutralAlpha[1]
   tokens["button-ghost-hover2"] = neutralAlpha[2]
 
   tokens["border-base"] = neutralAlpha[6]
   tokens["border-hover"] = neutralAlpha[7]
   tokens["border-active"] = neutralAlpha[8]
-  tokens["border-selected"] = withAlpha(interactive[8], isDark ? 0.9 : 0.99) as ColorValue
+  tokens["border-selected"] = neutralSelectionBorder(0.26, 0.34)
   tokens["border-disabled"] = neutralAlpha[7]
   tokens["border-focus"] = neutralAlpha[8]
   tokens["border-weak-base"] = neutralAlpha[isDark ? 5 : 4]
   tokens["border-strong-base"] = neutralAlpha[isDark ? 7 : 6]
   tokens["border-strong-hover"] = neutralAlpha[7]
   tokens["border-strong-active"] = neutralAlpha[isDark ? 7 : 6]
-  tokens["border-strong-selected"] = withAlpha(interactive[5], 0.6) as ColorValue
+  tokens["border-strong-selected"] = neutralSelectionBorder(0.22, 0.28)
   tokens["border-strong-disabled"] = neutralAlpha[5]
   tokens["border-strong-focus"] = neutralAlpha[isDark ? 7 : 6]
   tokens["border-weak-hover"] = neutralAlpha[isDark ? 6 : 5]
   tokens["border-weak-active"] = neutralAlpha[isDark ? 7 : 6]
-  tokens["border-weak-selected"] = withAlpha(interactive[4], isDark ? 0.6 : 0.5) as ColorValue
+  tokens["border-weak-selected"] = neutralSelectionBorder(0.14, 0.16)
   tokens["border-weak-disabled"] = neutralAlpha[5]
   tokens["border-weak-focus"] = neutralAlpha[isDark ? 7 : 6]
   tokens["border-weaker-base"] = neutralAlpha[2]
   tokens["border-weaker-hover"] = neutralAlpha[3]
   tokens["border-weaker-active"] = neutralAlpha[5]
-  tokens["border-weaker-selected"] = withAlpha(interactive[3], isDark ? 0.3 : 0.4) as ColorValue
+  tokens["border-weaker-selected"] = neutralSelectionBorder(0.08, 0.1)
   tokens["border-weaker-disabled"] = neutralAlpha[1]
   tokens["border-weaker-focus"] = neutralAlpha[5]
 
   tokens["border-interactive-base"] = interactive[6]
   tokens["border-interactive-hover"] = interactive[7]
   tokens["border-interactive-active"] = interactive[8]
-  tokens["border-interactive-selected"] = interactive[8]
+  tokens["border-interactive-selected"] = neutralSelectionBorder(0.26, 0.34)
   tokens["border-interactive-disabled"] = neutral[7]
   tokens["border-interactive-focus"] = interactive[8]
 
