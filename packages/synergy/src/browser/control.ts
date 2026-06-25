@@ -1,4 +1,4 @@
-import type { BrowserSession } from "./types.js"
+import type { BrowserAnnotation, BrowserSession } from "./types.js"
 import { BrowserAssets } from "./assets.js"
 import type {
   BrowserTab,
@@ -57,6 +57,12 @@ export namespace BrowserControl {
       }
     | { type: "filechooser.select"; tabId?: string; requestId: string; files: BrowserUploadFile[] }
     | { type: "dialog.respond"; tabId?: string; requestId: string; accept: boolean; promptText?: string }
+    | {
+        type: "createAnnotation"
+        tabId?: string
+        comment: string
+        styleFeedback?: Record<string, string>
+      }
     | { type: "clearDiagnostics"; tabId?: string }
 
   export type Result =
@@ -75,6 +81,7 @@ export namespace BrowserControl {
         ref: string
         box: { backendNodeId: number; x: number; y: number; width: number; height: number } | null
       }
+    | { type: "annotation"; annotation: BrowserAnnotation }
     | { type: "diagnostics.cleared"; tabId: string }
     | { type: "void" }
 
@@ -258,6 +265,15 @@ export namespace BrowserControl {
         const tab = resolveTab(session, command.tabId)
         await tab.respondToDialog(command.requestId, command.accept, command.promptText)
         return { type: "void" }
+      }
+      case "createAnnotation": {
+        const annotation = session.addAnnotation({
+          comment: command.comment,
+          styleFeedback: command.styleFeedback,
+          createdBy: "user",
+          tabID: command.tabId,
+        })
+        return { type: "annotation", annotation }
       }
       case "clearDiagnostics": {
         const tab = resolveTab(session, command.tabId)

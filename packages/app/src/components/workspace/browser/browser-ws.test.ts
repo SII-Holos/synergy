@@ -1,6 +1,12 @@
 import { describe, expect, test } from "bun:test"
 import { createBrowserWebRTCSignalingUrl } from "./browser-webrtc"
-import { createBrowserWebSocketUrl, createQueuedBrowserSender } from "./browser-ws"
+import {
+  browserControlCommandFromMessage,
+  createBrowserControlUrl,
+  createBrowserEventsWebSocketUrl,
+  createBrowserWebSocketUrl,
+  createQueuedBrowserSender,
+} from "./browser-ws"
 
 describe("createBrowserWebSocketUrl", () => {
   test("uses the route directory and scope id for home scope", () => {
@@ -63,6 +69,42 @@ describe("createBrowserWebSocketUrl", () => {
     expect(parsed.searchParams.get("sameHost")).toBe("1")
   })
 
+  test("builds the events URL without using the frame stream route", () => {
+    const url = createBrowserEventsWebSocketUrl({
+      serverUrl: "http://localhost:4096",
+      sessionID: "ses_events",
+      routeDirectory: "aG9tZQ",
+      scopeID: "home",
+      client: "desktop",
+      sameHost: true,
+    })
+
+    expect(url).not.toBeNull()
+    const parsed = new URL(url!)
+    expect(parsed.protocol).toBe("ws:")
+    expect(parsed.pathname).toBe("/aG9tZQ/browser/events")
+    expect(parsed.searchParams.get("client")).toBe("desktop")
+    expect(parsed.searchParams.get("sameHost")).toBe("1")
+  })
+
+  test("builds the control URL as an HTTP endpoint", () => {
+    const url = createBrowserControlUrl({
+      serverUrl: "https://synergy.local",
+      sessionID: "ses_control",
+      routeDirectory: "project-route",
+      directory: "/Users/eric/project",
+      client: "desktop",
+      sameHost: true,
+    })
+
+    expect(url).not.toBeNull()
+    const parsed = new URL(url!)
+    expect(parsed.protocol).toBe("https:")
+    expect(parsed.pathname).toBe("/project-route/browser/control")
+    expect(parsed.searchParams.get("directory")).toBe("/Users/eric/project")
+    expect(parsed.searchParams.get("client")).toBe("desktop")
+  })
+
   test("builds the WebRTC signaling URL without using the frame stream route", () => {
     const url = createBrowserWebRTCSignalingUrl({
       serverUrl: "https://synergy.local",
@@ -81,6 +123,26 @@ describe("createBrowserWebSocketUrl", () => {
 
   test("returns null when no route or scope is available", () => {
     expect(createBrowserWebSocketUrl({ serverUrl: "http://localhost:4096", sessionID: "ses_1" })).toBeNull()
+  })
+})
+
+describe("browserControlCommandFromMessage", () => {
+  test("maps browser chrome commands to host control commands", () => {
+    expect(browserControlCommandFromMessage({ type: "createTab", url: "https://example.com" })).toEqual({
+      type: "createTab",
+      url: "https://example.com",
+    })
+    expect(browserControlCommandFromMessage({ type: "navigate", tabId: "tab_1", url: "www.google.com" })).toEqual({
+      type: "navigate",
+      source: "user",
+      tabId: "tab_1",
+      url: "www.google.com",
+    })
+  })
+
+  test("keeps old live frame messages out of host control", () => {
+    expect(browserControlCommandFromMessage({ type: "stream.start", tabId: "tab_1" })).toBeNull()
+    expect(browserControlCommandFromMessage({ type: "stream.stop", tabId: "tab_1" })).toBeNull()
   })
 })
 

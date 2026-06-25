@@ -59,6 +59,58 @@ function send(ws: BrowserWS, payload: Record<string, unknown>) {
   }
 }
 
+function subscribeBrowserEvents(ws: BrowserWS, session: BrowserSession) {
+  return session.addObserver({
+    onTabCreated: (tab) => {
+      send(ws, { type: "tab.created", tab: tabPayload(tab), active: session.activeTab === tab })
+    },
+    onTabClosed: (tabId) => {
+      send(ws, { type: "tab.closed", tabId })
+    },
+    onTabUpdated: (tab) => {
+      send(ws, { type: "tab.updated", tab: tabPayload(tab) })
+    },
+    onTabActivated: (tab) => {
+      send(ws, { type: "tab.activated", tabId: tab.id, tab: tabPayload(tab) })
+    },
+    onTabNavigated: (tab) => {
+      send(ws, { type: "tab.updated", tab: tabPayload(tab) })
+    },
+    onPageLoadState: (tab, state, message) => {
+      const type = state === "loading" ? "page.loading" : state === "loaded" ? "page.loaded" : "page.error"
+      send(ws, { type, tabId: tab.id, url: tab.url, title: tab.title, message })
+    },
+    onAgentActivity: (activity) => {
+      send(ws, { type: "agent.activity", ...activity })
+    },
+    onControlChanged: (mode) => {
+      send(ws, { type: "control.changed", mode })
+    },
+    onDownload: (tab, entry) => {
+      send(ws, { type: "downloads.updated", tabId: tab.id, entry })
+    },
+    onFileChooser: (tab, request) => {
+      send(ws, { type: "filechooser.request", tabId: tab.id, ...request })
+    },
+    onDialog: (tab, request) => {
+      send(ws, {
+        type: "dialog.opened",
+        tabId: tab.id,
+        requestId: request.requestId,
+        dialogType: request.type,
+        message: request.message,
+        defaultValue: request.defaultValue,
+      })
+    },
+  })
+}
+
+function isCrossOriginRequest(c: { req: { header(name: string): string | undefined } }) {
+  const origin = c.req.header("origin")
+  const host = c.req.header("host")
+  return Boolean(origin && host && !isSameOrigin(origin, host))
+}
+
 function routeState(c: BrowserRouteContext): BrowserRouteState {
   const directory = c.req.param("directory")
   if (!directory) throw new Error("Missing directory")
@@ -123,6 +175,82 @@ export const BrowserRoute = new Hono()
       return c.json({ type: "error", code: "browser_control_failed", message: e?.message ?? "Browser error" }, 500)
     }
   })
+  .get(
+    "/:directory/browser/events",
+    upgradeWebSocket((c) => {
+      let state: BrowserRouteState
+      try {
+        state = routeState(c)
+      } catch (e: any) {
+        return {
+          onOpen(_e: any, ws: BrowserWS) {
+            send(ws, { type: "error", code: "browser_events_route_failed", message: e?.message ?? String(e) })
+            ws.close(1008, "Invalid browser events route")
+          },
+          onMessage() {},
+          onClose() {},
+        }
+      }
+
+      if (isCrossOriginRequest(c)) {
+        log.warn("browser events WS rejected: cross-origin", {
+          origin: c.req.header("origin"),
+          host: c.req.header("host"),
+        })
+        return {
+          onOpen(_e: any, ws: BrowserWS) {
+            ws.close(1008, "Cross-origin not allowed")
+          },
+          onMessage() {},
+          onClose() {},
+        }
+      }
+
+      const { directory, owner, presentation } = state
+      let unsubscribe: (() => void) | undefined
+
+      log.info("browser events WebSocket connected", {
+        directory,
+        ownerKey: BrowserOwner.key(owner),
+        presentation: presentation.kind,
+        presentationReason: presentation.reason,
+      })
+
+      return {
+        onOpen: async (_e: any, ws: BrowserWS) => {
+          try {
+            const session = await ensureSession(owner, { createInitialTab: true })
+            unsubscribe = subscribeBrowserEvents(ws, session)
+            send(ws, sessionPayload(session, presentation, await BrowserHost.health()))
+          } catch (e: any) {
+            log.error("browser events WS onOpen error", { error: e?.message ?? String(e) })
+            send(ws, {
+              type: "error",
+              severity: "critical",
+              code: "browser_events_open_failed",
+              message: e?.message ?? "Failed to open browser session",
+            })
+            ws.close(1011, "Failed to open browser session")
+          }
+        },
+        onMessage(_event: any, ws: BrowserWS) {
+          send(ws, {
+            type: "error",
+            severity: "warning",
+            code: "browser_events_read_only",
+            message: "Browser events socket is read-only; send commands to /browser/control.",
+          })
+        },
+        onClose() {
+          unsubscribe?.()
+          log.info("browser events WebSocket disconnected")
+        },
+        onError(_e: any) {
+          log.warn("browser events WebSocket error", { error: String(_e) })
+        },
+      }
+    }),
+  )
   .get(
     "/:directory/browser/webrtc/connect",
     upgradeWebSocket((c) => {
@@ -191,10 +319,8 @@ export const BrowserRoute = new Hono()
         }
       }
 
-      const origin = c.req.header("origin")
-      const host = c.req.header("host")
-      if (origin && host && !isSameOrigin(origin, host)) {
-        log.warn("browser WS rejected: cross-origin", { origin, host })
+      if (isCrossOriginRequest(c)) {
+        log.warn("browser WS rejected: cross-origin", { origin: c.req.header("origin"), host: c.req.header("host") })
         return {
           onOpen(_e: any, ws: BrowserWS) {
             ws.close(1008, "Cross-origin not allowed")
@@ -239,49 +365,7 @@ export const BrowserRoute = new Hono()
         onOpen: async (_e: any, ws: BrowserWS) => {
           try {
             const session = await ensureSession(owner, { createInitialTab: true })
-            unsubscribe = session.addObserver({
-              onTabCreated: (tab) => {
-                send(ws, { type: "tab.created", tab: tabPayload(tab), active: session.activeTab === tab })
-              },
-              onTabClosed: (tabId) => {
-                send(ws, { type: "tab.closed", tabId })
-              },
-              onTabUpdated: (tab) => {
-                send(ws, { type: "tab.updated", tab: tabPayload(tab) })
-              },
-              onTabActivated: (tab) => {
-                send(ws, { type: "tab.activated", tabId: tab.id, tab: tabPayload(tab) })
-              },
-              onTabNavigated: (tab) => {
-                send(ws, { type: "tab.updated", tab: tabPayload(tab) })
-              },
-              onPageLoadState: (tab, state, message) => {
-                const type = state === "loading" ? "page.loading" : state === "loaded" ? "page.loaded" : "page.error"
-                send(ws, { type, tabId: tab.id, url: tab.url, title: tab.title, message })
-              },
-              onAgentActivity: (activity) => {
-                send(ws, { type: "agent.activity", ...activity })
-              },
-              onControlChanged: (mode) => {
-                send(ws, { type: "control.changed", mode })
-              },
-              onDownload: (tab, entry) => {
-                send(ws, { type: "downloads.updated", tabId: tab.id, entry })
-              },
-              onFileChooser: (tab, request) => {
-                send(ws, { type: "filechooser.request", tabId: tab.id, ...request })
-              },
-              onDialog: (tab, request) => {
-                send(ws, {
-                  type: "dialog.opened",
-                  tabId: tab.id,
-                  requestId: request.requestId,
-                  dialogType: request.type,
-                  message: request.message,
-                  defaultValue: request.defaultValue,
-                })
-              },
-            })
+            unsubscribe = subscribeBrowserEvents(ws, session)
 
             send(ws, sessionPayload(session, presentation, await BrowserHost.health()))
           } catch (e: any) {
@@ -480,13 +564,14 @@ export const BrowserRoute = new Hono()
                 break
               }
               case "createAnnotation": {
-                const ann = session.addAnnotation({
-                  comment: msg.comment,
+                const result = await BrowserHost.execute(owner, {
+                  type: "createAnnotation",
+                  comment: String(msg.comment ?? ""),
                   styleFeedback: msg.styleFeedback,
-                  createdBy: "user",
-                  tabID: msg.tabId,
+                  tabId: msg.tabId,
                 })
-                send(ws, { type: "annotation.created", annotation: ann })
+                if (result.type === "annotation")
+                  send(ws, { type: "annotation.created", annotation: result.annotation })
                 break
               }
               case "setFollowAgent":
