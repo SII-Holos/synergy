@@ -1,6 +1,7 @@
 import { BrowserWindow, desktopCapturer, ipcMain } from "electron"
 import { randomUUID } from "node:crypto"
 import { BrowserHostDiagnostics, type BrowserHostUploadFile } from "./browser-host-diagnostics.js"
+import { browserProfilePartition } from "./browser-profile.js"
 
 export interface BrowserWebRTCHostOptions {
   serverUrl: string
@@ -102,6 +103,7 @@ export class BrowserWebRTCHost {
       skipTaskbar: true,
       backgroundColor: "#111214",
       webPreferences: {
+        partition: browserProfilePartition(this.options),
         contextIsolation: true,
         nodeIntegration: false,
         sandbox: true,

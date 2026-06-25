@@ -1,6 +1,7 @@
 import { BrowserWindow, WebContentsView } from "electron"
 import { randomUUID } from "node:crypto"
 import { BrowserHostDiagnostics, type BrowserHostUploadFile } from "./browser-host-diagnostics.js"
+import { browserProfilePartition } from "./browser-profile.js"
 
 export interface BrowserNativeBounds {
   x: number
@@ -39,7 +40,7 @@ export class BrowserNativeViewManager {
   constructor(private window: BrowserWindow) {}
 
   async attach(input: BrowserNativeAttachRequest): Promise<void> {
-    const view = this.views.get(input.tabId) ?? this.createView(input.tabId, input.sessionID)
+    const view = this.views.get(input.tabId) ?? this.createView(input.tabId, input)
     if (!this.views.has(input.tabId)) {
       this.views.set(input.tabId, view)
     }
@@ -118,7 +119,7 @@ export class BrowserNativeViewManager {
 
   private async createManagedTab(input: BrowserNativeAttachRequest, url?: string): Promise<BrowserNativeTabState> {
     const tabId = randomUUID()
-    const view = this.createView(tabId, input.sessionID)
+    const view = this.createView(tabId, input)
     this.views.set(tabId, view)
     this.activate(tabId, view)
     if (this.lastBounds) this.resize(tabId, this.lastBounds)
@@ -141,8 +142,8 @@ export class BrowserNativeViewManager {
     this.activeTabId = tabId
   }
 
-  private createView(tabId: string, sessionID: string): WebContentsView {
-    const partition = `persist:synergy-browser-${sessionID}-${tabId}`
+  private createView(tabId: string, input: BrowserNativeAttachRequest): WebContentsView {
+    const partition = browserProfilePartition(input)
     const view = new WebContentsView({
       webPreferences: {
         partition,

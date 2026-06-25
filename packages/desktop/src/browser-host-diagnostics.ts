@@ -26,6 +26,8 @@ const BLOCKED_DOWNLOAD_EXTENSIONS = new Set([
   ".vbs",
 ])
 
+const permissionSessions = new WeakMap<Electron.Session, Set<number>>()
+
 export interface BrowserHostConsoleEntry {
   level: string
   text: string
@@ -107,7 +109,7 @@ export class BrowserHostDiagnostics {
   private pendingDialogs = new Map<string, ReturnType<typeof setTimeout>>()
   private pendingFileChoosers = new Map<string, PendingFileChooser>()
   private readonly onConsoleMessage: (...args: unknown[]) => void
-  private readonly onDebuggerMessage: (event: Electron.Event, method: string, params: any) => void
+  private readonly onDebuggerMessage: (event: Electron.Event, method: string, params: unknown) => void
   private readonly onDownload: (
     event: Electron.Event,
     item: Electron.DownloadItem,
@@ -129,8 +131,7 @@ export class BrowserHostDiagnostics {
   start(): void {
     const { contents } = this.options
     contents.on("console-message", this.onConsoleMessage as any)
-    this.installNetworkHooks()
-    this.installPermissions()
+    registerPermissionTarget(contents)
     contents.session.on("will-download", this.onDownload)
     this.attachDebugger()
   }
@@ -139,10 +140,7 @@ export class BrowserHostDiagnostics {
     const { contents } = this.options
     contents.off("console-message", this.onConsoleMessage as any)
     contents.session.off("will-download", this.onDownload)
-    contents.session.webRequest.onBeforeRequest(null)
-    contents.session.webRequest.onCompleted(null)
-    contents.session.webRequest.onErrorOccurred(null)
-    contents.session.setPermissionRequestHandler(null)
+    unregisterPermissionTarget(contents)
     if (contents.debugger.isAttached()) {
       contents.debugger.off("message", this.onDebuggerMessage)
       contents.debugger.detach()
@@ -197,54 +195,6 @@ export class BrowserHostDiagnostics {
     await this.options.contents.debugger.sendCommand("DOM.setFileInputFiles", params)
   }
 
-  private installNetworkHooks(): void {
-    const { contents } = this.options
-    const filter = { urls: ["<all_urls>"] }
-    contents.session.webRequest.onBeforeRequest(filter, (details, callback) => {
-      if (details.webContentsId === contents.id) {
-        const requestId = String(details.id)
-        this.networkBuffer.push({
-          requestId,
-          url: details.url,
-          method: details.method,
-          type: details.resourceType,
-          timestamp: Date.now(),
-        })
-        this.trimBuffers()
-      }
-      callback({})
-    })
-    contents.session.webRequest.onCompleted(filter, (details) => {
-      if (details.webContentsId !== contents.id) return
-      const request = this.networkBuffer.find((item) => item.requestId === String(details.id))
-      if (!request) return
-      request.status = details.statusCode
-      request.mimeType = firstHeader(details.responseHeaders, "content-type")
-      request.responseHeaders = sanitizeHeaders(details.responseHeaders)
-    })
-    contents.session.webRequest.onErrorOccurred(filter, (details) => {
-      if (details.webContentsId !== contents.id) return
-      const request = this.networkBuffer.find((item) => item.requestId === String(details.id))
-      if (!request) return
-      request.status = 0
-    })
-  }
-
-  private installPermissions(): void {
-    const { contents } = this.options
-    contents.session.setPermissionRequestHandler((webContents, permission, callback) => {
-      if (permission === "display-capture") {
-        callback(true)
-        return
-      }
-      if (webContents.id !== contents.id) {
-        callback(false)
-        return
-      }
-      callback(allowBrowserPermission(permission))
-    })
-  }
-
   private attachDebugger(): void {
     const { contents } = this.options
     if (!contents.debugger.isAttached()) {
@@ -257,20 +207,70 @@ export class BrowserHostDiagnostics {
     contents.debugger.on("message", this.onDebuggerMessage)
     void contents.debugger.sendCommand("Page.enable").catch(() => {})
     void contents.debugger.sendCommand("DOM.enable").catch(() => {})
+    void contents.debugger.sendCommand("Network.enable").catch(() => {})
     void contents.debugger.sendCommand("Page.setInterceptFileChooserDialog", { enabled: true }).catch(() => {})
   }
 
-  private handleDebuggerMessage(method: string, params: any): void {
+  private handleDebuggerMessage(method: string, params: unknown): void {
     if (method === "Page.javascriptDialogOpening") {
       this.handleJavaScriptDialog(params)
       return
     }
     if (method === "Page.fileChooserOpened") {
       this.handleFileChooser(params)
+      return
+    }
+    if (method === "Network.requestWillBeSent") {
+      this.handleNetworkRequest(params)
+      return
+    }
+    if (method === "Network.responseReceived") {
+      this.handleNetworkResponse(params)
+      return
+    }
+    if (method === "Network.loadingFailed") {
+      this.handleNetworkFailure(params)
     }
   }
 
-  private handleJavaScriptDialog(params: any): void {
+  private handleNetworkRequest(params: unknown): void {
+    if (!isRecord(params)) return
+    const request = isRecord(params.request) ? params.request : null
+    const requestId = String(params.requestId ?? "")
+    const url = typeof request?.url === "string" ? request.url : ""
+    if (!requestId || !url) return
+    this.networkBuffer.push({
+      requestId,
+      url,
+      method: typeof request?.method === "string" ? request.method : "GET",
+      type: typeof params.type === "string" ? params.type : "other",
+      timestamp: Date.now(),
+    })
+    this.trimBuffers()
+  }
+
+  private handleNetworkResponse(params: unknown): void {
+    if (!isRecord(params)) return
+    const request = this.networkBuffer.find((item) => item.requestId === String(params.requestId ?? ""))
+    if (!request) return
+    const response = isRecord(params.response) ? params.response : null
+    request.status = Number(response?.status ?? 0)
+    request.mimeType =
+      typeof response?.mimeType === "string" && response.mimeType
+        ? response.mimeType
+        : firstHeader(asHeaders(response?.headers), "content-type")
+    request.responseHeaders = sanitizeHeaders(asHeaders(response?.headers))
+  }
+
+  private handleNetworkFailure(params: unknown): void {
+    if (!isRecord(params)) return
+    const request = this.networkBuffer.find((item) => item.requestId === String(params.requestId ?? ""))
+    if (!request) return
+    request.status = 0
+  }
+
+  private handleJavaScriptDialog(params: unknown): void {
+    const data = isRecord(params) ? params : {}
     const requestId = `dialog-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
     const timer = setTimeout(() => {
       if (!this.pendingDialogs.delete(requestId)) return
@@ -281,22 +281,23 @@ export class BrowserHostDiagnostics {
       type: "dialog.opened",
       tabId: this.options.tabId,
       requestId,
-      dialogType: String(params?.type ?? "alert"),
-      message: String(params?.message ?? ""),
-      defaultValue: typeof params?.defaultPrompt === "string" ? params.defaultPrompt : undefined,
+      dialogType: String(data.type ?? "alert"),
+      message: String(data.message ?? ""),
+      defaultValue: typeof data.defaultPrompt === "string" ? data.defaultPrompt : undefined,
     })
   }
 
-  private handleFileChooser(params: any): void {
+  private handleFileChooser(params: unknown): void {
+    const data = isRecord(params) ? params : {}
     const requestId = `fc-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
     this.pendingFileChoosers.set(requestId, {
-      backendNodeId: typeof params?.backendNodeId === "number" ? params.backendNodeId : undefined,
+      backendNodeId: typeof data.backendNodeId === "number" ? data.backendNodeId : undefined,
     })
     this.options.emitHostEvent({
       type: "filechooser.request",
       tabId: this.options.tabId,
       requestId,
-      multiple: params?.mode === "selectMultiple",
+      multiple: data.mode === "selectMultiple",
       accept: [],
     })
   }
@@ -376,6 +377,32 @@ function allowBrowserPermission(permission: string): boolean {
   return permission === "clipboard-read" || permission === "clipboard-sanitized-write" || permission === "fullscreen"
 }
 
+function registerPermissionTarget(contents: Electron.WebContents): void {
+  const targets = permissionSessions.get(contents.session) ?? new Set<number>()
+  targets.add(contents.id)
+  permissionSessions.set(contents.session, targets)
+  contents.session.setPermissionRequestHandler((webContents, permission, callback) => {
+    if (permission === "display-capture") {
+      callback(true)
+      return
+    }
+    if (!targets.has(webContents.id)) {
+      callback(false)
+      return
+    }
+    callback(allowBrowserPermission(permission))
+  })
+}
+
+function unregisterPermissionTarget(contents: Electron.WebContents): void {
+  const targets = permissionSessions.get(contents.session)
+  if (!targets) return
+  targets.delete(contents.id)
+  if (targets.size > 0) return
+  contents.session.setPermissionRequestHandler(null)
+  permissionSessions.delete(contents.session)
+}
+
 function isDangerousDownload(mimeType?: string, filename?: string): boolean {
   const normalizedMime = mimeType?.split(";")[0]?.trim().toLowerCase()
   if (normalizedMime && BLOCKED_DOWNLOAD_MIMES.has(normalizedMime)) return true
@@ -392,15 +419,34 @@ function classifyAssetByMime(mimeType: string): BrowserHostPageAsset["type"] {
   return "other"
 }
 
-function firstHeader(headers: Record<string, string[]> | undefined, name: string): string | undefined {
-  const entry = Object.entries(headers ?? {}).find(([key]) => key.toLowerCase() === name)
-  return entry?.[1]?.[0]
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null
 }
 
-function sanitizeHeaders(headers: Record<string, string[]> | undefined): Record<string, string> {
+function asHeaders(value: unknown): Record<string, string | string[]> | undefined {
+  if (!isRecord(value)) return undefined
+  const headers: Record<string, string | string[]> = {}
+  for (const [key, headerValue] of Object.entries(value)) {
+    if (typeof headerValue === "string") headers[key] = headerValue
+    else if (Array.isArray(headerValue)) headers[key] = headerValue.map(String)
+    else if (headerValue !== undefined && headerValue !== null) headers[key] = String(headerValue)
+  }
+  return headers
+}
+
+function headerValues(value: string | string[]): string[] {
+  return Array.isArray(value) ? value : [value]
+}
+
+function firstHeader(headers: Record<string, string | string[]> | undefined, name: string): string | undefined {
+  const entry = Object.entries(headers ?? {}).find(([key]) => key.toLowerCase() === name)
+  return entry ? headerValues(entry[1])[0] : undefined
+}
+
+function sanitizeHeaders(headers: Record<string, string | string[]> | undefined): Record<string, string> {
   const sanitized: Record<string, string> = {}
   for (const [key, value] of Object.entries(headers ?? {})) {
-    if (!SENSITIVE_HEADERS.has(key.toLowerCase())) sanitized[key] = value.join(", ")
+    if (!SENSITIVE_HEADERS.has(key.toLowerCase())) sanitized[key] = headerValues(value).join(", ")
   }
   return sanitized
 }
