@@ -6,8 +6,9 @@
   "license": "MIT",
   "main": "./dist/main.js",
   "scripts": {
-    "build": "bun build src/main.ts src/preload.ts --outdir dist --target=node --external electron",
+    "build": "bun build src/main.ts --outfile dist/main.js --target=node --external electron && bun build src/preload.ts --outfile dist/preload.cjs --target=node --format=cjs --external electron",
     "dev": "bun run build && electron dist/main.js",
+    "test:runtime": "bun run build && SYNERGY_DESKTOP_RUNTIME_TEST=1 bun test test/browser-runtime-smoke.test.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
