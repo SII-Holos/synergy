@@ -1,4 +1,4 @@
-import { createEffect, createMemo, createSignal, For, on, onCleanup, Show } from "solid-js"
+import { createEffect, createMemo, createSignal, For, on, onCleanup, Show, type JSX } from "solid-js"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
 import { getFilename } from "@ericsanchezok/synergy-util/path"
@@ -199,7 +199,7 @@ export function AgendaForm(props: {
   const [tagsText, setTagsText] = createSignal((props.item?.tags ?? []).join(", "))
   const [selectedScopeID, setSelectedScopeID] = createSignal("")
 
-  const [hasSchedule, setHasSchedule] = createSignal(parsed.hasSchedule)
+  const [hasSchedule, setHasSchedule] = createSignal(isEdit() ? parsed.hasSchedule : true)
   const [date, setDate] = createSignal(parsed.date)
   const [hour, setHour] = createSignal(parsed.hour)
   const [minute, setMinute] = createSignal(parsed.minute)
@@ -216,6 +216,8 @@ export function AgendaForm(props: {
   createEffect(() => {
     if (title().trim() && error() === "Title is required") setError("")
   })
+
+  const canSubmit = createMemo(() => title().trim().length > 0 && !saving())
 
   const scopes = createMemo(() => {
     const home = globalSync.data.paths.home
@@ -239,6 +241,7 @@ export function AgendaForm(props: {
   })
 
   async function save() {
+    if (!canSubmit()) return
     const t = title().trim()
     if (!t) {
       setError("Title is required")
@@ -294,116 +297,103 @@ export function AgendaForm(props: {
 
   return (
     <>
-      <AppPanel.Header class={isDialog() ? "!px-5 !pt-5 !pb-3" : undefined}>
-        <AppPanel.HeaderRow>
-          <Show when={!isDialog()}>
+      <Show when={!isDialog()}>
+        <AppPanel.Header>
+          <AppPanel.HeaderRow>
             <AppPanel.Action icon="arrow-left" title="Back" onClick={props.onBack} />
-          </Show>
-          <AppPanel.Title>{isEdit() ? "Edit Agenda" : "New Agenda"}</AppPanel.Title>
-          <div class="flex items-center gap-1.5">
-            <button
-              type="button"
-              class="px-2.5 py-1 rounded-full text-11-medium text-text-weak hover:bg-surface-raised-base-hover transition-colors"
-              onClick={props.onBack}
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              classList={{
-                "px-3 py-1 rounded-full text-11-medium transition-colors text-white shadow-[0_12px_28px_-22px_color-mix(in_srgb,var(--surface-brand-base)_56%,transparent)]": true,
-                "bg-text-interactive-base hover:opacity-85": !saving(),
-                "bg-text-interactive-base opacity-50 pointer-events-none": saving(),
-              }}
-              onClick={save}
-              disabled={saving()}
-            >
-              <Show when={!saving()} fallback={<Spinner class="size-3 inline-block" />}>
-                {isEdit() ? "Save" : "Create"}
-              </Show>
-            </button>
-          </div>
-        </AppPanel.HeaderRow>
-      </AppPanel.Header>
+            <AppPanel.Title>{isEdit() ? "Edit Agenda" : "New Agenda"}</AppPanel.Title>
+            <div class="flex items-center gap-1.5">
+              <button
+                type="button"
+                class="px-2.5 py-1 rounded-full text-11-medium text-text-weak hover:bg-surface-raised-base-hover transition-colors"
+                onClick={props.onBack}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                classList={{
+                  "px-3 py-1 rounded-full text-11-medium transition-colors": true,
+                  "bg-text-strong text-background-base hover:bg-text-base": canSubmit(),
+                  "bg-surface-raised-base text-text-weaker ring-1 ring-inset ring-border-base/35 cursor-not-allowed":
+                    !canSubmit(),
+                }}
+                onClick={save}
+                disabled={!canSubmit()}
+              >
+                <Show when={!saving()} fallback={<Spinner class="size-3 inline-block" />}>
+                  {isEdit() ? "Save" : "Create"}
+                </Show>
+              </button>
+            </div>
+          </AppPanel.HeaderRow>
+        </AppPanel.Header>
+      </Show>
 
-      <AppPanel.Body padding={false} class={isDialog() ? "!px-5 !pb-5" : "!px-5"}>
-        <div class="flex flex-col gap-0 rounded-xl bg-surface-inset-base p-3 ring-1 ring-inset ring-border-base/45">
-          <div class="rounded-lg bg-surface-raised-base px-3.5 py-3 ring-1 ring-inset ring-border-base/28">
-            <input
-              type="text"
-              autofocus
-              class="w-full bg-transparent text-15-medium text-text-strong outline-none py-1 placeholder:text-text-weaker/50"
-              placeholder="Add title"
-              value={title()}
-              onInput={(e) => setTitle(e.currentTarget.value)}
-            />
-          </div>
-
-          <div class="mt-2 rounded-lg bg-surface-raised-base px-3.5 py-3 ring-1 ring-inset ring-border-base/28">
-            <div class="flex items-start gap-2.5">
-              <div class="shrink-0 mt-0.5 text-icon-weak">
-                <Icon name="sparkles" size="small" />
-              </div>
-              <textarea
-                class="flex-1 bg-transparent text-12-regular text-text-base outline-none resize-none min-h-14 placeholder:text-text-weaker/50"
-                placeholder="Agent prompt (what should the agent do?)"
-                value={prompt()}
-                onInput={(e) => setPrompt(e.currentTarget.value)}
-                rows={2}
+      <AppPanel.Body padding={false} class={isDialog() ? "!px-6 !pb-3" : "!px-5"}>
+        <div
+          classList={{
+            "flex flex-col": true,
+            "gap-4": isDialog(),
+            "gap-0 rounded-xl bg-surface-inset-base p-3 ring-1 ring-inset ring-border-base/45": !isDialog(),
+          }}
+        >
+          <Field label="Title">
+            <div class="rounded-lg bg-input-base px-3.5 py-3 ring-1 ring-inset ring-border-base/28 shadow-[inset_0_1px_0_rgba(255,255,255,0.035)] transition-colors focus-within:bg-input-hover focus-within:ring-border-base/65">
+              <input
+                type="text"
+                autofocus
+                class="w-full bg-transparent text-15-medium text-text-strong outline-none py-1 placeholder:text-text-weaker/50"
+                placeholder="Add title"
+                value={title()}
+                onInput={(e) => setTitle(e.currentTarget.value)}
               />
             </div>
-          </div>
+          </Field>
 
-          <Divider />
-
-          {/* Schedule */}
-          <div class="flex items-center gap-2.5 py-2.5">
-            <div class="shrink-0 text-icon-weak">
-              <Icon name="clock" size="small" />
+          <Field label="Schedule">
+            <div class="flex items-center">
+              <Show
+                when={hasSchedule()}
+                fallback={
+                  <button
+                    type="button"
+                    class="text-12-medium text-text-strong hover:text-text-base transition-colors"
+                    onClick={() => {
+                      setHasSchedule(true)
+                      setDate(startOfDay(Date.now()))
+                      const now = new Date()
+                      const m5 = Math.ceil(now.getMinutes() / 5) * 5
+                      setHour(m5 >= 60 ? (now.getHours() + 1) % 24 : now.getHours())
+                      setMinute(m5 % 60)
+                    }}
+                  >
+                    Add time
+                  </button>
+                }
+              >
+                <div class="flex-1 min-w-0 flex items-center gap-1.5 flex-wrap rounded-lg bg-input-base px-2.5 py-2 ring-1 ring-inset ring-border-base/28 shadow-[inset_0_1px_0_rgba(255,255,255,0.035)] transition-colors focus-within:bg-input-hover focus-within:ring-border-base/65">
+                  <DatePicker value={date()} onChange={setDate} />
+                  <TimePicker hour={hour()} minute={minute()} onHourChange={setHour} onMinuteChange={setMinute} />
+                  <button
+                    type="button"
+                    class="ml-auto size-6 flex items-center justify-center rounded-full text-icon-weak hover:text-text-diff-delete-base hover:bg-text-diff-delete-base/8 transition-colors"
+                    onClick={() => {
+                      setHasSchedule(false)
+                      setRepeatMode("off")
+                    }}
+                  >
+                    <Icon name="x" size="small" />
+                  </button>
+                </div>
+              </Show>
             </div>
-            <Show
-              when={hasSchedule()}
-              fallback={
-                <button
-                  type="button"
-                  class="text-12-regular text-text-interactive-base hover:text-text-interactive-base-hover transition-colors"
-                  onClick={() => {
-                    setHasSchedule(true)
-                    setDate(startOfDay(Date.now()))
-                    const now = new Date()
-                    const m5 = Math.ceil(now.getMinutes() / 5) * 5
-                    setHour(m5 >= 60 ? (now.getHours() + 1) % 24 : now.getHours())
-                    setMinute(m5 % 60)
-                  }}
-                >
-                  Add time
-                </button>
-              }
-            >
-              <div class="flex-1 min-w-0 flex items-center gap-1.5 flex-wrap rounded-lg bg-surface-raised-base px-2.5 py-2 ring-1 ring-inset ring-border-base/28">
-                <DatePicker value={date()} onChange={setDate} />
-                <TimePicker hour={hour()} minute={minute()} onHourChange={setHour} onMinuteChange={setMinute} />
-                <button
-                  type="button"
-                  class="ml-auto size-6 flex items-center justify-center rounded-full text-icon-weak hover:text-text-diff-delete-base hover:bg-text-diff-delete-base/8 transition-colors"
-                  onClick={() => {
-                    setHasSchedule(false)
-                    setRepeatMode("off")
-                  }}
-                >
-                  <Icon name="x" size="small" />
-                </button>
-              </div>
-            </Show>
-          </div>
+          </Field>
 
           {/* Repeat */}
           <Show when={hasSchedule()}>
-            <div class="flex items-center gap-2.5 py-2.5">
-              <div class="shrink-0 text-icon-weak">
-                <Icon name="repeat" size="small" />
-              </div>
-              <div class="flex-1 min-w-0 rounded-lg bg-surface-raised-base px-2.5 py-2 ring-1 ring-inset ring-border-base/28">
+            <Field label="Repeat">
+              <div class="min-w-0 rounded-lg bg-input-base px-2.5 py-2 ring-1 ring-inset ring-border-base/28 shadow-[inset_0_1px_0_rgba(255,255,255,0.035)] transition-colors focus-within:bg-input-hover focus-within:ring-border-base/65">
                 <RepeatControl
                   mode={repeatMode()}
                   count={intervalCount()}
@@ -413,19 +403,19 @@ export function AgendaForm(props: {
                   onUnitChange={setIntervalUnit}
                 />
               </div>
-            </div>
+            </Field>
             <Show when={repeatMode() === "custom"}>
-              <div class="pl-8 pb-2 flex flex-col gap-1.5">
+              <div class="flex flex-col gap-1.5">
                 <input
                   type="text"
-                  class="w-full bg-surface-raised-base/92 text-12-regular text-text-base outline-none px-2.5 py-1.5 rounded-[0.95rem] border border-border-base/45 focus:border-border-interactive-base shadow-[inset_0_1px_0_rgba(214,204,190,0.06)]"
+                  class="w-full bg-input-base text-12-regular text-text-base outline-none px-2.5 py-1.5 rounded-[0.95rem] ring-1 ring-inset ring-border-base/28 focus:bg-input-hover focus:ring-border-base/65 shadow-[inset_0_1px_0_rgba(255,255,255,0.035)]"
                   placeholder="Cron expression, e.g. 0 9 * * 1-5"
                   value={customCron()}
                   onInput={(e) => setCustomCron(e.currentTarget.value)}
                 />
                 <input
                   type="text"
-                  class="w-full bg-surface-raised-base/92 text-11-regular text-text-weaker outline-none px-2.5 py-1.5 rounded-[0.95rem] border border-border-base/45 focus:border-border-interactive-base shadow-[inset_0_1px_0_rgba(214,204,190,0.06)]"
+                  class="w-full bg-input-base text-11-regular text-text-weaker outline-none px-2.5 py-1.5 rounded-[0.95rem] ring-1 ring-inset ring-border-base/28 focus:bg-input-hover focus:ring-border-base/65 shadow-[inset_0_1px_0_rgba(255,255,255,0.035)]"
                   placeholder="Timezone (e.g. Asia/Shanghai)"
                   value={cronTz()}
                   onInput={(e) => setCronTz(e.currentTarget.value)}
@@ -436,35 +426,35 @@ export function AgendaForm(props: {
 
           <Divider />
 
-          <Show
-            when={showDesc()}
-            fallback={<ExpandRow icon="file-text" label="Add description" onClick={() => setShowDesc(true)} />}
-          >
-            <div class="flex items-start gap-2.5 py-2.5">
-              <div class="shrink-0 mt-0.5 text-icon-weak">
-                <Icon name="file-text" size="small" />
-              </div>
-              <div class="flex-1 rounded-lg bg-surface-raised-base px-2.5 py-2 ring-1 ring-inset ring-border-base/28">
+          <Field label="Prompt">
+            <div class="rounded-lg bg-input-base px-3.5 py-3 ring-1 ring-inset ring-border-base/28 shadow-[inset_0_1px_0_rgba(255,255,255,0.035)] transition-colors focus-within:bg-input-hover focus-within:ring-border-base/65">
+              <textarea
+                class="w-full bg-transparent text-12-regular text-text-base outline-none resize-none min-h-24 placeholder:text-text-weaker/50"
+                placeholder="What should the agent do?"
+                value={prompt()}
+                onInput={(e) => setPrompt(e.currentTarget.value)}
+                rows={4}
+              />
+            </div>
+          </Field>
+
+          <Show when={showDesc()} fallback={<ExpandRow label="Add description" onClick={() => setShowDesc(true)} />}>
+            <Field label="Description">
+              <div class="rounded-lg bg-input-base px-2.5 py-2 ring-1 ring-inset ring-border-base/28 shadow-[inset_0_1px_0_rgba(255,255,255,0.035)] transition-colors focus-within:bg-input-hover focus-within:ring-border-base/65">
                 <textarea
-                  class="w-full bg-transparent text-12-regular text-text-base outline-none resize-none min-h-14 placeholder:text-text-weaker/50"
+                  class="w-full bg-transparent text-12-regular text-text-base outline-none resize-none min-h-20 placeholder:text-text-weaker/50"
                   placeholder="Description..."
                   value={description()}
                   onInput={(e) => setDescription(e.currentTarget.value)}
-                  rows={2}
+                  rows={3}
                 />
               </div>
-            </div>
+            </Field>
           </Show>
 
-          <Show
-            when={showTags()}
-            fallback={<ExpandRow icon="tag" label="Add tags" onClick={() => setShowTags(true)} />}
-          >
-            <div class="flex items-center gap-2.5 py-2.5">
-              <div class="shrink-0 text-icon-weak">
-                <Icon name="tag" size="small" />
-              </div>
-              <div class="flex-1 rounded-lg bg-surface-raised-base px-2.5 py-2 ring-1 ring-inset ring-border-base/28">
+          <Show when={showTags()} fallback={<ExpandRow label="Add tags" onClick={() => setShowTags(true)} />}>
+            <Field label="Tags">
+              <div class="rounded-lg bg-input-base px-2.5 py-2 ring-1 ring-inset ring-border-base/28 shadow-[inset_0_1px_0_rgba(255,255,255,0.035)] transition-colors focus-within:bg-input-hover focus-within:ring-border-base/65">
                 <input
                   type="text"
                   class="w-full bg-transparent text-12-regular text-text-base outline-none placeholder:text-text-weaker/50"
@@ -473,27 +463,27 @@ export function AgendaForm(props: {
                   onInput={(e) => setTagsText(e.currentTarget.value)}
                 />
               </div>
-            </div>
+            </Field>
           </Show>
 
           <Divider />
 
           <button
             type="button"
-            class="flex items-center gap-2.5 py-2.5 w-full text-left"
+            class="flex items-center gap-3 rounded-lg bg-input-base px-3.5 py-3 w-full text-left ring-1 ring-inset ring-border-base/28 shadow-[inset_0_1px_0_rgba(255,255,255,0.035)] transition-colors hover:bg-input-hover"
             onClick={() => setShowAdvanced((v) => !v)}
           >
-            <div class="shrink-0 text-icon-weak">
-              <Icon name="sliders-horizontal" size="small" />
-            </div>
-            <span class="text-12-regular text-text-weak flex-1">Advanced</span>
+            <span class="flex min-w-0 flex-1 flex-col gap-0.5">
+              <span class="text-12-medium text-text-strong">Advanced settings</span>
+              <span class="text-11-regular text-text-weaker truncate">Scope and run options.</span>
+            </span>
             <div class="shrink-0 text-icon-weak">
               <Icon name={showAdvanced() ? "chevron-up" : "chevron-down"} size="small" />
             </div>
           </button>
 
           <Show when={showAdvanced()}>
-            <div class="pl-8 pb-3 flex flex-col gap-3">
+            <div class="pb-3 flex flex-col gap-3">
               <Show when={!isEdit() && scopes().length > 1}>
                 <div class="flex flex-col gap-1">
                   <span class="text-11-medium text-text-weaker">Scope</span>
@@ -514,6 +504,32 @@ export function AgendaForm(props: {
         <div class="shrink-0 mx-5 mb-3 text-12-regular text-text-diff-delete-base bg-text-diff-delete-base/10 border border-text-diff-delete-base/18 rounded-[1rem] px-3 py-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
           {error()}
         </div>
+      </Show>
+
+      <Show when={isDialog()}>
+        <AppPanel.Footer class="!px-6 !py-4 justify-end">
+          <button
+            type="button"
+            class="h-9 rounded-lg px-4 text-12-medium text-text-base ring-1 ring-inset ring-border-base/50 transition-colors hover:bg-surface-raised-base-hover"
+            onClick={props.onBack}
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            classList={{
+              "h-9 rounded-lg px-4 text-12-medium transition-colors ring-1 ring-inset": true,
+              "bg-text-strong text-background-base hover:bg-text-base ring-white/12": canSubmit(),
+              "bg-surface-raised-base text-text-weaker ring-border-base/35 cursor-not-allowed": !canSubmit(),
+            }}
+            onClick={save}
+            disabled={!canSubmit()}
+          >
+            <Show when={!saving()} fallback={<Spinner class="size-3 inline-block" />}>
+              {isEdit() ? "Save" : "Create"}
+            </Show>
+          </button>
+        </AppPanel.Footer>
       </Show>
     </>
   )
@@ -566,8 +582,8 @@ function DatePicker(props: { value: number; onChange: (ts: number) => void }) {
   })
 
   function cellClass(ts: number): string {
-    if (ts === selected()) return "bg-surface-interactive-solid text-text-on-interactive-base"
-    if (ts === today()) return "bg-surface-interactive-selected-weak text-text-interactive-base"
+    if (ts === selected()) return "bg-text-strong text-background-base"
+    if (ts === today()) return "bg-surface-raised-base text-text-strong ring-1 ring-inset ring-border-base/55"
     const inMonth = new Date(ts).getMonth() === currentMonth()
     return inMonth ? "text-text-base hover:bg-surface-raised-base-hover" : "text-text-weaker/40"
   }
@@ -576,7 +592,7 @@ function DatePicker(props: { value: number; onChange: (ts: number) => void }) {
     <div ref={containerRef} class="relative">
       <button
         type="button"
-        class="px-2.5 py-1 rounded-full text-12-medium text-text-base border border-border-base/45 bg-surface-raised-base/94 hover:border-border-interactive-base transition-colors"
+        class="px-2.5 py-1 rounded-full text-12-medium text-text-base border border-border-base/45 bg-surface-raised-base/94 hover:border-border-base transition-colors"
         onClick={() => setOpen((v) => !v)}
       >
         {formatDate(props.value)}
@@ -584,7 +600,7 @@ function DatePicker(props: { value: number; onChange: (ts: number) => void }) {
 
       <Show when={open()}>
         <div
-          class="absolute top-full left-0 mt-1 z-50 border border-border-base/65 bg-background-base/92 backdrop-blur-xl rounded-[1rem] shadow-[0_18px_46px_-34px_color-mix(in_srgb,var(--surface-brand-base)_22%,transparent)] p-3 select-none"
+          class="absolute top-full left-0 mt-1 z-50 border border-border-base/65 bg-background-base/92 backdrop-blur-xl rounded-[1rem] shadow-[0_18px_46px_-34px_rgba(0,0,0,0.68)] p-3 select-none"
           style={{ width: "224px" }}
         >
           <div class="flex items-center justify-between mb-2">
@@ -623,7 +639,7 @@ function DatePicker(props: { value: number; onChange: (ts: number) => void }) {
 
           <button
             type="button"
-            class="mt-2 text-11-medium text-text-interactive-base hover:text-text-interactive-base-hover"
+            class="mt-2 text-11-medium text-text-strong hover:text-text-base"
             onClick={() => {
               props.onChange(today())
               setDisplayMonth(today())
@@ -683,7 +699,7 @@ function TimePicker(props: {
     <div ref={containerRef} class="relative">
       <button
         type="button"
-        class="px-2.5 py-1 rounded-full text-12-medium text-text-base border border-border-base/45 bg-surface-raised-base/94 hover:border-border-interactive-base transition-colors tabular-nums"
+        class="px-2.5 py-1 rounded-full text-12-medium text-text-base border border-border-base/45 bg-surface-raised-base/94 hover:border-border-strong-base/60 transition-colors tabular-nums"
         onClick={() => setOpen((v) => !v)}
       >
         {pad2(props.hour)}:{pad2(props.minute)}
@@ -691,7 +707,7 @@ function TimePicker(props: {
 
       <Show when={open()}>
         <div
-          class="absolute top-full left-0 mt-1 z-50 border border-border-base/65 bg-background-base/92 backdrop-blur-xl rounded-[1rem] shadow-[0_18px_46px_-34px_color-mix(in_srgb,var(--surface-brand-base)_22%,transparent)] flex overflow-hidden"
+          class="absolute top-full left-0 mt-1 z-50 border border-border-base/65 bg-background-base/92 backdrop-blur-xl rounded-[1rem] shadow-[0_18px_46px_-34px_rgba(0,0,0,0.68)] flex overflow-hidden"
           style={{ height: "200px" }}
         >
           <div
@@ -704,7 +720,7 @@ function TimePicker(props: {
                   type="button"
                   classList={{
                     "w-full px-2 py-1.5 text-12-regular text-center transition-colors tabular-nums": true,
-                    "bg-surface-interactive-selected-weak text-text-interactive-base": h === props.hour,
+                    "bg-text-strong text-background-base": h === props.hour,
                     "text-text-base hover:bg-surface-raised-base-hover/70": h !== props.hour,
                   }}
                   onClick={() => props.onHourChange(h)}
@@ -721,7 +737,7 @@ function TimePicker(props: {
                   type="button"
                   classList={{
                     "w-full px-2 py-1.5 text-12-regular text-center transition-colors tabular-nums": true,
-                    "bg-surface-interactive-selected-weak text-text-interactive-base": m === props.minute,
+                    "bg-text-strong text-background-base": m === props.minute,
                     "text-text-base hover:bg-surface-raised-base-hover/70": m !== props.minute,
                   }}
                   onClick={() => props.onMinuteChange(m)}
@@ -769,7 +785,7 @@ function RepeatControl(props: {
           type="text"
           inputmode="numeric"
           pattern="[0-9]*"
-          class="w-12 bg-surface-inset-base/65 text-12-medium text-text-strong text-center outline-none px-1 py-0.5 rounded-full border border-border-base/45 focus:border-border-interactive-base tabular-nums"
+          class="w-12 bg-surface-inset-base/65 text-12-medium text-text-strong text-center outline-none px-1 py-0.5 rounded-full border border-border-base/45 focus:border-border-strong-base tabular-nums"
           value={props.count}
           onInput={(e) => {
             const raw = e.currentTarget.value.replace(/[^0-9]/g, "")
@@ -789,21 +805,21 @@ function RepeatControl(props: {
         <div ref={unitRef} class="relative">
           <button
             type="button"
-            class="flex items-center gap-1 px-2.5 py-0.5 rounded-full text-12-regular text-text-base border border-border-base/45 bg-surface-raised-base/94 hover:border-border-interactive-base transition-colors"
+            class="flex items-center gap-1 px-2.5 py-0.5 rounded-full text-12-regular text-text-base border border-border-base/45 bg-surface-raised-base/94 hover:border-border-strong-base/60 transition-colors"
             onClick={() => setUnitOpen((v) => !v)}
           >
             {props.unit}
             <Icon name="chevron-down" size="small" class="text-icon-weak" />
           </button>
           <Show when={unitOpen()}>
-            <div class="absolute top-full left-0 mt-1 z-50 border border-border-base/65 bg-background-base/92 backdrop-blur-xl rounded-[1rem] shadow-[0_18px_46px_-34px_color-mix(in_srgb,var(--surface-brand-base)_22%,transparent)] overflow-hidden min-w-28">
+            <div class="absolute top-full left-0 mt-1 z-50 border border-border-base/65 bg-background-base/92 backdrop-blur-xl rounded-[1rem] shadow-[0_18px_46px_-34px_rgba(0,0,0,0.68)] overflow-hidden min-w-28">
               <For each={INTERVAL_UNITS}>
                 {(u) => (
                   <button
                     type="button"
                     classList={{
                       "w-full px-3 py-1.5 text-12-regular text-left flex items-center justify-between transition-colors": true,
-                      "text-text-interactive-base": u.value === props.unit,
+                      "text-text-strong bg-surface-raised-base": u.value === props.unit,
                       "text-text-base hover:bg-surface-raised-base-hover": u.value !== props.unit,
                     }}
                     onClick={() => {
@@ -813,7 +829,7 @@ function RepeatControl(props: {
                   >
                     <span>{u.label}</span>
                     <Show when={u.value === props.unit}>
-                      <Icon name="check" size="small" class="text-text-interactive-base" />
+                      <Icon name="check" size="small" class="text-text-strong" />
                     </Show>
                   </button>
                 )}
@@ -852,8 +868,7 @@ function ModeChip(props: { active: boolean; onClick: () => void; children: strin
       type="button"
       classList={{
         "px-2 py-0.5 rounded-full text-10-medium transition-colors": true,
-        "bg-surface-interactive-selected-weak text-text-interactive-base ring-1 ring-inset ring-border-interactive-base/12":
-          props.active,
+        "bg-text-strong text-background-base ring-1 ring-inset ring-white/12": props.active,
         "text-text-weaker hover:text-text-weak": !props.active,
       }}
       onClick={props.onClick}
@@ -899,7 +914,7 @@ function ScopePicker(props: {
     <div ref={containerRef} class="relative">
       <button
         type="button"
-        class="w-full flex items-center justify-between px-2.5 py-1.5 rounded-[0.95rem] text-12-regular text-text-base border border-border-base/45 bg-surface-raised-base/94 hover:border-border-interactive-base transition-colors"
+        class="w-full flex items-center justify-between px-2.5 py-1.5 rounded-[0.95rem] text-12-regular text-text-base border border-border-base/45 bg-surface-raised-base/94 hover:border-border-strong-base/60 transition-colors"
         onClick={() => setOpen((v) => !v)}
       >
         <span class="truncate">{activeLabel()}</span>
@@ -907,14 +922,14 @@ function ScopePicker(props: {
       </button>
 
       <Show when={open()}>
-        <div class="absolute top-full left-0 right-0 mt-1 z-50 border border-border-base/65 bg-background-base/92 backdrop-blur-xl rounded-[1rem] shadow-[0_18px_46px_-34px_color-mix(in_srgb,var(--surface-brand-base)_22%,transparent)] overflow-hidden max-h-48 overflow-y-auto [scrollbar-width:thin]">
+        <div class="absolute top-full left-0 right-0 mt-1 z-50 border border-border-base/65 bg-background-base/92 backdrop-blur-xl rounded-[1rem] shadow-[0_18px_46px_-34px_rgba(0,0,0,0.68)] overflow-hidden max-h-48 overflow-y-auto [scrollbar-width:thin]">
           <For each={props.scopes}>
             {(scope) => (
               <button
                 type="button"
                 classList={{
                   "w-full px-3 py-2 text-12-regular text-left flex items-center justify-between transition-colors": true,
-                  "text-text-interactive-base": scope.id === props.value,
+                  "text-text-strong bg-surface-raised-base": scope.id === props.value,
                   "text-text-base hover:bg-surface-raised-base-hover": scope.id !== props.value,
                 }}
                 onClick={() => {
@@ -924,7 +939,7 @@ function ScopePicker(props: {
               >
                 <span class="truncate">{scopeLabel(scope)}</span>
                 <Show when={scope.id === props.value}>
-                  <Icon name="check" size="small" class="shrink-0 text-text-interactive-base" />
+                  <Icon name="check" size="small" class="shrink-0 text-text-strong" />
                 </Show>
               </button>
             )}
@@ -939,21 +954,27 @@ function ScopePicker(props: {
 // Small helpers
 // ---------------------------------------------------------------------------
 
+function Field(props: { label: string; children: JSX.Element }) {
+  return (
+    <div class="flex flex-col gap-2">
+      <span class="px-0.5 text-12-medium text-text-strong">{props.label}</span>
+      {props.children}
+    </div>
+  )
+}
+
 function Divider() {
   return <div class="border-b border-border-weaker-base/40 my-2" />
 }
 
-function ExpandRow(props: { icon: "file-text" | "tag"; label: string; onClick: () => void }) {
+function ExpandRow(props: { label: string; onClick: () => void }) {
   return (
     <button
       type="button"
-      class="flex items-center gap-2.5 py-2.5 px-0.5 w-full text-left rounded-[0.95rem] hover:bg-surface-raised-base-hover/14 transition-colors"
+      class="flex items-center py-2.5 px-0.5 w-full text-left rounded-[0.95rem] hover:bg-surface-raised-base-hover/14 transition-colors"
       onClick={props.onClick}
     >
-      <div class="shrink-0 text-icon-weak">
-        <Icon name={props.icon} size="small" />
-      </div>
-      <span class="text-12-regular text-text-interactive-base">{props.label}</span>
+      <span class="text-12-regular text-text-strong">{props.label}</span>
     </button>
   )
 }

@@ -24,6 +24,34 @@
   overflow: hidden;
 }
 
+[data-component="dialog"] [data-slot="dialog-content"].agenda-form-dialog [data-slot="dialog-header"] {
+  padding: 22px 24px 14px;
+}
+
+[data-component="dialog"] [data-slot="dialog-content"].agenda-form-dialog [data-slot="dialog-title"] {
+  font-size: 17px;
+  line-height: 24px;
+  letter-spacing: 0;
+}
+
+[data-component="dialog"] [data-slot="dialog-content"].agenda-form-dialog [data-slot="dialog-close-button"] {
+  display: inline-flex;
+  width: 32px;
+  height: 32px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  color: var(--icon-weak);
+  transition:
+    background-color 150ms ease,
+    color 150ms ease;
+}
+
+[data-component="dialog"] [data-slot="dialog-content"].agenda-form-dialog [data-slot="dialog-close-button"]:hover {
+  background: var(--surface-raised-base-hover);
+  color: var(--icon-base);
+}
+
 @media (max-width: 760px) {
   [data-component="dialog"] [data-slot="dialog-container"]:has(.agenda-form-dialog) {
     width: min(calc(100vw - 16px), 100vw);

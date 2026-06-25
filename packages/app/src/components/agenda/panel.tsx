@@ -165,7 +165,7 @@ export function AgendaPanel() {
 
   function openForm(item?: AgendaItem) {
     dialog.show(() => (
-      <Dialog class="agenda-form-dialog">
+      <Dialog class="agenda-form-dialog" title={item ? "Edit Agenda" : "New Agenda"}>
         <AgendaForm directory={formDirectory(item)} item={item} presentation="dialog" onBack={() => dialog.close()} />
       </Dialog>
     ))
@@ -245,10 +245,10 @@ export function AgendaPanel() {
             <AppPanel.Title>Agenda</AppPanel.Title>
             <button
               type="button"
-              class="inline-flex h-9 items-center gap-2 rounded-xl bg-text-strong px-3.5 text-13-medium text-background-base shadow-sm transition-colors hover:bg-text-base"
+              class="inline-flex h-9 items-center gap-2 rounded-xl bg-text-strong px-3.5 text-13-medium text-background-base ring-1 ring-inset ring-white/12 shadow-sm transition-colors hover:bg-text-base"
               onClick={openCreate}
             >
-              <Icon name="plus" size="small" />
+              <Icon name="plus" size="small" class="text-background-base" />
               <span>New Agenda</span>
             </button>
           </AppPanel.HeaderRow>
@@ -264,15 +264,15 @@ export function AgendaPanel() {
 
         <Show when={tab() === "schedule"}>
           <AppPanel.Body padding={false} class="!px-5 flex flex-col gap-4">
-            <div class="grid max-w-[920px] grid-cols-1 items-start gap-3 pb-1 xl:grid-cols-[minmax(320px,380px)_minmax(280px,500px)]">
-              <div class="self-start rounded-xl bg-surface-inset-base p-3.5 ring-1 ring-inset ring-border-base/45">
+            <div class="grid w-full grid-cols-1 items-stretch gap-3 pb-1 xl:grid-cols-[minmax(320px,380px)_minmax(0,1fr)]">
+              <div class="h-full rounded-xl bg-surface-inset-base p-3.5 ring-1 ring-inset ring-border-base/45">
                 <MiniCalendar anchor={anchor()} viewMode={viewMode()} onDateClick={handleDateClick} />
               </div>
-              <div class="min-w-0 flex flex-col self-start rounded-xl bg-surface-inset-base p-3 ring-1 ring-inset ring-border-base/40">
+              <div class="min-w-0 flex h-full flex-col rounded-xl bg-surface-inset-base p-3 ring-1 ring-inset ring-border-base/40">
                 <Show
                   when={todoItems().length > 0}
                   fallback={
-                    <div class="flex min-h-28 items-center justify-center rounded-lg bg-surface-raised-base px-3 py-4">
+                    <div class="flex min-h-0 flex-1 items-center justify-center rounded-lg bg-surface-raised-base px-3 py-4">
                       <span class="text-10-medium text-text-weaker/60">No todo items</span>
                     </div>
                   }
@@ -285,7 +285,7 @@ export function AgendaPanel() {
                       </span>
                     </div>
                   </div>
-                  <div class="max-h-[16rem] overflow-y-auto flex flex-col gap-1.5 rounded-lg bg-surface-raised-base p-1.5 [scrollbar-width:thin]">
+                  <div class="min-h-0 flex-1 overflow-y-auto flex flex-col gap-1.5 rounded-lg bg-surface-raised-base p-1.5 [scrollbar-width:thin]">
                     <For each={todoItems()}>
                       {(item) => (
                         <TodoCard
@@ -366,7 +366,7 @@ function TodoCard(props: { item: AgendaItem; onClick: (e: MouseEvent) => void })
       onClick={props.onClick}
     >
       <span
-        class={`shrink-0 w-1.5 h-1.5 rounded-full ${props.item.status === "active" ? "bg-icon-success-base" : props.item.status === "paused" ? "bg-icon-warning-base" : props.item.status === "done" ? "bg-text-weaker" : "bg-border-interactive-base"}`}
+        class={`shrink-0 w-1.5 h-1.5 rounded-full ${props.item.status === "active" ? "bg-icon-success-base" : props.item.status === "paused" ? "bg-icon-warning-base" : props.item.status === "done" ? "bg-text-weaker" : "bg-border-base"}`}
       />
       <span class="min-w-0 flex-1 truncate text-12-regular text-text-strong">{props.item.title}</span>
       <span class="inline-flex shrink-0 items-center rounded-full bg-surface-inset-base px-2 py-0.5 text-[9px] font-medium text-text-weaker ring-1 ring-inset ring-border-base/35">
@@ -421,7 +421,7 @@ function DetailPopover(props: {
   return (
     <div
       ref={cardRef}
-      class="pointer-events-auto fixed z-[102] w-full max-w-sm max-h-[calc(100vh-32px)] flex flex-col overflow-hidden rounded-[1.35rem] border border-border-base/70 bg-background-base/90 backdrop-blur-xl shadow-[0_20px_54px_-38px_color-mix(in_srgb,var(--surface-brand-base)_24%,transparent)] animate-in fade-in slide-in-from-top-2 duration-150"
+      class="pointer-events-auto fixed z-[102] w-full max-w-sm max-h-[calc(100vh-32px)] flex flex-col overflow-hidden rounded-[1.35rem] border border-border-base/70 bg-background-base/90 backdrop-blur-xl shadow-[0_20px_54px_-38px_rgba(0,0,0,0.68)] animate-in fade-in slide-in-from-top-2 duration-150"
       style={pos()}
     >
       <div class="shrink-0 flex items-center gap-1 px-3.5 pt-3 pb-2">
@@ -479,7 +479,7 @@ function DetailPopover(props: {
               </span>
             </Show>
             <Show when={props.item.createdBy === "agent"}>
-              <span class="px-2 py-0.5 rounded-full bg-surface-interactive-selected-weak text-10-medium text-text-interactive-base ring-1 ring-inset ring-border-interactive-base/15">
+              <span class="px-2 py-0.5 rounded-full bg-surface-inset-base text-10-medium text-text-weak ring-1 ring-inset ring-border-base/35">
                 agent
               </span>
             </Show>
@@ -667,7 +667,7 @@ function ActionButton(props: {
       classList={{
         "px-2.5 py-1 rounded-full text-11-medium border transition-colors": true,
         "border-icon-success-base/25 bg-icon-success-base/8 text-icon-success-base": done(),
-        "border-border-interactive-base/25 bg-surface-interactive-selected-weak text-text-interactive-base hover:bg-surface-interactive-selected":
+        "border-border-base/45 bg-text-strong text-background-base hover:bg-text-base":
           variant() === "primary" && !props.loading && !done(),
         "border-text-diff-delete-base/25 bg-text-diff-delete-base/6 text-text-diff-delete-base hover:bg-text-diff-delete-base/10":
           variant() === "danger" && !props.loading && !done(),

@@ -16,7 +16,7 @@ export function agendaStatusTone(status: string) {
   if (status === "paused")
     return "bg-icon-warning-base/14 text-icon-warning-base ring-1 ring-inset ring-icon-warning-base/15"
   if (status === "pending") {
-    return "bg-surface-interactive-selected-weak text-text-interactive-base ring-1 ring-inset ring-border-interactive-base/15"
+    return "bg-surface-inset-base text-text-weak ring-1 ring-inset ring-border-base/40"
   }
   if (status === "done") return "bg-surface-inset-base/85 text-text-weak ring-1 ring-inset ring-border-base/40"
   if (status === "cancelled") {

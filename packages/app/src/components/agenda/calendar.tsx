@@ -121,10 +121,9 @@ function eventHeight(): number {
 
 const TIME_EVENT_COLORS: Record<string, string> = {
   active:
-    "bg-surface-interactive-selected border border-border-interactive-base/20 border-l-border-interactive-base shadow-[inset_0_1px_0_rgba(214,204,190,0.08)]",
+    "bg-surface-raised-base border border-border-base/45 border-l-text-strong shadow-[inset_0_1px_0_rgba(214,204,190,0.08)]",
   paused: "bg-icon-warning-base/18 border border-icon-warning-base/15 border-l-icon-warning-base",
-  pending:
-    "bg-surface-interactive-selected-weak border border-border-interactive-base/12 border-l-border-interactive-base",
+  pending: "bg-surface-inset-base border border-border-base/38 border-l-text-weaker",
   done: "bg-surface-inset-base/88 border border-border-base/35 border-l-text-weaker",
   cancelled: "bg-text-diff-delete-base/12 border border-text-diff-delete-base/10 border-l-text-diff-delete-base",
 }
@@ -132,7 +131,7 @@ const TIME_EVENT_COLORS: Record<string, string> = {
 const MONTH_DOT_COLORS: Record<string, string> = {
   active: "bg-icon-success-base",
   paused: "bg-icon-warning-base",
-  pending: "bg-surface-interactive-solid",
+  pending: "bg-text-weaker",
   done: "bg-text-weaker",
   cancelled: "bg-text-diff-delete-base",
 }
@@ -276,7 +275,7 @@ function NavBar(props: {
     <div class="flex shrink-0 items-center gap-2 rounded-xl bg-surface-inset-base px-3.5 py-3 ring-1 ring-inset ring-border-base/45">
       <button
         type="button"
-        class="rounded-full bg-surface-interactive-selected px-2.5 py-1 text-10-medium text-text-interactive-base ring-1 ring-inset ring-border-interactive-base/30 transition-colors"
+        class="rounded-full bg-surface-raised-base px-2.5 py-1 text-10-medium text-text-strong ring-1 ring-inset ring-border-base/55 transition-colors hover:bg-surface-raised-base-hover"
         onClick={props.onToday}
       >
         Today
@@ -303,7 +302,7 @@ function NavBar(props: {
               type="button"
               classList={{
                 "px-2.5 py-1 rounded-md text-11-medium transition-all": true,
-                "bg-surface-interactive-selected text-text-interactive-base": props.viewMode === mode,
+                "bg-text-strong text-background-base": props.viewMode === mode,
                 "text-text-weaker hover:text-text-weak": props.viewMode !== mode,
               }}
               onClick={() => props.onViewModeChange?.(mode)}
@@ -341,15 +340,14 @@ function TimeGrid(props: {
               <div
                 classList={{
                   "flex flex-col items-center py-1.5 text-center": true,
-                  "text-text-interactive-base": col.isToday,
+                  "text-text-strong": col.isToday,
                 }}
               >
                 <span class="text-10-medium text-text-weaker">{col.label}</span>
                 <span
                   classList={{
                     "text-12-medium w-6 h-6 flex items-center justify-center rounded-full": true,
-                    "bg-surface-interactive-solid text-text-on-interactive-base ring-1 ring-border-interactive-base/35 shadow-[0_2px_8px_rgba(56,88,182,0.16)]":
-                      col.isToday,
+                    "bg-text-strong text-background-base ring-1 ring-white/12": col.isToday,
                     "text-text-strong": !col.isToday,
                   }}
                 >
@@ -503,7 +501,7 @@ function MonthGrid(props: {
                     <span
                       classList={{
                         "mb-1 inline-flex h-6 w-6 items-center justify-center rounded-full text-12-medium": true,
-                        "bg-surface-interactive-solid text-text-on-interactive-base": cell.isToday,
+                        "bg-text-strong text-background-base ring-1 ring-white/12": cell.isToday,
                         "text-text-strong": !cell.isToday && cell.isCurrentMonth,
                         "text-text-weaker/40": !cell.isToday && !cell.isCurrentMonth,
                       }}
@@ -514,7 +512,7 @@ function MonthGrid(props: {
                       <For each={visible()}>
                         {(event) => (
                           <div
-                            class="flex min-w-0 items-center gap-1 rounded-md px-1.5 py-0.5 transition-colors hover:bg-surface-interactive-selected-weak"
+                            class="flex min-w-0 items-center gap-1 rounded-md px-1.5 py-0.5 transition-colors hover:bg-surface-raised-base-hover"
                             onClick={(e) => {
                               e.stopPropagation()
                               props.onEventClick?.(event, e)
