@@ -58,6 +58,7 @@ export const BrowserDownloadTool = Tool.define("browser_download", {
   }),
   async execute(params, ctx) {
     const workspace = ScopeContext.current.directory
+    const owner = BrowserOwner.fromToolContext(ctx)
 
     // Check URL policy
     const policyResult = BrowserPolicy.evaluateURL(params.url, workspace)
@@ -69,8 +70,8 @@ export const BrowserDownloadTool = Tool.define("browser_download", {
     let networkMimeType: string | undefined
     try {
       const tab = await BrowserToolHelper.resolveTab(ctx, params.tabId)
-      const requests = await tab.networkRequests(50)
-      const matched = requests.find((r) => r.url === params.url && r.mimeType)
+      const result = await BrowserToolHelper.executeControl(owner, { type: "network", tabId: tab.id, maxEntries: 50 })
+      const matched = result.type === "network" ? result.requests.find((r) => r.url === params.url && r.mimeType) : null
       if (matched?.mimeType) {
         networkMimeType = matched.mimeType
       }

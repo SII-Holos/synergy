@@ -16,6 +16,7 @@ export namespace BrowserHost {
     ensure(): Promise<unknown>
     health(): Promise<BrowserInstall.Health>
     getOrCreateSession(owner: BrowserOwner.Info): Promise<BrowserSession>
+    state?(): { sessions: Map<string, BrowserSession> }
   }
 
   export interface EnsureSessionOptions {
@@ -74,6 +75,10 @@ export namespace BrowserHost {
   ): Promise<BrowserControl.Result> {
     const session = await ensureSession(owner)
     return BrowserControl.execute(session, command)
+  }
+
+  export function sessions(): Map<string, BrowserSession> {
+    return new Map((runtime.state?.() ?? BrowserRuntime.state()).sessions)
   }
 
   export function useRuntimeForTest(adapter: RuntimeAdapter): () => void {
