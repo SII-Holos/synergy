@@ -166,6 +166,13 @@ export function BrowserSurface(props: { sessionID: string; routeDirectory?: stri
     scheduleFitViewport()
   })
 
+  function syncNativeNavigation(tabId: string, url?: string) {
+    if (!url || url === "about:blank") return
+    const tab = browser.session.tabs.find((item) => item.id === tabId)
+    if (tab?.url === url) return
+    browser.send({ type: "navigate", source: "user", tabId, url })
+  }
+
   onMount(() => {
     if (!wrapperRef) return
     const observer = new ResizeObserver(scheduleFitViewport)
@@ -176,7 +183,10 @@ export function BrowserSurface(props: { sessionID: string; routeDirectory?: stri
       switch (event.type) {
         case "native.loading": {
           browser.setTabLoading(event.tabId, true)
-          if (event.url) browser.setTabUrl(event.tabId, event.url)
+          if (event.url) {
+            syncNativeNavigation(event.tabId, event.url)
+            browser.setTabUrl(event.tabId, event.url)
+          }
           break
         }
         case "native.loaded": {
@@ -186,6 +196,7 @@ export function BrowserSurface(props: { sessionID: string; routeDirectory?: stri
           break
         }
         case "native.navigated": {
+          syncNativeNavigation(event.tabId, event.url)
           browser.setTabUrl(event.tabId, event.url)
           break
         }

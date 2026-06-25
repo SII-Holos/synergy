@@ -104,6 +104,9 @@ export class BrowserNativeViewManager {
     contents.on("did-navigate", (_event, url) => {
       this.emit({ type: "native.navigated", tabId, url })
     })
+    contents.on("did-navigate-in-page", (_event, url) => {
+      this.emit({ type: "native.navigated", tabId, url })
+    })
     contents.on("page-title-updated", (_event, title) => {
       this.emit({ type: "native.title", tabId, title })
     })
