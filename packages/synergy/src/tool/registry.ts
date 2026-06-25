@@ -48,7 +48,6 @@ import { AgendaLogsTool } from "./agenda-logs"
 // import { AgoraCommentTool } from "./agora-comment"
 import { AttachTool } from "./attach"
 
-import { InvalidTool } from "./invalid"
 import { SkillTool } from "./skill"
 import { LookAtTool } from "./lookat"
 import { ScanDocumentTool } from "./scan-document"
@@ -259,7 +258,6 @@ export namespace ToolRegistry {
     const config = await Config.current()
 
     return [
-      InvalidTool,
       ...(Flag.SYNERGY_CLIENT === "cli" ? [QuestionTool] : []),
       BashTool,
       ProcessTool,

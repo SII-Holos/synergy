@@ -14,7 +14,7 @@ import { LLM } from "../../src/session/llm"
  *          (c) native JSON.parse of the input fails,
  *          (d) parsePartialJson yields a non-empty plain object.
  *   (I3) When any of the above fails, the function returns null so the caller
- *        can route to the invalid-tool fallback.
+ *        can surface the original tool error without rewriting the tool name.
  *   (I4) The function is idempotent — feeding its own output back into itself
  *        with the same tool set must not change the result.
  *   (I5) The function is pure — no side effects, no hidden state. Identical

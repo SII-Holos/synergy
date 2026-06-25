@@ -56,18 +56,17 @@ completed: |
   1. BlueprintLoop domain created (types.ts, loop-store.ts, error.ts, event.ts, index.ts, migration.ts) ✅
   2. Identifier and StoragePath registered ✅
   3. Server routes created (server/blueprint.ts) ✅
+  4. Plan Mode prompt injection and backend tool availability policy implemented ✅
 
 remaining: |
-  1. Plan Mode prompt injection not implemented — invoke.ts has placeholder but no plan-mode layer ❌ BLOCKING
-  2. tool-resolver.ts missing PLAN_MODE_ALLOWED_TOOLS whitelist ❌ BLOCKING
-  3. enforcement/gate.ts does not classify blueprint tools ❌ BLOCKING
-  4. Frontend Blueprint Panel is Phase 6-9, intentionally not in scope ⚠️ NON-BLOCKING
+  1. enforcement/gate.ts does not classify blueprint tools ❌ BLOCKING
+  2. Route tests for Blueprint restart/finish are missing ❌ BLOCKING
+  3. Frontend Blueprint Panel is Phase 6-9, intentionally not in scope ⚠️ NON-BLOCKING
 
 instructions: |
   Must implement:
-  1. In invoke.ts, import plan-mode*.txt files and insert Plan Mode layer in systemParts (between cortex context and memory)
-  2. In tool-resolver.ts, add PLAN_MODE_ALLOWED_TOOLS Set with at least 30 read/coordination/note tools and apply filter before permission check
-  3. In enforcement/gate.ts classify(), add branches for note read/write tools (file_read/file_write) and blueprint_loop_finish/restart (session_state)
+  1. In enforcement/gate.ts classify(), add branches for note read/write tools (file_read/file_write) and blueprint_loop_finish/restart (session_state)
+  2. Add route-level tests covering Blueprint restart and finish behavior.
   Do not implement frontend Phase 6-9.
 ```
 

@@ -35,6 +35,8 @@ import { ControlProfileCompiler } from "@/control-profile/compiler"
 import { ApprovalPolicy, type ApprovalMetadata } from "@/control-profile/approval"
 import { ExecutionBudget } from "@/util/execution-budget"
 import { Observability } from "@/observability"
+import { SessionModePolicy } from "./tool-mode-policy"
+import { ToolDiagnostic, ToolDiagnosticError, type ToolDiagnostic as ToolDiagnosticInfo } from "@/tool/diagnostic"
 
 export namespace ToolResolver {
   const log = Log.create({ service: "tool.resolver" })
@@ -58,6 +60,16 @@ export namespace ToolResolver {
     description: string
     inputSchema: JSONSchema7
     createRuntimeTool?(input: Input): AITool
+  }
+
+  export interface Availability {
+    visible: Definition[]
+    diagnostics: Map<string, ToolDiagnosticInfo>
+  }
+
+  export interface ResolvedTools {
+    tools: Record<string, AITool>
+    activeToolIDs: string[]
   }
 
   /**
@@ -594,6 +606,10 @@ export namespace ToolResolver {
   }
 
   function formatErrorForModel(error: unknown): string {
+    if (error instanceof ToolDiagnosticError) {
+      return error.message
+    }
+
     if (error instanceof EnforcementError.PolicyDenied) {
       return [
         `Permission denied by profile "${error.profileId}".`,
@@ -617,6 +633,15 @@ export namespace ToolResolver {
     }
 
     return (error as any).toString()
+  }
+
+  function metadataForError(error: unknown, approval?: ApprovalMetadata): Record<string, any> | undefined {
+    const diagnostic = ToolDiagnostic.fromError(error)
+    const metadata = {
+      ...(diagnostic ? ToolDiagnostic.metadata(diagnostic) : {}),
+      ...(approval ? { approval } : {}),
+    }
+    return Object.keys(metadata).length > 0 ? metadata : undefined
   }
 
   async function setApprovalMetadata(ctx: Tool.Context, approval: ApprovalMetadata) {
@@ -733,54 +758,6 @@ export namespace ToolResolver {
     }
   }
 
-  const PLAN_MODE_ALLOWED_TOOLS = new Set([
-    // Read tools
-    "read",
-    "glob",
-    "grep",
-    "view_file",
-    "scan_files",
-    "parse_code",
-    "look_at",
-    "scan_document",
-    "ast_grep",
-    "lsp",
-    // Session read
-    "session_list",
-    "session_read",
-    "session_search",
-    // Note read
-    "note_list",
-    "note_read",
-    "note_search",
-    "note_write",
-    "note_edit",
-    // Memory read
-    "memory_search",
-    "memory_get",
-    // Coordination read/write
-    "task_list",
-    "task_output",
-    "dagread",
-    "dagwrite",
-    "dagpatch",
-    "task",
-    "task_cancel",
-    // UI
-    "question",
-    "skill",
-    "search_tools",
-    "expand_tools",
-    // Network
-    "websearch",
-    "webfetch",
-    // Agenda read
-    "agenda_list",
-    "agenda_logs",
-    // Platform read
-    "worktree_list",
-  ])
-
   function forcedToolGroups(session?: Info) {
     const result = new Set<string>()
     if (session?.blueprint?.planMode || session?.blueprint?.loopID) {
@@ -789,8 +766,123 @@ export namespace ToolResolver {
     return result
   }
 
-  export async function definitions(input: Omit<Input, "processor">): Promise<Definition[]> {
-    using _ = log.time("definitions")
+  function applyAvailability(defs: Definition[], input: Omit<Input, "processor">): Availability {
+    const visible: Definition[] = []
+    const diagnostics = new Map<string, ToolDiagnosticInfo>()
+    const disabled = PermissionNext.disabled(
+      defs.map((item) => item.id),
+      PermissionNext.merge(input.agent.permission, PermissionNext.sessionRuleset(input.session)),
+    )
+    const activeBlueprintLoopID = input.session?.blueprint?.loopID
+    const isSupervisor = input.agent.name === "supervisor"
+    const forcedGroups = forcedToolGroups(input.session)
+    const allUserToolsDisabled = input.userTools?.["*"] === false
+
+    for (const def of defs) {
+      const modeDiagnostic = SessionModePolicy.visibility({ toolName: def.id, session: input.session })
+      if (modeDiagnostic) {
+        diagnostics.set(def.id, modeDiagnostic)
+        continue
+      }
+
+      if (!ToolExposure.isVisible(def.id, def.exposure, input.session?.toolState, { forcedGroups })) {
+        diagnostics.set(
+          def.id,
+          SessionModePolicy.unavailable({
+            toolName: def.id,
+            reason: "deferred",
+            session: input.session,
+            metadata: { exposure: def.exposure },
+          }),
+        )
+        continue
+      }
+
+      if (
+        !isSupervisor &&
+        (def.id === "blueprint_loop_restart" || (def.id === "blueprint_loop_finish" && !activeBlueprintLoopID))
+      ) {
+        diagnostics.set(
+          def.id,
+          SessionModePolicy.unavailable({
+            toolName: def.id,
+            reason: "supervisor_only",
+            session: input.session,
+          }),
+        )
+        continue
+      }
+
+      if (disabled.has(def.id)) {
+        diagnostics.set(
+          def.id,
+          SessionModePolicy.unavailable({
+            toolName: def.id,
+            reason: "permission",
+            session: input.session,
+          }),
+        )
+        continue
+      }
+
+      if (allUserToolsDisabled || input.userTools?.[def.id] === false) {
+        diagnostics.set(
+          def.id,
+          SessionModePolicy.unavailable({
+            toolName: def.id,
+            reason: "user_disabled",
+            session: input.session,
+          }),
+        )
+        continue
+      }
+
+      visible.push(def)
+    }
+
+    return { visible, diagnostics }
+  }
+
+  function diagnosticRuntimeTool(input: Input, diagnostic: ToolDiagnosticInfo): AITool {
+    const schema = {
+      type: "object",
+      additionalProperties: true,
+    } satisfies JSONSchema7
+
+    return tool({
+      id: diagnostic.toolName as any,
+      description: diagnostic.message,
+      inputSchema: jsonSchema(schema),
+      async execute(args: Record<string, unknown>, options: ToolCallOptions) {
+        const error = new ToolDiagnosticError({
+          ...diagnostic,
+          metadata: {
+            ...(diagnostic.metadata ?? {}),
+            attemptedInput: args as Record<string, unknown>,
+          },
+        })
+        input.processor.trackExecution(
+          options.toolCallId,
+          Promise.resolve({
+            status: "error",
+            input: args,
+            error: error.message,
+            metadata: ToolDiagnostic.metadata(error.diagnostic),
+          }),
+        )
+        throw error
+      },
+      toModelOutput(result: { output: string }) {
+        return {
+          type: "text",
+          value: result.output,
+        }
+      },
+    } as any) as AITool
+  }
+
+  async function collectDefinitions(input: Omit<Input, "processor">): Promise<Definition[]> {
+    using _ = log.time("definitions.collect")
     let result: Definition[] = []
 
     for (const item of await ToolRegistry.tools(input.model.providerID, input.agent)) {
@@ -849,6 +941,13 @@ export namespace ToolResolver {
                 })
 
                 const envelope = gate.evaluate(item.id, args as Record<string, any>)
+                const modeDiagnostic = SessionModePolicy.evaluateCall({
+                  toolName: item.id,
+                  args: args as Record<string, any>,
+                  session: runtimeInput.session,
+                  capabilities: envelope.capabilities,
+                })
+                if (modeDiagnostic) throw new ToolDiagnosticError(modeDiagnostic)
                 await applyGateApproval(ctx, gate, envelope, item.id, args as Record<string, any>, runtimeInput.session)
                 await toolTrace.phase("tool.approval.resolved", "approval resolved", {
                   decision: envelope.decision,
@@ -985,7 +1084,7 @@ export namespace ToolResolver {
                   status: "error",
                   input: args,
                   error: formatErrorForModel(error),
-                  metadata: approvalFromContext(ctx) ? { approval: approvalFromContext(ctx) } : undefined,
+                  metadata: metadataForError(error, approvalFromContext(ctx)),
                 })
                 await toolTrace?.error(error)
                 throw error
@@ -1069,6 +1168,13 @@ export namespace ToolResolver {
                     workspaceType: workspaceInfo?.type ?? "scope",
                   })
                   const envelope = gate.evaluate(key, args as Record<string, any>)
+                  const modeDiagnostic = SessionModePolicy.evaluateCall({
+                    toolName: key,
+                    args: args as Record<string, any>,
+                    session: runtimeInput.session,
+                    capabilities: envelope.capabilities,
+                  })
+                  if (modeDiagnostic) throw new ToolDiagnosticError(modeDiagnostic)
                   await applyGateApproval(ctx, gate, envelope, key, args as Record<string, any>, runtimeInput.session)
                   await toolTrace.phase("tool.approval.resolved", "approval resolved", {
                     decision: envelope.decision,
@@ -1186,7 +1292,7 @@ export namespace ToolResolver {
                     status: "error",
                     input: args,
                     error: formatErrorForModel(error),
-                    metadata: approvalFromContext(ctx) ? { approval: approvalFromContext(ctx) } : undefined,
+                    metadata: metadataForError(error, approvalFromContext(ctx)),
                   })
                   await toolTrace?.error(error)
                   throw error
@@ -1207,32 +1313,39 @@ export namespace ToolResolver {
       }
     }
 
-    result = result.filter((d) =>
-      ToolExposure.isVisible(d.id, d.exposure, input.session?.toolState, {
-        forcedGroups: forcedToolGroups(input.session),
-      }),
-    )
+    return result
+  }
 
-    if (input.session?.blueprint?.planMode) {
-      result = result.filter((d) => PLAN_MODE_ALLOWED_TOOLS.has(d.id))
+  export async function availability(input: Omit<Input, "processor">): Promise<Availability> {
+    using _ = log.time("availability")
+    return applyAvailability(await collectDefinitions(input), input)
+  }
+
+  export async function definitions(input: Omit<Input, "processor">): Promise<Definition[]> {
+    return (await availability(input)).visible
+  }
+
+  export async function resolveWithAvailability(input: Input): Promise<ResolvedTools> {
+    using _ = log.time("resolveWithAvailability")
+    const tools: Record<string, AITool> = {}
+    const availabilityResult = await availability(input)
+
+    for (const item of availabilityResult.visible) {
+      const runtimeTool = item.createRuntimeTool?.(input)
+      if (runtimeTool) {
+        tools[item.id] = runtimeTool
+      }
     }
 
-    const activeBlueprintLoopID = input.session?.blueprint?.loopID
-    const isSupervisor = input.agent.name === "supervisor"
-    if (!isSupervisor) {
-      result = result.filter((d) => d.id !== "blueprint_loop_restart")
+    for (const diagnostic of availabilityResult.diagnostics.values()) {
+      if (tools[diagnostic.toolName]) continue
+      tools[diagnostic.toolName] = diagnosticRuntimeTool(input, diagnostic)
     }
-    if (!isSupervisor && !activeBlueprintLoopID) {
-      result = result.filter((d) => d.id !== "blueprint_loop_finish")
-    }
-    const disabled = PermissionNext.disabled(
-      result.map((item) => item.id),
-      PermissionNext.merge(input.agent.permission, PermissionNext.sessionRuleset(input.session)),
-    )
 
-    return result.filter(
-      (item) => !disabled.has(item.id) && input.userTools?.[item.id] !== false && input.userTools?.["*"] !== false,
-    )
+    return {
+      tools,
+      activeToolIDs: availabilityResult.visible.map((item) => item.id),
+    }
   }
 
   export async function resolve(input: Input): Promise<Record<string, AITool>> {
@@ -1242,9 +1355,7 @@ export namespace ToolResolver {
 
     for (const item of defs) {
       const runtimeTool = item.createRuntimeTool?.(input)
-      if (runtimeTool) {
-        tools[item.id] = runtimeTool
-      }
+      if (runtimeTool) tools[item.id] = runtimeTool
     }
 
     return tools

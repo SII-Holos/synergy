@@ -700,7 +700,7 @@ export namespace SessionInvoke {
         }
 
         const toolResolveTimer = log.time("toolResolver.resolve")
-        const tools = await ToolResolver.resolve({
+        const resolvedTools = await ToolResolver.resolveWithAvailability({
           agent,
           model,
           sessionID,
@@ -729,7 +729,8 @@ export namespace SessionInvoke {
           system: promptPlan.system,
           systemCacheBreakpoint: promptPlan.systemCacheBreakpoint,
           messages: promptPlan.messages,
-          tools,
+          tools: resolvedTools.tools,
+          activeToolIDs: resolvedTools.activeToolIDs,
           model,
         })
         clearTimeout(turnTimer)
