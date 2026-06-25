@@ -43,6 +43,7 @@ try {
 process.env["MODELS_DEV_API_JSON"] = modelsCachePath
 // Disable models.dev refresh to avoid race conditions during tests
 process.env["SYNERGY_DISABLE_MODELS_FETCH"] = "true"
+process.env["SYNERGY_DISABLE_PROVIDER_CATALOG_FETCH"] = "true"
 // Disable plugins and LSP download to avoid hangs in CI
 process.env["SYNERGY_DISABLE_DEFAULT_PLUGINS"] = "true"
 process.env["SYNERGY_DISABLE_LSP_DOWNLOAD"] = "true"

@@ -61,6 +61,68 @@ export default plugin
 
 There is no compatibility layer for legacy descriptor shapes. `plugin.json.name` must match `plugin.id`; Synergy fails validation or loading if they differ.
 
+## Tool Results And Attachments
+
+Tools can return user-facing files through `attachments`. Use the generated SDK `asset.upload()` route or the public `/asset` endpoint to upload binary data, then return the resulting `asset://...` URL. Do not import Synergy internal asset modules from a plugin.
+
+For visual tools whose output should appear as the main answer instead of a tool card, set `metadata.display.presentation` to `artifact-only` and list the attachment ids to promote:
+
+```ts
+return {
+  output: "",
+  metadata: {
+    display: {
+      presentation: "artifact-only",
+      primaryAttachmentIds: [partId],
+    },
+  },
+  attachments: [
+    {
+      id: partId,
+      sessionID: context.sessionID,
+      messageID: context.messageID,
+      type: "file",
+      mime: "image/svg+xml",
+      filename: "result.svg",
+      url: uploaded.url,
+    },
+  ],
+}
+```
+
+Running and failed tool states still render normally, so progress, approvals, and errors remain visible.
+
+For image, video, or audio generation tools, declare the display protocol on the tool definition as well. This lets Synergy show its built-in media generation placeholder as soon as the tool starts, then replace it with the promoted attachment when the tool completes:
+
+```ts
+const mediaDisplay = {
+  kind: "media-generation",
+  visibility: "media",
+  presentation: "artifact-only",
+  media: {
+    type: "image",
+    actionLabel: "Create image",
+    pendingTitle: "Generating image",
+    pendingDescription: "Preparing the image...",
+    promptField: "prompt",
+    aspectRatio: "1:1",
+  },
+} as const
+
+tool({
+  description: "Generate an image",
+  display: mediaDisplay,
+  args: {
+    prompt: tool.schema.string(),
+  },
+  async execute(args, context) {
+    // Upload the generated image, then return metadata.display with primaryAttachmentIds.
+  },
+})
+```
+
+Use `visibility: "media"` for tools whose running and completed success states should be represented by the media surface instead of the ordinary tool transcript. Error states still fall back to normal tool cards.
+
 ## Plugin Input
 
 `init(input)` receives runtime services scoped to the active Synergy Scope:
@@ -107,6 +169,9 @@ Each distributable plugin has a root `plugin.json`:
         "name": "greet",
         "title": "Greet",
         "description": "Greet a user by name",
+        "display": {
+          "kind": "default",
+        },
         "capabilities": {
           "filesystem": "none",
           "network": false,

@@ -70,11 +70,13 @@ interface QuickActionsProps {
   onSend: (prompt: string) => void
   onCommand: (commandId: string) => void
   disabled?: boolean
+  commandsDisabled?: boolean
   class?: string
 }
 
 export function QuickActions(props: QuickActionsProps) {
   const [open, setOpen] = createSignal(false)
+  const commandsDisabled = () => props.commandsDisabled ?? props.disabled
 
   createEffect(() => {
     if (props.disabled && open()) setOpen(false)
@@ -90,7 +92,7 @@ export function QuickActions(props: QuickActionsProps) {
                 <Tooltip placement="left" value={action.label}>
                   <button
                     type="button"
-                    disabled={props.disabled}
+                    disabled={commandsDisabled()}
                     class="qa-bubble qa-bubble-icon"
                     style={{ "animation-delay": `${i() * 30}ms` }}
                     onClick={() => props.onCommand(action.commandId)}

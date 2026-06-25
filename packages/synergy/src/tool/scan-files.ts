@@ -14,12 +14,13 @@ import {
   splitDisplayLines,
   recordSeenSessionLines,
 } from "./anchored-file"
+import { ToolTimeout } from "./timeout"
 
 const DEFAULT_FILE_LIMIT = 20
 const DEFAULT_PER_FILE_LIMIT = 20
 const SINGLE_FILE_PER_FILE_LIMIT = 200
 const INTERNAL_TOTAL_CAP = 2000
-const DEFAULT_TIMEOUT_MS = 10_000
+const DEFAULT_TIMEOUT_MS = ToolTimeout.DEFAULTS.scanFilesMs
 
 function noMatchGuidance(params: { path?: string; include?: string; globs?: string[] }): string[] {
   const guidance = [

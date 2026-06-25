@@ -15,6 +15,7 @@ import { McpAuth } from "./auth"
 import open from "open"
 import { McpSupervisor, mapStatus, pendingOAuthTransports } from "./supervisor"
 import type { McpHandle, PromptCache, ResourceCache } from "./supervisor"
+import { ToolExposure } from "@/tool/exposure"
 
 // Re-export supervisor symbols so downstream imports from "@/mcp" still work.
 // These go at module scope, not inside the namespace.
@@ -30,6 +31,7 @@ import {
 
 export namespace MCP {
   const log = Log.create({ service: "mcp" })
+  const toolCallTimeouts = new Map<string, number | undefined>()
 
   // ── Public schemas/events (re-exposed via the MCP namespace) ────────
   // These are declared here to satisfy the public API surface; the actual
@@ -56,6 +58,13 @@ export namespace MCP {
   export type Status = z.infer<typeof _Status>
 
   const DEFAULT_TIMEOUT = 30_000
+
+  export interface ToolEntry {
+    id: string
+    serverName: string
+    toolName: string
+    tool: Tool
+  }
 
   async function resolveMcpTimeout(serverName?: string): Promise<number> {
     const cfg = await Config.current()
@@ -100,6 +109,10 @@ export namespace MCP {
 
   export function ensureStarted(): void {
     McpSupervisor.ensureStarted()
+  }
+
+  export function toolCallTimeout(toolName: string): number | undefined {
+    return toolCallTimeouts.get(toolName)
   }
 
   // ── Lifecycle ───────────────────────────────────────────────────────
@@ -211,9 +224,10 @@ export namespace MCP {
 
   // ── Non-blocking snapshots ─────────────────────────────────────────
 
-  export async function tools(): Promise<Record<string, Tool>> {
+  export async function toolEntries(): Promise<ToolEntry[]> {
     await McpSupervisor.ready()
-    const result: Record<string, Tool> = {}
+    const result: ToolEntry[] = []
+    toolCallTimeouts.clear()
     const cfg = await Config.current()
     const callTimeout = cfg.experimental?.mcp_timeout
 
@@ -222,17 +236,27 @@ export namespace MCP {
       if (!handle.client || handle.toolDefs.length === 0) continue
 
       for (const mcpTool of handle.toolDefs) {
-        const sanitizedClientName = handle.name.replace(/[^a-zA-Z0-9_-]/g, "_")
-        const sanitizedToolName = mcpTool.name.replace(/[^a-zA-Z0-9_-]/g, "_")
         const perServerCallTimeout = await resolveCallTimeout(handle.name)
-        result[sanitizedClientName + "_" + sanitizedToolName] = await convertMcpTool(
-          mcpTool,
-          handle.client,
-          perServerCallTimeout ?? callTimeout,
-        )
+        const toolName = ToolExposure.mcpToolID(handle.name, mcpTool.name)
+        const effectiveCallTimeout = perServerCallTimeout ?? callTimeout
+        toolCallTimeouts.set(toolName, effectiveCallTimeout)
+        result.push({
+          id: toolName,
+          serverName: handle.name,
+          toolName: mcpTool.name,
+          tool: await convertMcpTool(mcpTool, handle.client, effectiveCallTimeout),
+        })
       }
     }
 
+    return result
+  }
+
+  export async function tools(): Promise<Record<string, Tool>> {
+    const result: Record<string, Tool> = {}
+    for (const entry of await toolEntries()) {
+      result[entry.id] = entry.tool
+    }
     return result
   }
 

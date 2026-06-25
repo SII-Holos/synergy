@@ -12,6 +12,7 @@ import { Scope } from "@/scope"
 import { ScopeRuntime } from "@/scope/runtime"
 import { Info, type StatusInfo } from "./types"
 import { SessionEndpoint } from "./endpoint"
+import { SessionInbox } from "./inbox"
 
 const log = Log.create({ service: "session.manager" })
 
@@ -32,6 +33,7 @@ export namespace SessionManager {
       }
       model?: Model
       metadata?: Record<string, any>
+      inboxItemID?: string
     }
 
     export interface Assistant {
@@ -40,6 +42,7 @@ export namespace SessionManager {
       model?: Model
       agentID?: string
       metadata?: Record<string, any>
+      inboxItemID?: string
     }
   }
 
@@ -295,7 +298,8 @@ export namespace SessionManager {
 
     const runtime = registerRuntime(session.id)
     runtime.lastActiveAt = Date.now()
-    runtime.mailbox.push(input.mail)
+    const item = await SessionInbox.enqueueMail({ sessionID: session.id, mail: input.mail })
+    runtime.mailbox.push({ ...input.mail, inboxItemID: item.id })
 
     if (isRunning(session.id)) {
       log.info("mail queued (session running)", { sessionID: session.id, mailboxSize: runtime.mailbox.length })
@@ -329,6 +333,14 @@ export namespace SessionManager {
     const runtime = getRuntime(sessionID)
     if (!runtime) return []
     return runtime.mailbox.splice(0)
+  }
+
+  export function discardMails(sessionID: string, inboxItemIDs: Iterable<string>): void {
+    const runtime = getRuntime(sessionID)
+    if (!runtime) return
+    const discard = new Set(inboxItemIDs)
+    if (discard.size === 0) return
+    runtime.mailbox = runtime.mailbox.filter((mail) => !mail.inboxItemID || !discard.has(mail.inboxItemID))
   }
 
   // --- Pending Reply ---

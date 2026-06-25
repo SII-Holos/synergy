@@ -38,8 +38,8 @@ test("provider loaded from env variable", async () => {
     fn: async () => {
       const providers = await Provider.list()
       expect(providers["anthropic"]).toBeDefined()
-      // Note: source becomes "custom" because CUSTOM_LOADERS run after env loading
-      // and anthropic has a custom loader that merges additional options
+      // Note: source becomes "custom" because the Anthropic provider profile
+      // merges additional runtime options after env loading.
       expect(providers["anthropic"].source).toBe("custom")
     },
   })

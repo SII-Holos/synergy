@@ -17,6 +17,7 @@ import { ServerProvider, useServer } from "@/context/server"
 import { TerminalProvider } from "@/context/terminal"
 import { PromptProvider } from "@/context/prompt"
 import { FileProvider } from "@/context/file"
+import { ResourceOpenProvider } from "@/context/resource-open"
 import { NotificationProvider } from "@/context/notification"
 import { CommandProvider } from "@/context/command"
 
@@ -182,11 +183,13 @@ function ConnectedApp() {
                         component={() => (
                           <TerminalProvider>
                             <FileProvider>
-                              <PromptProvider>
-                                <Suspense fallback={<Loading />}>
-                                  <Session />
-                                </Suspense>
-                              </PromptProvider>
+                              <ResourceOpenProvider>
+                                <PromptProvider>
+                                  <Suspense fallback={<Loading />}>
+                                    <Session />
+                                  </Suspense>
+                                </PromptProvider>
+                              </ResourceOpenProvider>
                             </FileProvider>
                           </TerminalProvider>
                         )}

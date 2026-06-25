@@ -116,6 +116,8 @@ export namespace Config {
   export type LibraryConfig = Schema.LibraryConfig
   export const Provider = Schema.Provider
   export type Provider = Schema.Provider
+  export const ProviderCatalog = Schema.ProviderCatalog
+  export type ProviderCatalog = Schema.ProviderCatalog
   export const Info = Schema.Info
   export type Info = Schema.Info
 
@@ -163,6 +165,11 @@ export namespace Config {
     }
     if (target.instructions && source.instructions) {
       merged.instructions = Array.from(new Set([...target.instructions, ...source.instructions]))
+    }
+    if (target.project_doc_fallback_filenames && source.project_doc_fallback_filenames) {
+      merged.project_doc_fallback_filenames = Array.from(
+        new Set([...target.project_doc_fallback_filenames, ...source.project_doc_fallback_filenames]),
+      )
     }
     return merged
   }
@@ -318,6 +325,8 @@ export namespace Config {
     if (result.autoupdate === undefined) result.autoupdate = true
     if (result.snapshot === undefined) result.snapshot = true
     if (result.default_agent === undefined) result.default_agent = "synergy"
+    if (result.project_doc_fallback_filenames === undefined) result.project_doc_fallback_filenames = []
+    if (result.project_doc_max_bytes === undefined) result.project_doc_max_bytes = 32 * 1024
     if (result.question === undefined) result.question = { timeout: 1800 }
     else if (result.question.timeout === undefined) result.question.timeout = 1800
     if (result.compaction === undefined) {

@@ -18,6 +18,7 @@ import {
   type QuestionRequest,
   type CortexTask,
   type AgendaItem,
+  type SessionInboxItem,
   createSynergyClient,
 } from "@ericsanchezok/synergy-sdk/client"
 import { createStore, produce, reconcile } from "solid-js/store"
@@ -86,6 +87,9 @@ type State = {
   question: {
     [sessionID: string]: QuestionRequest[]
   }
+  inbox: {
+    [sessionID: string]: SessionInboxItem[]
+  }
   mcp: {
     [name: string]: McpStatus
   }
@@ -122,7 +126,15 @@ function createGlobalSync() {
     ready: false,
     paths: { home: "", root: "", data: "", config: "", state: "", cache: "", log: "" },
     scope: [],
-    provider: { all: [], connected: [], default: {}, configProviders: [] },
+    provider: {
+      all: [],
+      connected: [],
+      default: {},
+      configProviders: [],
+      catalogProviders: [],
+      authHealth: {},
+      runtimeAvailability: {},
+    },
     provider_auth: {},
     agenda: [],
   })
@@ -196,7 +208,15 @@ function createGlobalSync() {
     if (!children[scopeKey]) {
       children[scopeKey] = createStore<State>({
         scopeID: "",
-        provider: { all: [], connected: [], default: {}, configProviders: [] },
+        provider: {
+          all: [],
+          connected: [],
+          default: {},
+          configProviders: [],
+          catalogProviders: [],
+          authHealth: {},
+          runtimeAvailability: {},
+        },
         config: {},
         path: { state: "", config: "", worktree: "", directory: "", home: "" },
         status: "loading" as const,
@@ -209,6 +229,7 @@ function createGlobalSync() {
         dag: {},
         permission: {},
         question: {},
+        inbox: {},
         mcp: {},
         lsp: [],
         cortex: [],
@@ -715,6 +736,10 @@ function createGlobalSync() {
         setStore("session_status", event.properties.sessionID, reconcile(event.properties.status))
         break
       }
+      case "session.inbox.updated": {
+        setStore("inbox", event.properties.sessionID, reconcile(event.properties.items, { key: "id" }))
+        break
+      }
       case "message.updated": {
         const messages = store.message[event.properties.info.sessionID]
         if (!messages) {
@@ -941,6 +966,7 @@ function createGlobalSync() {
               }
               delete draft.message[sessionID]
               delete draft.session_diff[sessionID]
+              delete draft.inbox[sessionID]
             }),
           )
         })

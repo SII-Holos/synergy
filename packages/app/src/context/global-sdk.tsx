@@ -26,6 +26,8 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
 
     const key = (directory: string, payload: Event) => {
       if (payload.type === "session.status") return `session.status:${directory}:${payload.properties.sessionID}`
+      if (payload.type === "session.inbox.updated")
+        return `session.inbox.updated:${directory}:${payload.properties.sessionID}`
       if (payload.type === "lsp.updated") return `lsp.updated:${directory}`
       if (payload.type === "message.part.updated") {
         const part = payload.properties.part

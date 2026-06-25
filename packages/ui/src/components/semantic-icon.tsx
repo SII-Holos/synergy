@@ -7,30 +7,99 @@
 import type { IconName } from "./icon"
 
 export const SemanticIconToken = {
-  // === Workspace 类型 ===
-  "workspace.main": "home", // main checkout — home is the root / primary workspace
-  "workspace.worktree": "git-fork", // git worktree — fork = parallel checkout, independent branch
-  "workspace.branch": "git-branch", // git branch name — reserved for real git branch
+  // Workspace
+  "workspace.main": "home",
+  "workspace.worktree": "git-fork",
+  "workspace.branch": "git-branch",
 
-  // === Session 运行时 ===
-  "session.idle": "circle", // idle — empty circle, neutral rest state
-  "session.running": "loader-circle", // running — partial arc indicates in-progress
-  "session.waiting": "help-circle", // waiting for user — question circle, expects input
-  "session.child": "arrow-down-from-line", // child session — derived from parent, vertical lineage
-  "session.background": "calendar-days", // background / agenda session
+  // Session runtime
+  "session.idle": "circle",
+  "session.running": "loader-circle",
+  "session.waiting": "help-circle",
+  "session.child": "arrow-down-from-line",
+  "session.background": "calendar-days",
   "session.channel": "message-circle", // channel session
-  "session.default": "message-square", // default session — it's a conversation
+  "session.default": "message-square",
 
-  // === 连接状态 ===
-  "connection.holos": "satellite", // Holos identity / connection — satellite node in orbit, distinct from auto-orbit
+  // Connection state
+  "connection.holos": "satellite",
   "connection.lsp": "braces", // language server
-  "connection.mcp": "cable", // MCP connection — protocol cable, consistent with settings/navigation
+  "connection.mcp": "cable",
   "connection.cortex": "workflow", // background orchestration tasks
 
-  // === 编排 ===
-  "orchestration.blueprint": "stamp", // Blueprint design document — stamped executable spec, distinct from notes/papers/tasks
-  "orchestration.dag": "route", // DAG execution path
+  // Orchestration
+  "orchestration.blueprint": "stamp",
+  "orchestration.dag": "route",
   "orchestration.holos-branch": "git-merge", // Holos conversation branch (no longer git-branch)
+
+  // Settings
+  "settings.account": "user",
+  "settings.profile": "user-round-pen",
+  "settings.holos": "satellite",
+  "settings.general": "sliders-horizontal",
+  "settings.appearance": "sun",
+  "settings.models": "cpu",
+  "settings.providers": "server",
+  "settings.usage": "gauge",
+  "settings.learning": "book-open",
+  "settings.memory": "brain",
+  "settings.experience": "lightbulb",
+  "settings.agents": "bot",
+  "settings.commands": "terminal",
+  "settings.instructions": "file-text",
+  "settings.mcp": "cable",
+  "settings.plugins": "package",
+  "settings.channels": "globe",
+  "settings.email": "mail",
+  "settings.permissions": "shield-check",
+  "settings.sandbox": "lock-keyhole",
+  "settings.controlProfile": "scale",
+  "settings.questions": "help-circle",
+  "settings.compaction": "list-collapse",
+  "settings.timeouts": "clock",
+  "settings.formatter": "file-pen",
+  "settings.lsp": "braces",
+  "settings.observability": "stethoscope",
+  "settings.import": "upload",
+  "settings.configFiles": "folder",
+
+  // App shell and navigation
+  "app.sidebar": "panel-left",
+  "app.statusBar": "panel-bottom",
+  "app.statusBar.toggle": "panel-bottom-open",
+  "navigation.back": "arrow-left",
+  "navigation.expand": "chevron-right",
+  "navigation.collapse": "chevron-down",
+
+  // Notes
+  "notes.main": "notebook-pen",
+  "notes.create": "square-pen",
+  "notes.search": "scan-search",
+
+  // Browser
+  "browser.main": "globe",
+  "browser.back": "arrow-left",
+  "browser.forward": "arrow-right",
+  "browser.refresh": "refresh-ccw",
+  "browser.stop": "circle-stop",
+
+  // Generic actions and state
+  "action.add": "plus",
+  "action.close": "x",
+  "action.copy": "copy",
+  "action.open": "arrow-up-right",
+  "action.more": "ellipsis",
+  "action.search": "search",
+  "action.remove": "trash-2",
+  "action.refresh": "refresh-ccw",
+  "account.create": "user-plus",
+  "account.import": "key-round",
+  "account.logout": "arrow-left",
+  "account.repository": "github",
+  "state.success": "check",
+  "state.empty": "circle",
+  "state.warning": "octagon-alert",
+  "state.error": "ban",
 } as const satisfies Record<string, IconName>
 
 export type SemanticIconTokenName = keyof typeof SemanticIconToken

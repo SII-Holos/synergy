@@ -1,6 +1,8 @@
 import { For, Show, createMemo, createSignal } from "solid-js"
 import { IconButton } from "@ericsanchezok/synergy-ui/icon-button"
+import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { useBrowser, type DevPanel } from "./browser-store"
+import { browserDebug } from "./browser-debug"
 
 export type AddressBarProps = {
   activeUrl: () => string
@@ -37,6 +39,7 @@ export function AddressBar(props: AddressBarProps) {
   const [menuOpen, setMenuOpen] = createSignal(false)
 
   const selectedViewport = createMemo(() => {
+    if (browser.viewportMode() === "fit") return "Fit"
     const current = VIEWPORT_PRESETS.find(
       (preset) => preset.width === browser.viewportWidth() && preset.height === browser.viewportHeight(),
     )
@@ -45,13 +48,26 @@ export function AddressBar(props: AddressBarProps) {
 
   function handleNavigate() {
     const raw = inputEl?.value.trim() ?? ""
-    if (!raw) return
+    browserDebug("address.navigate", {
+      raw,
+      activeUrl: props.activeUrl(),
+      activeTabId: browser.activeTabId(),
+      connectionStatus: browser.session.connectionStatus,
+      tabCount: browser.session.tabs.length,
+    })
+    if (!raw) {
+      browserDebug("address.navigate.ignored", { reason: "empty" })
+      return
+    }
     props.onNavigate(raw)
     inputEl?.blur()
   }
 
   function handleKeyDown(e: KeyboardEvent) {
-    if (e.key === "Enter") handleNavigate()
+    if (e.key === "Enter") {
+      browserDebug("address.keydown.enter", { value: inputEl?.value ?? "" })
+      handleNavigate()
+    }
   }
 
   function requestPanel(panel: DevPanel) {
@@ -66,10 +82,20 @@ export function AddressBar(props: AddressBarProps) {
 
   return (
     <div class="flex h-10 shrink-0 items-center gap-1.5 border-b border-border-weak-base bg-surface-raised-base px-2">
-      <IconButton icon="arrow-left" variant="ghost" title="Back" onClick={() => props.onHistory("back")} />
-      <IconButton icon="arrow-right" variant="ghost" title="Forward" onClick={() => props.onHistory("forward")} />
       <IconButton
-        icon={props.isLoading() ? "circle-stop" : "refresh-ccw"}
+        icon={getSemanticIcon("browser.back")}
+        variant="ghost"
+        title="Back"
+        onClick={() => props.onHistory("back")}
+      />
+      <IconButton
+        icon={getSemanticIcon("browser.forward")}
+        variant="ghost"
+        title="Forward"
+        onClick={() => props.onHistory("forward")}
+      />
+      <IconButton
+        icon={props.isLoading() ? getSemanticIcon("browser.stop") : getSemanticIcon("browser.refresh")}
         variant="ghost"
         title={props.isLoading() ? "Stop" : "Reload"}
         classList={{ "animate-spin": props.isLoading() }}
@@ -103,7 +129,12 @@ export function AddressBar(props: AddressBarProps) {
       />
 
       <div class="relative shrink-0">
-        <IconButton icon="ellipsis" variant="ghost" title="Browser options" onClick={() => setMenuOpen((v) => !v)} />
+        <IconButton
+          icon={getSemanticIcon("action.more")}
+          variant="ghost"
+          title="Browser options"
+          onClick={() => setMenuOpen((v) => !v)}
+        />
         <Show when={menuOpen()}>
           <div
             class="absolute right-0 top-full z-50 mt-1 w-[240px] rounded-lg border border-border-weak-base bg-surface-raised-stronger-non-alpha py-1 text-12 shadow-lg"
@@ -133,6 +164,21 @@ export function AddressBar(props: AddressBarProps) {
             <div class="border-b border-border-weak-base/60 px-2 py-1">
               <div class="px-1 py-1 text-11 text-text-weakest">Viewport · {selectedViewport()}</div>
               <div class="flex gap-1 px-1 pb-1">
+                <button
+                  type="button"
+                  class="h-6 rounded px-2 text-11 transition-colors"
+                  classList={{
+                    "bg-surface-interactive-base text-surface-interactive-text": browser.viewportMode() === "fit",
+                    "text-text-weak hover:bg-surface-raised-base-hover hover:text-text-base":
+                      browser.viewportMode() !== "fit",
+                  }}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    browser.setViewport(browser.viewportWidth(), browser.viewportHeight(), { mode: "fit" })
+                  }}
+                >
+                  Fit
+                </button>
                 <For each={VIEWPORT_PRESETS}>
                   {(preset) => (
                     <button

@@ -1,5 +1,15 @@
-import { ErrorBoundary, createEffect, createMemo, createResource, createSignal, Show, For, onMount } from "solid-js"
-import type { Component } from "solid-js"
+import {
+  ErrorBoundary,
+  createEffect,
+  createMemo,
+  createResource,
+  createSignal,
+  For,
+  onMount,
+  Show,
+  type Component,
+  type JSX,
+} from "solid-js"
 import { createStore, produce } from "solid-js/store"
 import { Dynamic } from "solid-js/web"
 import { Dialog } from "@ericsanchezok/synergy-ui/dialog"
@@ -7,31 +17,47 @@ import { Button } from "@ericsanchezok/synergy-ui/button"
 import { Icon, type IconName } from "@ericsanchezok/synergy-ui/icon"
 import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
+import { showToast } from "@ericsanchezok/synergy-ui/toast"
+import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
+import type { ConfigDomainSummary, ControlProfileSummary, SandboxStatus } from "@ericsanchezok/synergy-sdk/client"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { useInput, type SendShortcut } from "@/context/input"
 import { useGlobalSync } from "@/context/global-sync"
-import { showToast } from "@ericsanchezok/synergy-ui/toast"
-import type { ControlProfileSummary, SandboxStatus } from "@ericsanchezok/synergy-sdk/client"
 import { DialogConfirm } from "@/components/dialog/dialog-confirm"
 import { DialogSelectModel } from "@/components/dialog/dialog-select-model"
-import { getSettingsSections, type SettingsSection } from "@/plugin"
+import { getSettingsSections, type SettingsSection as RegisteredSettingsSection } from "@/plugin"
 import { SandboxIframe } from "@/plugin/sandbox"
 import { AppPanel } from "@/components/app-panel"
 import "./settings-dialog.css"
-import type { ProviderModel, McpEntry, EmailSettings, ChannelSettings, DialogSettingsProps } from "./types"
-import { groupByProvider, emptyMcp } from "./types"
+import type { DialogSettingsProps, McpEntry, ProviderModel, SettingsState } from "./types"
+import { defaultSettingsState, emptyMcp } from "./types"
+import { BUILTIN_SETTINGS_IDS, isBuiltinSettingsId, settingsGroupOrder } from "./catalog"
 import { ensureInit } from "./hooks/useSettingsForm"
 import { buildPatch } from "./hooks/useConfigPatch"
 import { useSettingsSave } from "./hooks/useSettingsSave"
 import { GeneralPanel } from "./panels/GeneralPanel"
+import { ProfilePanel } from "./panels/ProfilePanel"
+import { AppearancePanel } from "./panels/AppearancePanel"
 import { ModelsPanel } from "./panels/ModelsPanel"
+import { ProvidersPanel } from "./panels/ProvidersPanel"
+import { AccountPanel } from "./panels/AccountPanel"
+import { UsagePanel } from "./panels/UsagePanel"
 import { McpPanel } from "./panels/McpPanel"
 import { PluginsPanel } from "./panels/PluginsPanel"
-import { AdvancedPanel } from "./panels/AdvancedPanel"
-import { LibrarySettingsPanel } from "./panels/LibrarySettingsPanel"
+import { LearningPanel, MemoryPanel, ExperiencePanel } from "./panels/LibraryPanels"
 import { ChannelsPanel } from "./panels/ChannelsPanel"
 import { EmailPanel } from "./panels/EmailPanel"
 import { ImportPanel } from "./panels/ImportPanel"
+import { ConfigFilesPanel, ConfigReferencePanel } from "./panels/ConfigFilesPanel"
+import { ControlProfilePanel, PermissionsPanel, SandboxPanel } from "./panels/SafetyPanels"
+import { CompactionPanel, QuestionsPanel, TimeoutsPanel, ObservabilityPanel } from "./panels/RuntimePanels"
+import { SettingsPage, SettingsSection } from "./components/SettingsPrimitives"
+
+const legacyInitialTabs: Record<string, string> = {
+  advanced: "control-profile",
+  holos: "account",
+  library: "learning",
+}
 
 export function SettingsDialog(props: DialogSettingsProps) {
   const dialog = useDialog()
@@ -39,14 +65,24 @@ export function SettingsDialog(props: DialogSettingsProps) {
   const globalSync = useGlobalSync()
   const input = useInput()
 
-  const [activeTab, setActiveTab] = createSignal(props.initialTab ?? "general")
+  const [activeTab, setActiveTab] = createSignal(normalizeInitialTab(props.initialTab))
+  const [providerFocusID, setProviderFocusID] = createSignal(props.providerFocusID)
+  const [search, setSearch] = createSignal("")
   const [initialized, setInitialized] = createSignal(false)
   const [saving, setSaving] = createSignal(false)
   const [refreshing, setRefreshing] = createSignal(false)
+  const [openingDomain, setOpeningDomain] = createSignal<string | undefined>()
+
+  const [settings, setSettings] = createStore<SettingsState>(defaultSettingsState(input.sendShortcut()))
 
   const [config, { refetch: refetchConfig }] = createResource(async () => {
     const res = await globalSDK.client.config.global()
     return res.data!
+  })
+
+  const [domainSummaries, { refetch: refetchDomains }] = createResource(async () => {
+    const res = await globalSDK.client.config.domain.list()
+    return res.data ?? []
   })
 
   const providerModels = createMemo(() => {
@@ -66,6 +102,27 @@ export function SettingsDialog(props: DialogSettingsProps) {
     return list
   })
 
+  const providerSummaries = createMemo(() => {
+    const data = globalSync.data.provider
+    return data.all.map((provider) => {
+      const health = data.authHealth?.[provider.id]
+      const availability = data.runtimeAvailability?.[provider.id]
+      return {
+        id: provider.id,
+        name: provider.name,
+        connected: data.connected.includes(provider.id),
+        available: availability?.available ?? data.connected.includes(provider.id),
+        modelCount: availability?.modelCount ?? Object.keys(provider.models).length,
+        authStatus: health?.status,
+        availabilityReason: availability?.reason,
+        reloginRequired: health?.reloginRequired,
+        cooldownUntil: health?.cooldownUntil,
+        resetAt: health?.resetAt,
+        failureCode: health?.failureCode,
+      }
+    })
+  })
+
   const [controlProfiles] = createResource(async () => {
     const res = await globalSDK.client.controlProfile.list()
     return (res.data ?? []) as ControlProfileSummary[]
@@ -79,70 +136,6 @@ export function SettingsDialog(props: DialogSettingsProps) {
   const originalMcpsRef = { current: {} as Record<string, Record<string, unknown>> }
   let initializedForSet: string | undefined
 
-  const [general, setGeneral] = createStore({
-    snapshot: true,
-    autoupdate: "" as string,
-    sendShortcut: "enter" as SendShortcut,
-  })
-
-  const [models, setModels] = createStore({
-    model: "" as string,
-    nano_model: "" as string,
-    mini_model: "" as string,
-    mid_model: "" as string,
-    vision_model: "" as string,
-    thinking_model: "" as string,
-    long_context_model: "" as string,
-    creative_model: "" as string,
-  })
-
-  const [plugins, setPlugins] = createStore({
-    entries: [] as { value: string }[],
-  })
-
-  const [mcps, setMcps] = createStore({
-    entries: [] as McpEntry[],
-  })
-
-  const [library, setLibrary] = createStore({
-    learning: "" as string,
-    autonomy: "" as string,
-    memorySimThreshold: "" as string,
-    memoryTopK: "" as string,
-    experienceSimThreshold: "" as string,
-    experienceTopK: "" as string,
-    experienceEpsilon: "" as string,
-  })
-
-  const [advanced, setAdvanced] = createStore({
-    controlProfile: "guarded" as string,
-    compaction_auto: "" as string,
-    compaction_overflow_threshold: "" as string,
-    permission: "" as string,
-    question_timeout: "" as string,
-    smartAllow: "false" as string,
-  })
-
-  const [email, setEmail] = createStore<EmailSettings>({
-    enabled: true,
-    fromAddress: "",
-    fromName: "",
-    smtpHost: "",
-    smtpPort: "",
-    smtpSecure: true,
-    smtpUsername: "",
-    smtpPassword: "",
-    imapHost: "",
-    imapPort: "",
-    imapSecure: true,
-    imapUsername: "",
-    imapPassword: "",
-  })
-
-  const [channels, setChannels] = createStore<ChannelSettings>({
-    feishuAccounts: [],
-  })
-
   const doEnsureInit = () => {
     const result = ensureInit({
       cfg: config(),
@@ -151,29 +144,19 @@ export function SettingsDialog(props: DialogSettingsProps) {
       initialized,
       initializedForSet,
       sendShortcut: () => input.sendShortcut(),
-      setGeneral: (v) => setGeneral(v),
-      setModels: (v) => setModels(v),
-      setPlugins: (v) => setPlugins(v),
-      setMcps: (v) => setMcps(v),
-      setAdvanced: (v) => setAdvanced(v),
-      setEmail: (v) => setEmail(v),
-      setChannels: (v) => setChannels(v),
-      setLibrary: (v) => setLibrary(v),
+      setSettings,
       setInitialized,
       originalMcpsRef,
     })
-    if (result !== undefined) {
-      initializedForSet = result
-    }
+    if (result !== undefined) initializedForSet = result
   }
-
-  const ready = () => initialized()
 
   createEffect(() => {
     config()
     doEnsureInit()
   })
 
+  const ready = () => initialized() && !!domainSummaries()
   const cancelDebouncesRef = { current: () => {} }
 
   function resetEditor() {
@@ -186,7 +169,7 @@ export function SettingsDialog(props: DialogSettingsProps) {
     setRefreshing(true)
     resetEditor()
     await globalSync.refreshAllConfigs()
-    await refetchConfig()
+    await Promise.all([refetchConfig(), refetchDomains()])
     setRefreshing(false)
     doEnsureInit()
   }
@@ -195,17 +178,11 @@ export function SettingsDialog(props: DialogSettingsProps) {
     if (!initialized() || !config()) return {}
     return buildPatch({
       cfg: config()!,
-      general,
-      models,
-      plugins,
-      mcps,
-      advanced,
-      email,
-      channels,
-      library,
+      state: settings,
       originalMcps: originalMcpsRef.current,
     })
   })
+
   const hasServerChanges = createMemo(() => Object.keys(serverPatch()).length > 0)
   const editingLabel = createMemo(() => "Global Config")
   const hasAnyChanges = createMemo(() => hasServerChanges())
@@ -231,6 +208,7 @@ export function SettingsDialog(props: DialogSettingsProps) {
 
   const save = useSettingsSave({
     serverPatch,
+    domainSummaries: () => domainSummaries() ?? [],
     hasAnyChanges,
     editingLabel,
     setSaving,
@@ -241,7 +219,7 @@ export function SettingsDialog(props: DialogSettingsProps) {
   cancelDebouncesRef.current = save.cancelDebounces
 
   function handleLocalSendShortcut(value: SendShortcut) {
-    setGeneral("sendShortcut", value)
+    setSettings("general", "sendShortcut", value)
     if (value !== input.sendShortcut()) {
       input.setSendShortcut(value)
       showToast({
@@ -252,61 +230,111 @@ export function SettingsDialog(props: DialogSettingsProps) {
     }
   }
 
-  // Build nav groups from the settings registry, ordered by first-seen group.
-  const settingsSections = createMemo(() => getSettingsSections())
-  const navGroups = createMemo(() => {
-    const sections = settingsSections()
-    const order: string[] = []
-    const map = new Map<string, SettingsSection[]>()
-    for (const section of sections) {
-      if (!map.has(section.group)) {
-        map.set(section.group, [])
-        order.push(section.group)
-      }
-      map.get(section.group)!.push(section)
+  async function copyPath(path: string) {
+    await navigator.clipboard.writeText(path)
+    showToast({ type: "success", title: "Path copied", description: path })
+  }
+
+  async function openDomain(domain: ConfigDomainSummary["id"]) {
+    setOpeningDomain(domain)
+    try {
+      const res = await globalSDK.client.config.domain.open({ domain })
+      showToast({
+        type: "success",
+        title: "Config file opened",
+        description: res.data?.path ?? domain,
+      })
+      await refetchDomains()
+    } catch (error: any) {
+      showToast({ type: "error", title: "Open file failed", description: error.message })
+    } finally {
+      setOpeningDomain(undefined)
     }
-    return order.map((label) => ({
-      label,
-      sections: map.get(label)!,
-    }))
+  }
+
+  const settingsSections = createMemo(() =>
+    getSettingsSections()
+      .filter((section) => !section.hidden)
+      .sort(compareSections),
+  )
+
+  const pluginSections = createMemo(() => settingsSections().filter((section) => !isBuiltinSettingsId(section.id)))
+
+  const filteredSections = createMemo(() => {
+    const query = normalizeSearch(search())
+    if (!query) return settingsSections()
+    const terms = query.split(/\s+/).filter(Boolean)
+    return settingsSections().filter((section) => {
+      const haystack = normalizeSearch(
+        [
+          section.label,
+          section.group,
+          section.description,
+          ...(section.keywords ?? []),
+          ...(section.domainIds ?? []),
+          ...(section.rowLabels ?? []),
+        ].join(" "),
+      )
+      return terms.every((term) => haystack.includes(term))
+    })
   })
 
-  // Sections that are NOT built-in — rendered via Dynamic component when they have a component
-  const BUILTIN_IDS = new Set([
-    "general",
-    "models",
-    "mcp",
-    "plugins",
-    "channels",
-    "email",
-    "import",
-    "library",
-    "advanced",
-  ])
-  const pluginSections = createMemo(() => settingsSections().filter((s) => !BUILTIN_IDS.has(s.id)))
+  const navGroups = createMemo(() => {
+    const map = new Map<string, RegisteredSettingsSection[]>()
+    for (const section of filteredSections()) {
+      const group = section.group || "Plugins"
+      map.set(group, [...(map.get(group) ?? []), section])
+    }
+    return [...map.entries()]
+      .sort(([a], [b]) => settingsGroupOrder(a) - settingsGroupOrder(b) || a.localeCompare(b))
+      .map(([label, sections]) => ({ label, sections: sections.sort(compareSections) }))
+  })
+
+  const domainMap = createMemo(() => new Map((domainSummaries() ?? []).map((domain) => [domain.id, domain])))
+  const domainsFor = (ids: string[] | undefined) =>
+    (ids ?? []).flatMap((id) => {
+      const domain = domainMap().get(id as ConfigDomainSummary["id"])
+      return domain ? [domain] : []
+    })
+
+  createEffect(() => {
+    if (!ready()) return
+    const current = activeTab()
+    if (settingsSections().some((section) => section.id === current)) return
+    setActiveTab(BUILTIN_SETTINGS_IDS[0])
+  })
 
   return (
     <Dialog class="dialog-settings-v2">
       {ready() ? (
         <AppPanel.Root class="h-full min-h-0">
           <AppPanel.Nav>
-            <div class="px-3 pt-4 pb-2 flex flex-col gap-0.5">
-              <div class="text-14-medium text-text-strong truncate">Global Config</div>
-              <div class="flex items-center gap-1.5 flex-wrap">
-                <Show when={save.explicitDirty()}>
-                  <span class="px-1.5 py-px rounded-full text-12-medium text-text-strong bg-icon-warning-base/18">
-                    Unsaved
-                  </span>
-                </Show>
-                <Show when={save.autoStatus() === "saved"}>
-                  <span class="px-1.5 py-px rounded-full text-12-regular text-text-weak bg-icon-success-base/14">
-                    Saved
-                  </span>
-                </Show>
+            <div class="px-3 pt-4 pb-2 flex flex-col gap-2">
+              <div>
+                <div class="text-14-medium text-text-strong truncate">Global Config</div>
+                <div class="flex items-center gap-1.5 flex-wrap">
+                  <Show when={save.explicitDirty()}>
+                    <span class="px-1.5 py-px rounded-full text-12-medium text-text-strong bg-icon-warning-base/18">
+                      Unsaved
+                    </span>
+                  </Show>
+                  <Show when={save.autoStatus() === "saved"}>
+                    <span class="px-1.5 py-px rounded-full text-12-regular text-text-weak bg-icon-success-base/14">
+                      Saved
+                    </span>
+                  </Show>
+                </div>
+              </div>
+              <div class="ds-settings-search">
+                <Icon name={getSemanticIcon("action.search")} size="small" />
+                <input
+                  value={search()}
+                  placeholder="Search settings..."
+                  onInput={(event) => setSearch(event.currentTarget.value)}
+                />
               </div>
             </div>
 
-            {/* Navigation groups — driven by settings registry */}
             <div class="flex-1 overflow-y-auto px-2 pb-3">
               <For each={navGroups()}>
                 {(group) => (
@@ -314,7 +342,7 @@ export function SettingsDialog(props: DialogSettingsProps) {
                     <For each={group.sections}>
                       {(section) => (
                         <AppPanel.NavItem
-                          icon={section.icon as IconName}
+                          icon={sectionIcon(section)}
                           label={section.label}
                           active={activeTab() === section.id}
                           onClick={() => setActiveTab(section.id)}
@@ -324,100 +352,14 @@ export function SettingsDialog(props: DialogSettingsProps) {
                   </AppPanel.NavSection>
                 )}
               </For>
+              <Show when={navGroups().length === 0}>
+                <div class="px-3 py-6 text-12-regular text-text-weaker">No settings found</div>
+              </Show>
             </div>
           </AppPanel.Nav>
 
           <AppPanel.Content>
-            <AppPanel.Body padding={false}>
-              <Show when={activeTab() === "general"}>
-                <GeneralPanel
-                  editingLabel={editingLabel()}
-                  snapshot={general.snapshot}
-                  autoupdate={general.autoupdate}
-                  sendShortcut={general.sendShortcut}
-                  onSnapshotChange={(value) => setGeneral("snapshot", value)}
-                  onAutoupdateChange={(value) => setGeneral("autoupdate", value)}
-                  onSendShortcutChange={handleLocalSendShortcut}
-                />
-              </Show>
-
-              <Show when={activeTab() === "models"}>
-                <ModelsPanel
-                  models={models}
-                  providerModels={providerModels}
-                  onModelChange={(key, value) => setModels(key, value)}
-                  onManageModels={() => dialog.show(() => <DialogSelectModel />)}
-                />
-              </Show>
-
-              <Show when={activeTab() === "mcp"}>
-                <McpPanel
-                  entries={mcps.entries}
-                  onAdd={() => setMcps("entries", (prev) => [...prev, emptyMcp()])}
-                  onChange={(index, field, value) => setMcps("entries", index, field as keyof McpEntry, value as never)}
-                  onRemove={(index) =>
-                    setMcps(
-                      "entries",
-                      produce((draft) => {
-                        draft.splice(index, 1)
-                      }),
-                    )
-                  }
-                />
-              </Show>
-
-              <Show when={activeTab() === "plugins"}>
-                <PluginsPanel
-                  entries={plugins.entries}
-                  onAdd={() => setPlugins("entries", (prev) => [...prev, { value: "" }])}
-                  onChange={(index, value) => setPlugins("entries", index, "value", value)}
-                  onRemove={(index) =>
-                    setPlugins(
-                      "entries",
-                      produce((draft) => {
-                        draft.splice(index, 1)
-                      }),
-                    )
-                  }
-                />
-              </Show>
-
-              <Show when={activeTab() === "channels"}>
-                <ChannelsPanel
-                  channels={channels}
-                  onChannelToggle={(index, value) => setChannels("feishuAccounts", index, "enabled", value)}
-                />
-              </Show>
-
-              <Show when={activeTab() === "email"}>
-                <EmailPanel email={email} onEmailChange={(key, value) => setEmail(key, value as never)} />
-              </Show>
-
-              <Show when={activeTab() === "import"}>
-                <ImportPanel onImported={refreshAfterConfigChange} />
-              </Show>
-
-              <Show when={activeTab() === "library"}>
-                <LibrarySettingsPanel library={library} onLibraryChange={(key, value) => setLibrary(key, value)} />
-              </Show>
-
-              <Show when={activeTab() === "advanced"}>
-                <AdvancedPanel
-                  advanced={advanced}
-                  controlProfiles={controlProfiles() ?? []}
-                  sandboxStatus={sandboxStatus()}
-                  onAdvancedChange={(key, value) => setAdvanced(key, value)}
-                />
-              </Show>
-
-              <For each={pluginSections()}>
-                {(section) => (
-                  <Show when={activeTab() === section.id}>
-                    <PluginSettingsContent section={section} />
-                  </Show>
-                )}
-              </For>
-            </AppPanel.Body>
+            <AppPanel.Body padding={false}>{renderActiveContent()}</AppPanel.Body>
 
             <AppPanel.Footer>
               <div class="flex-1 flex items-center gap-2">
@@ -426,7 +368,7 @@ export function SettingsDialog(props: DialogSettingsProps) {
                 </Show>
                 <Show when={save.bgStatus() === "saved"}>
                   <span class="flex items-center gap-1 text-12-medium text-text-weak">
-                    <Icon name="check" size="small" />
+                    <Icon name={getSemanticIcon("state.success")} size="small" />
                     Saved
                   </span>
                 </Show>
@@ -456,10 +398,260 @@ export function SettingsDialog(props: DialogSettingsProps) {
       )}
     </Dialog>
   )
+
+  function renderActiveContent(): JSX.Element {
+    const active = activeTab()
+    switch (active) {
+      case "account":
+        return <AccountPanel />
+      case "profile":
+        return (
+          <ProfilePanel
+            username={settings.general.username}
+            onUsernameChange={(value) => setSettings("general", "username", value)}
+          />
+        )
+      case "general":
+        return (
+          <GeneralPanel
+            general={settings.general}
+            onGeneralChange={(key, value) => setSettings("general", key, value)}
+          />
+        )
+      case "appearance":
+        return (
+          <AppearancePanel
+            themeId={settings.general.theme}
+            onThemeChange={(value) => setSettings("general", "theme", value)}
+          />
+        )
+      case "models":
+        return (
+          <ModelsPanel
+            models={settings.models}
+            providerModels={providerModels}
+            onModelChange={(key, value) => setSettings("models", key, value)}
+            onManageModels={() => dialog.show(() => <DialogSelectModel />)}
+          />
+        )
+      case "providers":
+        return (
+          <ProvidersPanel
+            providers={settings.providers}
+            summaries={providerSummaries()}
+            authMethods={globalSync.data.provider_auth}
+            providerFocusID={providerFocusID()}
+            onProviderChange={(key, value) => setSettings("providers", key, value)}
+          />
+        )
+      case "usage":
+        return (
+          <UsagePanel
+            onConnectProvider={(providerID) => {
+              setProviderFocusID(providerID)
+              setActiveTab("providers")
+            }}
+          />
+        )
+      case "learning":
+        return (
+          <LearningPanel
+            library={settings.library}
+            onLibraryChange={(key, value) => setSettings("library", key, value)}
+          />
+        )
+      case "memory":
+        return (
+          <MemoryPanel
+            library={settings.library}
+            onLibraryChange={(key, value) => setSettings("library", key, value)}
+          />
+        )
+      case "experience":
+        return (
+          <ExperiencePanel
+            library={settings.library}
+            onLibraryChange={(key, value) => setSettings("library", key, value)}
+          />
+        )
+      case "agents":
+        return referencePanel("Agents", "Default agent and configured agent definitions.", ["agents"])
+      case "commands":
+        return referencePanel("Commands", "Configured slash and prompt commands.", ["commands"])
+      case "instructions":
+        return referencePanel("Instructions", "Instruction files and prompt additions.", ["agents"])
+      case "mcp":
+        return (
+          <McpPanel
+            entries={settings.mcps.entries}
+            onAdd={() => setSettings("mcps", "entries", (prev) => [...prev, emptyMcp()])}
+            onChange={(index, field, value) =>
+              setSettings("mcps", "entries", index, field as keyof McpEntry, value as never)
+            }
+            onRemove={(index) =>
+              setSettings(
+                "mcps",
+                "entries",
+                produce((draft) => {
+                  draft.splice(index, 1)
+                }),
+              )
+            }
+          />
+        )
+      case "plugins":
+        return (
+          <PluginsPanel
+            entries={settings.plugins.entries}
+            onAdd={() => setSettings("plugins", "entries", (prev) => [...prev, { value: "" }])}
+            onChange={(index, value) => setSettings("plugins", "entries", index, "value", value)}
+            onRemove={(index) =>
+              setSettings(
+                "plugins",
+                "entries",
+                produce((draft) => {
+                  draft.splice(index, 1)
+                }),
+              )
+            }
+          />
+        )
+      case "channels":
+        return (
+          <ChannelsPanel
+            channels={settings.channels}
+            onChannelToggle={(index, value) => setSettings("channels", "feishuAccounts", index, "enabled", value)}
+          />
+        )
+      case "email":
+        return (
+          <EmailPanel
+            email={settings.email}
+            onEmailChange={(key, value) => setSettings("email", key, value as never)}
+          />
+        )
+      case "permissions":
+        return (
+          <PermissionsPanel
+            safety={settings.safety}
+            onSafetyChange={(key, value) => setSettings("safety", key, value)}
+          />
+        )
+      case "sandbox":
+        return (
+          <SandboxPanel
+            safety={settings.safety}
+            sandboxStatus={sandboxStatus()}
+            onSafetyChange={(key, value) => setSettings("safety", key, value)}
+          />
+        )
+      case "control-profile":
+        return (
+          <ControlProfilePanel
+            safety={settings.safety}
+            controlProfiles={controlProfiles() ?? []}
+            onSafetyChange={(key, value) => setSettings("safety", key, value)}
+          />
+        )
+      case "questions":
+        return (
+          <QuestionsPanel
+            runtime={settings.runtime}
+            onRuntimeChange={(key, value) => setSettings("runtime", key, value)}
+          />
+        )
+      case "compaction":
+        return (
+          <CompactionPanel
+            runtime={settings.runtime}
+            onRuntimeChange={(key, value) => setSettings("runtime", key, value)}
+          />
+        )
+      case "timeouts":
+        return (
+          <TimeoutsPanel
+            runtime={settings.runtime}
+            onRuntimeChange={(key, value) => setSettings("runtime", key, value)}
+          />
+        )
+      case "formatter":
+        return referencePanel("Formatter", "Formatter configuration file access.", ["runtime"])
+      case "lsp":
+        return referencePanel("LSP", "Language server configuration file access.", ["runtime"])
+      case "observability":
+        return (
+          <ObservabilityPanel
+            runtime={settings.runtime}
+            onRuntimeChange={(key, value) => setSettings("runtime", key, value)}
+          />
+        )
+      case "import":
+        return <ImportPanel domains={domainSummaries() ?? []} onImported={refreshAfterConfigChange} />
+      case "config-files":
+        return (
+          <ConfigFilesPanel
+            domains={domainSummaries() ?? []}
+            openingDomain={openingDomain()}
+            onCopyPath={(path) => void copyPath(path)}
+            onOpenDomain={(domain) => void openDomain(domain)}
+          />
+        )
+      default:
+        return renderPluginSection(active)
+    }
+  }
+
+  function referencePanel(title: string, description: string, domainIds: string[]) {
+    return (
+      <ConfigReferencePanel
+        title={title}
+        description={description}
+        domains={domainsFor(domainIds)}
+        openingDomain={openingDomain()}
+        onCopyPath={(path) => void copyPath(path)}
+        onOpenDomain={(domain) => void openDomain(domain)}
+      />
+    )
+  }
+
+  function renderPluginSection(active: string) {
+    const section = pluginSections().find((item) => item.id === active)
+    if (!section) {
+      return (
+        <SettingsPage title="Settings" description="Select a settings section.">
+          <SettingsSection>
+            <div class="ds-empty-state">No section selected</div>
+          </SettingsSection>
+        </SettingsPage>
+      )
+    }
+    return <PluginSettingsContent section={section} />
+  }
 }
 
-/** Wrapper that shows a spinner while lazy-loading a plugin settings section component. */
-function PluginSettingsContent(props: { section: SettingsSection }) {
+function normalizeInitialTab(id: string | undefined) {
+  if (!id) return "general"
+  return legacyInitialTabs[id] ?? id
+}
+
+function compareSections(a: RegisteredSettingsSection, b: RegisteredSettingsSection) {
+  return (
+    settingsGroupOrder(a.group) - settingsGroupOrder(b.group) ||
+    (a.order ?? 0) - (b.order ?? 0) ||
+    a.label.localeCompare(b.label)
+  )
+}
+
+function normalizeSearch(value: string) {
+  return value.trim().toLowerCase()
+}
+
+function sectionIcon(section: RegisteredSettingsSection): IconName {
+  if (section.iconToken) return getSemanticIcon(section.iconToken)
+  return (section.icon ?? getSemanticIcon("settings.general")) as IconName
+}
+
+function PluginSettingsContent(props: { section: RegisteredSettingsSection }) {
   const [comp, setComp] = createSignal<Component | null>(null)
   const [loading, setLoading] = createSignal(true)
 

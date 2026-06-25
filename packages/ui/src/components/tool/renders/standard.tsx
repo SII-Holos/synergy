@@ -293,7 +293,6 @@ ToolRegistry.register({
     return (
       <BasicTool
         {...props}
-        countdown={props.input.timeout ?? 30}
         trigger={{
           icon: "mouse-pointer-2",
           title: "Webfetch",
@@ -326,16 +325,9 @@ ToolRegistry.register({
       if (!raw) return undefined
       return raw.length > 40 ? raw.slice(0, 37) + "…" : raw
     }
-    const countdown = () => {
-      if (props.input.background) return undefined
-      const timeout = props.input.timeout ?? 120
-      const yieldS = props.input.yieldSeconds
-      return yieldS != null ? Math.min(timeout, yieldS) : timeout
-    }
     return (
       <BasicTool
         {...props}
-        countdown={countdown()}
         trigger={{
           icon: "terminal",
           title: "Shell",
@@ -426,14 +418,9 @@ ToolRegistry.register({
     const count = () => props.input.questions?.length ?? 0
     const answers = () => props.metadata?.answers as string[][] | undefined
     const timedOut = () => props.metadata?.timedOut as boolean | undefined
-    const countdown = () => {
-      if (timedOut()) return undefined
-      return (props.metadata?.timeout ?? 1800) as number
-    }
     return (
       <BasicTool
         {...props}
-        countdown={countdown()}
         trigger={{
           icon: "message-circle",
           title: timedOut() ? "Question Timed Out" : "Questions",
@@ -506,14 +493,9 @@ ToolRegistry.register({
       if (paths.length <= 3) return paths.map(getFilename).join(", ")
       return `${paths.length} files`
     }
-    const countdown = () => {
-      if (props.metadata?.timedOut) return undefined
-      return props.input.timeout ?? 120
-    }
     return (
       <BasicTool
         {...props}
-        countdown={countdown()}
         trigger={{
           icon: "eye",
           title: props.metadata?.timedOut ? "Analysis timed out" : "Look at",
@@ -669,6 +651,60 @@ ToolRegistry.register({
 })
 
 ToolRegistry.register({
+  name: "search_tools",
+  render(props) {
+    const count = () => props.metadata?.results?.length as number | undefined
+    return (
+      <BasicTool
+        {...props}
+        trigger={{
+          icon: "tool-search",
+          title: "Search Tools",
+          subtitle: props.input.query || "",
+          tags: count() != null ? [{ label: `${count()} match${count() === 1 ? "" : "es"}` }] : undefined,
+        }}
+      >
+        <Show when={props.output}>
+          {(output) => (
+            <div data-component="tool-output" data-scrollable>
+              <ToolTextOutput text={output()} />
+            </div>
+          )}
+        </Show>
+      </BasicTool>
+    )
+  },
+})
+
+ToolRegistry.register({
+  name: "expand_tools",
+  render(props) {
+    const groups = () => (props.metadata?.newlyExpandedGroups ?? props.input.groups ?? []) as string[]
+    const tools = () => (props.metadata?.newlyActivatedTools ?? props.input.tools ?? []) as string[]
+    const target = () => [...groups(), ...tools()].join(", ") || props.input.reason || ""
+    return (
+      <BasicTool
+        {...props}
+        trigger={{
+          icon: "tool-expand",
+          title: "Expand Tools",
+          subtitle: target(),
+          tags: props.metadata?.availableNextStep ? [{ label: "Next step" }] : undefined,
+        }}
+      >
+        <Show when={props.output}>
+          {(output) => (
+            <div data-component="tool-output" data-scrollable>
+              <ToolTextOutput text={output()} />
+            </div>
+          )}
+        </Show>
+      </BasicTool>
+    )
+  },
+})
+
+ToolRegistry.register({
   name: "arxiv_search",
   render(props) {
     return (
@@ -737,14 +773,9 @@ ToolRegistry.register({
       if (props.input.processId) result.push(shortId())
       return result
     }
-    const countdown = () => {
-      if (props.input.action !== "poll" || !props.input.block) return undefined
-      return props.input.timeout ?? 30
-    }
     return (
       <BasicTool
         {...props}
-        countdown={countdown()}
         trigger={{
           icon: "terminal",
           title: "Process",
@@ -801,14 +832,9 @@ ToolRegistry.register({
       const id = props.input.task_id || ""
       return id.length > 12 ? id.slice(0, 9) + "…" : id
     }
-    const countdown = () => {
-      if (!props.input.block) return undefined
-      return props.input.timeout ?? 60
-    }
     return (
       <BasicTool
         {...props}
-        countdown={countdown()}
         trigger={{
           icon: "list-todo",
           title: "Task Output",
@@ -1196,7 +1222,12 @@ ToolRegistry.register({
           icon: "calendar-days",
           title: "Schedule Agenda",
           subtitle: (props.metadata?.title || props.input.title || "") as string,
-          tags: props.metadata?.status ? [{ label: props.metadata.status as string }] : undefined,
+          tags: [
+            props.metadata?.status ? { label: props.metadata.status as string } : undefined,
+            props.metadata?.scheduledTimeoutLabel
+              ? { label: props.metadata.scheduledTimeoutLabel as string }
+              : undefined,
+          ].filter(Boolean) as { label: string }[],
         }}
       >
         <Show when={props.output}>
@@ -1272,7 +1303,12 @@ ToolRegistry.register({
           icon: "refresh-ccw",
           title: "Update Agenda",
           subtitle: (props.metadata?.title || props.input.id || "") as string,
-          tags: props.metadata?.status ? [{ label: props.metadata.status as string }] : undefined,
+          tags: [
+            props.metadata?.status ? { label: props.metadata.status as string } : undefined,
+            props.metadata?.scheduledTimeoutLabel
+              ? { label: props.metadata.scheduledTimeoutLabel as string }
+              : undefined,
+          ].filter(Boolean) as { label: string }[],
         }}
       >
         <Show when={props.output}>

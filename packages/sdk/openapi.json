@@ -2413,6 +2413,90 @@
         ]
       }
     },
+    "/config/domains/{domain}/open": {
+      "post": {
+        "operationId": "config.domain.open",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "domain",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "general",
+                "models",
+                "providers",
+                "library",
+                "mcp",
+                "plugins",
+                "agents",
+                "commands",
+                "permissions",
+                "channels",
+                "holos",
+                "email",
+                "runtime"
+              ]
+            },
+            "required": true
+          }
+        ],
+        "summary": "Open config domain file",
+        "description": "Materialize and open one canonical global config domain file with the operating system default.",
+        "responses": {
+          "200": {
+            "description": "Opened config domain file",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfigDomainOpenResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Unsupported platform",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfigDomainOpenError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Failed to open config domain file",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfigDomainOpenError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.config.domain.open({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/config/import/plan": {
       "post": {
         "operationId": "config.import.plan",
@@ -4420,6 +4504,378 @@
           {
             "lang": "js",
             "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.session.abort({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/session/{sessionID}/inbox": {
+      "get": {
+        "operationId": "session.inbox",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "sessionID",
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "description": "Session ID"
+          }
+        ],
+        "summary": "List session inbox items",
+        "description": "Get active queued user messages and agent updates for a session.",
+        "responses": {
+          "200": {
+            "description": "Session inbox items",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/SessionInboxItem"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.session.inbox({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/session/{sessionID}/input": {
+      "post": {
+        "operationId": "session.input",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "sessionID",
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "description": "Session ID"
+          }
+        ],
+        "summary": "Submit session input",
+        "description": "Submit user input to a session. If the session is running, the input is queued in the session inbox; otherwise a new turn starts immediately.",
+        "responses": {
+          "200": {
+            "description": "Input accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionInputResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "messageID": {
+                    "type": "string",
+                    "pattern": "^msg.*"
+                  },
+                  "model": {
+                    "type": "object",
+                    "properties": {
+                      "providerID": {
+                        "type": "string"
+                      },
+                      "modelID": {
+                        "type": "string"
+                      }
+                    },
+                    "required": ["providerID", "modelID"]
+                  },
+                  "agent": {
+                    "type": "string"
+                  },
+                  "noReply": {
+                    "type": "boolean"
+                  },
+                  "metadata": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {}
+                  },
+                  "summary": {
+                    "type": "object",
+                    "properties": {
+                      "title": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "tools": {
+                    "description": "Per-prompt tool visibility toggle. Does not affect session permissions.",
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {
+                      "type": "boolean"
+                    }
+                  },
+                  "system": {
+                    "type": "string"
+                  },
+                  "variant": {
+                    "type": "string"
+                  },
+                  "parts": {
+                    "type": "array",
+                    "items": {
+                      "anyOf": [
+                        {
+                          "$ref": "#/components/schemas/TextPartInput"
+                        },
+                        {
+                          "$ref": "#/components/schemas/FilePartInput"
+                        }
+                      ]
+                    }
+                  }
+                },
+                "required": ["parts"]
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.session.input({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/session/{sessionID}/inbox/{itemID}/guide": {
+      "post": {
+        "operationId": "session.inbox_guide",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "sessionID",
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "description": "Session ID"
+          },
+          {
+            "in": "path",
+            "name": "itemID",
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "description": "Inbox item ID"
+          }
+        ],
+        "summary": "Guide current run with inbox item",
+        "description": "Promote a queued user message so it is added before the next model request in the current run.",
+        "responses": {
+          "200": {
+            "description": "Promoted inbox item",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionInboxItem"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.session.inbox_guide({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/session/{sessionID}/inbox/{itemID}": {
+      "delete": {
+        "operationId": "session.inbox_remove",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "sessionID",
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "description": "Session ID"
+          },
+          {
+            "in": "path",
+            "name": "itemID",
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "description": "Inbox item ID"
+          }
+        ],
+        "summary": "Remove inbox item",
+        "description": "Remove a queued user message from the session inbox.",
+        "responses": {
+          "204": {
+            "description": "Inbox item removed"
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.session.inbox_remove({\n  ...\n})"
           }
         ]
       }
@@ -6913,9 +7369,41 @@
                       "items": {
                         "type": "string"
                       }
+                    },
+                    "catalogProviders": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "authHealth": {
+                      "type": "object",
+                      "propertyNames": {
+                        "type": "string"
+                      },
+                      "additionalProperties": {
+                        "$ref": "#/components/schemas/ProviderAuthHealth"
+                      }
+                    },
+                    "runtimeAvailability": {
+                      "type": "object",
+                      "propertyNames": {
+                        "type": "string"
+                      },
+                      "additionalProperties": {
+                        "$ref": "#/components/schemas/ProviderRuntimeAvailability"
+                      }
                     }
                   },
-                  "required": ["all", "default", "connected", "configProviders"]
+                  "required": [
+                    "all",
+                    "default",
+                    "connected",
+                    "configProviders",
+                    "catalogProviders",
+                    "authHealth",
+                    "runtimeAvailability"
+                  ]
                 }
               }
             }
@@ -6925,6 +7413,113 @@
           {
             "lang": "js",
             "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.provider.list({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/provider/usage": {
+      "get": {
+        "operationId": "provider.usage.list",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "List provider account usage",
+        "description": "Retrieve account usage snapshots for connected providers that expose usage information.",
+        "responses": {
+          "200": {
+            "description": "Provider account usage snapshots",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {
+                    "$ref": "#/components/schemas/AccountUsageSnapshot"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.provider.usage.list({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/provider/{providerID}/usage": {
+      "get": {
+        "operationId": "provider.usage.get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "providerID",
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "description": "Provider ID"
+          }
+        ],
+        "summary": "Get provider account usage",
+        "description": "Retrieve account usage and quota windows for a provider.",
+        "responses": {
+          "200": {
+            "description": "Provider account usage snapshot",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountUsageSnapshot"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.provider.usage.get({\n  ...\n})"
           }
         ]
       }
@@ -7131,6 +7726,82 @@
           {
             "lang": "js",
             "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.provider.oauth.callback({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/provider/{providerID}/import": {
+      "post": {
+        "operationId": "provider.credentials.importCredentials",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "providerID",
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "description": "Provider ID"
+          }
+        ],
+        "summary": "Import provider credentials",
+        "description": "Import credentials from a local provider-specific credential source.",
+        "responses": {
+          "200": {
+            "description": "Credentials imported successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "boolean"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "method": {
+                    "description": "Auth method index",
+                    "type": "number"
+                  }
+                },
+                "required": ["method"]
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.provider.credentials.importCredentials({\n  ...\n})"
           }
         ]
       }
@@ -17476,6 +18147,36 @@
         },
         "additionalProperties": false
       },
+      "ProviderCatalogConfig": {
+        "description": "Signed remote provider catalog configuration",
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "description": "Enable signed remote provider catalog updates",
+            "type": "boolean"
+          },
+          "registryUrl": {
+            "description": "Signed provider catalog URL. The signature is fetched from the same URL plus .sig.",
+            "type": "string",
+            "format": "uri"
+          },
+          "publicKey": {
+            "description": "Base64 Ed25519 public key used to verify provider catalog signatures",
+            "type": "string"
+          },
+          "cacheTtlMs": {
+            "description": "Provider catalog cache TTL in milliseconds",
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "offlineCache": {
+            "description": "Use the last verified provider catalog when offline",
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
       "PermissionActionConfig": {
         "type": "string",
         "enum": ["ask", "allow", "deny"]
@@ -19086,6 +19787,9 @@
               "type": "string"
             }
           },
+          "providerCatalog": {
+            "$ref": "#/components/schemas/ProviderCatalogConfig"
+          },
           "model": {
             "description": "Default model in the format of provider/model, eg anthropic/claude-sonnet-4-5",
             "type": "string"
@@ -19366,6 +20070,19 @@
               "type": "string"
             }
           },
+          "project_doc_fallback_filenames": {
+            "description": "Ordered fallback instruction filenames to try when AGENTS.md is missing in a directory",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "project_doc_max_bytes": {
+            "description": "Maximum bytes to include from each automatically discovered instruction file (default: 32768; 0 disables automatic discovery)",
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
           "layout": {
             "$ref": "#/components/schemas/LayoutConfig"
           },
@@ -19594,6 +20311,38 @@
           }
         },
         "required": ["config"]
+      },
+      "ConfigDomainOpenResponse": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "const": true
+          },
+          "path": {
+            "type": "string"
+          }
+        },
+        "required": ["success", "path"]
+      },
+      "ConfigDomainOpenError": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "const": false
+          },
+          "error": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          }
+        },
+        "required": ["success", "error", "message"]
       },
       "ConfigDomainImportChange": {
         "type": "object",
@@ -20756,6 +21505,23 @@
               "type": "string"
             }
           },
+          "toolState": {
+            "type": "object",
+            "properties": {
+              "expandedGroups": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "activatedTools": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          },
           "pendingReply": {
             "type": "boolean"
           },
@@ -21040,6 +21806,324 @@
           }
         },
         "required": ["sessionID", "count", "hasActiveAgenda", "items", "offset", "limit", "total", "hasMore"]
+      },
+      "SessionInboxItemSource": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          }
+        },
+        "required": ["type"],
+        "additionalProperties": {}
+      },
+      "SessionInboxItem": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^inb.*"
+          },
+          "sessionID": {
+            "type": "string",
+            "pattern": "^ses.*"
+          },
+          "kind": {
+            "type": "string",
+            "enum": ["queued_user", "guiding", "agent_update"]
+          },
+          "state": {
+            "type": "string",
+            "enum": ["queued", "guiding"]
+          },
+          "deliveryTarget": {
+            "type": "string",
+            "enum": ["after_turn", "next_model_call"]
+          },
+          "summary": {
+            "type": "object",
+            "properties": {
+              "title": {
+                "type": "string"
+              },
+              "preview": {
+                "type": "string"
+              }
+            },
+            "required": ["title"]
+          },
+          "detail": {
+            "type": "object",
+            "properties": {
+              "text": {
+                "type": "string"
+              },
+              "attachments": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "source": {
+            "$ref": "#/components/schemas/SessionInboxItemSource"
+          },
+          "time": {
+            "type": "object",
+            "properties": {
+              "created": {
+                "type": "number"
+              },
+              "updated": {
+                "type": "number"
+              }
+            },
+            "required": ["created"]
+          },
+          "orderKey": {
+            "type": "string"
+          },
+          "messageID": {
+            "type": "string",
+            "pattern": "^msg.*"
+          }
+        },
+        "required": ["id", "sessionID", "kind", "state", "deliveryTarget", "summary", "source", "time", "orderKey"]
+      },
+      "SessionInputResult": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "status": {
+                "type": "string",
+                "const": "started"
+              },
+              "messageID": {
+                "type": "string",
+                "pattern": "^msg.*"
+              }
+            },
+            "required": ["status", "messageID"]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "status": {
+                "type": "string",
+                "const": "queued"
+              },
+              "item": {
+                "$ref": "#/components/schemas/SessionInboxItem"
+              }
+            },
+            "required": ["status", "item"]
+          }
+        ]
+      },
+      "TextPartInput": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "const": "text"
+          },
+          "text": {
+            "type": "string"
+          },
+          "synthetic": {
+            "type": "boolean"
+          },
+          "ignored": {
+            "type": "boolean"
+          },
+          "time": {
+            "type": "object",
+            "properties": {
+              "start": {
+                "type": "number"
+              },
+              "end": {
+                "type": "number"
+              }
+            },
+            "required": ["start"]
+          },
+          "metadata": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {}
+          }
+        },
+        "required": ["type", "text"]
+      },
+      "FilePartSourceText": {
+        "type": "object",
+        "properties": {
+          "value": {
+            "type": "string"
+          },
+          "start": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "end": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": ["value", "start", "end"]
+      },
+      "FileSource": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "$ref": "#/components/schemas/FilePartSourceText"
+          },
+          "type": {
+            "type": "string",
+            "const": "file"
+          },
+          "path": {
+            "type": "string"
+          }
+        },
+        "required": ["text", "type", "path"]
+      },
+      "Range": {
+        "type": "object",
+        "properties": {
+          "start": {
+            "type": "object",
+            "properties": {
+              "line": {
+                "type": "number"
+              },
+              "character": {
+                "type": "number"
+              }
+            },
+            "required": ["line", "character"]
+          },
+          "end": {
+            "type": "object",
+            "properties": {
+              "line": {
+                "type": "number"
+              },
+              "character": {
+                "type": "number"
+              }
+            },
+            "required": ["line", "character"]
+          }
+        },
+        "required": ["start", "end"]
+      },
+      "SymbolSource": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "$ref": "#/components/schemas/FilePartSourceText"
+          },
+          "type": {
+            "type": "string",
+            "const": "symbol"
+          },
+          "path": {
+            "type": "string"
+          },
+          "range": {
+            "$ref": "#/components/schemas/Range"
+          },
+          "name": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": ["text", "type", "path", "range", "name", "kind"]
+      },
+      "ResourceSource": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "$ref": "#/components/schemas/FilePartSourceText"
+          },
+          "type": {
+            "type": "string",
+            "const": "resource"
+          },
+          "clientName": {
+            "type": "string"
+          },
+          "uri": {
+            "type": "string"
+          }
+        },
+        "required": ["text", "type", "clientName", "uri"]
+      },
+      "FilePartSource": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/FileSource"
+          },
+          {
+            "$ref": "#/components/schemas/SymbolSource"
+          },
+          {
+            "$ref": "#/components/schemas/ResourceSource"
+          }
+        ]
+      },
+      "FilePartInput": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "const": "file"
+          },
+          "mime": {
+            "type": "string"
+          },
+          "filename": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          },
+          "localPath": {
+            "type": "string"
+          },
+          "source": {
+            "$ref": "#/components/schemas/FilePartSource"
+          },
+          "metadata": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {}
+          }
+        },
+        "required": ["type", "mime", "url"]
       },
       "UserMessage": {
         "type": "object",
@@ -21468,130 +22552,6 @@
           }
         },
         "required": ["id", "sessionID", "messageID", "type", "text", "time"]
-      },
-      "FilePartSourceText": {
-        "type": "object",
-        "properties": {
-          "value": {
-            "type": "string"
-          },
-          "start": {
-            "type": "integer",
-            "minimum": -9007199254740991,
-            "maximum": 9007199254740991
-          },
-          "end": {
-            "type": "integer",
-            "minimum": -9007199254740991,
-            "maximum": 9007199254740991
-          }
-        },
-        "required": ["value", "start", "end"]
-      },
-      "FileSource": {
-        "type": "object",
-        "properties": {
-          "text": {
-            "$ref": "#/components/schemas/FilePartSourceText"
-          },
-          "type": {
-            "type": "string",
-            "const": "file"
-          },
-          "path": {
-            "type": "string"
-          }
-        },
-        "required": ["text", "type", "path"]
-      },
-      "Range": {
-        "type": "object",
-        "properties": {
-          "start": {
-            "type": "object",
-            "properties": {
-              "line": {
-                "type": "number"
-              },
-              "character": {
-                "type": "number"
-              }
-            },
-            "required": ["line", "character"]
-          },
-          "end": {
-            "type": "object",
-            "properties": {
-              "line": {
-                "type": "number"
-              },
-              "character": {
-                "type": "number"
-              }
-            },
-            "required": ["line", "character"]
-          }
-        },
-        "required": ["start", "end"]
-      },
-      "SymbolSource": {
-        "type": "object",
-        "properties": {
-          "text": {
-            "$ref": "#/components/schemas/FilePartSourceText"
-          },
-          "type": {
-            "type": "string",
-            "const": "symbol"
-          },
-          "path": {
-            "type": "string"
-          },
-          "range": {
-            "$ref": "#/components/schemas/Range"
-          },
-          "name": {
-            "type": "string"
-          },
-          "kind": {
-            "type": "integer",
-            "minimum": -9007199254740991,
-            "maximum": 9007199254740991
-          }
-        },
-        "required": ["text", "type", "path", "range", "name", "kind"]
-      },
-      "ResourceSource": {
-        "type": "object",
-        "properties": {
-          "text": {
-            "$ref": "#/components/schemas/FilePartSourceText"
-          },
-          "type": {
-            "type": "string",
-            "const": "resource"
-          },
-          "clientName": {
-            "type": "string"
-          },
-          "uri": {
-            "type": "string"
-          }
-        },
-        "required": ["text", "type", "clientName", "uri"]
-      },
-      "FilePartSource": {
-        "anyOf": [
-          {
-            "$ref": "#/components/schemas/FileSource"
-          },
-          {
-            "$ref": "#/components/schemas/SymbolSource"
-          },
-          {
-            "$ref": "#/components/schemas/ResourceSource"
-          }
-        ]
       },
       "FilePart": {
         "type": "object",
@@ -22073,82 +23033,6 @@
             "$ref": "#/components/schemas/CompactionPart"
           }
         ]
-      },
-      "TextPartInput": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string"
-          },
-          "type": {
-            "type": "string",
-            "const": "text"
-          },
-          "text": {
-            "type": "string"
-          },
-          "synthetic": {
-            "type": "boolean"
-          },
-          "ignored": {
-            "type": "boolean"
-          },
-          "time": {
-            "type": "object",
-            "properties": {
-              "start": {
-                "type": "number"
-              },
-              "end": {
-                "type": "number"
-              }
-            },
-            "required": ["start"]
-          },
-          "metadata": {
-            "type": "object",
-            "propertyNames": {
-              "type": "string"
-            },
-            "additionalProperties": {}
-          }
-        },
-        "required": ["type", "text"]
-      },
-      "FilePartInput": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string"
-          },
-          "type": {
-            "type": "string",
-            "const": "file"
-          },
-          "mime": {
-            "type": "string"
-          },
-          "filename": {
-            "type": "string"
-          },
-          "url": {
-            "type": "string"
-          },
-          "localPath": {
-            "type": "string"
-          },
-          "source": {
-            "$ref": "#/components/schemas/FilePartSource"
-          },
-          "metadata": {
-            "type": "object",
-            "propertyNames": {
-              "type": "string"
-            },
-            "additionalProperties": {}
-          }
-        },
-        "required": ["type", "mime", "url"]
       },
       "SessionRollbackEvent": {
         "type": "object",
@@ -22762,6 +23646,147 @@
         },
         "required": ["name", "hints"]
       },
+      "ProviderAuthHealth": {
+        "type": "object",
+        "properties": {
+          "providerID": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["connected", "not_configured", "expired", "exhausted", "dead"]
+          },
+          "authKind": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "type": "number"
+          },
+          "reloginRequired": {
+            "type": "boolean"
+          },
+          "cooldownUntil": {
+            "type": "number"
+          },
+          "resetAt": {
+            "type": "number"
+          },
+          "failureCode": {
+            "type": "string"
+          }
+        },
+        "required": ["providerID", "status"]
+      },
+      "ProviderRuntimeAvailability": {
+        "type": "object",
+        "properties": {
+          "providerID": {
+            "type": "string"
+          },
+          "available": {
+            "type": "boolean"
+          },
+          "reason": {
+            "type": "string",
+            "enum": ["connected", "not_connected", "disabled", "no_models"]
+          },
+          "healthCheck": {
+            "type": "string",
+            "enum": ["models", "none"]
+          },
+          "modelCount": {
+            "type": "number"
+          }
+        },
+        "required": ["providerID", "available", "modelCount"]
+      },
+      "AccountUsageWindow": {
+        "type": "object",
+        "properties": {
+          "label": {
+            "type": "string"
+          },
+          "usedPercent": {
+            "type": "number",
+            "minimum": 0
+          },
+          "remainingPercent": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "resetAt": {
+            "type": "string"
+          },
+          "detail": {
+            "type": "string"
+          }
+        },
+        "required": ["label"]
+      },
+      "AccountUsageCredits": {
+        "type": "object",
+        "properties": {
+          "hasCredits": {
+            "type": "boolean"
+          },
+          "balance": {
+            "type": "number"
+          },
+          "unlimited": {
+            "type": "boolean"
+          },
+          "currency": {
+            "type": "string"
+          }
+        }
+      },
+      "AccountUsageSnapshot": {
+        "type": "object",
+        "properties": {
+          "providerID": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["available", "unavailable", "error"]
+          },
+          "source": {
+            "type": "string"
+          },
+          "fetchedAt": {
+            "type": "string"
+          },
+          "plan": {
+            "type": "string"
+          },
+          "windows": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AccountUsageWindow"
+            }
+          },
+          "details": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "credits": {
+            "$ref": "#/components/schemas/AccountUsageCredits"
+          },
+          "reloginRequired": {
+            "type": "boolean"
+          },
+          "unavailableReason": {
+            "type": "string"
+          }
+        },
+        "required": ["providerID", "status", "fetchedAt", "windows", "details"]
+      },
       "ProviderAuthMethod": {
         "type": "object",
         "properties": {
@@ -22774,6 +23799,10 @@
               {
                 "type": "string",
                 "const": "api"
+              },
+              {
+                "type": "string",
+                "const": "import"
               }
             ]
           },
@@ -25983,6 +27012,13 @@
           },
           "enterpriseUrl": {
             "type": "string"
+          },
+          "metadata": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {}
           }
         },
         "required": ["type", "refresh", "access", "expires"]
@@ -25996,6 +27032,13 @@
           },
           "key": {
             "type": "string"
+          },
+          "metadata": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {}
           }
         },
         "required": ["type", "key"]
@@ -26012,6 +27055,13 @@
           },
           "token": {
             "type": "string"
+          },
+          "metadata": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {}
           }
         },
         "required": ["type", "key", "token"]
@@ -26028,6 +27078,13 @@
           },
           "agentSecret": {
             "type": "string"
+          },
+          "metadata": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {}
           }
         },
         "required": ["type", "agentId", "agentSecret"]
@@ -26643,6 +27700,32 @@
               }
             },
             "required": ["sessionID"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.session.inbox.updated": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "session.inbox.updated"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "sessionID": {
+                "type": "string",
+                "pattern": "^ses.*"
+              },
+              "items": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/SessionInboxItem"
+                }
+              }
+            },
+            "required": ["sessionID", "items"]
           }
         },
         "required": ["type", "properties"]
@@ -27584,6 +28667,9 @@
           },
           {
             "$ref": "#/components/schemas/Event.session.idle"
+          },
+          {
+            "$ref": "#/components/schemas/Event.session.inbox.updated"
           },
           {
             "$ref": "#/components/schemas/Event.note.created"

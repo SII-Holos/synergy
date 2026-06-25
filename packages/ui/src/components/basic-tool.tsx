@@ -6,6 +6,7 @@ import { ToolTrigger, type ToolTriggerProps } from "./tool/trigger"
 import { type IconName } from "./icon"
 import { ToolTextOutput } from "./tool-output-text"
 import { classifyTool } from "./tool/classifier"
+import { toolCountdown, type ToolTime } from "./tool/timeout"
 
 /** Legacy trigger value shape (pre-ToolTriggerProps). */
 interface LegacyTriggerValue {
@@ -33,6 +34,9 @@ export interface BasicToolProps {
   forceOpen?: boolean
   status?: string
   countdown?: number
+  countdownStartedAt?: number
+  metadata?: Record<string, any>
+  time?: ToolTime
   charsReceived?: number
   onSubtitleClick?: () => void
 }
@@ -95,6 +99,12 @@ export function BasicTool(props: BasicToolProps) {
     if (props.status !== "generating" || !props.charsReceived) return null
     return `${props.charsReceived.toLocaleString()} chars`
   })
+  const countdown = createMemo(() => {
+    if (props.countdown !== undefined) {
+      return { seconds: props.countdown, startedAt: props.countdownStartedAt ?? props.time?.start }
+    }
+    return toolCountdown(props.metadata, props.time)
+  })
 
   const triggerProps = createMemo(() => fromTrigger(props.trigger, props.icon, props.onSubtitleClick))
 
@@ -116,8 +126,8 @@ export function BasicTool(props: BasicToolProps) {
               <Show when={charsLabel()}>
                 <span data-slot="tool-trigger-chars">{charsLabel()}</span>
               </Show>
-              <Show when={props.countdown != null}>
-                <Countdown seconds={props.countdown!} active={active()} />
+              <Show when={countdown()}>
+                {(value) => <Countdown seconds={value().seconds} startedAt={value().startedAt} active={active()} />}
               </Show>
               <Spinner />
             </Match>
@@ -162,6 +172,7 @@ export function SmartTool(props: {
   charsReceived?: number
   hideDetails?: boolean
   metadata?: Record<string, any>
+  time?: ToolTime
   fallbackMeta?: {
     icon?: string
     title?: string
@@ -196,6 +207,8 @@ export function SmartTool(props: {
     <BasicTool
       status={props.status}
       charsReceived={props.charsReceived}
+      metadata={props.metadata}
+      time={props.time}
       trigger={{
         icon: icon(),
         title: title(),

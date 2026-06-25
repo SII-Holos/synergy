@@ -1,4 +1,7 @@
 import { z } from "zod"
+import type { ToolDisplay } from "./display"
+
+export type { ToolDisplay, ToolMediaDisplay } from "./display"
 
 export type ToolContext = {
   sessionID: string
@@ -10,10 +13,15 @@ export type ToolContext = {
   ask?(input: { permission: string; patterns: string[]; metadata?: Record<string, any> }): Promise<void>
 }
 
+export type ToolResultMetadata = Record<string, any> & {
+  display?: ToolDisplay
+  primaryAttachmentIds?: string[]
+}
+
 export interface ToolResult {
   title?: string
   output: string
-  metadata?: Record<string, any>
+  metadata?: ToolResultMetadata
   attachments?: Array<{
     type: "file"
     id: string
@@ -26,8 +34,27 @@ export interface ToolResult {
   }>
 }
 
+export type ToolExposure =
+  | {
+      mode: "resident"
+    }
+  | {
+      mode: "group"
+      group: string
+      title?: string
+      description?: string
+      whenToExpand?: string
+    }
+  | {
+      mode: "search"
+      title?: string
+      keywords?: string[]
+    }
+
 export function tool<Args extends z.ZodRawShape>(input: {
   description: string
+  exposure?: ToolExposure
+  display?: ToolDisplay
   args: Args
   execute(args: z.infer<z.ZodObject<Args>>, context: ToolContext): Promise<string | ToolResult>
 }) {

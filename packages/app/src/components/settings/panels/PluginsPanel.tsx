@@ -1,8 +1,8 @@
 import { For, Show } from "solid-js"
-import { produce } from "solid-js/store"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { TextField } from "@ericsanchezok/synergy-ui/text-field"
 import { IconButton } from "@ericsanchezok/synergy-ui/icon-button"
+import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import type { PluginEntry } from "../types"
 
 export function PluginsPanel(props: {
@@ -18,7 +18,7 @@ export function PluginsPanel(props: {
           <h1 class="ds-content-title">Plugins</h1>
           <p class="ds-section-hint">Extend with custom tools, hooks, and integrations.</p>
         </div>
-        <IconButton icon="plus" variant="ghost" onClick={props.onAdd} />
+        <IconButton icon={getSemanticIcon("action.add")} variant="ghost" onClick={props.onAdd} />
       </div>
       <For each={props.entries}>
         {(entry, index) => (
@@ -31,13 +31,17 @@ export function PluginsPanel(props: {
                 onChange={(value) => props.onChange(index(), value)}
               />
             </div>
-            <IconButton icon="x" variant="ghost" onClick={() => props.onRemove(index())} />
+            <IconButton
+              icon={getSemanticIcon("action.close")}
+              variant="ghost"
+              onClick={() => props.onRemove(index())}
+            />
           </div>
         )}
       </For>
       <Show when={props.entries.length === 0}>
         <div class="ds-empty-state">
-          <Icon name="zap" size="normal" class="text-text-weaker" />
+          <Icon name={getSemanticIcon("settings.plugins")} size="normal" class="text-text-weaker" />
           <span>No plugins configured</span>
           <span class="text-text-weaker">Click + to add one</span>
         </div>

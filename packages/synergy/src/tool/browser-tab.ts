@@ -76,11 +76,18 @@ export const BrowserTabTool = Tool.define<typeof parameters, BrowserTabMetadata>
         }
 
         case "new": {
-          const tab = await session.createTab(params.url)
+          const tab = await session.createTab()
+          session.switchTab(tab.id)
+          if (params.url) {
+            await BrowserToolHelper.markActivity(ctx, tab, "acting", "browser_tab", `Opening ${params.url}`)
+            await BrowserToolHelper.navigateWithPolicyApproval(ctx, tab, params.url)
+            await session.notifyTabNavigated(tab)
+          }
+          await session.save()
           return {
             title: "New tab",
-            output: `Created tab ${tab.id}${params.url ? ` at ${params.url}` : ""}`,
-            metadata: { tab: { id: tab.id, url: tab.url, title: tab.title } },
+            output: `Created tab ${tab.id}${tab.url ? ` at ${tab.url}` : ""}`,
+            metadata: { tab: { id: tab.id, url: tab.url, title: tab.title }, activeTabId: tab.id },
           }
         }
 

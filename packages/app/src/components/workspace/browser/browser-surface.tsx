@@ -1,7 +1,11 @@
 import { Button } from "@ericsanchezok/synergy-ui/button"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
-import { createEffect, Show } from "solid-js"
+import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
+import { createEffect, onCleanup, onMount, Show } from "solid-js"
 import { useBrowser, type BrowserFrameEntry } from "./browser-store"
+
+const MIN_FIT_VIEWPORT_WIDTH = 320
+const MIN_FIT_VIEWPORT_HEIGHT = 240
 
 function mouseButton(button: number): "left" | "middle" | "right" {
   if (button === 1) return "middle"
@@ -33,6 +37,8 @@ export function BrowserSurface() {
   let canvasRef: HTMLCanvasElement | undefined
   let fileInputRef: HTMLInputElement | undefined
   let composing = false
+  let pendingFitFrame: number | undefined
+  let lastFitViewportKey = ""
 
   const browser = useBrowser()
 
@@ -45,6 +51,54 @@ export function BrowserSurface() {
   createEffect(() => {
     const tabId = browser.activeTabId()
     if (tabId) browser.send({ type: "stream.start", tabId })
+  })
+
+  function fitViewportSize() {
+    if (!wrapperRef) return null
+    const rect = wrapperRef.getBoundingClientRect()
+    const width = Math.max(MIN_FIT_VIEWPORT_WIDTH, Math.round(rect.width))
+    const height = Math.max(MIN_FIT_VIEWPORT_HEIGHT, Math.round(rect.height))
+    if (width <= 0 || height <= 0) return null
+    return { width, height }
+  }
+
+  function applyFitViewport() {
+    pendingFitFrame = undefined
+    if (browser.viewportMode() !== "fit") {
+      lastFitViewportKey = ""
+      return
+    }
+
+    const size = fitViewportSize()
+    if (!size) return
+
+    const tabId = browser.activeTabId() ?? "active"
+    const key = `${tabId}:${size.width}x${size.height}`
+    if (key === lastFitViewportKey) return
+    lastFitViewportKey = key
+    browser.setViewport(size.width, size.height, { mode: "fit" })
+  }
+
+  function scheduleFitViewport() {
+    if (pendingFitFrame !== undefined) return
+    pendingFitFrame = requestAnimationFrame(applyFitViewport)
+  }
+
+  createEffect(() => {
+    browser.viewportMode()
+    browser.activeTabId()
+    scheduleFitViewport()
+  })
+
+  onMount(() => {
+    if (!wrapperRef) return
+    const observer = new ResizeObserver(scheduleFitViewport)
+    observer.observe(wrapperRef)
+    scheduleFitViewport()
+    onCleanup(() => {
+      observer.disconnect()
+      if (pendingFitFrame !== undefined) cancelAnimationFrame(pendingFitFrame)
+    })
   })
 
   createEffect(() => {
@@ -185,7 +239,7 @@ export function BrowserSurface() {
         when={activeFrame()}
         fallback={
           <div class="flex flex-col items-center gap-3 text-text-weak text-13 select-none">
-            <Icon name="globe" class="size-14 text-icon-weaker" />
+            <Icon name={getSemanticIcon("browser.main")} class="size-14 text-icon-weaker" />
             <span class="text-14-medium text-text-base">Start browsing</span>
             <span class="text-12 text-text-weak">Enter a URL to open a page</span>
             <span class="text-11 text-text-weaker">{browser.session.connectionStatus}</span>

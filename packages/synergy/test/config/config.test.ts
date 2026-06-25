@@ -1221,6 +1221,54 @@ test("repairs invalid library shapes written by legacy identity migration", asyn
   }
 })
 
+test("provider profile normalize migration rewrites known provider aliases", async () => {
+  const home = path.join(
+    os.tmpdir(),
+    `synergy-config-provider-profile-normalize-${Math.random().toString(36).slice(2)}`,
+  )
+  const origHome = process.env["SYNERGY_TEST_HOME"]
+  try {
+    process.env["SYNERGY_TEST_HOME"] = home
+    const configHome = path.join(home, ".synergy", "config")
+    await fs.mkdir(configHome, { recursive: true })
+    const target = path.join(configHome, "synergy.jsonc")
+    await Bun.write(
+      target,
+      JSON.stringify({
+        provider: {
+          copilot: {
+            options: {
+              baseURL: "https://api.githubcopilot.com",
+            },
+          },
+        },
+        enabled_providers: ["copilot", "openai", "copilot"],
+        disabled_providers: ["mimo"],
+        model: "copilot/gpt-5.4-mini",
+        agent: {
+          coder: {
+            model: "mimo/mimo-v2.5-pro",
+          },
+        },
+      }),
+    )
+
+    resetMigrations()
+    await runMigrations({ targetDomain: "config" })
+
+    const migrated = parseJsonc(await Bun.file(target).text()) as Record<string, any>
+    expect(migrated.provider["github-copilot"]).toBeDefined()
+    expect(migrated.provider.copilot).toBeUndefined()
+    expect(migrated.enabled_providers).toEqual(["github-copilot", "openai"])
+    expect(migrated.disabled_providers).toEqual(["xiaomi"])
+    expect(migrated.model).toBe("github-copilot/gpt-5.4-mini")
+    expect(migrated.agent.coder.model).toBe("xiaomi/mimo-v2.5-pro")
+  } finally {
+    process.env["SYNERGY_TEST_HOME"] = origHome
+    await fs.rm(home, { recursive: true, force: true }).catch(() => {})
+  }
+})
+
 // MCP config merging tests
 
 test("project config can override MCP server enabled status", async () => {

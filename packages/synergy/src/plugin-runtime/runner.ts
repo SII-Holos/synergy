@@ -222,6 +222,7 @@ async function init(input: IsolatedPluginInputData) {
     return {
       id,
       description: def.description,
+      display: def.display,
       schema,
     }
   })

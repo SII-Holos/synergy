@@ -1,5 +1,26 @@
 # Agents
 
+## Project instruction files
+
+Synergy automatically includes instruction files discovered inside the active Scope. In each directory from the Scope root to the current working directory, Synergy uses the first matching file in this order:
+
+1. `AGENTS.override.md`
+2. `AGENTS.md`
+3. entries from `project_doc_fallback_filenames`
+4. `CLAUDE.md`
+5. `CONTEXT.md`
+
+Use `AGENTS.override.md` for local-only overrides. Configure fallback filenames in `60-agents.jsonc`:
+
+```jsonc
+{
+  "project_doc_fallback_filenames": ["PRODUCT.md", "WORKFLOW.md"],
+  "project_doc_max_bytes": 32768
+}
+```
+
+`instructions` is separate: it explicitly appends files, globs, or URLs and does not participate in the fallback order.
+
 ## Quick start — create a custom agent
 
 1. **Decide scope** — project (`.synergy/agent/`) or global (`~/.synergy/config/agent/`). Project overrides global.

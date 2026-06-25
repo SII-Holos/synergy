@@ -987,6 +987,22 @@ export const Provider = ModelsDev.Provider.partial()
   })
 export type Provider = z.infer<typeof Provider>
 
+export const ProviderCatalog = z
+  .object({
+    enabled: z.boolean().optional().describe("Enable signed remote provider catalog updates"),
+    registryUrl: z
+      .string()
+      .url()
+      .optional()
+      .describe("Signed provider catalog URL. The signature is fetched from the same URL plus .sig."),
+    publicKey: z.string().optional().describe("Base64 Ed25519 public key used to verify provider catalog signatures"),
+    cacheTtlMs: z.number().int().positive().optional().describe("Provider catalog cache TTL in milliseconds"),
+    offlineCache: z.boolean().optional().describe("Use the last verified provider catalog when offline"),
+  })
+  .strict()
+  .meta({ ref: "ProviderCatalogConfig" })
+export type ProviderCatalog = z.infer<typeof ProviderCatalog>
+
 export const PluginApprovalPolicy = z
   .object({
     allowUnsignedLocal: z.boolean().optional().default(true).describe("Allow unsigned local plugins with user consent"),
@@ -1166,6 +1182,7 @@ export const Info = z
       .array(z.string())
       .optional()
       .describe("When set, ONLY these providers will be enabled. All other providers will be ignored"),
+    providerCatalog: ProviderCatalog.optional().describe("Signed remote provider catalog configuration"),
     model: z
       .string()
       .describe("Default model in the format of provider/model, eg anthropic/claude-sonnet-4-5")
@@ -1322,6 +1339,18 @@ export const Info = z
         },
       ),
     instructions: z.array(z.string()).optional().describe("Additional instruction files or patterns to include"),
+    project_doc_fallback_filenames: z
+      .array(z.string())
+      .optional()
+      .describe("Ordered fallback instruction filenames to try when AGENTS.md is missing in a directory"),
+    project_doc_max_bytes: z
+      .number()
+      .int()
+      .min(0)
+      .optional()
+      .describe(
+        "Maximum bytes to include from each automatically discovered instruction file (default: 32768; 0 disables automatic discovery)",
+      ),
     layout: Layout.optional().describe("@deprecated Always uses stretch layout."),
     permission: Permission.optional(),
     smartAllow: z

@@ -585,6 +585,31 @@ export namespace Session {
     return msg
   })
 
+  export const mergeMessageMetadata = fn(
+    z.object({
+      sessionID: Identifier.schema("session"),
+      messageID: Identifier.schema("message"),
+      metadata: z.record(z.string(), z.any()),
+    }),
+    async (input) => {
+      const session = await SessionManager.requireSession(input.sessionID)
+      const scopeID = asScopeID((session.scope as Scope).id)
+      const result = await Storage.update<MessageV2.Info>(
+        StoragePath.messageInfo(scopeID, asSessionID(input.sessionID), asMessageID(input.messageID)),
+        (draft) => {
+          draft.metadata = {
+            ...draft.metadata,
+            ...input.metadata,
+          }
+        },
+      )
+      Bus.publish(MessageV2.Event.Updated, {
+        info: result,
+      })
+      return result
+    },
+  )
+
   export const removeMessage = fn(
     z.object({
       sessionID: Identifier.schema("session"),

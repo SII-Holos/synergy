@@ -333,7 +333,7 @@ export function StatusBar() {
             trigger={
               <Tooltip placement="top" value="Details">
                 <button type="button" classList={iconButtonClass()}>
-                  <Icon name="panel-bottom-open" size="small" />
+                  <Icon name={getSemanticIcon("app.statusBar.toggle")} size="small" />
                 </button>
               </Tooltip>
             }

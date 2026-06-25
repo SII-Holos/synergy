@@ -933,6 +933,32 @@ export type PluginMarketplaceConfig = {
   offlineCache?: boolean
 }
 
+/**
+ * Signed remote provider catalog configuration
+ */
+export type ProviderCatalogConfig = {
+  /**
+   * Enable signed remote provider catalog updates
+   */
+  enabled?: boolean
+  /**
+   * Signed provider catalog URL. The signature is fetched from the same URL plus .sig.
+   */
+  registryUrl?: string
+  /**
+   * Base64 Ed25519 public key used to verify provider catalog signatures
+   */
+  publicKey?: string
+  /**
+   * Provider catalog cache TTL in milliseconds
+   */
+  cacheTtlMs?: number
+  /**
+   * Use the last verified provider catalog when offline
+   */
+  offlineCache?: boolean
+}
+
 export type PermissionActionConfig = "ask" | "allow" | "deny"
 
 export type PermissionObjectConfig = {
@@ -1948,6 +1974,7 @@ export type Config = {
    * When set, ONLY these providers will be enabled. All other providers will be ignored
    */
   enabled_providers?: Array<string>
+  providerCatalog?: ProviderCatalogConfig
   /**
    * Default model in the format of provider/model, eg anthropic/claude-sonnet-4-5
    */
@@ -2075,6 +2102,14 @@ export type Config = {
    * Additional instruction files or patterns to include
    */
   instructions?: Array<string>
+  /**
+   * Ordered fallback instruction filenames to try when AGENTS.md is missing in a directory
+   */
+  project_doc_fallback_filenames?: Array<string>
+  /**
+   * Maximum bytes to include from each automatically discovered instruction file (default: 32768; 0 disables automatic discovery)
+   */
+  project_doc_max_bytes?: number
   layout?: LayoutConfig
   permission?: PermissionConfig
   /**
@@ -2196,6 +2231,18 @@ export type ConfigDomainSummary = {
 export type ConfigDomainUpdateInput = {
   config: Config
   mode?: "merge" | "replace-domain" | "append"
+}
+
+export type ConfigDomainOpenResponse = {
+  success: true
+  path: string
+}
+
+export type ConfigDomainOpenError = {
+  success: false
+  error: string
+  message: string
+  path?: string
 }
 
 export type ConfigDomainImportChange = {
@@ -2600,6 +2647,10 @@ export type Session = {
    * Tool names pre-authorized by the user via system scheduling (e.g. agenda wake). Bypasses the ask gate for these tools within this session only.
    */
   preAuthorizedActions?: Array<string>
+  toolState?: {
+    expandedGroups?: Array<string>
+    activatedTools?: Array<string>
+  }
   pendingReply?: boolean
   interaction?: SessionInteraction
   agenda?: {
@@ -2747,6 +2798,114 @@ export type SessionAgendaResponse = {
   hasMore: boolean
 }
 
+export type SessionInboxItemSource = {
+  type: string
+  label?: string
+  [key: string]: unknown | string | undefined
+}
+
+export type SessionInboxItem = {
+  id: string
+  sessionID: string
+  kind: "queued_user" | "guiding" | "agent_update"
+  state: "queued" | "guiding"
+  deliveryTarget: "after_turn" | "next_model_call"
+  summary: {
+    title: string
+    preview?: string
+  }
+  detail?: {
+    text?: string
+    attachments?: Array<string>
+  }
+  source: SessionInboxItemSource
+  time: {
+    created: number
+    updated?: number
+  }
+  orderKey: string
+  messageID?: string
+}
+
+export type SessionInputResult =
+  | {
+      status: "started"
+      messageID: string
+    }
+  | {
+      status: "queued"
+      item: SessionInboxItem
+    }
+
+export type TextPartInput = {
+  id?: string
+  type: "text"
+  text: string
+  synthetic?: boolean
+  ignored?: boolean
+  time?: {
+    start: number
+    end?: number
+  }
+  metadata?: {
+    [key: string]: unknown
+  }
+}
+
+export type FilePartSourceText = {
+  value: string
+  start: number
+  end: number
+}
+
+export type FileSource = {
+  text: FilePartSourceText
+  type: "file"
+  path: string
+}
+
+export type Range = {
+  start: {
+    line: number
+    character: number
+  }
+  end: {
+    line: number
+    character: number
+  }
+}
+
+export type SymbolSource = {
+  text: FilePartSourceText
+  type: "symbol"
+  path: string
+  range: Range
+  name: string
+  kind: number
+}
+
+export type ResourceSource = {
+  text: FilePartSourceText
+  type: "resource"
+  clientName: string
+  uri: string
+}
+
+export type FilePartSource = FileSource | SymbolSource | ResourceSource
+
+export type FilePartInput = {
+  id?: string
+  type: "file"
+  mime: string
+  filename?: string
+  url: string
+  localPath?: string
+  source?: FilePartSource
+  metadata?: {
+    [key: string]: unknown
+  }
+}
+
 export type UserMessage = {
   id: string
   sessionID: string
@@ -2887,47 +3046,6 @@ export type ReasoningPart = {
     end?: number
   }
 }
-
-export type FilePartSourceText = {
-  value: string
-  start: number
-  end: number
-}
-
-export type FileSource = {
-  text: FilePartSourceText
-  type: "file"
-  path: string
-}
-
-export type Range = {
-  start: {
-    line: number
-    character: number
-  }
-  end: {
-    line: number
-    character: number
-  }
-}
-
-export type SymbolSource = {
-  text: FilePartSourceText
-  type: "symbol"
-  path: string
-  range: Range
-  name: string
-  kind: number
-}
-
-export type ResourceSource = {
-  text: FilePartSourceText
-  type: "resource"
-  clientName: string
-  uri: string
-}
-
-export type FilePartSource = FileSource | SymbolSource | ResourceSource
 
 export type FilePart = {
   id: string
@@ -3098,34 +3216,6 @@ export type Part =
   | PatchPart
   | RetryPart
   | CompactionPart
-
-export type TextPartInput = {
-  id?: string
-  type: "text"
-  text: string
-  synthetic?: boolean
-  ignored?: boolean
-  time?: {
-    start: number
-    end?: number
-  }
-  metadata?: {
-    [key: string]: unknown
-  }
-}
-
-export type FilePartInput = {
-  id?: string
-  type: "file"
-  mime: string
-  filename?: string
-  url: string
-  localPath?: string
-  source?: FilePartSource
-  metadata?: {
-    [key: string]: unknown
-  }
-}
 
 export type SessionRollbackEvent = {
   id: string
@@ -3331,8 +3421,56 @@ export type Command = {
   hints: Array<string>
 }
 
+export type ProviderAuthHealth = {
+  providerID: string
+  status: "connected" | "not_configured" | "expired" | "exhausted" | "dead"
+  authKind?: string
+  source?: string
+  updatedAt?: number
+  reloginRequired?: boolean
+  cooldownUntil?: number
+  resetAt?: number
+  failureCode?: string
+}
+
+export type ProviderRuntimeAvailability = {
+  providerID: string
+  available: boolean
+  reason?: "connected" | "not_connected" | "disabled" | "no_models"
+  healthCheck?: "models" | "none"
+  modelCount: number
+}
+
+export type AccountUsageWindow = {
+  label: string
+  usedPercent?: number
+  remainingPercent?: number
+  resetAt?: string
+  detail?: string
+}
+
+export type AccountUsageCredits = {
+  hasCredits?: boolean
+  balance?: number
+  unlimited?: boolean
+  currency?: string
+}
+
+export type AccountUsageSnapshot = {
+  providerID: string
+  status: "available" | "unavailable" | "error"
+  source?: string
+  fetchedAt: string
+  plan?: string
+  windows: Array<AccountUsageWindow>
+  details: Array<string>
+  credits?: AccountUsageCredits
+  reloginRequired?: boolean
+  unavailableReason?: string
+}
+
 export type ProviderAuthMethod = {
-  type: "oauth" | "api"
+  type: "oauth" | "api" | "import"
   label: string
 }
 
@@ -4373,23 +4511,35 @@ export type OAuth = {
   access: string
   expires: number
   enterpriseUrl?: string
+  metadata?: {
+    [key: string]: unknown
+  }
 }
 
 export type ApiAuth = {
   type: "api"
   key: string
+  metadata?: {
+    [key: string]: unknown
+  }
 }
 
 export type WellKnownAuth = {
   type: "wellknown"
   key: string
   token: string
+  metadata?: {
+    [key: string]: unknown
+  }
 }
 
 export type HolosAuth = {
   type: "holos"
   agentId: string
   agentSecret: string
+  metadata?: {
+    [key: string]: unknown
+  }
 }
 
 export type Auth = OAuth | ApiAuth | WellKnownAuth | HolosAuth
@@ -4607,6 +4757,14 @@ export type EventSessionIdle = {
   type: "session.idle"
   properties: {
     sessionID: string
+  }
+}
+
+export type EventSessionInboxUpdated = {
+  type: "session.inbox.updated"
+  properties: {
+    sessionID: string
+    items: Array<SessionInboxItem>
   }
 }
 
@@ -4944,6 +5102,7 @@ export type Event =
   | EventSessionError
   | EventSessionStatus
   | EventSessionIdle
+  | EventSessionInboxUpdated
   | EventNoteCreated
   | EventNoteUpdated
   | EventNoteDeleted
@@ -6061,6 +6220,53 @@ export type ConfigDomainUpdateResponses = {
 
 export type ConfigDomainUpdateResponse = ConfigDomainUpdateResponses[keyof ConfigDomainUpdateResponses]
 
+export type ConfigDomainOpenData = {
+  body?: never
+  path: {
+    domain:
+      | "general"
+      | "models"
+      | "providers"
+      | "library"
+      | "mcp"
+      | "plugins"
+      | "agents"
+      | "commands"
+      | "permissions"
+      | "channels"
+      | "holos"
+      | "email"
+      | "runtime"
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/config/domains/{domain}/open"
+}
+
+export type ConfigDomainOpenErrors = {
+  /**
+   * Unsupported platform
+   */
+  400: ConfigDomainOpenError
+  /**
+   * Failed to open config domain file
+   */
+  500: ConfigDomainOpenError
+}
+
+export type ConfigDomainOpenError2 = ConfigDomainOpenErrors[keyof ConfigDomainOpenErrors]
+
+export type ConfigDomainOpenResponses = {
+  /**
+   * Opened config domain file
+   */
+  200: ConfigDomainOpenResponse
+}
+
+export type ConfigDomainOpenResponse2 = ConfigDomainOpenResponses[keyof ConfigDomainOpenResponses]
+
 export type ConfigImportPlanData = {
   body?: ConfigDomainImportPlanInput
   path?: never
@@ -6961,6 +7167,185 @@ export type SessionAbortResponses = {
 }
 
 export type SessionAbortResponse = SessionAbortResponses[keyof SessionAbortResponses]
+
+export type SessionInboxData = {
+  body?: never
+  path: {
+    /**
+     * Session ID
+     */
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/session/{sessionID}/inbox"
+}
+
+export type SessionInboxErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type SessionInboxError = SessionInboxErrors[keyof SessionInboxErrors]
+
+export type SessionInboxResponses = {
+  /**
+   * Session inbox items
+   */
+  200: Array<SessionInboxItem>
+}
+
+export type SessionInboxResponse = SessionInboxResponses[keyof SessionInboxResponses]
+
+export type SessionInputData = {
+  body?: {
+    messageID?: string
+    model?: {
+      providerID: string
+      modelID: string
+    }
+    agent?: string
+    noReply?: boolean
+    metadata?: {
+      [key: string]: unknown
+    }
+    summary?: {
+      title?: string
+    }
+    /**
+     * Per-prompt tool visibility toggle. Does not affect session permissions.
+     */
+    tools?: {
+      [key: string]: boolean
+    }
+    system?: string
+    variant?: string
+    parts: Array<TextPartInput | FilePartInput>
+  }
+  path: {
+    /**
+     * Session ID
+     */
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/session/{sessionID}/input"
+}
+
+export type SessionInputErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type SessionInputError = SessionInputErrors[keyof SessionInputErrors]
+
+export type SessionInputResponses = {
+  /**
+   * Input accepted
+   */
+  200: SessionInputResult
+}
+
+export type SessionInputResponse = SessionInputResponses[keyof SessionInputResponses]
+
+export type SessionInboxGuideData = {
+  body?: never
+  path: {
+    /**
+     * Session ID
+     */
+    sessionID: string
+    /**
+     * Inbox item ID
+     */
+    itemID: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/session/{sessionID}/inbox/{itemID}/guide"
+}
+
+export type SessionInboxGuideErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type SessionInboxGuideError = SessionInboxGuideErrors[keyof SessionInboxGuideErrors]
+
+export type SessionInboxGuideResponses = {
+  /**
+   * Promoted inbox item
+   */
+  200: SessionInboxItem
+}
+
+export type SessionInboxGuideResponse = SessionInboxGuideResponses[keyof SessionInboxGuideResponses]
+
+export type SessionInboxRemoveData = {
+  body?: never
+  path: {
+    /**
+     * Session ID
+     */
+    sessionID: string
+    /**
+     * Inbox item ID
+     */
+    itemID: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/session/{sessionID}/inbox/{itemID}"
+}
+
+export type SessionInboxRemoveErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type SessionInboxRemoveError = SessionInboxRemoveErrors[keyof SessionInboxRemoveErrors]
+
+export type SessionInboxRemoveResponses = {
+  /**
+   * Inbox item removed
+   */
+  204: void
+}
+
+export type SessionInboxRemoveResponse = SessionInboxRemoveResponses[keyof SessionInboxRemoveResponses]
 
 export type SessionSummarizeData = {
   body?: {
@@ -8046,10 +8431,71 @@ export type ProviderListResponses = {
     }
     connected: Array<string>
     configProviders: Array<string>
+    catalogProviders: Array<string>
+    authHealth: {
+      [key: string]: ProviderAuthHealth
+    }
+    runtimeAvailability: {
+      [key: string]: ProviderRuntimeAvailability
+    }
   }
 }
 
 export type ProviderListResponse = ProviderListResponses[keyof ProviderListResponses]
+
+export type ProviderUsageListData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/provider/usage"
+}
+
+export type ProviderUsageListResponses = {
+  /**
+   * Provider account usage snapshots
+   */
+  200: {
+    [key: string]: AccountUsageSnapshot
+  }
+}
+
+export type ProviderUsageListResponse = ProviderUsageListResponses[keyof ProviderUsageListResponses]
+
+export type ProviderUsageGetData = {
+  body?: never
+  path: {
+    /**
+     * Provider ID
+     */
+    providerID: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/provider/{providerID}/usage"
+}
+
+export type ProviderUsageGetErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type ProviderUsageGetError = ProviderUsageGetErrors[keyof ProviderUsageGetErrors]
+
+export type ProviderUsageGetResponses = {
+  /**
+   * Provider account usage snapshot
+   */
+  200: AccountUsageSnapshot
+}
+
+export type ProviderUsageGetResponse = ProviderUsageGetResponses[keyof ProviderUsageGetResponses]
 
 export type ProviderAuthData = {
   body?: never
@@ -8151,6 +8597,46 @@ export type ProviderOauthCallbackResponses = {
 }
 
 export type ProviderOauthCallbackResponse = ProviderOauthCallbackResponses[keyof ProviderOauthCallbackResponses]
+
+export type ProviderCredentialsImportCredentialsData = {
+  body?: {
+    /**
+     * Auth method index
+     */
+    method: number
+  }
+  path: {
+    /**
+     * Provider ID
+     */
+    providerID: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/provider/{providerID}/import"
+}
+
+export type ProviderCredentialsImportCredentialsErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type ProviderCredentialsImportCredentialsError =
+  ProviderCredentialsImportCredentialsErrors[keyof ProviderCredentialsImportCredentialsErrors]
+
+export type ProviderCredentialsImportCredentialsResponses = {
+  /**
+   * Credentials imported successfully
+   */
+  200: boolean
+}
+
+export type ProviderCredentialsImportCredentialsResponse =
+  ProviderCredentialsImportCredentialsResponses[keyof ProviderCredentialsImportCredentialsResponses]
 
 export type SkillListData = {
   body?: never

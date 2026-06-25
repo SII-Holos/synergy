@@ -3,7 +3,15 @@ import { base64Decode } from "@ericsanchezok/synergy-util/encode"
 import { useParams } from "@solidjs/router"
 import { createMemo } from "solid-js"
 
-export const popularProviders = ["anthropic", "github-copilot", "openai", "google", "openrouter", "vercel"]
+export const popularProviders = [
+  "anthropic",
+  "openai-codex",
+  "github-copilot",
+  "openai",
+  "google",
+  "openrouter",
+  "vercel",
+]
 
 export function useProviders() {
   const globalSync = useGlobalSync()

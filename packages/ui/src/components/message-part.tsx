@@ -28,6 +28,7 @@ import {
   Todo,
 } from "@ericsanchezok/synergy-sdk"
 import { useData } from "../context"
+import { useResourceOpen } from "../context/resource-open"
 import { useDiffComponent } from "../context/diff"
 import { useCodeComponent } from "../context/code"
 import { BasicTool } from "./basic-tool"
@@ -46,6 +47,7 @@ import { checksum } from "@ericsanchezok/synergy-util/encode"
 import { parsePartialJson } from "@ericsanchezok/synergy-util/json"
 import { createAutoScroll, createTypewriter, createAnimatedNumber } from "../hooks"
 import { getApprovalAudit } from "../utils/approval-audit"
+import { shouldHideToolPart } from "./tool-result-presentation"
 
 interface Diagnostic {
   range: {
@@ -678,6 +680,18 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
         icon: "sparkles",
         title: "Skill",
         subtitle: input.name + (input.reference ? ` (${input.reference})` : ""),
+      }
+    case "search_tools":
+      return {
+        icon: "tool-search",
+        title: "Search Tools",
+        subtitle: input.query,
+      }
+    case "expand_tools":
+      return {
+        icon: "tool-expand",
+        title: "Expand Tools",
+        subtitle: [...(input.groups ?? []), ...(input.tools ?? [])].join(", ") || input.reason,
       }
     case "arxiv_search":
       return {
@@ -1441,7 +1455,10 @@ export function AssistantMessageDisplay(props: { message: AssistantMessage; part
   const filteredParts = createMemo(
     () =>
       props.parts.filter((x) => {
-        return x.type !== "tool" || ((x as ToolPart).tool !== "todoread" && (x as ToolPart).tool !== "dagread")
+        return (
+          x.type !== "tool" ||
+          ((x as ToolPart).tool !== "todoread" && (x as ToolPart).tool !== "dagread" && !shouldHideToolPart(x))
+        )
       }),
     emptyParts,
     { equals: same },
@@ -1516,16 +1533,27 @@ function SpecialFileAttachment(props: { file: FilePart; kind: "note" | "session"
   )
 }
 
-type HighlightSegment = { text: string; type?: "file" }
+type HighlightSegment = { text: string; type?: "file"; file?: FilePart }
+
+function fileReferencePath(file: FilePart) {
+  const source = file.source as { path?: unknown } | undefined
+  return typeof source?.path === "string" && source.path ? source.path : file.url
+}
 
 function HighlightedText(props: { text: string; references: FilePart[] }) {
+  const resourceOpen = useResourceOpen()
   const segments = createMemo(() => {
     const text = props.text
 
-    const allRefs: { start: number; end: number; type: "file" }[] = [
+    const allRefs: { start: number; end: number; type: "file"; file: FilePart }[] = [
       ...props.references
         .filter((r) => r.source?.text?.start !== undefined && r.source?.text?.end !== undefined)
-        .map((r) => ({ start: r.source!.text!.start, end: r.source!.text!.end, type: "file" as const })),
+        .map((r) => ({
+          start: r.source!.text!.start,
+          end: r.source!.text!.end,
+          type: "file" as const,
+          file: r,
+        })),
     ].sort((a, b) => a.start - b.start)
 
     const result: HighlightSegment[] = []
@@ -1538,7 +1566,7 @@ function HighlightedText(props: { text: string; references: FilePart[] }) {
         result.push({ text: text.slice(lastIndex, ref.start) })
       }
 
-      result.push({ text: text.slice(ref.start, ref.end), type: ref.type })
+      result.push({ text: text.slice(ref.start, ref.end), type: ref.type, file: ref.file })
       lastIndex = ref.end
     }
 
@@ -1552,13 +1580,38 @@ function HighlightedText(props: { text: string; references: FilePart[] }) {
   return (
     <For each={segments()}>
       {(segment) => (
-        <span
-          classList={{
-            "text-syntax-property": segment.type === "file",
-          }}
+        <Show
+          when={resourceOpen ? segment.file : undefined}
+          fallback={
+            <span
+              classList={{
+                "text-syntax-property": segment.type === "file",
+              }}
+            >
+              {segment.text}
+            </span>
+          }
         >
-          {segment.text}
-        </span>
+          {(file) => (
+            <button
+              type="button"
+              class="inline text-left align-baseline text-syntax-property hover:underline decoration-dotted"
+              onClick={() =>
+                resourceOpen?.open(
+                  {
+                    kind: "workspace-file",
+                    path: fileReferencePath(file()),
+                    mime: file().mime,
+                    filename: file().filename,
+                  },
+                  { prefer: "workspace" },
+                )
+              }
+            >
+              {segment.text}
+            </button>
+          )}
+        </Show>
       )}
     </For>
   )
@@ -1723,6 +1776,7 @@ PART_MAPPING["tool"] = function ToolPartDisplay(props) {
       status={p.status}
       charsReceived={p.charsReceived}
       metadata={p.metadata}
+      time={p.time}
       hideDetails={p.hideDetails}
       fallbackMeta={externalFallbackLookup?.(p.tool)}
     />
@@ -1764,6 +1818,8 @@ PART_MAPPING["tool"] = function ToolPartDisplay(props) {
               // @ts-expect-error — output exists on completed state
               output={part().state.output}
               status={part().state.status}
+              // @ts-expect-error — time exists on running/completed/error states
+              time={part().state.time}
               raw={part().state.status === "generating" ? (part().state as ToolStateGenerating).raw : undefined}
               charsReceived={charsAnimated()}
               hideDetails={props.hideDetails}

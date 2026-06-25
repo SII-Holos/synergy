@@ -3,6 +3,7 @@ import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { Switch } from "@ericsanchezok/synergy-ui/switch"
 import { TextField } from "@ericsanchezok/synergy-ui/text-field"
 import { IconButton } from "@ericsanchezok/synergy-ui/icon-button"
+import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import type { McpEntry } from "../types"
 import { SegmentPill } from "./SegmentPill"
 
@@ -26,7 +27,7 @@ export function McpCard(props: {
             <Switch checked={props.entry.enabled} onChange={(value) => props.onChange("enabled", value)} />
           </div>
           <IconButton
-            icon="x"
+            icon={getSemanticIcon("action.close")}
             variant="ghost"
             onClick={(event: MouseEvent) => {
               event.stopPropagation()
@@ -34,7 +35,7 @@ export function McpCard(props: {
             }}
           />
           <Icon
-            name="chevron-down"
+            name={getSemanticIcon("navigation.collapse")}
             size="small"
             class={`text-text-weak transition-transform duration-200 ${expanded() ? "rotate-180" : ""}`}
           />

@@ -18,7 +18,8 @@ import { PanelProvider, usePanel, PANELS } from "@/context/panel"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { useTheme, type ColorScheme } from "@ericsanchezok/synergy-ui/theme"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
-import { DialogSelectProvider, DialogSelectServer, DialogSelectDirectory } from "@/components/dialog"
+import { DialogSelectServer, DialogSelectDirectory } from "@/components/dialog"
+import { SettingsDialog } from "@/components/settings"
 import { useCommand, type CommandOption } from "@/context/command"
 import { navStart } from "@/utils/perf"
 import { useServer } from "@/context/server"
@@ -387,7 +388,7 @@ export default function Layout(props: ParentProps) {
   })
 
   function connectProvider() {
-    dialog.show(() => <DialogSelectProvider />)
+    dialog.show(() => <SettingsDialog initialTab="providers" />)
   }
 
   function openServer() {

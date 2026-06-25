@@ -2,7 +2,7 @@ import type { Tool } from "./tool"
 
 import { BrowserRuntime } from "../browser/runtime"
 import type { BrowserSession } from "../browser/types.js"
-import type { BrowserTab } from "../browser/tab"
+import { BlockedURLNavigationError, type BrowserTab } from "../browser/tab"
 import { BrowserOwner } from "../browser/owner"
 
 // ── Shared error classes ───────────────────────────────────────────────
@@ -39,6 +39,50 @@ export namespace BrowserToolHelper {
     const tab = session.activeTab
     if (!tab) throw new BrowserTabNotFoundError()
     return tab
+  }
+
+  export async function resolveOrCreateTab(
+    session: Pick<BrowserSession, "activeTab" | "createTab" | "getTab">,
+    tabID?: string,
+  ): Promise<BrowserTab> {
+    if (tabID) {
+      const tab = session.getTab(tabID)
+      if (!tab) throw new BrowserTabNotFoundError(tabID)
+      return tab
+    }
+    if (session.activeTab) return session.activeTab
+    return session.createTab()
+  }
+
+  export async function getOrCreateTab(
+    owner: BrowserOwner.Info,
+    tabID?: string,
+  ): Promise<{ session: BrowserSession; tab: BrowserTab }> {
+    const session = await getOrCreateSession(owner)
+    const tab = await resolveOrCreateTab(session, tabID)
+    return { session, tab }
+  }
+
+  export async function navigateWithPolicyApproval(
+    ctx: Tool.Context,
+    tab: BrowserTab,
+    url: string,
+  ): Promise<{ url: string; title: string }> {
+    try {
+      return await tab.navigate(url)
+    } catch (err) {
+      if (!(err instanceof BlockedURLNavigationError)) throw err
+      await ctx.ask({
+        permission: "network_request",
+        patterns: [err.url],
+        metadata: {
+          nonBypassable: false,
+          capability: "network_request",
+          reason: err.message,
+        },
+      })
+      return tab.navigateWithOverride(err.url)
+    }
   }
 
   /** One-call convenience: ensure runtime, derive owner, resolve tab. */

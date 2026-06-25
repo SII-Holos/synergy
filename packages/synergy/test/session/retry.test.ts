@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import { SessionRetry } from "../../src/session/retry"
 import { MessageV2 } from "../../src/session/message-v2"
+import { APICallError } from "ai"
 
 function apiError(headers?: Record<string, string>): MessageV2.APIError {
   return new MessageV2.APIError({
@@ -127,5 +128,44 @@ describe("session.message-v2.fromError", () => {
     const retryable = SessionRetry.retryable(error)
     expect(retryable).toBeDefined()
     expect(retryable).toBe("Connection reset by server")
+  })
+
+  test("converts Bun connection-refused errors to retryable APIError", () => {
+    const error = new Error("Unable to connect. Is the computer able to access the url?")
+    Object.assign(error, { code: "ConnectionRefused" })
+
+    const result = MessageV2.fromError(error, { providerID: "test" })
+
+    expect(MessageV2.APIError.isInstance(result)).toBe(true)
+    expect((result as MessageV2.APIError).data.isRetryable).toBe(true)
+    expect((result as MessageV2.APIError).data.message).toBe(
+      "Unable to connect. Is the computer able to access the url?",
+    )
+    expect((result as MessageV2.APIError).data.metadata?.code).toBe("ConnectionRefused")
+  })
+
+  test("converts unable-to-connect provider errors to retryable APIError even without a code", () => {
+    const error = new Error("Unable to connect. Is the computer able to access the url?")
+
+    const result = MessageV2.fromError(error, { providerID: "test" })
+
+    expect(MessageV2.APIError.isInstance(result)).toBe(true)
+    expect((result as MessageV2.APIError).data.isRetryable).toBe(true)
+    expect(SessionRetry.retryable(result)).toBe("Unable to connect. Is the computer able to access the url?")
+  })
+
+  test("marks API call unable-to-connect errors retryable when provider did not", () => {
+    const error = new APICallError({
+      message: "Unable to connect. Is the computer able to access the url?",
+      url: "https://api.example.test/v1/chat",
+      requestBodyValues: {},
+      isRetryable: false,
+    })
+
+    const result = MessageV2.fromError(error, { providerID: "test" })
+
+    expect(MessageV2.APIError.isInstance(result)).toBe(true)
+    expect((result as MessageV2.APIError).data.isRetryable).toBe(true)
+    expect(SessionRetry.retryable(result)).toBe("Unable to connect. Is the computer able to access the url?")
   })
 })

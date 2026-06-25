@@ -47,7 +47,7 @@ Capabilities come from `plugin.json`:
 }
 ```
 
-Plugin-wide permissions provide defaults. `contributes.tools[].capabilities` can narrow or override per-tool capability declarations.
+Plugin-wide permissions provide defaults. `data.config` can be `none`, `plugin`, or `global`; use `none` for plugins that do not read configuration. `contributes.tools[].capabilities` can narrow or override per-tool capability declarations.
 
 ## Gate Mapping
 

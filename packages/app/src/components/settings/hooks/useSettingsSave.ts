@@ -1,6 +1,8 @@
 import { createEffect, createSignal, onCleanup } from "solid-js"
+import type { ConfigDomainSummary } from "@ericsanchezok/synergy-sdk/client"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
+import { groupPatchByDomain, strategyForPatch } from "../domain-routing"
 
 export type ShowConfirmFn = (params: {
   title: string
@@ -12,58 +14,15 @@ export type ShowConfirmFn = (params: {
 
 export type SaveStatus = "idle" | "saving" | "saved" | "error"
 
-const FIELD_DOMAIN: Record<string, string> = {
-  snapshot: "general",
-  autoupdate: "general",
-  model: "models",
-  nano_model: "models",
-  mini_model: "models",
-  mid_model: "models",
-  vision_model: "models",
-  thinking_model: "models",
-  long_context_model: "models",
-  creative_model: "models",
-  library: "library",
-  mcp: "mcp",
-  plugin: "plugins",
-  permission: "permissions",
-  controlProfile: "permissions",
-  channel: "channels",
-  email: "email",
-  question: "runtime",
-  compaction: "runtime",
-}
-
 export type SaveContext = {
   serverPatch: () => Record<string, unknown>
+  domainSummaries: () => ConfigDomainSummary[]
   hasAnyChanges: () => boolean
   editingLabel: () => string
   setSaving: (value: boolean) => void
   refreshAfterConfigChange: () => Promise<void>
   closeDialog: () => void
   showConfirm: ShowConfirmFn
-}
-
-export const FIELD_SAVE_STRATEGY: Record<string, "auto" | "background" | "explicit"> = {
-  snapshot: "auto",
-  autoupdate: "auto",
-  compaction: "auto",
-  question: "background",
-  permission: "background",
-  controlProfile: "explicit",
-  model: "background",
-  nano_model: "background",
-  mini_model: "background",
-  mid_model: "background",
-  vision_model: "background",
-  thinking_model: "background",
-  long_context_model: "background",
-  creative_model: "background",
-  channel: "background",
-  mcp: "explicit",
-  plugin: "explicit",
-  email: "explicit",
-  library: "explicit",
 }
 
 export function useSettingsSave(ctx: SaveContext) {
@@ -77,31 +36,28 @@ export function useSettingsSave(ctx: SaveContext) {
 
   onCleanup(() => cancelDebounces())
 
+  function patchStrategies(patch: Record<string, unknown>) {
+    return strategyForPatch(patch)
+  }
+
   function isAutoOnly(patch: Record<string, unknown>): boolean {
-    return Object.keys(patch).every((key) => FIELD_SAVE_STRATEGY[key] === "auto")
+    return patchStrategies(patch).every((strategy) => strategy === "auto")
   }
 
   function hasBackground(patch: Record<string, unknown>): boolean {
-    return Object.keys(patch).some((key) => FIELD_SAVE_STRATEGY[key] === "background")
+    return patchStrategies(patch).some((strategy) => strategy === "background")
   }
 
   function hasExplicit(patch: Record<string, unknown>): boolean {
-    return Object.keys(patch).some((key) => FIELD_SAVE_STRATEGY[key] === "explicit")
+    return patchStrategies(patch).some((strategy) => strategy === "explicit")
   }
 
   async function saveServerPatch(patch: Record<string, unknown>) {
-    const grouped = new Map<string, Record<string, unknown>>()
-    for (const [key, value] of Object.entries(patch)) {
-      const domain = FIELD_DOMAIN[key]
-      if (!domain) throw new Error(`Settings field "${key}" is not mapped to a config domain`)
-      const domainPatch = grouped.get(domain) ?? {}
-      domainPatch[key] = value
-      grouped.set(domain, domainPatch)
-    }
+    const grouped = groupPatchByDomain(patch, ctx.domainSummaries())
     await Promise.all(
       [...grouped.entries()].map(([domain, config]) =>
         globalSDK.client.config.domain.update({
-          domain: domain as any,
+          domain,
           configDomainUpdateInput: { config: config as any },
         }),
       ),

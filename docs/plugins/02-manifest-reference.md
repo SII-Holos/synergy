@@ -45,7 +45,7 @@ During `synergy-plugin build`, the runtime entry is bundled to `dist/runtime/ind
     "data": {
       "session": "none",
       "workspace": "none",
-      "config": "plugin",
+      "config": "none",
       "secrets": "none",
     },
     "network": {
@@ -69,6 +69,8 @@ During `synergy-plugin build`, the runtime entry is bundled to `dist/runtime/ind
 }
 ```
 
+`data.config` may be `none`, `plugin`, or `global`. Use `none` when the plugin does not read Synergy plugin config.
+
 Per-tool capabilities live under `contributes.tools[].capabilities` and are merged with plugin-wide defaults.
 
 ## Runtime Tool Contributions
@@ -81,6 +83,8 @@ Per-tool capabilities live under `contributes.tools[].capabilities` and are merg
         "name": "greet",
         "title": "Greet",
         "description": "Greet a user",
+        "exposure": { "mode": "resident" },
+        "display": { "kind": "default" },
         "capabilities": {
           "filesystem": "none",
           "network": false,
@@ -92,7 +96,43 @@ Per-tool capabilities live under `contributes.tools[].capabilities` and are merg
 }
 ```
 
+`exposure` is optional and defaults to `{ "mode": "resident" }` for backward compatibility. Use
+`{ "mode": "group", "group": "plugin:my-plugin", "title": "My Plugin", "description": "...", "whenToExpand": "..." }`
+for related low-frequency tools that should be expanded together. Use
+`{ "mode": "search", "title": "...", "keywords": ["..."] }` for rare individual tools that should be
+discoverable through `search_tools` and activated explicitly with `expand_tools`.
+
 `synergy-plugin validate --runtime-discovery` imports the descriptor, calls `init()`, reads returned runtime tools, and compares them with `contributes.tools`.
+
+### Tool Display
+
+`contributes.tools[].display` describes host-rendered presentation behavior. It must match the runtime tool definition when the tool uses a non-default display:
+
+```jsonc
+{
+  "name": "generate_image",
+  "description": "Generate an image",
+  "display": {
+    "kind": "media-generation",
+    "visibility": "media",
+    "presentation": "artifact-only",
+    "media": {
+      "type": "image",
+      "actionLabel": "Create image",
+      "pendingTitle": "Generating image",
+      "pendingDescription": "Preparing the image...",
+      "promptField": "prompt",
+      "aspectRatio": "1:1",
+    },
+  },
+}
+```
+
+- `kind: "media-generation"` uses Synergy's built-in image/video/audio generation placeholder while the tool is running.
+- `visibility: "media"` hides running and completed success states from the ordinary tool transcript so the media surface owns the experience.
+- `presentation: "artifact-only"` promotes returned `attachments` into the final answer area instead of showing a completed tool card.
+- `primaryAttachmentIds` may be returned from `metadata.display` at runtime to choose which attachment ids are promoted.
+- Error states are never hidden.
 
 ## UI Contributions
 

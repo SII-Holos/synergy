@@ -24,6 +24,7 @@ import type { BunShell } from "./shell"
 import type { ToolDefinition, ToolResult } from "./tool"
 
 export * from "./tool"
+export type { ToolDisplay, ToolMediaDisplay } from "./display"
 export type { ToolResult }
 export * from "./manifest"
 export type { BunShell, BunShellOutput, BunShellPromise, ShellExpression, ShellFunction } from "./shell"
@@ -210,8 +211,51 @@ export type AuthHook = {
             }
         >
       }
+    | {
+        type: "import"
+        label: string
+        prompts?: Array<
+          | {
+              type: "text"
+              key: string
+              message: string
+              placeholder?: string
+              validate?: (value: string) => string | undefined
+              condition?: (inputs: Record<string, string>) => boolean
+            }
+          | {
+              type: "select"
+              key: string
+              message: string
+              options: Array<{
+                label: string
+                value: string
+                hint?: string
+              }>
+              condition?: (inputs: Record<string, string>) => boolean
+            }
+        >
+        import(inputs?: Record<string, string>): Promise<AuthImportResult>
+      }
   )[]
 }
+
+export type AuthImportResult =
+  | ({
+      type: "success"
+      provider?: string
+    } & (
+      | {
+          refresh: string
+          access: string
+          expires: number
+        }
+      | { key: string }
+    ))
+  | {
+      type: "failed"
+      message?: string
+    }
 
 export type AuthOuathResult = { url: string; instructions: string } & (
   | {
@@ -253,6 +297,69 @@ export type AuthOuathResult = { url: string; instructions: string } & (
       >
     }
 )
+
+// ---------------------------------------------------------------------------
+// Provider profiles
+// ---------------------------------------------------------------------------
+
+export type ProviderProfileHook = {
+  id: string
+  name: string
+  aliases?: string[]
+  description?: string
+  signupUrl?: string
+  env?: string[]
+  baseURL?: string
+  modelsURL?: string
+  apiMode?: "chat_completions" | "responses" | "anthropic_messages" | "codex_responses" | "external_process"
+  authKind?: "api_key" | "oauth" | "oauth_external" | "copilot" | "wellknown" | "none"
+  aiSdkPackage?: string
+  modelFactory?:
+    | "languageModel"
+    | "openaiResponses"
+    | "openaiChat"
+    | "openaiResponsesUnlessCompletionUrls"
+    | "call"
+    | "copilotAuto"
+    | "anthropicMessages"
+  modelsDevProviderID?: string
+  fallbackModels?: string[]
+  defaultAuxModel?: string
+  usageKind?: "codex" | "anthropic-oauth" | "openrouter" | "unsupported"
+  healthCheck?: "models" | "none"
+  requestQuirks?: string[]
+  autoload?: (input: { providerID: string; auth?: Auth; provider?: Provider }) => Promise<boolean>
+  resolveAuth?: (input: { providerID: string; auth?: Auth; provider?: Provider }) => Promise<Auth | undefined>
+  refreshAuth?: (input: { providerID: string; auth?: Auth; provider?: Provider }) => Promise<Auth | undefined>
+  buildHeaders?: (input: {
+    providerID: string
+    auth?: Auth
+    url: string
+    headers: Headers
+    body?: unknown
+  }) => Promise<Record<string, string> | Headers | undefined>
+  rewriteBody?: (input: {
+    providerID: string
+    auth?: Auth
+    url: string
+    headers: Headers
+    body?: unknown
+  }) => Promise<unknown>
+  modelOptions?: (input: { providerID: string; auth?: Auth; provider?: Provider }) => Promise<Record<string, any>>
+  classifyError?: (input: { providerID: string; status?: number; error?: unknown; body?: unknown }) =>
+    | {
+        code: string
+        retryable: boolean
+        reloginRequired?: boolean
+        exhausted?: boolean
+        cooldownUntil?: number
+        resetAt?: number
+      }
+    | undefined
+  runtimeOptions?: (input: { providerID: string; auth?: Auth; provider?: Provider }) => Promise<Record<string, any>>
+  getModel?: (input: { sdk: any; modelID: string; options?: Record<string, any> }) => Promise<any>
+  fetchModels?: (input: { auth?: Auth; fetch?: typeof fetch; baseURL?: string }) => Promise<string[]>
+}
 
 // ---------------------------------------------------------------------------
 // PluginInput — context provided to every plugin's init()
@@ -312,6 +419,8 @@ export interface PluginHooks {
   tool?: Record<string, ToolDefinition>
   /** Provider auth integration */
   auth?: AuthHook
+  /** Provider runtime/catalog profiles */
+  provider?: ProviderProfileHook | ProviderProfileHook[]
   /** Observe runtime bus events */
   event?(input: { event: Event }): Promise<void>
   /** Observe the loaded runtime config */

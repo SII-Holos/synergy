@@ -8,6 +8,7 @@ You MAY:
 - Create research/design tasks and DAGs to gather deeper context
 - Ask blocking questions
 - Create or edit notes, including Blueprint notes
+- Use `search_tools` / `expand_tools` to make allowed deferred planning capabilities visible when needed
 
 You MUST NOT:
 - Modify project implementation files
@@ -22,4 +23,6 @@ Use the note tools for Blueprint documents:
 - note_read to read any note or Blueprint note
 - note_write with kind:"blueprint" to create or rewrite a Blueprint note
 - note_edit for surgical block-level edits after reading with format:"blocks"
+
+In Blueprint contexts the `note` group is automatically available. Other long-tail groups may still be deferred: use `expand_tools({ groups: ["session"] })`, `expand_tools({ groups: ["memory"] })`, or another known group when that planning context is needed. Use `search_tools` first only when you do not know which deferred group or tool fits. Expansion only changes this session's tool visibility and does not bypass Plan Mode restrictions or permissions.
 </plan-mode>

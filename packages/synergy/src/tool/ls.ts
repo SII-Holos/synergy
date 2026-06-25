@@ -4,6 +4,7 @@ import * as path from "path"
 import DESCRIPTION from "./ls.txt"
 import { ScopeContext } from "../scope/context"
 import { Ripgrep } from "../file/ripgrep"
+import { ToolTimeout } from "./timeout"
 
 export const IGNORE_PATTERNS = [
   "node_modules/",
@@ -51,7 +52,7 @@ export const ListTool = Tool.define("list", {
       },
     })
 
-    const TIMEOUT_MS = 15_000
+    const TIMEOUT_MS = ToolTimeout.DEFAULTS.listMs
     const ignoreGlobs = IGNORE_PATTERNS.map((p) => `!${p}*`).concat(params.ignore?.map((p) => `!${p}`) || [])
     const files = []
     let timedOut = false

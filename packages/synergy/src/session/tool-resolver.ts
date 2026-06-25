@@ -16,6 +16,9 @@ import { ProviderTransform } from "@/provider/transform"
 import type { Provider } from "@/provider/provider"
 import { Tool } from "@/tool/tool"
 import { ToolRegistry } from "@/tool/registry"
+import { ToolTimeout } from "@/tool/timeout"
+import { ToolExposure } from "@/tool/exposure"
+import type { ToolDisplay } from "@ericsanchezok/synergy-plugin/tool"
 import { Log } from "@/util/log"
 import { TimeoutConfig } from "@/util/timeout-config"
 import { Session } from "."
@@ -52,6 +55,8 @@ export namespace ToolResolver {
 
   export interface Definition {
     id: string
+    exposure?: ToolExposure.Info
+    display?: ToolDisplay
     description: string
     inputSchema: JSONSchema7
     createRuntimeTool?(input: Input): AITool
@@ -372,7 +377,7 @@ export namespace ToolResolver {
       state: {
         ...match.state,
         title: state.title ?? match.state.title,
-        metadata: state.metadata ?? match.state.metadata,
+        metadata: ToolTimeout.preserveMetadata(match.state.metadata, state.metadata) ?? match.state.metadata,
         status: "running",
         input: args,
         time: {
@@ -383,7 +388,12 @@ export namespace ToolResolver {
     Object.assign(match, updated)
   }
 
-  async function markExecutionStarted(input: Input, ctx: Tool.Context, args: Record<string, any>) {
+  async function markExecutionStarted(
+    input: Input,
+    ctx: Tool.Context,
+    args: Record<string, any>,
+    toolTimeout: ToolTimeout.Metadata,
+  ) {
     const timing = toolTiming(ctx)
     if (timing.executionStartedAt !== undefined) return
 
@@ -399,8 +409,10 @@ export namespace ToolResolver {
     const match = ctx.callID ? input.processor.partFromToolCall(ctx.callID) : undefined
     const metadata = {
       ...(match?.state.status === "running" ? (match.state.metadata ?? {}) : {}),
+      toolTimeout,
       ...(approvalFromContext(ctx) ? { approval: approvalFromContext(ctx) } : {}),
     }
+    ;(ctx.extra as any).toolTimeout = toolTimeout
     await updateRunningToolPart(input, ctx, args, {
       metadata,
       start: timing.executionStartedAt,
@@ -759,6 +771,8 @@ export namespace ToolResolver {
     // UI
     "question",
     "skill",
+    "search_tools",
+    "expand_tools",
     // Network
     "websearch",
     "webfetch",
@@ -768,6 +782,15 @@ export namespace ToolResolver {
     // Platform read
     "worktree_list",
   ])
+
+  function forcedToolGroups(session?: Info) {
+    const result = new Set<string>()
+    if (session?.blueprint?.planMode || session?.blueprint?.loopID) {
+      result.add("note")
+    }
+    return result
+  }
+
   export async function definitions(input: Omit<Input, "processor">): Promise<Definition[]> {
     using _ = log.time("definitions")
     let result: Definition[] = []
@@ -778,6 +801,8 @@ export namespace ToolResolver {
       }) as JSONSchema7
       result.push({
         id: item.id,
+        exposure: item.exposure,
+        display: item.display,
         description: item.description,
         inputSchema: schema,
         createRuntimeTool(runtimeInput) {
@@ -835,9 +860,14 @@ export namespace ToolResolver {
 
                 const timeoutCfg = await TimeoutConfig.resolve()
                 const toolTimeoutMs = timeoutCfg.toolOverrides[item.id] ?? timeoutCfg.toolDefaultMs
+                const toolTimeout = ToolTimeout.metadataForTool({
+                  tool: item.id,
+                  args: args as Record<string, any>,
+                  executionBudgetMs: toolTimeoutMs,
+                })
                 const combinedAbort = startExecutionBudget(ctx, toolTimeoutMs)
                 ctx.abort = combinedAbort
-                await markExecutionStarted(runtimeInput, ctx, args as Record<string, any>)
+                await markExecutionStarted(runtimeInput, ctx, args as Record<string, any>, toolTimeout)
                 await toolTrace.phase("tool.execution.started", "execution started", {
                   timeoutMs: toolTimeoutMs,
                 })
@@ -979,9 +1009,12 @@ export namespace ToolResolver {
     }
 
     if (input.includeMCP !== false) {
-      const mcpTools = await MCP.tools()
-      const mcpToolNames = new Set(Object.keys(mcpTools))
-      for (const [key, item] of Object.entries(mcpTools)) {
+      const mcpEntries = await MCP.toolEntries()
+      const mcpToolNames = new Set(mcpEntries.map((entry) => entry.id))
+      for (const entry of mcpEntries) {
+        const key = entry.id
+        const item = entry.tool
+        const exposure = ToolExposure.mcpExposure(mcpEntries.length, entry.serverName)
         const schema = {
           ...((item.inputSchema as JSONSchema7 | undefined) ?? {}),
           type: "object",
@@ -991,6 +1024,7 @@ export namespace ToolResolver {
         } satisfies JSONSchema7
         result.push({
           id: key,
+          exposure,
           description: item.description ?? "",
           inputSchema: schema,
           createRuntimeTool(runtimeInput) {
@@ -1046,9 +1080,15 @@ export namespace ToolResolver {
 
                   const timeoutCfg = await TimeoutConfig.resolve()
                   const toolTimeoutMs = timeoutCfg.toolOverrides[key] ?? timeoutCfg.toolDefaultMs
+                  const toolTimeout = ToolTimeout.metadataForTool({
+                    tool: key,
+                    args: args as Record<string, any>,
+                    executionBudgetMs: toolTimeoutMs,
+                    mcpCallTimeoutMs: MCP.toolCallTimeout(key),
+                  })
                   const combinedAbort = startExecutionBudget(ctx, toolTimeoutMs)
                   ctx.abort = combinedAbort
-                  await markExecutionStarted(runtimeInput, ctx, args as Record<string, any>)
+                  await markExecutionStarted(runtimeInput, ctx, args as Record<string, any>, toolTimeout)
                   await toolTrace.phase("tool.execution.started", "execution started", {
                     timeoutMs: toolTimeoutMs,
                   })
@@ -1169,6 +1209,12 @@ export namespace ToolResolver {
         })
       }
     }
+
+    result = result.filter((d) =>
+      ToolExposure.isVisible(d.id, d.exposure, input.session?.toolState, {
+        forcedGroups: forcedToolGroups(input.session),
+      }),
+    )
 
     if (input.session?.blueprint?.planMode) {
       result = result.filter((d) => PLAN_MODE_ALLOWED_TOOLS.has(d.id))
