@@ -366,6 +366,8 @@ You must review docs when a change affects:
 
 At minimum, check whether `README.md` and `AGENTS.md` need updates.
 
+When a change affects product design, interaction structure, visual hierarchy, or durable UX taste, also update `packages/app/PRODUCT.md` in the same task. Treat that file as the Web product contract for principles that should survive future frontend refactors.
+
 ## Release and Git Workflow
 
 ### Branching
@@ -404,6 +406,7 @@ Key documents in the repo that agents should be aware of:
 - `.github/SECURITY.md` — security vulnerability reporting process (never open public issues for security bugs)
 - `.github/PULL_REQUEST_TEMPLATE.md` — required PR template (what/why/test/checklist)
 - `.github/RELEASE_NOTES_TEMPLATE.md` — release notes format and writing guidelines
+- `packages/app/PRODUCT.md` — Web product principles, interaction model, and visual design contract
 - `packages/synergy/AGENTS.md` — agent guidelines specific to the core runtime package
 - `packages/app/AGENTS.md` — agent guidelines specific to the web app package
 

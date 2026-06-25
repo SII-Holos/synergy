@@ -18,11 +18,11 @@ export function agendaStatusTone(status: string) {
   if (status === "pending") {
     return "bg-surface-inset-base text-text-weak ring-1 ring-inset ring-border-base/40"
   }
-  if (status === "done") return "bg-surface-inset-base/85 text-text-weak ring-1 ring-inset ring-border-base/40"
+  if (status === "done") return "bg-surface-inset-base text-text-weak ring-1 ring-inset ring-border-base/40"
   if (status === "cancelled") {
     return "bg-text-diff-delete-base/12 text-text-diff-delete-base ring-1 ring-inset ring-text-diff-delete-base/12"
   }
-  return "bg-surface-inset-base/85 text-text-weak ring-1 ring-inset ring-border-base/40"
+  return "bg-surface-inset-base text-text-weak ring-1 ring-inset ring-border-base/40"
 }
 
 export function agendaRunStatusTone(status: string) {

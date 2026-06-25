@@ -716,7 +716,7 @@ function TimePicker(props: {
                   classList={{
                     "agenda-time-option text-14-regular text-center transition-colors tabular-nums": true,
                     "bg-text-strong text-background-base": h === props.hour,
-                    "text-text-base hover:bg-surface-raised-base-hover/70": h !== props.hour,
+                    "text-text-base hover:bg-surface-raised-base-hover": h !== props.hour,
                   }}
                   onClick={() => props.onHourChange(h)}
                 >
@@ -733,7 +733,7 @@ function TimePicker(props: {
                   classList={{
                     "agenda-time-option text-14-regular text-center transition-colors tabular-nums": true,
                     "bg-text-strong text-background-base": m === props.minute,
-                    "text-text-base hover:bg-surface-raised-base-hover/70": m !== props.minute,
+                    "text-text-base hover:bg-surface-raised-base-hover": m !== props.minute,
                   }}
                   onClick={() => props.onMinuteChange(m)}
                 >
@@ -967,7 +967,7 @@ function ExpandRow(props: { label: string; onClick: () => void }) {
   return (
     <button
       type="button"
-      class="flex items-center py-2.5 px-0.5 w-full text-left rounded-[0.95rem] hover:bg-surface-raised-base-hover/14 transition-colors"
+      class="flex items-center py-2.5 px-0.5 w-full text-left rounded-[0.95rem] hover:bg-surface-raised-base-hover transition-colors"
       onClick={props.onClick}
     >
       <span class="text-12-regular text-text-strong">{props.label}</span>

@@ -82,20 +82,20 @@ export function MiniCalendar(props: MiniCalendarProps) {
 
     const base = isCurrentMonth ? "text-text-base" : "text-text-weaker/40"
     if (inWeek) {
-      return `bg-surface-raised-base-hover/55 ${base}`
+      return `bg-surface-raised-base-hover ${base}`
     }
-    return `${base} hover:bg-surface-raised-base-hover/70`
+    return `${base} hover:bg-surface-raised-base-hover`
   }
 
   function weekRowClass(ts: number): string {
-    return isInAnchorWeek(ts) ? "rounded-[0.9rem] bg-surface-raised-base-hover/45" : ""
+    return isInAnchorWeek(ts) ? "rounded-[0.9rem] bg-surface-raised-base-hover" : ""
   }
 
   return (
     <div class="flex min-w-[304px] select-none flex-col gap-3">
       <div class="flex items-center justify-between px-0.5">
         <span class="text-13-medium text-text-strong">{headerLabel()}</span>
-        <div class="flex items-center gap-1 rounded-full bg-surface-raised-stronger-non-alpha/60 p-0.5">
+        <div class="flex items-center gap-1 rounded-full bg-surface-raised-base p-0.5">
           <button
             type="button"
             class="flex size-6 items-center justify-center rounded-full text-text-weaker transition-colors hover:bg-surface-raised-base-hover hover:text-text-weak"

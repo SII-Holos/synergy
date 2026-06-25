@@ -208,23 +208,44 @@
 
 .agenda-main-surface {
   border-radius: 14px;
-  background: light-dark(rgb(246 246 247), rgb(43 43 45));
-  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--border-base) 18%, transparent);
+  background: light-dark(rgb(246 245 245), rgb(34 34 36));
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--border-base) 16%, transparent);
 }
 
 .agenda-inner-surface {
   border-radius: 12px;
-  background: light-dark(rgb(255 255 255), rgb(56 56 59));
+  background: light-dark(rgb(255 255 255), rgb(52 52 54));
 }
 
 .agenda-calendar-frame {
   border-radius: 14px;
-  background: light-dark(rgb(247 247 248), rgb(42 42 44));
-  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--border-base) 16%, transparent);
+  background: light-dark(rgb(246 245 245), rgb(34 34 36));
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--border-base) 14%, transparent);
+}
+
+.agenda-calendar-toolbar {
+  border-bottom-right-radius: 0;
+  border-bottom-left-radius: 0;
+}
+
+.agenda-calendar-body {
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+  box-shadow: inset 0 1px 0 color-mix(in oklab, var(--border-base) 14%, transparent);
 }
 
 .agenda-grid-surface {
-  background: light-dark(rgb(255 255 255), rgb(47 47 50));
+  background: light-dark(rgb(255 255 255), rgb(38 38 40));
+}
+
+.agenda-grid-scroll {
+  padding-left: 10px;
+  border-bottom-right-radius: 14px;
+  border-bottom-left-radius: 14px;
+}
+
+.agenda-time-header {
+  padding-left: 10px;
 }
 
 @media (max-width: 760px) {

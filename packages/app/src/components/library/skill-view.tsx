@@ -277,7 +277,7 @@ export function SkillView(props: {
                   <div class="p-1.5">
                     <button
                       type="button"
-                      class="flex w-full items-center gap-2.5 rounded-[0.9rem] px-3 py-2 text-left text-12-medium text-text-base transition-colors hover:bg-surface-inset-base/55"
+                      class="flex w-full items-center gap-2.5 rounded-[0.9rem] px-3 py-2 text-left text-12-medium text-text-base transition-colors hover:bg-surface-inset-base"
                       onClick={() => {
                         setImportOpen(false)
                         fileInputRef.click()
@@ -291,7 +291,7 @@ export function SkillView(props: {
                     </button>
                     <button
                       type="button"
-                      class="flex w-full items-center gap-2.5 rounded-[0.9rem] px-3 py-2 text-left text-12-medium text-text-base transition-colors hover:bg-surface-inset-base/55"
+                      class="flex w-full items-center gap-2.5 rounded-[0.9rem] px-3 py-2 text-left text-12-medium text-text-base transition-colors hover:bg-surface-inset-base"
                       onClick={() => setImportMode("url")}
                     >
                       <Icon name="globe" size="small" class="text-icon-weak shrink-0" />
@@ -311,7 +311,7 @@ export function SkillView(props: {
                     <input
                       type="url"
                       placeholder="https://example.com/skill.zip"
-                      class="w-full rounded-[0.95rem] border border-border-base/38 bg-surface-inset-base/58 px-3 py-2.5 text-13-regular text-text-base outline-none ring-1 ring-inset ring-border-base/35 transition-colors placeholder:text-text-weak focus:border-text-interactive-base/40 focus:bg-surface-inset-base/7"
+                      class="w-full rounded-[0.95rem] border border-border-base/38 bg-surface-inset-base px-3 py-2.5 text-13-regular text-text-base outline-none ring-1 ring-inset ring-border-base/35 transition-colors placeholder:text-text-weak focus:border-text-interactive-base/40 focus:bg-surface-inset-base"
                       value={importUrl()}
                       onInput={(e) => setImportUrl(e.currentTarget.value)}
                       onKeyDown={(e) => {
@@ -322,7 +322,7 @@ export function SkillView(props: {
                     <div class="flex items-center justify-end gap-2">
                       <button
                         type="button"
-                        class="rounded-full px-3 py-1.5 text-11-medium text-text-weak ring-1 ring-inset ring-border-base/45 transition-all hover:bg-surface-inset-base/4 hover:text-text-base"
+                        class="rounded-full px-3 py-1.5 text-11-medium text-text-weak ring-1 ring-inset ring-border-base/45 transition-all hover:bg-surface-inset-base hover:text-text-base"
                         onClick={() => setImportMode("menu")}
                       >
                         Back
@@ -333,7 +333,7 @@ export function SkillView(props: {
                           "rounded-full px-3.5 py-1.5 text-11-medium ring-1 ring-inset transition-all": true,
                           "bg-text-interactive-base text-white ring-text-interactive-base/15 hover:bg-text-interactive-base/90":
                             !!importUrl().trim(),
-                          "bg-surface-inset-base/6 text-text-weaker ring-border-base/35 pointer-events-none":
+                          "bg-surface-inset-base text-text-weaker ring-border-base/35 pointer-events-none":
                             !importUrl().trim(),
                         }}
                         disabled={!importUrl().trim()}
@@ -459,7 +459,7 @@ function SkillCard(props: { skill: SkillItem; onOpen: () => void }) {
           </div>
           <button
             type="button"
-            class="flex size-7 shrink-0 items-center justify-center rounded-full bg-surface-inset-base/55 text-icon-weak ring-1 ring-inset ring-border-base/40 transition-all hover:bg-surface-raised-base hover:text-text-base"
+            class="flex size-7 shrink-0 items-center justify-center rounded-full bg-surface-inset-base text-icon-weak ring-1 ring-inset ring-border-base/40 transition-all hover:bg-surface-raised-base-hover hover:text-text-base"
             onClick={props.onOpen}
             title={`Open details for ${props.skill.name}`}
             aria-label={`Open details for ${props.skill.name}`}
@@ -615,7 +615,7 @@ function SkillDetailDialog(props: { skill: SkillItem; onDelete?: () => Promise<b
           </Show>
         </div>
 
-        <div class="sticky bottom-0 flex items-center gap-2 border-t border-border-base/25 bg-surface-raised-base/95 px-5 py-3 backdrop-blur-sm">
+        <div class="sticky bottom-0 flex items-center gap-2 border-t border-border-base/25 bg-surface-raised-base px-5 py-3">
           <Show when={props.onDelete}>
             <button
               type="button"
@@ -639,7 +639,7 @@ function SkillDetailDialog(props: { skill: SkillItem; onDelete?: () => Promise<b
           <div class="ml-auto flex items-center gap-2">
             <button
               type="button"
-              class="rounded-full px-3.5 py-1.5 text-11-medium text-text-weak ring-1 ring-inset ring-border-base/45 transition-all hover:bg-surface-inset-base/4 hover:text-text-base"
+              class="rounded-full px-3.5 py-1.5 text-11-medium text-text-weak ring-1 ring-inset ring-border-base/45 transition-all hover:bg-surface-inset-base hover:text-text-base"
               onClick={() => dialog.close()}
             >
               Close

@@ -427,8 +427,8 @@ export function ExperienceView(props: {
                           type="button"
                           classList={{
                             "w-full rounded-[0.8rem] px-3 py-2 text-left text-12-medium transition-colors": true,
-                            "bg-surface-inset-base/7 text-text-interactive-base": sort() === key,
-                            "text-text-base hover:bg-surface-inset-base/55": sort() !== key,
+                            "bg-surface-inset-base text-text-interactive-base": sort() === key,
+                            "text-text-base hover:bg-surface-inset-base": sort() !== key,
                           }}
                           onClick={() => {
                             setSort(key)
@@ -576,7 +576,7 @@ function RewardDimensions(props: { rewards: RewardsInfo }) {
           <For each={discrete()}>
             {(dim) => (
               <div
-                class="inline-flex items-center gap-1 rounded-full bg-surface-inset-base/48 px-2 py-1 ring-1 ring-inset ring-border-base/35"
+                class="inline-flex items-center gap-1 rounded-full bg-surface-inset-base px-2 py-1 ring-1 ring-inset ring-border-base/35"
                 title={`${dim.full}: ${dim.value}`}
               >
                 <span class="text-[9px] font-medium uppercase tracking-[0.12em] text-text-weaker">{dim.short}</span>
@@ -695,7 +695,7 @@ function ExperienceCard(props: {
             <Show when={props.expanded && !props.selecting}>
               <button
                 type="button"
-                class="flex size-6 items-center justify-center rounded-full bg-surface-inset-base/5 text-icon-weak ring-1 ring-inset ring-border-base/35 transition-all hover:bg-surface-raised-base/72 hover:text-text-interactive-base"
+                class="flex size-6 items-center justify-center rounded-full bg-surface-inset-base text-icon-weak ring-1 ring-inset ring-border-base/35 transition-all hover:bg-surface-raised-base-hover hover:text-text-interactive-base"
                 onClick={copyExperience}
                 title="Copy all content"
               >
@@ -705,7 +705,7 @@ function ExperienceCard(props: {
               </button>
               <button
                 type="button"
-                class="flex size-6 items-center justify-center rounded-full bg-surface-inset-base/5 text-icon-weak ring-1 ring-inset ring-border-base/35 transition-all hover:bg-surface-raised-base/72 hover:text-text-diff-delete-base"
+                class="flex size-6 items-center justify-center rounded-full bg-surface-inset-base text-icon-weak ring-1 ring-inset ring-border-base/35 transition-all hover:bg-surface-raised-base-hover hover:text-text-diff-delete-base"
                 onClick={props.onDelete}
               >
                 <Icon name="x" size="small" />
@@ -734,7 +734,7 @@ function ExperienceCard(props: {
               <span class="rounded-full bg-text-interactive-base/10 px-2.5 py-1 text-[10px] font-medium text-text-interactive-base ring-1 ring-inset ring-text-interactive-base/12">
                 Q {qValue().toFixed(2)}
               </span>
-              <span class="rounded-full bg-surface-inset-base/58 px-2.5 py-1 text-[10px] font-medium text-text-weaker ring-1 ring-inset ring-border-base/35">
+              <span class="rounded-full bg-surface-inset-base px-2.5 py-1 text-[10px] font-medium text-text-weaker ring-1 ring-inset ring-border-base/35">
                 {qVisits()} visits
               </span>
               <Show when={turnsRemaining() !== null && turnsRemaining()! > 0}>
@@ -743,12 +743,12 @@ function ExperienceCard(props: {
                 </span>
               </Show>
               <Show when={rewards()?.confidence !== undefined}>
-                <span class="rounded-full bg-surface-inset-base/58 px-2.5 py-1 text-[10px] font-medium text-text-weaker ring-1 ring-inset ring-border-base/35">
+                <span class="rounded-full bg-surface-inset-base px-2.5 py-1 text-[10px] font-medium text-text-weaker ring-1 ring-inset ring-border-base/35">
                   C {rewards()!.confidence!.toFixed(2)}
                 </span>
               </Show>
               <Show when={props.searching && searchScore() !== undefined}>
-                <span class="rounded-full bg-surface-inset-base/58 px-2.5 py-1 text-[10px] font-medium text-text-weaker ring-1 ring-inset ring-border-base/35">
+                <span class="rounded-full bg-surface-inset-base px-2.5 py-1 text-[10px] font-medium text-text-weaker ring-1 ring-inset ring-border-base/35">
                   S {searchScore()!.toFixed(2)}
                 </span>
               </Show>
@@ -762,7 +762,7 @@ function ExperienceCard(props: {
             <Show when={rewards()?.reason}>
               <p
                 classList={{
-                  "rounded-[0.9rem] bg-surface-inset-base/36 px-3 py-2 text-[11px] italic leading-snug text-text-weak/80 ring-1 ring-inset ring-border-base/25 [overflow-wrap:anywhere]": true,
+                  "rounded-[0.9rem] bg-surface-inset-base px-3 py-2 text-[11px] italic leading-snug text-text-weak/80 ring-1 ring-inset ring-border-base/25 [overflow-wrap:anywhere]": true,
                   "line-clamp-2": !props.expanded,
                 }}
               >
@@ -847,8 +847,8 @@ function ExperienceCard(props: {
             </span>
             <span
               classList={{
-                "flex size-6 items-center justify-center rounded-full bg-surface-inset-base/36 text-icon-weak ring-1 ring-inset ring-border-base/35 transition-all": true,
-                "rotate-180 bg-surface-inset-base/5": props.expanded,
+                "flex size-6 items-center justify-center rounded-full bg-surface-inset-base text-icon-weak ring-1 ring-inset ring-border-base/35 transition-all": true,
+                "rotate-180 bg-surface-raised-base-hover": props.expanded,
               }}
             >
               <Icon name="chevron-down" size="small" />
@@ -886,7 +886,7 @@ function QValueDimensions(props: { qValues: RewardsInfo }) {
           <For each={dims()}>
             {(dim) => (
               <div
-                class="inline-flex items-center gap-1 rounded-full bg-surface-inset-base/48 px-2 py-1 ring-1 ring-inset ring-border-base/35"
+                class="inline-flex items-center gap-1 rounded-full bg-surface-inset-base px-2 py-1 ring-1 ring-inset ring-border-base/35"
                 title={`${dim.full} Q: ${dim.value.toFixed(4)}`}
               >
                 <span class="text-[9px] font-medium uppercase tracking-[0.12em] text-text-weaker">{dim.short}</span>
@@ -915,14 +915,14 @@ function CollapsibleSection(props: { label: string; expanded: boolean; onToggle:
     <div class={`overflow-hidden ${libraryInsetClass}`}>
       <button
         type="button"
-        class="flex w-full items-center gap-2 px-3.5 py-2.5 text-left text-12-medium text-text-weak transition-colors hover:bg-surface-raised-base/52 hover:text-text-base"
+        class="flex w-full items-center gap-2 px-3.5 py-2.5 text-left text-12-medium text-text-weak transition-colors hover:bg-surface-raised-base-hover hover:text-text-base"
         onClick={props.onToggle}
       >
         <span class={libraryMetaLabelClass}>{props.label}</span>
         <span class="text-12-medium text-text-weak">Content</span>
         <span
           classList={{
-            "ml-auto flex size-5 items-center justify-center rounded-full bg-surface-raised-base/75 text-icon-weak ring-1 ring-inset ring-border-base/35 transition-all": true,
+            "ml-auto flex size-5 items-center justify-center rounded-full bg-surface-raised-base text-icon-weak ring-1 ring-inset ring-border-base/35 transition-all": true,
             "rotate-90": props.expanded,
           }}
         >

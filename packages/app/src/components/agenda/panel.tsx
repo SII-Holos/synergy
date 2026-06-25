@@ -280,7 +280,7 @@ export function AgendaPanel() {
                   <div class="flex items-center justify-between gap-2 mb-2 px-0.5">
                     <div class="flex items-center gap-1.5 min-w-0">
                       <span class="text-[9px] font-medium uppercase tracking-[0.18em] text-text-weaker">Todo</span>
-                      <span class="inline-flex items-center rounded-full bg-surface-raised-stronger-non-alpha/70 px-2 py-0.5 text-[10px] font-medium text-text-weaker">
+                      <span class="inline-flex items-center rounded-full bg-surface-raised-base px-2 py-0.5 text-[10px] font-medium text-text-weaker">
                         {todoItems().length}
                       </span>
                     </div>
@@ -369,7 +369,7 @@ function TodoCard(props: { item: AgendaItem; onClick: (e: MouseEvent) => void })
         class={`shrink-0 w-1.5 h-1.5 rounded-full ${props.item.status === "active" ? "bg-icon-success-base" : props.item.status === "paused" ? "bg-icon-warning-base" : props.item.status === "done" ? "bg-text-weaker" : "bg-border-base"}`}
       />
       <span class="min-w-0 flex-1 truncate text-12-regular text-text-strong">{props.item.title}</span>
-      <span class="inline-flex shrink-0 items-center rounded-full bg-surface-inset-base/70 px-2 py-0.5 text-[9px] font-medium text-text-weaker">
+      <span class="inline-flex shrink-0 items-center rounded-full bg-surface-inset-base px-2 py-0.5 text-[9px] font-medium text-text-weaker">
         {triggerSummary(props.item.triggers)}
       </span>
     </div>
@@ -421,7 +421,7 @@ function DetailPopover(props: {
   return (
     <div
       ref={cardRef}
-      class="pointer-events-auto fixed z-[102] w-full max-w-sm max-h-[calc(100vh-32px)] flex flex-col overflow-hidden rounded-[1.35rem] border border-border-base/70 bg-background-base/90 backdrop-blur-xl shadow-[0_20px_54px_-38px_rgba(0,0,0,0.68)] animate-in fade-in slide-in-from-top-2 duration-150"
+      class="pointer-events-auto fixed z-[102] w-full max-w-sm max-h-[calc(100vh-32px)] flex flex-col overflow-hidden rounded-[1.35rem] border border-border-base/70 bg-background-base shadow-[0_12px_30px_-24px_rgba(0,0,0,0.62)] animate-in fade-in slide-in-from-top-2 duration-150"
       style={pos()}
     >
       <div class="shrink-0 flex items-center gap-1 px-3.5 pt-3 pb-2">
@@ -452,7 +452,7 @@ function DetailPopover(props: {
       </div>
 
       <div class="flex-1 min-h-0 overflow-y-auto px-3.5 pb-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-        <div class="flex flex-col gap-3 rounded-[1.1rem] bg-surface-raised-base/94 px-3.5 py-3.5 shadow-[inset_0_1px_0_rgba(214,204,190,0.08),inset_0_-1px_0_rgba(24,28,38,0.04)]">
+        <div class="flex flex-col gap-3 rounded-[1.1rem] bg-surface-raised-base px-3.5 py-3.5 shadow-[inset_0_1px_0_rgba(214,204,190,0.08),inset_0_-1px_0_rgba(24,28,38,0.04)]">
           <div class="flex items-start gap-2">
             <span class="text-13-medium text-text-strong flex-1 min-w-0 leading-snug">{props.item.title}</span>
             <span class={`px-1.5 py-0.5 rounded-md text-10-medium shrink-0 ${agendaStatusTone(props.item.status)}`}>
@@ -465,11 +465,11 @@ function DetailPopover(props: {
           </Show>
 
           <div class="flex items-center gap-1.5 flex-wrap">
-            <span class="px-2 py-0.5 rounded-full bg-surface-inset-base/78 text-10-medium text-text-weaker ring-1 ring-inset ring-border-base/35">
+            <span class="px-2 py-0.5 rounded-full bg-surface-inset-base text-10-medium text-text-weaker ring-1 ring-inset ring-border-base/35">
               {triggerSummary(props.item.triggers)}
             </span>
             <Show when={state()?.runCount}>
-              <span class="px-2 py-0.5 rounded-full bg-surface-inset-base/78 text-10-medium text-text-weaker ring-1 ring-inset ring-border-base/35">
+              <span class="px-2 py-0.5 rounded-full bg-surface-inset-base text-10-medium text-text-weaker ring-1 ring-inset ring-border-base/35">
                 {state()!.runCount} runs
               </span>
             </Show>
@@ -513,7 +513,7 @@ function DetailPopover(props: {
             <div class="flex items-center gap-1.5 flex-wrap">
               <For each={props.item.tags}>
                 {(tag) => (
-                  <span class="px-2 py-0.5 rounded-full bg-surface-inset-base/78 text-10-medium text-text-weaker ring-1 ring-inset ring-border-base/35">
+                  <span class="px-2 py-0.5 rounded-full bg-surface-inset-base text-10-medium text-text-weaker ring-1 ring-inset ring-border-base/35">
                     #{tag}
                   </span>
                 )}
@@ -522,7 +522,7 @@ function DetailPopover(props: {
           </Show>
 
           <Show when={props.item.prompt}>
-            <div class="overflow-hidden rounded-[1rem] bg-surface-inset-base/42 ring-1 ring-inset ring-border-base/40 shadow-[inset_0_1px_0_rgba(214,204,190,0.06)]">
+            <div class="overflow-hidden rounded-[1rem] bg-surface-inset-base ring-1 ring-inset ring-border-base/40 shadow-[inset_0_1px_0_rgba(214,204,190,0.06)]">
               <div class="px-3 py-2 text-[10px] font-medium uppercase tracking-[0.16em] text-text-weaker border-b border-border-weaker-base/45">
                 Task
               </div>
@@ -542,7 +542,7 @@ function DetailPopover(props: {
           <Show when={props.runs} fallback={<Spinner class="size-3.5 my-1" />}>
             {(runs) => (
               <Show when={runs().length > 0}>
-                <div class="overflow-hidden rounded-[1rem] bg-surface-inset-base/42 ring-1 ring-inset ring-border-base/40 shadow-[inset_0_1px_0_rgba(214,204,190,0.06)]">
+                <div class="overflow-hidden rounded-[1rem] bg-surface-inset-base ring-1 ring-inset ring-border-base/40 shadow-[inset_0_1px_0_rgba(214,204,190,0.06)]">
                   <div class="px-3 py-2 text-[10px] font-medium uppercase tracking-[0.16em] text-text-weaker border-b border-border-weaker-base/45">
                     Recent runs
                   </div>
@@ -671,7 +671,7 @@ function ActionButton(props: {
           variant() === "primary" && !props.loading && !done(),
         "border-text-diff-delete-base/25 bg-text-diff-delete-base/6 text-text-diff-delete-base hover:bg-text-diff-delete-base/10":
           variant() === "danger" && !props.loading && !done(),
-        "border-border-base/45 bg-surface-raised-base/88 text-text-weak hover:text-text-base hover:bg-surface-raised-base":
+        "border-border-base/45 bg-surface-raised-base text-text-weak hover:text-text-base hover:bg-surface-raised-base-hover":
           variant() === "default" && !props.loading && !done(),
         "opacity-50 pointer-events-none": props.loading || done(),
       }}

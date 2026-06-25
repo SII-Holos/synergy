@@ -11,9 +11,7 @@
   border-radius: 14px;
   background: var(--surface-raised-base);
   border: 1px solid var(--border-weak-base);
-  box-shadow:
-    0 6px 18px color-mix(in srgb, var(--text-base) 10%, transparent),
-    0 0 0 1px color-mix(in srgb, var(--border-weaker-base) 70%, transparent);
+  box-shadow: none;
   z-index: 60;
   transition:
     right 300ms cubic-bezier(0.2, 0, 0, 1),

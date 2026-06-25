@@ -14,7 +14,7 @@ import {
 export type ViewMode = "day" | "week" | "month"
 
 const HOUR_HEIGHT = 58
-const TIME_COL = 48
+const TIME_COL = 68
 const HOURS = Array.from({ length: 24 }, (_, i) => i)
 const EVENT_DURATION_MS = 30 * 60_000
 const MONTH_MAX_EVENTS = 4
@@ -124,7 +124,7 @@ const TIME_EVENT_COLORS: Record<string, string> = {
     "bg-surface-raised-base border border-border-base/45 border-l-text-strong shadow-[inset_0_1px_0_rgba(214,204,190,0.08)]",
   paused: "bg-icon-warning-base/18 border border-icon-warning-base/15 border-l-icon-warning-base",
   pending: "bg-surface-inset-base border border-border-base/38 border-l-text-weaker",
-  done: "bg-surface-inset-base/88 border border-border-base/35 border-l-text-weaker",
+  done: "bg-surface-inset-base border border-border-base/35 border-l-text-weaker",
   cancelled: "bg-text-diff-delete-base/12 border border-text-diff-delete-base/10 border-l-text-diff-delete-base",
 }
 
@@ -272,10 +272,10 @@ function NavBar(props: {
   const labels: Record<ViewMode, string> = { day: "Day", week: "Week", month: "Month" }
 
   return (
-    <div class="agenda-calendar-frame flex shrink-0 items-center gap-2 px-3.5 py-3">
+    <div class="agenda-calendar-frame agenda-calendar-toolbar flex shrink-0 items-center gap-2 px-3.5 py-3">
       <button
         type="button"
-        class="rounded-full bg-surface-raised-stronger-non-alpha/70 px-2.5 py-1 text-10-medium text-text-strong transition-colors hover:bg-surface-raised-base-hover"
+        class="rounded-full bg-surface-raised-base px-2.5 py-1 text-10-medium text-text-strong transition-colors hover:bg-surface-raised-base-hover"
         onClick={props.onToday}
       >
         Today
@@ -295,7 +295,7 @@ function NavBar(props: {
         ›
       </button>
       <span class="min-w-0 flex-1 truncate text-13-medium text-text-strong">{props.title}</span>
-      <div class="flex items-center overflow-hidden rounded-lg bg-surface-raised-stronger-non-alpha/70 p-0.75">
+      <div class="flex items-center overflow-hidden rounded-lg bg-surface-raised-base p-0.75">
         <For each={modes}>
           {(mode) => (
             <button
@@ -328,10 +328,10 @@ function TimeGrid(props: {
   const colTemplate = () => `${TIME_COL}px repeat(${props.columns.length}, 1fr)`
 
   return (
-    <div class="agenda-calendar-frame flex min-h-0 flex-1 flex-col overflow-hidden">
+    <div class="agenda-calendar-frame agenda-calendar-body flex min-h-0 flex-1 flex-col overflow-hidden">
       <Show when={props.columns.length > 1}>
         <div
-          class="grid shrink-0 border-b border-border-weaker-base/28 bg-transparent"
+          class="agenda-time-header grid shrink-0 border-b border-border-weaker-base/28 bg-transparent"
           style={{ "grid-template-columns": colTemplate() }}
         >
           <div />
@@ -359,7 +359,7 @@ function TimeGrid(props: {
         </div>
       </Show>
 
-      <div ref={props.ref} class="flex-1 min-h-0 overflow-y-auto overflow-x-hidden rounded-b-[1.15rem]">
+      <div ref={props.ref} class="agenda-grid-scroll flex-1 min-h-0 overflow-y-auto overflow-x-hidden">
         <div
           class="agenda-grid-surface relative grid"
           style={{ "grid-template-columns": colTemplate(), height: `${24 * HOUR_HEIGHT}px` }}
@@ -479,7 +479,7 @@ function MonthGrid(props: {
   })
 
   return (
-    <div class="agenda-calendar-frame min-h-0 flex-1 overflow-y-auto">
+    <div class="agenda-calendar-frame agenda-calendar-body min-h-0 flex-1 overflow-y-auto">
       <div class="grid grid-cols-7 border-b border-border-weaker-base/28 bg-transparent">
         <For each={DAY_LABELS_SHORT}>
           {(label) => <div class="py-2.5 text-center text-11-medium text-text-weaker">{label}</div>}
@@ -495,7 +495,7 @@ function MonthGrid(props: {
                 const overflow = createMemo(() => Math.max(0, events().length - MONTH_MAX_EVENTS))
                 return (
                   <div
-                    class="min-h-[118px] cursor-pointer border-b border-r border-border-weaker-base/20 px-2 py-1.5 transition-colors hover:bg-surface-raised-base-hover/30"
+                    class="min-h-[118px] cursor-pointer border-b border-r border-border-weaker-base/20 px-2 py-1.5 transition-colors hover:bg-surface-raised-base-hover"
                     onClick={() => props.onDateClick?.(cell.ts)}
                   >
                     <span

@@ -4,15 +4,13 @@ import { Icon, type IconName } from "@ericsanchezok/synergy-ui/icon"
 
 function Root(props: ParentProps<{ class?: string }>) {
   return (
-    <div class={`flex h-full min-h-0 bg-surface-raised-stronger-non-alpha text-text-base ${props.class ?? ""}`}>
-      {props.children}
-    </div>
+    <div class={`flex h-full min-h-0 bg-background-stronger text-text-base ${props.class ?? ""}`}>{props.children}</div>
   )
 }
 
 function Nav(props: ParentProps) {
   return (
-    <div class="shrink-0 w-[224px] border-r border-border-weaker-base/70 flex flex-col overflow-hidden bg-surface-inset-base">
+    <div class="shrink-0 w-[224px] border-r border-border-weaker-base/70 flex flex-col overflow-hidden bg-background-base">
       {props.children}
     </div>
   )
