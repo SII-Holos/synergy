@@ -26,17 +26,24 @@ export function BrowserPanel() {
     <Show keyed when={ownerKey()}>
       {(key) => {
         const browser = createBrowserStore()
-        return <BrowserPanelInner browser={browser} sessionID={params.id!} />
+        return <BrowserPanelInner browser={browser} routeDirectory={params.dir} sessionID={params.id!} />
       }}
     </Show>
   )
 }
 
-function BrowserPanelInner(props: { browser: ReturnType<typeof createBrowserStore>; sessionID: string }) {
+function BrowserPanelInner(props: {
+  browser: ReturnType<typeof createBrowserStore>
+  routeDirectory?: string
+  sessionID: string
+}) {
   const browser = props.browser
-  browserDebug("panel.inner", { sessionID: props.sessionID })
+  browserDebug("panel.inner", { sessionID: props.sessionID, routeDirectory: props.routeDirectory })
 
-  const ws = createBrowserWebSocket(browser, props.sessionID)
+  const ws = createBrowserWebSocket(browser, {
+    sessionID: props.sessionID,
+    routeDirectory: props.routeDirectory,
+  })
 
   const activeTab = createMemo(() => {
     const id = browser.activeTabId()

@@ -12,6 +12,37 @@ type BrowserSocket = {
   send(data: string): void
 }
 
+type BrowserWebSocketOptions = {
+  sessionID: string
+  routeDirectory?: string
+}
+
+type BrowserWebSocketUrlOptions = {
+  serverUrl: string
+  sessionID: string
+  routeDirectory?: string
+  directory?: string
+  scopeID?: string
+  scopeKey?: string
+}
+
+export function createBrowserWebSocketUrl(options: BrowserWebSocketUrlOptions) {
+  const pathDirectory = options.routeDirectory ?? options.directory ?? options.scopeID ?? options.scopeKey
+  if (!pathDirectory) return null
+
+  const params = new URLSearchParams({
+    mode: "session",
+    sessionID: options.sessionID,
+  })
+  if (options.scopeID) params.set("scopeID", options.scopeID)
+  else if (options.directory) params.set("directory", options.directory)
+
+  return (
+    options.serverUrl.replace(/^http/, "ws") +
+    `/${encodeURIComponent(pathDirectory)}/browser/connect?${params.toString()}`
+  )
+}
+
 export function createQueuedBrowserSender(
   getSocket: () => BrowserSocket | undefined,
   options: { openState?: number; maxPending?: number } = {},
@@ -66,8 +97,10 @@ export function createQueuedBrowserSender(
   return { send, flush, clear, size }
 }
 
-export function createBrowserWebSocket(store: BrowserStoreAPI, sessionID: string) {
+export function createBrowserWebSocket(store: BrowserStoreAPI, options: BrowserWebSocketOptions | string) {
   const sdk = useSDK()
+  const sessionID = typeof options === "string" ? options : options.sessionID
+  const routeDirectory = typeof options === "string" ? undefined : options.routeDirectory
   let ws: WebSocket | undefined
   let reconnectTimer: ReturnType<typeof setTimeout> | undefined
   let disposed = false
@@ -82,15 +115,34 @@ export function createBrowserWebSocket(store: BrowserStoreAPI, sessionID: string
       browserDebug("ws.connect.skipped", { reason: "disposed" })
       return
     }
-    if (!sdk.directory) {
-      browserDebug("ws.connect.skipped", { reason: "missing directory", sessionID })
+    const wsUrl = createBrowserWebSocketUrl({
+      serverUrl: sdk.url,
+      sessionID,
+      routeDirectory,
+      directory: sdk.directory,
+      scopeID: sdk.scopeID,
+      scopeKey: sdk.scopeKey,
+    })
+    if (!wsUrl) {
+      browserDebug("ws.connect.skipped", {
+        reason: "missing scope",
+        sessionID,
+        routeDirectory,
+        directory: sdk.directory,
+        scopeID: sdk.scopeID,
+        scopeKey: sdk.scopeKey,
+      })
       return
     }
     store.setSession("connectionStatus", "connecting")
-    const wsUrl =
-      sdk.url.replace(/^http/, "ws") +
-      `/${encodeURIComponent(sdk.directory)}/browser/connect?mode=session&sessionID=${encodeURIComponent(sessionID)}`
-    browserDebug("ws.connect", { sessionID, url: wsUrl })
+    browserDebug("ws.connect", {
+      sessionID,
+      url: wsUrl,
+      routeDirectory,
+      directory: sdk.directory,
+      scopeID: sdk.scopeID,
+      scopeKey: sdk.scopeKey,
+    })
     const socket = new WebSocket(wsUrl)
     ws = socket
 
