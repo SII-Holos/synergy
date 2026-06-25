@@ -89,30 +89,32 @@ export namespace Server {
   })()
 
   // Baseline Content-Security-Policy for SPA responses.
-  // style-src 'unsafe-inline' is required for Solid's reactive CSS-in-JS <style> injection.
-  // script-src is extended per-request: the theme preloader hash is always included;
-  // the fallback handler adds a per-request nonce for the dynamic route-tag script.
+  // script-src 'unsafe-inline' and style-src 'unsafe-inline' are required for:
+  //   - Solid's reactive CSS-in-JS <style> injection
+  //   - Ghostty Web WASM terminal (creates scripts dynamically)
+  //   - the theme preloader and route-tag inline scripts in index.html
+  // Hash/nonce are deliberately NOT used in script-src because CSP Level 2
+  // dictates that browsers ignore 'unsafe-inline' when hash or nonce is present.
   const CSP_BASELINE =
     "default-src 'self'; " +
-    "script-src 'self'; " +
+    "script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'; " +
     "style-src 'self' 'unsafe-inline'; " +
     "img-src 'self' data: https: blob:; " +
-    "font-src 'self'; " +
-    "connect-src 'self' ws: wss:; " +
+    "font-src 'self' data:; " +
+    "connect-src 'self' ws: wss: blob: data:; " +
     "frame-src 'self'; " +
-    "media-src 'none'; " +
+    "media-src 'self'; " +
     "object-src 'none'; " +
     "base-uri 'self'; " +
     "form-action 'self'"
 
-  // SHA-256 of index.html's <script id="synergy-theme-preload-script"> body.
-  // Update this hash when the inline theme preloader script changes.
-  const CSP_THEME_SCRIPT_HASH = "sha256-Qf8GAcLAwW4P3mUyGKGC4j67XnDPP6d00NW/TNjPNE0="
+  // script-src uses 'unsafe-inline' in the baseline — see CSP_BASELINE.
+  // Hash and nonce are NOT added to script-src because browsers ignore
+  // 'unsafe-inline' when either is present (CSP Level 2), which would break
+  // third-party components that dynamically create scripts (e.g., Ghostty Web).
 
-  function spaCsp(nonce?: string): string {
-    const sources = [CSP_THEME_SCRIPT_HASH]
-    if (nonce) sources.push(`'nonce-${nonce}'`)
-    return CSP_BASELINE.replace("script-src 'self'", `script-src 'self' ${sources.join(" ")}`)
+  function spaCsp(_nonce?: string): string {
+    return CSP_BASELINE
   }
 
   export function cspMiddleware(): MiddlewareHandler {
@@ -1195,9 +1197,8 @@ export namespace Server {
         if (await file.exists().catch(() => false)) {
           const html = await file.text()
           const reqPath = new URL(c.req.url).pathname
-          const nonce = crypto.randomUUID().replace(/-/g, "")
-          const routeTag = `<script nonce="${nonce}">window.__SYNERGY_ROUTE__=${JSON.stringify(reqPath)}</script>`
-          c.header("Content-Security-Policy", spaCsp(nonce))
+          const routeTag = `<script>window.__SYNERGY_ROUTE__=${JSON.stringify(reqPath)}</script>`
+          c.header("Content-Security-Policy", spaCsp())
           const rendered = html.includes("</head>") ? html.replace("</head>", `${routeTag}\n</head>`) : routeTag + html
           return c.body(rendered, { headers: { "Content-Type": "text/html; charset=utf-8" } })
         }
