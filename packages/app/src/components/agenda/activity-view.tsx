@@ -51,7 +51,7 @@ export function ActivityView(props: {
   const grouped = createMemo(() => groupAgendaActivity(props.items))
 
   return (
-    <div class="flex min-h-0 flex-1 flex-col px-3 pb-3">
+    <div class="agenda-activity-surface flex min-h-0 flex-1 flex-col px-3 pb-3">
       <div class="mb-2.5 flex items-center gap-2 rounded-[1rem] bg-surface-inset-base p-2.5 ring-1 ring-inset ring-border-base/45 shadow-[inset_0_1px_0_rgba(214,204,190,0.07)]">
         <div class="relative min-w-0 flex-1">
           <input

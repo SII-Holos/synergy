@@ -36,7 +36,9 @@ Keep navigation surfaces mentally aligned with where they live. Sidebar destinat
 
 Session, Agenda, Library, and Plugins should feel like one continuous workbench canvas in both light and dark modes. Their root backgrounds should align with the session message-flow background; inner surfaces can step up or down for hierarchy, but should not look like separate apps.
 
-Favor solid, pragmatic surfaces over glassmorphism. A slight floating quality is acceptable for transient overlays, but heavy transparency, blur, glow, and decorative shadows make the product feel less grounded.
+Respect theme polarity when building hierarchy. In dark mode, content, controls, and selected items should usually be slightly brighter than the container that holds them. In light mode, content, controls, and selected items should usually be slightly darker than the container that holds them. White raised surfaces are appropriate for deliberate paper-like or modal surfaces, not as the default inner content layer on the main workbench canvas.
+
+Favor grounded, pragmatic surfaces over obvious glassmorphism. A little translucency or floating quality is acceptable for transient overlays, but heavy transparency, blur, glow, and decorative shadows make the product feel less grounded.
 
 Use black, white, and neutral ramps as the primary visual language. Blue is a state color for active or running work, not a default accent for selection or decoration.
 
