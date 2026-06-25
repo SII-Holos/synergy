@@ -293,6 +293,8 @@ import type {
   PluginUpdateConfigErrors,
   PluginUpdateConfigResponses,
   ProviderAuthResponses,
+  ProviderCredentialsImportCredentialsErrors,
+  ProviderCredentialsImportCredentialsResponses,
   ProviderListResponses,
   ProviderOauthAuthorizeErrors,
   ProviderOauthAuthorizeResponses,
@@ -2510,6 +2512,49 @@ export class Observability extends HeyApiClient {
 }
 
 export class Credentials extends HeyApiClient {
+  /**
+   * Import provider credentials
+   *
+   * Import credentials from a local provider-specific credential source.
+   */
+  public importCredentials<ThrowOnError extends boolean = false>(
+    parameters: {
+      providerID: string
+      directory?: string
+      scopeID?: string
+      method?: number
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "providerID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { in: "body", key: "method" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      ProviderCredentialsImportCredentialsResponses,
+      ProviderCredentialsImportCredentialsErrors,
+      ThrowOnError
+    >({
+      url: "/provider/{providerID}/import",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
   /**
    * Check local credential status
    *
@@ -5288,6 +5333,8 @@ export class Provider extends HeyApiClient {
   usage = new Usage({ client: this.client })
 
   oauth = new Oauth({ client: this.client })
+
+  credentials = new Credentials({ client: this.client })
 }
 
 export class Skill extends HeyApiClient {

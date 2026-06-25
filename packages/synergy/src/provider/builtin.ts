@@ -4,12 +4,28 @@ import { AnthropicOAuthProvider } from "./anthropic-oauth"
 import { CopilotProvider } from "./copilot"
 import { MiniMaxProvider } from "./minimax"
 import { AccountUsage } from "./usage"
+import { Config } from "@/config/config"
+import { Auth } from "./api-key"
+import { Env } from "@/util/env"
+import { BunProc } from "@/util/bun"
+import { iife } from "@/util/iife"
+import type { AmazonBedrockProviderSettings } from "@ai-sdk/amazon-bedrock"
+import { createAnthropic } from "@ai-sdk/anthropic"
 
 let registered = false
 
 export function registerBuiltinProviderProfiles() {
   if (registered) return
   registered = true
+
+  ProviderProfile.register({
+    id: "openai",
+    name: "OpenAI",
+    authKind: "api_key",
+    aiSdkPackage: "@ai-sdk/openai",
+    modelFactory: "openaiResponses",
+    modelsDevProviderID: "openai",
+  })
 
   ProviderProfile.register({
     id: CodexProvider.PROVIDER_ID,
@@ -78,10 +94,11 @@ export function registerBuiltinProviderProfiles() {
     id: "github-copilot",
     name: "GitHub Copilot",
     aliases: ["copilot", "github-models"],
+    env: ["COPILOT_GITHUB_TOKEN", "GH_TOKEN", "GITHUB_TOKEN"],
     baseURL: CopilotProvider.BASE_URL,
     apiMode: "chat_completions",
     authKind: "copilot",
-    aiSdkPackage: "@ai-sdk/github-copilot",
+    aiSdkPackage: "@ai-sdk/openai",
     modelFactory: "copilotAuto",
     modelsDevProviderID: "github-copilot",
     fallbackModels: [
@@ -94,27 +111,304 @@ export function registerBuiltinProviderProfiles() {
     ],
     liveModelDiscovery: "copilot",
     runtimeOptions: async () => ({
+      apiKey: "synergy-copilot",
       baseURL: CopilotProvider.BASE_URL,
       fetch: CopilotProvider.copilotFetchFor("github-copilot"),
     }),
+    getModel: async ({ sdk, modelID }) => {
+      if (modelID.toLowerCase().includes("claude")) {
+        return createAnthropic({
+          name: "github-copilot",
+          apiKey: "synergy-copilot",
+          baseURL: CopilotProvider.BASE_URL,
+          fetch: CopilotProvider.copilotFetchFor("github-copilot") as typeof fetch,
+        }).languageModel(modelID)
+      }
+      if (modelID.includes("codex") || modelID.startsWith("gpt-5")) return sdk.responses(modelID)
+      return sdk.chat(modelID)
+    },
     fetchModels: (input) => CopilotProvider.fetchModelIDs("github-copilot", input.fetch),
   })
 
   ProviderProfile.register({
     id: "github-copilot-enterprise",
     name: "GitHub Copilot Enterprise",
+    env: ["COPILOT_GITHUB_TOKEN", "GH_TOKEN", "GITHUB_TOKEN"],
     baseURL: CopilotProvider.BASE_URL,
     apiMode: "chat_completions",
     authKind: "copilot",
-    aiSdkPackage: "@ai-sdk/github-copilot",
+    aiSdkPackage: "@ai-sdk/openai",
     modelFactory: "copilotAuto",
     modelsDevProviderID: "github-copilot",
     fallbackModels: ["gpt-5.4", "gpt-5.4-mini", "gpt-5.3-codex", "claude-sonnet-4.6"],
     runtimeOptions: async () => ({
+      apiKey: "synergy-copilot-enterprise",
       baseURL: CopilotProvider.BASE_URL,
       fetch: CopilotProvider.copilotFetchFor("github-copilot-enterprise"),
     }),
+    getModel: async ({ sdk, modelID }) => {
+      if (modelID.toLowerCase().includes("claude")) {
+        return createAnthropic({
+          name: "github-copilot-enterprise",
+          apiKey: "synergy-copilot-enterprise",
+          baseURL: CopilotProvider.BASE_URL,
+          fetch: CopilotProvider.copilotFetchFor("github-copilot-enterprise") as typeof fetch,
+        }).languageModel(modelID)
+      }
+      if (modelID.includes("codex") || modelID.startsWith("gpt-5")) return sdk.responses(modelID)
+      return sdk.chat(modelID)
+    },
     fetchModels: (input) => CopilotProvider.fetchModelIDs("github-copilot-enterprise", input.fetch),
+  })
+
+  ProviderProfile.register({
+    id: "azure",
+    name: "Azure OpenAI",
+    authKind: "api_key",
+    aiSdkPackage: "@ai-sdk/azure",
+    modelFactory: "openaiResponsesUnlessCompletionUrls",
+    modelsDevProviderID: "azure",
+  })
+
+  ProviderProfile.register({
+    id: "azure-cognitive-services",
+    name: "Azure Cognitive Services",
+    authKind: "api_key",
+    aiSdkPackage: "@ai-sdk/azure",
+    modelFactory: "openaiResponsesUnlessCompletionUrls",
+    modelsDevProviderID: "azure-cognitive-services",
+    runtimeOptions: async () => {
+      const resourceName = Env.get("AZURE_COGNITIVE_SERVICES_RESOURCE_NAME")
+      return {
+        baseURL: resourceName ? `https://${resourceName}.cognitiveservices.azure.com/openai` : undefined,
+      }
+    },
+  })
+
+  ProviderProfile.register({
+    id: "amazon-bedrock",
+    name: "Amazon Bedrock",
+    authKind: "api_key",
+    aiSdkPackage: "@ai-sdk/amazon-bedrock",
+    modelFactory: "languageModel",
+    modelsDevProviderID: "amazon-bedrock",
+    autoload: async () => {
+      const config = await Config.current()
+      const providerConfig = config.provider?.["amazon-bedrock"]
+      const profile = providerConfig?.options?.profile ?? Env.get("AWS_PROFILE")
+      const awsAccessKeyId = Env.get("AWS_ACCESS_KEY_ID")
+      const auth = await Auth.get("amazon-bedrock")
+      const awsBearerToken = Env.get("AWS_BEARER_TOKEN_BEDROCK") ?? (auth?.type === "api" ? auth.key : undefined)
+      return Boolean(profile || awsAccessKeyId || awsBearerToken)
+    },
+    runtimeOptions: async () => {
+      const config = await Config.current()
+      const providerConfig = config.provider?.["amazon-bedrock"]
+      const auth = await Auth.get("amazon-bedrock")
+      const defaultRegion = providerConfig?.options?.region ?? Env.get("AWS_REGION") ?? "us-east-1"
+      const profile = providerConfig?.options?.profile ?? Env.get("AWS_PROFILE")
+      const awsBearerToken = iife(() => {
+        const envToken = Env.get("AWS_BEARER_TOKEN_BEDROCK")
+        if (envToken) return envToken
+        if (auth?.type === "api") {
+          Env.set("AWS_BEARER_TOKEN_BEDROCK", auth.key)
+          return auth.key
+        }
+        return undefined
+      })
+      if (!profile && !Env.get("AWS_ACCESS_KEY_ID") && !awsBearerToken) return {}
+
+      const { fromNodeProviderChain } = await import((await BunProc.install("@aws-sdk/credential-providers")).entryPath)
+      const providerOptions: AmazonBedrockProviderSettings = {
+        region: defaultRegion,
+        credentialProvider: fromNodeProviderChain(profile ? { profile } : {}),
+      }
+      const endpoint = providerConfig?.options?.endpoint ?? providerConfig?.options?.baseURL
+      if (endpoint) providerOptions.baseURL = endpoint
+      return providerOptions
+    },
+    getModel: async ({ sdk, modelID, options }) => {
+      if (modelID.startsWith("global.") || modelID.startsWith("jp.")) return sdk.languageModel(modelID)
+      const region = options?.region ?? Env.get("AWS_REGION") ?? "us-east-1"
+      let regionPrefix = String(region).split("-")[0]
+
+      switch (regionPrefix) {
+        case "us": {
+          const modelRequiresPrefix = [
+            "nova-micro",
+            "nova-lite",
+            "nova-pro",
+            "nova-premier",
+            "claude",
+            "deepseek",
+          ].some((m) => modelID.includes(m))
+          if (modelRequiresPrefix && !String(region).startsWith("us-gov")) modelID = `${regionPrefix}.${modelID}`
+          break
+        }
+        case "eu": {
+          const regionRequiresPrefix = [
+            "eu-west-1",
+            "eu-west-2",
+            "eu-west-3",
+            "eu-north-1",
+            "eu-central-1",
+            "eu-south-1",
+            "eu-south-2",
+          ].some((r) => String(region).includes(r))
+          const modelRequiresPrefix = ["claude", "nova-lite", "nova-micro", "llama3", "pixtral"].some((m) =>
+            modelID.includes(m),
+          )
+          if (regionRequiresPrefix && modelRequiresPrefix) modelID = `${regionPrefix}.${modelID}`
+          break
+        }
+        case "ap": {
+          const isAustraliaRegion = ["ap-southeast-2", "ap-southeast-4"].includes(String(region))
+          const isTokyoRegion = region === "ap-northeast-1"
+          const modelRequiresPrefix = ["claude", "nova-lite", "nova-micro", "nova-pro"].some((m) => modelID.includes(m))
+          if (
+            isAustraliaRegion &&
+            ["anthropic.claude-sonnet-4-5", "anthropic.claude-haiku"].some((m) => modelID.includes(m))
+          ) {
+            regionPrefix = "au"
+            modelID = `${regionPrefix}.${modelID}`
+          } else if (isTokyoRegion && modelRequiresPrefix) {
+            regionPrefix = "jp"
+            modelID = `${regionPrefix}.${modelID}`
+          } else if (modelRequiresPrefix) {
+            regionPrefix = "apac"
+            modelID = `${regionPrefix}.${modelID}`
+          }
+          break
+        }
+      }
+
+      return sdk.languageModel(modelID)
+    },
+  })
+
+  ProviderProfile.register({
+    id: "google-vertex",
+    name: "Google Vertex",
+    authKind: "wellknown",
+    aiSdkPackage: "@ai-sdk/google-vertex",
+    modelFactory: "languageModel",
+    modelsDevProviderID: "google-vertex",
+    autoload: async () =>
+      Boolean(Env.get("GOOGLE_CLOUD_PROJECT") ?? Env.get("GCP_PROJECT") ?? Env.get("GCLOUD_PROJECT")),
+    runtimeOptions: async () => ({
+      project: Env.get("GOOGLE_CLOUD_PROJECT") ?? Env.get("GCP_PROJECT") ?? Env.get("GCLOUD_PROJECT"),
+      location: Env.get("GOOGLE_CLOUD_LOCATION") ?? Env.get("VERTEX_LOCATION") ?? "us-east5",
+    }),
+  })
+
+  ProviderProfile.register({
+    id: "google-vertex-anthropic",
+    name: "Google Vertex Anthropic",
+    authKind: "wellknown",
+    aiSdkPackage: "@ai-sdk/google-vertex/anthropic",
+    modelFactory: "languageModel",
+    modelsDevProviderID: "google-vertex-anthropic",
+    autoload: async () =>
+      Boolean(Env.get("GOOGLE_CLOUD_PROJECT") ?? Env.get("GCP_PROJECT") ?? Env.get("GCLOUD_PROJECT")),
+    runtimeOptions: async () => ({
+      project: Env.get("GOOGLE_CLOUD_PROJECT") ?? Env.get("GCP_PROJECT") ?? Env.get("GCLOUD_PROJECT"),
+      location: Env.get("GOOGLE_CLOUD_LOCATION") ?? Env.get("VERTEX_LOCATION") ?? "global",
+    }),
+  })
+
+  ProviderProfile.register({
+    id: "sap-ai-core",
+    name: "SAP AI Core",
+    authKind: "api_key",
+    aiSdkPackage: "@ai-sdk/openai-compatible",
+    modelFactory: "call",
+    modelsDevProviderID: "sap-ai-core",
+    autoload: async () => {
+      const auth = await Auth.get("sap-ai-core")
+      return Boolean(Env.get("AICORE_SERVICE_KEY") ?? (auth?.type === "api" ? auth.key : undefined))
+    },
+    runtimeOptions: async () => {
+      const auth = await Auth.get("sap-ai-core")
+      const envServiceKey = Env.get("AICORE_SERVICE_KEY") ?? (auth?.type === "api" ? auth.key : undefined)
+      if (envServiceKey) Env.set("AICORE_SERVICE_KEY", envServiceKey)
+      return envServiceKey
+        ? {
+            deploymentId: Env.get("AICORE_DEPLOYMENT_ID"),
+            resourceGroup: Env.get("AICORE_RESOURCE_GROUP"),
+          }
+        : {}
+    },
+  })
+
+  ProviderProfile.register({
+    id: "cloudflare-ai-gateway",
+    name: "Cloudflare AI Gateway",
+    authKind: "api_key",
+    aiSdkPackage: "@ai-sdk/openai-compatible",
+    modelFactory: "languageModel",
+    modelsDevProviderID: "cloudflare-ai-gateway",
+    autoload: async () => Boolean(Env.get("CLOUDFLARE_ACCOUNT_ID") && Env.get("CLOUDFLARE_GATEWAY_ID")),
+    runtimeOptions: async ({ providerID }) => {
+      const accountId = Env.get("CLOUDFLARE_ACCOUNT_ID")
+      const gateway = Env.get("CLOUDFLARE_GATEWAY_ID")
+      if (!accountId || !gateway) return {}
+      const auth = await Auth.get(providerID)
+      const apiToken = Env.get("CLOUDFLARE_API_TOKEN") ?? (auth?.type === "api" ? auth.key : undefined)
+      return {
+        baseURL: `https://gateway.ai.cloudflare.com/v1/${accountId}/${gateway}/compat`,
+        headers: {
+          ...(apiToken ? { "cf-aig-authorization": `Bearer ${apiToken}` } : {}),
+          "HTTP-Referer": "https://synergy.holosai.io/",
+          "X-Title": "synergy",
+        },
+        fetch: async (input: RequestInfo | URL, init?: RequestInit) => {
+          const headers = new Headers(init?.headers)
+          headers.delete("Authorization")
+          return fetch(input, { ...init, headers })
+        },
+      }
+    },
+  })
+
+  ProviderProfile.register({
+    id: "vercel",
+    name: "Vercel AI Gateway",
+    authKind: "api_key",
+    aiSdkPackage: "@ai-sdk/vercel",
+    modelsDevProviderID: "vercel",
+    runtimeOptions: async () => ({
+      headers: {
+        "http-referer": "https://synergy.holosai.io/",
+        "x-title": "synergy",
+      },
+    }),
+  })
+
+  ProviderProfile.register({
+    id: "zenmux",
+    name: "ZenMux",
+    authKind: "api_key",
+    aiSdkPackage: "@ai-sdk/openai-compatible",
+    modelsDevProviderID: "zenmux",
+    runtimeOptions: async () => ({
+      headers: {
+        "HTTP-Referer": "https://synergy.holosai.io/",
+        "X-Title": "synergy",
+      },
+    }),
+  })
+
+  ProviderProfile.register({
+    id: "cerebras",
+    name: "Cerebras",
+    authKind: "api_key",
+    aiSdkPackage: "@ai-sdk/cerebras",
+    modelsDevProviderID: "cerebras",
+    runtimeOptions: async () => ({
+      headers: {
+        "X-Cerebras-3rd-Party-Integration": "synergy",
+      },
+    }),
   })
 
   ProviderProfile.register({

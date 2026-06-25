@@ -119,6 +119,23 @@ export function DialogConnectProvider(props: { provider: string }) {
           setStore("error", String(e))
         })
     }
+
+    if (method.type === "import") {
+      setStore("state", "pending")
+      await globalSDK.client.provider.credentials
+        .importCredentials(
+          {
+            providerID: props.provider,
+            method: index,
+          },
+          { throwOnError: true },
+        )
+        .then(() => complete())
+        .catch((e) => {
+          setStore("state", "error")
+          setStore("error", String(e))
+        })
+    }
   }
 
   let listRef: ListRef | undefined

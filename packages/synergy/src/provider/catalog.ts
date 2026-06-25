@@ -14,7 +14,7 @@ export namespace ProviderCatalog {
   export const DEFAULT_REGISTRY_URL =
     "https://raw.githubusercontent.com/SII-Holos/synergy-provider-registry/main/catalog.v1.json"
   export const DEFAULT_CACHE_TTL_MS = 60 * 60 * 1000
-  export const DEFAULT_PUBLIC_KEY = ""
+  export const DEFAULT_PUBLIC_KEY = "h4Y782Oylib+BlO2/7AKO5vY6skpCmTZNhqr3GRoBxA="
 
   export const Config = z
     .object({
@@ -160,6 +160,7 @@ export namespace ProviderCatalog {
 
   async function fetchRemote(config: Config): Promise<RemoteCatalog | undefined> {
     if (!config.enabled) return readCachedRemote(config)
+    if (process.env.SYNERGY_DISABLE_PROVIDER_CATALOG_FETCH === "true") return readCachedRemote(config)
     if (!config.publicKey.trim()) return readCachedRemote(config)
     const [catalogResponse, signatureResponse] = await Promise.all([
       fetch(config.registryUrl, {
@@ -238,17 +239,45 @@ export namespace ProviderCatalog {
     const modelsDev = { ...(await ModelsDev.get()) }
     const result: Record<string, ModelsDev.Provider> = { ...modelsDev }
 
-    for (const profile of ProviderProfile.all()) {
-      result[profile.id] = mergeProvider(result[profile.id], profileProvider(profile, modelsDev))
+    for (const [providerID, provider] of Object.entries(bundledSnapshot(modelsDev))) {
+      result[providerID] = mergeProvider(result[providerID], provider)
     }
 
     const remote = await fetchRemote(config)
     if (remote) {
       for (const [providerID, provider] of Object.entries(remote.providers)) {
-        result[providerID] = mergeProvider(result[providerID], {
+        const source = provider.modelsDevProviderID ? modelsDev[provider.modelsDevProviderID] : undefined
+        const base = result[providerID] ?? (source ? { ...source, id: providerID, name: provider.name } : undefined)
+        const merged = mergeProvider(base, {
           ...provider,
           id: providerID,
         } as Partial<ModelsDev.Provider>)
+        for (const modelID of provider.fallbackModels ?? []) {
+          const sourceModel = source?.models?.[modelID]
+          if (sourceModel && !provider.models?.[modelID]) {
+            merged.models[modelID] = {
+              ...sourceModel,
+              id: modelID,
+              provider: {
+                ...(sourceModel.provider ?? {}),
+                npm: merged.npm ?? sourceModel.provider?.npm ?? source?.npm,
+              },
+            }
+            continue
+          }
+          if (merged.models[modelID]) continue
+          merged.models[modelID] = sourceModel
+            ? {
+                ...sourceModel,
+                id: modelID,
+                provider: {
+                  ...(sourceModel.provider ?? {}),
+                  npm: merged.npm ?? sourceModel.provider?.npm ?? source?.npm,
+                },
+              }
+            : fallbackModel(merged, modelID)
+        }
+        result[providerID] = merged
       }
     }
 
@@ -288,12 +317,29 @@ export namespace ProviderCatalog {
           defaultAuxModel: profile.defaultAuxModel,
           usageKind: profile.usageKind,
           healthCheck: profile.healthCheck,
+          requestQuirks: profile.requestQuirks,
+          autoload: profile.autoload as ProviderProfile.Profile["autoload"],
+          resolveAuth: profile.resolveAuth as ProviderProfile.Profile["resolveAuth"],
+          refreshAuth: profile.refreshAuth as ProviderProfile.Profile["refreshAuth"],
+          buildHeaders: profile.buildHeaders as ProviderProfile.Profile["buildHeaders"],
+          rewriteBody: profile.rewriteBody as ProviderProfile.Profile["rewriteBody"],
+          modelOptions: profile.modelOptions as ProviderProfile.Profile["modelOptions"],
+          classifyError: profile.classifyError as ProviderProfile.Profile["classifyError"],
           runtimeOptions: profile.runtimeOptions as ProviderProfile.Profile["runtimeOptions"],
           getModel: profile.getModel as ProviderProfile.Profile["getModel"],
           fetchModels: profile.fetchModels as ProviderProfile.Profile["fetchModels"],
         })
       }
     }
+  }
+
+  export function bundledSnapshot(modelsDev: Record<string, ModelsDev.Provider>): Record<string, ModelsDev.Provider> {
+    registerBuiltinProviderProfiles()
+    const result: Record<string, ModelsDev.Provider> = {}
+    for (const profile of ProviderProfile.all()) {
+      result[profile.id] = profileProvider(profile, modelsDev)
+    }
+    return result
   }
 
   export function reset() {

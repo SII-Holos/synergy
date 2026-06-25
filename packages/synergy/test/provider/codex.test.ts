@@ -10,6 +10,7 @@ import { ScopeContext } from "../../src/scope/context"
 import { tmpdir } from "../fixture/fixture"
 
 const originalFetch = globalThis.fetch
+const originalCodexHome = process.env.CODEX_HOME
 
 function nowSeconds() {
   return Math.floor(Date.now() / 1000)
@@ -45,6 +46,11 @@ function asFetch(fn: (input: RequestInfo | URL, init?: RequestInit) => Promise<R
 
 async function resetCodexState() {
   globalThis.fetch = originalFetch
+  if (originalCodexHome === undefined) {
+    delete process.env.CODEX_HOME
+  } else {
+    process.env.CODEX_HOME = originalCodexHome
+  }
   delete process.env.SYNERGY_CODEX_BASE_URL
   await Auth.remove(CodexProvider.PROVIDER_ID)
   await Provider.reload()
@@ -291,8 +297,47 @@ test("provider auth registry exposes built-in Codex OAuth method", async () => {
           type: "oauth",
           label: "Login with ChatGPT",
         },
+        {
+          type: "import",
+          label: "Import Codex CLI credentials",
+        },
       ])
     },
+  })
+})
+
+test("provider auth imports Codex CLI credentials into the Synergy auth store", async () => {
+  const token = accessToken({ exp: nowSeconds() + 60 * 60 })
+  await using tmp = await tmpdir({
+    init: async (dir) => {
+      await Bun.write(
+        path.join(dir, "auth.json"),
+        JSON.stringify({
+          tokens: {
+            access_token: token,
+            refresh_token: "refresh-import-route",
+          },
+        }),
+      )
+    },
+  })
+  process.env.CODEX_HOME = tmp.path
+
+  await ScopeContext.provide({
+    scope: await tmp.scope(),
+    async fn() {
+      await ProviderAuth.importCredentials({
+        providerID: CodexProvider.PROVIDER_ID,
+        method: 1,
+      })
+    },
+  })
+
+  expect(await Auth.get(CodexProvider.PROVIDER_ID)).toEqual({
+    type: "oauth",
+    access: token,
+    refresh: "refresh-import-route",
+    expires: CodexProvider.accessTokenExpiresAt(token)!,
   })
 })
 

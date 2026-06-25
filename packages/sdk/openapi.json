@@ -7369,9 +7369,41 @@
                       "items": {
                         "type": "string"
                       }
+                    },
+                    "catalogProviders": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "authHealth": {
+                      "type": "object",
+                      "propertyNames": {
+                        "type": "string"
+                      },
+                      "additionalProperties": {
+                        "$ref": "#/components/schemas/ProviderAuthHealth"
+                      }
+                    },
+                    "runtimeAvailability": {
+                      "type": "object",
+                      "propertyNames": {
+                        "type": "string"
+                      },
+                      "additionalProperties": {
+                        "$ref": "#/components/schemas/ProviderRuntimeAvailability"
+                      }
                     }
                   },
-                  "required": ["all", "default", "connected", "configProviders"]
+                  "required": [
+                    "all",
+                    "default",
+                    "connected",
+                    "configProviders",
+                    "catalogProviders",
+                    "authHealth",
+                    "runtimeAvailability"
+                  ]
                 }
               }
             }
@@ -7694,6 +7726,82 @@
           {
             "lang": "js",
             "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.provider.oauth.callback({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/provider/{providerID}/import": {
+      "post": {
+        "operationId": "provider.credentials.importCredentials",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "providerID",
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "description": "Provider ID"
+          }
+        ],
+        "summary": "Import provider credentials",
+        "description": "Import credentials from a local provider-specific credential source.",
+        "responses": {
+          "200": {
+            "description": "Credentials imported successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "boolean"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "method": {
+                    "description": "Auth method index",
+                    "type": "number"
+                  }
+                },
+                "required": ["method"]
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.provider.credentials.importCredentials({\n  ...\n})"
           }
         ]
       }
@@ -23538,6 +23646,63 @@
         },
         "required": ["name", "hints"]
       },
+      "ProviderAuthHealth": {
+        "type": "object",
+        "properties": {
+          "providerID": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["connected", "not_configured", "expired", "exhausted", "dead"]
+          },
+          "authKind": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "type": "number"
+          },
+          "reloginRequired": {
+            "type": "boolean"
+          },
+          "cooldownUntil": {
+            "type": "number"
+          },
+          "resetAt": {
+            "type": "number"
+          },
+          "failureCode": {
+            "type": "string"
+          }
+        },
+        "required": ["providerID", "status"]
+      },
+      "ProviderRuntimeAvailability": {
+        "type": "object",
+        "properties": {
+          "providerID": {
+            "type": "string"
+          },
+          "available": {
+            "type": "boolean"
+          },
+          "reason": {
+            "type": "string",
+            "enum": ["connected", "not_connected", "disabled", "no_models"]
+          },
+          "healthCheck": {
+            "type": "string",
+            "enum": ["models", "none"]
+          },
+          "modelCount": {
+            "type": "number"
+          }
+        },
+        "required": ["providerID", "available", "modelCount"]
+      },
       "AccountUsageWindow": {
         "type": "object",
         "properties": {
@@ -23634,6 +23799,10 @@
               {
                 "type": "string",
                 "const": "api"
+              },
+              {
+                "type": "string",
+                "const": "import"
               }
             ]
           },

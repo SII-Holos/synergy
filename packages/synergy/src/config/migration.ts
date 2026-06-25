@@ -10,6 +10,8 @@ import { Log } from "../util/log"
 import { MEMORY_CATEGORIES } from "./schema"
 import { ConfigDomain } from "./domain"
 import { Auth } from "../provider/api-key"
+import { registerBuiltinProviderProfiles } from "../provider/builtin"
+import { ProviderProfile } from "../provider/profile"
 
 const log = Log.create({ service: "config.migration" })
 
@@ -771,6 +773,156 @@ async function ensureProviderCatalogConfig(): Promise<boolean> {
   })
 }
 
+function providerAliasMap() {
+  registerBuiltinProviderProfiles()
+  const aliases = ["copilot", "github-models", "mimo", "xiaomi-mimo"]
+  const result = new Map<string, string>()
+  for (const alias of aliases) {
+    const canonical = ProviderProfile.canonicalID(alias)
+    if (canonical !== alias) result.set(alias, canonical)
+  }
+  return result
+}
+
+function normalizeProviderID(providerID: unknown, aliases: Map<string, string>) {
+  return typeof providerID === "string" ? (aliases.get(providerID) ?? providerID) : providerID
+}
+
+function normalizeProviderMap(input: unknown, aliases: Map<string, string>) {
+  if (!isRecord(input)) return input
+  const result: Record<string, unknown> = {}
+  let changed = false
+  for (const [providerID, value] of Object.entries(input)) {
+    const canonical = aliases.get(providerID) ?? providerID
+    changed ||= canonical !== providerID
+    result[canonical] = canonical in result ? mergeMissing(result[canonical], value) : value
+  }
+  return changed ? result : input
+}
+
+function normalizeProviderList(input: unknown, aliases: Map<string, string>) {
+  if (!Array.isArray(input)) return input
+  let changed = false
+  const seen = new Set<string>()
+  const result: string[] = []
+  for (const item of input) {
+    if (typeof item !== "string") {
+      result.push(item as string)
+      continue
+    }
+    const canonical = aliases.get(item) ?? item
+    changed ||= canonical !== item
+    if (seen.has(canonical)) {
+      changed = true
+      continue
+    }
+    seen.add(canonical)
+    result.push(canonical)
+  }
+  return changed ? result : input
+}
+
+function normalizeModelRef(input: unknown, aliases: Map<string, string>) {
+  if (typeof input !== "string") return input
+  const [providerID, ...rest] = input.split("/")
+  if (!providerID || rest.length === 0) return input
+  const canonical = aliases.get(providerID)
+  return canonical ? `${canonical}/${rest.join("/")}` : input
+}
+
+function normalizeModelRefs(input: unknown, aliases: Map<string, string>): unknown {
+  if (Array.isArray(input)) {
+    let changed = false
+    const result = input.map((item) => {
+      const normalized = normalizeModelRefs(item, aliases)
+      changed ||= normalized !== item
+      return normalized
+    })
+    return changed ? result : input
+  }
+  if (!isRecord(input)) return input
+  let changed = false
+  const result: Record<string, unknown> = {}
+  for (const [key, value] of Object.entries(input)) {
+    const normalized =
+      key === "model" || key.endsWith("_model") ? normalizeModelRef(value, aliases) : normalizeModelRefs(value, aliases)
+    changed ||= normalized !== value
+    result[key] = normalized
+  }
+  return changed ? result : input
+}
+
+async function normalizeProviderProfileConfig(filepath: string): Promise<boolean> {
+  const current = await readConfigObject(filepath)
+  if (!current) return false
+  const aliases = providerAliasMap()
+  if (aliases.size === 0) return false
+
+  const formattingOptions = { tabSize: 2, insertSpaces: true, eol: "\n" } as const
+  let text = current.raw
+  let changed = false
+
+  const provider = normalizeProviderMap(current.config.provider, aliases)
+  if (provider !== current.config.provider) {
+    text = applyEdits(text, modify(text, ["provider"], provider, { formattingOptions }))
+    changed = true
+  }
+
+  for (const key of ["enabled_providers", "disabled_providers"]) {
+    const normalized = normalizeProviderList(current.config[key], aliases)
+    if (normalized !== current.config[key]) {
+      text = applyEdits(text, modify(text, [key], normalized, { formattingOptions }))
+      changed = true
+    }
+  }
+
+  for (const key of [
+    "model",
+    "nano_model",
+    "mini_model",
+    "mid_model",
+    "thinking_model",
+    "long_context_model",
+    "creative_model",
+    "vision_model",
+  ]) {
+    const normalized = normalizeModelRef(current.config[key], aliases)
+    if (normalized !== current.config[key]) {
+      text = applyEdits(text, modify(text, [key], normalized, { formattingOptions }))
+      changed = true
+    }
+  }
+
+  for (const key of ["agent", "subagent"]) {
+    const normalized = normalizeModelRefs(current.config[key], aliases)
+    if (normalized !== current.config[key]) {
+      text = applyEdits(text, modify(text, [key], normalized, { formattingOptions }))
+      changed = true
+    }
+  }
+
+  if (!changed) return false
+  await Bun.write(filepath, text.endsWith("\n") ? text : text + "\n")
+  log.info("normalized provider profile aliases", { path: filepath })
+  return true
+}
+
+async function normalizeProviderProfileConfigs(): Promise<number> {
+  let changed = 0
+  const files = new Set(await findConfigFiles())
+  for (const dir of await findConfigDomainDirs()) {
+    const entries = await fs.readdir(dir, { withFileTypes: true }).catch(() => [])
+    for (const entry of entries) {
+      if (!entry.isFile() || !entry.name.match(/\.jsonc?$/)) continue
+      files.add(path.join(dir, entry.name))
+    }
+  }
+  for (const filepath of files) {
+    if (await normalizeProviderProfileConfig(filepath)) changed++
+  }
+  return changed
+}
+
 export const migrations: Migration[] = [
   {
     id: "20260410-config-holos-top-level",
@@ -1002,6 +1154,15 @@ export const migrations: Migration[] = [
     async up(progress) {
       progress(0, 1)
       await ensureProviderCatalogConfig()
+      progress(1, 1)
+    },
+  },
+  {
+    id: "20260625-provider-profile-normalize",
+    description: "Normalize provider profile aliases in config",
+    async up(progress) {
+      progress(0, 1)
+      await normalizeProviderProfileConfigs()
       progress(1, 1)
     },
   },

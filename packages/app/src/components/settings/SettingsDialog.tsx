@@ -101,12 +101,23 @@ export function SettingsDialog(props: DialogSettingsProps) {
 
   const providerSummaries = createMemo(() => {
     const data = globalSync.data.provider
-    return data.all.map((provider) => ({
-      id: provider.id,
-      name: provider.name,
-      connected: data.connected.includes(provider.id),
-      modelCount: Object.keys(provider.models).length,
-    }))
+    return data.all.map((provider) => {
+      const health = data.authHealth?.[provider.id]
+      const availability = data.runtimeAvailability?.[provider.id]
+      return {
+        id: provider.id,
+        name: provider.name,
+        connected: data.connected.includes(provider.id),
+        available: availability?.available ?? data.connected.includes(provider.id),
+        modelCount: availability?.modelCount ?? Object.keys(provider.models).length,
+        authStatus: health?.status,
+        availabilityReason: availability?.reason,
+        reloginRequired: health?.reloginRequired,
+        cooldownUntil: health?.cooldownUntil,
+        resetAt: health?.resetAt,
+        failureCode: health?.failureCode,
+      }
+    })
   })
 
   const [controlProfiles] = createResource(async () => {

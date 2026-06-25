@@ -6,6 +6,10 @@ import { AnthropicOAuthProvider } from "../../src/provider/anthropic-oauth"
 import { ProviderCatalog } from "../../src/provider/catalog"
 import { CodexProvider } from "../../src/provider/codex"
 import { AccountUsage } from "../../src/provider/usage"
+import { ProviderProfile } from "../../src/provider/profile"
+
+const originalFetch = globalThis.fetch
+const originalProviderCatalogFetchDisabled = process.env.SYNERGY_DISABLE_PROVIDER_CATALOG_FETCH
 
 function nowSeconds() {
   return Math.floor(Date.now() / 1000)
@@ -43,21 +47,189 @@ async function cleanupAuth() {
   }
   await fs.rm(Global.Path.authApiKey, { force: true }).catch(() => {})
   await fs.rm(`${Global.Path.authApiKey}.bak`, { force: true }).catch(() => {})
+  await fs.rm(Global.Path.providerCatalogCache, { force: true }).catch(() => {})
 }
 
 afterEach(async () => {
+  globalThis.fetch = originalFetch
+  if (originalProviderCatalogFetchDisabled === undefined) {
+    delete process.env.SYNERGY_DISABLE_PROVIDER_CATALOG_FETCH
+  } else {
+    process.env.SYNERGY_DISABLE_PROVIDER_CATALOG_FETCH = originalProviderCatalogFetchDisabled
+  }
   ProviderCatalog.reset()
   await cleanupAuth()
 })
 
+async function signedCatalog(catalog: unknown) {
+  const keyPair = (await crypto.subtle.generateKey({ name: "Ed25519" } as any, true, [
+    "sign",
+    "verify",
+  ])) as CryptoKeyPair
+  const text = JSON.stringify(catalog)
+  const signature = Buffer.from(
+    await crypto.subtle.sign({ name: "Ed25519" } as any, keyPair.privateKey, new TextEncoder().encode(text)),
+  ).toString("base64")
+  const publicKey = Buffer.from(await crypto.subtle.exportKey("raw", keyPair.publicKey)).toString("base64")
+  return { text, signature, publicKey }
+}
+
+function remoteCatalogFetch(url: string, text: string, signature: string) {
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    const target = String(input)
+    if (target === url) return new Response(text)
+    if (target === `${url}.sig`) return new Response(signature)
+    return new Response("not found", { status: 404 })
+  }) as typeof fetch
+}
+
 test("provider catalog supplies subscription providers missing from models.dev", async () => {
-  const catalog = await ProviderCatalog.resolve({ forceRefresh: true })
+  const catalog = await ProviderCatalog.resolve({
+    forceRefresh: true,
+    config: { providerCatalog: { enabled: false, offlineCache: false } },
+  })
 
   expect(catalog["openai-codex"]).toBeDefined()
   expect(catalog["openai-codex"].models["gpt-5.4-mini"]).toBeDefined()
   expect(catalog["minimax-oauth"]).toBeDefined()
   expect(catalog["qwen-oauth"]).toBeDefined()
   expect(catalog["github-copilot"]).toBeDefined()
+})
+
+test("provider catalog exposes bundled profile aliases", async () => {
+  await ProviderCatalog.resolve({
+    forceRefresh: true,
+    config: { providerCatalog: { enabled: false, offlineCache: false } },
+  })
+
+  expect(ProviderProfile.canonicalID("copilot")).toBe("github-copilot")
+  expect(ProviderProfile.canonicalID("github-models")).toBe("github-copilot")
+})
+
+test("provider catalog merges signed remote providers with models.dev metadata mapping", async () => {
+  delete process.env.SYNERGY_DISABLE_PROVIDER_CATALOG_FETCH
+  const registryUrl = "https://registry.test/catalog.v1.json"
+  const remote = {
+    version: 1,
+    providers: {
+      "remote-codex": {
+        id: "remote-codex",
+        name: "Remote Codex",
+        modelsDevProviderID: "openai",
+        authStrategy: "codex-chatgpt-oauth",
+        fallbackModels: ["gpt-4.1-nano", "remote-only-model"],
+      },
+    },
+  }
+  const signed = await signedCatalog(remote)
+  remoteCatalogFetch(registryUrl, signed.text, signed.signature)
+
+  const catalog = await ProviderCatalog.resolve({
+    forceRefresh: true,
+    config: {
+      providerCatalog: {
+        enabled: true,
+        registryUrl,
+        publicKey: signed.publicKey,
+        offlineCache: false,
+      },
+    },
+  })
+
+  expect(catalog["remote-codex"].models["gpt-4.1-nano"].name).toBe("GPT-4.1 nano")
+  expect(catalog["remote-codex"].models["gpt-4.1-nano"].provider?.npm).toBe("@ai-sdk/openai")
+  expect(catalog["remote-codex"].models["remote-only-model"]).toBeDefined()
+})
+
+test("provider catalog rejects bad signatures and falls back to last verified cache", async () => {
+  delete process.env.SYNERGY_DISABLE_PROVIDER_CATALOG_FETCH
+  const registryUrl = "https://registry.test/catalog.v1.json"
+  const remote = {
+    version: 1,
+    providers: {
+      "cached-provider": {
+        id: "cached-provider",
+        name: "Cached Provider",
+        fallbackModels: ["cached-model"],
+      },
+    },
+  }
+  const signed = await signedCatalog(remote)
+  remoteCatalogFetch(registryUrl, signed.text, signed.signature)
+
+  const verified = await ProviderCatalog.resolve({
+    forceRefresh: true,
+    config: {
+      providerCatalog: {
+        enabled: true,
+        registryUrl,
+        publicKey: signed.publicKey,
+        offlineCache: true,
+      },
+    },
+  })
+  expect(verified["cached-provider"].models["cached-model"]).toBeDefined()
+
+  ProviderCatalog.reset()
+  const tampered = {
+    version: 1,
+    providers: {
+      "tampered-provider": {
+        id: "tampered-provider",
+        name: "Tampered Provider",
+        fallbackModels: ["tampered-model"],
+      },
+    },
+  }
+  remoteCatalogFetch(registryUrl, JSON.stringify(tampered), "not-a-valid-signature")
+
+  const fallback = await ProviderCatalog.resolve({
+    forceRefresh: true,
+    config: {
+      providerCatalog: {
+        enabled: true,
+        registryUrl,
+        publicKey: signed.publicKey,
+        offlineCache: true,
+      },
+    },
+  })
+
+  expect(fallback["cached-provider"].models["cached-model"]).toBeDefined()
+  expect(fallback["tampered-provider"]).toBeUndefined()
+})
+
+test("provider catalog ignores unsigned remote providers when no verified cache exists", async () => {
+  delete process.env.SYNERGY_DISABLE_PROVIDER_CATALOG_FETCH
+  const registryUrl = "https://registry.test/catalog.v1.json"
+  remoteCatalogFetch(
+    registryUrl,
+    JSON.stringify({
+      version: 1,
+      providers: {
+        "unsigned-provider": {
+          id: "unsigned-provider",
+          name: "Unsigned Provider",
+          fallbackModels: ["unsigned-model"],
+        },
+      },
+    }),
+    "bad-signature",
+  )
+
+  const catalog = await ProviderCatalog.resolve({
+    forceRefresh: true,
+    config: {
+      providerCatalog: {
+        enabled: true,
+        registryUrl,
+        publicKey: ProviderCatalog.DEFAULT_PUBLIC_KEY,
+        offlineCache: true,
+      },
+    },
+  })
+
+  expect(catalog["unsigned-provider"]).toBeUndefined()
 })
 
 test("provider auth store migrates legacy api-key.json into v2 store", async () => {
@@ -85,6 +257,51 @@ test("provider auth store migrates legacy api-key.json into v2 store", async () 
   expect(all["openai-codex"]?.type).toBe("oauth")
   expect(stat.mode & 0o777).toBe(0o600)
   expect(await Bun.file(`${Global.Path.authApiKey}.bak`).exists()).toBe(true)
+
+  const raw = await Bun.file(Global.Path.authProvider).json()
+  expect(raw.schemaVersion).toBe(2)
+  expect(raw.credentials.anthropic.auth).toBeUndefined()
+  expect(raw.credentials.anthropic.authKind).toBe("api_key")
+  expect(raw.credentials.anthropic.tokens.apiKey).toBe("sk-ant-test")
+  expect(raw.credentials["openai-codex"].tokens.accessToken).toBeDefined()
+  expect(raw.credentials["openai-codex"].tokens.refreshToken).toBe("refresh-test")
+  expect(raw.credentials["openai-codex"].expiresAt).toBeGreaterThan(nowSeconds())
+})
+
+test("provider auth runtime ignores legacy api-key.json without migration", async () => {
+  await cleanupAuth()
+  await Bun.write(
+    Global.Path.authApiKey,
+    JSON.stringify({
+      "legacy-only": { type: "api", key: "sk-legacy" },
+    }),
+  )
+
+  expect(await Auth.get("legacy-only")).toBeUndefined()
+})
+
+test("provider auth pool skips exhausted and dead credentials", async () => {
+  await Auth.set("openrouter", { type: "api", key: "primary" })
+  await Auth.addToPool("openrouter", "backup", { type: "api", key: "backup" })
+
+  expect(await Auth.get("openrouter")).toEqual({ type: "api", key: "primary" })
+
+  await Auth.markExhausted("openrouter", {
+    credentialID: "openrouter",
+    failureCode: "rate_limited",
+    cooldownUntil: nowSeconds() + 60,
+  })
+  expect(await Auth.get("openrouter")).toEqual({ type: "api", key: "backup" })
+
+  await Auth.markDead("openrouter", "invalid_grant", { credentialID: "backup" })
+  expect(await Auth.get("openrouter")).toBeUndefined()
+
+  await Auth.markExhausted("openrouter", {
+    credentialID: "openrouter",
+    failureCode: "rate_limited",
+    cooldownUntil: nowSeconds() - 1,
+  })
+  expect(await Auth.get("openrouter")).toEqual({ type: "api", key: "primary" })
 })
 
 test("codex usage parser returns session and weekly quota windows", async () => {

@@ -164,6 +164,33 @@ async function handlePluginAuth(plugin: { auth: PluginAuth }, provider: string):
     }
   }
 
+  if (method.type === "import") {
+    const result = await method.import(inputs)
+    if (result.type === "failed") {
+      prompts.log.error(result.message ?? "Failed to import credentials")
+      prompts.outro("Done")
+      return true
+    }
+    const saveProvider = result.provider ?? provider
+    if ("refresh" in result) {
+      await Auth.set(
+        saveProvider,
+        {
+          type: "oauth",
+          refresh: result.refresh,
+          access: result.access,
+          expires: result.expires,
+        },
+        { source: "import" },
+      )
+    } else {
+      await Auth.set(saveProvider, { type: "api", key: result.key }, { source: "import" })
+    }
+    prompts.log.success("Credentials imported")
+    prompts.outro("Done")
+    return true
+  }
+
   return false
 }
 
@@ -383,7 +410,7 @@ export const AuthListCommand = cmd({
   describe: "list providers",
   async handler() {
     UI.empty()
-    const authPath = Global.Path.authApiKey
+    const authPath = Global.Path.authProvider
     const homedir = os.homedir()
     const displayPath = authPath.startsWith(homedir) ? authPath.replace(homedir, "~") : authPath
     prompts.intro(`Credentials ${UI.Style.TEXT_DIM}${displayPath}`)

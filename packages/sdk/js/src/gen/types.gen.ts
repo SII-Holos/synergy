@@ -3421,6 +3421,26 @@ export type Command = {
   hints: Array<string>
 }
 
+export type ProviderAuthHealth = {
+  providerID: string
+  status: "connected" | "not_configured" | "expired" | "exhausted" | "dead"
+  authKind?: string
+  source?: string
+  updatedAt?: number
+  reloginRequired?: boolean
+  cooldownUntil?: number
+  resetAt?: number
+  failureCode?: string
+}
+
+export type ProviderRuntimeAvailability = {
+  providerID: string
+  available: boolean
+  reason?: "connected" | "not_connected" | "disabled" | "no_models"
+  healthCheck?: "models" | "none"
+  modelCount: number
+}
+
 export type AccountUsageWindow = {
   label: string
   usedPercent?: number
@@ -3450,7 +3470,7 @@ export type AccountUsageSnapshot = {
 }
 
 export type ProviderAuthMethod = {
-  type: "oauth" | "api"
+  type: "oauth" | "api" | "import"
   label: string
 }
 
@@ -8411,6 +8431,13 @@ export type ProviderListResponses = {
     }
     connected: Array<string>
     configProviders: Array<string>
+    catalogProviders: Array<string>
+    authHealth: {
+      [key: string]: ProviderAuthHealth
+    }
+    runtimeAvailability: {
+      [key: string]: ProviderRuntimeAvailability
+    }
   }
 }
 
@@ -8570,6 +8597,46 @@ export type ProviderOauthCallbackResponses = {
 }
 
 export type ProviderOauthCallbackResponse = ProviderOauthCallbackResponses[keyof ProviderOauthCallbackResponses]
+
+export type ProviderCredentialsImportCredentialsData = {
+  body?: {
+    /**
+     * Auth method index
+     */
+    method: number
+  }
+  path: {
+    /**
+     * Provider ID
+     */
+    providerID: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/provider/{providerID}/import"
+}
+
+export type ProviderCredentialsImportCredentialsErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type ProviderCredentialsImportCredentialsError =
+  ProviderCredentialsImportCredentialsErrors[keyof ProviderCredentialsImportCredentialsErrors]
+
+export type ProviderCredentialsImportCredentialsResponses = {
+  /**
+   * Credentials imported successfully
+   */
+  200: boolean
+}
+
+export type ProviderCredentialsImportCredentialsResponse =
+  ProviderCredentialsImportCredentialsResponses[keyof ProviderCredentialsImportCredentialsResponses]
 
 export type SkillListData = {
   body?: never

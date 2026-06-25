@@ -4,7 +4,7 @@ import { Plugin } from "../plugin"
 import { map, filter, pipe, fromEntries, mapValues } from "remeda"
 import z from "zod"
 import { fn } from "@/util/fn"
-import type { AuthHook, AuthOuathResult } from "@ericsanchezok/synergy-plugin"
+import type { AuthHook, AuthImportResult, AuthOuathResult } from "@ericsanchezok/synergy-plugin"
 import { NamedError } from "@ericsanchezok/synergy-util/error"
 import { Auth } from "@/provider/api-key"
 import { CodexProvider } from "./codex"
@@ -12,6 +12,7 @@ import { AnthropicOAuthProvider } from "./anthropic-oauth"
 import { CopilotProvider } from "./copilot"
 import { MiniMaxProvider } from "./minimax"
 import { registerBuiltinProviderProfiles } from "./builtin"
+import { Provider } from "./provider"
 
 export namespace ProviderAuth {
   const state = ScopedState.create(async () => {
@@ -30,6 +31,26 @@ export namespace ProviderAuth {
             type: "oauth" as const,
             label: "Login with ChatGPT",
             authorize: () => CodexProvider.authorizeDeviceCode(),
+          },
+          {
+            type: "import" as const,
+            label: "Import Codex CLI credentials",
+            import: async (): Promise<AuthImportResult> => {
+              const token = await CodexProvider.importCodexCliAuth()
+              if (!token) {
+                return {
+                  type: "failed",
+                  message: `No valid Codex CLI auth.json found under ${CodexProvider.codexHome()}.`,
+                }
+              }
+              return {
+                type: "success",
+                provider: CodexProvider.PROVIDER_ID,
+                access: token.access,
+                refresh: token.refresh,
+                expires: token.expires,
+              }
+            },
           },
         ],
       },
@@ -92,7 +113,7 @@ export namespace ProviderAuth {
 
   export const Method = z
     .object({
-      type: z.union([z.literal("oauth"), z.literal("api")]),
+      type: z.union([z.literal("oauth"), z.literal("api"), z.literal("import")]),
       label: z.string(),
     })
     .meta({
@@ -143,6 +164,53 @@ export namespace ProviderAuth {
     },
   )
 
+  async function persistResult(providerID: string, result: AuthImportResult, source: Auth.Source) {
+    if (result.type !== "success") return false
+    const saveProvider = result.provider ?? providerID
+    if ("key" in result) {
+      await Auth.set(
+        saveProvider,
+        {
+          type: "api",
+          key: result.key,
+        },
+        { source },
+      )
+      await Provider.reload()
+      return true
+    }
+    await Auth.set(
+      saveProvider,
+      {
+        type: "oauth",
+        access: result.access,
+        refresh: result.refresh,
+        expires: result.expires,
+      },
+      { source },
+    )
+    await Provider.reload()
+    return true
+  }
+
+  export const importCredentials = fn(
+    z.object({
+      providerID: z.string(),
+      method: z.number(),
+    }),
+    async (input) => {
+      const auth = await state().then((s) => s.methods[input.providerID])
+      const method = auth?.methods[input.method]
+      if (!method || method.type !== "import") throw new ImportUnavailable({ providerID: input.providerID })
+      const result = await method.import()
+      if (await persistResult(input.providerID, result, "import")) return
+      throw new ImportFailed({
+        providerID: input.providerID,
+        message: result.type === "failed" ? result.message : undefined,
+      })
+    },
+  )
+
   export const callback = fn(
     z.object({
       providerID: z.string(),
@@ -164,28 +232,7 @@ export namespace ProviderAuth {
       }
 
       if (result?.type === "success") {
-        if ("key" in result) {
-          await Auth.set(
-            input.providerID,
-            {
-              type: "api",
-              key: result.key,
-            },
-            { source: "web" },
-          )
-        }
-        if ("refresh" in result) {
-          await Auth.set(
-            input.providerID,
-            {
-              type: "oauth",
-              access: result.access,
-              refresh: result.refresh,
-              expires: result.expires,
-            },
-            { source: "web" },
-          )
-        }
+        await persistResult(input.providerID, result, "web")
         return
       }
 
@@ -207,6 +254,7 @@ export namespace ProviderAuth {
         },
         { source: "web" },
       )
+      await Provider.reload()
     },
   )
 
@@ -224,4 +272,18 @@ export namespace ProviderAuth {
   )
 
   export const OauthCallbackFailed = NamedError.create("ProviderAuthOauthCallbackFailed", z.object({}))
+
+  export const ImportUnavailable = NamedError.create(
+    "ProviderAuthImportUnavailable",
+    z.object({
+      providerID: z.string(),
+    }),
+  )
+  export const ImportFailed = NamedError.create(
+    "ProviderAuthImportFailed",
+    z.object({
+      providerID: z.string(),
+      message: z.string().optional(),
+    }),
+  )
 }

@@ -12,6 +12,7 @@ export namespace ProviderProfile {
     | "languageModel"
     | "openaiResponses"
     | "openaiChat"
+    | "openaiResponsesUnlessCompletionUrls"
     | "call"
     | "copilotAuto"
     | "anthropicMessages"
@@ -20,15 +21,33 @@ export namespace ProviderProfile {
 
   export type FetchLike = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>
 
+  export interface ClassifiedError {
+    code: string
+    retryable: boolean
+    reloginRequired?: boolean
+    exhausted?: boolean
+    cooldownUntil?: number
+    resetAt?: number
+  }
+
   export interface RuntimeOptionsInput {
     auth?: Auth.Info
     provider?: ModelsDev.Provider
+    providerID: string
   }
 
   export interface ModelFactoryInput {
     sdk: SDK | any
     modelID: string
     options?: Record<string, any>
+  }
+
+  export interface RequestInput {
+    providerID: string
+    auth?: Auth.Info
+    url: string
+    headers: Headers
+    body?: unknown
   }
 
   export interface Profile {
@@ -54,6 +73,18 @@ export namespace ProviderProfile {
     liveModelDiscovery?: "none" | "openai-compatible" | "codex" | "copilot"
     usageKind?: AccountUsage.Kind
     requestQuirks?: string[]
+    autoload?(input: RuntimeOptionsInput): Promise<boolean>
+    resolveAuth?(input: RuntimeOptionsInput): Promise<Auth.Info | undefined>
+    refreshAuth?(input: RuntimeOptionsInput): Promise<Auth.Info | undefined>
+    buildHeaders?(input: RequestInput): Promise<Record<string, string> | Headers | undefined>
+    rewriteBody?(input: RequestInput): Promise<unknown>
+    modelOptions?(input: RuntimeOptionsInput): Promise<Record<string, any>>
+    classifyError?(input: {
+      providerID: string
+      status?: number
+      error?: unknown
+      body?: unknown
+    }): ClassifiedError | undefined
     runtimeOptions?(input: RuntimeOptionsInput): Promise<Record<string, any>>
     getModel?(input: ModelFactoryInput): Promise<any>
     fetchModels?(input: { auth?: Auth.Info; fetch?: FetchLike; baseURL?: string }): Promise<string[]>
@@ -88,6 +119,9 @@ export namespace ProviderProfile {
         return input.sdk.responses(input.modelID)
       case "openaiChat":
         return input.sdk.chat(input.modelID)
+      case "openaiResponsesUnlessCompletionUrls":
+        if (input.options?.["useCompletionUrls"]) return input.sdk.chat(input.modelID)
+        return input.sdk.responses(input.modelID)
       case "call":
         return input.sdk(input.modelID)
       case "copilotAuto":
