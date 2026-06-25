@@ -142,6 +142,50 @@ describe("browser tool navigation helpers", () => {
 })
 
 describe("BrowserControl", () => {
+  function controlSession(fakeTab: BrowserTab): BrowserSession {
+    return {
+      owner: {
+        directory: "/tmp/synergy",
+        scopeID: "scope",
+        sessionID: "ses_test",
+        mode: "session",
+      },
+      tabs: [fakeTab],
+      activeTab: fakeTab,
+      annotations: [],
+      async createTab() {
+        return fakeTab
+      },
+      switchTab() {},
+      async closeTab() {},
+      async closeOthers() {},
+      getTab(id: string) {
+        return id === fakeTab.id ? fakeTab : undefined
+      },
+      addAnnotation() {
+        throw new Error("not implemented")
+      },
+      removeAnnotation() {
+        return false
+      },
+      clearAnnotations() {},
+      formatAnnotationsForContext() {
+        return ""
+      },
+      addObserver() {
+        return () => {}
+      },
+      async notifyTabNavigated() {},
+      async notifyAgentActivity() {},
+      async notifyControlChanged() {},
+      async save() {},
+      async restore() {
+        return true
+      },
+      async dispose() {},
+    }
+  }
+
   test("executes navigation through the shared control interface", async () => {
     const fakeTab = {
       ...tab("tab-1"),
@@ -154,11 +198,7 @@ describe("BrowserControl", () => {
     const saved: string[] = []
     const notified: string[] = []
     const session = {
-      tabs: [fakeTab],
-      activeTab: fakeTab,
-      getTab(id: string) {
-        return id === fakeTab.id ? fakeTab : undefined
-      },
+      ...controlSession(fakeTab),
       async save() {
         saved.push("save")
       },
@@ -167,7 +207,7 @@ describe("BrowserControl", () => {
       },
     }
 
-    const result = await BrowserControl.execute(session as unknown as BrowserSession, {
+    const result = await BrowserControl.execute(session, {
       type: "navigate",
       source: "user",
       tabId: "tab-1",
@@ -190,5 +230,90 @@ describe("BrowserControl", () => {
     })
     expect(saved).toEqual(["save"])
     expect(notified).toEqual(["tab-1"])
+  })
+
+  test("executes input and diagnostic commands through the shared control interface", async () => {
+    const mouseActions: unknown[] = []
+    const keyActions: unknown[] = []
+    const inserted: string[] = []
+    let cleared = false
+    const fakeTab = {
+      ...tab("tab-2"),
+      async dispatchMouse(action: "move" | "down" | "up" | "wheel", input: unknown) {
+        mouseActions.push({ action, input })
+      },
+      async dispatchKey(action: "down" | "up", input: unknown) {
+        keyActions.push({ action, input })
+      },
+      async insertText(text: string) {
+        inserted.push(text)
+      },
+      async consoleEntries() {
+        return [{ type: "log", text: "hello", timestamp: 1 }]
+      },
+      async networkRequests() {
+        return [
+          {
+            requestId: "req-1",
+            url: "https://example.com/image.png",
+            method: "GET",
+            mimeType: "image/png",
+            timestamp: 1,
+          },
+        ]
+      },
+      async screenshot() {
+        return { buffer: Buffer.from("ok"), width: 10, height: 20 }
+      },
+      async clearDiagnostics() {
+        cleared = true
+      },
+    }
+    const session = controlSession(fakeTab)
+
+    await BrowserControl.execute(session, {
+      type: "mouse",
+      tabId: "tab-2",
+      action: "wheel",
+      input: { x: 5, y: 6, deltaX: 0, deltaY: 120 },
+    })
+    await BrowserControl.execute(session, {
+      type: "key",
+      tabId: "tab-2",
+      action: "down",
+      input: { key: "A", code: "KeyA" },
+    })
+    await BrowserControl.execute(session, { type: "insertText", tabId: "tab-2", text: "hi" })
+    const consoleResult = await BrowserControl.execute(session, { type: "console", tabId: "tab-2" })
+    const assetsResult = await BrowserControl.execute(session, { type: "assets", tabId: "tab-2" })
+    const screenshotResult = await BrowserControl.execute(session, {
+      type: "screenshot",
+      tabId: "tab-2",
+      format: "jpeg",
+    })
+    const clearedResult = await BrowserControl.execute(session, { type: "clearDiagnostics", tabId: "tab-2" })
+
+    expect(mouseActions).toEqual([{ action: "wheel", input: { x: 5, y: 6, deltaX: 0, deltaY: 120 } }])
+    expect(keyActions).toEqual([{ action: "down", input: { key: "A", code: "KeyA" } }])
+    expect(inserted).toEqual(["hi"])
+    expect(consoleResult).toEqual({
+      type: "console",
+      tabId: "tab-2",
+      entries: [{ type: "log", text: "hello", timestamp: 1 }],
+    })
+    expect(assetsResult).toMatchObject({
+      type: "assets",
+      tabId: "tab-2",
+      assets: [{ id: "req-1", type: "image", url: "https://example.com/image.png" }],
+    })
+    expect(screenshotResult).toEqual({
+      type: "screenshot",
+      tabId: "tab-2",
+      dataUrl: `data:image/jpeg;base64,${Buffer.from("ok").toString("base64")}`,
+      width: 10,
+      height: 20,
+    })
+    expect(cleared).toBe(true)
+    expect(clearedResult).toEqual({ type: "diagnostics.cleared", tabId: "tab-2" })
   })
 })

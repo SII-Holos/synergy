@@ -112,3 +112,9 @@ export function browserControlEnvelope<TType extends string, TPayload>(
 ): BrowserControlEnvelope<TType, TPayload> {
   return { protocolVersion: BROWSER_PROTOCOL_VERSION, type, payload }
 }
+
+export type BrowserWebRTCSignalMessage =
+  | { type: "webrtc.offer"; tabId: string; sdp: string }
+  | { type: "webrtc.answer"; tabId: string; sdp: string }
+  | { type: "webrtc.ice"; tabId: string; candidate: unknown }
+  | { type: "webrtc.close"; tabId: string }

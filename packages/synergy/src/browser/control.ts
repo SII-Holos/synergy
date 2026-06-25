@@ -1,5 +1,14 @@
 import type { BrowserSession } from "./types.js"
-import type { BrowserTab } from "./tab.js"
+import { BrowserAssets } from "./assets.js"
+import type {
+  BrowserTab,
+  BrowserUploadFile,
+  ConsoleMessage,
+  NetworkRequest,
+  BrowserDownloadEntry,
+  AccessibilityElement,
+} from "./tab.js"
+import type { BrowserKeyInput, BrowserMouseInput } from "./input.js"
 
 export namespace BrowserControl {
   export interface TabState {
@@ -26,11 +35,35 @@ export namespace BrowserControl {
     | { type: "stop"; tabId?: string }
     | { type: "history"; tabId?: string; direction: "back" | "forward" }
     | { type: "setViewport"; tabId?: string; width: number; height: number; deviceScaleFactor?: number }
+    | { type: "mouse"; tabId?: string; action: "move" | "down" | "up" | "wheel"; input: BrowserMouseInput }
+    | { type: "key"; tabId?: string; action: "down" | "up"; input: BrowserKeyInput }
+    | { type: "insertText"; tabId?: string; text: string }
+    | { type: "console"; tabId?: string; maxEntries?: number }
+    | { type: "network"; tabId?: string; maxEntries?: number }
+    | { type: "snapshot"; tabId?: string }
+    | { type: "assets"; tabId?: string; maxEntries?: number }
+    | {
+        type: "screenshot"
+        tabId?: string
+        format?: "jpeg" | "png"
+        quality?: number
+        fullPage?: boolean
+        clip?: { x: number; y: number; width: number; height: number; scale?: number }
+      }
+    | { type: "filechooser.select"; tabId?: string; requestId: string; files: BrowserUploadFile[] }
+    | { type: "dialog.respond"; tabId?: string; requestId: string; accept: boolean; promptText?: string }
+    | { type: "clearDiagnostics"; tabId?: string }
 
   export type Result =
     | { type: "tab"; tab: TabState }
     | { type: "navigation"; tab: TabState; url: string; title: string }
     | { type: "session"; session: SessionState }
+    | { type: "console"; tabId: string; entries: ConsoleMessage[] }
+    | { type: "network"; tabId: string; requests: NetworkRequest[] }
+    | { type: "snapshot"; tabId: string; elements: AccessibilityElement[]; truncated: boolean }
+    | { type: "assets"; tabId: string; assets: BrowserAssets.PageAsset[] }
+    | { type: "screenshot"; tabId: string; dataUrl: string; width: number; height: number }
+    | { type: "diagnostics.cleared"; tabId: string }
     | { type: "void" }
 
   export class TabNotFoundError extends Error {
@@ -128,6 +161,66 @@ export namespace BrowserControl {
         const tab = resolveTab(session, command.tabId)
         await tab.setViewport(command.width, command.height, command.deviceScaleFactor ?? 1)
         return { type: "tab", tab: tabState(tab) }
+      }
+      case "mouse": {
+        const tab = resolveTab(session, command.tabId)
+        await tab.dispatchMouse(command.action, command.input)
+        return { type: "void" }
+      }
+      case "key": {
+        const tab = resolveTab(session, command.tabId)
+        await tab.dispatchKey(command.action, command.input)
+        return { type: "void" }
+      }
+      case "insertText": {
+        const tab = resolveTab(session, command.tabId)
+        await tab.insertText(command.text)
+        return { type: "void" }
+      }
+      case "console": {
+        const tab = resolveTab(session, command.tabId)
+        return { type: "console", tabId: tab.id, entries: await tab.consoleEntries(command.maxEntries ?? 50) }
+      }
+      case "network": {
+        const tab = resolveTab(session, command.tabId)
+        return { type: "network", tabId: tab.id, requests: await tab.networkRequests(command.maxEntries ?? 100) }
+      }
+      case "snapshot": {
+        const tab = resolveTab(session, command.tabId)
+        const snapshot = await tab.snapshot()
+        return { type: "snapshot", tabId: tab.id, elements: snapshot.elements, truncated: snapshot.truncated }
+      }
+      case "assets": {
+        const tab = resolveTab(session, command.tabId)
+        const requests = await tab.networkRequests(command.maxEntries ?? 200)
+        return { type: "assets", tabId: tab.id, assets: BrowserAssets.fromNetworkBuffer(requests, tab.id) }
+      }
+      case "screenshot": {
+        const tab = resolveTab(session, command.tabId)
+        const shot = await tab.screenshot(command.format, command.quality, command.fullPage, command.clip)
+        const mime = command.format === "jpeg" ? "image/jpeg" : "image/png"
+        return {
+          type: "screenshot",
+          tabId: tab.id,
+          dataUrl: `data:${mime};base64,${shot.buffer.toString("base64")}`,
+          width: shot.width,
+          height: shot.height,
+        }
+      }
+      case "filechooser.select": {
+        const tab = resolveTab(session, command.tabId)
+        await tab.respondToFileChooser(command.requestId, command.files)
+        return { type: "void" }
+      }
+      case "dialog.respond": {
+        const tab = resolveTab(session, command.tabId)
+        await tab.respondToDialog(command.requestId, command.accept, command.promptText)
+        return { type: "void" }
+      }
+      case "clearDiagnostics": {
+        const tab = resolveTab(session, command.tabId)
+        await tab.clearDiagnostics()
+        return { type: "diagnostics.cleared", tabId: tab.id }
       }
     }
   }

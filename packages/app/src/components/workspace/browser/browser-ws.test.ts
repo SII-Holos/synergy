@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test"
+import { createBrowserWebRTCSignalingUrl } from "./browser-webrtc"
 import { createBrowserWebSocketUrl, createQueuedBrowserSender } from "./browser-ws"
 
 describe("createBrowserWebSocketUrl", () => {
@@ -52,12 +53,30 @@ describe("createBrowserWebSocketUrl", () => {
       scopeID: "home",
       presentation: "native",
       client: "desktop",
+      sameHost: true,
     })
 
     expect(url).not.toBeNull()
     const parsed = new URL(url!)
     expect(parsed.searchParams.get("presentation")).toBe("native")
     expect(parsed.searchParams.get("client")).toBe("desktop")
+    expect(parsed.searchParams.get("sameHost")).toBe("1")
+  })
+
+  test("builds the WebRTC signaling URL without using the frame stream route", () => {
+    const url = createBrowserWebRTCSignalingUrl({
+      serverUrl: "https://synergy.local",
+      sessionID: "ses_4",
+      routeDirectory: "project-route",
+      directory: "/Users/eric/project",
+    })
+
+    expect(url).not.toBeNull()
+    const parsed = new URL(url!)
+    expect(parsed.protocol).toBe("wss:")
+    expect(parsed.pathname).toBe("/project-route/browser/webrtc/connect")
+    expect(parsed.searchParams.get("presentation")).toBe("webrtc")
+    expect(parsed.searchParams.get("directory")).toBe("/Users/eric/project")
   })
 
   test("returns null when no route or scope is available", () => {

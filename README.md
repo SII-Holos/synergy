@@ -49,6 +49,8 @@ The Web client includes a right-side Browser workspace that runs a real Chromium
 
 Browser control and Browser presentation are intentionally separate. The shared control protocol owns sessions, tabs, navigation, screenshots, snapshots, diagnostics, downloads, dialogs, and tool actions. Interactive presentation negotiates a mode: local desktop clients are designed to use a native Chromium surface, while remote Web clients are designed to use WebRTC media plus input data channels. The legacy image-frame stream remains only as a migration adapter until native and WebRTC presentations fully replace it.
 
+The Browser server boundary is being split along the same line: session/control endpoints carry tab state and commands, WebRTC signaling has its own route, and the older live-frame WebSocket route is kept only for migration while native and WebRTC presentation adapters come online.
+
 Browser contexts are isolated by Synergy owner/session and persist tab state plus browser storage state. User-explicit navigation and page interaction run without approval prompts but still pass hard safety checks such as invalid protocols, sensitive local ports, and out-of-scope `file://` access. Agent-driven browser tools continue to use the active control profile, so guarded/autonomous/full-access behavior remains consistent with the rest of Synergy.
 
 Large browser diagnostics such as console, network, snapshots, assets, and downloads are surfaced in the Browser workspace developer drawer and compact tool cards instead of flooding the normal chat transcript.

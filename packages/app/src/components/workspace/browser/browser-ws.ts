@@ -16,6 +16,8 @@ type BrowserSocket = {
 type BrowserWebSocketOptions = {
   sessionID: string
   routeDirectory?: string
+  client?: "web" | "desktop"
+  sameHost?: boolean
 }
 
 type BrowserWebSocketUrlOptions = {
@@ -27,6 +29,7 @@ type BrowserWebSocketUrlOptions = {
   scopeKey?: string
   presentation?: BrowserPresentationPreference
   client?: "web" | "desktop"
+  sameHost?: boolean
 }
 
 export function createBrowserWebSocketUrl(options: BrowserWebSocketUrlOptions) {
@@ -41,6 +44,7 @@ export function createBrowserWebSocketUrl(options: BrowserWebSocketUrlOptions) {
   })
   if (options.scopeID) params.set("scopeID", options.scopeID)
   else if (options.directory) params.set("directory", options.directory)
+  if (options.sameHost) params.set("sameHost", "1")
 
   return (
     options.serverUrl.replace(/^http/, "ws") +
@@ -108,6 +112,8 @@ export function createBrowserWebSocket(store: BrowserStoreAPI, options: BrowserW
   const sdk = useSDK()
   const sessionID = typeof options === "string" ? options : options.sessionID
   const routeDirectory = typeof options === "string" ? undefined : options.routeDirectory
+  const client = typeof options === "string" ? "web" : (options.client ?? "web")
+  const sameHost = typeof options === "string" ? false : (options.sameHost ?? false)
   let ws: WebSocket | undefined
   let reconnectTimer: ReturnType<typeof setTimeout> | undefined
   let disposed = false
@@ -129,6 +135,8 @@ export function createBrowserWebSocket(store: BrowserStoreAPI, options: BrowserW
       directory: sdk.directory,
       scopeID: sdk.scopeID,
       scopeKey: sdk.scopeKey,
+      client,
+      sameHost,
     })
     if (!wsUrl) {
       browserDebug("ws.connect.skipped", {

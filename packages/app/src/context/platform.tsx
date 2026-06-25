@@ -1,8 +1,21 @@
 import { createSimpleContext } from "@ericsanchezok/synergy-ui/context"
 
+export type BrowserNativeViewRequest = {
+  sessionID: string
+  routeDirectory?: string
+  tabId: string
+}
+
+export type BrowserNativeViewBridge = {
+  attachView(input: BrowserNativeViewRequest): Promise<void>
+  detachView(input: { tabId: string }): Promise<void>
+  focusView(input: { tabId: string }): Promise<void>
+  resizeView(input: { tabId: string; width: number; height: number }): Promise<void>
+}
+
 export type Platform = {
   /** Platform discriminator */
-  platform: "web"
+  platform: "web" | "desktop"
 
   /** App version */
   version?: string
@@ -21,6 +34,9 @@ export type Platform = {
 
   /** Fetch override */
   fetch?: typeof fetch
+
+  /** Native Chromium Browser view bridge, provided by the desktop shell. */
+  browserNative?: BrowserNativeViewBridge
 }
 
 export const { use: usePlatform, provider: PlatformProvider } = createSimpleContext({
