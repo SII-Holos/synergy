@@ -90,3 +90,49 @@ describe("createBrowserStore navigate", () => {
     })
   })
 })
+
+describe("createBrowserStore viewport", () => {
+  test("starts in fit mode and records manual viewport changes as fixed", () => {
+    createRoot((dispose) => {
+      const store = createBrowserStore()
+      const sent: Record<string, unknown>[] = []
+      store._setSend((msg) => sent.push(msg))
+
+      expect(store.viewportMode()).toBe("fit")
+
+      store.setViewport(375.4, 667.6)
+
+      expect(store.viewportMode()).toBe("fixed")
+      expect(store.viewportWidth()).toBe(375)
+      expect(store.viewportHeight()).toBe(668)
+      expect(sent.at(-1)).toEqual({
+        type: "input.resize",
+        tabId: null,
+        width: 375,
+        height: 668,
+        deviceScaleFactor: 1,
+      })
+      dispose()
+    })
+  })
+
+  test("keeps fit mode for surface-driven viewport changes", () => {
+    createRoot((dispose) => {
+      const store = createBrowserStore()
+      const sent: Record<string, unknown>[] = []
+      store._setSend((msg) => sent.push(msg))
+
+      store.setViewport(900, 640, { mode: "fit" })
+
+      expect(store.viewportMode()).toBe("fit")
+      expect(store.viewportWidth()).toBe(900)
+      expect(store.viewportHeight()).toBe(640)
+      expect(sent.at(-1)).toMatchObject({
+        type: "input.resize",
+        width: 900,
+        height: 640,
+      })
+      dispose()
+    })
+  })
+})

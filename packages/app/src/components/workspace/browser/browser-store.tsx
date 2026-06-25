@@ -111,6 +111,11 @@ export interface AssetEntry {
 }
 
 export type DevPanel = "closed" | "console" | "network" | "elements" | "screenshot" | "inspect" | "downloads" | "assets"
+export type ViewportMode = "fit" | "fixed"
+
+export interface SetViewportOptions {
+  mode?: ViewportMode
+}
 
 export function createBrowserStore() {
   const [session, setSession] = createStore({
@@ -140,6 +145,7 @@ export function createBrowserStore() {
   const [dialogRequest, setDialogRequest] = createSignal<DialogRequest | null>(null)
   const [browserError, setBrowserError] = createSignal<BrowserErrorState | null>(null)
   const [annotationMode, setAnnotationMode] = createSignal(false)
+  const [viewportMode, setViewportMode] = createSignal<ViewportMode>("fit")
   const [viewportWidth, setViewportWidth] = createSignal(1280)
 
   const [viewportHeight, setViewportHeight] = createSignal(720)
@@ -235,10 +241,21 @@ export function createBrowserStore() {
     setDevPanel((prev) => (prev === panel ? "closed" : panel))
   }
 
-  function setViewport(width: number, height: number) {
-    setViewportWidth(width)
-    setViewportHeight(height)
-    send({ type: "input.resize", tabId: activeTabId(), width, height, deviceScaleFactor: window.devicePixelRatio || 1 })
+  function setViewport(width: number, height: number, options: SetViewportOptions = {}) {
+    const nextWidth = Math.max(1, Math.round(width))
+    const nextHeight = Math.max(1, Math.round(height))
+    const deviceScaleFactor = typeof window === "undefined" ? 1 : window.devicePixelRatio || 1
+
+    setViewportMode(options.mode ?? "fixed")
+    setViewportWidth(nextWidth)
+    setViewportHeight(nextHeight)
+    send({
+      type: "input.resize",
+      tabId: activeTabId(),
+      width: nextWidth,
+      height: nextHeight,
+      deviceScaleFactor,
+    })
   }
 
   function clearAnnotationTarget() {
@@ -346,6 +363,7 @@ export function createBrowserStore() {
     annotationTarget,
     setAnnotationTarget,
     clearAnnotationTarget,
+    viewportMode,
     viewportWidth,
     viewportHeight,
     setViewport,
