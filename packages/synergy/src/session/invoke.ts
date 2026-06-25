@@ -63,6 +63,7 @@ import "../library/chronicler"
 import { ExperienceEncoder } from "../library/experience-encoder"
 import { GitHealth } from "../project/git-health"
 import { BlueprintLoopStore } from "../blueprint/loop-store"
+import { PlanModeUserWrapper } from "./plan-mode-user-wrapper"
 
 export { InvokeInput, resolveInputParts } from "./input"
 
@@ -648,8 +649,13 @@ export namespace SessionInvoke {
             )
           }
         }
+        const modelSessionMessages = PlanModeUserWrapper.projectMessages({
+          messages: sessionMessages,
+          session,
+          agent,
+        })
         const preparedMessages = [
-          ...MessageV2.toModelMessage(sessionMessages, { maxHistoryImages: jobCtx.compactionMaxHistoryImages }),
+          ...MessageV2.toModelMessage(modelSessionMessages, { maxHistoryImages: jobCtx.compactionMaxHistoryImages }),
           ...(isLastStep
             ? [
                 {

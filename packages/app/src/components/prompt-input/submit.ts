@@ -234,6 +234,8 @@ export function usePromptSubmit(input: PromptSubmitInput) {
     }
     const agent = currentAgent.name
     const variant = local.model.variant.current()
+    const optimisticPlanModeMetadata =
+      !blueprintSlot && activeSession.blueprint?.planMode === true ? { planModeRequest: true } : undefined
 
     const clearInput = () => {
       prompt.reset()
@@ -572,6 +574,7 @@ export function usePromptSubmit(input: PromptSubmitInput) {
       time: { created: Date.now() },
       agent,
       model,
+      ...(optimisticPlanModeMetadata ? { metadata: optimisticPlanModeMetadata } : {}),
     }
 
     const setSyncStore =
