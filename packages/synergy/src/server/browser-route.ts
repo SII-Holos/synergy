@@ -356,8 +356,11 @@ export const BrowserRoute = new Hono()
 
       return {
         onOpen: async (_e: any, ws: BrowserWS) => {
-          const session = await ensureSession(state.owner, { createInitialTab: true })
-          const tabId = initialTabId || session.activeTab?.id || null
+          const hostSession = BrowserHostControl.sessionState(state.owner)
+          const session =
+            hostSession ?? BrowserControl.sessionState(await ensureSession(state.owner, { createInitialTab: true }))
+          const tabId = initialTabId || session.activeTabId || null
+          const tab = tabId ? session.tabs.find((item) => item.id === tabId) : undefined
           if (tabId) {
             attachedTabId = tabId
             BrowserWebRTCSignaling.attachViewer(state.owner, tabId, ws)
@@ -366,13 +369,13 @@ export const BrowserRoute = new Hono()
               tabId,
               serverUrl: requestOrigin(c),
               routeDirectory: state.directory,
-              url: session.activeTab?.url,
+              url: tab?.url,
             })
           }
           send(ws, {
             type: "webrtc.signaling.ready",
             presentation: state.presentation,
-            session: BrowserControl.sessionState(session),
+            session,
             tabId,
           })
         },

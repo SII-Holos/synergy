@@ -136,6 +136,7 @@ function applyControlResult(store: BrowserStoreAPI, result: any) {
   switch (result?.type) {
     case "tab":
       store.upsertTab(result.tab)
+      store.activateTabFromServer(result.tab.id)
       break
     case "navigation":
       store.upsertTab(result.tab)

@@ -74,7 +74,7 @@ export namespace BrowserHost {
     owner: BrowserOwner.Info,
     command: BrowserControl.Command,
   ): Promise<BrowserControl.Result> {
-    if (BrowserHostControl.has(owner) && command.type !== "createTab") {
+    if (BrowserHostControl.has(owner)) {
       try {
         return await BrowserHostControl.execute(owner, command)
       } catch (error) {

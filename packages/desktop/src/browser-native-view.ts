@@ -1,4 +1,5 @@
 import { BrowserWindow, WebContentsView } from "electron"
+import { randomUUID } from "node:crypto"
 
 export interface BrowserNativeBounds {
   x: number
@@ -31,6 +32,7 @@ export class BrowserNativeViewManager {
   private views = new Map<string, WebContentsView>()
   private controlConnections = new Map<string, BrowserNativeHostControlConnection>()
   private activeTabId: string | null = null
+  private lastBounds: BrowserNativeBounds | null = null
 
   constructor(private window: BrowserWindow) {}
 
@@ -42,7 +44,10 @@ export class BrowserNativeViewManager {
     this.ensureHostControl(input)
 
     this.activate(input.tabId, view)
-    if (input.bounds) this.resize(input.tabId, input.bounds)
+    if (input.bounds) {
+      this.lastBounds = input.bounds
+      this.resize(input.tabId, input.bounds)
+    }
     if (input.url && view.webContents.getURL() !== input.url) {
       await view.webContents.loadURL(input.url)
     }
@@ -57,8 +62,7 @@ export class BrowserNativeViewManager {
     }
     view.webContents.close()
     this.views.delete(tabId)
-    this.controlConnections.get(tabId)?.close()
-    this.controlConnections.delete(tabId)
+    this.sendHostSessions()
   }
 
   focus(tabId: string): void {
@@ -85,12 +89,41 @@ export class BrowserNativeViewManager {
   }
 
   private ensureHostControl(input: BrowserNativeAttachRequest): void {
-    if (!input.serverUrl || this.controlConnections.has(input.tabId)) return
-    const view = this.views.get(input.tabId)
-    if (!view) return
-    const connection = new BrowserNativeHostControlConnection(input, view, () => this.sessionState(input.sessionID))
-    this.controlConnections.set(input.tabId, connection)
+    const key = ownerKey(input)
+    if (!input.serverUrl || this.controlConnections.has(key)) return
+    const connection = new BrowserNativeHostControlConnection(input, {
+      getSessionState: () => this.sessionState(),
+      getActiveTabId: () => this.activeTabId,
+      getView: (tabId?: string | null) => this.views.get(tabId || this.activeTabId || ""),
+      createTab: (url?: string) => this.createManagedTab(input, url),
+      closeTab: async (tabId: string) => {
+        this.detach(tabId)
+        return this.sessionState()
+      },
+      switchTab: (tabId: string) => {
+        const view = this.views.get(tabId)
+        if (!view) throw new Error(`Browser tab not found: ${tabId}`)
+        this.activate(tabId, view)
+        return this.tabState(tabId, view)
+      },
+    })
+    this.controlConnections.set(key, connection)
     connection.connect()
+  }
+
+  private async createManagedTab(input: BrowserNativeAttachRequest, url?: string): Promise<BrowserNativeTabState> {
+    const tabId = randomUUID()
+    const view = this.createView(tabId, input.sessionID)
+    this.views.set(tabId, view)
+    this.activate(tabId, view)
+    if (this.lastBounds) this.resize(tabId, this.lastBounds)
+    if (url) await view.webContents.loadURL(url)
+    const tab = this.tabState(tabId, view)
+    for (const connection of this.controlConnections.values()) {
+      connection.emitHostEvent({ type: "tab.created", tab, active: true })
+      connection.sendHostSession()
+    }
+    return tab
   }
 
   private activate(tabId: string, view: WebContentsView): void {
@@ -139,22 +172,30 @@ export class BrowserNativeViewManager {
   }
 
   private emit(event: BrowserNativeViewEvent): void {
-    this.controlConnections.get(event.tabId)?.emitNativeEvent(event)
+    for (const connection of this.controlConnections.values()) connection.emitNativeEvent(event)
     if (this.window.isDestroyed()) return
     this.window.webContents.send("browser-native:event", event)
   }
 
-  private sessionState(sessionID: string): BrowserNativeSessionState {
-    const tabs = Array.from(this.views.entries()).map(([id, view]) => ({
-      id,
+  private sessionState(): BrowserNativeSessionState {
+    const tabs = Array.from(this.views.entries()).map(([id, view]) => this.tabState(id, view))
+    return { tabs, activeTabId: this.activeTabId }
+  }
+
+  private tabState(tabId: string, view: WebContentsView): BrowserNativeTabState {
+    return {
+      id: tabId,
       url: view.webContents.getURL(),
       title: view.webContents.getTitle(),
       isLoading: view.webContents.isLoading(),
       pinned: false,
       kept: false,
       lastActiveAt: null,
-    }))
-    return { tabs, activeTabId: this.activeTabId }
+    }
+  }
+
+  private sendHostSessions(): void {
+    for (const connection of this.controlConnections.values()) connection.sendHostSession()
   }
 }
 
@@ -173,6 +214,15 @@ interface BrowserNativeSessionState {
   activeTabId: string | null
 }
 
+interface BrowserNativeHostCallbacks {
+  getSessionState(): BrowserNativeSessionState
+  getActiveTabId(): string | null
+  getView(tabId?: string | null): WebContentsView | undefined
+  createTab(url?: string): Promise<BrowserNativeTabState>
+  closeTab(tabId: string): Promise<BrowserNativeSessionState>
+  switchTab(tabId: string): BrowserNativeTabState
+}
+
 class BrowserNativeHostControlConnection {
   private ws: WebSocket | null = null
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null
@@ -182,8 +232,7 @@ class BrowserNativeHostControlConnection {
 
   constructor(
     private input: BrowserNativeAttachRequest,
-    private view: WebContentsView,
-    private getSessionState: () => BrowserNativeSessionState,
+    private host: BrowserNativeHostCallbacks,
   ) {}
 
   connect(): void {
@@ -193,7 +242,7 @@ class BrowserNativeHostControlConnection {
     const ws = new WebSocket(url)
     this.ws = ws
     ws.addEventListener("open", () => {
-      this.send({ type: "browser.host.ready", session: this.getSessionState() })
+      this.sendHostSession("browser.host.ready")
     })
     ws.addEventListener("message", (event) => {
       this.handleMessage(event.data).catch((error) => {
@@ -240,21 +289,21 @@ class BrowserNativeHostControlConnection {
           type: "browser.host.event",
           event: { type: "page.loaded", tabId: event.tabId, url: event.url, title: event.title },
         })
-        this.send({ type: "browser.host.session", session: this.getSessionState() })
+        this.sendHostSession()
         break
       case "native.navigated":
         this.send({
           type: "browser.host.event",
-          event: { type: "tab.updated", tab: this.tabState() },
+          event: { type: "tab.updated", tab: this.tabStateForEvent(event.tabId) },
         })
-        this.send({ type: "browser.host.session", session: this.getSessionState() })
+        this.sendHostSession()
         break
       case "native.title":
         this.send({
           type: "browser.host.event",
-          event: { type: "tab.updated", tab: this.tabState() },
+          event: { type: "tab.updated", tab: this.tabStateForEvent(event.tabId) },
         })
-        this.send({ type: "browser.host.session", session: this.getSessionState() })
+        this.sendHostSession()
         break
       case "native.error":
         this.send({
@@ -289,12 +338,34 @@ class BrowserNativeHostControlConnection {
   }
 
   private async execute(command: Record<string, unknown>): Promise<Record<string, unknown>> {
-    const contents = this.view.webContents
+    if (command.type === "createTab") {
+      const tab = await this.host.createTab(typeof command.url === "string" ? command.url : undefined)
+      return { type: "tab", tab }
+    }
+    if (command.type === "closeTab") {
+      const session = await this.host.closeTab(String(command.tabId ?? this.host.getActiveTabId() ?? ""))
+      return { type: "session", session }
+    }
+    if (command.type === "switchTab") {
+      const tab = this.host.switchTab(String(command.tabId ?? ""))
+      this.sendHostSession()
+      return { type: "tab", tab }
+    }
+
+    const tabId = typeof command.tabId === "string" ? command.tabId : this.host.getActiveTabId()
+    const view = this.host.getView(tabId)
+    if (!view) throw new Error(tabId ? `Browser tab not found: ${tabId}` : "No active browser tab")
+    const contents = view.webContents
     switch (command.type) {
       case "navigate": {
         const url = String(command.url ?? "about:blank")
         await contents.loadURL(url)
-        return { type: "navigation", tab: this.tabState(), url: contents.getURL(), title: contents.getTitle() }
+        return {
+          type: "navigation",
+          tab: this.tabState(tabId!, view),
+          url: contents.getURL(),
+          title: contents.getTitle(),
+        }
       }
       case "reload":
         contents.reload()
@@ -309,7 +380,7 @@ class BrowserNativeHostControlConnection {
         }
         return { type: "void" }
       case "setViewport":
-        return { type: "tab", tab: this.tabState() }
+        return { type: "tab", tab: this.tabState(tabId!, view) }
       case "click":
         this.dispatchMouse({ type: "input.mouse", action: "down", x: command.x, y: command.y, button: "left" })
         this.dispatchMouse({ type: "input.mouse", action: "up", x: command.x, y: command.y, button: "left" })
@@ -337,29 +408,29 @@ class BrowserNativeHostControlConnection {
       case "evaluate":
         return {
           type: "evaluation",
-          tabId: this.input.tabId,
+          tabId: tabId!,
           value: await contents.executeJavaScript(String(command.expression ?? ""), true),
         }
       case "snapshot": {
-        const snapshot = await this.snapshot()
-        return { type: "snapshot", tabId: this.input.tabId, elements: snapshot.elements, truncated: snapshot.truncated }
+        const snapshot = await this.snapshot(view)
+        return { type: "snapshot", tabId: tabId!, elements: snapshot.elements, truncated: snapshot.truncated }
       }
       case "resolveRef": {
         const ref = String(command.ref ?? "")
-        return { type: "resolvedRef", tabId: this.input.tabId, ref, box: this.refMap.get(ref) ?? null }
+        return { type: "resolvedRef", tabId: tabId!, ref, box: this.refMap.get(ref) ?? null }
       }
       case "console":
-        return { type: "console", tabId: this.input.tabId, entries: this.consoleEntries.slice(-50) }
+        return { type: "console", tabId: tabId!, entries: this.consoleEntries.slice(-50) }
       case "network":
-        return { type: "network", tabId: this.input.tabId, requests: [] }
+        return { type: "network", tabId: tabId!, requests: [] }
       case "assets":
-        return { type: "assets", tabId: this.input.tabId, assets: [] }
+        return { type: "assets", tabId: tabId!, assets: [] }
       case "screenshot": {
         const image = await contents.capturePage()
         const size = image.getSize()
         return {
           type: "screenshot",
-          tabId: this.input.tabId,
+          tabId: tabId!,
           dataUrl: image.toDataURL(),
           width: size.width,
           height: size.height,
@@ -367,16 +438,18 @@ class BrowserNativeHostControlConnection {
       }
       case "clearDiagnostics":
         this.consoleEntries = []
-        return { type: "diagnostics.cleared", tabId: this.input.tabId }
+        return { type: "diagnostics.cleared", tabId: tabId! }
       default:
         throw new UnsupportedNativeCommandError(String(command.type ?? "unknown"))
     }
   }
 
   private dispatchMouse(payload: Record<string, unknown>): void {
+    const view = this.host.getView((payload.tabId as string | undefined) ?? this.host.getActiveTabId())
+    if (!view) return
     const action = payload.action
     if (action === "wheel") {
-      this.view.webContents.sendInputEvent({
+      view.webContents.sendInputEvent({
         type: "mouseWheel",
         x: Number(payload.x ?? 0),
         y: Number(payload.y ?? 0),
@@ -387,7 +460,7 @@ class BrowserNativeHostControlConnection {
     }
     const type = action === "down" ? "mouseDown" : action === "up" ? "mouseUp" : action === "move" ? "mouseMove" : null
     if (!type) return
-    this.view.webContents.sendInputEvent({
+    view.webContents.sendInputEvent({
       type,
       x: Number(payload.x ?? 0),
       y: Number(payload.y ?? 0),
@@ -396,11 +469,11 @@ class BrowserNativeHostControlConnection {
     } as Electron.MouseInputEvent)
   }
 
-  private async snapshot(): Promise<{
+  private async snapshot(view: WebContentsView): Promise<{
     elements: { ref: string; role: string; name: string; value?: string; children: never[] }[]
     truncated: boolean
   }> {
-    const result = (await this.view.webContents.executeJavaScript(
+    const result = (await view.webContents.executeJavaScript(
       `(() => {
         const selector = [
           "a[href]",
@@ -481,10 +554,12 @@ class BrowserNativeHostControlConnection {
   }
 
   private dispatchKey(payload: Record<string, unknown>): void {
+    const view = this.host.getView((payload.tabId as string | undefined) ?? this.host.getActiveTabId())
+    if (!view) return
     const action = payload.action
     const type = action === "down" ? "keyDown" : action === "up" ? "keyUp" : null
     if (!type) return
-    this.view.webContents.sendInputEvent({
+    view.webContents.sendInputEvent({
       type,
       keyCode: String(payload.key ?? payload.code ?? ""),
     } as Electron.KeyboardInputEvent)
@@ -496,16 +571,21 @@ class BrowserNativeHostControlConnection {
     return "left"
   }
 
-  private tabState(): BrowserNativeTabState {
+  private tabState(tabId: string, view: WebContentsView): BrowserNativeTabState {
     return {
-      id: this.input.tabId,
-      url: this.view.webContents.getURL(),
-      title: this.view.webContents.getTitle(),
-      isLoading: this.view.webContents.isLoading(),
+      id: tabId,
+      url: view.webContents.getURL(),
+      title: view.webContents.getTitle(),
+      isLoading: view.webContents.isLoading(),
       pinned: false,
       kept: false,
       lastActiveAt: null,
     }
+  }
+
+  private tabStateForEvent(tabId: string): BrowserNativeTabState | null {
+    const view = this.host.getView(tabId)
+    return view ? this.tabState(tabId, view) : null
   }
 
   private controlUrl(): string | null {
@@ -530,6 +610,18 @@ class BrowserNativeHostControlConnection {
     if (this.ws?.readyState !== WebSocket.OPEN) return
     this.ws.send(JSON.stringify(payload))
   }
+
+  emitHostEvent(event: Record<string, unknown>): void {
+    this.send({ type: "browser.host.event", event })
+  }
+
+  sendHostSession(type: "browser.host.ready" | "browser.host.session" = "browser.host.session"): void {
+    this.send({ type, session: this.host.getSessionState() })
+  }
+}
+
+function ownerKey(input: BrowserNativeAttachRequest): string {
+  return [input.sessionID, input.routeDirectory ?? input.directory ?? input.scopeID ?? input.scopeKey ?? ""].join(":")
 }
 
 class UnsupportedNativeCommandError extends Error {

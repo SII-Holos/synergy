@@ -1,4 +1,5 @@
 import { BrowserWindow, desktopCapturer, ipcMain } from "electron"
+import { randomUUID } from "node:crypto"
 
 export interface BrowserWebRTCHostOptions {
   serverUrl: string
@@ -11,6 +12,16 @@ export interface BrowserWebRTCHostOptions {
   url?: string
   width?: number
   height?: number
+}
+
+interface BrowserHostTabState {
+  id: string
+  url: string
+  title: string
+  isLoading: boolean
+  pinned: boolean
+  kept: boolean
+  lastActiveAt: number | null
 }
 
 function createHostSignalingUrl(options: BrowserWebRTCHostOptions) {
@@ -64,10 +75,14 @@ export class BrowserWebRTCHost {
   private readonly browserWindowTitle: string
   private consoleEntries: { level: string; text: string; timestamp: number; stackTrace?: string }[] = []
   private refMap = new Map<string, { backendNodeId: number; x: number; y: number; width: number; height: number }>()
+  private activeTabId: string
+  private tabs = new Map<string, BrowserHostTabState>()
 
   constructor(private options: BrowserWebRTCHostOptions) {
     this.inputChannel = `browser-host:${options.tabId}:input`
     this.browserWindowTitle = `Synergy Browser Host ${options.sessionID} ${options.tabId}`
+    this.activeTabId = options.tabId
+    this.tabs.set(options.tabId, this.createTabState(options.tabId, options.url || "about:blank", "", false))
   }
 
   async start(): Promise<void> {
@@ -133,6 +148,7 @@ export class BrowserWebRTCHost {
       `data:text/html;charset=utf-8,${encodeURIComponent(this.controllerHtml(signalingUrl))}`,
     )
     await this.browserWindow.loadURL(this.options.url || "about:blank")
+    this.tabs.set(this.options.tabId, this.tabState())
     this.connectControl()
   }
 
@@ -298,7 +314,35 @@ export class BrowserWebRTCHost {
     const contents = this.browserWindow?.webContents
     if (!contents || contents.isDestroyed()) throw new Error("Browser Host webContents is unavailable")
     switch (command.type) {
+      case "createTab": {
+        const tabId = randomUUID()
+        const tab = this.createTabState(tabId, typeof command.url === "string" ? command.url : "about:blank", "", false)
+        this.tabs.set(tabId, tab)
+        this.activeTabId = tabId
+        this.sendHostSession()
+        return { type: "tab", tab }
+      }
+      case "closeTab": {
+        const tabId = String(command.tabId ?? this.activeTabId)
+        this.tabs.delete(tabId)
+        if (this.activeTabId === tabId) {
+          this.activeTabId = this.tabs.keys().next().value ?? this.options.tabId
+        }
+        this.sendHostSession()
+        return { type: "session", session: this.sessionState() }
+      }
+      case "switchTab": {
+        const tabId = String(command.tabId ?? "")
+        const tab = this.tabs.get(tabId)
+        if (!tab) throw new Error(`Browser tab not found: ${tabId}`)
+        this.activeTabId = tabId
+        this.sendHostSession()
+        return { type: "tab", tab }
+      }
       case "navigate": {
+        if (typeof command.tabId === "string" && command.tabId !== this.options.tabId) {
+          throw new UnsupportedHostCommandError(String(command.type))
+        }
         const url = String(command.url ?? "about:blank")
         await contents.loadURL(url)
         return { type: "navigation", tab: this.tabState(), url: contents.getURL(), title: contents.getTitle() }
@@ -469,13 +513,24 @@ export class BrowserWebRTCHost {
     return { elements, truncated: result.length >= 300 }
   }
 
-  private tabState() {
+  private tabState(): BrowserHostTabState {
     const contents = this.browserWindow?.webContents
+    const tab = this.createTabState(
+      this.options.tabId,
+      contents?.getURL() ?? this.tabs.get(this.options.tabId)?.url ?? "",
+      contents?.getTitle() ?? this.tabs.get(this.options.tabId)?.title ?? "",
+      contents?.isLoading() ?? false,
+    )
+    this.tabs.set(this.options.tabId, tab)
+    return tab
+  }
+
+  private createTabState(tabId: string, url: string, title: string, isLoading: boolean): BrowserHostTabState {
     return {
-      id: this.options.tabId,
-      url: contents?.getURL() ?? "",
-      title: contents?.getTitle() ?? "",
-      isLoading: contents?.isLoading() ?? false,
+      id: tabId,
+      url,
+      title,
+      isLoading,
       pinned: false,
       kept: false,
       lastActiveAt: null,
@@ -483,7 +538,8 @@ export class BrowserWebRTCHost {
   }
 
   private sessionState() {
-    return { tabs: [this.tabState()], activeTabId: this.options.tabId }
+    this.tabState()
+    return { tabs: Array.from(this.tabs.values()), activeTabId: this.activeTabId }
   }
 
   private sendHostSession(): void {

@@ -78,7 +78,7 @@ export namespace BrowserHostControl {
       const msg = input as Message
       switch (msg.type) {
         case "browser.host.ready":
-          this.session = msg.session ?? this.session
+          this.session = msg.session ? mergeReadySession(this.session, msg.session) : this.session
           if (this.session) emit(this.owner, { type: "session.state", ...this.session })
           break
         case "browser.host.session":
@@ -187,5 +187,18 @@ export namespace BrowserHostControl {
     const set = observers.get(BrowserOwner.key(owner))
     if (!set) return
     for (const listener of set) listener(event)
+  }
+
+  function mergeReadySession(
+    previous: BrowserControl.SessionState | null,
+    incoming: BrowserControl.SessionState,
+  ): BrowserControl.SessionState {
+    if (!previous) return incoming
+    const tabs = new Map(previous.tabs.map((tab) => [tab.id, tab]))
+    for (const tab of incoming.tabs) tabs.set(tab.id, tab)
+    return {
+      tabs: Array.from(tabs.values()),
+      activeTabId: incoming.activeTabId ?? previous.activeTabId,
+    }
   }
 }
