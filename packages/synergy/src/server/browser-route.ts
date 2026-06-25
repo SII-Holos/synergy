@@ -10,6 +10,7 @@ import { Log } from "../util/log"
 import { BrowserOwner } from "../browser/owner.js"
 import { BrowserControl } from "../browser/control.js"
 import { BrowserHost } from "../browser/host.js"
+import { BrowserWebRTCSignaling } from "../browser/webrtc-signaling.js"
 import { ScopeContext } from "../scope/context"
 
 const log = Log.create({ service: "browser.route" })
@@ -109,6 +110,11 @@ function isCrossOriginRequest(c: { req: { header(name: string): string | undefin
   const origin = c.req.header("origin")
   const host = c.req.header("host")
   return Boolean(origin && host && !isSameOrigin(origin, host))
+}
+
+function isLegacyStreamRequest(c: BrowserRouteContext): boolean {
+  const query = c.req.query("legacyStream")
+  return query === "1" || query === "true" || process.env.SYNERGY_BROWSER_LEGACY_STREAM === "1"
 }
 
 function routeState(c: BrowserRouteContext): BrowserRouteState {
@@ -255,6 +261,7 @@ export const BrowserRoute = new Hono()
     "/:directory/browser/webrtc/connect",
     upgradeWebSocket((c) => {
       let state: BrowserRouteState
+      const initialTabId = c.req.query("tabId")
       try {
         state = routeState(c)
       } catch (e: any) {
@@ -268,13 +275,21 @@ export const BrowserRoute = new Hono()
         }
       }
 
+      let attachedTabId: string | null = null
+
       return {
         onOpen: async (_e: any, ws: BrowserWS) => {
           const session = await ensureSession(state.owner, { createInitialTab: true })
+          const tabId = initialTabId || session.activeTab?.id || null
+          if (tabId) {
+            attachedTabId = tabId
+            BrowserWebRTCSignaling.attachViewer(state.owner, tabId, ws)
+          }
           send(ws, {
             type: "webrtc.signaling.ready",
             presentation: state.presentation,
             session: BrowserControl.sessionState(session),
+            tabId,
           })
         },
         onMessage: async (event: any, ws: BrowserWS) => {
@@ -286,19 +301,75 @@ export const BrowserRoute = new Hono()
             return
           }
 
-          if (msg.type === "webrtc.close") {
-            send(ws, { type: "webrtc.closed", tabId: msg.tabId })
+          const tabId = typeof msg.tabId === "string" ? msg.tabId : attachedTabId
+          if (!tabId) {
+            send(ws, { type: "error", code: "browser_webrtc_missing_tab", message: "Missing WebRTC tab id" })
             return
           }
 
+          attachedTabId = tabId
+          BrowserWebRTCSignaling.handleViewerMessage(state.owner, tabId, ws, msg)
+        },
+        onClose(_event: any, ws: BrowserWS) {
+          if (attachedTabId) BrowserWebRTCSignaling.detachViewer(state.owner, attachedTabId, ws)
+        },
+      }
+    }),
+  )
+  .get(
+    "/:directory/browser/webrtc/host",
+    upgradeWebSocket((c) => {
+      let state: BrowserRouteState
+      const initialTabId = c.req.query("tabId")
+      try {
+        state = routeState(c)
+      } catch (e: any) {
+        return {
+          onOpen(_e: any, ws: BrowserWS) {
+            send(ws, { type: "error", code: "browser_webrtc_host_route_failed", message: e?.message ?? String(e) })
+            ws.close(1008, "Invalid browser WebRTC host route")
+          },
+          onMessage() {},
+          onClose() {},
+        }
+      }
+
+      let attachedTabId: string | null = initialTabId ?? null
+
+      return {
+        onOpen: async (_e: any, ws: BrowserWS) => {
+          const session = await ensureSession(state.owner, { createInitialTab: true })
+          attachedTabId = attachedTabId || session.activeTab?.id || null
+          if (!attachedTabId) {
+            send(ws, { type: "error", code: "browser_webrtc_host_missing_tab", message: "Missing WebRTC host tab id" })
+            ws.close(1008, "Missing WebRTC host tab id")
+            return
+          }
+          BrowserWebRTCSignaling.attachHost(state.owner, attachedTabId, ws)
           send(ws, {
-            type: "webrtc.host.pending",
-            tabId: msg.tabId,
-            code: "browser_webrtc_host_not_attached",
-            message: "WebRTC signaling is available; Electron Browser Host media transport is not attached yet.",
+            type: "webrtc.host.signaling.ready",
+            presentation: state.presentation,
+            session: BrowserControl.sessionState(session),
+            tabId: attachedTabId,
           })
         },
-        onClose() {},
+        onMessage(event: any, ws: BrowserWS) {
+          let msg: any
+          try {
+            msg = JSON.parse(event.data as string)
+          } catch {
+            send(ws, { type: "error", code: "browser_webrtc_host_invalid_message", message: "Invalid WebRTC message" })
+            return
+          }
+
+          const tabId = typeof msg.tabId === "string" ? msg.tabId : attachedTabId
+          if (!tabId) return
+          attachedTabId = tabId
+          BrowserWebRTCSignaling.handleHostMessage(state.owner, tabId, msg)
+        },
+        onClose(_event: any, ws: BrowserWS) {
+          if (attachedTabId) BrowserWebRTCSignaling.detachHost(state.owner, attachedTabId, ws)
+        },
       }
     }),
   )
@@ -324,6 +395,22 @@ export const BrowserRoute = new Hono()
         return {
           onOpen(_e: any, ws: BrowserWS) {
             ws.close(1008, "Cross-origin not allowed")
+          },
+          onMessage() {},
+          onClose() {},
+        }
+      }
+
+      if (!isLegacyStreamRequest(c)) {
+        return {
+          onOpen(_e: any, ws: BrowserWS) {
+            send(ws, {
+              type: "error",
+              code: "browser_legacy_stream_disabled",
+              message:
+                "Legacy browser frame streaming is disabled. Use /browser/events plus /browser/control and WebRTC.",
+            })
+            ws.close(1008, "Legacy browser frame streaming disabled")
           },
           onMessage() {},
           onClose() {},

@@ -3,6 +3,7 @@ import type { BrowserWebRTCSignalMessage } from "@ericsanchezok/synergy-util/bro
 type BrowserWebRTCSignalingUrlOptions = {
   serverUrl: string
   sessionID: string
+  tabId?: string
   routeDirectory?: string
   directory?: string
   scopeID?: string
@@ -24,6 +25,7 @@ export function createBrowserWebRTCSignalingUrl(options: BrowserWebRTCSignalingU
   if (options.scopeID) params.set("scopeID", options.scopeID)
   else if (options.directory) params.set("directory", options.directory)
   if (options.sameHost) params.set("sameHost", "1")
+  if (options.tabId) params.set("tabId", options.tabId)
 
   return (
     options.serverUrl.replace(/^http/, "ws") +

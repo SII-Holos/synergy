@@ -6,6 +6,7 @@ import {
   createBrowserEventsWebSocketUrl,
   createBrowserWebSocketUrl,
   createQueuedBrowserSender,
+  selectBrowserClientTransport,
 } from "./browser-ws"
 
 describe("createBrowserWebSocketUrl", () => {
@@ -27,6 +28,7 @@ describe("createBrowserWebSocketUrl", () => {
     expect(parsed.searchParams.get("presentation")).toBe("auto")
     expect(parsed.searchParams.get("client")).toBe("web")
     expect(parsed.searchParams.get("scopeID")).toBe("home")
+    expect(parsed.searchParams.get("legacyStream")).toBe("1")
     expect(parsed.searchParams.has("directory")).toBe(false)
   })
 
@@ -48,6 +50,7 @@ describe("createBrowserWebSocketUrl", () => {
     expect(parsed.searchParams.get("presentation")).toBe("auto")
     expect(parsed.searchParams.get("client")).toBe("web")
     expect(parsed.searchParams.get("directory")).toBe("/Users/eric/project")
+    expect(parsed.searchParams.get("legacyStream")).toBe("1")
     expect(parsed.searchParams.has("scopeID")).toBe(false)
   })
 
@@ -121,6 +124,20 @@ describe("createBrowserWebSocketUrl", () => {
     expect(parsed.searchParams.get("directory")).toBe("/Users/eric/project")
   })
 
+  test("can bind WebRTC signaling to a specific tab", () => {
+    const url = createBrowserWebRTCSignalingUrl({
+      serverUrl: "https://synergy.local",
+      sessionID: "ses_4",
+      tabId: "tab_123",
+      routeDirectory: "project-route",
+      directory: "/Users/eric/project",
+    })
+
+    expect(url).not.toBeNull()
+    const parsed = new URL(url!)
+    expect(parsed.searchParams.get("tabId")).toBe("tab_123")
+  })
+
   test("returns null when no route or scope is available", () => {
     expect(createBrowserWebSocketUrl({ serverUrl: "http://localhost:4096", sessionID: "ses_1" })).toBeNull()
   })
@@ -143,6 +160,17 @@ describe("browserControlCommandFromMessage", () => {
   test("keeps old live frame messages out of host control", () => {
     expect(browserControlCommandFromMessage({ type: "stream.start", tabId: "tab_1" })).toBeNull()
     expect(browserControlCommandFromMessage({ type: "stream.stop", tabId: "tab_1" })).toBeNull()
+  })
+})
+
+describe("selectBrowserClientTransport", () => {
+  test("defaults to control transport so auto presentation can choose native or WebRTC", () => {
+    expect(selectBrowserClientTransport({})).toBe("control")
+  })
+
+  test("keeps the legacy frame stream behind an explicit migration flag", () => {
+    expect(selectBrowserClientTransport({ legacyStreamEnabled: true })).toBe("legacy")
+    expect(selectBrowserClientTransport({ requested: "legacy" })).toBe("legacy")
   })
 })
 

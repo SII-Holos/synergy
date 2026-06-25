@@ -8,6 +8,7 @@ import { browserDebug, shouldLogBrowserMessage, summarizeBrowserMessage } from "
 const MAX_RECONNECT_ATTEMPTS = 10
 const RECONNECT_DELAY = 2000
 const MAX_PENDING_MESSAGES = 50
+const LEGACY_STREAM_ENV = "VITE_SYNERGY_BROWSER_LEGACY_STREAM"
 
 type BrowserSocket = {
   readyState: number
@@ -19,7 +20,7 @@ type BrowserWebSocketOptions = {
   routeDirectory?: string
   client?: "web" | "desktop"
   sameHost?: boolean
-  transport?: "legacy" | "control"
+  transport?: BrowserClientTransport
 }
 
 type BrowserWebSocketUrlOptions = {
@@ -32,6 +33,20 @@ type BrowserWebSocketUrlOptions = {
   presentation?: BrowserPresentationPreference
   client?: "web" | "desktop"
   sameHost?: boolean
+}
+
+export type BrowserClientTransport = "legacy" | "control"
+
+export function isLegacyBrowserStreamEnabled(env: Record<string, unknown> = import.meta.env): boolean {
+  return env[LEGACY_STREAM_ENV] === "1" || env[LEGACY_STREAM_ENV] === "true"
+}
+
+export function selectBrowserClientTransport(options: {
+  requested?: BrowserClientTransport
+  legacyStreamEnabled?: boolean
+}): BrowserClientTransport {
+  if (options.requested) return options.requested
+  return options.legacyStreamEnabled ? "legacy" : "control"
 }
 
 export function createBrowserWebSocketUrl(options: BrowserWebSocketUrlOptions) {
@@ -63,6 +78,7 @@ function createBrowserRouteUrl(
   if (options.scopeID) params.set("scopeID", options.scopeID)
   else if (options.directory) params.set("directory", options.directory)
   if (options.sameHost) params.set("sameHost", "1")
+  if (route === "connect") params.set("legacyStream", "1")
 
   const baseUrl = scheme === "ws" ? options.serverUrl.replace(/^http/, "ws") : options.serverUrl
   return baseUrl + `/${encodeURIComponent(pathDirectory)}/browser/${route}?${params.toString()}`
@@ -288,10 +304,10 @@ export function createBrowserWebSocket(store: BrowserStoreAPI, options: BrowserW
   const routeDirectory = typeof options === "string" ? undefined : options.routeDirectory
   const client = typeof options === "string" ? "web" : (options.client ?? "web")
   const sameHost = typeof options === "string" ? false : (options.sameHost ?? false)
-  const transport =
-    typeof options === "string"
-      ? "legacy"
-      : (options.transport ?? (client === "desktop" && sameHost ? "control" : "legacy"))
+  const transport = selectBrowserClientTransport({
+    requested: typeof options === "string" ? undefined : options.transport,
+    legacyStreamEnabled: isLegacyBrowserStreamEnabled(),
+  })
   let ws: WebSocket | undefined
   let reconnectTimer: ReturnType<typeof setTimeout> | undefined
   let disposed = false
