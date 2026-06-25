@@ -29,6 +29,10 @@ export function getSpecialUserMessageRenderer(message: UserMessage): Component<S
   return renderers.find((renderer) => renderer.match(message))?.component
 }
 
+export function hasSpecialUserMessageRenderer(message: UserMessage): boolean {
+  return getSpecialUserMessageRenderer(message) !== undefined
+}
+
 function metadataText(message: UserMessage, key: string) {
   const value = message.metadata?.[key]
   return typeof value === "string" && value.trim() ? value.trim() : undefined

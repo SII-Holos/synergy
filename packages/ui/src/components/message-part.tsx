@@ -47,6 +47,7 @@ import { checksum } from "@ericsanchezok/synergy-util/encode"
 import { parsePartialJson } from "@ericsanchezok/synergy-util/json"
 import { createAutoScroll, createTypewriter, createAnimatedNumber } from "../hooks"
 import { getApprovalAudit } from "../utils/approval-audit"
+import { isArtifactOnlyToolPart } from "./tool-result-presentation"
 
 interface Diagnostic {
   range: {
@@ -679,6 +680,18 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
         icon: "sparkles",
         title: "Skill",
         subtitle: input.name + (input.reference ? ` (${input.reference})` : ""),
+      }
+    case "search_tools":
+      return {
+        icon: "tool-search",
+        title: "Search Tools",
+        subtitle: input.query,
+      }
+    case "expand_tools":
+      return {
+        icon: "tool-expand",
+        title: "Expand Tools",
+        subtitle: [...(input.groups ?? []), ...(input.tools ?? [])].join(", ") || input.reason,
       }
     case "arxiv_search":
       return {
@@ -1442,7 +1455,10 @@ export function AssistantMessageDisplay(props: { message: AssistantMessage; part
   const filteredParts = createMemo(
     () =>
       props.parts.filter((x) => {
-        return x.type !== "tool" || ((x as ToolPart).tool !== "todoread" && (x as ToolPart).tool !== "dagread")
+        return (
+          x.type !== "tool" ||
+          ((x as ToolPart).tool !== "todoread" && (x as ToolPart).tool !== "dagread" && !isArtifactOnlyToolPart(x))
+        )
       }),
     emptyParts,
     { equals: same },

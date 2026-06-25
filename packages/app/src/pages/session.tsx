@@ -4,6 +4,7 @@ import { createResizeObserver } from "@solid-primitives/resize-observer"
 import { useLocal } from "@/context/local"
 import { useFile, type SelectedLineRange } from "@/context/file"
 import { createStore } from "solid-js/store"
+import { hasSpecialUserMessageRenderer } from "@ericsanchezok/synergy-ui/special-user-message"
 
 import { ResizeHandle } from "@ericsanchezok/synergy-ui/resize-handle"
 import { WORKSPACE_SESSION_MIN_WIDTH } from "@/context/workspace-layout"
@@ -218,7 +219,17 @@ function SessionPageContent() {
     emptyUserMessages,
   )
   const visibleUserMessages = createMemo(() => userMessages(), emptyUserMessages)
+  const renderableUserMessages = createMemo(
+    () =>
+      messages().filter((m) => {
+        if (m.role !== "user") return false
+        const user = m as UserMessage
+        return !user.metadata?.synthetic || hasSpecialUserMessageRenderer(user)
+      }) as UserMessage[],
+    emptyUserMessages,
+  )
   const lastUserMessage = createMemo(() => visibleUserMessages().at(-1))
+  const lastRenderableUserMessage = createMemo(() => renderableUserMessages().at(-1))
   const cortexRunning = createMemo(() => {
     const id = params.id
     if (!id) return 0
@@ -246,6 +257,13 @@ function SessionPageContent() {
     return msgs.slice(start) as UserMessage[]
   }, emptyUserMessages)
 
+  const renderedConversationUserMessages = createMemo(() => {
+    const firstID = renderedUserMessages()[0]?.id
+    const msgs = renderableUserMessages()
+    if (!firstID) return msgs
+    return msgs.filter((message) => message.id >= firstID)
+  }, emptyUserMessages)
+
   const emptyTimeline: Message[] = []
   const isActionCommandMessage = (message: Message) => {
     const metadata = message.metadata as
@@ -267,8 +285,8 @@ function SessionPageContent() {
   }
 
   const timeline = createMemo(() => {
-    const turns = renderedUserMessages() as Message[]
-    const firstID = turns[0]?.id
+    const turns = renderedConversationUserMessages() as Message[]
+    const firstID = renderedUserMessages()[0]?.id ?? turns[0]?.id
     const mailbox: Message[] = []
     const actionCommands: Message[] = []
     for (const msg of messages()) {
@@ -902,7 +920,7 @@ function SessionPageContent() {
                           paramsDir={params.dir!}
                           timeline={timeline}
                           visibleUserMessages={visibleUserMessages}
-                          lastUserMessage={lastUserMessage}
+                          lastUserMessage={lastRenderableUserMessage}
                           activeMessage={activeMessage}
                           cortexRunning={cortexRunning}
                           expanded={store.expanded}

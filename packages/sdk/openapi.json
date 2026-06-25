@@ -21128,6 +21128,23 @@
               "type": "string"
             }
           },
+          "toolState": {
+            "type": "object",
+            "properties": {
+              "expandedGroups": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "activatedTools": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          },
           "pendingReply": {
             "type": "boolean"
           },

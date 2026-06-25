@@ -1,5 +1,6 @@
 import { createContext, createSignal, useContext, type ParentProps } from "solid-js"
 import { createStore, produce, type SetStoreFunction } from "solid-js/store"
+import { browserDebug, shouldLogBrowserMessage, summarizeBrowserMessage } from "./browser-debug"
 
 export interface BrowserTab {
   id: string
@@ -110,6 +111,11 @@ export interface AssetEntry {
 }
 
 export type DevPanel = "closed" | "console" | "network" | "elements" | "screenshot" | "inspect" | "downloads" | "assets"
+export type ViewportMode = "fit" | "fixed"
+
+export interface SetViewportOptions {
+  mode?: ViewportMode
+}
 
 export function createBrowserStore() {
   const [session, setSession] = createStore({
@@ -139,6 +145,7 @@ export function createBrowserStore() {
   const [dialogRequest, setDialogRequest] = createSignal<DialogRequest | null>(null)
   const [browserError, setBrowserError] = createSignal<BrowserErrorState | null>(null)
   const [annotationMode, setAnnotationMode] = createSignal(false)
+  const [viewportMode, setViewportMode] = createSignal<ViewportMode>("fit")
   const [viewportWidth, setViewportWidth] = createSignal(1280)
 
   const [viewportHeight, setViewportHeight] = createSignal(720)
@@ -154,26 +161,47 @@ export function createBrowserStore() {
   let _sendFn: ((msg: Record<string, unknown>) => void) | undefined
 
   function send(msg: Record<string, unknown>) {
+    if (shouldLogBrowserMessage(msg)) {
+      browserDebug("store.send", {
+        ...summarizeBrowserMessage(msg),
+        hasSender: Boolean(_sendFn),
+        connectionStatus: session.connectionStatus,
+        activeTabId: activeTabId(),
+        tabCount: session.tabs.length,
+      })
+    }
+    if (!_sendFn) browserDebug("store.send.dropped", { reason: "missing sender", type: msg.type })
     _sendFn?.(msg)
   }
 
   function _setSend(fn: ((msg: Record<string, unknown>) => void) | undefined) {
     _sendFn = fn
+    browserDebug("store.sender", { installed: Boolean(fn) })
   }
 
   function createTab(url?: string) {
+    browserDebug("store.createTab", { url, activeTabId: activeTabId(), tabCount: session.tabs.length })
     send({ type: "createTab", url })
   }
 
   function navigate(url: string) {
+    browserDebug("store.navigate", {
+      url,
+      activeTabId: activeTabId(),
+      activeTabUrl: activeTab()?.url ?? null,
+      connectionStatus: session.connectionStatus,
+      tabCount: session.tabs.length,
+    })
     setFollowAgent(false)
     const tab = activeTab()
     if (!tab) {
+      browserDebug("store.navigate.createTab", { url })
       createTab(url)
       return
     }
 
     setTabLoading(tab.id, true)
+    browserDebug("store.navigate.activeTab", { url, tabId: tab.id, previousUrl: tab.url })
     send({ type: "navigate", source: "user", url, tabId: tab.id })
   }
 
@@ -213,10 +241,21 @@ export function createBrowserStore() {
     setDevPanel((prev) => (prev === panel ? "closed" : panel))
   }
 
-  function setViewport(width: number, height: number) {
-    setViewportWidth(width)
-    setViewportHeight(height)
-    send({ type: "input.resize", tabId: activeTabId(), width, height, deviceScaleFactor: window.devicePixelRatio || 1 })
+  function setViewport(width: number, height: number, options: SetViewportOptions = {}) {
+    const nextWidth = Math.max(1, Math.round(width))
+    const nextHeight = Math.max(1, Math.round(height))
+    const deviceScaleFactor = typeof window === "undefined" ? 1 : window.devicePixelRatio || 1
+
+    setViewportMode(options.mode ?? "fixed")
+    setViewportWidth(nextWidth)
+    setViewportHeight(nextHeight)
+    send({
+      type: "input.resize",
+      tabId: activeTabId(),
+      width: nextWidth,
+      height: nextHeight,
+      deviceScaleFactor,
+    })
   }
 
   function clearAnnotationTarget() {
@@ -324,6 +363,7 @@ export function createBrowserStore() {
     annotationTarget,
     setAnnotationTarget,
     clearAnnotationTarget,
+    viewportMode,
     viewportWidth,
     viewportHeight,
     setViewport,

@@ -347,6 +347,8 @@ const icons = {
   telescope: Telescope,
   terminal: Terminal,
   "text-select": TextSelect,
+  "tool-expand": Boxes,
+  "tool-search": Search,
   "trash-2": Trash2,
   "undo-2": Undo2,
   "redo-2": Redo2,

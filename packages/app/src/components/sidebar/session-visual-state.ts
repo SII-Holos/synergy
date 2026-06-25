@@ -28,10 +28,7 @@ export function scopeKeyForNavEntry(entry: Pick<NavEntry, "scopeID" | "scopeType
   return scopes.find((scope) => scope.id === entry.scopeID)?.worktree
 }
 
-export function resolveSessionVisualState(
-  store: SessionVisualStore | undefined,
-  entry: NavEntry,
-): SessionVisualState {
+export function resolveSessionVisualState(store: SessionVisualStore | undefined, entry: NavEntry): SessionVisualState {
   if (store) {
     const status = store.session_status[entry.id]
     const waiting = !!store.permission[entry.id]?.length || !!store.question[entry.id]?.length

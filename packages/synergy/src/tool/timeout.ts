@@ -44,11 +44,7 @@ export namespace ToolTimeout {
     bashHardCeilingMs: 3_600_000,
   } as const
 
-  export function create(input: {
-    executionBudgetMs: number
-    operationTimeoutMs?: number
-    source?: Source
-  }): Metadata {
+  export function create(input: { executionBudgetMs: number; operationTimeoutMs?: number; source?: Source }): Metadata {
     const operationTimeoutMs = normalizeMs(input.operationTimeoutMs)
     return {
       executionBudgetMs: input.executionBudgetMs,

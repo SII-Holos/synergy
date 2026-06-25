@@ -127,12 +127,12 @@ function DynamicArtifactLink(props: {
   )
 }
 
-export function ArtifactGallery(props: { files: ArtifactFile[]; serverUrl: string }) {
+export function ArtifactGallery(props: { files: ArtifactFile[]; serverUrl: string; variant?: "default" | "result" }) {
   const columns = createMemo(() => artifactColumns(props.files))
 
   return (
     <Show when={columns().length > 0}>
-      <div data-component="artifact-gallery" data-columns={columns().length}>
+      <div data-component="artifact-gallery" data-columns={columns().length} data-variant={props.variant ?? "default"}>
         <div data-slot="attachment-column-layout">
           <For each={columns()}>
             {(column) => (

@@ -44,6 +44,21 @@ export default plugin
 
 `plugin.id` must match `plugin.json.name`. Validation and loading fail on mismatch.
 
+## Tool Result Presentation
+
+Tools that generate a primary visual artifact can return standard `attachments` and set:
+
+```ts
+metadata: {
+  display: {
+    presentation: "artifact-only",
+    primaryAttachmentIds: [partId],
+  },
+}
+```
+
+The Web client hides the completed tool card and promotes those attachments into the final turn response area. Running and failed states still render as normal tool cards. Use `input.client.asset.upload()` or the public `/asset` route to create `asset://...` URLs; plugins should not import Synergy internal asset modules.
+
 ## create
 
 ```bash

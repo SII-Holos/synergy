@@ -1,5 +1,5 @@
 import { Button } from "@ericsanchezok/synergy-ui/button"
-import { createMemo, Show } from "solid-js"
+import { createEffect, createMemo, Show } from "solid-js"
 import { useParams } from "@solidjs/router"
 import { BrowserStoreProvider, createBrowserStore } from "./browser-store"
 import { createBrowserWebSocket } from "./browser-ws"
@@ -13,25 +13,37 @@ import { AgentAssistant } from "./agent-assistant"
 import { AnnotationInput } from "./annotation-input"
 import { DownloadsPanel } from "./downloads-panel"
 import { AssetsPanel } from "./assets-panel"
+import { browserDebug } from "./browser-debug"
 
 export function BrowserPanel() {
   const params = useParams()
   const ownerKey = createMemo(() => `${params.dir}:session:${params.id}`)
+  createEffect(() => {
+    browserDebug("panel.route", { dir: params.dir, sessionID: params.id, ownerKey: ownerKey() })
+  })
 
   return (
     <Show keyed when={ownerKey()}>
       {(key) => {
         const browser = createBrowserStore()
-        return <BrowserPanelInner browser={browser} sessionID={params.id!} />
+        return <BrowserPanelInner browser={browser} routeDirectory={params.dir} sessionID={params.id!} />
       }}
     </Show>
   )
 }
 
-function BrowserPanelInner(props: { browser: ReturnType<typeof createBrowserStore>; sessionID: string }) {
+function BrowserPanelInner(props: {
+  browser: ReturnType<typeof createBrowserStore>
+  routeDirectory?: string
+  sessionID: string
+}) {
   const browser = props.browser
+  browserDebug("panel.inner", { sessionID: props.sessionID, routeDirectory: props.routeDirectory })
 
-  const ws = createBrowserWebSocket(browser, props.sessionID)
+  const ws = createBrowserWebSocket(browser, {
+    sessionID: props.sessionID,
+    routeDirectory: props.routeDirectory,
+  })
 
   const activeTab = createMemo(() => {
     const id = browser.activeTabId()

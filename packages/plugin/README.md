@@ -61,6 +61,37 @@ export default plugin
 
 There is no compatibility layer for legacy descriptor shapes. `plugin.json.name` must match `plugin.id`; Synergy fails validation or loading if they differ.
 
+## Tool Results And Attachments
+
+Tools can return user-facing files through `attachments`. Use the generated SDK `asset.upload()` route or the public `/asset` endpoint to upload binary data, then return the resulting `asset://...` URL. Do not import Synergy internal asset modules from a plugin.
+
+For visual tools whose output should appear as the main answer instead of a tool card, set `metadata.display.presentation` to `artifact-only` and list the attachment ids to promote:
+
+```ts
+return {
+  output: "",
+  metadata: {
+    display: {
+      presentation: "artifact-only",
+      primaryAttachmentIds: [partId],
+    },
+  },
+  attachments: [
+    {
+      id: partId,
+      sessionID: context.sessionID,
+      messageID: context.messageID,
+      type: "file",
+      mime: "image/svg+xml",
+      filename: "result.svg",
+      url: uploaded.url,
+    },
+  ],
+}
+```
+
+Running and failed tool states still render normally, so progress, approvals, and errors remain visible.
+
 ## Plugin Input
 
 `init(input)` receives runtime services scoped to the active Synergy Scope:

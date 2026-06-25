@@ -17,6 +17,7 @@ import type { Provider } from "@/provider/provider"
 import { Tool } from "@/tool/tool"
 import { ToolRegistry } from "@/tool/registry"
 import { ToolTimeout } from "@/tool/timeout"
+import { ToolExposure } from "@/tool/exposure"
 import { Log } from "@/util/log"
 import { TimeoutConfig } from "@/util/timeout-config"
 import { Session } from "."
@@ -53,6 +54,7 @@ export namespace ToolResolver {
 
   export interface Definition {
     id: string
+    exposure?: ToolExposure.Info
     description: string
     inputSchema: JSONSchema7
     createRuntimeTool?(input: Input): AITool
@@ -767,6 +769,8 @@ export namespace ToolResolver {
     // UI
     "question",
     "skill",
+    "search_tools",
+    "expand_tools",
     // Network
     "websearch",
     "webfetch",
@@ -776,6 +780,15 @@ export namespace ToolResolver {
     // Platform read
     "worktree_list",
   ])
+
+  function forcedToolGroups(session?: Info) {
+    const result = new Set<string>()
+    if (session?.blueprint?.planMode || session?.blueprint?.loopID) {
+      result.add("note")
+    }
+    return result
+  }
+
   export async function definitions(input: Omit<Input, "processor">): Promise<Definition[]> {
     using _ = log.time("definitions")
     let result: Definition[] = []
@@ -786,6 +799,7 @@ export namespace ToolResolver {
       }) as JSONSchema7
       result.push({
         id: item.id,
+        exposure: item.exposure,
         description: item.description,
         inputSchema: schema,
         createRuntimeTool(runtimeInput) {
@@ -992,9 +1006,12 @@ export namespace ToolResolver {
     }
 
     if (input.includeMCP !== false) {
-      const mcpTools = await MCP.tools()
-      const mcpToolNames = new Set(Object.keys(mcpTools))
-      for (const [key, item] of Object.entries(mcpTools)) {
+      const mcpEntries = await MCP.toolEntries()
+      const mcpToolNames = new Set(mcpEntries.map((entry) => entry.id))
+      for (const entry of mcpEntries) {
+        const key = entry.id
+        const item = entry.tool
+        const exposure = ToolExposure.mcpExposure(mcpEntries.length, entry.serverName)
         const schema = {
           ...((item.inputSchema as JSONSchema7 | undefined) ?? {}),
           type: "object",
@@ -1004,6 +1021,7 @@ export namespace ToolResolver {
         } satisfies JSONSchema7
         result.push({
           id: key,
+          exposure,
           description: item.description ?? "",
           inputSchema: schema,
           createRuntimeTool(runtimeInput) {
@@ -1188,6 +1206,12 @@ export namespace ToolResolver {
         })
       }
     }
+
+    result = result.filter((d) =>
+      ToolExposure.isVisible(d.id, d.exposure, input.session?.toolState, {
+        forcedGroups: forcedToolGroups(input.session),
+      }),
+    )
 
     if (input.session?.blueprint?.planMode) {
       result = result.filter((d) => PLAN_MODE_ALLOWED_TOOLS.has(d.id))
