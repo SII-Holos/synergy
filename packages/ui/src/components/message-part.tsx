@@ -681,6 +681,18 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
         title: "Skill",
         subtitle: input.name + (input.reference ? ` (${input.reference})` : ""),
       }
+    case "search_tools":
+      return {
+        icon: "tool-search",
+        title: "Search Tools",
+        subtitle: input.query,
+      }
+    case "expand_tools":
+      return {
+        icon: "tool-expand",
+        title: "Expand Tools",
+        subtitle: [...(input.groups ?? []), ...(input.tools ?? [])].join(", ") || input.reason,
+      }
     case "arxiv_search":
       return {
         icon: "book-open",

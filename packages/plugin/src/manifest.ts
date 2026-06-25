@@ -97,6 +97,30 @@ const UICommandDef = z
   })
   .strict()
 
+const ToolExposureDef = z.discriminatedUnion("mode", [
+  z
+    .object({
+      mode: z.literal("resident"),
+    })
+    .strict(),
+  z
+    .object({
+      mode: z.literal("group"),
+      group: z.string().min(1),
+      title: z.string().optional(),
+      description: z.string().optional(),
+      whenToExpand: z.string().optional(),
+    })
+    .strict(),
+  z
+    .object({
+      mode: z.literal("search"),
+      title: z.string().optional(),
+      keywords: z.array(z.string()).optional(),
+    })
+    .strict(),
+])
+
 const UIContribution = z
   .object({
     entry: z
@@ -241,6 +265,7 @@ export const PluginManifest = z
               icon: z.string().optional(),
               category: z.string().optional(),
               kind: z.string().optional(),
+              exposure: ToolExposureDef.optional(),
               capabilities: z
                 .object({
                   filesystem: z.enum(["none", "read", "write"]).optional(),

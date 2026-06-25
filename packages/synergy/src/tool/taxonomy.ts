@@ -42,6 +42,7 @@ export type ToolKind =
   | "orchestration.agenda"
   | "orchestration.research"
   | "platform.config"
+  | "platform.tooling"
   | "platform.compute"
   | "platform.collaboration"
   | "platform.external"
@@ -155,6 +156,8 @@ const REGISTRY: Record<string, ToolTaxonomyEntry> = {
   research_timeline: entry("orchestration.research"),
 
   // platform
+  search_tools: entry("platform.tooling", { auxiliary: true }),
+  expand_tools: entry("platform.tooling", { stateful: true, auxiliary: true }),
   runtime_reload: entry("platform.config", { stateful: true }),
   worktree_enter: entry("platform.config", { stateful: true }),
   worktree_leave: entry("platform.config", { stateful: true }),
@@ -309,6 +312,7 @@ export namespace ToolTaxonomy {
     "orchestration.agenda": "Schedule",
     "orchestration.research": "Research",
     "platform.config": "Config",
+    "platform.tooling": "Tools",
     "platform.compute": "Compute",
     "platform.collaboration": "Agora",
     "platform.external": "Tool",

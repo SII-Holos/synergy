@@ -669,6 +669,60 @@ ToolRegistry.register({
 })
 
 ToolRegistry.register({
+  name: "search_tools",
+  render(props) {
+    const count = () => props.metadata?.results?.length as number | undefined
+    return (
+      <BasicTool
+        {...props}
+        trigger={{
+          icon: "tool-search",
+          title: "Search Tools",
+          subtitle: props.input.query || "",
+          tags: count() != null ? [{ label: `${count()} match${count() === 1 ? "" : "es"}` }] : undefined,
+        }}
+      >
+        <Show when={props.output}>
+          {(output) => (
+            <div data-component="tool-output" data-scrollable>
+              <ToolTextOutput text={output()} />
+            </div>
+          )}
+        </Show>
+      </BasicTool>
+    )
+  },
+})
+
+ToolRegistry.register({
+  name: "expand_tools",
+  render(props) {
+    const groups = () => (props.metadata?.newlyExpandedGroups ?? props.input.groups ?? []) as string[]
+    const tools = () => (props.metadata?.newlyActivatedTools ?? props.input.tools ?? []) as string[]
+    const target = () => [...groups(), ...tools()].join(", ") || props.input.reason || ""
+    return (
+      <BasicTool
+        {...props}
+        trigger={{
+          icon: "tool-expand",
+          title: "Expand Tools",
+          subtitle: target(),
+          tags: props.metadata?.availableNextStep ? [{ label: "Next step" }] : undefined,
+        }}
+      >
+        <Show when={props.output}>
+          {(output) => (
+            <div data-component="tool-output" data-scrollable>
+              <ToolTextOutput text={output()} />
+            </div>
+          )}
+        </Show>
+      </BasicTool>
+    )
+  },
+})
+
+ToolRegistry.register({
   name: "arxiv_search",
   render(props) {
     return (

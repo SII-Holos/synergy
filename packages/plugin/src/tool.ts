@@ -41,8 +41,26 @@ export interface ToolResult {
   }>
 }
 
+export type ToolExposure =
+  | {
+      mode: "resident"
+    }
+  | {
+      mode: "group"
+      group: string
+      title?: string
+      description?: string
+      whenToExpand?: string
+    }
+  | {
+      mode: "search"
+      title?: string
+      keywords?: string[]
+    }
+
 export function tool<Args extends z.ZodRawShape>(input: {
   description: string
+  exposure?: ToolExposure
   args: Args
   execute(args: z.infer<z.ZodObject<Args>>, context: ToolContext): Promise<string | ToolResult>
 }) {

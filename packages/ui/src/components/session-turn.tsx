@@ -729,7 +729,11 @@ export function SessionTurn(
                           </div>
                         </Show>
                         <Show when={hasPrimaryResultAttachments()}>
-                          <ArtifactGallery files={primaryResultAttachments()} serverUrl={data.serverUrl} variant="result" />
+                          <ArtifactGallery
+                            files={primaryResultAttachments()}
+                            serverUrl={data.serverUrl}
+                            variant="result"
+                          />
                         </Show>
                         <Accordion
                           data-slot="session-turn-accordion"

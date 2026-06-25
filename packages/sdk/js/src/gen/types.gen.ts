@@ -2600,6 +2600,10 @@ export type Session = {
    * Tool names pre-authorized by the user via system scheduling (e.g. agenda wake). Bypasses the ask gate for these tools within this session only.
    */
   preAuthorizedActions?: Array<string>
+  toolState?: {
+    expandedGroups?: Array<string>
+    activatedTools?: Array<string>
+  }
   pendingReply?: boolean
   interaction?: SessionInteraction
   agenda?: {

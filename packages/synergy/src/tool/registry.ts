@@ -77,6 +77,8 @@ import { RenderTool } from "./render"
 import { EmailSendTool } from "./email"
 import { EmailReadTool } from "./email-read"
 import { RuntimeReloadTool } from "./runtime-reload"
+import { SearchToolsTool } from "./search-tools"
+import { ExpandToolsTool } from "./expand-tools"
 import { WorktreeEnterTool } from "./worktree-enter"
 import { WorktreeLeaveTool } from "./worktree-leave"
 import { WorktreeListTool } from "./worktree-list"
@@ -103,6 +105,7 @@ import { BrowserActionTool } from "./browser-action"
 import { BrowserEvalTool } from "./browser-eval"
 import { BrowserViewTool } from "./browser-view"
 import { BrowserAssetsTool } from "./browser-assets"
+import { ToolExposure } from "./exposure"
 
 export namespace ToolRegistry {
   const log = Log.create({ service: "tool.registry" })
@@ -128,13 +131,15 @@ export namespace ToolRegistry {
 
     const plugins = await Plugin.perPluginHooks()
     for (const plugin of plugins) {
+      const manifest = await Plugin.manifest(plugin.id).catch(() => null)
       for (const [id, def] of Object.entries(plugin.hooks.tool ?? {})) {
+        const exposure = pluginToolExposure(def, id, manifest)
         const runtime = getRuntime(plugin.id)
         const runtimeMode = plugin.runtimeMode ?? runtime?.mode ?? "in-process"
         if (runtimeMode !== "in-process") {
-          custom.push(fromRuntimePlugin(id, def, plugin.id))
+          custom.push(fromRuntimePlugin(id, def, plugin.id, exposure))
         } else {
-          custom.push(fromPlugin(id, def, plugin.id))
+          custom.push(fromPlugin(id, def, plugin.id, exposure))
         }
       }
     }
@@ -148,10 +153,22 @@ export namespace ToolRegistry {
     log.info("tool registry state reloaded")
   }
 
-  function fromPlugin(id: string, def: ToolDefinition, pluginId?: string): Tool.Info {
+  function pluginToolExposure(
+    def: ToolDefinition,
+    id: string,
+    manifest: Awaited<ReturnType<typeof Plugin.manifest>>,
+  ): ToolExposure.Info | undefined {
+    const explicit = (def as ToolDefinition & { exposure?: ToolExposure.Info }).exposure
+    if (explicit) return explicit
+    const manifestTool = manifest?.contributes?.tools?.find((tool) => tool.id === id || tool.name === id)
+    return manifestTool?.exposure as ToolExposure.Info | undefined
+  }
+
+  function fromPlugin(id: string, def: ToolDefinition, pluginId?: string, exposure?: ToolExposure.Info): Tool.Info {
     const fullId = pluginId ? PluginToolId.format(pluginId, id) : id
     return {
       id: fullId,
+      exposure,
       init: async (initCtx) => ({
         parameters: z.object(def.args),
         description: def.description,
@@ -172,10 +189,16 @@ export namespace ToolRegistry {
     }
   }
 
-  function fromRuntimePlugin(id: string, def: ToolDefinition, pluginId: string): Tool.Info {
+  function fromRuntimePlugin(
+    id: string,
+    def: ToolDefinition,
+    pluginId: string,
+    exposure?: ToolExposure.Info,
+  ): Tool.Info {
     const fullId = PluginToolId.format(pluginId, id)
     return {
       id: fullId,
+      exposure,
       init: async (initCtx) => ({
         parameters: z.object(def.args),
         description: def.description,
@@ -262,6 +285,8 @@ export namespace ToolRegistry {
       DagReadTool,
       DagPatchTool,
       WebSearchTool,
+      SearchToolsTool,
+      ExpandToolsTool,
       ArxivSearchTool,
       ArxivDownloadTool,
       SkillTool,
@@ -362,7 +387,7 @@ export namespace ToolRegistry {
       tools.map(async (t) => {
         using _ = log.time(t.id)
         const def = await t.init({ agent })
-        return { id: t.id, ...def }
+        return { id: t.id, exposure: ToolExposure.normalize(t.id, t.exposure), ...def }
       }),
     )
 

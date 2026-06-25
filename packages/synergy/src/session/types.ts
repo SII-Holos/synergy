@@ -144,6 +144,12 @@ export const Info = z
         .describe(
           "Tool names pre-authorized by the user via system scheduling (e.g. agenda wake). Bypasses the ask gate for these tools within this session only.",
         ),
+      toolState: z
+        .object({
+          expandedGroups: z.array(z.string()).optional(),
+          activatedTools: z.array(z.string()).optional(),
+        })
+        .optional(),
       pendingReply: z.boolean().optional(),
       interaction: SessionInteraction.Info.optional(),
       agenda: z
