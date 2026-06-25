@@ -33,10 +33,11 @@
   --settings-panel-bg-hover: light-dark(rgb(228 231 235), rgb(36 36 39));
   --settings-card-bg: light-dark(rgb(229 232 236), rgb(40 40 43));
   --settings-card-bg-hover: light-dark(rgb(222 226 232), rgb(46 46 49));
+  --settings-card-secondary-bg: light-dark(rgb(224 228 233), rgb(44 44 47));
   --settings-control-bg: light-dark(rgb(223 227 233), rgb(48 48 51));
   --settings-control-bg-hover: light-dark(rgb(214 220 228), rgb(54 54 58));
-  --settings-input-bg: light-dark(rgb(221 226 232), rgb(44 44 47));
-  --settings-input-bg-hover: light-dark(rgb(212 219 227), rgb(50 50 54));
+  --settings-input-bg: light-dark(rgb(221 226 232), rgb(50 50 54));
+  --settings-input-bg-hover: light-dark(rgb(212 219 227), rgb(56 56 60));
   --settings-selected-bg: light-dark(rgb(207 215 225), rgb(58 58 63));
   --settings-selected-bg-hover: light-dark(rgb(198 207 219), rgb(64 64 69));
   --settings-border: light-dark(rgba(17, 24, 39, 0.08), rgba(244, 244, 245, 0.08));
@@ -82,7 +83,7 @@
   --workbench-panel-bg-hover: var(--settings-panel-bg-hover);
   --workbench-card-bg: var(--settings-card-bg);
   --workbench-card-bg-hover: var(--settings-card-bg-hover);
-  --workbench-card-secondary-bg: var(--settings-card-bg);
+  --workbench-card-secondary-bg: var(--settings-card-secondary-bg);
   --workbench-control-bg: var(--settings-control-bg);
   --workbench-control-bg-hover: var(--settings-control-bg-hover);
   --workbench-input-bg: var(--settings-input-bg);

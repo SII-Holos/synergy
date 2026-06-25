@@ -121,11 +121,11 @@ a:active,
   --workbench-panel-bg-hover: light-dark(rgb(228 231 235), rgb(36 36 39));
   --workbench-card-bg: light-dark(rgb(229 232 236), rgb(40 40 43));
   --workbench-card-bg-hover: light-dark(rgb(222 226 232), rgb(46 46 49));
-  --workbench-card-secondary-bg: light-dark(rgb(224 228 233), rgb(38 38 41));
+  --workbench-card-secondary-bg: light-dark(rgb(224 228 233), rgb(44 44 47));
   --workbench-control-bg: light-dark(rgb(223 227 233), rgb(48 48 51));
   --workbench-control-bg-hover: light-dark(rgb(214 220 228), rgb(54 54 58));
-  --workbench-input-bg: light-dark(rgb(221 226 232), rgb(44 44 47));
-  --workbench-input-bg-hover: light-dark(rgb(212 219 227), rgb(50 50 54));
+  --workbench-input-bg: light-dark(rgb(221 226 232), rgb(50 50 54));
+  --workbench-input-bg-hover: light-dark(rgb(212 219 227), rgb(56 56 60));
   --workbench-popover-bg: light-dark(rgb(236 238 241), rgb(38 38 41));
   --workbench-selected-bg: light-dark(rgb(207 215 225), rgb(58 58 63));
   --workbench-selected-bg-hover: light-dark(rgb(198 207 219), rgb(64 64 69));
