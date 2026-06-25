@@ -8,7 +8,14 @@ export type ProviderConnectionSummary = {
   id: string
   name: string
   connected: boolean
+  available: boolean
   modelCount: number
+  authStatus?: string
+  availabilityReason?: string
+  reloginRequired?: boolean
+  cooldownUntil?: number
+  resetAt?: number
+  failureCode?: string
 }
 
 export function ProvidersPanel(props: {
@@ -17,6 +24,26 @@ export function ProvidersPanel(props: {
   onProviderChange: (key: keyof ProvidersStore, value: string) => void
   onConnectProvider: () => void
 }) {
+  function statusLabel(provider: ProviderConnectionSummary) {
+    if (provider.authStatus === "dead") return "Relogin Required"
+    if (provider.authStatus === "exhausted") return "Exhausted"
+    if (provider.authStatus === "expired") return "Expired"
+    if (provider.connected) return provider.available ? "Connected" : "Unavailable"
+    return "Not Connected"
+  }
+
+  function statusDetail(provider: ProviderConnectionSummary) {
+    const parts: string[] = []
+    if (provider.failureCode) parts.push(provider.failureCode)
+    if (provider.reloginRequired) parts.push("relogin required")
+    if (provider.cooldownUntil) parts.push(`cooldown until ${new Date(provider.cooldownUntil * 1000).toLocaleString()}`)
+    if (provider.resetAt) parts.push(`resets ${new Date(provider.resetAt * 1000).toLocaleString()}`)
+    if (!provider.available && provider.availabilityReason && provider.availabilityReason !== "connected") {
+      parts.push(provider.availabilityReason.replace(/_/g, " "))
+    }
+    return parts.join(" • ")
+  }
+
   return (
     <SettingsPage
       title="Providers"
@@ -55,11 +82,19 @@ export function ProvidersPanel(props: {
               <div class="ds-summary-row">
                 <div class="min-w-0">
                   <div class="text-13-medium text-text-base truncate">{provider.name}</div>
-                  <div class="text-12-regular text-text-weak truncate">{provider.id}</div>
+                  <div class="text-12-regular text-text-weak truncate">
+                    {provider.id}
+                    {statusDetail(provider) ? ` • ${statusDetail(provider)}` : ""}
+                  </div>
                 </div>
                 <div class="flex items-center gap-2">
-                  <span class="ds-inline-badge" classList={{ "ds-inline-badge-muted": !provider.connected }}>
-                    {provider.connected ? "Connected" : "Not Connected"}
+                  <span
+                    class="ds-inline-badge"
+                    classList={{
+                      "ds-inline-badge-muted": !provider.connected || !provider.available,
+                    }}
+                  >
+                    {statusLabel(provider)}
                   </span>
                   <span class="text-12-regular text-text-weaker">{provider.modelCount} models</span>
                 </div>

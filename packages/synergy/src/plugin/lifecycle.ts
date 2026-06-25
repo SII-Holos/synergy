@@ -20,7 +20,7 @@ const log = Log.create({ service: "plugin.lifecycle" })
 export async function trigger<
   Name extends Exclude<
     keyof Required<PluginHooks>,
-    "auth" | "event" | "tool" | "cli" | "skills" | "agents" | "dispose"
+    "auth" | "provider" | "event" | "tool" | "cli" | "skills" | "agents" | "dispose"
   >,
   Input = Parameters<Required<PluginHooks>[Name]>[0],
   Output = Parameters<Required<PluginHooks>[Name]>[1],

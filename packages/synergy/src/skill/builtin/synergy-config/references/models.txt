@@ -151,7 +151,7 @@ Strongest model for every role (highest cost, highest quality):
 
 | Problem | Check |
 |---|---|
-| "Model not available" | Provider is configured in `provider` section, API key is saved (`~/.synergy/data/auth/api-key.json`), model ID matches the provider registry exactly |
+| "Model not available" | Provider is configured in `provider` section, credential is saved (`~/.synergy/data/auth/provider-auth.json`), model ID matches the provider registry exactly |
 | `vision_model` not working | Must be explicitly set — does not fall back. Verify the model supports image input. Check the model ID format is `provider/model` |
 | Wrong model used by an agent | Check the agent's `model` field for per-agent overrides. Check model role assignments — the agent may be using a role you didn't expect |
 | Expensive model used for trivial tasks | Set `nano_model` and `mini_model` to cheaper alternatives. Without them, title generation and classification use `model` at full cost |

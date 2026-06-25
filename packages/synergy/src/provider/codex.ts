@@ -8,6 +8,7 @@ import path from "path"
 import z from "zod"
 import type { ModelsDev } from "./models"
 import type { AuthOuathResult } from "@ericsanchezok/synergy-plugin"
+import { AccountUsage } from "./usage"
 
 export namespace CodexProvider {
   const log = Log.create({ service: "provider.codex" })
@@ -440,16 +441,41 @@ export namespace CodexProvider {
     if (!shouldRefresh) return auth.access
 
     try {
-      const refreshed = await refreshOAuth(auth, options?.fetch)
-      await Auth.set(PROVIDER_ID, {
-        type: "oauth",
-        access: refreshed.access,
-        refresh: refreshed.refresh,
-        expires: refreshed.expires,
+      return await Auth.withLock(`${PROVIDER_ID}:oauth-refresh`, async () => {
+        const latest = await Auth.get(PROVIDER_ID)
+        if (latest?.type === "oauth" && !options?.forceRefresh) {
+          const latestExpires = accessTokenExpiresAt(latest.access) ?? latest.expires
+          const latestShouldRefresh =
+            (options?.refreshIfExpiring !== false && latestExpires <= nowSeconds() + AUTH_REFRESH_SKEW_SECONDS) ||
+            (options?.refreshIfExpiring !== false && isAccessTokenExpiring(latest.access))
+          if (!latestShouldRefresh) return latest.access
+        }
+
+        const refreshSource = latest?.type === "oauth" ? latest : auth
+        const refreshed = await refreshOAuth(refreshSource, options?.fetch)
+        await Auth.set(
+          PROVIDER_ID,
+          {
+            type: "oauth",
+            access: refreshed.access,
+            refresh: refreshed.refresh,
+            expires: refreshed.expires,
+          },
+          { source: "api" },
+        )
+        return refreshed.access
       })
-      return refreshed.access
     } catch (error) {
-      if (RateLimitError.isInstance(error) && auth.access) return auth.access
+      if (RateLimitError.isInstance(error)) {
+        await Auth.markExhausted(PROVIDER_ID, {
+          failureCode: error.data.code,
+          cooldownUntil: error.data.retryAfterSeconds ? nowSeconds() + error.data.retryAfterSeconds : undefined,
+        }).catch(() => {})
+        if (auth.access) return auth.access
+      }
+      if (AuthError.isInstance(error) && error.data.reloginRequired) {
+        await Auth.markDead(PROVIDER_ID, error.data.code).catch(() => {})
+      }
       if (options?.allowMissing && AuthError.isInstance(error) && error.data.reloginRequired) return undefined
       throw error
     }
@@ -629,15 +655,87 @@ export namespace CodexProvider {
   }
 
   export async function saveImportedToken(token: TokenPayload) {
-    await Auth.set(PROVIDER_ID, {
-      type: "oauth",
-      access: token.access,
-      refresh: token.refresh,
-      expires: token.expires,
-    })
+    await Auth.set(
+      PROVIDER_ID,
+      {
+        type: "oauth",
+        access: token.access,
+        refresh: token.refresh,
+        expires: token.expires,
+      },
+      { source: "import" },
+    )
   }
 
   export function authFilePath() {
-    return Global.Path.authApiKey
+    return Global.Path.authProvider
+  }
+
+  function usageURL() {
+    let normalized = baseURL()
+    if (normalized.endsWith("/codex")) normalized = normalized.slice(0, -"/codex".length)
+    if (normalized.includes("/backend-api")) return `${normalized}/wham/usage`
+    return `${normalized}/api/codex/usage`
+  }
+
+  export async function fetchUsage(fetchFn: FetchLike = fetch): Promise<AccountUsage.Snapshot> {
+    const access = await resolveToken({ refreshIfExpiring: true, allowMissing: true, fetch: fetchFn })
+    if (!access) {
+      return AccountUsage.unavailable(PROVIDER_ID, "OpenAI Codex is not connected.", { reloginRequired: true })
+    }
+    const response = await fetchFn(usageURL(), {
+      headers: {
+        Authorization: `Bearer ${access}`,
+        Accept: "application/json",
+        "User-Agent": "codex-cli",
+        ...codexHeaders(access),
+      },
+      signal: AbortSignal.timeout(15_000),
+    })
+    if (!response.ok) {
+      if (response.status === 401 || response.status === 403) {
+        return AccountUsage.error(PROVIDER_ID, `Codex usage request failed with status ${response.status}.`, {
+          reloginRequired: true,
+        })
+      }
+      return AccountUsage.error(PROVIDER_ID, `Codex usage request failed with status ${response.status}.`)
+    }
+    const payload = await safeJson(response)
+    const rateLimit = payload.rate_limit ?? {}
+    const windows = [
+      AccountUsage.percentWindow({
+        label: "Session",
+        usedPercent: rateLimit.primary_window?.used_percent,
+        resetAt: rateLimit.primary_window?.reset_at,
+      }),
+      AccountUsage.percentWindow({
+        label: "Weekly",
+        usedPercent: rateLimit.secondary_window?.used_percent,
+        resetAt: rateLimit.secondary_window?.reset_at,
+      }),
+    ].filter((item): item is AccountUsage.Window => !!item)
+    const creditsPayload = payload.credits ?? {}
+    const details: string[] = []
+    const credits: AccountUsage.Credits | undefined =
+      creditsPayload && typeof creditsPayload === "object"
+        ? {
+            hasCredits: !!creditsPayload.has_credits,
+            balance: typeof creditsPayload.balance === "number" ? creditsPayload.balance : undefined,
+            unlimited: !!creditsPayload.unlimited,
+            currency: "USD",
+          }
+        : undefined
+    if (credits?.unlimited) details.push("Credits balance: unlimited")
+    if (typeof credits?.balance === "number") details.push(`Credits balance: $${credits.balance.toFixed(2)}`)
+    return {
+      providerID: PROVIDER_ID,
+      status: "available",
+      source: "usage_api",
+      fetchedAt: new Date().toISOString(),
+      plan: typeof payload.plan_type === "string" ? payload.plan_type : undefined,
+      windows,
+      details,
+      credits,
+    }
   }
 }

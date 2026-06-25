@@ -17,7 +17,7 @@ import { TimeoutConfig } from "@/util/timeout-config"
 import { iife } from "@/util/iife"
 
 // Direct imports for bundled providers
-import { createAmazonBedrock, type AmazonBedrockProviderSettings } from "@ai-sdk/amazon-bedrock"
+import { createAmazonBedrock } from "@ai-sdk/amazon-bedrock"
 import { createAnthropic } from "@ai-sdk/anthropic"
 import { createAzure } from "@ai-sdk/azure"
 import { createGoogleGenerativeAI } from "@ai-sdk/google"
@@ -37,7 +37,8 @@ import { createTogetherAI } from "@ai-sdk/togetherai"
 import { createPerplexity } from "@ai-sdk/perplexity"
 import { createVercel } from "@ai-sdk/vercel"
 import { ProviderTransform } from "./transform"
-import { CodexProvider } from "./codex"
+import { ProviderCatalog } from "./catalog"
+import { ProviderProfile } from "./profile"
 
 export namespace Provider {
   const log = Log.create({ service: "provider" })
@@ -65,378 +66,6 @@ export namespace Provider {
   }
 
   type CustomModelLoader = (sdk: any, modelID: string, options?: Record<string, any>) => Promise<any>
-  type CustomLoader = (provider: Info) => Promise<{
-    autoload: boolean
-    getModel?: CustomModelLoader
-    options?: Record<string, any>
-  }>
-
-  const CUSTOM_LOADERS: Record<string, CustomLoader> = {
-    async anthropic() {
-      return {
-        autoload: false,
-        options: {
-          headers: {
-            "anthropic-beta":
-              "claude-code-20250219,interleaved-thinking-2025-05-14,fine-grained-tool-streaming-2025-05-14",
-          },
-        },
-      }
-    },
-    openai: async () => {
-      return {
-        autoload: false,
-        async getModel(sdk: any, modelID: string, _options?: Record<string, any>) {
-          return sdk.responses(modelID)
-        },
-        options: {},
-      }
-    },
-    [CodexProvider.PROVIDER_ID]: async () => {
-      const access = await CodexProvider.resolveToken({ allowMissing: true }).catch((error) => {
-        log.warn("failed to resolve codex credentials", { error })
-        return undefined
-      })
-      if (!access) return { autoload: false }
-      return {
-        autoload: true,
-        async getModel(sdk: any, modelID: string, _options?: Record<string, any>) {
-          return sdk.responses(modelID)
-        },
-        options: {
-          apiKey: "synergy-codex-oauth",
-          baseURL: CodexProvider.runtimeBaseURL(),
-          fetch: CodexProvider.codexFetch,
-          setCacheKey: true,
-        },
-      }
-    },
-    "github-copilot": async () => {
-      return {
-        autoload: false,
-        async getModel(sdk: any, modelID: string, _options?: Record<string, any>) {
-          if (modelID.includes("codex")) {
-            return sdk.responses(modelID)
-          }
-          return sdk.chat(modelID)
-        },
-        options: {},
-      }
-    },
-    "github-copilot-enterprise": async () => {
-      return {
-        autoload: false,
-        async getModel(sdk: any, modelID: string, _options?: Record<string, any>) {
-          if (modelID.includes("codex")) {
-            return sdk.responses(modelID)
-          }
-          return sdk.chat(modelID)
-        },
-        options: {},
-      }
-    },
-    azure: async () => {
-      return {
-        autoload: false,
-        async getModel(sdk: any, modelID: string, options?: Record<string, any>) {
-          if (options?.["useCompletionUrls"]) {
-            return sdk.chat(modelID)
-          } else {
-            return sdk.responses(modelID)
-          }
-        },
-        options: {},
-      }
-    },
-    "azure-cognitive-services": async () => {
-      const resourceName = Env.get("AZURE_COGNITIVE_SERVICES_RESOURCE_NAME")
-      return {
-        autoload: false,
-        async getModel(sdk: any, modelID: string, options?: Record<string, any>) {
-          if (options?.["useCompletionUrls"]) {
-            return sdk.chat(modelID)
-          } else {
-            return sdk.responses(modelID)
-          }
-        },
-        options: {
-          baseURL: resourceName ? `https://${resourceName}.cognitiveservices.azure.com/openai` : undefined,
-        },
-      }
-    },
-    "amazon-bedrock": async () => {
-      const config = await Config.current()
-      const providerConfig = config.provider?.["amazon-bedrock"]
-
-      const auth = await Auth.get("amazon-bedrock")
-
-      // Region precedence: 1) config file, 2) env var, 3) default
-      const configRegion = providerConfig?.options?.region
-      const envRegion = Env.get("AWS_REGION")
-      const defaultRegion = configRegion ?? envRegion ?? "us-east-1"
-
-      // Profile: config file takes precedence over env var
-      const configProfile = providerConfig?.options?.profile
-      const envProfile = Env.get("AWS_PROFILE")
-      const profile = configProfile ?? envProfile
-
-      const awsAccessKeyId = Env.get("AWS_ACCESS_KEY_ID")
-
-      const awsBearerToken = iife(() => {
-        const envToken = Env.get("AWS_BEARER_TOKEN_BEDROCK")
-        if (envToken) return envToken
-        if (auth?.type === "api") {
-          Env.set("AWS_BEARER_TOKEN_BEDROCK", auth.key)
-          return auth.key
-        }
-        return undefined
-      })
-
-      if (!profile && !awsAccessKeyId && !awsBearerToken) return { autoload: false }
-
-      const { fromNodeProviderChain } = await import((await BunProc.install("@aws-sdk/credential-providers")).entryPath)
-
-      // Build credential provider options (only pass profile if specified)
-      const credentialProviderOptions = profile ? { profile } : {}
-
-      const providerOptions: AmazonBedrockProviderSettings = {
-        region: defaultRegion,
-        credentialProvider: fromNodeProviderChain(credentialProviderOptions),
-      }
-
-      // Add custom endpoint if specified (endpoint takes precedence over baseURL)
-      const endpoint = providerConfig?.options?.endpoint ?? providerConfig?.options?.baseURL
-      if (endpoint) {
-        providerOptions.baseURL = endpoint
-      }
-
-      return {
-        autoload: true,
-        options: providerOptions,
-        async getModel(sdk: any, modelID: string, options?: Record<string, any>) {
-          // Skip region prefixing if model already has a cross-region inference profile prefix
-          if (modelID.startsWith("global.") || modelID.startsWith("jp.")) {
-            return sdk.languageModel(modelID)
-          }
-
-          // Region resolution precedence (highest to lowest):
-          // 1. options.region from synergy.json provider config
-          // 2. defaultRegion from AWS_REGION environment variable
-          // 3. Default "us-east-1" (baked into defaultRegion)
-          const region = options?.region ?? defaultRegion
-
-          let regionPrefix = region.split("-")[0]
-
-          switch (regionPrefix) {
-            case "us": {
-              const modelRequiresPrefix = [
-                "nova-micro",
-                "nova-lite",
-                "nova-pro",
-                "nova-premier",
-                "claude",
-                "deepseek",
-              ].some((m) => modelID.includes(m))
-              const isGovCloud = region.startsWith("us-gov")
-              if (modelRequiresPrefix && !isGovCloud) {
-                modelID = `${regionPrefix}.${modelID}`
-              }
-              break
-            }
-            case "eu": {
-              const regionRequiresPrefix = [
-                "eu-west-1",
-                "eu-west-2",
-                "eu-west-3",
-                "eu-north-1",
-                "eu-central-1",
-                "eu-south-1",
-                "eu-south-2",
-              ].some((r) => region.includes(r))
-              const modelRequiresPrefix = ["claude", "nova-lite", "nova-micro", "llama3", "pixtral"].some((m) =>
-                modelID.includes(m),
-              )
-              if (regionRequiresPrefix && modelRequiresPrefix) {
-                modelID = `${regionPrefix}.${modelID}`
-              }
-              break
-            }
-            case "ap": {
-              const isAustraliaRegion = ["ap-southeast-2", "ap-southeast-4"].includes(region)
-              const isTokyoRegion = region === "ap-northeast-1"
-              if (
-                isAustraliaRegion &&
-                ["anthropic.claude-sonnet-4-5", "anthropic.claude-haiku"].some((m) => modelID.includes(m))
-              ) {
-                regionPrefix = "au"
-                modelID = `${regionPrefix}.${modelID}`
-              } else if (isTokyoRegion) {
-                // Tokyo region uses jp. prefix for cross-region inference
-                const modelRequiresPrefix = ["claude", "nova-lite", "nova-micro", "nova-pro"].some((m) =>
-                  modelID.includes(m),
-                )
-                if (modelRequiresPrefix) {
-                  regionPrefix = "jp"
-                  modelID = `${regionPrefix}.${modelID}`
-                }
-              } else {
-                // Other APAC regions use apac. prefix
-                const modelRequiresPrefix = ["claude", "nova-lite", "nova-micro", "nova-pro"].some((m) =>
-                  modelID.includes(m),
-                )
-                if (modelRequiresPrefix) {
-                  regionPrefix = "apac"
-                  modelID = `${regionPrefix}.${modelID}`
-                }
-              }
-              break
-            }
-          }
-
-          return sdk.languageModel(modelID)
-        },
-      }
-    },
-    openrouter: async () => {
-      return {
-        autoload: false,
-        options: {
-          headers: {
-            "HTTP-Referer": "https://synergy.holosai.io/",
-            "X-Title": "synergy",
-          },
-        },
-      }
-    },
-    vercel: async () => {
-      return {
-        autoload: false,
-        options: {
-          headers: {
-            "http-referer": "https://synergy.holosai.io/",
-            "x-title": "synergy",
-          },
-        },
-      }
-    },
-    "google-vertex": async () => {
-      const project = Env.get("GOOGLE_CLOUD_PROJECT") ?? Env.get("GCP_PROJECT") ?? Env.get("GCLOUD_PROJECT")
-      const location = Env.get("GOOGLE_CLOUD_LOCATION") ?? Env.get("VERTEX_LOCATION") ?? "us-east5"
-      const autoload = Boolean(project)
-      if (!autoload) return { autoload: false }
-      return {
-        autoload: true,
-        options: {
-          project,
-          location,
-        },
-        async getModel(sdk: any, modelID: string) {
-          const id = String(modelID).trim()
-          return sdk.languageModel(id)
-        },
-      }
-    },
-    "google-vertex-anthropic": async () => {
-      const project = Env.get("GOOGLE_CLOUD_PROJECT") ?? Env.get("GCP_PROJECT") ?? Env.get("GCLOUD_PROJECT")
-      const location = Env.get("GOOGLE_CLOUD_LOCATION") ?? Env.get("VERTEX_LOCATION") ?? "global"
-      const autoload = Boolean(project)
-      if (!autoload) return { autoload: false }
-      return {
-        autoload: true,
-        options: {
-          project,
-          location,
-        },
-        async getModel(sdk: any, modelID) {
-          const id = String(modelID).trim()
-          return sdk.languageModel(id)
-        },
-      }
-    },
-    "sap-ai-core": async () => {
-      const auth = await Auth.get("sap-ai-core")
-      const envServiceKey = iife(() => {
-        const envAICoreServiceKey = Env.get("AICORE_SERVICE_KEY")
-        if (envAICoreServiceKey) return envAICoreServiceKey
-        if (auth?.type === "api") {
-          Env.set("AICORE_SERVICE_KEY", auth.key)
-          return auth.key
-        }
-        return undefined
-      })
-      const deploymentId = Env.get("AICORE_DEPLOYMENT_ID")
-      const resourceGroup = Env.get("AICORE_RESOURCE_GROUP")
-
-      return {
-        autoload: !!envServiceKey,
-        options: envServiceKey ? { deploymentId, resourceGroup } : {},
-        async getModel(sdk: any, modelID: string) {
-          return sdk(modelID)
-        },
-      }
-    },
-    zenmux: async () => {
-      return {
-        autoload: false,
-        options: {
-          headers: {
-            "HTTP-Referer": "https://synergy.holosai.io/",
-            "X-Title": "synergy",
-          },
-        },
-      }
-    },
-    "cloudflare-ai-gateway": async (input) => {
-      const accountId = Env.get("CLOUDFLARE_ACCOUNT_ID")
-      const gateway = Env.get("CLOUDFLARE_GATEWAY_ID")
-
-      if (!accountId || !gateway) return { autoload: false }
-
-      // Get API token from env or auth prompt
-      const apiToken = await (async () => {
-        const envToken = Env.get("CLOUDFLARE_API_TOKEN")
-        if (envToken) return envToken
-        const auth = await Auth.get(input.id)
-        if (auth?.type === "api") return auth.key
-        return undefined
-      })()
-
-      return {
-        autoload: true,
-        async getModel(sdk: any, modelID: string, _options?: Record<string, any>) {
-          return sdk.languageModel(modelID)
-        },
-        options: {
-          baseURL: `https://gateway.ai.cloudflare.com/v1/${accountId}/${gateway}/compat`,
-          headers: {
-            // Cloudflare AI Gateway uses cf-aig-authorization for authenticated gateways
-            // This enables Unified Billing where Cloudflare handles upstream provider auth
-            ...(apiToken ? { "cf-aig-authorization": `Bearer ${apiToken}` } : {}),
-            "HTTP-Referer": "https://synergy.holosai.io/",
-            "X-Title": "synergy",
-          },
-          // Custom fetch to strip Authorization header - AI Gateway uses cf-aig-authorization instead
-          // Sending Authorization header with invalid value causes auth errors
-          fetch: async (input: RequestInfo | URL, init?: RequestInit) => {
-            const headers = new Headers(init?.headers)
-            headers.delete("Authorization")
-            return fetch(input, { ...init, headers })
-          },
-        },
-      }
-    },
-    cerebras: async () => {
-      return {
-        autoload: false,
-        options: {
-          headers: {
-            "X-Cerebras-3rd-Party-Integration": "synergy",
-          },
-        },
-      }
-    },
-  }
-
   export const Model = z
     .object({
       id: z.string(),
@@ -613,11 +242,7 @@ export namespace Provider {
       return true
     }
 
-    const modelsDev = { ...(await ModelsDev.get()) }
-    if (isProviderAllowed(CodexProvider.PROVIDER_ID)) {
-      const codexModelIDs = await CodexProvider.runtimeModelIDs()
-      modelsDev[CodexProvider.PROVIDER_ID] = CodexProvider.modelsDevProvider(codexModelIDs, modelsDev.openai?.models)
-    }
+    const modelsDev = { ...(await ProviderCatalog.resolve({ config, includeLive: true })) }
     const database = mapValues(modelsDev, fromModelsDevProvider)
 
     const providers: { [providerID: string]: Info } = {}
@@ -630,20 +255,6 @@ export namespace Provider {
     log.info("init")
 
     const configProviders = Object.entries(config.provider ?? {})
-
-    // Add GitHub Copilot Enterprise provider that inherits from GitHub Copilot
-    if (database["github-copilot"]) {
-      const githubCopilot = database["github-copilot"]
-      database["github-copilot-enterprise"] = {
-        ...githubCopilot,
-        id: "github-copilot-enterprise",
-        name: "GitHub Copilot Enterprise",
-        models: mapValues(githubCopilot.models, (model) => ({
-          ...model,
-          providerID: "github-copilot-enterprise",
-        })),
-      }
-    }
 
     function mergeProvider(providerID: string, provider: Partial<Info>) {
       const existing = providers[providerID]
@@ -812,16 +423,34 @@ export namespace Provider {
       }
     }
 
-    for (const [providerID, fn] of Object.entries(CUSTOM_LOADERS)) {
+    for (const profile of ProviderProfile.all()) {
+      const providerID = profile.id
       if (disabled.has(providerID)) continue
-      const result = await fn(database[providerID])
-      if (result && (result.autoload || providers[providerID])) {
-        if (result.getModel) modelLoaders[providerID] = result.getModel
-        mergeProvider(providerID, {
-          source: "custom",
-          options: result.options,
-        })
+      const base = database[providerID]
+      if (!base) continue
+      const storedAuth = await Auth.get(providerID)
+      const profileInput = {
+        providerID,
+        auth: storedAuth,
+        provider: modelsDev[providerID],
       }
+      const auth = (await profile.resolveAuth?.(profileInput)) ?? storedAuth
+      const autoload = (await profile.autoload?.({ ...profileInput, auth })) ?? false
+      const shouldMerge = !!auth || !!providers[providerID] || autoload
+      if (!shouldMerge) continue
+      const modelOptions = (await profile.modelOptions?.({ ...profileInput, auth })) ?? {}
+      const runtimeOptions = (await profile.runtimeOptions?.({ ...profileInput, auth })) ?? {}
+      const options = mergeDeep(modelOptions, runtimeOptions)
+      if (profile.getModel || profile.modelFactory) {
+        modelLoaders[providerID] = async (sdk: any, modelID: string, modelOptions?: Record<string, any>) => {
+          if (profile.getModel) return profile.getModel({ sdk, modelID, options: modelOptions })
+          return ProviderProfile.defaultModelFactory(profile.modelFactory, { sdk, modelID, options: modelOptions })
+        }
+      }
+      mergeProvider(providerID, {
+        source: "custom",
+        options,
+      })
     }
 
     // load config
@@ -837,16 +466,6 @@ export namespace Provider {
       if (!isProviderAllowed(providerID)) {
         delete providers[providerID]
         continue
-      }
-
-      if (providerID === "github-copilot" || providerID === "github-copilot-enterprise") {
-        provider.models = mapValues(provider.models, (model) => ({
-          ...model,
-          api: {
-            ...model.api,
-            npm: "@ai-sdk/github-copilot",
-          },
-        }))
       }
 
       const configProvider = config.provider?.[providerID]
@@ -891,6 +510,7 @@ export namespace Provider {
 
   export async function reload() {
     log.info("reloading provider state")
+    ProviderCatalog.reset()
     await state.resetAll()
     log.info("provider state reloaded")
   }

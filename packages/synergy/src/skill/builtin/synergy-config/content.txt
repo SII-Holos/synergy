@@ -52,7 +52,7 @@ Web Settings uses these same canonical domains. Common fields are editable in fo
 
 | What | Path |
 |---|---|
-| API key credential store | `~/.synergy/data/auth/api-key.json` |
+| Provider credential store | `~/.synergy/data/auth/provider-auth.json` |
 | MCP OAuth credentials | `~/.synergy/data/auth/mcp.json` |
 | Provider/model cache | `~/.synergy/cache/models.json` |
 | Agent markdown (global) | `~/.synergy/config/agent/<name>.md` |
@@ -84,7 +84,7 @@ Every config change follows this pattern:
 ### Critical rules
 
 1. Always read before writing — merge, never overwrite
-2. Never hardcode API keys in config files — use the credential store (`~/.synergy/data/auth/api-key.json`) or `{env:VAR_NAME}` references
+2. Never hardcode API keys in config files — use the credential store (`~/.synergy/data/auth/provider-auth.json`) or `{env:VAR_NAME}` references
 3. Preserve existing JSONC comments
 4. Always reload after writing — changes don't apply until reloaded
 5. `$schema` belongs only in `00-general.jsonc`; other domain files should contain only their owned keys

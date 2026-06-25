@@ -1,0 +1,349 @@
+import { Global } from "@/global"
+import { Installation } from "@/global/installation"
+import { Log } from "@/util/log"
+import { mergeDeep } from "remeda"
+import z from "zod"
+import { Auth } from "./api-key"
+import { registerBuiltinProviderProfiles } from "./builtin"
+import { ModelsDev } from "./models"
+import { ProviderProfile } from "./profile"
+
+export namespace ProviderCatalog {
+  const log = Log.create({ service: "provider.catalog" })
+
+  export const DEFAULT_REGISTRY_URL =
+    "https://raw.githubusercontent.com/SII-Holos/synergy-provider-registry/main/catalog.v1.json"
+  export const DEFAULT_CACHE_TTL_MS = 60 * 60 * 1000
+  export const DEFAULT_PUBLIC_KEY = "h4Y782Oylib+BlO2/7AKO5vY6skpCmTZNhqr3GRoBxA="
+
+  export const Config = z
+    .object({
+      enabled: z.boolean().optional().default(true),
+      registryUrl: z.string().url().optional().default(DEFAULT_REGISTRY_URL),
+      publicKey: z.string().optional().default(DEFAULT_PUBLIC_KEY),
+      cacheTtlMs: z.number().int().positive().optional().default(DEFAULT_CACHE_TTL_MS),
+      offlineCache: z.boolean().optional().default(true),
+    })
+    .strict()
+    .meta({ ref: "ProviderCatalogConfig" })
+  export type Config = z.infer<typeof Config>
+
+  const RemoteModel = ModelsDev.Model.partial().extend({
+    id: z.string().optional(),
+  })
+  const RemoteProvider = ModelsDev.Provider.partial()
+    .extend({
+      id: z.string(),
+      name: z.string(),
+      modelsDevProviderID: z.string().optional(),
+      authStrategy: z.string().optional(),
+      runtimeStrategy: z.string().optional(),
+      usageStrategy: z.string().optional(),
+      fallbackModels: z.array(z.string()).optional(),
+      models: z.record(z.string(), RemoteModel).optional(),
+    })
+    .strict()
+  const RemoteCatalog = z
+    .object({
+      version: z.literal(1),
+      providers: z.record(z.string(), RemoteProvider),
+    })
+    .strict()
+  type RemoteCatalog = z.infer<typeof RemoteCatalog>
+
+  let inFlight: Promise<Record<string, ModelsDev.Provider>> | undefined
+  let memoryCache: { value: Record<string, ModelsDev.Provider>; createdAt: number } | undefined
+
+  function fallbackModel(provider: ModelsDev.Provider, modelID: string): ModelsDev.Model {
+    return {
+      id: modelID,
+      name: modelID,
+      family: modelID.split(/[-/:]/)[0] || modelID,
+      release_date: "2026-06-25",
+      attachment: false,
+      reasoning: modelID.includes("gpt-5") || modelID.includes("claude") || modelID.includes("qwen"),
+      temperature: false,
+      tool_call: true,
+      cost: { input: 0, output: 0 },
+      limit: { context: 128000, input: 96000, output: 32000 },
+      modalities: {
+        input: ["text"],
+        output: ["text"],
+      },
+      options: {},
+      provider: {
+        npm: provider.npm ?? "@ai-sdk/openai-compatible",
+      },
+    }
+  }
+
+  function profileProvider(
+    profile: ProviderProfile.Profile,
+    modelsDev: Record<string, ModelsDev.Provider>,
+  ): ModelsDev.Provider {
+    const sourceID = profile.modelsDevProviderID ?? profile.id
+    const source = modelsDev[sourceID]
+    const sourceModelIDs = Object.keys(source?.models ?? {})
+    const mappedProvider = sourceID !== profile.id
+    const modelIDs =
+      mappedProvider && profile.fallbackModels && profile.fallbackModels.length > 0
+        ? profile.fallbackModels
+        : sourceModelIDs.length > 0
+          ? sourceModelIDs
+          : (profile.fallbackModels ?? [])
+    const provider: ModelsDev.Provider = {
+      id: profile.id,
+      name: profile.name,
+      env: profile.env ?? source?.env ?? [],
+      api: profile.baseURL ?? source?.api,
+      npm: profile.aiSdkPackage ?? source?.npm,
+      models: {},
+    }
+    const npm = profile.aiSdkPackage ?? source?.npm ?? provider.npm ?? "@ai-sdk/openai-compatible"
+    for (const modelID of modelIDs) {
+      const sourceModel = source?.models?.[modelID]
+      provider.models[modelID] = sourceModel
+        ? {
+            ...sourceModel,
+            id: modelID,
+            provider: {
+              ...(sourceModel.provider ?? {}),
+              npm: profile.aiSdkPackage ?? sourceModel.provider?.npm ?? source?.npm ?? npm,
+            },
+          }
+        : fallbackModel(provider, modelID)
+    }
+    return provider
+  }
+
+  function mergeProvider(
+    base: ModelsDev.Provider | undefined,
+    override: Partial<ModelsDev.Provider>,
+  ): ModelsDev.Provider {
+    const merged = mergeDeep(
+      base ?? {
+        id: override.id!,
+        name: override.name ?? override.id!,
+        env: [],
+        models: {},
+      },
+      override,
+    ) as ModelsDev.Provider
+    merged.id = override.id ?? merged.id
+    merged.name = override.name ?? merged.name ?? merged.id
+    merged.env ??= []
+    merged.models ??= {}
+    return merged
+  }
+
+  async function verifySignature(text: string, signature: string, publicKey: string): Promise<boolean> {
+    if (!publicKey.trim()) return false
+    try {
+      const key = await crypto.subtle.importKey("raw", Buffer.from(publicKey, "base64"), { name: "Ed25519" }, false, [
+        "verify",
+      ])
+      return crypto.subtle.verify("Ed25519", key, Buffer.from(signature, "base64"), new TextEncoder().encode(text))
+    } catch (error) {
+      log.warn("failed to verify provider catalog signature", { error })
+      return false
+    }
+  }
+
+  async function readCachedRemote(config: Config): Promise<RemoteCatalog | undefined> {
+    if (!config.offlineCache) return undefined
+    const file = Bun.file(Global.Path.providerCatalogCache)
+    const stat = await file.stat().catch(() => undefined)
+    if (!stat || Date.now() - stat.mtimeMs > config.cacheTtlMs) return undefined
+    const parsed = RemoteCatalog.safeParse(await file.json().catch(() => undefined))
+    return parsed.success ? parsed.data : undefined
+  }
+
+  async function fetchRemote(config: Config): Promise<RemoteCatalog | undefined> {
+    if (!config.enabled) return readCachedRemote(config)
+    if (process.env.SYNERGY_DISABLE_PROVIDER_CATALOG_FETCH === "true") return readCachedRemote(config)
+    if (!config.publicKey.trim()) return readCachedRemote(config)
+    const [catalogResponse, signatureResponse] = await Promise.all([
+      fetch(config.registryUrl, {
+        headers: { "User-Agent": Installation.USER_AGENT },
+        signal: AbortSignal.timeout(10_000),
+      }).catch(() => undefined),
+      fetch(`${config.registryUrl}.sig`, {
+        headers: { "User-Agent": Installation.USER_AGENT },
+        signal: AbortSignal.timeout(10_000),
+      }).catch(() => undefined),
+    ])
+    if (!catalogResponse?.ok || !signatureResponse?.ok) return readCachedRemote(config)
+    const text = await catalogResponse.text()
+    const signature = (await signatureResponse.text()).trim()
+    if (!(await verifySignature(text, signature, config.publicKey))) return readCachedRemote(config)
+    const parsed = RemoteCatalog.safeParse(JSON.parse(text))
+    if (!parsed.success) return readCachedRemote(config)
+    await Bun.write(Global.Path.providerCatalogCache, JSON.stringify(parsed.data, null, 2)).catch(() => {})
+    return parsed.data
+  }
+
+  async function applyLiveDiscovery(
+    provider: ModelsDev.Provider,
+    profile: ProviderProfile.Profile,
+    modelsDev: Record<string, ModelsDev.Provider>,
+  ): Promise<ModelsDev.Provider> {
+    if (!profile.fetchModels) return provider
+    const auth = await Auth.get(profile.id)
+    if (!auth && profile.authKind !== "none") return provider
+    const live = await profile.fetchModels({ auth, fetch }).catch((error) => {
+      log.warn("failed to fetch live provider models", { providerID: profile.id, error })
+      return []
+    })
+    if (!live.length) return provider
+    const source = modelsDev[profile.modelsDevProviderID ?? profile.id]
+    const npm = profile.aiSdkPackage ?? source?.npm ?? provider.npm ?? "@ai-sdk/openai-compatible"
+    const next: ModelsDev.Provider = { ...provider, models: {} }
+    for (const modelID of live) {
+      const sourceModel = source?.models?.[modelID] ?? provider.models[modelID]
+      next.models[modelID] = sourceModel
+        ? {
+            ...sourceModel,
+            id: modelID,
+            provider: {
+              ...(sourceModel.provider ?? {}),
+              npm: profile.aiSdkPackage ?? sourceModel.provider?.npm ?? provider.npm ?? npm,
+            },
+          }
+        : fallbackModel(provider, modelID)
+    }
+    return next
+  }
+
+  export async function resolve(input?: {
+    config?: unknown
+    includeLive?: boolean
+    forceRefresh?: boolean
+  }): Promise<Record<string, ModelsDev.Provider>> {
+    if (!input?.forceRefresh && memoryCache && Date.now() - memoryCache.createdAt < DEFAULT_CACHE_TTL_MS) {
+      return memoryCache.value
+    }
+    if (!input?.forceRefresh && inFlight) return inFlight
+    inFlight = doResolve(input).finally(() => {
+      inFlight = undefined
+    })
+    return inFlight
+  }
+
+  async function doResolve(input?: {
+    config?: unknown
+    includeLive?: boolean
+  }): Promise<Record<string, ModelsDev.Provider>> {
+    registerBuiltinProviderProfiles()
+    await registerPluginProfiles()
+    const config = Config.parse((input?.config as any)?.providerCatalog ?? {})
+    const modelsDev = { ...(await ModelsDev.get()) }
+    const result: Record<string, ModelsDev.Provider> = { ...modelsDev }
+
+    for (const [providerID, provider] of Object.entries(bundledSnapshot(modelsDev))) {
+      result[providerID] = mergeProvider(result[providerID], provider)
+    }
+
+    const remote = await fetchRemote(config)
+    if (remote) {
+      for (const [providerID, provider] of Object.entries(remote.providers)) {
+        const source = provider.modelsDevProviderID ? modelsDev[provider.modelsDevProviderID] : undefined
+        const base = result[providerID] ?? (source ? { ...source, id: providerID, name: provider.name } : undefined)
+        const merged = mergeProvider(base, {
+          ...provider,
+          id: providerID,
+        } as Partial<ModelsDev.Provider>)
+        for (const modelID of provider.fallbackModels ?? []) {
+          const sourceModel = source?.models?.[modelID]
+          if (sourceModel && !provider.models?.[modelID]) {
+            merged.models[modelID] = {
+              ...sourceModel,
+              id: modelID,
+              provider: {
+                ...(sourceModel.provider ?? {}),
+                npm: merged.npm ?? sourceModel.provider?.npm ?? source?.npm,
+              },
+            }
+            continue
+          }
+          if (merged.models[modelID]) continue
+          merged.models[modelID] = sourceModel
+            ? {
+                ...sourceModel,
+                id: modelID,
+                provider: {
+                  ...(sourceModel.provider ?? {}),
+                  npm: merged.npm ?? sourceModel.provider?.npm ?? source?.npm,
+                },
+              }
+            : fallbackModel(merged, modelID)
+        }
+        result[providerID] = merged
+      }
+    }
+
+    if (input?.includeLive) {
+      for (const profile of ProviderProfile.all()) {
+        const provider = result[profile.id]
+        if (!provider) continue
+        result[profile.id] = await applyLiveDiscovery(provider, profile, modelsDev)
+      }
+    }
+
+    memoryCache = { value: result, createdAt: Date.now() }
+    return result
+  }
+
+  async function registerPluginProfiles() {
+    const { Plugin } = await import("../plugin")
+    const allHooks = await Plugin.allHooks().catch(() => [])
+    for (const hooks of allHooks) {
+      const values = Array.isArray(hooks.provider) ? hooks.provider : hooks.provider ? [hooks.provider] : []
+      for (const profile of values) {
+        ProviderProfile.register({
+          id: profile.id,
+          name: profile.name,
+          aliases: profile.aliases,
+          description: profile.description,
+          signupUrl: profile.signupUrl,
+          env: profile.env,
+          baseURL: profile.baseURL,
+          modelsURL: profile.modelsURL,
+          apiMode: profile.apiMode,
+          authKind: profile.authKind,
+          aiSdkPackage: profile.aiSdkPackage,
+          modelFactory: profile.modelFactory,
+          modelsDevProviderID: profile.modelsDevProviderID,
+          fallbackModels: profile.fallbackModels,
+          defaultAuxModel: profile.defaultAuxModel,
+          usageKind: profile.usageKind,
+          healthCheck: profile.healthCheck,
+          requestQuirks: profile.requestQuirks,
+          autoload: profile.autoload as ProviderProfile.Profile["autoload"],
+          resolveAuth: profile.resolveAuth as ProviderProfile.Profile["resolveAuth"],
+          refreshAuth: profile.refreshAuth as ProviderProfile.Profile["refreshAuth"],
+          buildHeaders: profile.buildHeaders as ProviderProfile.Profile["buildHeaders"],
+          rewriteBody: profile.rewriteBody as ProviderProfile.Profile["rewriteBody"],
+          modelOptions: profile.modelOptions as ProviderProfile.Profile["modelOptions"],
+          classifyError: profile.classifyError as ProviderProfile.Profile["classifyError"],
+          runtimeOptions: profile.runtimeOptions as ProviderProfile.Profile["runtimeOptions"],
+          getModel: profile.getModel as ProviderProfile.Profile["getModel"],
+          fetchModels: profile.fetchModels as ProviderProfile.Profile["fetchModels"],
+        })
+      }
+    }
+  }
+
+  export function bundledSnapshot(modelsDev: Record<string, ModelsDev.Provider>): Record<string, ModelsDev.Provider> {
+    registerBuiltinProviderProfiles()
+    const result: Record<string, ModelsDev.Provider> = {}
+    for (const profile of ProviderProfile.all()) {
+      result[profile.id] = profileProvider(profile, modelsDev)
+    }
+    return result
+  }
+
+  export function reset() {
+    memoryCache = undefined
+    inFlight = undefined
+  }
+}

@@ -4,7 +4,6 @@ import z from "zod"
 import { data } from "./models-macro" with { type: "macro" }
 import { Installation } from "../global/installation"
 import { Flag } from "../flag/flag"
-import { CodexProvider } from "./codex"
 
 export namespace ModelsDev {
   const log = Log.create({ service: "models.dev" })
@@ -78,28 +77,18 @@ export namespace ModelsDev {
   let inFlight: Promise<void> | undefined
   let cache: Record<string, any> | null = null
 
-  function withBuiltinProviders(input: Record<string, Provider>): Record<string, Provider> {
-    return {
-      ...input,
-      [CodexProvider.PROVIDER_ID]: CodexProvider.modelsDevProvider(
-        CodexProvider.DEFAULT_MODEL_IDS,
-        input.openai?.models,
-      ),
-    }
-  }
-
   export async function get() {
     if (cache) return cache
     refresh()
     const file = Bun.file(filepath)
     const result = await file.json().catch(() => {})
     if (result) {
-      cache = withBuiltinProviders(result as Record<string, Provider>)
+      cache = result as Record<string, Provider>
       return cache
     }
     const json =
       typeof data === "function" ? await data() : await fetch("https://models.dev/api.json").then((x) => x.text())
-    const parsed = withBuiltinProviders(JSON.parse(json) as Record<string, Provider>)
+    const parsed = JSON.parse(json) as Record<string, Provider>
     cache = parsed
     return parsed
   }
@@ -132,7 +121,7 @@ export namespace ModelsDev {
       const text = await result.text()
       await Bun.write(file, text)
       try {
-        cache = withBuiltinProviders(JSON.parse(text) as Record<string, Provider>)
+        cache = JSON.parse(text) as Record<string, Provider>
       } catch {
         // leave stale cache on parse failure
       }

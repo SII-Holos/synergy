@@ -584,12 +584,7 @@ export namespace ProviderTransform {
 
     // openai and providers using openai package should set store to false by default
     // to avoid item_reference lookups that fail on proxies/non-OpenAI backends
-    if (
-      model.providerID === "openai" ||
-      model.providerID === "openai-codex" ||
-      model.api.npm === "@ai-sdk/openai" ||
-      model.api.npm === "@ai-sdk/github-copilot"
-    ) {
+    if (model.providerID === "openai" || model.providerID === "openai-codex" || model.api.npm === "@ai-sdk/openai") {
       result["store"] = false
     }
 
@@ -614,11 +609,7 @@ export namespace ProviderTransform {
         // Only inject reasoningEffort for providers that support it natively.
         // @ai-sdk/openai-compatible proxies (e.g. LiteLLM) do not support reasoningEffort + tools
         // on /v1/chat/completions and will return a 400 error.
-        if (
-          model.api.npm === "@ai-sdk/openai" ||
-          model.api.npm === "@ai-sdk/azure" ||
-          model.api.npm === "@ai-sdk/github-copilot"
-        ) {
+        if (model.api.npm === "@ai-sdk/openai" || model.api.npm === "@ai-sdk/azure") {
           if (model.providerID !== "openai-codex") {
             result["reasoningEffort"] = "medium"
             result["reasoningSummary"] = "auto"
@@ -634,7 +625,7 @@ export namespace ProviderTransform {
         !model.api.id.includes("-chat") &&
         model.providerID !== "azure" &&
         model.providerID !== "openai-codex" &&
-        (model.api.npm === "@ai-sdk/openai" || model.api.npm === "@ai-sdk/github-copilot")
+        model.api.npm === "@ai-sdk/openai"
       ) {
         result["textVerbosity"] = "low"
       }
@@ -646,11 +637,7 @@ export namespace ProviderTransform {
     if (model.providerID === "openai-codex") {
       return { store: false }
     }
-    if (
-      model.providerID === "openai" ||
-      model.api.npm === "@ai-sdk/openai" ||
-      model.api.npm === "@ai-sdk/github-copilot"
-    ) {
+    if (model.providerID === "openai" || model.api.npm === "@ai-sdk/openai") {
       if (model.api.id.includes("gpt-5")) {
         if (model.api.id.includes("5.") || model.api.id.includes("5-mini")) {
           return { store: false, reasoningEffort: "low" }
@@ -677,7 +664,6 @@ export namespace ProviderTransform {
 
   export function providerOptions(model: Provider.Model, options: { [x: string]: any }) {
     switch (model.api.npm) {
-      case "@ai-sdk/github-copilot":
       case "@ai-sdk/openai":
         return {
           ["openai" as string]: options,

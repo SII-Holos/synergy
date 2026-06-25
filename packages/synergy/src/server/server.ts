@@ -1081,6 +1081,7 @@ export namespace Server {
             const providerID = c.req.valid("param").providerID
             const info = c.req.valid("json")
             await Auth.set(providerID, info)
+            await Provider.reload()
             return c.json(true)
           },
         )

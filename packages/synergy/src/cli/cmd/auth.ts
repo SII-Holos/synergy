@@ -13,6 +13,12 @@ import { ScopeContext } from "../../scope/context"
 import { Scope } from "@/scope"
 import type { PluginHooks } from "@ericsanchezok/synergy-plugin"
 import { CodexProvider } from "@/provider/codex"
+import { ProviderCatalog } from "@/provider/catalog"
+import { AnthropicOAuthProvider } from "@/provider/anthropic-oauth"
+import { CopilotProvider } from "@/provider/copilot"
+import { MiniMaxProvider } from "@/provider/minimax"
+import type { AuthOuathResult } from "@ericsanchezok/synergy-plugin"
+import { ProviderUsage } from "@/provider/usage-service"
 
 type PluginAuth = NonNullable<PluginHooks["auth"]>
 
@@ -158,6 +164,33 @@ async function handlePluginAuth(plugin: { auth: PluginAuth }, provider: string):
     }
   }
 
+  if (method.type === "import") {
+    const result = await method.import(inputs)
+    if (result.type === "failed") {
+      prompts.log.error(result.message ?? "Failed to import credentials")
+      prompts.outro("Done")
+      return true
+    }
+    const saveProvider = result.provider ?? provider
+    if ("refresh" in result) {
+      await Auth.set(
+        saveProvider,
+        {
+          type: "oauth",
+          refresh: result.refresh,
+          access: result.access,
+          expires: result.expires,
+        },
+        { source: "import" },
+      )
+    } else {
+      await Auth.set(saveProvider, { type: "api", key: result.key }, { source: "import" })
+    }
+    prompts.log.success("Credentials imported")
+    prompts.outro("Done")
+    return true
+  }
+
   return false
 }
 
@@ -206,24 +239,169 @@ async function handleCodexAuth(): Promise<boolean> {
     return true
   }
   if ("refresh" in result) {
-    await Auth.set(CodexProvider.PROVIDER_ID, {
-      type: "oauth",
-      access: result.access,
-      refresh: result.refresh,
-      expires: result.expires,
-    })
+    await Auth.set(
+      CodexProvider.PROVIDER_ID,
+      {
+        type: "oauth",
+        access: result.access,
+        refresh: result.refresh,
+        expires: result.expires,
+      },
+      { source: "cli" },
+    )
   }
   spinner.stop("Login successful")
   prompts.outro("Done")
   return true
 }
 
+async function runOauthResult(provider: string, authorize: AuthOuathResult): Promise<boolean> {
+  if (authorize.url) prompts.log.info("Open: " + authorize.url)
+  if (authorize.instructions) prompts.log.info(authorize.instructions)
+
+  if (authorize.method === "code") {
+    const code = await prompts.text({
+      message: "Paste the authorization code here: ",
+      validate: (x) => (x && x.length > 0 ? undefined : "Required"),
+    })
+    if (prompts.isCancel(code)) throw new UI.CancelledError()
+    const result = await authorize.callback(code)
+    if (result.type === "failed") {
+      prompts.log.error("Failed to authorize")
+      prompts.outro("Done")
+      return true
+    }
+    const saveProvider = result.provider ?? provider
+    if ("refresh" in result) {
+      await Auth.set(
+        saveProvider,
+        {
+          type: "oauth",
+          refresh: result.refresh,
+          access: result.access,
+          expires: result.expires,
+        },
+        { source: "cli" },
+      )
+    } else {
+      await Auth.set(saveProvider, { type: "api", key: result.key }, { source: "cli" })
+    }
+    prompts.log.success("Login successful")
+    prompts.outro("Done")
+    return true
+  }
+
+  const spinner = prompts.spinner()
+  spinner.start("Waiting for authorization...")
+  const result = await authorize.callback()
+  if (result.type === "failed") {
+    spinner.stop("Failed to authorize", 1)
+    prompts.outro("Done")
+    return true
+  }
+  const saveProvider = result.provider ?? provider
+  if ("refresh" in result) {
+    await Auth.set(
+      saveProvider,
+      {
+        type: "oauth",
+        refresh: result.refresh,
+        access: result.access,
+        expires: result.expires,
+      },
+      { source: "cli" },
+    )
+  } else {
+    await Auth.set(saveProvider, { type: "api", key: result.key }, { source: "cli" })
+  }
+  spinner.stop("Login successful")
+  prompts.outro("Done")
+  return true
+}
+
+async function handleBuiltinAuth(provider: string): Promise<boolean> {
+  if (provider === AnthropicOAuthProvider.PROVIDER_ID) {
+    const method = await prompts.select({
+      message: "Login method",
+      options: [
+        { label: "Claude Pro/Max OAuth", value: "oauth", hint: "Uses Claude subscription OAuth" },
+        { label: "Anthropic API key", value: "api", hint: "Uses Platform API billing" },
+      ],
+    })
+    if (prompts.isCancel(method)) throw new UI.CancelledError()
+    if (method === "api") return false
+    return runOauthResult(provider, await AnthropicOAuthProvider.authorizeOAuth())
+  }
+
+  if (provider === CopilotProvider.PROVIDER_ID || provider === CopilotProvider.ENTERPRISE_PROVIDER_ID) {
+    const method = await prompts.select({
+      message: "Login method",
+      options: [
+        { label: "GitHub device login", value: "oauth", hint: "Uses GitHub Copilot subscription" },
+        { label: "GitHub token", value: "api", hint: "Stores an existing token" },
+      ],
+    })
+    if (prompts.isCancel(method)) throw new UI.CancelledError()
+    if (method === "api") return false
+    return runOauthResult(provider, await CopilotProvider.authorizeDeviceCode(provider))
+  }
+
+  if (provider === MiniMaxProvider.PROVIDER_ID) {
+    return runOauthResult(provider, await MiniMaxProvider.authorizeOAuth())
+  }
+
+  return false
+}
+
 export const AuthCommand = cmd({
   command: "auth",
   describe: "manage credentials",
   builder: (yargs) =>
-    yargs.command(AuthLoginCommand).command(AuthLogoutCommand).command(AuthListCommand).demandCommand(),
+    yargs
+      .command(AuthLoginCommand)
+      .command(AuthLogoutCommand)
+      .command(AuthListCommand)
+      .command(AuthUsageCommand)
+      .demandCommand(),
   async handler() {},
+})
+
+export const AuthUsageCommand = cmd({
+  command: "usage [provider]",
+  describe: "show provider account usage and quota windows",
+  builder: (yargs) =>
+    yargs.positional("provider", {
+      describe: "provider ID",
+      type: "string",
+    }),
+  async handler(args) {
+    await ScopeContext.provide({
+      scope: Scope.home(),
+      async fn() {
+        const snapshots = args.provider
+          ? { [args.provider]: await ProviderUsage.get(args.provider) }
+          : await ProviderUsage.all()
+        for (const [providerID, snapshot] of Object.entries(snapshots)) {
+          prompts.intro(providerID)
+          if (snapshot.status !== "available") {
+            prompts.log.warn(snapshot.unavailableReason ?? "Usage unavailable")
+            prompts.outro("Done")
+            continue
+          }
+          if (snapshot.plan) prompts.log.info(`Plan: ${snapshot.plan}`)
+          for (const window of snapshot.windows) {
+            const parts = [`${window.label}: ${window.usedPercent?.toFixed(1) ?? "?"}% used`]
+            if (window.remainingPercent !== undefined) parts.push(`${window.remainingPercent.toFixed(1)}% remaining`)
+            if (window.resetAt) parts.push(`resets ${window.resetAt}`)
+            if (window.detail) parts.push(window.detail)
+            prompts.log.info(parts.join(" • "))
+          }
+          for (const detail of snapshot.details) prompts.log.info(detail)
+          prompts.outro(snapshot.source ?? "usage")
+        }
+      },
+    })
+  },
 })
 
 export const AuthListCommand = cmd({
@@ -232,12 +410,12 @@ export const AuthListCommand = cmd({
   describe: "list providers",
   async handler() {
     UI.empty()
-    const authPath = Global.Path.authApiKey
+    const authPath = Global.Path.authProvider
     const homedir = os.homedir()
     const displayPath = authPath.startsWith(homedir) ? authPath.replace(homedir, "~") : authPath
     prompts.intro(`Credentials ${UI.Style.TEXT_DIM}${displayPath}`)
     const results = Object.entries(await Auth.all())
-    const database = await ModelsDev.get()
+    const database = await ProviderCatalog.resolve()
 
     for (const [providerID, result] of results) {
       const name = database[providerID]?.name || providerID
@@ -317,7 +495,7 @@ export const AuthLoginCommand = cmd({
         const disabled = new Set(config.disabled_providers ?? [])
         const enabled = config.enabled_providers ? new Set(config.enabled_providers) : undefined
 
-        const providers = await ModelsDev.get().then((x) => {
+        const providers = await ProviderCatalog.resolve({ config }).then((x) => {
           const filtered: Record<string, (typeof x)[string]> = {}
           for (const [key, value] of Object.entries(x)) {
             if ((enabled ? enabled.has(key) : true) && !disabled.has(key)) {
@@ -354,6 +532,8 @@ export const AuthLoginCommand = cmd({
                   {
                     anthropic: "Claude Max or API key",
                     [CodexProvider.PROVIDER_ID]: "ChatGPT/Codex subscription",
+                    [CopilotProvider.PROVIDER_ID]: "GitHub Copilot subscription",
+                    [MiniMaxProvider.PROVIDER_ID]: "MiniMax OAuth",
                   } as Record<string, string | undefined>
                 )[x.id],
               })),
@@ -369,6 +549,16 @@ export const AuthLoginCommand = cmd({
 
         if (provider === CodexProvider.PROVIDER_ID) {
           const handled = await handleCodexAuth()
+          if (handled) return
+        }
+
+        if (
+          provider === AnthropicOAuthProvider.PROVIDER_ID ||
+          provider === CopilotProvider.PROVIDER_ID ||
+          provider === CopilotProvider.ENTERPRISE_PROVIDER_ID ||
+          provider === MiniMaxProvider.PROVIDER_ID
+        ) {
+          const handled = await handleBuiltinAuth(provider)
           if (handled) return
         }
 
@@ -426,10 +616,14 @@ export const AuthLoginCommand = cmd({
           validate: (x) => (x && x.length > 0 ? undefined : "Required"),
         })
         if (prompts.isCancel(key)) throw new UI.CancelledError()
-        await Auth.set(provider, {
-          type: "api",
-          key,
-        })
+        await Auth.set(
+          provider,
+          {
+            type: "api",
+            key,
+          },
+          { source: "cli" },
+        )
 
         prompts.outro("Done")
       },
@@ -448,7 +642,7 @@ export const AuthLogoutCommand = cmd({
       prompts.log.error("No credentials found")
       return
     }
-    const database = await ModelsDev.get()
+    const database = await ProviderCatalog.resolve()
     const providerID = await prompts.select({
       message: "Select provider",
       options: credentials.map(([key, value]) => ({
