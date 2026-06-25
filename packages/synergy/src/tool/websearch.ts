@@ -2,6 +2,7 @@ import z from "zod"
 import { Tool } from "./tool"
 import { Flag } from "../flag/flag"
 import DESCRIPTION from "./websearch.txt"
+import { ToolTimeout } from "./timeout"
 
 interface SearXNGResult {
   title: string
@@ -60,7 +61,7 @@ export const WebSearchTool = Tool.define("websearch", {
     if (params.timeRange) searchParams.set("time_range", params.timeRange)
 
     const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), 25000)
+    const timeoutId = setTimeout(() => controller.abort(), ToolTimeout.DEFAULTS.websearchMs)
 
     const url = `${Flag.SYNERGY_SEARXNG_URL}/search?${searchParams}`
 

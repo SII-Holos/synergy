@@ -5,6 +5,7 @@ import { BrowserLocator } from "../browser/locator"
 import { truncateHTML, domSnapshot, pageText, elementAttributes, computedStyle, visibleDOM } from "../browser/page-read"
 import type { BrowserTab } from "../browser/tab"
 import type { Page, Locator } from "playwright"
+import { ToolTimeout } from "./timeout"
 
 const parameters = z.object({
   type: z
@@ -194,7 +195,7 @@ async function readDOM(tab: BrowserTab, locator?: LocatorInput): Promise<string>
   if (tab.page) {
     const pwLocator = BrowserLocator.toPlaywrightLocator(tab.page, locator)
     try {
-      await pwLocator.waitFor({ state: "attached", timeout: 5_000 })
+      await pwLocator.waitFor({ state: "attached", timeout: ToolTimeout.DEFAULTS.browserLocatorMs })
       const html = (await pwLocator.evaluate((el) => (el as HTMLElement).outerHTML)) as string
       return html
     } catch {
@@ -226,7 +227,7 @@ async function extractAttributesRaw(tab: BrowserTab, locator: LocatorInput): Pro
   if (tab.page) {
     const pwLocator = BrowserLocator.toPlaywrightLocator(tab.page, locator)
     try {
-      await pwLocator.waitFor({ state: "attached", timeout: 5_000 })
+      await pwLocator.waitFor({ state: "attached", timeout: ToolTimeout.DEFAULTS.browserLocatorMs })
       const attrs = (await pwLocator.evaluate((el) => {
         const result: Record<string, string> = {}
         for (const attr of (el as HTMLElement).attributes) {
@@ -264,7 +265,7 @@ async function resolveComputedStyles(tab: BrowserTab, locator: LocatorInput): Pr
   if (tab.page) {
     const pwLocator = BrowserLocator.toPlaywrightLocator(tab.page, locator)
     try {
-      await pwLocator.waitFor({ state: "attached", timeout: 5_000 })
+      await pwLocator.waitFor({ state: "attached", timeout: ToolTimeout.DEFAULTS.browserLocatorMs })
       const styles = (await pwLocator.evaluate((el) => {
         const computed = getComputedStyle(el as HTMLElement)
         const result: Record<string, string> = {}

@@ -1,5 +1,6 @@
 import type { Page } from "playwright"
 import { BrowserLocator } from "./locator"
+import { ToolTimeout } from "@/tool/timeout"
 
 export namespace BrowserScreenshot {
   export interface ResolvedBounds {
@@ -64,7 +65,7 @@ export namespace BrowserScreenshot {
     const format = opts?.format ?? "png"
 
     try {
-      await pwLocator.waitFor({ state: "attached", timeout: 5_000 })
+      await pwLocator.waitFor({ state: "attached", timeout: ToolTimeout.DEFAULTS.browserLocatorMs })
       const buf = (await pwLocator.screenshot({ type: format })) as Buffer
       const box = await pwLocator.boundingBox()
       return {

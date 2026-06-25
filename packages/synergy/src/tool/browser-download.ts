@@ -7,6 +7,7 @@ import { BrowserOwner } from "../browser/owner"
 import { BrowserPolicy } from "../browser/policy"
 import { ScopeContext } from "../scope/context"
 import { Global } from "../global"
+import { ToolTimeout } from "./timeout"
 
 const MAX_DOWNLOAD_SIZE = 100 * 1024 * 1024 // 100MB
 
@@ -79,7 +80,10 @@ export const BrowserDownloadTool = Tool.define("browser_download", {
 
     // Fetch the URL
     const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(new Error("Download timeout after 120s")), 120_000)
+    const timeoutId = setTimeout(
+      () => controller.abort(new Error("Download timeout after 120s")),
+      ToolTimeout.DEFAULTS.browserDownloadMs,
+    )
 
     let response: Response
     try {

@@ -9,10 +9,11 @@ import { Agent } from "../agent/agent"
 import { ScopeContext } from "../scope/context"
 import DESCRIPTION from "./lookat.txt"
 import { Asset } from "../asset/asset"
+import { ToolTimeout } from "./timeout"
 
 const MULTIMODAL_AGENT = "multimodal-looker"
 const MAX_IMAGES = 5
-const DEFAULT_TIMEOUT_S = 120
+const DEFAULT_TIMEOUT_S = ToolTimeout.DEFAULTS.lookAtMs / 1_000
 
 const parameters = z.object({
   file_path: z

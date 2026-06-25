@@ -16,6 +16,7 @@ import { ProviderTransform } from "@/provider/transform"
 import type { Provider } from "@/provider/provider"
 import { Tool } from "@/tool/tool"
 import { ToolRegistry } from "@/tool/registry"
+import { ToolTimeout } from "@/tool/timeout"
 import { ToolExposure } from "@/tool/exposure"
 import { Log } from "@/util/log"
 import { TimeoutConfig } from "@/util/timeout-config"
@@ -374,7 +375,7 @@ export namespace ToolResolver {
       state: {
         ...match.state,
         title: state.title ?? match.state.title,
-        metadata: state.metadata ?? match.state.metadata,
+        metadata: ToolTimeout.preserveMetadata(match.state.metadata, state.metadata) ?? match.state.metadata,
         status: "running",
         input: args,
         time: {
@@ -385,7 +386,12 @@ export namespace ToolResolver {
     Object.assign(match, updated)
   }
 
-  async function markExecutionStarted(input: Input, ctx: Tool.Context, args: Record<string, any>) {
+  async function markExecutionStarted(
+    input: Input,
+    ctx: Tool.Context,
+    args: Record<string, any>,
+    toolTimeout: ToolTimeout.Metadata,
+  ) {
     const timing = toolTiming(ctx)
     if (timing.executionStartedAt !== undefined) return
 
@@ -401,8 +407,10 @@ export namespace ToolResolver {
     const match = ctx.callID ? input.processor.partFromToolCall(ctx.callID) : undefined
     const metadata = {
       ...(match?.state.status === "running" ? (match.state.metadata ?? {}) : {}),
+      toolTimeout,
       ...(approvalFromContext(ctx) ? { approval: approvalFromContext(ctx) } : {}),
     }
+    ;(ctx.extra as any).toolTimeout = toolTimeout
     await updateRunningToolPart(input, ctx, args, {
       metadata,
       start: timing.executionStartedAt,
@@ -849,9 +857,14 @@ export namespace ToolResolver {
 
                 const timeoutCfg = await TimeoutConfig.resolve()
                 const toolTimeoutMs = timeoutCfg.toolOverrides[item.id] ?? timeoutCfg.toolDefaultMs
+                const toolTimeout = ToolTimeout.metadataForTool({
+                  tool: item.id,
+                  args: args as Record<string, any>,
+                  executionBudgetMs: toolTimeoutMs,
+                })
                 const combinedAbort = startExecutionBudget(ctx, toolTimeoutMs)
                 ctx.abort = combinedAbort
-                await markExecutionStarted(runtimeInput, ctx, args as Record<string, any>)
+                await markExecutionStarted(runtimeInput, ctx, args as Record<string, any>, toolTimeout)
                 await toolTrace.phase("tool.execution.started", "execution started", {
                   timeoutMs: toolTimeoutMs,
                 })
@@ -1064,9 +1077,15 @@ export namespace ToolResolver {
 
                   const timeoutCfg = await TimeoutConfig.resolve()
                   const toolTimeoutMs = timeoutCfg.toolOverrides[key] ?? timeoutCfg.toolDefaultMs
+                  const toolTimeout = ToolTimeout.metadataForTool({
+                    tool: key,
+                    args: args as Record<string, any>,
+                    executionBudgetMs: toolTimeoutMs,
+                    mcpCallTimeoutMs: MCP.toolCallTimeout(key),
+                  })
                   const combinedAbort = startExecutionBudget(ctx, toolTimeoutMs)
                   ctx.abort = combinedAbort
-                  await markExecutionStarted(runtimeInput, ctx, args as Record<string, any>)
+                  await markExecutionStarted(runtimeInput, ctx, args as Record<string, any>, toolTimeout)
                   await toolTrace.phase("tool.execution.started", "execution started", {
                     timeoutMs: toolTimeoutMs,
                   })

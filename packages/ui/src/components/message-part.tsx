@@ -1776,6 +1776,7 @@ PART_MAPPING["tool"] = function ToolPartDisplay(props) {
       status={p.status}
       charsReceived={p.charsReceived}
       metadata={p.metadata}
+      time={p.time}
       hideDetails={p.hideDetails}
       fallbackMeta={externalFallbackLookup?.(p.tool)}
     />
@@ -1817,6 +1818,8 @@ PART_MAPPING["tool"] = function ToolPartDisplay(props) {
               // @ts-expect-error — output exists on completed state
               output={part().state.output}
               status={part().state.status}
+              // @ts-expect-error — time exists on running/completed/error states
+              time={part().state.time}
               raw={part().state.status === "generating" ? (part().state as ToolStateGenerating).raw : undefined}
               charsReceived={charsAnimated()}
               hideDetails={props.hideDetails}

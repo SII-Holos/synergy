@@ -6,6 +6,7 @@ import { AgendaDedup } from "../agenda/dedup"
 import { SessionManager } from "../session/manager"
 import { ScopeContext } from "../scope/context"
 import DESCRIPTION from "./agenda-schedule.txt"
+import { ToolTimeout } from "./timeout"
 
 const parameters = z.object({
   title: z.string().describe("Task title"),
@@ -108,7 +109,12 @@ export const AgendaScheduleTool = Tool.define("agenda_schedule", {
     return {
       title: item.title,
       output: lines.join("\n"),
-      metadata: { id: item.id, status: item.status } as Record<string, any>,
+      metadata: {
+        id: item.id,
+        status: item.status,
+        scheduledTimeoutMs: item.timeout,
+        scheduledTimeoutLabel: ToolTimeout.scheduledTimeoutLabel(item.timeout),
+      } as Record<string, any>,
     }
   },
 })

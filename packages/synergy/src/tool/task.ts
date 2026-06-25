@@ -11,6 +11,7 @@ import { Category } from "../cortex/category"
 import { Provider } from "../provider/provider"
 import { ScopeContext } from "../scope/context"
 import { Dag } from "../session/dag"
+import { ToolTimeout } from "./timeout"
 
 const parameters = z.object({
   description: z.string().describe("A short (3-5 words) description of the task"),
@@ -63,7 +64,7 @@ interface TaskMetadata {
   background?: boolean
 }
 
-const SYNC_TIMEOUT_S = 300
+const SYNC_TIMEOUT_S = ToolTimeout.DEFAULTS.taskAutoBackgroundMs / 1_000
 
 async function bindDagNode(sessionID: string, nodeID: string | undefined, task: { id: string; sessionID: string }) {
   if (!nodeID) return

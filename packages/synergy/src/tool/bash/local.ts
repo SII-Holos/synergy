@@ -16,6 +16,7 @@ import { ArtifactPromotion } from "../artifact-promotion"
 import type { MessageV2 } from "@/session/message-v2"
 import type { BashResult } from "./shared"
 import { Observability } from "@/observability"
+import { ToolTimeout } from "../timeout"
 
 /**
  * Derive a human-readable abort reason from an AbortSignal's .reason.
@@ -272,7 +273,7 @@ export const LocalBashBackend: BashBackend = {
           env: sandboxEnv,
           cwd,
           signal: ctx.abort,
-          timeoutMs: 3_600_000, // 60-minute hard ceiling
+          timeoutMs: ToolTimeout.DEFAULTS.bashHardCeilingMs, // 60-minute hard ceiling
           maxOutputBytes: 1024 * 1024, // 1 MB
           onStdout: append,
           onStderr: append,
@@ -447,7 +448,7 @@ export const LocalBashBackend: BashBackend = {
       }
     }
 
-    const HARD_BASH_CEILING_MS = 3_600_000 // 60 minutes absolute hard limit
+    const HARD_BASH_CEILING_MS = ToolTimeout.DEFAULTS.bashHardCeilingMs // 60 minutes absolute hard limit
 
     const kill = () => Shell.killTree(child, { exited: () => exited })
 
