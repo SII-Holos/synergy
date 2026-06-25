@@ -35,9 +35,14 @@ export namespace BrowserControl {
     | { type: "stop"; tabId?: string }
     | { type: "history"; tabId?: string; direction: "back" | "forward" }
     | { type: "setViewport"; tabId?: string; width: number; height: number; deviceScaleFactor?: number }
+    | { type: "click"; tabId?: string; x: number; y: number }
+    | { type: "typeText"; tabId?: string; text: string }
+    | { type: "scroll"; tabId?: string; deltaX: number; deltaY: number }
     | { type: "mouse"; tabId?: string; action: "move" | "down" | "up" | "wheel"; input: BrowserMouseInput }
     | { type: "key"; tabId?: string; action: "down" | "up"; input: BrowserKeyInput }
     | { type: "insertText"; tabId?: string; text: string }
+    | { type: "evaluate"; tabId?: string; expression: string; throwOnSideEffect?: boolean }
+    | { type: "resolveRef"; tabId?: string; ref: string }
     | { type: "console"; tabId?: string; maxEntries?: number }
     | { type: "network"; tabId?: string; maxEntries?: number }
     | { type: "snapshot"; tabId?: string }
@@ -63,6 +68,13 @@ export namespace BrowserControl {
     | { type: "snapshot"; tabId: string; elements: AccessibilityElement[]; truncated: boolean }
     | { type: "assets"; tabId: string; assets: BrowserAssets.PageAsset[] }
     | { type: "screenshot"; tabId: string; dataUrl: string; width: number; height: number }
+    | { type: "evaluation"; tabId: string; value: unknown }
+    | {
+        type: "resolvedRef"
+        tabId: string
+        ref: string
+        box: { backendNodeId: number; x: number; y: number; width: number; height: number } | null
+      }
     | { type: "diagnostics.cleared"; tabId: string }
     | { type: "void" }
 
@@ -165,6 +177,21 @@ export namespace BrowserControl {
         await tab.setViewport(command.width, command.height, command.deviceScaleFactor ?? 1)
         return { type: "tab", tab: tabState(tab) }
       }
+      case "click": {
+        const tab = resolveTab(session, command.tabId)
+        await tab.click(command.x, command.y)
+        return { type: "void" }
+      }
+      case "typeText": {
+        const tab = resolveTab(session, command.tabId)
+        await tab.type(command.text)
+        return { type: "void" }
+      }
+      case "scroll": {
+        const tab = resolveTab(session, command.tabId)
+        await tab.scroll(command.deltaX, command.deltaY)
+        return { type: "void" }
+      }
       case "mouse": {
         const tab = resolveTab(session, command.tabId)
         await tab.dispatchMouse(command.action, command.input)
@@ -179,6 +206,18 @@ export namespace BrowserControl {
         const tab = resolveTab(session, command.tabId)
         await tab.insertText(command.text)
         return { type: "void" }
+      }
+      case "evaluate": {
+        const tab = resolveTab(session, command.tabId)
+        return {
+          type: "evaluation",
+          tabId: tab.id,
+          value: await tab.evaluate(command.expression, { throwOnSideEffect: command.throwOnSideEffect }),
+        }
+      }
+      case "resolveRef": {
+        const tab = resolveTab(session, command.tabId)
+        return { type: "resolvedRef", tabId: tab.id, ref: command.ref, box: await tab.resolveRef(command.ref) }
       }
       case "console": {
         const tab = resolveTab(session, command.tabId)

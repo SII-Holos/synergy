@@ -237,9 +237,22 @@ describe("BrowserControl", () => {
     const mouseActions: unknown[] = []
     const keyActions: unknown[] = []
     const inserted: string[] = []
+    const clicks: unknown[] = []
+    const typed: string[] = []
+    const scrolled: unknown[] = []
+    const evaluated: unknown[] = []
     let cleared = false
     const fakeTab = {
       ...tab("tab-2"),
+      async click(x: number, y: number) {
+        clicks.push({ x, y })
+      },
+      async type(text: string) {
+        typed.push(text)
+      },
+      async scroll(deltaX: number, deltaY: number) {
+        scrolled.push({ deltaX, deltaY })
+      },
       async dispatchMouse(action: "move" | "down" | "up" | "wheel", input: unknown) {
         mouseActions.push({ action, input })
       },
@@ -266,6 +279,13 @@ describe("BrowserControl", () => {
       async screenshot() {
         return { buffer: Buffer.from("ok"), width: 10, height: 20 }
       },
+      async resolveRef(ref: string) {
+        return ref === "@e1" ? { backendNodeId: 1, x: 10, y: 20, width: 30, height: 40 } : null
+      },
+      async evaluate(expression: string) {
+        evaluated.push(expression)
+        return { ok: true }
+      },
       async clearDiagnostics() {
         cleared = true
       },
@@ -285,6 +305,15 @@ describe("BrowserControl", () => {
       input: { key: "A", code: "KeyA" },
     })
     await BrowserControl.execute(session, { type: "insertText", tabId: "tab-2", text: "hi" })
+    await BrowserControl.execute(session, { type: "click", tabId: "tab-2", x: 9, y: 10 })
+    await BrowserControl.execute(session, { type: "typeText", tabId: "tab-2", text: "typed" })
+    await BrowserControl.execute(session, { type: "scroll", tabId: "tab-2", deltaX: 1, deltaY: 2 })
+    const resolvedResult = await BrowserControl.execute(session, { type: "resolveRef", tabId: "tab-2", ref: "@e1" })
+    const evalResult = await BrowserControl.execute(session, {
+      type: "evaluate",
+      tabId: "tab-2",
+      expression: "(() => true)()",
+    })
     const consoleResult = await BrowserControl.execute(session, { type: "console", tabId: "tab-2" })
     const assetsResult = await BrowserControl.execute(session, { type: "assets", tabId: "tab-2" })
     const screenshotResult = await BrowserControl.execute(session, {
@@ -297,6 +326,17 @@ describe("BrowserControl", () => {
     expect(mouseActions).toEqual([{ action: "wheel", input: { x: 5, y: 6, deltaX: 0, deltaY: 120 } }])
     expect(keyActions).toEqual([{ action: "down", input: { key: "A", code: "KeyA" } }])
     expect(inserted).toEqual(["hi"])
+    expect(clicks).toEqual([{ x: 9, y: 10 }])
+    expect(typed).toEqual(["typed"])
+    expect(scrolled).toEqual([{ deltaX: 1, deltaY: 2 }])
+    expect(resolvedResult).toEqual({
+      type: "resolvedRef",
+      tabId: "tab-2",
+      ref: "@e1",
+      box: { backendNodeId: 1, x: 10, y: 20, width: 30, height: 40 },
+    })
+    expect(evaluated).toEqual(["(() => true)()"])
+    expect(evalResult).toEqual({ type: "evaluation", tabId: "tab-2", value: { ok: true } })
     expect(consoleResult).toEqual({
       type: "console",
       tabId: "tab-2",
