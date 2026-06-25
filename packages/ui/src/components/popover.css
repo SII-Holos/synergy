@@ -10,7 +10,7 @@
   background-color: var(--workbench-popover-bg, var(--surface-raised-stronger-non-alpha));
 
   border: 1px solid color-mix(in oklch, var(--border-base) 25%, transparent);
-  box-shadow: var(--shadow-lg);
+  box-shadow: var(--workbench-popover-shadow, var(--shadow-lg));
 
   transform-origin: var(--kb-popover-content-transform-origin);
 

@@ -166,7 +166,7 @@ function SubagentAvatar(props: SubagentAvatarProps) {
           onPointerUp={handlePointerUp}
           onPointerLeave={handlePointerLeave}
           onPointerCancel={handlePointerCancel}
-          class={`subagent-avatar subagent-avatar-${props.task.agent} group relative flex items-center justify-center size-9 rounded-full border border-border-base bg-surface-raised-stronger-non-alpha transition-all duration-200 ${isQueued() ? "subagent-avatar-queued opacity-50 cursor-default" : "cursor-pointer hover:scale-110 hover:border-border-strong hover:shadow-md active:scale-95"} ${isHolding() ? "subagent-avatar-holding" : ""}`}
+          class={`workbench-control-surface subagent-avatar subagent-avatar-${props.task.agent} group relative flex items-center justify-center size-9 rounded-full border border-border-base transition-all duration-200 ${isQueued() ? "subagent-avatar-queued opacity-50 cursor-default" : "cursor-pointer hover:scale-105 hover:border-border-strong active:scale-95"} ${isHolding() ? "subagent-avatar-holding" : ""}`}
           style={{ "--subagent-glow-color": config().color }}
         >
           <Show when={!isQueued() && isHolding()}>

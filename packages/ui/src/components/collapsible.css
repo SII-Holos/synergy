@@ -73,8 +73,9 @@
 
   &[data-variant="tool"] {
     background-color: var(--workbench-card-bg, var(--surface-raised-base));
-    border: 1px solid var(--border-weaker-base);
+    border: 1px solid var(--workbench-border, var(--border-weaker-base));
     border-radius: var(--radius-2xl);
+    box-shadow: none;
     transition:
       border-color var(--motion-duration-base) var(--motion-ease-standard),
       background-color var(--motion-duration-base) var(--motion-ease-standard);
@@ -100,11 +101,11 @@
     /* Expanded state: form a soft container */
     &[data-expanded] {
       > [data-slot="collapsible-trigger"] {
-        background-color: var(--workbench-card-bg-hover, var(--surface-base-hover));
+        background-color: var(--workbench-card-secondary-bg, var(--surface-base-hover));
       }
 
       > [data-slot="collapsible-trigger"]:hover {
-        background-color: var(--workbench-selected-bg-hover, var(--surface-base-active));
+        background-color: var(--workbench-card-bg-hover, var(--surface-base-active));
       }
     }
   }

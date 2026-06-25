@@ -29,7 +29,7 @@ export function ConversationViewport(props: {
             icon="chevron-down"
             variant="primary"
             size="large"
-            class="rounded-full! size-10 shadow-lg hover:scale-110 active:scale-95 transition-transform"
+            class="rounded-full! size-10 hover:scale-105 active:scale-95 transition-transform"
             onClick={() => {
               props.autoScroll.forceScrollToBottom()
               props.onScrolledUpChange(false)

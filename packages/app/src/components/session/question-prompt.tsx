@@ -113,11 +113,11 @@ export function QuestionPrompt(props: QuestionPromptProps) {
   }
 
   return (
-    <Card variant="info" class="border-l-2 border-l-accent max-h-[min(60vh,480px)] flex flex-col overflow-hidden">
+    <Card variant="info" class="workbench-card-surface max-h-[min(60vh,480px)] flex flex-col overflow-hidden">
       {/* Collapsed bar */}
       <Show when={collapsed()}>
         <button
-          class="flex items-center gap-2 px-4 py-3 w-full text-left hover:bg-surface-raised-base-hover transition-colors"
+          class="workbench-control-surface-hover flex items-center gap-2 px-4 py-3 w-full text-left transition-colors"
           onClick={() => setCollapsed(false)}
         >
           <Icon name="chevron-right" size="small" class="text-icon-base shrink-0" />
@@ -137,7 +137,7 @@ export function QuestionPrompt(props: QuestionPromptProps) {
           {/* Collapse button + Tabs for multiple questions */}
           <div class="flex items-center gap-2 shrink-0">
             <button
-              class="flex items-center justify-center size-6 rounded hover:bg-surface-raised-base-hover transition-colors shrink-0"
+              class="workbench-control-surface-hover flex items-center justify-center size-6 rounded transition-colors shrink-0"
               onClick={() => setCollapsed(true)}
               title="Collapse"
             >
@@ -156,9 +156,9 @@ export function QuestionPrompt(props: QuestionPromptProps) {
                       <button
                         class="px-3 py-1 rounded-md text-sm transition-colors"
                         classList={{
-                          "bg-accent text-accent-foreground": isActive(),
-                          "bg-surface-raised-base text-text-strong": !isActive() && isAnswered(),
-                          "bg-surface-raised-base text-text-weak": !isActive() && !isAnswered(),
+                          "workbench-selected-surface text-text-strong": isActive(),
+                          "workbench-control-surface text-text-strong": !isActive() && isAnswered(),
+                          "workbench-control-surface text-text-weak": !isActive() && !isAnswered(),
                         }}
                         onClick={() => goToTab(index())}
                       >
@@ -170,8 +170,8 @@ export function QuestionPrompt(props: QuestionPromptProps) {
                 <button
                   class="px-3 py-1 rounded-md text-sm transition-colors"
                   classList={{
-                    "bg-accent text-accent-foreground": confirm(),
-                    "bg-surface-raised-base text-text-weak": !confirm(),
+                    "workbench-selected-surface text-text-strong": confirm(),
+                    "workbench-control-surface text-text-weak": !confirm(),
                   }}
                   onClick={() => goToTab(questions().length)}
                 >
@@ -195,9 +195,9 @@ export function QuestionPrompt(props: QuestionPromptProps) {
                     const picked = () => store.answers[store.tab]?.includes(opt.label) ?? false
                     return (
                       <button
-                        class="flex flex-col gap-1 p-3 rounded-lg text-left transition-colors bg-surface-raised-base hover:bg-surface-raised-base-hover"
+                        class="workbench-card-surface workbench-card-surface-hover flex flex-col gap-1 p-3 rounded-lg text-left transition-colors"
                         classList={{
-                          "ring-2 ring-accent": picked(),
+                          "workbench-selected-surface ring-1 ring-inset ring-border-base/50": picked(),
                         }}
                         onClick={() => (multi() ? toggle(opt.label) : pick(opt.label))}
                       >
@@ -214,7 +214,7 @@ export function QuestionPrompt(props: QuestionPromptProps) {
                 </For>
 
                 {/* Other option */}
-                <div class="flex flex-col gap-2 p-3 rounded-lg bg-surface-raised-base">
+                <div class="workbench-card-surface flex flex-col gap-2 p-3 rounded-lg">
                   <div class="flex items-center gap-2">
                     <span class="text-text-strong text-14-medium">Other</span>
                     <Show when={customPicked()}>

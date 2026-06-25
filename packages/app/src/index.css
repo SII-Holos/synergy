@@ -138,6 +138,7 @@ a:active,
   --workbench-selected-bg: light-dark(rgb(207 215 225), rgb(58 58 63));
   --workbench-selected-bg-hover: light-dark(rgb(198 207 219), rgb(64 64 69));
   --workbench-border: light-dark(rgba(17, 24, 39, 0.08), rgba(244, 244, 245, 0.08));
+  --workbench-popover-shadow: 0 14px 34px light-dark(rgba(15, 23, 42, 0.1), rgba(0, 0, 0, 0.24));
   --workbench-tab-shadow: none;
   background-color: var(--workbench-canvas-bg);
 }
@@ -231,7 +232,7 @@ a:active,
   background-color: var(--workbench-control-bg-hover);
 }
 
-.synergy-workbench-canvas :where(.shadow-sm, .shadow-xs) {
+.synergy-workbench-canvas :where(.shadow-sm, .shadow-xs, .shadow-md, .shadow-lg) {
   box-shadow: none;
 }
 

@@ -76,21 +76,16 @@ export function SubagentSessionFooter(props: { cortex: SessionCortexDelegation; 
       case "running":
         return { label: "Running", tone: "text-text-interactive-base", dot: "bg-text-interactive-base" }
       case "completed":
-        return { label: "Completed", tone: "text-text-interactive-base", dot: "bg-text-interactive-base" }
+        return { label: "Completed", tone: "text-text-success", dot: "bg-border-success-base" }
       case "error":
-        return { label: "Error", tone: "text-red-300", dot: "bg-red-300" }
+        return { label: "Error", tone: "text-text-critical", dot: "bg-icon-critical-base" }
       case "cancelled":
         return { label: "Cancelled", tone: "text-text-subtle", dot: "bg-text-subtle" }
     }
   })
 
   return (
-    <div
-      class="relative rounded-[18px] border border-border-base bg-surface-raised-stronger-non-alpha px-3 py-2.5 shadow-sm"
-      style={{
-        "border-left": `3px solid color-mix(in srgb, ${visual().color} 72%, var(--border-base))`,
-      }}
-    >
+    <div class="workbench-card-surface relative rounded-[18px] border border-border-base px-3 py-2.5">
       <div class="flex items-center gap-3">
         <AgentGlyph agent={props.cortex.agent} size="normal" quiet class="size-8 shrink-0" />
 
@@ -121,7 +116,7 @@ export function SubagentSessionFooter(props: { cortex: SessionCortexDelegation; 
           <Show when={props.parentSessionID}>
             <button
               type="button"
-              class="inline-flex h-8 items-center justify-center gap-1.5 rounded-full border border-border-base bg-background-base/55 px-3 text-12-medium text-text-weak transition-all duration-150 hover:bg-surface-raised-stronger-hover hover:text-text-base active:scale-[0.97]"
+              class="workbench-control-surface workbench-control-surface-hover inline-flex h-8 items-center justify-center gap-1.5 rounded-full border border-border-base px-3 text-12-medium text-text-weak transition-all duration-150 hover:text-text-base active:scale-[0.97]"
               onClick={() => navigate(`/${params.dir}/session/${props.parentSessionID}`)}
             >
               <Icon name="arrow-left" size="small" />
