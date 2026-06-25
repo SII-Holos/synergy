@@ -1,7 +1,7 @@
 import { onCleanup, onMount } from "solid-js"
 import { useSDK } from "@/context/sdk"
 import type { BrowserStoreAPI } from "./browser-store"
-import { browserDebug, summarizeBrowserMessage } from "./browser-debug"
+import { browserDebug, shouldLogBrowserMessage, summarizeBrowserMessage } from "./browser-debug"
 
 const MAX_RECONNECT_ATTEMPTS = 10
 const RECONNECT_DELAY = 2000
@@ -54,20 +54,22 @@ export function createQueuedBrowserSender(
   function send(msg: Record<string, unknown>) {
     const socket = getSocket()
     if (socket?.readyState === openState) {
-      browserDebug("ws.send", summarizeBrowserMessage(msg))
+      if (shouldLogBrowserMessage(msg)) browserDebug("ws.send", summarizeBrowserMessage(msg))
       socket.send(JSON.stringify(msg))
       return
     }
 
-    browserDebug("ws.queue", {
-      ...summarizeBrowserMessage(msg),
-      readyState: socket?.readyState ?? "missing",
-      pendingBefore: pending.length,
-    })
+    if (shouldLogBrowserMessage(msg)) {
+      browserDebug("ws.queue", {
+        ...summarizeBrowserMessage(msg),
+        readyState: socket?.readyState ?? "missing",
+        pendingBefore: pending.length,
+      })
+    }
     pending.push(msg)
     if (pending.length > maxPending) {
       const dropped = pending.shift()
-      browserDebug("ws.queue.drop", summarizeBrowserMessage(dropped ?? {}))
+      if (dropped && shouldLogBrowserMessage(dropped)) browserDebug("ws.queue.drop", summarizeBrowserMessage(dropped))
     }
   }
 
@@ -80,7 +82,7 @@ export function createQueuedBrowserSender(
     const messages = pending.splice(0)
     browserDebug("ws.flush", { count: messages.length })
     for (const msg of messages) {
-      browserDebug("ws.send.queued", summarizeBrowserMessage(msg))
+      if (shouldLogBrowserMessage(msg)) browserDebug("ws.send.queued", summarizeBrowserMessage(msg))
       socket.send(JSON.stringify(msg))
     }
   }
@@ -163,7 +165,7 @@ export function createBrowserWebSocket(store: BrowserStoreAPI, options: BrowserW
         return
       }
 
-      browserDebug("ws.message", summarizeBrowserMessage(msg))
+      if (shouldLogBrowserMessage(msg)) browserDebug("ws.message", summarizeBrowserMessage(msg))
       switch (msg.type) {
         case "session.state": {
           if (msg.tabs) store.setSession("tabs", msg.tabs)

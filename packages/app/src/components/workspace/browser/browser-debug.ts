@@ -4,9 +4,9 @@ function browserDebugEnabled() {
   if (import.meta.env.MODE === "test") return false
   if (typeof window === "undefined") return false
   try {
-    return window.localStorage.getItem("synergy.browser.debug") !== "0"
+    return window.localStorage.getItem("synergy.browser.debug") === "1"
   } catch {
-    return true
+    return false
   }
 }
 
@@ -17,6 +17,15 @@ export function browserDebug(event: string, details?: BrowserDebugDetails) {
     return
   }
   console.log(`[browser] ${event}`)
+}
+
+export function shouldLogBrowserMessage(msg: Record<string, unknown>) {
+  const type = msg.type
+  if (type === "frame") return false
+  if (type === "input.mouse") return false
+  if (type === "input.key") return false
+  if (type === "input.text") return false
+  return true
 }
 
 export function summarizeBrowserMessage(msg: Record<string, unknown>): BrowserDebugDetails {

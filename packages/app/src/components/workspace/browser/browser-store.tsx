@@ -1,6 +1,6 @@
 import { createContext, createSignal, useContext, type ParentProps } from "solid-js"
 import { createStore, produce, type SetStoreFunction } from "solid-js/store"
-import { browserDebug, summarizeBrowserMessage } from "./browser-debug"
+import { browserDebug, shouldLogBrowserMessage, summarizeBrowserMessage } from "./browser-debug"
 
 export interface BrowserTab {
   id: string
@@ -155,13 +155,15 @@ export function createBrowserStore() {
   let _sendFn: ((msg: Record<string, unknown>) => void) | undefined
 
   function send(msg: Record<string, unknown>) {
-    browserDebug("store.send", {
-      ...summarizeBrowserMessage(msg),
-      hasSender: Boolean(_sendFn),
-      connectionStatus: session.connectionStatus,
-      activeTabId: activeTabId(),
-      tabCount: session.tabs.length,
-    })
+    if (shouldLogBrowserMessage(msg)) {
+      browserDebug("store.send", {
+        ...summarizeBrowserMessage(msg),
+        hasSender: Boolean(_sendFn),
+        connectionStatus: session.connectionStatus,
+        activeTabId: activeTabId(),
+        tabCount: session.tabs.length,
+      })
+    }
     if (!_sendFn) browserDebug("store.send.dropped", { reason: "missing sender", type: msg.type })
     _sendFn?.(msg)
   }
