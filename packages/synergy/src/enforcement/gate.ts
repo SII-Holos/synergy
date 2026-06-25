@@ -652,6 +652,7 @@ export namespace EnforcementGate {
         toolName === "read" ||
         toolName === "glob" ||
         toolName === "grep" ||
+        toolName === "file_search" ||
         toolName === "view_file" ||
         toolName === "scan_files" ||
         toolName === "parse_code"

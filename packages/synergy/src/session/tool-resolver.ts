@@ -738,6 +738,7 @@ export namespace ToolResolver {
     "read",
     "glob",
     "grep",
+    "file_search",
     "view_file",
     "scan_files",
     "parse_code",

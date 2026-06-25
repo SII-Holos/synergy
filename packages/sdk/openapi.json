@@ -7906,9 +7906,9 @@
         ]
       }
     },
-    "/find": {
+    "/workspace/files/children": {
       "get": {
-        "operationId": "find.text",
+        "operationId": "workspace.files.children",
         "parameters": [
           {
             "in": "query",
@@ -7926,76 +7926,53 @@
           },
           {
             "in": "query",
-            "name": "pattern",
+            "name": "path",
             "schema": {
               "type": "string"
-            },
-            "required": true
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1000
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "showHidden",
+            "schema": {
+              "type": "string",
+              "enum": ["true", "false"]
+            }
+          },
+          {
+            "in": "query",
+            "name": "showIgnored",
+            "schema": {
+              "type": "string",
+              "enum": ["true", "false"]
+            }
           }
         ],
-        "summary": "Find text",
-        "description": "Search for text patterns across files in the project using ripgrep.",
+        "summary": "List workspace file children",
+        "description": "List direct children for a workspace directory with lazy-loading friendly pagination.",
         "responses": {
           "200": {
-            "description": "Matches",
+            "description": "Workspace file children",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "array",
-                  "items": {
-                    "type": "object",
-                    "properties": {
-                      "path": {
-                        "type": "object",
-                        "properties": {
-                          "text": {
-                            "type": "string"
-                          }
-                        },
-                        "required": ["text"]
-                      },
-                      "lines": {
-                        "type": "object",
-                        "properties": {
-                          "text": {
-                            "type": "string"
-                          }
-                        },
-                        "required": ["text"]
-                      },
-                      "line_number": {
-                        "type": "number"
-                      },
-                      "absolute_offset": {
-                        "type": "number"
-                      },
-                      "submatches": {
-                        "type": "array",
-                        "items": {
-                          "type": "object",
-                          "properties": {
-                            "match": {
-                              "type": "object",
-                              "properties": {
-                                "text": {
-                                  "type": "string"
-                                }
-                              },
-                              "required": ["text"]
-                            },
-                            "start": {
-                              "type": "number"
-                            },
-                            "end": {
-                              "type": "number"
-                            }
-                          },
-                          "required": ["match", "start", "end"]
-                        }
-                      }
-                    },
-                    "required": ["path", "lines", "line_number", "absolute_offset", "submatches"]
-                  }
+                  "$ref": "#/components/schemas/WorkspaceFileChildrenResponse"
                 }
               }
             }
@@ -8004,14 +7981,145 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.find.text({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.workspace.files.children({\n  ...\n})"
           }
         ]
       }
     },
-    "/find/file": {
+    "/workspace/files/read": {
       "get": {
-        "operationId": "find.files",
+        "operationId": "workspace.files.read",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "path",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          },
+          {
+            "in": "query",
+            "name": "range",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 5000
+            }
+          },
+          {
+            "in": "query",
+            "name": "preview",
+            "schema": {
+              "type": "string",
+              "enum": ["true", "false"]
+            }
+          }
+        ],
+        "summary": "Read workspace file",
+        "description": "Read a workspace file as text, image preview, or binary metadata.",
+        "responses": {
+          "200": {
+            "description": "Workspace file read result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceFileReadResult"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.workspace.files.read({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/workspace/files/stat": {
+      "get": {
+        "operationId": "workspace.files.stat",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "path",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "summary": "Stat workspace file",
+        "description": "Return metadata for a workspace file or directory.",
+        "responses": {
+          "200": {
+            "description": "Workspace file node",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceFileNode"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.workspace.files.stat({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/workspace/files/search": {
+      "get": {
+        "operationId": "workspace.files.search",
         "parameters": [
           {
             "in": "query",
@@ -8037,18 +8145,11 @@
           },
           {
             "in": "query",
-            "name": "dirs",
+            "name": "kind",
             "schema": {
+              "default": "files",
               "type": "string",
-              "enum": ["true", "false"]
-            }
-          },
-          {
-            "in": "query",
-            "name": "type",
-            "schema": {
-              "type": "string",
-              "enum": ["file", "directory"]
+              "enum": ["files", "content", "symbol"]
             }
           },
           {
@@ -8059,20 +8160,38 @@
               "minimum": 1,
               "maximum": 200
             }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "include",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "exclude",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
-        "summary": "Find files",
-        "description": "Search for files or directories by name or pattern in the project directory.",
+        "summary": "Search workspace files",
+        "description": "Search workspace files, content, or active LSP symbols.",
         "responses": {
           "200": {
-            "description": "File paths",
+            "description": "Workspace search response",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "array",
-                  "items": {
-                    "type": "string"
-                  }
+                  "$ref": "#/components/schemas/WorkspaceFileSearchResponse"
                 }
               }
             }
@@ -8081,167 +8200,14 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.find.files({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.workspace.files.search({\n  ...\n})"
           }
         ]
       }
     },
-    "/find/symbol": {
+    "/workspace/files/status": {
       "get": {
-        "operationId": "find.symbols",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "directory",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "scopeID",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "query",
-            "schema": {
-              "type": "string"
-            },
-            "required": true
-          }
-        ],
-        "summary": "Find symbols",
-        "description": "Search for workspace symbols like functions, classes, and variables using LSP.",
-        "responses": {
-          "200": {
-            "description": "Symbols",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/Symbol"
-                  }
-                }
-              }
-            }
-          }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.find.symbols({\n  ...\n})"
-          }
-        ]
-      }
-    },
-    "/file": {
-      "get": {
-        "operationId": "file.list",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "directory",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "scopeID",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "path",
-            "schema": {
-              "type": "string"
-            },
-            "required": true
-          }
-        ],
-        "summary": "List files",
-        "description": "List files and directories in a specified path.",
-        "responses": {
-          "200": {
-            "description": "Files and directories",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/FileNode"
-                  }
-                }
-              }
-            }
-          }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.file.list({\n  ...\n})"
-          }
-        ]
-      }
-    },
-    "/file/content": {
-      "get": {
-        "operationId": "file.read",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "directory",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "scopeID",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "path",
-            "schema": {
-              "type": "string"
-            },
-            "required": true
-          }
-        ],
-        "summary": "Read file",
-        "description": "Read the content of a specified file.",
-        "responses": {
-          "200": {
-            "description": "File content",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/FileContent"
-                }
-              }
-            }
-          }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.file.read({\n  ...\n})"
-          }
-        ]
-      }
-    },
-    "/file/status": {
-      "get": {
-        "operationId": "file.status",
+        "operationId": "workspace.files.status",
         "parameters": [
           {
             "in": "query",
@@ -8258,18 +8224,15 @@
             }
           }
         ],
-        "summary": "Get file status",
-        "description": "Get the git status of all files in the project.",
+        "summary": "Get workspace file status",
+        "description": "Return git-backed file status for the current workspace.",
         "responses": {
           "200": {
-            "description": "File status",
+            "description": "Workspace file status",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/File"
-                  }
+                  "$ref": "#/components/schemas/WorkspaceFileStatusSummary"
                 }
               }
             }
@@ -8278,7 +8241,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.file.status({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.workspace.files.status({\n  ...\n})"
           }
         ]
       }
@@ -19822,6 +19785,19 @@
               "type": "string"
             }
           },
+          "project_doc_fallback_filenames": {
+            "description": "Ordered fallback instruction filenames to try when AGENTS.md is missing in a directory",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "project_doc_max_bytes": {
+            "description": "Maximum bytes to include from each automatically discovered instruction file (default: 32768; 0 disables automatic discovery)",
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
           "layout": {
             "$ref": "#/components/schemas/LayoutConfig"
           },
@@ -23525,145 +23501,477 @@
         },
         "required": ["items", "diagnostics"]
       },
-      "Symbol": {
+      "WorkspaceFileNode": {
         "type": "object",
         "properties": {
+          "path": {
+            "type": "string"
+          },
           "name": {
             "type": "string"
           },
-          "kind": {
-            "type": "number"
+          "type": {
+            "type": "string",
+            "enum": ["file", "directory", "symlink", "unknown"]
           },
-          "location": {
-            "type": "object",
-            "properties": {
-              "uri": {
-                "type": "string"
-              },
-              "range": {
-                "$ref": "#/components/schemas/Range"
-              }
-            },
-            "required": ["uri", "range"]
+          "size": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "mtime": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "ctime": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "ignored": {
+            "type": "boolean"
+          },
+          "hidden": {
+            "type": "boolean"
+          },
+          "readonly": {
+            "type": "boolean"
+          },
+          "symlink": {
+            "type": "boolean"
+          },
+          "binary": {
+            "type": "boolean"
+          },
+          "gitStatus": {
+            "type": "string",
+            "enum": ["added", "deleted", "modified", "renamed", "untracked"]
           }
         },
-        "required": ["name", "kind", "location"]
+        "required": [
+          "path",
+          "name",
+          "type",
+          "size",
+          "mtime",
+          "ctime",
+          "ignored",
+          "hidden",
+          "readonly",
+          "symlink",
+          "binary"
+        ]
       },
-      "FileNode": {
+      "WorkspaceFileChildrenResponse": {
         "type": "object",
         "properties": {
-          "name": {
+          "path": {
             "type": "string"
+          },
+          "parent": {
+            "$ref": "#/components/schemas/WorkspaceFileNode"
+          },
+          "children": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WorkspaceFileNode"
+            }
+          },
+          "nextCursor": {
+            "type": "string"
+          },
+          "truncated": {
+            "type": "boolean"
+          }
+        },
+        "required": ["path", "children", "truncated"]
+      },
+      "WorkspaceFileTextRange": {
+        "type": "object",
+        "properties": {
+          "offset": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "limit": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "startLine": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "endLine": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": ["offset", "limit", "startLine", "endLine"]
+      },
+      "WorkspaceFileReadText": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "text"
           },
           "path": {
             "type": "string"
           },
-          "absolute": {
+          "node": {
+            "$ref": "#/components/schemas/WorkspaceFileNode"
+          },
+          "content": {
+            "type": "string"
+          },
+          "mimeType": {
+            "type": "string"
+          },
+          "encoding": {
+            "type": "string",
+            "const": "utf-8"
+          },
+          "range": {
+            "$ref": "#/components/schemas/WorkspaceFileTextRange"
+          },
+          "totalBytes": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "lineCount": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "truncated": {
+            "type": "boolean"
+          },
+          "nextRange": {
+            "$ref": "#/components/schemas/WorkspaceFileTextRange"
+          }
+        },
+        "required": ["kind", "path", "node", "content", "encoding", "range", "totalBytes", "truncated"]
+      },
+      "WorkspaceFileReadImage": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "image"
+          },
+          "path": {
+            "type": "string"
+          },
+          "node": {
+            "$ref": "#/components/schemas/WorkspaceFileNode"
+          },
+          "content": {
+            "type": "string"
+          },
+          "mimeType": {
+            "type": "string"
+          },
+          "encoding": {
+            "type": "string",
+            "const": "base64"
+          },
+          "totalBytes": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "truncated": {
+            "type": "boolean"
+          }
+        },
+        "required": ["kind", "path", "node", "content", "mimeType", "encoding", "totalBytes", "truncated"]
+      },
+      "WorkspaceFileReadBinary": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "binary"
+          },
+          "path": {
+            "type": "string"
+          },
+          "node": {
+            "$ref": "#/components/schemas/WorkspaceFileNode"
+          },
+          "mimeType": {
+            "type": "string"
+          },
+          "totalBytes": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "truncated": {
+            "type": "boolean"
+          },
+          "unsupportedReason": {
+            "type": "string"
+          }
+        },
+        "required": ["kind", "path", "node", "totalBytes", "truncated", "unsupportedReason"]
+      },
+      "WorkspaceFileReadResult": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/WorkspaceFileReadText"
+          },
+          {
+            "$ref": "#/components/schemas/WorkspaceFileReadImage"
+          },
+          {
+            "$ref": "#/components/schemas/WorkspaceFileReadBinary"
+          }
+        ]
+      },
+      "WorkspaceFileSearchItem": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "file"
+          },
+          "path": {
+            "type": "string"
+          },
+          "name": {
             "type": "string"
           },
           "type": {
             "type": "string",
             "enum": ["file", "directory"]
           },
-          "ignored": {
-            "type": "boolean"
+          "score": {
+            "type": "number"
+          },
+          "indices": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            }
+          },
+          "node": {
+            "$ref": "#/components/schemas/WorkspaceFileNode"
           }
         },
-        "required": ["name", "path", "absolute", "type", "ignored"]
+        "required": ["kind", "path", "name", "type", "score", "indices"]
       },
-      "FileContent": {
+      "WorkspaceContentSearchItem": {
         "type": "object",
         "properties": {
-          "type": {
+          "kind": {
             "type": "string",
-            "const": "text"
+            "const": "content"
           },
-          "content": {
-            "type": "string"
-          },
-          "diff": {
-            "type": "string"
-          },
-          "patch": {
-            "type": "object",
-            "properties": {
-              "oldFileName": {
-                "type": "string"
-              },
-              "newFileName": {
-                "type": "string"
-              },
-              "oldHeader": {
-                "type": "string"
-              },
-              "newHeader": {
-                "type": "string"
-              },
-              "hunks": {
-                "type": "array",
-                "items": {
-                  "type": "object",
-                  "properties": {
-                    "oldStart": {
-                      "type": "number"
-                    },
-                    "oldLines": {
-                      "type": "number"
-                    },
-                    "newStart": {
-                      "type": "number"
-                    },
-                    "newLines": {
-                      "type": "number"
-                    },
-                    "lines": {
-                      "type": "array",
-                      "items": {
-                        "type": "string"
-                      }
-                    }
-                  },
-                  "required": ["oldStart", "oldLines", "newStart", "newLines", "lines"]
-                }
-              },
-              "index": {
-                "type": "string"
-              }
-            },
-            "required": ["oldFileName", "newFileName", "hunks"]
-          },
-          "encoding": {
-            "type": "string",
-            "const": "base64"
-          },
-          "mimeType": {
-            "type": "string"
-          }
-        },
-        "required": ["type", "content"]
-      },
-      "File": {
-        "type": "object",
-        "properties": {
           "path": {
             "type": "string"
           },
-          "added": {
+          "lineNumber": {
             "type": "integer",
-            "minimum": -9007199254740991,
+            "exclusiveMinimum": 0,
             "maximum": 9007199254740991
           },
-          "removed": {
+          "column": {
             "type": "integer",
-            "minimum": -9007199254740991,
+            "minimum": 0,
             "maximum": 9007199254740991
           },
-          "status": {
-            "type": "string",
-            "enum": ["added", "deleted", "modified"]
+          "line": {
+            "type": "string"
+          },
+          "score": {
+            "type": "number"
+          },
+          "submatches": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "text": {
+                  "type": "string"
+                },
+                "start": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "end": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                }
+              },
+              "required": ["text", "start", "end"]
+            }
+          },
+          "previewRanges": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "start": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "end": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                }
+              },
+              "required": ["start", "end"]
+            }
           }
         },
-        "required": ["path", "added", "removed", "status"]
+        "required": ["kind", "path", "lineNumber", "column", "line", "score", "submatches", "previewRanges"]
+      },
+      "WorkspaceSymbolSearchItem": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "symbol"
+          },
+          "name": {
+            "type": "string"
+          },
+          "symbolKind": {
+            "type": "number"
+          },
+          "path": {
+            "type": "string"
+          },
+          "range": {
+            "type": "object",
+            "properties": {
+              "start": {
+                "type": "object",
+                "properties": {
+                  "line": {
+                    "type": "number"
+                  },
+                  "character": {
+                    "type": "number"
+                  }
+                },
+                "required": ["line", "character"]
+              },
+              "end": {
+                "type": "object",
+                "properties": {
+                  "line": {
+                    "type": "number"
+                  },
+                  "character": {
+                    "type": "number"
+                  }
+                },
+                "required": ["line", "character"]
+              }
+            },
+            "required": ["start", "end"]
+          },
+          "score": {
+            "type": "number"
+          }
+        },
+        "required": ["kind", "name", "symbolKind", "path", "range", "score"]
+      },
+      "WorkspaceSearchCapability": {
+        "type": "object",
+        "properties": {
+          "available": {
+            "type": "boolean"
+          },
+          "reason": {
+            "type": "string"
+          }
+        },
+        "required": ["available"]
+      },
+      "WorkspaceFileSearchResponse": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": ["files", "content", "symbol"]
+          },
+          "query": {
+            "type": "string"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/WorkspaceFileSearchItem"
+                },
+                {
+                  "$ref": "#/components/schemas/WorkspaceContentSearchItem"
+                },
+                {
+                  "$ref": "#/components/schemas/WorkspaceSymbolSearchItem"
+                }
+              ]
+            }
+          },
+          "nextCursor": {
+            "type": "string"
+          },
+          "truncated": {
+            "type": "boolean"
+          },
+          "capability": {
+            "$ref": "#/components/schemas/WorkspaceSearchCapability"
+          }
+        },
+        "required": ["kind", "query", "items", "truncated"]
+      },
+      "WorkspaceFileStatusSummary": {
+        "type": "object",
+        "properties": {
+          "files": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "path": {
+                  "type": "string"
+                },
+                "status": {
+                  "type": "string",
+                  "enum": ["added", "deleted", "modified", "renamed", "untracked"]
+                },
+                "added": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "removed": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                }
+              },
+              "required": ["path", "status"]
+            }
+          }
+        },
+        "required": ["files"]
       },
       "RewardsInfo": {
         "type": "object",
@@ -26945,21 +27253,22 @@
                 "type": "string"
               },
               "event": {
-                "anyOf": [
-                  {
-                    "type": "string",
-                    "const": "add"
-                  },
-                  {
-                    "type": "string",
-                    "const": "change"
-                  },
-                  {
-                    "type": "string",
-                    "const": "unlink"
-                  }
-                ]
-              }
+                "type": "string",
+                "enum": ["added", "changed", "deleted", "renamed"]
+              },
+              "absolute": {
+                "type": "string"
+              },
+              "oldPath": {
+                "type": "string"
+              },
+              "oldAbsolute": {
+                "type": "string"
+              },
+              "parent": {
+                "type": "string"
+              },
+              "node": {}
             },
             "required": ["file", "event"]
           }

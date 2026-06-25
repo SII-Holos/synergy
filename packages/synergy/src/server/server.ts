@@ -43,8 +43,7 @@ import { PtyRoute } from "./pty"
 import { ProviderRoute } from "./provider"
 import { McpRoute } from "./mcp-route"
 import { PermissionRoute } from "./permission"
-import { FindRoute } from "./find"
-import { FileRoute } from "./file"
+import { WorkspaceFilesRoute } from "./workspace-files"
 import { File as SynergyFile } from "../file"
 import { ConfigRoute } from "./config-route"
 import { ChannelRoute } from "./channel"
@@ -189,10 +188,8 @@ export namespace Server {
       pathname.startsWith("/experimental/worktree/") ||
       pathname === "/vcs" ||
       pathname.startsWith("/vcs/") ||
-      pathname === "/find" ||
-      pathname.startsWith("/find/") ||
-      pathname === "/file" ||
-      pathname.startsWith("/file/") ||
+      pathname === "/workspace/files" ||
+      pathname.startsWith("/workspace/files/") ||
       pathname === "/note" ||
       pathname.startsWith("/note/") ||
       pathname === "/blueprint" ||
@@ -895,8 +892,7 @@ export namespace Server {
 
         .route("/provider", ProviderRoute)
         .route("/skill", SkillRoute)
-        .route("/find", FindRoute)
-        .route("/file", FileRoute)
+        .route("/workspace/files", WorkspaceFilesRoute)
         .route("/library", LibraryRoute)
         .route("/agenda", AgendaRoute)
         .route("/note", NoteRoute)

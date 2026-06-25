@@ -6,7 +6,8 @@ import { useCodeComponent } from "@ericsanchezok/synergy-ui/context/code"
 import { selectionFromLines, useFile, type SelectedLineRange } from "@/context/file"
 import type { useLayout } from "@/context/layout"
 import type { usePrompt } from "@/context/prompt"
-import { checksum, base64Decode } from "@ericsanchezok/synergy-util/encode"
+import { checksum } from "@ericsanchezok/synergy-util/encode"
+import { filePreviewModel } from "./file-preview-model"
 
 export interface FileTabContentProps {
   tab: string
@@ -30,35 +31,16 @@ export function FileTabContent(props: FileTabContentProps) {
     if (!p) return
     return props.file.get(p)
   })
-  const contents = createMemo(() => state()?.content?.content ?? "")
+  const content = createMemo(() => state()?.content)
+  const preview = createMemo(() => filePreviewModel(content()))
+  const contents = createMemo(() => preview().textContent)
   const cacheKey = createMemo(() => checksum(contents()))
-  const isImage = createMemo(() => {
-    const c = state()?.content
-    return c?.encoding === "base64" && c?.mimeType?.startsWith("image/") && c?.mimeType !== "image/svg+xml"
-  })
-  const isSvg = createMemo(() => {
-    const c = state()?.content
-    return c?.mimeType === "image/svg+xml"
-  })
-  const svgContent = createMemo(() => {
-    if (!isSvg()) return
-    const c = state()?.content
-    if (!c) return
-    if (c.encoding === "base64") return base64Decode(c.content)
-    return c.content
-  })
-  const svgPreviewUrl = createMemo(() => {
-    if (!isSvg()) return
-    const c = state()?.content
-    if (!c) return
-    if (c.encoding === "base64") return `data:image/svg+xml;base64,${c.content}`
-    return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(c.content)}`
-  })
-  const imageDataUrl = createMemo(() => {
-    if (!isImage()) return
-    const c = state()?.content
-    return `data:${c?.mimeType};base64,${c?.content}`
-  })
+  const isImage = createMemo(() => preview().isImage)
+  const isSvg = createMemo(() => preview().isSvg)
+  const svgContent = createMemo(() => (isSvg() ? preview().textContent : undefined))
+  const svgPreviewUrl = createMemo(() => preview().svgPreviewUrl)
+  const imageDataUrl = createMemo(() => preview().imageDataUrl)
+  const binaryReason = createMemo(() => preview().binaryReason)
   const selectedLines = createMemo(() => {
     const p = path()
     if (!p) return null
@@ -210,7 +192,10 @@ export function FileTabContent(props: FileTabContentProps) {
               </Show>
             </div>
           </Match>
-          <Match when={state()?.loaded}>
+          <Match when={state()?.loaded && binaryReason()}>
+            {(reason) => <div class="px-6 py-4 text-text-weak">{reason()}</div>}
+          </Match>
+          <Match when={state()?.loaded && content()?.kind === "text"}>
             <Dynamic
               component={codeComponent}
               file={{

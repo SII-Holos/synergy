@@ -88,6 +88,7 @@ const REGISTRY: Record<string, ToolTaxonomyEntry> = {
   arxiv_search: entry("search.academic", { externalIO: true }),
   arxiv_download: entry("search.academic", { externalIO: true }),
   grep: entry("search.codebase"),
+  file_search: entry("search.codebase"),
   scan_files: entry("search.codebase"),
   ast_grep: entry("search.codebase"),
   parse_code: entry("code.analyze"),

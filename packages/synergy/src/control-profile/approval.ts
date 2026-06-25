@@ -62,6 +62,7 @@ const PERMISSION_CAPABILITY: Record<string, string> = {
   scan_files: "file_read",
   parse_code: "file_read",
   grep: "file_read",
+  file_search: "file_read",
   glob: "file_read",
   list: "file_read",
   edit: "file_write",

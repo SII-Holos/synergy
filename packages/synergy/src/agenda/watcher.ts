@@ -28,6 +28,13 @@ export namespace AgendaWatcher {
   let globalBusHandler: ((event: { directory?: string; payload: unknown }) => void) | null = null
   let started = false
 
+  function normalizeFileEvent(event: string): FileEntry["event"] | undefined {
+    if (event === "add" || event === "added") return "add"
+    if (event === "change" || event === "changed" || event === "renamed") return "change"
+    if (event === "unlink" || event === "deleted") return "unlink"
+    return undefined
+  }
+
   export function start(onFire: Handler, items: AgendaTypes.Item[]): void {
     handler = onFire
     for (const item of items) {
@@ -41,7 +48,7 @@ export namespace AgendaWatcher {
       const properties = payload.properties as Record<string, unknown> | undefined
       if (!properties) return
       const filePath = properties.file as string
-      const fileEvent = properties.event as string
+      const fileEvent = normalizeFileEvent(properties.event as string)
       if (!filePath || !fileEvent) return
       handleFileEvent(filePath, fileEvent)
     }

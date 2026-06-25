@@ -544,6 +544,12 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
         title: "Grep",
         subtitle: input.pattern,
       }
+    case "file_search":
+      return {
+        icon: "scan-document",
+        title: "File Search",
+        subtitle: input.query,
+      }
     case "scan_files":
       return {
         icon: "scan-search",

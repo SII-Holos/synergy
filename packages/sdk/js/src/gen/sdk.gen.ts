@@ -134,14 +134,8 @@ import type {
   ExperienceListFilter,
   ExperienceListSort,
   ExperimentalResourceListResponses,
-  FileListResponses,
   FilePartInput,
   FilePartSource,
-  FileReadResponses,
-  FileStatusResponses,
-  FindFilesResponses,
-  FindSymbolsResponses,
-  FindTextResponses,
   FormatterStatusResponses,
   GlobalAgendaListErrors,
   GlobalAgendaListResponses,
@@ -414,6 +408,11 @@ import type {
   ToolListErrors,
   ToolListResponses,
   VcsGetResponses,
+  WorkspaceFilesChildrenResponses,
+  WorkspaceFilesReadResponses,
+  WorkspaceFilesSearchResponses,
+  WorkspaceFilesStatResponses,
+  WorkspaceFilesStatusResponses,
   WorktreeCreateErrors,
   WorktreeCreateInput,
   WorktreeCreateResponses,
@@ -1055,6 +1054,190 @@ export class Files extends HeyApiClient {
         },
       },
     )
+  }
+
+  /**
+   * List workspace file children
+   *
+   * List direct children for a workspace directory with lazy-loading friendly pagination.
+   */
+  public children<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      scopeID?: string
+      path?: string
+      limit?: number
+      cursor?: string
+      showHidden?: "true" | "false"
+      showIgnored?: "true" | "false"
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { in: "query", key: "path" },
+            { in: "query", key: "limit" },
+            { in: "query", key: "cursor" },
+            { in: "query", key: "showHidden" },
+            { in: "query", key: "showIgnored" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<WorkspaceFilesChildrenResponses, unknown, ThrowOnError>({
+      url: "/workspace/files/children",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Read workspace file
+   *
+   * Read a workspace file as text, image preview, or binary metadata.
+   */
+  public read<ThrowOnError extends boolean = false>(
+    parameters: {
+      directory?: string
+      scopeID?: string
+      path: string
+      range?: string
+      offset?: number
+      limit?: number
+      preview?: "true" | "false"
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { in: "query", key: "path" },
+            { in: "query", key: "range" },
+            { in: "query", key: "offset" },
+            { in: "query", key: "limit" },
+            { in: "query", key: "preview" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<WorkspaceFilesReadResponses, unknown, ThrowOnError>({
+      url: "/workspace/files/read",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Stat workspace file
+   *
+   * Return metadata for a workspace file or directory.
+   */
+  public stat<ThrowOnError extends boolean = false>(
+    parameters: {
+      directory?: string
+      scopeID?: string
+      path: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { in: "query", key: "path" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<WorkspaceFilesStatResponses, unknown, ThrowOnError>({
+      url: "/workspace/files/stat",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Search workspace files
+   *
+   * Search workspace files, content, or active LSP symbols.
+   */
+  public search<ThrowOnError extends boolean = false>(
+    parameters: {
+      directory?: string
+      scopeID?: string
+      query: string
+      kind?: "files" | "content" | "symbol"
+      limit?: number
+      cursor?: string
+      include?: string
+      exclude?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { in: "query", key: "query" },
+            { in: "query", key: "kind" },
+            { in: "query", key: "limit" },
+            { in: "query", key: "cursor" },
+            { in: "query", key: "include" },
+            { in: "query", key: "exclude" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<WorkspaceFilesSearchResponses, unknown, ThrowOnError>({
+      url: "/workspace/files/search",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Get workspace file status
+   *
+   * Return git-backed file status for the current workspace.
+   */
+  public status<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      scopeID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<WorkspaceFilesStatusResponses, unknown, ThrowOnError>({
+      url: "/workspace/files/status",
+      ...options,
+      ...params,
+    })
   }
 }
 
@@ -5394,204 +5577,8 @@ export class Skill extends HeyApiClient {
   }
 }
 
-export class Find extends HeyApiClient {
-  /**
-   * Find text
-   *
-   * Search for text patterns across files in the project using ripgrep.
-   */
-  public text<ThrowOnError extends boolean = false>(
-    parameters: {
-      directory?: string
-      scopeID?: string
-      pattern: string
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "query", key: "directory" },
-            { in: "query", key: "scopeID" },
-            { in: "query", key: "pattern" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).get<FindTextResponses, unknown, ThrowOnError>({
-      url: "/find",
-      ...options,
-      ...params,
-    })
-  }
-
-  /**
-   * Find files
-   *
-   * Search for files or directories by name or pattern in the project directory.
-   */
-  public files<ThrowOnError extends boolean = false>(
-    parameters: {
-      directory?: string
-      scopeID?: string
-      query: string
-      dirs?: "true" | "false"
-      type?: "file" | "directory"
-      limit?: number
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "query", key: "directory" },
-            { in: "query", key: "scopeID" },
-            { in: "query", key: "query" },
-            { in: "query", key: "dirs" },
-            { in: "query", key: "type" },
-            { in: "query", key: "limit" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).get<FindFilesResponses, unknown, ThrowOnError>({
-      url: "/find/file",
-      ...options,
-      ...params,
-    })
-  }
-
-  /**
-   * Find symbols
-   *
-   * Search for workspace symbols like functions, classes, and variables using LSP.
-   */
-  public symbols<ThrowOnError extends boolean = false>(
-    parameters: {
-      directory?: string
-      scopeID?: string
-      query: string
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "query", key: "directory" },
-            { in: "query", key: "scopeID" },
-            { in: "query", key: "query" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).get<FindSymbolsResponses, unknown, ThrowOnError>({
-      url: "/find/symbol",
-      ...options,
-      ...params,
-    })
-  }
-}
-
-export class File extends HeyApiClient {
-  /**
-   * List files
-   *
-   * List files and directories in a specified path.
-   */
-  public list<ThrowOnError extends boolean = false>(
-    parameters: {
-      directory?: string
-      scopeID?: string
-      path: string
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "query", key: "directory" },
-            { in: "query", key: "scopeID" },
-            { in: "query", key: "path" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).get<FileListResponses, unknown, ThrowOnError>({
-      url: "/file",
-      ...options,
-      ...params,
-    })
-  }
-
-  /**
-   * Read file
-   *
-   * Read the content of a specified file.
-   */
-  public read<ThrowOnError extends boolean = false>(
-    parameters: {
-      directory?: string
-      scopeID?: string
-      path: string
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "query", key: "directory" },
-            { in: "query", key: "scopeID" },
-            { in: "query", key: "path" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).get<FileReadResponses, unknown, ThrowOnError>({
-      url: "/file/content",
-      ...options,
-      ...params,
-    })
-  }
-
-  /**
-   * Get file status
-   *
-   * Get the git status of all files in the project.
-   */
-  public status<ThrowOnError extends boolean = false>(
-    parameters?: {
-      directory?: string
-      scopeID?: string
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "query", key: "directory" },
-            { in: "query", key: "scopeID" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).get<FileStatusResponses, unknown, ThrowOnError>({
-      url: "/file/status",
-      ...options,
-      ...params,
-    })
-  }
+export class Workspace extends HeyApiClient {
+  files = new Files({ client: this.client })
 }
 
 export class Experience extends HeyApiClient {
@@ -8654,9 +8641,7 @@ export class SynergyClient extends HeyApiClient {
 
   skill = new Skill({ client: this.client })
 
-  find = new Find({ client: this.client })
-
-  file = new File({ client: this.client })
+  workspace = new Workspace({ client: this.client })
 
   library = new Library({ client: this.client })
 

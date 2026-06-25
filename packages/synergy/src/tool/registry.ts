@@ -3,6 +3,7 @@ import { BashTool } from "./bash"
 import { EditTool } from "./edit"
 import { GlobTool } from "./glob"
 import { GrepTool } from "./grep"
+import { FileSearchTool } from "./file-search"
 import { BatchTool } from "./batch"
 import { ReadTool } from "./read"
 import { ViewFileTool } from "./view-file"
@@ -267,6 +268,7 @@ export namespace ToolRegistry {
       ReadTool,
       ViewFileTool,
       ScanFilesTool,
+      FileSearchTool,
       ParseCodeTool,
       ReviseFileTool,
       SaveFileTool,

@@ -201,6 +201,7 @@ const TOOL_CATEGORIES: Record<string, SemanticCategory> = {
   arxiv_search: "search",
   arxiv_download: "search",
   grep: "search",
+  file_search: "search",
   scan_files: "search",
   ast_grep: "search",
   parse_code: "analyze",
