@@ -147,7 +147,7 @@ export class BrowserWebRTCClient {
   private async negotiateOnce(): Promise<void> {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return
     let pc = this.createPeer()
-    if (pc.signalingState !== "stable") {
+    if (this.needsFreshPeer(pc)) {
       this.closePeer()
       pc = this.createPeer()
     }
@@ -155,6 +155,15 @@ export class BrowserWebRTCClient {
     const offer = await pc.createOffer()
     await pc.setLocalDescription(offer)
     this.sendSignal({ type: "webrtc.offer", tabId: this.options.tabId, sdp: offer.sdp ?? "" })
+  }
+
+  private needsFreshPeer(pc: RTCPeerConnection): boolean {
+    return (
+      pc.signalingState !== "stable" ||
+      pc.connectionState === "failed" ||
+      pc.connectionState === "disconnected" ||
+      pc.connectionState === "closed"
+    )
   }
 
   private async handleSignal(raw: unknown): Promise<void> {

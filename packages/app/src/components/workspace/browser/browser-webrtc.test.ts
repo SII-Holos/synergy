@@ -41,6 +41,7 @@ class FakeRTCPeerConnection {
   ontrack: ((event: RTCTrackEvent) => void) | null = null
   onicecandidate: ((event: RTCPeerConnectionIceEvent) => void) | null = null
   onconnectionstatechange: (() => void) | null = null
+  closed = false
 
   constructor() {
     FakeRTCPeerConnection.instances.push(this)
@@ -76,6 +77,7 @@ class FakeRTCPeerConnection {
   async addIceCandidate() {}
 
   close() {
+    this.closed = true
     this.connectionState = "closed"
     this.signalingState = "closed"
   }
@@ -114,6 +116,37 @@ describe("BrowserWebRTCClient", () => {
     await Promise.resolve()
 
     expect(ws.sent).toContainEqual({ type: "webrtc.offer", tabId: "tab_1", sdp: "fake-offer" })
+    client.close()
+  })
+
+  test("recreates a failed peer when the Browser Host becomes ready again", async () => {
+    globalThis.WebSocket = FakeWebSocket as unknown as typeof WebSocket
+    globalThis.RTCPeerConnection = FakeRTCPeerConnection as unknown as typeof RTCPeerConnection
+    const client = new BrowserWebRTCClient({
+      signalingUrl: "ws://localhost/browser/webrtc/connect",
+      tabId: "tab_1",
+    })
+
+    await client.connect()
+    const ws = FakeWebSocket.instances[0]!
+    ws.emit("open", {})
+    ws.emit("message", { data: JSON.stringify({ type: "webrtc.host.ready", tabId: "tab_1" }) })
+    await Promise.resolve()
+    await Promise.resolve()
+    ws.emit("message", { data: JSON.stringify({ type: "webrtc.answer", tabId: "tab_1", sdp: "fake-answer" }) })
+    await Promise.resolve()
+
+    const firstPeer = FakeRTCPeerConnection.instances[0]!
+    firstPeer.connectionState = "failed"
+    firstPeer.onconnectionstatechange?.()
+
+    ws.emit("message", { data: JSON.stringify({ type: "webrtc.host.ready", tabId: "tab_1" }) })
+    await Promise.resolve()
+    await Promise.resolve()
+
+    expect(firstPeer.closed).toBe(true)
+    expect(FakeRTCPeerConnection.instances).toHaveLength(2)
+    expect(ws.sent.filter((message) => (message as { type?: string }).type === "webrtc.offer")).toHaveLength(2)
     client.close()
   })
 })
