@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test"
 import { BrowserHost } from "../../src/browser/host"
 import { BrowserHostControl, type BrowserHostControlSocket } from "../../src/browser/host-control"
+import { BrowserToolHelper } from "../../src/tool/browser-shared"
 import type { BrowserOwner } from "../../src/browser/owner"
 
 const owner: BrowserOwner.Info = {
@@ -304,6 +305,69 @@ describe("BrowserHostControl", () => {
       })
 
       await expect(resultPromise).resolves.toMatchObject({ type: "tab", tab: { id: "tab_2" } })
+    } finally {
+      restore()
+    }
+  })
+
+  test("tool helpers resolve attached Browser Host tabs before runtime fallback", async () => {
+    const host = socket()
+    const connection = BrowserHostControl.attach(owner, host.peer)
+    connection.handleMessage({
+      type: "browser.host.ready",
+      session: {
+        tabs: [
+          {
+            id: "tab_1",
+            url: "https://example.com/",
+            title: "Example",
+            isLoading: false,
+            pinned: false,
+            kept: false,
+            lastActiveAt: null,
+          },
+        ],
+        activeTabId: "tab_1",
+      },
+    })
+    const restore = BrowserHost.useRuntimeForTest({
+      async ensure() {
+        throw new Error("runtime should not be used when host is attached")
+      },
+      async health() {
+        return { running: false, chromiumPath: null, installed: false, version: null }
+      },
+      async getOrCreateSession() {
+        throw new Error("runtime should not be used when host is attached")
+      },
+    })
+
+    try {
+      const tab = await BrowserToolHelper.getTab(owner)
+      expect(tab.id).toBe("tab_1")
+      expect(tab.page).toBeUndefined()
+
+      const screenshotPromise = tab.screenshot("png")
+      const request = host.messages.find(
+        (message) =>
+          message.type === "browser.host.command" && (message.command as { type?: string }).type === "screenshot",
+      )!
+      expect(request).toMatchObject({
+        command: { type: "screenshot", tabId: "tab_1", format: "png" },
+      })
+      connection.handleMessage({
+        type: "browser.host.result",
+        id: request.id,
+        result: {
+          type: "screenshot",
+          tabId: "tab_1",
+          dataUrl: `data:image/png;base64,${Buffer.from("ok").toString("base64")}`,
+          width: 10,
+          height: 20,
+        },
+      })
+
+      await expect(screenshotPromise).resolves.toEqual({ buffer: Buffer.from("ok"), width: 10, height: 20 })
     } finally {
       restore()
     }
