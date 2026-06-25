@@ -9,11 +9,11 @@
 }
 
 [data-component="dialog"] [data-slot="dialog-content"].agenda-form-dialog {
-  --agenda-dialog-bg: light-dark(rgb(255 255 255), rgb(42 42 44));
-  --agenda-control-bg: light-dark(rgb(247 247 248), rgb(69 69 72));
-  --agenda-control-bg-hover: light-dark(rgb(241 241 242), rgb(78 78 81));
-  --agenda-selected-bg: light-dark(rgb(235 235 236), rgb(86 86 90));
-  --agenda-selected-bg-hover: light-dark(rgb(229 229 231), rgb(94 94 98));
+  --agenda-dialog-bg: light-dark(rgb(247 248 250), rgb(38 38 41));
+  --agenda-control-bg: light-dark(rgb(235 238 242), rgb(48 48 51));
+  --agenda-control-bg-hover: light-dark(rgb(226 231 237), rgb(54 54 58));
+  --agenda-selected-bg: light-dark(rgb(222 228 236), rgb(58 58 63));
+  --agenda-selected-bg-hover: light-dark(rgb(214 221 230), rgb(64 64 69));
   --agenda-control-border: light-dark(
     color-mix(in oklab, var(--border-base) 32%, transparent),
     color-mix(in oklab, var(--border-base) 18%, transparent)
@@ -22,7 +22,7 @@
     color-mix(in oklab, var(--text-strong) 24%, transparent),
     color-mix(in oklab, var(--text-strong) 28%, transparent)
   );
-  --agenda-popup-bg: light-dark(rgb(250 250 251), rgb(55 55 58));
+  --agenda-popup-bg: light-dark(rgb(242 244 247), rgb(42 42 45));
 
   min-height: 0;
   max-height: min(calc(100vh - 48px), 720px);
@@ -81,10 +81,10 @@
 }
 
 .agenda-form-surface {
-  --agenda-control-bg: light-dark(rgb(247 247 248), rgb(69 69 72));
-  --agenda-control-bg-hover: light-dark(rgb(241 241 242), rgb(78 78 81));
-  --agenda-selected-bg: light-dark(rgb(235 235 236), rgb(86 86 90));
-  --agenda-selected-bg-hover: light-dark(rgb(229 229 231), rgb(94 94 98));
+  --agenda-control-bg: light-dark(rgb(235 238 242), rgb(48 48 51));
+  --agenda-control-bg-hover: light-dark(rgb(226 231 237), rgb(54 54 58));
+  --agenda-selected-bg: light-dark(rgb(222 228 236), rgb(58 58 63));
+  --agenda-selected-bg-hover: light-dark(rgb(214 221 230), rgb(64 64 69));
   --agenda-control-border: light-dark(
     color-mix(in oklab, var(--border-base) 30%, transparent),
     color-mix(in oklab, var(--border-base) 18%, transparent)
@@ -93,7 +93,7 @@
     color-mix(in oklab, var(--text-strong) 24%, transparent),
     color-mix(in oklab, var(--text-strong) 28%, transparent)
   );
-  --agenda-popup-bg: light-dark(rgb(250 250 251), rgb(55 55 58));
+  --agenda-popup-bg: light-dark(rgb(242 244 247), rgb(42 42 45));
 }
 
 .agenda-control-surface {
@@ -229,7 +229,7 @@
   --agenda-content-bg-hover: var(--workbench-card-bg-hover, light-dark(rgb(222 226 232), rgb(60 60 63)));
   --agenda-control-bg: var(--workbench-control-bg, light-dark(rgb(223 227 233), rgb(64 64 67)));
   --agenda-control-bg-hover: var(--workbench-control-bg-hover, light-dark(rgb(214 220 228), rgb(72 72 75)));
-  --agenda-grid-bg: var(--workbench-card-bg, light-dark(rgb(229 232 236), rgb(44 44 46)));
+  --agenda-grid-bg: var(--workbench-panel-bg, light-dark(rgb(235 237 240), rgb(30 30 33)));
   --agenda-selected-bg: var(--workbench-selected-bg, light-dark(rgb(207 215 225), rgb(58 58 63)));
   --agenda-selected-bg-hover: var(--workbench-selected-bg-hover, light-dark(rgb(198 207 219), rgb(64 64 69)));
 
@@ -251,7 +251,7 @@
   --agenda-content-bg-hover: var(--workbench-card-bg-hover, light-dark(rgb(222 226 232), rgb(60 60 63)));
   --agenda-control-bg: var(--workbench-control-bg, light-dark(rgb(223 227 233), rgb(64 64 67)));
   --agenda-control-bg-hover: var(--workbench-control-bg-hover, light-dark(rgb(214 220 228), rgb(72 72 75)));
-  --agenda-grid-bg: var(--workbench-card-bg, light-dark(rgb(229 232 236), rgb(44 44 46)));
+  --agenda-grid-bg: var(--workbench-panel-bg, light-dark(rgb(235 237 240), rgb(30 30 33)));
   --agenda-selected-bg: var(--workbench-selected-bg, light-dark(rgb(207 215 225), rgb(58 58 63)));
   --agenda-selected-bg-hover: var(--workbench-selected-bg-hover, light-dark(rgb(198 207 219), rgb(64 64 69)));
 
@@ -266,6 +266,7 @@
   border-bottom: 0;
   position: relative;
   z-index: 1;
+  overflow: hidden;
 }
 
 .agenda-calendar-body {
@@ -285,14 +286,14 @@
 }
 
 .agenda-grid-scroll {
-  padding-left: 72px;
+  padding-left: 88px;
   padding-right: 12px;
   border-bottom-right-radius: 14px;
   border-bottom-left-radius: 14px;
 }
 
 .agenda-time-header {
-  padding-left: 72px;
+  padding-left: 88px;
   background: var(--agenda-panel-bg);
 }
 

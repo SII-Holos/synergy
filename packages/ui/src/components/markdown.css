@@ -111,7 +111,7 @@
     border-left: 3px solid var(--markdown-block-quote);
     border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
     color: var(--text-weak);
-    background-color: color-mix(in srgb, var(--workbench-control-bg, var(--surface-inset-base)) 42%, transparent);
+    background-color: var(--workbench-control-bg, var(--surface-inset-base));
   }
 
   blockquote > :last-child {
@@ -134,11 +134,7 @@
     overflow: hidden;
     border: 1px solid color-mix(in srgb, var(--border-weak-base) 64%, transparent);
     border-radius: var(--radius-lg);
-    background-color: color-mix(
-      in srgb,
-      var(--workbench-control-bg, var(--surface-inset-base)) 92%,
-      var(--workbench-canvas-bg, var(--background-base))
-    );
+    background-color: var(--workbench-control-bg, var(--surface-inset-base));
   }
 
   [data-slot="markdown-code-header"] {
@@ -149,11 +145,7 @@
     min-width: 0;
     padding: 0.3125rem 0.5rem;
     border-bottom: 1px solid color-mix(in srgb, var(--border-weaker-base) 54%, transparent);
-    background-color: color-mix(
-      in srgb,
-      var(--workbench-card-bg-hover, var(--surface-raised-base-hover)) 28%,
-      transparent
-    );
+    background-color: var(--workbench-card-secondary-bg, var(--surface-raised-base-hover));
   }
 
   [data-slot="markdown-code-header"][data-has-label="false"] {
@@ -175,7 +167,7 @@
     appearance: none;
     border: 1px solid color-mix(in srgb, var(--border-weaker-base) 40%, transparent);
     border-radius: var(--radius-sm);
-    background: color-mix(in srgb, var(--workbench-panel-bg, var(--background-base)) 58%, transparent);
+    background: var(--workbench-card-bg, var(--surface-raised-base));
     color: var(--text-weak);
     cursor: pointer;
     flex-shrink: 0;
@@ -191,11 +183,7 @@
   }
 
   [data-slot="markdown-code-copy"]:hover {
-    background-color: color-mix(
-      in srgb,
-      var(--workbench-control-bg-hover, var(--surface-raised-base-hover)) 76%,
-      transparent
-    );
+    background-color: var(--workbench-control-bg-hover, var(--surface-raised-base-hover));
     border-color: color-mix(in srgb, var(--border-weaker-base) 76%, transparent);
     color: var(--text-base);
   }
@@ -209,11 +197,7 @@
   }
 
   [data-slot="markdown-code-copy"][data-copied="true"] {
-    background-color: color-mix(
-      in srgb,
-      var(--workbench-selected-bg, var(--surface-raised-base-hover)) 66%,
-      transparent
-    );
+    background-color: var(--workbench-selected-bg, var(--surface-interactive-selected));
     border-color: color-mix(in srgb, var(--border-weaker-base) 70%, transparent);
     color: var(--text-strong);
   }

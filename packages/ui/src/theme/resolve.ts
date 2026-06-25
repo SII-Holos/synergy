@@ -33,10 +33,10 @@ export function resolveThemeVariant(variant: ThemeVariant, isDark: boolean): Res
   tokens["surface-base-interactive-active"] = layer(5, 4)
   tokens["base2"] = tokens["surface-base"]
   tokens["base3"] = tokens["surface-base"]
-  tokens["surface-inset-base"] = layer(4, 2)
-  tokens["surface-inset-base-hover"] = layer(5, 3)
-  tokens["surface-inset-strong"] = layer(6, 3)
-  tokens["surface-inset-strong-hover"] = layer(7, 4)
+  tokens["surface-inset-base"] = layer(4, 3)
+  tokens["surface-inset-base-hover"] = layer(5, 4)
+  tokens["surface-inset-strong"] = layer(6, 4)
+  tokens["surface-inset-strong-hover"] = layer(7, 5)
   tokens["surface-raised-base"] = layer(3, 2)
   tokens["surface-float-base"] = isDark ? neutral[2] : neutral[11]
   tokens["surface-float-base-hover"] = isDark ? neutral[3] : neutral[10]
@@ -98,8 +98,8 @@ export function resolveThemeVariant(variant: ThemeVariant, isDark: boolean): Res
   tokens["surface-diff-delete-strong"] = diffDelete[isDark ? 4 : 5]
   tokens["surface-diff-delete-stronger"] = diffDelete[isDark ? 10 : 8]
 
-  tokens["input-base"] = layer(4, 2)
-  tokens["input-hover"] = layer(5, 3)
+  tokens["input-base"] = layer(4, 3)
+  tokens["input-hover"] = layer(5, 4)
   tokens["input-active"] = layer(5, 4)
   tokens["input-selected"] = layer(5, 4)
   tokens["input-focus"] = layer(5, 4)
@@ -140,8 +140,8 @@ export function resolveThemeVariant(variant: ThemeVariant, isDark: boolean): Res
   tokens["text-on-brand-weaker"] = neutralAlpha[7]
   tokens["text-on-brand-strong"] = neutralAlpha[11]
 
-  tokens["button-secondary-base"] = layer(4, 2)
-  tokens["button-secondary-hover"] = layer(5, 3)
+  tokens["button-secondary-base"] = layer(4, 3)
+  tokens["button-secondary-hover"] = layer(5, 4)
   tokens["button-ghost-hover"] = neutralAlpha[1]
   tokens["button-ghost-hover2"] = neutralAlpha[2]
 

@@ -162,17 +162,19 @@ describe("resolveTheme (synergy)", () => {
 
     expectDarker(resolved.light, "surface-raised-base", "background-stronger")
     expectDarker(resolved.light, "surface-raised-base-active", "surface-raised-base")
+    expectDarker(resolved.light, "surface-inset-base", "surface-raised-base")
     expectDarker(resolved.light, "surface-interactive-selected", "surface-raised-base")
     expectDarker(resolved.light, "surface-float-base", "background-stronger")
-    expectDarker(resolved.light, "input-base", "background-stronger")
-    expectDarker(resolved.light, "button-secondary-base", "background-stronger")
+    expectDarker(resolved.light, "input-base", "surface-raised-base")
+    expectDarker(resolved.light, "button-secondary-base", "surface-raised-base")
 
     expectBrighter(resolved.dark, "surface-raised-base", "background-stronger")
     expectBrighter(resolved.dark, "surface-raised-base-active", "surface-raised-base")
+    expectBrighter(resolved.dark, "surface-inset-base", "surface-raised-base")
     expectBrighter(resolved.dark, "surface-interactive-selected", "surface-raised-base")
     expectBrighter(resolved.dark, "surface-float-base", "background-stronger")
-    expectBrighter(resolved.dark, "input-base", "background-stronger")
-    expectBrighter(resolved.dark, "button-secondary-base", "background-stronger")
+    expectBrighter(resolved.dark, "input-base", "surface-raised-base")
+    expectBrighter(resolved.dark, "button-secondary-base", "surface-raised-base")
   })
 
   // ── CSS output ──────────────────────────────────────────

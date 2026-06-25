@@ -27,6 +27,7 @@ Make reciprocal actions visibly reciprocal.
 Reserve emphasis for workflow state and current selection.
 Let blueprints read as plans with status, activity, and next action, not as passive notes.
 Keep dense surfaces quiet enough for repeated daily use.
+Use mode-aware polarity: in dark mode, the active or inner thing is brighter than its shell; in light mode, the active or inner thing is darker than its shell.
 
 ## Interaction & Visual Principles
 

@@ -37,6 +37,13 @@ function parseIntervalString(s: string): { count: number; unit: IntervalUnit } {
   return { count: parseInt(match[1], 10), unit: shortToUnit(match[2]) }
 }
 
+function nextFiveMinuteTime(now = new Date()): Date {
+  const d = new Date(now)
+  d.setSeconds(0, 0)
+  d.setMinutes(Math.ceil(d.getMinutes() / 5) * 5)
+  return d
+}
+
 // ---------------------------------------------------------------------------
 // Trigger conversion — form state <-> API triggers
 // ---------------------------------------------------------------------------
@@ -87,12 +94,12 @@ function buildTriggers(s: ScheduleState): AgendaTrigger[] {
 }
 
 function parseTriggersToSchedule(triggers: AgendaTrigger[]): ScheduleState {
-  const now = new Date()
+  const now = nextFiveMinuteTime()
   const defaults: ScheduleState = {
     hasSchedule: false,
-    date: startOfDay(Date.now()),
+    date: startOfDay(now.getTime()),
     hour: now.getHours(),
-    minute: Math.ceil(now.getMinutes() / 5) * 5,
+    minute: now.getMinutes(),
     repeatMode: "off",
     intervalCount: 1,
     intervalUnit: "days",
