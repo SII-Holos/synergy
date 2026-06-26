@@ -37,8 +37,7 @@
   border: 1px solid var(--border-base);
   border-left: 3px solid var(--toast-accent, var(--border-base));
   background: var(--surface-raised-stronger-non-alpha);
-  box-shadow: var(--shadow-lg);
-  backdrop-filter: blur(16px);
+  box-shadow: var(--workbench-popover-shadow, var(--shadow-md));
   pointer-events: auto;
 
   &:hover,

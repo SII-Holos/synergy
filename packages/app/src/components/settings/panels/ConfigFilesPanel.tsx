@@ -43,7 +43,7 @@ export function ConfigReferencePanel(props: {
 }) {
   return (
     <SettingsPage title={props.title} description={props.description}>
-      <SettingsSection title="File Access">
+      <SettingsSection title="Configuration source">
         <For each={props.domains}>
           {(domain) => (
             <SettingsPathRow

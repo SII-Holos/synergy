@@ -83,7 +83,7 @@ function BubbleButton(props: { active?: boolean; onMouseDown: (e: MouseEvent) =>
       type="button"
       classList={{
         "size-7 flex items-center justify-center rounded text-12-medium transition-colors": true,
-        "text-text-interactive-base bg-surface-interactive-base/15": props.active,
+        "text-text-strong bg-surface-raised-base-hover": props.active,
         "text-text-weak hover:text-text-strong hover:bg-surface-raised-base-hover": !props.active,
       }}
       onMouseDown={props.onMouseDown}
@@ -197,7 +197,7 @@ function FormulaMenu(props: { editor: Editor; selected: SelectedMath; onSync: ()
         <button
           type="button"
           class="rounded-md px-2 py-1 text-11-medium text-text-weak transition-colors hover:bg-surface-raised-base-hover hover:text-text-strong"
-          classList={{ "bg-surface-interactive-base/12 text-text-interactive-base": display() }}
+          classList={{ "bg-surface-raised-base-hover text-text-strong": display() }}
           onMouseDown={toggleDisplay}
           title="Toggle block formula"
         >
@@ -213,7 +213,7 @@ function FormulaMenu(props: { editor: Editor; selected: SelectedMath; onSync: ()
         </button>
         <button
           type="button"
-          class="rounded-md bg-surface-interactive-base/12 px-2 py-1 text-11-medium text-text-interactive-base transition-colors hover:bg-surface-interactive-base/18"
+          class="rounded-md bg-surface-raised-base-hover px-2 py-1 text-11-medium text-text-strong transition-colors hover:bg-surface-raised-base-hover"
           onMouseDown={finishInput}
           title="Finish editing formula"
         >

@@ -1,11 +1,10 @@
 import { createEffect, createMemo, createSignal, For, on, onCleanup, Show } from "solid-js"
 import { FlipList } from "@/components/flip-list"
 import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
-import { A, useNavigate, useParams } from "@solidjs/router"
+import { A, useLocation, useNavigate, useParams } from "@solidjs/router"
 import { useLayout } from "@/context/layout"
 import { useGlobalSync } from "@/context/global-sync"
 import { useGlobalSDK } from "@/context/global-sdk"
-import { usePanel } from "@/context/panel"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { useTheme } from "@ericsanchezok/synergy-ui/theme"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
@@ -14,18 +13,14 @@ import { Tooltip } from "@ericsanchezok/synergy-ui/tooltip"
 import { assetPath } from "@/utils/proxy"
 import { base64Encode } from "@ericsanchezok/synergy-util/encode"
 import { getScopeLabel } from "@/utils/scope"
-import { SettingsDialog } from "@/components/settings"
-import { DialogSelectProvider } from "@/components/dialog/dialog-select-provider"
 import { useHolos } from "@/context/holos"
-import { showToast } from "@ericsanchezok/synergy-ui/toast"
-import { Button } from "@ericsanchezok/synergy-ui/button"
-import { Dialog } from "@ericsanchezok/synergy-ui/dialog"
-import { TextField } from "@ericsanchezok/synergy-ui/text-field"
 import { DialogSelectDirectory } from "@/components/dialog/dialog-select-directory"
 import { DialogScopeEdit } from "@/components/dialog/dialog-scope-edit"
 import { DialogConfirm } from "@/components/dialog/dialog-confirm"
 import type { LocalScope, NavEntry } from "@/context/layout"
-import { createStore } from "solid-js/store"
+import { usePlatform } from "@/context/platform"
+import { useHolosAgentActions } from "@/components/holos/agent-actions"
+import { SettingsDialog } from "@/components/settings"
 import {
   resolveSessionVisualState,
   scopeKeyForNavEntry,
@@ -51,10 +46,10 @@ export function Sidebar(props: SidebarProps) {
   const layout = useLayout()
   const globalSync = useGlobalSync()
   const globalSDK = useGlobalSDK()
-  const panel = usePanel()
   const dialog = useDialog()
   const theme = useTheme()
   const navigate = useNavigate()
+  const location = useLocation()
   const params = useParams()
 
   const isExpanded = () => layout.sidebar.opened()
@@ -311,7 +306,7 @@ export function Sidebar(props: SidebarProps) {
             </Tooltip>
           }
         >
-          <A href={`/${base64Encode("home")}/session`} class="sb-logo" onClick={() => panel.close()}>
+          <A href={`/${base64Encode("home")}/session`} class="sb-logo">
             <img
               src={isDark() ? assetPath("/holos-logo-white.svg") : assetPath("/holos-logo.svg")}
               alt="HOLOS"
@@ -353,9 +348,9 @@ export function Sidebar(props: SidebarProps) {
             type="button"
             classList={{
               "sb-global-btn": true,
-              "sb-global-active": panel.active() === "agenda",
+              "sb-global-active": location.pathname === "/agenda",
             }}
-            onClick={() => panel.toggle("agenda")}
+            onClick={() => navigate("/agenda")}
           >
             <Icon name="clock" size="normal" />
             <Show when={isExpanded()}>
@@ -368,9 +363,9 @@ export function Sidebar(props: SidebarProps) {
             type="button"
             classList={{
               "sb-global-btn": true,
-              "sb-global-active": panel.active() === "library",
+              "sb-global-active": location.pathname === "/library",
             }}
-            onClick={() => panel.toggle("library")}
+            onClick={() => navigate("/library")}
           >
             <Icon name="book-open" size="normal" />
             <Show when={isExpanded()}>
@@ -378,37 +373,22 @@ export function Sidebar(props: SidebarProps) {
             </Show>
           </button>
         </Tooltip>
-        <Tooltip value="Diagnostics" placement="right">
+        <Tooltip value="Plugins" placement="right">
           <button
             type="button"
             classList={{
               "sb-global-btn": true,
-              "sb-global-active": panel.active() === "diagnostics",
+              "sb-global-active": location.pathname.startsWith("/plugins"),
             }}
-            onClick={() => panel.toggle("diagnostics")}
+            onClick={() => navigate("/plugins/marketplace")}
           >
-            <Icon name="stethoscope" size="normal" />
+            <Icon name={getSemanticIcon("app.plugins")} size="normal" />
             <Show when={isExpanded()}>
-              <span class="sb-action-label">Diagnostics</span>
+              <span class="sb-action-label">Plugins</span>
             </Show>
           </button>
         </Tooltip>
       </div>
-      <Tooltip value="Plugins" placement="right">
-        <button
-          type="button"
-          classList={{
-            "sb-global-btn": true,
-            "sb-global-active": params.dir === "plugins",
-          }}
-          onClick={() => navigate("/plugins/marketplace")}
-        >
-          <Icon name="package-open" size="normal" />
-          <Show when={isExpanded()}>
-            <span class="sb-action-label">Plugins</span>
-          </Show>
-        </button>
-      </Tooltip>
 
       {/* Unified scroll region */}
       <Show
@@ -740,7 +720,7 @@ export function Sidebar(props: SidebarProps) {
       </Show>
 
       {/* Bottom: Agent Hub */}
-      <SidebarAgentHub isExpanded={isExpanded()} globalSDK={globalSDK} dialog={dialog} />
+      <SidebarAgentHub isExpanded={isExpanded()} globalSDK={globalSDK} />
 
       {/* Projects flyout (collapsed mode only) */}
       <Show when={!isExpanded() && projectsFlyoutOpen()}>
@@ -895,20 +875,15 @@ function SessionRowIcon(props: { entry: NavEntry; scope?: LocalScope }) {
 
 // --- SidebarAgentHub: bottom avatar/identity trigger + dropdown menu ---
 
-function SidebarAgentHub(props: {
-  isExpanded: boolean
-  globalSDK: ReturnType<typeof useGlobalSDK>
-  dialog: ReturnType<typeof useDialog>
-}) {
+function SidebarAgentHub(props: { isExpanded: boolean; globalSDK: ReturnType<typeof useGlobalSDK> }) {
   const holos = useHolos()
+  const platform = usePlatform()
+  const dialog = useDialog()
+  const agentActions = useHolosAgentActions(props.globalSDK)
   const [menuOpen, setMenuOpen] = createSignal(false)
-  let loginMessageHandler: ((event: MessageEvent) => void) | undefined
-  let loginMessageTimeout: ReturnType<typeof setTimeout> | undefined
+  const [agentSwitcherOpen, setAgentSwitcherOpen] = createSignal(false)
 
   const avatarSrc = () => assetPath("/agent-avatars/synergy-agent-icon.png")
-
-  const callbackUrl = () => new URL("/holos/callback", props.globalSDK.url).toString()
-  const callbackOrigin = () => new URL(props.globalSDK.url).origin
 
   const displayName = () => {
     if (!holos.loaded) return "Synergy"
@@ -932,8 +907,6 @@ function SidebarAgentHub(props: {
 
   onCleanup(() => {
     document.removeEventListener("keydown", handleEscape)
-    if (loginMessageHandler) window.removeEventListener("message", loginMessageHandler)
-    if (loginMessageTimeout) clearTimeout(loginMessageTimeout)
   })
 
   const openMenu = () => {
@@ -943,6 +916,7 @@ function SidebarAgentHub(props: {
 
   const closeMenu = () => {
     setMenuOpen(false)
+    setAgentSwitcherOpen(false)
     document.removeEventListener("keydown", handleEscape)
   }
 
@@ -970,103 +944,47 @@ function SidebarAgentHub(props: {
     return false
   }
 
-  const hasAccounts = () => holos.state.identity.accounts.length > 0
-
   const accountLabel = (a: { agentId: string; label: string | null }) => a.label || a.agentId.slice(0, 8)
 
   const isActiveAccount = (agentId: string) => holos.state.identity.activeAccount?.agentId === agentId
 
   const handleSwitchAccount = async (agentId: string) => {
-    try {
-      await props.globalSDK.client.holos.accounts.switch({ agentId }, { throwOnError: true })
-      closeMenu()
-      void holos.refresh()
-      showToast({ type: "success", title: "Agent switched", description: `Switched to ${agentId.slice(0, 8)}` })
-    } catch (e) {
-      const msg = getErrorMessage(e, "Unable to switch agent.")
-      showToast({ type: "error", title: "Agent switch failed", description: msg })
-    }
+    await agentActions.switchAgent(agentId)
+    closeMenu()
   }
 
   const handleHolosClick = () => {
     if (!holos.loaded) return
     if (!holos.state.identity.loggedIn) {
       closeMenu()
-      startHolosLogin()
+      void agentActions.createAgent()
       return
     }
     if (holos.state.connection.status === "failed" || holos.state.connection.status === "disconnected") {
       closeMenu()
-      void holosReconnect()
+      void agentActions.reconnect()
       return
-    }
-  }
-
-  async function startHolosLogin() {
-    try {
-      const res = await props.globalSDK.client.holos.login({ callbackUrl: callbackUrl() }, { throwOnError: true })
-      const authUrl = res.data?.url
-      if (!authUrl) {
-        showToast({ type: "error", title: "Holos login failed", description: "No login URL returned." })
-        return
-      }
-
-      if (loginMessageHandler) window.removeEventListener("message", loginMessageHandler)
-      if (loginMessageTimeout) clearTimeout(loginMessageTimeout)
-      const clearLoginMessageHandler = () => {
-        if (loginMessageHandler) window.removeEventListener("message", loginMessageHandler)
-        if (loginMessageTimeout) clearTimeout(loginMessageTimeout)
-        loginMessageHandler = undefined
-        loginMessageTimeout = undefined
-      }
-      loginMessageHandler = (event: MessageEvent) => {
-        if (event.origin !== callbackOrigin()) return
-        if (event.data?.type === "holos-login-success") {
-          clearLoginMessageHandler()
-          void holos.refresh()
-          showToast({ type: "success", title: "Holos connected", description: "Your agent is now linked to Holos." })
-          return
-        }
-        if (event.data?.type === "holos-login-failed") {
-          clearLoginMessageHandler()
-          const errMsg = typeof event.data?.error === "string" ? event.data.error : "Please try again."
-          showToast({ type: "error", title: "Holos login failed", description: errMsg })
-        }
-      }
-
-      window.addEventListener("message", loginMessageHandler)
-      const popup = window.open(authUrl, "holos-login", "width=600,height=700")
-      loginMessageTimeout = setTimeout(() => {
-        clearLoginMessageHandler()
-      }, 300_000)
-      if (!popup) {
-        clearLoginMessageHandler()
-        showToast({
-          type: "warning",
-          title: "Popup blocked",
-          description: "Allow popups for this site to sign in to Holos.",
-          duration: 8000,
-        })
-      }
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e)
-      showToast({ type: "error", title: "Holos login failed", description: msg })
-    }
-  }
-
-  async function holosReconnect() {
-    try {
-      await props.globalSDK.client.holos.reconnect({ throwOnError: true })
-      void holos.refresh()
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e)
-      showToast({ type: "error", title: "Holos reconnect failed", description: msg })
     }
   }
 
   const openImportExistingAgentDialog = () => {
     closeMenu()
-    props.dialog.show(() => <DialogImportHolosAgent globalSDK={props.globalSDK} onImported={() => holos.refresh()} />)
+    agentActions.importAgent()
+  }
+
+  const openSettings = (initialTab: string, providerFocusID?: string) => {
+    closeMenu()
+    dialog.show(() => <SettingsDialog initialTab={initialTab} providerFocusID={providerFocusID} />)
+  }
+
+  const openRepository = () => {
+    closeMenu()
+    platform.openLink("https://github.com/SII-Holos/synergy")
+  }
+
+  const logout = () => {
+    closeMenu()
+    void agentActions.logoutActiveAgent()
   }
 
   return (
@@ -1100,32 +1018,84 @@ function SidebarAgentHub(props: {
       <Show when={menuOpen()}>
         <div class="sidebar-account-menu-backdrop" onClick={closeMenu} />
         <div id="sidebar-account-menu" class="sidebar-account-menu" role="menu">
-          <button
-            type="button"
-            class="sidebar-account-menuItem"
-            role="menuitem"
-            onClick={() => {
-              closeMenu()
-              props.dialog.show(() => <SettingsDialog />)
-            }}
-          >
-            <Icon name={getSemanticIcon("settings.general")} size="small" />
-            <span>Settings</span>
-          </button>
-          <button
-            type="button"
-            class="sidebar-account-menuItem"
-            role="menuitem"
-            onClick={() => {
-              closeMenu()
-              props.dialog.show(() => <DialogSelectProvider />)
-            }}
-          >
-            <Icon name={getSemanticIcon("settings.providers")} size="small" />
-            <span>Connect Provider</span>
-          </button>
+          <div class="sidebar-account-card">
+            <button
+              type="button"
+              class="sidebar-account-card-main"
+              onClick={() => setAgentSwitcherOpen((value) => !value)}
+              aria-expanded={agentSwitcherOpen()}
+            >
+              <span class="sidebar-account-avatarWrap" data-tone={connectionTone()}>
+                <img src={avatarSrc()} alt="" class="sidebar-account-avatar" />
+                <span class="sidebar-account-avatarStatus" />
+              </span>
+              <span class="sidebar-account-card-copy">
+                <span class="sidebar-account-card-name">{displayName()}</span>
+                <span class="sidebar-account-card-meta">
+                  {holos.state.identity.activeAccount?.agentId?.slice(0, 8) ?? "No agent"}
+                </span>
+              </span>
+              <Icon name={agentSwitcherOpen() ? "chevron-up" : "chevron-down"} size="small" />
+            </button>
+          </div>
+
+          <Show when={agentSwitcherOpen()}>
+            <div class="sidebar-account-popover" role="menu">
+              <For each={holos.state.identity.accounts}>
+                {(account) => (
+                  <button
+                    type="button"
+                    classList={{
+                      "sidebar-account-menuItem": true,
+                      "sidebar-account-menuItem--account": true,
+                      "sidebar-account-menuItem--active": isActiveAccount(account.agentId),
+                    }}
+                    role="menuitem"
+                    onClick={() => {
+                      if (!isActiveAccount(account.agentId)) {
+                        void handleSwitchAccount(account.agentId)
+                      }
+                    }}
+                  >
+                    <Icon
+                      name={
+                        isActiveAccount(account.agentId)
+                          ? getSemanticIcon("state.success")
+                          : getSemanticIcon("state.empty")
+                      }
+                      size="small"
+                    />
+                    <span>{accountLabel(account)}</span>
+                    <span class="sidebar-account-menuStatus">{isActiveAccount(account.agentId) ? "Active" : ""}</span>
+                  </button>
+                )}
+              </For>
+              <button
+                type="button"
+                class="sidebar-account-menuItem sidebar-account-menuItem--add"
+                role="menuitem"
+                onClick={() => {
+                  closeMenu()
+                  void agentActions.createAgent()
+                }}
+              >
+                <Icon name={getSemanticIcon("account.create")} size="small" />
+                <span>Create Agent</span>
+              </button>
+              <button
+                type="button"
+                class="sidebar-account-menuItem sidebar-account-menuItem--add"
+                role="menuitem"
+                onClick={openImportExistingAgentDialog}
+              >
+                <Icon name={getSemanticIcon("account.import")} size="small" />
+                <span>Import Agent</span>
+              </button>
+            </div>
+          </Show>
+
           <Show
-            when={hasAccounts()}
+            when={holos.state.identity.loggedIn}
             fallback={
               <>
                 <button
@@ -1135,7 +1105,7 @@ function SidebarAgentHub(props: {
                   disabled={holosMenuDisabled()}
                   onClick={handleHolosClick}
                 >
-                  <Icon name={getSemanticIcon("connection.holos")} size="small" />
+                  <Icon name={getSemanticIcon("account.create")} size="small" />
                   <span>Create Agent</span>
                   <span class="sidebar-account-menuStatus">{holosMenuRightLabel()}</span>
                 </button>
@@ -1145,172 +1115,65 @@ function SidebarAgentHub(props: {
                   role="menuitem"
                   onClick={openImportExistingAgentDialog}
                 >
-                  <Icon name="key-round" size="small" />
+                  <Icon name={getSemanticIcon("account.import")} size="small" />
                   <span>Import Agent</span>
                 </button>
               </>
             }
           >
-            <div class="sidebar-account-section-label">Holos</div>
-            <For each={holos.state.identity.accounts}>
-              {(account) => (
-                <button
-                  type="button"
-                  classList={{
-                    "sidebar-account-menuItem": true,
-                    "sidebar-account-menuItem--account": true,
-                    "sidebar-account-menuItem--active": isActiveAccount(account.agentId),
-                  }}
-                  role="menuitem"
-                  onClick={() => {
-                    if (!isActiveAccount(account.agentId)) {
-                      void handleSwitchAccount(account.agentId)
-                    }
-                  }}
-                >
-                  <Icon name={isActiveAccount(account.agentId) ? "check" : "circle"} size="small" />
-                  <span>{accountLabel(account)}</span>
-                  <span class="sidebar-account-menuStatus">
-                    {holos.state.connection.status === "connected" && isActiveAccount(account.agentId) ? "Active" : ""}
-                  </span>
-                </button>
-              )}
-            </For>
             <button
               type="button"
-              class="sidebar-account-menuItem sidebar-account-menuItem--add"
+              class="sidebar-account-menuItem"
               role="menuitem"
-              onClick={() => {
-                closeMenu()
-                startHolosLogin()
-              }}
+              onClick={() => openSettings("account")}
             >
-              <Icon name="user-plus" size="small" />
-              <span>Create Agent</span>
+              <Icon name={getSemanticIcon("settings.account")} size="small" />
+              <span>Account</span>
             </button>
             <button
               type="button"
-              class="sidebar-account-menuItem sidebar-account-menuItem--add"
+              class="sidebar-account-menuItem"
               role="menuitem"
-              onClick={openImportExistingAgentDialog}
+              onClick={() => openSettings("general")}
             >
-              <Icon name="key-round" size="small" />
-              <span>Import Agent</span>
+              <Icon name={getSemanticIcon("settings.general")} size="small" />
+              <span>Settings</span>
+            </button>
+            <button
+              type="button"
+              class="sidebar-account-menuItem"
+              role="menuitem"
+              onClick={() => openSettings("providers")}
+            >
+              <Icon name={getSemanticIcon("settings.providers")} size="small" />
+              <span>Providers</span>
+            </button>
+            <button
+              type="button"
+              class="sidebar-account-menuItem"
+              role="menuitem"
+              onClick={() => openSettings("usage")}
+            >
+              <Icon name={getSemanticIcon("settings.usage")} size="small" />
+              <span>Usage</span>
+            </button>
+            <button type="button" class="sidebar-account-menuItem" role="menuitem" onClick={openRepository}>
+              <Icon name={getSemanticIcon("account.repository")} size="small" />
+              <span>Repository</span>
+              <Icon name={getSemanticIcon("action.open")} size="small" class="sidebar-account-menuTrailingIcon" />
+            </button>
+            <button
+              type="button"
+              class="sidebar-account-menuItem sidebar-account-menuItem--danger"
+              role="menuitem"
+              onClick={logout}
+            >
+              <Icon name={getSemanticIcon("account.logout")} size="small" />
+              <span>Log out</span>
             </button>
           </Show>
         </div>
       </Show>
     </div>
-  )
-}
-
-function getErrorMessage(err: unknown, fallback: string): string {
-  if (err instanceof Error) return err.message
-  if (typeof err === "object" && err !== null && "message" in err) {
-    const message = (err as { message?: unknown }).message
-    if (typeof message === "string" && message.trim()) return message
-  }
-  return fallback
-}
-
-function DialogImportHolosAgent(props: {
-  globalSDK: ReturnType<typeof useGlobalSDK>
-  onImported?: () => void | Promise<void>
-}) {
-  const dialog = useDialog()
-  const [form, setForm] = createStore({
-    agentId: "",
-    agentSecret: "",
-    agentIdError: undefined as string | undefined,
-    agentSecretError: undefined as string | undefined,
-    submitting: false,
-  })
-
-  async function handleSubmit(e: SubmitEvent) {
-    e.preventDefault()
-    const agentId = form.agentId.trim()
-    const agentSecret = form.agentSecret.trim()
-
-    setForm("agentIdError", agentId ? undefined : "Agent ID is required")
-    setForm("agentSecretError", agentSecret ? undefined : "Agent secret is required")
-    if (!agentId || !agentSecret) return
-
-    setForm("submitting", true)
-    try {
-      await props.globalSDK.client.holos.credentials({ agentId, agentSecret }, { throwOnError: true })
-      await props.onImported?.()
-      showToast({
-        type: "success",
-        title: "Agent imported",
-        description: `Imported ${agentId.slice(0, 8)}`,
-      })
-      dialog.close()
-    } catch (err) {
-      const message = getErrorMessage(err, "Check the agent ID and secret, then try again.")
-      showToast({ type: "error", title: "Import failed", description: message })
-    } finally {
-      setForm("submitting", false)
-    }
-  }
-
-  return (
-    <Dialog title="Import Agent">
-      <form onSubmit={handleSubmit} class="sidebar-agent-import-form">
-        <div class="sidebar-agent-import-hero">
-          <span class="sidebar-agent-import-icon">
-            <Icon name="key-round" size="normal" />
-          </span>
-          <div class="sidebar-agent-import-heading">
-            <span class="sidebar-agent-import-kicker">Holos Agent</span>
-            <p>
-              Connect an existing agent with its ID and secret. The secret is stored locally and never shown here again.
-            </p>
-          </div>
-        </div>
-        <div class="sidebar-agent-import-fields">
-          <TextField
-            autofocus
-            label="Agent ID"
-            type="text"
-            placeholder="agent_..."
-            value={form.agentId}
-            onChange={(value) => {
-              setForm("agentId", value)
-              if (value.trim()) setForm("agentIdError", undefined)
-            }}
-            validationState={form.agentIdError ? "invalid" : undefined}
-            error={form.agentIdError}
-            autocomplete="off"
-            class="sidebar-agent-import-input"
-          />
-          <TextField
-            label="Agent Secret"
-            type="password"
-            placeholder="Paste the agent secret"
-            value={form.agentSecret}
-            onChange={(value) => {
-              setForm("agentSecret", value)
-              if (value.trim()) setForm("agentSecretError", undefined)
-            }}
-            validationState={form.agentSecretError ? "invalid" : undefined}
-            error={form.agentSecretError}
-            autocomplete="off"
-            class="sidebar-agent-import-input"
-          />
-        </div>
-        <div class="sidebar-agent-import-note">
-          <Icon name="lock-keyhole" size="small" />
-          <span>Synergy verifies the secret once, then stores it in your local credential store.</span>
-        </div>
-        <div class="sidebar-agent-import-actions">
-          <Button type="button" variant="ghost" size="small" onClick={() => dialog.close()} disabled={form.submitting}>
-            Cancel
-          </Button>
-          <Button type="submit" variant="primary" size="small" disabled={form.submitting}>
-            {form.submitting ? "Importing…" : "Import Agent"}
-          </Button>
-        </div>
-      </form>
-    </Dialog>
   )
 }

@@ -217,7 +217,7 @@ export function MemoryView(props: {
           <Show when={categoryFilter().size > 0}>
             <button
               type="button"
-              class="rounded-full px-2.5 py-1 text-11-medium text-text-weaker ring-1 ring-inset ring-border-base/35 transition-all hover:bg-surface-raised-base/72 hover:text-text-weak"
+              class="rounded-full px-2.5 py-1 text-11-medium text-text-weaker ring-1 ring-inset ring-border-base/35 transition-all hover:bg-surface-raised-base-hover hover:text-text-weak"
               onClick={() => setCategoryFilter(new Set())}
             >
               Clear
@@ -244,8 +244,8 @@ export function MemoryView(props: {
                         type="button"
                         classList={{
                           "w-full rounded-[0.8rem] px-3 py-2 text-left text-12-medium transition-colors": true,
-                          "bg-surface-inset-base/7 text-text-interactive-base": sort() === key,
-                          "text-text-base hover:bg-surface-inset-base/55": sort() !== key,
+                          "workbench-selected-surface text-text-strong": sort() === key,
+                          "text-text-base hover:bg-surface-inset-base": sort() !== key,
                         }}
                         onClick={() => {
                           setSort(key)
@@ -338,8 +338,7 @@ function MemoryCard(props: {
         [`${libraryCardBaseClass} cursor-pointer`]: true,
         [libraryCardExpandedClass]: props.expanded && !props.selecting,
         [libraryCardHoverClass]: !props.expanded && !props.selecting,
-        "bg-surface-interactive-base/12 ring-1 ring-inset ring-text-interactive-base/28 shadow-[inset_0_1px_0_rgba(214,204,190,0.08)]":
-          props.selecting && props.selected,
+        "workbench-selected-surface ring-1 ring-inset ring-border-base/32": props.selecting && props.selected,
         "hover:bg-surface-raised-base/98": props.selecting && !props.selected,
       }}
       onClick={props.onToggle}
@@ -374,14 +373,14 @@ function MemoryCard(props: {
               </span>
             </Show>
             <Show when={props.searching && props.similarity !== undefined}>
-              <span class="rounded-full bg-surface-interactive-base/10 px-2.5 py-1 text-[10px] font-medium text-text-interactive-base ring-1 ring-inset ring-text-interactive-base/12">
+              <span class="rounded-full bg-surface-inset-base px-2.5 py-1 text-[10px] font-medium text-text-base ring-1 ring-inset ring-border-base/35">
                 {Math.round(props.similarity! * 100)}%
               </span>
             </Show>
             <Show when={props.expanded && !props.selecting}>
               <button
                 type="button"
-                class="flex size-6 items-center justify-center rounded-full bg-surface-inset-base/5 text-icon-weak ring-1 ring-inset ring-border-base/35 transition-all hover:bg-surface-raised-base/72 hover:text-text-diff-delete-base"
+                class="flex size-6 items-center justify-center rounded-full bg-surface-inset-base text-icon-weak ring-1 ring-inset ring-border-base/35 transition-all hover:bg-surface-raised-base-hover hover:text-text-diff-delete-base"
                 onClick={props.onDelete}
               >
                 <Icon name="x" size="small" />
@@ -422,8 +421,8 @@ function MemoryCard(props: {
             </span>
             <span
               classList={{
-                "flex size-6 items-center justify-center rounded-full bg-surface-inset-base/36 text-icon-weak ring-1 ring-inset ring-border-base/35 transition-all": true,
-                "rotate-180 bg-surface-inset-base/5": props.expanded,
+                "flex size-6 items-center justify-center rounded-full bg-surface-inset-base text-icon-weak ring-1 ring-inset ring-border-base/35 transition-all": true,
+                "rotate-180 bg-surface-raised-base-hover": props.expanded,
               }}
             >
               <Icon name="chevron-down" size="small" />

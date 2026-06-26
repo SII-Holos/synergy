@@ -1,27 +1,20 @@
 .sb-root {
-  --sb-hover-bg: #e8e8e8;
-  --sb-control-hover-bg: #dadada;
-  --sb-active-bg: #e0e0e0;
+  --sb-bg: light-dark(rgb(236 238 241), rgb(31 32 35));
+  --sb-hover-bg: light-dark(rgb(226 230 235), rgb(43 44 48));
+  --sb-control-hover-bg: light-dark(rgb(216 222 230), rgb(51 52 57));
+  --sb-active-bg: light-dark(rgb(214 221 230), rgb(55 56 61));
+  --sb-popover-bg: light-dark(rgb(235 237 240), rgb(37 38 42));
+  --sb-popover-card-bg: light-dark(rgb(226 231 237), rgb(48 49 54));
+  --sb-border: light-dark(rgba(17, 24, 39, 0.08), rgba(244, 244, 245, 0.08));
   display: flex;
   flex-direction: column;
   height: 100%;
-  background: var(--surface-inset-base);
-  border-right: 1px solid var(--border-weaker-base);
+  background: var(--sb-bg);
+  border-right: 1px solid var(--sb-border);
   transition: width 200ms cubic-bezier(0.16, 1, 0.3, 1);
   overflow: visible;
   flex-shrink: 0;
   position: relative;
-}
-
-[data-color-scheme="light"] .sb-root {
-  background: #ececec;
-}
-
-[data-color-scheme="dark"] .sb-root {
-  --sb-hover-bg: #303136;
-  --sb-control-hover-bg: #393a40;
-  --sb-active-bg: #37383e;
-  background: #26272b;
 }
 
 .sb-collapsed {
@@ -520,9 +513,9 @@
   min-width: 160px;
   padding: 4px;
   border-radius: 10px;
-  background: var(--surface-raised-stronger-non-alpha);
-  border: 1px solid var(--border-base);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  background: var(--sb-popover-bg);
+  border: 1px solid var(--sb-border);
+  box-shadow: none;
   display: flex;
   flex-direction: column;
   gap: 1px;
@@ -645,12 +638,12 @@
 
 .sidebar-account-trigger:hover,
 .sidebar-account-trigger--expanded {
-  background: rgba(255, 214, 165, 0.09);
-  box-shadow: inset 0 0 0 1px rgba(255, 214, 165, 0.14);
+  background: var(--sb-active-bg);
+  box-shadow: inset 0 0 0 1px var(--sb-border);
 }
 
 .sidebar-account-trigger:focus-visible {
-  outline: 2px solid rgba(255, 190, 120, 0.55);
+  outline: 2px solid color-mix(in srgb, var(--text-strong) 34%, transparent);
   outline-offset: 2px;
 }
 
@@ -666,9 +659,7 @@
   width: 34px;
   height: 34px;
   border-radius: 999px;
-  box-shadow:
-    0 0 0 1px rgba(255, 214, 165, 0.28),
-    0 4px 14px rgba(0, 0, 0, 0.16);
+  box-shadow: 0 0 0 1px var(--sb-border);
 }
 
 .sidebar-account-avatarStatus {
@@ -688,7 +679,6 @@
 
 .sidebar-account-avatarWrap[data-tone="active"] .sidebar-account-avatarStatus {
   background: #f4b65d;
-  animation: sidebar-account-pulse 1.6s ease-in-out infinite;
 }
 
 .sidebar-account-avatarWrap[data-tone="danger"] .sidebar-account-avatarStatus {
@@ -728,12 +718,79 @@
   right: 8px;
   bottom: calc(100% + 6px);
   z-index: 90;
-  min-width: 220px;
-  padding: 6px;
+  min-width: 236px;
+  padding: 8px;
   border-radius: 14px;
-  background: var(--surface-raised-stronger-non-alpha);
-  border: 1px solid var(--border-base);
-  box-shadow: 0 10px 32px rgba(0, 0, 0, 0.22);
+  background: var(--sb-popover-bg);
+  border: 1px solid var(--sb-border);
+  box-shadow: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.sidebar-account-card {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: center;
+  min-height: 54px;
+  padding: 4px;
+  border-radius: 12px;
+  background: var(--sb-popover-card-bg);
+}
+
+.sidebar-account-card-main {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px;
+  border-radius: 10px;
+  color: var(--text-base);
+  text-align: left;
+}
+
+.sidebar-account-card-main:hover {
+  background: var(--sb-hover-bg);
+}
+
+.sidebar-account-card-copy {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.sidebar-account-card-name {
+  color: var(--text-strong);
+  font-size: var(--font-size-small);
+  font-weight: 650;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebar-account-card-meta {
+  color: var(--text-weak);
+  font-size: var(--font-size-x-small);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebar-account-popover {
+  position: absolute;
+  left: calc(100% + 8px);
+  top: 8px;
+  z-index: 95;
+  width: 236px;
+  padding: 6px;
+  border-radius: 13px;
+  background: var(--sb-popover-bg);
+  border: 1px solid var(--sb-border);
+  box-shadow: none;
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -763,7 +820,7 @@
 }
 
 .sidebar-account-menuItem:focus-visible {
-  outline: 2px solid rgba(255, 190, 120, 0.42);
+  outline: 2px solid color-mix(in srgb, var(--text-strong) 28%, transparent);
   outline-offset: 1px;
 }
 
@@ -783,12 +840,12 @@
 }
 
 .sidebar-account-menuItem--account.sidebar-account-menuItem--active {
-  background: rgba(255, 214, 165, 0.12);
+  background: var(--sb-active-bg);
   color: var(--text-base);
 }
 
 .sidebar-account-menuItem--active:hover {
-  background: rgba(255, 214, 165, 0.16);
+  background: var(--sb-active-bg);
 }
 
 .sidebar-account-section-label {
@@ -804,6 +861,19 @@
   color: var(--text-weak);
 }
 
+.sidebar-account-menuItem--danger {
+  color: #ff7474;
+}
+
+.sidebar-account-menuItem--danger:hover:not(:disabled),
+.sidebar-account-menuItem--danger:focus-visible:not(:disabled) {
+  background: rgba(255, 116, 116, 0.1);
+}
+
+.sidebar-account-menuTrailingIcon {
+  color: var(--text-weaker);
+}
+
 .sidebar-agent-import-form {
   display: flex;
   flex-direction: column;
@@ -816,8 +886,8 @@
   gap: 12px;
   padding: 12px;
   border-radius: 14px;
-  background: linear-gradient(135deg, rgba(255, 214, 165, 0.12), rgba(255, 214, 165, 0.04));
-  border: 1px solid rgba(255, 214, 165, 0.16);
+  background: var(--sb-popover-card-bg);
+  border: 1px solid var(--sb-border);
 }
 
 .sidebar-agent-import-icon {
@@ -828,9 +898,9 @@
   height: 34px;
   flex-shrink: 0;
   border-radius: 11px;
-  color: #ffd39b;
-  background: rgba(255, 211, 155, 0.12);
-  box-shadow: inset 0 0 0 1px rgba(255, 211, 155, 0.14);
+  color: var(--icon-base);
+  background: var(--sb-control-hover-bg);
+  box-shadow: inset 0 0 0 1px var(--sb-border);
 }
 
 .sidebar-agent-import-heading {
@@ -858,8 +928,8 @@
   gap: 10px;
   padding: 10px;
   border-radius: 14px;
-  background: var(--surface-inset-base);
-  border: 1px solid var(--border-weaker-base);
+  background: var(--sb-popover-card-bg);
+  border: 1px solid var(--sb-border);
 }
 
 .sidebar-agent-import-fields [data-component="input"] {
@@ -877,18 +947,16 @@
 
 .sidebar-agent-import-fields [data-slot="input-wrapper"] {
   border-radius: 10px;
-  background: rgba(0, 0, 0, 0.18);
-  box-shadow: inset 0 0 0 1px var(--border-base);
+  background: var(--sb-bg);
+  box-shadow: inset 0 0 0 1px var(--sb-border);
   transition:
     background-color 120ms,
     box-shadow 120ms;
 }
 
 .sidebar-agent-import-fields [data-component="input"]:focus-within [data-slot="input-wrapper"] {
-  background: rgba(0, 0, 0, 0.24);
-  box-shadow:
-    inset 0 0 0 1px rgba(255, 211, 155, 0.45),
-    0 0 0 3px rgba(255, 211, 155, 0.08);
+  background: var(--sb-control-hover-bg);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--text-strong) 30%, transparent);
 }
 
 .sidebar-agent-import-input {
@@ -915,8 +983,8 @@
   padding: 9px 10px;
   border-radius: 12px;
   color: var(--text-subtle);
-  background: rgba(126, 207, 139, 0.08);
-  border: 1px solid rgba(126, 207, 139, 0.14);
+  background: color-mix(in srgb, var(--icon-success-base) 10%, var(--sb-popover-card-bg));
+  border: 1px solid color-mix(in srgb, var(--icon-success-base) 16%, transparent);
   font-size: var(--font-size-x-small);
   line-height: 1.4;
 }
@@ -976,20 +1044,7 @@
   padding: 4px 0;
 }
 
-@keyframes sidebar-account-pulse {
-  0%,
-  100% {
-    box-shadow: 0 0 0 0 rgba(244, 182, 93, 0.32);
-  }
-  50% {
-    box-shadow: 0 0 0 5px rgba(244, 182, 93, 0);
-  }
-}
-
 @media (prefers-reduced-motion: reduce) {
-  .sidebar-account-avatarWrap[data-tone="active"] .sidebar-account-avatarStatus {
-    animation: none;
-  }
   .sb-session-row {
     transition: background-color 100ms !important;
     transform: none !important;
@@ -1013,9 +1068,9 @@
   max-height: 480px;
   overflow-y: auto;
   border-radius: 14px;
-  background: var(--surface-raised-stronger-non-alpha);
-  border: 1px solid var(--border-base);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.14);
+  background: var(--sb-popover-bg);
+  border: 1px solid var(--sb-border);
+  box-shadow: none;
   padding: 6px;
   display: flex;
   flex-direction: column;

@@ -9,6 +9,24 @@ function allTokens(theme: ResolvedTheme): string[] {
   return Object.keys(theme).sort()
 }
 
+function luminance(value: string): number {
+  const hex = value.trim()
+  if (!hex.startsWith("#")) throw new Error(`Expected hex color for luminance check, got ${value}`)
+  const normalized = hex.length === 4 ? `#${hex[1]}${hex[1]}${hex[2]}${hex[2]}${hex[3]}${hex[3]}` : hex
+  if (!/^#[0-9a-fA-F]{6}$/.test(normalized)) throw new Error(`Unsupported color value: ${value}`)
+  const channels = [1, 3, 5].map((start) => Number.parseInt(normalized.slice(start, start + 2), 16) / 255)
+  const linear = channels.map((channel) => (channel <= 0.03928 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4))
+  return 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2]
+}
+
+function expectDarker(theme: ResolvedTheme, inner: string, outer: string) {
+  expect(luminance(theme[inner])).toBeLessThan(luminance(theme[outer]))
+}
+
+function expectBrighter(theme: ResolvedTheme, inner: string, outer: string) {
+  expect(luminance(theme[inner])).toBeGreaterThan(luminance(theme[outer]))
+}
+
 /**
  * CSS consumers that reference these tokens IN PRODUCTION.
  * Every entry here MUST be present in resolved output.
@@ -132,6 +150,34 @@ describe("resolveTheme (synergy)", () => {
     const resolved = resolveTheme(synergyTheme)
     const diffs = Object.keys(resolved.light).filter((key) => resolved.light[key] !== resolved.dark[key])
     expect(diffs.length).toBeGreaterThan(3)
+  })
+
+  test("surface polarity follows the Synergy product rule", () => {
+    const resolved = resolveTheme(synergyTheme)
+
+    expectDarker(resolved.light, "surface-raised-base", "background-stronger")
+    expectDarker(resolved.light, "surface-raised-strong", "surface-raised-base")
+    expectDarker(resolved.light, "surface-raised-stronger", "surface-raised-base")
+    expectDarker(resolved.light, "surface-raised-stronger-hover", "surface-raised-stronger")
+    expectDarker(resolved.light, "surface-raised-stronger-non-alpha", "surface-raised-base")
+    expectDarker(resolved.light, "surface-raised-base-active", "surface-raised-base")
+    expectDarker(resolved.light, "surface-inset-base", "surface-raised-base")
+    expectDarker(resolved.light, "surface-interactive-selected", "surface-raised-base")
+    expectDarker(resolved.light, "surface-float-base", "background-stronger")
+    expectDarker(resolved.light, "input-base", "surface-raised-base")
+    expectDarker(resolved.light, "button-secondary-base", "surface-raised-base")
+
+    expectBrighter(resolved.dark, "surface-raised-base", "background-stronger")
+    expectBrighter(resolved.dark, "surface-raised-strong", "surface-raised-base")
+    expectBrighter(resolved.dark, "surface-raised-stronger", "surface-raised-base")
+    expectBrighter(resolved.dark, "surface-raised-stronger-hover", "surface-raised-stronger")
+    expectBrighter(resolved.dark, "surface-raised-stronger-non-alpha", "surface-raised-base")
+    expectBrighter(resolved.dark, "surface-raised-base-active", "surface-raised-base")
+    expectBrighter(resolved.dark, "surface-inset-base", "surface-raised-base")
+    expectBrighter(resolved.dark, "surface-interactive-selected", "surface-raised-base")
+    expectBrighter(resolved.dark, "surface-float-base", "background-stronger")
+    expectBrighter(resolved.dark, "input-base", "surface-raised-base")
+    expectBrighter(resolved.dark, "button-secondary-base", "surface-raised-base")
   })
 
   // ── CSS output ──────────────────────────────────────────

@@ -1,4 +1,4 @@
-import { createEffect, createMemo, createSignal, For, on, onCleanup, Show } from "solid-js"
+import { createEffect, createMemo, createSignal, For, on, onCleanup, Show, type JSX } from "solid-js"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
 import { getFilename } from "@ericsanchezok/synergy-util/path"
@@ -35,6 +35,13 @@ function parseIntervalString(s: string): { count: number; unit: IntervalUnit } {
   const match = s.match(/^(\d+)(m|h|d|w)$/)
   if (!match) return { count: 1, unit: "days" }
   return { count: parseInt(match[1], 10), unit: shortToUnit(match[2]) }
+}
+
+function nextFiveMinuteTime(now = new Date()): Date {
+  const d = new Date(now)
+  d.setSeconds(0, 0)
+  d.setMinutes(Math.ceil(d.getMinutes() / 5) * 5)
+  return d
 }
 
 // ---------------------------------------------------------------------------
@@ -87,12 +94,12 @@ function buildTriggers(s: ScheduleState): AgendaTrigger[] {
 }
 
 function parseTriggersToSchedule(triggers: AgendaTrigger[]): ScheduleState {
-  const now = new Date()
+  const now = nextFiveMinuteTime()
   const defaults: ScheduleState = {
     hasSchedule: false,
-    date: startOfDay(Date.now()),
+    date: startOfDay(now.getTime()),
     hour: now.getHours(),
-    minute: Math.ceil(now.getMinutes() / 5) * 5,
+    minute: now.getMinutes(),
     repeatMode: "off",
     intervalCount: 1,
     intervalUnit: "days",
@@ -177,10 +184,16 @@ function pad2(n: number): string {
 // AgendaForm
 // ---------------------------------------------------------------------------
 
-export function AgendaForm(props: { directory: string; item?: AgendaItem; onBack: () => void }) {
+export function AgendaForm(props: {
+  directory: string
+  item?: AgendaItem
+  onBack: () => void
+  presentation?: "panel" | "dialog"
+}) {
   const sdk = useGlobalSDK()
   const globalSync = useGlobalSync()
   const isEdit = () => !!props.item
+  const isDialog = () => props.presentation === "dialog"
 
   const parsed = parseTriggersToSchedule(props.item?.triggers ?? [])
 
@@ -193,7 +206,7 @@ export function AgendaForm(props: { directory: string; item?: AgendaItem; onBack
   const [tagsText, setTagsText] = createSignal((props.item?.tags ?? []).join(", "))
   const [selectedScopeID, setSelectedScopeID] = createSignal("")
 
-  const [hasSchedule, setHasSchedule] = createSignal(parsed.hasSchedule)
+  const [hasSchedule, setHasSchedule] = createSignal(isEdit() ? parsed.hasSchedule : true)
   const [date, setDate] = createSignal(parsed.date)
   const [hour, setHour] = createSignal(parsed.hour)
   const [minute, setMinute] = createSignal(parsed.minute)
@@ -210,6 +223,8 @@ export function AgendaForm(props: { directory: string; item?: AgendaItem; onBack
   createEffect(() => {
     if (title().trim() && error() === "Title is required") setError("")
   })
+
+  const canSubmit = createMemo(() => title().trim().length > 0 && !saving())
 
   const scopes = createMemo(() => {
     const home = globalSync.data.paths.home
@@ -233,6 +248,7 @@ export function AgendaForm(props: { directory: string; item?: AgendaItem; onBack
   })
 
   async function save() {
+    if (!canSubmit()) return
     const t = title().trim()
     if (!t) {
       setError("Title is required")
@@ -288,113 +304,103 @@ export function AgendaForm(props: { directory: string; item?: AgendaItem; onBack
 
   return (
     <>
-      <AppPanel.Header>
-        <AppPanel.HeaderRow>
-          <AppPanel.Action icon="arrow-left" title="Back" onClick={props.onBack} />
-          <AppPanel.Title>{isEdit() ? "Edit" : "New Item"}</AppPanel.Title>
-          <div class="flex items-center gap-1.5">
-            <button
-              type="button"
-              class="px-2.5 py-1 rounded-full text-11-medium text-text-weak hover:bg-surface-raised-base-hover transition-colors"
-              onClick={props.onBack}
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              classList={{
-                "px-3 py-1 rounded-full text-11-medium transition-colors text-white shadow-[0_12px_28px_-22px_color-mix(in_srgb,var(--surface-brand-base)_56%,transparent)]": true,
-                "bg-text-interactive-base hover:opacity-85": !saving(),
-                "bg-text-interactive-base opacity-50 pointer-events-none": saving(),
-              }}
-              onClick={save}
-              disabled={saving()}
-            >
-              <Show when={!saving()} fallback={<Spinner class="size-3 inline-block" />}>
-                {isEdit() ? "Save" : "Create"}
-              </Show>
-            </button>
-          </div>
-        </AppPanel.HeaderRow>
-      </AppPanel.Header>
+      <Show when={!isDialog()}>
+        <AppPanel.Header>
+          <AppPanel.HeaderRow>
+            <AppPanel.Action icon="arrow-left" title="Back" onClick={props.onBack} />
+            <AppPanel.Title>{isEdit() ? "Edit Agenda" : "New Agenda"}</AppPanel.Title>
+            <div class="flex items-center gap-1.5">
+              <button
+                type="button"
+                class="px-2.5 py-1 rounded-full text-11-medium text-text-weak hover:bg-surface-raised-base-hover transition-colors"
+                onClick={props.onBack}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                classList={{
+                  "px-3 py-1 rounded-full text-11-medium transition-colors": true,
+                  "bg-text-strong text-background-base hover:bg-text-base": canSubmit(),
+                  "bg-surface-raised-base text-text-weaker ring-1 ring-inset ring-border-base/35 cursor-not-allowed":
+                    !canSubmit(),
+                }}
+                onClick={save}
+                disabled={!canSubmit()}
+              >
+                <Show when={!saving()} fallback={<Spinner class="size-3 inline-block" />}>
+                  {isEdit() ? "Save" : "Create"}
+                </Show>
+              </button>
+            </div>
+          </AppPanel.HeaderRow>
+        </AppPanel.Header>
+      </Show>
 
-      <AppPanel.Body padding={false} class="!px-5">
-        <div class="flex flex-col gap-0 rounded-[1.25rem] bg-surface-inset-base/38 p-3 ring-1 ring-inset ring-border-base/45 shadow-[inset_0_1px_0_rgba(214,204,190,0.07)]">
-          <div class="rounded-[1rem] bg-surface-raised-base/94 px-3.5 py-3 shadow-[inset_0_1px_0_rgba(214,204,190,0.08),inset_0_-1px_0_rgba(24,28,38,0.04)]">
-            <input
-              type="text"
-              class="w-full bg-transparent text-15-medium text-text-strong outline-none py-1 placeholder:text-text-weaker/50"
-              placeholder="Add title"
-              value={title()}
-              onInput={(e) => setTitle(e.currentTarget.value)}
-            />
-          </div>
-
-          <div class="mt-2 rounded-[1rem] bg-surface-raised-base/94 px-3.5 py-3 shadow-[inset_0_1px_0_rgba(214,204,190,0.08),inset_0_-1px_0_rgba(24,28,38,0.04)]">
-            <div class="flex items-start gap-2.5">
-              <div class="shrink-0 mt-0.5 text-icon-weak">
-                <Icon name="sparkles" size="small" />
-              </div>
-              <textarea
-                class="flex-1 bg-transparent text-12-regular text-text-base outline-none resize-none min-h-14 placeholder:text-text-weaker/50"
-                placeholder="Agent prompt (what should the agent do?)"
-                value={prompt()}
-                onInput={(e) => setPrompt(e.currentTarget.value)}
-                rows={2}
+      <AppPanel.Body padding={false} class={isDialog() ? "!px-6 !pb-3" : "!px-5"}>
+        <div
+          classList={{
+            "agenda-form-surface flex flex-col": true,
+            "gap-4": isDialog(),
+            "gap-0 rounded-xl bg-surface-inset-base p-3": !isDialog(),
+          }}
+        >
+          <Field label="Title">
+            <div class="agenda-control-surface px-3.5 py-3">
+              <input
+                type="text"
+                autofocus
+                class="w-full bg-transparent text-15-medium text-text-strong outline-none py-1 placeholder:text-text-weaker/50"
+                placeholder="Add title"
+                value={title()}
+                onInput={(e) => setTitle(e.currentTarget.value)}
               />
             </div>
-          </div>
+          </Field>
 
-          <Divider />
-
-          {/* Schedule */}
-          <div class="flex items-center gap-2.5 py-2.5">
-            <div class="shrink-0 text-icon-weak">
-              <Icon name="clock" size="small" />
+          <Field label="Schedule">
+            <div class="flex items-center">
+              <Show
+                when={hasSchedule()}
+                fallback={
+                  <button
+                    type="button"
+                    class="text-12-medium text-text-strong hover:text-text-base transition-colors"
+                    onClick={() => {
+                      setHasSchedule(true)
+                      setDate(startOfDay(Date.now()))
+                      const now = new Date()
+                      const m5 = Math.ceil(now.getMinutes() / 5) * 5
+                      setHour(m5 >= 60 ? (now.getHours() + 1) % 24 : now.getHours())
+                      setMinute(m5 % 60)
+                    }}
+                  >
+                    Add time
+                  </button>
+                }
+              >
+                <div class="agenda-control-surface agenda-schedule-control flex-1 min-w-0 flex items-center gap-2.5 flex-wrap px-3.5 py-2.5">
+                  <DatePicker value={date()} onChange={setDate} />
+                  <TimePicker hour={hour()} minute={minute()} onHourChange={setHour} onMinuteChange={setMinute} />
+                  <button
+                    type="button"
+                    class="ml-auto size-6 flex items-center justify-center rounded-full text-icon-weak hover:text-text-diff-delete-base hover:bg-text-diff-delete-base/8 transition-colors"
+                    onClick={() => {
+                      setHasSchedule(false)
+                      setRepeatMode("off")
+                    }}
+                  >
+                    <Icon name="x" size="small" />
+                  </button>
+                </div>
+              </Show>
             </div>
-            <Show
-              when={hasSchedule()}
-              fallback={
-                <button
-                  type="button"
-                  class="text-12-regular text-text-interactive-base hover:text-text-interactive-base-hover transition-colors"
-                  onClick={() => {
-                    setHasSchedule(true)
-                    setDate(startOfDay(Date.now()))
-                    const now = new Date()
-                    const m5 = Math.ceil(now.getMinutes() / 5) * 5
-                    setHour(m5 >= 60 ? (now.getHours() + 1) % 24 : now.getHours())
-                    setMinute(m5 % 60)
-                  }}
-                >
-                  Add time
-                </button>
-              }
-            >
-              <div class="flex-1 min-w-0 flex items-center gap-1.5 flex-wrap rounded-[0.95rem] bg-surface-raised-base/92 px-2.5 py-2 shadow-[inset_0_1px_0_rgba(214,204,190,0.08),inset_0_-1px_0_rgba(24,28,38,0.04)]">
-                <DatePicker value={date()} onChange={setDate} />
-                <TimePicker hour={hour()} minute={minute()} onHourChange={setHour} onMinuteChange={setMinute} />
-                <button
-                  type="button"
-                  class="ml-auto size-6 flex items-center justify-center rounded-full text-icon-weak hover:text-text-diff-delete-base hover:bg-text-diff-delete-base/8 transition-colors"
-                  onClick={() => {
-                    setHasSchedule(false)
-                    setRepeatMode("off")
-                  }}
-                >
-                  <Icon name="x" size="small" />
-                </button>
-              </div>
-            </Show>
-          </div>
+          </Field>
 
           {/* Repeat */}
           <Show when={hasSchedule()}>
-            <div class="flex items-center gap-2.5 py-2.5">
-              <div class="shrink-0 text-icon-weak">
-                <Icon name="repeat" size="small" />
-              </div>
-              <div class="flex-1 min-w-0 rounded-[0.95rem] bg-surface-raised-base/92 px-2.5 py-2 shadow-[inset_0_1px_0_rgba(214,204,190,0.08),inset_0_-1px_0_rgba(24,28,38,0.04)]">
+            <Field label="Repeat">
+              <div class="agenda-control-surface min-w-0 px-3 py-2.5">
                 <RepeatControl
                   mode={repeatMode()}
                   count={intervalCount()}
@@ -404,19 +410,19 @@ export function AgendaForm(props: { directory: string; item?: AgendaItem; onBack
                   onUnitChange={setIntervalUnit}
                 />
               </div>
-            </div>
+            </Field>
             <Show when={repeatMode() === "custom"}>
-              <div class="pl-8 pb-2 flex flex-col gap-1.5">
+              <div class="flex flex-col gap-1.5">
                 <input
                   type="text"
-                  class="w-full bg-surface-raised-base/92 text-12-regular text-text-base outline-none px-2.5 py-1.5 rounded-[0.95rem] border border-border-base/45 focus:border-border-interactive-base shadow-[inset_0_1px_0_rgba(214,204,190,0.06)]"
+                  class="agenda-control-surface w-full text-12-regular text-text-base outline-none px-3 py-2"
                   placeholder="Cron expression, e.g. 0 9 * * 1-5"
                   value={customCron()}
                   onInput={(e) => setCustomCron(e.currentTarget.value)}
                 />
                 <input
                   type="text"
-                  class="w-full bg-surface-raised-base/92 text-11-regular text-text-weaker outline-none px-2.5 py-1.5 rounded-[0.95rem] border border-border-base/45 focus:border-border-interactive-base shadow-[inset_0_1px_0_rgba(214,204,190,0.06)]"
+                  class="agenda-control-surface w-full text-11-regular text-text-weaker outline-none px-3 py-2"
                   placeholder="Timezone (e.g. Asia/Shanghai)"
                   value={cronTz()}
                   onInput={(e) => setCronTz(e.currentTarget.value)}
@@ -427,35 +433,35 @@ export function AgendaForm(props: { directory: string; item?: AgendaItem; onBack
 
           <Divider />
 
-          <Show
-            when={showDesc()}
-            fallback={<ExpandRow icon="file-text" label="Add description" onClick={() => setShowDesc(true)} />}
-          >
-            <div class="flex items-start gap-2.5 py-2.5">
-              <div class="shrink-0 mt-0.5 text-icon-weak">
-                <Icon name="file-text" size="small" />
-              </div>
-              <div class="flex-1 rounded-[0.95rem] bg-surface-raised-base/92 px-2.5 py-2 shadow-[inset_0_1px_0_rgba(214,204,190,0.08),inset_0_-1px_0_rgba(24,28,38,0.04)]">
+          <Field label="Prompt">
+            <div class="agenda-control-surface px-3.5 py-3">
+              <textarea
+                class="w-full bg-transparent text-12-regular text-text-base outline-none resize-none min-h-24 placeholder:text-text-weaker/50"
+                placeholder="What should the agent do?"
+                value={prompt()}
+                onInput={(e) => setPrompt(e.currentTarget.value)}
+                rows={4}
+              />
+            </div>
+          </Field>
+
+          <Show when={showDesc()} fallback={<ExpandRow label="Add description" onClick={() => setShowDesc(true)} />}>
+            <Field label="Description">
+              <div class="agenda-control-surface px-3 py-2.5">
                 <textarea
-                  class="w-full bg-transparent text-12-regular text-text-base outline-none resize-none min-h-14 placeholder:text-text-weaker/50"
+                  class="w-full bg-transparent text-12-regular text-text-base outline-none resize-none min-h-20 placeholder:text-text-weaker/50"
                   placeholder="Description..."
                   value={description()}
                   onInput={(e) => setDescription(e.currentTarget.value)}
-                  rows={2}
+                  rows={3}
                 />
               </div>
-            </div>
+            </Field>
           </Show>
 
-          <Show
-            when={showTags()}
-            fallback={<ExpandRow icon="tag" label="Add tags" onClick={() => setShowTags(true)} />}
-          >
-            <div class="flex items-center gap-2.5 py-2.5">
-              <div class="shrink-0 text-icon-weak">
-                <Icon name="tag" size="small" />
-              </div>
-              <div class="flex-1 rounded-[0.95rem] bg-surface-raised-base/92 px-2.5 py-2 shadow-[inset_0_1px_0_rgba(214,204,190,0.08),inset_0_-1px_0_rgba(24,28,38,0.04)]">
+          <Show when={showTags()} fallback={<ExpandRow label="Add tags" onClick={() => setShowTags(true)} />}>
+            <Field label="Tags">
+              <div class="agenda-control-surface px-3 py-2.5">
                 <input
                   type="text"
                   class="w-full bg-transparent text-12-regular text-text-base outline-none placeholder:text-text-weaker/50"
@@ -464,27 +470,27 @@ export function AgendaForm(props: { directory: string; item?: AgendaItem; onBack
                   onInput={(e) => setTagsText(e.currentTarget.value)}
                 />
               </div>
-            </div>
+            </Field>
           </Show>
 
           <Divider />
 
           <button
             type="button"
-            class="flex items-center gap-2.5 py-2.5 w-full text-left"
+            class="agenda-control-surface flex items-center gap-3 px-3.5 py-3 w-full text-left"
             onClick={() => setShowAdvanced((v) => !v)}
           >
-            <div class="shrink-0 text-icon-weak">
-              <Icon name="sliders-horizontal" size="small" />
-            </div>
-            <span class="text-12-regular text-text-weak flex-1">Advanced</span>
+            <span class="flex min-w-0 flex-1 flex-col gap-0.5">
+              <span class="text-12-medium text-text-strong">Advanced settings</span>
+              <span class="text-11-regular text-text-weaker truncate">Scope and run options.</span>
+            </span>
             <div class="shrink-0 text-icon-weak">
               <Icon name={showAdvanced() ? "chevron-up" : "chevron-down"} size="small" />
             </div>
           </button>
 
           <Show when={showAdvanced()}>
-            <div class="pl-8 pb-3 flex flex-col gap-3">
+            <div class="pb-3 flex flex-col gap-3">
               <Show when={!isEdit() && scopes().length > 1}>
                 <div class="flex flex-col gap-1">
                   <span class="text-11-medium text-text-weaker">Scope</span>
@@ -505,6 +511,32 @@ export function AgendaForm(props: { directory: string; item?: AgendaItem; onBack
         <div class="shrink-0 mx-5 mb-3 text-12-regular text-text-diff-delete-base bg-text-diff-delete-base/10 border border-text-diff-delete-base/18 rounded-[1rem] px-3 py-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
           {error()}
         </div>
+      </Show>
+
+      <Show when={isDialog()}>
+        <AppPanel.Footer class="!px-6 !py-4 justify-end">
+          <button
+            type="button"
+            class="h-9 rounded-lg px-4 text-12-medium text-text-base ring-1 ring-inset ring-border-base/50 transition-colors hover:bg-surface-raised-base-hover"
+            onClick={props.onBack}
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            classList={{
+              "h-9 rounded-lg px-4 text-12-medium transition-colors ring-1 ring-inset": true,
+              "bg-text-strong text-background-base hover:bg-text-base ring-white/12": canSubmit(),
+              "bg-surface-raised-base text-text-weaker ring-border-base/35 cursor-not-allowed": !canSubmit(),
+            }}
+            onClick={save}
+            disabled={!canSubmit()}
+          >
+            <Show when={!saving()} fallback={<Spinner class="size-3 inline-block" />}>
+              {isEdit() ? "Save" : "Create"}
+            </Show>
+          </button>
+        </AppPanel.Footer>
       </Show>
     </>
   )
@@ -557,8 +589,8 @@ function DatePicker(props: { value: number; onChange: (ts: number) => void }) {
   })
 
   function cellClass(ts: number): string {
-    if (ts === selected()) return "bg-surface-interactive-solid text-text-on-interactive-base"
-    if (ts === today()) return "bg-surface-interactive-selected-weak text-text-interactive-base"
+    if (ts === selected()) return "bg-text-strong text-background-base"
+    if (ts === today()) return "bg-surface-raised-base text-text-strong ring-1 ring-inset ring-border-base/55"
     const inMonth = new Date(ts).getMonth() === currentMonth()
     return inMonth ? "text-text-base hover:bg-surface-raised-base-hover" : "text-text-weaker/40"
   }
@@ -567,31 +599,31 @@ function DatePicker(props: { value: number; onChange: (ts: number) => void }) {
     <div ref={containerRef} class="relative">
       <button
         type="button"
-        class="px-2.5 py-1 rounded-full text-12-medium text-text-base border border-border-base/45 bg-surface-raised-base/94 hover:border-border-interactive-base transition-colors"
+        class="agenda-picker-trigger agenda-schedule-trigger text-13-medium"
+        data-open={open() ? "true" : undefined}
         onClick={() => setOpen((v) => !v)}
       >
         {formatDate(props.value)}
       </button>
 
       <Show when={open()}>
-        <div
-          class="absolute top-full left-0 mt-1 z-50 border border-border-base/65 bg-background-base/92 backdrop-blur-xl rounded-[1rem] shadow-[0_18px_46px_-34px_color-mix(in_srgb,var(--surface-brand-base)_22%,transparent)] p-3 select-none"
-          style={{ width: "224px" }}
-        >
-          <div class="flex items-center justify-between mb-2">
-            <span class="text-12-medium text-text-strong">
+        <div class="agenda-picker-popover agenda-date-popover select-none">
+          <div class="flex items-center justify-between mb-3">
+            <span class="text-14-medium text-text-strong">
               {MONTH_NAMES_SHORT[new Date(displayMonth()).getMonth()]} {new Date(displayMonth()).getFullYear()}
             </span>
-            <div class="flex items-center gap-0.5">
+            <div class="flex items-center gap-1">
               <NavBtn onClick={() => setDisplayMonth((m) => addMonths(m, -1))}>{"‹"}</NavBtn>
               <NavBtn onClick={() => setDisplayMonth((m) => addMonths(m, 1))}>{"›"}</NavBtn>
             </div>
           </div>
 
-          <div class="grid grid-cols-7 mb-0.5">
+          <div class="grid grid-cols-7 mb-1">
             <For each={DAY_LABELS_MINI}>
               {(label) => (
-                <div class="w-7 h-6 flex items-center justify-center text-10-medium text-text-weaker">{label}</div>
+                <div class="agenda-date-cell flex items-center justify-center text-11-medium text-text-weaker">
+                  {label}
+                </div>
               )}
             </For>
           </div>
@@ -600,7 +632,7 @@ function DatePicker(props: { value: number; onChange: (ts: number) => void }) {
               {(ts) => (
                 <button
                   type="button"
-                  class={`w-7 h-7 flex items-center justify-center rounded-full text-[11px] leading-none transition-colors ${cellClass(ts)}`}
+                  class={`agenda-date-cell flex items-center justify-center text-12-medium leading-none transition-colors ${cellClass(ts)}`}
                   onClick={() => {
                     props.onChange(ts)
                     setOpen(false)
@@ -614,7 +646,7 @@ function DatePicker(props: { value: number; onChange: (ts: number) => void }) {
 
           <button
             type="button"
-            class="mt-2 text-11-medium text-text-interactive-base hover:text-text-interactive-base-hover"
+            class="mt-3 h-8 rounded-lg px-2.5 text-12-medium text-text-strong transition-colors hover:bg-surface-raised-base-hover"
             onClick={() => {
               props.onChange(today())
               setDisplayMonth(today())
@@ -674,29 +706,24 @@ function TimePicker(props: {
     <div ref={containerRef} class="relative">
       <button
         type="button"
-        class="px-2.5 py-1 rounded-full text-12-medium text-text-base border border-border-base/45 bg-surface-raised-base/94 hover:border-border-interactive-base transition-colors tabular-nums"
+        class="agenda-picker-trigger agenda-schedule-trigger text-13-medium tabular-nums"
+        data-open={open() ? "true" : undefined}
         onClick={() => setOpen((v) => !v)}
       >
         {pad2(props.hour)}:{pad2(props.minute)}
       </button>
 
       <Show when={open()}>
-        <div
-          class="absolute top-full left-0 mt-1 z-50 border border-border-base/65 bg-background-base/92 backdrop-blur-xl rounded-[1rem] shadow-[0_18px_46px_-34px_color-mix(in_srgb,var(--surface-brand-base)_22%,transparent)] flex overflow-hidden"
-          style={{ height: "200px" }}
-        >
-          <div
-            ref={hourListRef}
-            class="overflow-y-auto [scrollbar-width:thin] w-14 border-r border-border-weaker-base/50"
-          >
+        <div class="agenda-picker-popover agenda-time-popover">
+          <div ref={hourListRef} class="agenda-time-column border-r border-border-weaker-base/35">
             <For each={HOURS}>
               {(h) => (
                 <button
                   type="button"
                   classList={{
-                    "w-full px-2 py-1.5 text-12-regular text-center transition-colors tabular-nums": true,
-                    "bg-surface-interactive-selected-weak text-text-interactive-base": h === props.hour,
-                    "text-text-base hover:bg-surface-raised-base-hover/70": h !== props.hour,
+                    "agenda-time-option text-14-regular text-center transition-colors tabular-nums": true,
+                    "bg-text-strong text-background-base": h === props.hour,
+                    "text-text-base hover:bg-surface-raised-base-hover": h !== props.hour,
                   }}
                   onClick={() => props.onHourChange(h)}
                 >
@@ -705,15 +732,15 @@ function TimePicker(props: {
               )}
             </For>
           </div>
-          <div ref={minuteListRef} class="overflow-y-auto [scrollbar-width:thin] w-14">
+          <div ref={minuteListRef} class="agenda-time-column">
             <For each={MINUTES}>
               {(m) => (
                 <button
                   type="button"
                   classList={{
-                    "w-full px-2 py-1.5 text-12-regular text-center transition-colors tabular-nums": true,
-                    "bg-surface-interactive-selected-weak text-text-interactive-base": m === props.minute,
-                    "text-text-base hover:bg-surface-raised-base-hover/70": m !== props.minute,
+                    "agenda-time-option text-14-regular text-center transition-colors tabular-nums": true,
+                    "bg-text-strong text-background-base": m === props.minute,
+                    "text-text-base hover:bg-surface-raised-base-hover": m !== props.minute,
                   }}
                   onClick={() => props.onMinuteChange(m)}
                 >
@@ -760,7 +787,7 @@ function RepeatControl(props: {
           type="text"
           inputmode="numeric"
           pattern="[0-9]*"
-          class="w-12 bg-surface-inset-base/65 text-12-medium text-text-strong text-center outline-none px-1 py-0.5 rounded-full border border-border-base/45 focus:border-border-interactive-base tabular-nums"
+          class="agenda-picker-trigger h-8 w-14 px-2 text-12-medium text-text-strong text-center outline-none tabular-nums"
           value={props.count}
           onInput={(e) => {
             const raw = e.currentTarget.value.replace(/[^0-9]/g, "")
@@ -780,21 +807,22 @@ function RepeatControl(props: {
         <div ref={unitRef} class="relative">
           <button
             type="button"
-            class="flex items-center gap-1 px-2.5 py-0.5 rounded-full text-12-regular text-text-base border border-border-base/45 bg-surface-raised-base/94 hover:border-border-interactive-base transition-colors"
+            class="agenda-picker-trigger gap-1 px-3 py-1 text-12-regular"
+            data-open={unitOpen() ? "true" : undefined}
             onClick={() => setUnitOpen((v) => !v)}
           >
             {props.unit}
             <Icon name="chevron-down" size="small" class="text-icon-weak" />
           </button>
           <Show when={unitOpen()}>
-            <div class="absolute top-full left-0 mt-1 z-50 border border-border-base/65 bg-background-base/92 backdrop-blur-xl rounded-[1rem] shadow-[0_18px_46px_-34px_color-mix(in_srgb,var(--surface-brand-base)_22%,transparent)] overflow-hidden min-w-28">
+            <div class="agenda-picker-popover agenda-menu-popover">
               <For each={INTERVAL_UNITS}>
                 {(u) => (
                   <button
                     type="button"
                     classList={{
                       "w-full px-3 py-1.5 text-12-regular text-left flex items-center justify-between transition-colors": true,
-                      "text-text-interactive-base": u.value === props.unit,
+                      "text-text-strong bg-surface-raised-base": u.value === props.unit,
                       "text-text-base hover:bg-surface-raised-base-hover": u.value !== props.unit,
                     }}
                     onClick={() => {
@@ -804,7 +832,7 @@ function RepeatControl(props: {
                   >
                     <span>{u.label}</span>
                     <Show when={u.value === props.unit}>
-                      <Icon name="check" size="small" class="text-text-interactive-base" />
+                      <Icon name="check" size="small" class="text-text-strong" />
                     </Show>
                   </button>
                 )}
@@ -843,8 +871,7 @@ function ModeChip(props: { active: boolean; onClick: () => void; children: strin
       type="button"
       classList={{
         "px-2 py-0.5 rounded-full text-10-medium transition-colors": true,
-        "bg-surface-interactive-selected-weak text-text-interactive-base ring-1 ring-inset ring-border-interactive-base/12":
-          props.active,
+        "bg-text-strong text-background-base ring-1 ring-inset ring-white/12": props.active,
         "text-text-weaker hover:text-text-weak": !props.active,
       }}
       onClick={props.onClick}
@@ -890,7 +917,7 @@ function ScopePicker(props: {
     <div ref={containerRef} class="relative">
       <button
         type="button"
-        class="w-full flex items-center justify-between px-2.5 py-1.5 rounded-[0.95rem] text-12-regular text-text-base border border-border-base/45 bg-surface-raised-base/94 hover:border-border-interactive-base transition-colors"
+        class="agenda-control-surface w-full flex items-center justify-between px-3 py-2 text-12-regular text-text-base"
         onClick={() => setOpen((v) => !v)}
       >
         <span class="truncate">{activeLabel()}</span>
@@ -898,14 +925,14 @@ function ScopePicker(props: {
       </button>
 
       <Show when={open()}>
-        <div class="absolute top-full left-0 right-0 mt-1 z-50 border border-border-base/65 bg-background-base/92 backdrop-blur-xl rounded-[1rem] shadow-[0_18px_46px_-34px_color-mix(in_srgb,var(--surface-brand-base)_22%,transparent)] overflow-hidden max-h-48 overflow-y-auto [scrollbar-width:thin]">
+        <div class="agenda-picker-popover agenda-menu-popover left-0 right-0 max-h-48 overflow-y-auto [scrollbar-width:thin]">
           <For each={props.scopes}>
             {(scope) => (
               <button
                 type="button"
                 classList={{
                   "w-full px-3 py-2 text-12-regular text-left flex items-center justify-between transition-colors": true,
-                  "text-text-interactive-base": scope.id === props.value,
+                  "text-text-strong bg-surface-raised-base": scope.id === props.value,
                   "text-text-base hover:bg-surface-raised-base-hover": scope.id !== props.value,
                 }}
                 onClick={() => {
@@ -915,7 +942,7 @@ function ScopePicker(props: {
               >
                 <span class="truncate">{scopeLabel(scope)}</span>
                 <Show when={scope.id === props.value}>
-                  <Icon name="check" size="small" class="shrink-0 text-text-interactive-base" />
+                  <Icon name="check" size="small" class="shrink-0 text-text-strong" />
                 </Show>
               </button>
             )}
@@ -930,21 +957,27 @@ function ScopePicker(props: {
 // Small helpers
 // ---------------------------------------------------------------------------
 
-function Divider() {
-  return <div class="border-b border-border-weaker-base/40 my-2" />
+function Field(props: { label: string; children: JSX.Element }) {
+  return (
+    <div class="flex flex-col gap-2">
+      <span class="px-0.5 text-12-medium text-text-strong">{props.label}</span>
+      {props.children}
+    </div>
+  )
 }
 
-function ExpandRow(props: { icon: "file-text" | "tag"; label: string; onClick: () => void }) {
+function Divider() {
+  return <div class="agenda-soft-divider" />
+}
+
+function ExpandRow(props: { label: string; onClick: () => void }) {
   return (
     <button
       type="button"
-      class="flex items-center gap-2.5 py-2.5 px-0.5 w-full text-left rounded-[0.95rem] hover:bg-surface-raised-base-hover/14 transition-colors"
+      class="flex items-center py-2.5 px-0.5 w-full text-left rounded-[0.95rem] hover:bg-surface-raised-base-hover transition-colors"
       onClick={props.onClick}
     >
-      <div class="shrink-0 text-icon-weak">
-        <Icon name={props.icon} size="small" />
-      </div>
-      <span class="text-12-regular text-text-interactive-base">{props.label}</span>
+      <span class="text-12-regular text-text-strong">{props.label}</span>
     </button>
   )
 }
@@ -953,7 +986,7 @@ function NavBtn(props: { onClick: () => void; children: string }) {
   return (
     <button
       type="button"
-      class="w-6 h-6 flex items-center justify-center rounded-full text-text-weaker hover:text-text-weak hover:bg-surface-raised-base-hover transition-colors"
+      class="w-8 h-8 flex items-center justify-center rounded-full text-16-regular text-text-weaker hover:text-text-weak hover:bg-surface-raised-base-hover transition-colors"
       onClick={props.onClick}
     >
       {props.children}

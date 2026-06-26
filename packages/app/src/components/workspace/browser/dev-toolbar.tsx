@@ -36,7 +36,7 @@ export function DevToolbar() {
   const isActive = (panel: DevPanel) => devPanel() === panel
 
   return (
-    <div class="flex items-center gap-1 px-2 py-1 bg-background-weak border-t border-border-weak-base/60">
+    <div class="workbench-panel-surface flex items-center gap-1 border-t border-border-weak-base/60 px-2 py-1">
       <For each={ACTIONS}>
         {(action) => (
           <IconButton

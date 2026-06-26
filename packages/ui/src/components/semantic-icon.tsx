@@ -40,6 +40,7 @@ export const SemanticIconToken = {
   "settings.appearance": "sun",
   "settings.models": "cpu",
   "settings.providers": "server",
+  "settings.usage": "gauge",
   "settings.learning": "book-open",
   "settings.memory": "brain",
   "settings.experience": "lightbulb",
@@ -47,7 +48,6 @@ export const SemanticIconToken = {
   "settings.commands": "terminal",
   "settings.instructions": "file-text",
   "settings.mcp": "cable",
-  "settings.plugins": "package",
   "settings.channels": "globe",
   "settings.email": "mail",
   "settings.permissions": "shield-check",
@@ -59,6 +59,7 @@ export const SemanticIconToken = {
   "settings.formatter": "file-pen",
   "settings.lsp": "braces",
   "settings.observability": "stethoscope",
+  "settings.diagnostics": "activity",
   "settings.import": "upload",
   "settings.configFiles": "folder",
 
@@ -66,6 +67,7 @@ export const SemanticIconToken = {
   "app.sidebar": "panel-left",
   "app.statusBar": "panel-bottom",
   "app.statusBar.toggle": "panel-bottom-open",
+  "app.plugins": "package",
   "navigation.back": "arrow-left",
   "navigation.expand": "chevron-right",
   "navigation.collapse": "chevron-down",
@@ -90,8 +92,15 @@ export const SemanticIconToken = {
   "action.more": "ellipsis",
   "action.search": "search",
   "action.remove": "trash-2",
+  "action.refresh": "refresh-ccw",
+  "account.create": "user-plus",
+  "account.import": "key-round",
+  "account.logout": "arrow-left",
+  "account.repository": "github",
   "state.success": "check",
   "state.empty": "circle",
+  "state.warning": "octagon-alert",
+  "state.error": "ban",
 } as const satisfies Record<string, IconName>
 
 export type SemanticIconTokenName = keyof typeof SemanticIconToken

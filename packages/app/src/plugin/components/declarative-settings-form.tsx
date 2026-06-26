@@ -9,6 +9,8 @@ interface DeclarativeSettingsFormProps {
 export function DeclarativeSettingsForm(props: DeclarativeSettingsFormProps) {
   const [local, setLocal] = createSignal(props.values)
   let debounceTimer: ReturnType<typeof setTimeout>
+  const inputClass =
+    "workbench-input-surface w-full rounded-lg border border-border-base/40 bg-input-base px-3 py-2 text-14-regular text-text-strong outline-none transition-colors placeholder:text-text-weaker focus-visible:ring-2 focus-visible:ring-border-strong-base/25"
 
   createEffect(() => {
     setLocal(props.values)
@@ -36,7 +38,7 @@ export function DeclarativeSettingsForm(props: DeclarativeSettingsFormProps) {
         <select
           value={(local()[key] as string) ?? ""}
           onChange={(e) => handleChange(key, e.currentTarget.value)}
-          class="w-full rounded-md border border-border-base bg-background-base px-3 py-2 text-14-regular text-text-strong"
+          class={inputClass}
         >
           <For each={fieldSchema.enum as string[]}>{(v) => <option value={v}>{v}</option>}</For>
         </select>
@@ -56,7 +58,7 @@ export function DeclarativeSettingsForm(props: DeclarativeSettingsFormProps) {
           type="number"
           value={(local()[key] as number | string) ?? ""}
           onChange={(e) => handleChange(key, Number(e.currentTarget.value))}
-          class="w-full rounded-md border border-border-base bg-background-base px-3 py-2 text-14-regular text-text-strong"
+          class={inputClass}
         />
       )
     } else if (fieldSchema.format === "password") {
@@ -65,7 +67,7 @@ export function DeclarativeSettingsForm(props: DeclarativeSettingsFormProps) {
           type="password"
           value={(local()[key] as string) ?? ""}
           onChange={(e) => handleChange(key, e.currentTarget.value)}
-          class="w-full rounded-md border border-border-base bg-background-base px-3 py-2 text-14-regular text-text-strong"
+          class={inputClass}
         />
       )
     } else {
@@ -74,7 +76,7 @@ export function DeclarativeSettingsForm(props: DeclarativeSettingsFormProps) {
           type="text"
           value={(local()[key] as string) ?? ""}
           onChange={(e) => handleChange(key, e.currentTarget.value)}
-          class="w-full rounded-md border border-border-base bg-background-base px-3 py-2 text-14-regular text-text-strong"
+          class={inputClass}
         />
       )
     }

@@ -9,7 +9,7 @@ import { Switch } from "@ericsanchezok/synergy-ui/switch"
 import { Tag } from "@ericsanchezok/synergy-ui/tag"
 import { Dialog } from "@ericsanchezok/synergy-ui/dialog"
 import { List } from "@ericsanchezok/synergy-ui/list"
-import { DialogSelectProvider } from "./dialog-select-provider"
+import { SettingsDialog } from "@/components/settings"
 
 function sortGroups(a: { category: string; items: LocalModel[] }, b: { category: string; items: LocalModel[] }) {
   if (a.category === "Recent" && b.category !== "Recent") return -1
@@ -211,7 +211,7 @@ export const ModelSelectorPopover: Component<{
               class="h-7 px-2.5 text-12-medium text-text-weak"
               onClick={() => {
                 close()
-                dialog.show(() => <DialogSelectProvider />)
+                dialog.show(() => <SettingsDialog initialTab="providers" />)
               }}
             >
               Connect provider
@@ -235,7 +235,9 @@ export const DialogSelectModel: Component<{ provider?: string }> = (props) => {
           class="h-7 -my-1 text-14-medium"
           icon="plus"
           tabIndex={-1}
-          onClick={() => dialog.show(() => <DialogSelectProvider />)}
+          onClick={() => {
+            dialog.show(() => <SettingsDialog initialTab="providers" />)
+          }}
         >
           Connect provider
         </Button>

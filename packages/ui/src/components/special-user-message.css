@@ -125,7 +125,7 @@
   [data-slot="special-message-field"] {
     padding: 7px 9px;
     border-radius: var(--radius-md);
-    background: color-mix(in srgb, var(--surface-base) 72%, transparent);
+    background: color-mix(in srgb, var(--workbench-control-bg, var(--surface-base)) 78%, transparent);
     border: 1px solid var(--border-weaker-base);
   }
 

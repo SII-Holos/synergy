@@ -20,8 +20,8 @@ import PLAN_MODE from "./prompt/plan-mode.txt"
 import PLAN_MODE_SYNERGY from "./prompt/plan-mode-synergy.txt"
 import PLAN_MODE_SYNERGY_MAX from "./prompt/plan-mode-synergy-max.txt"
 import { defer } from "../util/defer"
-import { Command } from "../command/command"
-import "../project/worktree-command"
+import type { Command } from "../command/command"
+import { WorktreeCommand } from "../project/worktree-command"
 import { $ } from "bun"
 import { ConfigMarkdown } from "../config/markdown"
 import "./summary"
@@ -64,6 +64,7 @@ import { ExperienceEncoder } from "../library/experience-encoder"
 import { GitHealth } from "../project/git-health"
 import { BlueprintLoopStore } from "../blueprint/loop-store"
 import { PlanModeUserWrapper } from "./plan-mode-user-wrapper"
+import type { ToolDisplay } from "@ericsanchezok/synergy-plugin/tool"
 
 export { InvokeInput, resolveInputParts } from "./input"
 
@@ -72,6 +73,16 @@ globalThis.AI_SDK_LOG_WARNINGS = false
 
 export namespace SessionInvoke {
   const log = Log.create({ service: "session.invoke" })
+  const ephemeralToolsByMessage = new Map<string, ToolResolver.EphemeralTool[]>()
+
+  queueMicrotask(async () => {
+    const command = await commandRuntime()
+    if ((command as any)?.registerAction) WorktreeCommand.register(command)
+  })
+
+  async function commandRuntime() {
+    return (await import("../command/command")).Command
+  }
 
   SessionManager.onMailboxReady(async (sessionID) => {
     await processMailbox(sessionID)
@@ -92,21 +103,39 @@ export namespace SessionInvoke {
     SessionManager.signalAbort(sessionID)
   }
 
-  export const invoke = fn(InvokeInput, async (input) => {
+  type InternalInvokeInput = InvokeInput & {
+    ephemeralTools?: ToolResolver.EphemeralTool[]
+  }
+
+  async function invokeWithInternalTools(input: InternalInvokeInput) {
     return SessionManager.run(input.sessionID, async () => {
       const message = await createUserMessage(input)
+      if (input.ephemeralTools?.length) {
+        ephemeralToolsByMessage.set(message.info.id, input.ephemeralTools)
+      }
 
       await Session.update(input.sessionID, (draft) => {
         draft.pendingReply = input.noReply !== true || undefined
       })
 
       if (input.noReply === true) {
+        ephemeralToolsByMessage.delete(message.info.id)
         return message
       }
 
-      return loop(input.sessionID)
+      try {
+        return await loop(input.sessionID)
+      } finally {
+        ephemeralToolsByMessage.delete(message.info.id)
+      }
     })
-  })
+  }
+
+  export const invoke = fn(InvokeInput, async (input) => invokeWithInternalTools(input))
+
+  export async function invokeInternal(input: InternalInvokeInput) {
+    return invokeWithInternalTools(input)
+  }
 
   async function processMailbox(sessionID: string): Promise<void> {
     const runtimeMails = SessionManager.drainAllMails(sessionID)
@@ -454,6 +483,7 @@ export namespace SessionInvoke {
 
         const userMetadata = (lastUser.metadata ?? undefined) as Record<string, unknown> | undefined
         const channelPush = !!(userMetadata?.mailbox || userMetadata?.channelPush)
+        const toolDisplayByName = new Map<string, ToolDisplay>()
         const processor = SessionProcessor.create({
           assistantMessage: (await Session.updateMessage({
             id: Identifier.ascending("message"),
@@ -483,6 +513,7 @@ export namespace SessionInvoke {
           sessionID: sessionID,
           model,
           abort,
+          toolDisplay: (toolName) => toolDisplayByName.get(toolName),
         })
 
         // Shallow structural copy: duplicates message/part references but shares
@@ -534,6 +565,7 @@ export namespace SessionInvoke {
             sessionID,
             session,
             userTools: lastUser.tools,
+            ephemeralTools: ephemeralToolsByMessage.get(lastUser.id),
             includeMCP: true,
           }),
           Promise.all([
@@ -545,6 +577,10 @@ export namespace SessionInvoke {
           buildAgendaReminder(sessionID, scopeID),
           recallMemory(step, sessionID, scopeID, sessionMessages, isTopSession),
         ])
+
+        for (const def of toolDefinitions) {
+          if (def.display) toolDisplayByName.set(def.id, def.display)
+        }
 
         // Layered system prompt assembly: stable → semi-stable → dynamic
         // This ordering maximizes prompt caching by keeping static content first.
@@ -713,6 +749,7 @@ export namespace SessionInvoke {
           processor,
           session,
           userTools: lastUser.tools,
+          ephemeralTools: ephemeralToolsByMessage.get(lastUser.id),
           includeMCP: true,
         })
         toolResolveTimer.stop()
@@ -1327,6 +1364,7 @@ export namespace SessionInvoke {
   }
 
   async function deterministicCommandResult(input: CommandInput, command: Command.Info, result: Command.Result) {
+    const CommandRuntime = await commandRuntime()
     const userID = input.messageID ?? Identifier.ascending("message")
     const agentName = input.agent ?? (await Agent.defaultAgent().catch(() => "system"))
     const parsedModel = input.model
@@ -1379,7 +1417,7 @@ export namespace SessionInvoke {
       text: result.output,
       metadata: result.metadata,
     })
-    Bus.publish(Command.Event.Executed, {
+    Bus.publish(CommandRuntime.Event.Executed, {
       name: input.command,
       sessionID: input.sessionID,
       arguments: input.arguments,
@@ -1390,15 +1428,16 @@ export namespace SessionInvoke {
 
   export async function command(input: CommandInput) {
     log.info("command", input)
-    const command = await Command.require(input.command)
+    const CommandRuntime = await commandRuntime()
+    const command = await CommandRuntime.require(input.command)
     if (command.kind === "action") {
-      if (!command.action) throw new Command.UnknownActionError({ action: "" })
+      if (!command.action) throw new CommandRuntime.UnknownActionError({ action: "" })
       return SessionManager.run(input.sessionID, async () => {
-        const result = await Command.runAction({ action: command.action!, input, command })
+        const result = await CommandRuntime.runAction({ action: command.action!, input, command })
         return deterministicCommandResult(input, command, result)
       })
     }
-    if (!command.template) throw new Command.NotFoundError({ name: input.command })
+    if (!command.template) throw new CommandRuntime.NotFoundError({ name: input.command })
     const agentName = command.agent ?? input.agent ?? (await Agent.defaultAgent())
 
     const raw = input.arguments.match(argsRegex) ?? []
@@ -1490,7 +1529,7 @@ export namespace SessionInvoke {
       variant: input.variant,
     })) as MessageV2.WithParts
 
-    Bus.publish(Command.Event.Executed, {
+    Bus.publish(CommandRuntime.Event.Executed, {
       name: input.command,
       sessionID: input.sessionID,
       arguments: input.arguments,
@@ -1508,11 +1547,12 @@ export namespace SessionInvoke {
       messageID: Identifier.schema("message"),
     }),
     async (input) => {
+      const CommandRuntime = await commandRuntime()
       await command({
         sessionID: input.sessionID,
         messageID: input.messageID,
         model: input.providerID + "/" + input.modelID,
-        command: Command.Default.INIT,
+        command: CommandRuntime.Default.INIT,
         arguments: "",
       })
     },

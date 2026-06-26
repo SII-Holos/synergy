@@ -14,7 +14,6 @@ const canonicalDomains = [
   "providers",
   "library",
   "mcp",
-  "plugins",
   "agents",
   "commands",
   "permissions",

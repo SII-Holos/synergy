@@ -291,7 +291,7 @@ export function BrowserSurface() {
 
       <Show when={browser.fileChooserRequest()}>
         {(request) => (
-          <div class="absolute inset-0 z-50 flex items-center justify-center bg-background-stronger/70">
+          <div class="absolute inset-0 z-50 flex items-center justify-center bg-black/45">
             <div class="w-[320px] rounded-lg border border-border-weak-base bg-surface-raised-base p-4 shadow-sm">
               <div class="text-13 font-medium text-text-strong">Choose file for upload</div>
               <div class="mt-1 text-12 text-text-weak">
@@ -326,7 +326,7 @@ export function BrowserSurface() {
 
       <Show when={browser.dialogRequest()}>
         {(request) => (
-          <div class="absolute inset-0 z-50 flex items-center justify-center bg-background-stronger/70">
+          <div class="absolute inset-0 z-50 flex items-center justify-center bg-black/45">
             <div class="w-[360px] rounded-lg border border-border-weak-base bg-surface-raised-base p-4 shadow-sm">
               <div class="text-13 font-medium text-text-strong">{request().type}</div>
               <div class="mt-2 text-12 text-text-weak whitespace-pre-wrap">{request().message}</div>

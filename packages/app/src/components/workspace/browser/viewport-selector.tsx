@@ -60,7 +60,7 @@ export function ViewportSelector() {
             type="button"
             class="px-1.5 h-6 rounded text-11 transition-colors shrink-0"
             classList={{
-              "bg-surface-interactive-base text-surface-interactive-text": selectedPreset() === preset.label,
+              "workbench-selected-surface text-text-strong": selectedPreset() === preset.label,
               "text-text-weak hover:text-text-base hover:bg-surface-raised-base-hover":
                 selectedPreset() !== preset.label,
             }}

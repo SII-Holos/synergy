@@ -149,7 +149,7 @@ export function QValueChart(props: {
   const hasData = () => total() > 0
 
   return (
-    <div class="mt-4 rounded-[1.25rem] bg-surface-raised-base/95 p-4 shadow-[inset_0_1px_0_rgba(214,204,190,0.06),inset_0_-1px_0_rgba(24,28,38,0.04)]">
+    <div class="workbench-card-surface mt-4 rounded-[1.25rem] bg-surface-raised-base p-4">
       <div class="pb-2">
         <h3 class="text-13-medium text-text-strong">Q‑value distribution</h3>
       </div>
@@ -157,30 +157,30 @@ export function QValueChart(props: {
       <Show
         when={hasData()}
         fallback={
-          <div class="rounded-xl bg-surface-inset-base/45 px-3.5 py-5 text-11-regular text-text-weak">
+          <div class="rounded-xl bg-surface-inset-base px-3.5 py-5 text-11-regular text-text-weak">
             No evaluated experiences yet
           </div>
         }
       >
         {/* Summary row */}
         <div class="mb-3 grid grid-cols-5 gap-2">
-          <div class="rounded-xl bg-surface-inset-base/45 px-2.5 py-2 ring-1 ring-inset ring-border-base/45">
+          <div class="rounded-xl bg-surface-inset-base px-2.5 py-2 ring-1 ring-inset ring-border-base/45">
             <div class="text-[8px] font-medium uppercase tracking-[0.12em] text-text-weak">Avg Q</div>
             <div class="mt-0.5 text-13-semibold tabular-nums text-text-strong">{formatQ(dist().avgCompositeQ)}</div>
           </div>
-          <div class="rounded-xl bg-surface-inset-base/45 px-2.5 py-2 ring-1 ring-inset ring-border-base/45">
+          <div class="rounded-xl bg-surface-inset-base px-2.5 py-2 ring-1 ring-inset ring-border-base/45">
             <div class="text-[8px] font-medium uppercase tracking-[0.12em] text-text-weak">Median</div>
             <div class="mt-0.5 text-13-semibold tabular-nums text-text-strong">{formatQ(dist().medianCompositeQ)}</div>
           </div>
-          <div class="rounded-xl bg-surface-inset-base/45 px-2.5 py-2 ring-1 ring-inset ring-border-base/45">
+          <div class="rounded-xl bg-surface-inset-base px-2.5 py-2 ring-1 ring-inset ring-border-base/45">
             <div class="text-[8px] font-medium uppercase tracking-[0.12em] text-text-weak">σ Q</div>
             <div class="mt-0.5 text-13-semibold tabular-nums text-text-strong">{dist().stdCompositeQ.toFixed(3)}</div>
           </div>
-          <div class="rounded-xl bg-surface-inset-base/45 px-2.5 py-2 ring-1 ring-inset ring-border-base/45">
+          <div class="rounded-xl bg-surface-inset-base px-2.5 py-2 ring-1 ring-inset ring-border-base/45">
             <div class="text-[8px] font-medium uppercase tracking-[0.12em] text-text-weak">Unused</div>
             <div class="mt-0.5 text-13-semibold tabular-nums text-text-strong">{props.rl.neverRetrieved}</div>
           </div>
-          <div class="rounded-xl bg-surface-inset-base/45 px-2.5 py-2 ring-1 ring-inset ring-border-base/45">
+          <div class="rounded-xl bg-surface-inset-base px-2.5 py-2 ring-1 ring-inset ring-border-base/45">
             <div class="text-[8px] font-medium uppercase tracking-[0.12em] text-text-weak">Active</div>
             <div class="mt-0.5 text-13-semibold tabular-nums text-text-strong">{props.rl.frequentlyRetrieved}</div>
           </div>
@@ -188,7 +188,7 @@ export function QValueChart(props: {
 
         {/* Histogram + trend side-by-side */}
         <div class="grid grid-cols-1 gap-2.5">
-          <div class="rounded-xl bg-surface-inset-base/45 px-3 py-2.5 ring-1 ring-inset ring-border-base/45">
+          <div class="rounded-xl bg-surface-inset-base px-3 py-2.5 ring-1 ring-inset ring-border-base/45">
             <div class="text-[8px] font-medium uppercase tracking-[0.12em] text-text-weak mb-1.5">
               Composite Q Histogram
             </div>
@@ -198,7 +198,7 @@ export function QValueChart(props: {
           </div>
 
           <Show when={dist().trend.length >= 2}>
-            <div class="rounded-xl bg-surface-inset-base/45 px-3 py-2.5 ring-1 ring-inset ring-border-base/45">
+            <div class="rounded-xl bg-surface-inset-base px-3 py-2.5 ring-1 ring-inset ring-border-base/45">
               <div class="text-[8px] font-medium uppercase tracking-[0.12em] text-text-weak mb-1.5">
                 Median Q · Weekly Trend
               </div>

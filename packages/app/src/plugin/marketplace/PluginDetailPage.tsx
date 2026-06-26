@@ -275,7 +275,7 @@ export function PluginDetailPage() {
   const pluginData = () => summary()
 
   return (
-    <div class="flex flex-col h-full min-h-0">
+    <div class="synergy-workbench-canvas flex flex-col h-full min-h-0 bg-background-stronger text-text-base">
       {/* ── Header ── */}
       <div class="shrink-0 px-6 pt-6 pb-3 border-b border-border-weaker-base/40">
         <div class="flex items-start justify-between gap-3">
@@ -418,7 +418,7 @@ export function PluginDetailPage() {
                   />
                   <MetaBox icon="calendar" label="Updated" value={timeAgo(pluginData()!.updatedAt)} />
                   <MetaBox icon="download" label="Downloads" value={pluginData()!.downloads?.toLocaleString() ?? "0"} />
-                  <MetaBox icon="package-open" label="Source" value={source() === "local" ? "Local" : "Official"} />
+                  <MetaBox icon="package" label="Source" value={source() === "local" ? "Local" : "Official"} />
                   <MetaBox icon="key-round" label="Signer" value={formatSigner(latestVersion()?.signature?.signer)} />
                 </div>
 

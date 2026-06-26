@@ -18,6 +18,7 @@ import { Tool } from "@/tool/tool"
 import { ToolRegistry } from "@/tool/registry"
 import { ToolTimeout } from "@/tool/timeout"
 import { ToolExposure } from "@/tool/exposure"
+import type { ToolDisplay } from "@ericsanchezok/synergy-plugin/tool"
 import { Log } from "@/util/log"
 import { TimeoutConfig } from "@/util/timeout-config"
 import { Session } from "."
@@ -51,12 +52,26 @@ export namespace ToolResolver {
     processor: SessionProcessor.Info
     session?: Info
     userTools?: Record<string, boolean>
+    ephemeralTools?: EphemeralTool[]
     includeMCP?: boolean
+  }
+
+  export interface EphemeralTool {
+    id: string
+    description: string
+    inputSchema: JSONSchema7
+    display?: ToolDisplay
+    execute(args: Record<string, unknown>): Promise<{
+      title: string
+      output: string
+      metadata?: Record<string, any>
+    }>
   }
 
   export interface Definition {
     id: string
     exposure?: ToolExposure.Info
+    display?: ToolDisplay
     description: string
     inputSchema: JSONSchema7
     createRuntimeTool?(input: Input): AITool
@@ -766,6 +781,20 @@ export namespace ToolResolver {
     return result
   }
 
+  function forcedTools(userTools?: Record<string, boolean>) {
+    return Object.entries(userTools ?? {})
+      .filter(([id, enabled]) => id !== "*" && enabled === true)
+      .map(([id]) => id)
+  }
+
+  function userToolAllows(toolID: string, userTools?: Record<string, boolean>) {
+    if (!userTools) return true
+    if (userTools[toolID] === true) return true
+    if (userTools[toolID] === false) return false
+    if (userTools["*"] === false) return false
+    return true
+  }
+
   function applyAvailability(defs: Definition[], input: Omit<Input, "processor">): Availability {
     const visible: Definition[] = []
     const diagnostics = new Map<string, ToolDiagnosticInfo>()
@@ -776,16 +805,25 @@ export namespace ToolResolver {
     const activeBlueprintLoopID = input.session?.blueprint?.loopID
     const isSupervisor = input.agent.name === "supervisor"
     const forcedGroups = forcedToolGroups(input.session)
-    const allUserToolsDisabled = input.userTools?.["*"] === false
+    const forcedToolIDs = forcedTools(input.userTools)
+    const ephemeralToolIds = new Set(input.ephemeralTools?.map((item) => item.id) ?? [])
 
     for (const def of defs) {
-      const modeDiagnostic = SessionModePolicy.visibility({ toolName: def.id, session: input.session })
+      const isEphemeral = ephemeralToolIds.has(def.id)
+      const modeDiagnostic = isEphemeral
+        ? undefined
+        : SessionModePolicy.visibility({ toolName: def.id, session: input.session })
       if (modeDiagnostic) {
         diagnostics.set(def.id, modeDiagnostic)
         continue
       }
 
-      if (!ToolExposure.isVisible(def.id, def.exposure, input.session?.toolState, { forcedGroups })) {
+      if (
+        !ToolExposure.isVisible(def.id, def.exposure, input.session?.toolState, {
+          forcedGroups,
+          forcedTools: forcedToolIDs,
+        })
+      ) {
         diagnostics.set(
           def.id,
           SessionModePolicy.unavailable({
@@ -813,7 +851,7 @@ export namespace ToolResolver {
         continue
       }
 
-      if (disabled.has(def.id)) {
+      if (disabled.has(def.id) && !isEphemeral) {
         diagnostics.set(
           def.id,
           SessionModePolicy.unavailable({
@@ -825,7 +863,7 @@ export namespace ToolResolver {
         continue
       }
 
-      if (allUserToolsDisabled || input.userTools?.[def.id] === false) {
+      if (!userToolAllows(def.id, input.userTools)) {
         diagnostics.set(
           def.id,
           SessionModePolicy.unavailable({
@@ -885,6 +923,65 @@ export namespace ToolResolver {
     using _ = log.time("definitions.collect")
     let result: Definition[] = []
 
+    for (const item of input.ephemeralTools ?? []) {
+      const schema = ProviderTransform.schema(input.model, item.inputSchema as any, {
+        tool: item.id,
+      }) as JSONSchema7
+      result.push({
+        id: item.id,
+        exposure: { mode: "internal" },
+        display: item.display,
+        description: item.description,
+        inputSchema: schema,
+        createRuntimeTool(runtimeInput) {
+          return tool({
+            id: item.id as any,
+            description: item.description,
+            inputSchema: jsonSchema(schema as any),
+            async execute(args, options) {
+              let resolveExecution!: (outcome: SessionProcessor.ToolOutcome) => void
+              const executionPromise = new Promise<SessionProcessor.ToolOutcome>((r) => {
+                resolveExecution = r
+              })
+              runtimeInput.processor.trackExecution(options.toolCallId, executionPromise)
+
+              try {
+                const result = await item.execute(args as Record<string, unknown>)
+                resolveExecution({
+                  status: "completed",
+                  input: args,
+                  result: {
+                    title: result.title,
+                    output: result.output,
+                    metadata: result.metadata ?? {},
+                  },
+                })
+                return {
+                  title: result.title,
+                  output: result.output,
+                  metadata: result.metadata ?? {},
+                }
+              } catch (error) {
+                const message = error instanceof Error ? error.message : String(error)
+                resolveExecution({
+                  status: "error",
+                  input: args,
+                  error: message,
+                })
+                throw error
+              }
+            },
+            toModelOutput(result) {
+              return {
+                type: "text",
+                value: result.output,
+              }
+            },
+          })
+        },
+      })
+    }
+
     for (const item of await ToolRegistry.tools(input.model.providerID, input.agent)) {
       const schema = ProviderTransform.schema(input.model, z.toJSONSchema(item.parameters), {
         tool: item.id,
@@ -892,6 +989,7 @@ export namespace ToolResolver {
       result.push({
         id: item.id,
         exposure: item.exposure,
+        display: item.display,
         description: item.description,
         inputSchema: schema,
         createRuntimeTool(runtimeInput) {

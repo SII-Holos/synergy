@@ -4,6 +4,7 @@ import type { Agent } from "../agent/agent"
 import type { PermissionNext } from "../permission/next"
 import { Truncate } from "./truncation"
 import { ToolExposure } from "./exposure"
+import type { ToolDisplay } from "@ericsanchezok/synergy-plugin/tool"
 
 export namespace Tool {
   interface Metadata {
@@ -27,6 +28,7 @@ export namespace Tool {
   export interface Info<Parameters extends z.ZodType = z.ZodType, M extends Metadata = Metadata> {
     id: string
     exposure?: ToolExposure.Info
+    display?: ToolDisplay
     init: (ctx?: InitContext) => Promise<{
       description: string
       parameters: Parameters
@@ -51,6 +53,7 @@ export namespace Tool {
     init: Info<Parameters, Result>["init"] | Awaited<ReturnType<Info<Parameters, Result>["init"]>>,
     options?: {
       exposure?: ToolExposure.Info
+      display?: ToolDisplay
     },
   ): Info<Parameters, Result> {
     // When `init` is a plain object (not a factory function), the same object
@@ -68,6 +71,7 @@ export namespace Tool {
     return {
       id,
       exposure: options?.exposure,
+      display: options?.display,
       init: async (initCtx) => {
         const toolInfo = init instanceof Function ? await init(initCtx) : init
         const execute = originalExecute ?? toolInfo.execute

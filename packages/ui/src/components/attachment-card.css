@@ -39,8 +39,8 @@
   min-height: 96px;
   padding: 12px;
   border-radius: 8px;
-  background: var(--surface-base);
-  border: 1px solid var(--border-base);
+  background: var(--workbench-card-bg, var(--surface-base));
+  border: 1px solid var(--workbench-border, var(--border-base));
   transition:
     border-color 0.15s ease,
     background 0.15s ease,
@@ -53,7 +53,7 @@
 
   &:hover {
     border-color: var(--border-strong-base);
-    background: var(--surface-base-hover);
+    background: var(--workbench-card-bg-hover, var(--surface-base-hover));
   }
 
   &:focus-visible {
@@ -68,7 +68,7 @@
     width: 36px;
     height: 36px;
     border-radius: 8px;
-    background: var(--surface-raised-base);
+    background: var(--workbench-control-bg, var(--surface-raised-base));
   }
 
   [data-component="file-icon"] {
@@ -135,7 +135,7 @@
     width: 100%;
     height: 100%;
     object-fit: contain;
-    background: var(--surface-base);
+    background: var(--workbench-card-bg, var(--surface-base));
   }
 }
 

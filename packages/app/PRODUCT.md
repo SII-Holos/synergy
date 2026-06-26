@@ -27,6 +27,30 @@ Make reciprocal actions visibly reciprocal.
 Reserve emphasis for workflow state and current selection.
 Let blueprints read as plans with status, activity, and next action, not as passive notes.
 Keep dense surfaces quiet enough for repeated daily use.
+Use mode-aware polarity: in dark mode, the active or inner thing is brighter than its shell; in light mode, the active or inner thing is darker than its shell.
+Treat that polarity as a surface hierarchy invariant, not a per-page decoration choice; if light mode feels reversed, audit the token source first, then the component consumer.
+
+## Interaction & Visual Principles
+
+Treat the Holos agent as the Synergy account identity. Model subscriptions, API keys, quota windows, and provider logins belong to Providers and Usage, not Account.
+
+Keep navigation surfaces mentally aligned with where they live. Sidebar destinations such as Agenda, Library, and Plugins should open in the main session-side canvas, not as floating modals. Settings may be modal, but it should dim the whole app because it interrupts the current task.
+
+Session, Agenda, Library, and Plugins should feel like one continuous workbench canvas in both light and dark modes. Their root backgrounds should align with the session message-flow background; inner surfaces can step up or down for hierarchy, but should not look like separate apps.
+
+Content Polarity Rule: dark mode reads inward by getting brighter; light mode reads inward by getting darker. Content, controls, and selected items should usually be slightly brighter than their container in dark mode, and slightly darker than their container in light mode. Treat selected rows, active tabs, chips, tool cards, form fields, popovers, calendar cells, scheduled items, and provider/account rows as content surfaces; they should follow the same polarity rule unless a semantic status color is doing real state work. This is especially strict inside the main workbench canvas and must be reflected in global theme tokens, scoped workbench tokens, and component-level fallbacks. Do not assume a generic "raised" token has the right direction in both modes; verify the actual outer-to-inner lightness relationship. White raised surfaces are appropriate for deliberate paper-like or modal surfaces, but not as the default inner content layer on Session, Agenda, Library, Plugins, or Settings. If a page cannot consume the shared workbench classes directly, define scoped surface tokens with the same outer-to-inner lightness order instead of relying on generic `surface-raised-*` tokens. This rule governs perceived layer direction, not material choice; subtle translucency is allowed when it still reads grounded and preserves the same lightness relationship.
+
+When a surface violates polarity, first identify whether the theme source or the consuming component is wrong. Prefer fixing the relevant scoped token graph or component class mapping instead of patching individual light/dark literals across many leaves.
+
+Favor grounded, pragmatic surfaces over obvious glassmorphism. A little translucency or floating quality is acceptable for transient overlays, but heavy transparency, blur, glow, and decorative shadows make the product feel less grounded. Do not remove all translucency reflexively; keep it subtle enough that the surface still feels solid.
+
+Use black, white, and neutral ramps as the primary visual language. Blue is a state color for active or running work, not a default accent for selection or decoration.
+
+Avoid border-on-border clutter. Joined panels should join cleanly, with no double rounded corners at seams and no unnecessary nested-card outlines.
+
+Form controls should have filled surfaces, not border-only fields. In dark mode, controls should be slightly brighter than their container; in light mode, controls should be slightly darker. Required-action buttons stay disabled until the required inputs are valid.
+
+Use icons sparingly. Icons should clarify primary navigation or compact controls, not decorate every row of a form.
 
 ## Accessibility & Inclusion
 

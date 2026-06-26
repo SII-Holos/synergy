@@ -49,7 +49,7 @@
 
       border-radius: var(--radius-md);
       border: 1px solid var(--border-weak-base);
-      background: var(--input-base);
+      background: var(--workbench-input-bg, var(--input-base));
 
       &:focus-within {
         /* border/shadow-xs/select */

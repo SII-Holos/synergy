@@ -25,11 +25,10 @@ import { useInput, type SendShortcut } from "@/context/input"
 import { useGlobalSync } from "@/context/global-sync"
 import { DialogConfirm } from "@/components/dialog/dialog-confirm"
 import { DialogSelectModel } from "@/components/dialog/dialog-select-model"
-import { DialogSelectProvider } from "@/components/dialog/dialog-select-provider"
 import { getSettingsSections, type SettingsSection as RegisteredSettingsSection } from "@/plugin"
 import { SandboxIframe } from "@/plugin/sandbox"
 import { AppPanel } from "@/components/app-panel"
-import "./settings-dialog.css"
+import "./settings-panel.css"
 import type { DialogSettingsProps, McpEntry, ProviderModel, SettingsState } from "./types"
 import { defaultSettingsState, emptyMcp } from "./types"
 import { BUILTIN_SETTINGS_IDS, isBuiltinSettingsId, settingsGroupOrder } from "./catalog"
@@ -41,8 +40,9 @@ import { ProfilePanel } from "./panels/ProfilePanel"
 import { AppearancePanel } from "./panels/AppearancePanel"
 import { ModelsPanel } from "./panels/ModelsPanel"
 import { ProvidersPanel } from "./panels/ProvidersPanel"
+import { AccountPanel } from "./panels/AccountPanel"
+import { UsagePanel } from "./panels/UsagePanel"
 import { McpPanel } from "./panels/McpPanel"
-import { PluginsPanel } from "./panels/PluginsPanel"
 import { LearningPanel, MemoryPanel, ExperiencePanel } from "./panels/LibraryPanels"
 import { ChannelsPanel } from "./panels/ChannelsPanel"
 import { EmailPanel } from "./panels/EmailPanel"
@@ -51,19 +51,35 @@ import { ConfigFilesPanel, ConfigReferencePanel } from "./panels/ConfigFilesPane
 import { ControlProfilePanel, PermissionsPanel, SandboxPanel } from "./panels/SafetyPanels"
 import { CompactionPanel, QuestionsPanel, TimeoutsPanel, ObservabilityPanel } from "./panels/RuntimePanels"
 import { SettingsPage, SettingsSection } from "./components/SettingsPrimitives"
+import { DiagnosticsPanel } from "@/components/diagnostics-panel"
 
 const legacyInitialTabs: Record<string, string> = {
   advanced: "control-profile",
+  holos: "account",
   library: "learning",
 }
 
+export type SettingsPanelProps = DialogSettingsProps & {
+  onClose?: () => void
+}
+
 export function SettingsDialog(props: DialogSettingsProps) {
+  const dialog = useDialog()
+  return (
+    <Dialog class="settings-dialog-panel">
+      <SettingsPanel {...props} onClose={() => dialog.close()} />
+    </Dialog>
+  )
+}
+
+export function SettingsPanel(props: SettingsPanelProps) {
   const dialog = useDialog()
   const globalSDK = useGlobalSDK()
   const globalSync = useGlobalSync()
   const input = useInput()
 
   const [activeTab, setActiveTab] = createSignal(normalizeInitialTab(props.initialTab))
+  const [providerFocusID, setProviderFocusID] = createSignal(props.providerFocusID)
   const [search, setSearch] = createSignal("")
   const [initialized, setInitialized] = createSignal(false)
   const [saving, setSaving] = createSignal(false)
@@ -210,7 +226,7 @@ export function SettingsDialog(props: DialogSettingsProps) {
     editingLabel,
     setSaving,
     refreshAfterConfigChange,
-    closeDialog: () => dialog.close(),
+    closeDialog: () => props.onClose?.() ?? dialog.close(),
     showConfirm,
   })
   cancelDebouncesRef.current = save.cancelDebounces
@@ -302,9 +318,12 @@ export function SettingsDialog(props: DialogSettingsProps) {
   })
 
   return (
-    <Dialog class="dialog-settings-v2">
+    <div class="settings-panel-frame">
+      <button type="button" class="settings-panel-close" aria-label="Close settings" onClick={save.closeWithGuard}>
+        <Icon name={getSemanticIcon("action.close")} size="small" />
+      </button>
       {ready() ? (
-        <AppPanel.Root class="h-full min-h-0">
+        <AppPanel.Root class="settings-panel-root">
           <AppPanel.Nav>
             <div class="px-3 pt-4 pb-2 flex flex-col gap-2">
               <div>
@@ -361,7 +380,7 @@ export function SettingsDialog(props: DialogSettingsProps) {
             <AppPanel.Footer>
               <div class="flex-1 flex items-center gap-2">
                 <Show when={save.bgStatus() === "saving"}>
-                  <span class="text-12-medium text-text-interactive-base">Saving...</span>
+                  <span class="text-12-medium text-text-weak">Saving...</span>
                 </Show>
                 <Show when={save.bgStatus() === "saved"}>
                   <span class="flex items-center gap-1 text-12-medium text-text-weak">
@@ -391,41 +410,21 @@ export function SettingsDialog(props: DialogSettingsProps) {
           </AppPanel.Content>
         </AppPanel.Root>
       ) : (
-        <div class="flex items-center justify-center py-8 text-13-regular text-text-weak">Loading...</div>
+        <div class="settings-panel-loading">Loading...</div>
       )}
-    </Dialog>
+    </div>
   )
 
   function renderActiveContent(): JSX.Element {
     const active = activeTab()
     switch (active) {
       case "account":
-        return (
-          <ConfigReferencePanel
-            title="Account"
-            description="Account-related identity config is stored in canonical domain files."
-            domains={domainsFor(["holos"])}
-            openingDomain={openingDomain()}
-            onCopyPath={(path) => void copyPath(path)}
-            onOpenDomain={(domain) => void openDomain(domain)}
-          />
-        )
+        return <AccountPanel />
       case "profile":
         return (
           <ProfilePanel
             username={settings.general.username}
             onUsernameChange={(value) => setSettings("general", "username", value)}
-          />
-        )
-      case "holos":
-        return (
-          <ConfigReferencePanel
-            title="Holos"
-            description="Holos identity, accounts, and platform connection."
-            domains={domainsFor(["holos"])}
-            openingDomain={openingDomain()}
-            onCopyPath={(path) => void copyPath(path)}
-            onOpenDomain={(domain) => void openDomain(domain)}
           />
         )
       case "general":
@@ -456,8 +455,18 @@ export function SettingsDialog(props: DialogSettingsProps) {
           <ProvidersPanel
             providers={settings.providers}
             summaries={providerSummaries()}
+            authMethods={globalSync.data.provider_auth}
+            providerFocusID={providerFocusID()}
             onProviderChange={(key, value) => setSettings("providers", key, value)}
-            onConnectProvider={() => dialog.show(() => <DialogSelectProvider />)}
+          />
+        )
+      case "usage":
+        return (
+          <UsagePanel
+            onConnectProvider={(providerID) => {
+              setProviderFocusID(providerID)
+              setActiveTab("providers")
+            }}
           />
         )
       case "learning":
@@ -498,23 +507,6 @@ export function SettingsDialog(props: DialogSettingsProps) {
             onRemove={(index) =>
               setSettings(
                 "mcps",
-                "entries",
-                produce((draft) => {
-                  draft.splice(index, 1)
-                }),
-              )
-            }
-          />
-        )
-      case "plugins":
-        return (
-          <PluginsPanel
-            entries={settings.plugins.entries}
-            onAdd={() => setSettings("plugins", "entries", (prev) => [...prev, { value: "" }])}
-            onChange={(index, value) => setSettings("plugins", "entries", index, "value", value)}
-            onRemove={(index) =>
-              setSettings(
-                "plugins",
                 "entries",
                 produce((draft) => {
                   draft.splice(index, 1)
@@ -592,6 +584,8 @@ export function SettingsDialog(props: DialogSettingsProps) {
             onRuntimeChange={(key, value) => setSettings("runtime", key, value)}
           />
         )
+      case "diagnostics":
+        return <DiagnosticsPanel />
       case "import":
         return <ImportPanel domains={domainSummaries() ?? []} onImported={refreshAfterConfigChange} />
       case "config-files":

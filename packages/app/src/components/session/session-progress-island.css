@@ -16,7 +16,7 @@
   max-width: min(620px, calc(100vw - 24px));
   border-radius: 999px;
   color: var(--text-base);
-  background: var(--surface-raised-stronger);
+  background: var(--workbench-card-bg, var(--surface-raised-stronger));
   transition:
     max-width 240ms cubic-bezier(0.2, 0, 0, 1),
     border-radius 240ms cubic-bezier(0.2, 0, 0, 1);
@@ -46,7 +46,7 @@
 
 .session-progress-island-header:hover {
   color: var(--text-base);
-  background: var(--surface-raised-base-hover);
+  background: var(--workbench-card-bg-hover, var(--surface-raised-base-hover));
 }
 
 .session-progress-island[data-expanded="true"] .session-progress-island-header {
@@ -188,12 +188,12 @@
 }
 .session-progress-island-tab:hover {
   color: var(--text-base);
-  background: var(--surface-raised-base-hover);
+  background: var(--workbench-control-bg-hover, var(--surface-raised-base-hover));
 }
 
 .session-progress-island-tab.is-selected {
-  color: var(--text-on-interactive-base);
-  background: var(--surface-interactive-base);
+  color: var(--text-strong);
+  background: var(--workbench-selected-bg, var(--surface-raised-base-hover));
 }
 
 .session-progress-island-body {

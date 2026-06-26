@@ -119,7 +119,42 @@ const ToolExposureDef = z.discriminatedUnion("mode", [
       keywords: z.array(z.string()).optional(),
     })
     .strict(),
+  z
+    .object({
+      mode: z.literal("internal"),
+    })
+    .strict(),
 ])
+
+const TaskPermissionDef = z.union([
+  z.boolean(),
+  z
+    .object({
+      agents: z.array(z.string().min(1)).optional(),
+      maxRuntimeMs: z.number().int().positive().optional(),
+    })
+    .strict(),
+])
+
+const ToolDisplayDef = z
+  .object({
+    kind: z.enum(["default", "media-generation"]).optional(),
+    visibility: z.enum(["default", "media", "hidden-unless-error"]).optional(),
+    presentation: z.enum(["default", "artifact-only"]).optional(),
+    media: z
+      .object({
+        type: z.enum(["image", "video", "audio"]),
+        actionLabel: z.string().min(1).max(80).optional(),
+        pendingTitle: z.string().min(1).max(120).optional(),
+        pendingDescription: z.string().min(1).max(200).optional(),
+        promptField: z.string().min(1).max(64).optional(),
+        aspectRatio: z.enum(["1:1", "4:3", "16:9", "auto"]).optional(),
+      })
+      .strict()
+      .optional(),
+    primaryAttachmentIds: z.array(z.string().min(1)).optional(),
+  })
+  .strict()
 
 const UIContribution = z
   .object({
@@ -163,6 +198,7 @@ const PluginPermissionsSchema = z
         ),
         network: z.boolean().default(false),
         mcp: z.enum(["none", "invoke", "spawn"]).default("none"),
+        task: TaskPermissionDef.optional(),
       })
       .optional(),
 
@@ -266,6 +302,7 @@ export const PluginManifest = z
               category: z.string().optional(),
               kind: z.string().optional(),
               exposure: ToolExposureDef.optional(),
+              display: ToolDisplayDef.optional(),
               capabilities: z
                 .object({
                   filesystem: z.enum(["none", "read", "write"]).optional(),
@@ -298,6 +335,8 @@ export const PluginManifest = z
               description: z.string(),
               mode: z.enum(["subagent", "primary", "all"]).default("subagent"),
               model: z.string().optional(),
+              hidden: z.boolean().optional(),
+              permission: z.record(z.string(), z.any()).optional(),
             }),
           )
           .optional(),

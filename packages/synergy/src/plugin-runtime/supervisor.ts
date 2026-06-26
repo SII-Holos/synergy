@@ -704,16 +704,26 @@ export class PluginRuntimeSupervisor {
     toolId: string,
     args: unknown,
     context?: RuntimeToolContextData,
+    abort?: AbortSignal,
   ): Promise<unknown> {
     const entry = this.#registry.get(pluginId)
     if (!entry?.request) throw new Error(`Plugin runtime is not running: ${pluginId}`)
-    return entry.request({
-      type: "invokeTool",
-      requestId: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`,
-      toolId,
-      args,
-      context,
-    })
+    const requestId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`
+    const cancel = () => {
+      entry.send?.({ type: "abortTool", requestId, reason: "Host tool call aborted" })
+    }
+    abort?.addEventListener("abort", cancel, { once: true })
+    try {
+      return await entry.request({
+        type: "invokeTool",
+        requestId,
+        toolId,
+        args,
+        context,
+      })
+    } finally {
+      abort?.removeEventListener("abort", cancel)
+    }
   }
 
   async triggerHook(pluginId: string, hook: string, input: unknown, output: unknown): Promise<unknown> {
@@ -750,7 +760,12 @@ export const stopRuntime = (pluginId: string, graceful: boolean) =>
   defaultPluginRuntimeSupervisor.stop(pluginId, graceful)
 export const reloadRuntime = (pluginId: string) => defaultPluginRuntimeSupervisor.reload(pluginId)
 export const killRuntime = (pluginId: string) => defaultPluginRuntimeSupervisor.kill(pluginId)
-export const invokeRuntimeTool = (pluginId: string, toolId: string, args: unknown, context?: RuntimeToolContextData) =>
-  defaultPluginRuntimeSupervisor.invokeTool(pluginId, toolId, args, context)
+export const invokeRuntimeTool = (
+  pluginId: string,
+  toolId: string,
+  args: unknown,
+  context?: RuntimeToolContextData,
+  abort?: AbortSignal,
+) => defaultPluginRuntimeSupervisor.invokeTool(pluginId, toolId, args, context, abort)
 export const triggerRuntimeHook = (pluginId: string, hook: string, input: unknown, output: unknown) =>
   defaultPluginRuntimeSupervisor.triggerHook(pluginId, hook, input, output)

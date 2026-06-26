@@ -48,7 +48,7 @@ function buildMetrics(overview: {
 function MetricCard(props: { metric: OverviewMetric; delay: number }) {
   return (
     <div
-      class="rounded-xl bg-surface-inset-base/38 px-3 py-2.5 ring-1 ring-inset ring-border-base/25"
+      class="rounded-xl bg-surface-inset-base px-3 py-2.5 ring-1 ring-inset ring-border-base/25"
       style={{ animation: `overviewCardEnter 0.28s ease-out ${props.delay}ms both` }}
     >
       <div class="flex items-baseline gap-2">
