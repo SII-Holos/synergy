@@ -2,6 +2,7 @@ import { Storage } from "../storage/storage"
 import { StoragePath } from "../storage/path"
 import { Identifier } from "../id/id"
 import { NoteMarkdown } from "./markdown"
+import { NoteDocument } from "./document"
 import { Log } from "../util/log"
 import { MigrationRegistry } from "../migration/registry"
 import type { Migration } from "../migration"
@@ -216,6 +217,57 @@ export const migrations: Migration[] = [
         progress(done, scopeIDs.length)
       }
       log.info("rich preview metadata index rebuild scheduled", { scopes: scopeIDs.length })
+    },
+  },
+  {
+    id: "20260626-note-add-block-ids",
+    description: "Add stable synergyId attributes to editable note document blocks",
+    domain: "note",
+    dependsOn: ["20260624-note-rebuild-rich-preview-html"],
+    async up(progress) {
+      const scopeIDs = await Storage.scan(["notes"])
+      let totalNotes = 0
+      for (const sid of scopeIDs) {
+        const s = Identifier.asScopeID(sid)
+        const ids = await Storage.scan(StoragePath.notesRoot(s))
+        totalNotes += ids.filter((id) => !id.startsWith("_")).length
+      }
+
+      let done = 0
+      let changed = 0
+      for (const sid of scopeIDs) {
+        const s = Identifier.asScopeID(sid)
+        const ids = await Storage.scan(StoragePath.notesRoot(s))
+        const noteIDs = ids.filter((id) => !id.startsWith("_"))
+        let rebuiltIndex = false
+
+        for (const noteID of noteIDs) {
+          const notePath = StoragePath.note(s, noteID)
+          try {
+            const raw = await Storage.read<Record<string, unknown>>(notePath)
+            const before = NoteDocument.hash(raw.content)
+            raw.content = NoteDocument.normalize(raw.content)
+            const after = NoteDocument.hash(raw.content)
+            if (before !== after) {
+              await Storage.write(notePath, raw)
+              changed++
+              rebuiltIndex = true
+            }
+          } catch (err) {
+            log.warn("failed to add note block ids", { scopeID: sid, noteID, error: String(err) })
+          }
+
+          done++
+          if (done % 10 === 0 || done === totalNotes) {
+            progress(done, totalNotes)
+          }
+        }
+
+        if (rebuiltIndex) {
+          await Storage.remove(StoragePath.note(s, "_index")).catch(() => {})
+        }
+      }
+      log.info("note block id migration complete", { totalNotes, changed, scopes: scopeIDs.length })
     },
   },
 ]
