@@ -28,6 +28,7 @@ Reserve emphasis for workflow state and current selection.
 Let blueprints read as plans with status, activity, and next action, not as passive notes.
 Keep dense surfaces quiet enough for repeated daily use.
 Use mode-aware polarity: in dark mode, the active or inner thing is brighter than its shell; in light mode, the active or inner thing is darker than its shell.
+Treat that polarity as a surface hierarchy invariant, not a per-page decoration choice; if light mode feels reversed, audit the token source first, then the component consumer.
 
 ## Interaction & Visual Principles
 
@@ -41,7 +42,7 @@ Content Polarity Rule: dark mode reads inward by getting brighter; light mode re
 
 When a surface violates polarity, first identify whether the theme source or the consuming component is wrong. Prefer fixing the relevant scoped token graph or component class mapping instead of patching individual light/dark literals across many leaves.
 
-Favor grounded, pragmatic surfaces over obvious glassmorphism. A little translucency or floating quality is acceptable for transient overlays, but heavy transparency, blur, glow, and decorative shadows make the product feel less grounded.
+Favor grounded, pragmatic surfaces over obvious glassmorphism. A little translucency or floating quality is acceptable for transient overlays, but heavy transparency, blur, glow, and decorative shadows make the product feel less grounded. Do not remove all translucency reflexively; keep it subtle enough that the surface still feels solid.
 
 Use black, white, and neutral ramps as the primary visual language. Blue is a state color for active or running work, not a default accent for selection or decoration.
 

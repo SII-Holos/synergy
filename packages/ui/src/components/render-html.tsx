@@ -42,7 +42,7 @@ const FALLBACK_THEME: Record<(typeof THEME_VARIABLES)[number], string> = {
   "background-base": "#f6f7f8",
   "surface-base": "#e9ecef",
   "surface-raised-base": "#e9ecef",
-  "surface-raised-stronger-non-alpha": "#e9ecef",
+  "surface-raised-stronger-non-alpha": "#dce2ea",
   "surface-inset-base": "#e4e8ee",
   "surface-brand-base": "#b98522",
   "surface-interactive-base": "#4f67c8",

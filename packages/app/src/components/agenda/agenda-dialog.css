@@ -31,8 +31,8 @@
   border-radius: 14px;
   border-color: color-mix(in oklch, var(--border-base) 44%, transparent);
   box-shadow:
-    0 24px 90px rgba(0, 0, 0, 0.46),
-    0 8px 28px rgba(0, 0, 0, 0.3);
+    0 22px 72px rgba(0, 0, 0, 0.34),
+    0 1px 0 color-mix(in oklch, var(--border-base) 34%, transparent);
 }
 
 [data-component="dialog"] [data-slot="dialog-content"].agenda-form-dialog [data-slot="dialog-body"] {
@@ -262,7 +262,10 @@
 }
 
 .agenda-calendar-toolbar {
-  border-radius: 14px 14px 0 0;
+  border-top-left-radius: 14px;
+  border-top-right-radius: 14px;
+  border-bottom-right-radius: 0;
+  border-bottom-left-radius: 0;
   border-bottom: 0;
   position: relative;
   z-index: 1;
@@ -273,12 +276,15 @@
   border-top: 0;
   border-top-left-radius: 0;
   border-top-right-radius: 0;
-  border-radius: 0 0 14px 14px;
+  border-bottom-right-radius: 14px;
+  border-bottom-left-radius: 14px;
   box-shadow: none;
 }
 
 .agenda-calendar-toolbar + .agenda-calendar-body {
   margin-top: -1px;
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
 }
 
 .agenda-grid-surface {
@@ -286,14 +292,14 @@
 }
 
 .agenda-grid-scroll {
-  padding-left: 88px;
+  padding-left: 104px;
   padding-right: 12px;
   border-bottom-right-radius: 14px;
   border-bottom-left-radius: 14px;
 }
 
 .agenda-time-header {
-  padding-left: 88px;
+  padding-left: 104px;
   background: var(--agenda-panel-bg);
 }
 

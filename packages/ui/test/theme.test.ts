@@ -161,6 +161,10 @@ describe("resolveTheme (synergy)", () => {
     const resolved = resolveTheme(synergyTheme)
 
     expectDarker(resolved.light, "surface-raised-base", "background-stronger")
+    expectDarker(resolved.light, "surface-raised-strong", "surface-raised-base")
+    expectDarker(resolved.light, "surface-raised-stronger", "surface-raised-base")
+    expectDarker(resolved.light, "surface-raised-stronger-hover", "surface-raised-stronger")
+    expectDarker(resolved.light, "surface-raised-stronger-non-alpha", "surface-raised-base")
     expectDarker(resolved.light, "surface-raised-base-active", "surface-raised-base")
     expectDarker(resolved.light, "surface-inset-base", "surface-raised-base")
     expectDarker(resolved.light, "surface-interactive-selected", "surface-raised-base")
@@ -169,6 +173,10 @@ describe("resolveTheme (synergy)", () => {
     expectDarker(resolved.light, "button-secondary-base", "surface-raised-base")
 
     expectBrighter(resolved.dark, "surface-raised-base", "background-stronger")
+    expectBrighter(resolved.dark, "surface-raised-strong", "surface-raised-base")
+    expectBrighter(resolved.dark, "surface-raised-stronger", "surface-raised-base")
+    expectBrighter(resolved.dark, "surface-raised-stronger-hover", "surface-raised-stronger")
+    expectBrighter(resolved.dark, "surface-raised-stronger-non-alpha", "surface-raised-base")
     expectBrighter(resolved.dark, "surface-raised-base-active", "surface-raised-base")
     expectBrighter(resolved.dark, "surface-inset-base", "surface-raised-base")
     expectBrighter(resolved.dark, "surface-interactive-selected", "surface-raised-base")

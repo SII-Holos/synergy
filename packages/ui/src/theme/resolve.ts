@@ -49,7 +49,7 @@ export function resolveThemeVariant(variant: ThemeVariant, isDark: boolean): Res
   tokens["surface-weak"] = layer(4, 3)
   tokens["surface-weaker"] = layer(5, 4)
   tokens["surface-strong"] = layer(5, 4)
-  tokens["surface-raised-stronger-non-alpha"] = layer(3, 2)
+  tokens["surface-raised-stronger-non-alpha"] = layer(5, 4)
   tokens["surface-disabled"] = layer(5, 4)
   tokens["surface-focus"] = neutralSelectionBorder(0.08, 0.08)
   tokens["surface-hover"] = layer(4, 3)

@@ -18,8 +18,8 @@
   border-radius: 14px;
   border-color: color-mix(in oklch, var(--border-base) 44%, transparent);
   box-shadow:
-    0 30px 110px rgba(0, 0, 0, 0.48),
-    0 10px 30px rgba(0, 0, 0, 0.28);
+    0 24px 82px rgba(0, 0, 0, 0.34),
+    0 1px 0 color-mix(in oklch, var(--border-base) 34%, transparent);
 }
 
 [data-component="dialog"] [data-slot="dialog-content"].settings-dialog-panel [data-slot="dialog-body"] {

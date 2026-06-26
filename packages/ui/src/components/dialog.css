@@ -4,9 +4,9 @@
 [data-slot="dialog-overlay"] {
   position: fixed;
   inset: 0;
-  background-color: light-dark(rgba(11, 13, 18, 0.34), rgba(0, 0, 0, 0.48));
-  backdrop-filter: blur(7px);
-  -webkit-backdrop-filter: blur(7px);
+  background-color: light-dark(rgba(11, 13, 18, 0.4), rgba(0, 0, 0, 0.54));
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
   z-index: 50;
 
   animation: overlayHide 200ms ease 80ms forwards;
