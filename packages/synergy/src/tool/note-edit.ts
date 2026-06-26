@@ -1,9 +1,10 @@
 import z from "zod"
 import { Tool } from "./tool"
-import { NoteError, NoteStore, NoteMarkdown } from "../note"
+import { NoteError, NoteStore, NoteMarkdown, NoteBlueprintPolicy } from "../note"
 import { ScopeContext } from "../scope/context"
 import { Storage } from "../storage/storage"
 import DESCRIPTION from "./note-edit.txt"
+import { Session } from "../session"
 
 const parameters = z.object({
   id: z.string().describe("The note ID to edit."),
@@ -38,7 +39,7 @@ function sortDescending<T extends { index: number }>(ops: T[]): T[] {
 export const NoteEditTool = Tool.define("note_edit", {
   description: DESCRIPTION,
   parameters,
-  async execute(params: z.infer<typeof parameters>) {
+  async execute(params: z.infer<typeof parameters>, ctx) {
     if (params.ops.length === 0) {
       return {
         title: "Error",
@@ -69,6 +70,16 @@ export const NoteEditTool = Tool.define("note_edit", {
         }
       }
       throw error
+    }
+
+    const session = await Session.get(ctx.sessionID)
+    const decision = NoteBlueprintPolicy.evaluateWrite({
+      planMode: session.blueprint?.planMode === true,
+      action: "edit",
+      existingKind: existing.kind ?? "note",
+    })
+    if (!decision.allowed) {
+      return NoteBlueprintPolicy.blockedResult({ action: decision.action, id: params.id, title: existing.title })
     }
 
     const doc =
