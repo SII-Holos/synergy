@@ -131,6 +131,11 @@ export namespace Command {
     WORKTREE: "worktree",
   } as const
 
+  registerAction(Default.WORKTREE, async (input) => {
+    const { WorktreeCommand } = await import("../project/worktree-command")
+    return WorktreeCommand.run(WorktreeCommand.parse(input.sessionID, input.arguments))
+  })
+
   const subscriptions = ScopedState.create(
     () => {
       const unsubscribers: Array<() => void> = []

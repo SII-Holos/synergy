@@ -1,7 +1,7 @@
 import z from "zod"
 import { Identifier } from "@/id/id"
 import type { Scope } from "@/scope/types"
-import { Snapshot } from "@/session/snapshot"
+import { SnapshotSchema } from "@/session/snapshot-schema"
 import { PermissionNext } from "@/permission/next"
 import { SessionInteraction } from "@/session/interaction"
 import { opaque } from "@/util/schema"
@@ -128,7 +128,7 @@ export const Info = z
           additions: z.number(),
           deletions: z.number(),
           files: z.number(),
-          diffs: Snapshot.FileDiff.array().optional(),
+          diffs: SnapshotSchema.FileDiff.array().optional(),
         })
         .optional(),
       title: z.string(),

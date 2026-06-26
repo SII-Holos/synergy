@@ -4,8 +4,8 @@ import z from "zod"
 import { NamedError } from "@ericsanchezok/synergy-util/error"
 import { APICallError, convertToModelMessages, LoadAPIKeyError, type ModelMessage, type UIMessage } from "ai"
 import { Identifier } from "../id/id"
-import { LSP } from "../lsp"
-import { Snapshot } from "@/session/snapshot"
+import { LSPSchema } from "../lsp/schema"
+import { SnapshotSchema } from "@/session/snapshot-schema"
 import { fn } from "@/util/fn"
 import { Storage } from "@/storage/storage"
 import { StoragePath } from "@/storage/path"
@@ -63,9 +63,16 @@ function networkErrorMetadata(error: Error) {
   return metadata
 }
 export namespace MessageV2 {
-  async function requireSession(sessionID: string) {
-    const { SessionManager } = await import("./manager")
-    return SessionManager.requireSession(sessionID)
+  type SessionLookup = {
+    scope: Scope
+  }
+
+  let requireSession = async (sessionID: string): Promise<SessionLookup> => {
+    throw new Error(`Session resolver is not installed for ${sessionID}`)
+  }
+
+  export function installSessionResolver(resolver: (sessionID: string) => Promise<SessionLookup>) {
+    requireSession = resolver
   }
 
   export const OutputLengthError = NamedError.create("MessageOutputLengthError", z.object({}))
@@ -173,7 +180,7 @@ export namespace MessageV2 {
   export const SymbolSource = FilePartSourceBase.extend({
     type: z.literal("symbol"),
     path: z.string(),
-    range: LSP.Range,
+    range: LSPSchema.Range,
     name: z.string(),
     kind: z.number().int(),
   }).meta({
@@ -367,7 +374,7 @@ export namespace MessageV2 {
       .object({
         title: z.string().optional(),
         body: z.string().optional(),
-        diffs: Snapshot.FileDiff.array(),
+        diffs: SnapshotSchema.FileDiff.array(),
       })
       .optional(),
     agent: z.string(),

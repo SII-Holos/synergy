@@ -1,4 +1,6 @@
 import { afterEach, beforeEach, expect, test } from "bun:test"
+import fs from "fs/promises"
+import os from "os"
 import path from "path"
 import { Server } from "../../src/server/server"
 import { Auth } from "../../src/provider/api-key"
@@ -7,6 +9,8 @@ import { tmpdir } from "../fixture/fixture"
 import { Provider } from "../../src/provider/provider"
 
 const originalCodexHome = process.env.CODEX_HOME
+const originalOpenAIAPIKey = process.env.OPENAI_API_KEY
+let isolatedCodexHome: string | undefined
 
 function nowSeconds() {
   return Math.floor(Date.now() / 1000)
@@ -25,18 +29,41 @@ function accessToken() {
   })
 }
 
-async function reset() {
+function restoreCodexHome() {
   if (originalCodexHome === undefined) {
     delete process.env.CODEX_HOME
   } else {
     process.env.CODEX_HOME = originalCodexHome
   }
+}
+
+function restoreOpenAIAPIKey() {
+  if (originalOpenAIAPIKey === undefined) {
+    delete process.env.OPENAI_API_KEY
+  } else {
+    process.env.OPENAI_API_KEY = originalOpenAIAPIKey
+  }
+}
+
+async function reset() {
+  if (isolatedCodexHome) await fs.rm(isolatedCodexHome, { recursive: true, force: true })
+  isolatedCodexHome = path.join(os.tmpdir(), `synergy-provider-route-codex-${Math.random().toString(36).slice(2)}`)
+  await fs.mkdir(isolatedCodexHome, { recursive: true })
+  process.env.CODEX_HOME = isolatedCodexHome
+  process.env.OPENAI_API_KEY = "provider-route-openai-key"
   await Auth.remove(CodexProvider.PROVIDER_ID).catch(() => {})
   await Provider.reload()
 }
 
 beforeEach(reset)
-afterEach(reset)
+afterEach(async () => {
+  await Auth.remove(CodexProvider.PROVIDER_ID).catch(() => {})
+  await Provider.reload()
+  if (isolatedCodexHome) await fs.rm(isolatedCodexHome, { recursive: true, force: true })
+  isolatedCodexHome = undefined
+  restoreCodexHome()
+  restoreOpenAIAPIKey()
+})
 
 test("/provider returns catalog, auth health, and runtime availability", async () => {
   const app = Server.App()

@@ -21,7 +21,6 @@ import PLAN_MODE_SYNERGY from "./prompt/plan-mode-synergy.txt"
 import PLAN_MODE_SYNERGY_MAX from "./prompt/plan-mode-synergy-max.txt"
 import { defer } from "../util/defer"
 import type { Command } from "../command/command"
-import { WorktreeCommand } from "../project/worktree-command"
 import { $ } from "bun"
 import { ConfigMarkdown } from "../config/markdown"
 import "./summary"
@@ -74,11 +73,6 @@ globalThis.AI_SDK_LOG_WARNINGS = false
 export namespace SessionInvoke {
   const log = Log.create({ service: "session.invoke" })
   const ephemeralToolsByMessage = new Map<string, ToolResolver.EphemeralTool[]>()
-
-  queueMicrotask(async () => {
-    const command = await commandRuntime()
-    if ((command as any)?.registerAction) WorktreeCommand.register(command)
-  })
 
   async function commandRuntime() {
     return (await import("../command/command")).Command

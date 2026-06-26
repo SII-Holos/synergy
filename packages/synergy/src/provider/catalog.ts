@@ -91,10 +91,11 @@ export namespace ProviderCatalog {
         : sourceModelIDs.length > 0
           ? sourceModelIDs
           : (profile.fallbackModels ?? [])
+    const inheritsSourceEnv = profile.authKind === undefined || profile.authKind === "api_key"
     const provider: ModelsDev.Provider = {
       id: profile.id,
       name: profile.name,
-      env: profile.env ?? source?.env ?? [],
+      env: profile.env ?? (inheritsSourceEnv ? (source?.env ?? []) : []),
       api: profile.baseURL ?? source?.api,
       npm: profile.aiSdkPackage ?? source?.npm,
       models: {},

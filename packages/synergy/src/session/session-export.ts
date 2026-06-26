@@ -5,7 +5,7 @@ import { Dag } from "./dag"
 import { Todo } from "./todo"
 import { PermissionNext } from "@/permission/next"
 import { SessionManager } from "./manager"
-import { Snapshot } from "./snapshot"
+import { SnapshotSchema } from "./snapshot-schema"
 import { Installation } from "@/global/installation"
 
 export namespace SessionExport {
@@ -20,7 +20,7 @@ export namespace SessionExport {
     messages: z.array(MessageV2.WithParts),
     dag: z.array(Dag.Node),
     todos: z.array(Todo.Info),
-    diffs: z.array(Snapshot.FileDiff),
+    diffs: z.array(SnapshotSchema.FileDiff),
   })
   export type SessionData = z.infer<typeof SessionData>
 

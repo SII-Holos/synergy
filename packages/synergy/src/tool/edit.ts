@@ -14,7 +14,7 @@ import { Bus } from "../bus"
 import { FileTime } from "../file/time"
 import { Filesystem } from "../util/filesystem"
 import { ScopeContext } from "../scope/context"
-import { Snapshot } from "@/session/snapshot"
+import { SnapshotSchema } from "@/session/snapshot-schema"
 import { RuntimeReload } from "../runtime/reload"
 
 const MAX_DIAGNOSTICS_PER_FILE = 20
@@ -104,7 +104,7 @@ export const EditTool = Tool.define("edit", {
       { signal: ctx.abort },
     )
 
-    const filediff: Snapshot.FileDiff = {
+    const filediff: SnapshotSchema.FileDiff = {
       file: filePath,
       before: contentOld,
       after: contentNew,

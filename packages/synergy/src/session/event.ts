@@ -1,6 +1,6 @@
 import z from "zod"
 import { BusEvent } from "@/bus/bus-event"
-import { Snapshot } from "@/session/snapshot"
+import { SnapshotSchema } from "@/session/snapshot-schema"
 import { Info, StatusInfo } from "./types"
 
 export const SessionEvent = {
@@ -20,7 +20,7 @@ export const SessionEvent = {
     "session.diff",
     z.object({
       sessionID: z.string(),
-      diff: Snapshot.FileDiff.array(),
+      diff: SnapshotSchema.FileDiff.array(),
     }),
   ),
   Error: BusEvent.define(

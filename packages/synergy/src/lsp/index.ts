@@ -13,6 +13,7 @@ import { ScopeContext } from "../scope/context"
 import { ScopedState } from "../scope/scoped-state"
 import { Flag } from "@/flag/flag"
 import { LSPPid } from "./pid"
+import { LSPSchema } from "./schema"
 
 export namespace LSP {
   const log = Log.create({ service: "lsp" })
@@ -21,21 +22,8 @@ export namespace LSP {
     Updated: BusEvent.define("lsp.updated", z.object({})),
   }
 
-  export const Range = z
-    .object({
-      start: z.object({
-        line: z.number(),
-        character: z.number(),
-      }),
-      end: z.object({
-        line: z.number(),
-        character: z.number(),
-      }),
-    })
-    .meta({
-      ref: "Range",
-    })
-  export type Range = z.infer<typeof Range>
+  export const Range = LSPSchema.Range
+  export type Range = LSPSchema.Range
 
   export const Symbol = z
     .object({

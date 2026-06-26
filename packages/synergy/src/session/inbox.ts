@@ -9,7 +9,7 @@ import { StoragePath } from "@/storage/path"
 import { Context } from "@/util/context"
 import { Log } from "@/util/log"
 import { MessageV2 } from "./message-v2"
-import { InvokeInput } from "./input"
+import type { InvokeInput } from "./input"
 import type { Info } from "./types"
 import type { SessionManager } from "./manager"
 

@@ -6,16 +6,9 @@ import z from "zod"
 import { Identifier } from "@/id/id"
 import { MessageV2 } from "./message-v2"
 import { Log } from "@/util/log"
-import { SessionEvent } from "./event"
-import { Agent } from "@/agent/agent"
-import { Provider } from "@/provider/provider"
 import { ScopeContext } from "@/scope/context"
 import { Bus } from "@/bus"
-import { Plugin } from "@/plugin"
-import { MCP } from "@/mcp"
-import { LSP } from "@/lsp"
-import { ReadTool } from "@/tool/read"
-import { ListTool } from "@/tool/ls"
+import type { LSP } from "@/lsp"
 import { FileTime } from "@/file/time"
 import { Attachment } from "@/attachment"
 import { Asset } from "@/asset/asset"
@@ -26,6 +19,16 @@ import { Tool } from "@/tool/tool"
 import { PlanModeUserWrapper } from "./plan-mode-user-wrapper"
 
 const log = Log.create({ service: "session.input" })
+
+async function readTool() {
+  const { ReadTool } = await import("@/tool/read")
+  return ReadTool
+}
+
+async function listTool() {
+  const { ListTool } = await import("@/tool/ls")
+  return ListTool
+}
 
 export const InvokeInput = z.object({
   sessionID: Identifier.schema("session"),
@@ -127,11 +130,13 @@ export async function lastModel(sessionID: string) {
     const item = messages[i]
     if (item.info.role === "user" && item.info.model) return item.info.model
   }
+  const { Provider } = await import("@/provider/provider")
   return Provider.defaultModel()
 }
 
 export async function createUserMessage(input: InvokeInput) {
   const { Session } = await import(".")
+  const { Agent } = await import("@/agent/agent")
   const session = await Session.get(input.sessionID).catch(() => undefined)
   let agentName = input.agent
   if (!agentName) {
@@ -195,6 +200,7 @@ export async function createUserMessage(input: InvokeInput) {
           ]
 
           try {
+            const { MCP } = await import("@/mcp")
             const resourceContent = await MCP.readResource(clientName, uri)
             if (!resourceContent) {
               throw new Error(`Resource not found: ${clientName}/${uri}`)
@@ -363,6 +369,7 @@ export async function createUserMessage(input: InvokeInput) {
                 // workspace/symbol searches, so we'll try to find the
                 // symbol in the document to get the full range
                 if (start === end) {
+                  const { LSP } = await import("@/lsp")
                   const symbols = await LSP.documentSymbol(filePathURI)
                   for (const symbol of symbols) {
                     let range: LSP.Range | undefined
@@ -396,8 +403,10 @@ export async function createUserMessage(input: InvokeInput) {
                 },
               ]
 
-              await ReadTool.init()
+              await readTool()
+                .then((tool) => tool.init())
                 .then(async (t) => {
+                  const { Provider } = await import("@/provider/provider")
                   const model = await Provider.getModel(info.model.providerID, info.model.modelID)
                   const readCtx: Tool.Context = {
                     sessionID: input.sessionID,
@@ -436,9 +445,10 @@ export async function createUserMessage(input: InvokeInput) {
                     })
                   }
                 })
-                .catch((error) => {
+                .catch(async (error) => {
                   log.error("failed to read file", { error })
                   const message = error instanceof Error ? error.message : error.toString()
+                  const { SessionEvent } = await import("./event")
                   Bus.publish(SessionEvent.Error, {
                     sessionID: input.sessionID,
                     error: new NamedError.Unknown({
@@ -469,7 +479,9 @@ export async function createUserMessage(input: InvokeInput) {
                 metadata: async () => {},
                 ask: async () => {},
               }
-              const result = await ListTool.init().then((t) => t.execute(args, listCtx))
+              const result = await listTool()
+                .then((tool) => tool.init())
+                .then((t) => t.execute(args, listCtx))
               return [
                 {
                   id: Identifier.ascending("part"),
@@ -569,6 +581,7 @@ export async function createUserMessage(input: InvokeInput) {
     }),
   ).then((x) => x.flat())
 
+  const { Plugin } = await import("@/plugin")
   await Plugin.trigger(
     "chat.message",
     {

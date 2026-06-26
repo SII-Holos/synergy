@@ -6,6 +6,7 @@ import { Global } from "../global"
 import z from "zod"
 import { Config } from "../config/config"
 import { ScopeContext } from "../scope/context"
+import { SnapshotSchema } from "./snapshot-schema"
 
 export namespace Snapshot {
   const log = Log.create({ service: "snapshot" })
@@ -283,18 +284,8 @@ export namespace Snapshot {
     return result.text().trim()
   }
 
-  export const FileDiff = z
-    .object({
-      file: z.string(),
-      before: z.string(),
-      after: z.string(),
-      additions: z.number(),
-      deletions: z.number(),
-    })
-    .meta({
-      ref: "FileDiff",
-    })
-  export type FileDiff = z.infer<typeof FileDiff>
+  export const FileDiff = SnapshotSchema.FileDiff
+  export type FileDiff = SnapshotSchema.FileDiff
   export async function diffFull(from: string, to: string, sessionID: string): Promise<FileDiff[]> {
     const git = gitdir(sessionID)
     const result: FileDiff[] = []

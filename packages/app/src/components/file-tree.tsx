@@ -115,7 +115,7 @@ export default function FileTree(props: {
               <Match when={node.type === "file"}>
                 <Node node={node} as="button" onClick={() => props.onFileClick?.(node)}>
                   <div class="w-4 shrink-0" />
-                  <FileIcon node={node} class="text-icon-weak" />
+                  <FileIcon node={{ path: node.path, type: "file" }} class="text-icon-weak" />
                 </Node>
               </Match>
             </Switch>
