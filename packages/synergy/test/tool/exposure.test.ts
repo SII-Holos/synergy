@@ -1,10 +1,10 @@
 import { describe, expect, test } from "bun:test"
 import z from "zod"
-import { Agent } from "../../src/agent/agent"
+import type { Agent } from "../../src/agent/agent"
+import { ToolResolver } from "../../src/session/tool-resolver"
 import { PermissionNext } from "../../src/permission/next"
 import { ScopeContext } from "../../src/scope/context"
 import { Session } from "../../src/session"
-import { ToolResolver } from "../../src/session/tool-resolver"
 import { ExpandToolsTool } from "../../src/tool/expand-tools"
 import { ToolDiscovery } from "../../src/tool/discovery"
 import { ToolExposure } from "../../src/tool/exposure"
@@ -282,6 +282,48 @@ describe("tool exposure", () => {
         expect(ids.has("note_write")).toBe(true)
         expect(ids.has("memory_get")).toBe(false)
         expect(ids.has("agenda_list")).toBe(false)
+      },
+    })
+  })
+
+  test("subagents get base deferred groups while permissions still gate individual tools", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({})
+        const supervisorLikeAgent: Agent.Info = {
+          name: "supervisor",
+          mode: "subagent",
+          permission: PermissionNext.merge(
+            PermissionNext.fromConfig({ "*": "deny" }),
+            PermissionNext.fromConfig({
+              note_list: "allow",
+              note_read: "allow",
+              note_search: "allow",
+              note_write: "deny",
+              note_edit: "deny",
+              memory_search: "allow",
+              memory_get: "allow",
+              session_list: "allow",
+              session_read: "allow",
+              session_search: "allow",
+              agenda_list: "allow",
+              agenda_logs: "allow",
+            }),
+          ),
+          options: {},
+        }
+
+        const ids = await definitionIDs(session, { agent: supervisorLikeAgent })
+        expect(ids.has("note_list")).toBe(true)
+        expect(ids.has("note_read")).toBe(true)
+        expect(ids.has("note_search")).toBe(true)
+        expect(ids.has("note_write")).toBe(false)
+        expect(ids.has("note_edit")).toBe(false)
+        expect(ids.has("memory_get")).toBe(true)
+        expect(ids.has("session_read")).toBe(true)
+        expect(ids.has("agenda_list")).toBe(true)
       },
     })
   })

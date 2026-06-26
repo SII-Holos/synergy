@@ -773,10 +773,15 @@ export namespace ToolResolver {
     }
   }
 
-  function forcedToolGroups(session?: Info) {
+  const SUBAGENT_BASE_TOOL_GROUPS = ["note", "memory", "session", "agenda"] as const
+
+  function forcedToolGroups(input: { agent: Agent.Info; session?: Info }) {
     const result = new Set<string>()
-    if (session?.blueprint?.planMode || session?.blueprint?.loopID) {
+    if (input.session?.blueprint?.planMode || input.session?.blueprint?.loopID) {
       result.add("note")
+    }
+    if (input.agent.mode === "subagent") {
+      for (const group of SUBAGENT_BASE_TOOL_GROUPS) result.add(group)
     }
     return result
   }
@@ -804,7 +809,7 @@ export namespace ToolResolver {
     )
     const activeBlueprintLoopID = input.session?.blueprint?.loopID
     const isSupervisor = input.agent.name === "supervisor"
-    const forcedGroups = forcedToolGroups(input.session)
+    const forcedGroups = forcedToolGroups({ agent: input.agent, session: input.session })
     const forcedToolIDs = forcedTools(input.userTools)
     const ephemeralToolIds = new Set(input.ephemeralTools?.map((item) => item.id) ?? [])
 
