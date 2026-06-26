@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { NoteMarkdown, NoteStore } from "../../src/note"
+import { NoteDocument, NoteMarkdown, NoteStore } from "../../src/note"
 import { ScopeContext } from "../../src/scope/context"
 import { Session } from "../../src/session"
 import { NoteEditTool } from "../../src/tool/note-edit"
@@ -26,6 +26,27 @@ async function createSession(input?: { planMode?: boolean }) {
     })
   }
   return session
+}
+
+function anchoredReplace(
+  note: Awaited<ReturnType<typeof NoteStore.get>> | Awaited<ReturnType<typeof NoteStore.create>>,
+  text: string,
+) {
+  const block = NoteDocument.listBlocks(note.content)[0]
+  return {
+    id: note.id,
+    baseVersion: note.version,
+    baseDocHash: NoteDocument.hash(note.content),
+    dryRun: false,
+    ops: [
+      {
+        action: "replaceBlock" as const,
+        blockId: block.id,
+        expectedHash: block.hash,
+        content: { format: "text" as const, text },
+      },
+    ],
+  }
 }
 
 describe("note Blueprint write policy", () => {
@@ -103,13 +124,8 @@ describe("note Blueprint write policy", () => {
         expect(updated.metadata.kind).toBe("note")
 
         const edit = await NoteEditTool.init()
-        const edited = await edit.execute(
-          {
-            id: noteID,
-            ops: [{ index: 0, action: "replace", content: "edited deliverable" }],
-          },
-          ctx(session.id),
-        )
+        const editable = await NoteStore.get(ScopeContext.current.scope.id, noteID)
+        const edited = await edit.execute(anchoredReplace(editable, "edited deliverable"), ctx(session.id))
         expect(edited.output).toContain("Note edited successfully")
 
         const convertBlocked = await write.execute(
@@ -182,13 +198,7 @@ describe("note Blueprint write policy", () => {
         )
         expect(appendBlocked.metadata.reason).toBe("non_plan_mode_blueprint_write")
 
-        const editBlocked = await edit.execute(
-          {
-            id: blueprint.id,
-            ops: [{ index: 0, action: "replace", content: "Edited" }],
-          },
-          ctx(session.id),
-        )
+        const editBlocked = await edit.execute(anchoredReplace(blueprint, "Edited"), ctx(session.id))
         expect(editBlocked.metadata.reason).toBe("non_plan_mode_blueprint_write")
 
         const stored = await NoteStore.get(ScopeContext.current.scope.id, blueprint.id)
@@ -231,10 +241,7 @@ describe("note Blueprint write policy", () => {
         expect(replaced.output).toContain("Blueprint updated successfully")
 
         const edited = await edit.execute(
-          {
-            id,
-            ops: [{ index: 0, action: "replace", content: "Edited" }],
-          },
+          anchoredReplace(await NoteStore.get(ScopeContext.current.scope.id, id), "Edited"),
           ctx(session.id),
         )
         expect(edited.output).toContain("Note edited successfully")
