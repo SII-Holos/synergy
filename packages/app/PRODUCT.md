@@ -54,6 +54,8 @@ Form controls should have filled surfaces, not border-only fields. In dark mode,
 
 Use icons sparingly. Icons should clarify primary navigation or compact controls, not decorate every row of a form.
 
+Clarifying question prompts are decision surfaces, not tool-output cards. They should use a solid outer shell, filled option rows, quiet step chips, clear disabled primary actions, and only the minimum icons needed to show disclosure or selection state.
+
 ## Accessibility & Inclusion
 
 Target WCAG AA contrast, visible keyboard focus, reduced-motion-safe transitions, and controls whose text labels or titles explain their action.

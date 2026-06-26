@@ -3,11 +3,11 @@ import { createStore } from "solid-js/store"
 import type { QuestionRequest, QuestionAnswer } from "@ericsanchezok/synergy-sdk/client"
 import { Button } from "@ericsanchezok/synergy-ui/button"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
-import { Card } from "@ericsanchezok/synergy-ui/card"
 import { TextField } from "@ericsanchezok/synergy-ui/text-field"
 import { Markdown } from "@ericsanchezok/synergy-ui/markdown"
 import { Countdown } from "@ericsanchezok/synergy-ui/countdown"
 import { useSDK } from "@/context/sdk"
+import "./question-prompt.css"
 
 export interface QuestionPromptProps {
   request: QuestionRequest
@@ -28,6 +28,7 @@ export function QuestionPrompt(props: QuestionPromptProps) {
     answers: [] as QuestionAnswer[],
     custom: [] as string[],
     selected: -1,
+    otherOpen: false,
   })
 
   const question = createMemo(() => questions()[store.tab])
@@ -35,13 +36,21 @@ export function QuestionPrompt(props: QuestionPromptProps) {
   const options = createMemo(() => question()?.options ?? [])
   const multi = createMemo(() => question()?.multiple === true)
   const input = createMemo(() => store.custom[store.tab] ?? "")
+  const currentAnswer = createMemo(() => store.answers[store.tab] ?? [])
+  const currentAnswered = createMemo(() => currentAnswer().length > 0)
+  const allAnswered = createMemo(() => questions().every((_, i) => (store.answers[i]?.length ?? 0) > 0))
   const customPicked = createMemo(() => {
     const value = input()
     if (!value) return false
     return store.answers[store.tab]?.includes(value) ?? false
   })
+  const currentStepLabel = createMemo(() => {
+    if (confirm()) return "Review"
+    return question()?.header || `Question ${store.tab + 1}`
+  })
 
   function submit() {
+    if (!single() && !allAnswered()) return
     const answers = questions().map((_, i) => store.answers[i] ?? [])
     sdk.client.question.reply({
       requestID: props.request.id,
@@ -73,6 +82,7 @@ export function QuestionPrompt(props: QuestionPromptProps) {
     }
     setStore("tab", store.tab + 1)
     setStore("selected", -1)
+    setStore("otherOpen", false)
   }
 
   function toggle(answer: string) {
@@ -110,199 +120,233 @@ export function QuestionPrompt(props: QuestionPromptProps) {
   function goToTab(index: number) {
     setStore("tab", index)
     setStore("selected", -1)
+    setStore("otherOpen", false)
   }
 
   return (
-    <Card variant="info" class="workbench-card-surface max-h-[min(60vh,480px)] flex flex-col overflow-hidden">
-      {/* Collapsed bar */}
+    <section class="question-prompt-shell">
       <Show when={collapsed()}>
         <button
-          class="workbench-control-surface-hover flex items-center gap-2 px-4 py-3 w-full text-left transition-colors"
+          type="button"
+          class="question-prompt-collapsed"
           onClick={() => setCollapsed(false)}
         >
-          <Icon name="chevron-right" size="small" class="text-icon-base shrink-0" />
-          <span class="text-text-strong text-14-medium truncate flex-1">
-            {question()?.header || question()?.question || "Question"}
+          <span class="question-prompt-collapsed-main">
+            <Icon name="chevron-right" size="small" class="question-prompt-muted-icon" />
+            <span class="question-prompt-collapsed-title">{currentStepLabel()}</span>
           </span>
-          <Show when={countdownSeconds() != null}>
-            <Countdown seconds={countdownSeconds()!} active={true} />
-          </Show>
-          <span class="text-text-weak text-12-regular shrink-0">Click to expand</span>
-        </button>
-      </Show>
-
-      {/* Expanded content */}
-      <Show when={!collapsed()}>
-        <div class="flex flex-col gap-3 p-4 min-h-0">
-          {/* Collapse button + Tabs for multiple questions */}
-          <div class="flex items-center gap-2 shrink-0">
-            <button
-              class="workbench-control-surface-hover flex items-center justify-center size-6 rounded transition-colors shrink-0"
-              onClick={() => setCollapsed(true)}
-              title="Collapse"
-            >
-              <Icon name="chevron-down" size="small" class="text-icon-base" />
-            </button>
+          <span class="question-prompt-collapsed-meta">
             <Show when={countdownSeconds() != null}>
               <Countdown seconds={countdownSeconds()!} active={true} />
             </Show>
-            <Show when={!single()}>
-              <div class="flex flex-row gap-2 flex-wrap">
-                <For each={questions()}>
-                  {(q, index) => {
-                    const isActive = () => index() === store.tab
-                    const isAnswered = () => (store.answers[index()]?.length ?? 0) > 0
+            <span>Open</span>
+          </span>
+        </button>
+      </Show>
+
+      <Show when={!collapsed()}>
+        <div class="question-prompt-expanded">
+          <header class="question-prompt-header">
+            <button
+              type="button"
+              class="question-prompt-collapse-button"
+              onClick={() => setCollapsed(true)}
+              title="Collapse"
+            >
+              <Icon name="chevron-down" size="small" />
+            </button>
+            <div class="question-prompt-heading">
+              <div class="question-prompt-kicker">Needs your input</div>
+              <div class="question-prompt-title">{currentStepLabel()}</div>
+            </div>
+            <div class="question-prompt-header-meta">
+              <Show when={!single()}>
+                <span>{Math.min(store.tab + 1, questions().length)} / {questions().length}</span>
+              </Show>
+              <Show when={countdownSeconds() != null}>
+                <Countdown seconds={countdownSeconds()!} active={true} />
+              </Show>
+            </div>
+          </header>
+
+          <Show when={!single()}>
+            <nav class="question-prompt-steps" aria-label="Question steps">
+              <For each={questions()}>
+                {(q, index) => {
+                  const isActive = () => index() === store.tab
+                  const isAnswered = () => (store.answers[index()]?.length ?? 0) > 0
+                  return (
+                    <button
+                      type="button"
+                      class="question-prompt-step"
+                      classList={{
+                        "is-active": isActive(),
+                        "is-answered": isAnswered(),
+                      }}
+                      onClick={() => goToTab(index())}
+                    >
+                      <span>{q.header}</span>
+                      <Show when={isAnswered()}>
+                        <Icon name="check" size="small" />
+                      </Show>
+                    </button>
+                  )
+                }}
+              </For>
+              <button
+                type="button"
+                class="question-prompt-step"
+                classList={{
+                  "is-active": confirm(),
+                  "is-answered": allAnswered(),
+                }}
+                onClick={() => goToTab(questions().length)}
+              >
+                <span>Review</span>
+              </button>
+            </nav>
+          </Show>
+
+          <div class="question-prompt-content">
+            <Show when={!confirm()}>
+              <div class="question-prompt-question">
+                <Markdown text={question()?.question + (multi() ? " *(select all that apply)*" : "")} />
+              </div>
+
+              <div class="question-prompt-options">
+                <For each={options()}>
+                  {(opt) => {
+                    const picked = () => store.answers[store.tab]?.includes(opt.label) ?? false
                     return (
                       <button
-                        class="px-3 py-1 rounded-md text-sm transition-colors"
+                        type="button"
+                        class="question-prompt-option"
                         classList={{
-                          "workbench-selected-surface text-text-strong": isActive(),
-                          "workbench-control-surface text-text-strong": !isActive() && isAnswered(),
-                          "workbench-control-surface text-text-weak": !isActive() && !isAnswered(),
+                          "is-picked": picked(),
                         }}
-                        onClick={() => goToTab(index())}
+                        onClick={() => (multi() ? toggle(opt.label) : pick(opt.label))}
                       >
-                        {q.header}
+                        <span class="question-prompt-option-mark">
+                          <Show when={picked()}>
+                            <Icon name="check" size="small" />
+                          </Show>
+                        </span>
+                        <span class="question-prompt-option-copy">
+                          <span class="question-prompt-option-label">{opt.label}</span>
+                          <span class="question-prompt-option-description">{opt.description}</span>
+                        </span>
                       </button>
                     )
                   }}
                 </For>
-                <button
-                  class="px-3 py-1 rounded-md text-sm transition-colors"
-                  classList={{
-                    "workbench-selected-surface text-text-strong": confirm(),
-                    "workbench-control-surface text-text-weak": !confirm(),
-                  }}
-                  onClick={() => goToTab(questions().length)}
+
+                <Show
+                  when={store.otherOpen}
+                  fallback={
+                    <button type="button" class="question-prompt-other-trigger" onClick={() => setStore("otherOpen", true)}>
+                      Other answer...
+                    </button>
+                  }
                 >
-                  Confirm
-                </button>
+                  <div class="question-prompt-other">
+                    <div class="question-prompt-other-label">
+                      <span>Other answer</span>
+                      <Show when={customPicked()}>
+                        <Icon name="check" size="small" />
+                      </Show>
+                    </div>
+                    <div class="question-prompt-other-row">
+                      <TextField
+                        placeholder="Type your own answer..."
+                        value={input()}
+                        onInput={(e: InputEvent & { currentTarget: HTMLInputElement }) => {
+                          const inputs = [...store.custom]
+                          inputs[store.tab] = e.currentTarget.value
+                          setStore("custom", inputs)
+                        }}
+                        onKeyDown={(e: KeyboardEvent) => {
+                          if (e.key === "Enter" && !e.isComposing && e.keyCode !== 229) {
+                            e.preventDefault()
+                            handleCustomSubmit()
+                          }
+                        }}
+                        class="question-prompt-other-input"
+                      />
+                      <Button
+                        variant="secondary"
+                        size="large"
+                        onClick={handleCustomSubmit}
+                        disabled={!input().trim()}
+                        class="question-prompt-other-button"
+                      >
+                        {multi() ? "Add" : "Submit"}
+                      </Button>
+                    </div>
+                  </div>
+                </Show>
+              </div>
+            </Show>
+
+            <Show when={confirm() && !single()}>
+              <div class="question-prompt-review">
+                <div class="question-prompt-review-title">Review your answers</div>
+                <div class="question-prompt-review-list">
+                  <For each={questions()}>
+                    {(q, index) => {
+                      const value = () => store.answers[index()]?.join(", ") ?? ""
+                      const answered = () => Boolean(value())
+                      return (
+                        <button
+                          type="button"
+                          class="question-prompt-review-row"
+                          classList={{
+                            "is-missing": !answered(),
+                          }}
+                          onClick={() => goToTab(index())}
+                        >
+                          <span class="question-prompt-review-label">{q.header}</span>
+                          <span class="question-prompt-review-value">{answered() ? value() : "Not answered"}</span>
+                          <span class="question-prompt-review-edit">Edit</span>
+                        </button>
+                      )
+                    }}
+                  </For>
+                </div>
               </div>
             </Show>
           </div>
 
-          {/* Question content — scrollable */}
-          <Show when={!confirm()}>
-            <div class="flex flex-col gap-3 overflow-y-auto min-h-0 [scrollbar-width:thin]">
-              <div class="text-text-strong text-14-medium shrink-0">
-                <Markdown text={question()?.question + (multi() ? " *(select all that apply)*" : "")} />
-              </div>
-
-              {/* Options */}
-              <div class="flex flex-col gap-2">
-                <For each={options()}>
-                  {(opt, i) => {
-                    const picked = () => store.answers[store.tab]?.includes(opt.label) ?? false
-                    return (
-                      <button
-                        class="workbench-card-surface workbench-card-surface-hover flex flex-col gap-1 p-3 rounded-lg text-left transition-colors"
-                        classList={{
-                          "workbench-selected-surface ring-1 ring-inset ring-border-base/50": picked(),
-                        }}
-                        onClick={() => (multi() ? toggle(opt.label) : pick(opt.label))}
-                      >
-                        <div class="flex items-center gap-2">
-                          <span class="text-text-strong text-14-medium">{opt.label}</span>
-                          <Show when={picked()}>
-                            <Icon name="check" size="small" class="text-success" />
-                          </Show>
-                        </div>
-                        <span class="text-text-weak text-12-regular">{opt.description}</span>
-                      </button>
-                    )
-                  }}
-                </For>
-
-                {/* Other option */}
-                <div class="workbench-card-surface flex flex-col gap-2 p-3 rounded-lg">
-                  <div class="flex items-center gap-2">
-                    <span class="text-text-strong text-14-medium">Other</span>
-                    <Show when={customPicked()}>
-                      <Icon name="check" size="small" class="text-success" />
-                    </Show>
-                  </div>
-                  <div class="flex gap-2">
-                    <TextField
-                      placeholder="Type your own answer..."
-                      value={input()}
-                      onInput={(e: InputEvent & { currentTarget: HTMLInputElement }) => {
-                        const inputs = [...store.custom]
-                        inputs[store.tab] = e.currentTarget.value
-                        setStore("custom", inputs)
-                      }}
-                      onKeyDown={(e: KeyboardEvent) => {
-                        if (e.key === "Enter" && !e.isComposing && e.keyCode !== 229) {
-                          e.preventDefault()
-                          handleCustomSubmit()
-                        }
-                      }}
-                      class="flex-1"
-                    />
-                    <Button variant="secondary" size="small" onClick={handleCustomSubmit}>
-                      {multi() ? "Add" : "Submit"}
-                    </Button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </Show>
-
-          {/* Confirm view — scrollable */}
-          <Show when={confirm() && !single()}>
-            <div class="flex flex-col gap-3 overflow-y-auto min-h-0 [scrollbar-width:thin]">
-              <div class="text-text-strong text-14-medium">Review your answers</div>
-              <div class="flex flex-col gap-2">
-                <For each={questions()}>
-                  {(q, index) => {
-                    const value = () => store.answers[index()]?.join(", ") ?? ""
-                    const answered = () => Boolean(value())
-                    return (
-                      <div class="flex gap-2 items-baseline">
-                        <span class="text-text-weak text-12-regular">{q.header}:</span>
-                        <span
-                          class="text-14-regular"
-                          classList={{
-                            "text-text-strong": answered(),
-                            "text-error": !answered(),
-                          }}
-                        >
-                          {answered() ? value() : "(not answered)"}
-                        </span>
-                      </div>
-                    )
-                  }}
-                </For>
-              </div>
-            </div>
-          </Show>
-
-          {/* Actions — always visible */}
-          <div class="flex justify-between items-center pt-2 border-t border-border-base shrink-0">
-            <Button variant="ghost" size="small" onClick={reject}>
+          <footer class="question-prompt-footer">
+            <Button variant="ghost" size="large" onClick={reject} class="question-prompt-dismiss">
               Dismiss
             </Button>
             <Show when={!single()}>
-              <div class="flex gap-2">
+              <div class="question-prompt-footer-actions">
                 <Show when={store.tab > 0}>
-                  <Button variant="ghost" size="small" onClick={() => goToTab(store.tab - 1)}>
+                  <Button variant="ghost" size="large" onClick={() => goToTab(store.tab - 1)}>
                     Previous
                   </Button>
                 </Show>
                 <Show when={!confirm()}>
-                  <Button variant="secondary" size="small" onClick={() => goToTab(store.tab + 1)}>
+                  <Button
+                    variant="secondary"
+                    size="large"
+                    onClick={() => goToTab(store.tab + 1)}
+                    disabled={!currentAnswered()}
+                  >
                     Next
                   </Button>
                 </Show>
                 <Show when={confirm()}>
-                  <Button variant="primary" size="small" onClick={submit}>
+                  <Button variant="primary" size="large" onClick={submit} disabled={!allAnswered()}>
                     Submit
                   </Button>
                 </Show>
               </div>
             </Show>
-          </div>
+          </footer>
         </div>
       </Show>
-    </Card>
+    </section>
   )
 }

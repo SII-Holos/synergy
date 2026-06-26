@@ -10,6 +10,8 @@ const settingsCss = await Bun.file(new URL("./components/settings/settings-panel
 const agendaCss = await Bun.file(new URL("./components/agenda/agenda-dialog.css", import.meta.url)).text()
 const agendaCalendar = await Bun.file(new URL("./components/agenda/calendar.tsx", import.meta.url)).text()
 const agendaPanel = await Bun.file(new URL("./components/agenda/panel.tsx", import.meta.url)).text()
+const questionPromptCss = await Bun.file(new URL("./components/session/question-prompt.css", import.meta.url)).text()
+const questionPrompt = await Bun.file(new URL("./components/session/question-prompt.tsx", import.meta.url)).text()
 const appSrc = fileURLToPath(new URL(".", import.meta.url))
 const uiSrc = fileURLToPath(new URL("../../ui/src", import.meta.url))
 
@@ -175,6 +177,21 @@ describe("workbench surface polarity", () => {
     expect(agendaCss).toContain(".agenda-run-row")
     expect(agendaPanel).not.toContain("workbench-card-surface flex flex-col gap-3")
     expect(agendaPanel).not.toContain("workbench-control-surface overflow-hidden rounded-[1rem]")
+  })
+
+  test("question prompts use a dedicated decision surface instead of a generic tool card", () => {
+    expect(questionPrompt).toContain('<section class="question-prompt-shell">')
+    expect(questionPrompt).toContain("question-prompt-option")
+    expect(questionPrompt).toContain("disabled={!currentAnswered()}")
+    expect(questionPrompt).toContain("disabled={!allAnswered()}")
+    expect(questionPrompt).not.toContain('Card variant="info"')
+    expect(questionPrompt).not.toContain("workbench-card-surface workbench-card-surface-hover")
+
+    expect(questionPromptCss).toContain("--question-shell-bg")
+    expect(questionPromptCss).toContain("--question-content-bg")
+    expect(questionPromptCss).toContain("--question-selected-bg")
+    expect(questionPromptCss).toContain(".question-prompt-option.is-picked")
+    expect(questionPromptCss).toContain(".question-prompt-footer")
   })
 
   test("generic surface utilities used by the frontend are covered by workbench mappings", () => {
