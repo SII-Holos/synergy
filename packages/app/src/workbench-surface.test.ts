@@ -7,6 +7,9 @@ type Rgb = [number, number, number]
 
 const css = await Bun.file(new URL("./index.css", import.meta.url)).text()
 const settingsCss = await Bun.file(new URL("./components/settings/settings-panel.css", import.meta.url)).text()
+const agendaCss = await Bun.file(new URL("./components/agenda/agenda-dialog.css", import.meta.url)).text()
+const agendaCalendar = await Bun.file(new URL("./components/agenda/calendar.tsx", import.meta.url)).text()
+const agendaPanel = await Bun.file(new URL("./components/agenda/panel.tsx", import.meta.url)).text()
 const appSrc = fileURLToPath(new URL(".", import.meta.url))
 const uiSrc = fileURLToPath(new URL("../../ui/src", import.meta.url))
 
@@ -147,6 +150,31 @@ describe("workbench surface polarity", () => {
     expect(css).not.toContain(
       ".bg-surface-raised-stronger-non-alpha\n  ) {\n  background-color: var(--workbench-card-bg);",
     )
+  })
+
+  test("agenda time grid uses centered labels and scoped line tokens", () => {
+    expect(agendaCss).toContain("--agenda-grid-line: light-dark(")
+    expect(agendaCss).toContain("--agenda-grid-line-strong: light-dark(")
+    expect(agendaCss).toContain(".agenda-time-label")
+    expect(agendaCss).toContain("text-align: center;")
+    expect(agendaCss).toContain("border-left: 1px solid var(--agenda-grid-line);")
+    expect(agendaCss).toContain("border-top: 1px solid var(--agenda-grid-line);")
+    expect(agendaCalendar).toContain("agenda-time-label")
+    expect(agendaCalendar).toContain("const TIME_COL = 72")
+    expect(agendaCalendar).not.toContain("right-3 text-10-medium text-text-weaker")
+    expect(agendaCalendar).not.toContain("border-border-weaker-base/20")
+    expect(agendaCalendar).not.toContain("border-border-weaker-base/28")
+    expect(agendaCss).not.toContain("padding-left: 104px;")
+    expect(agendaCss).not.toContain("padding-right: 12px;")
+  })
+
+  test("agenda detail popovers avoid nested card shells", () => {
+    expect(agendaPanel).toContain("agenda-detail-section")
+    expect(agendaPanel).toContain("agenda-run-row")
+    expect(agendaCss).toContain(".agenda-detail-section")
+    expect(agendaCss).toContain(".agenda-run-row")
+    expect(agendaPanel).not.toContain("workbench-card-surface flex flex-col gap-3")
+    expect(agendaPanel).not.toContain("workbench-control-surface overflow-hidden rounded-[1rem]")
   })
 
   test("generic surface utilities used by the frontend are covered by workbench mappings", () => {

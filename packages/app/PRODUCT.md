@@ -48,6 +48,8 @@ Use black, white, and neutral ramps as the primary visual language. Blue is a st
 
 Avoid border-on-border clutter. Joined panels should join cleanly, with no double rounded corners at seams and no unnecessary nested-card outlines.
 
+For item detail popovers, let the popover itself be the outer card. Use section labels, row rhythm, and light dividers inside; do not put large bordered Task, metadata, or history boxes inside another bordered container.
+
 Form controls should have filled surfaces, not border-only fields. In dark mode, controls should be slightly brighter than their container; in light mode, controls should be slightly darker. Required-action buttons stay disabled until the required inputs are valid.
 
 Use icons sparingly. Icons should clarify primary navigation or compact controls, not decorate every row of a form.

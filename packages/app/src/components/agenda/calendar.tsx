@@ -14,7 +14,7 @@ import {
 export type ViewMode = "day" | "week" | "month"
 
 const HOUR_HEIGHT = 58
-const TIME_COL = 104
+const TIME_COL = 72
 const HOURS = Array.from({ length: 24 }, (_, i) => i)
 const EVENT_DURATION_MS = 30 * 60_000
 const MONTH_MAX_EVENTS = 4
@@ -330,7 +330,7 @@ function TimeGrid(props: {
     <div class="agenda-calendar-frame agenda-calendar-body flex min-h-0 flex-1 flex-col overflow-hidden">
       <Show when={props.columns.length > 1}>
         <div
-          class="agenda-time-header grid shrink-0 border-b border-border-weaker-base/28 bg-transparent"
+          class="agenda-time-header grid shrink-0 bg-transparent"
           style={{ "grid-template-columns": colTemplate() }}
         >
           <div />
@@ -338,7 +338,7 @@ function TimeGrid(props: {
             {(col) => (
               <div
                 classList={{
-                  "flex flex-col items-center py-1.5 text-center": true,
+                  "agenda-day-header-cell flex flex-col items-center py-1.5 text-center": true,
                   "text-text-strong": col.isToday,
                 }}
               >
@@ -367,7 +367,7 @@ function TimeGrid(props: {
             <For each={HOURS}>
               {(h) => (
                 <div
-                  class="absolute right-3 text-10-medium text-text-weaker leading-none -translate-y-1/2"
+                  class="agenda-time-label absolute text-10-medium text-text-weaker leading-none"
                   style={{ top: `${h * HOUR_HEIGHT}px` }}
                 >
                   {h > 0 ? formatHour(h) : ""}
@@ -380,11 +380,11 @@ function TimeGrid(props: {
             {(col) => {
               const laid = createMemo(() => layoutOverlapping(props.eventsByDay.get(col.ts) ?? []))
               return (
-                <div class="relative border-l border-border-weaker-base/24 first:border-l-0">
+                <div class="agenda-day-column relative">
                   <For each={HOURS}>
                     {(h) => (
                       <div
-                        class="absolute left-0 right-0 border-t border-border-weaker-base/20"
+                        class="agenda-hour-line absolute left-0 right-0"
                         style={{ top: `${h * HOUR_HEIGHT}px`, height: `${HOUR_HEIGHT}px` }}
                       />
                     )}
@@ -479,7 +479,7 @@ function MonthGrid(props: {
 
   return (
     <div class="agenda-calendar-frame agenda-calendar-body min-h-0 flex-1 overflow-y-auto">
-      <div class="grid grid-cols-7 border-b border-border-weaker-base/28 bg-transparent">
+      <div class="agenda-month-header grid grid-cols-7 bg-transparent">
         <For each={DAY_LABELS_SHORT}>
           {(label) => <div class="py-2.5 text-center text-11-medium text-text-weaker">{label}</div>}
         </For>
@@ -494,7 +494,7 @@ function MonthGrid(props: {
                 const overflow = createMemo(() => Math.max(0, events().length - MONTH_MAX_EVENTS))
                 return (
                   <div
-                    class="min-h-[118px] cursor-pointer border-b border-r border-border-weaker-base/20 px-2 py-1.5 transition-colors hover:bg-surface-raised-base-hover"
+                    class="agenda-month-cell min-h-[118px] cursor-pointer px-2 py-1.5 transition-colors hover:bg-surface-raised-base-hover"
                     onClick={() => props.onDateClick?.(cell.ts)}
                   >
                     <span
