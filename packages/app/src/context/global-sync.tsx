@@ -21,7 +21,7 @@ import {
   type SessionInboxItem,
   createSynergyClient,
 } from "@ericsanchezok/synergy-sdk/client"
-import { createStore, produce, reconcile } from "solid-js/store"
+import { createStore, produce, reconcile, type SetStoreFunction } from "solid-js/store"
 import { Binary } from "@ericsanchezok/synergy-util/binary"
 import { retry } from "@ericsanchezok/synergy-util/retry"
 import { useGlobalSDK } from "./global-sdk"
@@ -490,6 +490,79 @@ function createGlobalSync() {
     })
   }
 
+  const inboxRefreshTimers = new Map<string, ReturnType<typeof setTimeout>>()
+  const cortexRefreshTimers = new Map<string, ReturnType<typeof setTimeout>>()
+  const terminalCortexStatuses = new Set(["completed", "error", "cancelled"])
+
+  function refreshInbox(scopeKey: string, sessionID: string) {
+    const key = `${scopeKey}:${sessionID}`
+    const existing = inboxRefreshTimers.get(key)
+    if (existing) clearTimeout(existing)
+    inboxRefreshTimers.set(
+      key,
+      setTimeout(() => {
+        inboxRefreshTimers.delete(key)
+        const state = children[scopeKey]
+        if (!state) return
+        const [, setStore] = state
+        const sdk = createScopedClient(scopeKey)
+        sdk.session
+          .inbox({ sessionID })
+          .then((result) => setStore("inbox", sessionID, reconcile(result.data ?? [], { key: "id" })))
+          .catch(() => {})
+      }, 120),
+    )
+  }
+
+  function refreshCortex(scopeKey: string) {
+    const existing = cortexRefreshTimers.get(scopeKey)
+    if (existing) clearTimeout(existing)
+    cortexRefreshTimers.set(
+      scopeKey,
+      setTimeout(() => {
+        cortexRefreshTimers.delete(scopeKey)
+        const state = children[scopeKey]
+        if (!state) return
+        const [, setStore] = state
+        const sdk = createScopedClient(scopeKey)
+        sdk.cortex
+          .list({})
+          .then((result) => setStore("cortex", reconcile(result.data ?? [])))
+          .catch(() => {})
+      }, 250),
+    )
+  }
+
+  function reconcileCortexFromSession(setStore: SetStoreFunction<State>, info: Session) {
+    const cortex = info.cortex
+    if (!cortex || !terminalCortexStatuses.has(cortex.status)) return
+    setStore(
+      "cortex",
+      produce((draft) => {
+        const idx = draft.findIndex((task) => task.sessionID === info.id)
+        if (idx === -1) return
+        draft[idx] = {
+          ...draft[idx],
+          status: cortex.status,
+          completedAt: cortex.completedAt ?? draft[idx].completedAt,
+          result: cortex.result ?? draft[idx].result,
+          error: cortex.error ?? draft[idx].error,
+        }
+      }),
+    )
+  }
+
+  function refreshVolatileStateAfterMessage(scopeKey: string, store: State, sessionID: string) {
+    if (store.inbox[sessionID]?.length) refreshInbox(scopeKey, sessionID)
+    if (
+      store.cortex.some(
+        (task) => task.sessionID === sessionID && (task.status === "running" || task.status === "queued"),
+      )
+    ) {
+      refreshCortex(scopeKey)
+    }
+  }
+
   async function resyncInstance(scopeKey: string) {
     if (!scopeKey || !children[scopeKey]) return
     const [store, setStore] = children[scopeKey]
@@ -696,6 +769,7 @@ function createGlobalSync() {
       }
       case "session.updated": {
         const info = event.properties.info as Session
+        reconcileCortexFromSession(setStore, info)
         const result = Binary.search(store.session, info.id, (s) => s.id)
         if (info.time.archived) {
           if (result.found) {
@@ -734,6 +808,18 @@ function createGlobalSync() {
       case "session.status": {
         // Handles busy, retry, idle, and recovering statuses
         setStore("session_status", event.properties.sessionID, reconcile(event.properties.status))
+        if (event.properties.status.type === "idle") {
+          if (store.inbox[event.properties.sessionID]?.length) refreshInbox(scopeKey, event.properties.sessionID)
+          if (
+            store.cortex.some(
+              (task) =>
+                task.sessionID === event.properties.sessionID &&
+                (task.status === "running" || task.status === "queued"),
+            )
+          ) {
+            refreshCortex(scopeKey)
+          }
+        }
         break
       }
       case "session.inbox.updated": {
@@ -741,14 +827,17 @@ function createGlobalSync() {
         break
       }
       case "message.updated": {
+        const sessionID = event.properties.info.sessionID
         const messages = store.message[event.properties.info.sessionID]
         if (!messages) {
           setStore("message", event.properties.info.sessionID, [event.properties.info])
+          refreshVolatileStateAfterMessage(scopeKey, store, sessionID)
           break
         }
         const result = Binary.search(messages, event.properties.info.id, (m) => m.id)
         if (result.found) {
           setStore("message", event.properties.info.sessionID, result.index, reconcile(event.properties.info))
+          refreshVolatileStateAfterMessage(scopeKey, store, sessionID)
           break
         }
         setStore(
@@ -758,6 +847,7 @@ function createGlobalSync() {
             draft.splice(result.index, 0, event.properties.info)
           }),
         )
+        refreshVolatileStateAfterMessage(scopeKey, store, sessionID)
         break
       }
       case "message.removed": {
@@ -1004,7 +1094,13 @@ function createGlobalSync() {
       }
     }
   })
-  onCleanup(unsub)
+  onCleanup(() => {
+    unsub()
+    for (const timer of inboxRefreshTimers.values()) clearTimeout(timer)
+    for (const timer of cortexRefreshTimers.values()) clearTimeout(timer)
+    inboxRefreshTimers.clear()
+    cortexRefreshTimers.clear()
+  })
 
   let resyncInstancesPromise: Promise<void> | undefined
   function resyncInstances(directories: string[]) {
