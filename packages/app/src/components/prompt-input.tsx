@@ -1359,7 +1359,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                         type="submit"
                         icon="zap"
                         variant="primary"
-                        class="size-9 rounded-full! bg-text-interactive-base!"
+                        class="size-8 rounded-full! bg-text-interactive-base!"
                       />
                     </Tooltip>
                   </div>
