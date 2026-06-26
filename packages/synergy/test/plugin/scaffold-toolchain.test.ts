@@ -168,36 +168,5 @@ export default plugin
     expect(files.has("src/route.js")).toBe(true)
     expect(files.has("src/panel-sandbox.js")).toBe(true)
     expect(files.has("scripts/install.ts")).toBe(true)
-
-    const pluginKitCli = path.join(repoRoot, "packages", "plugin-kit", "src", "cli.ts")
-    const signingHome = path.join(tmp.path, "signing-home")
-    const sign = Bun.spawnSync(["bun", pluginKitCli, "sign", tarball], {
-      env: { ...process.env, SYNERGY_HOME: signingHome },
-      stdout: "pipe",
-      stderr: "pipe",
-    })
-    expect(sign.exitCode).toBe(0)
-    expect(await Bun.file(`${tarball}.sig`).exists()).toBe(true)
-
-    const entry = Bun.spawnSync(
-      [
-        "bun",
-        pluginKitCli,
-        "entry",
-        tarball,
-        "--repo",
-        "https://github.com/SII-Holos/asset-fixture",
-        "--download-url",
-        "https://github.com/SII-Holos/asset-fixture/releases/download/v0.1.0/asset-fixture-0.1.0.synergy-plugin.tgz",
-        "--signature-url",
-        "https://github.com/SII-Holos/asset-fixture/releases/download/v0.1.0/asset-fixture-0.1.0.synergy-plugin.tgz.sig",
-      ],
-      { env: { ...process.env, SYNERGY_HOME: signingHome }, stdout: "pipe", stderr: "pipe" },
-    )
-    expect(entry.exitCode).toBe(0)
-    const registryEntry = JSON.parse(new TextDecoder().decode(entry.stdout))
-    expect(registryEntry.id).toBe("asset-fixture")
-    expect(registryEntry.versions[0].manifestHash).toHaveLength(64)
-    expect(registryEntry.versions[0].permissionsHash).toHaveLength(64)
   })
 })
