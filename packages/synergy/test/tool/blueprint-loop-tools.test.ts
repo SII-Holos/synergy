@@ -81,6 +81,8 @@ describe("BlueprintLoop tools", () => {
         expect(launches[0].agent).toBe("supervisor")
         expect(launches[0].parentSessionID).toBe(session.id)
         expect(launches[0].notifyParentOnComplete).toBe(false)
+        expect(launches[0].prompt).toContain("execution evidence")
+        expect(launches[0].prompt).not.toContain("implementation evidence")
         expect(launches[0].prompt).toContain("blueprint_loop_restart")
         expect(launches[0].prompt).toContain("blueprint_loop_finish")
       },

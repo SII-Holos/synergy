@@ -161,7 +161,7 @@ export namespace SessionModePolicy {
       mode: "plan",
       message: [
         `The "${toolName}" tool is blocked because this session is in Plan Mode.`,
-        "Plan Mode may inspect and design, but it must not modify project implementation files, start implementation work, commit, push, deploy, or perform external identity actions.",
+        "Plan Mode may inspect and design, but it must not modify project files, start execution work, commit, push, deploy, or perform external identity actions.",
         "Continue with read-only investigation, planning tools, questions, or Blueprint note edits.",
       ].join("\n"),
       metadata,

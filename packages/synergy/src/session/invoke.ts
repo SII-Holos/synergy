@@ -629,6 +629,10 @@ export namespace SessionInvoke {
         if (sessionBlueprint?.loopID) {
           const loop = await BlueprintLoopStore.get(scopeID, sessionBlueprint.loopID).catch(() => undefined)
           if (loop) {
+            const loopInstruction =
+              agent.name === "synergy-max"
+                ? `You are executing this coding BlueprintLoop. Before editing code, call note_read with ids=["${loop.noteID}"] and read the full Blueprint content. Continue until the Blueprint is fully implemented and verified. When ready for audit, call blueprint_loop_finish({ loopID: "${loop.id}", status: "auditing", summary: "..." }).`
+                : `You are executing this BlueprintLoop. Before carrying out the Blueprint, call note_read with ids=["${loop.noteID}"] and read the full Blueprint content. Continue until the requested outcome is fully delivered. When ready for audit, call blueprint_loop_finish({ loopID: "${loop.id}", status: "auditing", summary: "..." }).`
             systemParts.push(
               [
                 "<blueprint-loop-context>",
@@ -638,7 +642,7 @@ export namespace SessionInvoke {
                 `Description: ${loop.description ?? "N/A"}`,
                 `Status: ${loop.status}`,
                 "",
-                `You are executing this BlueprintLoop. Before doing implementation work, call note_read with ids=["${loop.noteID}"] and read the full Blueprint content. Continue working until fully implemented. When ready for audit, call blueprint_loop_finish with status="auditing".`,
+                loopInstruction,
                 "</blueprint-loop-context>",
               ].join("\n"),
             )

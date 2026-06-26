@@ -115,6 +115,10 @@ describe("PlanModeUserWrapper projection", () => {
     const text = (projected[0].parts[0] as MessageV2.TextPart).text
     expect(text).toContain("You are synergy in Plan Mode")
     expect(text).toContain("Your job is to create a new Blueprint or refine an existing Blueprint")
+    expect(text).toContain("Keep the Blueprint framed in the user's domain")
+    expect(text).not.toContain("TDD strategy")
+    expect(text).not.toContain("migrations/config/SDK/docs impact")
+    expect(text).not.toContain("rollback")
     expect(text).toContain("User request:\nbuild the new importer")
   })
 
