@@ -107,6 +107,22 @@ const KNOWN_LOCAL_TOKENS = new Set([
   "session-turn-title-border",
   "session-turn-title-highlight",
   "session-turn-title-glow",
+  "workbench-canvas-bg",
+  "workbench-panel-bg",
+  "workbench-panel-bg-hover",
+  "workbench-card-bg",
+  "workbench-card-bg-hover",
+  "workbench-card-secondary-bg",
+  "workbench-control-bg",
+  "workbench-control-bg-hover",
+  "workbench-input-bg",
+  "workbench-input-bg-hover",
+  "workbench-popover-bg",
+  "workbench-selected-bg",
+  "workbench-selected-bg-hover",
+  "workbench-border",
+  "workbench-popover-shadow",
+  "workbench-tab-shadow",
 ])
 
 function extractVarRefs(css: string): string[] {

@@ -19,8 +19,8 @@ export default function FileTree(props: {
     <Dynamic
       component={p.as ?? "div"}
       classList={{
-        "p-0.5 w-full flex items-center gap-x-2 hover:bg-background-element": true,
-        // "bg-background-element": local.file.active()?.path === p.node.path,
+        "p-0.5 w-full flex items-center gap-x-2 hover:bg-surface-raised-base-hover": true,
+        // "bg-surface-raised-base-hover": local.file.active()?.path === p.node.path,
         [props.nodeClass ?? ""]: !!props.nodeClass,
       }}
       style={`padding-left: ${level * 10}px`}
@@ -33,7 +33,7 @@ export default function FileTree(props: {
         // Create custom drag image without margins
         const dragImage = document.createElement("div")
         dragImage.className =
-          "flex items-center gap-x-2 px-2 py-1 bg-background-element rounded-md border border-border-1"
+          "flex items-center gap-x-2 px-2 py-1 bg-surface-raised-base rounded-md border border-border-base"
         dragImage.style.position = "absolute"
         dragImage.style.top = "-1000px"
 
@@ -57,7 +57,7 @@ export default function FileTree(props: {
           "text-text-muted/40": p.node.ignored,
           "text-text-muted/80": !p.node.ignored,
           // "!text-text": local.file.active()?.path === p.node.path,
-          // "!text-primary": local.file.changed(p.node.path),
+          // "!text-text-interactive-base": local.file.changed(p.node.path),
         }}
       >
         {p.node.name}
@@ -100,7 +100,7 @@ export default function FileTree(props: {
               <Match when={node.type === "file"}>
                 <Node node={node} as="button" onClick={() => props.onFileClick?.(node)}>
                   <div class="w-4 shrink-0" />
-                  <FileIcon node={node} class="text-primary" />
+                  <FileIcon node={node} class="text-icon-weak" />
                 </Node>
               </Match>
             </Switch>

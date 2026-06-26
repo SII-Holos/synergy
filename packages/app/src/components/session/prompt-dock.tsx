@@ -102,11 +102,9 @@ export function PromptDock(props: {
                     <Tooltip value={props.parentTitle || "Parent session"} placement="top">
                       <button
                         type="button"
-                        class="flex items-center justify-center gap-1.5 h-8 px-3 rounded-full
-                        border border-border-base bg-surface-raised-stronger-non-alpha
-                        shadow-sm
+                        class="workbench-control-surface workbench-control-surface-hover flex items-center justify-center gap-1.5 h-8 px-3 rounded-full
+                        border border-border-base
                         text-12-medium text-text-weak hover:text-text-base
-                        hover:bg-surface-raised-stronger-hover
                         active:scale-95
                         transition-all duration-150"
                         onClick={() => props.navigate(props.meta().parentID!)}
@@ -123,11 +121,9 @@ export function PromptDock(props: {
                       <Tooltip value={props.forkedFromTitle || "Fork source"} placement="top">
                         <button
                           type="button"
-                          class="flex items-center justify-center gap-1.5 h-8 px-3 rounded-full
-                          border border-border-base bg-surface-raised-stronger-non-alpha
-                          shadow-sm
+                          class="workbench-control-surface workbench-control-surface-hover flex items-center justify-center gap-1.5 h-8 px-3 rounded-full
+                          border border-border-base
                           text-12-medium text-text-weak hover:text-text-base
-                          hover:bg-surface-raised-stronger-hover
                           active:scale-95
                           transition-all duration-150"
                           onClick={() => props.navigate(sourceID())}
@@ -144,11 +140,9 @@ export function PromptDock(props: {
                     <div class="flex items-center justify-center pb-2">
                       <button
                         type="button"
-                        class="flex items-center justify-center gap-1.5 h-8 px-3 rounded-full
-                        border border-border-base bg-surface-raised-stronger-non-alpha
-                        shadow-sm
+                        class="workbench-control-surface workbench-control-surface-hover flex items-center justify-center gap-1.5 h-8 px-3 rounded-full
+                        border border-border-base
                         text-12-medium text-text-weak hover:text-text-base
-                        hover:bg-surface-raised-stronger-hover
                         active:scale-95
                         transition-all duration-150"
                         onClick={() => nav(from())}

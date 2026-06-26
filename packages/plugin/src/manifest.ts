@@ -119,6 +119,21 @@ const ToolExposureDef = z.discriminatedUnion("mode", [
       keywords: z.array(z.string()).optional(),
     })
     .strict(),
+  z
+    .object({
+      mode: z.literal("internal"),
+    })
+    .strict(),
+])
+
+const TaskPermissionDef = z.union([
+  z.boolean(),
+  z
+    .object({
+      agents: z.array(z.string().min(1)).optional(),
+      maxRuntimeMs: z.number().int().positive().optional(),
+    })
+    .strict(),
 ])
 
 const ToolDisplayDef = z
@@ -183,6 +198,7 @@ const PluginPermissionsSchema = z
         ),
         network: z.boolean().default(false),
         mcp: z.enum(["none", "invoke", "spawn"]).default("none"),
+        task: TaskPermissionDef.optional(),
       })
       .optional(),
 
@@ -319,6 +335,8 @@ export const PluginManifest = z
               description: z.string(),
               mode: z.enum(["subagent", "primary", "all"]).default("subagent"),
               model: z.string().optional(),
+              hidden: z.boolean().optional(),
+              permission: z.record(z.string(), z.any()).optional(),
             }),
           )
           .optional(),

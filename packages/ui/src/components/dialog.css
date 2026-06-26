@@ -1,9 +1,12 @@
 /* [data-component="dialog-trigger"] { } */
 
+[data-component="dialog-overlay"],
 [data-slot="dialog-overlay"] {
-  background-color: color-mix(in srgb, var(--background-base) 42%, rgba(0, 0, 0, 0.38));
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
+  position: fixed;
+  inset: 0;
+  background-color: light-dark(rgba(11, 13, 18, 0.4), rgba(0, 0, 0, 0.54));
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
   z-index: 50;
 
   animation: overlayHide 200ms ease 80ms forwards;

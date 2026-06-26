@@ -140,7 +140,7 @@ export function PermissionDock(props: PermissionDockProps) {
   return (
     <Show when={permissions().length > 0}>
       <div class="mb-2" style={{ animation: "fadeUp 400ms ease-out" }}>
-        <div class="rounded-xl bg-surface-raised-stronger-non-alpha border border-border-base overflow-hidden max-h-[min(60vh,480px)] flex flex-col">
+        <div class="workbench-card-surface rounded-xl border border-border-base overflow-hidden max-h-[min(60vh,480px)] flex flex-col">
           <div class="h-[2px] bg-border-warning-base shrink-0" />
 
           <Show when={activeItem()}>

@@ -11,19 +11,6 @@ a:active,
   transition-duration: 80ms;
 }
 
-[data-slot="dialog-container"]:has(.dialog-settings-v2) {
-  width: min(calc(100vw - 48px), 1180px);
-  height: min(calc(100vh - 56px), 820px);
-  max-width: 1180px;
-  max-height: 820px;
-}
-
-[data-slot="dialog-container"]:has(.dialog-settings-v2) [data-slot="dialog-body"] {
-  flex: 1;
-  min-height: 0;
-  overflow: hidden;
-}
-
 [data-slot="dialog-container"]:has(.dialog-session-export) {
   width: min(calc(100vw - 16px), 520px);
 }
@@ -101,39 +88,245 @@ a:active,
   0%,
   100% {
     opacity: 1;
-    box-shadow: 0 0 0 2px color-mix(in srgb, currentColor 20%, transparent);
   }
   50% {
-    opacity: 0.6;
-    box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 10%, transparent);
+    opacity: 0.64;
   }
 }
 @keyframes statusbarDotPulse {
   0%,
   100% {
     opacity: 1;
-    box-shadow:
-      0 0 0 1px var(--surface-raised-base),
-      0 0 0 2px color-mix(in srgb, currentColor 12%, transparent);
   }
   50% {
-    opacity: 0.78;
-    box-shadow:
-      0 0 0 1px var(--surface-raised-base),
-      0 0 0 2.5px color-mix(in srgb, currentColor 8%, transparent);
+    opacity: 0.72;
   }
 }
 
 .statusbar-glass {
   position: relative;
-  background: var(--surface-raised-base);
-  border: 1px solid var(--border-weaker-base);
-  box-shadow: var(--shadow-xs);
+  background: var(--workbench-control-bg, var(--surface-raised-base));
+  border: 1px solid var(--workbench-border, var(--border-weaker-base));
+  box-shadow: none;
 }
 
 .statusbar-glass > * {
   position: relative;
   z-index: 1;
+}
+
+.synergy-workbench-canvas {
+  --workbench-canvas-bg: light-dark(rgb(240 241 244), rgb(24 24 27));
+  --workbench-panel-bg: light-dark(rgb(235 237 240), rgb(30 30 33));
+  --workbench-panel-bg-hover: light-dark(rgb(228 231 235), rgb(36 36 39));
+  --workbench-card-bg: light-dark(rgb(229 232 236), rgb(40 40 43));
+  --workbench-card-bg-hover: light-dark(rgb(222 226 232), rgb(46 46 49));
+  --workbench-card-secondary-bg: light-dark(rgb(224 228 233), rgb(44 44 47));
+  --workbench-control-bg: light-dark(rgb(223 227 233), rgb(48 48 51));
+  --workbench-control-bg-hover: light-dark(rgb(214 220 228), rgb(54 54 58));
+  --workbench-input-bg: light-dark(rgb(221 226 232), rgb(50 50 54));
+  --workbench-input-bg-hover: light-dark(rgb(212 219 227), rgb(56 56 60));
+  --workbench-popover-bg: light-dark(rgb(226 230 235), rgb(46 46 49));
+  --workbench-selected-bg: light-dark(rgb(207 215 225), rgb(58 58 63));
+  --workbench-selected-bg-hover: light-dark(rgb(198 207 219), rgb(64 64 69));
+  --workbench-border: light-dark(rgba(17, 24, 39, 0.08), rgba(244, 244, 245, 0.08));
+  --workbench-popover-shadow: 0 14px 34px light-dark(rgba(15, 23, 42, 0.1), rgba(0, 0, 0, 0.24));
+  --workbench-tab-shadow: none;
+  --background-stronger: var(--workbench-canvas-bg);
+  --background-base: var(--workbench-panel-bg);
+  --surface-base: var(--workbench-card-bg);
+  --surface-base-hover: var(--workbench-card-bg-hover);
+  --surface-base-active: var(--workbench-selected-bg);
+  --surface-hover-base: var(--workbench-card-bg-hover);
+  --surface-inset-base: var(--workbench-control-bg);
+  --surface-inset-base-hover: var(--workbench-control-bg-hover);
+  --surface-raised-base: var(--workbench-card-bg);
+  --surface-raised-base-hover: var(--workbench-card-bg-hover);
+  --surface-raised-base-active: var(--workbench-selected-bg);
+  --surface-raised-strong: var(--workbench-card-bg);
+  --surface-raised-strong-hover: var(--workbench-card-bg-hover);
+  --surface-raised-stronger: var(--workbench-card-bg);
+  --surface-raised-stronger-hover: var(--workbench-card-bg-hover);
+  --surface-raised-stronger-non-alpha: var(--workbench-popover-bg);
+  --button-secondary-base: var(--workbench-control-bg);
+  --button-secondary-hover: var(--workbench-control-bg-hover);
+  --input-base: var(--workbench-input-bg);
+  --input-hover: var(--workbench-input-bg-hover);
+  --surface-focus: color-mix(in srgb, var(--text-strong) 8%, transparent);
+  --border-selected: color-mix(in srgb, var(--text-strong) 28%, transparent);
+  --border-weak-selected: color-mix(in srgb, var(--text-strong) 13%, transparent);
+  --border-strong-selected: color-mix(in srgb, var(--text-strong) 34%, transparent);
+  --border-interactive-selected: color-mix(in srgb, var(--text-strong) 30%, transparent);
+  --shadow-xs-border: inset 0 0 0 1px var(--workbench-border);
+  --shadow-xs-border-base: inset 0 0 0 1px var(--workbench-border);
+  --shadow-xs-border-select: inset 0 0 0 1px color-mix(in srgb, var(--text-strong) 20%, transparent);
+  --shadow-xs-border-focus: 0 0 0 2px color-mix(in srgb, var(--text-strong) 12%, transparent);
+  background-color: var(--workbench-canvas-bg);
+}
+
+.synergy-workbench-canvas :where(.workbench-panel-surface) {
+  background-color: var(--workbench-panel-bg);
+  border-color: var(--workbench-border);
+  box-shadow: none;
+}
+
+.synergy-workbench-canvas :where(.workbench-card-surface) {
+  background-color: var(--workbench-card-bg);
+  border-color: var(--workbench-border);
+  box-shadow: none;
+}
+
+.synergy-workbench-canvas :where(.workbench-card-surface:hover, .workbench-card-surface-hover:hover) {
+  background-color: var(--workbench-card-bg-hover);
+}
+
+.synergy-workbench-canvas :where(.workbench-control-surface) {
+  background-color: var(--workbench-control-bg);
+  border-color: var(--workbench-border);
+  box-shadow: none;
+}
+
+.synergy-workbench-canvas :where(.workbench-control-surface:hover, .workbench-control-surface-hover:hover) {
+  background-color: var(--workbench-control-bg-hover);
+}
+
+.synergy-workbench-canvas :where(.workbench-input-surface) {
+  background-color: var(--workbench-input-bg);
+  border-color: var(--workbench-border);
+  box-shadow: none;
+}
+
+.synergy-workbench-canvas :where(.workbench-input-surface:hover, .workbench-input-surface:focus-within) {
+  background-color: var(--workbench-input-bg-hover);
+}
+
+.synergy-workbench-canvas :where(.workbench-popover-surface) {
+  background-color: var(--workbench-popover-bg);
+  border-color: var(--workbench-border);
+  box-shadow: none;
+}
+
+.synergy-workbench-canvas :where(.bg-background-stronger) {
+  background-color: var(--workbench-canvas-bg);
+}
+
+.synergy-workbench-canvas :where(.bg-background-base) {
+  background-color: var(--workbench-panel-bg);
+}
+
+.synergy-workbench-canvas
+  :where(.bg-surface-raised-base, .bg-surface-raised-strong, .bg-surface-raised-stronger, .bg-surface-base) {
+  background-color: var(--workbench-card-bg);
+}
+
+.synergy-workbench-canvas
+  :where(
+    .bg-surface-raised-base\/98,
+    .bg-surface-raised-base\/95,
+    .bg-surface-raised-base\/90,
+    .bg-surface-raised-base\/80,
+    .bg-surface-raised-base\/78,
+    .bg-surface-raised-base\/70,
+    .bg-surface-raised-base\/60,
+    .bg-surface-raised-base\/55,
+    .bg-surface-raised-base\/50,
+    .bg-surface-base\/74,
+    .bg-surface-base\/70,
+    .bg-surface-base\/62,
+    .bg-surface-base\/55,
+    .bg-surface-base\/45,
+    .bg-surface-base\/38,
+    .bg-surface-base\/34
+  ) {
+  background-color: var(--workbench-card-bg);
+}
+
+.synergy-workbench-canvas
+  :where(
+    .bg-surface-raised-stronger-non-alpha,
+    .bg-surface-raised-stronger-non-alpha\/90,
+    .bg-surface-raised-stronger-non-alpha\/80,
+    .bg-surface-raised-stronger-non-alpha\/70,
+    .bg-surface-raised-stronger-non-alpha\/65
+  ) {
+  background-color: var(--workbench-popover-bg);
+}
+
+.synergy-workbench-canvas
+  :where(
+    .bg-surface-inset-base,
+    .bg-surface-base-hover,
+    .bg-surface-raised-base-hover,
+    .bg-surface-raised-stronger-hover,
+    .bg-button-secondary-base
+  ) {
+  background-color: var(--workbench-control-bg);
+}
+
+.synergy-workbench-canvas
+  :where(
+    .bg-surface-inset-base\/80,
+    .bg-surface-inset-base\/72,
+    .bg-surface-inset-base\/70,
+    .bg-surface-inset-base\/68,
+    .bg-surface-inset-base\/65,
+    .bg-surface-inset-base\/60,
+    .bg-surface-inset-base\/52,
+    .bg-surface-inset-base\/50,
+    .bg-surface-inset-base\/45,
+    .bg-surface-inset-base\/42,
+    .bg-surface-inset-base\/40,
+    .bg-surface-inset-base\/35,
+    .bg-background-base\/90,
+    .bg-background-base\/72,
+    .bg-background-base\/55,
+    .bg-background-base\/50
+  ) {
+  background-color: var(--workbench-control-bg);
+}
+
+.synergy-workbench-canvas
+  :where(
+    .bg-surface-interactive-base\/15,
+    .bg-surface-interactive-base\/12,
+    .bg-surface-interactive-base\/10,
+    .bg-surface-interactive-base\/8,
+    .bg-surface-interactive-base\/5,
+    .bg-surface-interactive-selected-weak\/70
+  ) {
+  background-color: var(--workbench-selected-bg);
+}
+
+.synergy-workbench-canvas :where(.bg-input-base, .bg-input-hover) {
+  background-color: var(--workbench-input-bg);
+}
+
+.synergy-workbench-canvas
+  :where(
+    .hover\:bg-surface-raised-base-hover:hover,
+    .hover\:bg-surface-raised-base\/98:hover,
+    .hover\:bg-surface-raised-base\/60:hover,
+    .hover\:bg-surface-inset-base:hover,
+    .hover\:bg-surface-inset-base\/40:hover,
+    .hover\:bg-surface-base-hover:hover,
+    .hover\:bg-surface-raised-stronger-hover:hover,
+    .hover\:bg-background-base:hover,
+    .hover\:bg-input-hover:hover,
+    .hover\:bg-button-secondary-hover:hover
+  ) {
+  background-color: var(--workbench-control-bg-hover);
+}
+
+.synergy-workbench-canvas :where(.shadow-sm, .shadow-xs, .shadow-md, .shadow-lg) {
+  box-shadow: none;
+}
+
+.synergy-workbench-canvas :where(.workbench-selected-surface) {
+  background-color: var(--workbench-selected-bg);
+}
+
+.synergy-workbench-canvas :where(.workbench-selected-surface:hover) {
+  background-color: var(--workbench-selected-bg-hover);
 }
 .statusbar-indicator-value {
   display: inline-block;
@@ -188,13 +381,6 @@ a:active,
 @media (max-width: 767px) {
   .safe-bottom {
     padding-bottom: env(safe-area-inset-bottom, 0px);
-  }
-
-  [data-slot="dialog-container"]:has(.dialog-settings-v2) {
-    width: 100vw;
-    height: 100dvh;
-    max-width: none;
-    max-height: none;
   }
 
   [data-slot="dialog-container"]:has(.dialog-skill-detail) {

@@ -143,22 +143,22 @@ describe("bridge-handlers", () => {
     })
   })
 
-  // ── not-available methods ─────────────────────────────────────
+  // ── context-required methods ──────────────────────────────────
   describe("not-available methods", () => {
     test("session.read throws", async () => {
       await expect(call("session.read")).rejects.toThrow("session.read is not available in isolated runtime")
     })
 
-    test("tool.invoke throws", async () => {
-      await expect(call("tool.invoke")).rejects.toThrow("tool.invoke is not available in MVP")
+    test("tool.invoke requires plugin tool context", async () => {
+      await expect(call("tool.invoke")).rejects.toThrow("tool.invoke requires plugin tool context")
     })
 
-    test("permission.request returns denied", async () => {
-      const result = await call("permission.request")
-      expect(result).toEqual({
-        approved: false,
-        reason: "interactive permission requests are not available in isolated runtime MVP",
-      })
+    test("permission.request requires plugin tool context", async () => {
+      await expect(call("permission.request")).rejects.toThrow("permission.request requires plugin tool context")
+    })
+
+    test("task.run requires plugin tool context", async () => {
+      await expect(call("task.run")).rejects.toThrow("task.run requires plugin tool context")
     })
   })
 

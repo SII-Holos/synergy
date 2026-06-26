@@ -2591,6 +2591,12 @@ export type SessionCortexDelegation = {
   }
   result?: string
   error?: string
+  visibility?: "visible" | "hidden"
+  tools?: {
+    [key: string]: boolean
+  }
+  output?: unknown
+  outputResult?: unknown
 }
 
 export type SessionWorkingInfo =
@@ -3404,6 +3410,39 @@ export type CortexTask = {
     }>
   }
   notifyParentOnComplete?: boolean
+  visibility?: "visible" | "hidden"
+  tools?: {
+    [key: string]: boolean
+  }
+  output?:
+    | {
+        mode?: "summary"
+      }
+    | {
+        mode: "final_response"
+      }
+    | {
+        mode: "structured"
+        schema: {
+          [key: string]: unknown
+        }
+        maxRepairTurns?: 0 | 1 | 2 | 3
+      }
+  outputResult?:
+    | {
+        mode: "final_response"
+        text: string
+      }
+    | {
+        mode: "structured"
+        status: "valid" | "invalid"
+        source?: "structured_tool" | "final_response"
+        data?: unknown
+        text?: string
+        repairTurns: number
+        error?: string
+        validationErrors?: Array<string>
+      }
 }
 
 export type Command = {
@@ -4622,31 +4661,6 @@ export type EventMcpFailed = {
   }
 }
 
-export type EventCommandExecuted = {
-  type: "command.executed"
-  properties: {
-    name: string
-    sessionID: string
-    arguments: string
-    messageID: string
-  }
-}
-
-export type EventFileEdited = {
-  type: "file.edited"
-  properties: {
-    file: string
-  }
-}
-
-export type EventFileWatcherUpdated = {
-  type: "file.watcher.updated"
-  properties: {
-    file: string
-    event: "add" | "change" | "unlink"
-  }
-}
-
 export type EventLspClientDiagnostics = {
   type: "lsp.client.diagnostics"
   properties: {
@@ -4659,13 +4673,6 @@ export type EventLspUpdated = {
   type: "lsp.updated"
   properties: {
     [key: string]: unknown
-  }
-}
-
-export type EventVcsBranchUpdated = {
-  type: "vcs.branch.updated"
-  properties: {
-    branch?: string
   }
 }
 
@@ -4768,28 +4775,6 @@ export type EventSessionInboxUpdated = {
   }
 }
 
-export type EventNoteCreated = {
-  type: "note.created"
-  properties: {
-    note: NoteInfo
-  }
-}
-
-export type EventNoteUpdated = {
-  type: "note.updated"
-  properties: {
-    note: NoteInfo
-  }
-}
-
-export type EventNoteDeleted = {
-  type: "note.deleted"
-  properties: {
-    id: string
-    scopeID: string
-  }
-}
-
 export type EventQuestionAsked = {
   type: "question.asked"
   properties: QuestionRequest
@@ -4820,6 +4805,20 @@ export type EventQuestionTimedOut = {
   }
 }
 
+export type EventSessionCompacted = {
+  type: "session.compacted"
+  properties: {
+    sessionID: string
+  }
+}
+
+export type EventFileEdited = {
+  type: "file.edited"
+  properties: {
+    file: string
+  }
+}
+
 export type EventRuntimeReloaded = {
   type: "runtime.reloaded"
   properties: {
@@ -4843,6 +4842,28 @@ export type EventTodoUpdated = {
   properties: {
     sessionID: string
     todos: Array<Todo>
+  }
+}
+
+export type EventNoteCreated = {
+  type: "note.created"
+  properties: {
+    note: NoteInfo
+  }
+}
+
+export type EventNoteUpdated = {
+  type: "note.updated"
+  properties: {
+    note: NoteInfo
+  }
+}
+
+export type EventNoteDeleted = {
+  type: "note.deleted"
+  properties: {
+    id: string
+    scopeID: string
   }
 }
 
@@ -4897,13 +4918,6 @@ export type EventBlueprintLoopRestarted = {
   }
 }
 
-export type EventSessionCompacted = {
-  type: "session.compacted"
-  properties: {
-    sessionID: string
-  }
-}
-
 export type EventAgendaItemCreated = {
   type: "agenda.item.created"
   properties: {
@@ -4944,6 +4958,31 @@ export type EventCortexTasksUpdated = {
   type: "cortex.tasks.updated"
   properties: {
     tasks: Array<CortexTask>
+  }
+}
+
+export type EventCommandExecuted = {
+  type: "command.executed"
+  properties: {
+    name: string
+    sessionID: string
+    arguments: string
+    messageID: string
+  }
+}
+
+export type EventFileWatcherUpdated = {
+  type: "file.watcher.updated"
+  properties: {
+    file: string
+    event: "add" | "change" | "unlink"
+  }
+}
+
+export type EventVcsBranchUpdated = {
+  type: "vcs.branch.updated"
+  properties: {
+    branch?: string
   }
 }
 
@@ -5084,12 +5123,8 @@ export type Event =
   | EventMcpResourcesChanged
   | EventMcpReady
   | EventMcpFailed
-  | EventCommandExecuted
-  | EventFileEdited
-  | EventFileWatcherUpdated
   | EventLspClientDiagnostics
   | EventLspUpdated
-  | EventVcsBranchUpdated
   | EventMessageUpdated
   | EventMessageRemoved
   | EventMessagePartUpdated
@@ -5103,16 +5138,18 @@ export type Event =
   | EventSessionStatus
   | EventSessionIdle
   | EventSessionInboxUpdated
-  | EventNoteCreated
-  | EventNoteUpdated
-  | EventNoteDeleted
   | EventQuestionAsked
   | EventQuestionReplied
   | EventQuestionRejected
   | EventQuestionTimedOut
+  | EventSessionCompacted
+  | EventFileEdited
   | EventRuntimeReloaded
   | EventDagUpdated
   | EventTodoUpdated
+  | EventNoteCreated
+  | EventNoteUpdated
+  | EventNoteDeleted
   | EventBlueprintLoopCreated
   | EventBlueprintLoopUpdated
   | EventBlueprintLoopCompleted
@@ -5120,13 +5157,15 @@ export type Event =
   | EventBlueprintLoopCancelled
   | EventBlueprintLoopAuditing
   | EventBlueprintLoopRestarted
-  | EventSessionCompacted
   | EventAgendaItemCreated
   | EventAgendaItemUpdated
   | EventAgendaItemDeleted
   | EventCortexTaskCreated
   | EventCortexTaskCompleted
   | EventCortexTasksUpdated
+  | EventCommandExecuted
+  | EventFileWatcherUpdated
+  | EventVcsBranchUpdated
   | EventPtyCreated
   | EventPtyUpdated
   | EventPtyExited

@@ -5,7 +5,7 @@
   gap: 4px;
   padding: 3px;
   border-radius: 9999px;
-  background: var(--surface-base);
+  background: var(--workbench-control-bg, var(--surface-base));
   border: none;
   color: var(--text-weak);
   cursor: pointer;
@@ -23,7 +23,7 @@
   }
 
   &:hover {
-    background: var(--surface-hover-base);
+    background: var(--workbench-control-bg-hover, var(--surface-hover-base));
     color: var(--text-base);
   }
 
@@ -42,7 +42,7 @@
   flex-direction: column;
   border-radius: var(--radius-2xl, 12px);
   border: 1px solid color-mix(in oklch, var(--border-base) 50%, transparent);
-  background: var(--surface-raised-stronger-non-alpha);
+  background: var(--workbench-popover-bg, var(--surface-raised-stronger-non-alpha));
   background-clip: padding-box;
   box-shadow: var(--shadow-lg);
   z-index: 50;
@@ -86,7 +86,7 @@
     transition: all 120ms ease;
 
     &:hover {
-      background: var(--surface-hover-base);
+      background: var(--workbench-control-bg-hover, var(--surface-hover-base));
       color: var(--icon-strong-base);
     }
   }
@@ -110,7 +110,7 @@
     transition: all 120ms ease;
 
     &:hover {
-      background: var(--surface-hover-base);
+      background: var(--workbench-control-bg-hover, var(--surface-hover-base));
       color: var(--icon-strong-base);
     }
   }
@@ -155,7 +155,7 @@
     transition: background 120ms ease;
 
     &:hover {
-      background: color-mix(in oklch, var(--surface-base) 60%, transparent);
+      background: var(--workbench-control-bg-hover, color-mix(in oklch, var(--surface-base) 60%, transparent));
     }
   }
 

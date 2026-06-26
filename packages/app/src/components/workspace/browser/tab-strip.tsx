@@ -60,7 +60,7 @@ function TabItem(props: TabItemProps) {
       </Show>
       <span class="max-w-[120px] truncate">{props.tab.title || "Untitled"}</span>
       <span
-        class="flex size-5 items-center justify-center rounded text-icon-weak opacity-0 transition-opacity hover:bg-surface-raised-stronger-non-alpha hover:text-icon-base group-hover:opacity-100"
+        class="flex size-5 items-center justify-center rounded text-icon-weak opacity-0 transition-opacity hover:bg-surface-inset-base hover:text-icon-base group-hover:opacity-100"
         classList={{ "opacity-100": props.isActive }}
         onClick={(e) => {
           e.stopPropagation()

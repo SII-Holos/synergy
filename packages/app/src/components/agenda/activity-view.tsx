@@ -51,14 +51,14 @@ export function ActivityView(props: {
   const grouped = createMemo(() => groupAgendaActivity(props.items))
 
   return (
-    <div class="flex min-h-0 flex-1 flex-col px-3 pb-3">
-      <div class="mb-2.5 flex items-center gap-2 rounded-[1rem] bg-surface-inset-base/42 p-2.5 ring-1 ring-inset ring-border-base/45 shadow-[inset_0_1px_0_rgba(214,204,190,0.07)]">
+    <div class="agenda-activity-surface flex min-h-0 flex-1 flex-col px-3 pb-3">
+      <div class="workbench-control-surface mb-2.5 flex items-center gap-2 rounded-[1rem] bg-surface-inset-base p-2.5 ring-1 ring-inset ring-border-base/30">
         <div class="relative min-w-0 flex-1">
           <input
             value={props.query}
             onInput={(e) => props.onQueryChange(e.currentTarget.value)}
-            placeholder="Search activity, agenda title, errors..."
-            class="h-9 w-full rounded-[0.9rem] border border-border-base/40 bg-surface-raised-base/92 pl-3 pr-3 text-12-regular text-text-strong outline-none placeholder:text-text-weaker shadow-[inset_0_1px_0_rgba(214,204,190,0.08)]"
+            placeholder="Search history, agenda title, errors..."
+            class="workbench-input-surface h-9 w-full rounded-[0.9rem] border border-border-base/30 bg-surface-raised-base pl-3 pr-3 text-12-regular text-text-strong outline-none placeholder:text-text-weaker"
           />
         </div>
         <div class="shrink-0 rounded-full bg-surface-raised-stronger-non-alpha px-2.5 py-1 text-[10px] font-medium text-text-weaker ring-1 ring-inset ring-border-base/45">
@@ -78,9 +78,9 @@ export function ActivityView(props: {
           <Show
             when={grouped().length > 0}
             fallback={
-              <div class="flex flex-col items-center justify-center py-16 gap-2 rounded-[1.05rem] bg-surface-inset-base/24 ring-1 ring-inset ring-border-base/35">
+              <div class="flex flex-col items-center justify-center py-16 gap-2 rounded-[1.05rem] bg-surface-inset-base ring-1 ring-inset ring-border-base/35">
                 <Icon name="clock" size="large" class="text-icon-weak" />
-                <span class="text-12-regular text-text-weaker">{props.error ?? "No activity found"}</span>
+                <span class="text-12-regular text-text-weaker">{props.error ?? "No history found"}</span>
               </div>
             }
           >
@@ -97,7 +97,7 @@ export function ActivityView(props: {
             <div class="flex justify-center pt-3">
               <button
                 type="button"
-                class="inline-flex h-9 items-center justify-center rounded-full bg-surface-raised-base px-4 text-11-medium text-text-strong ring-1 ring-inset ring-border-base/40 shadow-[inset_0_1px_0_rgba(214,204,190,0.08)] transition-colors hover:bg-surface-raised-base-hover"
+                class="workbench-control-surface inline-flex h-9 items-center justify-center rounded-full bg-surface-raised-base px-4 text-11-medium text-text-strong ring-1 ring-inset ring-border-base/30 transition-colors hover:bg-surface-raised-base-hover"
                 onClick={props.onLoadMore}
               >
                 Load more
@@ -118,11 +118,11 @@ function ActivityGroupCard(props: {
   const [expanded, setExpanded] = createSignal(true)
 
   return (
-    <div class="overflow-hidden rounded-[1.1rem] bg-surface-inset-base/34 ring-1 ring-inset ring-border-base/40 shadow-[inset_0_1px_0_rgba(214,204,190,0.06)]">
+    <div class="workbench-control-surface overflow-hidden rounded-[1.1rem] bg-surface-inset-base ring-1 ring-inset ring-border-base/30">
       <div
         role="button"
         tabindex={0}
-        class="flex w-full items-center gap-2 px-3.5 py-3 text-left transition-colors hover:bg-surface-raised-base-hover/18"
+        class="flex w-full items-center gap-2 px-3.5 py-3 text-left transition-colors hover:bg-surface-raised-base-hover"
         onClick={() => setExpanded((v) => !v)}
         onKeyDown={(e) => {
           if (e.key === "Enter" || e.key === " ") {
@@ -149,7 +149,7 @@ function ActivityGroupCard(props: {
             <div class="mt-1 flex flex-wrap gap-1">
               <For each={props.group.tags?.slice(0, 3) ?? []}>
                 {(tag) => (
-                  <span class="rounded-full bg-surface-raised-base/88 px-2 py-0.5 text-[9px] font-medium text-text-weaker ring-1 ring-inset ring-border-base/35">
+                  <span class="rounded-full bg-surface-raised-base px-2 py-0.5 text-[9px] font-medium text-text-weaker ring-1 ring-inset ring-border-base/35">
                     {tag}
                   </span>
                 )}
@@ -194,7 +194,7 @@ function ActivityRunRow(props: {
 
   return (
     <div
-      class="flex items-start gap-2.5 rounded-[0.95rem] bg-surface-raised-base/90 px-3.5 py-2.5 shadow-[inset_0_1px_0_rgba(214,204,190,0.08),inset_0_-1px_0_rgba(24,28,38,0.04)] transition-colors hover:bg-surface-raised-base"
+      class="workbench-card-surface flex items-start gap-2.5 rounded-[0.95rem] bg-surface-raised-base px-3.5 py-2.5 transition-colors hover:bg-surface-raised-base-hover"
       onClick={() => {
         const s = session()
         if (s) props.onNavigate(s.id, s.scopeID)

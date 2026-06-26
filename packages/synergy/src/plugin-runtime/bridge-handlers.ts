@@ -2,6 +2,12 @@ import path from "path"
 import fs from "fs/promises"
 import type { HostBridgeMethod } from "./protocol.js"
 import { createConfigAccessor, createAuthStore, createCacheStore } from "../plugin/store.js"
+import {
+  invokePluginTool,
+  requestPluginPermission,
+  runPluginTask,
+  type PluginHostRuntimeContext,
+} from "../plugin/host-services.js"
 
 // ---------------------------------------------------------------------------
 // Types
@@ -12,6 +18,7 @@ export interface BridgeHandlerInput {
   pluginDir: string
   method: HostBridgeMethod
   params: unknown
+  signal?: AbortSignal
 }
 
 // ---------------------------------------------------------------------------
@@ -35,6 +42,7 @@ function resolveContainedPath(pluginDir: string, requestedPath: string): string 
 
 export async function executeBridgeMethod(input: BridgeHandlerInput): Promise<unknown> {
   const { pluginId, pluginDir, method, params } = input
+  const bridgeContext = normalizeBridgeContext(params, input.signal)
 
   switch (method) {
     // ── config ───────────────────────────────────────────────
@@ -203,22 +211,63 @@ export async function executeBridgeMethod(input: BridgeHandlerInput): Promise<un
       return {
         pluginId,
         pluginDir,
+        directory: bridgeContext?.directory,
       }
 
     case "session.getMetadata":
-      return null
+      return bridgeContext
+        ? {
+            sessionID: bridgeContext.sessionID,
+            messageID: bridgeContext.messageID,
+            agent: bridgeContext.agent,
+          }
+        : null
 
     // ── not available ────────────────────────────────────────
     case "session.read":
       throw new Error("session.read is not available in isolated runtime")
 
     case "tool.invoke":
-      throw new Error("tool.invoke is not available in MVP")
+      if (!bridgeContext) throw new Error("tool.invoke requires plugin tool context")
+      return invokePluginTool({
+        context: bridgeContext,
+        request: stripBridgeContext(params) as any,
+      })
 
     case "permission.request":
-      return {
-        approved: false,
-        reason: "interactive permission requests are not available in isolated runtime MVP",
-      }
+      if (!bridgeContext) throw new Error("permission.request requires plugin tool context")
+      await requestPluginPermission(bridgeContext, stripBridgeContext(params) as any)
+      return { approved: true }
+
+    case "task.run":
+      if (!bridgeContext) throw new Error("task.run requires plugin tool context")
+      return runPluginTask({
+        pluginId,
+        pluginDir,
+        context: bridgeContext,
+        request: stripBridgeContext(params) as any,
+      })
   }
+}
+
+function normalizeBridgeContext(params: unknown, signal?: AbortSignal): PluginHostRuntimeContext | undefined {
+  const raw = (params as any)?.context
+  if (!raw || typeof raw !== "object") return undefined
+  if (typeof raw.sessionID !== "string" || typeof raw.messageID !== "string" || typeof raw.agent !== "string") {
+    return undefined
+  }
+  return {
+    sessionID: raw.sessionID,
+    messageID: raw.messageID,
+    agent: raw.agent,
+    directory: typeof raw.directory === "string" ? raw.directory : undefined,
+    callID: typeof raw.callID === "string" ? raw.callID : undefined,
+    abort: signal,
+  }
+}
+
+function stripBridgeContext(params: unknown): unknown {
+  if (!params || typeof params !== "object") return params
+  const { context: _context, ...rest } = params as Record<string, unknown>
+  return rest
 }

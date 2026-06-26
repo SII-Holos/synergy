@@ -135,7 +135,7 @@ export function LibraryPanel() {
         </AppPanel.Header>
         <Show when={showSearch()}>
           <div class="shrink-0 px-6 pt-1 pb-2">
-            <div class="flex items-center gap-2.5 rounded-xl bg-surface-inset-base/60 px-3.5 py-2">
+            <div class="flex items-center gap-2.5 rounded-xl bg-surface-inset-base px-3.5 py-2">
               <Icon name="search" size="small" class="text-icon-weak shrink-0" />
               <input
                 type="text"

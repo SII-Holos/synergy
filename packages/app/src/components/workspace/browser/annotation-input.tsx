@@ -90,22 +90,22 @@ export function AnnotationInput(props: Props) {
         }}
       >
         <div class="relative">
-          <div class="w-3 h-3 rounded-full bg-accent ring-2 ring-background-strong animate-pulse" />
-          <div class="absolute inset-0 w-3 h-3 rounded-full bg-accent/40 animate-ping" />
+          <div class="w-3 h-3 rounded-full bg-text-strong ring-2 ring-background-strong animate-pulse" />
+          <div class="absolute inset-0 w-3 h-3 rounded-full bg-text-strong/30 animate-ping" />
         </div>
       </div>
 
       {/* Popup input */}
       <div
         ref={popupRef}
-        class="absolute z-50 w-72 bg-surface-elevated rounded-lg border border-border shadow-xl"
+        class="workbench-popover-surface absolute z-50 w-72 rounded-lg border border-border-base/40 bg-surface-raised-stronger-non-alpha"
         style={popupStyle()}
         onKeyDown={handleKeyDown}
       >
         <div class="p-3 pb-2">
           <textarea
             ref={textareaRef}
-            class="w-full bg-transparent text-sm text-primary placeholder-secondary resize-none outline-none"
+            class="w-full resize-none bg-transparent text-sm text-text-base outline-none placeholder:text-text-weaker"
             rows={2}
             placeholder="Add a comment about this element..."
             value={comment()}
@@ -119,7 +119,7 @@ export function AnnotationInput(props: Props) {
         <div class="flex items-center justify-between px-3 pb-2">
           <button
             type="button"
-            class="text-xs text-secondary hover:text-primary transition-colors"
+            class="text-xs text-text-weak transition-colors hover:text-text-strong"
             onClick={() => {
               setShowStyle(!showStyle())
               computePosition()
@@ -130,14 +130,14 @@ export function AnnotationInput(props: Props) {
           <div class="flex gap-2">
             <button
               type="button"
-              class="px-3 py-1 text-xs rounded-md bg-border/40 text-secondary hover:bg-border transition-colors"
+              class="rounded-md bg-surface-inset-base px-3 py-1 text-xs text-text-base transition-colors hover:bg-surface-inset-base"
               onClick={props.onCancel}
             >
               Cancel
             </button>
             <button
               type="button"
-              class="px-3 py-1 text-xs rounded-md bg-accent text-white hover:bg-accent-hover transition-colors disabled:opacity-50"
+              class="rounded-md bg-text-strong px-3 py-1 text-xs text-background-base transition-colors hover:opacity-90 disabled:opacity-50"
               disabled={!comment().trim()}
               onClick={handleSubmit}
             >
@@ -147,22 +147,22 @@ export function AnnotationInput(props: Props) {
         </div>
 
         {showStyle() && (
-          <div class="flex gap-3 px-3 pb-3 pt-2 border-t border-border/50">
-            <label class="flex items-center gap-1 text-xs text-secondary">
+          <div class="flex gap-3 border-t border-border-base/40 px-3 pb-3 pt-2">
+            <label class="flex items-center gap-1 text-xs text-text-weak">
               Size
               <input
                 type="text"
-                class="w-16 px-1.5 py-0.5 bg-surface rounded border border-border text-xs"
+                class="w-16 rounded border border-border-base/40 bg-input-base px-1.5 py-0.5 text-xs text-text-base"
                 placeholder="14px"
                 value={fontSize()}
                 onInput={(e) => setFontSize((e.target as HTMLInputElement).value)}
               />
             </label>
-            <label class="flex items-center gap-1 text-xs text-secondary">
+            <label class="flex items-center gap-1 text-xs text-text-weak">
               Color
               <input
                 type="text"
-                class="w-20 px-1.5 py-0.5 bg-surface rounded border border-border text-xs"
+                class="w-20 rounded border border-border-base/40 bg-input-base px-1.5 py-0.5 text-xs text-text-base"
                 placeholder="#3b82f6"
                 value={color()}
                 onInput={(e) => setColor((e.target as HTMLInputElement).value)}

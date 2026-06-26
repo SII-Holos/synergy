@@ -4,7 +4,9 @@ import { Icon, type IconName } from "@ericsanchezok/synergy-ui/icon"
 
 function Root(props: ParentProps<{ class?: string }>) {
   return (
-    <div class={`flex h-full min-h-0 bg-surface-raised-stronger-non-alpha text-text-base ${props.class ?? ""}`}>
+    <div
+      class={`synergy-workbench-canvas flex h-full min-h-0 bg-background-stronger text-text-base ${props.class ?? ""}`}
+    >
       {props.children}
     </div>
   )
@@ -12,7 +14,7 @@ function Root(props: ParentProps<{ class?: string }>) {
 
 function Nav(props: ParentProps) {
   return (
-    <div class="shrink-0 w-[224px] border-r border-border-weaker-base/70 flex flex-col overflow-hidden bg-surface-inset-base">
+    <div class="shrink-0 w-[224px] border-r border-border-weaker-base/70 flex flex-col overflow-hidden bg-background-base">
       {props.children}
     </div>
   )
@@ -33,7 +35,7 @@ function NavItem(props: { icon: IconName; label: string; active?: boolean; badge
       type="button"
       classList={{
         "flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-13-medium transition-colors w-full text-left": true,
-        "bg-surface-raised-base text-text-strong shadow-sm": props.active,
+        "workbench-selected-surface bg-surface-raised-base text-text-strong shadow-sm": props.active,
         "text-text-weak hover:text-text-base hover:bg-surface-raised-base-hover": !props.active,
       }}
       onClick={props.onClick}
@@ -147,7 +149,7 @@ function Card(props: {
       type={isClickable ? "button" : undefined}
       classList={{
         "flex items-center gap-3 px-3.5 py-3 rounded-xl text-left w-full transition-colors": true,
-        "bg-surface-raised-base text-text-strong": props.active,
+        "workbench-selected-surface bg-surface-raised-base text-text-strong": props.active,
         "hover:bg-surface-raised-base-hover cursor-pointer": isClickable && !props.active,
         "cursor-default": !isClickable,
       }}
@@ -198,7 +200,7 @@ function SegmentedNav(props: {
             type="button"
             classList={{
               "px-3 py-1.5 rounded-md text-13-medium transition-colors": true,
-              "bg-surface-raised-base text-text-strong shadow-sm": props.active === item.id,
+              "workbench-selected-surface bg-surface-raised-base text-text-strong shadow-sm": props.active === item.id,
               "text-text-weak hover:text-text-base": props.active !== item.id,
             }}
             onClick={() => props.onChange(item.id)}

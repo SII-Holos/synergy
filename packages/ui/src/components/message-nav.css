@@ -81,10 +81,10 @@
 }
 
 [data-slot="message-nav-item"]:hover [data-slot="message-nav-message-button"] {
-  background-color: var(--surface-base);
+  background-color: var(--workbench-control-bg-hover, var(--surface-base));
 }
 [data-slot="message-nav-item"]:active [data-slot="message-nav-message-button"] {
-  background-color: var(--surface-base-active);
+  background-color: var(--workbench-selected-bg-hover, var(--surface-base-active));
 }
 
 [data-slot="message-nav-item"]:active [data-slot="message-nav-title-preview"] {
@@ -101,7 +101,7 @@
   justify-content: center;
   align-items: center;
   border-radius: var(--radius-md);
-  background: var(--surface-raised-stronger-non-alpha);
+  background: var(--workbench-popover-bg, var(--surface-raised-stronger-non-alpha));
   max-height: calc(100vh - 6rem);
   overflow-y: auto;
 

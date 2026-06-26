@@ -48,7 +48,6 @@ export const SemanticIconToken = {
   "settings.commands": "terminal",
   "settings.instructions": "file-text",
   "settings.mcp": "cable",
-  "settings.plugins": "package",
   "settings.channels": "globe",
   "settings.email": "mail",
   "settings.permissions": "shield-check",
@@ -60,6 +59,7 @@ export const SemanticIconToken = {
   "settings.formatter": "file-pen",
   "settings.lsp": "braces",
   "settings.observability": "stethoscope",
+  "settings.diagnostics": "activity",
   "settings.import": "upload",
   "settings.configFiles": "folder",
 
@@ -67,6 +67,7 @@ export const SemanticIconToken = {
   "app.sidebar": "panel-left",
   "app.statusBar": "panel-bottom",
   "app.statusBar.toggle": "panel-bottom-open",
+  "app.plugins": "package",
   "navigation.back": "arrow-left",
   "navigation.expand": "chevron-right",
   "navigation.collapse": "chevron-down",

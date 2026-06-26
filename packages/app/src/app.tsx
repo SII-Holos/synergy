@@ -29,6 +29,8 @@ import DirectoryLayout from "@/pages/directory-layout"
 import { ErrorPage } from "./pages/error"
 import { PluginToolBridge, PluginHostProvider } from "@/plugin"
 import { MarketplacePage, PluginDetailPage } from "@/plugin"
+import { AgendaPanel } from "@/components/agenda"
+import { LibraryPanel } from "@/components/library"
 import { iife } from "@ericsanchezok/synergy-util/iife"
 import { base64Encode } from "@ericsanchezok/synergy-util/encode"
 import { Suspense } from "solid-js"
@@ -174,6 +176,8 @@ function ConnectedApp() {
                     )}
                   >
                     <Route path="/" component={() => <Navigate href={`/${base64Encode("home")}/session`} />} />
+                    <Route path="/agenda" component={AgendaPanel} />
+                    <Route path="/library" component={LibraryPanel} />
                     <Route path="/plugins/marketplace" component={MarketplacePage} />
                     <Route path="/plugins/:pluginId" component={PluginDetailPage} />
                     <Route path="/:dir" component={DirectoryLayout}>

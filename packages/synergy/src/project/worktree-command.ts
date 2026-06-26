@@ -1,5 +1,5 @@
 import z from "zod"
-import { Command } from "../command/command"
+import type { Command } from "../command/command"
 import { Worktree } from "./worktree"
 
 export namespace WorktreeCommand {
@@ -128,7 +128,9 @@ export namespace WorktreeCommand {
     }
   }
 
-  Command.registerAction("worktree", async (input) =>
-    WorktreeCommand.run(WorktreeCommand.parse(input.sessionID, input.arguments)),
-  )
+  export function register(command: { registerAction(action: string, handler: Command.ActionHandler): unknown }) {
+    command.registerAction("worktree", async (input) =>
+      WorktreeCommand.run(WorktreeCommand.parse(input.sessionID, input.arguments)),
+    )
+  }
 }

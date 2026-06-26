@@ -50,7 +50,20 @@ export namespace ToolResolver {
     processor: SessionProcessor.Info
     session?: Info
     userTools?: Record<string, boolean>
+    ephemeralTools?: EphemeralTool[]
     includeMCP?: boolean
+  }
+
+  export interface EphemeralTool {
+    id: string
+    description: string
+    inputSchema: JSONSchema7
+    display?: ToolDisplay
+    execute(args: Record<string, unknown>): Promise<{
+      title: string
+      output: string
+      metadata?: Record<string, any>
+    }>
   }
 
   export interface Definition {
@@ -791,9 +804,83 @@ export namespace ToolResolver {
     return result
   }
 
+  function forcedTools(userTools?: Record<string, boolean>) {
+    return Object.entries(userTools ?? {})
+      .filter(([id, enabled]) => id !== "*" && enabled === true)
+      .map(([id]) => id)
+  }
+
+  function userToolAllows(toolID: string, userTools?: Record<string, boolean>) {
+    if (!userTools) return true
+    if (userTools[toolID] === true) return true
+    if (userTools[toolID] === false) return false
+    if (userTools["*"] === false) return false
+    return true
+  }
+
   export async function definitions(input: Omit<Input, "processor">): Promise<Definition[]> {
     using _ = log.time("definitions")
     let result: Definition[] = []
+    const ephemeralToolIds = new Set(input.ephemeralTools?.map((item) => item.id) ?? [])
+
+    for (const item of input.ephemeralTools ?? []) {
+      const schema = ProviderTransform.schema(input.model, item.inputSchema as any, {
+        tool: item.id,
+      }) as JSONSchema7
+      result.push({
+        id: item.id,
+        exposure: { mode: "internal" },
+        display: item.display,
+        description: item.description,
+        inputSchema: schema,
+        createRuntimeTool(runtimeInput) {
+          return tool({
+            id: item.id as any,
+            description: item.description,
+            inputSchema: jsonSchema(schema as any),
+            async execute(args, options) {
+              let resolveExecution!: (outcome: SessionProcessor.ToolOutcome) => void
+              const executionPromise = new Promise<SessionProcessor.ToolOutcome>((r) => {
+                resolveExecution = r
+              })
+              runtimeInput.processor.trackExecution(options.toolCallId, executionPromise)
+
+              try {
+                const result = await item.execute(args as Record<string, unknown>)
+                resolveExecution({
+                  status: "completed",
+                  input: args,
+                  result: {
+                    title: result.title,
+                    output: result.output,
+                    metadata: result.metadata ?? {},
+                  },
+                })
+                return {
+                  title: result.title,
+                  output: result.output,
+                  metadata: result.metadata ?? {},
+                }
+              } catch (error) {
+                const message = error instanceof Error ? error.message : String(error)
+                resolveExecution({
+                  status: "error",
+                  input: args,
+                  error: message,
+                })
+                throw error
+              }
+            },
+            toModelOutput(result) {
+              return {
+                type: "text",
+                value: result.output,
+              }
+            },
+          })
+        },
+      })
+    }
 
     for (const item of await ToolRegistry.tools(input.model.providerID, input.agent)) {
       const schema = ProviderTransform.schema(input.model, z.toJSONSchema(item.parameters), {
@@ -1213,11 +1300,12 @@ export namespace ToolResolver {
     result = result.filter((d) =>
       ToolExposure.isVisible(d.id, d.exposure, input.session?.toolState, {
         forcedGroups: forcedToolGroups(input.session),
+        forcedTools: forcedTools(input.userTools),
       }),
     )
 
     if (input.session?.blueprint?.planMode) {
-      result = result.filter((d) => PLAN_MODE_ALLOWED_TOOLS.has(d.id))
+      result = result.filter((d) => PLAN_MODE_ALLOWED_TOOLS.has(d.id) || ephemeralToolIds.has(d.id))
     }
 
     const activeBlueprintLoopID = input.session?.blueprint?.loopID
@@ -1234,7 +1322,7 @@ export namespace ToolResolver {
     )
 
     return result.filter(
-      (item) => !disabled.has(item.id) && input.userTools?.[item.id] !== false && input.userTools?.["*"] !== false,
+      (item) => (!disabled.has(item.id) || ephemeralToolIds.has(item.id)) && userToolAllows(item.id, input.userTools),
     )
   }
 

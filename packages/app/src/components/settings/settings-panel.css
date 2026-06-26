@@ -1,49 +1,127 @@
-/* ===== Settings dialog overrides =====
- * The Kobalte Dialog provides backdrop/escape/close mechanics.
- * We override the dialog container size to feel like a large panel.
- * dialog-settings-v2 class is on [data-slot="dialog-content"],
- * so we use :has() to reach its parent container.
- */
-
-/* Override dialog container to Settings panel size */
-[data-component="dialog"]:has(.dialog-settings-v2) [data-slot="dialog-container"] {
-  width: min(calc(100vw - 48px), 1180px);
-  height: min(calc(100vh - 56px), 820px);
-  max-height: min(calc(100vh - 56px), 820px);
-}
-
-[data-component="dialog"]:has(.dialog-settings-v2) [data-slot="dialog-content"] {
-  background: var(--surface-raised-stronger-non-alpha, #1f2023);
-  border-color: color-mix(in srgb, var(--border-base) 62%, transparent);
-  box-shadow:
-    0 28px 90px rgba(0, 0, 0, 0.48),
-    0 10px 28px rgba(0, 0, 0, 0.28),
-    0 0 0 1px rgba(255, 255, 255, 0.055) inset;
-}
-
-/* Make content area fill the container */
-.dialog-settings-v2 {
+.settings-dialog-panel {
   height: 100%;
   min-height: 0;
-  background: var(--surface-raised-stronger-non-alpha, #1f2023);
-}
-
-/* Body fills remaining space with no scroll — AppPanel handles its own scroll */
-.dialog-settings-v2 [data-slot="dialog-body"] {
   overflow: hidden;
-  background: var(--surface-raised-stronger-non-alpha, #1f2023);
 }
 
-/* Hide the built-in Dialog header (title + close) — AppPanel provides its own chrome */
-.dialog-settings-v2 [data-slot="dialog-header"] {
-  display: none;
+[data-component="dialog"]:has(.settings-dialog-panel) {
+  margin-left: 0;
 }
 
-@media (max-width: 840px) {
-  [data-component="dialog"]:has(.dialog-settings-v2) [data-slot="dialog-container"] {
-    width: 100vw;
-    height: 100vh;
-    max-height: 100vh;
+[data-component="dialog"] [data-slot="dialog-container"]:has(.settings-dialog-panel) {
+  width: min(calc(100vw - 64px), 1440px);
+  height: min(calc(100vh - 56px), 920px);
+}
+
+[data-component="dialog"] [data-slot="dialog-content"].settings-dialog-panel {
+  min-height: 0;
+  border-radius: 14px;
+  border-color: color-mix(in oklch, var(--border-base) 44%, transparent);
+  box-shadow:
+    0 24px 82px rgba(0, 0, 0, 0.34),
+    0 1px 0 color-mix(in oklch, var(--border-base) 34%, transparent);
+}
+
+[data-component="dialog"] [data-slot="dialog-content"].settings-dialog-panel [data-slot="dialog-body"] {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.settings-panel-frame {
+  --settings-canvas-bg: light-dark(rgb(240 241 244), rgb(24 24 27));
+  --settings-panel-bg: light-dark(rgb(235 237 240), rgb(30 30 33));
+  --settings-panel-bg-hover: light-dark(rgb(228 231 235), rgb(36 36 39));
+  --settings-card-bg: light-dark(rgb(229 232 236), rgb(40 40 43));
+  --settings-card-bg-hover: light-dark(rgb(222 226 232), rgb(46 46 49));
+  --settings-card-secondary-bg: light-dark(rgb(224 228 233), rgb(44 44 47));
+  --settings-popover-bg: light-dark(rgb(226 230 235), rgb(46 46 49));
+  --settings-control-bg: light-dark(rgb(223 227 233), rgb(48 48 51));
+  --settings-control-bg-hover: light-dark(rgb(214 220 228), rgb(54 54 58));
+  --settings-input-bg: light-dark(rgb(221 226 232), rgb(50 50 54));
+  --settings-input-bg-hover: light-dark(rgb(212 219 227), rgb(56 56 60));
+  --settings-selected-bg: light-dark(rgb(207 215 225), rgb(58 58 63));
+  --settings-selected-bg-hover: light-dark(rgb(198 207 219), rgb(64 64 69));
+  --settings-border: light-dark(rgba(17, 24, 39, 0.08), rgba(244, 244, 245, 0.08));
+  --settings-focus-ring:
+    0 0 0 1px color-mix(in srgb, var(--text-strong) 24%, transparent),
+    0 0 0 3px color-mix(in srgb, var(--text-strong) 7%, transparent);
+
+  position: relative;
+  height: 100%;
+  min-height: 0;
+  background: var(--settings-canvas-bg);
+}
+
+.settings-panel-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  color: var(--icon-weak);
+  background: var(--settings-control-bg);
+  border: 1px solid var(--settings-border);
+  transition:
+    color 140ms ease,
+    background-color 140ms ease,
+    border-color 140ms ease;
+}
+
+.settings-panel-close:hover {
+  color: var(--icon-base);
+  background: var(--settings-control-bg-hover);
+  border-color: color-mix(in oklch, var(--border-base) 56%, transparent);
+}
+
+.settings-panel-root {
+  --workbench-canvas-bg: var(--settings-canvas-bg);
+  --workbench-panel-bg: var(--settings-panel-bg);
+  --workbench-panel-bg-hover: var(--settings-panel-bg-hover);
+  --workbench-card-bg: var(--settings-card-bg);
+  --workbench-card-bg-hover: var(--settings-card-bg-hover);
+  --workbench-card-secondary-bg: var(--settings-card-secondary-bg);
+  --workbench-control-bg: var(--settings-control-bg);
+  --workbench-control-bg-hover: var(--settings-control-bg-hover);
+  --workbench-input-bg: var(--settings-input-bg);
+  --workbench-input-bg-hover: var(--settings-input-bg-hover);
+  --workbench-popover-bg: var(--settings-popover-bg);
+  --workbench-selected-bg: var(--settings-selected-bg);
+  --workbench-selected-bg-hover: var(--settings-selected-bg-hover);
+  --workbench-border: var(--settings-border);
+  --background-base: var(--settings-panel-bg);
+  --background-stronger: var(--settings-canvas-bg);
+  --surface-raised-base: var(--settings-card-bg);
+  --surface-raised-base-hover: var(--settings-card-bg-hover);
+  --surface-raised-stronger-non-alpha: var(--settings-popover-bg);
+  --surface-inset-base: var(--settings-control-bg);
+  --input-base: var(--settings-input-bg);
+  --input-hover: var(--settings-input-bg-hover);
+  --shadow-xs-border-select: var(--settings-focus-ring);
+
+  height: 100%;
+  min-height: 0;
+  background: var(--settings-canvas-bg);
+}
+
+.settings-panel-loading {
+  height: 100%;
+  min-height: 240px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-weak);
+  font-size: 13px;
+}
+
+@media (max-width: 900px) {
+  [data-component="dialog"] [data-slot="dialog-container"]:has(.settings-dialog-panel) {
+    width: min(calc(100vw - 16px), 100vw);
+    height: min(calc(100dvh - 16px), 100dvh);
   }
 }
 
@@ -89,8 +167,8 @@
   gap: 7px;
   padding: 0 9px;
   border-radius: 8px;
-  background: var(--surface-raised-base);
-  border: 1px solid color-mix(in oklch, var(--border-weak-base) 64%, transparent);
+  background: var(--settings-control-bg);
+  border: 1px solid var(--settings-border);
   color: var(--text-weaker);
 }
 
@@ -125,8 +203,8 @@
 .ds-setting-subsection {
   padding: 18px;
   border-radius: 14px;
-  border: 1px solid color-mix(in srgb, var(--border-base) 52%, transparent);
-  background: color-mix(in srgb, var(--surface-raised-base) 88%, var(--background-base));
+  border: 1px solid var(--settings-border);
+  background: var(--settings-card-bg);
 }
 
 .ds-setting-subsection + .ds-setting-subsection {
@@ -179,8 +257,8 @@
   gap: 1px;
   padding: 2px;
   border-radius: 9px;
-  background: var(--surface-raised-base);
-  box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--border-weak-base) 60%, transparent);
+  background: var(--settings-control-bg);
+  box-shadow: inset 0 0 0 1px var(--settings-border);
 }
 
 .ds-segment-item {
@@ -199,15 +277,13 @@
 
 .ds-segment-item:hover:not(.ds-segment-item-active) {
   color: var(--text-base);
-  background: var(--surface-raised-base-hover);
+  background: var(--settings-control-bg-hover);
 }
 
 .ds-segment-item-active {
   color: var(--text-strong);
-  background: var(--surface-raised-stronger-non-alpha);
-  box-shadow:
-    0 1px 3px rgba(0, 0, 0, 0.06),
-    0 0 0 1px color-mix(in oklch, var(--border-base) 30%, transparent);
+  background: var(--settings-selected-bg);
+  box-shadow: inset 0 0 0 1px var(--settings-border);
 }
 
 .ds-segment-reset {
@@ -216,7 +292,7 @@
   padding: 0;
   font-size: 11px;
   font-weight: 500;
-  color: var(--text-interactive-base);
+  color: var(--text-weak);
   cursor: pointer;
   white-space: nowrap;
 }
@@ -241,8 +317,8 @@
   gap: 6px;
   padding: 14px;
   border-radius: 14px;
-  border: 1px solid color-mix(in oklch, var(--border-base) 42%, transparent);
-  background: color-mix(in srgb, var(--surface-raised-base) 90%, var(--background-base));
+  border: 1px solid var(--settings-border);
+  background: var(--settings-card-bg);
   color: var(--text-base);
   text-align: left;
   cursor: pointer;
@@ -254,13 +330,13 @@
 
 .ds-profile-card:hover {
   border-color: color-mix(in oklch, var(--border-base) 70%, transparent);
-  background: var(--surface-raised-base-hover);
+  background: var(--settings-card-bg-hover);
 }
 
 .ds-profile-card-active {
-  border-color: color-mix(in oklch, var(--accent-base) 70%, var(--border-base));
-  background: color-mix(in oklch, var(--accent-base) 10%, var(--surface-raised-stronger-non-alpha));
-  box-shadow: 0 0 0 1px color-mix(in oklch, var(--accent-base) 22%, transparent);
+  border-color: color-mix(in oklch, var(--border-base) 58%, transparent);
+  background: var(--settings-selected-bg);
+  box-shadow: inset 0 0 0 1px var(--settings-border);
 }
 
 .ds-profile-name {
@@ -315,8 +391,8 @@
   gap: 12px;
   padding: 10px 12px;
   border-radius: 10px;
-  border: 1px solid color-mix(in oklch, var(--border-base) 28%, transparent);
-  background: var(--surface-raised-base);
+  border: 1px solid var(--settings-border);
+  background: var(--settings-card-bg);
 }
 
 .ds-path-row {
@@ -325,8 +401,8 @@
   gap: 14px;
   padding: 12px;
   border-radius: 10px;
-  border: 1px solid color-mix(in oklch, var(--border-base) 28%, transparent);
-  background: var(--surface-raised-base);
+  border: 1px solid var(--settings-border);
+  background: var(--settings-card-bg);
 }
 
 .ds-path-row + .ds-path-row {
@@ -337,7 +413,7 @@
   margin-top: 5px;
   padding: 6px 8px;
   border-radius: 7px;
-  background: var(--surface-inset-base);
+  background: var(--settings-control-bg);
   color: var(--text-weak);
   font-size: 12px;
   line-height: 1.35;
@@ -389,8 +465,8 @@
 
 .ds-mcp-card {
   border-radius: 12px;
-  border: 1px solid color-mix(in oklch, var(--border-base) 20%, transparent);
-  background: var(--surface-raised-base);
+  border: 1px solid var(--settings-border);
+  background: var(--settings-card-bg);
   overflow: hidden;
 }
 
@@ -408,7 +484,7 @@
 }
 
 .ds-mcp-card-header:hover {
-  background: var(--surface-raised-base-hover);
+  background: var(--settings-card-bg-hover);
 }
 
 .ds-mcp-card-body {
@@ -521,8 +597,8 @@
   gap: 14px;
   padding: 14px;
   border-radius: 12px;
-  border: 1px solid color-mix(in oklch, var(--border-base) 34%, transparent);
-  background: var(--surface-raised-base);
+  border: 1px solid var(--settings-border);
+  background: var(--settings-card-bg);
 }
 
 .account-identity-avatar {
@@ -577,13 +653,13 @@
   min-height: 58px;
   padding: 10px 12px;
   border-radius: 10px;
-  border: 1px solid color-mix(in oklch, var(--border-base) 28%, transparent);
-  background: var(--surface-raised-base);
+  border: 1px solid var(--settings-border);
+  background: var(--settings-card-bg);
 }
 
 .account-agent-row-active {
-  border-color: color-mix(in oklch, var(--accent-base) 44%, var(--border-base));
-  background: color-mix(in oklch, var(--accent-base) 8%, var(--surface-raised-base));
+  border-color: color-mix(in oklch, var(--border-base) 58%, transparent);
+  background: var(--settings-selected-bg);
 }
 
 .account-agent-icon {
@@ -611,8 +687,8 @@
 .providers-detail {
   min-width: 0;
   border-radius: 12px;
-  border: 1px solid color-mix(in oklch, var(--border-base) 28%, transparent);
-  background: color-mix(in srgb, var(--surface-raised-base) 90%, var(--background-base));
+  border: 1px solid var(--settings-border);
+  background: var(--settings-panel-bg);
 }
 
 .providers-directory {
@@ -635,8 +711,8 @@
   gap: 8px;
   padding: 0 10px;
   border-radius: 9px;
-  background: var(--surface-inset-base);
-  border: 1px solid color-mix(in oklch, var(--border-base) 28%, transparent);
+  background: var(--settings-control-bg);
+  border: 1px solid var(--settings-border);
   color: var(--text-weaker);
 }
 
@@ -682,13 +758,13 @@
 
 .providers-row:hover,
 .usage-connect-card:hover {
-  background: var(--surface-raised-base-hover);
+  background: var(--settings-card-bg-hover);
   border-color: color-mix(in oklch, var(--border-base) 34%, transparent);
 }
 
 .providers-row-active {
-  background: color-mix(in oklch, var(--accent-base) 8%, var(--surface-raised-base));
-  border-color: color-mix(in oklch, var(--accent-base) 34%, var(--border-base));
+  background: var(--settings-selected-bg);
+  border-color: color-mix(in oklch, var(--border-base) 58%, transparent);
 }
 
 .providers-row-icon,
@@ -765,7 +841,7 @@
 }
 
 .provider-flow-back:hover {
-  background: var(--surface-raised-base-hover);
+  background: var(--settings-control-bg-hover);
   color: var(--text-base);
 }
 
@@ -773,8 +849,8 @@
 .provider-flow-usage {
   padding: 12px;
   border-radius: 10px;
-  border: 1px solid color-mix(in oklch, var(--border-base) 26%, transparent);
-  background: var(--surface-raised-base);
+  border: 1px solid var(--settings-border);
+  background: var(--settings-card-bg);
 }
 
 .provider-method-list,
@@ -798,14 +874,14 @@
 }
 
 .provider-method-row:hover {
-  background: var(--surface-raised-base-hover);
+  background: var(--settings-card-bg-hover);
 }
 
 .provider-method-indicator {
   width: 8px;
   height: 8px;
   border-radius: 999px;
-  background: color-mix(in oklch, var(--accent-base) 58%, var(--text-weaker));
+  background: var(--text-weaker);
 }
 
 .provider-form-actions {
@@ -850,8 +926,8 @@
 .usage-provider-panel {
   padding: 14px;
   border-radius: 12px;
-  border: 1px solid color-mix(in oklch, var(--border-base) 28%, transparent);
-  background: var(--surface-raised-base);
+  border: 1px solid var(--settings-border);
+  background: var(--settings-card-bg);
 }
 
 .usage-warning-row,
@@ -922,8 +998,8 @@
   gap: 7px;
   padding: 0 12px;
   border-radius: 8px;
-  border: 1px solid color-mix(in oklch, var(--border-base) 52%, transparent);
-  background: var(--surface-raised-base);
+  border: 1px solid var(--settings-border);
+  background: var(--settings-control-bg);
   color: var(--text-strong);
   font-size: 13px;
   font-weight: 600;
@@ -931,7 +1007,7 @@
 }
 
 .ds-import-file-button:hover {
-  background: var(--surface-raised-base-hover);
+  background: var(--settings-control-bg-hover);
 }
 
 .ds-import-file-button input {
@@ -944,7 +1020,7 @@
   padding: 0 10px;
   border-radius: 8px;
   border: 1px solid color-mix(in oklch, var(--border-weak-base) 70%, transparent);
-  background: var(--input-base);
+  background: var(--settings-input-bg);
   color: var(--text-strong);
   font-size: 13px;
 }
@@ -976,8 +1052,8 @@
   gap: 8px;
   padding: 7px 10px;
   border-radius: 8px;
-  border: 1px solid color-mix(in oklch, var(--border-base) 40%, transparent);
-  background: var(--surface-raised-base);
+  border: 1px solid var(--settings-border);
+  background: var(--settings-control-bg);
   color: var(--text-base);
   font-size: 12px;
   font-weight: 600;
@@ -995,8 +1071,8 @@
 
 .ds-import-domain-card {
   border-radius: 10px;
-  border: 1px solid color-mix(in oklch, var(--border-base) 34%, transparent);
-  background: var(--surface-raised-base);
+  border: 1px solid var(--settings-border);
+  background: var(--settings-card-bg);
   overflow: hidden;
 }
 
@@ -1027,8 +1103,8 @@
 .ds-email-card {
   padding: 18px;
   border-radius: 14px;
-  border: 1px solid color-mix(in srgb, var(--border-base) 52%, transparent);
-  background: color-mix(in srgb, var(--surface-raised-base) 88%, var(--background-base));
+  border: 1px solid var(--settings-border);
+  background: var(--settings-card-bg);
   display: flex;
   flex-direction: column;
   gap: 8px;

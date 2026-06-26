@@ -113,7 +113,7 @@ export namespace ToolDiscovery {
       )
 
     const tools = catalog.tools
-      .filter((tool) => tool.exposure.mode !== "resident")
+      .filter((tool) => tool.exposure.mode !== "resident" && tool.exposure.mode !== "internal")
       .map(
         (tool): ToolExposure.SearchEntry => ({
           type: "tool",
@@ -133,9 +133,9 @@ export namespace ToolDiscovery {
     return [...groups, ...tools]
   }
 
-  export function visibleTools(catalog: Catalog, forcedGroups?: Iterable<string>) {
+  export function visibleTools(catalog: Catalog, forcedGroups?: Iterable<string>, forcedTools?: Iterable<string>) {
     return catalog.tools
-      .filter((tool) => ToolExposure.isVisible(tool.id, tool.exposure, catalog.state, { forcedGroups }))
+      .filter((tool) => ToolExposure.isVisible(tool.id, tool.exposure, catalog.state, { forcedGroups, forcedTools }))
       .filter((tool) => !catalog.disabled.has(tool.id))
       .map((tool) => tool.id)
       .sort()

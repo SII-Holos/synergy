@@ -63,6 +63,7 @@ import { type ToolDefinition, type ToolDisplay } from "@ericsanchezok/synergy-pl
 import z from "zod"
 import { Plugin } from "../plugin"
 import { PluginToolId } from "../plugin/ids.js"
+import { createPluginToolContext } from "../plugin/host-services"
 import { getRuntime, invokeRuntimeTool } from "../plugin-runtime/supervisor"
 import { WebSearchTool } from "./websearch"
 import { ArxivSearchTool, ArxivDownloadTool } from "./arxiv"
@@ -138,9 +139,9 @@ export namespace ToolRegistry {
         const runtime = getRuntime(plugin.id)
         const runtimeMode = plugin.runtimeMode ?? runtime?.mode ?? "in-process"
         if (runtimeMode !== "in-process") {
-          custom.push(fromRuntimePlugin(id, def, plugin.id, exposure, display))
+          custom.push(fromRuntimePlugin(id, def, plugin.id, plugin.pluginDir, exposure, display))
         } else {
-          custom.push(fromPlugin(id, def, plugin.id, exposure, display))
+          custom.push(fromPlugin(id, def, plugin.id, plugin.pluginDir, exposure, display))
         }
       }
     }
@@ -193,6 +194,7 @@ export namespace ToolRegistry {
     id: string,
     def: ToolDefinition,
     pluginId?: string,
+    pluginDir?: string,
     exposure?: ToolExposure.Info,
     display?: ToolDisplay,
   ): Tool.Info {
@@ -205,15 +207,23 @@ export namespace ToolRegistry {
         parameters: z.object(def.args),
         description: def.description,
         execute: async (args, ctx) => {
-          const pluginCtx = {
-            sessionID: ctx.sessionID,
-            messageID: ctx.messageID,
-            agent: ctx.agent,
-            abort: ctx.abort,
-            directory: ScopeContext.current.directory,
-            ask: (input: { permission: string; patterns: string[]; metadata?: Record<string, any> }) =>
-              ctx.ask({ ...input, metadata: input.metadata ?? {} }),
-          }
+          const pluginCtx =
+            pluginId && pluginDir
+              ? createPluginToolContext({
+                  pluginId,
+                  pluginDir,
+                  context: ctx,
+                  directory: ScopeContext.current.directory,
+                })
+              : {
+                  sessionID: ctx.sessionID,
+                  messageID: ctx.messageID,
+                  agent: ctx.agent,
+                  abort: ctx.abort,
+                  directory: ScopeContext.current.directory,
+                  ask: (input: { permission: string; patterns: string[]; metadata?: Record<string, any> }) =>
+                    ctx.ask({ ...input, metadata: input.metadata ?? {} }),
+                }
           const raw = await def.execute(args as any, pluginCtx)
           return normalizePluginResult(raw, initCtx?.agent)
         },
@@ -225,6 +235,7 @@ export namespace ToolRegistry {
     id: string,
     def: ToolDefinition,
     pluginId: string,
+    _pluginDir: string,
     exposure?: ToolExposure.Info,
     display?: ToolDisplay,
   ): Tool.Info {
@@ -237,12 +248,19 @@ export namespace ToolRegistry {
         parameters: z.object(def.args),
         description: def.description,
         execute: async (args, ctx) => {
-          const raw = await invokeRuntimeTool(pluginId, id, args, {
-            sessionID: ctx.sessionID,
-            messageID: ctx.messageID,
-            agent: ctx.agent,
-            directory: ScopeContext.current.directory,
-          })
+          const raw = await invokeRuntimeTool(
+            pluginId,
+            id,
+            args,
+            {
+              sessionID: ctx.sessionID,
+              messageID: ctx.messageID,
+              agent: ctx.agent,
+              directory: ScopeContext.current.directory,
+              callID: ctx.callID,
+            },
+            ctx.abort,
+          )
           return normalizePluginResult(raw, initCtx?.agent)
         },
       }),

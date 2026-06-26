@@ -10,7 +10,7 @@
       z-index: -10;
       position: absolute;
       inset: 0;
-      background-color: var(--background-stronger);
+      background-color: var(--workbench-canvas-bg, var(--background-stronger));
     }
   }
 }

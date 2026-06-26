@@ -24,7 +24,7 @@
     flex-shrink: 0;
     border-radius: var(--radius-full);
     border: 1px solid color-mix(in oklch, var(--border-weak-base) 60%, transparent);
-    background: color-mix(in oklch, var(--surface-raised-base) 60%, transparent);
+    background: var(--workbench-control-bg, color-mix(in oklch, var(--surface-raised-base) 60%, transparent));
     transition:
       background-color var(--motion-duration-base) var(--motion-ease-standard),
       border-color var(--motion-duration-base) var(--motion-ease-standard);
@@ -71,7 +71,7 @@
 
   &:hover:not([data-disabled], [data-readonly]) [data-slot="switch-control"] {
     border-color: var(--border-hover);
-    background-color: var(--surface-hover);
+    background-color: var(--workbench-control-bg-hover, var(--surface-hover));
   }
 
   &:focus-within:not([data-readonly]) [data-slot="switch-control"] {

@@ -7,7 +7,7 @@ import { RewardRadar } from "./reward-radar"
 
 function SyncBar(props: { syncing: boolean; syncError: string | null; onSync: () => void }) {
   return (
-    <div class="mb-4 flex items-center justify-between gap-3 rounded-xl bg-surface-inset-base/42 px-3.5 py-2.5 ring-1 ring-inset ring-border-base/45">
+    <div class="mb-4 flex items-center justify-between gap-3 rounded-xl bg-surface-inset-base px-3.5 py-2.5 ring-1 ring-inset ring-border-base/45">
       <div class="min-w-0">
         <div class="text-11-regular text-text-weak">
           {props.syncing ? "Computing stats…" : (props.syncError ?? "Recompute for a fresh snapshot")}
@@ -15,7 +15,7 @@ function SyncBar(props: { syncing: boolean; syncError: string | null; onSync: ()
       </div>
       <button
         type="button"
-        class="shrink-0 rounded-full bg-surface-raised-stronger-non-alpha px-3 py-1.5 text-11-medium text-text-interactive-base ring-1 ring-inset ring-border-base/50 transition hover:bg-surface-raised-base-hover hover:text-text-interactive-hover disabled:cursor-default disabled:opacity-60"
+        class="shrink-0 rounded-full bg-surface-raised-stronger-non-alpha px-3 py-1.5 text-11-medium text-text-base ring-1 ring-inset ring-border-base/50 transition hover:bg-surface-raised-base-hover hover:text-text-strong disabled:cursor-default disabled:opacity-60"
         disabled={props.syncing}
         onClick={() => void props.onSync()}
       >

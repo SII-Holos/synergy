@@ -81,7 +81,7 @@ function toolContext(sessionID: string): Tool.Context {
 }
 
 describe("tool exposure", () => {
-  test("defaults to resident and classifies built-in groups and explicit search tools", () => {
+  test("defaults to resident and classifies built-in groups and explicit search/internal tools", () => {
     const explicit = Tool.define(
       "explicit_search_tool",
       {
@@ -93,10 +93,22 @@ describe("tool exposure", () => {
       },
       { exposure: { mode: "search", title: "Explicit Search Tool", keywords: ["needle"] } },
     )
+    const internal = Tool.define(
+      "internal_helper_tool",
+      {
+        description: "Only visible when force-enabled by the host.",
+        parameters: z.object({}),
+        async execute() {
+          return { title: "internal_helper_tool", output: "ok", metadata: {} }
+        },
+      },
+      { exposure: { mode: "internal" } },
+    )
 
     expect(ToolExposure.normalize("ordinary_tool")).toEqual({ mode: "resident" })
     expect(ToolExposure.normalize("browser_navigate")).toEqual({ mode: "group", group: "browser" })
     expect(explicit.exposure).toEqual({ mode: "search", title: "Explicit Search Tool", keywords: ["needle"] })
+    expect(internal.exposure).toEqual({ mode: "internal" })
   })
 
   test("ToolResolver hides deferred groups until the session expands them", async () => {
@@ -158,6 +170,37 @@ describe("tool exposure", () => {
         })
 
         expect((await definitionIDs(await Session.get(session.id))).has(id)).toBe(true)
+      },
+    })
+  })
+
+  test("internal tools are hidden from search and visible only when force-enabled", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const id = `internal_test_${Math.random().toString(36).slice(2)}`
+        await ToolRegistry.register(
+          Tool.define(
+            id,
+            {
+              description: "A test-only internal tool.",
+              parameters: z.object({}),
+              async execute() {
+                return { title: id, output: "ok", metadata: {} }
+              },
+            },
+            { exposure: { mode: "internal" } },
+          ),
+        )
+
+        const session = await Session.create({})
+        expect((await definitionIDs(session)).has(id)).toBe(false)
+        expect((await definitionIDs(session, { userTools: { [id]: true } })).has(id)).toBe(true)
+
+        const search = await SearchToolsTool.init({ agent: allowAllAgent })
+        const searchResult = await search.execute({ query: id, limit: 8 }, toolContext(session.id))
+        expect((searchResult.metadata.results as Array<any>).some((entry) => entry.id === id)).toBe(false)
       },
     })
   })

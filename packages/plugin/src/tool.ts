@@ -11,6 +11,67 @@ export type ToolContext = {
   directory?: string
   /** Request permission from the user before proceeding */
   ask?(input: { permission: string; patterns: string[]; metadata?: Record<string, any> }): Promise<void>
+  /** Run a Synergy delegated subagent task from inside this tool. */
+  task?: ToolTaskService
+  /** Invoke another visible/explicitly-allowed Synergy tool from inside this tool. */
+  tools?: ToolInvokeService
+}
+
+export type ToolTaskVisibility = "visible" | "hidden"
+export type ToolTaskOutput =
+  | { mode?: "summary" }
+  | { mode: "final_response" }
+  | { mode: "structured"; schema: Record<string, unknown>; maxRepairTurns?: 0 | 1 | 2 | 3 }
+
+export type ToolTaskOutputResult =
+  | { mode: "final_response"; text: string }
+  | {
+      mode: "structured"
+      status: "valid" | "invalid"
+      source?: "structured_tool" | "final_response"
+      data?: unknown
+      text?: string
+      repairTurns: number
+      error?: string
+      validationErrors?: string[]
+    }
+
+export interface ToolTaskRunInput {
+  subagent: string
+  description: string
+  prompt: string
+  tools?: Record<string, boolean>
+  visibility?: ToolTaskVisibility
+  timeoutMs?: number
+  output?: ToolTaskOutput
+  category?: string
+  model?: {
+    providerID: string
+    modelID: string
+  }
+}
+
+export interface ToolTaskRunResult {
+  taskId: string
+  sessionId: string
+  status: "pending" | "queued" | "running" | "completed" | "error" | "cancelled" | "timeout"
+  output: string
+  outputResult?: ToolTaskOutputResult
+  error?: string
+}
+
+export interface ToolTaskService {
+  run(input: ToolTaskRunInput): Promise<ToolTaskRunResult>
+}
+
+export interface ToolInvokeInput {
+  tool: string
+  args?: unknown
+  timeoutMs?: number
+}
+
+export interface ToolInvokeService {
+  invoke(input: ToolInvokeInput): Promise<ToolResult>
 }
 
 export type ToolResultMetadata = Record<string, any> & {
@@ -49,6 +110,9 @@ export type ToolExposure =
       mode: "search"
       title?: string
       keywords?: string[]
+    }
+  | {
+      mode: "internal"
     }
 
 export function tool<Args extends z.ZodRawShape>(input: {

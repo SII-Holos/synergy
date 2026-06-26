@@ -16,6 +16,12 @@
 - Preserve plugin-contributed settings sections. Built-in sections should use `iconToken`; plugin sections may continue to use plugin-provided icons.
 - Settings UI labels must be English-only and should avoid paired `X & Y` titles.
 
+## Product Design
+
+- Treat `packages/app/PRODUCT.md` as the durable Web product contract. Read it before frontend work that changes interaction structure, visual hierarchy, theme behavior, or product taste.
+- When a product design decision becomes a reusable principle, update `packages/app/PRODUCT.md` in the same task so future changes inherit it.
+- Keep light and dark mode surface polarity aligned with PRODUCT.md: in dark mode, content and selected surfaces step brighter than their containers; in light mode, content and selected surfaces step darker than their containers.
+
 ## Tool Calling
 
 - ALWAYS USE PARALLEL TOOLS WHEN APPLICABLE.

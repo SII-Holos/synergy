@@ -74,6 +74,12 @@ const CAPABILITY_MAP: Record<string, Omit<PermissionItem, "key">> = {
     title: "Invoke plugin runtime",
     description: "Basic plugin execution — loaded and initialized.",
   },
+  task: {
+    category: "tools",
+    severity: "medium",
+    title: "Delegate tasks to subagents",
+    description: "Can launch approved Synergy subagents from plugin tools.",
+  },
 }
 
 function buildNetworkItem(manifest: PluginManifest): PermissionItem | null {
