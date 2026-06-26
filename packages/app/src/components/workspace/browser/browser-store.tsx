@@ -1,4 +1,5 @@
 import { createContext, createSignal, useContext, type ParentProps } from "solid-js"
+import type { BrowserPresentationSelection } from "@ericsanchezok/synergy-util/browser-protocol"
 import { createStore, produce, type SetStoreFunction } from "solid-js/store"
 import { browserDebug, shouldLogBrowserMessage, summarizeBrowserMessage } from "./browser-debug"
 
@@ -16,21 +17,6 @@ export interface ScreenshotEntry {
   url: string
   width: number
   height: number
-}
-
-export interface BrowserFrameMetadata {
-  width: number
-  height: number
-  deviceScaleFactor: number
-  pageScaleFactor?: number
-  scrollOffsetX?: number
-  scrollOffsetY?: number
-  timestamp: number
-}
-
-export interface BrowserFrameEntry {
-  src: string
-  metadata: BrowserFrameMetadata
 }
 
 export interface ConsoleEntry {
@@ -127,7 +113,6 @@ export function createBrowserStore() {
   })
 
   const [tabScreenshots, setTabScreenshots] = createStore<Record<string, ScreenshotEntry>>({})
-  const [tabFrames, setTabFrames] = createStore<Record<string, BrowserFrameEntry>>({})
   const [consoleEntries, setConsoleEntries] = createStore<Record<string, ConsoleEntry[]>>({})
   const [networkRequests, setNetworkRequests] = createStore<Record<string, NetworkEntry[]>>({})
   const [elements, setElements] = createStore<Record<string, AccessibilityElement[]>>({})
@@ -147,6 +132,7 @@ export function createBrowserStore() {
   const [annotationMode, setAnnotationMode] = createSignal(false)
   const [viewportMode, setViewportMode] = createSignal<ViewportMode>("fit")
   const [viewportWidth, setViewportWidth] = createSignal(1280)
+  const [presentation, setPresentation] = createSignal<BrowserPresentationSelection | null>(null)
 
   const [viewportHeight, setViewportHeight] = createSignal(720)
   const [annotationTarget, setAnnotationTarget] = createSignal<AnnotationTarget | null>(null)
@@ -272,7 +258,6 @@ export function createBrowserStore() {
     if (!activity.tabId) return
     setFollowAgent(true)
     setSession("visibleTabId", activity.tabId)
-    send({ type: "stream.start", tabId: activity.tabId })
   }
 
   function applyAgentActivity(activity: AgentActivity) {
@@ -280,7 +265,6 @@ export function createBrowserStore() {
     if (activity.kind === "idle" || !activity.tabId) return
     if (followAgent()) {
       setSession("visibleTabId", activity.tabId)
-      send({ type: "stream.start", tabId: activity.tabId })
     }
   }
 
@@ -307,10 +291,6 @@ export function createBrowserStore() {
     if (session.activeTabId === tabId) {
       setSession("activeTabId", session.tabs.find((t) => t.id !== tabId)?.id ?? null)
     }
-  }
-
-  function setFrame(tabId: string, frame: BrowserFrameEntry) {
-    setTabFrames(tabId, frame)
   }
 
   function addDownload(tabId: string, entry: DownloadEntry) {
@@ -343,9 +323,6 @@ export function createBrowserStore() {
     toggleDevPanel,
     tabScreenshots,
     setTabScreenshots,
-    tabFrames,
-    setTabFrames,
-    setFrame,
     consoleEntries,
     setConsoleEntries,
     networkRequests,
@@ -366,6 +343,8 @@ export function createBrowserStore() {
     viewportMode,
     viewportWidth,
     viewportHeight,
+    presentation,
+    setPresentation,
     setViewport,
     downloads,
     setDownloads,

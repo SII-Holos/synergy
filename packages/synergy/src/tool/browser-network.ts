@@ -2,6 +2,7 @@ import z from "zod"
 import { Tool } from "./tool"
 import { BrowserToolHelper } from "./browser-shared"
 import { BrowserPolicy } from "../browser/policy"
+import { BrowserOwner } from "../browser/owner"
 
 export const BrowserNetworkTool = Tool.define("browser_network", {
   description:
@@ -12,6 +13,7 @@ export const BrowserNetworkTool = Tool.define("browser_network", {
     filter: z.string().describe("Optional regex pattern to filter requests by URL.").optional(),
   }),
   async execute(params, ctx) {
+    const owner = BrowserOwner.fromToolContext(ctx)
     const tab = await BrowserToolHelper.resolveTab(ctx, params.tabId)
     return BrowserToolHelper.withActivity(
       ctx,
@@ -20,7 +22,13 @@ export const BrowserNetworkTool = Tool.define("browser_network", {
       "browser_network",
       "Reading network requests",
       async () => {
-        const requests = await tab.networkRequests(params.maxEntries ?? 20)
+        const result = await BrowserToolHelper.executeControl(owner, {
+          type: "network",
+          tabId: tab.id,
+          maxEntries: params.maxEntries ?? 20,
+        })
+        if (result.type !== "network") throw new Error("Browser network command returned an unexpected result")
+        const requests = result.requests
 
         let filtered = requests
         if (params.filter) {

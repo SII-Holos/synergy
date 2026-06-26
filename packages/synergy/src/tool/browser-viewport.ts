@@ -2,6 +2,7 @@ import z from "zod"
 import { Tool } from "./tool"
 import { BrowserToolHelper } from "./browser-shared"
 import { BrowserViewport } from "../browser/viewport"
+import { BrowserOwner } from "../browser/owner"
 
 export const BrowserViewportTool = Tool.define("browser_viewport", {
   description:
@@ -15,13 +16,13 @@ export const BrowserViewportTool = Tool.define("browser_viewport", {
     tabId: z.string().optional(),
   }),
   async execute(params, ctx) {
+    const owner = BrowserOwner.fromToolContext(ctx)
     const tab = await BrowserToolHelper.resolveTab(ctx, params.tabId)
     const kind = params.action === "status" ? "reading" : "acting"
     return BrowserToolHelper.withActivity(ctx, tab, kind, "browser_viewport", `Viewport ${params.action}`, async () => {
-      const page = tab.page
-      if (!page) throw new Error("Browser page is not available")
-
       if (params.action === "status") {
+        const page = tab.page
+        if (!page) throw new Error("Browser page is not available")
         const viewport = page.viewportSize?.() ?? null
         return {
           title: "Viewport status",
@@ -32,7 +33,13 @@ export const BrowserViewportTool = Tool.define("browser_viewport", {
 
       if (params.action === "reset") {
         const config = BrowserViewport.DEFAULT
-        await page.setViewportSize({ width: config.width, height: config.height })
+        await BrowserToolHelper.executeControl(owner, {
+          type: "setViewport",
+          tabId: tab.id,
+          width: config.width,
+          height: config.height,
+          deviceScaleFactor: config.deviceScaleFactor,
+        })
         return {
           title: "Viewport reset",
           output: `Viewport reset to ${config.width}x${config.height}`,
@@ -49,7 +56,13 @@ export const BrowserViewportTool = Tool.define("browser_viewport", {
       const validation = BrowserViewport.validateViewport(config)
       if (!validation.ok) throw new Error(validation.message ?? "Invalid viewport configuration")
 
-      await page.setViewportSize({ width: config.width, height: config.height })
+      await BrowserToolHelper.executeControl(owner, {
+        type: "setViewport",
+        tabId: tab.id,
+        width: config.width,
+        height: config.height,
+        deviceScaleFactor: config.deviceScaleFactor,
+      })
       return {
         title: "Viewport set",
         output: `Viewport set to ${config.width}x${config.height}${config.mobile ? " (mobile)" : ""}`,

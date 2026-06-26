@@ -1,7 +1,6 @@
 import z from "zod"
 import { Tool } from "./tool"
 import { BrowserToolHelper } from "./browser-shared"
-import { BrowserRuntime } from "../browser/runtime"
 import { BrowserOwner } from "../browser/owner"
 
 interface TabSummary {
@@ -33,7 +32,6 @@ export const BrowserTabTool = Tool.define<typeof parameters, BrowserTabMetadata>
   description: "Manage browser tabs: list all tabs, create a new tab, close a tab, or switch the active tab.",
   parameters,
   async execute(params, ctx) {
-    await BrowserRuntime.ensure()
     const owner = BrowserOwner.fromToolContext(ctx)
     const session = await BrowserToolHelper.getOrCreateSession(owner)
     const activityTab = session.activeTab
@@ -76,11 +74,13 @@ export const BrowserTabTool = Tool.define<typeof parameters, BrowserTabMetadata>
         }
 
         case "new": {
-          const tab = await session.createTab()
-          session.switchTab(tab.id)
+          const result = await BrowserToolHelper.executeControl(owner, { type: "createTab" })
+          if (result.type !== "tab") throw new Error("Browser create tab command returned an unexpected result")
+          const tab = session.getTab(result.tab.id)
+          if (!tab) throw new Error(`Tab ${result.tab.id} not found after creation`)
           if (params.url) {
             await BrowserToolHelper.markActivity(ctx, tab, "acting", "browser_tab", `Opening ${params.url}`)
-            await BrowserToolHelper.navigateWithPolicyApproval(ctx, tab, params.url)
+            await BrowserToolHelper.navigateWithPolicyApproval(ctx, tab, params.url, owner)
             await session.notifyTabNavigated(tab)
           }
           await session.save()
@@ -95,7 +95,7 @@ export const BrowserTabTool = Tool.define<typeof parameters, BrowserTabMetadata>
           if (!params.tabId) throw new Error("tabId is required for close action")
           const target = session.getTab(params.tabId)
           if (!target) throw new Error(`Tab ${params.tabId} not found`)
-          await session.closeTab(params.tabId)
+          await BrowserToolHelper.executeControl(owner, { type: "closeTab", tabId: params.tabId })
           return {
             title: "Tab closed",
             output: `Closed tab ${params.tabId} (${target.url || "about:blank"})`,
@@ -107,7 +107,7 @@ export const BrowserTabTool = Tool.define<typeof parameters, BrowserTabMetadata>
           if (!params.tabId) throw new Error("tabId is required for switch action")
           const target = session.getTab(params.tabId)
           if (!target) throw new Error(`Tab ${params.tabId} not found`)
-          session.switchTab(params.tabId)
+          await BrowserToolHelper.executeControl(owner, { type: "switchTab", tabId: params.tabId })
           return {
             title: "Switched",
             output: `Switched to tab ${params.tabId} (${target.url || "about:blank"})`,

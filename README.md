@@ -34,7 +34,7 @@ Synergy currently spans several product surfaces and workflows:
 
 - A central `server` process that handles requests independently of a single working directory
 - A `web` client for browser-based interaction
-- A built-in Browser workspace backed by Playwright/Chromium for interactive page control
+- A built-in Browser workspace backed by Chromium, with shared control state for humans and browser tools
 - A `send` command for one-off, non-interactive execution
 - CLI commands for session, config, library, Holos identity, and operational workflows
 - Configurable agents for orchestration, coding, research, writing, search, and review
@@ -45,7 +45,13 @@ Synergy currently spans several product surfaces and workflows:
 
 ### Built-In Browser Workspace
 
-The Web client includes a right-side Browser workspace that runs a real Playwright Chromium page, not an iframe or a screenshot-only mock. Users can navigate, search, click, type, scroll, upload, and download in the workspace while browser tools operate on the same underlying page and BrowserContext.
+The Web client includes a right-side Browser workspace that runs a real Chromium page, not an iframe or a screenshot-only mock. Users can navigate, search, click, type, scroll, upload, and download in the workspace while browser tools operate on the same underlying tab/session state.
+
+Browser control and Browser presentation are intentionally separate. The shared control protocol owns sessions, tabs, navigation, screenshots, snapshots, diagnostics, downloads, dialogs, and tool actions. Interactive presentation negotiates a mode: local desktop clients use an embedded Electron `WebContentsView`, while remote Web clients use WebRTC media plus input data channels. Browser Hosts register over the same control protocol so human UI and browser tools operate on the same visible tab whenever a native or WebRTC host is attached.
+
+The Browser server boundary follows the same split: session/control endpoints carry tab state and commands, Browser Host control has its own route, and WebRTC signaling has its own route. The old live JPEG/WebSocket frame stream and CDP screencast path are no longer production adapters; one-shot screenshots remain for tools and diagnostics.
+
+Remote WebRTC Browser Hosts autostart by default when a remote Browser viewer connects. Set `SYNERGY_BROWSER_HOST_AUTOSTART=0` to disable server-managed host startup, or set `SYNERGY_BROWSER_HOST_COMMAND` to provide a custom Electron host command.
 
 Browser contexts are isolated by Synergy owner/session and persist tab state plus browser storage state. User-explicit navigation and page interaction run without approval prompts but still pass hard safety checks such as invalid protocols, sensitive local ports, and out-of-scope `file://` access. Agent-driven browser tools continue to use the active control profile, so guarded/autonomous/full-access behavior remains consistent with the rest of Synergy.
 

@@ -5,6 +5,12 @@ import { Platform, PlatformProvider } from "@/context/platform"
 import { assetPath } from "@/utils/proxy"
 import pkg from "../package.json"
 
+declare global {
+  interface Window {
+    synergyDesktop?: Pick<Platform, "platform" | "browserNative">
+  }
+}
+
 const root = document.getElementById("root")
 if (import.meta.env.DEV && !(root instanceof HTMLElement)) {
   throw new Error(
@@ -13,8 +19,9 @@ if (import.meta.env.DEV && !(root instanceof HTMLElement)) {
 }
 
 const platform: Platform = {
-  platform: "web",
+  platform: window.synergyDesktop?.platform === "desktop" ? "desktop" : "web",
   version: pkg.version,
+  browserNative: window.synergyDesktop?.browserNative,
   openLink(url: string) {
     window.open(url, "_blank")
   },

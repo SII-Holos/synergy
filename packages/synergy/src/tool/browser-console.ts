@@ -1,6 +1,7 @@
 import z from "zod"
 import { Tool } from "./tool"
 import { BrowserToolHelper } from "./browser-shared"
+import { BrowserOwner } from "../browser/owner"
 
 export const BrowserConsoleTool = Tool.define("browser_console", {
   description:
@@ -11,6 +12,7 @@ export const BrowserConsoleTool = Tool.define("browser_console", {
     filter: z.string().describe("Optional regex pattern to filter entries by text content.").optional(),
   }),
   async execute(params, ctx) {
+    const owner = BrowserOwner.fromToolContext(ctx)
     const tab = await BrowserToolHelper.resolveTab(ctx, params.tabId)
     return BrowserToolHelper.withActivity(
       ctx,
@@ -19,7 +21,13 @@ export const BrowserConsoleTool = Tool.define("browser_console", {
       "browser_console",
       "Reading console entries",
       async () => {
-        const entries = await tab.consoleEntries(params.maxEntries ?? 50)
+        const result = await BrowserToolHelper.executeControl(owner, {
+          type: "console",
+          tabId: tab.id,
+          maxEntries: params.maxEntries ?? 50,
+        })
+        if (result.type !== "console") throw new Error("Browser console command returned an unexpected result")
+        const entries = result.entries
 
         let filtered = entries
         if (params.filter) {

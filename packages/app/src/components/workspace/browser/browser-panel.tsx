@@ -1,6 +1,7 @@
 import { Button } from "@ericsanchezok/synergy-ui/button"
 import { createEffect, createMemo, Show } from "solid-js"
 import { useParams } from "@solidjs/router"
+import { usePlatform } from "@/context/platform"
 import { BrowserStoreProvider, createBrowserStore } from "./browser-store"
 import { createBrowserWebSocket } from "./browser-ws"
 import { TabStrip } from "./tab-strip"
@@ -38,11 +39,14 @@ function BrowserPanelInner(props: {
   sessionID: string
 }) {
   const browser = props.browser
+  const platform = usePlatform()
   browserDebug("panel.inner", { sessionID: props.sessionID, routeDirectory: props.routeDirectory })
 
   const ws = createBrowserWebSocket(browser, {
     sessionID: props.sessionID,
     routeDirectory: props.routeDirectory,
+    client: platform.platform === "desktop" ? "desktop" : "web",
+    sameHost: platform.platform === "desktop",
   })
 
   const activeTab = createMemo(() => {
@@ -113,7 +117,7 @@ function BrowserPanelInner(props: {
                     <div class="flex items-center justify-center h-full text-text-weak text-14">No tab open</div>
                   }
                 >
-                  <BrowserSurface />
+                  <BrowserSurface sessionID={props.sessionID} routeDirectory={props.routeDirectory} />
                 </Show>
               }
             >

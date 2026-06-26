@@ -32,8 +32,6 @@ function mockTab(overrides?: Partial<BrowserTab>): BrowserTab {
     insertText: mock(async () => {}),
     respondToFileChooser: mock(async () => {}),
     respondToDialog: mock(async () => {}),
-    startFrameStream: mock(async () => {}),
-    stopFrameStream: mock(async () => {}),
     ensureCDP: mock(
       async () =>
         ({

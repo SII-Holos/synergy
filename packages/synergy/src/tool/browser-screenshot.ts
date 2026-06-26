@@ -1,7 +1,6 @@
 import z from "zod"
 import { Tool } from "./tool"
 import { BrowserToolHelper } from "./browser-shared"
-import { BrowserRuntime } from "../browser/runtime"
 import { BrowserOwner } from "../browser/owner"
 import { BrowserLocator } from "../browser/locator"
 import { BrowserScreenshot } from "../browser/screenshot"
@@ -29,7 +28,6 @@ export const BrowserScreenshotTool = Tool.define("browser_screenshot", {
     clip: ClipSchema.optional().describe("Screenshot region clip {x, y, width, height}. Overrides locator."),
   }),
   async execute(params, ctx) {
-    await BrowserRuntime.ensure()
     const owner = BrowserOwner.fromToolContext(ctx)
     const tab = await BrowserToolHelper.getTab(owner, params.tabId)
     return BrowserToolHelper.withActivity(

@@ -1,7 +1,6 @@
 import z from "zod"
 import { Tool } from "./tool"
 import { BrowserToolHelper } from "./browser-shared"
-import { BrowserRuntime } from "../browser/runtime"
 import { BrowserOwner } from "../browser/owner"
 
 const parameters = z.object({
@@ -27,7 +26,6 @@ export const BrowserAnnotateTool = Tool.define<typeof parameters, BrowserAnnotat
     "Read or manage user annotations on browser pages. Annotations are user comments attached to specific elements or regions of a page.",
   parameters,
   async execute(params, ctx) {
-    await BrowserRuntime.ensure()
     const owner = BrowserOwner.fromToolContext(ctx)
     const session = await BrowserToolHelper.getOrCreateSession(owner)
 

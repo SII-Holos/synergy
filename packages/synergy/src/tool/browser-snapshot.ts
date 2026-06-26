@@ -2,7 +2,6 @@ import z from "zod"
 import { Tool } from "./tool"
 import { BrowserToolHelper } from "./browser-shared"
 import { formatSnapshotText } from "./browser-shared"
-import { BrowserRuntime } from "../browser/runtime"
 import { BrowserOwner } from "../browser/owner"
 
 export const BrowserSnapshotTool = Tool.define("browser_snapshot", {
@@ -19,7 +18,6 @@ export const BrowserSnapshotTool = Tool.define("browser_snapshot", {
       .describe("Maximum depth of the accessibility tree to render. Default unlimited."),
   }),
   async execute(params, ctx) {
-    await BrowserRuntime.ensure()
     const owner = BrowserOwner.fromToolContext(ctx)
     const tab = await BrowserToolHelper.getTab(owner, params.tabId)
     return BrowserToolHelper.withActivity(
@@ -29,8 +27,9 @@ export const BrowserSnapshotTool = Tool.define("browser_snapshot", {
       "browser_snapshot",
       "Reading page structure",
       async () => {
-        const snapshot = await tab.snapshot()
-        const text = formatSnapshotText(snapshot.elements, {
+        const result = await BrowserToolHelper.executeControl(owner, { type: "snapshot", tabId: tab.id })
+        if (result.type !== "snapshot") throw new Error("Browser snapshot command returned an unexpected result")
+        const text = formatSnapshotText(result.elements, {
           interactiveOnly: params.interactiveOnly,
           maxDepth: params.maxDepth,
         })
@@ -41,8 +40,8 @@ export const BrowserSnapshotTool = Tool.define("browser_snapshot", {
           metadata: {
             url: tab.url,
             tabId: tab.id,
-            elementsCount: snapshot.elements.length,
-            truncated: snapshot.truncated,
+            elementsCount: result.elements.length,
+            truncated: result.truncated,
           },
         }
       },

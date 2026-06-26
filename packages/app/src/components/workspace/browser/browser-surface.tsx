@@ -1,8 +1,11 @@
 import { Button } from "@ericsanchezok/synergy-ui/button"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
-import { createEffect, onCleanup, onMount, Show } from "solid-js"
-import { useBrowser, type BrowserFrameEntry } from "./browser-store"
+import { createEffect, createSignal, onCleanup, onMount, Show } from "solid-js"
+import { usePlatform } from "@/context/platform"
+import { useSDK } from "@/context/sdk"
+import { useBrowser } from "./browser-store"
+import { BrowserWebRTCClient, createBrowserWebRTCSignalingUrl, type BrowserWebRTCStatus } from "./browser-webrtc"
 
 const MIN_FIT_VIEWPORT_WIDTH = 320
 const MIN_FIT_VIEWPORT_HEIGHT = 240
@@ -32,25 +35,82 @@ function arrayBufferToBase64(buffer: ArrayBuffer): string {
   return btoa(binary)
 }
 
-export function BrowserSurface() {
+export function BrowserSurface(props: { sessionID: string; routeDirectory?: string }) {
   let wrapperRef: HTMLDivElement | undefined
-  let canvasRef: HTMLCanvasElement | undefined
+  let videoRef: HTMLVideoElement | undefined
   let fileInputRef: HTMLInputElement | undefined
+  let webrtcClient: BrowserWebRTCClient | null = null
   let composing = false
   let pendingFitFrame: number | undefined
   let lastFitViewportKey = ""
+  let lastWebRTCResizeKey = ""
 
   const browser = useBrowser()
+  const platform = usePlatform()
+  const sdk = useSDK()
+  const [webrtcStatus, setWebrtcStatus] = createSignal<BrowserWebRTCStatus>("idle")
+  const [webrtcDetail, setWebrtcDetail] = createSignal<unknown>(null)
 
-  const activeFrame = (): BrowserFrameEntry | undefined => {
-    const id = browser.activeTabId()
-    if (!id) return undefined
-    return browser.tabFrames[id]
+  const nativePresentation = () => {
+    return browser.presentation()?.kind === "native" && platform.browserNative
+  }
+
+  const webrtcPresentation = () => {
+    return browser.presentation()?.kind === "webrtc"
   }
 
   createEffect(() => {
     const tabId = browser.activeTabId()
-    if (tabId) browser.send({ type: "stream.start", tabId })
+    if (!webrtcPresentation() || !tabId) return
+
+    const signalingUrl = createBrowserWebRTCSignalingUrl({
+      serverUrl: sdk.url,
+      sessionID: props.sessionID,
+      tabId,
+      routeDirectory: props.routeDirectory,
+      directory: sdk.directory,
+      scopeID: sdk.scopeID,
+      scopeKey: sdk.scopeKey,
+      client: platform.platform === "desktop" ? "desktop" : "web",
+      sameHost: platform.platform === "desktop",
+    })
+
+    if (!signalingUrl) {
+      setWebrtcStatus("error")
+      setWebrtcDetail({ message: "Missing browser signaling route" })
+      return
+    }
+
+    const client = new BrowserWebRTCClient({
+      signalingUrl,
+      tabId,
+      onStatus: (status, detail) => {
+        setWebrtcStatus(status)
+        setWebrtcDetail(detail ?? null)
+      },
+      onStream: (stream) => {
+        if (!videoRef) return
+        videoRef.srcObject = stream
+        void videoRef.play().catch(() => {})
+      },
+    })
+    webrtcClient = client
+    void client.connect().catch((error) => {
+      const message = error instanceof Error ? error.message : String(error)
+      setWebrtcStatus("error")
+      setWebrtcDetail({ message })
+    })
+
+    onCleanup(() => {
+      if (webrtcClient === client) webrtcClient = null
+      client.close()
+      if (videoRef?.srcObject instanceof MediaStream) {
+        for (const track of videoRef.srcObject.getTracks()) track.stop()
+      }
+      if (videoRef) videoRef.srcObject = null
+      setWebrtcStatus("idle")
+      setWebrtcDetail(null)
+    })
   })
 
   function fitViewportSize() {
@@ -66,6 +126,7 @@ export function BrowserSurface() {
     pendingFitFrame = undefined
     if (browser.viewportMode() !== "fit") {
       lastFitViewportKey = ""
+      syncNativeBounds()
       return
     }
 
@@ -77,6 +138,7 @@ export function BrowserSurface() {
     if (key === lastFitViewportKey) return
     lastFitViewportKey = key
     browser.setViewport(size.width, size.height, { mode: "fit" })
+    syncNativeBounds()
   }
 
   function scheduleFitViewport() {
@@ -90,54 +152,144 @@ export function BrowserSurface() {
     scheduleFitViewport()
   })
 
+  createEffect(() => {
+    if (!webrtcPresentation()) {
+      lastWebRTCResizeKey = ""
+      return
+    }
+    const tabId = browser.activeTabId()
+    const width = browser.viewportWidth()
+    const height = browser.viewportHeight()
+    if (!tabId) return
+    const key = `${tabId}:${width}x${height}`
+    if (key === lastWebRTCResizeKey) return
+    lastWebRTCResizeKey = key
+    webrtcClient?.sendInput({ type: "input.resize", tabId, width, height })
+  })
+
+  function syncNativeNavigation(tabId: string, url?: string) {
+    if (!url || url === "about:blank") return
+    const tab = browser.session.tabs.find((item) => item.id === tabId)
+    if (tab?.url === url) return
+    browser.send({ type: "navigate", source: "user", tabId, url })
+  }
+
   onMount(() => {
     if (!wrapperRef) return
     const observer = new ResizeObserver(scheduleFitViewport)
     observer.observe(wrapperRef)
     scheduleFitViewport()
+    const unsubscribeNative = platform.browserNative?.onEvent?.((event) => {
+      if (event.tabId !== browser.activeTabId()) return
+      switch (event.type) {
+        case "native.loading": {
+          browser.setTabLoading(event.tabId, true)
+          if (event.url) {
+            syncNativeNavigation(event.tabId, event.url)
+            browser.setTabUrl(event.tabId, event.url)
+          }
+          break
+        }
+        case "native.loaded": {
+          browser.setTabLoading(event.tabId, false)
+          if (event.url) browser.setTabUrl(event.tabId, event.url)
+          if (event.title) browser.setTabTitle(event.tabId, event.title)
+          break
+        }
+        case "native.navigated": {
+          syncNativeNavigation(event.tabId, event.url)
+          browser.setTabUrl(event.tabId, event.url)
+          break
+        }
+        case "native.title": {
+          browser.setTabTitle(event.tabId, event.title)
+          break
+        }
+        case "native.error": {
+          browser.setTabLoading(event.tabId, false)
+          browser.setBrowserError({ severity: "error", message: event.message, code: String(event.code ?? "") })
+          break
+        }
+      }
+    })
     onCleanup(() => {
+      unsubscribeNative?.()
       observer.disconnect()
       if (pendingFitFrame !== undefined) cancelAnimationFrame(pendingFitFrame)
     })
   })
 
   createEffect(() => {
-    const frame = activeFrame()
-    const canvas = canvasRef
-    if (!frame || !canvas) return
+    const bridge = nativePresentation()
+    const tab = browser.activeTab()
+    if (!bridge || !tab || !wrapperRef) return
 
-    const img = new Image()
-    img.onload = () => {
-      const width = frame.metadata.width || img.width
-      const height = frame.metadata.height || img.height
-      canvas.width = width
-      canvas.height = height
-      const ctx = canvas.getContext("2d")
-      if (!ctx) return
-      ctx.clearRect(0, 0, width, height)
-      ctx.drawImage(img, 0, 0, width, height)
-    }
-    img.src = frame.src
+    const rect = wrapperRef.getBoundingClientRect()
+    void bridge.attachView({
+      serverUrl: sdk.url,
+      sessionID: props.sessionID,
+      routeDirectory: props.routeDirectory,
+      directory: sdk.directory,
+      scopeID: sdk.scopeID,
+      scopeKey: sdk.scopeKey,
+      tabId: tab.id,
+      url: tab.url || undefined,
+      bounds: {
+        x: rect.x,
+        y: rect.y,
+        width: rect.width,
+        height: rect.height,
+      },
+    })
   })
 
+  onCleanup(() => {
+    const tabId = browser.activeTabId()
+    if (tabId) void platform.browserNative?.detachView({ tabId })
+  })
+
+  function syncNativeBounds() {
+    const bridge = nativePresentation()
+    const tabId = browser.activeTabId()
+    if (!bridge || !tabId || !wrapperRef) return
+    const rect = wrapperRef.getBoundingClientRect()
+    void bridge.resizeView({
+      tabId,
+      x: rect.x,
+      y: rect.y,
+      width: rect.width,
+      height: rect.height,
+    })
+  }
+
   function point(e: MouseEvent | WheelEvent) {
-    const canvas = canvasRef
-    const frame = activeFrame()
-    if (!canvas || !frame) return null
-    const rect = canvas.getBoundingClientRect()
+    const target = videoRef ?? wrapperRef
+    if (!target) return null
+    const rect = target.getBoundingClientRect()
     if (rect.width <= 0 || rect.height <= 0) return null
+    const width = videoRef?.videoWidth || browser.viewportWidth()
+    const height = videoRef?.videoHeight || browser.viewportHeight()
     return {
-      x: Math.round(((e.clientX - rect.left) / rect.width) * frame.metadata.width),
-      y: Math.round(((e.clientY - rect.top) / rect.height) * frame.metadata.height),
+      x: Math.round(((e.clientX - rect.left) / rect.width) * width),
+      y: Math.round(((e.clientY - rect.top) / rect.height) * height),
     }
   }
 
+  function sendInteractiveInput(payload: Record<string, unknown>) {
+    if (webrtcPresentation()) {
+      webrtcClient?.sendInput(payload)
+      return
+    }
+    browser.send(payload)
+  }
+
   function handleMouse(action: "move" | "down" | "up", e: MouseEvent) {
+    if (nativePresentation()) return
     const tabId = browser.activeTabId()
     const p = point(e)
     if (!tabId || !p) return
     if (action === "down") {
-      canvasRef?.focus()
+      videoRef?.focus()
       if (browser.annotationMode()) {
         const wrapper = wrapperRef?.getBoundingClientRect()
         browser.setAnnotationTarget({
@@ -150,7 +302,7 @@ export function BrowserSurface() {
         return
       }
     }
-    browser.send({
+    sendInteractiveInput({
       type: "input.mouse",
       action,
       tabId,
@@ -164,10 +316,11 @@ export function BrowserSurface() {
   }
 
   function handleWheel(e: WheelEvent) {
+    if (nativePresentation()) return
     const tabId = browser.activeTabId()
     const p = point(e)
     if (!tabId || !p) return
-    browser.send({
+    sendInteractiveInput({
       type: "input.mouse",
       action: "wheel",
       tabId,
@@ -181,9 +334,10 @@ export function BrowserSurface() {
   }
 
   function handleKey(action: "down" | "up", e: KeyboardEvent) {
+    if (nativePresentation()) return
     const tabId = browser.activeTabId()
     if (!tabId || composing) return
-    browser.send({
+    sendInteractiveInput({
       type: "input.key",
       action,
       tabId,
@@ -197,11 +351,18 @@ export function BrowserSurface() {
   }
 
   function handlePaste(e: ClipboardEvent) {
+    if (nativePresentation()) return
     const tabId = browser.activeTabId()
     const text = e.clipboardData?.getData("text/plain")
     if (!tabId || !text) return
-    browser.send({ type: "input.text", tabId, text })
+    sendInteractiveInput({ type: "input.text", tabId, text })
     e.preventDefault()
+  }
+
+  function focusNativeView() {
+    const tabId = browser.activeTabId()
+    if (!tabId) return
+    void platform.browserNative?.focusView({ tabId })
   }
 
   async function chooseFiles(files: FileList | null) {
@@ -230,13 +391,29 @@ export function BrowserSurface() {
     browser.setDialogRequest(null)
   }
 
+  function hasInteractiveSurface() {
+    return nativePresentation() || webrtcPresentation()
+  }
+
+  function webrtcStatusMessage() {
+    const detail = webrtcDetail()
+    if (typeof detail === "object" && detail !== null && "message" in detail) {
+      return String((detail as { message: unknown }).message)
+    }
+    if (webrtcStatus() === "pending") return "Waiting for Browser Host media transport"
+    if (webrtcStatus() === "negotiating") return "Negotiating remote browser stream"
+    if (webrtcStatus() === "signaling") return "Connecting to remote browser"
+    if (webrtcStatus() === "error") return "Remote browser stream unavailable"
+    return "Preparing remote browser"
+  }
+
   return (
     <div
       ref={wrapperRef}
       class="relative w-full h-full overflow-hidden bg-background-strong flex items-center justify-center"
     >
       <Show
-        when={activeFrame()}
+        when={hasInteractiveSurface()}
         fallback={
           <div class="flex flex-col items-center gap-3 text-text-weak text-13 select-none">
             <Icon name={getSemanticIcon("browser.main")} class="size-14 text-icon-weaker" />
@@ -246,27 +423,41 @@ export function BrowserSurface() {
           </div>
         }
       >
-        <canvas
-          ref={canvasRef}
-          tabIndex={0}
-          class="max-w-full max-h-full outline-none cursor-default"
-          onMouseMove={(e) => handleMouse("move", e)}
-          onMouseDown={(e) => handleMouse("down", e)}
-          onMouseUp={(e) => handleMouse("up", e)}
-          onWheel={handleWheel}
-          onKeyDown={(e) => handleKey("down", e)}
-          onKeyUp={(e) => handleKey("up", e)}
-          onCompositionStart={() => {
-            composing = true
-          }}
-          onCompositionEnd={(e) => {
-            composing = false
-            const text = e.data
-            const tabId = browser.activeTabId()
-            if (tabId && text) browser.send({ type: "input.text", tabId, text })
-          }}
-          onPaste={handlePaste}
-        />
+        <Show when={!nativePresentation()} fallback={<div class="absolute inset-0" onPointerDown={focusNativeView} />}>
+          <Show when={webrtcPresentation()}>
+            <video
+              ref={videoRef}
+              tabIndex={0}
+              autoplay
+              playsinline
+              muted
+              class="max-w-full max-h-full outline-none cursor-default bg-background-strong"
+              onMouseMove={(e) => handleMouse("move", e)}
+              onMouseDown={(e) => handleMouse("down", e)}
+              onMouseUp={(e) => handleMouse("up", e)}
+              onWheel={handleWheel}
+              onKeyDown={(e) => handleKey("down", e)}
+              onKeyUp={(e) => handleKey("up", e)}
+              onCompositionStart={() => {
+                composing = true
+              }}
+              onCompositionEnd={(e) => {
+                composing = false
+                const text = e.data
+                const tabId = browser.activeTabId()
+                if (tabId && text) sendInteractiveInput({ type: "input.text", tabId, text })
+              }}
+              onPaste={handlePaste}
+            />
+            <Show when={webrtcStatus() !== "connected"}>
+              <div class="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-background-strong/80 text-center text-text-weak">
+                <Icon name={getSemanticIcon("browser.main")} class="size-10 text-icon-weaker" />
+                <span class="text-13-medium text-text-base">{webrtcStatusMessage()}</span>
+                <span class="text-11 text-text-weaker">{webrtcStatus()}</span>
+              </div>
+            </Show>
+          </Show>
+        </Show>
       </Show>
 
       <Show when={browser.browserError()}>
