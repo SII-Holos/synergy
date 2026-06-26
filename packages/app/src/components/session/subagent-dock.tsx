@@ -167,7 +167,7 @@ function SubagentAvatar(props: SubagentAvatarProps) {
           onPointerLeave={handlePointerLeave}
           onPointerCancel={handlePointerCancel}
           class={`workbench-control-surface subagent-avatar subagent-avatar-${props.task.agent} group relative flex items-center justify-center size-9 rounded-full border border-border-base transition-all duration-200 ${isQueued() ? "subagent-avatar-queued opacity-50 cursor-default" : "cursor-pointer hover:scale-105 hover:border-border-strong active:scale-95"} ${isHolding() ? "subagent-avatar-holding" : ""}`}
-          style={{ "--subagent-glow-color": config().color }}
+          style={{ "--subagent-accent-color": config().color }}
         >
           <Show when={!isQueued() && isHolding()}>
             <svg class="subagent-hold-ring absolute inset-0 -rotate-90" viewBox="0 0 44 44" aria-hidden="true">

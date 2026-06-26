@@ -258,6 +258,13 @@ describe("Visual Token Contract", () => {
       expect(css).toContain("backdrop-filter: blur(4px);")
       expect(css).not.toMatch(/backdrop-filter:\s*blur\((?:[5-9]|[1-9]\d)px\)/)
     })
+
+    test("toast material remains solid instead of glassy", async () => {
+      const css = await readFileSafe("src/components/toast.css")
+      expect(css).toContain("background: var(--surface-raised-stronger-non-alpha);")
+      expect(css).toContain("var(--workbench-popover-shadow")
+      expect(css).not.toContain("backdrop-filter")
+    })
   })
 
   describe("1b. Static theme fallback preserves surface polarity", () => {
@@ -389,6 +396,14 @@ describe("Visual Token Contract", () => {
       const css = await readFileSafe("src/components/message-part.css")
       const hasXSmall = /var\(--font-size-x-small\)/.test(css)
       expect(hasXSmall, "message-part.css 的小号文字应使用 --font-size-x-small").toBe(true)
+    })
+
+    test("工具输出使用 workbench 内层 surface", async () => {
+      const css = await readFileSafe("src/components/message-part.css")
+      const outputBlock = css.match(/\[data-component="tool-output"\]\s*\{[\s\S]*?\n\}/)?.[0] ?? ""
+      expect(outputBlock, "message-part.css 应定义 tool-output 样式块").not.toBe("")
+      expect(outputBlock).toContain("var(--workbench-control-bg")
+      expect(outputBlock).toContain("var(--workbench-border")
     })
   })
 

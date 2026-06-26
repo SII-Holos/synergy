@@ -206,6 +206,8 @@
   flex-direction: column;
   align-items: flex-start;
   justify-content: flex-start;
+  background-color: var(--workbench-control-bg, var(--surface-inset-base));
+  border-top: 1px solid var(--workbench-border, var(--border-weaker-base));
 
   [data-component="markdown"] {
     width: 100%;
