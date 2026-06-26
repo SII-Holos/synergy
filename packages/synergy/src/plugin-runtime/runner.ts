@@ -28,6 +28,7 @@ let inputData = (workerData as RunnerWorkerData | undefined)?.input
 let hooks: PluginHooks | undefined
 let pluginId = inputData?.pluginId ?? ""
 const pendingBridge = new Map<string, { resolve(value: unknown): void; reject(error: Error): void }>()
+const activeToolAbort = new Map<string, AbortController>()
 
 function serializeError(error: unknown): SerializedError {
   if (error instanceof Error) {
@@ -232,20 +233,33 @@ async function init(input: IsolatedPluginInputData) {
   post({ type: "ready", tools, hooks: hookNames })
 }
 
-async function invokeTool(toolId: string, args: unknown, context?: RuntimeToolContextData) {
+async function invokeTool(requestId: string, toolId: string, args: unknown, context?: RuntimeToolContextData) {
   const def = hooks?.tool?.[toolId]
   if (!def) throw new Error(`Unknown plugin tool: ${toolId}`)
   if (!inputData) throw new Error("Plugin runtime is not initialized")
-  return def.execute(args as any, {
-    sessionID: context?.sessionID ?? "",
-    messageID: context?.messageID ?? "",
-    agent: context?.agent ?? "",
-    abort: new AbortController().signal,
-    directory: context?.directory ?? inputData.directory,
-    ask: async (request) => {
-      await bridge("permission.request", request)
-    },
-  })
+  const abortController = new AbortController()
+  activeToolAbort.set(requestId, abortController)
+  const contextData = { ...context, abort: undefined }
+  try {
+    return def.execute(args as any, {
+      sessionID: context?.sessionID ?? "",
+      messageID: context?.messageID ?? "",
+      agent: context?.agent ?? "",
+      abort: abortController.signal,
+      directory: context?.directory ?? inputData.directory,
+      ask: async (request) => {
+        await bridge("permission.request", { ...request, context: contextData })
+      },
+      task: {
+        run: (request) => bridge("task.run", { ...request, context: contextData }) as any,
+      },
+      tools: {
+        invoke: (request) => bridge("tool.invoke", { ...request, context: contextData }) as any,
+      },
+    })
+  } finally {
+    activeToolAbort.delete(requestId)
+  }
 }
 
 async function triggerHook(hook: string, input: unknown, output: unknown) {
@@ -267,8 +281,15 @@ function handle(message: HostToPlugin) {
       postResponse("init", () => init(message.input))
       break
     case "invokeTool":
-      postResponse(message.requestId, () => invokeTool(message.toolId, message.args, message.context))
+      postResponse(message.requestId, () =>
+        invokeTool(message.requestId, message.toolId, message.args, message.context),
+      )
       break
+    case "abortTool": {
+      const controller = activeToolAbort.get(message.requestId)
+      controller?.abort(new DOMException(message.reason ?? "Plugin tool aborted by host", "AbortError"))
+      break
+    }
     case "triggerHook":
       postResponse(message.requestId, () => triggerHook(message.hook, message.input, message.output))
       break

@@ -100,7 +100,10 @@ Per-tool capabilities live under `contributes.tools[].capabilities` and are merg
 `{ "mode": "group", "group": "plugin:my-plugin", "title": "My Plugin", "description": "...", "whenToExpand": "..." }`
 for related low-frequency tools that should be expanded together. Use
 `{ "mode": "search", "title": "...", "keywords": ["..."] }` for rare individual tools that should be
-discoverable through `search_tools` and activated explicitly with `expand_tools`.
+discoverable through `search_tools` and activated explicitly with `expand_tools`. Use
+`{ "mode": "internal" }` for helper tools that should never be offered to the primary agent or discovered
+through `search_tools`; internal tools can only run when Synergy explicitly enables them for a delegated
+subagent or another host-controlled flow.
 
 `synergy-plugin validate --runtime-discovery` imports the descriptor, calls `init()`, reads returned runtime tools, and compares them with `contributes.tools`.
 
@@ -133,6 +136,29 @@ discoverable through `search_tools` and activated explicitly with `expand_tools`
 - `presentation: "artifact-only"` promotes returned `attachments` into the final answer area instead of showing a completed tool card.
 - `primaryAttachmentIds` may be returned from `metadata.display` at runtime to choose which attachment ids are promoted.
 - Error states are never hidden.
+
+### Delegated Task Permission
+
+Plugins that call `context.task.run()` must declare the task permission under `permissions.tools`:
+
+```jsonc
+{
+  "permissions": {
+    "tools": {
+      "task": {
+        "agents": ["my-plugin-planner"],
+        "maxRuntimeMs": 30000,
+      },
+    },
+  },
+}
+```
+
+`task: true` allows delegation to any visible subagent, but marketplace plugins should prefer an explicit
+agent allowlist. At runtime Synergy still uses the existing Cortex task flow and existing `task` permission;
+`visibility: "hidden"` hides the delegated task from the ordinary chat step list and SubagentDock but preserves
+audit/session data. If `output.mode: "structured"` is passed to `context.task.run()`, Cortex validates the child
+result into `task.outputResult` without changing the normal trajectory-summary `task.result`.
 
 ## UI Contributions
 

@@ -50,6 +50,10 @@ const CortexDelegationInfoInner = z.object({
     .optional(),
   result: z.string().optional(),
   error: z.string().optional(),
+  visibility: z.enum(["visible", "hidden"]).optional(),
+  tools: z.record(z.string(), z.boolean()).optional(),
+  output: z.any().optional(),
+  outputResult: z.any().optional(),
 })
 
 export const CortexDelegationInfo = CortexDelegationInfoInner.meta({ ref: "SessionCortexDelegation" })

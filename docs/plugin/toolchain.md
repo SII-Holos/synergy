@@ -88,6 +88,33 @@ tool({
 
 `media-generation` tools use Synergy's built-in placeholder while running. Completed success states are hidden from the normal step list when they return promoted attachments; error states still render as normal tool cards.
 
+## Internal Helpers And Planners
+
+Use `exposure: { mode: "internal" }` for helper tools that should be available only to a host-controlled flow such as a delegated subagent. Internal tools are not resident, not grouped, and not discoverable through `search_tools`.
+
+A public tool can call `context.task.run()` to launch a Synergy delegated subagent with an explicit tool allowlist:
+
+```ts
+await context.task?.run({
+  subagent: "my-plugin-planner",
+  description: "Plan result",
+  prompt: "Return a valid JSON plan.",
+  tools: {
+    "*": false,
+    "plugin__my-plugin__private_helper": true,
+  },
+  visibility: "hidden",
+  timeoutMs: 30_000,
+  output: {
+    mode: "structured",
+    schema: { type: "object" },
+    maxRepairTurns: 3,
+  },
+})
+```
+
+Declare `permissions.tools.task` in `plugin.json` before using this service. `output.mode: "structured"` is a Cortex-native output contract: Cortex validates the child result and stores it on `task.outputResult`, while `task.result` remains the normal trajectory summary.
+
 ## create
 
 ```bash

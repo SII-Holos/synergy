@@ -136,7 +136,8 @@ export async function init() {
     () => {
       const unsub = Bus.subscribeAll(async (input) => {
         const loaded = await state().then((x) => x.loaded)
-        for (const { hooks } of loaded) {
+        for (const { hooks, pluginDir } of loaded) {
+          if (!(await canReceiveEvent(pluginDir, input.type))) continue
           hooks["event"]?.({ event: input })
         }
       })
@@ -152,4 +153,13 @@ export async function manifest(pluginId: string) {
   const plugin = await getPlugin(pluginId)
   if (!plugin) return null
   return ManifestReader.read(plugin.pluginDir)
+}
+
+async function canReceiveEvent(pluginDir: string, eventName: string): Promise<boolean> {
+  const manifest = await ManifestReader.read(pluginDir)
+  const hooks = manifest?.permissions?.hooks
+  const mode = hooks?.events ?? "selected"
+  if (mode === "all") return true
+  if (mode === "none") return false
+  return (hooks?.eventNames ?? []).includes(eventName)
 }
