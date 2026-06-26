@@ -3544,50 +3544,140 @@ export type SkillList = {
   }>
 }
 
-export type Symbol = {
-  name: string
-  kind: number
-  location: {
-    uri: string
-    range: Range
-  }
-}
-
-export type FileNode = {
-  name: string
+export type WorkspaceFileNode = {
   path: string
-  absolute: string
-  type: "file" | "directory"
+  name: string
+  type: "file" | "directory" | "symlink" | "unknown"
+  size: number
+  mtime: number
+  ctime: number
   ignored: boolean
+  hidden: boolean
+  readonly: boolean
+  symlink: boolean
+  binary: boolean
+  gitStatus?: "added" | "deleted" | "modified" | "renamed" | "untracked"
 }
 
-export type FileContent = {
-  type: "text"
-  content: string
-  diff?: string
-  patch?: {
-    oldFileName: string
-    newFileName: string
-    oldHeader?: string
-    newHeader?: string
-    hunks: Array<{
-      oldStart: number
-      oldLines: number
-      newStart: number
-      newLines: number
-      lines: Array<string>
-    }>
-    index?: string
-  }
-  encoding?: "base64"
-  mimeType?: string
-}
-
-export type File = {
+export type WorkspaceFileChildrenResponse = {
   path: string
-  added: number
-  removed: number
-  status: "added" | "deleted" | "modified"
+  parent?: WorkspaceFileNode
+  children: Array<WorkspaceFileNode>
+  nextCursor?: string
+  truncated: boolean
+}
+
+export type WorkspaceFileTextRange = {
+  offset: number
+  limit: number
+  startLine: number
+  endLine: number
+}
+
+export type WorkspaceFileReadText = {
+  kind: "text"
+  path: string
+  node: WorkspaceFileNode
+  content: string
+  mimeType?: string
+  encoding: "utf-8"
+  range: WorkspaceFileTextRange
+  totalBytes: number
+  lineCount?: number
+  truncated: boolean
+  nextRange?: WorkspaceFileTextRange
+}
+
+export type WorkspaceFileReadImage = {
+  kind: "image"
+  path: string
+  node: WorkspaceFileNode
+  content: string
+  mimeType: string
+  encoding: "base64"
+  totalBytes: number
+  truncated: boolean
+}
+
+export type WorkspaceFileReadBinary = {
+  kind: "binary"
+  path: string
+  node: WorkspaceFileNode
+  mimeType?: string
+  totalBytes: number
+  truncated: boolean
+  unsupportedReason: string
+}
+
+export type WorkspaceFileReadResult = WorkspaceFileReadText | WorkspaceFileReadImage | WorkspaceFileReadBinary
+
+export type WorkspaceFileSearchItem = {
+  kind: "file"
+  path: string
+  name: string
+  type: "file" | "directory"
+  score: number
+  indices: Array<number>
+  node?: WorkspaceFileNode
+}
+
+export type WorkspaceContentSearchItem = {
+  kind: "content"
+  path: string
+  lineNumber: number
+  column: number
+  line: string
+  score: number
+  submatches: Array<{
+    text: string
+    start: number
+    end: number
+  }>
+  previewRanges: Array<{
+    start: number
+    end: number
+  }>
+}
+
+export type WorkspaceSymbolSearchItem = {
+  kind: "symbol"
+  name: string
+  symbolKind: number
+  path: string
+  range: {
+    start: {
+      line: number
+      character: number
+    }
+    end: {
+      line: number
+      character: number
+    }
+  }
+  score: number
+}
+
+export type WorkspaceSearchCapability = {
+  available: boolean
+  reason?: string
+}
+
+export type WorkspaceFileSearchResponse = {
+  kind: "files" | "content" | "symbol"
+  query: string
+  items: Array<WorkspaceFileSearchItem | WorkspaceContentSearchItem | WorkspaceSymbolSearchItem>
+  nextCursor?: string
+  truncated: boolean
+  capability?: WorkspaceSearchCapability
+}
+
+export type WorkspaceFileStatusSummary = {
+  files: Array<{
+    path: string
+    status: "added" | "deleted" | "modified" | "renamed" | "untracked"
+    added?: number
+    removed?: number
+  }>
 }
 
 export type RewardsInfo = {
@@ -4975,7 +5065,12 @@ export type EventFileWatcherUpdated = {
   type: "file.watcher.updated"
   properties: {
     file: string
-    event: "add" | "change" | "unlink"
+    event: "added" | "changed" | "deleted" | "renamed"
+    absolute?: string
+    oldPath?: string
+    oldAbsolute?: string
+    parent?: string
+    node?: unknown
   }
 }
 
@@ -8817,143 +8912,117 @@ export type SkillImportUrlResponses = {
 
 export type SkillImportUrlResponse = SkillImportUrlResponses[keyof SkillImportUrlResponses]
 
-export type FindTextData = {
+export type WorkspaceFilesChildrenData = {
   body?: never
   path?: never
-  query: {
+  query?: {
     directory?: string
     scopeID?: string
-    pattern: string
-  }
-  url: "/find"
-}
-
-export type FindTextResponses = {
-  /**
-   * Matches
-   */
-  200: Array<{
-    path: {
-      text: string
-    }
-    lines: {
-      text: string
-    }
-    line_number: number
-    absolute_offset: number
-    submatches: Array<{
-      match: {
-        text: string
-      }
-      start: number
-      end: number
-    }>
-  }>
-}
-
-export type FindTextResponse = FindTextResponses[keyof FindTextResponses]
-
-export type FindFilesData = {
-  body?: never
-  path?: never
-  query: {
-    directory?: string
-    scopeID?: string
-    query: string
-    dirs?: "true" | "false"
-    type?: "file" | "directory"
+    path?: string
     limit?: number
+    cursor?: string
+    showHidden?: "true" | "false"
+    showIgnored?: "true" | "false"
   }
-  url: "/find/file"
+  url: "/workspace/files/children"
 }
 
-export type FindFilesResponses = {
+export type WorkspaceFilesChildrenResponses = {
   /**
-   * File paths
+   * Workspace file children
    */
-  200: Array<string>
+  200: WorkspaceFileChildrenResponse
 }
 
-export type FindFilesResponse = FindFilesResponses[keyof FindFilesResponses]
+export type WorkspaceFilesChildrenResponse = WorkspaceFilesChildrenResponses[keyof WorkspaceFilesChildrenResponses]
 
-export type FindSymbolsData = {
+export type WorkspaceFilesReadData = {
+  body?: never
+  path?: never
+  query: {
+    directory?: string
+    scopeID?: string
+    path: string
+    range?: string
+    offset?: number
+    limit?: number
+    preview?: "true" | "false"
+  }
+  url: "/workspace/files/read"
+}
+
+export type WorkspaceFilesReadResponses = {
+  /**
+   * Workspace file read result
+   */
+  200: WorkspaceFileReadResult
+}
+
+export type WorkspaceFilesReadResponse = WorkspaceFilesReadResponses[keyof WorkspaceFilesReadResponses]
+
+export type WorkspaceFilesStatData = {
+  body?: never
+  path?: never
+  query: {
+    directory?: string
+    scopeID?: string
+    path: string
+  }
+  url: "/workspace/files/stat"
+}
+
+export type WorkspaceFilesStatResponses = {
+  /**
+   * Workspace file node
+   */
+  200: WorkspaceFileNode
+}
+
+export type WorkspaceFilesStatResponse = WorkspaceFilesStatResponses[keyof WorkspaceFilesStatResponses]
+
+export type WorkspaceFilesSearchData = {
   body?: never
   path?: never
   query: {
     directory?: string
     scopeID?: string
     query: string
+    kind?: "files" | "content" | "symbol"
+    limit?: number
+    cursor?: string
+    include?: string
+    exclude?: string
   }
-  url: "/find/symbol"
+  url: "/workspace/files/search"
 }
 
-export type FindSymbolsResponses = {
+export type WorkspaceFilesSearchResponses = {
   /**
-   * Symbols
+   * Workspace search response
    */
-  200: Array<Symbol>
+  200: WorkspaceFileSearchResponse
 }
 
-export type FindSymbolsResponse = FindSymbolsResponses[keyof FindSymbolsResponses]
+export type WorkspaceFilesSearchResponse = WorkspaceFilesSearchResponses[keyof WorkspaceFilesSearchResponses]
 
-export type FileListData = {
-  body?: never
-  path?: never
-  query: {
-    directory?: string
-    scopeID?: string
-    path: string
-  }
-  url: "/file"
-}
-
-export type FileListResponses = {
-  /**
-   * Files and directories
-   */
-  200: Array<FileNode>
-}
-
-export type FileListResponse = FileListResponses[keyof FileListResponses]
-
-export type FileReadData = {
-  body?: never
-  path?: never
-  query: {
-    directory?: string
-    scopeID?: string
-    path: string
-  }
-  url: "/file/content"
-}
-
-export type FileReadResponses = {
-  /**
-   * File content
-   */
-  200: FileContent
-}
-
-export type FileReadResponse = FileReadResponses[keyof FileReadResponses]
-
-export type FileStatusData = {
+export type WorkspaceFilesStatusData = {
   body?: never
   path?: never
   query?: {
     directory?: string
     scopeID?: string
   }
-  url: "/file/status"
+  url: "/workspace/files/status"
 }
 
-export type FileStatusResponses = {
+export type WorkspaceFilesStatusResponses = {
   /**
-   * File status
+   * Workspace file status
    */
-  200: Array<File>
+  200: WorkspaceFileStatusSummary
 }
 
-export type FileStatusResponse = FileStatusResponses[keyof FileStatusResponses]
+export type WorkspaceFilesStatusResponse = WorkspaceFilesStatusResponses[keyof WorkspaceFilesStatusResponses]
 
 export type LibraryExperienceSearchData = {
   body?: {

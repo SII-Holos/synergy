@@ -9,6 +9,7 @@ export namespace SessionModePolicy {
     "read",
     "glob",
     "grep",
+    "file_search",
     "view_file",
     "scan_files",
     "parse_code",
