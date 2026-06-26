@@ -67,7 +67,7 @@ export const SearchToolsTool = Tool.define("search_tools", async (initCtx) => ({
 
     const lines = resultMetadata.map((entry, index) => {
       const target = entry.type === "group" ? `group ${entry.id}` : `tool ${entry.id}`
-      const state = entry.active ? "already active" : entry.disabled ? "permission-hidden if expanded" : "deferred"
+      const state = entry.active ? "already active" : entry.disabled ? "unavailable if expanded" : "deferred"
       const matchedTools =
         entry.type === "group" && entry.matchedToolCount > 0
           ? `\n   matchedTools: ${formatMatchedTools(entry.matchedToolPreview, entry.matchedToolCount)}`

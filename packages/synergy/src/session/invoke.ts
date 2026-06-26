@@ -63,6 +63,7 @@ import "../library/chronicler"
 import { ExperienceEncoder } from "../library/experience-encoder"
 import { GitHealth } from "../project/git-health"
 import { BlueprintLoopStore } from "../blueprint/loop-store"
+import { PlanModeUserWrapper } from "./plan-mode-user-wrapper"
 import type { ToolDisplay } from "@ericsanchezok/synergy-plugin/tool"
 
 export { InvokeInput, resolveInputParts } from "./input"
@@ -684,8 +685,13 @@ export namespace SessionInvoke {
             )
           }
         }
+        const modelSessionMessages = PlanModeUserWrapper.projectMessages({
+          messages: sessionMessages,
+          session,
+          agent,
+        })
         const preparedMessages = [
-          ...MessageV2.toModelMessage(sessionMessages, { maxHistoryImages: jobCtx.compactionMaxHistoryImages }),
+          ...MessageV2.toModelMessage(modelSessionMessages, { maxHistoryImages: jobCtx.compactionMaxHistoryImages }),
           ...(isLastStep
             ? [
                 {
@@ -736,13 +742,14 @@ export namespace SessionInvoke {
         }
 
         const toolResolveTimer = log.time("toolResolver.resolve")
-        const tools = await ToolResolver.resolve({
+        const resolvedTools = await ToolResolver.resolveWithAvailability({
           agent,
           model,
           sessionID,
           processor,
           session,
           userTools: lastUser.tools,
+          ephemeralTools: ephemeralToolsByMessage.get(lastUser.id),
           includeMCP: true,
         })
         toolResolveTimer.stop()
@@ -765,7 +772,8 @@ export namespace SessionInvoke {
           system: promptPlan.system,
           systemCacheBreakpoint: promptPlan.systemCacheBreakpoint,
           messages: promptPlan.messages,
-          tools,
+          tools: resolvedTools.tools,
+          activeToolIDs: resolvedTools.activeToolIDs,
           model,
         })
         clearTimeout(turnTimer)

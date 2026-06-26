@@ -23,6 +23,7 @@ import { fileURLToPath } from "bun"
 import { ConfigMarkdown } from "@/config/markdown"
 import { NamedError } from "@ericsanchezok/synergy-util/error"
 import { Tool } from "@/tool/tool"
+import { PlanModeUserWrapper } from "./plan-mode-user-wrapper"
 
 const log = Log.create({ service: "session.input" })
 
@@ -130,6 +131,8 @@ export async function lastModel(sessionID: string) {
 }
 
 export async function createUserMessage(input: InvokeInput) {
+  const { Session } = await import(".")
+  const session = await Session.get(input.sessionID).catch(() => undefined)
   let agentName = input.agent
   if (!agentName) {
     // Inherit the current session agent from the last user message,
@@ -145,6 +148,13 @@ export async function createUserMessage(input: InvokeInput) {
     }
   }
   const agent = await Agent.get(agentName ?? (await Agent.defaultAgent()))
+  const planModeMetadata = PlanModeUserWrapper.metadataForUserMessage({
+    session,
+    metadata: input.metadata,
+    noReply: input.noReply,
+    agentName: agent.name,
+  })
+  const externalMetadata = PlanModeUserWrapper.stripReservedMetadata(input.metadata)
   const info: MessageV2.Info = {
     id: input.messageID ?? Identifier.ascending("message"),
     role: "user",
@@ -160,7 +170,8 @@ export async function createUserMessage(input: InvokeInput) {
     ...(input.summary?.title ? { summary: { title: input.summary.title, diffs: [] } } : {}),
     metadata: {
       ...(input.noReply === true ? { noReply: true } : {}),
-      ...input.metadata,
+      ...externalMetadata,
+      ...planModeMetadata,
     },
   }
 
@@ -577,7 +588,6 @@ export async function createUserMessage(input: InvokeInput) {
     info.metadata = { ...info.metadata, synthetic: true }
   }
 
-  const { Session } = await import(".")
   for (const part of parts) {
     await Session.updatePart(part)
   }

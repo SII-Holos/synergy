@@ -98,3 +98,35 @@ describe("SessionProcessor.shouldAskDoomLoop", () => {
     expect(SessionProcessor.shouldAskDoomLoop(parts, "edit", input)).toBe(false)
   })
 })
+
+describe("SessionProcessor.streamToolErrorOutcome", () => {
+  test("turns unavailable synthetic tool errors into unknown_tool diagnostics", () => {
+    const part = toolPart("unknown", { x: 1 }, "running")
+    const outcome = SessionProcessor.streamToolErrorOutcome(
+      { ...part, tool: "hallucinated_tool" },
+      new Error("Model tried to call unavailable tool 'hallucinated_tool'. Available tools: bash, read"),
+    )
+
+    expect(outcome.status).toBe("error")
+    if (outcome.status === "error") {
+      expect(outcome.error).toContain("unavailable tool")
+      expect(outcome.error).not.toBe("Tool execution aborted")
+      expect(outcome.metadata?.toolDiagnostic.code).toBe("unknown_tool")
+      expect(outcome.metadata?.toolDiagnostic.toolName).toBe("hallucinated_tool")
+    }
+  })
+
+  test("turns schema synthetic tool errors into invalid_arguments diagnostics", () => {
+    const part = toolPart("bad_args", { command: 42 }, "running")
+    const outcome = SessionProcessor.streamToolErrorOutcome(
+      { ...part, tool: "bash" },
+      new Error("Invalid tool input: expected command to be a string"),
+    )
+
+    expect(outcome.status).toBe("error")
+    if (outcome.status === "error") {
+      expect(outcome.metadata?.toolDiagnostic.code).toBe("invalid_arguments")
+      expect(outcome.error).toContain("could not be accepted")
+    }
+  })
+})

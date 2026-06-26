@@ -18,6 +18,7 @@ import { ExperienceEncoder } from "@/library/experience-encoder"
 import { Question } from "@/question"
 import { ToolTimeout } from "@/tool/timeout"
 import { Observability } from "@/observability"
+import { ToolDiagnostic } from "@/tool/diagnostic"
 import type { ToolDisplay } from "@ericsanchezok/synergy-plugin/tool"
 
 export namespace SessionProcessor {
@@ -48,6 +49,42 @@ export namespace SessionProcessor {
           JSON.stringify(part.state.input) === JSON.stringify(input),
       )
     )
+  }
+
+  export function streamToolErrorOutcome(part: MessageV2.ToolPart, error: unknown): ToolOutcome {
+    const rawMessage = error instanceof Error ? error.message : String(error)
+    const errorName = error instanceof Error ? error.name : undefined
+    const unavailable = /unavailable tool|no such tool|tool .* not found|unknown tool/i.test(rawMessage)
+    const diagnostic = {
+      code: unavailable ? "unknown_tool" : "invalid_arguments",
+      toolName: part.tool,
+      message: unavailable
+        ? [
+            `The model tried to call unavailable tool "${part.tool}".`,
+            "This tool is not available in the current session, mode, or permission context. Do not retry the same hidden tool.",
+            rawMessage,
+          ].join("\n")
+        : [
+            `The "${part.tool}" tool call could not be accepted.`,
+            "Rewrite the tool input so it satisfies the current schema, or choose another available tool.",
+            rawMessage,
+          ].join("\n"),
+      metadata: {
+        source: "ai_sdk_tool_error",
+        errorName,
+        rawMessage,
+      },
+    } satisfies ToolDiagnostic
+
+    return {
+      status: "error",
+      input:
+        part.state.status === "running" || part.state.status === "pending" || part.state.status === "generating"
+          ? part.state.input
+          : {},
+      error: diagnostic.message,
+      metadata: ToolDiagnostic.metadata(diagnostic),
+    }
   }
 
   export function create(input: {
@@ -349,8 +386,10 @@ export namespace SessionProcessor {
                 case "tool-result": {
                   const match = toolcalls[value.toolCallId]
                   if (match && match.state.status === "running") {
-                    const outcome = await pendingExecutions.get(value.toolCallId)
+                    const pending = pendingExecutions.get(value.toolCallId)
+                    const outcome = pending ? await pending : undefined
                     if (outcome) await settleToolPart(match, outcome)
+                    pendingExecutions.delete(value.toolCallId)
                     delete toolcalls[value.toolCallId]
                   }
                   break
@@ -359,8 +398,10 @@ export namespace SessionProcessor {
                 case "tool-error": {
                   const match = toolcalls[value.toolCallId]
                   if (match && match.state.status === "running") {
-                    const outcome = await pendingExecutions.get(value.toolCallId)
-                    if (outcome) await settleToolPart(match, outcome)
+                    const pending = pendingExecutions.get(value.toolCallId)
+                    const outcome = pending ? await pending : streamToolErrorOutcome(match, value.error)
+                    await settleToolPart(match, outcome)
+                    pendingExecutions.delete(value.toolCallId)
                     delete toolcalls[value.toolCallId]
                   }
                   if (

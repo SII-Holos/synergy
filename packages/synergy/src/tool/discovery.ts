@@ -2,7 +2,9 @@ import type { Agent } from "@/agent/agent"
 import { MCP } from "@/mcp"
 import { PermissionNext } from "@/permission/next"
 import type { Provider } from "@/provider/provider"
+import { SessionModePolicy } from "@/session/tool-mode-policy"
 import type { Info as SessionInfo } from "@/session/types"
+import type { ToolDiagnostic } from "./diagnostic"
 import { ToolExposure } from "./exposure"
 
 export namespace ToolDiscovery {
@@ -22,6 +24,7 @@ export namespace ToolDiscovery {
     tools: Entry[]
     state: Required<ToolExposure.ToolState>
     disabled: Set<string>
+    diagnostics: Map<string, ToolDiagnostic>
   }
 
   export async function collect(input: {
@@ -82,16 +85,34 @@ export namespace ToolDiscovery {
       }
     }
 
-    const disabled = PermissionNext.disabled(
+    const permissionDisabled = PermissionNext.disabled(
       tools.map((tool) => tool.id),
       PermissionNext.merge(input.agent.permission, PermissionNext.sessionRuleset(input.session)),
     )
+    const disabled = new Set<string>()
+    const diagnostics = new Map<string, ToolDiagnostic>()
+    for (const tool of tools) {
+      const modeDiagnostic = SessionModePolicy.visibility({ toolName: tool.id, session: input.session })
+      if (modeDiagnostic) {
+        disabled.add(tool.id)
+        diagnostics.set(tool.id, modeDiagnostic)
+        continue
+      }
+      if (permissionDisabled.has(tool.id)) {
+        disabled.add(tool.id)
+        diagnostics.set(
+          tool.id,
+          SessionModePolicy.unavailable({ toolName: tool.id, reason: "permission", session: input.session }),
+        )
+      }
+    }
 
     return {
       groups: [...groupByID.values()].sort((a, b) => a.id.localeCompare(b.id)),
       tools,
       state: ToolExposure.state(input.session?.toolState),
       disabled,
+      diagnostics,
     }
   }
 
@@ -99,6 +120,8 @@ export namespace ToolDiscovery {
     const activeGroups = new Set(catalog.state.expandedGroups)
     const activeTools = new Set(catalog.state.activatedTools)
     const groups = catalog.groups
+      .filter((group) => group.tools.length > 0)
+      .map((group) => ({ ...group, tools: group.tools.filter((toolID) => !catalog.disabled.has(toolID)) }))
       .filter((group) => group.tools.length > 0)
       .map(
         (group): ToolExposure.SearchEntry => ({
@@ -113,6 +136,7 @@ export namespace ToolDiscovery {
       )
 
     const tools = catalog.tools
+      .filter((tool) => !catalog.disabled.has(tool.id))
       .filter((tool) => tool.exposure.mode !== "resident" && tool.exposure.mode !== "internal")
       .map(
         (tool): ToolExposure.SearchEntry => ({
