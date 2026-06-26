@@ -126,11 +126,7 @@ export function QuestionPrompt(props: QuestionPromptProps) {
   return (
     <section class="question-prompt-shell">
       <Show when={collapsed()}>
-        <button
-          type="button"
-          class="question-prompt-collapsed"
-          onClick={() => setCollapsed(false)}
-        >
+        <button type="button" class="question-prompt-collapsed" onClick={() => setCollapsed(false)}>
           <span class="question-prompt-collapsed-main">
             <Icon name="chevron-right" size="small" class="question-prompt-muted-icon" />
             <span class="question-prompt-collapsed-title">{currentStepLabel()}</span>
@@ -161,7 +157,9 @@ export function QuestionPrompt(props: QuestionPromptProps) {
             </div>
             <div class="question-prompt-header-meta">
               <Show when={!single()}>
-                <span>{Math.min(store.tab + 1, questions().length)} / {questions().length}</span>
+                <span>
+                  {Math.min(store.tab + 1, questions().length)} / {questions().length}
+                </span>
               </Show>
               <Show when={countdownSeconds() != null}>
                 <Countdown seconds={countdownSeconds()!} active={true} />
@@ -243,7 +241,11 @@ export function QuestionPrompt(props: QuestionPromptProps) {
                 <Show
                   when={store.otherOpen}
                   fallback={
-                    <button type="button" class="question-prompt-other-trigger" onClick={() => setStore("otherOpen", true)}>
+                    <button
+                      type="button"
+                      class="question-prompt-other-trigger"
+                      onClick={() => setStore("otherOpen", true)}
+                    >
                       Other answer...
                     </button>
                   }

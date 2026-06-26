@@ -455,9 +455,7 @@ function DetailPopover(props: {
         <div class="flex flex-col gap-3">
           <div class="agenda-detail-title-row">
             <span class="agenda-detail-title">{props.item.title}</span>
-            <span class={`agenda-detail-status ${agendaStatusTone(props.item.status)}`}>
-              {props.item.status}
-            </span>
+            <span class={`agenda-detail-status ${agendaStatusTone(props.item.status)}`}>{props.item.status}</span>
           </div>
 
           <Show when={props.item.description}>
@@ -465,23 +463,15 @@ function DetailPopover(props: {
           </Show>
 
           <div class="flex items-center gap-1.5 flex-wrap">
-            <span class="agenda-detail-chip">
-              {triggerSummary(props.item.triggers)}
-            </span>
+            <span class="agenda-detail-chip">{triggerSummary(props.item.triggers)}</span>
             <Show when={state()?.runCount}>
-              <span class="agenda-detail-chip">
-                {state()!.runCount} runs
-              </span>
+              <span class="agenda-detail-chip">{state()!.runCount} runs</span>
             </Show>
             <Show when={state()?.consecutiveErrors && state()!.consecutiveErrors! > 0}>
-              <span class="agenda-detail-chip agenda-detail-chip-danger">
-                {state()!.consecutiveErrors} errors
-              </span>
+              <span class="agenda-detail-chip agenda-detail-chip-danger">{state()!.consecutiveErrors} errors</span>
             </Show>
             <Show when={props.item.createdBy === "agent"}>
-              <span class="agenda-detail-chip">
-                agent
-              </span>
+              <span class="agenda-detail-chip">agent</span>
             </Show>
           </div>
 
@@ -511,13 +501,7 @@ function DetailPopover(props: {
 
           <Show when={props.item.tags && props.item.tags.length > 0}>
             <div class="flex items-center gap-1.5 flex-wrap">
-              <For each={props.item.tags}>
-                {(tag) => (
-                  <span class="agenda-detail-chip">
-                    #{tag}
-                  </span>
-                )}
-              </For>
+              <For each={props.item.tags}>{(tag) => <span class="agenda-detail-chip">#{tag}</span>}</For>
             </div>
           </Show>
 

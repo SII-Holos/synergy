@@ -19,7 +19,9 @@ export namespace NoteBlueprintPolicy {
     defaultAgent?: string
     fallback?: Kind
   }): Kind | undefined {
-    return input.kind ?? (input.description !== undefined || input.defaultAgent !== undefined ? "blueprint" : input.fallback)
+    return (
+      input.kind ?? (input.description !== undefined || input.defaultAgent !== undefined ? "blueprint" : input.fallback)
+    )
   }
 
   export function evaluateWrite(input: {
@@ -38,13 +40,13 @@ export namespace NoteBlueprintPolicy {
     }
   }
 
-  export function blockedResult(input: {
-    action: WriteAction
-    id?: string
-    title?: string
-  }) {
+  export function blockedResult(input: { action: WriteAction; id?: string; title?: string }) {
     const actionLabel =
-      input.action === "create" ? "create a Blueprint" : input.action === "edit" ? "edit a Blueprint" : "modify a Blueprint"
+      input.action === "create"
+        ? "create a Blueprint"
+        : input.action === "edit"
+          ? "edit a Blueprint"
+          : "modify a Blueprint"
 
     return {
       title: "Blueprint write blocked",

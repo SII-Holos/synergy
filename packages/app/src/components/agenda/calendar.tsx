@@ -329,10 +329,7 @@ function TimeGrid(props: {
   return (
     <div class="agenda-calendar-frame agenda-calendar-body flex min-h-0 flex-1 flex-col overflow-hidden">
       <Show when={props.columns.length > 1}>
-        <div
-          class="agenda-time-header grid shrink-0 bg-transparent"
-          style={{ "grid-template-columns": colTemplate() }}
-        >
+        <div class="agenda-time-header grid shrink-0 bg-transparent" style={{ "grid-template-columns": colTemplate() }}>
           <div />
           <For each={props.columns}>
             {(col) => (
