@@ -1,12 +1,12 @@
-import { Config } from "../config/config"
+import * as Schema from "../config/schema"
 import { Provider } from "../provider/provider"
 import { Log } from "../util/log"
 
 export namespace Category {
   const log = Log.create({ service: "cortex.category" })
 
-  export const CategoryConfig = Config.CategoryConfig
-  export type CategoryConfig = Config.CategoryConfig
+  export const CategoryConfig = Schema.CategoryConfig
+  export type CategoryConfig = Schema.CategoryConfig
 
   const CATEGORY_ROLES: Record<string, Provider.ModelRole> = {
     "visual-engineering": "creative",
@@ -182,7 +182,12 @@ The more explicit your prompt, the better the results.
     },
   }
 
-  function resolveBuiltinModel(name: string, cfg: Config.Info): string | undefined {
+  async function currentConfig(): Promise<Schema.Info> {
+    const { Config } = await import("../config/config")
+    return Config.current()
+  }
+
+  function resolveBuiltinModel(name: string, cfg: Schema.Info): string | undefined {
     const role = CATEGORY_ROLES[name]
     if (!role) return undefined
     const ref = Provider.resolveRoleModelSync(cfg, role)
@@ -194,7 +199,7 @@ The more explicit your prompt, the better the results.
       return undefined
     }
 
-    const userConfig = await Config.current()
+    const userConfig = await currentConfig()
     const userCategories = userConfig.category ?? {}
 
     if (userCategories[name]) {
@@ -220,7 +225,7 @@ The more explicit your prompt, the better the results.
   }
 
   export async function list(): Promise<string[]> {
-    const userConfig = await Config.current()
+    const userConfig = await currentConfig()
     const userCategories = Object.keys(userConfig.category ?? {})
     const builtinCategories = Object.keys(BUILTIN)
     return [...new Set([...builtinCategories, ...userCategories])]
