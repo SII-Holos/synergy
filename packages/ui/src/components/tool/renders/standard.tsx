@@ -9,12 +9,15 @@ import { RenderHtml } from "../../render-html"
 import { AttachmentList } from "../../attachment-card"
 import { ToolTextOutput } from "../../tool-output-text"
 import { ToolRegistry, getToolInfo, getDirectory } from "../../message-part"
+import { getSemanticIcon } from "../../semantic-icon"
 
 function isBlueprintToolKind(input: any = {}, metadata: any = {}) {
   if ((metadata.kind || input.kind) === "blueprint") return true
   const kinds = metadata.kinds
   return Array.isArray(kinds) && kinds.length > 0 && kinds.every((kind) => kind === "blueprint")
 }
+
+const BLUEPRINT_ICON = getSemanticIcon("orchestration.blueprint")
 
 ToolRegistry.register({
   name: "read",
@@ -1010,7 +1013,7 @@ ToolRegistry.register({
       <BasicTool
         {...props}
         trigger={{
-          icon: isBlueprint() ? "stamp" : "notebook-pen",
+          icon: isBlueprint() ? BLUEPRINT_ICON : "notebook-pen",
           title: isBlueprint() ? "Blueprints" : "Notes",
           subtitle: scope(),
           tags:
@@ -1048,7 +1051,7 @@ ToolRegistry.register({
       <BasicTool
         {...props}
         trigger={{
-          icon: isBlueprint() ? "stamp" : "notebook-pen",
+          icon: isBlueprint() ? BLUEPRINT_ICON : "notebook-pen",
           title: isBlueprint() ? "Read Blueprint" : "Read Note",
           subtitle: subtitle(),
         }}
@@ -1084,7 +1087,7 @@ ToolRegistry.register({
       <BasicTool
         {...props}
         trigger={{
-          icon: isBlueprint() ? "stamp" : "notebook-pen",
+          icon: isBlueprint() ? BLUEPRINT_ICON : "notebook-pen",
           title: isBlueprint() ? "Blueprint Search" : "Note Search",
           subtitle: props.input.pattern || "",
           tags: (() => {
@@ -1128,7 +1131,7 @@ ToolRegistry.register({
       <BasicTool
         {...props}
         trigger={{
-          icon: isBlueprint() ? "stamp" : "notebook-pen",
+          icon: isBlueprint() ? BLUEPRINT_ICON : "notebook-pen",
           title: `Write ${label()}`,
           subtitle: noteTitle(),
           tags: actionLabel() ? [{ label: actionLabel() }] : undefined,
@@ -1156,7 +1159,7 @@ ToolRegistry.register({
       <BasicTool
         {...props}
         trigger={{
-          icon: isBlueprint() ? "stamp" : "notebook-pen",
+          icon: isBlueprint() ? BLUEPRINT_ICON : "notebook-pen",
           title: isBlueprint() ? "Edit Blueprint" : "Edit Note",
           subtitle: noteTitle(),
           tags: opCount() ? [{ label: `${opCount()} change(s)` }] : undefined,
@@ -1181,7 +1184,7 @@ function BlueprintLoopTool(props: any & { action: "finish" | "restart" }) {
     <BasicTool
       {...props}
       trigger={{
-        icon: "stamp",
+        icon: BLUEPRINT_ICON,
         title: title(),
         subtitle: (props.input.loopID as string) || "",
         tags: status() ? [{ label: status()! }] : undefined,

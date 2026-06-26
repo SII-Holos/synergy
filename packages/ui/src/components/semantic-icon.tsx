@@ -28,7 +28,7 @@ export const SemanticIconToken = {
   "connection.cortex": "workflow", // background orchestration tasks
 
   // Orchestration
-  "orchestration.blueprint": "stamp",
+  "orchestration.blueprint": "clipboard-list",
   "orchestration.dag": "route",
   "orchestration.holos-branch": "git-merge", // Holos conversation branch (no longer git-branch)
 

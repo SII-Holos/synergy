@@ -105,6 +105,14 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   const storedPlanMode = createMemo(() => (params.id ? (info()?.blueprint?.planMode ?? false) : pendingPlanMode()))
   const blueprintModeLocked = createMemo(() => !!localArmedLoop() || !!info()?.blueprint?.loopID)
   const planMode = createMemo(() => !blueprintModeLocked() && storedPlanMode())
+  const sessionScopeDirectory = createMemo(() => {
+    const scope = info()?.scope
+    if (!scope || typeof scope !== "object") return undefined
+    if (!("directory" in scope) || typeof scope.directory !== "string") return undefined
+    return scope.directory
+  })
+  const blueprintLoopRequest = (loopID: string, directory = sessionScopeDirectory()) =>
+    directory ? { id: loopID, directory } : { id: loopID }
 
   createEffect(
     on(
@@ -115,18 +123,21 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     ),
   )
 
-  const [sessionLoop] = createResource(
-    () => (params.id ? info()?.blueprint?.loopID : null),
-    async (loopID) => {
-      if (!loopID) return null
-      try {
-        const result = await sdk.client.blueprint.loop.get({ id: loopID })
-        return (result.data as BlueprintLoopInfo) ?? null
-      } catch {
-        return null
-      }
-    },
-  )
+  const sessionLoopSource = createMemo(() => {
+    const loopID = params.id ? info()?.blueprint?.loopID : undefined
+    if (!loopID) return null
+    return { loopID, directory: sessionScopeDirectory() }
+  })
+
+  const [sessionLoop] = createResource(sessionLoopSource, async ({ loopID, directory }) => {
+    if (!loopID) return null
+    try {
+      const result = await sdk.client.blueprint.loop.get(blueprintLoopRequest(loopID, directory))
+      return (result.data as BlueprintLoopInfo) ?? null
+    } catch {
+      return null
+    }
+  })
 
   type BlueprintSlotDisplay = {
     slot: BlueprintSlot
@@ -252,7 +263,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
         }
         if (slot.slot.type === "loop") {
           const loopID = slot.slot.loopID
-          await sdk.client.blueprint.loop.cancel({ id: loopID })
+          await sdk.client.blueprint.loop.cancel(blueprintLoopRequest(loopID))
           clearBoundLoop(sessionID, loopID)
         }
         if (localArmedLoop()?.noteID === slot.slot.noteID) setLocalArmedLoop(null)
@@ -325,7 +336,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     if (!slot) return
     setBlueprintLoading(true)
     try {
-      if (slot.type === "loop") await sdk.client.blueprint.loop.cancel({ id: slot.loopID })
+      if (slot.type === "loop") await sdk.client.blueprint.loop.cancel(blueprintLoopRequest(slot.loopID))
     } catch {
       // If cancellation fails, still clear the slot locally — the loop is orphaned.
     } finally {

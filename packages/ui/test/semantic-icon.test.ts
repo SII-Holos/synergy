@@ -19,6 +19,11 @@ describe("semantic icons", () => {
     }
   })
 
+  test("blueprint uses a plan icon distinct from approval stamping", () => {
+    expect(getSemanticIcon("orchestration.blueprint")).toBe("clipboard-list")
+    expect(getSemanticIcon("orchestration.blueprint")).not.toBe("stamp")
+  })
+
   test("duplicate Lucide usage is explicitly allowed", () => {
     const grouped = new Map<string, string[]>()
     for (const [token, icon] of Object.entries(SemanticIconToken)) {

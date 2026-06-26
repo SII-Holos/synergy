@@ -47,6 +47,7 @@ import { checksum } from "@ericsanchezok/synergy-util/encode"
 import { parsePartialJson } from "@ericsanchezok/synergy-util/json"
 import { createAutoScroll, createTypewriter, createAnimatedNumber } from "../hooks"
 import { getApprovalAudit } from "../utils/approval-audit"
+import { getSemanticIcon } from "./semantic-icon"
 import { shouldHideToolPart } from "./tool-result-presentation"
 
 interface Diagnostic {
@@ -221,6 +222,8 @@ function isBlueprintToolKind(input: any = {}, metadata: any = {}) {
   const kinds = metadata.kinds
   return Array.isArray(kinds) && kinds.length > 0 && kinds.every((kind) => kind === "blueprint")
 }
+
+const BLUEPRINT_ICON = getSemanticIcon("orchestration.blueprint")
 
 const browserToolLabels: Record<string, { icon: IconName; title: string }> = {
   browser_navigate: { icon: "globe", title: "Navigate" },
@@ -732,7 +735,7 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
     case "note_list":
       if (isBlueprintToolKind(input, metadata)) {
         return {
-          icon: "stamp",
+          icon: BLUEPRINT_ICON,
           title: "Blueprints",
           subtitle: input.scope,
         }
@@ -745,7 +748,7 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
     case "note_read":
       if (isBlueprintToolKind(input, metadata)) {
         return {
-          icon: "stamp",
+          icon: BLUEPRINT_ICON,
           title: "Read Blueprint",
           subtitle: Array.isArray(input.ids)
             ? input.ids.length === 1
@@ -766,7 +769,7 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
     case "note_search":
       if (isBlueprintToolKind(input, metadata)) {
         return {
-          icon: "stamp",
+          icon: BLUEPRINT_ICON,
           title: "Blueprint Search",
           subtitle: input.pattern,
         }
@@ -779,7 +782,7 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
     case "note_write":
       if (isBlueprintToolKind(input, metadata)) {
         return {
-          icon: "stamp",
+          icon: BLUEPRINT_ICON,
           title: "Write Blueprint",
           subtitle: input.title || input.mode,
         }
@@ -792,7 +795,7 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
     case "note_edit":
       if (isBlueprintToolKind(input, metadata)) {
         return {
-          icon: "stamp",
+          icon: BLUEPRINT_ICON,
           title: "Edit Blueprint",
           subtitle: input.title || input.id,
         }
@@ -804,13 +807,13 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
       }
     case "blueprint_loop_finish":
       return {
-        icon: "stamp",
+        icon: BLUEPRINT_ICON,
         title: "Finish BlueprintLoop",
         subtitle: input.loopID,
       }
     case "blueprint_loop_restart":
       return {
-        icon: "stamp",
+        icon: BLUEPRINT_ICON,
         title: "Restart BlueprintLoop",
         subtitle: input.loopID,
       }
