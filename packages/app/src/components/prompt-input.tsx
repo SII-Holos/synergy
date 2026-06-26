@@ -175,12 +175,61 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     }
   }
 
+  function requestErrorMessage(err: unknown) {
+    if (err && typeof err === "object" && "data" in err) {
+      const data = (err as { data?: { message?: string } }).data
+      if (data?.message) return data.message
+    }
+    if (err instanceof Error) return err.message
+    return "Request failed"
+  }
+
+  const getBlueprintSlotHoldLabel = (slot: BlueprintSlotDisplay) => {
+    if (slot.slot.type === "loop" && working()) return "Hold for 2 seconds to stop this Blueprint run."
+    if (slot.mode === "waiting" || slot.mode === "auditing") return "Hold for 2 seconds to cancel this BlueprintLoop."
+    return "Hold for 2 seconds to unequip."
+  }
+
+  const getBlueprintSlotAriaLabel = (slot: BlueprintSlotDisplay) => {
+    if (slot.slot.type === "loop" && working()) return `Hold to stop Blueprint run: ${slot.slot.title}`
+    if (slot.mode === "waiting" || slot.mode === "auditing") return `Hold to cancel BlueprintLoop: ${slot.slot.title}`
+    return `Hold to unequip Blueprint: ${slot.slot.title}`
+  }
+
+  const getBlueprintFailureTitle = (stopRunningSession: boolean, stoppedSession: boolean) => {
+    if (!stopRunningSession) return "Failed to unequip Blueprint"
+    if (stoppedSession) return "Session stopped, Blueprint still equipped"
+    return "Failed to stop Blueprint run"
+  }
+
+  const abortSession = async (sessionID = params.id) => {
+    if (!sessionID) return
+    await sdk.client.session.abort({ sessionID })
+  }
+
+  const abort = () => {
+    abortSession().catch(() => {})
+  }
+
+  const clearBoundLoop = (sessionID: string | undefined, loopID: string) => {
+    if (!sessionID) return
+    sync.set(
+      produce((draft) => {
+        const session = draft.session.find((item) => item.id === sessionID)
+        if (session && session.blueprint?.loopID === loopID) {
+          session.blueprint = { ...session.blueprint, loopID: undefined }
+        }
+      }),
+    )
+  }
+
   const [slotLongPress, setSlotLongPress] = createSignal<ReturnType<typeof setTimeout> | null>(null)
   const [slotLongPressProgress, setSlotLongPressProgress] = createSignal(0)
   let slotLongPressFrame: number | undefined
 
   const startLongPress = (slot: BlueprintSlotDisplay) => {
     if (slotLongPress()) return
+    const sessionID = params.id
     const startedAt = performance.now()
     const duration = 2000
     const tick = (now: number) => {
@@ -194,24 +243,33 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       if (slotLongPressFrame !== undefined) cancelAnimationFrame(slotLongPressFrame)
       slotLongPressFrame = undefined
       setSlotLongPressProgress(1)
-      if (slot.slot.type === "loop") {
-        const loopID = slot.slot.loopID
-        await sdk.client.blueprint.loop.cancel({ id: loopID }).catch(() => {})
-        const sessionID = params.id
-        if (sessionID) {
-          sync.set(
-            produce((draft) => {
-              const session = draft.session.find((item) => item.id === sessionID)
-              if (session && session.blueprint?.loopID === loopID) {
-                session.blueprint = { ...session.blueprint, loopID: undefined }
-              }
-            }),
-          )
+      const stopRunningSession = slot.slot.type === "loop" && working()
+      let stoppedSession = false
+      try {
+        if (stopRunningSession) {
+          await abortSession(sessionID)
+          stoppedSession = true
         }
+        if (slot.slot.type === "loop") {
+          const loopID = slot.slot.loopID
+          await sdk.client.blueprint.loop.cancel({ id: loopID })
+          clearBoundLoop(sessionID, loopID)
+        }
+        if (localArmedLoop()?.noteID === slot.slot.noteID) setLocalArmedLoop(null)
+        showToast({
+          type: "info",
+          title: stopRunningSession ? "Blueprint run stopped" : "Blueprint unequipped",
+          description: slot.slot.title,
+        })
+      } catch (err) {
+        showToast({
+          type: "error",
+          title: getBlueprintFailureTitle(stopRunningSession, stoppedSession),
+          description: requestErrorMessage(err),
+        })
+      } finally {
+        setSlotLongPressProgress(0)
       }
-      if (localArmedLoop()?.noteID === slot.slot.noteID) setLocalArmedLoop(null)
-      setSlotLongPressProgress(0)
-      showToast({ type: "info", title: "Blueprint unequipped", description: slot.slot.title })
     }, 2000)
     setSlotLongPress(t)
   }
@@ -655,11 +713,6 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       setLocalArmedLoop,
       setStore,
     })
-
-  const abort = () => {
-    const sessionID = params.id!
-    sdk.client.session.abort({ sessionID }).catch(() => {})
-  }
 
   const sendQuickAction = (text: string) => {
     const sessionID = params.id
@@ -1261,14 +1314,14 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                         <div class="min-w-56 max-w-72">
                           <div class="text-12-medium text-text-strong truncate">{bp().slot.title}</div>
                           <div class="mt-1 text-10-regular text-text-weak">Ready to start this BlueprintLoop.</div>
-                          <div class="mt-2 text-10-regular text-text-weak">Hold for 2 seconds to unequip.</div>
+                          <div class="mt-2 text-10-regular text-text-weak">{getBlueprintSlotHoldLabel(bp())}</div>
                         </div>
                       }
                     >
                       <button
                         type="button"
                         class="group relative flex h-8 min-w-0 max-w-36 items-center gap-1.5 overflow-hidden rounded-full px-2.5 text-text-interactive-base transition-colors hover:bg-surface-raised-base-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-border-strong-base/35 select-none"
-                        aria-label={`Hold to unequip Blueprint: ${bp().slot.title}`}
+                        aria-label={getBlueprintSlotAriaLabel(bp())}
                         onPointerDown={() => startLongPress(bp())}
                         onPointerUp={cancelLongPress}
                         onPointerCancel={cancelLongPress}
@@ -1323,14 +1376,14 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                           <div class="mt-1 text-10-regular text-text-weak">
                             Blueprint {getBlueprintSlotStatusLabel(bp().mode).toLowerCase()}
                           </div>
-                          <div class="mt-2 text-10-regular text-text-weak">Hold for 2 seconds to unequip.</div>
+                          <div class="mt-2 text-10-regular text-text-weak">{getBlueprintSlotHoldLabel(bp())}</div>
                         </div>
                       }
                     >
                       <button
                         type="button"
                         class="bp-slot group relative flex items-center justify-center size-8 overflow-hidden rounded-full border border-border-weak-base bg-surface-base hover:bg-surface-raised-base-hover transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-border-strong-base/35 cursor-default select-none"
-                        aria-label={`Hold to unequip Blueprint: ${bp().slot.title}`}
+                        aria-label={getBlueprintSlotAriaLabel(bp())}
                         onPointerDown={() => startLongPress(bp())}
                         onPointerUp={cancelLongPress}
                         onPointerCancel={cancelLongPress}
