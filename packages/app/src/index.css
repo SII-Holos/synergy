@@ -215,12 +215,7 @@ a:active,
 }
 
 .synergy-workbench-canvas
-  :where(
-    .bg-surface-raised-base,
-    .bg-surface-raised-strong,
-    .bg-surface-raised-stronger,
-    .bg-surface-base
-  ) {
+  :where(.bg-surface-raised-base, .bg-surface-raised-strong, .bg-surface-raised-stronger, .bg-surface-base) {
   background-color: var(--workbench-card-bg);
 }
 

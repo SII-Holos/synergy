@@ -115,8 +115,12 @@ describe("workbench surface polarity", () => {
     ] as const
 
     for (const [inner, outer] of relationships) {
-      expect(luminance(parseWorkbenchToken(inner, "light"))).toBeLessThan(luminance(parseWorkbenchToken(outer, "light")))
-      expect(luminance(parseWorkbenchToken(inner, "dark"))).toBeGreaterThan(luminance(parseWorkbenchToken(outer, "dark")))
+      expect(luminance(parseWorkbenchToken(inner, "light"))).toBeLessThan(
+        luminance(parseWorkbenchToken(outer, "light")),
+      )
+      expect(luminance(parseWorkbenchToken(inner, "dark"))).toBeGreaterThan(
+        luminance(parseWorkbenchToken(outer, "dark")),
+      )
     }
   })
 
@@ -140,13 +144,16 @@ describe("workbench surface polarity", () => {
   test("raised stronger non-alpha utilities resolve to popover surfaces inside the workbench", () => {
     expect(css).toContain(".bg-surface-raised-stronger-non-alpha")
     expect(css).toContain("background-color: var(--workbench-popover-bg);")
-    expect(css).not.toContain(".bg-surface-raised-stronger-non-alpha\n  ) {\n  background-color: var(--workbench-card-bg);")
+    expect(css).not.toContain(
+      ".bg-surface-raised-stronger-non-alpha\n  ) {\n  background-color: var(--workbench-card-bg);",
+    )
   })
 
   test("generic surface utilities used by the frontend are covered by workbench mappings", () => {
     const sourceFiles = [...walkSourceFiles(appSrc), ...walkSourceFiles(uiSrc)]
     const genericBgClass = /(?:^|[\s"'`])((?:hover:)?bg-(?:surface|background|input|button)-[A-Za-z0-9\-/]+)/g
-    const semanticState = /success|warning|critical|info|diff|action|brand|interactive-solid|interactive-weak|interactive-hover|muted|disabled/
+    const semanticState =
+      /success|warning|critical|info|diff|action|brand|interactive-solid|interactive-weak|interactive-hover|muted|disabled/
     const missing = new Set<string>()
 
     for (const filepath of sourceFiles) {

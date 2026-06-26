@@ -12,15 +12,10 @@ function allTokens(theme: ResolvedTheme): string[] {
 function luminance(value: string): number {
   const hex = value.trim()
   if (!hex.startsWith("#")) throw new Error(`Expected hex color for luminance check, got ${value}`)
-  const normalized =
-    hex.length === 4
-      ? `#${hex[1]}${hex[1]}${hex[2]}${hex[2]}${hex[3]}${hex[3]}`
-      : hex
+  const normalized = hex.length === 4 ? `#${hex[1]}${hex[1]}${hex[2]}${hex[2]}${hex[3]}${hex[3]}` : hex
   if (!/^#[0-9a-fA-F]{6}$/.test(normalized)) throw new Error(`Unsupported color value: ${value}`)
   const channels = [1, 3, 5].map((start) => Number.parseInt(normalized.slice(start, start + 2), 16) / 255)
-  const linear = channels.map((channel) =>
-    channel <= 0.03928 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4,
-  )
+  const linear = channels.map((channel) => (channel <= 0.03928 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4))
   return 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2]
 }
 
