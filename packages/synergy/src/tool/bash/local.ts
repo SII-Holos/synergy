@@ -398,15 +398,6 @@ export const LocalBashBackend: BashBackend = {
     regProc.child = child
     regProc.stdin = child.stdin ?? undefined
     regProc.pid = child.pid
-    await trace("process.spawn", {
-      processId: regProc.id,
-      pid: child.pid,
-      command: params.command,
-      sandboxed: Boolean(sandboxWrapper && !sandboxWrapper.skipReason),
-      background: params.background === true,
-      yieldSeconds: params.yieldSeconds,
-    })
-    if (childError) throw childError
 
     child.stdout?.on("data", append)
     child.stderr?.on("data", append)
@@ -429,6 +420,16 @@ export const LocalBashBackend: BashBackend = {
       })
       resolveChildFinished("exited")
     })
+
+    await trace("process.spawn", {
+      processId: regProc.id,
+      pid: child.pid,
+      command: params.command,
+      sandboxed: Boolean(sandboxWrapper && !sandboxWrapper.skipReason),
+      background: params.background === true,
+      yieldSeconds: params.yieldSeconds,
+    })
+    if (childError) throw childError
 
     if (params.background) {
       ProcessRegistry.markBackgrounded(regProc)
