@@ -64,11 +64,8 @@ export namespace BrowserWorkspace {
     }
   }
 
-  export async function ensureSession(
-    owner: BrowserOwner.Info,
-    options?: BrowserHost.EnsureSessionOptions,
-  ): Promise<BrowserSession> {
-    return BrowserHost.ensureSession(owner, options)
+  export async function ensureSession(owner: BrowserOwner.Info): Promise<BrowserSession> {
+    return BrowserHost.ensureSession(owner)
   }
 
   export function mergeCanonicalHostSession(
@@ -84,9 +81,8 @@ export namespace BrowserWorkspace {
 
   export async function sessionState(
     state: Pick<State, "owner" | "presentation">,
-    options?: BrowserHost.EnsureSessionOptions,
   ): Promise<BrowserControl.SessionState> {
-    const session = await ensureSession(state.owner, options)
+    const session = await ensureSession(state.owner)
     const canonical = BrowserControl.sessionState(session)
     const hostSession = BrowserHostControl.sessionState(state.owner)
     if (!hostSession) return canonical

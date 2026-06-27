@@ -52,6 +52,8 @@ Browser control and Browser presentation are intentionally separate. The shared 
 
 The Browser server boundary follows the same split: session/control endpoints carry tab state and commands, Browser Host control has its own route, and WebRTC signaling has its own route. Production interactive viewing uses native desktop presentation or WebRTC. Remote text, IME composition, paste, pointer, wheel, and shortcut input travel over the WebRTC data channel so the remote surface behaves like a local browser window.
 
+Opening the Browser workspace reads the current session state. Tabs are created by explicit actions such as the new-tab button, address-bar navigation from an empty workspace, browser tools, or direct `createTab` control commands.
+
 Remote WebRTC Browser Hosts autostart by default when a remote Browser viewer connects. Set `SYNERGY_BROWSER_HOST_AUTOSTART=0` to disable server-managed host startup, or set `SYNERGY_BROWSER_HOST_COMMAND` to provide a custom Electron host command.
 
 Browser contexts are isolated by Synergy owner/session and persist tab state plus browser storage state. User-explicit navigation and page interaction run without approval prompts but still pass hard safety checks such as invalid protocols, sensitive local ports, and out-of-scope `file://` access. Agent-driven browser tools continue to use the active control profile, so guarded/autonomous/full-access behavior remains consistent with the rest of Synergy.

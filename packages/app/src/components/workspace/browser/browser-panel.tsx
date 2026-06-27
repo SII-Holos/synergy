@@ -56,6 +56,12 @@ function BrowserPanelInner(props: {
 
   const showDevPanel = () => browser.devPanel() !== "closed"
 
+  const sendActiveTabCommand = (message: Record<string, unknown>) => {
+    const tabId = browser.activeTabId()
+    if (!tabId) return
+    browser.send({ ...message, tabId })
+  }
+
   const dismissAnnotation = () => {
     browser.clearAnnotationTarget()
     browser.setAnnotationMode(false)
@@ -102,9 +108,10 @@ function BrowserPanelInner(props: {
           <AddressBar
             activeUrl={() => activeTab()?.url ?? ""}
             isLoading={() => activeTab()?.isLoading ?? false}
-            onHistory={(direction) => browser.send({ type: "history", direction, tabId: browser.activeTabId() })}
-            onReload={() => browser.send({ type: "reload", tabId: browser.activeTabId() })}
-            onStop={() => browser.send({ type: "stop", tabId: browser.activeTabId() })}
+            hasActiveTab={() => Boolean(activeTab())}
+            onHistory={(direction) => sendActiveTabCommand({ type: "history", direction })}
+            onReload={() => sendActiveTabCommand({ type: "reload" })}
+            onStop={() => sendActiveTabCommand({ type: "stop" })}
             onNavigate={browser.navigate}
           />
           <div class="flex-1 relative bg-background-stronger">

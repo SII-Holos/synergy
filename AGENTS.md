@@ -165,6 +165,8 @@ The built-in Browser workspace has two interactive presentation modes:
 
 Keep those modes as first-class paths. Do not add screenshot-stream, iframe, pseudo-tab, adapter, or compatibility fallback paths for the interactive Browser workspace. Shared browser behavior belongs in clear domain modules such as workspace control, host control, and WebContents command execution; mode-specific code should own only presentation lifecycle.
 
+Browser session reads are state reads. `GET /browser/session`, events WS open, and WebRTC signaling open must not create tabs. Tab creation belongs to explicit control commands such as `createTab`, including address-bar navigation from an empty workspace.
+
 Workspace resize commands use CSS viewport width and height. Keep Playwright/tool-only viewport details such as device scale factor out of workspace resize messages unless both native and remote presentations implement the same semantics.
 
 Remote Browser input must preserve local-browser expectations: pointer focus, text caret in the page, IME composition, paste, wheel, and keyboard shortcuts. Treat host pending/ready/loading as connection state, not as fatal Browser errors.

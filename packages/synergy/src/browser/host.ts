@@ -20,10 +20,6 @@ export namespace BrowserHost {
     state?(): { sessions: Map<string, BrowserSession> }
   }
 
-  export interface EnsureSessionOptions {
-    createInitialTab?: boolean
-  }
-
   const hostCapabilities: BrowserPresentationCapabilities = {
     native: true,
     webrtc: true,
@@ -55,17 +51,10 @@ export namespace BrowserHost {
     return runtime.health()
   }
 
-  export async function ensureSession(
-    owner: BrowserOwner.Info,
-    options: EnsureSessionOptions = {},
-  ): Promise<BrowserSession> {
+  export async function ensureSession(owner: BrowserOwner.Info): Promise<BrowserSession> {
     BrowserOwner.assertValid(owner)
     await ensure()
-    const session = await runtime.getOrCreateSession(owner)
-    if (options.createInitialTab && session.tabs.length === 0) {
-      await BrowserControl.execute(session, { type: "createTab" })
-    }
-    return session
+    return runtime.getOrCreateSession(owner)
   }
 
   export async function executeAttached(

@@ -165,7 +165,7 @@ export const BrowserRoute = new Hono()
   .get("/:directory/browser/session", async (c) => {
     try {
       const state = routeState(c)
-      const session = await BrowserWorkspace.sessionState(state, { createInitialTab: true })
+      const session = await BrowserWorkspace.sessionState(state)
       return c.json(BrowserWorkspace.sessionStatePayload(session, state.presentation, await BrowserHost.health()))
     } catch (e: any) {
       log.error("browser session route error", { error: e?.message ?? String(e) })
@@ -310,7 +310,7 @@ export const BrowserRoute = new Hono()
       return {
         onOpen: async (_e: any, ws: BrowserWS) => {
           try {
-            const session = await BrowserWorkspace.ensureSession(owner, { createInitialTab: true })
+            const session = await BrowserWorkspace.ensureSession(owner)
             unsubscribe = subscribeBrowserEvents(ws, session)
             unsubscribeHost = BrowserHostControl.addObserver(owner, (event) => {
               if (presentation.kind === "webrtc" && event.type === "session.state") {
@@ -476,7 +476,7 @@ export const BrowserRoute = new Hono()
 
       return {
         onOpen: async (_e: any, ws: BrowserWS) => {
-          const session = await BrowserWorkspace.sessionState(state, { createInitialTab: true })
+          const session = await BrowserWorkspace.sessionState(state)
           const tabId = initialTabId || session.activeTabId || null
           const tab = tabId ? session.tabs.find((item) => item.id === tabId) : undefined
           if (tabId) {
@@ -612,7 +612,7 @@ export const BrowserRoute = new Hono()
 
       return {
         onOpen: async (_e: any, ws: BrowserWS) => {
-          const session = await BrowserWorkspace.sessionState(state, { createInitialTab: true })
+          const session = await BrowserWorkspace.sessionState(state)
           attachedTabId = attachedTabId || session.activeTabId || null
           if (!attachedTabId) {
             send(ws, { type: "error", code: "browser_webrtc_host_missing_tab", message: "Missing WebRTC host tab id" })

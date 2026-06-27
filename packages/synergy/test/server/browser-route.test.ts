@@ -76,7 +76,86 @@ function fakeSession(owner: BrowserOwner.Info, activeTabId: string) {
   } as any
 }
 
+function fakeEmptySession(owner: BrowserOwner.Info) {
+  return {
+    owner,
+    tabs: [],
+    activeTab: null,
+    annotations: [],
+    async createTab() {
+      throw new Error("unexpected createTab")
+    },
+    switchTab() {
+      throw new Error("unexpected switchTab")
+    },
+    async closeTab() {},
+    async closeOthers() {},
+    getTab() {
+      return undefined
+    },
+    addAnnotation() {
+      throw new Error("not implemented")
+    },
+    removeAnnotation() {
+      return false
+    },
+    clearAnnotations() {},
+    formatAnnotationsForContext() {
+      return ""
+    },
+    addObserver() {
+      return () => {}
+    },
+    async notifyTabNavigated() {},
+    async notifyAgentActivity() {},
+    async notifyControlChanged() {},
+    async save() {},
+    async restore() {
+      return true
+    },
+    async dispose() {},
+  } as any
+}
+
 describe("BrowserRoute control readiness", () => {
+  test("reads browser session state without creating an initial tab", async () => {
+    await ScopeContext.provide({
+      scope: Scope.home(),
+      fn: async () => {
+        const owner = BrowserOwner.fromRoute({
+          directory: ScopeContext.current.directory,
+          scopeID: ScopeContext.current.scope.id,
+          sessionID: "ses_route_empty",
+          mode: "session",
+        })
+        const session = fakeEmptySession(owner)
+        const restore = BrowserHost.useRuntimeForTest({
+          async ensure() {},
+          async health() {
+            return { running: false, chromiumPath: null, installed: false, version: null }
+          },
+          async getOrCreateSession() {
+            return session
+          },
+        })
+
+        try {
+          const app = Server.App()
+          const response = await app.request(
+            "/home/browser/session?mode=session&sessionID=ses_route_empty&presentation=webrtc&client=web&scopeID=home",
+          )
+
+          expect(response.status).toBe(200)
+          const body = await response.json()
+          expect(body.tabs).toEqual([])
+          expect(body.activeTabId).toBeNull()
+        } finally {
+          restore()
+        }
+      },
+    })
+  })
+
   test("returns a retryable pending response instead of 500 when WebRTC host control is not ready", async () => {
     await ScopeContext.provide({
       scope: Scope.home(),

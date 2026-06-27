@@ -92,7 +92,7 @@ describe("createBrowserStore navigate", () => {
 })
 
 describe("createBrowserStore viewport", () => {
-  test("starts in fit mode and records manual viewport changes as fixed", () => {
+  test("starts in fit mode and records tabless manual viewport changes locally", () => {
     createRoot((dispose) => {
       const store = createBrowserStore()
       const sent: Record<string, unknown>[] = []
@@ -105,12 +105,7 @@ describe("createBrowserStore viewport", () => {
       expect(store.viewportMode()).toBe("fixed")
       expect(store.viewportWidth()).toBe(375)
       expect(store.viewportHeight()).toBe(668)
-      expect(sent.at(-1)).toEqual({
-        type: "input.resize",
-        tabId: null,
-        width: 375,
-        height: 668,
-      })
+      expect(sent).toEqual([])
       dispose()
     })
   })
@@ -120,6 +115,8 @@ describe("createBrowserStore viewport", () => {
       const store = createBrowserStore()
       const sent: Record<string, unknown>[] = []
       store._setSend((msg) => sent.push(msg))
+      store.setSession("tabs", [{ id: "tab-1", title: "Start", url: "about:blank", isLoading: false }])
+      store.setSession("activeTabId", "tab-1")
 
       store.setViewport(900, 640, { mode: "fit" })
 
@@ -128,6 +125,7 @@ describe("createBrowserStore viewport", () => {
       expect(store.viewportHeight()).toBe(640)
       expect(sent.at(-1)).toMatchObject({
         type: "input.resize",
+        tabId: "tab-1",
         width: 900,
         height: 640,
       })

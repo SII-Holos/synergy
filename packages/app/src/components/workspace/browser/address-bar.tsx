@@ -7,6 +7,7 @@ import { browserDebug } from "./browser-debug"
 export type AddressBarProps = {
   activeUrl: () => string
   isLoading: () => boolean
+  hasActiveTab: () => boolean
   onNavigate: (url: string) => void
   onHistory: (direction: "back" | "forward") => void
   onReload: () => void
@@ -86,18 +87,21 @@ export function AddressBar(props: AddressBarProps) {
         icon={getSemanticIcon("browser.back")}
         variant="ghost"
         title="Back"
+        disabled={!props.hasActiveTab()}
         onClick={() => props.onHistory("back")}
       />
       <IconButton
         icon={getSemanticIcon("browser.forward")}
         variant="ghost"
         title="Forward"
+        disabled={!props.hasActiveTab()}
         onClick={() => props.onHistory("forward")}
       />
       <IconButton
         icon={props.isLoading() ? getSemanticIcon("browser.stop") : getSemanticIcon("browser.refresh")}
         variant="ghost"
         title={props.isLoading() ? "Stop" : "Reload"}
+        disabled={!props.hasActiveTab()}
         classList={{ "animate-spin": props.isLoading() }}
         onClick={() => (props.isLoading() ? props.onStop() : props.onReload())}
       />

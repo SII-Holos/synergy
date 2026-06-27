@@ -252,13 +252,21 @@ export function createBrowserStore() {
       width: nextWidth,
       height: nextHeight,
     }
-    if (presentation()?.kind === "webrtc" && (!tabId || hostStatus(tabId) !== "ready")) {
-      if (tabId) pendingViewportByTab.set(tabId, message)
+    if (!tabId) {
+      browserDebug("store.viewport.local", {
+        width: nextWidth,
+        height: nextHeight,
+        reason: "missing-tab",
+      })
+      return
+    }
+    if (presentation()?.kind === "webrtc" && hostStatus(tabId) !== "ready") {
+      pendingViewportByTab.set(tabId, message)
       browserDebug("store.viewport.deferred", {
         tabId,
         width: nextWidth,
         height: nextHeight,
-        hostStatus: tabId ? hostStatus(tabId) : "missing-tab",
+        hostStatus: hostStatus(tabId),
       })
       return
     }
