@@ -33,10 +33,9 @@ export function PermissionModeSelector(props: {
               description: "Stop the session before changing its permission mode.",
             })
           }}
-          class="flex items-center gap-1.5 h-7 px-3 rounded-full border border-border-weak-base bg-surface-base transition-colors"
+          class="prompt-input-toolbar-button flex items-center gap-1.5 transition-colors"
           classList={{
             "opacity-60 cursor-not-allowed": props.working() || props.switching(),
-            "hover:bg-surface-raised-base-hover": !props.switching(),
           }}
         >
           <Show

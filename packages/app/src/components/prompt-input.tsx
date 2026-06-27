@@ -1029,15 +1029,15 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
         classList={{
-          "bg-surface-raised-stronger-non-alpha relative": true,
+          "prompt-input-shell bg-surface-raised-stronger-non-alpha relative": true,
+          "prompt-input-shell-dragging": store.dragging,
           "overflow-hidden": true,
-          "focus-within:ring-1 focus-within:ring-border-weak-base": true,
           "border border-border-base": !store.dragging,
           "border border-icon-info-active border-dashed": store.dragging,
           "max-md:border-t max-md:border-x-0 max-md:border-b-0 max-md:shadow-none": true,
           [props.class ?? ""]: !!props.class,
         }}
-        style={{ "border-radius": layout.isDesktop() ? "24px" : "0px", "z-index": 1 }}
+        style={{ "z-index": 1 }}
       >
         <Show when={store.dragging}>
           <div class="absolute inset-0 z-10 flex items-center justify-center bg-surface-raised-stronger-non-alpha/90 pointer-events-none">
@@ -1148,11 +1148,11 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
             </div>
           </Show>
         </div>
-        <div class="px-4 py-2.5 flex flex-wrap items-center justify-between gap-2">
-          <div class="min-w-0 flex flex-wrap items-center gap-1.5">
+        <div class="prompt-input-toolbar flex flex-wrap items-center justify-between gap-2">
+          <div class="prompt-input-toolbar-main min-w-0 flex flex-wrap items-center gap-1">
             <Switch>
               <Match when={store.mode === "shell"}>
-                <div class="flex items-center gap-2 px-3 h-7 rounded-full bg-surface-base">
+                <div class="prompt-input-toolbar-chip flex items-center gap-2">
                   <Icon name="terminal" size="small" class="text-icon-interactive-base" />
                   <span class="text-12-medium text-text-interactive-base">Shell</span>
                   <span class="text-11-regular text-text-subtle">esc to exit</span>
@@ -1164,7 +1164,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                     trigger={
                       <button
                         type="button"
-                        class="flex items-center gap-1.5 h-7 px-3 rounded-full border border-border-weak-base bg-surface-base hover:bg-surface-raised-base-hover transition-colors"
+                        class="prompt-input-toolbar-button flex items-center gap-1.5"
                       >
                         <span class="text-12-medium text-text-base whitespace-nowrap">
                           {getAgentVisual(local.agent.current()).label}
@@ -1229,7 +1229,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                     <button
                       type="button"
                       aria-label="Exit Plan Mode"
-                      class="group flex h-7 items-center gap-1.5 rounded-full border border-border-weak-base bg-surface-base px-2.5 text-text-weak transition-colors hover:bg-surface-raised-base-hover hover:text-text-base focus:outline-none focus-visible:ring-2 focus-visible:ring-border-strong-base/35"
+                      class="prompt-input-toolbar-button group flex items-center gap-1.5 text-text-weak hover:text-text-base"
                       onClick={() => void togglePlanMode()}
                     >
                       <span class="relative flex size-4 shrink-0 items-center justify-center">
@@ -1249,7 +1249,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                     <DropdownMenu.Trigger
                       type="button"
                       aria-label="Add"
-                      class="flex items-center justify-center size-7 rounded-full border border-border-weak-base bg-surface-base text-icon-base hover:bg-surface-raised-base-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-border-strong-base/35 transition-colors"
+                      class="prompt-input-toolbar-icon-button flex items-center justify-center text-icon-base"
                     >
                       <Icon name="plus" size="small" />
                     </DropdownMenu.Trigger>
@@ -1296,7 +1296,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
               </Match>
             </Switch>
           </div>
-          <div class="ml-auto flex min-w-0 shrink-0 items-center justify-end gap-2">
+          <div class="prompt-input-toolbar-actions ml-auto flex min-w-0 shrink-0 items-center justify-end gap-1.5">
             <input
               ref={fileInputRef}
               type="file"
@@ -1318,7 +1318,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
             <Switch>
               <Match when={blueprintSubmitActive() && displayedBlueprintLoop()}>
                 {(bp) => (
-                  <div class="flex h-9 max-w-full items-center rounded-full border border-border-interactive-base/35 bg-surface-interactive-selected-weak/70 p-0.5 shadow-xs">
+                  <div class="flex h-9 max-w-full items-center rounded-lg border border-border-interactive-base/35 bg-surface-interactive-selected-weak/70 p-0.5 shadow-xs">
                     <Tooltip
                       placement="top"
                       value={
@@ -1331,7 +1331,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                     >
                       <button
                         type="button"
-                        class="group relative flex h-8 min-w-0 max-w-36 items-center gap-1.5 overflow-hidden rounded-full px-2.5 text-text-interactive-base transition-colors hover:bg-surface-raised-base-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-border-strong-base/35 select-none"
+                        class="group relative flex h-8 min-w-0 max-w-36 items-center gap-1.5 overflow-hidden rounded-md px-2.5 text-text-interactive-base transition-colors hover:bg-surface-raised-base-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-border-strong-base/35 select-none"
                         aria-label={getBlueprintSlotAriaLabel(bp())}
                         onPointerDown={() => startLongPress(bp())}
                         onPointerUp={cancelLongPress}
@@ -1370,7 +1370,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                         type="submit"
                         icon="zap"
                         variant="primary"
-                        class="size-8 rounded-full! bg-text-interactive-base!"
+                        class="prompt-input-submit size-8 rounded-full! bg-text-interactive-base!"
                       />
                     </Tooltip>
                   </div>
@@ -1393,7 +1393,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                     >
                       <button
                         type="button"
-                        class="bp-slot group relative flex items-center justify-center size-8 overflow-hidden rounded-full border border-border-weak-base bg-surface-base hover:bg-surface-raised-base-hover transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-border-strong-base/35 cursor-default select-none"
+                        class="prompt-input-toolbar-icon-button bp-slot group relative flex items-center justify-center size-8 overflow-hidden cursor-default select-none"
                         aria-label={getBlueprintSlotAriaLabel(bp())}
                         onPointerDown={() => startLongPress(bp())}
                         onPointerUp={cancelLongPress}
@@ -1445,7 +1445,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                     disabled={!canSubmit()}
                     icon={working() && !prompt.dirty() ? "square" : "arrow-up"}
                     variant="primary"
-                    class="size-9 rounded-full!"
+                    class="prompt-input-submit size-9 rounded-full!"
                   />
                 </Tooltip>
               </Match>

@@ -58,6 +58,8 @@ For item detail popovers, let the popover itself be the outer card. Use section 
 
 Form controls should have filled surfaces. In dark mode, controls should be slightly brighter than their container; in light mode, controls should be slightly darker. Required-action buttons stay disabled until the required inputs are valid.
 
+Prompt composers should read as one grounded input surface with a quiet bottom toolbar. Ordinary mode, agent, permission, and add controls should behave like toolbar buttons rather than separate bordered pills; reserve filled chips for active modes, pending state, or meaningful workflow status.
+
 Use icons sparingly. Icons should clarify primary navigation or compact controls, not decorate every row of a form.
 
 Clarifying question prompts are decision surfaces, not tool-output cards. They should use a solid outer shell, filled option rows, quiet step chips, clear disabled primary actions, and only the minimum icons needed to show disclosure or selection state.

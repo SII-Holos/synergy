@@ -328,6 +328,83 @@ a:active,
 .synergy-workbench-canvas :where(.workbench-selected-surface:hover) {
   background-color: var(--workbench-selected-bg-hover);
 }
+
+.synergy-workbench-canvas .prompt-input-shell {
+  border-radius: 16px;
+  background-color: var(--workbench-input-bg);
+  border-color: color-mix(in srgb, var(--text-strong) 12%, transparent);
+  box-shadow: 0 1px 0 color-mix(in srgb, var(--text-strong) 4%, transparent);
+  transition:
+    background-color 150ms ease,
+    border-color 150ms ease,
+    box-shadow 150ms ease;
+}
+
+.synergy-workbench-canvas .prompt-input-shell:hover {
+  background-color: var(--workbench-input-bg-hover);
+}
+
+.synergy-workbench-canvas .prompt-input-shell:focus-within {
+  border-color: color-mix(in srgb, var(--text-strong) 22%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--text-strong) 10%, transparent);
+}
+
+.synergy-workbench-canvas .prompt-input-shell.prompt-input-shell-dragging {
+  border-color: var(--icon-info-active);
+}
+
+.synergy-workbench-canvas .prompt-input-toolbar {
+  padding: 8px 14px 12px;
+}
+
+.synergy-workbench-canvas .prompt-input-toolbar-button,
+.synergy-workbench-canvas .prompt-input-toolbar-chip,
+.synergy-workbench-canvas .prompt-input-toolbar-icon-button {
+  min-height: 32px;
+  border: 0;
+  border-radius: 8px;
+  background-color: transparent;
+  transition:
+    background-color 150ms ease,
+    color 150ms ease,
+    opacity 150ms ease;
+}
+
+.synergy-workbench-canvas .prompt-input-toolbar-button {
+  padding: 0 8px;
+}
+
+.synergy-workbench-canvas .prompt-input-toolbar-chip {
+  padding: 0 10px;
+  background-color: var(--workbench-selected-bg);
+}
+
+.synergy-workbench-canvas .prompt-input-toolbar-icon-button {
+  width: 32px;
+  height: 32px;
+}
+
+.synergy-workbench-canvas .prompt-input-toolbar-button:hover,
+.synergy-workbench-canvas .prompt-input-toolbar-icon-button:hover {
+  background-color: color-mix(in srgb, var(--text-strong) 7%, transparent);
+}
+
+.synergy-workbench-canvas .prompt-input-toolbar-button:focus-visible,
+.synergy-workbench-canvas .prompt-input-toolbar-icon-button:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--text-strong) 14%, transparent);
+}
+
+.synergy-workbench-canvas [data-component="icon-button"].prompt-input-submit {
+  box-shadow: none;
+}
+
+@media (max-width: 767px) {
+  .synergy-workbench-canvas .prompt-input-shell {
+    border-radius: 0;
+    box-shadow: none;
+  }
+}
 .statusbar-indicator-value {
   display: inline-block;
   font-family: var(--font-family-sans);
