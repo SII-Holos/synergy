@@ -31,6 +31,7 @@ export function ProviderConnectionFlow(props: {
   const globalSDK = useGlobalSDK()
   const platform = usePlatform()
   const provider = createMemo(() => globalSync.data.provider.all.find((x) => x.id === props.providerID))
+  const providerName = createMemo(() => provider()?.name ?? props.providerID)
   const profiles = createMemo(() => globalSync.data.provider.profiles)
   const methods = createMemo<ProviderAuthMethod[]>(
     () =>
@@ -145,6 +146,19 @@ export function ProviderConnectionFlow(props: {
     )
   }
 
+  function methodDescription(item: ProviderAuthMethod) {
+    if (item.type === "api") return "Paste a provider API key."
+    if (item.type === "oauth") return "Authorize in the browser and return here."
+    if (item.type === "import") return "Use credentials already available on this device."
+    return "Connect this provider."
+  }
+
+  function methodIcon(item: ProviderAuthMethod) {
+    if (item.type === "api" || item.type === "import") return getSemanticIcon("account.import")
+    if (item.type === "oauth") return getSemanticIcon("action.open")
+    return getSemanticIcon("settings.providers")
+  }
+
   return (
     <div classList={{ "provider-flow": true, "provider-flow-compact": !!props.compact }}>
       <div class="provider-flow-header">
@@ -170,11 +184,20 @@ export function ProviderConnectionFlow(props: {
         <Switch>
           <Match when={store.methodIndex === undefined}>
             <div class="provider-method-list">
+              <div class="provider-flow-intro">
+                <div class="provider-flow-eyebrow">Connection method</div>
+                <div class="provider-flow-heading">Choose how to connect</div>
+              </div>
               <For each={methods()}>
                 {(item, index) => (
                   <button type="button" class="provider-method-row" onClick={() => void selectMethod(index())}>
-                    <span class="provider-method-indicator" />
-                    <span>{item.label}</span>
+                    <span class="provider-method-icon">
+                      <Icon name={methodIcon(item)} size="small" />
+                    </span>
+                    <span class="provider-method-copy">
+                      <span class="provider-method-title">{item.label}</span>
+                      <span class="provider-method-description">{methodDescription(item)}</span>
+                    </span>
                     <Icon name={getSemanticIcon("navigation.expand")} size="small" class="text-text-weaker" />
                   </button>
                 )}
@@ -226,11 +249,17 @@ export function ProviderConnectionFlow(props: {
 
               return (
                 <form onSubmit={handleSubmit} class="provider-api-form">
+                  <div class="provider-step-header">
+                    <div class="provider-flow-eyebrow">API key</div>
+                    <div class="provider-flow-heading">Add a {providerName()} key</div>
+                    <p>Use a key from your provider account to make this provider available in Synergy.</p>
+                  </div>
                   <Show when={providerCTA(props.providerID, profiles())}>
                     {(cta) => (
-                      <div class="provider-flow-copy">
-                        <Link href={cta().url}>{cta().label}</Link>
-                      </div>
+                      <Link href={cta().url} class="provider-auth-link">
+                        <span>{cta().label}</span>
+                        <Icon name={getSemanticIcon("action.open")} size="small" />
+                      </Link>
                     )}
                   </Show>
                   <TextField
@@ -293,13 +322,23 @@ export function ProviderConnectionFlow(props: {
 
                   return (
                     <form onSubmit={handleSubmit} class="provider-api-form">
-                      <div class="provider-flow-copy">
-                        Visit <Link href={store.authorization!.url}>this link</Link> to collect your authorization code.
+                      <div class="provider-step-header">
+                        <div class="provider-flow-eyebrow">Step 1</div>
+                        <div class="provider-flow-heading">Authorize in your browser</div>
+                        <p>We opened the authorization page automatically. Use the button if it did not appear.</p>
+                      </div>
+                      <Link href={store.authorization!.url} class="provider-auth-link">
+                        <span>Open authorization page</span>
+                        <Icon name={getSemanticIcon("action.open")} size="small" />
+                      </Link>
+                      <div class="provider-step-header provider-step-header-compact">
+                        <div class="provider-flow-eyebrow">Step 2</div>
+                        <div class="provider-flow-heading">Paste the authorization code</div>
                       </div>
                       <TextField
                         autofocus
                         type="text"
-                        label={`${method()?.label} authorization code`}
+                        label="Authorization code"
                         placeholder="Authorization code"
                         name="code"
                         value={formStore.value}
@@ -342,9 +381,15 @@ export function ProviderConnectionFlow(props: {
 
                   return (
                     <div class="provider-device-flow">
-                      <div class="provider-flow-copy">
-                        Visit <Link href={store.authorization!.url}>this link</Link> and enter the code below.
+                      <div class="provider-step-header">
+                        <div class="provider-flow-eyebrow">Authorize</div>
+                        <div class="provider-flow-heading">Finish in your browser</div>
+                        <p>Open the authorization page and enter this confirmation code when prompted.</p>
                       </div>
+                      <Link href={store.authorization!.url} class="provider-auth-link">
+                        <span>Open authorization page</span>
+                        <Icon name={getSemanticIcon("action.open")} size="small" />
+                      </Link>
                       <TextField label="Confirmation code" class="font-mono" value={code()} readOnly copyable />
                       <div class="provider-flow-message">
                         <Spinner />

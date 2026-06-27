@@ -450,11 +450,9 @@ export function SettingsPanel(props: SettingsPanelProps) {
       case "providers":
         return (
           <ProvidersPanel
-            providers={settings.providers}
             summaries={providerSummaries()}
             authMethods={globalSync.data.provider_auth}
             providerFocusID={providerFocusID()}
-            onProviderChange={(key, value) => setSettings("providers", key, value)}
           />
         )
       case "usage":

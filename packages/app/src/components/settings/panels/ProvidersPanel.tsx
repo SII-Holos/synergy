@@ -1,7 +1,6 @@
 import type { ProviderAuthResponse } from "@ericsanchezok/synergy-sdk/client"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { ProviderIcon } from "@ericsanchezok/synergy-ui/provider-icon"
-import { TextField } from "@ericsanchezok/synergy-ui/text-field"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { createEffect, createMemo, createSignal, For, Show } from "solid-js"
 import { ProviderConnectionFlow } from "@/components/provider/ProviderConnectionFlow"
@@ -10,12 +9,9 @@ import {
   isRecommendedProvider,
   providerConnectCopy,
   providerConnectReason,
-  providerCTA,
   type ProviderRecommendationMetadata,
 } from "@/components/provider/provider-recommendation"
-import { Link } from "@/components/link"
-import { SettingsFieldGrid, SettingsPage, SettingsSection } from "../components/SettingsPrimitives"
-import type { ProvidersStore } from "../types"
+import { SettingsPage } from "../components/SettingsPrimitives"
 
 export type ProviderConnectionSummary = {
   id: string
@@ -33,11 +29,9 @@ export type ProviderConnectionSummary = {
 }
 
 export function ProvidersPanel(props: {
-  providers: ProvidersStore
   summaries: ProviderConnectionSummary[]
   authMethods: ProviderAuthResponse
   providerFocusID?: string
-  onProviderChange: (key: keyof ProvidersStore, value: string) => void
 }) {
   const [query, setQuery] = createSignal("")
   const [selectedID, setSelectedID] = createSignal<string | undefined>(props.providerFocusID)
@@ -92,27 +86,34 @@ export function ProvidersPanel(props: {
             />
           </div>
 
-          <ProviderGroup
-            title="Recommended"
-            providers={recommended()}
-            selectedID={selected()?.id}
-            onSelect={setSelectedID}
-            statusLabel={statusLabel}
-          />
-          <ProviderGroup
-            title="Connected"
-            providers={connected()}
-            selectedID={selected()?.id}
-            onSelect={setSelectedID}
-            statusLabel={statusLabel}
-          />
-          <ProviderGroup
-            title="Other"
-            providers={other()}
-            selectedID={selected()?.id}
-            onSelect={setSelectedID}
-            statusLabel={statusLabel}
-          />
+          <div class="providers-directory-scroll">
+            <Show
+              when={filtered().length > 0}
+              fallback={<div class="providers-list-empty">No providers match this search.</div>}
+            >
+              <ProviderGroup
+                title="Recommended"
+                providers={recommended()}
+                selectedID={selected()?.id}
+                onSelect={setSelectedID}
+                statusLabel={statusLabel}
+              />
+              <ProviderGroup
+                title="Connected"
+                providers={connected()}
+                selectedID={selected()?.id}
+                onSelect={setSelectedID}
+                statusLabel={statusLabel}
+              />
+              <ProviderGroup
+                title="Other"
+                providers={other()}
+                selectedID={selected()?.id}
+                onSelect={setSelectedID}
+                statusLabel={statusLabel}
+              />
+            </Show>
+          </div>
         </div>
 
         <div class="providers-detail">
@@ -126,7 +127,7 @@ export function ProvidersPanel(props: {
             }
           >
             {(provider) => (
-              <>
+              <div class="providers-detail-content">
                 <div class="providers-detail-summary">
                   <div class="flex items-center gap-3 min-w-0">
                     <ProviderIcon id={provider().id} class="providers-detail-icon" />
@@ -145,6 +146,7 @@ export function ProvidersPanel(props: {
                     {statusLabel(provider())}
                   </span>
                 </div>
+
                 <div class="providers-detail-meta">
                   <span>{provider().id}</span>
                   <span>{provider().modelCount} models</span>
@@ -158,43 +160,23 @@ export function ProvidersPanel(props: {
                     <span>{provider().availabilityReason?.replace(/_/g, " ")}</span>
                   </Show>
                 </div>
-                <Show when={providerCTA(provider().id, profileMap())}>
-                  {(cta) => (
-                    <div class="providers-detail-cta">
-                      <Link href={cta().url}>{cta().label}</Link>
-                    </div>
-                  )}
-                </Show>
-                <ProviderConnectionFlow providerID={provider().id} compact />
-              </>
+
+                <div class="providers-connect-section">
+                  <div>
+                    <div class="providers-connect-title">{provider().connected ? "Account" : "Connect"}</div>
+                    <p class="providers-connect-copy">
+                      {provider().connected
+                        ? "Review usage and refresh credentials when needed."
+                        : "Choose a sign-in method. Synergy will make available models selectable after connection."}
+                    </p>
+                  </div>
+                  <ProviderConnectionFlow providerID={provider().id} compact />
+                </div>
+              </div>
             )}
           </Show>
         </div>
       </div>
-
-      <SettingsSection
-        title="Advanced availability"
-        description="Use these only when you need to force provider allow or deny lists."
-      >
-        <SettingsFieldGrid>
-          <TextField
-            label="Enabled Providers"
-            multiline
-            value={props.providers.enabledProviders}
-            placeholder={"anthropic\nopenai"}
-            description="When set, only these provider IDs are enabled."
-            onChange={(value) => props.onProviderChange("enabledProviders", value)}
-          />
-          <TextField
-            label="Disabled Providers"
-            multiline
-            value={props.providers.disabledProviders}
-            placeholder={"example-provider"}
-            description="Provider IDs to disable even if they are loaded automatically."
-            onChange={(value) => props.onProviderChange("disabledProviders", value)}
-          />
-        </SettingsFieldGrid>
-      </SettingsSection>
     </SettingsPage>
   )
 }
