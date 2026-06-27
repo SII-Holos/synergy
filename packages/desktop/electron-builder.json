@@ -99,6 +99,7 @@
   "linux": {
     "artifactName": "Synergy-linux-${arch}-${version}.${ext}",
     "category": "Development",
+    "maintainer": "Holos AI <support@holos.ai>",
     "desktop": {
       "entry": {
         "Name": "Synergy",

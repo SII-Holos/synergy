@@ -148,29 +148,31 @@ for (const item of targets) {
   console.log(`building ${name}`)
   await $`mkdir -p dist/${name}/bin`
 
-  await Bun.build({
-    conditions: ["browser"],
-    tsconfig: "./tsconfig.json",
-    sourcemap: "external",
-    external: ["@aws-sdk/client-s3", "chromium-bidi", "chromium-bidi/*"],
-    compile: {
-      autoloadBunfig: false,
-      autoloadDotenv: false,
-      //@ts-ignore (bun types aren't up to date)
-      autoloadTsconfig: true,
-      autoloadPackageJson: true,
-      target: name.replace(pkg.name, "bun") as any,
-      outfile: `dist/${name}/bin/synergy`,
-      execArgv: [`--user-agent=synergy/${Script.version}`, "--use-system-ca", "--"],
-      windows: {},
-    },
-    entrypoints: ["./src/index.ts"],
-    define: {
-      SYNERGY_VERSION: `'${Script.version}'`,
-      SYNERGY_CHANNEL: `'${Script.channel}'`,
-      SYNERGY_LIBC: item.os === "linux" ? `'${item.abi ?? "glibc"}'` : "",
-    },
-  })
+  await retryBuild(name, () =>
+    Bun.build({
+      conditions: ["browser"],
+      tsconfig: "./tsconfig.json",
+      sourcemap: "external",
+      external: ["@aws-sdk/client-s3", "chromium-bidi", "chromium-bidi/*"],
+      compile: {
+        autoloadBunfig: false,
+        autoloadDotenv: false,
+        //@ts-ignore (bun types aren't up to date)
+        autoloadTsconfig: true,
+        autoloadPackageJson: true,
+        target: name.replace(pkg.name, "bun") as any,
+        outfile: `dist/${name}/bin/synergy`,
+        execArgv: [`--user-agent=synergy/${Script.version}`, "--use-system-ca", "--"],
+        windows: {},
+      },
+      entrypoints: ["./src/index.ts"],
+      define: {
+        SYNERGY_VERSION: `'${Script.version}'`,
+        SYNERGY_CHANNEL: `'${Script.channel}'`,
+        SYNERGY_LIBC: item.os === "linux" ? `'${item.abi ?? "glibc"}'` : "",
+      },
+    }),
+  )
 
   await Bun.file(`dist/${name}/package.json`).write(
     JSON.stringify(
@@ -221,6 +223,25 @@ async function copySandboxHelper(item: { os: string; arch: string }, name: strin
 
 function targetKey(item: { os: string; arch: string; abi?: string; avx2?: false }): string {
   return [item.os, item.arch, item.avx2 === false ? "baseline" : undefined, item.abi].filter(Boolean).join("-")
+}
+
+type BunBuildOutput = Awaited<ReturnType<typeof Bun.build>>
+
+async function retryBuild(name: string, build: () => Promise<BunBuildOutput>) {
+  let lastError: unknown
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      const output = await build()
+      if (output.success) return output
+      throw new Error(output.logs.map((log) => log.message).join("\n") || `Bun build failed for ${name}`)
+    } catch (error) {
+      lastError = error
+      if (attempt === 3) break
+      console.warn(`building ${name} failed on attempt ${attempt}/3; retrying in 5s`)
+      await new Promise((resolve) => setTimeout(resolve, 5_000))
+    }
+  }
+  throw lastError
 }
 
 export { binaries }

@@ -3,9 +3,13 @@
   "name": "@ericsanchezok/synergy-desktop",
   "version": "1.1.26",
   "description": "Synergy desktop application",
+  "homepage": "https://github.com/SII-Holos/synergy",
   "type": "module",
   "license": "MIT",
-  "author": "Holos AI",
+  "author": {
+    "name": "Holos AI",
+    "email": "support@holos.ai"
+  },
   "main": "./dist/main.js",
   "scripts": {
     "build": "bun run desktop:build",
