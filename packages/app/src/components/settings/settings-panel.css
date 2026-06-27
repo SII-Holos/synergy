@@ -471,7 +471,43 @@
   line-height: 1;
 }
 
-/* ===== Model roles ===== */
+/* ===== Models ===== */
+
+.settings-model-section {
+  width: min(100%, 920px);
+  padding: 8px 0 24px;
+}
+
+.settings-model-section + .settings-model-section {
+  margin-top: 8px;
+  padding-top: 26px;
+  border-top: 1px solid color-mix(in srgb, var(--border-base) 42%, transparent);
+}
+
+.settings-model-section-heading {
+  max-width: 880px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 12px;
+}
+
+.settings-model-section-title {
+  margin: 0 0 4px;
+  color: var(--text-strong);
+  font-size: 15px;
+  font-weight: 650;
+  line-height: 1.35;
+}
+
+.settings-model-section-description {
+  max-width: 620px;
+  margin: 0;
+  color: var(--text-weak);
+  font-size: 12px;
+  line-height: 1.55;
+}
 
 .settings-model-list {
   max-width: 880px;
@@ -711,6 +747,80 @@
 .settings-model-empty {
   max-width: 880px;
   margin-top: 14px;
+}
+
+.settings-connected-models-section {
+  padding-bottom: 48px;
+}
+
+.settings-connected-model-list {
+  max-width: 880px;
+  height: min(430px, max(280px, calc(100vh - 460px)));
+  min-height: 280px;
+  padding: 0;
+  gap: 10px;
+}
+
+.settings-connected-model-list [data-slot="list-search"] {
+  width: min(100%, 380px);
+  min-height: 34px;
+  margin: 0 0 4px;
+  padding: 6px 10px;
+  border: 1px solid var(--settings-border);
+  border-radius: 9px;
+  background: var(--settings-control-bg);
+}
+
+.settings-connected-model-list [data-slot="list-search-container"] {
+  max-height: none;
+}
+
+.settings-connected-model-list [data-slot="list-scroll"] {
+  gap: 14px;
+  padding-right: 3px;
+  scrollbar-width: thin;
+}
+
+.settings-connected-model-list [data-slot="list-header"] {
+  padding: 8px 2px 7px;
+  background: var(--settings-panel-bg);
+  color: var(--text-base);
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.settings-connected-model-list [data-slot="list-items"] {
+  gap: 2px;
+}
+
+.settings-connected-model-list [data-slot="list-item"] {
+  min-height: 42px;
+  padding: 8px 10px;
+  border-radius: 9px;
+  color: var(--text-strong);
+}
+
+.settings-connected-model-list [data-slot="list-item"][data-active="true"] {
+  background: var(--settings-control-bg-hover);
+}
+
+.settings-connected-model-list .model-manager-row {
+  width: 100%;
+}
+
+.settings-connected-model-list .model-manager-name {
+  min-width: 0;
+}
+
+.settings-connected-model-list .model-manager-model-name {
+  color: var(--text-strong);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.settings-connected-model-list .model-manager-actions {
+  min-width: 92px;
+  justify-content: flex-end;
 }
 
 /* ===== Segment pill control ===== */
@@ -953,6 +1063,11 @@
     justify-content: space-between;
   }
 
+  .settings-model-section-heading {
+    flex-direction: column;
+    gap: 10px;
+  }
+
   .settings-model-row {
     grid-template-columns: 1fr;
     gap: 10px;
@@ -960,6 +1075,14 @@
 
   .settings-model-trigger {
     justify-self: start;
+  }
+
+  .settings-connected-model-list {
+    height: 360px;
+  }
+
+  .settings-connected-model-list [data-slot="list-search"] {
+    width: 100%;
   }
 }
 

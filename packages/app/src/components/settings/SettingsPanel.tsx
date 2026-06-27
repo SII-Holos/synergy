@@ -29,7 +29,6 @@ import { useGlobalSDK } from "@/context/global-sdk"
 import { useInput, type SendShortcut } from "@/context/input"
 import { useGlobalSync } from "@/context/global-sync"
 import { DialogConfirm } from "@/components/dialog/dialog-confirm"
-import { DialogSelectModel } from "@/components/dialog/dialog-select-model"
 import { getSettingsSections, type SettingsSection as RegisteredSettingsSection } from "@/plugin"
 import { SandboxIframe } from "@/plugin/sandbox"
 import { AppPanel } from "@/components/app-panel"
@@ -445,7 +444,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
             providerModels={providerModels}
             modelRoleSummaries={() => modelRoleSummaries() ?? []}
             onModelChange={(key, value) => setSettings("models", key, value)}
-            onManageModels={() => dialog.show(() => <DialogSelectModel />)}
+            onConnectProvider={() => setActiveTab("providers")}
           />
         )
       case "providers":

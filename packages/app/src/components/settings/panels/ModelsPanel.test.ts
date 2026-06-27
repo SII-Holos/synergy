@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test"
 
 const modelRoleRow = await Bun.file(new URL("../components/ModelRoleRow.tsx", import.meta.url)).text()
 const modelsPanel = await Bun.file(new URL("./ModelsPanel.tsx", import.meta.url)).text()
+const modelManager = await Bun.file(new URL("../../model-manager.tsx", import.meta.url)).text()
 
 describe("Models panel UI contract", () => {
   test("uses compact popover model pickers instead of native role selects", () => {
@@ -21,5 +22,15 @@ describe("Models panel UI contract", () => {
     expect(modelRoleRow).toContain("Image analysis disabled")
     expect(modelRoleRow).toContain("Not configured")
     expect(modelRoleRow).not.toContain("global required")
+  })
+
+  test("integrates quick-switch model management into the models settings page", () => {
+    expect(modelsPanel).toContain("Model roles")
+    expect(modelsPanel).toContain("Quick switcher models")
+    expect(modelsPanel).toContain("ConnectedModelManager")
+    expect(modelsPanel).not.toContain("onManageModels")
+    expect(modelsPanel).not.toContain(">Manage models<")
+    expect(modelManager).toContain("setQuickSwitcher")
+    expect(modelManager).toContain("Persist.global(\"model\"")
   })
 })

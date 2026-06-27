@@ -38,6 +38,8 @@ Keep navigation surfaces mentally aligned with where they live. Sidebar destinat
 
 Settings should be a human-facing preference surface, not a raw config editor. Keep common settings in a left-aligned readable measure, use direct controls for choices, toggles, and stepped values, and reserve raw domain-file syntax for import/export or advanced configuration views.
 
+Model settings should keep role routing and quick-switcher visibility together in one Models page. Specialist model roles are the first section; connected models and their quick-switch toggles are the second section. Avoid reopening a separate Manage Models modal from inside Settings.
+
 Session, Agenda, Library, and Plugins should feel like one continuous workbench canvas in both light and dark modes. Their root backgrounds should align with the session message-flow background; inner surfaces can step up or down for hierarchy, but should not look like separate apps.
 
 Opening a workspace panel should not force the session message stream or prompt composer into a separate narrow fixed measure. Keep the session column at its normal readable working measure and let it shrink only when the actual pane width requires it. The normal session measure should feel like a broad workbench column for coding and tool-rich conversations, not a narrow chat lane. In constrained panes, preserve a minimum horizontal gutter around the message stream and tool cards so they do not visually stick to the sidebar or workspace boundary. Auto-opened workspace panels should occupy about half the viewport; user-resized workspace widths can remain sticky.

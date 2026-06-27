@@ -265,8 +265,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
         // No model available yet (e.g. user is still configuring providers, or
         // the connected provider has no default model mapping). Returning
         // undefined lets the current() memo resolve gracefully instead of
-        // throwing — which previously crashed the entire UI when the user
-        // opened Settings → Manage models with no valid model configured.
+        // throwing when model settings open with no valid model configured.
         return undefined
       })
 
