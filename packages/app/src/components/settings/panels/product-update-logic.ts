@@ -1,6 +1,29 @@
 import type { ServerUpdateStatus } from "@ericsanchezok/synergy-sdk/client"
 import type { DesktopUpdateStatus } from "@/context/platform"
 
+export type ProductUpdateBusyAction = "check" | "mode" | "download" | "install" | "start-server" | "refresh" | null
+export type ProductUpdateNoticeAction = "check" | "download" | "install" | "refresh" | "start-server" | null
+
+export type ProductUpdateNotice = {
+  visible: boolean
+  title: string
+  detail: string
+  actionLabel: string | null
+  action: ProductUpdateNoticeAction
+  progress: number | null
+  tone: "neutral" | "active" | "ready" | "error"
+  busy: boolean
+}
+
+export type ProductUpdateNoticeInput = {
+  desktopStatus: DesktopUpdateStatus | null
+  serverStatus: ServerUpdateStatus | null
+  appVersion: string | undefined
+  serverVersion: string | undefined
+  busy: ProductUpdateBusyAction
+  serverReconnecting: boolean
+}
+
 export function productUpdateSurface(input: { desktopUpdate?: unknown }) {
   return input.desktopUpdate ? "desktop" : "web"
 }
@@ -54,4 +77,139 @@ export function serverUpdateStatusCopy(status: ServerUpdateStatus | null) {
 export function downloadLabel(status: DesktopUpdateStatus | null) {
   if (!status || status.percent == null) return "Downloading..."
   return `Downloading ${Math.round(status.percent)}%`
+}
+
+export function productUpdateNotice(input: ProductUpdateNoticeInput): ProductUpdateNotice {
+  if (input.desktopStatus) {
+    const desktop = input.desktopStatus
+    if (desktop.phase === "disabled" || desktop.phase === "idle" || desktop.phase === "checking") {
+      return hiddenProductUpdateNotice(input.busy)
+    }
+    if (desktop.phase === "available") {
+      return {
+        visible: true,
+        title: `Synergy ${desktop.availableVersion ?? "update"} available`,
+        detail: "Download is ready when you are.",
+        actionLabel: "Download",
+        action: "download",
+        progress: null,
+        tone: "ready",
+        busy: Boolean(input.busy),
+      }
+    }
+    if (desktop.phase === "downloading") {
+      return {
+        visible: true,
+        title: "Downloading Synergy",
+        detail: downloadLabel(desktop),
+        actionLabel: null,
+        action: null,
+        progress: desktop.percent,
+        tone: "active",
+        busy: Boolean(input.busy),
+      }
+    }
+    if (desktop.phase === "ready") {
+      return {
+        visible: true,
+        title: `Synergy ${desktop.availableVersion ?? "update"} ready`,
+        detail: "Restart the app to finish installing.",
+        actionLabel: "Restart",
+        action: "install",
+        progress: 100,
+        tone: "ready",
+        busy: Boolean(input.busy),
+      }
+    }
+    if (desktop.phase === "installing") {
+      return {
+        visible: true,
+        title: "Installing Synergy",
+        detail: desktopUpdateStatusCopy(desktop),
+        actionLabel: null,
+        action: null,
+        progress: null,
+        tone: "active",
+        busy: Boolean(input.busy),
+      }
+    }
+    if (desktop.phase === "error") {
+      return {
+        visible: true,
+        title: "Update failed",
+        detail: desktopUpdateStatusCopy(desktop),
+        actionLabel: "Retry",
+        action: "check",
+        progress: null,
+        tone: "error",
+        busy: Boolean(input.busy),
+      }
+    }
+  }
+
+  const serverAction = serverUpdateActionState(input.serverStatus)
+  if (serverAction === "reconnecting") {
+    return {
+      visible: true,
+      title: "Updating Synergy service",
+      detail: input.serverReconnecting
+        ? "Waiting for the local service to return."
+        : serverUpdateStatusCopy(input.serverStatus),
+      actionLabel: null,
+      action: null,
+      progress: input.serverStatus?.progress ?? null,
+      tone: "active",
+      busy: Boolean(input.busy),
+    }
+  }
+  if (serverAction === "start") {
+    return {
+      visible: true,
+      title: `Synergy ${input.serverStatus?.latestVersion ?? "update"} available`,
+      detail: "Update the local managed service.",
+      actionLabel: "Update",
+      action: "start-server",
+      progress: input.serverStatus?.progress ?? null,
+      tone: "ready",
+      busy: Boolean(input.busy),
+    }
+  }
+  if (input.serverStatus?.capability === "managed" && input.serverStatus.phase === "error") {
+    return {
+      visible: true,
+      title: "Service update failed",
+      detail: serverUpdateStatusCopy(input.serverStatus),
+      actionLabel: "Retry",
+      action: "check",
+      progress: null,
+      tone: "error",
+      busy: Boolean(input.busy),
+    }
+  }
+  if (webUpdateNeedsRefresh(input.appVersion, input.serverVersion)) {
+    return {
+      visible: true,
+      title: "Web update ready",
+      detail: webVersionStatus(input.appVersion, input.serverVersion),
+      actionLabel: "Refresh",
+      action: "refresh",
+      progress: 100,
+      tone: "ready",
+      busy: Boolean(input.busy),
+    }
+  }
+  return hiddenProductUpdateNotice(input.busy)
+}
+
+function hiddenProductUpdateNotice(busy: ProductUpdateBusyAction): ProductUpdateNotice {
+  return {
+    visible: false,
+    title: "",
+    detail: "",
+    actionLabel: null,
+    action: null,
+    progress: null,
+    tone: "neutral",
+    busy: Boolean(busy),
+  }
 }

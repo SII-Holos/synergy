@@ -17686,6 +17686,18 @@
           "updateAvailable": {
             "type": "boolean"
           },
+          "progress": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 100
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "message": {
             "type": "string"
           },
@@ -17706,6 +17718,7 @@
           "currentVersion",
           "latestVersion",
           "updateAvailable",
+          "progress",
           "message",
           "error"
         ]

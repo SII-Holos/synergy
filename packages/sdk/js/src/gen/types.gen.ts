@@ -166,6 +166,7 @@ export type ServerUpdateStatus = {
   currentVersion: string
   latestVersion: string | null
   updateAvailable: boolean
+  progress: number | null
   message: string
   error: string | null
 }

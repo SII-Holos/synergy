@@ -38,7 +38,7 @@ Keep navigation surfaces mentally aligned with where they live. Sidebar destinat
 
 Settings should be a human-facing preference surface, not a raw config editor. Keep common settings in a left-aligned readable measure, use direct controls for choices, toggles, and stepped values, and reserve raw domain-file syntax for import/export or advanced configuration views.
 
-Product updates are owned by the installation surface, not global server config. Desktop Settings can expose desktop-local update mode and installer progress because the Electron shell owns the app bundle and managed server process. Web Settings should show app/server version state and refresh actions; it may offer server update controls only when connected to a localhost Synergy managed daemon. Update prompts should be persistent status/actions, not blocking modals.
+Product updates are owned by the installation surface, not global server config. Desktop Settings can expose desktop-local update mode and installer progress because the Electron shell owns the app bundle and managed server process. Web Settings should show app/server version state and refresh actions; it may offer server update controls only when connected to a localhost Synergy managed daemon. Update prompts should be persistent status/actions, not blocking modals; the primary persistent prompt lives at the bottom of the sidebar with a single current action and inline progress when progress is known.
 
 Session, Agenda, Library, and Plugins should feel like one continuous workbench canvas in both light and dark modes. Their root backgrounds should align with the session message-flow background; inner surfaces can step up or down for hierarchy, but should not look like separate apps.
 

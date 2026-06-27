@@ -68,9 +68,9 @@ Production desktop builds default to managed server mode: the app starts a packa
 
 Desktop release artifacts are produced with `electron-builder` for macOS, Windows, and Linux and published through GitHub Releases. Stable builds use GitHub Releases update metadata through `electron-updater`; dev builds show product updates as disabled and never check the release feed.
 
-Stable desktop users can update without a terminal. The desktop shell checks for updates in the background, downloads according to the local desktop update mode, then offers `Restart to Update`; that action stops the managed server process, installs the Electron update, restarts the app, and starts the new bundled server runtime.
+Stable desktop users can update without a terminal. The desktop shell checks for updates in the background, downloads according to the local desktop update mode, then offers `Restart to Update` in Settings and in the persistent sidebar update prompt; that action stops the managed server process, installs the Electron update, restarts the app, and starts the new bundled server runtime.
 
-Web clients update frontend assets by refreshing the browser page when the loaded app version differs from `/global/health`. Server replacement from Web is available only for a localhost Synergy managed daemon. A normal terminal-run `synergy server` remains owned by the terminal or deployment system and is not replaced from the browser.
+Web clients update frontend assets by refreshing the browser page when the loaded app version differs from `/global/health`; the sidebar prompt offers `Refresh` when that state is detected. Server replacement from Web is available only for a localhost Synergy managed daemon installed through a supported package manager. A normal terminal-run `synergy server` remains owned by the terminal or deployment system and is not replaced from the browser.
 
 ### Session History, File Restore, And Forking
 

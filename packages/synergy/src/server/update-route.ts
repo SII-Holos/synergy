@@ -8,6 +8,7 @@ import { DaemonPaths } from "../daemon/paths"
 import { Installation } from "../global/installation"
 
 const NPM_PACKAGE = "@ericsanchezok/synergy"
+const NPM_REGISTRY = "https://registry.npmjs.org"
 
 const ServerUpdateCapability = z.enum(["managed", "not-managed", "remote"])
 const ServerUpdatePhase = z.enum(["idle", "checking", "available", "updating", "restarting", "error"])
@@ -19,6 +20,7 @@ const ServerUpdateStatus = z
     currentVersion: z.string(),
     latestVersion: z.string().nullable(),
     updateAvailable: z.boolean(),
+    progress: z.number().min(0).max(100).nullable(),
     message: z.string(),
     error: z.string().nullable(),
   })
@@ -37,6 +39,7 @@ const ServerUpdateForbiddenError = z.object({ message: z.string() }).meta({ ref:
 export interface ServerUpdateWorkerControls {
   spawn(command: string[]): void
   latestVersion(): Promise<string>
+  installMethod(): Promise<Installation.Method>
 }
 
 let workerControls: ServerUpdateWorkerControls = {
@@ -50,6 +53,7 @@ let workerControls: ServerUpdateWorkerControls = {
     ;(subprocess as any).unref?.()
   },
   latestVersion: fetchLatestVersion,
+  installMethod: Installation.method,
 }
 
 export const UpdateRoute = new Hono()
@@ -126,7 +130,7 @@ export const UpdateRoute = new Hono()
       const latestVersion = body?.version ?? (await workerControls.latestVersion())
       if (!isNewerVersion(latestVersion, Installation.VERSION)) {
         return c.json({
-          ...managedStatus("idle", latestVersion, null),
+          ...managedStatus("idle", latestVersion, null, 100),
           updateAvailable: false,
           message: `Synergy ${Installation.VERSION} is current.`,
         })
@@ -135,7 +139,7 @@ export const UpdateRoute = new Hono()
       if (!started.ok) {
         return c.json(
           {
-            ...managedStatus("error", latestVersion, started.error),
+            ...managedStatus("error", latestVersion, started.error, null),
             message: started.error,
           },
           400,
@@ -143,6 +147,7 @@ export const UpdateRoute = new Hono()
       }
       return c.json({
         ...managedStatus("updating", latestVersion, null),
+        progress: 5,
         updateAvailable: true,
         message: `Updating Synergy service to ${latestVersion}.`,
       })
@@ -160,13 +165,23 @@ async function statusForRequest(url: string, host: string | undefined, check: bo
   try {
     const latest = await workerControls.latestVersion()
     const updateAvailable = isNewerVersion(latest, Installation.VERSION)
+    const unsupportedInstallMethod =
+      updateAvailable && !updateInstallCommand(await workerControls.installMethod(), latest)
+    if (unsupportedInstallMethod) {
+      const error = "Managed service install method cannot be updated from Web."
+      return {
+        ...managedStatus("error", latest, error, null),
+        updateAvailable: true,
+        message: error,
+      }
+    }
     return {
-      ...managedStatus(updateAvailable ? "available" : "idle", latest, null),
+      ...managedStatus(updateAvailable ? "available" : "idle", latest, null, updateAvailable ? 0 : 100),
       updateAvailable,
       message: updateAvailable ? `Synergy ${latest} is available.` : `Synergy ${Installation.VERSION} is current.`,
     }
   } catch (error) {
-    return managedStatus("error", null, error instanceof Error ? error.message : String(error))
+    return managedStatus("error", null, error instanceof Error ? error.message : String(error), null)
   }
 }
 
@@ -175,13 +190,19 @@ async function managedManifest() {
   return await DaemonState.readManifest().catch(() => null)
 }
 
-function managedStatus(phase: z.infer<typeof ServerUpdatePhase>, latestVersion: string | null, error: string | null) {
+function managedStatus(
+  phase: z.infer<typeof ServerUpdatePhase>,
+  latestVersion: string | null,
+  error: string | null,
+  progress: number | null = null,
+) {
   return {
     capability: "managed" as const,
     phase,
     currentVersion: Installation.VERSION,
     latestVersion,
     updateAvailable: Boolean(latestVersion && isNewerVersion(latestVersion, Installation.VERSION)),
+    progress,
     message: phase === "idle" ? "This Synergy service is managed locally." : "Synergy service update status.",
     error,
   }
@@ -198,6 +219,7 @@ function notManagedStatus(): ServerUpdateStatus {
     currentVersion: Installation.VERSION,
     latestVersion: null,
     updateAvailable: false,
+    progress: null,
     message: "This server was not started as a Synergy managed service.",
     error: null,
   }
@@ -210,17 +232,14 @@ function remoteStatus(): ServerUpdateStatus {
     currentVersion: Installation.VERSION,
     latestVersion: null,
     updateAvailable: false,
+    progress: null,
     message: "Server updates are only available from localhost.",
     error: null,
   }
 }
 
 async function fetchLatestVersion(): Promise<string> {
-  const response = await fetch("https://registry.npmjs.org/@ericsanchezok%2fsynergy/latest")
-  if (!response.ok) throw new Error(`npm registry responded ${response.status}`)
-  const data = (await response.json()) as { version?: string }
-  if (!data.version) throw new Error("npm registry response did not include a version")
-  return data.version
+  return await Installation.latest()
 }
 
 async function startWorker(
@@ -235,12 +254,18 @@ async function startWorker(
   if (!controlCommand) {
     return { ok: false, error: "Managed service command cannot be safely updated from Web." }
   }
+  const installCommand = updateInstallCommand(await workerControls.installMethod(), version)
+  if (!installCommand) {
+    return { ok: false, error: "Managed service install method cannot be updated from Web." }
+  }
 
   await writePersistedStatus({
-    ...managedStatus("updating", version, null),
+    ...managedStatus("updating", version, null, 5),
     message: `Updating Synergy service to ${version}.`,
   })
-  await fs.writeFile(workerPath, renderWorkerScript({ controlCommand, version, statePath, logPath }), { mode: 0o755 })
+  await fs.writeFile(workerPath, renderWorkerScript({ controlCommand, installCommand, version, statePath, logPath }), {
+    mode: 0o755,
+  })
   workerControls.spawn(process.platform === "win32" ? ["cmd.exe", "/c", workerPath] : ["sh", workerPath])
   return { ok: true }
 }
@@ -256,25 +281,45 @@ export function resolveControlCommand(command: string[]): string[] | undefined {
   return
 }
 
-function renderWorkerScript(input: { controlCommand: string[]; version: string; statePath: string; logPath: string }) {
+function updateInstallCommand(method: Installation.Method, version: string): string[] | undefined {
+  const spec = `${NPM_PACKAGE}@${version}`
+  if (method === "npm") return ["npm", "install", "-g", "--no-audit", "--no-fund", spec, `--registry=${NPM_REGISTRY}`]
+  if (method === "pnpm") return ["pnpm", "install", "-g", spec, `--registry=${NPM_REGISTRY}`]
+  if (method === "bun") return ["bun", "install", "-g", spec, `--registry=${NPM_REGISTRY}`]
+  if (method === "yarn") return ["yarn", "global", "add", spec, `--registry=${NPM_REGISTRY}`]
+  return
+}
+
+function renderWorkerScript(input: {
+  controlCommand: string[]
+  installCommand: string[]
+  version: string
+  statePath: string
+  logPath: string
+}) {
   if (process.platform === "win32") {
     const stop = windowsCommand([...input.controlCommand, "stop"])
     const start = windowsCommand([...input.controlCommand, "start"])
-    const restarting = stateJson("restarting", input.version, "Restarting Synergy service.", null)
-    const done = stateJson("idle", input.version, "Synergy service updated.", null)
-    const failed = stateJson("error", input.version, "Synergy service update failed.", "Update worker failed.")
+    const install = windowsCommand(input.installCommand)
+    const preparing = stateJson("updating", input.version, 20, "Installing Synergy runtime.", null)
+    const restarting = stateJson("restarting", input.version, 75, "Restarting Synergy service.", null)
+    const done = stateJson("idle", input.version, 100, "Synergy service updated.", null)
+    const failed = stateJson("error", input.version, null, "Synergy service update failed.", "Update worker failed.")
     return `@echo off
 setlocal
 echo Updating Synergy to ${input.version} > "${input.logPath}"
+echo ${preparing} > "${input.statePath}"
+${install} >> "${input.logPath}" 2>&1
+if errorlevel 1 goto failed
 echo ${restarting} > "${input.statePath}"
 ${stop} >> "${input.logPath}" 2>&1
-if errorlevel 1 goto failed
-npm install -g ${NPM_PACKAGE}@${input.version} >> "${input.logPath}" 2>&1
-if errorlevel 1 goto failed
+if errorlevel 1 goto restore
 ${start} >> "${input.logPath}" 2>&1
-if errorlevel 1 goto failed
+if errorlevel 1 goto restore
 echo ${done} > "${input.statePath}"
 exit /b 0
+:restore
+${start} >> "${input.logPath}" 2>&1
 :failed
 echo ${failed} > "${input.statePath}"
 exit /b 1
@@ -282,29 +327,42 @@ exit /b 1
   }
   const stop = shellCommand([...input.controlCommand, "stop"])
   const start = shellCommand([...input.controlCommand, "start"])
-  const failed = stateJson("error", input.version, "Synergy service update failed.", "Update worker failed.")
+  const install = shellCommand(input.installCommand)
+  const failed = stateJson("error", input.version, null, "Synergy service update failed.", "Update worker failed.")
   return `#!/bin/sh
 set -u
 fail() {
   printf '%s\\n' '${failed}' > ${shellQuote(input.statePath)}
   exit 1
 }
+restore() {
+  ${start} >> ${shellQuote(input.logPath)} 2>&1 || true
+  fail
+}
 echo "Updating Synergy to ${shellQuote(input.version)}" > ${shellQuote(input.logPath)}
-printf '%s\\n' '${stateJson("restarting", input.version, "Restarting Synergy service.", null)}' > ${shellQuote(input.statePath)}
-${stop} >> ${shellQuote(input.logPath)} 2>&1 || fail
-npm install -g ${shellQuote(`${NPM_PACKAGE}@${input.version}`)} >> ${shellQuote(input.logPath)} 2>&1 || fail
-${start} >> ${shellQuote(input.logPath)} 2>&1 || fail
-printf '%s\\n' '${stateJson("idle", input.version, "Synergy service updated.", null)}' > ${shellQuote(input.statePath)}
+printf '%s\\n' '${stateJson("updating", input.version, 20, "Installing Synergy runtime.", null)}' > ${shellQuote(input.statePath)}
+${install} >> ${shellQuote(input.logPath)} 2>&1 || fail
+printf '%s\\n' '${stateJson("restarting", input.version, 75, "Restarting Synergy service.", null)}' > ${shellQuote(input.statePath)}
+${stop} >> ${shellQuote(input.logPath)} 2>&1 || restore
+${start} >> ${shellQuote(input.logPath)} 2>&1 || restore
+printf '%s\\n' '${stateJson("idle", input.version, 100, "Synergy service updated.", null)}' > ${shellQuote(input.statePath)}
 `
 }
 
-function stateJson(phase: z.infer<typeof ServerUpdatePhase>, version: string, message: string, error: string | null) {
+function stateJson(
+  phase: z.infer<typeof ServerUpdatePhase>,
+  version: string,
+  progress: number | null,
+  message: string,
+  error: string | null,
+) {
   return JSON.stringify({
     capability: "managed",
     phase,
     currentVersion: phase === "idle" ? version : Installation.VERSION,
     latestVersion: version,
     updateAvailable: phase !== "idle",
+    progress,
     message,
     error,
   })
@@ -391,6 +449,7 @@ export function setServerUpdateWorkerControlsForTest(controls?: Partial<ServerUp
       ;(subprocess as any).unref?.()
     },
     latestVersion: fetchLatestVersion,
+    installMethod: Installation.method,
     ...controls,
   }
 }

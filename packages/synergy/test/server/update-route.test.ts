@@ -19,6 +19,7 @@ describe("server update route", () => {
     spawned = []
     setServerUpdateWorkerControlsForTest({
       latestVersion: async () => "999.0.0",
+      installMethod: async () => "npm",
       spawn(command) {
         spawned.push(command)
       },
@@ -41,6 +42,7 @@ describe("server update route", () => {
     expect(response.status).toBe(200)
     const body = await response.json()
     expect(body.capability).toBe("remote")
+    expect(body.progress).toBe(null)
   })
 
   test("reports not-managed for terminal-run servers", async () => {
@@ -54,6 +56,7 @@ describe("server update route", () => {
     const body = await response.json()
     expect(body.capability).toBe("not-managed")
     expect(body.updateAvailable).toBe(false)
+    expect(body.progress).toBe(null)
   })
 
   test("checks managed daemon updates only on localhost", async () => {
@@ -70,6 +73,7 @@ describe("server update route", () => {
     expect(body.capability).toBe("managed")
     expect(body.phase).toBe("available")
     expect(body.latestVersion).toBe("999.0.0")
+    expect(body.progress).toBe(0)
   })
 
   test("dispatches a detached worker for managed daemon updates", async () => {
@@ -87,6 +91,7 @@ describe("server update route", () => {
     const body = await response.json()
     expect(body.capability).toBe("managed")
     expect(body.phase).toBe("updating")
+    expect(body.progress).toBe(5)
     expect(spawned).toEqual([
       process.platform === "win32"
         ? ["cmd.exe", "/c", path.join(DaemonPaths.root(), "update-worker.cmd")]
@@ -96,13 +101,94 @@ describe("server update route", () => {
     const state = await Bun.file(path.join(DaemonPaths.root(), "update-state.json")).json()
     expect(state.phase).toBe("updating")
     expect(state.latestVersion).toBe("999.0.0")
+    expect(state.progress).toBe(5)
     const script = await Bun.file(
       path.join(DaemonPaths.root(), process.platform === "win32" ? "update-worker.cmd" : "update-worker.sh"),
     ).text()
-    expect(script).toContain("npm install -g")
+    expect(script).toContain("npm")
+    expect(script).toContain("install")
+    expect(script).toContain("-g")
+    expect(script).toContain("--no-audit")
+    expect(script).toContain("--no-fund")
     expect(script).toContain("@ericsanchezok/synergy@999.0.0")
+    expect(script).toContain("--registry=https://registry.npmjs.org")
     expect(script).toContain("stop")
     expect(script).toContain("start")
+  })
+
+  test("uses the detected package manager for managed daemon updates", async () => {
+    process.env.SYNERGY_DAEMON = "1"
+    await writeManifest(["/usr/local/bin/synergy", "server", "--port", "4096"])
+    setServerUpdateWorkerControlsForTest({
+      latestVersion: async () => "999.0.0",
+      installMethod: async () => "pnpm",
+      spawn(command) {
+        spawned.push(command)
+      },
+    })
+
+    const app = testApp()
+    const response = await app.request("/global/update/start", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ version: "999.0.0" }),
+    })
+
+    expect(response.status).toBe(200)
+    const script = await Bun.file(
+      path.join(DaemonPaths.root(), process.platform === "win32" ? "update-worker.cmd" : "update-worker.sh"),
+    ).text()
+    expect(script).toContain("pnpm")
+    expect(script).toContain("@ericsanchezok/synergy@999.0.0")
+    expect(script).toContain("--registry=https://registry.npmjs.org")
+  })
+
+  test("does not offer managed daemon updates for unsupported install methods", async () => {
+    process.env.SYNERGY_DAEMON = "1"
+    await writeManifest(["/usr/local/bin/synergy", "server", "--port", "4096"])
+    setServerUpdateWorkerControlsForTest({
+      latestVersion: async () => "999.0.0",
+      installMethod: async () => "unknown",
+      spawn(command) {
+        spawned.push(command)
+      },
+    })
+
+    const app = testApp()
+    const response = await app.request("/global/update/check", { method: "POST" })
+
+    expect(response.status).toBe(200)
+    const body = await response.json()
+    expect(body.capability).toBe("managed")
+    expect(body.phase).toBe("error")
+    expect(body.updateAvailable).toBe(true)
+    expect(body.error).toBe("Managed service install method cannot be updated from Web.")
+    expect(spawned).toEqual([])
+  })
+
+  test("does not start a worker for unsupported managed install methods", async () => {
+    process.env.SYNERGY_DAEMON = "1"
+    await writeManifest(["/usr/local/bin/synergy", "server", "--port", "4096"])
+    setServerUpdateWorkerControlsForTest({
+      latestVersion: async () => "999.0.0",
+      installMethod: async () => "unknown",
+      spawn(command) {
+        spawned.push(command)
+      },
+    })
+
+    const app = testApp()
+    const response = await app.request("/global/update/start", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ version: "999.0.0" }),
+    })
+
+    expect(response.status).toBe(400)
+    const body = await response.json()
+    expect(body.phase).toBe("error")
+    expect(body.error).toBe("Managed service install method cannot be updated from Web.")
+    expect(spawned).toEqual([])
   })
 
   test("does not start a worker for dev-only daemon commands", async () => {
