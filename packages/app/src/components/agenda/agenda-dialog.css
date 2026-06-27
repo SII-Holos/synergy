@@ -222,6 +222,37 @@
   min-width: 132px;
 }
 
+.agenda-header {
+  padding: 1.5rem 1.5rem 0.75rem;
+}
+
+.agenda-header-inner,
+.agenda-stage {
+  width: min(72rem, 100%);
+  margin: 0 auto;
+}
+
+.agenda-header-inner {
+  display: flex;
+  flex-direction: column;
+  gap: 0.875rem;
+}
+
+.agenda-body {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 1.125rem 1.5rem 1.5rem;
+}
+
+.agenda-stage {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 1rem;
+}
+
 .agenda-main-surface {
   --agenda-panel-bg: var(--workbench-panel-bg, light-dark(rgb(235 237 240), rgb(34 34 36)));
   --agenda-panel-bg-hover: var(--workbench-panel-bg-hover, light-dark(rgb(228 231 235), rgb(42 42 45)));

@@ -14,13 +14,6 @@ import { ExperienceView } from "./experience-view"
 import { SkillView } from "./skill-view"
 import "./library-panel.css"
 
-const viewLabel: Record<View, string> = {
-  stats: "Usage, collection, and learning signals",
-  memory: "Browse, search, and manage knowledge",
-  experience: "Browse, search, and manage behavioral records",
-  skill: "Installed capabilities and imports",
-}
-
 function LibraryTabBar(props: {
   view: View
   memoryCount: number
@@ -154,7 +147,6 @@ export function LibraryPanel() {
                 </div>
               </Show>
             </div>
-            <div class="library-view-caption">{viewLabel[view()]}</div>
           </div>
         </AppPanel.Header>
         <Show when={searchError()}>
@@ -169,8 +161,7 @@ export function LibraryPanel() {
             <Show when={view() === "stats"}>
               <div class="library-section-block">
                 <div class="library-section-heading">
-                  <span class="library-section-title">Workspace usage</span>
-                  <span class="library-section-subtitle">Activity analytics across all projects</span>
+                  <span class="library-section-title">Usage</span>
                 </div>
                 <StatsSection />
               </div>

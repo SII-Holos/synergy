@@ -240,118 +240,124 @@ export function AgendaPanel() {
   return (
     <AppPanel.Root>
       <AppPanel.Content>
-        <AppPanel.Header>
-          <AppPanel.HeaderRow>
-            <AppPanel.Title>Agenda</AppPanel.Title>
-            <button
-              type="button"
-              class="inline-flex h-9 items-center gap-2 rounded-xl bg-text-strong px-3.5 text-13-medium text-background-base ring-1 ring-inset ring-white/12 shadow-sm transition-colors hover:bg-text-base"
-              onClick={openCreate}
-            >
-              <Icon name="plus" size="small" class="text-background-base" />
-              <span>New Agenda</span>
-            </button>
-          </AppPanel.HeaderRow>
-          <AppPanel.SegmentedNav
-            items={[
-              { id: "schedule", label: "Schedule" },
-              { id: "activity", label: "History" },
-            ]}
-            active={tab()}
-            onChange={(id) => setTab(id as PanelTab)}
-          />
+        <AppPanel.Header class="agenda-header">
+          <div class="agenda-header-inner">
+            <AppPanel.HeaderRow>
+              <AppPanel.Title>Agenda</AppPanel.Title>
+              <button
+                type="button"
+                class="inline-flex h-9 items-center gap-2 rounded-xl bg-text-strong px-3.5 text-13-medium text-background-base ring-1 ring-inset ring-white/12 shadow-sm transition-colors hover:bg-text-base"
+                onClick={openCreate}
+              >
+                <Icon name="plus" size="small" class="text-background-base" />
+                <span>New Agenda</span>
+              </button>
+            </AppPanel.HeaderRow>
+            <AppPanel.SegmentedNav
+              items={[
+                { id: "schedule", label: "Schedule" },
+                { id: "activity", label: "History" },
+              ]}
+              active={tab()}
+              onChange={(id) => setTab(id as PanelTab)}
+            />
+          </div>
         </AppPanel.Header>
 
         <Show when={tab() === "schedule"}>
-          <AppPanel.Body padding={false} class="!px-5 flex flex-col gap-4">
-            <div class="grid w-full grid-cols-1 items-stretch gap-3 pb-1 xl:grid-cols-[minmax(320px,380px)_minmax(0,1fr)]">
-              <div class="agenda-main-surface h-full p-3.5">
-                <MiniCalendar anchor={anchor()} viewMode={viewMode()} onDateClick={handleDateClick} />
+          <AppPanel.Body padding={false} class="agenda-body">
+            <div class="agenda-stage">
+              <div class="grid w-full grid-cols-1 items-stretch gap-3 pb-1 xl:grid-cols-[minmax(320px,380px)_minmax(0,1fr)]">
+                <div class="agenda-main-surface h-full p-3.5">
+                  <MiniCalendar anchor={anchor()} viewMode={viewMode()} onDateClick={handleDateClick} />
+                </div>
+                <div class="agenda-main-surface min-w-0 flex h-full flex-col p-3">
+                  <Show
+                    when={todoItems().length > 0}
+                    fallback={
+                      <div class="agenda-inner-surface flex min-h-0 flex-1 items-center justify-center px-3 py-4">
+                        <span class="text-10-medium text-text-weaker/60">No todo items</span>
+                      </div>
+                    }
+                  >
+                    <div class="flex items-center justify-between gap-2 mb-2 px-0.5">
+                      <div class="flex items-center gap-1.5 min-w-0">
+                        <span class="text-[9px] font-medium uppercase tracking-[0.18em] text-text-weaker">Todo</span>
+                        <span class="inline-flex items-center rounded-full bg-surface-raised-base px-2 py-0.5 text-[10px] font-medium text-text-weaker">
+                          {todoItems().length}
+                        </span>
+                      </div>
+                    </div>
+                    <div class="min-h-0 flex-1 overflow-y-auto flex flex-col gap-1.5 [scrollbar-width:thin]">
+                      <For each={todoItems()}>
+                        {(item) => (
+                          <TodoCard
+                            item={item}
+                            onClick={(e) => openDetail(item, (e.target as HTMLElement).getBoundingClientRect())}
+                          />
+                        )}
+                      </For>
+                    </div>
+                  </Show>
+                </div>
               </div>
-              <div class="agenda-main-surface min-w-0 flex h-full flex-col p-3">
-                <Show
-                  when={todoItems().length > 0}
-                  fallback={
-                    <div class="agenda-inner-surface flex min-h-0 flex-1 items-center justify-center px-3 py-4">
-                      <span class="text-10-medium text-text-weaker/60">No todo items</span>
-                    </div>
-                  }
-                >
-                  <div class="flex items-center justify-between gap-2 mb-2 px-0.5">
-                    <div class="flex items-center gap-1.5 min-w-0">
-                      <span class="text-[9px] font-medium uppercase tracking-[0.18em] text-text-weaker">Todo</span>
-                      <span class="inline-flex items-center rounded-full bg-surface-raised-base px-2 py-0.5 text-[10px] font-medium text-text-weaker">
-                        {todoItems().length}
-                      </span>
-                    </div>
-                  </div>
-                  <div class="min-h-0 flex-1 overflow-y-auto flex flex-col gap-1.5 [scrollbar-width:thin]">
-                    <For each={todoItems()}>
-                      {(item) => (
-                        <TodoCard
-                          item={item}
-                          onClick={(e) => openDetail(item, (e.target as HTMLElement).getBoundingClientRect())}
-                        />
-                      )}
-                    </For>
-                  </div>
+
+              <div class="relative flex min-h-[720px] flex-1 flex-col">
+                <CalendarGrid
+                  viewMode={viewMode()}
+                  anchor={anchor()}
+                  events={calendarEvents()}
+                  onViewModeChange={setViewMode}
+                  onAnchorChange={setAnchor}
+                  onEventClick={handleEventClick}
+                  onRangeChange={(start, end) => setCalendarRange({ start, end })}
+                />
+
+                <Show when={popoverItem()}>
+                  <Portal>
+                    <DetailPopover
+                      anchor={popoverRect()}
+                      item={popoverItem()!}
+                      runs={runsCache()[popoverItem()!.id]}
+                      isLoading={isLoading}
+                      isDone={isDone}
+                      onClose={() => setPopoverItem(undefined)}
+                      onAction={(action) => performAction(popoverItem()!.id, action)}
+                      onEdit={() => {
+                        const pi = popoverItem()!
+                        setPopoverItem(undefined)
+                        openEdit(pi)
+                      }}
+                    />
+                  </Portal>
                 </Show>
               </div>
-            </div>
-
-            <div class="relative flex min-h-[720px] flex-1 flex-col">
-              <CalendarGrid
-                viewMode={viewMode()}
-                anchor={anchor()}
-                events={calendarEvents()}
-                onViewModeChange={setViewMode}
-                onAnchorChange={setAnchor}
-                onEventClick={handleEventClick}
-                onRangeChange={(start, end) => setCalendarRange({ start, end })}
-              />
-
-              <Show when={popoverItem()}>
-                <Portal>
-                  <DetailPopover
-                    anchor={popoverRect()}
-                    item={popoverItem()!}
-                    runs={runsCache()[popoverItem()!.id]}
-                    isLoading={isLoading}
-                    isDone={isDone}
-                    onClose={() => setPopoverItem(undefined)}
-                    onAction={(action) => performAction(popoverItem()!.id, action)}
-                    onEdit={() => {
-                      const pi = popoverItem()!
-                      setPopoverItem(undefined)
-                      openEdit(pi)
-                    }}
-                  />
-                </Portal>
-              </Show>
             </div>
           </AppPanel.Body>
         </Show>
 
         <Show when={tab() === "activity"}>
-          <AppPanel.Body padding={false}>
-            <ActivityView
-              items={activity().items}
-              total={activity().total}
-              hasMore={activity().hasMore}
-              loading={activityLoading()}
-              query={activityQuery()}
-              error={activityError()}
-              onQueryChange={(value: string) => {
-                setActivityQuery(value)
-                void loadActivity({ reset: true, query: value })
-              }}
-              onLoadMore={() => void loadActivity({ append: true })}
-              onNavigate={navigateToSession}
-              onItemClick={(itemId) => {
-                const item = itemById(itemId)
-                if (item) openDetail(item)
-              }}
-            />
+          <AppPanel.Body padding={false} class="agenda-body">
+            <div class="agenda-stage">
+              <ActivityView
+                items={activity().items}
+                total={activity().total}
+                hasMore={activity().hasMore}
+                loading={activityLoading()}
+                query={activityQuery()}
+                error={activityError()}
+                onQueryChange={(value: string) => {
+                  setActivityQuery(value)
+                  void loadActivity({ reset: true, query: value })
+                }}
+                onLoadMore={() => void loadActivity({ append: true })}
+                onNavigate={navigateToSession}
+                onItemClick={(itemId) => {
+                  const item = itemById(itemId)
+                  if (item) openDetail(item)
+                }}
+              />
+            </div>
           </AppPanel.Body>
         </Show>
       </AppPanel.Content>

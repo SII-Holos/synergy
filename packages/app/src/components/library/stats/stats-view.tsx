@@ -7,13 +7,10 @@ import { RewardRadar } from "./reward-radar"
 
 function SyncBar(props: { syncing: boolean; syncError: string | null; onSync: () => void }) {
   return (
-    <div class="library-sync-row">
-      <div class="library-toolbar-left">
-        <span class="library-toolbar-label">Snapshot</span>
-        <span class="library-toolbar-summary">
-          {props.syncing ? "Computing stats…" : (props.syncError ?? "Fresh library health and learning signals")}
-        </span>
-      </div>
+    <div class="library-sync-row library-sync-row-compact">
+      <Show when={props.syncing || props.syncError}>
+        <span class="library-toolbar-summary">{props.syncing ? "Computing stats…" : (props.syncError ?? "")}</span>
+      </Show>
       <button
         type="button"
         class="library-action-button shrink-0 disabled:cursor-default disabled:opacity-60"
@@ -26,11 +23,13 @@ function SyncBar(props: { syncing: boolean; syncError: string | null; onSync: ()
   )
 }
 
-function SectionHeader(props: { label: string; subtitle: string }) {
+function SectionHeader(props: { label: string; meta?: string }) {
   return (
     <div class="library-section-heading mt-5 mb-2 first:mt-4">
       <span class="library-section-title">{props.label}</span>
-      <span class="library-section-subtitle">{props.subtitle}</span>
+      <Show when={props.meta}>
+        <span class="library-section-subtitle">{props.meta}</span>
+      </Show>
     </div>
   )
 }
@@ -83,16 +82,13 @@ function LibraryStatsContent(props: { snapshot: LibraryStatsSnapshot }) {
 
   return (
     <div class="flex flex-col gap-0 pb-5">
-      <SectionHeader
-        label="Collection"
-        subtitle={`${ov().totalMemories + ov().totalExperiences} items over ${ov().scopeCount} scopes`}
-      />
+      <SectionHeader label="Collection" meta={`${ov().totalMemories + ov().totalExperiences} items`} />
       <LibraryOverviewCards overview={ov()} />
 
-      <SectionHeader label="Signals" subtitle="Memory distribution and recall patterns" />
+      <SectionHeader label="Signals" />
       <MemoryDistribution distribution={s().memoryDistribution} totalMemories={ov().totalMemories} />
 
-      <SectionHeader label="Learning" subtitle="Reward dimensions and quality trends" />
+      <SectionHeader label="Learning" />
       <RewardRadar dimensions={s().experienceRL.rewardDimensions} />
       <QValueChart distribution={s().experienceRL.qDistribution} rl={s().experienceRL} />
     </div>

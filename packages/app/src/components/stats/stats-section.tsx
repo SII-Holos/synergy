@@ -49,22 +49,23 @@ function StatsSyncBar(props: {
 
   return (
     <div class="mb-4">
-      <div class="library-sync-row">
-        <div class="library-toolbar-left">
-          <span class="library-toolbar-label">Usage stats</span>
-          <span class="library-toolbar-summary">
-            {props.syncing
-              ? (props.progress?.message ?? phaseLabel(props.progress?.phase ?? "scan"))
-              : (props.syncError ?? "Manual rollup for workspace activity")}
-          </span>
-          <Show when={props.syncing && props.progress}>
-            {(progress) => (
-              <span class="library-toolbar-summary">
-                {phaseLabel(progress().phase)} · {progress().current}/{progress().total}
-              </span>
-            )}
-          </Show>
-        </div>
+      <div class="library-sync-row library-sync-row-compact">
+        <Show when={props.syncing || props.syncError}>
+          <div class="library-toolbar-left">
+            <span class="library-toolbar-summary">
+              {props.syncing
+                ? (props.progress?.message ?? phaseLabel(props.progress?.phase ?? "scan"))
+                : (props.syncError ?? "")}
+            </span>
+            <Show when={props.syncing && props.progress}>
+              {(progress) => (
+                <span class="library-toolbar-summary">
+                  {phaseLabel(progress().phase)} · {progress().current}/{progress().total}
+                </span>
+              )}
+            </Show>
+          </div>
+        </Show>
 
         <button
           type="button"
