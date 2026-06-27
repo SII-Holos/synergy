@@ -38,15 +38,15 @@ bun dev prepare        # install deps, generate SDK, build frontend
 Start the dev server:
 
 ```bash
-bun dev server         # start the server
-bun dev web --dev      # open the web UI (separate terminal)
+bun dev web            # start the server + Vite web UI
+bun dev desktop        # optional: start the Electron desktop shell too
 ```
 
 After editing code:
 
 ```bash
-bun dev build       # rebuild frontend (after app changes)
-bun dev server      # restart the server
+bun dev build app       # rebuild the web app
+bun dev build desktop   # rebuild Electron main/preload
 ```
 
 See the [Development section in README](README.md#development) for the full workflow — production builds, test commands, SDK generation, and more.

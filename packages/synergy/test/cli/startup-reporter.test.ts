@@ -14,7 +14,7 @@ describe("StartupReporter rendering", () => {
           { label: "Data", value: "9 migration domains current", kind: "success" },
           { label: "Plugins", value: "synergy-frontend-kit cached", kind: "success" },
         ],
-        next: ["synergy web --dev", 'synergy send "your message"'],
+        next: ["synergy web", 'synergy send "your message"'],
       },
       { fancy: true, color: true, width: 88 },
     )
@@ -25,7 +25,7 @@ describe("StartupReporter rendering", () => {
     expect(plain).toContain("Scope")
     expect(plain).toContain("http://localhost:4096")
     expect(plain).toContain("✓ Data")
-    expect(plain).toContain("Next: synergy web --dev")
+    expect(plain).toContain("Next: synergy web")
   })
 
   test("renders plain output without ansi for non-fancy surfaces", () => {

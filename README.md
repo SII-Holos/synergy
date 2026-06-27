@@ -62,7 +62,7 @@ Large browser diagnostics such as console, network, snapshots, assets, and downl
 
 `packages/desktop` is the Electron desktop product for Synergy. Its production identity is `io.holosai.synergy`, product name `Synergy`, executable name `synergy`, and URL protocol `synergy://`.
 
-Production desktop builds default to managed server mode: the app starts a packaged local Synergy server runtime, waits for `/global/health`, then loads the Web UI from the local server origin. If the managed server fails, the app shows a desktop error page instead of a blank window. Development builds can attach to an external app/server by setting `SYNERGY_DESKTOP_CHANNEL=dev`, `SYNERGY_DESKTOP_SERVER_MODE=external`, and `SYNERGY_DESKTOP_APP_URL`.
+Production desktop builds default to managed server mode: the app starts a packaged local Synergy server runtime, waits for `/global/health`, then loads the Web UI from the local server origin. If the managed server fails, the app shows a desktop error page instead of a blank window. Source-checkout desktop development uses `bun dev desktop`, which defaults to external mode against the local Vite app and Synergy server.
 
 Desktop release artifacts are produced with `electron-builder` for macOS, Windows, and Linux and published through GitHub Releases. Stable builds use GitHub Releases update metadata through `electron-updater`; dev builds do not auto-update.
 
@@ -162,25 +162,27 @@ loginctl enable-linger "$USER"
 
 ### Running from this repository
 
-One command to set up everything — deps, SDK, frontend, and sandbox helper:
+Use `bun dev` as the source-checkout development orchestrator. It is intentionally separate from the installed/product `synergy` CLI.
 
 ```bash
 bun dev prepare    # install deps, generate SDK, build frontend, compile sandbox helper
-bun dev server     # start the server
 ```
 
-Then connect from another terminal:
+Common development flows:
 
 ```bash
-bun dev web --dev
-bun dev send "hello"
+bun dev server            # server only, fixed development port
+bun dev app --open        # Vite web app against an existing server
+bun dev web               # server + Vite web app
+bun dev desktop           # server + Vite web app + Electron desktop shell
 ```
 
 After editing code:
 
 ```bash
-bun dev build       # rebuild frontend (after app changes)
-bun dev server      # restart the server
+bun dev build app       # rebuild the web app
+bun dev build desktop   # rebuild Electron main/preload
+bun dev send "hello"    # run a one-off prompt from source
 ```
 
 ### Core runtime
@@ -593,26 +595,31 @@ One command sets up everything: dependencies, SDK, frontend, and sandbox helper.
 
 ```bash
 bun dev prepare
-bun dev server
 ```
 
 `bun dev prepare` handles the full stack — on macOS the sandbox works immediately (built-in `sandbox-exec`). On Linux and Windows it compiles the Rust sandbox helper automatically (requires `cargo` — install from https://rustup.rs if missing).
 
 If Rust is not installed, prepare skips the sandbox step with a clear message and link. Re-run after installing Rust to complete sandbox setup.
 
-### Desktop development
-
-Run the desktop shell against a separately running Web/server dev instance:
+Start the source development stack:
 
 ```bash
-bun dev server
-SYNERGY_DESKTOP_CHANNEL=dev SYNERGY_DESKTOP_SERVER_MODE=external SYNERGY_DESKTOP_APP_URL=http://localhost:3000 bun run --cwd packages/desktop dev
+bun dev web       # server + Vite web app
+bun dev desktop   # server + Vite web app + Electron desktop shell
+```
+
+### Desktop development
+
+Run the desktop shell in the default external development mode:
+
+```bash
+bun dev desktop
 ```
 
 Build, test, and package the desktop app:
 
 ```bash
-bun run desktop:build   # compile Electron main/preload
+bun dev build desktop   # compile Electron main/preload
 bun run desktop:test    # desktop typecheck + unit tests
 bun run desktop:pack    # local unsigned directory package
 bun run desktop:dist    # local installer/package for the current platform
@@ -660,6 +667,7 @@ cd packages/synergy/src/sandbox/helper && cargo test         # Windows helper
 ```bash
 ./packages/synergy/script/build.ts --single   # build the synergy CLI binary
 bun dev prepare                                # regenerate SDK + rebuild frontend
+bun dev build app                              # rebuild only the web app
 bun run desktop:pack                           # validate local desktop packaging
 ```
 

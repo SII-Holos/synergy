@@ -3,7 +3,8 @@
 ## Build/Test Commands
 
 - **Install**: `bun install`
-- **Run**: `bun run --conditions=browser ./src/index.ts`
+- **Source dev**: from the repo root, use `bun dev server`, `bun dev web`, or `bun dev desktop`
+- **Product CLI smoke**: from this package, use `bun run --conditions=browser ./src/index.ts`
 - **Typecheck**: `bun run typecheck`
 - **Test**: `bun test` (runs all tests)
 - **Single test**: `bun test test/tool/tool.test.ts` (specific test file)

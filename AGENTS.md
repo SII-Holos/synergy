@@ -88,36 +88,36 @@ Do not write docs or code comments that assume the old "single local CLI process
 
 ### Primary development flow
 
-Build the frontend first (required before the server can serve the Web UI):
+Use the root `bun dev` command as the source-checkout development orchestrator. It is separate from the installed/product `synergy` CLI.
 
 ```bash
-bun run --cwd packages/app build
+bun dev prepare
 ```
 
-Then start the server:
+Common source development flows:
 
 ```bash
-bun dev
+bun dev server                # server only, fixed development port
+bun dev app --open            # Vite web app against an existing server
+bun dev web                   # server + Vite web app
+bun dev desktop               # server + Vite web app + Electron desktop shell
+bun dev desktop --managed     # Electron desktop shell with managed server mode
 ```
 
-This starts the server from `packages/synergy` and preserves the invoking directory via `SYNERGY_CWD`.
-
-Connect clients from another terminal:
+One-off CLI execution from source:
 
 ```bash
-bun dev web --dev
 bun dev send "your message here"
 ```
 
-Desktop development:
+Targeted builds:
 
 ```bash
-bun run desktop:build
-bun run desktop:test
-bun run desktop:pack
+bun dev build app
+bun dev build desktop
 ```
 
-`packages/desktop` production builds use `electron-builder`, app id `io.holosai.synergy`, protocol `synergy://`, and managed server mode by default. Dev can attach to an external app/server with `SYNERGY_DESKTOP_CHANNEL=dev`, `SYNERGY_DESKTOP_SERVER_MODE=external`, and `SYNERGY_DESKTOP_APP_URL`.
+`packages/desktop` production builds use `electron-builder`, app id `io.holosai.synergy`, protocol `synergy://`, and managed server mode by default. Daily desktop development should use `bun dev desktop`, which defaults to external mode against the Vite app and local server.
 
 ### Type checking and formatting
 

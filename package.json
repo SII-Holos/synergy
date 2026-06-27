@@ -6,7 +6,7 @@
   "type": "module",
   "packageManager": "bun@1.3.13",
   "scripts": {
-    "dev": "SYNERGY_CWD=$PWD bun run --cwd packages/synergy --conditions=browser src/index.ts",
+    "dev": "bun ./script/dev.ts",
     "desktop:build": "bun run --cwd packages/desktop desktop:build",
     "desktop:pack": "bun run --cwd packages/desktop desktop:pack",
     "desktop:dist": "bun run --cwd packages/desktop desktop:dist",

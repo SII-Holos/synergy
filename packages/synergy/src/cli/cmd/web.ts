@@ -1,30 +1,9 @@
 import { UI } from "../ui"
 import { cmd } from "./cmd"
 import open from "open"
-import path from "path"
 import { Server } from "../../server/server"
 import { Access } from "../../access"
 import { isServerReachable } from "../network"
-
-const WEB_DEV_PORT = 3000
-
-function resolveAppDir() {
-  return path.resolve(import.meta.dirname, "../../../../app")
-}
-
-async function waitForPort(port: number, timeoutMs = 30000): Promise<boolean> {
-  const start = Date.now()
-  while (Date.now() - start < timeoutMs) {
-    const ready = await fetch(`http://localhost:${port}`, {
-      signal: AbortSignal.timeout(5000),
-    })
-      .then(() => true)
-      .catch(() => false)
-    if (ready) return true
-    await Bun.sleep(200)
-  }
-  return false
-}
 
 async function hasRuntimeWebUi(url: string) {
   try {
@@ -39,17 +18,11 @@ async function hasRuntimeWebUi(url: string) {
 export const WebCommand = cmd({
   command: "web",
   builder: (yargs) =>
-    yargs
-      .option("attach", {
-        type: "string",
-        describe: "URL of a running synergy server",
-        default: Server.DEFAULT_URL,
-      })
-      .option("dev", {
-        type: "boolean",
-        describe: "start with Vite dev server (HMR enabled)",
-        default: false,
-      }),
+    yargs.option("attach", {
+      type: "string",
+      describe: "URL of a running synergy server",
+      default: Server.DEFAULT_URL,
+    }),
   describe: "open web interface (connects to running server)",
   handler: async (args) => {
     const serverUrl = args.attach
@@ -78,45 +51,24 @@ export const WebCommand = cmd({
     UI.empty()
     UI.println(UI.Style.TEXT_INFO_BOLD + "  API server:        ", UI.Style.TEXT_NORMAL, serverUrl)
 
-    if (args.dev) {
-      const appDir = resolveAppDir()
-      const vitePort = WEB_DEV_PORT
-      const viteUrl = `http://localhost:${vitePort}`
-
-      UI.println(UI.Style.TEXT_INFO_BOLD + "  Web UI (dev):      ", UI.Style.TEXT_NORMAL, viteUrl)
+    if (!(await hasRuntimeWebUi(access.attachUrl))) {
+      UI.error(`The running server at ${access.attachUrl} is reachable, but it is not serving the web UI.`)
+      UI.println(
+        UI.Style.TEXT_DIM + "  In a source checkout, start the app dev server with:",
+        UI.Style.TEXT_NORMAL,
+        "  bun dev app --open",
+      )
+      UI.println(
+        UI.Style.TEXT_DIM + "  If you need the production app bundle, build it with:",
+        UI.Style.TEXT_NORMAL,
+        "  bun dev build app",
+      )
       UI.empty()
-
-      Bun.spawn([process.execPath, "run", "dev"], {
-        cwd: appDir,
-        env: { ...process.env, ...Access.frontendEnv(serverUrl) },
-        stdio: ["inherit", "inherit", "inherit"],
-      })
-
-      await waitForPort(vitePort)
-      open(viteUrl).catch(() => {})
-    } else {
-      if (!(await hasRuntimeWebUi(access.attachUrl))) {
-        UI.error(`The running server at ${access.attachUrl} is reachable, but it is not serving the web UI.`)
-        UI.println(
-          UI.Style.TEXT_DIM + "  If you're developing the web app, use:",
-          UI.Style.TEXT_NORMAL,
-          "  synergy web --dev",
-        )
-        UI.println(
-          UI.Style.TEXT_DIM + "  If you need the production app bundle, build it with:",
-          UI.Style.TEXT_NORMAL,
-          "  bun run --cwd packages/app build",
-        )
-        UI.empty()
-        process.exit(1)
-      }
-
-      UI.println(UI.Style.TEXT_INFO_BOLD + "  Web UI:            ", UI.Style.TEXT_NORMAL, access.attachUrl)
-      UI.empty()
-      open(access.attachUrl).catch(() => {})
-      return
+      process.exit(1)
     }
 
-    await new Promise(() => {})
+    UI.println(UI.Style.TEXT_INFO_BOLD + "  Web UI:            ", UI.Style.TEXT_NORMAL, access.attachUrl)
+    UI.empty()
+    open(access.attachUrl).catch(() => {})
   },
 })
