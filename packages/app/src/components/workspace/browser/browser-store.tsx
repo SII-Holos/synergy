@@ -241,7 +241,6 @@ export function createBrowserStore() {
   function setViewport(width: number, height: number, options: SetViewportOptions = {}) {
     const nextWidth = Math.max(1, Math.round(width))
     const nextHeight = Math.max(1, Math.round(height))
-    const deviceScaleFactor = typeof window === "undefined" ? 1 : window.devicePixelRatio || 1
 
     setViewportMode(options.mode ?? "fixed")
     setViewportWidth(nextWidth)
@@ -252,7 +251,6 @@ export function createBrowserStore() {
       tabId,
       width: nextWidth,
       height: nextHeight,
-      deviceScaleFactor,
     }
     if (presentation()?.kind === "webrtc" && (!tabId || hostStatus(tabId) !== "ready")) {
       if (tabId) pendingViewportByTab.set(tabId, message)

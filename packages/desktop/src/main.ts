@@ -1,11 +1,7 @@
 import { app, BrowserWindow, ipcMain, shell, type BrowserWindowConstructorOptions } from "electron"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
-import {
-  BrowserNativeViewManager,
-  type BrowserNativeAttachRequest,
-  type BrowserNativeBounds,
-} from "./browser-native-view.js"
+import { BrowserNativeViewManager } from "./browser-native-view.js"
 import { BrowserWebRTCHost } from "./browser-webrtc-host.js"
 import { desktopErrorPage } from "./error-page.js"
 import {
@@ -170,22 +166,6 @@ function registerIpcHandlers() {
     nativeViews?.focus(tabId)
   })
   registerNativeViewHandlers("browserNative.resize", (input) => {
-    const { tabId, bounds } = parseBrowserNativeResize(input)
-    nativeViews?.resize(tabId, bounds)
-  })
-
-  ipcMain.handle("browser-native:attach", async (_event, input: BrowserNativeAttachRequest) => {
-    await nativeViews?.attach(parseBrowserNativeAttach(input))
-  })
-  ipcMain.handle("browser-native:detach", (_event, input: { tabId: string }) => {
-    const { tabId } = parseBrowserNativeTab(input)
-    nativeViews?.detach(tabId)
-  })
-  ipcMain.handle("browser-native:focus", (_event, input: { tabId: string }) => {
-    const { tabId } = parseBrowserNativeTab(input)
-    nativeViews?.focus(tabId)
-  })
-  ipcMain.handle("browser-native:resize", (_event, input: { tabId: string; bounds: BrowserNativeBounds }) => {
     const { tabId, bounds } = parseBrowserNativeResize(input)
     nativeViews?.resize(tabId, bounds)
   })

@@ -1,10 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import { createBrowserWebRTCSignalingUrl } from "./browser-webrtc"
-import {
-  browserControlCommandFromMessage,
-  createBrowserControlUrl,
-  createBrowserEventsWebSocketUrl,
-} from "./browser-ws"
+import { browserControlCommandFromMessage } from "./browser-command"
+import { createBrowserControlUrl, createBrowserEventsWebSocketUrl } from "./browser-ws"
 
 describe("createBrowserWebSocketUrl", () => {
   test("uses the route directory and scope id for home scope", () => {
@@ -170,6 +167,52 @@ describe("browserControlCommandFromMessage", () => {
       source: "user",
       tabId: "tab_1",
       url: "www.google.com",
+    })
+  })
+
+  test("maps remote input messages to host control commands", () => {
+    expect(browserControlCommandFromMessage({ type: "input.text", tabId: "tab_1", text: "中文搜索" })).toEqual({
+      type: "insertText",
+      tabId: "tab_1",
+      text: "中文搜索",
+    })
+    expect(
+      browserControlCommandFromMessage({
+        type: "input.key",
+        tabId: "tab_1",
+        action: "down",
+        key: "Enter",
+        code: "Enter",
+      }),
+    ).toEqual({
+      type: "key",
+      tabId: "tab_1",
+      action: "down",
+      input: {
+        type: "input.key",
+        tabId: "tab_1",
+        action: "down",
+        key: "Enter",
+        code: "Enter",
+      },
+    })
+    expect(
+      browserControlCommandFromMessage({
+        type: "input.mouse",
+        tabId: "tab_1",
+        action: "wheel",
+        deltaY: 120,
+      }),
+    ).toEqual({
+      type: "mouse",
+      tabId: "tab_1",
+      action: "wheel",
+      input: {
+        type: "input.mouse",
+        tabId: "tab_1",
+        action: "wheel",
+        deltaY: 120,
+      },
     })
   })
 })

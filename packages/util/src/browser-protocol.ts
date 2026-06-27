@@ -36,7 +36,6 @@ export function normalizeBrowserURL(input: string, base?: string): string {
 export interface BrowserPresentationCapabilities {
   native: boolean
   webrtc: boolean
-  screenshotFallback: false
 }
 
 export interface BrowserPresentationSelection {
@@ -80,7 +79,7 @@ export interface BrowserControl {
   navigate(input: { tabId?: string; url: string }): Promise<{ url: string; title: string }>
   reload(input?: { tabId?: string }): Promise<void>
   stop(input?: { tabId?: string }): Promise<void>
-  setViewport(input: { tabId?: string; width: number; height: number; deviceScaleFactor?: number }): Promise<void>
+  setViewport(input: { tabId?: string; width: number; height: number }): Promise<void>
   snapshot(input?: { tabId?: string }): Promise<unknown>
   screenshot(input?: { tabId?: string }): Promise<{ dataUrl: string; width: number; height: number }>
 }
@@ -96,14 +95,12 @@ export interface BrowserHost {
 const defaultCapabilities: BrowserPresentationCapabilities = {
   native: true,
   webrtc: true,
-  screenshotFallback: false,
 }
 
 function capabilities(input?: Partial<BrowserPresentationCapabilities>): BrowserPresentationCapabilities {
   return {
     native: input?.native ?? defaultCapabilities.native,
     webrtc: input?.webrtc ?? defaultCapabilities.webrtc,
-    screenshotFallback: false,
   }
 }
 
@@ -121,19 +118,6 @@ export function selectBrowserPresentation(input: BrowserPresentationEnvironment)
     return { protocolVersion: BROWSER_PROTOCOL_VERSION, kind: "native", capabilities: caps, reason: "desktop-local" }
   }
   return { protocolVersion: BROWSER_PROTOCOL_VERSION, kind: "webrtc", capabilities: caps, reason: "remote-client" }
-}
-
-export interface BrowserControlEnvelope<TType extends string = string, TPayload = unknown> {
-  protocolVersion: typeof BROWSER_PROTOCOL_VERSION
-  type: TType
-  payload: TPayload
-}
-
-export function browserControlEnvelope<TType extends string, TPayload>(
-  type: TType,
-  payload: TPayload,
-): BrowserControlEnvelope<TType, TPayload> {
-  return { protocolVersion: BROWSER_PROTOCOL_VERSION, type, payload }
 }
 
 export type BrowserWebRTCSignalMessage =

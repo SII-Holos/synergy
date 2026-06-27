@@ -387,7 +387,7 @@ describe("BrowserControl", () => {
     })
 
     try {
-      const result = await BrowserHost.execute(session.owner, { type: "network", tabId: "tab-3" })
+      const result = await BrowserHost.executeRuntime(session.owner, { type: "network", tabId: "tab-3" })
 
       expect(ensureCalls).toBe(1)
       expect(result).toEqual({

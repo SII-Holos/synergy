@@ -17,7 +17,7 @@ describe("browser presentation negotiation", () => {
     expect(selected.protocolVersion).toBe(BROWSER_PROTOCOL_VERSION)
     expect(selected.kind).toBe("native")
     expect(selected.reason).toBe("desktop-local")
-    expect(selected.capabilities.screenshotFallback).toBe(false)
+    expect(selected.capabilities).toEqual({ native: true, webrtc: true })
   })
 
   test("chooses WebRTC for remote web clients", () => {
@@ -30,7 +30,7 @@ describe("browser presentation negotiation", () => {
 
     expect(selected.kind).toBe("webrtc")
     expect(selected.reason).toBe("remote-client")
-    expect(selected.capabilities).not.toHaveProperty("jpeg")
+    expect(selected.capabilities).toEqual({ native: true, webrtc: true })
   })
 
   test("honors explicit requests and parses unknown values as auto", () => {

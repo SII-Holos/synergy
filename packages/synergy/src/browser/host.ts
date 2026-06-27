@@ -10,7 +10,7 @@ import { BrowserOwner } from "./owner.js"
 import { BrowserRuntime } from "./runtime.js"
 import type { BrowserSession } from "./types.js"
 import { BrowserControl } from "./control.js"
-import { BrowserHostControl, BrowserHostControlUnsupportedCommandError } from "./host-control.js"
+import { BrowserHostControl } from "./host-control.js"
 
 export namespace BrowserHost {
   export interface RuntimeAdapter {
@@ -27,7 +27,6 @@ export namespace BrowserHost {
   const hostCapabilities: BrowserPresentationCapabilities = {
     native: true,
     webrtc: true,
-    screenshotFallback: false,
   }
 
   let runtime: RuntimeAdapter = BrowserRuntime
@@ -44,7 +43,6 @@ export namespace BrowserHost {
       capabilities: {
         ...hostCapabilities,
         ...input.capabilities,
-        screenshotFallback: false,
       },
     })
   }
@@ -70,19 +68,20 @@ export namespace BrowserHost {
     return session
   }
 
-  export async function execute(
+  export async function executeAttached(
     owner: BrowserOwner.Info,
     command: BrowserControl.Command,
     options: BrowserHostControl.ExecuteOptions = {},
   ): Promise<BrowserControl.Result> {
     const normalizedCommand = BrowserControl.normalizeCommand(command)
-    if (BrowserHostControl.has(owner)) {
-      try {
-        return await BrowserHostControl.execute(owner, normalizedCommand, options)
-      } catch (error) {
-        if (!(error instanceof BrowserHostControlUnsupportedCommandError)) throw error
-      }
-    }
+    return BrowserHostControl.execute(owner, normalizedCommand, options)
+  }
+
+  export async function executeRuntime(
+    owner: BrowserOwner.Info,
+    command: BrowserControl.Command,
+  ): Promise<BrowserControl.Result> {
+    const normalizedCommand = BrowserControl.normalizeCommand(command)
     const session = await ensureSession(owner)
     return BrowserControl.execute(session, normalizedCommand)
   }

@@ -320,7 +320,7 @@ describe("BrowserHostControl", () => {
     })
 
     try {
-      const resultPromise = BrowserHost.execute(owner, { type: "createTab", url: "https://example.com/" })
+      const resultPromise = BrowserHost.executeAttached(owner, { type: "createTab", url: "https://example.com/" })
       const request = host.messages.find((message) => message.type === "browser.host.command")!
 
       expect(request).toMatchObject({
@@ -367,7 +367,7 @@ describe("BrowserHostControl", () => {
     })
 
     try {
-      const resultPromise = BrowserHost.execute(owner, {
+      const resultPromise = BrowserHost.executeAttached(owner, {
         type: "navigate",
         tabId: "tab_1",
         url: "www.google.com",

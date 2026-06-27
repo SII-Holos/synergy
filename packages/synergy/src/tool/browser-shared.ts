@@ -30,7 +30,7 @@ export namespace BrowserToolHelper {
     owner: BrowserOwner.Info,
     command: BrowserControl.Command,
   ): Promise<BrowserControl.Result> {
-    return BrowserHost.execute(owner, command)
+    return executeBrowserCommand(owner, command)
   }
 
   /** Resolve the active tab, or throw BrowserTabNotFoundError. */
@@ -185,6 +185,14 @@ export namespace BrowserToolHelper {
   }
 }
 
+async function executeBrowserCommand(
+  owner: BrowserOwner.Info,
+  command: BrowserControl.Command,
+): Promise<BrowserControl.Result> {
+  if (BrowserHostControl.has(owner)) return BrowserHost.executeAttached(owner, command)
+  return BrowserHost.executeRuntime(owner, command)
+}
+
 function controlBackedTabFor(owner: BrowserOwner.Info, tabID?: string): BrowserTab | null {
   const session = BrowserHostControl.sessionState(owner)
   if (!session) return null
@@ -217,21 +225,21 @@ function controlBackedSession(owner: BrowserOwner.Info): BrowserSession {
     },
     annotations,
     async createTab(url?: string) {
-      const result = await BrowserHost.execute(owner, { type: "createTab", url })
+      const result = await executeBrowserCommand(owner, { type: "createTab", url })
       if (result.type !== "tab") throw new Error("Browser create tab command returned an unexpected result")
       return controlBackedTab(owner, result.tab)
     },
     switchTab(tabID: string) {
-      void BrowserHost.execute(owner, { type: "switchTab", tabId: tabID })
+      void executeBrowserCommand(owner, { type: "switchTab", tabId: tabID })
     },
     async closeTab(tabID: string) {
-      await BrowserHost.execute(owner, { type: "closeTab", tabId: tabID })
+      await executeBrowserCommand(owner, { type: "closeTab", tabId: tabID })
     },
     async closeOthers(tabID: string) {
       const current = state()
       for (const tab of current.tabs) {
         if (tab.id === tabID || tab.pinned || tab.kept) continue
-        await BrowserHost.execute(owner, { type: "closeTab", tabId: tab.id })
+        await executeBrowserCommand(owner, { type: "closeTab", tabId: tab.id })
       }
     },
     getTab(tabID: string) {
@@ -282,7 +290,7 @@ function controlBackedSession(owner: BrowserOwner.Info): BrowserSession {
 function controlBackedTab(owner: BrowserOwner.Info, initial: BrowserControl.TabState): BrowserTab {
   const cdp: CDPHandle = {
     async send<T = unknown>(method: string, params?: Record<string, unknown>) {
-      const result = await BrowserHost.execute(owner, { type: "cdp", tabId: tab.id, method, params })
+      const result = await executeBrowserCommand(owner, { type: "cdp", tabId: tab.id, method, params })
       if (result.type !== "cdp") throw new Error("Browser CDP command returned an unexpected result")
       syncFromState(result.tabId)
       return result.value as T
@@ -312,43 +320,43 @@ function controlBackedTab(owner: BrowserOwner.Info, initial: BrowserControl.TabS
       return navigate(url, undefined, true)
     },
     async reload(ignoreCache?: boolean) {
-      await BrowserHost.execute(owner, { type: "reload", tabId: tab.id, ignoreCache })
+      await executeBrowserCommand(owner, { type: "reload", tabId: tab.id, ignoreCache })
     },
     async goBack() {
-      await BrowserHost.execute(owner, { type: "history", tabId: tab.id, direction: "back" })
+      await executeBrowserCommand(owner, { type: "history", tabId: tab.id, direction: "back" })
     },
     async goForward() {
-      await BrowserHost.execute(owner, { type: "history", tabId: tab.id, direction: "forward" })
+      await executeBrowserCommand(owner, { type: "history", tabId: tab.id, direction: "forward" })
     },
     async stop() {
-      await BrowserHost.execute(owner, { type: "stop", tabId: tab.id })
+      await executeBrowserCommand(owner, { type: "stop", tabId: tab.id })
     },
     async setViewport(width: number, height: number, deviceScaleFactor?: number) {
-      await BrowserHost.execute(owner, { type: "setViewport", tabId: tab.id, width, height, deviceScaleFactor })
+      await executeBrowserCommand(owner, { type: "setViewport", tabId: tab.id, width, height, deviceScaleFactor })
     },
     async click(x: number, y: number) {
-      await BrowserHost.execute(owner, { type: "click", tabId: tab.id, x, y })
+      await executeBrowserCommand(owner, { type: "click", tabId: tab.id, x, y })
     },
     async type(text: string) {
-      await BrowserHost.execute(owner, { type: "typeText", tabId: tab.id, text })
+      await executeBrowserCommand(owner, { type: "typeText", tabId: tab.id, text })
     },
     async scroll(deltaX: number, deltaY: number) {
-      await BrowserHost.execute(owner, { type: "scroll", tabId: tab.id, deltaX, deltaY })
+      await executeBrowserCommand(owner, { type: "scroll", tabId: tab.id, deltaX, deltaY })
     },
     async dispatchMouse(action: "move" | "down" | "up" | "wheel", input: BrowserMouseInput) {
-      await BrowserHost.execute(owner, { type: "mouse", tabId: tab.id, action, input })
+      await executeBrowserCommand(owner, { type: "mouse", tabId: tab.id, action, input })
     },
     async dispatchKey(action: "down" | "up", input: BrowserKeyInput) {
-      await BrowserHost.execute(owner, { type: "key", tabId: tab.id, action, input })
+      await executeBrowserCommand(owner, { type: "key", tabId: tab.id, action, input })
     },
     async insertText(text: string) {
-      await BrowserHost.execute(owner, { type: "insertText", tabId: tab.id, text })
+      await executeBrowserCommand(owner, { type: "insertText", tabId: tab.id, text })
     },
     async respondToFileChooser(requestId, files) {
-      await BrowserHost.execute(owner, { type: "filechooser.select", tabId: tab.id, requestId, files })
+      await executeBrowserCommand(owner, { type: "filechooser.select", tabId: tab.id, requestId, files })
     },
     async respondToDialog(requestId, accept, promptText) {
-      await BrowserHost.execute(owner, { type: "dialog.respond", tabId: tab.id, requestId, accept, promptText })
+      await executeBrowserCommand(owner, { type: "dialog.respond", tabId: tab.id, requestId, accept, promptText })
     },
     async ensureCDP() {
       return cdp
@@ -357,7 +365,7 @@ function controlBackedTab(owner: BrowserOwner.Info, initial: BrowserControl.TabS
       await cdp.detach()
     },
     async screenshot(format, quality, fullPage, clip) {
-      const result = await BrowserHost.execute(owner, {
+      const result = await executeBrowserCommand(owner, {
         type: "screenshot",
         tabId: tab.id,
         format,
@@ -370,30 +378,30 @@ function controlBackedTab(owner: BrowserOwner.Info, initial: BrowserControl.TabS
       return { buffer: bufferFromDataUrl(result.dataUrl), width: result.width, height: result.height }
     },
     async snapshot() {
-      const result = await BrowserHost.execute(owner, { type: "snapshot", tabId: tab.id })
+      const result = await executeBrowserCommand(owner, { type: "snapshot", tabId: tab.id })
       if (result.type !== "snapshot") throw new Error("Browser snapshot command returned an unexpected result")
       return { elements: result.elements, truncated: result.truncated }
     },
     async consoleEntries(maxEntries?: number) {
-      const result = await BrowserHost.execute(owner, { type: "console", tabId: tab.id, maxEntries })
+      const result = await executeBrowserCommand(owner, { type: "console", tabId: tab.id, maxEntries })
       if (result.type !== "console") throw new Error("Browser console command returned an unexpected result")
       return result.entries
     },
     async networkRequests(maxEntries?: number) {
-      const result = await BrowserHost.execute(owner, { type: "network", tabId: tab.id, maxEntries })
+      const result = await executeBrowserCommand(owner, { type: "network", tabId: tab.id, maxEntries })
       if (result.type !== "network") throw new Error("Browser network command returned an unexpected result")
       return result.requests
     },
     async clearDiagnostics() {
-      await BrowserHost.execute(owner, { type: "clearDiagnostics", tabId: tab.id })
+      await executeBrowserCommand(owner, { type: "clearDiagnostics", tabId: tab.id })
     },
     async resolveRef(ref: string) {
-      const result = await BrowserHost.execute(owner, { type: "resolveRef", tabId: tab.id, ref })
+      const result = await executeBrowserCommand(owner, { type: "resolveRef", tabId: tab.id, ref })
       if (result.type !== "resolvedRef") throw new Error("Browser ref command returned an unexpected result")
       return result.box
     },
     async evaluate(expression, opts) {
-      const result = await BrowserHost.execute(owner, {
+      const result = await executeBrowserCommand(owner, {
         type: "evaluate",
         tabId: tab.id,
         expression,
@@ -406,12 +414,12 @@ function controlBackedTab(owner: BrowserOwner.Info, initial: BrowserControl.TabS
       return waitForHostCondition(owner, tab.id, condition, timeoutMs)
     },
     async close() {
-      await BrowserHost.execute(owner, { type: "closeTab", tabId: tab.id })
+      await executeBrowserCommand(owner, { type: "closeTab", tabId: tab.id })
     },
   }
 
   async function navigate(url: string, source?: "agent" | "user", policyOverride?: boolean) {
-    const result = await BrowserHost.execute(owner, { type: "navigate", tabId: tab.id, url, source, policyOverride })
+    const result = await executeBrowserCommand(owner, { type: "navigate", tabId: tab.id, url, source, policyOverride })
     if (result.type !== "navigation") throw new Error("Browser navigate command returned an unexpected result")
     tab.url = result.url
     tab.title = result.title

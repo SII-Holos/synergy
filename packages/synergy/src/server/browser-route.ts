@@ -1,5 +1,4 @@
 import type { BrowserSession } from "../browser/types.js"
-import type { BrowserTab } from "../browser/tab.js"
 import {
   parseBrowserPresentationPreference,
   type BrowserPresentationSelection,
@@ -12,6 +11,7 @@ import { BrowserControl } from "../browser/control.js"
 import { BrowserElectronHostProcess } from "../browser/electron-host-process.js"
 import { BrowserHost } from "../browser/host.js"
 import { BrowserHostControl, BrowserHostControlNotAttachedError } from "../browser/host-control.js"
+import { BrowserWorkspace } from "../browser/workspace.js"
 import { BrowserWebRTCSignaling } from "../browser/webrtc-signaling.js"
 import { ScopeContext } from "../scope/context"
 
@@ -43,41 +43,6 @@ interface BrowserControlRequest {
   traceId?: string
 }
 
-interface PendingViewportCommand {
-  owner: BrowserOwner.Info
-  command: Extract<BrowserControl.Command, { type: "setViewport" }>
-  commandId?: string
-  traceId?: string
-  updatedAt: number
-}
-
-const pendingViewportCommands = new Map<string, PendingViewportCommand>()
-
-BrowserHostControl.addGlobalObserver((owner, event) => {
-  if (event.type !== "browser.host.status") return
-  if (event.status !== "ready" || typeof event.tabId !== "string") return
-  flushPendingViewport(owner, event.tabId)
-})
-
-function tabPayload(tab: BrowserTab) {
-  return BrowserControl.tabState(tab)
-}
-
-function sessionStatePayload(
-  session: BrowserControl.SessionState,
-  presentation: BrowserPresentationSelection,
-  runtimeHealth?: Awaited<ReturnType<typeof BrowserHost.health>>,
-) {
-  return {
-    type: "session.state",
-    tabs: session.tabs,
-    activeTabId: session.activeTabId,
-    connection: { status: "connected" },
-    presentation,
-    runtimeHealth,
-  }
-}
-
 function send(ws: BrowserWS, payload: Record<string, unknown>) {
   try {
     ws.send(JSON.stringify(payload))
@@ -89,19 +54,19 @@ function send(ws: BrowserWS, payload: Record<string, unknown>) {
 function subscribeBrowserEvents(ws: BrowserWS, session: BrowserSession) {
   return session.addObserver({
     onTabCreated: (tab) => {
-      send(ws, { type: "tab.created", tab: tabPayload(tab), active: session.activeTab === tab })
+      send(ws, { type: "tab.created", tab: BrowserWorkspace.tabPayload(tab), active: session.activeTab === tab })
     },
     onTabClosed: (tabId) => {
       send(ws, { type: "tab.closed", tabId })
     },
     onTabUpdated: (tab) => {
-      send(ws, { type: "tab.updated", tab: tabPayload(tab) })
+      send(ws, { type: "tab.updated", tab: BrowserWorkspace.tabPayload(tab) })
     },
     onTabActivated: (tab) => {
-      send(ws, { type: "tab.activated", tabId: tab.id, tab: tabPayload(tab) })
+      send(ws, { type: "tab.activated", tabId: tab.id, tab: BrowserWorkspace.tabPayload(tab) })
     },
     onTabNavigated: (tab) => {
-      send(ws, { type: "tab.updated", tab: tabPayload(tab) })
+      send(ws, { type: "tab.updated", tab: BrowserWorkspace.tabPayload(tab) })
     },
     onPageLoadState: (tab, state, message) => {
       const type = state === "loading" ? "page.loading" : state === "loaded" ? "page.loaded" : "page.error"
@@ -172,37 +137,6 @@ function routeState(c: BrowserRouteContext): BrowserRouteState {
   return { directory, owner, presentation, client }
 }
 
-async function ensureSession(
-  owner: BrowserOwner.Info,
-  options?: BrowserHost.EnsureSessionOptions,
-): Promise<BrowserSession> {
-  return BrowserHost.ensureSession(owner, options)
-}
-
-function mergeCanonicalHostSession(
-  canonical: BrowserControl.SessionState,
-  hostSession: BrowserControl.SessionState,
-): BrowserControl.SessionState {
-  const hostTabs = new Map(hostSession.tabs.map((tab) => [tab.id, tab]))
-  return {
-    tabs: canonical.tabs.map((tab) => hostTabs.get(tab.id) ?? tab),
-    activeTabId: canonical.activeTabId,
-  }
-}
-
-async function routeSessionState(
-  owner: BrowserOwner.Info,
-  presentation: BrowserPresentationSelection,
-  options?: BrowserHost.EnsureSessionOptions,
-): Promise<BrowserControl.SessionState> {
-  const session = await ensureSession(owner, options)
-  const canonical = BrowserControl.sessionState(session)
-  const hostSession = BrowserHostControl.sessionState(owner)
-  if (!hostSession) return canonical
-  if (presentation.kind === "webrtc") return mergeCanonicalHostSession(canonical, hostSession)
-  return hostSession
-}
-
 async function readControlRequest(c: BrowserRouteContext): Promise<BrowserControlRequest> {
   const body = await c.req.json()
   if (typeof body !== "object" || body === null || !("command" in body)) {
@@ -227,145 +161,12 @@ function traceId(
   return c.req.header("x-synergy-browser-trace") ?? c.req.query("traceId") ?? bodyTrace
 }
 
-function commandTabId(owner: BrowserOwner.Info, command: BrowserControl.Command): string | null {
-  if ("tabId" in command && typeof command.tabId === "string" && command.tabId) return command.tabId
-  return BrowserHostControl.sessionState(owner)?.activeTabId ?? null
-}
-
-function pendingViewportKey(owner: BrowserOwner.Info, tabId: string): string {
-  return `${BrowserOwner.key(owner)}:tab:${tabId}:viewport`
-}
-
-function deferViewport(
-  owner: BrowserOwner.Info,
-  command: Extract<BrowserControl.Command, { type: "setViewport" }>,
-  request: { commandId?: string; traceId?: string },
-) {
-  const tabId = commandTabId(owner, command)
-  if (!tabId) return false
-  pendingViewportCommands.set(pendingViewportKey(owner, tabId), {
-    owner,
-    command: { ...command, tabId },
-    commandId: request.commandId,
-    traceId: request.traceId,
-    updatedAt: Date.now(),
-  })
-  BrowserHostControl.markStatus(owner, tabId, "pending", {
-    traceId: request.traceId,
-    reason: "viewport_deferred_until_host_ready",
-  })
-  log.info("browser.route.control.deferred", {
-    ownerKey: BrowserOwner.key(owner),
-    tabId,
-    commandId: request.commandId,
-    commandType: command.type,
-    traceId: request.traceId,
-    reason: "host_pending",
-  })
-  return true
-}
-
-function flushPendingViewport(owner: BrowserOwner.Info, tabId: string): void {
-  const key = pendingViewportKey(owner, tabId)
-  const pending = pendingViewportCommands.get(key)
-  if (!pending || !BrowserHostControl.isReady(owner, tabId)) return
-  pendingViewportCommands.delete(key)
-  void BrowserHostControl.execute(pending.owner, pending.command, {
-    commandId: pending.commandId,
-    traceId: pending.traceId,
-  }).catch((error) => {
-    log.warn("browser.route.control.failed", {
-      ownerKey: BrowserOwner.key(owner),
-      tabId,
-      commandId: pending.commandId,
-      commandType: pending.command.type,
-      traceId: pending.traceId,
-      error: error instanceof Error ? error.message : String(error),
-      deferredAgeMs: Date.now() - pending.updatedAt,
-    })
-  })
-}
-
-function hostPendingPayload(input: {
-  command: BrowserControl.Command
-  commandId?: string
-  traceId?: string
-  tabId?: string | null
-}) {
-  return {
-    type: "error",
-    code: "browser_host_pending",
-    message: "Browser Host is still preparing.",
-    retryable: true,
-    traceId: input.traceId,
-    tabId: input.tabId ?? null,
-    commandId: input.commandId,
-    commandType: input.command.type,
-  }
-}
-
-function commandNeedsReadyHost(command: BrowserControl.Command): boolean {
-  return command.type !== "createTab" && command.type !== "setViewport" && command.type !== "closeTab"
-}
-
-function hostReadyTimeoutMs(): number {
-  const configured = Number(process.env.SYNERGY_BROWSER_HOST_READY_TIMEOUT_MS)
-  return Number.isFinite(configured) && configured >= 0 ? configured : 5_000
-}
-
-async function executeWebRTCCreateTab(
-  state: BrowserRouteState,
-  command: Extract<BrowserControl.Command, { type: "createTab" }>,
-  request: { commandId?: string; traceId?: string },
-  serverUrl: string,
-) {
-  const session = await ensureSession(state.owner)
-  const result = await BrowserControl.execute(session, command)
-  if (result.type !== "tab") return result
-
-  BrowserHostControl.markStatus(state.owner, result.tab.id, "pending", {
-    traceId: request.traceId,
-    reason: "tab_created",
-  })
-  const ensure = BrowserElectronHostProcess.ensure({
-    owner: state.owner,
-    tabId: result.tab.id,
-    serverUrl,
-    routeDirectory: state.directory,
-    url: result.tab.url,
-    traceId: request.traceId,
-  })
-  log.info("browser.route.control.deferred", {
-    ownerKey: BrowserOwner.key(state.owner),
-    tabId: result.tab.id,
-    commandId: request.commandId,
-    commandType: command.type,
-    traceId: request.traceId,
-    hostProcessKey: ensure.key,
-    hostStatus: BrowserHostControl.status(state.owner, result.tab.id),
-  })
-  return {
-    ...result,
-    hostStatus: BrowserHostControl.status(state.owner, result.tab.id),
-  }
-}
-
-async function executeWebRTCTabCommand(
-  owner: BrowserOwner.Info,
-  command: Extract<BrowserControl.Command, { type: "switchTab" | "closeTab" }>,
-) {
-  const session = await ensureSession(owner)
-  const result = await BrowserControl.execute(session, command)
-  if (command.type === "closeTab") BrowserElectronHostProcess.stop(owner, command.tabId)
-  return result
-}
-
 export const BrowserRoute = new Hono()
   .get("/:directory/browser/session", async (c) => {
     try {
-      const { owner, presentation } = routeState(c)
-      const session = await routeSessionState(owner, presentation, { createInitialTab: true })
-      return c.json(sessionStatePayload(session, presentation, await BrowserHost.health()))
+      const state = routeState(c)
+      const session = await BrowserWorkspace.sessionState(state, { createInitialTab: true })
+      return c.json(BrowserWorkspace.sessionStatePayload(session, state.presentation, await BrowserHost.health()))
     } catch (e: any) {
       log.error("browser session route error", { error: e?.message ?? String(e) })
       return c.json({ type: "error", code: "browser_session_failed", message: e?.message ?? "Browser error" }, 500)
@@ -381,7 +182,7 @@ export const BrowserRoute = new Hono()
       request.traceId = traceId(c, request.traceId)
       const { owner, presentation } = state
       const { command } = request
-      const tabId = commandTabId(owner, command)
+      const tabId = BrowserWorkspace.commandTabId(owner, command)
       log.info("browser.route.control.received", {
         ownerKey: BrowserOwner.key(owner),
         scopeID: owner.scopeID,
@@ -395,82 +196,19 @@ export const BrowserRoute = new Hono()
         traceId: request.traceId,
       })
 
-      if (presentation.kind === "webrtc" && command.type === "createTab") {
-        const result = await executeWebRTCCreateTab(state, command, request, requestOrigin(c))
-        log.info("browser.route.control.completed", {
-          ownerKey: BrowserOwner.key(owner),
-          tabId: result.type === "tab" ? result.tab.id : tabId,
-          commandId: request.commandId,
-          commandType: command.type,
-          traceId: request.traceId,
-          durationMs: Date.now() - startedAt,
-        })
-        return c.json({ type: "control.result", result }, 202)
-      }
-
-      if (presentation.kind === "webrtc" && (command.type === "switchTab" || command.type === "closeTab")) {
-        const result = await executeWebRTCTabCommand(owner, command)
-        log.info("browser.route.control.completed", {
-          ownerKey: BrowserOwner.key(owner),
-          tabId,
-          commandId: request.commandId,
-          commandType: command.type,
-          traceId: request.traceId,
-          durationMs: Date.now() - startedAt,
-        })
-        return c.json({ type: "control.result", result })
-      }
-
-      if (
-        presentation.kind === "webrtc" &&
-        command.type === "setViewport" &&
-        tabId &&
-        !BrowserHostControl.isReady(owner, tabId)
-      ) {
-        deferViewport(owner, command, request)
-        return c.json({ type: "control.result", result: { type: "void" }, deferred: true, hostStatus: "pending" }, 202)
-      }
-
-      if (
-        presentation.kind === "webrtc" &&
-        commandNeedsReadyHost(command) &&
-        tabId &&
-        !BrowserHostControl.isReady(owner, tabId)
-      ) {
-        BrowserHostControl.markStatus(owner, tabId, "pending", {
-          traceId: request.traceId,
-          reason: "control_received_before_host_ready",
-        })
-        log.info("browser.route.control.deferred", {
-          ownerKey: BrowserOwner.key(owner),
-          tabId,
-          commandId: request.commandId,
-          commandType: command.type,
-          traceId: request.traceId,
-          reason: "host_pending",
-        })
-        return c.json(
-          hostPendingPayload({ command, commandId: request.commandId, traceId: request.traceId, tabId }),
-          409,
-        )
-      }
-
-      const result = await BrowserHost.execute(owner, command, {
-        commandId: request.commandId,
-        traceId: request.traceId,
-      })
+      const result = await BrowserWorkspace.executeControl(state, request, requestOrigin(c))
       log.info("browser.route.control.completed", {
         ownerKey: BrowserOwner.key(owner),
-        tabId,
+        tabId: result.tabId,
         commandId: request.commandId,
         commandType: command.type,
         traceId: request.traceId,
         durationMs: Date.now() - startedAt,
       })
-      return c.json({ type: "control.result", result })
+      return c.json(result.payload, result.status as any)
     } catch (e: any) {
       const command = request?.command
-      const tabId = state && command ? commandTabId(state.owner, command) : null
+      const tabId = state && command ? BrowserWorkspace.commandTabId(state.owner, command) : null
       if (e instanceof BrowserHostControlNotAttachedError && state && command) {
         log.info("browser.route.control.deferred", {
           ownerKey: BrowserOwner.key(state.owner),
@@ -481,7 +219,12 @@ export const BrowserRoute = new Hono()
           reason: "host_not_attached",
         })
         return c.json(
-          hostPendingPayload({ command, commandId: request?.commandId, traceId: request?.traceId, tabId }),
+          BrowserWorkspace.hostPendingPayload({
+            command,
+            commandId: request?.commandId,
+            traceId: request?.traceId,
+            tabId,
+          }),
           409,
         )
       }
@@ -567,7 +310,7 @@ export const BrowserRoute = new Hono()
       return {
         onOpen: async (_e: any, ws: BrowserWS) => {
           try {
-            const session = await ensureSession(owner, { createInitialTab: true })
+            const session = await BrowserWorkspace.ensureSession(owner, { createInitialTab: true })
             unsubscribe = subscribeBrowserEvents(ws, session)
             unsubscribeHost = BrowserHostControl.addObserver(owner, (event) => {
               if (presentation.kind === "webrtc" && event.type === "session.state") {
@@ -577,7 +320,7 @@ export const BrowserRoute = new Hono()
                 } as BrowserControl.SessionState
                 send(ws, {
                   type: "session.state",
-                  ...mergeCanonicalHostSession(BrowserControl.sessionState(session), hostSession),
+                  ...BrowserWorkspace.mergeCanonicalHostSession(BrowserControl.sessionState(session), hostSession),
                 })
                 return
               }
@@ -587,8 +330,8 @@ export const BrowserRoute = new Hono()
             if (hostSession && presentation.kind === "webrtc") {
               send(
                 ws,
-                sessionStatePayload(
-                  mergeCanonicalHostSession(BrowserControl.sessionState(session), hostSession),
+                BrowserWorkspace.sessionStatePayload(
+                  BrowserWorkspace.mergeCanonicalHostSession(BrowserControl.sessionState(session), hostSession),
                   presentation,
                   await BrowserHost.health(),
                 ),
@@ -596,12 +339,16 @@ export const BrowserRoute = new Hono()
               return
             }
             if (hostSession) {
-              send(ws, sessionStatePayload(hostSession, presentation, await BrowserHost.health()))
+              send(ws, BrowserWorkspace.sessionStatePayload(hostSession, presentation, await BrowserHost.health()))
               return
             }
             send(
               ws,
-              sessionStatePayload(BrowserControl.sessionState(session), presentation, await BrowserHost.health()),
+              BrowserWorkspace.sessionStatePayload(
+                BrowserControl.sessionState(session),
+                presentation,
+                await BrowserHost.health(),
+              ),
             )
           } catch (e: any) {
             log.error("browser events WS onOpen error", { error: e?.message ?? String(e) })
@@ -729,7 +476,7 @@ export const BrowserRoute = new Hono()
 
       return {
         onOpen: async (_e: any, ws: BrowserWS) => {
-          const session = await routeSessionState(state.owner, state.presentation, { createInitialTab: true })
+          const session = await BrowserWorkspace.sessionState(state, { createInitialTab: true })
           const tabId = initialTabId || session.activeTabId || null
           const tab = tabId ? session.tabs.find((item) => item.id === tabId) : undefined
           if (tabId) {
@@ -775,7 +522,7 @@ export const BrowserRoute = new Hono()
                 code: "browser_host_pending",
                 message: "Waiting for Browser Host.",
               })
-              void BrowserHostControl.waitForReady(state.owner, tabId, hostReadyTimeoutMs())
+              void BrowserHostControl.waitForReady(state.owner, tabId, BrowserWorkspace.hostReadyTimeoutMs())
                 .then(() => {
                   send(ws, { type: "browser.host.status", status: "ready", tabId, traceId: routeTraceId })
                   BrowserWebRTCSignaling.notifyHostReady(state.owner, tabId, routeTraceId)
@@ -865,7 +612,7 @@ export const BrowserRoute = new Hono()
 
       return {
         onOpen: async (_e: any, ws: BrowserWS) => {
-          const session = await routeSessionState(state.owner, state.presentation, { createInitialTab: true })
+          const session = await BrowserWorkspace.sessionState(state, { createInitialTab: true })
           attachedTabId = attachedTabId || session.activeTabId || null
           if (!attachedTabId) {
             send(ws, { type: "error", code: "browser_webrtc_host_missing_tab", message: "Missing WebRTC host tab id" })

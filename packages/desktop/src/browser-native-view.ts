@@ -1,8 +1,8 @@
 import { BrowserWindow, WebContentsView } from "electron"
 import { randomUUID } from "node:crypto"
 import { normalizeBrowserURL } from "@ericsanchezok/synergy-util/browser-protocol"
-import { BrowserHostDiagnostics, type BrowserHostUploadFile } from "./browser-host-diagnostics.js"
-import { inputModifiers } from "./browser-input.js"
+import { BrowserHostDiagnostics } from "./browser-host-diagnostics.js"
+import { BrowserWebContentsControl, UnsupportedBrowserWebContentsCommandError } from "./browser-webcontents-control.js"
 import { browserProfilePartition } from "./browser-profile.js"
 
 export interface BrowserNativeBounds {
@@ -251,7 +251,7 @@ class BrowserNativeHostControlConnection {
   private ws: WebSocket | null = null
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null
   private closed = false
-  private refMap = new Map<string, { backendNodeId: number; x: number; y: number; width: number; height: number }>()
+  private controls = new Map<string, BrowserWebContentsControl>()
 
   constructor(
     private input: BrowserNativeAttachRequest,
@@ -344,7 +344,10 @@ class BrowserNativeHostControlConnection {
         type: "browser.host.result",
         id: msg.id,
         error: {
-          code: error instanceof UnsupportedNativeCommandError ? "unsupported" : "failed",
+          code:
+            error instanceof UnsupportedNativeCommandError || error instanceof UnsupportedBrowserWebContentsCommandError
+              ? "unsupported"
+              : "failed",
           message: error instanceof Error ? error.message : String(error),
         },
       })
@@ -357,7 +360,9 @@ class BrowserNativeHostControlConnection {
       return { type: "tab", tab }
     }
     if (command.type === "closeTab") {
-      const session = await this.host.closeTab(String(command.tabId ?? this.host.getActiveTabId() ?? ""))
+      const tabId = String(command.tabId ?? this.host.getActiveTabId() ?? "")
+      const session = await this.host.closeTab(tabId)
+      this.controls.delete(tabId)
       return { type: "session", session }
     }
     if (command.type === "switchTab") {
@@ -369,271 +374,20 @@ class BrowserNativeHostControlConnection {
     const tabId = typeof command.tabId === "string" ? command.tabId : this.host.getActiveTabId()
     const view = this.host.getView(tabId)
     if (!view) throw new Error(tabId ? `Browser tab not found: ${tabId}` : "No active browser tab")
-    const diagnostics = this.host.getDiagnostics(tabId)
-    const contents = view.webContents
-    switch (command.type) {
-      case "navigate": {
-        const url = normalizeBrowserURL(String(command.url ?? "about:blank"))
-        await contents.loadURL(url)
-        return {
-          type: "navigation",
-          tab: this.tabState(tabId!, view),
-          url: contents.getURL(),
-          title: contents.getTitle(),
-        }
-      }
-      case "reload":
-        contents.reload()
-        return { type: "void" }
-      case "stop":
-        contents.stop()
-        return { type: "void" }
-      case "history":
-        if (command.direction === "back" && contents.navigationHistory.canGoBack()) contents.navigationHistory.goBack()
-        if (command.direction === "forward" && contents.navigationHistory.canGoForward()) {
-          contents.navigationHistory.goForward()
-        }
-        return { type: "void" }
-      case "setViewport":
-        return { type: "tab", tab: this.tabState(tabId!, view) }
-      case "click":
-        contents.focus()
-        this.dispatchMouse({ type: "input.mouse", action: "down", x: command.x, y: command.y, button: "left" })
-        this.dispatchMouse({ type: "input.mouse", action: "up", x: command.x, y: command.y, button: "left" })
-        return { type: "void" }
-      case "typeText":
-        contents.focus()
-        await contents.insertText(String(command.text ?? ""))
-        return { type: "void" }
-      case "scroll":
-        contents.focus()
-        this.dispatchMouse({
-          type: "input.mouse",
-          action: "wheel",
-          deltaX: command.deltaX,
-          deltaY: command.deltaY,
-        })
-        return { type: "void" }
-      case "mouse":
-        contents.focus()
-        this.dispatchMouse((command.input as Record<string, unknown>) ?? command)
-        return { type: "void" }
-      case "key":
-        contents.focus()
-        this.dispatchKey((command.input as Record<string, unknown>) ?? command)
-        return { type: "void" }
-      case "insertText":
-        contents.focus()
-        await contents.insertText(String(command.text ?? ""))
-        return { type: "void" }
-      case "evaluate":
-        return {
-          type: "evaluation",
-          tabId: tabId!,
-          value: await contents.executeJavaScript(String(command.expression ?? ""), true),
-        }
-      case "cdp":
-        return {
-          type: "cdp",
-          tabId: tabId!,
-          value: await this.sendCDP(contents, String(command.method ?? ""), command.params as Record<string, unknown>),
-        }
-      case "snapshot": {
-        const snapshot = await this.snapshot(view)
-        return { type: "snapshot", tabId: tabId!, elements: snapshot.elements, truncated: snapshot.truncated }
-      }
-      case "resolveRef": {
-        const ref = String(command.ref ?? "")
-        return { type: "resolvedRef", tabId: tabId!, ref, box: this.refMap.get(ref) ?? null }
-      }
-      case "console":
-        return {
-          type: "console",
-          tabId: tabId!,
-          entries: diagnostics?.consoleEntries(Number(command.maxEntries ?? 50)) ?? [],
-        }
-      case "network":
-        return {
-          type: "network",
-          tabId: tabId!,
-          requests: diagnostics?.networkRequests(Number(command.maxEntries ?? 100)) ?? [],
-        }
-      case "assets":
-        return {
-          type: "assets",
-          tabId: tabId!,
-          assets: diagnostics?.pageAssets(tabId!, Number(command.maxEntries ?? 100)) ?? [],
-        }
-      case "filechooser.select":
-        await diagnostics?.respondToFileChooser(
-          String(command.requestId ?? ""),
-          (command.files as BrowserHostUploadFile[]) ?? [],
-        )
-        return { type: "void" }
-      case "dialog.respond":
-        await diagnostics?.respondToDialog(
-          String(command.requestId ?? ""),
-          Boolean(command.accept),
-          typeof command.promptText === "string" ? command.promptText : undefined,
-        )
-        return { type: "void" }
-      case "screenshot": {
-        const image = await contents.capturePage()
-        const size = image.getSize()
-        return {
-          type: "screenshot",
-          tabId: tabId!,
-          dataUrl: image.toDataURL(),
-          width: size.width,
-          height: size.height,
-        }
-      }
-      case "clearDiagnostics":
-        diagnostics?.clear()
-        return { type: "diagnostics.cleared", tabId: tabId! }
-      default:
-        throw new UnsupportedNativeCommandError(String(command.type ?? "unknown"))
-    }
+    return this.controlFor(tabId!, view).execute(command)
   }
 
-  private dispatchMouse(payload: Record<string, unknown>): void {
-    const view = this.host.getView((payload.tabId as string | undefined) ?? this.host.getActiveTabId())
-    if (!view) return
-    const action = payload.action
-    if (action === "wheel") {
-      view.webContents.sendInputEvent({
-        type: "mouseWheel",
-        x: Number(payload.x ?? 0),
-        y: Number(payload.y ?? 0),
-        deltaX: Number(payload.deltaX ?? 0),
-        deltaY: Number(payload.deltaY ?? 0),
-        modifiers: inputModifiers(payload.modifiers),
-      } as Electron.MouseWheelInputEvent)
-      return
-    }
-    const type = action === "down" ? "mouseDown" : action === "up" ? "mouseUp" : action === "move" ? "mouseMove" : null
-    if (!type) return
-    view.webContents.sendInputEvent({
-      type,
-      x: Number(payload.x ?? 0),
-      y: Number(payload.y ?? 0),
-      button: this.mouseButton(payload.button),
-      clickCount: Number(payload.clickCount ?? 1),
-      modifiers: inputModifiers(payload.modifiers),
-    } as Electron.MouseInputEvent)
-  }
-
-  private async snapshot(view: WebContentsView): Promise<{
-    elements: { ref: string; role: string; name: string; value?: string; children: never[] }[]
-    truncated: boolean
-  }> {
-    const result = (await view.webContents.executeJavaScript(
-      `(() => {
-        const selector = [
-          "a[href]",
-          "button",
-          "input",
-          "textarea",
-          "select",
-          "[role]",
-          "[contenteditable='true']",
-          "[tabindex]:not([tabindex='-1'])"
-        ].join(",")
-        const roleFor = (element) => {
-          const explicit = element.getAttribute("role")
-          if (explicit) return explicit
-          const tag = element.tagName.toLowerCase()
-          if (tag === "a") return "link"
-          if (tag === "button") return "button"
-          if (tag === "textarea") return "textbox"
-          if (tag === "select") return "combobox"
-          if (tag === "input") {
-            const type = (element.getAttribute("type") || "text").toLowerCase()
-            if (type === "checkbox") return "checkbox"
-            if (type === "radio") return "radio"
-            if (type === "search") return "searchbox"
-            if (type === "range") return "slider"
-            return "textbox"
-          }
-          return "generic"
-        }
-        const nameFor = (element) => {
-          return element.getAttribute("aria-label")
-            || element.getAttribute("title")
-            || element.getAttribute("placeholder")
-            || element.innerText
-            || element.value
-            || element.textContent
-            || ""
-        }
-        const nodes = Array.from(document.querySelectorAll(selector)).slice(0, 300)
-        return nodes.map((element, index) => {
-          const rect = element.getBoundingClientRect()
-          return {
-            ref: "@n" + (index + 1),
-            role: roleFor(element),
-            name: String(nameFor(element)).replace(/\\s+/g, " ").trim().slice(0, 200),
-            value: "value" in element && typeof element.value === "string" ? element.value : undefined,
-            box: {
-              backendNodeId: index + 1,
-              x: Math.round(rect.left),
-              y: Math.round(rect.top),
-              width: Math.round(rect.width),
-              height: Math.round(rect.height)
-            }
-          }
-        }).filter((item) => item.box.width > 0 && item.box.height > 0 && item.name)
-      })()`,
-      true,
-    )) as {
-      ref: string
-      role: string
-      name: string
-      value?: string
-      box: { backendNodeId: number; x: number; y: number; width: number; height: number }
-    }[]
-
-    this.refMap.clear()
-    const elements = result.map((item) => {
-      this.refMap.set(item.ref, item.box)
-      return {
-        ref: item.ref,
-        role: item.role,
-        name: item.name,
-        value: item.value,
-        children: [],
-      }
+  private controlFor(tabId: string, view: WebContentsView): BrowserWebContentsControl {
+    const existing = this.controls.get(tabId)
+    if (existing) return existing
+    const control = new BrowserWebContentsControl({
+      tabId,
+      contents: () => view.webContents,
+      diagnostics: () => this.host.getDiagnostics(tabId),
+      tabState: () => this.tabState(tabId, view),
     })
-    return { elements, truncated: result.length >= 300 }
-  }
-
-  private dispatchKey(payload: Record<string, unknown>): void {
-    const view = this.host.getView((payload.tabId as string | undefined) ?? this.host.getActiveTabId())
-    if (!view) return
-    const action = payload.action
-    const type = action === "down" ? "keyDown" : action === "up" ? "keyUp" : null
-    if (!type) return
-    view.webContents.sendInputEvent({
-      type,
-      keyCode: String(payload.key ?? payload.code ?? ""),
-      modifiers: inputModifiers(payload.modifiers, { autoRepeat: payload.autoRepeat }),
-    } as Electron.KeyboardInputEvent)
-  }
-
-  private mouseButton(button: unknown): "left" | "middle" | "right" {
-    if (button === "middle") return "middle"
-    if (button === "right") return "right"
-    return "left"
-  }
-
-  private async sendCDP(
-    contents: Electron.WebContents,
-    method: string,
-    params?: Record<string, unknown>,
-  ): Promise<unknown> {
-    if (!method) throw new Error("Missing CDP method")
-    if (!contents.debugger.isAttached()) contents.debugger.attach("1.3")
-    return contents.debugger.sendCommand(method, params)
+    this.controls.set(tabId, control)
+    return control
   }
 
   private tabState(tabId: string, view: WebContentsView): BrowserNativeTabState {

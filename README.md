@@ -46,11 +46,11 @@ Synergy spans several product surfaces and workflows:
 
 ### Built-In Browser Workspace
 
-The Web client includes a right-side Browser workspace that runs a real Chromium page, not an iframe or a screenshot-only mock. Users can navigate, search, click, type, scroll, upload, and download in the workspace while browser tools operate on the same underlying tab/session state.
+The Web client includes a right-side Browser workspace backed by real Chromium. Users can navigate, search, click, type, scroll, upload, and download in the workspace while browser tools operate on the same underlying tab/session state.
 
-Browser control and Browser presentation are intentionally separate. The shared control protocol owns sessions, tabs, navigation, screenshots, snapshots, diagnostics, downloads, dialogs, and tool actions. Interactive presentation negotiates a mode: local desktop clients use an embedded Electron `WebContentsView`, while remote Web clients use WebRTC media plus input data channels. Browser Hosts register over the same control protocol so human UI and browser tools operate on the same visible tab whenever a native or WebRTC host is attached.
+Browser control and Browser presentation are intentionally separate. The shared control protocol owns sessions, tabs, navigation, screenshots, snapshots, diagnostics, downloads, dialogs, and tool actions. Interactive presentation has two modes: local desktop clients use an embedded Electron `WebContentsView`, and remote Web clients use WebRTC media plus input data channels. Browser Hosts register over the same control protocol so human UI and browser tools operate on the same visible tab whenever a native or WebRTC host is attached.
 
-The Browser server boundary follows the same split: session/control endpoints carry tab state and commands, Browser Host control has its own route, and WebRTC signaling has its own route. Production interactive viewing uses native desktop presentation or WebRTC; one-shot screenshots remain for tools and diagnostics.
+The Browser server boundary follows the same split: session/control endpoints carry tab state and commands, Browser Host control has its own route, and WebRTC signaling has its own route. Production interactive viewing uses native desktop presentation or WebRTC. Remote text, IME composition, paste, pointer, wheel, and shortcut input travel over the WebRTC data channel so the remote surface behaves like a local browser window.
 
 Remote WebRTC Browser Hosts autostart by default when a remote Browser viewer connects. Set `SYNERGY_BROWSER_HOST_AUTOSTART=0` to disable server-managed host startup, or set `SYNERGY_BROWSER_HOST_COMMAND` to provide a custom Electron host command.
 

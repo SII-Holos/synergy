@@ -110,7 +110,6 @@ describe("createBrowserStore viewport", () => {
         tabId: null,
         width: 375,
         height: 668,
-        deviceScaleFactor: 1,
       })
       dispose()
     })
@@ -144,7 +143,7 @@ describe("createBrowserStore viewport", () => {
       store.setPresentation({
         protocolVersion: 1,
         kind: "webrtc",
-        capabilities: { native: true, webrtc: true, screenshotFallback: false },
+        capabilities: { native: true, webrtc: true },
         reason: "remote-client",
       })
       store.setSession("tabs", [{ id: "tab-1", title: "Start", url: "about:blank", isLoading: false }])
