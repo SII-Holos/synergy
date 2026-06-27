@@ -399,10 +399,7 @@ export const BrowserRoute = new Hono()
         !BrowserHostControl.isReady(owner, tabId)
       ) {
         deferViewport(owner, command, request)
-        return c.json(
-          { type: "control.result", result: { type: "void" }, deferred: true, hostStatus: "pending" },
-          202,
-        )
+        return c.json({ type: "control.result", result: { type: "void" }, deferred: true, hostStatus: "pending" }, 202)
       }
 
       if (
@@ -423,7 +420,10 @@ export const BrowserRoute = new Hono()
           traceId: request.traceId,
           reason: "host_pending",
         })
-        return c.json(hostPendingPayload({ command, commandId: request.commandId, traceId: request.traceId, tabId }), 409)
+        return c.json(
+          hostPendingPayload({ command, commandId: request.commandId, traceId: request.traceId, tabId }),
+          409,
+        )
       }
 
       const result = await BrowserHost.execute(owner, command, {
@@ -451,7 +451,10 @@ export const BrowserRoute = new Hono()
           traceId: request?.traceId,
           reason: "host_not_attached",
         })
-        return c.json(hostPendingPayload({ command, commandId: request?.commandId, traceId: request?.traceId, tabId }), 409)
+        return c.json(
+          hostPendingPayload({ command, commandId: request?.commandId, traceId: request?.traceId, tabId }),
+          409,
+        )
       }
       log.error("browser.route.control.failed", {
         ownerKey: state ? BrowserOwner.key(state.owner) : undefined,

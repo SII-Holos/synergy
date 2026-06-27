@@ -66,7 +66,9 @@ function createCommandId() {
 }
 
 function isBrowserHostStatus(value: unknown): value is BrowserHostStatus {
-  return value === "pending" || value === "ready" || value === "detached" || value === "restarting" || value === "failed"
+  return (
+    value === "pending" || value === "ready" || value === "detached" || value === "restarting" || value === "failed"
+  )
 }
 
 export function browserControlCommandFromMessage(msg: Record<string, unknown>): Record<string, unknown> | null {
