@@ -83,11 +83,7 @@ function compatibilityLabel(level?: SkillCompatibilityLevel) {
   }
 }
 
-export function SkillView(props: {
-  sdk: ReturnType<typeof useGlobalSDK>
-  search: string
-  directory?: string
-}) {
+export function SkillView(props: { sdk: ReturnType<typeof useGlobalSDK>; search: string; directory?: string }) {
   const dialog = useDialog()
   const platform = usePlatform()
   const scopedClient = createMemo(() => {
@@ -586,10 +582,7 @@ function SkillDetailDialog(props: { skill: SkillItem; onDelete?: () => Promise<b
   }
 
   return (
-    <Dialog
-      title={<span class="min-w-0 truncate">{props.skill.name}</span>}
-      class="dialog-skill-detail"
-    >
+    <Dialog title={<span class="min-w-0 truncate">{props.skill.name}</span>} class="dialog-skill-detail">
       <div class="skill-detail-shell">
         <div class="skill-detail-scroll">
           <div class="skill-detail-meta-row">
@@ -762,9 +755,7 @@ function SkillDetailList(props: { title: string; items: string[]; tone: "warning
 function SkillCodeList(props: { items: string[] }) {
   return (
     <div class="skill-detail-code-list">
-      <For each={props.items}>
-        {(item) => <div class="skill-detail-code-row">{item}</div>}
-      </For>
+      <For each={props.items}>{(item) => <div class="skill-detail-code-row">{item}</div>}</For>
     </div>
   )
 }

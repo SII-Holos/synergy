@@ -116,7 +116,10 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         },
         sessionTabs: {} as Record<string, SessionTabs>,
         sessionView: {} as Record<string, SessionView>,
-        workspaceSessions: {} as Record<string, { opened: boolean; active: string | null; width?: number; resized?: boolean }>,
+        workspaceSessions: {} as Record<
+          string,
+          { opened: boolean; active: string | null; width?: number; resized?: boolean }
+        >,
       }),
     )
 

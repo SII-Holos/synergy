@@ -154,10 +154,7 @@ export function QValueChart(props: {
         <h3 class="text-13-medium text-text-strong">Q‑value distribution</h3>
       </div>
 
-      <Show
-        when={hasData()}
-        fallback={<div class="library-empty-row">No evaluated experiences yet</div>}
-      >
+      <Show when={hasData()} fallback={<div class="library-empty-row">No evaluated experiences yet</div>}>
         {/* Summary row */}
         <div class="mb-3 grid grid-cols-5 gap-2">
           <div class="rounded-xl bg-surface-inset-base px-2.5 py-2 ring-1 ring-inset ring-border-base/45">

@@ -184,10 +184,7 @@ export function RewardRadar(props: { dimensions: DimStats[] }) {
         <h3 class="text-13-medium text-text-strong">Reward dimensions</h3>
       </div>
 
-      <Show
-        when={dims().length > 0}
-        fallback={<div class="library-empty-row">No evaluated experiences yet</div>}
-      >
+      <Show when={dims().length > 0} fallback={<div class="library-empty-row">No evaluated experiences yet</div>}>
         <div class="flex gap-4">
           {/* Radar chart — left */}
           <div class="shrink-0" style={{ width: "280px" }}>

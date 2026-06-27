@@ -24,7 +24,8 @@ function pluginIcon(plugin: RegistryPluginSummary) {
   const keywords = plugin.keywords.map((item) => item.toLowerCase())
   if (keywords.some((item) => item.includes("image") || item.includes("meme"))) return "image"
   if (keywords.some((item) => item.includes("frontend") || item.includes("ui"))) return "layout-grid"
-  if (keywords.some((item) => item.includes("hash") || item.includes("password") || item.includes("id"))) return "fingerprint"
+  if (keywords.some((item) => item.includes("hash") || item.includes("password") || item.includes("id")))
+    return "fingerprint"
   return "package"
 }
 
@@ -133,9 +134,7 @@ export function MarketplacePage() {
             <Show when={searchResults.loading}>
               <div class="flex flex-col gap-2">
                 <For each={[0, 1, 2]}>
-                  {() => (
-                    <div class="plugin-marketplace-skeleton-row workbench-card-surface h-[92px] rounded-2xl" />
-                  )}
+                  {() => <div class="plugin-marketplace-skeleton-row workbench-card-surface h-[92px] rounded-2xl" />}
                 </For>
               </div>
             </Show>

@@ -75,10 +75,7 @@ export function MemoryDistribution(props: {
         <h3 class="text-13-medium text-text-strong">Memory categories</h3>
       </div>
 
-      <Show
-        when={props.totalMemories > 0}
-        fallback={<div class="library-empty-row">No memories yet</div>}
-      >
+      <Show when={props.totalMemories > 0} fallback={<div class="library-empty-row">No memories yet</div>}>
         <div class="flex gap-4">
           {/* Doughnut */}
           <div class="shrink-0 w-32 h-32 flex items-center justify-center">

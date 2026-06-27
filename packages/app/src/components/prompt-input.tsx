@@ -1234,10 +1234,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                 <Show when={!props.hideAgentSelector}>
                   <ToolbarSelectorPopover
                     trigger={
-                      <button
-                        type="button"
-                        class="prompt-input-toolbar-button flex items-center gap-1.5"
-                      >
+                      <button type="button" class="prompt-input-toolbar-button flex items-center gap-1.5">
                         <span class="text-12-medium text-text-base whitespace-nowrap">
                           {getAgentVisual(local.agent.current()).label}
                         </span>

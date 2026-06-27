@@ -44,7 +44,9 @@ export function PermissionModeSelector(props: {
             fallback={
               <>
                 <Icon name={props.activeMode().icon} size="small" class={`shrink-0 ${props.activeMode().iconClass}`} />
-                <span class={`prompt-input-compact-label text-12-medium whitespace-nowrap ${props.activeMode().iconClass}`}>
+                <span
+                  class={`prompt-input-compact-label text-12-medium whitespace-nowrap ${props.activeMode().iconClass}`}
+                >
                   {props.activeMode().shortLabel}
                 </span>
                 <Icon name="chevron-down" size="small" class="prompt-input-compact-chevron opacity-70 shrink-0" />
