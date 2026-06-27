@@ -10,6 +10,7 @@ describe("desktop release asset names", () => {
   test("matches the public primary artifact naming contract", () => {
     expect(desktopPrimaryArtifactName("1.2.3", "darwin", "arm64")).toBe("Synergy-darwin-arm64-1.2.3.dmg")
     expect(desktopPrimaryArtifactName("1.2.3", "win32", "x64")).toBe("Synergy-win32-x64-1.2.3.exe")
+    expect(desktopPrimaryArtifactName("1.2.3", "linux", "x64")).toBe("Synergy-linux-x86_64-1.2.3.AppImage")
     expect(desktopPrimaryArtifactName("1.2.3", "linux", "arm64")).toBe("Synergy-linux-arm64-1.2.3.AppImage")
   })
 

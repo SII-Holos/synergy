@@ -10,7 +10,8 @@ export function desktopPrimaryArtifactName(
   arch: DesktopReleaseArch,
 ): string {
   const extension = platform === "darwin" ? "dmg" : platform === "win32" ? "exe" : "AppImage"
-  return `Synergy-${platform}-${arch}-${version}.${extension}`
+  const artifactArch = platform === "linux" && arch === "x64" ? "x86_64" : arch
+  return `Synergy-${platform}-${artifactArch}-${version}.${extension}`
 }
 
 export function expectedDesktopPrimaryArtifacts(version: string): string[] {
