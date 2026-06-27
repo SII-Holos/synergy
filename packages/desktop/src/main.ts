@@ -21,7 +21,7 @@ import {
 import { installAppMenu } from "./menu.js"
 import { DesktopServerManager } from "./server-manager.js"
 import { enforceProductionLoading, installSessionSecurity, installWindowSecurity } from "./security.js"
-import { DesktopUpdater } from "./updater.js"
+import { DesktopUpdateMode, DesktopUpdater } from "./updater.js"
 import { loadWindowState, scheduleWindowStatePersistence } from "./window-state.js"
 
 const dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -35,6 +35,11 @@ let updater: DesktopUpdater | null = null
 let currentAppURL: string | null = null
 let shouldStart = true
 let isQuitting = false
+let isUpdateQuit = false
+
+const updateQuitApp = app as typeof app & {
+  on(event: "before-quit-for-update", listener: () => void): typeof app
+}
 
 try {
   app.setAppUserModelId(DESKTOP_APP_ID)
@@ -57,7 +62,6 @@ runtimeLog("mainLoaded", { argv: process.argv })
 async function createWindow() {
   const channel = desktopChannel(app.isPackaged)
   const mode = desktopServerMode(channel)
-  updater ??= new DesktopUpdater(channel)
   serverManager ??= new DesktopServerManager({
     channel,
     mode,
@@ -65,6 +69,16 @@ async function createWindow() {
     logDir: desktopLogDir(),
     externalUrl: process.env.SYNERGY_DESKTOP_APP_URL,
   })
+  if (!updater) {
+    updater = new DesktopUpdater({
+      channel,
+      currentVersion: app.getVersion(),
+      userDataDir: app.getPath("userData"),
+      stopServer: () => serverManager?.stop() ?? Promise.resolve(),
+    })
+    updater.onEvent((event) => mainWindow?.webContents.send("desktop-update:event", event))
+    await updater.init()
+  }
 
   const targetURL = await resolveAppURL()
   runtimeLog("createWindow", { targetURL, mode, show: process.env.SYNERGY_DESKTOP_SHOW !== "0" })
@@ -178,9 +192,19 @@ function registerIpcHandlers() {
     await mainWindow?.loadURL(url)
     return serverManager.status()
   })
-  ipcMain.handle("desktop.update.check", () => updater?.check())
-  ipcMain.handle("desktop.update.installAndRestart", () => {
-    updater?.installAndRestart()
+  ipcMain.handle("desktop.update.status", () => updater?.getStatus() ?? null)
+  ipcMain.handle("desktop.update.setMode", (_event, input: unknown) => {
+    const mode = DesktopUpdateMode.parse(input)
+    return updater?.setMode(mode)
+  })
+  ipcMain.handle("desktop.update.check", (_event, input: unknown) => {
+    const manual = typeof input === "object" && input !== null && (input as { manual?: unknown }).manual === true
+    return updater?.check({ manual })
+  })
+  ipcMain.handle("desktop.update.download", () => updater?.download())
+  ipcMain.handle("desktop.update.installAndRestart", async () => {
+    isUpdateQuit = true
+    return updater?.installAndRestart()
   })
   ipcMain.handle("desktop.shell.openExternal", async (_event, input: unknown) => {
     const url = parseExternalUrl(input)
@@ -248,9 +272,15 @@ app.on("activate", () => {
   if (!mainWindow) void createWindow()
 })
 
+updateQuitApp.on("before-quit-for-update", () => {
+  isUpdateQuit = true
+  isQuitting = true
+})
+
 app.on("before-quit", (event) => {
   browserHost?.destroy()
   browserHost = null
+  if (isUpdateQuit) return
   if (isQuitting) return
   event.preventDefault()
   isQuitting = true

@@ -40,7 +40,6 @@ export namespace RuntimeReload {
     "snapshot",
     //     "agora",
     "instructions",
-    "autoupdate",
     "enterprise",
     "tools",
     "embedding",

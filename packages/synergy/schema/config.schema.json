@@ -260,18 +260,6 @@
     "snapshot": {
       "type": "boolean"
     },
-    "autoupdate": {
-      "description": "Automatically update to the latest version. Set to true to auto-update, false to disable, or 'notify' to show update notifications",
-      "anyOf": [
-        {
-          "type": "boolean"
-        },
-        {
-          "type": "string",
-          "const": "notify"
-        }
-      ]
-    },
     "disabled_providers": {
       "description": "Disable providers that are loaded automatically",
       "type": "array",
@@ -285,6 +273,37 @@
       "items": {
         "type": "string"
       }
+    },
+    "providerCatalog": {
+      "description": "Signed remote provider catalog configuration",
+      "ref": "ProviderCatalogConfig",
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "description": "Enable signed remote provider catalog updates",
+          "type": "boolean"
+        },
+        "registryUrl": {
+          "description": "Signed provider catalog URL. The signature is fetched from the same URL plus .sig.",
+          "type": "string",
+          "format": "uri"
+        },
+        "publicKey": {
+          "description": "Base64 Ed25519 public key used to verify provider catalog signatures",
+          "type": "string"
+        },
+        "cacheTtlMs": {
+          "description": "Provider catalog cache TTL in milliseconds",
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
+        },
+        "offlineCache": {
+          "description": "Use the last verified provider catalog when offline",
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
     },
     "model": {
       "description": "Default model in the format of provider/model, eg anthropic/claude-sonnet-4-5",
@@ -404,6 +423,54 @@
           },
           "name": {
             "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "signupUrl": {
+            "type": "string"
+          },
+          "recommendation": {
+            "type": "object",
+            "properties": {
+              "level": {
+                "type": "string",
+                "enum": ["featured", "recommended", "standard"]
+              },
+              "rank": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "headline": {
+                "type": "string"
+              },
+              "reason": {
+                "type": "string"
+              },
+              "cta": {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "external"
+                  },
+                  "label": {
+                    "type": "string"
+                  },
+                  "url": {
+                    "type": "string"
+                  }
+                },
+                "required": ["kind", "label", "url"],
+                "additionalProperties": false
+              },
+              "defaultModel": {
+                "type": "string"
+              }
+            },
+            "required": ["level"],
+            "additionalProperties": false
           },
           "env": {
             "type": "array",

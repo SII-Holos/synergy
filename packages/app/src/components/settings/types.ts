@@ -31,7 +31,6 @@ export const MODEL_DEFAULTS: Record<ModelKey, string> = {
 
 /** Defaults used by frontend form fallbacks, kept in sync with backend Config.state() defaults. */
 export const UI_DEFAULTS = {
-  autoupdate: "true" as string, // backend injects true → UI shows "true" / On
   theme: "" as string,
   username: "" as string,
   snapshot: true,
@@ -191,7 +190,6 @@ export function groupByProvider(list: ProviderModel[]): ProviderGroup[] {
 
 export type GeneralStore = {
   snapshot: boolean
-  autoupdate: string
   username: string
   theme: string
   mutedToasts: string[]
@@ -274,7 +272,6 @@ export function defaultSettingsState(sendShortcut: SendShortcut): SettingsState 
   return {
     general: {
       snapshot: UI_DEFAULTS.snapshot,
-      autoupdate: UI_DEFAULTS.autoupdate,
       username: UI_DEFAULTS.username,
       theme: UI_DEFAULTS.theme,
       mutedToasts: [],

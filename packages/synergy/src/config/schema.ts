@@ -1174,12 +1174,6 @@ export const Info = z
     pluginRuntimePolicy: PluginRuntimePolicy.optional().describe("Plugin runtime isolation policy configuration"),
     pluginMarketplace: PluginMarketplace.optional().describe("Public plugin marketplace registry configuration"),
     snapshot: z.boolean().optional(),
-    autoupdate: z
-      .union([z.boolean(), z.literal("notify")])
-      .optional()
-      .describe(
-        "Automatically update to the latest version. Set to true to auto-update, false to disable, or 'notify' to show update notifications",
-      ),
     disabled_providers: z.array(z.string()).optional().describe("Disable providers that are loaded automatically"),
     enabled_providers: z
       .array(z.string())

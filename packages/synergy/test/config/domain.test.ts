@@ -29,3 +29,11 @@ test("config domain filenames are stable and ordered", () => {
     "120-runtime.jsonc",
   ])
 })
+
+test("product update mode is not part of server config", async () => {
+  expect(ConfigDomain.domainForKey("autoupdate")).toBeUndefined()
+  expect(Object.keys(Config.Info.shape)).not.toContain("autoupdate")
+
+  const schema = await Bun.file(new URL("../../schema/config.schema.json", import.meta.url)).json()
+  expect(Object.keys(schema.properties ?? {})).not.toContain("autoupdate")
+})

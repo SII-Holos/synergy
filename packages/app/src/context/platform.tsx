@@ -33,6 +33,37 @@ export type BrowserNativeViewEvent =
   | { type: "native.console"; pageId: string; level: number; message: string; line?: number; sourceId?: string }
   | { type: "native.error"; pageId: string; code?: number; message: string; url?: string }
 
+export type DesktopUpdateMode = "auto" | "notify" | "manual" | "none"
+export type DesktopUpdatePhase =
+  | "disabled"
+  | "idle"
+  | "checking"
+  | "available"
+  | "downloading"
+  | "ready"
+  | "installing"
+  | "error"
+
+export type DesktopUpdateStatus = {
+  channel: "dev" | "stable"
+  mode: DesktopUpdateMode
+  phase: DesktopUpdatePhase
+  currentVersion: string
+  availableVersion: string | null
+  percent: number | null
+  lastCheckedAt: number | null
+  error: string | null
+}
+
+export type DesktopUpdateBridge = {
+  status(): Promise<DesktopUpdateStatus | null>
+  setMode(mode: DesktopUpdateMode): Promise<DesktopUpdateStatus | null>
+  check(input?: { manual?: boolean }): Promise<DesktopUpdateStatus | null>
+  download(): Promise<DesktopUpdateStatus | null>
+  installAndRestart(): Promise<DesktopUpdateStatus | null>
+  onEvent?(listener: (event: { type: "status"; status: DesktopUpdateStatus }) => void): () => void
+}
+
 export type Platform = {
   /** Platform discriminator */
   platform: "web" | "desktop"
@@ -57,6 +88,9 @@ export type Platform = {
 
   /** Native Chromium Browser view bridge, provided by the desktop shell. */
   browserNative?: BrowserNativeViewBridge
+
+  /** Desktop product update bridge, provided by the desktop shell. */
+  desktopUpdate?: DesktopUpdateBridge
 }
 
 export const { use: usePlatform, provider: PlatformProvider } = createSimpleContext({

@@ -17,6 +17,7 @@ describe("desktop release asset names", () => {
   test("lists all expected primary artifacts", () => {
     expect(expectedDesktopPrimaryArtifacts("1.2.3")).toHaveLength(6)
     expect(expectedDesktopPrimaryArtifacts("1.2.3")).toContain("Synergy-darwin-x64-1.2.3.dmg")
+    expect(expectedDesktopPrimaryArtifacts("1.2.3")).toContain("Synergy-linux-x86_64-1.2.3.AppImage")
     expect(expectedDesktopPrimaryArtifacts("1.2.3")).toContain("Synergy-linux-arm64-1.2.3.AppImage")
   })
 

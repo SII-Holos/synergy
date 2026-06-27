@@ -46,7 +46,6 @@ export namespace ConfigDomain {
       "toast",
       "logLevel",
       "snapshot",
-      "autoupdate",
       "username",
       "layout",
       "embedding",

@@ -7,8 +7,7 @@ import path from "path"
 const schema = z.toJSONSchema(Config.Info, { unrepresentable: "any" }) as Record<string, any>
 
 // Strip internal/unstable fields from the public schema.
-// The runtime still accepts these fields for backwards compatibility, but they are not
-// advertised to users via JSON Schema autocomplete.
+// These fields are not advertised to users via JSON Schema autocomplete.
 // - keybinds: internal keyboard binding map
 // - experimental: unstable feature flags, not ready for public use
 const HIDDEN_FIELDS = ["keybinds", "experimental"]

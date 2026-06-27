@@ -34,7 +34,7 @@ Web Settings uses these same canonical domains. Common fields are editable in fo
 
 | Domain file | Owned keys |
 |---|---|
-| `00-general.jsonc` | `$schema`, `theme`, `keybinds`, `toast`, `logLevel`, `snapshot`, `autoupdate`, `username`, `layout`, `embedding`, `rerank` |
+| `00-general.jsonc` | `$schema`, `theme`, `keybinds`, `toast`, `logLevel`, `snapshot`, `username`, `layout`, `embedding`, `rerank` |
 | `10-models.jsonc` | `model`, `nano_model`, `mini_model`, `mid_model`, `thinking_model`, `long_context_model`, `creative_model`, `vision_model` |
 | `20-providers.jsonc` | `provider`, `enabled_providers`, `disabled_providers` |
 | `30-library.jsonc` | `library` |

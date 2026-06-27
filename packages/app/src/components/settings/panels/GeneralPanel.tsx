@@ -1,11 +1,24 @@
-import { For } from "solid-js"
+import { createResource, createSignal, For, onCleanup, onMount, Show } from "solid-js"
+import { Button } from "@ericsanchezok/synergy-ui/button"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { getSemanticIcon, type SemanticIconTokenName } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { Switch } from "@ericsanchezok/synergy-ui/switch"
 import { useTheme, type ColorScheme } from "@ericsanchezok/synergy-ui/theme"
+import type { ServerUpdateStatus } from "@ericsanchezok/synergy-sdk/client"
+import { useGlobalSDK } from "@/context/global-sdk"
+import { usePlatform, type DesktopUpdateMode, type DesktopUpdateStatus } from "@/context/platform"
 import { SettingRow } from "../components/SettingRow"
 import { SegmentPill } from "../components/SegmentPill"
 import { SettingsPage, SettingsSection } from "../components/SettingsPrimitives"
+import {
+  desktopUpdateStatusCopy,
+  downloadLabel,
+  productUpdateSurface,
+  serverUpdateActionState,
+  serverUpdateStatusCopy,
+  webUpdateNeedsRefresh,
+  webVersionStatus,
+} from "./product-update-logic"
 import {
   DEFAULT_TOAST_DURATION_MS,
   TOAST_DURATION_STOPS,
@@ -86,24 +99,7 @@ export function GeneralPanel(props: {
             <Switch checked={props.general.snapshot} onChange={(value) => props.onGeneralChange("snapshot", value)} />
           }
         />
-        <SettingRow
-          title="Product updates"
-          description="Choose how Synergy handles available updates"
-          trailing={
-            <SegmentPill
-              value={props.general.autoupdate}
-              options={[
-                { value: "true", label: "On" },
-                { value: "false", label: "Off" },
-                { value: "notify", label: "Notify" },
-              ]}
-              onChange={(value) => props.onGeneralChange("autoupdate", value)}
-              showReset
-              defaultValue="notify"
-              onReset={() => props.onGeneralChange("autoupdate", "notify")}
-            />
-          }
-        />
+        <ProductUpdates />
       </SettingsSection>
 
       <SettingsSection
@@ -126,6 +122,192 @@ export function GeneralPanel(props: {
         </div>
       </SettingsSection>
     </SettingsPage>
+  )
+}
+
+function ProductUpdates() {
+  const platform = usePlatform()
+  const globalSDK = useGlobalSDK()
+  const [status, setStatus] = createSignal<DesktopUpdateStatus | null>(null)
+  const [serverStatus, setServerStatus] = createSignal<ServerUpdateStatus | null>(null)
+  const [busy, setBusy] = createSignal<string | null>(null)
+  const [serverBusy, setServerBusy] = createSignal<string | null>(null)
+  const [health, { refetch }] = createResource(async () => {
+    const res = await globalSDK.client.global.health()
+    return res.data
+  })
+  const [serverUpdate] = createResource(
+    () => (productUpdateSurface(platform) === "desktop" ? undefined : globalSDK.url),
+    async () => {
+      const res = await globalSDK.client.global.update.status()
+      const next = res.data ?? null
+      setServerStatus(next)
+      return next
+    },
+  )
+
+  onMount(() => {
+    if (!platform.desktopUpdate) return
+    void platform.desktopUpdate.status().then(setStatus)
+    const dispose = platform.desktopUpdate.onEvent?.((event) => {
+      if (event.type === "status") setStatus(event.status)
+    })
+    onCleanup(() => dispose?.())
+  })
+
+  const mode = () => status()?.mode ?? "auto"
+  const phase = () => status()?.phase ?? "idle"
+  const resolvedServerStatus = () => serverStatus() ?? serverUpdate() ?? null
+  const webNeedsRefresh = () => webUpdateNeedsRefresh(platform.version, health()?.version)
+  const serverActionState = () => serverUpdateActionState(resolvedServerStatus())
+
+  async function run(label: string, fn: () => Promise<DesktopUpdateStatus | null | undefined>) {
+    setBusy(label)
+    try {
+      const next = await fn()
+      if (next) setStatus(next)
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  async function runServer(label: string, fn: () => Promise<{ data?: ServerUpdateStatus }>) {
+    setServerBusy(label)
+    try {
+      const next = (await fn()).data
+      if (next) setServerStatus(next)
+    } catch (error) {
+      const previous = resolvedServerStatus()
+      if (previous) {
+        const message = error instanceof Error ? error.message : String(error)
+        setServerStatus({ ...previous, phase: "error", error: message, message })
+      }
+    } finally {
+      setServerBusy(null)
+    }
+  }
+
+  return (
+    <div class="settings-update-block">
+      <div class="settings-update-header">
+        <div class="settings-update-copy">
+          <span class="settings-update-title">Product updates</span>
+          <span class="settings-update-description">
+            <Show when={platform.desktopUpdate} fallback="Refresh this browser when the server has newer Web assets.">
+              Keep the desktop app and bundled server runtime current.
+            </Show>
+          </span>
+        </div>
+        <Show
+          when={platform.desktopUpdate}
+          fallback={
+            <Button
+              type="button"
+              variant={webNeedsRefresh() ? "primary" : "secondary"}
+              size="small"
+              disabled={!health()}
+              onClick={() => (webNeedsRefresh() ? void platform.restart() : void refetch())}
+            >
+              {webNeedsRefresh() ? "Refresh to Update" : "Check Version"}
+            </Button>
+          }
+        >
+          {(desktopUpdate) => (
+            <SegmentPill
+              value={mode()}
+              options={[
+                { value: "auto", label: "Auto" },
+                { value: "notify", label: "Notify" },
+                { value: "manual", label: "Manual" },
+                { value: "none", label: "Off" },
+              ]}
+              onChange={(value) => void run("mode", () => desktopUpdate().setMode(value as DesktopUpdateMode))}
+            />
+          )}
+        </Show>
+      </div>
+
+      <Show
+        when={platform.desktopUpdate}
+        fallback={
+          <div class="settings-update-status">
+            <div class="settings-update-lines">
+              <span>{webVersionStatus(platform.version, health()?.version)}</span>
+              <span>{serverUpdateStatusCopy(resolvedServerStatus())}</span>
+            </div>
+            <Show when={resolvedServerStatus()?.capability === "managed"}>
+              <div class="settings-update-actions">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="small"
+                  disabled={Boolean(serverBusy()) || resolvedServerStatus()?.phase === "updating"}
+                  onClick={() => void runServer("check-server", () => globalSDK.client.global.update.check())}
+                >
+                  {serverBusy() === "check-server" ? "Checking..." : "Check Server"}
+                </Button>
+                <Show when={serverActionState() !== "hidden"}>
+                  <Button
+                    type="button"
+                    variant="primary"
+                    size="small"
+                    disabled={Boolean(serverBusy()) || serverActionState() === "reconnecting"}
+                    onClick={() =>
+                      void runServer("start-server", () =>
+                        globalSDK.client.global.update.start({ serverUpdateStartInput: {} }),
+                      )
+                    }
+                  >
+                    {serverActionState() === "reconnecting" ? "Reconnecting..." : "Update Synergy Service"}
+                  </Button>
+                </Show>
+              </div>
+            </Show>
+          </div>
+        }
+      >
+        {(desktopUpdate) => (
+          <div class="settings-update-status">
+            <span>{desktopUpdateStatusCopy(status())}</span>
+            <div class="settings-update-actions">
+              <Button
+                type="button"
+                variant="secondary"
+                size="small"
+                disabled={
+                  Boolean(busy()) || phase() === "disabled" || phase() === "checking" || phase() === "installing"
+                }
+                onClick={() => void run("check", () => desktopUpdate().check({ manual: true }))}
+              >
+                {phase() === "checking" ? "Checking..." : "Check now"}
+              </Button>
+              <Show when={phase() === "available"}>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="small"
+                  disabled={Boolean(busy())}
+                  onClick={() => void run("download", () => desktopUpdate().download())}
+                >
+                  Download
+                </Button>
+              </Show>
+              <Show when={phase() === "ready" || phase() === "downloading"}>
+                <Button
+                  type="button"
+                  variant="primary"
+                  size="small"
+                  disabled={Boolean(busy()) || phase() === "downloading"}
+                  onClick={() => void run("install", () => desktopUpdate().installAndRestart())}
+                >
+                  {phase() === "downloading" ? downloadLabel(status()) : "Restart to Update"}
+                </Button>
+              </Show>
+            </div>
+          </div>
+        )}
+      </Show>
+    </div>
   )
 }
 

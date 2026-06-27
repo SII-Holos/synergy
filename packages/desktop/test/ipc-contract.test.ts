@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test"
 import {
   parseBrowserNativeAttach,
+  parseBrowserNativePage,
   parseBrowserNativeResize,
-  parseBrowserNativeTab,
   parseExternalUrl,
 } from "../src/ipc-contract.js"
 
@@ -11,14 +11,14 @@ describe("desktop ipc contract", () => {
     expect(
       parseBrowserNativeAttach({
         sessionID: "session",
-        tabId: "tab",
+        pageId: "page",
         serverUrl: "http://127.0.0.1:3000",
         url: "https://example.com",
         bounds: { x: 0, y: 0, width: 640, height: 480 },
       }),
     ).toEqual({
       sessionID: "session",
-      tabId: "tab",
+      pageId: "page",
       serverUrl: "http://127.0.0.1:3000",
       url: "https://example.com",
       bounds: { x: 0, y: 0, width: 640, height: 480 },
@@ -26,9 +26,9 @@ describe("desktop ipc contract", () => {
   })
 
   test("rejects malformed browser native payloads", () => {
-    expect(() => parseBrowserNativeTab({ tabId: "" })).toThrow()
-    expect(() => parseBrowserNativeResize({ tabId: "tab", bounds: { width: -1, height: 1, x: 0, y: 0 } })).toThrow()
-    expect(() => parseBrowserNativeAttach({ sessionID: "session", tabId: "tab", extra: true })).toThrow()
+    expect(() => parseBrowserNativePage({ pageId: "" })).toThrow()
+    expect(() => parseBrowserNativeResize({ pageId: "page", bounds: { width: -1, height: 1, x: 0, y: 0 } })).toThrow()
+    expect(() => parseBrowserNativeAttach({ sessionID: "session", pageId: "page", extra: true })).toThrow()
   })
 
   test("allows only safe external protocols", () => {

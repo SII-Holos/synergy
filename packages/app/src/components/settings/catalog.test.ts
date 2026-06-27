@@ -55,7 +55,7 @@ describe("settings catalog", () => {
   test("search metadata covers keywords and row labels", () => {
     const general = BUILTIN_SETTINGS_SECTIONS.find((section) => section.id === "general")!
     expect(general.keywords).toContain("toast")
-    expect(general.rowLabels).toContain("Auto Update")
+    expect(general.rowLabels).toContain("Product Updates")
     const compaction = BUILTIN_SETTINGS_SECTIONS.find((section) => section.id === "compaction")!
     expect(compaction.rowLabels).toContain("Overflow Threshold")
   })

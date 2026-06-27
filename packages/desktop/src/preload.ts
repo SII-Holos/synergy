@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from "electron"
 import type { BrowserNativeAttachRequest, BrowserNativeBounds, BrowserNativeViewEvent } from "./browser-native-view.js"
+import type { DesktopUpdateEvent, DesktopUpdateMode } from "./updater.js"
 
 const browserNative = {
   attachView(input: BrowserNativeAttachRequest) {
@@ -37,11 +38,25 @@ const server = {
 }
 
 const update = {
-  check() {
-    return ipcRenderer.invoke("desktop.update.check")
+  status() {
+    return ipcRenderer.invoke("desktop.update.status")
+  },
+  setMode(mode: DesktopUpdateMode) {
+    return ipcRenderer.invoke("desktop.update.setMode", mode)
+  },
+  check(input?: { manual?: boolean }) {
+    return ipcRenderer.invoke("desktop.update.check", input ?? {})
+  },
+  download() {
+    return ipcRenderer.invoke("desktop.update.download")
   },
   installAndRestart() {
     return ipcRenderer.invoke("desktop.update.installAndRestart")
+  },
+  onEvent(listener: (event: DesktopUpdateEvent) => void) {
+    const wrapped = (_event: IpcRendererEvent, payload: DesktopUpdateEvent) => listener(payload)
+    ipcRenderer.on("desktop-update:event", wrapped)
+    return () => ipcRenderer.off("desktop-update:event", wrapped)
   },
 }
 
