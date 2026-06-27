@@ -64,7 +64,7 @@ Form controls should have filled surfaces. In dark mode, controls should be slig
 
 Prompt composers should read as one grounded input surface with a quiet bottom toolbar. Ordinary mode, agent, permission, and add controls should behave like toolbar buttons rather than separate bordered pills; reserve filled chips for active modes, pending state, or meaningful workflow status. Composer controls that are secondary to sending should compact to icon-only controls at constrained widths instead of forcing toolbar wrapping or cramped labels.
 
-New-session initialization controls should live inside the composer as quiet grouped options, not as unrelated add-menu actions. Keep those option groups data-driven so workspace mode, templates, cloud execution, and future start parameters can expand in one place while preserving the composer as a single grounded surface.
+New-session initialization controls should sit in the composer toolbar next to the Add control as a quiet start-mode selector, not as a second row inside the typing area. Keep the selector menu data-driven so workspace mode, templates, cloud execution, and future start parameters can expand in one place while preserving the composer as a single grounded surface.
 
 Use icons sparingly. Icons should clarify primary navigation or compact controls, not decorate every row of a form.
 

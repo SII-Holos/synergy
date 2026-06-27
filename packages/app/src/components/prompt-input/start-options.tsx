@@ -1,6 +1,7 @@
 import { For, Show } from "solid-js"
 import { Icon, type IconName } from "@ericsanchezok/synergy-ui/icon"
 import { Tooltip } from "@ericsanchezok/synergy-ui/tooltip"
+import { ToolbarSelectorPopover } from "@/components/toolbar-selector"
 
 export type PromptStartOption = {
   id: string
@@ -19,7 +20,7 @@ export type PromptStartOptionGroup = {
   options: PromptStartOption[]
 }
 
-function PromptStartOptionButton(props: { option: PromptStartOption }) {
+function PromptStartModeItem(props: { option: PromptStartOption; close: () => void }) {
   const disabled = () => !!props.option.disabled
 
   const button = (
@@ -28,7 +29,7 @@ function PromptStartOptionButton(props: { option: PromptStartOption }) {
       aria-label={props.option.label}
       aria-pressed={props.option.selected}
       aria-disabled={disabled() ? "true" : undefined}
-      class="prompt-input-start-option"
+      class="prompt-input-start-mode-item"
       classList={{
         "is-selected": props.option.selected,
         "is-disabled": disabled(),
@@ -39,17 +40,18 @@ function PromptStartOptionButton(props: { option: PromptStartOption }) {
           return
         }
         props.option.onSelect()
+        props.close()
       }}
     >
-      <Icon name={props.option.icon} size="small" class="prompt-input-start-option-icon" />
-      <span class="prompt-input-start-option-copy">
-        <span class="prompt-input-start-option-label">{props.option.label}</span>
+      <Icon name={props.option.icon} size="small" class="prompt-input-start-mode-icon" />
+      <span class="prompt-input-start-mode-copy">
+        <span class="prompt-input-start-mode-label">{props.option.label}</span>
         <Show when={props.option.description}>
-          {(description) => <span class="prompt-input-start-option-description">{description()}</span>}
+          {(description) => <span class="prompt-input-start-mode-description">{description()}</span>}
         </Show>
       </span>
       <Show when={props.option.selected}>
-        <Icon name="check" size="small" class="prompt-input-start-option-check" />
+        <Icon name="check" size="small" class="prompt-input-start-mode-check" />
       </Show>
     </button>
   )
@@ -61,21 +63,42 @@ function PromptStartOptionButton(props: { option: PromptStartOption }) {
   )
 }
 
-export function PromptStartOptions(props: { groups: PromptStartOptionGroup[] }) {
+export function PromptStartModeSelector(props: { groups: PromptStartOptionGroup[] }) {
+  const selectedOption = () => props.groups.flatMap((group) => group.options).find((option) => option.selected)
+
   return (
     <Show when={props.groups.length > 0}>
-      <div class="prompt-input-start-options" aria-label="New session options">
-        <For each={props.groups}>
-          {(group) => (
-            <div class="prompt-input-start-group">
-              <div class="prompt-input-start-group-label">{group.label}</div>
-              <div class="prompt-input-start-group-items" role="group" aria-label={group.label}>
-                <For each={group.options}>{(option) => <PromptStartOptionButton option={option} />}</For>
-              </div>
-            </div>
-          )}
-        </For>
-      </div>
+      <ToolbarSelectorPopover
+        trigger={
+          <button
+            type="button"
+            aria-label="Start mode"
+            class="prompt-input-toolbar-button prompt-input-compact-control flex items-center gap-1.5 transition-colors"
+          >
+            <Icon name={selectedOption()?.icon ?? "circle"} size="small" class="shrink-0 text-icon-base" />
+            <span class="prompt-input-compact-label text-12-medium whitespace-nowrap text-text-base">
+              {selectedOption()?.label ?? "Start"}
+            </span>
+            <Icon name="chevron-down" size="small" class="prompt-input-compact-chevron opacity-70 shrink-0" />
+          </button>
+        }
+        title="Start mode"
+        contentClass="w-64"
+        placement="top-start"
+      >
+        {(close) => (
+          <div class="prompt-input-start-mode-menu">
+            <For each={props.groups}>
+              {(group) => (
+                <div class="prompt-input-start-mode-group">
+                  <div class="prompt-input-start-mode-group-label">{group.label}</div>
+                  <For each={group.options}>{(option) => <PromptStartModeItem option={option} close={close} />}</For>
+                </div>
+              )}
+            </For>
+          </div>
+        )}
+      </ToolbarSelectorPopover>
     </Show>
   )
 }
