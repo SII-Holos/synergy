@@ -38,6 +38,15 @@ export function packageManifestPath(value: string): string {
   return `./${packageRelativePath(value)}`
 }
 
+export function isManifestIconPath(value: string | undefined): value is string {
+  if (!isLocalManifestPath(value)) return false
+  try {
+    return normalizeManifestPath(value).toLowerCase().endsWith(".svg")
+  } catch {
+    return false
+  }
+}
+
 function addAsset(assets: PackagedAsset[], input: { label: string; kind: "file" | "dir"; path?: string }) {
   if (!isLocalManifestPath(input.path)) return
   assets.push({
@@ -64,6 +73,10 @@ function addSandboxEntries(
 
 export function collectPackagedAssets(manifest: PluginManifest): PackagedAsset[] {
   const assets: PackagedAsset[] = []
+
+  if (isManifestIconPath(manifest.icon)) {
+    addAsset(assets, { label: "marketplace icon", kind: "file", path: manifest.icon })
+  }
 
   for (const skill of manifest.contributes?.skills ?? []) {
     addAsset(assets, { label: `skill "${skill.name}" directory`, kind: "dir", path: skill.dir })
@@ -100,6 +113,7 @@ export function collectPackagedAssets(manifest: PluginManifest): PackagedAsset[]
 export function rewritePackagedManifestPaths(manifest: PluginManifest): PluginManifest {
   const next = structuredClone(manifest) as PluginManifest
   next.main = "./runtime/index.js"
+  if (isManifestIconPath(next.icon)) next.icon = packageManifestPath(next.icon)
   const ui = next.contributes?.ui
   if (!ui) return next
   if (ui.entry) ui.entry = packageManifestPath(ui.entry)

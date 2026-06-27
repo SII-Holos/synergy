@@ -7,7 +7,7 @@ import { useLayout, type LocalScope, SESSION_PAGE_SIZE } from "@/context/layout"
 import { useGlobalSync } from "@/context/global-sync"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { useNotification } from "@/context/notification"
-import { assetPath } from "@/utils/proxy"
+import { holosLogoPath } from "@/utils/brand-assets"
 import { useTheme } from "@ericsanchezok/synergy-ui/theme"
 import { getScopeLabel, isHomeScope } from "@/utils/scope"
 import { ActiveZone } from "@/components/scopes/active-zone"
@@ -55,8 +55,8 @@ export function MobileDrawer() {
           <div class="flex items-center justify-between px-4 h-12 shrink-0 border-b border-border-weaker-base/60">
             <A href="/" class="flex items-center gap-2" onClick={close}>
               <img
-                src={theme.mode() === "dark" ? assetPath("/holos-logo-white.svg") : assetPath("/holos-logo.svg")}
-                alt="Synergy"
+                src={holosLogoPath(theme.mode())}
+                alt="Holos"
                 class="size-6 shrink-0"
               />
               <span class="text-14-medium text-text-strong">Synergy</span>

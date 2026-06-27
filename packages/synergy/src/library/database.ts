@@ -90,7 +90,16 @@ function setupCustomSQLite() {
   if (process.platform !== "darwin") return
   for (const p of HOMEBREW_SQLITE_PATHS) {
     if (existsSync(p)) {
-      Database.setCustomSQLite(p)
+      try {
+        Database.setCustomSQLite(p)
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err)
+        if (message.includes("SQLite already loaded") || message.includes("exactly once")) {
+          log.debug("custom sqlite already initialized", { path: p })
+          return
+        }
+        throw err
+      }
       log.info("using custom sqlite", { path: p })
       return
     }

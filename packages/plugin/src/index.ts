@@ -124,6 +124,8 @@ export interface PluginAgent {
   mode?: "subagent" | "primary" | "all"
   /** Model override in "providerID/modelID" format */
   model?: string
+  /** Model role to resolve when model is not set */
+  modelRole?: "vision" | "nano" | "mini" | "mid" | "thinking" | "long" | "creative"
   temperature?: number
   topP?: number
   /** Maximum agentic iterations */
@@ -308,6 +310,18 @@ export type ProviderProfileHook = {
   aliases?: string[]
   description?: string
   signupUrl?: string
+  recommendation?: {
+    level: "featured" | "recommended" | "standard"
+    rank?: number
+    headline?: string
+    reason?: string
+    cta?: {
+      kind: "external"
+      label: string
+      url: string
+    }
+    defaultModel?: string
+  }
   env?: string[]
   baseURL?: string
   modelsURL?: string

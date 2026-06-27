@@ -15,6 +15,7 @@ import { ScopedState } from "../scope/scoped-state"
 import { SYNERGY_REFERER } from "../holos/constants" // DISABLED — inlined below
 import { TimeoutConfig } from "@/util/timeout-config"
 import { iife } from "@/util/iife"
+import { MODEL_ROLE_FALLBACK_FIELDS, ModelRole as ModelRoleSchema, type ModelRole as ModelRoleType } from "./model-role"
 
 // Direct imports for bundled providers
 import { createAmazonBedrock } from "@ai-sdk/amazon-bedrock"
@@ -880,19 +881,12 @@ export namespace Provider {
   //   vision      → vision_model                        (no fallback — required)
   // ---------------------------------------------------------------------------
 
-  export type ModelRole = "vision" | "nano" | "mini" | "mid" | "thinking" | "long" | "creative"
+  export const ModelRole = ModelRoleSchema
+  export type ModelRole = ModelRoleType
 
   type ModelRef = { providerID: string; modelID: string }
 
-  const ROLE_FALLBACK_CHAINS: Record<ModelRole, ReadonlyArray<keyof Config.Info>> = {
-    vision: ["vision_model"],
-    nano: ["nano_model", "mini_model", "mid_model", "model"],
-    mini: ["mini_model", "mid_model", "model"],
-    mid: ["mid_model", "model"],
-    thinking: ["thinking_model", "model"],
-    long: ["long_context_model", "model"],
-    creative: ["creative_model", "model"],
-  }
+  const ROLE_FALLBACK_CHAINS = MODEL_ROLE_FALLBACK_FIELDS as Record<ModelRole, ReadonlyArray<keyof Config.Info>>
 
   export async function resolveRoleModel(role: ModelRole): Promise<ModelRef | undefined> {
     const cfg = await Config.current()

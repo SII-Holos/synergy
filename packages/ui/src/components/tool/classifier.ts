@@ -1,4 +1,5 @@
 import type { IconName } from "../icon"
+import { getSemanticIcon } from "../semantic-icon"
 
 /**
  * Semantic tool classification system.
@@ -92,7 +93,7 @@ export const CATEGORIES: Record<SemanticCategory, CategorySpec> = {
     argsKeys: ["scope", "mode"],
   },
   blueprint: {
-    icon: "stamp",
+    icon: getSemanticIcon("orchestration.blueprint"),
     label: "Blueprint",
     subtitleKeys: ["title", "loopID", "id"],
     argsKeys: ["status"],
@@ -201,6 +202,7 @@ const TOOL_CATEGORIES: Record<string, SemanticCategory> = {
   arxiv_search: "search",
   arxiv_download: "search",
   grep: "search",
+  file_search: "search",
   scan_files: "search",
   ast_grep: "search",
   parse_code: "analyze",

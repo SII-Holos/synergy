@@ -21,6 +21,10 @@ export const SemanticIconToken = {
   "session.channel": "message-circle", // channel session
   "session.default": "message-square",
 
+  // Prompt composer
+  "prompt.attach": "paperclip",
+  "prompt.plan": "list-checks",
+
   // Connection state
   "connection.holos": "satellite",
   "connection.lsp": "braces", // language server
@@ -28,7 +32,7 @@ export const SemanticIconToken = {
   "connection.cortex": "workflow", // background orchestration tasks
 
   // Orchestration
-  "orchestration.blueprint": "stamp",
+  "orchestration.blueprint": "clipboard-list",
   "orchestration.dag": "route",
   "orchestration.holos-branch": "git-merge", // Holos conversation branch (no longer git-branch)
 
@@ -38,6 +42,9 @@ export const SemanticIconToken = {
   "settings.holos": "satellite",
   "settings.general": "sliders-horizontal",
   "settings.appearance": "sun",
+  "settings.colorSystem": "monitor",
+  "settings.colorLight": "sun",
+  "settings.colorDark": "moon",
   "settings.models": "cpu",
   "settings.providers": "server",
   "settings.usage": "gauge",
@@ -90,6 +97,7 @@ export const SemanticIconToken = {
   "action.copy": "copy",
   "action.open": "arrow-up-right",
   "action.more": "ellipsis",
+  "action.info": "help-circle",
   "action.search": "search",
   "action.remove": "trash-2",
   "action.refresh": "refresh-ccw",

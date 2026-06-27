@@ -14,6 +14,7 @@ import { ScopeContext } from "../scope/context"
 import { Scope } from "@/scope"
 import { fn } from "@/util/fn"
 import { Snapshot } from "@/session/snapshot"
+import { SnapshotSchema } from "@/session/snapshot-schema"
 import { SessionHistory } from "./history"
 
 import type { Provider } from "@/provider/provider"
@@ -434,7 +435,9 @@ export namespace Session {
   export const diff = fn(Identifier.schema("session"), async (sessionID) => {
     const session = await SessionManager.requireSession(sessionID)
     const scopeID = asScopeID((session.scope as Scope).id)
-    const diffs = await Storage.read<Snapshot.FileDiff[]>(StoragePath.sessionSummary(scopeID, asSessionID(sessionID)))
+    const diffs = await Storage.read<SnapshotSchema.FileDiff[]>(
+      StoragePath.sessionSummary(scopeID, asSessionID(sessionID)),
+    )
     return diffs ?? []
   })
 
@@ -797,3 +800,5 @@ export namespace Session {
     await SessionManager.deliver(input)
   }
 }
+
+MessageV2.installSessionResolver((sessionID) => SessionManager.requireSession(sessionID))

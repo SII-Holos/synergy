@@ -29,7 +29,6 @@ import { LibraryCommand } from "./cli/cmd/library"
 import { EmbedCommand } from "./cli/cmd/embed"
 import { StartCommand } from "./cli/cmd/start"
 import { StopCommand } from "./cli/cmd/stop"
-import { PrepareCommand, BuildCommand } from "./cli/cmd/prepare"
 import { StatusCommand } from "./cli/cmd/status"
 import { LogsCommand } from "./cli/cmd/logs"
 import { DoctorCommand } from "./cli/cmd/doctor"
@@ -154,8 +153,6 @@ const cli = yargs(hideBin(process.argv))
   .command(EmbedCommand)
   .command(StartCommand)
   .command(StopCommand)
-  .command(PrepareCommand)
-  .command(BuildCommand)
   .command(StatusCommand)
   .command(LogsCommand)
   .command(DiagnosticsCommand)
@@ -195,7 +192,7 @@ function firstPositionalArg() {
 
 function isLongRunningCommand() {
   const command = firstPositionalArg() ?? "server"
-  if (command === "server" || command === "web") return true
+  if (command === "server") return true
   if (command === "logs") {
     return process.argv.includes("-f") || process.argv.includes("--follow")
   }

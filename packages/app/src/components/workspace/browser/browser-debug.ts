@@ -30,26 +30,13 @@ export function shouldLogBrowserMessage(msg: Record<string, unknown>) {
 
 export function summarizeBrowserMessage(msg: Record<string, unknown>): BrowserDebugDetails {
   const summary: BrowserDebugDetails = { type: msg.type }
-  for (const key of [
-    "tabId",
-    "activeTabId",
-    "url",
-    "title",
-    "mode",
-    "status",
-    "severity",
-    "code",
-    "message",
-    "reason",
-    "source",
-  ]) {
+  for (const key of ["pageId", "url", "title", "mode", "status", "severity", "code", "message", "reason", "source"]) {
     if (msg[key] !== undefined) summary[key] = msg[key]
   }
-  if (msg.tab && typeof msg.tab === "object") {
-    const tab = msg.tab as Record<string, unknown>
-    summary.tab = { id: tab.id, url: tab.url, title: tab.title, isLoading: tab.isLoading }
+  if (msg.page && typeof msg.page === "object") {
+    const page = msg.page as Record<string, unknown>
+    summary.page = { id: page.id, url: page.url, title: page.title, isLoading: page.isLoading }
   }
-  if (Array.isArray(msg.tabs)) summary.tabCount = msg.tabs.length
   if (typeof msg.data === "string") summary.dataLength = msg.data.length
   if (typeof msg.dataUrl === "string") summary.dataUrlLength = msg.dataUrl.length
   if (msg.metadata && typeof msg.metadata === "object") summary.metadata = msg.metadata

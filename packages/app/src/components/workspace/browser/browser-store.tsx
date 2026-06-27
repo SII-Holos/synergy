@@ -1,14 +1,13 @@
 import { createContext, createSignal, useContext, type ParentProps } from "solid-js"
-import { createStore, produce, type SetStoreFunction } from "solid-js/store"
+import type { BrowserPresentationSelection } from "@ericsanchezok/synergy-util/browser-protocol"
+import { createStore, type SetStoreFunction } from "solid-js/store"
 import { browserDebug, shouldLogBrowserMessage, summarizeBrowserMessage } from "./browser-debug"
 
-export interface BrowserTab {
+export interface BrowserPage {
   id: string
   title: string
   url: string
   isLoading: boolean
-  pinned?: boolean
-  kept?: boolean
   lastActiveAt?: number | null
 }
 
@@ -16,21 +15,6 @@ export interface ScreenshotEntry {
   url: string
   width: number
   height: number
-}
-
-export interface BrowserFrameMetadata {
-  width: number
-  height: number
-  deviceScaleFactor: number
-  pageScaleFactor?: number
-  scrollOffsetX?: number
-  scrollOffsetY?: number
-  timestamp: number
-}
-
-export interface BrowserFrameEntry {
-  src: string
-  metadata: BrowserFrameMetadata
 }
 
 export interface ConsoleEntry {
@@ -56,6 +40,7 @@ export interface AccessibilityElement {
   value?: string
   children: AccessibilityElement[]
 }
+
 export interface DownloadEntry {
   id: string
   url: string
@@ -70,7 +55,7 @@ export interface DownloadEntry {
 }
 
 export interface AgentActivity {
-  tabId: string | null
+  pageId: string | null
   url: string | null
   title?: string
   kind: "reading" | "acting" | "idle"
@@ -79,14 +64,14 @@ export interface AgentActivity {
 }
 
 export interface FileChooserRequest {
-  tabId: string
+  pageId: string
   requestId: string
   multiple: boolean
   accept: string[]
 }
 
 export interface DialogRequest {
-  tabId: string
+  pageId: string
   requestId: string
   type: string
   message: string
@@ -99,12 +84,15 @@ export interface BrowserErrorState {
   code?: string
 }
 
+export type BrowserHostStatus = "pending" | "ready" | "detached" | "restarting" | "failed"
+
 export interface AnnotationTarget {
   displayX: number
   displayY: number
   pageX: number
   pageY: number
 }
+
 export interface AssetEntry {
   url: string
   type: "image" | "script" | "stylesheet" | "font" | "media" | "document" | "other"
@@ -117,25 +105,29 @@ export interface SetViewportOptions {
   mode?: ViewportMode
 }
 
+function createBrowserTraceId() {
+  const random = globalThis.crypto?.randomUUID?.()
+  if (random) return `browser_${random}`
+  return `browser_${Date.now().toString(36)}_${Math.random().toString(36).slice(2)}`
+}
+
 export function createBrowserStore() {
   const [session, setSession] = createStore({
-    tabs: [] as BrowserTab[],
-    activeTabId: null as string | null,
-    visibleTabId: null as string | null,
+    page: null as BrowserPage | null,
     connectionStatus: "disconnected" as "disconnected" | "connecting" | "connected" | "failed" | "error",
     controlMode: "user" as "user" | "agent",
   })
 
-  const [tabScreenshots, setTabScreenshots] = createStore<Record<string, ScreenshotEntry>>({})
-  const [tabFrames, setTabFrames] = createStore<Record<string, BrowserFrameEntry>>({})
+  const [pageScreenshots, setPageScreenshots] = createStore<Record<string, ScreenshotEntry>>({})
   const [consoleEntries, setConsoleEntries] = createStore<Record<string, ConsoleEntry[]>>({})
   const [networkRequests, setNetworkRequests] = createStore<Record<string, NetworkEntry[]>>({})
   const [elements, setElements] = createStore<Record<string, AccessibilityElement[]>>({})
   const [pageAssets, setPageAssets] = createStore<Record<string, AssetEntry[]>>({})
   const [downloads, setDownloads] = createStore<Record<string, DownloadEntry[]>>({})
+  const [hostStatuses, setHostStatuses] = createStore<Record<string, BrowserHostStatus>>({})
   const [devPanel, setDevPanel] = createSignal<DevPanel>("closed")
   const [agentActivity, setAgentActivity] = createSignal<AgentActivity>({
-    tabId: null,
+    pageId: null,
     url: null,
     kind: "idle",
     label: null,
@@ -147,16 +139,14 @@ export function createBrowserStore() {
   const [annotationMode, setAnnotationMode] = createSignal(false)
   const [viewportMode, setViewportMode] = createSignal<ViewportMode>("fit")
   const [viewportWidth, setViewportWidth] = createSignal(1280)
-
   const [viewportHeight, setViewportHeight] = createSignal(720)
+  const [presentation, setPresentation] = createSignal<BrowserPresentationSelection | null>(null)
   const [annotationTarget, setAnnotationTarget] = createSignal<AnnotationTarget | null>(null)
+  const [browserTraceId] = createSignal(createBrowserTraceId())
+  const pendingViewportByPage = new Map<string, Record<string, unknown>>()
 
-  const activeTabId = () => session.visibleTabId ?? session.activeTabId
-
-  const activeTab = () => {
-    const id = activeTabId()
-    return session.tabs.find((t) => t.id === id) ?? null
-  }
+  const page = () => session.page
+  const pageId = () => session.page?.id ?? null
 
   let _sendFn: ((msg: Record<string, unknown>) => void) | undefined
 
@@ -166,8 +156,8 @@ export function createBrowserStore() {
         ...summarizeBrowserMessage(msg),
         hasSender: Boolean(_sendFn),
         connectionStatus: session.connectionStatus,
-        activeTabId: activeTabId(),
-        tabCount: session.tabs.length,
+        pageId: pageId(),
+        hasPage: Boolean(session.page),
       })
     }
     if (!_sendFn) browserDebug("store.send.dropped", { reason: "missing sender", type: msg.type })
@@ -179,62 +169,51 @@ export function createBrowserStore() {
     browserDebug("store.sender", { installed: Boolean(fn) })
   }
 
-  function createTab(url?: string) {
-    browserDebug("store.createTab", { url, activeTabId: activeTabId(), tabCount: session.tabs.length })
-    send({ type: "createTab", url })
-  }
-
   function navigate(url: string) {
+    const current = page()
     browserDebug("store.navigate", {
       url,
-      activeTabId: activeTabId(),
-      activeTabUrl: activeTab()?.url ?? null,
+      pageId: current?.id ?? null,
+      currentUrl: current?.url ?? null,
       connectionStatus: session.connectionStatus,
-      tabCount: session.tabs.length,
     })
     setFollowAgent(false)
-    const tab = activeTab()
-    if (!tab) {
-      browserDebug("store.navigate.createTab", { url })
-      createTab(url)
+    if (current) setPageLoading(current.id, true)
+    send({ type: "navigate", source: "user", url, pageId: current?.id })
+  }
+
+  function setPageLoading(nextPageId: string | null | undefined, isLoading: boolean) {
+    if (!nextPageId || session.page?.id !== nextPageId) return
+    setSession("page", "isLoading", isLoading)
+  }
+
+  function setPageUrl(nextPageId: string | null | undefined, url: string) {
+    if (!nextPageId || session.page?.id !== nextPageId) return
+    setSession("page", "url", url)
+  }
+
+  function setPageTitle(nextPageId: string | null | undefined, title: string) {
+    if (!nextPageId || session.page?.id !== nextPageId) return
+    setSession("page", "title", title)
+  }
+
+  function upsertPage(nextPage: BrowserPage | null | undefined) {
+    if (!nextPage) {
+      setSession("page", null)
       return
     }
-
-    setTabLoading(tab.id, true)
-    browserDebug("store.navigate.activeTab", { url, tabId: tab.id, previousUrl: tab.url })
-    send({ type: "navigate", source: "user", url, tabId: tab.id })
+    setSession("page", nextPage)
   }
 
-  function closeTab(tabId: string) {
-    send({ type: "closeTab", tabId })
-  }
-
-  function switchTab(tabId: string) {
-    setFollowAgent(false)
-    setSession("visibleTabId", tabId)
-    setSession("activeTabId", tabId)
-    send({ type: "switchTab", tabId, reason: "user" })
-  }
-
-  function activateTabFromServer(tabId: string) {
-    setSession("activeTabId", tabId)
-    if (!session.visibleTabId || followAgent()) setSession("visibleTabId", tabId)
-  }
-
-  function setTabLoading(tabId: string, isLoading: boolean) {
-    setSession("tabs", (t: BrowserTab) => t.id === tabId, "isLoading", isLoading)
-  }
-
-  function setTabUrl(tabId: string, url: string) {
-    setSession("tabs", (t: BrowserTab) => t.id === tabId, "url", url)
-  }
-
-  function setTabTitle(tabId: string, title: string) {
-    setSession("tabs", (t: BrowserTab) => t.id === tabId, "title", title)
+  function removePage(nextPageId: string | null | undefined) {
+    if (!nextPageId || session.page?.id !== nextPageId) return
+    setSession("page", null)
   }
 
   function requestScreenshot() {
-    send({ type: "requestScreenshot" })
+    const id = pageId()
+    if (!id) return
+    send({ type: "requestScreenshot", pageId: id })
   }
 
   function toggleDevPanel(panel: DevPanel) {
@@ -244,18 +223,36 @@ export function createBrowserStore() {
   function setViewport(width: number, height: number, options: SetViewportOptions = {}) {
     const nextWidth = Math.max(1, Math.round(width))
     const nextHeight = Math.max(1, Math.round(height))
-    const deviceScaleFactor = typeof window === "undefined" ? 1 : window.devicePixelRatio || 1
 
     setViewportMode(options.mode ?? "fixed")
     setViewportWidth(nextWidth)
     setViewportHeight(nextHeight)
-    send({
+    const id = pageId()
+    const message = {
       type: "input.resize",
-      tabId: activeTabId(),
+      pageId: id,
       width: nextWidth,
       height: nextHeight,
-      deviceScaleFactor,
-    })
+    }
+    if (!id) {
+      browserDebug("store.viewport.local", {
+        width: nextWidth,
+        height: nextHeight,
+        reason: "missing-page",
+      })
+      return
+    }
+    if (presentation()?.kind === "webrtc" && hostStatus(id) !== "ready") {
+      pendingViewportByPage.set(id, message)
+      browserDebug("store.viewport.deferred", {
+        pageId: id,
+        width: nextWidth,
+        height: nextHeight,
+        hostStatus: hostStatus(id),
+      })
+      return
+    }
+    send(message)
   }
 
   function clearAnnotationTarget() {
@@ -268,84 +265,69 @@ export function createBrowserStore() {
   }
 
   function followAgentNow() {
-    const activity = agentActivity()
-    if (!activity.tabId) return
     setFollowAgent(true)
-    setSession("visibleTabId", activity.tabId)
-    send({ type: "stream.start", tabId: activity.tabId })
   }
 
   function applyAgentActivity(activity: AgentActivity) {
     setAgentActivity(activity)
-    if (activity.kind === "idle" || !activity.tabId) return
-    if (followAgent()) {
-      setSession("visibleTabId", activity.tabId)
-      send({ type: "stream.start", tabId: activity.tabId })
-    }
   }
 
-  function upsertTab(tab: BrowserTab) {
-    const existing = session.tabs.findIndex((t) => t.id === tab.id)
-    if (existing === -1) {
-      setSession("tabs", [...session.tabs, tab])
-      return
-    }
-    setSession("tabs", (t: BrowserTab) => t.id === tab.id, tab)
-  }
-
-  function removeTab(tabId: string) {
-    setSession(
-      "tabs",
-      produce((tabs) => {
-        const idx = tabs.findIndex((t) => t.id === tabId)
-        if (idx !== -1) tabs.splice(idx, 1)
-      }),
-    )
-    if (session.visibleTabId === tabId) {
-      setSession("visibleTabId", session.tabs.find((t) => t.id !== tabId)?.id ?? null)
-    }
-    if (session.activeTabId === tabId) {
-      setSession("activeTabId", session.tabs.find((t) => t.id !== tabId)?.id ?? null)
-    }
-  }
-
-  function setFrame(tabId: string, frame: BrowserFrameEntry) {
-    setTabFrames(tabId, frame)
-  }
-
-  function addDownload(tabId: string, entry: DownloadEntry) {
-    const current = downloads[tabId] ?? []
+  function addDownload(nextPageId: string, entry: DownloadEntry) {
+    const current = downloads[nextPageId] ?? []
     const index = current.findIndex((item) => item.id === entry.id)
     if (index === -1) {
-      setDownloads(tabId, [...current, entry])
+      setDownloads(nextPageId, [...current, entry])
       return
     }
-    setDownloads(tabId, index, entry)
+    setDownloads(nextPageId, index, entry)
   }
+
+  function hostStatus(id = pageId()): BrowserHostStatus {
+    if (!id) return "detached"
+    return hostStatuses[id] ?? "detached"
+  }
+
+  function setHostStatus(nextPageId: string | null | undefined, status: BrowserHostStatus) {
+    if (!nextPageId) return
+    setHostStatuses(nextPageId, status)
+    if (status !== "ready") return
+    clearTransientHostError()
+    const pending = pendingViewportByPage.get(nextPageId)
+    if (!pending) return
+    pendingViewportByPage.delete(nextPageId)
+    browserDebug("store.viewport.flush", summarizeBrowserMessage(pending))
+    send(pending)
+  }
+
+  function clearTransientHostError() {
+    const error = browserError()
+    if (!error) return
+    if (
+      error.code === "browser_host_disconnected" ||
+      error.code === "browser_host_pending" ||
+      error.message.includes("Browser Host control is not attached")
+    ) {
+      setBrowserError(null)
+    }
+  }
+
   return {
     session,
     setSession,
-    activeTab,
-    activeTabId,
-    createTab,
+    page,
+    pageId,
     navigate,
-    closeTab,
-    switchTab,
-    setTabLoading,
-    setTabUrl,
-    setTabTitle,
-    activateTabFromServer,
-    upsertTab,
-    removeTab,
+    setPageLoading,
+    setPageUrl,
+    setPageTitle,
+    upsertPage,
+    removePage,
     send,
     _setSend,
     requestScreenshot,
     toggleDevPanel,
-    tabScreenshots,
-    setTabScreenshots,
-    tabFrames,
-    setTabFrames,
-    setFrame,
+    pageScreenshots,
+    setPageScreenshots,
     consoleEntries,
     setConsoleEntries,
     networkRequests,
@@ -366,6 +348,8 @@ export function createBrowserStore() {
     viewportMode,
     viewportWidth,
     viewportHeight,
+    presentation,
+    setPresentation,
     setViewport,
     downloads,
     setDownloads,
@@ -380,6 +364,11 @@ export function createBrowserStore() {
     setDialogRequest,
     browserError,
     setBrowserError,
+    browserTraceId,
+    hostStatus,
+    hostStatuses,
+    setHostStatus,
+    clearTransientHostError,
   }
 }
 

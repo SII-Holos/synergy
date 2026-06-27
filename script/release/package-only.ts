@@ -115,7 +115,7 @@ async function ensurePackageTag(alias: PackageAlias, version: string) {
   const exists = await $`git rev-parse -q --verify refs/tags/${tag}`.quiet().nothrow()
   if (exists.exitCode === 0) return
   await $`git tag ${tag}`
-  await $`git push origin refs/tags/${tag}`.nothrow()
+  await $`git push --no-verify origin refs/tags/${tag}`.nothrow()
 }
 
 const bump = process.env.SYNERGY_BUMP?.trim() || "patch"

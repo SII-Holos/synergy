@@ -7,7 +7,7 @@ Synergy plugins extend the server runtime and optionally the Web client. A plugi
 - optional UI bundle/assets
 - optional registry package tarball
 
-The current API supports only object descriptors:
+Plugin runtime entries use object descriptors:
 
 ```ts
 import type { PluginDescriptor } from "@ericsanchezok/synergy-plugin"

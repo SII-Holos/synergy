@@ -9,6 +9,7 @@ import { NoteError } from "./error"
 import { Log } from "../util/log"
 import { Plugin } from "../plugin"
 import { NoteMarkdown } from "./markdown"
+import { NoteDocument } from "./document"
 
 export namespace NoteStore {
   const log = Log.create({ service: "note.store" })
@@ -35,6 +36,7 @@ export namespace NoteStore {
     note.global ??= false
     note.version ??= 1
     note.kind ??= "note"
+    note.content = NoteDocument.normalize(note.content)
     normalizeBlueprint(note)
     return note
   }
@@ -170,7 +172,7 @@ export namespace NoteStore {
     const note: NoteTypes.Info = {
       id,
       title: create.note.title,
-      content: create.note.content ?? { type: "doc", content: [] },
+      content: NoteDocument.normalize(create.note.content),
       pinned: false,
       global: isGlobal,
       tags: create.note.tags ?? [],
@@ -271,7 +273,7 @@ export namespace NoteStore {
         })
       }
       if (update.patch.title !== undefined) draft.title = update.patch.title
-      if (update.patch.content !== undefined) draft.content = update.patch.content
+      if (update.patch.content !== undefined) draft.content = NoteDocument.normalize(update.patch.content)
       if (update.patch.pinned !== undefined) draft.pinned = update.patch.pinned
       if (update.patch.tags !== undefined) draft.tags = update.patch.tags
       if (update.patch.kind !== undefined) draft.kind = update.patch.kind

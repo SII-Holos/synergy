@@ -96,7 +96,7 @@ Tone:
 
 ## Step 4: Publish a Feishu child doc
 
-Before drafting the Feishu child doc, read `references/feishu-template.md` and match the historical style already used in this workspace.
+Before drafting the Feishu child doc, read `references/feishu-template.md` and match the release-note style used in this workspace.
 
 Use `lark-cli docs +create` with `--wiki-node DUT9wguAFiMl6pkFL8gcHWrmnoc`.
 
@@ -123,7 +123,7 @@ Rules:
   - date + version heading
   - one clickable doc link
   - 1-2 sentence summary
-- preserve existing historical entries below
+- preserve existing release entries below
 - use stable markdown links if `mention-doc` blocks are flaky
 
 Pattern:
@@ -154,7 +154,7 @@ lark-cli docs +fetch --doc "https://sii-czxy.feishu.cn/wiki/DUT9wguAFiMl6pkFL8gc
 Check for:
 
 - child doc exists and contains the expected sections
-- index page still includes older entries
+- index page still includes prior release entries
 - newest version is at the top
 - summary text matches the actual release
 
@@ -172,7 +172,7 @@ Do not re-analyze from scratch; reuse the same findings.
 Avoid these mistakes:
 
 - appending the full release note into the index page
-- forgetting to preserve older index entries
+- forgetting to preserve prior index entries
 - writing only from commit subjects without checking code touch points
 - over-indexing on cleanup / docs churn
 - missing explicit user-priority themes such as memory optimization, Feishu bugs, Meta-Synergy recovery, external agents, or Holos changes
@@ -185,4 +185,4 @@ When done, report:
 - main release themes
 - child doc URL
 - index page updated status
-- any caveats such as missing historical docs or flaky Feishu block rendering
+- any caveats such as missing release docs or flaky Feishu block rendering

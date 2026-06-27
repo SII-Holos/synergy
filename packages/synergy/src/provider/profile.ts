@@ -2,6 +2,7 @@ import type { Provider as SDK } from "ai"
 import type { ModelsDev } from "./models"
 import type { Auth } from "./api-key"
 import type { AccountUsage } from "./usage"
+import z from "zod"
 
 export namespace ProviderProfile {
   export type ApiMode = "chat_completions" | "responses" | "anthropic_messages" | "codex_responses" | "external_process"
@@ -20,6 +21,39 @@ export namespace ProviderProfile {
   export type HealthCheck = "models" | "none"
 
   export type FetchLike = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>
+
+  export const Recommendation = z
+    .object({
+      level: z.enum(["featured", "recommended", "standard"]),
+      rank: z.number().int().optional(),
+      headline: z.string().optional(),
+      reason: z.string().optional(),
+      cta: z
+        .object({
+          kind: z.literal("external"),
+          label: z.string(),
+          url: z.string(),
+        })
+        .strict()
+        .optional(),
+      defaultModel: z.string().optional(),
+    })
+    .strict()
+    .meta({ ref: "ProviderRecommendation" })
+  export type Recommendation = z.infer<typeof Recommendation>
+
+  export const Metadata = z
+    .object({
+      id: z.string(),
+      name: z.string(),
+      displayName: z.string().optional(),
+      description: z.string().optional(),
+      signupUrl: z.string().optional(),
+      recommendation: Recommendation.optional(),
+    })
+    .strict()
+    .meta({ ref: "ProviderProfileMetadata" })
+  export type Metadata = z.infer<typeof Metadata>
 
   export interface ClassifiedError {
     code: string
@@ -57,6 +91,7 @@ export namespace ProviderProfile {
     displayName?: string
     description?: string
     signupUrl?: string
+    recommendation?: Recommendation
     env?: string[]
     baseURL?: string
     modelsURL?: string
@@ -111,6 +146,17 @@ export namespace ProviderProfile {
 
   export function canonicalID(providerID: string): string {
     return aliases.get(providerID) ?? providerID
+  }
+
+  export function metadata(profile: Profile): Metadata {
+    return {
+      id: profile.id,
+      name: profile.name,
+      ...(profile.displayName ? { displayName: profile.displayName } : {}),
+      ...(profile.description ? { description: profile.description } : {}),
+      ...(profile.signupUrl ? { signupUrl: profile.signupUrl } : {}),
+      ...(profile.recommendation ? { recommendation: profile.recommendation } : {}),
+    }
   }
 
   export function defaultModelFactory(factory: ModelFactory | undefined, input: ModelFactoryInput) {

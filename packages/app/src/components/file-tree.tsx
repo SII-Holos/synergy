@@ -2,7 +2,7 @@ import { useLocal, type LocalFile } from "@/context/local"
 import { Collapsible } from "@ericsanchezok/synergy-ui/collapsible"
 import { FileIcon } from "@ericsanchezok/synergy-ui/file-icon"
 import { Tooltip } from "@ericsanchezok/synergy-ui/tooltip"
-import { For, Match, Switch, type ComponentProps, type ParentProps } from "solid-js"
+import { createEffect, For, Match, Show, Switch, type ComponentProps, type ParentProps } from "solid-js"
 import { Dynamic } from "solid-js/web"
 
 export default function FileTree(props: {
@@ -14,6 +14,18 @@ export default function FileTree(props: {
 }) {
   const local = useLocal()
   const level = props.level ?? 0
+  const statusLabel = (status: LocalFile["gitStatus"]) => {
+    if (status === "modified") return "M"
+    if (status === "added") return "A"
+    if (status === "deleted") return "D"
+    if (status === "renamed") return "R"
+    if (status === "untracked") return "U"
+  }
+
+  createEffect(() => {
+    if (level !== 0) return
+    local.file.expand(props.path)
+  })
 
   const Node = (p: ParentProps & ComponentProps<"div"> & { node: LocalFile; as?: "div" | "button" }) => (
     <Dynamic
@@ -65,6 +77,9 @@ export default function FileTree(props: {
       {/* <Show when={local.file.changed(p.node.path)}> */}
       {/*   <span class="ml-auto mr-1 w-1.5 h-1.5 rounded-full bg-primary/50 shrink-0" /> */}
       {/* </Show> */}
+      <Show when={statusLabel(p.node.gitStatus)}>
+        {(status) => <span class="ml-auto mr-1 text-[10px] font-medium text-primary/80">{status()}</span>}
+      </Show>
     </Dynamic>
   )
 
@@ -86,7 +101,7 @@ export default function FileTree(props: {
                     <Node node={node}>
                       <Collapsible.Arrow class="text-text-muted/60 ml-1" />
                       <FileIcon
-                        node={node}
+                        node={{ path: node.path, type: "directory" }}
                         // expanded={local.file.node(node.path).expanded}
                         class="text-text-muted/60 -ml-1"
                       />
@@ -100,7 +115,7 @@ export default function FileTree(props: {
               <Match when={node.type === "file"}>
                 <Node node={node} as="button" onClick={() => props.onFileClick?.(node)}>
                   <div class="w-4 shrink-0" />
-                  <FileIcon node={node} class="text-icon-weak" />
+                  <FileIcon node={{ path: node.path, type: "file" }} class="text-icon-weak" />
                 </Node>
               </Match>
             </Switch>

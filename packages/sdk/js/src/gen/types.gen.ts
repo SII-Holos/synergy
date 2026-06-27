@@ -959,6 +959,8 @@ export type ProviderCatalogConfig = {
   offlineCache?: boolean
 }
 
+export type ModelRole = "vision" | "nano" | "mini" | "mid" | "thinking" | "long" | "creative"
+
 export type PermissionActionConfig = "ask" | "allow" | "deny"
 
 export type PermissionObjectConfig = {
@@ -999,6 +1001,7 @@ export type ControlProfileId = "guarded" | "autonomous" | "full_access"
 
 export type AgentConfig = {
   model?: string
+  modelRole?: ModelRole
   temperature?: number
   top_p?: number
   prompt?: string
@@ -1038,6 +1041,7 @@ export type AgentConfig = {
   [key: string]:
     | unknown
     | string
+    | ModelRole
     | number
     | {
         [key: string]: boolean
@@ -1079,6 +1083,20 @@ export type ExternalAgentConfig = {
 export type ProviderConfig = {
   api?: string
   name?: string
+  description?: string
+  signupUrl?: string
+  recommendation?: {
+    level: "featured" | "recommended" | "standard"
+    rank?: number
+    headline?: string
+    reason?: string
+    cta?: {
+      kind: "external"
+      label: string
+      url: string
+    }
+    defaultModel?: string
+  }
   env?: Array<string>
   id?: string
   npm?: string
@@ -3460,6 +3478,28 @@ export type Command = {
   hints: Array<string>
 }
 
+export type ProviderRecommendation = {
+  level: "featured" | "recommended" | "standard"
+  rank?: number
+  headline?: string
+  reason?: string
+  cta?: {
+    kind: "external"
+    label: string
+    url: string
+  }
+  defaultModel?: string
+}
+
+export type ProviderProfileMetadata = {
+  id: string
+  name: string
+  displayName?: string
+  description?: string
+  signupUrl?: string
+  recommendation?: ProviderRecommendation
+}
+
 export type ProviderAuthHealth = {
   providerID: string
   status: "connected" | "not_configured" | "expired" | "exhausted" | "dead"
@@ -3544,50 +3584,140 @@ export type SkillList = {
   }>
 }
 
-export type Symbol = {
-  name: string
-  kind: number
-  location: {
-    uri: string
-    range: Range
-  }
-}
-
-export type FileNode = {
-  name: string
+export type WorkspaceFileNode = {
   path: string
-  absolute: string
-  type: "file" | "directory"
+  name: string
+  type: "file" | "directory" | "symlink" | "unknown"
+  size: number
+  mtime: number
+  ctime: number
   ignored: boolean
+  hidden: boolean
+  readonly: boolean
+  symlink: boolean
+  binary: boolean
+  gitStatus?: "added" | "deleted" | "modified" | "renamed" | "untracked"
 }
 
-export type FileContent = {
-  type: "text"
-  content: string
-  diff?: string
-  patch?: {
-    oldFileName: string
-    newFileName: string
-    oldHeader?: string
-    newHeader?: string
-    hunks: Array<{
-      oldStart: number
-      oldLines: number
-      newStart: number
-      newLines: number
-      lines: Array<string>
-    }>
-    index?: string
-  }
-  encoding?: "base64"
-  mimeType?: string
-}
-
-export type File = {
+export type WorkspaceFileChildrenResponse = {
   path: string
-  added: number
-  removed: number
-  status: "added" | "deleted" | "modified"
+  parent?: WorkspaceFileNode
+  children: Array<WorkspaceFileNode>
+  nextCursor?: string
+  truncated: boolean
+}
+
+export type WorkspaceFileTextRange = {
+  offset: number
+  limit: number
+  startLine: number
+  endLine: number
+}
+
+export type WorkspaceFileReadText = {
+  kind: "text"
+  path: string
+  node: WorkspaceFileNode
+  content: string
+  mimeType?: string
+  encoding: "utf-8"
+  range: WorkspaceFileTextRange
+  totalBytes: number
+  lineCount?: number
+  truncated: boolean
+  nextRange?: WorkspaceFileTextRange
+}
+
+export type WorkspaceFileReadImage = {
+  kind: "image"
+  path: string
+  node: WorkspaceFileNode
+  content: string
+  mimeType: string
+  encoding: "base64"
+  totalBytes: number
+  truncated: boolean
+}
+
+export type WorkspaceFileReadBinary = {
+  kind: "binary"
+  path: string
+  node: WorkspaceFileNode
+  mimeType?: string
+  totalBytes: number
+  truncated: boolean
+  unsupportedReason: string
+}
+
+export type WorkspaceFileReadResult = WorkspaceFileReadText | WorkspaceFileReadImage | WorkspaceFileReadBinary
+
+export type WorkspaceFileSearchItem = {
+  kind: "file"
+  path: string
+  name: string
+  type: "file" | "directory"
+  score: number
+  indices: Array<number>
+  node?: WorkspaceFileNode
+}
+
+export type WorkspaceContentSearchItem = {
+  kind: "content"
+  path: string
+  lineNumber: number
+  column: number
+  line: string
+  score: number
+  submatches: Array<{
+    text: string
+    start: number
+    end: number
+  }>
+  previewRanges: Array<{
+    start: number
+    end: number
+  }>
+}
+
+export type WorkspaceSymbolSearchItem = {
+  kind: "symbol"
+  name: string
+  symbolKind: number
+  path: string
+  range: {
+    start: {
+      line: number
+      character: number
+    }
+    end: {
+      line: number
+      character: number
+    }
+  }
+  score: number
+}
+
+export type WorkspaceSearchCapability = {
+  available: boolean
+  reason?: string
+}
+
+export type WorkspaceFileSearchResponse = {
+  kind: "files" | "content" | "symbol"
+  query: string
+  items: Array<WorkspaceFileSearchItem | WorkspaceContentSearchItem | WorkspaceSymbolSearchItem>
+  nextCursor?: string
+  truncated: boolean
+  capability?: WorkspaceSearchCapability
+}
+
+export type WorkspaceFileStatusSummary = {
+  files: Array<{
+    path: string
+    status: "added" | "deleted" | "modified" | "renamed" | "untracked"
+    added?: number
+    removed?: number
+  }>
 }
 
 export type RewardsInfo = {
@@ -4280,6 +4410,17 @@ export type PluginRuntimeLogEntry = {
   message: string
 }
 
+export type RegistryPluginIcon =
+  | {
+      type: "lucide"
+      name: string
+    }
+  | {
+      type: "image"
+      url: string
+      alt?: string
+    }
+
 export type RegistryPluginSummary = {
   id: string
   name: string
@@ -4290,6 +4431,7 @@ export type RegistryPluginSummary = {
     email?: string
     url?: string
   }
+  icon?: RegistryPluginIcon
   verified: boolean
   official: boolean
   keywords: Array<string>
@@ -4354,6 +4496,7 @@ export type RegistryPluginEntry = {
     email?: string
     url?: string
   }
+  icon?: RegistryPluginIcon
   verified: boolean
   official: boolean
   keywords: Array<string>
@@ -4389,6 +4532,7 @@ export type RegistryPublishInput = {
     email?: string
     url?: string
   }
+  icon?: RegistryPluginIcon
   verified: boolean
   official: boolean
   keywords: Array<string>
@@ -4436,12 +4580,76 @@ export type Agent = {
     modelID: string
     providerID: string
   }
+  modelRole?: ModelRole
+  modelSource?: "role" | "explicit"
+  source?: "builtin" | "config" | "plugin" | "external"
   prompt?: string
   options: {
     [key: string]: unknown
   }
   steps?: number
   external?: ExternalAgentInfo
+}
+
+export type ModelRoleUsage = {
+  name: string
+  description?: string
+  mode: "subagent" | "primary" | "all"
+  hidden?: boolean
+  visibleTo?: Array<string>
+  native?: boolean
+  source?: "builtin" | "config" | "plugin" | "external"
+  modelSource?: "role" | "explicit"
+  model?: {
+    providerID: string
+    modelID: string
+  }
+}
+
+export type ModelRoleSummary = {
+  id: "default" | "vision" | "nano" | "mini" | "mid" | "thinking" | "long" | "creative"
+  role?: ModelRole
+  field:
+    | "model"
+    | "nano_model"
+    | "mini_model"
+    | "mid_model"
+    | "thinking_model"
+    | "long_context_model"
+    | "creative_model"
+    | "vision_model"
+  label: string
+  summary: string
+  fallbackChain: Array<
+    | "model"
+    | "nano_model"
+    | "mini_model"
+    | "mid_model"
+    | "thinking_model"
+    | "long_context_model"
+    | "creative_model"
+    | "vision_model"
+  >
+  configuredModel?: {
+    providerID: string
+    modelID: string
+  }
+  resolvedModel?: {
+    providerID: string
+    modelID: string
+    via:
+      | "model"
+      | "nano_model"
+      | "mini_model"
+      | "mid_model"
+      | "thinking_model"
+      | "long_context_model"
+      | "creative_model"
+      | "vision_model"
+  }
+  usedBy: Array<ModelRoleUsage>
+  requiresExplicitModel?: boolean
+  disabledReason?: string
 }
 
 export type McpStatusUninitialized = {
@@ -4661,21 +4869,6 @@ export type EventMcpFailed = {
   }
 }
 
-export type EventLspClientDiagnostics = {
-  type: "lsp.client.diagnostics"
-  properties: {
-    serverID: string
-    path: string
-  }
-}
-
-export type EventLspUpdated = {
-  type: "lsp.updated"
-  properties: {
-    [key: string]: unknown
-  }
-}
-
 export type EventMessageUpdated = {
   type: "message.updated"
   properties: {
@@ -4809,6 +5002,21 @@ export type EventSessionCompacted = {
   type: "session.compacted"
   properties: {
     sessionID: string
+  }
+}
+
+export type EventLspClientDiagnostics = {
+  type: "lsp.client.diagnostics"
+  properties: {
+    serverID: string
+    path: string
+  }
+}
+
+export type EventLspUpdated = {
+  type: "lsp.updated"
+  properties: {
+    [key: string]: unknown
   }
 }
 
@@ -4975,7 +5183,12 @@ export type EventFileWatcherUpdated = {
   type: "file.watcher.updated"
   properties: {
     file: string
-    event: "add" | "change" | "unlink"
+    event: "added" | "changed" | "deleted" | "renamed"
+    absolute?: string
+    oldPath?: string
+    oldAbsolute?: string
+    parent?: string
+    node?: unknown
   }
 }
 
@@ -5123,8 +5336,6 @@ export type Event =
   | EventMcpResourcesChanged
   | EventMcpReady
   | EventMcpFailed
-  | EventLspClientDiagnostics
-  | EventLspUpdated
   | EventMessageUpdated
   | EventMessageRemoved
   | EventMessagePartUpdated
@@ -5143,6 +5354,8 @@ export type Event =
   | EventQuestionRejected
   | EventQuestionTimedOut
   | EventSessionCompacted
+  | EventLspClientDiagnostics
+  | EventLspUpdated
   | EventFileEdited
   | EventRuntimeReloaded
   | EventDagUpdated
@@ -8408,6 +8621,20 @@ export type ProviderListResponses = {
     all: Array<{
       api?: string
       name: string
+      description?: string
+      signupUrl?: string
+      recommendation?: {
+        level: "featured" | "recommended" | "standard"
+        rank?: number
+        headline?: string
+        reason?: string
+        cta?: {
+          kind: "external"
+          label: string
+          url: string
+        }
+        defaultModel?: string
+      }
       env: Array<string>
       id: string
       npm?: string
@@ -8471,6 +8698,9 @@ export type ProviderListResponses = {
     connected: Array<string>
     configProviders: Array<string>
     catalogProviders: Array<string>
+    profiles: {
+      [key: string]: ProviderProfileMetadata
+    }
     authHealth: {
       [key: string]: ProviderAuthHealth
     }
@@ -8817,143 +9047,117 @@ export type SkillImportUrlResponses = {
 
 export type SkillImportUrlResponse = SkillImportUrlResponses[keyof SkillImportUrlResponses]
 
-export type FindTextData = {
+export type WorkspaceFilesChildrenData = {
   body?: never
   path?: never
-  query: {
+  query?: {
     directory?: string
     scopeID?: string
-    pattern: string
-  }
-  url: "/find"
-}
-
-export type FindTextResponses = {
-  /**
-   * Matches
-   */
-  200: Array<{
-    path: {
-      text: string
-    }
-    lines: {
-      text: string
-    }
-    line_number: number
-    absolute_offset: number
-    submatches: Array<{
-      match: {
-        text: string
-      }
-      start: number
-      end: number
-    }>
-  }>
-}
-
-export type FindTextResponse = FindTextResponses[keyof FindTextResponses]
-
-export type FindFilesData = {
-  body?: never
-  path?: never
-  query: {
-    directory?: string
-    scopeID?: string
-    query: string
-    dirs?: "true" | "false"
-    type?: "file" | "directory"
+    path?: string
     limit?: number
+    cursor?: string
+    showHidden?: "true" | "false"
+    showIgnored?: "true" | "false"
   }
-  url: "/find/file"
+  url: "/workspace/files/children"
 }
 
-export type FindFilesResponses = {
+export type WorkspaceFilesChildrenResponses = {
   /**
-   * File paths
+   * Workspace file children
    */
-  200: Array<string>
+  200: WorkspaceFileChildrenResponse
 }
 
-export type FindFilesResponse = FindFilesResponses[keyof FindFilesResponses]
+export type WorkspaceFilesChildrenResponse = WorkspaceFilesChildrenResponses[keyof WorkspaceFilesChildrenResponses]
 
-export type FindSymbolsData = {
+export type WorkspaceFilesReadData = {
+  body?: never
+  path?: never
+  query: {
+    directory?: string
+    scopeID?: string
+    path: string
+    range?: string
+    offset?: number
+    limit?: number
+    preview?: "true" | "false"
+  }
+  url: "/workspace/files/read"
+}
+
+export type WorkspaceFilesReadResponses = {
+  /**
+   * Workspace file read result
+   */
+  200: WorkspaceFileReadResult
+}
+
+export type WorkspaceFilesReadResponse = WorkspaceFilesReadResponses[keyof WorkspaceFilesReadResponses]
+
+export type WorkspaceFilesStatData = {
+  body?: never
+  path?: never
+  query: {
+    directory?: string
+    scopeID?: string
+    path: string
+  }
+  url: "/workspace/files/stat"
+}
+
+export type WorkspaceFilesStatResponses = {
+  /**
+   * Workspace file node
+   */
+  200: WorkspaceFileNode
+}
+
+export type WorkspaceFilesStatResponse = WorkspaceFilesStatResponses[keyof WorkspaceFilesStatResponses]
+
+export type WorkspaceFilesSearchData = {
   body?: never
   path?: never
   query: {
     directory?: string
     scopeID?: string
     query: string
+    kind?: "files" | "content" | "symbol"
+    limit?: number
+    cursor?: string
+    include?: string
+    exclude?: string
   }
-  url: "/find/symbol"
+  url: "/workspace/files/search"
 }
 
-export type FindSymbolsResponses = {
+export type WorkspaceFilesSearchResponses = {
   /**
-   * Symbols
+   * Workspace search response
    */
-  200: Array<Symbol>
+  200: WorkspaceFileSearchResponse
 }
 
-export type FindSymbolsResponse = FindSymbolsResponses[keyof FindSymbolsResponses]
+export type WorkspaceFilesSearchResponse = WorkspaceFilesSearchResponses[keyof WorkspaceFilesSearchResponses]
 
-export type FileListData = {
-  body?: never
-  path?: never
-  query: {
-    directory?: string
-    scopeID?: string
-    path: string
-  }
-  url: "/file"
-}
-
-export type FileListResponses = {
-  /**
-   * Files and directories
-   */
-  200: Array<FileNode>
-}
-
-export type FileListResponse = FileListResponses[keyof FileListResponses]
-
-export type FileReadData = {
-  body?: never
-  path?: never
-  query: {
-    directory?: string
-    scopeID?: string
-    path: string
-  }
-  url: "/file/content"
-}
-
-export type FileReadResponses = {
-  /**
-   * File content
-   */
-  200: FileContent
-}
-
-export type FileReadResponse = FileReadResponses[keyof FileReadResponses]
-
-export type FileStatusData = {
+export type WorkspaceFilesStatusData = {
   body?: never
   path?: never
   query?: {
     directory?: string
     scopeID?: string
   }
-  url: "/file/status"
+  url: "/workspace/files/status"
 }
 
-export type FileStatusResponses = {
+export type WorkspaceFilesStatusResponses = {
   /**
-   * File status
+   * Workspace file status
    */
-  200: Array<File>
+  200: WorkspaceFileStatusSummary
 }
 
-export type FileStatusResponse = FileStatusResponses[keyof FileStatusResponses]
+export type WorkspaceFilesStatusResponse = WorkspaceFilesStatusResponses[keyof WorkspaceFilesStatusResponses]
 
 export type LibraryExperienceSearchData = {
   body?: {
@@ -12077,6 +12281,25 @@ export type AppAgentsResponses = {
 }
 
 export type AppAgentsResponse = AppAgentsResponses[keyof AppAgentsResponses]
+
+export type AppAgentModelRolesData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/agent/model-roles"
+}
+
+export type AppAgentModelRolesResponses = {
+  /**
+   * List of model role summaries
+   */
+  200: Array<ModelRoleSummary>
+}
+
+export type AppAgentModelRolesResponse = AppAgentModelRolesResponses[keyof AppAgentModelRolesResponses]
 
 export type McpStatusData = {
   body?: never

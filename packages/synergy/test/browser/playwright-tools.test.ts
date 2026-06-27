@@ -181,11 +181,10 @@ describe("Contract 5: browser_clipboard → Playwright context.grantPermissions 
     expect(src).toMatch(/grantPermissions/)
   })
 
-  test("browser-clipboard.ts does NOT use tab.evaluate for clipboard operations", () => {
+  test("browser-clipboard.ts does not use the browser page wrapper for clipboard operations", () => {
     const src = toolSource("browser-clipboard")
-    // After Playwright migration, clipboard read/write should go through
-    // Playwright's page.evaluate (after context.grantPermissions), not
-    // through the legacy BrowserTab.evaluate.
+    // Clipboard read/write goes through Playwright page.evaluate after
+    // context.grantPermissions.
     expect(src).not.toMatch(/tab\.evaluate\(BrowserClipboard\.build(Read|Write)/)
   })
 })
@@ -222,18 +221,18 @@ describe("Contract 6: browser_eval → CDP session (readonly) / page.evaluate (t
     expect(BrowserEval.isEvalAllowed("readonly")).toBe(true)
   })
 
-  test("browser-eval.ts readonly path uses CDP session Runtime.evaluate", () => {
+  test("browser-eval.ts readonly path routes through shared control evaluate", () => {
     const src = toolSource("browser-eval")
-    // The readonly path should create or use a Playwright CDP session
-    // and call Runtime.evaluate directly with throwOnSideEffect.
-    expect(src).toMatch(/Runtime\.evaluate|cdpSession|newCDPSession/)
+    expect(src).toMatch(/executeControl/)
+    expect(src).toMatch(/type: "evaluate"/)
+    expect(src).toMatch(/throwOnSideEffect: isReadonly \? true : undefined/)
   })
 
-  test("browser-eval.ts trusted path uses Playwright page.evaluate", () => {
+  test("browser-eval.ts trusted path also routes through shared control evaluate", () => {
     const src = toolSource("browser-eval")
-    // When trusted mode is allowed (permission gate passed), it should
-    // call Playwright's page.evaluate, not tab.evaluate.
-    expect(src).toMatch(/page\.evaluate|buildPageEval/)
+    expect(src).toMatch(/BrowserEval\.buildTrustedEval/)
+    expect(src).toMatch(/executeControl/)
+    expect(src).not.toMatch(/page\.evaluate/)
   })
 
   test("BrowserEval.sanitizeEvalResult still works correctly (non-Playwright invariant)", () => {

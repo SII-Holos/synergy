@@ -521,11 +521,10 @@ export namespace Config {
       .readdir(domainDir)
       .then((entries) => entries.some((entry) => ConfigDomain.domainForFile(entry)))
       .catch(() => false)
-    if (existingDomainFiles) return
 
     const legacy = await findLegacyGlobalConfig()
     if (!legacy) {
-      await ConfigDomain.ensureDir()
+      if (!existingDomainFiles) await ConfigDomain.ensureDir()
       return
     }
 
@@ -537,12 +536,19 @@ export namespace Config {
     await fs.mkdir(tempDir, { recursive: true })
 
     try {
+      if (existingDomainFiles) {
+        await fs.cp(domainDir, tempDir, { recursive: true, force: true })
+      }
+
       for (const domain of ConfigDomain.definitions) {
+        const filepath = path.join(tempDir, domain.filename)
+        const existing = await loadFile(filepath, { addSchema: false })
         const fragment = split.get(domain.id) ?? {}
-        await Bun.write(path.join(tempDir, domain.filename), serializeConfig(fragment))
+        await Bun.write(filepath, serializeConfig(mergeConfigConcatArrays(existing, fragment as Info)))
       }
 
       await fs.mkdir(path.dirname(domainDir), { recursive: true })
+      await fs.rm(domainDir, { recursive: true, force: true })
       await fs.rename(tempDir, domainDir).catch(async (err) => {
         if (err?.code !== "EXDEV") throw err
         await fs.cp(tempDir, domainDir, { recursive: true, force: true })

@@ -39,6 +39,14 @@ export interface SubagentDefinition {
   topP?: number
 }
 
+export function resolveAgentModelRole(ctx: BuiltinAgentContext, role: Provider.ModelRole) {
+  return {
+    modelRole: role,
+    model: ctx.role(role),
+    modelSource: "role" as const,
+  }
+}
+
 function classicWriteTools(): PermissionNext.Ruleset {
   return PermissionNext.fromConfig({
     edit: "ask",
@@ -215,7 +223,7 @@ export function createSubagent(ctx: BuiltinAgentContext, definition: SubagentDef
     mode: "subagent",
     native: true,
     visibleTo: definition.visibleTo ?? ["synergy-max", "supervisor"],
-    model: ctx.role(definition.model ?? "mid"),
+    ...resolveAgentModelRole(ctx, definition.model ?? "mid"),
     steps: definition.steps,
     temperature: definition.temperature,
     topP: definition.topP,

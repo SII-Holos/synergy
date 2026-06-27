@@ -152,7 +152,7 @@ describe("file — glob matching", () => {
     AgendaWatcher.start(handler, [])
     AgendaWatcher.register("file-1", "scope-1", [makeFileTrigger({ glob: "src/**/*.ts" })])
 
-    emitFileEvent("src/foo.ts", "change")
+    emitFileEvent("src/foo.ts", "changed")
 
     await waitUntil(() => calls.length === 1)
     expect(calls[0].signal.type).toBe("watch")

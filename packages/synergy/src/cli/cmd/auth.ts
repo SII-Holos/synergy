@@ -3,7 +3,7 @@ import { cmd } from "./cmd"
 import * as prompts from "@clack/prompts"
 import { UI } from "../ui"
 import { ModelsDev } from "../../provider/models"
-import { map, pipe, sortBy, values } from "remeda"
+import { map, pipe, values } from "remeda"
 import path from "path"
 import os from "os"
 import { Config } from "../../config/config"
@@ -14,6 +14,7 @@ import { Scope } from "@/scope"
 import type { PluginHooks } from "@ericsanchezok/synergy-plugin"
 import { CodexProvider } from "@/provider/codex"
 import { ProviderCatalog } from "@/provider/catalog"
+import { ProviderRecommendation } from "@/provider/recommendation"
 import { AnthropicOAuthProvider } from "@/provider/anthropic-oauth"
 import { CopilotProvider } from "@/provider/copilot"
 import { MiniMaxProvider } from "@/provider/minimax"
@@ -505,14 +506,15 @@ export const AuthLoginCommand = cmd({
           return filtered
         })
 
-        const priority: Record<string, number> = {
-          anthropic: 1,
-          [CodexProvider.PROVIDER_ID]: 2,
-          "github-copilot": 3,
-          openai: 4,
-          google: 5,
-          openrouter: 6,
-          vercel: 7,
+        const profiles = await ProviderCatalog.metadata({ config })
+        const fallbackPriority: Record<string, number> = {
+          anthropic: 10,
+          [CodexProvider.PROVIDER_ID]: 20,
+          "github-copilot": 30,
+          openai: 40,
+          google: 50,
+          openrouter: 60,
+          vercel: 70,
         }
         let provider = await prompts.autocomplete({
           message: "Select provider",
@@ -521,21 +523,24 @@ export const AuthLoginCommand = cmd({
             ...pipe(
               providers,
               values(),
-              sortBy(
-                (x) => priority[x.id] ?? 99,
-                (x) => x.name ?? x.id,
-              ),
+              (items) =>
+                items.sort((a, b) =>
+                  ProviderRecommendation.compare(
+                    profiles,
+                    { id: a.id, name: a.name, fallbackRank: fallbackPriority[a.id] },
+                    { id: b.id, name: b.name, fallbackRank: fallbackPriority[b.id] },
+                  ),
+                ),
               map((x) => ({
                 label: x.name,
                 value: x.id,
-                hint: (
-                  {
-                    anthropic: "Claude Max or API key",
-                    [CodexProvider.PROVIDER_ID]: "ChatGPT/Codex subscription",
-                    [CopilotProvider.PROVIDER_ID]: "GitHub Copilot subscription",
-                    [MiniMaxProvider.PROVIDER_ID]: "MiniMax OAuth",
-                  } as Record<string, string | undefined>
-                )[x.id],
+                hint:
+                  ProviderRecommendation.headline(profiles, x.id) ??
+                  (
+                    {
+                      [MiniMaxProvider.PROVIDER_ID]: "MiniMax OAuth",
+                    } as Record<string, string | undefined>
+                  )[x.id],
               })),
             ),
             {
@@ -601,8 +606,9 @@ export const AuthLoginCommand = cmd({
           return
         }
 
-        if (provider === "vercel") {
-          prompts.log.info("You can create an api key at https://vercel.link/ai-gateway-token")
+        const cta = ProviderRecommendation.cta(profiles, provider)
+        if (cta?.kind === "external") {
+          prompts.log.info(`${cta.label}: ${cta.url}`)
         }
 
         if (["cloudflare", "cloudflare-ai-gateway"].includes(provider)) {

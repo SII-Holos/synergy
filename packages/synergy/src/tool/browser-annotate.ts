@@ -1,7 +1,6 @@
 import z from "zod"
 import { Tool } from "./tool"
 import { BrowserToolHelper } from "./browser-shared"
-import { BrowserRuntime } from "../browser/runtime"
 import { BrowserOwner } from "../browser/owner"
 
 const parameters = z.object({
@@ -9,7 +8,7 @@ const parameters = z.object({
     .enum(["list", "read", "resolve", "create"])
     .describe("Action: list all annotations, read a specific one, resolve, or create a new annotation"),
   annotationId: z.string().optional().describe("Annotation ID for read/resolve actions"),
-  tabId: z.string().optional(),
+  pageId: z.string().optional(),
   ref: z.string().optional().describe("Reference ID for create action"),
   element: z.string().optional().describe("Element selector for create action"),
   comment: z.string().optional().describe("Annotation comment text for create action"),
@@ -27,7 +26,6 @@ export const BrowserAnnotateTool = Tool.define<typeof parameters, BrowserAnnotat
     "Read or manage user annotations on browser pages. Annotations are user comments attached to specific elements or regions of a page.",
   parameters,
   async execute(params, ctx) {
-    await BrowserRuntime.ensure()
     const owner = BrowserOwner.fromToolContext(ctx)
     const session = await BrowserToolHelper.getOrCreateSession(owner)
 
@@ -73,7 +71,7 @@ export const BrowserAnnotateTool = Tool.define<typeof parameters, BrowserAnnotat
         }
       }
       case "create": {
-        const tab = await BrowserToolHelper.getTab(owner, params.tabId)
+        const tab = await BrowserToolHelper.getPage(owner, params.pageId)
         const comment = params.comment
         if (!comment)
           return { title: "Missing comment", output: "The 'comment' field is required for create.", metadata: {} }
@@ -83,7 +81,7 @@ export const BrowserAnnotateTool = Tool.define<typeof parameters, BrowserAnnotat
           comment,
           styleFeedback: params.styleFeedback,
           createdBy: "agent" as const,
-          tabID: tab.id,
+          pageID: tab.id,
           tabURL: tab.url,
         }
         const ann = session.addAnnotation(input)

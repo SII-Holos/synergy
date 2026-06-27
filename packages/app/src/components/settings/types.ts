@@ -17,9 +17,9 @@ export type ModelKey =
   | "long_context_model"
   | "creative_model"
 
-/** Resolved defaults returned by Config.current()/Config.forScope(). These are the actual active defaults, never undefined. */
+/** Empty strings mean this role falls back to runtime model resolution. */
 export const MODEL_DEFAULTS: Record<ModelKey, string> = {
-  model: "synergy",
+  model: "",
   nano_model: "",
   mini_model: "",
   mid_model: "",
@@ -136,6 +136,31 @@ export type ChannelSettings = {
   feishuAccounts: AccountToggle[]
 }
 
+export const TOAST_TYPES = ["info", "success", "warning", "error"] as const
+export const DEFAULT_TOAST_DURATION_MS = 4000
+export const TOAST_DURATION_STOPS = [1000, 2000, DEFAULT_TOAST_DURATION_MS, 8000] as const
+export type ToastType = (typeof TOAST_TYPES)[number]
+export type ToastDurationOverrides = Record<ToastType, string>
+
+export function emptyToastDurationOverrides(): ToastDurationOverrides {
+  return { info: "", success: "", warning: "", error: "" }
+}
+
+export function snapToastDuration(value: number): number {
+  if (!Number.isFinite(value) || value <= 0) return DEFAULT_TOAST_DURATION_MS
+
+  let best: number = TOAST_DURATION_STOPS[0]
+  let bestDistance = Math.abs(best - value)
+  for (const stop of TOAST_DURATION_STOPS) {
+    const distance = Math.abs(stop - value)
+    if (distance < bestDistance || (distance === bestDistance && stop > best)) {
+      best = stop
+      bestDistance = distance
+    }
+  }
+  return best
+}
+
 export function emptyMcp(): McpEntry {
   return { key: "", type: "local", enabled: true, command: "", url: "", timeout: "", environment: "", headers: "" }
 }
@@ -170,7 +195,7 @@ export type GeneralStore = {
   username: string
   theme: string
   mutedToasts: string[]
-  toastDurations: string
+  toastDurations: ToastDurationOverrides
   sendShortcut: SendShortcut
 }
 
@@ -253,7 +278,7 @@ export function defaultSettingsState(sendShortcut: SendShortcut): SettingsState 
       username: UI_DEFAULTS.username,
       theme: UI_DEFAULTS.theme,
       mutedToasts: [],
-      toastDurations: "",
+      toastDurations: emptyToastDurationOverrides(),
       sendShortcut,
     },
     models: {

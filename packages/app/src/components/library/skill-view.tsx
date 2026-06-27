@@ -1,4 +1,4 @@
-import { createMemo, createResource, createSignal, For, Show } from "solid-js"
+import { createMemo, createResource, createSignal, For, Show, type JSXElement } from "solid-js"
 import { Popover } from "@kobalte/core/popover"
 import { Dialog } from "@ericsanchezok/synergy-ui/dialog"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
@@ -17,7 +17,6 @@ import {
   libraryInsetClass,
   libraryMenuClass,
   libraryMetaLabelClass,
-  LibraryFilterChip,
 } from "./shared"
 
 type SkillScope = "all" | "project" | "global" | "builtin"
@@ -84,12 +83,7 @@ function compatibilityLabel(level?: SkillCompatibilityLevel) {
   }
 }
 
-export function SkillView(props: {
-  sdk: ReturnType<typeof useGlobalSDK>
-  search: string
-  directory?: string
-  onRegisterRefetch: (fn: () => void) => void
-}) {
+export function SkillView(props: { sdk: ReturnType<typeof useGlobalSDK>; search: string; directory?: string }) {
   const dialog = useDialog()
   const platform = usePlatform()
   const scopedClient = createMemo(() => {
@@ -102,6 +96,7 @@ export function SkillView(props: {
     })
   })
   const [filter, setFilter] = createSignal<SkillScope>("all")
+  const [filterOpen, setFilterOpen] = createSignal(false)
   const [reloading, setReloading] = createSignal(false)
   const [diagnosticsExpanded, setDiagnosticsExpanded] = createSignal(false)
 
@@ -109,8 +104,6 @@ export function SkillView(props: {
     const result = await scopedClient().skill.list()
     return (result.data as SkillListData | undefined) ?? { items: [], diagnostics: [] }
   })
-
-  props.onRegisterRefetch(() => refetch())
 
   async function reloadSkills() {
     setReloading(true)
@@ -172,6 +165,19 @@ export function SkillView(props: {
     ))
   }
 
+  const filterLabel = createMemo(() => {
+    switch (filter()) {
+      case "project":
+        return "Project skills"
+      case "global":
+        return "Global skills"
+      case "builtin":
+        return "Built-in skills"
+      default:
+        return "All skills"
+    }
+  })
+
   const [importOpen, setImportOpen] = createSignal(false)
   const [importMode, setImportMode] = createSignal<"menu" | "url">("menu")
   const [importUrl, setImportUrl] = createSignal("")
@@ -225,33 +231,84 @@ export function SkillView(props: {
   }
 
   return (
-    <div>
-      <div class="flex items-center gap-1.5 flex-wrap mb-3">
-        <LibraryFilterChip active={filter() === "all"} onClick={() => setFilter("all")}>
-          All
-          <Show when={(skills()?.items ?? []).length > 0}>
-            <span class="ml-0.5">{(skills()?.items ?? []).length}</span>
-          </Show>
-        </LibraryFilterChip>
-        <Show when={scopeCounts().project > 0}>
-          <LibraryFilterChip active={filter() === "project"} onClick={() => setFilter("project")}>
-            Project
-            <span class="ml-0.5">{scopeCounts().project}</span>
-          </LibraryFilterChip>
-        </Show>
-        <Show when={scopeCounts().global > 0}>
-          <LibraryFilterChip active={filter() === "global"} onClick={() => setFilter("global")}>
-            Global
-            <span class="ml-0.5">{scopeCounts().global}</span>
-          </LibraryFilterChip>
-        </Show>
-        <Show when={scopeCounts().builtin > 0}>
-          <LibraryFilterChip active={filter() === "builtin"} onClick={() => setFilter("builtin")}>
-            Builtin
-            <span class="ml-0.5">{scopeCounts().builtin}</span>
-          </LibraryFilterChip>
-        </Show>
-        <div class="ml-auto flex items-center gap-0.5">
+    <div class="library-list-pane">
+      <div class="library-list-toolbar">
+        <div class="library-toolbar-left">
+          <Popover open={filterOpen()} onOpenChange={setFilterOpen} placement="bottom-start" gutter={6}>
+            <Popover.Trigger as="button" class="library-control-pill">
+              <span>{filterLabel()}</span>
+              <Icon name="chevron-down" size="small" class="opacity-60" />
+            </Popover.Trigger>
+            <Popover.Portal>
+              <Popover.Content class={`library-filter-menu ${libraryMenuClass}`}>
+                <button
+                  type="button"
+                  classList={{
+                    "library-menu-item": true,
+                    "is-active": filter() === "all",
+                  }}
+                  onClick={() => {
+                    setFilter("all")
+                    setFilterOpen(false)
+                  }}
+                >
+                  <span>All skills</span>
+                  <span class="library-menu-count">{(skills()?.items ?? []).length}</span>
+                </button>
+                <Show when={scopeCounts().project > 0}>
+                  <button
+                    type="button"
+                    classList={{
+                      "library-menu-item": true,
+                      "is-active": filter() === "project",
+                    }}
+                    onClick={() => {
+                      setFilter("project")
+                      setFilterOpen(false)
+                    }}
+                  >
+                    <span>Project</span>
+                    <span class="library-menu-count">{scopeCounts().project}</span>
+                  </button>
+                </Show>
+                <Show when={scopeCounts().global > 0}>
+                  <button
+                    type="button"
+                    classList={{
+                      "library-menu-item": true,
+                      "is-active": filter() === "global",
+                    }}
+                    onClick={() => {
+                      setFilter("global")
+                      setFilterOpen(false)
+                    }}
+                  >
+                    <span>Global</span>
+                    <span class="library-menu-count">{scopeCounts().global}</span>
+                  </button>
+                </Show>
+                <Show when={scopeCounts().builtin > 0}>
+                  <button
+                    type="button"
+                    classList={{
+                      "library-menu-item": true,
+                      "is-active": filter() === "builtin",
+                    }}
+                    onClick={() => {
+                      setFilter("builtin")
+                      setFilterOpen(false)
+                    }}
+                  >
+                    <span>Built-in</span>
+                    <span class="library-menu-count">{scopeCounts().builtin}</span>
+                  </button>
+                </Show>
+              </Popover.Content>
+            </Popover.Portal>
+          </Popover>
+          <span class="library-toolbar-summary">{filtered().length} skills</span>
+        </div>
+        <div class="library-toolbar-right">
           <Popover
             open={importOpen()}
             onOpenChange={(open) => {
@@ -421,7 +478,7 @@ export function SkillView(props: {
             />
           }
         >
-          <div class="grid grid-cols-1 gap-2.5 sm:grid-cols-2 xl:grid-cols-3">
+          <div class="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
             <For each={filtered()}>
               {(skill: SkillItem) => <SkillCard skill={skill} onOpen={() => openSkillDetail(skill)} />}
             </For>
@@ -508,6 +565,7 @@ function SkillCard(props: { skill: SkillItem; onOpen: () => void }) {
 function SkillDetailDialog(props: { skill: SkillItem; onDelete?: () => Promise<boolean>; onDeleted: () => void }) {
   const dialog = useDialog()
   const [deleting, setDeleting] = createSignal(false)
+  const [confirmingDelete, setConfirmingDelete] = createSignal(false)
   const scopeLabel = () => skillScopeLabel(props.skill)
   const displayLocation = () => compactPath(props.skill.location)
   const displayEntryFile = () => compactPath(props.skill.entryFile)
@@ -516,66 +574,46 @@ function SkillDetailDialog(props: { skill: SkillItem; onDelete?: () => Promise<b
 
   async function handleDelete() {
     if (!props.onDelete || deleting()) return
-    if (!confirm(`Delete skill "${props.skill.name}"?`)) return
     setDeleting(true)
     const deleted = await props.onDelete()
     setDeleting(false)
     if (deleted) props.onDeleted()
+    else setConfirmingDelete(false)
   }
 
   return (
-    <Dialog
-      title={
-        <div class="flex min-w-0 items-center gap-2.5 pr-2">
-          <span class="min-w-0 truncate">{props.skill.name}</span>
-          <Show when={scopeLabel()}>
-            <span
-              class={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-medium ring-1 ring-inset ring-border-base/10 ${skillScopeColor(props.skill)}`}
-            >
-              {scopeLabel()}
-            </span>
-          </Show>
-        </div>
-      }
-      description={
-        <div class="flex flex-wrap items-center gap-1.5">
-          <Show when={props.skill.source}>
-            <span class="rounded-full bg-surface-inset-base px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.12em] text-text-weaker ring-1 ring-inset ring-border-base/20">
-              {props.skill.source}
-            </span>
-          </Show>
-          <Show when={compatibilityLabel(props.skill.compatibility?.level)}>
-            <span
-              class={`rounded-full px-2.5 py-1 text-[10px] font-medium ring-1 ring-inset ${compatibilityTone(props.skill.compatibility?.level)}`}
-            >
-              {compatibilityLabel(props.skill.compatibility?.level)} compatibility
-            </span>
-          </Show>
-        </div>
-      }
-      class="dialog-skill-detail"
-    >
-      <div class="flex min-h-full flex-col">
-        <div class="flex flex-1 flex-col gap-4 px-5 pb-5">
+    <Dialog title={<span class="min-w-0 truncate">{props.skill.name}</span>} class="dialog-skill-detail">
+      <div class="skill-detail-shell">
+        <div class="skill-detail-scroll">
+          <div class="skill-detail-meta-row">
+            <Show when={scopeLabel()}>
+              <span class={`skill-detail-chip ${skillScopeColor(props.skill)}`}>{scopeLabel()}</span>
+            </Show>
+            <Show when={props.skill.source}>
+              <span class="skill-detail-chip skill-detail-chip-muted">{props.skill.source}</span>
+            </Show>
+            <Show when={compatibilityLabel(props.skill.compatibility?.level)}>
+              <span class={`skill-detail-chip ${compatibilityTone(props.skill.compatibility?.level)}`}>
+                {compatibilityLabel(props.skill.compatibility?.level)} compatibility
+              </span>
+            </Show>
+          </div>
+
           <SkillDetailSection label="Description">
-            <div class={`px-4 py-3.5 ${libraryInsetClass}`}>
-              <div class="text-13-regular leading-relaxed text-text-base whitespace-pre-wrap break-words">
-                {props.skill.description}
-              </div>
-            </div>
+            <div class="skill-detail-description">{props.skill.description}</div>
           </SkillDetailSection>
 
           <Show when={displayLocation() || displayEntryFile() || displayBaseDir()}>
             <SkillDetailSection label="Location">
-              <div class="grid grid-cols-1 gap-2 md:grid-cols-2">
+              <div class="skill-detail-rows">
                 <Show when={displayLocation()}>
-                  <SkillDetailField label="Skill path" value={displayLocation()!} title={props.skill.location} />
+                  <SkillDetailRow label="Skill path" value={displayLocation()!} title={props.skill.location} />
                 </Show>
                 <Show when={displayEntryFile()}>
-                  <SkillDetailField label="Entry file" value={displayEntryFile()!} title={props.skill.entryFile} />
+                  <SkillDetailRow label="Entry file" value={displayEntryFile()!} title={props.skill.entryFile} />
                 </Show>
                 <Show when={displayBaseDir()}>
-                  <SkillDetailField label="Base directory" value={displayBaseDir()!} title={props.skill.baseDir} />
+                  <SkillDetailRow label="Base directory" value={displayBaseDir()!} title={props.skill.baseDir} />
                 </Show>
               </div>
             </SkillDetailSection>
@@ -583,88 +621,119 @@ function SkillDetailDialog(props: { skill: SkillItem; onDelete?: () => Promise<b
 
           <Show when={compatibility()}>
             <SkillDetailSection label="Compatibility">
-              <div class={`flex flex-col gap-3 px-4 py-3.5 ${libraryInsetClass}`}>
-                <div class="flex flex-wrap items-center gap-2">
-                  <span class={libraryMetaLabelClass}>Level</span>
-                  <span
-                    class={`rounded-full px-2.5 py-1 text-[10px] font-medium ring-1 ring-inset ${compatibilityTone(compatibility()?.level)}`}
-                  >
-                    {compatibilityLabel(compatibility()?.level)}
-                  </span>
-                </div>
-                <Show when={(compatibility()?.warnings?.length ?? 0) > 0}>
-                  <SkillDetailList title="Warnings" items={compatibility()?.warnings ?? []} tone="warning" />
-                </Show>
-                <Show when={(compatibility()?.unsupported?.length ?? 0) > 0}>
-                  <SkillDetailList title="Unsupported" items={compatibility()?.unsupported ?? []} tone="danger" />
-                </Show>
+              <div class="skill-detail-rows">
+                <SkillDetailRow
+                  label="Level"
+                  value={compatibilityLabel(compatibility()?.level) ?? "unknown"}
+                  mono={false}
+                />
               </div>
+              <Show when={(compatibility()?.warnings?.length ?? 0) > 0}>
+                <SkillDetailList title="Warnings" items={compatibility()?.warnings ?? []} tone="warning" />
+              </Show>
+              <Show when={(compatibility()?.unsupported?.length ?? 0) > 0}>
+                <SkillDetailList title="Unsupported" items={compatibility()?.unsupported ?? []} tone="danger" />
+              </Show>
             </SkillDetailSection>
           </Show>
 
           <Show when={(props.skill.references?.length ?? 0) > 0}>
             <SkillDetailSection label="References">
-              <SkillCodeList items={props.skill.references ?? []} accent="interactive" />
+              <SkillCodeList items={props.skill.references ?? []} />
             </SkillDetailSection>
           </Show>
 
           <Show when={(props.skill.scripts?.length ?? 0) > 0}>
             <SkillDetailSection label="Scripts">
-              <SkillCodeList items={props.skill.scripts ?? []} accent="warning" />
+              <SkillCodeList items={props.skill.scripts ?? []} />
             </SkillDetailSection>
           </Show>
         </div>
 
-        <div class="sticky bottom-0 flex items-center gap-2 border-t border-border-base/25 bg-surface-raised-base px-5 py-3">
-          <Show when={props.onDelete}>
-            <button
-              type="button"
-              classList={{
-                "rounded-full px-3.5 py-1.5 text-11-medium ring-1 ring-inset transition-all": true,
-                "text-text-diff-delete-base ring-text-diff-delete-base/15 hover:bg-text-diff-delete-base/8":
-                  !deleting(),
-                "pointer-events-none text-text-weaker ring-border-base/35": deleting(),
-              }}
-              onClick={handleDelete}
-              disabled={deleting()}
-            >
-              <Show when={deleting()} fallback="Delete skill">
-                <span class="inline-flex items-center gap-1.5">
-                  <Spinner class="size-3" />
-                  Deleting...
-                </span>
-              </Show>
-            </button>
+        <div classList={{ "skill-detail-footer": true, "is-confirming": confirmingDelete() }}>
+          <Show
+            when={confirmingDelete() && props.onDelete}
+            fallback={
+              <>
+                <Show when={props.onDelete}>
+                  <button
+                    type="button"
+                    class="skill-detail-button skill-detail-button-danger"
+                    onClick={() => setConfirmingDelete(true)}
+                  >
+                    Delete skill
+                  </button>
+                </Show>
+                <button
+                  type="button"
+                  class="skill-detail-button skill-detail-button-secondary ml-auto"
+                  onClick={() => dialog.close()}
+                >
+                  Close
+                </button>
+              </>
+            }
+          >
+            <div class="skill-delete-confirm-copy">
+              <div class="skill-delete-confirm-title">Delete this skill?</div>
+              <div class="skill-delete-confirm-text">
+                This removes "{props.skill.name}" from disk. This cannot be undone.
+              </div>
+            </div>
+            <div class="skill-delete-confirm-actions">
+              <button
+                type="button"
+                class="skill-detail-button skill-detail-button-secondary"
+                onClick={() => setConfirmingDelete(false)}
+                disabled={deleting()}
+              >
+                Keep skill
+              </button>
+              <button
+                type="button"
+                classList={{
+                  "skill-detail-button skill-detail-button-danger-solid": true,
+                  "is-disabled": deleting(),
+                }}
+                onClick={handleDelete}
+                disabled={deleting()}
+              >
+                <Show when={deleting()} fallback="Delete">
+                  <span class="inline-flex items-center gap-1.5">
+                    <Spinner class="size-3" />
+                    Deleting...
+                  </span>
+                </Show>
+              </button>
+            </div>
           </Show>
-          <div class="ml-auto flex items-center gap-2">
-            <button
-              type="button"
-              class="rounded-full px-3.5 py-1.5 text-11-medium text-text-weak ring-1 ring-inset ring-border-base/45 transition-all hover:bg-surface-inset-base hover:text-text-base"
-              onClick={() => dialog.close()}
-            >
-              Close
-            </button>
-          </div>
         </div>
       </div>
     </Dialog>
   )
 }
 
-function SkillDetailSection(props: { label: string; children: any }) {
+function SkillDetailSection(props: { label: string; children: JSXElement }) {
   return (
-    <section class="flex flex-col gap-2.5">
-      <div class={libraryMetaLabelClass}>{props.label}</div>
+    <section class="skill-detail-section">
+      <div class="skill-detail-label">{props.label}</div>
       {props.children}
     </section>
   )
 }
 
-function SkillDetailField(props: { label: string; value: string; title?: string }) {
+function SkillDetailRow(props: { label: string; value: string; title?: string; mono?: boolean }) {
   return (
-    <div class={`px-3.5 py-3 ${libraryInsetClass}`} title={props.title}>
-      <div class={libraryMetaLabelClass}>{props.label}</div>
-      <div class="mt-1.5 break-all font-mono text-[11px] leading-relaxed text-text-weaker">{props.value}</div>
+    <div class="skill-detail-row" title={props.title}>
+      <div class="skill-detail-row-label">{props.label}</div>
+      <div
+        classList={{
+          "skill-detail-row-value": true,
+          "is-mono": props.mono !== false,
+        }}
+      >
+        {props.value}
+      </div>
     </div>
   )
 }
@@ -676,36 +745,17 @@ function SkillDetailList(props: { title: string; items: string[]; tone: "warning
       : "bg-text-diff-delete-base/8 text-text-diff-delete-base ring-text-diff-delete-base/12"
 
   return (
-    <div class="flex flex-col gap-2">
-      <div class={libraryMetaLabelClass}>{props.title}</div>
-      <div class="flex flex-col gap-1.5">
-        <For each={props.items}>
-          {(item) => (
-            <div class={`rounded-[0.9rem] px-3 py-2 text-11-regular leading-relaxed ring-1 ring-inset ${toneClass()}`}>
-              {item}
-            </div>
-          )}
-        </For>
-      </div>
+    <div class={`skill-detail-notice ${toneClass()}`}>
+      <div class="skill-detail-notice-title">{props.title}</div>
+      <For each={props.items}>{(item) => <p>{item}</p>}</For>
     </div>
   )
 }
 
-function SkillCodeList(props: { items: string[]; accent: "interactive" | "warning" }) {
-  const accentClass = () =>
-    props.accent === "interactive"
-      ? "bg-surface-inset-base ring-border-base/28"
-      : "bg-icon-warning-base/6 ring-icon-warning-base/12"
-
+function SkillCodeList(props: { items: string[] }) {
   return (
-    <div class={`flex flex-col gap-1.5 px-3 py-3 ${libraryInsetClass}`}>
-      <For each={props.items}>
-        {(item) => (
-          <div class={`rounded-[0.85rem] px-3 py-2 ring-1 ring-inset ${accentClass()}`}>
-            <div class="break-all font-mono text-[11px] leading-relaxed text-text-base">{item}</div>
-          </div>
-        )}
-      </For>
+    <div class="skill-detail-code-list">
+      <For each={props.items}>{(item) => <div class="skill-detail-code-row">{item}</div>}</For>
     </div>
   )
 }

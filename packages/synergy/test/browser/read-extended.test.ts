@@ -33,7 +33,7 @@ describe("browser_read extended schema", () => {
     type: z.enum(["accessibility", "dom", "text", "attributes", "style", "visibleDom"]),
     locator: BrowserLocator.LocatorInputSchema.optional(),
     maxBytes: z.number().int().min(1).default(64000),
-    tabId: z.string().optional(),
+    pageId: z.string().optional(),
   })
 
   test("schema accepts visibleDom type", () => {
@@ -76,7 +76,7 @@ describe("browser_read accepts all BrowserLocator kinds", () => {
     type: z.enum(["accessibility", "dom", "text", "attributes", "style", "visibleDom"]),
     locator: BrowserLocator.LocatorInputSchema.optional(),
     maxBytes: z.number().int().min(1).default(64000),
-    tabId: z.string().optional(),
+    pageId: z.string().optional(),
   })
 
   test("accepts ref locator kind", () => {

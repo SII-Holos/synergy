@@ -133,7 +133,7 @@ subagent or another host-controlled flow.
 
 - `kind: "media-generation"` uses Synergy's built-in image/video/audio generation placeholder while the tool is running.
 - `visibility: "media"` hides running and completed success states from the ordinary tool transcript so the media surface owns the experience.
-- `presentation: "artifact-only"` promotes returned `attachments` into the final answer area instead of showing a completed tool card.
+- `presentation: "artifact-only"` promotes returned `attachments` into the final answer area.
 - `primaryAttachmentIds` may be returned from `metadata.display` at runtime to choose which attachment ids are promoted.
 - Error states are never hidden.
 

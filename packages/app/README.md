@@ -7,11 +7,11 @@ The web client for [Synergy](https://github.com/SII-Holos/synergy) — a browser
 The web client connects to a running Synergy server. From the monorepo root:
 
 ```bash
-# Start the server first
-bun dev
+# Start the server plus Vite web client
+bun dev web
 
-# Then, in another terminal, start the web client in dev mode
-bun dev web --dev
+# Or start only this Vite app against an existing server
+bun dev app --open
 ```
 
 Vite handles hot module replacement, so changes appear in the browser immediately.

@@ -2,16 +2,7 @@ import { useGlobalSync } from "@/context/global-sync"
 import { base64Decode } from "@ericsanchezok/synergy-util/encode"
 import { useParams } from "@solidjs/router"
 import { createMemo } from "solid-js"
-
-export const popularProviders = [
-  "anthropic",
-  "openai-codex",
-  "github-copilot",
-  "openai",
-  "google",
-  "openrouter",
-  "vercel",
-]
+import { isRecommendedProvider } from "@/components/provider/provider-recommendation"
 
 export function useProviders() {
   const globalSync = useGlobalSync()
@@ -25,7 +16,7 @@ export function useProviders() {
     return globalSync.data.provider
   })
   const connected = createMemo(() => providers().all.filter((p) => providers().connected.includes(p.id)))
-  const popular = createMemo(() => providers().all.filter((p) => popularProviders.includes(p.id)))
+  const popular = createMemo(() => providers().all.filter((p) => isRecommendedProvider(providers().profiles, p.id)))
   return {
     all: createMemo(() => providers().all),
     default: createMemo(() => providers().default),

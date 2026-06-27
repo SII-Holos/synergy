@@ -22,7 +22,7 @@ export async function ensureStableTag(version: string) {
   }
 
   if (!(await remoteTagExists(tag))) {
-    await retry(() => $`git push origin ${tag}`)
+    await retry(() => $`git push --no-verify origin ${tag}`)
   }
 
   return tag

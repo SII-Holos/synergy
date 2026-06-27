@@ -7,7 +7,7 @@ import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { createMemo, createResource, For, Show } from "solid-js"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { useGlobalSync } from "@/context/global-sync"
-import { providerConnectCopy, sortProviderIDs } from "@/components/provider/ProviderConnectionFlow"
+import { compareProviderIDs, providerConnectCopy } from "@/components/provider/provider-recommendation"
 import { SettingsEntityList, SettingsPage, SettingsSection } from "../components/SettingsPrimitives"
 
 const USAGE_FIRST_PROVIDER_IDS = ["openai-codex", "anthropic", "github-copilot", "openrouter", "openai"]
@@ -22,6 +22,12 @@ export function UsagePanel(props: { onConnectProvider: (providerID?: string) => 
 
   const providers = createMemo(() => globalSync.data.provider.all)
   const connected = createMemo(() => new Set(globalSync.data.provider.connected))
+  const sortProviderIDs = (a: string, b: string) =>
+    compareProviderIDs(
+      globalSync.data.provider.profiles,
+      { id: a, name: providerName(a) },
+      { id: b, name: providerName(b) },
+    )
   const usageCapableIDs = createMemo(() => {
     const ids = new Set([...USAGE_FIRST_PROVIDER_IDS, ...Object.keys(usage() ?? {})])
     return [...ids].filter((id) => providers().some((provider) => provider.id === id)).sort(sortProviderIDs)
@@ -70,7 +76,9 @@ export function UsagePanel(props: { onConnectProvider: (providerID?: string) => 
                   <ProviderIcon id={providerID} class="usage-provider-icon" />
                   <div class="min-w-0 flex-1">
                     <div class="usage-provider-name">{providerName(providerID)}</div>
-                    <div class="usage-provider-copy">{providerConnectCopy(providerID)}</div>
+                    <div class="usage-provider-copy">
+                      {providerConnectCopy(providerID, globalSync.data.provider.profiles, providerName(providerID))}
+                    </div>
                   </div>
                   <Icon name={getSemanticIcon("action.add")} size="small" />
                 </button>

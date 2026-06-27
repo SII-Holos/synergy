@@ -7,7 +7,7 @@ import { Global } from "../../src/global/index.js"
 import type { BrowserOwner } from "../../src/browser/owner.js"
 
 describe("BrowserMigration", () => {
-  test("upgrades legacy session state to v2 profile storage without dropping annotations", async () => {
+  test("upgrades legacy multi-page session state to v3 single-page storage", async () => {
     const owner: BrowserOwner.Info = {
       mode: "session",
       scopeID: `scope-browser-migration-${Date.now()}`,
@@ -22,7 +22,7 @@ describe("BrowserMigration", () => {
         {
           tabs: [
             {
-              id: "tab-1",
+              id: "page-1",
               url: "https://example.com/path?q=1#hash",
               title: "Example",
               order: 0,
@@ -33,7 +33,7 @@ describe("BrowserMigration", () => {
           annotations: [
             {
               id: "ann-1",
-              tabID: "tab-1",
+              pageID: "page-1",
               tabURL: "https://example.com/path?q=1#hash",
               comment: "keep this",
               resolved: false,
@@ -53,11 +53,12 @@ describe("BrowserMigration", () => {
     expect(result.changed).toBe(true)
     expect(result.version).toBe(BrowserStorage.CURRENT_VERSION)
     expect(upgraded.version).toBe(BrowserStorage.CURRENT_VERSION)
-    expect(upgraded.activeTabID).toBe("tab-1")
+    expect(upgraded.page).toBeNull()
+    expect(upgraded.tabs).toBeUndefined()
+    expect(upgraded.activeTabID).toBeUndefined()
     expect(upgraded.storageStatePath).toBe(BrowserStorage.storageStatePath(owner))
     expect(upgraded.profileDir).toBe(BrowserStorage.profileDir(owner))
-    expect(upgraded.annotations).toHaveLength(1)
-    expect(upgraded.tabs[0].url).toBe("https://example.com/path?q=1#hash")
+    expect(upgraded.annotations).toEqual([])
     expect(storageState).toEqual({ cookies: [], origins: [] })
 
     await fs.rm(path.join(Global.Path.data, "browser", "sessions", owner.scopeID), { recursive: true, force: true })

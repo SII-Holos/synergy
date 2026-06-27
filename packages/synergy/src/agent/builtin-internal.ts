@@ -1,6 +1,6 @@
 import { PermissionNext } from "@/permission/next"
 import type { Agent } from "./agent"
-import type { BuiltinAgentContext } from "./builtin-context"
+import { resolveAgentModelRole, type BuiltinAgentContext } from "./builtin-context"
 import PROMPT_ANIMA from "./prompt/anima.txt"
 import PROMPT_CHRONICLER from "./prompt/chronicler.txt"
 import PROMPT_AGENT_GENERATE from "./generate.txt"
@@ -30,7 +30,7 @@ export function createBuiltinInternalAgents(ctx: BuiltinAgentContext): Record<st
       mode: "primary",
       native: true,
       hidden: true,
-      model: ctx.role("vision"),
+      ...resolveAgentModelRole(ctx, "vision"),
     },
     compaction: {
       name: "compaction",
@@ -49,7 +49,7 @@ export function createBuiltinInternalAgents(ctx: BuiltinAgentContext): Record<st
         ctx.user,
       ),
       options: {},
-      model: ctx.role("long"),
+      ...resolveAgentModelRole(ctx, "long"),
     },
     chronicler: {
       name: "chronicler",
@@ -80,7 +80,7 @@ export function createBuiltinInternalAgents(ctx: BuiltinAgentContext): Record<st
         ctx.user,
       ),
       options: {},
-      model: ctx.role("long"),
+      ...resolveAgentModelRole(ctx, "long"),
     },
     title: {
       name: "title",
@@ -91,7 +91,7 @@ export function createBuiltinInternalAgents(ctx: BuiltinAgentContext): Record<st
       temperature: 0.5,
       permission: PermissionNext.merge(ctx.defaults, PermissionNext.fromConfig({ "*": "deny" }), ctx.user),
       prompt: PROMPT_TITLE,
-      model: ctx.role("nano"),
+      ...resolveAgentModelRole(ctx, "nano"),
     },
     summary: {
       name: "summary",
@@ -101,7 +101,7 @@ export function createBuiltinInternalAgents(ctx: BuiltinAgentContext): Record<st
       hidden: true,
       permission: PermissionNext.merge(ctx.defaults, PermissionNext.fromConfig({ "*": "deny" }), ctx.user),
       prompt: PROMPT_SUMMARY,
-      model: ctx.role("nano"),
+      ...resolveAgentModelRole(ctx, "nano"),
     },
     intent: {
       name: "intent",
@@ -111,7 +111,7 @@ export function createBuiltinInternalAgents(ctx: BuiltinAgentContext): Record<st
       hidden: true,
       permission: PermissionNext.merge(ctx.defaults, PermissionNext.fromConfig({ "*": "deny" }), ctx.user),
       prompt: PROMPT_INTENT,
-      model: ctx.role("mini"),
+      ...resolveAgentModelRole(ctx, "mini"),
     },
     script: {
       name: "script",
@@ -121,7 +121,7 @@ export function createBuiltinInternalAgents(ctx: BuiltinAgentContext): Record<st
       hidden: true,
       permission: PermissionNext.merge(ctx.defaults, PermissionNext.fromConfig({ "*": "deny" }), ctx.user),
       prompt: PROMPT_SCRIPT,
-      model: ctx.role("mini"),
+      ...resolveAgentModelRole(ctx, "mini"),
     },
     reward: {
       name: "reward",
@@ -131,7 +131,7 @@ export function createBuiltinInternalAgents(ctx: BuiltinAgentContext): Record<st
       hidden: true,
       permission: PermissionNext.merge(ctx.defaults, PermissionNext.fromConfig({ "*": "deny" }), ctx.user),
       prompt: PROMPT_REWARD,
-      model: ctx.role("mini"),
+      ...resolveAgentModelRole(ctx, "mini"),
     },
     "smart-allow": {
       name: "smart-allow",
@@ -142,7 +142,7 @@ export function createBuiltinInternalAgents(ctx: BuiltinAgentContext): Record<st
       temperature: 0,
       permission: PermissionNext.fromConfig({ "*": "deny" }),
       prompt: PROMPT_SMART_ALLOW,
-      model: ctx.role("mini"),
+      ...resolveAgentModelRole(ctx, "mini"),
     },
     "agent-generator": {
       name: "agent-generator",
@@ -153,7 +153,7 @@ export function createBuiltinInternalAgents(ctx: BuiltinAgentContext): Record<st
       temperature: 0.3,
       permission: PermissionNext.fromConfig({ "*": "deny" }),
       prompt: PROMPT_AGENT_GENERATE,
-      model: ctx.role("mini"),
+      ...resolveAgentModelRole(ctx, "mini"),
     },
     anima: {
       name: "anima",
@@ -181,7 +181,7 @@ export function createBuiltinInternalAgents(ctx: BuiltinAgentContext): Record<st
       ),
       options: {},
       controlProfile: "autonomous",
-      model: ctx.role("mid"),
+      ...resolveAgentModelRole(ctx, "mid"),
     },
   }
 }

@@ -6,6 +6,7 @@ import { truncateHTML, domSnapshot, pageText, elementAttributes, computedStyle, 
 import type { BrowserTab } from "../browser/tab"
 import type { Page, Locator } from "playwright"
 import { ToolTimeout } from "./timeout"
+import { BrowserOwner } from "../browser/owner"
 
 const parameters = z.object({
   type: z
@@ -15,12 +16,12 @@ const parameters = z.object({
     "Element locator. Required for attributes/style; optional for accessibility/dom/text/visibleDom (limits reading to a specific element).",
   ),
   maxBytes: z.number().int().min(1).default(64000).describe("Maximum output size in bytes."),
-  tabId: z.string().optional().describe("Tab ID. Uses the active tab if omitted."),
+  pageId: z.string().optional().describe("Page ID. Uses the session page if omitted."),
 })
 
 interface BrowserReadMetadata {
   url: string
-  tabId: string
+  pageId: string
   type: string
   truncated: boolean
   elementsCount?: number
@@ -31,15 +32,17 @@ interface BrowserReadMetadata {
 
 export const BrowserReadTool = Tool.define<typeof parameters, BrowserReadMetadata>("browser_read", {
   description:
-    "Read page content from the current browser tab. Choose the content type: accessibility (structured accessibility tree), dom (full HTML), text (visible plain text), attributes (element attributes, requires locator), style (computed CSS, requires locator), or visibleDom (only elements visible in the viewport).",
+    "Read page content from the current browser page. Choose the content type: accessibility (structured accessibility tree), dom (full HTML), text (visible plain text), attributes (element attributes, requires locator), style (computed CSS, requires locator), or visibleDom (only elements visible in the viewport).",
   parameters,
   async execute(params, ctx) {
-    const tab = await BrowserToolHelper.resolveTab(ctx, params.tabId)
+    const owner = BrowserOwner.fromToolContext(ctx)
+    const tab = await BrowserToolHelper.resolvePage(ctx, params.pageId)
     await BrowserToolHelper.markActivity(ctx, tab, "reading", "browser_read", `Reading ${params.type}`)
     try {
       switch (params.type) {
         case "accessibility": {
-          const snap = await tab.snapshot()
+          const snap = await BrowserToolHelper.executeControl(owner, { type: "snapshot", pageId: tab.id })
+          if (snap.type !== "snapshot") throw new Error("Browser snapshot command returned an unexpected result")
           const text = formatSnapshotText(snap.elements, { interactiveOnly: false })
 
           let output = text || "(empty page)"
@@ -51,7 +54,7 @@ export const BrowserReadTool = Tool.define<typeof parameters, BrowserReadMetadat
             output,
             metadata: {
               url: tab.url,
-              tabId: tab.id,
+              pageId: tab.id,
               type: "accessibility",
               elementsCount: snap.elements.length,
               truncated,
@@ -60,7 +63,7 @@ export const BrowserReadTool = Tool.define<typeof parameters, BrowserReadMetadat
         }
 
         case "dom": {
-          const html = await readDOM(tab, params.locator)
+          const html = await readDOM(owner, tab, params.locator)
           const truncated = Buffer.byteLength(html, "utf-8") > params.maxBytes
           const output = domSnapshot(html, params.maxBytes)
 
@@ -69,7 +72,7 @@ export const BrowserReadTool = Tool.define<typeof parameters, BrowserReadMetadat
             output,
             metadata: {
               url: tab.url,
-              tabId: tab.id,
+              pageId: tab.id,
               type: "dom",
               byteLength: Buffer.byteLength(html, "utf-8"),
               truncated,
@@ -79,8 +82,8 @@ export const BrowserReadTool = Tool.define<typeof parameters, BrowserReadMetadat
 
         case "text": {
           const html = params.locator
-            ? await readDOM(tab, params.locator)
-            : ((await tab.evaluate("document.body.innerText")) as string) || ""
+            ? await readDOM(owner, tab, params.locator)
+            : ((await evaluate(owner, tab, "document.body.innerText")) as string) || ""
           const rawText = pageText(html)
           const truncated = Buffer.byteLength(rawText, "utf-8") > params.maxBytes
           const output = truncateHTML(rawText, params.maxBytes)
@@ -90,7 +93,7 @@ export const BrowserReadTool = Tool.define<typeof parameters, BrowserReadMetadat
             output: output || "(no visible text)",
             metadata: {
               url: tab.url,
-              tabId: tab.id,
+              pageId: tab.id,
               type: "text",
               byteLength: Buffer.byteLength(rawText, "utf-8"),
               truncated,
@@ -100,7 +103,7 @@ export const BrowserReadTool = Tool.define<typeof parameters, BrowserReadMetadat
 
         case "attributes": {
           if (!params.locator) throw new Error("locator is required for attributes read type")
-          const attrs = await resolveAttributes(tab, params.locator)
+          const attrs = await resolveAttributes(owner, tab, params.locator)
           const lines = Object.keys(attrs).length
             ? Object.entries(attrs)
                 .map(([k, v]) => `${k}: ${v}`)
@@ -113,7 +116,7 @@ export const BrowserReadTool = Tool.define<typeof parameters, BrowserReadMetadat
             output,
             metadata: {
               url: tab.url,
-              tabId: tab.id,
+              pageId: tab.id,
               type: "attributes",
               attributeCount: Object.keys(attrs).length,
               truncated: false,
@@ -123,7 +126,7 @@ export const BrowserReadTool = Tool.define<typeof parameters, BrowserReadMetadat
 
         case "style": {
           if (!params.locator) throw new Error("locator is required for style read type")
-          const styles = await resolveComputedStyles(tab, params.locator)
+          const styles = await resolveComputedStyles(owner, tab, params.locator)
           const lines = Object.keys(styles).length
             ? Object.entries(styles)
                 .map(([k, v]) => `${k}: ${v}`)
@@ -136,7 +139,7 @@ export const BrowserReadTool = Tool.define<typeof parameters, BrowserReadMetadat
             output,
             metadata: {
               url: tab.url,
-              tabId: tab.id,
+              pageId: tab.id,
               type: "style",
               propertyCount: Object.keys(styles).length,
               truncated: false,
@@ -145,7 +148,8 @@ export const BrowserReadTool = Tool.define<typeof parameters, BrowserReadMetadat
         }
 
         case "visibleDom": {
-          const snap = await tab.snapshot()
+          const snap = await BrowserToolHelper.executeControl(owner, { type: "snapshot", pageId: tab.id })
+          if (snap.type !== "snapshot") throw new Error("Browser snapshot command returned an unexpected result")
           const elements = snap.elements
           const filtered = visibleDOM(
             elements.map((el) => ({
@@ -166,7 +170,7 @@ export const BrowserReadTool = Tool.define<typeof parameters, BrowserReadMetadat
             output,
             metadata: {
               url: tab.url,
-              tabId: tab.id,
+              pageId: tab.id,
               type: "visibleDom",
               elementsCount: filtered.length,
               truncated,
@@ -184,9 +188,15 @@ export const BrowserReadTool = Tool.define<typeof parameters, BrowserReadMetadat
 
 type LocatorInput = z.infer<typeof BrowserLocator.LocatorInputSchema>
 
-async function readDOM(tab: BrowserTab, locator?: LocatorInput): Promise<string> {
+async function evaluate(owner: BrowserOwner.Info, tab: BrowserTab, expression: string): Promise<unknown> {
+  const result = await BrowserToolHelper.executeControl(owner, { type: "evaluate", pageId: tab.id, expression })
+  if (result.type !== "evaluation") throw new Error("Browser evaluate command returned an unexpected result")
+  return result.value
+}
+
+async function readDOM(owner: BrowserOwner.Info, tab: BrowserTab, locator?: LocatorInput): Promise<string> {
   if (!locator) {
-    const html = (await tab.evaluate("document.documentElement.outerHTML")) as string
+    const html = (await evaluate(owner, tab, "document.documentElement.outerHTML")) as string
     if (!html) throw new Error("Could not read page DOM")
     return html
   }
@@ -206,7 +216,7 @@ async function readDOM(tab: BrowserTab, locator?: LocatorInput): Promise<string>
   // Evaluate-based fallback (css, xpath, testId)
   const query = BrowserLocator.buildElementQuery(locator)
   if (query) {
-    const html = (await tab.evaluate(`(() => { const el = ${query}; return el ? el.outerHTML : null; })()`)) as
+    const html = (await evaluate(owner, tab, `(() => { const el = ${query}; return el ? el.outerHTML : null; })()`)) as
       | string
       | null
     if (!html) throw new Error(`Element not found for ${locator.kind} locator: ${String(locator.value)}`)
@@ -216,13 +226,21 @@ async function readDOM(tab: BrowserTab, locator?: LocatorInput): Promise<string>
   throw new Error(`Locator kind "${locator.kind}" is not supported for DOM reading`)
 }
 
-async function resolveAttributes(tab: BrowserTab, locator: LocatorInput): Promise<Record<string, string>> {
-  const rawAttrs = await extractAttributesRaw(tab, locator)
+async function resolveAttributes(
+  owner: BrowserOwner.Info,
+  tab: BrowserTab,
+  locator: LocatorInput,
+): Promise<Record<string, string>> {
+  const rawAttrs = await extractAttributesRaw(owner, tab, locator)
   if (!rawAttrs || Object.keys(rawAttrs).length === 0) return {}
   return elementAttributes({ attributes: rawAttrs }, Object.keys(rawAttrs))
 }
 
-async function extractAttributesRaw(tab: BrowserTab, locator: LocatorInput): Promise<Record<string, string>> {
+async function extractAttributesRaw(
+  owner: BrowserOwner.Info,
+  tab: BrowserTab,
+  locator: LocatorInput,
+): Promise<Record<string, string>> {
   // Playwright path (all locator kinds)
   if (tab.page) {
     const pwLocator = BrowserLocator.toPlaywrightLocator(tab.page, locator)
@@ -244,7 +262,9 @@ async function extractAttributesRaw(tab: BrowserTab, locator: LocatorInput): Pro
   // Evaluate-based fallback (css, xpath, testId)
   const query = BrowserLocator.buildElementQuery(locator)
   if (query) {
-    const attrs = (await tab.evaluate(
+    const attrs = (await evaluate(
+      owner,
+      tab,
       `(() => {
         const el = ${query};
         if (!el) return null;
@@ -260,7 +280,11 @@ async function extractAttributesRaw(tab: BrowserTab, locator: LocatorInput): Pro
   throw new Error(`Locator kind "${locator.kind}" is not supported for attribute reading`)
 }
 
-async function resolveComputedStyles(tab: BrowserTab, locator: LocatorInput): Promise<Record<string, string>> {
+async function resolveComputedStyles(
+  owner: BrowserOwner.Info,
+  tab: BrowserTab,
+  locator: LocatorInput,
+): Promise<Record<string, string>> {
   // Playwright path (all locator kinds)
   if (tab.page) {
     const pwLocator = BrowserLocator.toPlaywrightLocator(tab.page, locator)
@@ -285,7 +309,9 @@ async function resolveComputedStyles(tab: BrowserTab, locator: LocatorInput): Pr
   // Evaluate-based fallback (css, xpath, testId)
   const query = BrowserLocator.buildElementQuery(locator)
   if (query) {
-    const styles = (await tab.evaluate(
+    const styles = (await evaluate(
+      owner,
+      tab,
       `(() => {
         const el = ${query};
         if (!el) return null;

@@ -1,7 +1,12 @@
 import { createStore, produce, reconcile } from "solid-js/store"
 import { batch, createMemo, onCleanup } from "solid-js"
 import { firstBy, uniqueBy } from "remeda"
-import type { FileContent, FileNode, File as FileStatus, ProviderListResponse } from "@ericsanchezok/synergy-sdk"
+import type {
+  ProviderListResponse,
+  WorkspaceFileNode,
+  WorkspaceFileReadResult,
+  WorkspaceFileStatusSummary,
+} from "@ericsanchezok/synergy-sdk"
 import { createSimpleContext } from "@ericsanchezok/synergy-ui/context"
 import { useSDK } from "./sdk"
 import { useSync } from "./sync"
@@ -11,18 +16,18 @@ import { DateTime } from "luxon"
 import { Persist, persisted } from "@/utils/persist"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
 
-export type LocalFile = FileNode &
+export type LocalFile = WorkspaceFileNode &
   Partial<{
     loaded: boolean
     pinned: boolean
     expanded: boolean
-    content: FileContent
+    content: WorkspaceFileReadResult
     selection: { startLine: number; startChar: number; endLine: number; endChar: number }
     scrollTop: number
     view: "raw" | "diff-unified" | "diff-split"
     folded: string[]
     selectedChange: number
-    status: FileStatus
+    status: WorkspaceFileStatusSummary["files"][number]
   }>
 export type TextSelection = LocalFile["selection"]
 export type View = LocalFile["view"]
@@ -412,15 +417,25 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
     const file = (() => {
       const [store, setStore] = createStore<{
         node: Record<string, LocalFile>
+        children: Record<string, string[]>
       }>({
         node: {}, //  Object.fromEntries(sync.data.node.map((x) => [x.path, x])),
+        children: {},
       })
 
-      const relative = (path: string) => path.replace(sync.data.path.directory + "/", "")
+      const relative = (input: string) => {
+        const root = sync.data.path.directory
+        const prefix = root.endsWith("/") ? root : root + "/"
+        if (input === root) return ""
+        if (input.startsWith(prefix)) return input.slice(prefix.length)
+        if (input.startsWith("./")) return input.slice(2)
+        if (input.startsWith("/")) return input.slice(1)
+        return input
+      }
 
       const load = async (path: string) => {
         const relativePath = relative(path)
-        await sdk.client.file
+        await sdk.client.workspace.files
           .read({ path: relativePath })
           .then((x) => {
             if (!store.node[relativePath]) return
@@ -450,6 +465,13 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
         }
       }
 
+      const isDirectChild = (parent: string, child: string) => {
+        if (!parent) return !!child && !child.includes("/")
+        if (!child.startsWith(parent + "/")) return false
+        const rest = child.slice(parent.length + 1)
+        return !!rest && !rest.includes("/")
+      }
+
       const init = async (path: string) => {
         const relativePath = relative(path)
         if (!store.node[relativePath]) await fetch(path)
@@ -471,22 +493,34 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
         // })
         // setStore("active", relativePath)
         // context.addActive()
-        if (options?.pinned) setStore("node", path, "pinned", true)
-        if (options?.view && store.node[relativePath].view === undefined) setStore("node", path, "view", options.view)
+        if (options?.pinned) setStore("node", relativePath, "pinned", true)
+        if (options?.view && store.node[relativePath].view === undefined)
+          setStore("node", relativePath, "view", options.view)
         if (store.node[relativePath]?.loaded) return
         return load(relativePath)
       }
 
       const list = async (path: string) => {
-        return sdk.client.file
-          .list({ path: path + "/" })
+        const relativePath = relative(path)
+        return sdk.client.workspace.files
+          .children({ path: relativePath })
           .then((x) => {
             setStore(
-              "node",
               produce((draft) => {
-                x.data!.forEach((node) => {
-                  if (node.path in draft) return
-                  draft[node.path] = node
+                if (x.data?.parent) {
+                  const parent = x.data.parent
+                  draft.node[parent.path] = { ...draft.node[parent.path], ...parent }
+                }
+                const parentPath = x.data?.path ?? relativePath
+                const childPaths = new Set(x.data?.children.map((node) => node.path) ?? [])
+                draft.children[parentPath] = Array.from(childPaths)
+                for (const key of Object.keys(draft.node)) {
+                  if (isDirectChild(parentPath, key) && !childPaths.has(key)) {
+                    delete draft.node[key]
+                  }
+                }
+                x.data!.children.forEach((node) => {
+                  draft.node[node.path] = { ...draft.node[node.path], ...node }
                 })
               }),
             )
@@ -494,9 +528,16 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
           .catch(() => {})
       }
 
-      const searchFiles = (query: string) => sdk.client.find.files({ query, dirs: "false" }).then((x) => x.data!)
+      const searchFiles = (query: string) =>
+        sdk.client.workspace.files
+          .search({ query, kind: "files" })
+          .then((x) => (x.data?.items ?? []).filter((item) => item.kind === "file" && item.type === "file"))
+          .then((items) => items.map((item) => item.path))
       const searchFilesAndDirectories = (query: string) =>
-        sdk.client.find.files({ query, dirs: "true" }).then((x) => x.data!)
+        sdk.client.workspace.files
+          .search({ query, kind: "files" })
+          .then((x) => (x.data?.items ?? []).filter((item) => item.kind === "file"))
+          .then((items) => items.map((item) => item.path))
 
       const unsub = sdk.event.listen((e) => {
         const event = e.details
@@ -504,7 +545,49 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
           case "file.watcher.updated":
             const relativePath = relative(event.properties.file)
             if (relativePath.startsWith(".git/")) return
+            const parent = relative(event.properties.parent ?? relativePath.split("/").slice(0, -1).join("/"))
+            const oldPath = relative(event.properties.oldPath ?? "")
+            const oldParent = oldPath ? oldPath.split("/").slice(0, -1).join("/") : undefined
+            if (event.properties.event === "deleted") {
+              setStore(
+                produce((draft) => {
+                  for (const key of Object.keys(draft.node)) {
+                    if (key === relativePath || key.startsWith(relativePath + "/")) {
+                      delete draft.node[key]
+                      delete draft.children[key]
+                    }
+                  }
+                  draft.children[parent] = (draft.children[parent] ?? []).filter((item) => item !== relativePath)
+                }),
+              )
+              if (store.node[parent]?.loaded) list(parent)
+              return
+            }
+            if (event.properties.event === "renamed") {
+              setStore(
+                produce((draft) => {
+                  if (!oldPath) return
+                  for (const key of Object.keys(draft.node)) {
+                    if (key === oldPath || key.startsWith(oldPath + "/")) {
+                      delete draft.node[key]
+                      delete draft.children[key]
+                    }
+                  }
+                  if (oldParent !== undefined) {
+                    draft.children[oldParent] = (draft.children[oldParent] ?? []).filter((item) => item !== oldPath)
+                  }
+                }),
+              )
+              if (oldParent !== undefined && store.node[oldParent]?.loaded) list(oldParent)
+              if (store.node[parent]?.loaded) list(parent)
+              return
+            }
+            if (event.properties.event === "added") {
+              if (store.node[parent]?.loaded) list(parent)
+              return
+            }
             if (store.node[relativePath]) load(relativePath)
+            if (store.node[parent]?.loaded) list(parent)
             break
         }
       })
@@ -566,12 +649,14 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
         // changes,
         // changed,
         children(path: string) {
-          return Object.values(store.node).filter(
-            (x) =>
-              x.path.startsWith(path) &&
-              x.path !== path &&
-              !x.path.replace(new RegExp(`^${path + "/"}`), "").includes("/"),
-          )
+          const parent = relative(path)
+          return (store.children[parent] ?? [])
+            .map((childPath) => store.node[childPath])
+            .filter((node): node is LocalFile => !!node)
+            .sort((a, b) => {
+              if (a.type !== b.type) return a.type === "directory" ? -1 : b.type === "directory" ? 1 : 0
+              return a.name.localeCompare(b.name)
+            })
         },
         searchFiles,
         searchFilesAndDirectories,

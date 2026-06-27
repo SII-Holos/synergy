@@ -12,6 +12,7 @@ import { ScopeContext } from "../../src/scope/context"
 import { Cortex } from "../../src/cortex/manager"
 import { tmpdir } from "../fixture/fixture"
 import { Log } from "../../src/util/log"
+import { Config } from "../../src/config/config"
 
 Log.init({ print: false })
 
@@ -27,7 +28,9 @@ describe("SessionInvoke preflight compaction", () => {
 
     const originalGetModel = Provider.getModel
     const originalGetAgent = Agent.get
+    const originalConfigCurrent = Config.current
     const originalDefinitions = ToolResolver.definitions
+    const originalResolveWithAvailability = ToolResolver.resolveWithAvailability
     const originalBuildPlan = PromptBudgeter.buildPlan
     const originalDecide = PromptBudgeter.decide
     const originalProcessorCreate = SessionProcessor.create
@@ -62,7 +65,12 @@ describe("SessionInvoke preflight compaction", () => {
         permission: PermissionNext.fromConfig({ "*": "allow" }),
         options: {},
       }))
+      ;(Config.current as any) = mock(async () => ({
+        ...(await originalConfigCurrent()),
+        compaction: { auto: true, maxHistoryImages: 8 },
+      }))
       ;(ToolResolver.definitions as any) = mock(async () => [])
+      ;(ToolResolver.resolveWithAvailability as any) = mock(async () => ({ tools: {}, activeToolIDs: [] }))
       ;(PromptBudgeter.buildPlan as any) = mock(async () => ({
         system: ["stub system"],
         messages: [{ role: "user", content: "stub message" }],
@@ -136,7 +144,9 @@ describe("SessionInvoke preflight compaction", () => {
     } finally {
       ;(Provider.getModel as any) = originalGetModel
       ;(Agent.get as any) = originalGetAgent
+      ;(Config.current as any) = originalConfigCurrent
       ;(ToolResolver.definitions as any) = originalDefinitions
+      ;(ToolResolver.resolveWithAvailability as any) = originalResolveWithAvailability
       ;(PromptBudgeter.buildPlan as any) = originalBuildPlan
       ;(PromptBudgeter.decide as any) = originalDecide
       ;(SessionProcessor.create as any) = originalProcessorCreate
@@ -151,8 +161,9 @@ describe("SessionInvoke preflight compaction", () => {
 
     const originalGetModel = Provider.getModel
     const originalGetAgent = Agent.get
+    const originalConfigCurrent = Config.current
     const originalDefinitions = ToolResolver.definitions
-    const originalResolve = ToolResolver.resolve
+    const originalResolveWithAvailability = ToolResolver.resolveWithAvailability
     const originalBuildPlan = PromptBudgeter.buildPlan
     const originalDecide = PromptBudgeter.decide
     const originalProcessorCreate = SessionProcessor.create
@@ -186,11 +197,15 @@ describe("SessionInvoke preflight compaction", () => {
         permission: PermissionNext.fromConfig({ "*": "allow" }),
         options: {},
       }))
+      ;(Config.current as any) = mock(async () => ({
+        ...(await originalConfigCurrent()),
+        compaction: { auto: true, maxHistoryImages: 8 },
+      }))
       ;(ToolResolver.definitions as any) = mock(async (input: Parameters<typeof ToolResolver.definitions>[0]) => {
         definitionToolStates.push(input.session?.toolState)
         return []
       })
-      ;(ToolResolver.resolve as any) = mock(async () => ({}))
+      ;(ToolResolver.resolveWithAvailability as any) = mock(async () => ({ tools: {}, activeToolIDs: [] }))
       ;(PromptBudgeter.buildPlan as any) = mock(async () => ({
         system: ["stub system"],
         messages: [{ role: "user", content: "stub message" }],
@@ -260,8 +275,9 @@ describe("SessionInvoke preflight compaction", () => {
     } finally {
       ;(Provider.getModel as any) = originalGetModel
       ;(Agent.get as any) = originalGetAgent
+      ;(Config.current as any) = originalConfigCurrent
       ;(ToolResolver.definitions as any) = originalDefinitions
-      ;(ToolResolver.resolve as any) = originalResolve
+      ;(ToolResolver.resolveWithAvailability as any) = originalResolveWithAvailability
       ;(PromptBudgeter.buildPlan as any) = originalBuildPlan
       ;(PromptBudgeter.decide as any) = originalDecide
       ;(SessionProcessor.create as any) = originalProcessorCreate

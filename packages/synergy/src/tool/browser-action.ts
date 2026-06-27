@@ -18,10 +18,10 @@ export const BrowserActionTool = Tool.define("browser_action", {
     y: z.number().optional(),
     deltaX: z.number().optional(),
     deltaY: z.number().optional(),
-    tabId: z.string().optional(),
+    pageId: z.string().optional(),
   }),
   async execute(params, ctx) {
-    const tab = await BrowserToolHelper.resolveTab(ctx, params.tabId)
+    const tab = await BrowserToolHelper.resolvePage(ctx, params.pageId)
     return BrowserToolHelper.withActivity(
       ctx,
       tab,

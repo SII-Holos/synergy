@@ -13,7 +13,7 @@ function uid(): string {
 function sampleRecord(overrides?: Partial<BrowserDownloads.DownloadRecord>): BrowserDownloads.DownloadRecord {
   return {
     id: uid(),
-    tabID: "tab-1",
+    pageID: "page-1",
     url: "https://example.com/file.zip",
     suggestedFilename: "file.zip",
     mimeType: "application/zip",
@@ -26,7 +26,7 @@ function sampleRecord(overrides?: Partial<BrowserDownloads.DownloadRecord>): Bro
 function sampleAsset(overrides?: Partial<BrowserAssets.PageAsset>): BrowserAssets.PageAsset {
   return {
     id: "req-1",
-    tabID: "tab-1",
+    pageID: "page-1",
     url: "https://example.com/logo.png",
     type: "image",
     mimeType: "image/png",

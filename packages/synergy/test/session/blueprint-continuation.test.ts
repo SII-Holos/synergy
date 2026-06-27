@@ -120,6 +120,9 @@ describe("BlueprintContinuation", () => {
         const part = mail.parts[0] as MessageV2.TextPart
         expect(part.synthetic).toBe(true)
         expect(part.text).toContain(`BlueprintLoop ${loop.id} status is \`running\``)
+        expect(part.text).toContain("current delivered state")
+        expect(part.text).not.toContain("implementation state")
+        expect(part.text).not.toContain("implementation work")
         expect(part.text).toContain(`blueprint_loop_finish({ loopID: "${loop.id}", status: "auditing"`)
         expect(part.text).toContain(`blueprint_loop_finish({ loopID: "${loop.id}", status: "failed"`)
       },

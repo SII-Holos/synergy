@@ -16,17 +16,15 @@ const AUTO_SHOW_BROWSER_TOOLS = new Set([
   "browser_screenshot",
   "browser_scroll",
   "browser_snapshot",
-  "browser_tab",
   "browser_type",
   "browser_wait",
 ])
 
 export function shouldAutoShowBrowserTool(toolName: string, metadata: Record<string, unknown>): boolean {
   if (!AUTO_SHOW_BROWSER_TOOLS.has(toolName)) return false
-  if (typeof metadata.tabId === "string") return true
-  if (typeof metadata.activeTabId === "string") return true
-  const tab = metadata.tab
-  return typeof tab === "object" && tab !== null && typeof (tab as { id?: unknown }).id === "string"
+  if (typeof metadata.pageId === "string") return true
+  const page = metadata.page
+  return typeof page === "object" && page !== null && typeof (page as { id?: unknown }).id === "string"
 }
 
 export function applyBrowserViewCommand(

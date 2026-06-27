@@ -12,6 +12,7 @@ import type {
   BrowserAgentActivity,
   BrowserAnnotation,
   BrowserAnnotationInput,
+  BrowserPage,
   BrowserSession,
   BrowserSessionObserver,
 } from "./types.js"
@@ -19,22 +20,15 @@ import { BrowserAnnotationHelper } from "./annotation.js"
 import type { BrowserDriver } from "./driver.js"
 export type { BrowserAnnotation, BrowserAnnotationInput, BrowserSession }
 
-const MAX_TABS = 10
-
 export class BrowserSessionImpl implements BrowserSession {
   readonly owner: BrowserOwner.Info
   private driver: BrowserDriver.Driver
-  private _tabs: BrowserTabImpl[] = []
-  private _activeTab: BrowserTabImpl | null = null
+  private _page: BrowserTabImpl | null = null
   private _annotations: BrowserAnnotation[] = []
   private _observers = new Set<BrowserSessionObserver>()
 
-  get tabs(): readonly BrowserTab[] {
-    return this._tabs
-  }
-
-  get activeTab(): BrowserTab | null {
-    return this._activeTab
+  get page(): BrowserPage | null {
+    return this._page
   }
 
   get annotations(): BrowserAnnotation[] {
@@ -50,13 +44,13 @@ export class BrowserSessionImpl implements BrowserSession {
     return {
       onLoading: (tab) => {
         for (const o of this._observers) o.onPageLoadState?.(tab, "loading")
-        for (const o of this._observers) o.onTabUpdated?.(tab)
+        for (const o of this._observers) o.onPageUpdated?.(tab)
       },
       onLoaded: (tab) => {
         this.save().catch(() => {})
         for (const o of this._observers) o.onPageLoadState?.(tab, "loaded")
-        for (const o of this._observers) o.onTabNavigated?.(tab)
-        for (const o of this._observers) o.onTabUpdated?.(tab)
+        for (const o of this._observers) o.onPageNavigated?.(tab)
+        for (const o of this._observers) o.onPageUpdated?.(tab)
       },
       onError: (tab, message) => {
         for (const o of this._observers) o.onPageLoadState?.(tab, "error", message)
@@ -76,98 +70,42 @@ export class BrowserSessionImpl implements BrowserSession {
     }
   }
 
-  async createTab(url?: string): Promise<BrowserTab> {
-    if (this._tabs.length >= MAX_TABS) {
-      throw new Error(`Maximum of ${MAX_TABS} tabs per session`)
-    }
-
+  async ensurePage(url?: string): Promise<BrowserPage> {
+    if (this._page) return this._page
     const page = await this.driver.newPage(this.owner, url)
-    const tab = new BrowserTabImpl({
+    const browserPage = new BrowserTabImpl({
       page,
       directory: this.owner.directory,
       owner: this.owner,
       events: this.tabEvents(),
     })
-    this._tabs.push(tab)
-
-    if (!this._activeTab) {
-      this._activeTab = tab
-    }
+    this._page = browserPage
 
     if (url) {
       try {
-        await tab.navigate(url)
+        await browserPage.navigate(url)
       } catch {
-        /* navigation may fail; tab still exists */
+        /* navigation may fail; page still exists */
       }
     }
 
     await this.save()
-    for (const o of this._observers) o.onTabCreated?.(tab)
-    return tab
+    for (const o of this._observers) o.onPageCreated?.(browserPage)
+    return browserPage
   }
 
-  switchTab(tabID: string): void {
-    const tab = this._tabs.find((t) => t.id === tabID)
-    if (tab) {
-      if (this._activeTab && this._activeTab !== tab) {
-        this._activeTab.lastActiveAt = Date.now()
-      }
-      this._activeTab = tab
-      for (const o of this._observers) o.onTabActivated?.(tab)
-    }
-  }
-
-  async closeTab(tabID: string): Promise<void> {
-    const index = this._tabs.findIndex((t) => t.id === tabID)
-    if (index === -1) return
-
-    const tab = this._tabs[index]
-    await tab.close()
-    this._tabs.splice(index, 1)
-
-    // Switch to another tab if the active one was closed
-    if (this._activeTab === tab) {
-      if (this._tabs.length > 0) {
-        this._activeTab = this._tabs[Math.max(0, index - 1)] ?? this._tabs[0]
-      } else {
-        this._activeTab = null
-      }
-    }
+  async closePage(): Promise<void> {
+    if (!this._page) return
+    const pageID = this._page.id
+    await this._page.close()
+    this._page = null
 
     await this.save()
-    for (const o of this._observers) o.onTabClosed?.(tabID)
+    for (const o of this._observers) o.onPageClosed?.(pageID)
   }
 
-  async closeOthers(tabID: string): Promise<void> {
-    const keepTab = this._tabs.find((t) => t.id === tabID)
-    if (!keepTab) return
-
-    const toClose = this._tabs.filter((t) => {
-      if (t.id === tabID) return false
-      if (t.pinned || t.kept) return false
-      return true
-    })
-
-    for (const tab of toClose) {
-      await tab.close()
-      const idx = this._tabs.indexOf(tab)
-      if (idx !== -1) this._tabs.splice(idx, 1)
-    }
-
-    if (!this._tabs.includes(this._activeTab!)) {
-      if (this._tabs.length > 0) {
-        this._activeTab = this._tabs[0]
-      } else {
-        this._activeTab = null
-      }
-    }
-
-    await this.save()
-  }
-
-  getTab(tabID: string): BrowserTab | undefined {
-    return this._tabs.find((t) => t.id === tabID)
+  getPage(pageID: string): BrowserPage | undefined {
+    return this._page?.id === pageID ? this._page : undefined
   }
 
   addAnnotation(input: BrowserAnnotationInput): BrowserAnnotation {
@@ -201,8 +139,8 @@ export class BrowserSessionImpl implements BrowserSession {
     }
   }
 
-  async notifyTabNavigated(tab: BrowserTab): Promise<void> {
-    for (const o of this._observers) o.onTabNavigated?.(tab)
+  async notifyPageNavigated(page: BrowserPage): Promise<void> {
+    for (const o of this._observers) o.onPageNavigated?.(page)
   }
 
   async notifyAgentActivity(activity: BrowserAgentActivity): Promise<void> {
@@ -215,16 +153,14 @@ export class BrowserSessionImpl implements BrowserSession {
 
   async save(): Promise<void> {
     const state: BrowserStorage.SessionState = {
-      tabs: this._tabs.map((tab, i) => ({
-        id: tab.id,
-        url: tab.url,
-        title: tab.title,
-        order: i,
-        pinned: tab.pinned,
-        kept: tab.kept,
-        lastActiveAt: tab.lastActiveAt,
-      })),
-      activeTabID: this._activeTab?.id ?? null,
+      page: this._page
+        ? {
+            id: this._page.id,
+            url: this._page.url,
+            title: this._page.title,
+            lastActiveAt: this._page.lastActiveAt,
+          }
+        : null,
       panelWidth: 400,
       timestamp: Date.now(),
       annotations: this._annotations,
@@ -239,50 +175,38 @@ export class BrowserSessionImpl implements BrowserSession {
     const data = await BrowserStorage.load(this.owner)
     if (!data) return false
 
-    // Clear existing tabs
-    for (const tab of this._tabs) {
+    if (this._page) {
       try {
-        await tab.close()
+        await this._page.close()
       } catch {
         /* ignore */
       }
     }
-    this._tabs = []
-    this._activeTab = null
+    this._page = null
 
-    // Restore tabs sorted by order — create pages via driver
-    const sorted = [...data.tabs].sort((a, b) => a.order - b.order)
-    for (const saved of sorted) {
+    const saved = data.page
+    if (saved) {
       const page = await this.driver.newPage(this.owner)
-      const tab = new BrowserTabImpl({
+      const browserPage = new BrowserTabImpl({
         page,
         directory: this.owner.directory,
         owner: this.owner,
         id: saved.id,
         events: this.tabEvents(),
       })
-      tab.pinned = saved.pinned ?? false
-      tab.kept = saved.kept ?? false
-      tab.lastActiveAt = saved.lastActiveAt ?? null
+      browserPage.lastActiveAt = saved.lastActiveAt ?? null
       if (saved.url && saved.url !== "about:blank" && !saved.url.startsWith("[")) {
         try {
-          await tab.navigateForUser(saved.url)
+          await browserPage.navigateForUser(saved.url)
         } catch {
-          tab.url = saved.url
-          tab.title = saved.title
+          browserPage.url = saved.url
+          browserPage.title = saved.title
         }
       } else {
-        tab.url = saved.url
-        tab.title = saved.title
+        browserPage.url = saved.url
+        browserPage.title = saved.title
       }
-      this._tabs.push(tab)
-    }
-
-    if (data.activeTabID) {
-      this._activeTab = this._tabs.find((t) => t.id === data.activeTabID) ?? null
-    }
-    if (!this._activeTab && this._tabs.length > 0) {
-      this._activeTab = this._tabs[0]
+      this._page = browserPage
     }
 
     // Restore annotations
@@ -292,15 +216,14 @@ export class BrowserSessionImpl implements BrowserSession {
   }
 
   async dispose(): Promise<void> {
-    for (const tab of this._tabs) {
+    if (this._page) {
       try {
-        await tab.close()
+        await this._page.close()
       } catch {
         /* ignore */
       }
     }
-    this._tabs = []
-    this._activeTab = null
+    this._page = null
 
     await this.save()
   }

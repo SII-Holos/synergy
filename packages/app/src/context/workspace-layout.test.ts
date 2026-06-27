@@ -30,7 +30,7 @@ describe("workspace layout constants", () => {
   })
 
   test("keeps the dock close to the workspace edge", () => {
-    expect(WORKSPACE_RAIL_GAP).toBe(8)
+    expect(WORKSPACE_RAIL_GAP).toBe(0)
     expect(WORKSPACE_RAIL_VISIBLE_MARGIN).toBe(60)
   })
 })
@@ -100,18 +100,12 @@ describe("computeWorkspaceRailRight", () => {
 })
 
 describe("computeDefaultWorkspaceWidth", () => {
-  test("returns roughly 3/5 of remaining space on a 1440px desktop", () => {
-    const width = computeDefaultWorkspaceWidth(1440)
-    // remaining after session min: 1440 - 350 = 1090, 3/5 ≈ 654
-    expect(width).toBeGreaterThan(640)
-    expect(width).toBeLessThanOrEqual(800)
+  test("returns half of the viewport on a 1440px desktop", () => {
+    expect(computeDefaultWorkspaceWidth(1440)).toBe(720)
   })
 
-  test("returns roughly 3/5 of remaining space on a 1920px desktop", () => {
-    const width = computeDefaultWorkspaceWidth(1920)
-    // remaining: 1920 - 350 = 1570, 3/5 ≈ 942
-    expect(width).toBeGreaterThan(640)
-    expect(width).toBeLessThanOrEqual(1100)
+  test("returns half of the viewport on a 1920px desktop", () => {
+    expect(computeDefaultWorkspaceWidth(1920)).toBe(960)
   })
 
   test("scales down on narrower viewports", () => {
@@ -126,10 +120,7 @@ describe("computeDefaultWorkspaceWidth", () => {
   })
 
   test("respects custom session minimum", () => {
-    const width = computeDefaultWorkspaceWidth(1440, { sessionMinWidth: 420 })
-    // remaining: 1440 - 420 = 1020, 3/5 = 612 — less than legacy 640 is expected with larger session min
-    expect(width).toBeGreaterThan(600)
-    expect(width).toBeLessThan(640)
+    expect(computeDefaultWorkspaceWidth(1440, { sessionMinWidth: 780 })).toBe(660)
   })
 
   test("returns larger than legacy 640 on viewports 1440 and above", () => {

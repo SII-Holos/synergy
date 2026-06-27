@@ -2,6 +2,7 @@ import z from "zod"
 import { Tool } from "./tool"
 import { BrowserToolHelper } from "./browser-shared"
 import { BrowserEval } from "../browser/eval"
+import { BrowserOwner } from "../browser/owner"
 
 export const BrowserEvalTool = Tool.define("browser_eval", {
   description:
@@ -13,7 +14,7 @@ export const BrowserEvalTool = Tool.define("browser_eval", {
       .default("readonly")
       .describe("Eval mode: readonly=no side effects, trusted=allow mutations."),
     maxBytes: z.number().int().default(64000).describe("Maximum output size in bytes."),
-    tabId: z.string().optional(),
+    pageId: z.string().optional(),
     throwOnSideEffect: z
       .boolean()
       .optional()
@@ -24,7 +25,8 @@ export const BrowserEvalTool = Tool.define("browser_eval", {
       throw new Error(`Eval mode '${params.mode}' is not allowed.`)
     }
 
-    const tab = await BrowserToolHelper.resolveTab(ctx, params.tabId)
+    const owner = BrowserOwner.fromToolContext(ctx)
+    const tab = await BrowserToolHelper.resolvePage(ctx, params.pageId)
     const activityKind = params.mode === "trusted" ? "acting" : "reading"
     return BrowserToolHelper.withActivity(
       ctx,
@@ -40,12 +42,14 @@ export const BrowserEvalTool = Tool.define("browser_eval", {
           ? BrowserEval.buildReadonlyEval(params.expression)
           : BrowserEval.buildTrustedEval(params.expression)
 
-        // Readonly eval routes through Playwright CDP session Runtime.evaluate with throwOnSideEffect
-        // Trusted eval uses Playwright page.evaluate (buildPageEval) when permission is granted.
-        // For backward compatibility, tab.evaluate forwards to page.evaluate.
-        const raw = await tab.evaluate(evalPayload.expression, {
+        const result = await BrowserToolHelper.executeControl(owner, {
+          type: "evaluate",
+          pageId: tab.id,
+          expression: evalPayload.expression,
           throwOnSideEffect: isReadonly ? true : undefined,
         })
+        if (result.type !== "evaluation") throw new Error("Browser evaluate command returned an unexpected result")
+        const raw = result.value
         const duration = Date.now() - start
         const output = BrowserEval.sanitizeEvalResult(raw, params.maxBytes)
 

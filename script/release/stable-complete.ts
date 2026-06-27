@@ -4,6 +4,7 @@ import { configureNpmAuth, loadReleaseState } from "./shared/runtime"
 import { finalizeGitHubRelease } from "./nodes/finalize-github-release"
 import { promoteLatest, verifyLatest } from "./nodes/promote-latest"
 import { verifyDraftAssets } from "./nodes/verify-draft-assets"
+import { verifyDesktopDraftAssets } from "./nodes/verify-desktop-assets"
 import { verifyRegistryCandidate } from "./nodes/verify-registry-candidate"
 
 const version = process.env.SYNERGY_VERSION?.trim()
@@ -18,6 +19,7 @@ const extraPackages = state.registryPackages.filter((name) =>
 )
 await verifyRegistryCandidate(state.version, state.channel, extraPackages)
 await verifyDraftAssets(state)
+await verifyDesktopDraftAssets(state)
 await promoteLatest(state.version, extraPackages)
 await verifyLatest(state.version, extraPackages)
 await finalizeGitHubRelease(state)

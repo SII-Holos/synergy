@@ -7,9 +7,10 @@ const allowedDuplicateIcons: Record<string, string[]> = {
   cable: ["connection.mcp", "settings.mcp"],
   circle: ["session.idle", "state.empty"],
   globe: ["settings.channels", "browser.main"],
-  "help-circle": ["session.waiting", "settings.questions"],
+  "help-circle": ["action.info", "session.waiting", "settings.questions"],
   "refresh-ccw": ["action.refresh", "browser.refresh"],
   satellite: ["connection.holos", "settings.holos"],
+  sun: ["settings.appearance", "settings.colorLight"],
 }
 
 describe("semantic icons", () => {
@@ -17,6 +18,11 @@ describe("semantic icons", () => {
     for (const token of Object.keys(SemanticIconToken) as Array<keyof typeof SemanticIconToken>) {
       expect(getSemanticIcon(token)).toBe(SemanticIconToken[token])
     }
+  })
+
+  test("blueprint uses a plan icon distinct from approval stamping", () => {
+    expect(getSemanticIcon("orchestration.blueprint")).toBe("clipboard-list")
+    expect(getSemanticIcon("orchestration.blueprint")).not.toBe("stamp")
   })
 
   test("duplicate Lucide usage is explicitly allowed", () => {

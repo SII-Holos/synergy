@@ -374,7 +374,10 @@ export const LocalBashBackend: BashBackend = {
     let exited = false
     let yielded = false
     let childError: Error | undefined
-    let rejectChildError: ((error: Error) => void) | undefined
+    let resolveChildFinished: (result: "exited" | "error") => void = () => {}
+    const childFinished = new Promise<"exited" | "error">((resolve) => {
+      resolveChildFinished = resolve
+    })
     child.once("error", (error) => {
       childError = error
       exited = true
@@ -389,26 +392,18 @@ export const LocalBashBackend: BashBackend = {
         },
         "error",
       )
-      rejectChildError?.(error)
+      resolveChildFinished("error")
     })
     // Wire the spawned child into the existing ProcessRegistry entry
     regProc.child = child
     regProc.stdin = child.stdin ?? undefined
     regProc.pid = child.pid
-    await trace("process.spawn", {
-      processId: regProc.id,
-      pid: child.pid,
-      command: params.command,
-      sandboxed: Boolean(sandboxWrapper && !sandboxWrapper.skipReason),
-      background: params.background === true,
-      yieldSeconds: params.yieldSeconds,
-    })
-    if (childError) throw childError
 
     child.stdout?.on("data", append)
     child.stderr?.on("data", append)
 
     child.once("exit", (code, signal) => {
+      exited = true
       if (metadataDirty) flushMetadata()
       if (params.background || regProc.backgrounded) {
         ProcessRegistry.markExited(regProc, code, signal)
@@ -423,7 +418,18 @@ export const LocalBashBackend: BashBackend = {
         exitSignal: signal,
         outputChars: regProc?.output.length ?? 0,
       })
+      resolveChildFinished("exited")
     })
+
+    await trace("process.spawn", {
+      processId: regProc.id,
+      pid: child.pid,
+      command: params.command,
+      sandboxed: Boolean(sandboxWrapper && !sandboxWrapper.skipReason),
+      background: params.background === true,
+      yieldSeconds: params.yieldSeconds,
+    })
+    if (childError) throw childError
 
     if (params.background) {
       ProcessRegistry.markBackgrounded(regProc)
@@ -488,21 +494,19 @@ export const LocalBashBackend: BashBackend = {
         ctx.abort.removeEventListener("abort", abortHandler)
       }
 
-      child.once("exit", () => {
-        exited = true
-        cleanup()
-        resolve("exited")
-      })
-
       if (childError) {
         cleanup()
         reject(childError)
         return
       }
-      rejectChildError = (error) => {
+      childFinished.then((result) => {
         cleanup()
-        reject(error)
-      }
+        if (result === "error") {
+          reject(childError ?? new Error("Bash child process failed"))
+          return
+        }
+        resolve("exited")
+      })
     })
 
     if (yieldResult === "yielded") {

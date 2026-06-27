@@ -17,26 +17,9 @@ import { Link } from "@/components/link"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { useGlobalSync } from "@/context/global-sync"
 import { usePlatform } from "@/context/platform"
-import { popularProviders } from "@/hooks/use-providers"
+import { providerConnectCopy, providerConnectReason, providerCTA } from "./provider-recommendation"
 
-export function providerConnectCopy(providerID: string) {
-  if (providerID === "anthropic") return "Connect with Claude Pro/Max or API key"
-  if (providerID === "openai-codex") return "Connect with ChatGPT/Codex"
-  if (providerID === "github-copilot") return "Connect with GitHub Copilot"
-  if (providerID === "openrouter") return "Connect OpenRouter credits or API key"
-  return "Connect provider"
-}
-
-export function sortProviderIDs(a: string, b: string) {
-  const aIndex = popularProviders.indexOf(a)
-  const bIndex = popularProviders.indexOf(b)
-  if (aIndex !== -1 || bIndex !== -1) {
-    if (aIndex === -1) return 1
-    if (bIndex === -1) return -1
-    return aIndex - bIndex
-  }
-  return a.localeCompare(b)
-}
+export { compareProviderIDs, providerConnectCopy } from "./provider-recommendation"
 
 export function ProviderConnectionFlow(props: {
   providerID: string
@@ -48,6 +31,7 @@ export function ProviderConnectionFlow(props: {
   const globalSDK = useGlobalSDK()
   const platform = usePlatform()
   const provider = createMemo(() => globalSync.data.provider.all.find((x) => x.id === props.providerID))
+  const profiles = createMemo(() => globalSync.data.provider.profiles)
   const methods = createMemo<ProviderAuthMethod[]>(
     () =>
       globalSync.data.provider_auth[props.providerID] ?? [
@@ -171,8 +155,10 @@ export function ProviderConnectionFlow(props: {
         </Show>
         <ProviderIcon id={props.providerID} class="size-5 shrink-0 icon-strong-base" />
         <div class="min-w-0">
-          <div class="provider-flow-title">{providerConnectCopy(props.providerID)}</div>
-          <div class="provider-flow-subtitle">{provider()?.name ?? props.providerID}</div>
+          <div class="provider-flow-title">{providerConnectCopy(props.providerID, profiles(), provider()?.name)}</div>
+          <div class="provider-flow-subtitle">
+            {providerConnectReason(props.providerID, profiles()) ?? provider()?.name ?? props.providerID}
+          </div>
         </div>
       </div>
 
@@ -240,6 +226,13 @@ export function ProviderConnectionFlow(props: {
 
               return (
                 <form onSubmit={handleSubmit} class="provider-api-form">
+                  <Show when={providerCTA(props.providerID, profiles())}>
+                    {(cta) => (
+                      <div class="provider-flow-copy">
+                        <Link href={cta().url}>{cta().label}</Link>
+                      </div>
+                    )}
+                  </Show>
                   <TextField
                     autofocus
                     type="password"

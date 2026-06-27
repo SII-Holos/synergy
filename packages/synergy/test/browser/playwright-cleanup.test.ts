@@ -10,8 +10,7 @@ const PKG_JSON = path.join(import.meta.dirname ?? __dirname, "../../package.json
 // ── CDP staleness enforcement ───────────────────────────────────
 // After Playwright migration, the hand-rolled CDP layer must be
 // removed. A tiny CDPSession adapter may remain for features that
-// Playwright intentionally exposes through CDP, such as screencast
-// fallback and IME-safe text insertion.
+// Playwright intentionally exposes through CDP.
 
 const CDP_FILE = path.join(BROWSER_SRC, "cdp.ts")
 
@@ -52,9 +51,8 @@ describe("playwright cleanup: banned CDP tokens", () => {
 })
 
 // ── Runtime.evaluate scoping ────────────────────────────────────
-// After migration, Runtime.evaluate must live ONLY in eval.ts for
-// the readonly eval bridge. It must not appear in actions.ts,
-// tab.ts, or any other browser module.
+// Runtime.evaluate lives only in eval.ts for the readonly eval bridge.
+// It must not appear in actions.ts, tab.ts, or any other browser module.
 
 describe("playwright cleanup: Runtime.evaluate scoping", () => {
   const runtimeEvalFiles = browserFiles().filter((f) => f !== "eval.ts")

@@ -1,0 +1,3 @@
+Fuzzy file and directory search for discovering paths in the current workspace.
+
+Use this when you roughly know a filename, directory name, module name, or path fragment. Use scan_files for searching file contents, parse_code for AST structure, and view_file before anchored edits.

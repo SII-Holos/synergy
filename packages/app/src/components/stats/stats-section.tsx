@@ -1,4 +1,4 @@
-import { createMemo, Show } from "solid-js"
+import { createEffect, createMemo, Show } from "solid-js"
 import type { StatsSnapshot } from "@ericsanchezok/synergy-sdk"
 import { useStats } from "./use-stats"
 import { OverviewCards } from "./overview-cards"
@@ -30,7 +30,13 @@ function phaseLabel(phase: "scan" | "digest" | "bucket" | "snapshot") {
   return "Computing snapshot"
 }
 
-function StatsSyncBar(props: {
+export type WorkspaceStatsSyncHandle = {
+  sync: () => void | Promise<void>
+  syncing: () => boolean
+  error: () => string | null
+}
+
+function StatsSyncStatus(props: {
   syncing: boolean
   progress: {
     phase: "scan" | "digest" | "bucket" | "snapshot"
@@ -39,7 +45,6 @@ function StatsSyncBar(props: {
     message?: string
   } | null
   syncError: string | null
-  onSync: () => void | Promise<void>
 }) {
   const percent = createMemo(() => {
     const progress = props.progress
@@ -48,52 +53,52 @@ function StatsSyncBar(props: {
   })
 
   return (
-    <div class="mb-4 rounded-[1.15rem] bg-surface-inset-base/42 p-3 ring-1 ring-inset ring-border-base/45 shadow-[inset_0_1px_0_rgba(214,204,190,0.07)]">
-      <div class="flex flex-wrap items-center justify-between gap-3">
-        <div class="min-w-0 flex-1">
-          <div class="text-[10px] font-medium uppercase tracking-[0.16em] text-text-weaker">Usage Stats</div>
-          <div class="mt-1 text-13-medium text-text-base">
-            {props.syncing
-              ? (props.progress?.message ?? phaseLabel(props.progress?.phase ?? "scan"))
-              : (props.syncError ?? "Sync usage stats manually when you want a fresh rollup.")}
+    <Show when={props.syncing || props.syncError}>
+      <div class="mb-4">
+        <div class="library-sync-row library-sync-row-compact">
+          <div class="library-toolbar-left">
+            <span class="library-toolbar-summary">
+              {props.syncing
+                ? (props.progress?.message ?? phaseLabel(props.progress?.phase ?? "scan"))
+                : (props.syncError ?? "")}
+            </span>
+            <Show when={props.syncing && props.progress}>
+              {(progress) => (
+                <span class="library-toolbar-summary">
+                  {phaseLabel(progress().phase)} · {progress().current}/{progress().total}
+                </span>
+              )}
+            </Show>
           </div>
-          <Show when={props.syncing && props.progress}>
-            {(progress) => (
-              <div class="mt-1 text-[10px] font-medium text-text-weak">
-                {phaseLabel(progress().phase)} · {progress().current}/{progress().total}
-              </div>
-            )}
-          </Show>
         </div>
 
-        <button
-          type="button"
-          class="rounded-full bg-surface-raised-stronger-non-alpha px-3 py-1.5 text-12-medium text-text-interactive-base ring-1 ring-inset ring-border-base/50 transition hover:bg-surface-raised-base-hover hover:text-text-interactive-hover disabled:cursor-default disabled:opacity-60"
-          disabled={props.syncing}
-          onClick={() => void props.onSync()}
-        >
-          {props.syncing ? "Syncing…" : "Sync stats"}
-        </button>
+        <Show when={props.syncing && props.progress}>
+          <div class="library-sync-progress">
+            <div
+              class="h-full rounded-full bg-text-strong/60 transition-[width] duration-300"
+              style={{ width: `${percent()}%` }}
+            />
+          </div>
+        </Show>
       </div>
-
-      <Show when={props.syncing && props.progress}>
-        <div class="mt-3 h-2 rounded-full bg-surface-base/70 p-0.5 shadow-[inset_0_1px_0_rgba(214,204,190,0.07)]">
-          <div
-            class="h-full rounded-full bg-[linear-gradient(90deg,rgba(62,122,98,0.92),rgba(84,162,134,0.88),rgba(136,198,170,0.82))] transition-[width] duration-300"
-            style={{ width: `${percent()}%` }}
-          />
-        </div>
-      </Show>
-    </div>
+    </Show>
   )
 }
 
-export function StatsSection() {
+export function StatsSection(props: { registerSync?: (handle: WorkspaceStatsSyncHandle) => void }) {
   const { data, error, loading, refresh, sync, syncing, progress, syncError } = useStats()
+
+  createEffect(() => {
+    props.registerSync?.({
+      sync,
+      syncing,
+      error: syncError,
+    })
+  })
 
   return (
     <div>
-      <StatsSyncBar syncing={syncing()} progress={progress()} syncError={syncError()} onSync={sync} />
+      <StatsSyncStatus syncing={syncing()} progress={progress()} syncError={syncError()} />
       <Show
         when={data()}
         fallback={
@@ -112,14 +117,6 @@ export function StatsSection() {
                   onClick={refresh}
                 >
                   {loading ? "Loading…" : "Retry loading stats"}
-                </button>
-                <button
-                  type="button"
-                  class="rounded-full bg-surface-raised-stronger-non-alpha px-3 py-1.5 text-12-medium text-text-interactive-base ring-1 ring-inset ring-border-base/50 transition hover:bg-surface-raised-base-hover hover:text-text-interactive-hover disabled:cursor-default disabled:opacity-60"
-                  disabled={syncing()}
-                  onClick={() => void sync()}
-                >
-                  {syncing() ? "Syncing…" : "Sync stats"}
                 </button>
               </div>
             </div>
@@ -140,7 +137,7 @@ function StatsContent(props: { snapshot: StatsSnapshot }) {
   const toolRows = createMemo(() => buildToolRows(snapshot()))
 
   return (
-    <div class="flex flex-col gap-5 pb-5">
+    <div class="library-stats-content flex flex-col gap-5 pb-5">
       <OverviewCards
         metrics={overviewMetrics()}
         streak={{

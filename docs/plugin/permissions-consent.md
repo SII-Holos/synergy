@@ -74,8 +74,8 @@ At execution time Synergy registers plugin tools as `plugin__<pluginId>__<toolNa
 Unknown or undeclared plugin tools remain opaque and require user approval.
 
 `permissions.tools.task` gates plugin calls to `context.task.run()`. Use an explicit `agents` allowlist and
-`maxRuntimeMs` for marketplace plugins. Hidden delegated tasks do not render as ordinary chat steps, but they
-still use Synergy's Cortex/session audit path.
+`maxRuntimeMs` for marketplace plugins. Hidden delegated tasks use Synergy's Cortex/session audit path and stay
+out of the ordinary chat step list.
 
 ## Approval Records
 
@@ -90,7 +90,7 @@ Approval records store:
 - approved UI surfaces
 - risk
 
-If the manifest or permissions hash changes, the approval is no longer valid and Synergy asks again.
+If the manifest or permissions hash changes, the approval expires and Synergy asks again.
 
 ## Install Consent
 

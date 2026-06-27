@@ -16,7 +16,7 @@ const parameters = z
       .describe("Action: list downloads, remove one by id, or wait for one to complete"),
     id: z.string().optional().describe("Download record ID (required for remove and wait actions)"),
     timeoutMs: z.number().int().positive().optional().describe("Maximum wait time in milliseconds (default 30s)"),
-    tabId: z.string().optional().describe("Tab ID. Used to access page for waitForPageDownload."),
+    pageId: z.string().optional().describe("Page ID. Used to access the page for download activity."),
   })
   .refine(
     (v) => {
@@ -31,9 +31,9 @@ export const BrowserDownloadsTool = Tool.define<typeof parameters, BrowserDownlo
     "Manage browser download records: list downloads, wait for one to complete, or remove a download by its ID.",
   parameters,
   async execute(params, ctx) {
-    let activityTab = null as Awaited<ReturnType<typeof BrowserToolHelper.resolveTab>> | null
+    let activityTab = null as Awaited<ReturnType<typeof BrowserToolHelper.resolvePage>> | null
     try {
-      activityTab = await BrowserToolHelper.resolveTab(ctx, params.tabId)
+      activityTab = await BrowserToolHelper.resolvePage(ctx, params.pageId)
       await BrowserToolHelper.markActivity(
         ctx,
         activityTab,

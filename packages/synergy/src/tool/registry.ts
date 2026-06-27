@@ -3,6 +3,7 @@ import { BashTool } from "./bash"
 import { EditTool } from "./edit"
 import { GlobTool } from "./glob"
 import { GrepTool } from "./grep"
+import { FileSearchTool } from "./file-search"
 import { BatchTool } from "./batch"
 import { ReadTool } from "./read"
 import { ViewFileTool } from "./view-file"
@@ -48,7 +49,6 @@ import { AgendaLogsTool } from "./agenda-logs"
 // import { AgoraCommentTool } from "./agora-comment"
 import { AttachTool } from "./attach"
 
-import { InvalidTool } from "./invalid"
 import { SkillTool } from "./skill"
 import { LookAtTool } from "./lookat"
 import { ScanDocumentTool } from "./scan-document"
@@ -92,7 +92,6 @@ import { BrowserWaitTool } from "./browser-wait"
 import { BrowserClickTool } from "./browser-click"
 import { BrowserTypeTool } from "./browser-type"
 import { BrowserScrollTool } from "./browser-scroll"
-import { BrowserTabTool } from "./browser-tab"
 import { BrowserConsoleTool } from "./browser-console"
 import { BrowserNetworkTool } from "./browser-network"
 import { BrowserDownloadTool } from "./browser-download"
@@ -311,7 +310,6 @@ export namespace ToolRegistry {
     const config = await Config.current()
 
     return [
-      InvalidTool,
       ...(Flag.SYNERGY_CLIENT === "cli" ? [QuestionTool] : []),
       BashTool,
       ProcessTool,
@@ -319,6 +317,7 @@ export namespace ToolRegistry {
       ReadTool,
       ViewFileTool,
       ScanFilesTool,
+      FileSearchTool,
       ParseCodeTool,
       ReviseFileTool,
       SaveFileTool,
@@ -394,7 +393,6 @@ export namespace ToolRegistry {
       BrowserClickTool,
       BrowserTypeTool,
       BrowserScrollTool,
-      BrowserTabTool,
       BrowserConsoleTool,
       BrowserNetworkTool,
       BrowserDownloadTool,

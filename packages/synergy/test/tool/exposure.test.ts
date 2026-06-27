@@ -263,7 +263,7 @@ describe("tool exposure", () => {
     })
   })
 
-  test("Plan Mode forces the note group without exposing other deferred groups", async () => {
+  test("Plan Mode keeps bash visible and forces the note group without exposing other deferred groups", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({
       scope: await tmp.scope(),
@@ -274,12 +274,81 @@ describe("tool exposure", () => {
         })
 
         const ids = await definitionIDs(await Session.get(session.id))
+        expect(ids.has("bash")).toBe(true)
+        expect(ids.has("edit")).toBe(false)
         expect(ids.has("search_tools")).toBe(true)
         expect(ids.has("expand_tools")).toBe(true)
         expect(ids.has("note_read")).toBe(true)
         expect(ids.has("note_write")).toBe(true)
         expect(ids.has("memory_get")).toBe(false)
         expect(ids.has("agenda_list")).toBe(false)
+      },
+    })
+  })
+
+  test("Plan Mode does not override explicit permission denial for bash", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({})
+        await Session.update(session.id, (draft) => {
+          draft.blueprint = { planMode: true }
+        })
+        const denyBash: Agent.Info = {
+          ...allowAllAgent,
+          permission: PermissionNext.fromConfig({ "*": "allow", bash: "deny" }),
+        }
+
+        const availability = await ToolResolver.availability({
+          agent: denyBash,
+          model,
+          sessionID: session.id,
+          session: await Session.get(session.id),
+          includeMCP: false,
+        })
+
+        expect(availability.visible.some((def) => def.id === "bash")).toBe(false)
+        expect(availability.diagnostics.get("bash")?.code).toBe("permission_denied")
+      },
+    })
+  })
+
+  test("Plan Mode resolve keeps hidden tools inactive while preserving semantic diagnostic wrappers", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({})
+        await Session.update(session.id, (draft) => {
+          draft.blueprint = { planMode: true }
+        })
+        const executions = new Map<string, Promise<any>>()
+        const processor = {
+          message: { id: "message_test" },
+          partFromToolCall: () => undefined,
+          trackExecution: (id: string, promise: Promise<any>) => executions.set(id, promise),
+        } as any
+
+        const resolved = await ToolResolver.resolveWithAvailability({
+          agent: allowAllAgent,
+          model,
+          sessionID: session.id,
+          processor,
+          session: await Session.get(session.id),
+          includeMCP: false,
+        })
+
+        expect(resolved.activeToolIDs).toContain("bash")
+        expect(resolved.activeToolIDs).not.toContain("edit")
+        expect(resolved.tools.edit).toBeDefined()
+
+        await expect(
+          (resolved.tools.edit as any).execute({ filePath: "x" }, { toolCallId: "call_edit" }),
+        ).rejects.toThrow("Plan Mode")
+        const outcome = await executions.get("call_edit")
+        expect(outcome.status).toBe("error")
+        expect(outcome.metadata.toolDiagnostic.code).toBe("plan_mode_blocked")
       },
     })
   })

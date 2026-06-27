@@ -66,6 +66,26 @@ export namespace ModelsDev {
   export const Provider = z.object({
     api: z.string().optional(),
     name: z.string(),
+    description: z.string().optional(),
+    signupUrl: z.string().optional(),
+    recommendation: z
+      .object({
+        level: z.enum(["featured", "recommended", "standard"]),
+        rank: z.number().int().optional(),
+        headline: z.string().optional(),
+        reason: z.string().optional(),
+        cta: z
+          .object({
+            kind: z.literal("external"),
+            label: z.string(),
+            url: z.string(),
+          })
+          .strict()
+          .optional(),
+        defaultModel: z.string().optional(),
+      })
+      .strict()
+      .optional(),
     env: z.array(z.string()),
     id: z.string(),
     npm: z.string().optional(),

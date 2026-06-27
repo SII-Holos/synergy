@@ -1,6 +1,7 @@
 import z from "zod"
 import { Tool } from "./tool"
 import { BrowserToolHelper } from "./browser-shared"
+import { BrowserOwner } from "../browser/owner"
 
 export const BrowserScrollTool = Tool.define("browser_scroll", {
   description:
@@ -9,29 +10,41 @@ export const BrowserScrollTool = Tool.define("browser_scroll", {
     deltaY: z.number().describe("Vertical scroll amount in pixels (positive = down)"),
     deltaX: z.number().optional().describe("Horizontal scroll amount in pixels (positive = right)"),
     selector: z.string().optional().describe("Snap ref or CSS selector to scroll into view before scrolling"),
-    tabId: z.string().optional().describe("Tab to operate on. Uses the active tab when omitted."),
+    pageId: z.string().optional().describe("Page to operate on. Uses the session page when omitted."),
   }),
   async execute(params, ctx) {
-    const tab = await BrowserToolHelper.resolveTab(ctx, params.tabId)
+    const owner = BrowserOwner.fromToolContext(ctx)
+    const tab = await BrowserToolHelper.resolvePage(ctx, params.pageId)
     return BrowserToolHelper.withActivity(ctx, tab, "acting", "browser_scroll", "Scrolling page", async () => {
       if (params.selector) {
         if (params.selector.startsWith("@e")) {
-          const resolved = await tab.resolveRef(params.selector)
-          if (!resolved) {
+          const resolved = await BrowserToolHelper.executeControl(owner, {
+            type: "resolveRef",
+            pageId: tab.id,
+            ref: params.selector,
+          })
+          if (resolved.type !== "resolvedRef") throw new Error("Browser ref command returned an unexpected result")
+          if (!resolved.box) {
             throw new Error(`Element ${params.selector} not found. Take a new snapshot.`)
           }
-          await tab.evaluate(
-            `(() => { document.elementFromPoint(${resolved.x + resolved.width / 2}, ${resolved.y + resolved.height / 2})?.scrollIntoView({ block: "nearest" }); })()`,
-          )
+          await BrowserToolHelper.executeControl(owner, {
+            type: "evaluate",
+            pageId: tab.id,
+            expression: `(() => { document.elementFromPoint(${resolved.box.x + resolved.box.width / 2}, ${resolved.box.y + resolved.box.height / 2})?.scrollIntoView({ block: "nearest" }); })()`,
+          })
         } else {
-          const found = (await tab.evaluate(
-            `(() => {
+          const evaluated = await BrowserToolHelper.executeControl(owner, {
+            type: "evaluate",
+            pageId: tab.id,
+            expression: `(() => {
             const el = document.querySelector(${JSON.stringify(params.selector)});
             if (!el) return false;
             el.scrollIntoView({ block: "nearest" });
             return true;
           })()`,
-          )) as boolean
+          })
+          if (evaluated.type !== "evaluation") throw new Error("Browser evaluate command returned an unexpected result")
+          const found = evaluated.value as boolean
 
           if (!found) {
             throw new Error(`Element "${params.selector}" not found on the page.`)
@@ -39,7 +52,12 @@ export const BrowserScrollTool = Tool.define("browser_scroll", {
         }
       }
 
-      await tab.scroll(params.deltaX ?? 0, params.deltaY)
+      await BrowserToolHelper.executeControl(owner, {
+        type: "scroll",
+        pageId: tab.id,
+        deltaX: params.deltaX ?? 0,
+        deltaY: params.deltaY,
+      })
       const dir = params.deltaY > 0 ? "down" : params.deltaY < 0 ? "up" : ""
       const detail = params.selector ? ` after scrolling ${params.selector} into view` : ""
       return {

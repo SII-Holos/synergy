@@ -6,7 +6,7 @@ import type { HolosAccountMeta } from "@ericsanchezok/synergy-sdk/client"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { useHolos } from "@/context/holos"
 import { useHolosAgentActions } from "@/components/holos/agent-actions"
-import { assetPath } from "@/utils/proxy"
+import { BRAND_ASSETS, brandAssetPath } from "@/utils/brand-assets"
 import { SettingsEntityList, SettingsPage, SettingsSection } from "../components/SettingsPrimitives"
 
 export function AccountPanel() {
@@ -64,7 +64,7 @@ export function AccountPanel() {
       <SettingsSection>
         <div class="account-identity-card">
           <div class="account-identity-avatar">
-            <img src={assetPath("/agent-avatars/synergy-agent-icon.png")} alt="" />
+            <img src={brandAssetPath(BRAND_ASSETS.synergy.productIcon)} alt="" />
           </div>
           <div class="min-w-0 flex-1">
             <div class="account-identity-name">{displayName()}</div>

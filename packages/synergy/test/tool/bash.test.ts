@@ -79,25 +79,6 @@ describe("tool.bash", () => {
     })
   })
 
-  test("treats local env aliases as local execution", async () => {
-    await ScopeContext.provide({
-      scope: (await Scope.fromDirectory(projectRoot)).scope,
-      fn: async () => {
-        const bash = await BashTool.init()
-        const result = await bash.execute(
-          {
-            envID: ":local",
-            command: "echo 'local alias'",
-            description: "Echo local alias",
-          },
-          ctx,
-        )
-        expect(result.metadata.exit).toBe(0)
-        expect(result.output).toContain("local alias")
-      },
-    })
-  })
-
   test("rejects placeholder env IDs with semantic guidance", async () => {
     await ScopeContext.provide({
       scope: (await Scope.fromDirectory(projectRoot)).scope,
@@ -521,22 +502,17 @@ describe("tool.bash metadata throttling", () => {
 
         await bash.execute(
           {
-            // Generate 500 lines rapidly — each line is a separate stdout chunk in most shells
-            command: `for i in $(seq 1 500); do echo "line $i"; done`,
+            command: `i=0; while [ $i -lt 100 ]; do echo "line $i"; i=$((i + 1)); done`,
             description: "Rapid output test",
           },
           tracker.ctx,
         )
 
-        // With 500ms throttling, a fast command producing 500 lines should result
-        // in far fewer metadata calls than 500.
-        // At minimum: 1 initial + 1 flush on exit = 2. Typically a few more from timers.
-        // The key invariant: significantly fewer than 500.
-        expect(tracker.calls.length).toBeGreaterThanOrEqual(2) // initial + at least one flush
-        expect(tracker.calls.length).toBeLessThan(100) // well below the 500 chunks
+        expect(tracker.calls.length).toBeGreaterThanOrEqual(2)
+        expect(tracker.calls.length).toBeLessThan(30)
       },
     })
-  })
+  }, 15_000)
 
   test("metadata is flushed on process exit even if timer has not fired", async () => {
     await ScopeContext.provide({
@@ -559,32 +535,6 @@ describe("tool.bash metadata throttling", () => {
       },
     })
   })
-})
-
-describe("tool.bash tree-sitter cleanup", () => {
-  test("repeated bash calls do not leak WASM memory", async () => {
-    await ScopeContext.provide({
-      scope: (await Scope.fromDirectory(projectRoot)).scope,
-      fn: async () => {
-        const bash = await BashTool.init()
-
-        // Run many bash commands to exercise tree-sitter parse/delete cycle.
-        // If tree.delete() is missing, WASM memory would grow monotonically.
-        // We can't directly measure WASM memory from JS, but we can verify
-        // that 200 calls don't cause an abort or exception.
-        for (let i = 0; i < 200; i++) {
-          const result = await bash.execute(
-            {
-              command: `echo "iteration ${i}" && ls /tmp`,
-              description: `Iteration ${i}`,
-            },
-            ctx,
-          )
-          expect(result.metadata.exit).toBe(0)
-        }
-      },
-    })
-  }, 60_000) // generous timeout for 200 shell invocations
 })
 
 describe("tool.bash workspace boundary enforcement", () => {

@@ -29,12 +29,12 @@ function truncateUrl(url: string, max = 80): string {
 }
 
 export function NetworkPanel() {
-  const { activeTabId, networkRequests } = useBrowser()
+  const { pageId: currentPageId, networkRequests } = useBrowser()
 
   const requests = createMemo((): NetworkEntry[] => {
-    const tabId = activeTabId()
-    if (!tabId) return []
-    return networkRequests[tabId] ?? []
+    const pageId = currentPageId()
+    if (!pageId) return []
+    return networkRequests[pageId] ?? []
   })
 
   return (

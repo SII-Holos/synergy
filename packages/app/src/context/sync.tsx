@@ -5,7 +5,7 @@ import { retry } from "@ericsanchezok/synergy-util/retry"
 import { createSimpleContext } from "@ericsanchezok/synergy-ui/context"
 import { useGlobalSync } from "./global-sync"
 import { useSDK } from "./sdk"
-import type { Message, Part, PermissionRequest } from "@ericsanchezok/synergy-sdk/client"
+import type { Message, Part, PermissionRequest, Session } from "@ericsanchezok/synergy-sdk/client"
 
 export const { use: useSync, provider: SyncProvider } = createSimpleContext({
   name: "Sync",
@@ -30,6 +30,27 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
       const match = Binary.search(store.session, sessionID, (s) => s.id)
       if (match.found) return store.session[match.index]
       return undefined
+    }
+
+    const terminalCortexStatuses = new Set(["completed", "error", "cancelled"])
+
+    const reconcileCortexFromSession = (session: Session) => {
+      const cortex = session.cortex
+      if (!cortex || !terminalCortexStatuses.has(cortex.status)) return
+      setStore(
+        "cortex",
+        produce((draft) => {
+          const idx = draft.findIndex((task) => task.sessionID === session.id)
+          if (idx === -1) return
+          draft[idx] = {
+            ...draft[idx],
+            status: cortex.status,
+            completedAt: cortex.completedAt ?? draft[idx].completedAt,
+            result: cortex.result ?? draft[idx].result,
+            error: cortex.error ?? draft[idx].error,
+          }
+        }),
+      )
     }
 
     const limitFor = (count: number) => {
@@ -188,6 +209,7 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
             ? Promise.resolve()
             : retry(() => sdk.client.session.get({ sessionID })).then((session) => {
                 if (!session.data) return
+                reconcileCortexFromSession(session.data)
                 setStore(
                   "session",
                   produce((draft) => {

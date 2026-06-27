@@ -335,6 +335,7 @@ export const PluginManifest = z
               description: z.string(),
               mode: z.enum(["subagent", "primary", "all"]).default("subagent"),
               model: z.string().optional(),
+              modelRole: z.enum(["vision", "nano", "mini", "mid", "thinking", "long", "creative"]).optional(),
               hidden: z.boolean().optional(),
               permission: z.record(z.string(), z.any()).optional(),
             }),

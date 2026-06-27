@@ -75,7 +75,6 @@ const P0_UI_FILES = [
   "src/components/tabs.css",
   "src/components/switch.css",
   "src/components/checkbox.css",
-  "src/components/dropdown-menu.css",
   "src/components/message-part.css",
   "src/components/diagram.css",
   "src/components/session-turn.css",
@@ -347,11 +346,6 @@ describe("Visual Token Contract", () => {
       expect(hasMotion, "tabs.css 应使用 motion token").toBe(true)
     })
 
-    test("dropdown-menu.css animation 使用 motion token", async () => {
-      const css = await readFileSafe("src/components/dropdown-menu.css")
-      const hasMotion = /var\(--motion-(duration|ease)/.test(css)
-      expect(hasMotion, "dropdown-menu.css 应使用 motion token").toBe(true)
-    })
   })
 
   describe("5. Pill / chip elements use --radius-full", () => {

@@ -21,7 +21,6 @@ import PLAN_MODE_SYNERGY from "./prompt/plan-mode-synergy.txt"
 import PLAN_MODE_SYNERGY_MAX from "./prompt/plan-mode-synergy-max.txt"
 import { defer } from "../util/defer"
 import type { Command } from "../command/command"
-import { WorktreeCommand } from "../project/worktree-command"
 import { $ } from "bun"
 import { ConfigMarkdown } from "../config/markdown"
 import "./summary"
@@ -63,6 +62,7 @@ import "../library/chronicler"
 import { ExperienceEncoder } from "../library/experience-encoder"
 import { GitHealth } from "../project/git-health"
 import { BlueprintLoopStore } from "../blueprint/loop-store"
+import { PlanModeUserWrapper } from "./plan-mode-user-wrapper"
 import type { ToolDisplay } from "@ericsanchezok/synergy-plugin/tool"
 
 export { InvokeInput, resolveInputParts } from "./input"
@@ -73,11 +73,6 @@ globalThis.AI_SDK_LOG_WARNINGS = false
 export namespace SessionInvoke {
   const log = Log.create({ service: "session.invoke" })
   const ephemeralToolsByMessage = new Map<string, ToolResolver.EphemeralTool[]>()
-
-  queueMicrotask(async () => {
-    const command = await commandRuntime()
-    if ((command as any)?.registerAction) WorktreeCommand.register(command)
-  })
 
   async function commandRuntime() {
     return (await import("../command/command")).Command
@@ -628,6 +623,10 @@ export namespace SessionInvoke {
         if (sessionBlueprint?.loopID) {
           const loop = await BlueprintLoopStore.get(scopeID, sessionBlueprint.loopID).catch(() => undefined)
           if (loop) {
+            const loopInstruction =
+              agent.name === "synergy-max"
+                ? `You are executing this coding BlueprintLoop. Before editing code, call note_read with ids=["${loop.noteID}"] and read the full Blueprint content. Continue until the Blueprint is fully implemented and verified. When ready for audit, call blueprint_loop_finish({ loopID: "${loop.id}", status: "auditing", summary: "..." }).`
+                : `You are executing this BlueprintLoop. Before carrying out the Blueprint, call note_read with ids=["${loop.noteID}"] and read the full Blueprint content. Continue until the requested outcome is fully delivered. When ready for audit, call blueprint_loop_finish({ loopID: "${loop.id}", status: "auditing", summary: "..." }).`
             systemParts.push(
               [
                 "<blueprint-loop-context>",
@@ -637,7 +636,7 @@ export namespace SessionInvoke {
                 `Description: ${loop.description ?? "N/A"}`,
                 `Status: ${loop.status}`,
                 "",
-                `You are executing this BlueprintLoop. Before doing implementation work, call note_read with ids=["${loop.noteID}"] and read the full Blueprint content. Continue working until fully implemented. When ready for audit, call blueprint_loop_finish with status="auditing".`,
+                loopInstruction,
                 "</blueprint-loop-context>",
               ].join("\n"),
             )
@@ -684,8 +683,13 @@ export namespace SessionInvoke {
             )
           }
         }
+        const modelSessionMessages = PlanModeUserWrapper.projectMessages({
+          messages: sessionMessages,
+          session,
+          agent,
+        })
         const preparedMessages = [
-          ...MessageV2.toModelMessage(sessionMessages, { maxHistoryImages: jobCtx.compactionMaxHistoryImages }),
+          ...MessageV2.toModelMessage(modelSessionMessages, { maxHistoryImages: jobCtx.compactionMaxHistoryImages }),
           ...(isLastStep
             ? [
                 {
@@ -736,13 +740,14 @@ export namespace SessionInvoke {
         }
 
         const toolResolveTimer = log.time("toolResolver.resolve")
-        const tools = await ToolResolver.resolve({
+        const resolvedTools = await ToolResolver.resolveWithAvailability({
           agent,
           model,
           sessionID,
           processor,
           session,
           userTools: lastUser.tools,
+          ephemeralTools: ephemeralToolsByMessage.get(lastUser.id),
           includeMCP: true,
         })
         toolResolveTimer.stop()
@@ -765,7 +770,8 @@ export namespace SessionInvoke {
           system: promptPlan.system,
           systemCacheBreakpoint: promptPlan.systemCacheBreakpoint,
           messages: promptPlan.messages,
-          tools,
+          tools: resolvedTools.tools,
+          activeToolIDs: resolvedTools.activeToolIDs,
           model,
         })
         clearTimeout(turnTimer)

@@ -27,7 +27,6 @@ import {
   libraryInsetClass,
   libraryMenuClass,
   libraryMetaLabelClass,
-  LibraryFilterChip,
   SelectionBar,
   SelectionCheckbox,
 } from "./shared"
@@ -74,13 +73,13 @@ export function ExperienceView(props: {
   search: string
   isSearching: boolean
   setSearchError: (v: boolean) => void
-  onRegisterRefetch: (fn: () => void) => void
   refetchStats: () => void
   currentScopeID: string | undefined
   currentSessionID: string | undefined
 }) {
   const [sort, setSort] = createSignal<ExperienceSortKey>("newest")
   const [sortOpen, setSortOpen] = createSignal(false)
+  const [filterOpen, setFilterOpen] = createSignal(false)
   const [filter, setFilter] = createSignal<ExperienceFilter>("all")
   const [expandedCards, setExpandedCards] = createSignal<Set<string>>(new Set())
   const [experienceDetails, setExperienceDetails] = createSignal<Record<string, ExperienceDetailInfo>>({})
@@ -130,14 +129,6 @@ export function ExperienceView(props: {
 
   let listHandle: VListHandle | undefined
   let pageRequestID = 0
-
-  props.onRegisterRefetch(() => {
-    if (props.isSearching) {
-      refetchSearch()
-      return
-    }
-    void loadPage(true)
-  })
 
   createEffect(() => {
     if (!props.isSearching && sort() === "relevance") {
@@ -224,6 +215,16 @@ export function ExperienceView(props: {
     if (hasMore()) return `Showing ${pagedItems().length} of ${total()} experiences`
     if (pagedItems().length > 0) return `Showing all ${total()} experiences`
     return ""
+  })
+  const filterLabel = createMemo(() => {
+    switch (effectiveFilter()) {
+      case "scope":
+        return "Current scope"
+      case "session":
+        return "Current session"
+      default:
+        return "All experiences"
+    }
   })
 
   const loading = createMemo(() => (props.isSearching ? searchResults.loading : initialLoading()))
@@ -376,8 +377,8 @@ export function ExperienceView(props: {
   }
 
   return (
-    <div class="h-full flex flex-col -mx-6">
-      <div class="shrink-0 px-6 mb-3">
+    <div class="library-list-pane">
+      <div class="shrink-0">
         <Show
           when={!selecting()}
           fallback={
@@ -391,23 +392,69 @@ export function ExperienceView(props: {
             />
           }
         >
-          <div class="flex items-center gap-1.5 flex-wrap">
-            <Show when={scopeAvailable() || sessionAvailable()}>
-              <LibraryFilterChip active={effectiveFilter() === "all"} onClick={() => setFilter("all")}>
-                All
-              </LibraryFilterChip>
-              <Show when={scopeAvailable()}>
-                <LibraryFilterChip active={effectiveFilter() === "scope"} onClick={() => setFilter("scope")}>
-                  Scope
-                </LibraryFilterChip>
-              </Show>
-              <Show when={sessionAvailable()}>
-                <LibraryFilterChip active={effectiveFilter() === "session"} onClick={() => setFilter("session")}>
-                  Session
-                </LibraryFilterChip>
-              </Show>
-            </Show>
-            <div class="ml-auto flex items-center gap-1">
+          <div class="library-list-toolbar">
+            <div class="library-toolbar-left">
+              <Popover open={filterOpen()} onOpenChange={setFilterOpen} placement="bottom-start" gutter={6}>
+                <Popover.Trigger as="button" class="library-control-pill">
+                  <span>{filterLabel()}</span>
+                  <Icon name="chevron-down" size="small" class="opacity-60" />
+                </Popover.Trigger>
+                <Popover.Portal>
+                  <Popover.Content class={`library-filter-menu ${libraryMenuClass}`}>
+                    <button
+                      type="button"
+                      classList={{
+                        "library-menu-item": true,
+                        "is-active": effectiveFilter() === "all",
+                      }}
+                      onClick={() => {
+                        setFilter("all")
+                        setFilterOpen(false)
+                      }}
+                    >
+                      <span>All experiences</span>
+                      <span class="library-menu-count">{total() || displayedItems().length}</span>
+                    </button>
+                    <Show when={scopeAvailable()}>
+                      <button
+                        type="button"
+                        classList={{
+                          "library-menu-item": true,
+                          "is-active": effectiveFilter() === "scope",
+                        }}
+                        onClick={() => {
+                          setFilter("scope")
+                          setFilterOpen(false)
+                        }}
+                      >
+                        <span>Current scope</span>
+                      </button>
+                    </Show>
+                    <Show when={sessionAvailable()}>
+                      <button
+                        type="button"
+                        classList={{
+                          "library-menu-item": true,
+                          "is-active": effectiveFilter() === "session",
+                        }}
+                        onClick={() => {
+                          setFilter("session")
+                          setFilterOpen(false)
+                        }}
+                      >
+                        <span>Current session</span>
+                      </button>
+                    </Show>
+                  </Popover.Content>
+                </Popover.Portal>
+              </Popover>
+              <span class="library-toolbar-summary">
+                <Show when={props.isSearching} fallback={statusText() || `${total()} experiences`}>
+                  {displayedItems().length} results
+                </Show>
+              </span>
+            </div>
+            <div class="library-toolbar-right">
               <Show when={displayedItems().length > 0}>
                 <button type="button" class={libraryActionButtonClass} onClick={() => setSelecting(true)}>
                   <Icon name="square-check" size="small" class="opacity-70" />
@@ -447,7 +494,7 @@ export function ExperienceView(props: {
         </Show>
       </div>
 
-      <div class="flex-1 min-h-0 px-6 overflow-hidden">
+      <div class="flex-1 min-h-0 overflow-hidden">
         <Show when={loading()}>
           <AppPanel.Loading />
         </Show>
@@ -510,7 +557,7 @@ export function ExperienceView(props: {
 
                   return (
                     <div class="py-1.5">
-                      <div class="grid grid-cols-2 gap-3 items-start">
+                      <div class="library-card-grid items-start">
                         <ExperienceCard
                           item={left}
                           expanded={expandedCards().has(left.id)}

@@ -51,12 +51,12 @@ function shortenUrl(url: string, max = 60): string {
 }
 
 export function AssetsPanel() {
-  const { activeTabId, pageAssets } = useBrowser()
+  const { pageId: currentPageId, pageAssets } = useBrowser()
 
   const entries = createMemo((): AssetEntry[] => {
-    const tabId = activeTabId()
-    if (!tabId) return []
-    return pageAssets[tabId] ?? []
+    const pageId = currentPageId()
+    if (!pageId) return []
+    return pageAssets[pageId] ?? []
   })
 
   const grouped = createMemo(() => {

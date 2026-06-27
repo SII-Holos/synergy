@@ -106,25 +106,24 @@ export const DISCRETE_DIMENSIONS: Array<{ key: keyof RewardsInfo; short: string;
 ]
 
 export const libraryShellClass =
-  "workbench-panel-surface rounded-[1.2rem] border border-border-base/28 bg-surface-raised-base"
+  "library-main-surface"
 
 export const libraryInsetClass =
-  "workbench-control-surface rounded-[1rem] bg-surface-inset-base ring-1 ring-inset ring-border-base/30"
+  "library-inner-surface"
 
 export const libraryCardBaseClass =
-  "workbench-card-surface flex flex-col overflow-hidden rounded-[1.15rem] border border-border-base/28 bg-surface-raised-base transition-colors"
+  "library-card-surface flex flex-col overflow-hidden"
 
-export const libraryCardExpandedClass = "border-border-base/38 bg-surface-raised-base-hover"
+export const libraryCardExpandedClass = "is-expanded"
 
-export const libraryCardHoverClass = "hover:border-border-base/36 hover:bg-surface-raised-base-hover"
+export const libraryCardHoverClass = "library-card-hover"
 
 export const libraryActionButtonClass =
-  "workbench-control-surface flex items-center gap-1 rounded-full bg-surface-inset-base px-2.5 py-1.5 text-11-medium text-text-weak ring-1 ring-inset ring-border-base/32 transition-colors hover:bg-surface-raised-base-hover hover:text-text-base"
+  "library-action-button"
 
-export const libraryMenuClass =
-  "workbench-popover-surface z-50 min-w-36 overflow-hidden rounded-[1rem] border border-border-base/32 bg-surface-raised-base p-1.5 outline-none"
+export const libraryMenuClass = "library-menu-surface"
 
-export const libraryMetaLabelClass = "text-[10px] font-medium uppercase tracking-[0.16em] text-text-weaker"
+export const libraryMetaLabelClass = "library-meta-label"
 
 export function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
@@ -186,22 +185,6 @@ export function SelectionBar(props: {
     </div>
   )
 }
-export function LibraryFilterChip(props: { active: boolean; onClick: () => void; children: any }) {
-  return (
-    <button
-      type="button"
-      classList={{
-        "px-2.5 py-1 rounded-lg text-12-medium transition-colors": true,
-        "workbench-selected-surface bg-surface-raised-base-hover text-text-strong": props.active,
-        "text-text-weak hover:text-text-base hover:bg-surface-raised-base-hover": !props.active,
-      }}
-      onClick={props.onClick}
-    >
-      {props.children}
-    </button>
-  )
-}
-
 export function ViewTab(props: { active: boolean; onClick: () => void; children: any }) {
   return (
     <button

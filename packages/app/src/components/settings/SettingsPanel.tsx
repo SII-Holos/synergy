@@ -19,7 +19,12 @@ import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
-import type { ConfigDomainSummary, ControlProfileSummary, SandboxStatus } from "@ericsanchezok/synergy-sdk/client"
+import type {
+  ConfigDomainSummary,
+  ControlProfileSummary,
+  ModelRoleSummary,
+  SandboxStatus,
+} from "@ericsanchezok/synergy-sdk/client"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { useInput, type SendShortcut } from "@/context/input"
 import { useGlobalSync } from "@/context/global-sync"
@@ -36,8 +41,6 @@ import { ensureInit } from "./hooks/useSettingsForm"
 import { buildPatch } from "./hooks/useConfigPatch"
 import { useSettingsSave } from "./hooks/useSettingsSave"
 import { GeneralPanel } from "./panels/GeneralPanel"
-import { ProfilePanel } from "./panels/ProfilePanel"
-import { AppearancePanel } from "./panels/AppearancePanel"
 import { ModelsPanel } from "./panels/ModelsPanel"
 import { ProvidersPanel } from "./panels/ProvidersPanel"
 import { AccountPanel } from "./panels/AccountPanel"
@@ -55,8 +58,10 @@ import { DiagnosticsPanel } from "@/components/diagnostics-panel"
 
 const legacyInitialTabs: Record<string, string> = {
   advanced: "control-profile",
+  appearance: "general",
   holos: "account",
   library: "learning",
+  profile: "account",
 }
 
 export type SettingsPanelProps = DialogSettingsProps & {
@@ -98,6 +103,11 @@ export function SettingsPanel(props: SettingsPanelProps) {
     return res.data ?? []
   })
 
+  const [modelRoleSummaries, { refetch: refetchModelRoleSummaries }] = createResource(async () => {
+    const res = await globalSDK.client.app.agentModelRoles()
+    return (res.data ?? []) as ModelRoleSummary[]
+  })
+
   const providerModels = createMemo(() => {
     const data = globalSync.data.provider
     const list: ProviderModel[] = []
@@ -132,6 +142,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
         cooldownUntil: health?.cooldownUntil,
         resetAt: health?.resetAt,
         failureCode: health?.failureCode,
+        profile: data.profiles?.[provider.id],
       }
     })
   })
@@ -169,7 +180,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
     doEnsureInit()
   })
 
-  const ready = () => initialized() && !!domainSummaries()
+  const ready = () => initialized() && !!domainSummaries() && !!modelRoleSummaries()
   const cancelDebouncesRef = { current: () => {} }
 
   function resetEditor() {
@@ -182,7 +193,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
     setRefreshing(true)
     resetEditor()
     await globalSync.refreshAllConfigs()
-    await Promise.all([refetchConfig(), refetchDomains()])
+    await Promise.all([refetchConfig(), refetchDomains(), refetchModelRoleSummaries()])
     setRefreshing(false)
     doEnsureInit()
   }
@@ -420,13 +431,6 @@ export function SettingsPanel(props: SettingsPanelProps) {
     switch (active) {
       case "account":
         return <AccountPanel />
-      case "profile":
-        return (
-          <ProfilePanel
-            username={settings.general.username}
-            onUsernameChange={(value) => setSettings("general", "username", value)}
-          />
-        )
       case "general":
         return (
           <GeneralPanel
@@ -434,18 +438,12 @@ export function SettingsPanel(props: SettingsPanelProps) {
             onGeneralChange={(key, value) => setSettings("general", key, value)}
           />
         )
-      case "appearance":
-        return (
-          <AppearancePanel
-            themeId={settings.general.theme}
-            onThemeChange={(value) => setSettings("general", "theme", value)}
-          />
-        )
       case "models":
         return (
           <ModelsPanel
             models={settings.models}
             providerModels={providerModels}
+            modelRoleSummaries={() => modelRoleSummaries() ?? []}
             onModelChange={(key, value) => setSettings("models", key, value)}
             onManageModels={() => dialog.show(() => <DialogSelectModel />)}
           />

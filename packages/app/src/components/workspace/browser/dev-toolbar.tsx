@@ -19,17 +19,17 @@ const ACTIONS = [
 ]
 
 export function DevToolbar() {
-  const { send, devPanel, toggleDevPanel, activeTabId } = useBrowser()
+  const { send, devPanel, toggleDevPanel, pageId } = useBrowser()
 
   const handleClick = (action: ToolbarAction) => {
     if (action.label === "Screenshot") {
-      send({ type: "requestScreenshot", tabId: activeTabId() })
+      send({ type: "requestScreenshot", pageId: pageId() })
     } else {
       toggleDevPanel(action.id)
-      if (action.id === "console") send({ type: "requestConsole", tabId: activeTabId(), maxEntries: 100 })
-      if (action.id === "network") send({ type: "requestNetwork", tabId: activeTabId(), maxEntries: 200 })
-      if (action.id === "elements") send({ type: "requestSnapshot", tabId: activeTabId() })
-      if (action.id === "assets") send({ type: "requestAssets", tabId: activeTabId(), maxEntries: 200 })
+      if (action.id === "console") send({ type: "requestConsole", pageId: pageId(), maxEntries: 100 })
+      if (action.id === "network") send({ type: "requestNetwork", pageId: pageId(), maxEntries: 200 })
+      if (action.id === "elements") send({ type: "requestSnapshot", pageId: pageId() })
+      if (action.id === "assets") send({ type: "requestAssets", pageId: pageId(), maxEntries: 200 })
     }
   }
 

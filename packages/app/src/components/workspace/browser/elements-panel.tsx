@@ -11,11 +11,11 @@ function flatten(elements: AccessibilityElement[], depth = 0): Array<Accessibili
 }
 
 export function ElementsPanel() {
-  const { activeTabId, elements } = useBrowser()
+  const { pageId: currentPageId, elements } = useBrowser()
   const rows = createMemo(() => {
-    const tabId = activeTabId()
-    if (!tabId) return []
-    return flatten(elements[tabId] ?? [])
+    const pageId = currentPageId()
+    if (!pageId) return []
+    return flatten(elements[pageId] ?? [])
   })
 
   return (

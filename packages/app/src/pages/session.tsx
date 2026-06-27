@@ -485,6 +485,7 @@ function SessionPageContent() {
   })
 
   const handleKeyDown = (event: KeyboardEvent) => {
+    if (event.defaultPrevented) return
     const activeElement = document.activeElement as HTMLElement | undefined
     if (activeElement) {
       const isProtected = activeElement.closest("[data-prevent-autofocus]")
@@ -977,6 +978,7 @@ function SessionPageContent() {
               forkedFromTitle={forkedFromSession()?.title ?? currentSession()?.forkedFrom?.title}
               backPath={backPath}
               newSessionWorktree={newSessionWorktree}
+              onNewSessionWorktreeChange={(worktree) => setStore("newSessionWorktree", worktree)}
               onNewSessionWorktreeReset={() => setStore("newSessionWorktree", "main")}
               scopeName={scopeName}
               branch={branch}

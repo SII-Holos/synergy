@@ -2,6 +2,7 @@
 
 import path from "path"
 import fs from "fs"
+import os from "os"
 import { $ } from "bun"
 import { fileURLToPath } from "url"
 
@@ -17,6 +18,12 @@ import { Script } from "@ericsanchezok/synergy-script"
 const singleFlag = process.argv.includes("--single")
 const baselineFlag = process.argv.includes("--baseline")
 const skipInstall = process.argv.includes("--skip-install")
+const requestedTargets = new Set(
+  (process.env.SYNERGY_BUILD_TARGETS ?? "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean),
+)
 
 const allTargets: {
   os: string
@@ -72,26 +79,37 @@ const allTargets: {
   },
   {
     os: "win32",
+    arch: "arm64",
+  },
+  {
+    os: "win32",
     arch: "x64",
     avx2: false,
   },
 ]
 
-const targets = singleFlag
-  ? allTargets.filter((item) => {
-      if (item.os !== process.platform || item.arch !== process.arch) {
-        return false
-      }
+const targets =
+  requestedTargets.size > 0
+    ? allTargets.filter((item) => requestedTargets.has(targetKey(item)))
+    : singleFlag
+      ? allTargets.filter((item) => {
+          if (item.os !== process.platform || item.arch !== process.arch) {
+            return false
+          }
 
-      // When building for the current platform, prefer a single native binary by default.
-      // Baseline binaries require additional Bun artifacts and can be flaky to download.
-      if (item.avx2 === false) {
-        return baselineFlag
-      }
+          // When building for the current platform, prefer a single native binary by default.
+          // Baseline binaries require additional Bun artifacts and can be flaky to download.
+          if (item.avx2 === false) {
+            return baselineFlag
+          }
 
-      return true
-    })
-  : allTargets
+          return true
+        })
+      : allTargets
+
+if (targets.length === 0) {
+  throw new Error(`No Synergy build targets matched SYNERGY_BUILD_TARGETS=${process.env.SYNERGY_BUILD_TARGETS}`)
+}
 
 fs.rmSync("dist", { recursive: true, force: true })
 
@@ -100,22 +118,7 @@ await $`bun run --cwd ${path.resolve(dir, "../app")} build`
 
 const binaries: Record<string, string> = {}
 if (!skipInstall) {
-  await $`bun install --os="*" --cpu="*" @parcel/watcher@${pkg.dependencies["@parcel/watcher"]}`
-  await $`bun install --os="*" --cpu="*" sqlite-vec@${pkg.dependencies["sqlite-vec"]}`
-  // Explicitly install platform-specific sqlite-vec packages with --os="*" --cpu="*"
-  // so they are available for all cross-platform builds (without these flags, bun only
-  // installs the current platform's variant)
-  const sqliteVecVersion = pkg.dependencies["sqlite-vec"]
-  const sqliteVecPlatforms = [
-    "sqlite-vec-darwin-arm64",
-    "sqlite-vec-darwin-x64",
-    "sqlite-vec-linux-arm64",
-    "sqlite-vec-linux-x64",
-    "sqlite-vec-windows-x64",
-  ]
-  for (const vecPkg of sqliteVecPlatforms) {
-    await $`bun install --os="*" --cpu="*" ${vecPkg}@${sqliteVecVersion}`
-  }
+  await ensureNativeBuildPackages()
 }
 for (const item of targets) {
   const name = [
@@ -129,31 +132,39 @@ for (const item of targets) {
     .filter(Boolean)
     .join("-")
   console.log(`building ${name}`)
+  if (shouldReusePublishedRuntime(item)) {
+    await extractPublishedRuntimePackage(name, Script.version)
+    binaries[name] = Script.version
+    continue
+  }
+
   await $`mkdir -p dist/${name}/bin`
 
-  await Bun.build({
-    conditions: ["browser"],
-    tsconfig: "./tsconfig.json",
-    sourcemap: "external",
-    external: ["@aws-sdk/client-s3", "chromium-bidi", "chromium-bidi/*"],
-    compile: {
-      autoloadBunfig: false,
-      autoloadDotenv: false,
-      //@ts-ignore (bun types aren't up to date)
-      autoloadTsconfig: true,
-      autoloadPackageJson: true,
-      target: name.replace(pkg.name, "bun") as any,
-      outfile: `dist/${name}/bin/synergy`,
-      execArgv: [`--user-agent=synergy/${Script.version}`, "--use-system-ca", "--"],
-      windows: {},
-    },
-    entrypoints: ["./src/index.ts"],
-    define: {
-      SYNERGY_VERSION: `'${Script.version}'`,
-      SYNERGY_CHANNEL: `'${Script.channel}'`,
-      SYNERGY_LIBC: item.os === "linux" ? `'${item.abi ?? "glibc"}'` : "",
-    },
-  })
+  await retryBuild(name, () =>
+    Bun.build({
+      conditions: ["browser"],
+      tsconfig: "./tsconfig.json",
+      sourcemap: "external",
+      external: ["@aws-sdk/client-s3", "chromium-bidi", "chromium-bidi/*"],
+      compile: {
+        autoloadBunfig: false,
+        autoloadDotenv: false,
+        //@ts-ignore (bun types aren't up to date)
+        autoloadTsconfig: true,
+        autoloadPackageJson: true,
+        target: name.replace(pkg.name, "bun") as any,
+        outfile: `dist/${name}/bin/synergy`,
+        execArgv: [`--user-agent=synergy/${Script.version}`, "--use-system-ca", "--"],
+        windows: {},
+      },
+      entrypoints: ["./src/index.ts"],
+      define: {
+        SYNERGY_VERSION: `'${Script.version}'`,
+        SYNERGY_CHANNEL: `'${Script.channel}'`,
+        SYNERGY_LIBC: item.os === "linux" ? `'${item.abi ?? "glibc"}'` : "",
+      },
+    }),
+  )
 
   await Bun.file(`dist/${name}/package.json`).write(
     JSON.stringify(
@@ -200,6 +211,102 @@ async function copySandboxHelper(item: { os: string; arch: string }, name: strin
   console.log(`Copying sandbox helper: ${helperSrc} → ${helperDest}`)
   fs.mkdirSync(path.dirname(helperDest), { recursive: true })
   fs.copyFileSync(helperSrc, helperDest)
+}
+
+function targetKey(item: { os: string; arch: string; abi?: string; avx2?: false }): string {
+  return [item.os, item.arch, item.avx2 === false ? "baseline" : undefined, item.abi].filter(Boolean).join("-")
+}
+
+type BunBuildOutput = Awaited<ReturnType<typeof Bun.build>>
+
+async function retryBuild(name: string, build: () => Promise<BunBuildOutput>) {
+  let lastError: unknown
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      const output = await build()
+      if (output.success) return output
+      throw new Error(output.logs.map((log) => log.message).join("\n") || `Bun build failed for ${name}`)
+    } catch (error) {
+      lastError = error
+      if (attempt === 3) break
+      console.warn(`building ${name} failed on attempt ${attempt}/3; retrying in 5s`)
+      await new Promise((resolve) => setTimeout(resolve, 5_000))
+    }
+  }
+  throw lastError
+}
+
+async function ensureNativeBuildPackages() {
+  const dependencies = {
+    ...pkg.dependencies,
+    ...pkg.devDependencies,
+  } as Record<string, string>
+  const packages = Object.entries(dependencies).filter(
+    ([name]) => name.startsWith("@parcel/watcher-") || name.startsWith("sqlite-vec-"),
+  )
+
+  for (const [name, version] of packages) {
+    await ensureNpmPackageExtracted(name, version)
+  }
+}
+
+async function ensureNpmPackageExtracted(name: string, version: string) {
+  const destination = path.join(dir, "node_modules", ...name.split("/"))
+  if (fs.existsSync(path.join(destination, "package.json"))) return
+
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), "synergy-native-package-"))
+  try {
+    await retryCommand(name, () => $`npm pack ${`${name}@${version}`} --silent`.cwd(temp).quiet())
+    const tarball = fs.readdirSync(temp).find((entry) => entry.endsWith(".tgz"))
+    if (!tarball) {
+      throw new Error(`npm pack did not produce a tarball for ${name}@${version}`)
+    }
+
+    fs.mkdirSync(destination, { recursive: true })
+    await $`tar -xzf ${path.join(temp, tarball)} -C ${destination} --strip-components=1`
+  } finally {
+    fs.rmSync(temp, { recursive: true, force: true })
+  }
+}
+
+function shouldReusePublishedRuntime(item: { os: string; arch: string }): boolean {
+  return process.env.SYNERGY_REUSE_PUBLISHED_RUNTIME === "1" && item.os === "win32" && item.arch === "arm64"
+}
+
+async function extractPublishedRuntimePackage(name: string, version: string) {
+  const packageName = `@ericsanchezok/${name}`
+  const destination = path.join(dir, "dist", name)
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), "synergy-runtime-package-"))
+  try {
+    console.log(`reusing published runtime package ${packageName}@${version}`)
+    await retryCommand(packageName, () => $`npm pack ${`${packageName}@${version}`} --silent`.cwd(temp).quiet())
+    const tarball = fs.readdirSync(temp).find((entry) => entry.endsWith(".tgz"))
+    if (!tarball) {
+      throw new Error(`npm pack did not produce a tarball for ${packageName}@${version}`)
+    }
+
+    fs.rmSync(destination, { recursive: true, force: true })
+    fs.mkdirSync(destination, { recursive: true })
+    await $`tar -xzf ${path.join(temp, tarball)} -C ${destination} --strip-components=1`
+  } finally {
+    fs.rmSync(temp, { recursive: true, force: true })
+  }
+}
+
+async function retryCommand(name: string, command: () => Promise<unknown>) {
+  let lastError: unknown
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      await command()
+      return
+    } catch (error) {
+      lastError = error
+      if (attempt === 3) break
+      console.warn(`installing ${name} failed on attempt ${attempt}/3; retrying in 5s`)
+      await new Promise((resolve) => setTimeout(resolve, 5_000))
+    }
+  }
+  throw lastError
 }
 
 export { binaries }

@@ -18,7 +18,9 @@ import { ExperienceEncoder } from "@/library/experience-encoder"
 import { Question } from "@/question"
 import { ToolTimeout } from "@/tool/timeout"
 import { Observability } from "@/observability"
+import { ToolDiagnostic } from "@/tool/diagnostic"
 import type { ToolDisplay } from "@ericsanchezok/synergy-plugin/tool"
+import { SessionToolInput } from "./tool-input"
 
 export namespace SessionProcessor {
   const DOOM_LOOP_THRESHOLD = 3
@@ -48,6 +50,42 @@ export namespace SessionProcessor {
           JSON.stringify(part.state.input) === JSON.stringify(input),
       )
     )
+  }
+
+  export function streamToolErrorOutcome(part: MessageV2.ToolPart, error: unknown): ToolOutcome {
+    const rawMessage = error instanceof Error ? error.message : String(error)
+    const errorName = error instanceof Error ? error.name : undefined
+    const unavailable = /unavailable tool|no such tool|tool .* not found|unknown tool/i.test(rawMessage)
+    const diagnostic = {
+      code: unavailable ? "unknown_tool" : "invalid_arguments",
+      toolName: part.tool,
+      message: unavailable
+        ? [
+            `The model tried to call unavailable tool "${part.tool}".`,
+            "This tool is not available in the current session, mode, or permission context. Do not retry the same hidden tool.",
+            rawMessage,
+          ].join("\n")
+        : [
+            `The "${part.tool}" tool call could not be accepted.`,
+            "Rewrite the tool input so it satisfies the current schema, or choose another available tool.",
+            rawMessage,
+          ].join("\n"),
+      metadata: {
+        source: "ai_sdk_tool_error",
+        errorName,
+        rawMessage,
+      },
+    } satisfies ToolDiagnostic
+
+    return {
+      status: "error",
+      input:
+        part.state.status === "running" || part.state.status === "pending" || part.state.status === "generating"
+          ? part.state.input
+          : {},
+      error: diagnostic.message,
+      metadata: ToolDiagnostic.metadata(diagnostic),
+    }
   }
 
   export function create(input: {
@@ -123,7 +161,7 @@ export namespace SessionProcessor {
           ...part,
           state: {
             status: "completed",
-            input: outcome.input,
+            input: SessionToolInput.normalize(outcome.input),
             output: outcome.result.output,
             metadata: ToolTimeout.preserveMetadata(
               part.state.status === "running" ? part.state.metadata : undefined,
@@ -139,7 +177,7 @@ export namespace SessionProcessor {
           ...part,
           state: {
             status: "error",
-            input: outcome.input,
+            input: SessionToolInput.normalize(outcome.input),
             error: outcome.error,
             metadata: ToolTimeout.preserveMetadata(
               part.state.status === "running" ? part.state.metadata : undefined,
@@ -304,6 +342,7 @@ export namespace SessionProcessor {
                 case "tool-call": {
                   const match = toolcalls[value.toolCallId]
                   const display = input.toolDisplay?.(value.toolName)
+                  const toolInput = SessionToolInput.normalize(value.input)
                   const part = await Session.updatePart({
                     ...(match ?? {
                       id: Identifier.ascending("part"),
@@ -315,7 +354,7 @@ export namespace SessionProcessor {
                     tool: value.toolName,
                     state: {
                       status: "running",
-                      input: value.input,
+                      input: toolInput,
                       title: display?.media?.pendingTitle,
                       metadata: runningToolMetadata(value.toolName, value.providerMetadata),
                       time: {
@@ -327,7 +366,7 @@ export namespace SessionProcessor {
                   toolcalls[value.toolCallId] = part as MessageV2.ToolPart
                   delete generatingAccum[value.toolCallId]
 
-                  if (shouldAskDoomLoop(Object.values(toolcalls), value.toolName, value.input)) {
+                  if (shouldAskDoomLoop(Object.values(toolcalls), value.toolName, toolInput)) {
                     const agent = await Agent.get(input.assistantMessage.agent)
                     const session = await Session.get(input.assistantMessage.sessionID)
                     await PermissionNext.ask({
@@ -336,7 +375,7 @@ export namespace SessionProcessor {
                       sessionID: input.assistantMessage.sessionID,
                       metadata: {
                         tool: value.toolName,
-                        input: value.input,
+                        input: toolInput,
                         ...PermissionNext.requestMetadata(session),
                       },
 
@@ -349,8 +388,10 @@ export namespace SessionProcessor {
                 case "tool-result": {
                   const match = toolcalls[value.toolCallId]
                   if (match && match.state.status === "running") {
-                    const outcome = await pendingExecutions.get(value.toolCallId)
+                    const pending = pendingExecutions.get(value.toolCallId)
+                    const outcome = pending ? await pending : undefined
                     if (outcome) await settleToolPart(match, outcome)
+                    pendingExecutions.delete(value.toolCallId)
                     delete toolcalls[value.toolCallId]
                   }
                   break
@@ -359,8 +400,10 @@ export namespace SessionProcessor {
                 case "tool-error": {
                   const match = toolcalls[value.toolCallId]
                   if (match && match.state.status === "running") {
-                    const outcome = await pendingExecutions.get(value.toolCallId)
-                    if (outcome) await settleToolPart(match, outcome)
+                    const pending = pendingExecutions.get(value.toolCallId)
+                    const outcome = pending ? await pending : streamToolErrorOutcome(match, value.error)
+                    await settleToolPart(match, outcome)
+                    pendingExecutions.delete(value.toolCallId)
                     delete toolcalls[value.toolCallId]
                   }
                   if (

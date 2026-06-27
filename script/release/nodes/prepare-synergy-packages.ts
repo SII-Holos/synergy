@@ -36,34 +36,38 @@ export async function prepareSynergyPackages(version: string, platformNames: str
     const vec0Filename = `vec0.${suffix}`
     let vec0Copied = false
 
-    const localPath = join(SYNERGY_DIR, "node_modules", vecPkg, vec0Filename)
-    if (existsSync(localPath)) {
-      await $`cp ${localPath} ${join(distDir, vec0Filename)}`
-      vec0Copied = true
-    }
-
-    if (!vec0Copied) {
-      let searchDir = SYNERGY_DIR
-      while (searchDir !== dirname(searchDir)) {
-        const bunCacheBase = join(searchDir, "node_modules", ".bun")
-        const candidates = [
-          join(bunCacheBase, `${vecPkg}@${pkg.dependencies["sqlite-vec"]}`, "node_modules", vecPkg, vec0Filename),
-          join(bunCacheBase, "node_modules", vecPkg, vec0Filename),
-        ]
-        for (const candidate of candidates) {
-          if (existsSync(candidate)) {
-            await $`cp ${candidate} ${join(distDir, vec0Filename)}`
-            vec0Copied = true
-            break
-          }
-        }
-        if (vec0Copied) break
-        searchDir = dirname(searchDir)
+    if (pkg.dependencies[vecPkg]) {
+      const localPath = join(SYNERGY_DIR, "node_modules", vecPkg, vec0Filename)
+      if (existsSync(localPath)) {
+        await $`cp ${localPath} ${join(distDir, vec0Filename)}`
+        vec0Copied = true
       }
-    }
 
-    if (!vec0Copied) {
-      throw new Error(`sqlite-vec extension (${vec0Filename}) not found for ${vecPkg}`)
+      if (!vec0Copied) {
+        let searchDir = SYNERGY_DIR
+        while (searchDir !== dirname(searchDir)) {
+          const bunCacheBase = join(searchDir, "node_modules", ".bun")
+          const candidates = [
+            join(bunCacheBase, `${vecPkg}@${pkg.dependencies[vecPkg]}`, "node_modules", vecPkg, vec0Filename),
+            join(bunCacheBase, "node_modules", vecPkg, vec0Filename),
+          ]
+          for (const candidate of candidates) {
+            if (existsSync(candidate)) {
+              await $`cp ${candidate} ${join(distDir, vec0Filename)}`
+              vec0Copied = true
+              break
+            }
+          }
+          if (vec0Copied) break
+          searchDir = dirname(searchDir)
+        }
+      }
+
+      if (!vec0Copied) {
+        throw new Error(`sqlite-vec extension (${vec0Filename}) not found for ${vecPkg}`)
+      }
+    } else {
+      console.warn(`sqlite-vec extension package not declared for ${vecPkg}; vector search will be unavailable`)
     }
 
     const astGrepPlatformMap: Record<string, string> = {

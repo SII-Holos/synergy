@@ -1,7 +1,6 @@
 import z from "zod"
 import { Tool } from "./tool"
 import { BrowserToolHelper } from "./browser-shared"
-import { BrowserRuntime } from "../browser/runtime"
 import { BrowserOwner } from "../browser/owner"
 import { BrowserLocator } from "../browser/locator"
 import { BrowserScreenshot } from "../browser/screenshot"
@@ -19,7 +18,7 @@ export const BrowserScreenshotTool = Tool.define("browser_screenshot", {
   description:
     "Capture a screenshot of the current browser page. Supports viewport, fullPage, locator-targeted, and region clip captures. Saves the image as an attachment delivered to the user. Returns page dimensions and a preview description.",
   parameters: z.object({
-    tabId: z.string().optional().describe("Tab ID. Uses the active tab if omitted."),
+    pageId: z.string().optional().describe("Page ID. Uses the session page if omitted."),
     format: z.enum(["jpeg", "png"]).default("png").describe("Image format. Default png."),
     fullPage: z.boolean().default(false).describe("Capture the full scrollable page. Default false (viewport only)."),
     locator: z
@@ -29,9 +28,8 @@ export const BrowserScreenshotTool = Tool.define("browser_screenshot", {
     clip: ClipSchema.optional().describe("Screenshot region clip {x, y, width, height}. Overrides locator."),
   }),
   async execute(params, ctx) {
-    await BrowserRuntime.ensure()
     const owner = BrowserOwner.fromToolContext(ctx)
-    const tab = await BrowserToolHelper.getTab(owner, params.tabId)
+    const tab = await BrowserToolHelper.getPage(owner, params.pageId)
     return BrowserToolHelper.withActivity(
       ctx,
       tab,
@@ -125,7 +123,7 @@ async function finishResult(
     output: outputParts.join(" "),
     metadata: {
       url: tab.url,
-      tabId: tab.id,
+      pageId: tab.id,
       width,
       height,
       format: params.format,

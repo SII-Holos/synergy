@@ -8,7 +8,7 @@ function nextId(): string {
 export namespace BrowserDownloads {
   export interface DownloadRecord {
     id: string
-    tabID: string
+    pageID: string
     url: string
     suggestedFilename: string
     mimeType?: string
@@ -72,10 +72,10 @@ export namespace BrowserDownloads {
     // Register download handler that populates in-memory records
     page.on("download", async (download) => {
       const id = nextId()
-      const tabID = ((download.page() as unknown as Record<string, unknown>)._synergyTabID as string) ?? "unknown"
+      const pageID = ((download.page() as unknown as Record<string, unknown>)._synergyPageID as string) ?? "unknown"
       const rec: DownloadRecord = {
         id,
-        tabID,
+        pageID,
         url: download.url(),
         suggestedFilename: download.suggestedFilename(),
         state: "pending",

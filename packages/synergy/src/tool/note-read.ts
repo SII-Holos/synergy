@@ -3,6 +3,7 @@ import z from "zod"
 import { Tool } from "./tool"
 import { NoteStore } from "../note"
 import { NoteMarkdown } from "../note"
+import { NoteDocument } from "../note"
 import { ScopeContext } from "../scope/context"
 import DESCRIPTION from "./note-read.txt"
 
@@ -11,120 +12,37 @@ const MAX_LINES = 2000
 
 const parameters = z.object({
   ids: z.array(z.string()).describe("List of note IDs to read (max 10)"),
-  offset: z.coerce.number().optional().describe("Line offset to start reading from (0-based)"),
-  limit: z.coerce.number().optional().describe("Maximum number of lines to return per note (max 2000)"),
+  offset: z.coerce.number().optional().describe("Line or block offset to start reading from (0-based)"),
+  limit: z.coerce.number().optional().describe("Maximum number of lines or blocks to return per note (max 2000)"),
   format: z
-    .enum(["markdown", "blocks"])
+    .enum(["markdown", "blocks", "json"])
     .default("markdown")
     .describe(
-      "Output format. 'markdown': content as markdown (default). 'blocks': flattened numbered block list for use with note_edit block-index API.",
+      "Output format. 'markdown': content as markdown (default). 'blocks': editable block anchors for note_edit. 'json': structured note data.",
     ),
+  detail: z
+    .enum(["summary", "json"])
+    .default("summary")
+    .describe("Detail level for blocks/json output. Use 'json' when exact node JSON is needed for edits."),
+  includeHashes: z.boolean().default(true).describe("Include docHash and block hashes for note_edit safety checks."),
 })
 
-type TipTapNode = {
-  type: string
-  attrs?: Record<string, any>
-  content?: TipTapNode[]
-  text?: string
-  marks?: Array<{ type: string; attrs?: Record<string, any> }>
-}
-
-function renderBlocks(doc: any): string {
-  const blocks = doc?.content ?? []
-  if (blocks.length === 0) return "(empty note)"
-
-  return blocks
-    .map((node: TipTapNode, i: number) => {
-      const header = `[block:${i}]`
-      const text = renderBlock(node)
-      return `${header} ${text}`
-    })
-    .join("\n")
-}
-
-function renderBlock(node: TipTapNode): string {
-  switch (node.type) {
-    case "paragraph":
-      return renderInline(node.content ?? [])
-    case "heading":
-      return "#".repeat(node.attrs?.level ?? 1) + " " + renderInline(node.content ?? [])
-    case "bulletList":
-      return (node.content ?? [])
-        .map((item) => "- " + renderInline((item.content ?? []).flatMap((b) => b.content ?? [])))
-        .join("\n  ")
-    case "orderedList":
-      return (node.content ?? [])
-        .map((item, i) => `${i + 1}. ` + renderInline((item.content ?? []).flatMap((b) => b.content ?? [])))
-        .join("\n  ")
-    case "taskList":
-      return (node.content ?? [])
-        .map((item) => {
-          const checked = item.attrs?.checked ? "x" : " "
-          return `- [${checked}] ` + renderInline((item.content ?? []).flatMap((b) => b.content ?? []))
-        })
-        .join("\n  ")
-    case "codeBlock": {
-      const lang = node.attrs?.language ?? ""
-      const code = (node.content ?? []).map((t) => t.text ?? "").join("")
-      return "```" + lang + "\n" + code + "\n```"
-    }
-    case "blockquote":
-      return renderInline(node.content ?? [])
-    case "horizontalRule":
-      return "---"
-    case "mermaid":
-    case "mermaidDiagram":
-      return "[Mermaid diagram]"
-    case "video":
-      return "[Video: " + (node.attrs?.src ?? "unknown") + "]"
-    case "image":
-      return "[Image: " + (node.attrs?.src ?? node.attrs?.alt ?? "unknown") + "]"
-    case "table":
-      return "[Table: " + ((node.content ?? []).length || 0) + " rows]"
-    default:
-      return renderInline(node.content ?? []) || "[Unknown block: " + node.type + "]"
-  }
-}
-
-function renderInline(content: TipTapNode[]): string {
-  if (!content || content.length === 0) return ""
-  return content
-    .map((node) => {
-      if (node.type === "text") {
-        let text = node.text ?? ""
-        if (node.marks) {
-          for (const mark of node.marks) {
-            switch (mark.type) {
-              case "bold":
-                text = "**" + text + "**"
-                break
-              case "italic":
-                text = "*" + text + "*"
-                break
-              case "code":
-                text = "`" + text + "`"
-                break
-              case "strike":
-                text = "~~" + text + "~~"
-                break
-              case "link":
-                text = "[" + text + "](" + (mark.attrs?.href ?? "") + ")"
-                break
-            }
-          }
-        }
-        return text
-      }
-      if (node.type === "hardBreak") return "\n"
-      if (node.type === "inlineMath" || node.type === "mathInline") {
-        return node.attrs?.latex ? "$" + node.attrs.latex + "$" : ""
-      }
-      if (node.type === "image") {
-        return "[Image: " + (node.attrs?.src ?? "unknown") + "]"
-      }
-      return ""
-    })
-    .join("")
+function renderBlockInfo(
+  block: NoteDocument.BlockInfo,
+  index: number,
+  includeHashes: boolean,
+  includeJson: boolean,
+): string {
+  const parts = [`[block:${index}]`, `id=${block.id}`, `type=${block.type}`, `path=${block.pathLabel}`]
+  if (includeHashes) parts.push(`hash=${block.hash}`)
+  if (block.parentId) parts.push(`parent=${block.parentId}`)
+  if (block.tableId) parts.push(`table=${block.tableId}`)
+  if (block.row !== undefined) parts.push(`row=${block.row}`)
+  if (block.col !== undefined) parts.push(`col=${block.col}`)
+  const attrs = block.attrs && Object.keys(block.attrs).length > 0 ? `\n  attrs: ${JSON.stringify(block.attrs)}` : ""
+  const text = block.text.trim() ? `\n  text: ${block.text}` : ""
+  const json = includeJson ? `\n  json: ${JSON.stringify(block.json)}` : ""
+  return `${parts.join(" ")}\n  summary: ${block.summary}${attrs}${text}${json}`
 }
 
 export const NoteReadTool = Tool.define("note_read", {
@@ -142,7 +60,8 @@ export const NoteReadTool = Tool.define("note_read", {
         const note = await NoteStore.getAny(ScopeContext.current.scope.id, id)
         found++
         titles.push(note.title)
-        const bodyText = params.format === "blocks" ? renderBlocks(note.content) : NoteMarkdown.toMarkdown(note.content)
+        const doc = NoteDocument.normalize(note.content)
+        const docHash = NoteDocument.hash(doc)
         const tags = note.tags.length > 0 ? note.tags.join(", ") : "none"
         const pinned = note.pinned ? "yes" : "no"
         const global = note.global ? "yes" : "no"
@@ -163,6 +82,8 @@ export const NoteReadTool = Tool.define("note_read", {
           `[${id}] ${note.title}`,
           `Kind: ${kind}`,
           ...blueprintLines,
+          `Version: ${note.version}`,
+          ...(params.includeHashes ? [`DocHash: ${docHash}`] : []),
           `Tags: ${tags}`,
           `Pinned: ${pinned} | Global: ${global}`,
           `Updated: ${updated}`,
@@ -171,24 +92,65 @@ export const NoteReadTool = Tool.define("note_read", {
           "",
         ].join("\n")
 
-        const lines = bodyText.split("\n")
-        const totalLines = lines.length
-        const offset = params.offset ?? 0
-        const limit = Math.min(params.limit ?? totalLines, MAX_LINES)
-        const sliced = lines.slice(offset, offset + limit)
-        const shown = sliced.length
-
         let body: string
-        if (params.format === "blocks") {
-          body = sliced.join("\n")
-        } else if (params.offset !== undefined || params.limit !== undefined) {
-          const numbered = sliced.map(
-            (line: string, i: number) => `${(offset + i + 1).toString().padStart(5)}\t${line}`,
+        if (params.format === "json") {
+          const blocks = NoteDocument.listBlocks(doc, { includeJson: params.detail === "json" })
+          body = JSON.stringify(
+            {
+              id: note.id,
+              title: note.title,
+              kind,
+              version: note.version,
+              ...(params.includeHashes ? { docHash } : {}),
+              tags: note.tags,
+              pinned: note.pinned,
+              global: note.global,
+              blockCount: blocks.length,
+              blocks,
+              ...(params.detail === "json" ? { content: doc } : {}),
+            },
+            null,
+            2,
           )
-          body = numbered.join("\n")
-          body += `\n\n(showing lines ${offset + 1}-${offset + shown} of ${totalLines})`
+        } else if (params.format === "blocks") {
+          const blocks = NoteDocument.listBlocks(doc, { includeJson: params.detail === "json" })
+          const totalBlocks = blocks.length
+          const offset = params.offset ?? 0
+          const limit = Math.min(params.limit ?? totalBlocks, MAX_LINES)
+          const sliced = blocks.slice(offset, offset + limit)
+          body =
+            [
+              `BlockCount: ${totalBlocks}`,
+              `ShowingBlocks: ${offset}-${offset + sliced.length - 1}`,
+              "",
+              sliced.length
+                ? sliced
+                    .map((block, index) =>
+                      renderBlockInfo(block, offset + index, params.includeHashes, params.detail === "json"),
+                    )
+                    .join("\n")
+                : "(empty note)",
+            ].join("\n") +
+            (sliced.length < totalBlocks
+              ? `\n\n(showing blocks ${offset}-${offset + sliced.length - 1} of ${totalBlocks})`
+              : "")
         } else {
-          body = sliced.join("\n")
+          const bodyText = NoteMarkdown.toMarkdown(doc)
+          const lines = bodyText.split("\n")
+          const totalLines = lines.length
+          const offset = params.offset ?? 0
+          const limit = Math.min(params.limit ?? totalLines, MAX_LINES)
+          const sliced = lines.slice(offset, offset + limit)
+          const shown = sliced.length
+          if (params.offset !== undefined || params.limit !== undefined) {
+            const numbered = sliced.map(
+              (line: string, i: number) => `${(offset + i + 1).toString().padStart(5)}\t${line}`,
+            )
+            body = numbered.join("\n")
+            body += `\n\n(showing lines ${offset + 1}-${offset + shown} of ${totalLines})`
+          } else {
+            body = sliced.join("\n")
+          }
         }
 
         entries.push(header + body)

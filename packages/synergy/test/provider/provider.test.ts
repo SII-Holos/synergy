@@ -1597,6 +1597,43 @@ test("provider options are deeply merged", async () => {
   })
 })
 
+test("openrouter provider adds attribution headers and merges custom headers", async () => {
+  await using tmp = await tmpdir({
+    init: async (dir) => {
+      await Bun.write(
+        path.join(dir, "synergy.json"),
+        JSON.stringify({
+          $schema: "file:///test/config.schema.json",
+          provider: {
+            openrouter: {
+              options: {
+                headers: {
+                  "X-Custom": "custom-value",
+                },
+              },
+            },
+          },
+        }),
+      )
+    },
+  })
+  await provideTestScope({
+    scope: await tmp.scope(),
+    init: async () => {
+      Env.set("OPENROUTER_API_KEY", "test-api-key")
+    },
+    fn: async () => {
+      const providers = await Provider.list()
+      expect(providers["openrouter"].options.headers).toMatchObject({
+        "HTTP-Referer": "https://synergy.holosai.io/",
+        "X-OpenRouter-Title": "Synergy",
+        "X-OpenRouter-Categories": "cli-agent,personal-agent",
+        "X-Custom": "custom-value",
+      })
+    },
+  })
+})
+
 test("custom model inherits npm package from models.dev provider config", async () => {
   await using tmp = await tmpdir({
     init: async (dir) => {

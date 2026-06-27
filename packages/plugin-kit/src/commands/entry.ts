@@ -2,7 +2,7 @@ import path from "path"
 import type { Argv } from "yargs"
 import { cmd } from "../cmd"
 import { UI } from "../ui"
-import { githubEntry, writeGithubEntry } from "../lib/market-entry"
+import { copyGithubEntryIcon, githubEntry, writeGithubEntry } from "../lib/market-entry"
 
 export const PluginEntryCommand = cmd({
   command: "entry <tarball>",
@@ -60,6 +60,7 @@ export const PluginEntryCommand = cmd({
       if (writeEntry) {
         const outputPath = path.resolve(writeEntry)
         writeGithubEntry(outputPath, entry)
+        copyGithubEntryIcon({ tarballPath, entryPath: outputPath, entry })
         UI.println(`${UI.Style.TEXT_SUCCESS}✔${UI.Style.TEXT_NORMAL} Wrote GitHub registry entry ${outputPath}`)
       } else {
         UI.println(JSON.stringify(entry, null, 2))

@@ -5,6 +5,8 @@ import { useGlobalSDK } from "@/context/global-sdk"
 import { VerifiedBadge } from "./VerifiedBadge"
 import { PermissionRiskBadge } from "../consent/PermissionRiskBadge"
 import type { RegistryPluginSummary } from "@ericsanchezok/synergy-sdk/client"
+import { MarketplacePluginIcon } from "./MarketplacePluginIcon"
+import "./marketplace.css"
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -17,16 +19,6 @@ function timeAgo(ts: number): string {
   const days = Math.floor(hours / 24)
   if (days < 30) return `${days}d ago`
   return new Date(ts).toLocaleDateString()
-}
-
-function pluginOverallRisk(plugin: RegistryPluginSummary): "low" | "medium" | "high" {
-  // If the latest version has a known risk, use it
-  // Otherwise do keyword-based heuristic
-  const keywords = plugin.keywords ?? []
-  const lower = keywords.map((k) => k.toLowerCase())
-  if (lower.some((k) => k.includes("filesystem") || k.includes("shell") || k.includes("exec"))) return "high"
-  if (lower.some((k) => k.includes("network") || k.includes("api"))) return "medium"
-  return "low"
 }
 
 // ── Component ────────────────────────────────────────────────────────────────
@@ -59,130 +51,166 @@ export function MarketplacePage() {
     return results !== undefined && results.length === 0
   })
 
+  const resultCount = createMemo(() => searchResults()?.length ?? 0)
+
   return (
-    <div class="synergy-workbench-canvas flex flex-col h-full min-h-0 bg-background-stronger text-text-base">
-      {/* ── Header ── */}
-      <div class="shrink-0 px-6 pt-6 pb-3 flex flex-col gap-3.5 border-b border-border-weaker-base/40">
-        <div class="flex items-center gap-2">
-          <Icon name="package" size="normal" class="text-icon-weak shrink-0" />
-          <span class="text-15-medium text-text-strong flex-1">Plugin Marketplace</span>
-        </div>
-        <p class="text-12-regular text-text-weak -mt-1">Browse and install plugins for Synergy</p>
-        <div class="inline-flex items-center self-start rounded-lg bg-surface-inset-base p-0.5 border border-border-weaker-base/40">
-          <For each={["official", "local"] as const}>
-            {(item) => (
-              <button
-                type="button"
-                classList={{
-                  "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-12-medium transition-colors": true,
-                  "workbench-selected-surface bg-surface-raised-base text-text-strong shadow-sm": source() === item,
-                  "text-text-weak hover:text-text-base": source() !== item,
-                }}
-                onClick={() => setSource(item)}
-              >
-                <Icon name={item === "official" ? "badge-check" : "hard-drive"} size="small" />
-                {item === "official" ? "Official" : "Local"}
-              </button>
-            )}
-          </For>
-        </div>
-        {/* ── Search bar ── */}
-        <div class="relative">
-          <Icon
-            name="search"
-            size="small"
-            class="absolute left-3 top-1/2 -translate-y-1/2 text-icon-weak pointer-events-none"
-          />
-          <input
-            type="text"
-            value={query()}
-            onInput={(e) => handleInput(e.currentTarget.value)}
-            placeholder="Search plugins..."
-            class="w-full pl-9 pr-4 py-2 rounded-lg bg-surface-inset-base text-text-base text-13-regular border border-border-weaker-base/40 focus:outline-none focus:ring-2 focus:ring-border-base/30 placeholder:text-text-weaker transition-colors"
-          />
-        </div>
-      </div>
+    <div class="synergy-workbench-canvas plugin-marketplace-page flex h-full min-h-0 flex-col bg-background-stronger text-text-base">
+      <div class="plugin-marketplace-scroll flex-1 min-h-0 overflow-y-auto px-5 py-7 sm:px-6">
+        <div class="plugin-marketplace-shell mx-auto flex w-full max-w-[760px] flex-col gap-5">
+          <header class="flex flex-col gap-4">
+            <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+              <div class="min-w-0">
+                <div class="flex items-center gap-2.5">
+                  <span class="plugin-marketplace-icon-tile">
+                    <Icon name="package" size="normal" class="text-icon-weak" />
+                  </span>
+                  <h1 class="text-18-medium text-text-strong">Plugins</h1>
+                </div>
+                <p class="mt-1 text-13-regular leading-relaxed text-text-weak">
+                  Browse trusted extensions that add tools, agents, UI surfaces, and workflows to Synergy.
+                </p>
+              </div>
 
-      {/* ── Results ── */}
-      <div class="flex-1 min-h-0 overflow-y-auto px-6 pb-6 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-        {/* Loading */}
-        <Show when={searchResults.loading}>
-          <div class="flex items-center justify-center py-16">
-            <div class="size-5 rounded-full border-2 border-border-weaker-base border-t-text-base animate-spin" />
-          </div>
-        </Show>
-
-        {/* Empty state */}
-        <Show when={isEmpty()}>
-          <div class="flex flex-col items-center justify-center py-16 gap-3 text-center">
-            <Icon name="package" size="large" class="text-icon-weak" />
-            <div>
-              <p class="text-14-medium text-text-weak">
-                {debouncedQuery() ? "No plugins found" : "No plugins available"}
-              </p>
-              <p class="text-12-regular text-text-weaker mt-1 max-w-64">
-                {debouncedQuery()
-                  ? `No results for "${debouncedQuery()}". Try a different search term.`
-                  : "The plugin marketplace is empty. Plugins will appear here once published."}
-              </p>
+              <div class="plugin-marketplace-source-switch inline-flex shrink-0 items-center rounded-xl bg-surface-inset-base p-0.5 ring-1 ring-inset ring-border-weaker-base/55">
+                <For each={["official", "local"] as const}>
+                  {(item) => (
+                    <button
+                      type="button"
+                      classList={{
+                        "inline-flex h-8 items-center gap-1.5 rounded-lg px-3 text-12-medium transition-colors": true,
+                        "workbench-selected-surface text-text-strong": source() === item,
+                        "text-text-weak hover:text-text-base": source() !== item,
+                      }}
+                      onClick={() => setSource(item)}
+                    >
+                      <Icon name={item === "official" ? "badge-check" : "hard-drive"} size="small" />
+                      {item === "official" ? "Official" : "Local"}
+                    </button>
+                  )}
+                </For>
+              </div>
             </div>
-          </div>
-        </Show>
 
-        {/* Results grid */}
-        <Show when={searchResults() && searchResults()!.length > 0}>
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-2 mt-4">
-            <For each={searchResults()}>
-              {(plugin) => (
-                <button
-                  type="button"
-                  class="flex flex-col gap-3 px-4 py-3.5 rounded-xl text-left w-full transition-colors bg-surface-raised-base hover:bg-surface-raised-base-hover cursor-pointer ring-1 ring-transparent hover:ring-border-base/25"
-                  onClick={() =>
-                    navigate(
-                      `/plugins/${encodeURIComponent(plugin.id)}?source=${encodeURIComponent(
-                        (plugin.source as "official" | "local" | undefined) ?? source(),
-                      )}`,
-                    )
-                  }
-                >
-                  {/* Top row: name + badges */}
-                  <div class="flex items-start gap-2">
-                    <div class="flex-1 min-w-0">
-                      <div class="flex items-center gap-2">
-                        <h3 class="text-14-medium text-text-strong truncate">{plugin.name}</h3>
-                        <Show when={plugin.latestVersion}>
-                          <span class="text-11-medium text-text-weaker bg-surface-inset-base rounded px-1.5 py-px shrink-0">
-                            v{plugin.latestVersion}
-                          </span>
-                        </Show>
-                      </div>
-                      <p class="text-12-regular text-text-weak mt-1 line-clamp-2">{plugin.description}</p>
-                    </div>
-                    <div class="flex items-center gap-1.5 shrink-0">
-                      <VerifiedBadge verified={plugin.verified} official={plugin.official} />
-                      <PermissionRiskBadge risk={pluginOverallRisk(plugin)} />
-                    </div>
-                  </div>
+            <div class="relative">
+              <span class="pointer-events-none absolute left-3 top-1/2 flex size-4 -translate-y-1/2 items-center justify-center">
+                <Icon name="search" size="small" class="text-icon-weak" />
+              </span>
+              <input
+                type="text"
+                value={query()}
+                onInput={(e) => handleInput(e.currentTarget.value)}
+                placeholder="Search plugins"
+                class="workbench-input-surface h-10 w-full rounded-xl px-9 text-13-regular text-text-base outline-none placeholder:text-text-weak"
+              />
+            </div>
+          </header>
 
-                  {/* Bottom row: author + time */}
-                  <div class="flex items-center gap-3 text-11-regular text-text-weaker">
-                    <span class="flex items-center gap-1">
-                      <Icon name="user" size="small" class="text-icon-weaker" />
-                      {plugin.author?.name ?? "Unknown"}
-                    </span>
-                    <span>•</span>
-                    <span>
-                      {((plugin.source as string | undefined) ?? source()) === "local" ? "Local" : "Official"}
-                    </span>
-                    <span>•</span>
-                    <span>Updated {timeAgo(plugin.updatedAt)}</span>
-                  </div>
-                </button>
-              )}
-            </For>
-          </div>
-        </Show>
+          <section class="flex flex-col gap-2.5">
+            <div class="flex items-center justify-between px-0.5">
+              <div>
+                <h2 class="text-13-medium text-text-strong">
+                  {source() === "official" ? "Official marketplace" : "Local registry"}
+                </h2>
+                <p class="text-12-regular text-text-weak">
+                  <Show
+                    when={!searchResults.loading}
+                    fallback={source() === "official" ? "Checking official registry" : "Checking local registry"}
+                  >
+                    {resultCount()} {resultCount() === 1 ? "plugin" : "plugins"}
+                    <Show when={debouncedQuery()}> matching "{debouncedQuery()}"</Show>
+                  </Show>
+                </p>
+              </div>
+            </div>
+
+            <Show when={searchResults.loading}>
+              <div class="flex flex-col gap-2">
+                <For each={[0, 1, 2]}>
+                  {() => <div class="plugin-marketplace-skeleton-row workbench-card-surface h-[92px] rounded-2xl" />}
+                </For>
+              </div>
+            </Show>
+
+            <Show when={isEmpty()}>
+              <div class="workbench-card-surface flex flex-col items-center justify-center rounded-2xl px-6 py-14 text-center">
+                <span class="plugin-marketplace-empty-icon">
+                  <Icon name="package" size="large" class="text-icon-weak" />
+                </span>
+                <p class="mt-3 text-14-medium text-text-strong">
+                  {debouncedQuery() ? "No plugins found" : "No plugins available"}
+                </p>
+                <p class="mt-1 max-w-72 text-12-regular leading-relaxed text-text-weak">
+                  {debouncedQuery()
+                    ? `No results for "${debouncedQuery()}". Try a different search term.`
+                    : source() === "official"
+                      ? "The official marketplace has not returned any plugins yet."
+                      : "Local development plugins will appear here once registered."}
+                </p>
+              </div>
+            </Show>
+
+            <Show when={searchResults() && searchResults()!.length > 0}>
+              <div class="flex flex-col gap-2">
+                <For each={searchResults()}>
+                  {(plugin) => (
+                    <PluginRow
+                      plugin={plugin}
+                      onClick={() =>
+                        navigate(
+                          `/plugins/${encodeURIComponent(plugin.id)}?source=${encodeURIComponent(plugin.source)}`,
+                        )
+                      }
+                    />
+                  )}
+                </For>
+              </div>
+            </Show>
+          </section>
+        </div>
       </div>
     </div>
+  )
+}
+
+function PluginRow(props: { plugin: RegistryPluginSummary; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      class="plugin-marketplace-row workbench-card-surface group flex w-full items-center gap-3 rounded-2xl px-3.5 py-3 text-left transition-colors hover:bg-surface-raised-base-hover focus:outline-none focus:ring-2 focus:ring-border-base/35"
+      onClick={props.onClick}
+    >
+      <MarketplacePluginIcon plugin={props.plugin} class="plugin-marketplace-plugin-icon" />
+
+      <span class="min-w-0 flex-1">
+        <span class="flex min-w-0 flex-wrap items-center gap-1.5">
+          <span class="truncate text-14-medium text-text-strong">{props.plugin.name}</span>
+          <Show when={props.plugin.latestVersion}>
+            <span class="rounded-md bg-surface-inset-base px-1.5 py-px text-11-medium text-text-weaker">
+              v{props.plugin.latestVersion}
+            </span>
+          </Show>
+        </span>
+        <span class="mt-1 block line-clamp-2 text-12-regular leading-relaxed text-text-weak">
+          {props.plugin.description}
+        </span>
+        <span class="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-11-regular text-text-weaker">
+          <span>{props.plugin.author?.name ?? "Unknown author"}</span>
+          <span aria-hidden="true">·</span>
+          <span>{props.plugin.tools.length} tools</span>
+          <span aria-hidden="true">·</span>
+          <span>{props.plugin.runtimeMode}</span>
+          <span aria-hidden="true">·</span>
+          <span>Updated {timeAgo(props.plugin.updatedAt)}</span>
+        </span>
+      </span>
+
+      <span class="hidden shrink-0 items-center gap-1.5 sm:flex">
+        <VerifiedBadge verified={props.plugin.verified} official={props.plugin.official} />
+        <PermissionRiskBadge risk={props.plugin.risk} />
+      </span>
+      <span class="plugin-marketplace-row-arrow shrink-0 text-icon-weaker transition-transform group-hover:translate-x-0.5 group-hover:text-icon-base">
+        <Icon name="chevron-right" size="small" />
+      </span>
+    </button>
   )
 }

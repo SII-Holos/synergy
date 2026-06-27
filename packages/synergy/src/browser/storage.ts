@@ -5,12 +5,12 @@ import { BrowserMigration } from "./migration.js"
 import { Global } from "../global/index.js"
 
 export namespace BrowserStorage {
-  export const CURRENT_VERSION = 2
+  export const CURRENT_VERSION = 3
 
   export interface StoredAnnotation {
     id: string
-    tabURL: string
-    tabID: string
+    pageURL: string
+    pageID: string
     ref?: string
     element?: string
     comment: string
@@ -21,16 +21,12 @@ export namespace BrowserStorage {
 
   export interface SessionState {
     version?: number
-    tabs: {
+    page: {
       id: string
       url: string
       title: string
-      order: number
-      pinned?: boolean
-      kept?: boolean
       lastActiveAt?: number | null
-    }[]
-    activeTabID: string | null
+    } | null
     panelWidth?: number
     timestamp: number
     annotations?: StoredAnnotation[]
@@ -97,10 +93,7 @@ export namespace BrowserStorage {
       version: CURRENT_VERSION,
       storageStatePath: state.storageStatePath ?? storageStatePath(owner),
       profileDir: state.profileDir ?? profileDir(owner),
-      tabs: state.tabs.map((tab) => ({
-        ...tab,
-        url: sanitizeUrl(tab.url),
-      })),
+      page: state.page ? { ...state.page, url: sanitizeUrl(state.page.url) } : null,
     }
     const fp = stateFilePath(owner)
     await fs.mkdir(path.dirname(fp), { recursive: true })

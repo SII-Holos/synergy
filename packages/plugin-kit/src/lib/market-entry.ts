@@ -8,6 +8,9 @@ import { computeRisk } from "./risk"
 import { resolveRuntimeMode } from "./runtime-mode"
 import { readSignatureFile } from "./signature"
 import { sha256File } from "./crypto"
+import { isManifestIconPath, packageRelativePath, resolveUnder } from "./artifact-assets"
+
+export type GithubRegistryIcon = { type: "lucide"; name: string } | { type: "registry-svg"; path: string }
 
 export interface GithubRegistryEntry {
   schemaVersion: 1
@@ -17,6 +20,7 @@ export interface GithubRegistryEntry {
   repo: string
   homepage?: string
   author: { name: string; email?: string; url?: string }
+  icon?: GithubRegistryIcon
   verified: boolean
   official: boolean
   keywords: string[]
@@ -97,6 +101,22 @@ export function readTarballManifest(tarballPath: string): PluginManifestType {
   return PluginManifest.parse(JSON.parse(fs.readFileSync(manifestPath, "utf-8"))) as PluginManifestType
 }
 
+function registryIconPath(pluginId: string): string {
+  return `icons/${pluginId}.svg`
+}
+
+function iconForManifest(manifest: PluginManifestType, extractedDir: string): GithubRegistryIcon | undefined {
+  if (!manifest.icon) return undefined
+  if (!isManifestIconPath(manifest.icon)) return { type: "lucide", name: manifest.icon }
+
+  const packagedPath = packageRelativePath(manifest.icon)
+  const iconPath = resolveUnder(extractedDir, packagedPath)
+  if (!fs.existsSync(iconPath)) throw new Error(`Marketplace icon not found in tarball: ${manifest.icon}`)
+  const stat = fs.statSync(iconPath)
+  if (!stat.isFile()) throw new Error(`Marketplace icon must be a file: ${manifest.icon}`)
+  return { type: "registry-svg", path: registryIconPath(manifest.name) }
+}
+
 export function uiSurfaces(manifest: PluginManifestType): string[] {
   const ui = manifest.contributes?.ui
   if (!ui) return []
@@ -132,7 +152,12 @@ export function githubEntry(input: {
   changelog?: string
   publishedAt?: string
 }): GithubRegistryEntry {
-  const manifest = readTarballManifest(input.tarballPath)
+  const extractedDir = extractArchive(input.tarballPath)
+  const manifestPath = path.join(extractedDir, "plugin.json")
+  if (!fs.existsSync(manifestPath)) {
+    throw new Error("Tarball does not contain plugin.json. Run `synergy-plugin build` and `synergy-plugin pack` first.")
+  }
+  const manifest = PluginManifest.parse(JSON.parse(fs.readFileSync(manifestPath, "utf-8"))) as PluginManifestType
   const repo = normalizeRepoUrl(input.repo ?? manifest.repository ?? manifest.homepage)
   if (!repo) throw new Error("GitHub registry entry requires --repo or manifest.repository")
 
@@ -166,6 +191,7 @@ export function githubEntry(input: {
   if (signature.payload.permissionsHash !== permissionsHash) {
     throw new Error("Signature permissions hash does not match manifest capabilities")
   }
+  const icon = iconForManifest(manifest, extractedDir)
 
   return {
     schemaVersion: 1,
@@ -175,6 +201,7 @@ export function githubEntry(input: {
     repo,
     ...(manifest.homepage ? { homepage: manifest.homepage } : {}),
     author: parseAuthor(manifest.author),
+    ...(icon ? { icon } : {}),
     verified: Boolean(input.verified),
     official: Boolean(input.official),
     keywords: [...new Set([...(manifest.keywords ?? []), "synergy-plugin"])].sort(),
@@ -202,6 +229,31 @@ export function githubEntry(input: {
     ],
     yankedVersions: [],
   }
+}
+
+function registryRootForEntryPath(entryPath: string): string {
+  const dir = path.dirname(entryPath)
+  return path.basename(dir) === "plugins" ? path.dirname(dir) : dir
+}
+
+export function copyGithubEntryIcon(input: {
+  tarballPath: string
+  entryPath: string
+  entry: GithubRegistryEntry
+}): string | undefined {
+  if (input.entry.icon?.type !== "registry-svg") return undefined
+  const manifest = readTarballManifest(input.tarballPath)
+  if (!isManifestIconPath(manifest.icon)) throw new Error(`Marketplace icon path is not a local SVG: ${manifest.icon}`)
+
+  const extractedDir = extractArchive(input.tarballPath)
+  const source = resolveUnder(extractedDir, packageRelativePath(manifest.icon))
+  if (!fs.existsSync(source)) throw new Error(`Marketplace icon not found in tarball: ${manifest.icon}`)
+
+  const registryRoot = registryRootForEntryPath(input.entryPath)
+  const destination = resolveUnder(registryRoot, input.entry.icon.path)
+  fs.mkdirSync(path.dirname(destination), { recursive: true })
+  fs.copyFileSync(source, destination)
+  return destination
 }
 
 export function writeGithubEntry(filepath: string, next: GithubRegistryEntry): GithubRegistryEntry {

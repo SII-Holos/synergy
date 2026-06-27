@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json.schemastore.org/package.json",
+  "name": "@ericsanchezok/synergy-desktop",
+  "version": "1.1.26",
+  "description": "Synergy desktop application",
+  "homepage": "https://github.com/SII-Holos/synergy",
+  "type": "module",
+  "license": "MIT",
+  "author": {
+    "name": "Holos AI",
+    "email": "support@holos.ai"
+  },
+  "main": "./dist/main.js",
+  "scripts": {
+    "build": "bun run desktop:build",
+    "desktop:build": "bun build src/main.ts --outfile dist/main.js --target=node --external electron && bun build src/preload.ts --outfile dist/preload.cjs --target=node --format=cjs --external electron",
+    "desktop:checksums": "bun run script/checksums.ts release",
+    "desktop:prepare-runtime": "bun run script/prepare-runtime.ts",
+    "desktop:pack": "bun run desktop:build && bun run desktop:prepare-runtime && electron-builder --dir",
+    "desktop:dist": "bun run desktop:build && bun run desktop:prepare-runtime && electron-builder",
+    "desktop:test": "bun run typecheck && bun test test/*.test.ts",
+    "dev": "SYNERGY_DESKTOP_CHANNEL=dev bun run desktop:build && electron dist/main.js",
+    "test:runtime": "bun run build && SYNERGY_DESKTOP_RUNTIME_TEST=1 bun test test/browser-runtime-smoke.test.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@ericsanchezok/synergy-util": "workspace:*",
+    "electron-updater": "6.6.8",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "electron": "42.5.0",
+    "electron-builder": "26.11.1",
+    "typescript": "catalog:"
+  }
+}

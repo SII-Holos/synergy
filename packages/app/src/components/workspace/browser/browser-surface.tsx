@@ -2,25 +2,13 @@ import { Button } from "@ericsanchezok/synergy-ui/button"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { createEffect, onCleanup, onMount, Show } from "solid-js"
-import { useBrowser, type BrowserFrameEntry } from "./browser-store"
+import { usePlatform } from "@/context/platform"
+import { useBrowser } from "./browser-store"
+import { NativeBrowserSurface } from "./native-browser-surface"
+import { RemoteBrowserSurface } from "./remote-browser-surface"
 
 const MIN_FIT_VIEWPORT_WIDTH = 320
 const MIN_FIT_VIEWPORT_HEIGHT = 240
-
-function mouseButton(button: number): "left" | "middle" | "right" {
-  if (button === 1) return "middle"
-  if (button === 2) return "right"
-  return "left"
-}
-
-function modifiers(e: KeyboardEvent | MouseEvent | WheelEvent): string[] {
-  const result: string[] = []
-  if (e.altKey) result.push("Alt")
-  if (e.ctrlKey) result.push("Control")
-  if (e.metaKey) result.push("Meta")
-  if (e.shiftKey) result.push("Shift")
-  return result
-}
 
 function arrayBufferToBase64(buffer: ArrayBuffer): string {
   const bytes = new Uint8Array(buffer)
@@ -32,26 +20,18 @@ function arrayBufferToBase64(buffer: ArrayBuffer): string {
   return btoa(binary)
 }
 
-export function BrowserSurface() {
+export function BrowserSurface(props: { sessionID: string; routeDirectory?: string }) {
   let wrapperRef: HTMLDivElement | undefined
-  let canvasRef: HTMLCanvasElement | undefined
   let fileInputRef: HTMLInputElement | undefined
-  let composing = false
   let pendingFitFrame: number | undefined
   let lastFitViewportKey = ""
 
   const browser = useBrowser()
+  const platform = usePlatform()
 
-  const activeFrame = (): BrowserFrameEntry | undefined => {
-    const id = browser.activeTabId()
-    if (!id) return undefined
-    return browser.tabFrames[id]
-  }
-
-  createEffect(() => {
-    const tabId = browser.activeTabId()
-    if (tabId) browser.send({ type: "stream.start", tabId })
-  })
+  const container = () => wrapperRef
+  const nativePresentation = () => browser.presentation()?.kind === "native" && platform.browserNative
+  const webrtcPresentation = () => browser.presentation()?.kind === "webrtc"
 
   function fitViewportSize() {
     if (!wrapperRef) return null
@@ -72,8 +52,8 @@ export function BrowserSurface() {
     const size = fitViewportSize()
     if (!size) return
 
-    const tabId = browser.activeTabId() ?? "active"
-    const key = `${tabId}:${size.width}x${size.height}`
+    const pageId = browser.pageId() ?? "active"
+    const key = `${pageId}:${size.width}x${size.height}`
     if (key === lastFitViewportKey) return
     lastFitViewportKey = key
     browser.setViewport(size.width, size.height, { mode: "fit" })
@@ -86,7 +66,8 @@ export function BrowserSurface() {
 
   createEffect(() => {
     browser.viewportMode()
-    browser.activeTabId()
+    browser.pageId()
+    browser.hostStatus()
     scheduleFitViewport()
   })
 
@@ -101,114 +82,11 @@ export function BrowserSurface() {
     })
   })
 
-  createEffect(() => {
-    const frame = activeFrame()
-    const canvas = canvasRef
-    if (!frame || !canvas) return
-
-    const img = new Image()
-    img.onload = () => {
-      const width = frame.metadata.width || img.width
-      const height = frame.metadata.height || img.height
-      canvas.width = width
-      canvas.height = height
-      const ctx = canvas.getContext("2d")
-      if (!ctx) return
-      ctx.clearRect(0, 0, width, height)
-      ctx.drawImage(img, 0, 0, width, height)
-    }
-    img.src = frame.src
-  })
-
-  function point(e: MouseEvent | WheelEvent) {
-    const canvas = canvasRef
-    const frame = activeFrame()
-    if (!canvas || !frame) return null
-    const rect = canvas.getBoundingClientRect()
-    if (rect.width <= 0 || rect.height <= 0) return null
-    return {
-      x: Math.round(((e.clientX - rect.left) / rect.width) * frame.metadata.width),
-      y: Math.round(((e.clientY - rect.top) / rect.height) * frame.metadata.height),
-    }
-  }
-
-  function handleMouse(action: "move" | "down" | "up", e: MouseEvent) {
-    const tabId = browser.activeTabId()
-    const p = point(e)
-    if (!tabId || !p) return
-    if (action === "down") {
-      canvasRef?.focus()
-      if (browser.annotationMode()) {
-        const wrapper = wrapperRef?.getBoundingClientRect()
-        browser.setAnnotationTarget({
-          displayX: wrapper ? Math.round(e.clientX - wrapper.left) : p.x,
-          displayY: wrapper ? Math.round(e.clientY - wrapper.top) : p.y,
-          pageX: p.x,
-          pageY: p.y,
-        })
-        e.preventDefault()
-        return
-      }
-    }
-    browser.send({
-      type: "input.mouse",
-      action,
-      tabId,
-      x: p.x,
-      y: p.y,
-      button: mouseButton(e.button),
-      clickCount: e.detail || 1,
-      modifiers: modifiers(e),
-    })
-    e.preventDefault()
-  }
-
-  function handleWheel(e: WheelEvent) {
-    const tabId = browser.activeTabId()
-    const p = point(e)
-    if (!tabId || !p) return
-    browser.send({
-      type: "input.mouse",
-      action: "wheel",
-      tabId,
-      x: p.x,
-      y: p.y,
-      deltaX: e.deltaX,
-      deltaY: e.deltaY,
-      modifiers: modifiers(e),
-    })
-    e.preventDefault()
-  }
-
-  function handleKey(action: "down" | "up", e: KeyboardEvent) {
-    const tabId = browser.activeTabId()
-    if (!tabId || composing) return
-    browser.send({
-      type: "input.key",
-      action,
-      tabId,
-      key: e.key,
-      code: e.code,
-      text: e.key.length === 1 ? e.key : undefined,
-      autoRepeat: e.repeat,
-      modifiers: modifiers(e),
-    })
-    e.preventDefault()
-  }
-
-  function handlePaste(e: ClipboardEvent) {
-    const tabId = browser.activeTabId()
-    const text = e.clipboardData?.getData("text/plain")
-    if (!tabId || !text) return
-    browser.send({ type: "input.text", tabId, text })
-    e.preventDefault()
-  }
-
   async function chooseFiles(files: FileList | null) {
     const request = browser.fileChooserRequest()
     if (!request) return
     if (!files || files.length === 0) {
-      browser.send({ type: "filechooser.select", tabId: request.tabId, requestId: request.requestId, files: [] })
+      browser.send({ type: "filechooser.select", pageId: request.pageId, requestId: request.requestId, files: [] })
       browser.setFileChooserRequest(null)
       return
     }
@@ -219,24 +97,29 @@ export function BrowserSurface() {
         data: arrayBufferToBase64(await file.arrayBuffer()),
       })),
     )
-    browser.send({ type: "filechooser.select", tabId: request.tabId, requestId: request.requestId, files: payload })
+    browser.send({ type: "filechooser.select", pageId: request.pageId, requestId: request.requestId, files: payload })
     browser.setFileChooserRequest(null)
   }
 
   function respondDialog(accept: boolean) {
     const request = browser.dialogRequest()
     if (!request) return
-    browser.send({ type: "dialog.respond", tabId: request.tabId, requestId: request.requestId, accept })
+    browser.send({ type: "dialog.respond", pageId: request.pageId, requestId: request.requestId, accept })
     browser.setDialogRequest(null)
+  }
+
+  function hasInteractiveSurface() {
+    return nativePresentation() || webrtcPresentation()
   }
 
   return (
     <div
       ref={wrapperRef}
+      data-prevent-autofocus
       class="relative w-full h-full overflow-hidden bg-background-strong flex items-center justify-center"
     >
       <Show
-        when={activeFrame()}
+        when={hasInteractiveSurface()}
         fallback={
           <div class="flex flex-col items-center gap-3 text-text-weak text-13 select-none">
             <Icon name={getSemanticIcon("browser.main")} class="size-14 text-icon-weaker" />
@@ -246,27 +129,20 @@ export function BrowserSurface() {
           </div>
         }
       >
-        <canvas
-          ref={canvasRef}
-          tabIndex={0}
-          class="max-w-full max-h-full outline-none cursor-default"
-          onMouseMove={(e) => handleMouse("move", e)}
-          onMouseDown={(e) => handleMouse("down", e)}
-          onMouseUp={(e) => handleMouse("up", e)}
-          onWheel={handleWheel}
-          onKeyDown={(e) => handleKey("down", e)}
-          onKeyUp={(e) => handleKey("up", e)}
-          onCompositionStart={() => {
-            composing = true
-          }}
-          onCompositionEnd={(e) => {
-            composing = false
-            const text = e.data
-            const tabId = browser.activeTabId()
-            if (tabId && text) browser.send({ type: "input.text", tabId, text })
-          }}
-          onPaste={handlePaste}
-        />
+        <Show when={nativePresentation()}>
+          <NativeBrowserSurface
+            sessionID={props.sessionID}
+            routeDirectory={props.routeDirectory}
+            container={container}
+          />
+        </Show>
+        <Show when={webrtcPresentation()}>
+          <RemoteBrowserSurface
+            sessionID={props.sessionID}
+            routeDirectory={props.routeDirectory}
+            container={container}
+          />
+        </Show>
       </Show>
 
       <Show when={browser.browserError()}>

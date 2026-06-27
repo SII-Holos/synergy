@@ -7,6 +7,7 @@ import { Log } from "@/util/log"
 import { SessionManager } from "@/session/manager"
 import { ExperienceEncoder } from "@/library/experience-encoder"
 import { Plugin } from "@/plugin"
+import { SessionToolInput } from "@/session/tool-input"
 
 export namespace ExternalAgentProcessor {
   const log = Log.create({ service: "external-agent.processor" })
@@ -123,7 +124,7 @@ export namespace ExternalAgentProcessor {
               callID: event.id,
               state: {
                 status: "running",
-                input: tryParseJSON(event.input),
+                input: SessionToolInput.normalize(event.input),
                 time: { start: Date.now() },
               },
             })) as MessageV2.ToolPart
@@ -293,14 +294,5 @@ export namespace ExternalAgentProcessor {
     part.text = part.text.trimEnd()
     part.time = { ...part.time, end: Date.now() }
     await Session.updatePart(part)
-  }
-
-  function tryParseJSON(input?: string): Record<string, any> {
-    if (!input) return {}
-    try {
-      return JSON.parse(input)
-    } catch {
-      return { raw: input }
-    }
   }
 }

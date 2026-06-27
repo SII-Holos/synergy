@@ -5,7 +5,7 @@
 These subagents are already executing the delegated work. They **WILL complete and report back automatically**.
 
 ### What you MUST NOT do (wastes tokens — subagents are already doing this):
-- Do NOT produce final answers, conclusions, recommendations, or implementation yourself
+- Do NOT produce final answers, conclusions, recommendations, or the delegated work yourself
 - Do NOT call `question` to ask the user for decisions — wait for subagent results first
 - Do NOT set up `agenda_watch` or manual polling — the system handles wake-up
 
