@@ -10,6 +10,7 @@ type BrowserWebRTCSignalingUrlOptions = {
   scopeKey?: string
   client?: "web" | "desktop"
   sameHost?: boolean
+  traceId?: string
 }
 
 export function createBrowserWebRTCSignalingUrl(options: BrowserWebRTCSignalingUrlOptions) {
@@ -26,6 +27,7 @@ export function createBrowserWebRTCSignalingUrl(options: BrowserWebRTCSignalingU
   else if (options.directory) params.set("directory", options.directory)
   if (options.sameHost) params.set("sameHost", "1")
   if (options.tabId) params.set("tabId", options.tabId)
+  if (options.traceId) params.set("traceId", options.traceId)
 
   return (
     options.serverUrl.replace(/^http/, "ws") +
@@ -33,7 +35,15 @@ export function createBrowserWebRTCSignalingUrl(options: BrowserWebRTCSignalingU
   )
 }
 
-export type BrowserWebRTCStatus = "idle" | "signaling" | "negotiating" | "connected" | "pending" | "closed" | "error"
+export type BrowserWebRTCStatus =
+  | "idle"
+  | "signaling"
+  | "host_pending"
+  | "host_ready"
+  | "negotiating"
+  | "stream_ready"
+  | "closed"
+  | "error"
 
 export interface BrowserWebRTCClientOptions {
   signalingUrl: string
@@ -62,9 +72,10 @@ export class BrowserWebRTCClient {
     this.connectSignaling()
   }
 
-  sendInput(payload: unknown): void {
-    if (this.input?.readyState !== "open") return
+  sendInput(payload: unknown): boolean {
+    if (this.input?.readyState !== "open") return false
     this.input.send(JSON.stringify(payload))
+    return true
   }
 
   close(): void {
@@ -97,7 +108,7 @@ export class BrowserWebRTCClient {
       })
     }
     pc.onconnectionstatechange = () => {
-      if (pc.connectionState === "connected") this.options.onStatus?.("connected")
+      if (pc.connectionState === "connected") this.options.onStatus?.("stream_ready")
       if (pc.connectionState === "failed") this.options.onStatus?.("error", { connectionState: pc.connectionState })
       if (pc.connectionState === "closed") this.options.onStatus?.("closed")
     }
@@ -177,6 +188,7 @@ export class BrowserWebRTCClient {
 
     this.options.onMessage?.(msg)
     if (msg.type === "webrtc.host.ready") {
+      this.options.onStatus?.("host_ready", msg)
       await this.negotiate()
       return
     }
@@ -189,7 +201,7 @@ export class BrowserWebRTCClient {
       return
     }
     if (msg.type === "webrtc.host.pending") {
-      this.options.onStatus?.("pending", msg)
+      this.options.onStatus?.("host_pending", msg)
     }
   }
 

@@ -133,6 +133,27 @@ describe("createBrowserWebSocketUrl", () => {
     expect(parsed.searchParams.get("tabId")).toBe("tab_123")
   })
 
+  test("adds trace ids to browser route URLs", () => {
+    const eventsUrl = createBrowserEventsWebSocketUrl({
+      serverUrl: "http://localhost:4096",
+      sessionID: "ses_trace",
+      routeDirectory: "aG9tZQ",
+      scopeID: "home",
+      traceId: "browser_trace_1",
+    })
+    const webrtcUrl = createBrowserWebRTCSignalingUrl({
+      serverUrl: "http://localhost:4096",
+      sessionID: "ses_trace",
+      tabId: "tab_1",
+      routeDirectory: "aG9tZQ",
+      scopeID: "home",
+      traceId: "browser_trace_1",
+    })
+
+    expect(new URL(eventsUrl!).searchParams.get("traceId")).toBe("browser_trace_1")
+    expect(new URL(webrtcUrl!).searchParams.get("traceId")).toBe("browser_trace_1")
+  })
+
   test("returns null when no route or scope is available", () => {
     expect(createBrowserEventsWebSocketUrl({ serverUrl: "http://localhost:4096", sessionID: "ses_1" })).toBeNull()
   })

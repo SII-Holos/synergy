@@ -152,6 +152,7 @@ async function createBrowserHost() {
     url: process.env.SYNERGY_BROWSER_HOST_URL,
     width: Number(process.env.SYNERGY_BROWSER_HOST_WIDTH ?? 1280),
     height: Number(process.env.SYNERGY_BROWSER_HOST_HEIGHT ?? 720),
+    traceId: process.env.SYNERGY_BROWSER_HOST_TRACE_ID,
   })
   await browserHost.start()
 }

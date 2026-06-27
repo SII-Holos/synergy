@@ -73,6 +73,7 @@ export function BrowserSurface(props: { sessionID: string; routeDirectory?: stri
       scopeKey: sdk.scopeKey,
       client: platform.platform === "desktop" ? "desktop" : "web",
       sameHost: platform.platform === "desktop",
+      traceId: browser.browserTraceId(),
     })
 
     if (!signalingUrl) {
@@ -87,11 +88,27 @@ export function BrowserSurface(props: { sessionID: string; routeDirectory?: stri
       onStatus: (status, detail) => {
         setWebrtcStatus(status)
         setWebrtcDetail(detail ?? null)
+        if (status === "host_pending") browser.setHostStatus(tabId, "pending")
       },
       onStream: (stream) => {
         if (!videoRef) return
         videoRef.srcObject = stream
         void videoRef.play().catch(() => {})
+      },
+      onMessage: (message) => {
+        if (typeof message !== "object" || message === null) return
+        const msg = message as { type?: unknown; tabId?: unknown; status?: unknown }
+        if (msg.type !== "browser.host.status") return
+        if (typeof msg.tabId !== "string") return
+        if (
+          msg.status === "pending" ||
+          msg.status === "ready" ||
+          msg.status === "detached" ||
+          msg.status === "restarting" ||
+          msg.status === "failed"
+        ) {
+          browser.setHostStatus(msg.tabId, msg.status)
+        }
       },
     })
     webrtcClient = client
@@ -149,6 +166,7 @@ export function BrowserSurface(props: { sessionID: string; routeDirectory?: stri
   createEffect(() => {
     browser.viewportMode()
     browser.activeTabId()
+    browser.hostStatus()
     scheduleFitViewport()
   })
 
@@ -160,11 +178,13 @@ export function BrowserSurface(props: { sessionID: string; routeDirectory?: stri
     const tabId = browser.activeTabId()
     const width = browser.viewportWidth()
     const height = browser.viewportHeight()
+    webrtcStatus()
     if (!tabId) return
     const key = `${tabId}:${width}x${height}`
     if (key === lastWebRTCResizeKey) return
-    lastWebRTCResizeKey = key
-    webrtcClient?.sendInput({ type: "input.resize", tabId, width, height })
+    if (webrtcClient?.sendInput({ type: "input.resize", tabId, width, height })) {
+      lastWebRTCResizeKey = key
+    }
   })
 
   function syncNativeNavigation(tabId: string, url?: string) {
@@ -400,11 +420,16 @@ export function BrowserSurface(props: { sessionID: string; routeDirectory?: stri
     if (typeof detail === "object" && detail !== null && "message" in detail) {
       return String((detail as { message: unknown }).message)
     }
-    if (webrtcStatus() === "pending") return "Waiting for Browser Host media transport"
+    if (webrtcStatus() === "host_pending") return "Waiting for Browser Host"
+    if (webrtcStatus() === "host_ready") return "Preparing remote browser stream"
     if (webrtcStatus() === "negotiating") return "Negotiating remote browser stream"
     if (webrtcStatus() === "signaling") return "Connecting to remote browser"
     if (webrtcStatus() === "error") return "Remote browser stream unavailable"
     return "Preparing remote browser"
+  }
+
+  function streamReady() {
+    return webrtcStatus() === "stream_ready"
   }
 
   return (
@@ -449,7 +474,7 @@ export function BrowserSurface(props: { sessionID: string; routeDirectory?: stri
               }}
               onPaste={handlePaste}
             />
-            <Show when={webrtcStatus() !== "connected"}>
+            <Show when={!streamReady()}>
               <div class="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-background-strong/80 text-center text-text-weak">
                 <Icon name={getSemanticIcon("browser.main")} class="size-10 text-icon-weaker" />
                 <span class="text-13-medium text-text-base">{webrtcStatusMessage()}</span>

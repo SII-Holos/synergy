@@ -135,4 +135,36 @@ describe("createBrowserStore viewport", () => {
       dispose()
     })
   })
+
+  test("defers WebRTC viewport changes until the host is ready", () => {
+    createRoot((dispose) => {
+      const store = createBrowserStore()
+      const sent: Record<string, unknown>[] = []
+      store._setSend((msg) => sent.push(msg))
+      store.setPresentation({
+        protocolVersion: 1,
+        kind: "webrtc",
+        capabilities: { native: true, webrtc: true, screenshotFallback: false },
+        reason: "remote-client",
+      })
+      store.setSession("tabs", [{ id: "tab-1", title: "Start", url: "about:blank", isLoading: false }])
+      store.setSession("activeTabId", "tab-1")
+
+      store.setViewport(800, 600, { mode: "fit" })
+      store.setViewport(1024, 768, { mode: "fit" })
+
+      expect(sent).toEqual([])
+
+      store.setHostStatus("tab-1", "ready")
+
+      expect(sent).toHaveLength(1)
+      expect(sent[0]).toMatchObject({
+        type: "input.resize",
+        tabId: "tab-1",
+        width: 1024,
+        height: 768,
+      })
+      dispose()
+    })
+  })
 })

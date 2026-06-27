@@ -91,24 +91,24 @@ export namespace Server {
   // style-src 'unsafe-inline' is required for Solid's reactive CSS-in-JS <style> injection.
   // script-src is extended per-request: the theme preloader hash is always included;
   // the fallback handler adds a per-request nonce for the dynamic route-tag script.
-  const CSP_BASELINE =
+  export const CSP_BASELINE =
     "default-src 'self'; " +
     "script-src 'self'; " +
     "style-src 'self' 'unsafe-inline'; " +
     "img-src 'self' data: https: blob:; " +
-    "font-src 'self'; " +
+    "font-src 'self' data:; " +
     "connect-src 'self' ws: wss:; " +
     "frame-src 'self'; " +
-    "media-src 'none'; " +
+    "media-src 'self'; " +
     "object-src 'none'; " +
     "base-uri 'self'; " +
     "form-action 'self'"
 
   // SHA-256 of index.html's <script id="synergy-theme-preload-script"> body.
   // Update this hash when the inline theme preloader script changes.
-  const CSP_THEME_SCRIPT_HASH = "sha256-Qf8GAcLAwW4P3mUyGKGC4j67XnDPP6d00NW/TNjPNE0="
+  export const CSP_THEME_SCRIPT_HASH = "'sha256-Qf8GAcLAwW4P3mUyGKGC4j67XnDPP6d00NW/TNjPNE0='"
 
-  function spaCsp(nonce?: string): string {
+  export function spaCsp(nonce?: string): string {
     const sources = [CSP_THEME_SCRIPT_HASH]
     if (nonce) sources.push(`'nonce-${nonce}'`)
     return CSP_BASELINE.replace("script-src 'self'", `script-src 'self' ${sources.join(" ")}`)

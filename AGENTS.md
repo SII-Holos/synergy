@@ -176,6 +176,13 @@ Non-tool product UI icons must use semantic tokens from `packages/ui/src/compone
 - Do not add copyright or license headers.
 - Do not introduce unrelated cleanup while working on a task.
 
+### Compatibility and migrations
+
+- Do not accumulate adapters, fallback branches, or compatibility layers in core code as a substitute for a clean current model.
+- Prefer one explicit current code path. If old persisted state, schema data, or protocol records need to be upgraded, use the relevant Synergy migration module and central migration runner.
+- Keep temporary compatibility shims narrow, named, tested, and removed in the same change whenever migration can make old shapes impossible.
+- Do not hide ownership or routing uncertainty behind generic adapters. Define the boundary directly and make the logs/errors trace that boundary.
+
 ### Module organization
 
 Use namespace-based organization where that is the established local pattern.

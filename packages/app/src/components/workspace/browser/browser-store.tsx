@@ -85,6 +85,8 @@ export interface BrowserErrorState {
   code?: string
 }
 
+export type BrowserHostStatus = "pending" | "ready" | "detached" | "restarting" | "failed"
+
 export interface AnnotationTarget {
   displayX: number
   displayY: number
@@ -103,6 +105,12 @@ export interface SetViewportOptions {
   mode?: ViewportMode
 }
 
+function createBrowserTraceId() {
+  const random = globalThis.crypto?.randomUUID?.()
+  if (random) return `browser_${random}`
+  return `browser_${Date.now().toString(36)}_${Math.random().toString(36).slice(2)}`
+}
+
 export function createBrowserStore() {
   const [session, setSession] = createStore({
     tabs: [] as BrowserTab[],
@@ -118,6 +126,7 @@ export function createBrowserStore() {
   const [elements, setElements] = createStore<Record<string, AccessibilityElement[]>>({})
   const [pageAssets, setPageAssets] = createStore<Record<string, AssetEntry[]>>({})
   const [downloads, setDownloads] = createStore<Record<string, DownloadEntry[]>>({})
+  const [hostStatuses, setHostStatuses] = createStore<Record<string, BrowserHostStatus>>({})
   const [devPanel, setDevPanel] = createSignal<DevPanel>("closed")
   const [agentActivity, setAgentActivity] = createSignal<AgentActivity>({
     tabId: null,
@@ -136,6 +145,8 @@ export function createBrowserStore() {
 
   const [viewportHeight, setViewportHeight] = createSignal(720)
   const [annotationTarget, setAnnotationTarget] = createSignal<AnnotationTarget | null>(null)
+  const [browserTraceId] = createSignal(createBrowserTraceId())
+  const pendingViewportByTab = new Map<string, Record<string, unknown>>()
 
   const activeTabId = () => session.visibleTabId ?? session.activeTabId
 
@@ -235,13 +246,25 @@ export function createBrowserStore() {
     setViewportMode(options.mode ?? "fixed")
     setViewportWidth(nextWidth)
     setViewportHeight(nextHeight)
-    send({
+    const tabId = activeTabId()
+    const message = {
       type: "input.resize",
-      tabId: activeTabId(),
+      tabId,
       width: nextWidth,
       height: nextHeight,
       deviceScaleFactor,
-    })
+    }
+    if (presentation()?.kind === "webrtc" && (!tabId || hostStatus(tabId) !== "ready")) {
+      if (tabId) pendingViewportByTab.set(tabId, message)
+      browserDebug("store.viewport.deferred", {
+        tabId,
+        width: nextWidth,
+        height: nextHeight,
+        hostStatus: tabId ? hostStatus(tabId) : "missing-tab",
+      })
+      return
+    }
+    send(message)
   }
 
   function clearAnnotationTarget() {
@@ -302,6 +325,36 @@ export function createBrowserStore() {
     }
     setDownloads(tabId, index, entry)
   }
+
+  function hostStatus(tabId = activeTabId()): BrowserHostStatus {
+    if (!tabId) return "detached"
+    return hostStatuses[tabId] ?? "detached"
+  }
+
+  function setHostStatus(tabId: string | null | undefined, status: BrowserHostStatus) {
+    if (!tabId) return
+    setHostStatuses(tabId, status)
+    if (status !== "ready") return
+    clearTransientHostError()
+    const pending = pendingViewportByTab.get(tabId)
+    if (!pending) return
+    pendingViewportByTab.delete(tabId)
+    browserDebug("store.viewport.flush", summarizeBrowserMessage(pending))
+    send(pending)
+  }
+
+  function clearTransientHostError() {
+    const error = browserError()
+    if (!error) return
+    if (
+      error.code === "browser_host_disconnected" ||
+      error.code === "browser_host_pending" ||
+      error.message.includes("Browser Host control is not attached")
+    ) {
+      setBrowserError(null)
+    }
+  }
+
   return {
     session,
     setSession,
@@ -359,6 +412,11 @@ export function createBrowserStore() {
     setDialogRequest,
     browserError,
     setBrowserError,
+    browserTraceId,
+    hostStatus,
+    hostStatuses,
+    setHostStatus,
+    clearTransientHostError,
   }
 }
 

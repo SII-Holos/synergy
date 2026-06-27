@@ -2,7 +2,7 @@ import { onCleanup, onMount } from "solid-js"
 import type { BrowserPresentationPreference } from "@ericsanchezok/synergy-util/browser-protocol"
 import { usePlatform } from "@/context/platform"
 import { useSDK } from "@/context/sdk"
-import type { BrowserStoreAPI } from "./browser-store"
+import type { BrowserHostStatus, BrowserStoreAPI } from "./browser-store"
 import { browserDebug, shouldLogBrowserMessage, summarizeBrowserMessage } from "./browser-debug"
 
 const MAX_RECONNECT_ATTEMPTS = 10
@@ -25,6 +25,7 @@ type BrowserWebSocketUrlOptions = {
   presentation?: BrowserPresentationPreference
   client?: "web" | "desktop"
   sameHost?: boolean
+  traceId?: string
 }
 
 export function createBrowserEventsWebSocketUrl(options: BrowserWebSocketUrlOptions) {
@@ -52,9 +53,20 @@ function createBrowserRouteUrl(
   if (options.scopeID) params.set("scopeID", options.scopeID)
   else if (options.directory) params.set("directory", options.directory)
   if (options.sameHost) params.set("sameHost", "1")
+  if (options.traceId) params.set("traceId", options.traceId)
 
   const baseUrl = scheme === "ws" ? options.serverUrl.replace(/^http/, "ws") : options.serverUrl
   return baseUrl + `/${encodeURIComponent(pathDirectory)}/browser/${route}?${params.toString()}`
+}
+
+function createCommandId() {
+  const random = globalThis.crypto?.randomUUID?.()
+  if (random) return `browser_cmd_${random}`
+  return `browser_cmd_${Date.now().toString(36)}_${Math.random().toString(36).slice(2)}`
+}
+
+function isBrowserHostStatus(value: unknown): value is BrowserHostStatus {
+  return value === "pending" || value === "ready" || value === "detached" || value === "restarting" || value === "failed"
 }
 
 export function browserControlCommandFromMessage(msg: Record<string, unknown>): Record<string, unknown> | null {
@@ -137,6 +149,7 @@ function applyControlResult(store: BrowserStoreAPI, result: any) {
     case "tab":
       store.upsertTab(result.tab)
       store.activateTabFromServer(result.tab.id)
+      if (typeof result.hostStatus === "string") store.setHostStatus(result.tab.id, result.hostStatus)
       break
     case "navigation":
       store.upsertTab(result.tab)
@@ -191,16 +204,35 @@ function createBrowserHttpControlSender(
     }
     if (shouldLogBrowserMessage(msg)) browserDebug("control.send", summarizeBrowserMessage(msg))
     const request = options.fetch ?? fetch
+    const traceId = options.traceId
+    const commandId = typeof msg.commandId === "string" ? msg.commandId : createCommandId()
     void request(url, {
       method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ command }),
+      headers: {
+        "content-type": "application/json",
+        ...(traceId ? { "x-synergy-browser-trace": traceId } : {}),
+      },
+      body: JSON.stringify({ command, commandId, traceId }),
     })
       .then(async (response) => {
         const payload = await response.json().catch(() => null)
         if (!response.ok) {
+          if (response.status === 409 && payload?.code === "browser_host_pending") {
+            if (typeof payload.tabId === "string") store.setHostStatus(payload.tabId, "pending")
+            browserDebug("control.pending", {
+              type: msg.type,
+              tabId: payload?.tabId,
+              commandId: payload?.commandId,
+              traceId: payload?.traceId,
+            })
+            return
+          }
           throw new Error(payload?.message ?? `Browser control failed: ${response.status}`)
         }
+        if (payload?.hostStatus && "tabId" in command && typeof command.tabId === "string") {
+          store.setHostStatus(command.tabId, payload.hostStatus)
+        }
+        store.clearTransientHostError()
         applyControlResult(store, payload?.result)
       })
       .catch((error) => {
@@ -233,6 +265,7 @@ export function createBrowserWebSocket(store: BrowserStoreAPI, options: BrowserW
     scopeKey: sdk.scopeKey,
     client,
     sameHost,
+    traceId: store.browserTraceId(),
     fetch: platform.fetch,
   })
   const send = controlSender.send
@@ -253,6 +286,7 @@ export function createBrowserWebSocket(store: BrowserStoreAPI, options: BrowserW
       scopeKey: sdk.scopeKey,
       client,
       sameHost,
+      traceId: store.browserTraceId(),
     })
     if (!wsUrl) {
       browserDebug("ws.connect.skipped", {
@@ -301,6 +335,13 @@ export function createBrowserWebSocket(store: BrowserStoreAPI, options: BrowserW
           if (msg.activeTabId !== undefined) {
             store.setSession("activeTabId", msg.activeTabId)
             if (!store.session.visibleTabId) store.setSession("visibleTabId", msg.activeTabId)
+          }
+          store.clearTransientHostError()
+          break
+        }
+        case "browser.host.status": {
+          if (typeof msg.tabId === "string" && isBrowserHostStatus(msg.status)) {
+            store.setHostStatus(msg.tabId, msg.status)
           }
           break
         }
@@ -417,6 +458,10 @@ export function createBrowserWebSocket(store: BrowserStoreAPI, options: BrowserW
         }
         case "error": {
           store.setSession("connectionStatus", "error")
+          if (msg.code === "browser_host_pending" && typeof msg.tabId === "string") {
+            store.setHostStatus(msg.tabId, "pending")
+            break
+          }
           store.setBrowserError({
             severity: msg.severity ?? "error",
             code: msg.code,

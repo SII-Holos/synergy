@@ -1,6 +1,10 @@
 import { afterEach, describe, expect, test } from "bun:test"
 import { BrowserHost } from "../../src/browser/host"
-import { BrowserHostControl, type BrowserHostControlSocket } from "../../src/browser/host-control"
+import {
+  BrowserHostControl,
+  BrowserHostControlNotAttachedError,
+  type BrowserHostControlSocket,
+} from "../../src/browser/host-control"
 import { BrowserToolHelper } from "../../src/tool/browser-shared"
 import type { BrowserOwner } from "../../src/browser/owner"
 
@@ -96,7 +100,44 @@ describe("BrowserHostControl", () => {
     })
 
     unsubscribe()
-    expect(events).toEqual([{ type: "page.loaded", tabId: "tab_1", url: "https://example.com/" }])
+    expect(events).toContainEqual({ type: "page.loaded", tabId: "tab_1", url: "https://example.com/" })
+  })
+
+  test("tracks host readiness and resolves ready waiters", async () => {
+    const host = socket()
+    const ready = BrowserHostControl.waitForReady(owner, "tab_1", 1_000)
+    const connection = BrowserHostControl.attach(owner, host.peer, { tabId: "tab_1", traceId: "trace_1" })
+
+    expect(BrowserHostControl.status(owner, "tab_1")).toBe("pending")
+    expect(BrowserHostControl.isReady(owner, "tab_1")).toBe(false)
+
+    connection.handleMessage({
+      type: "browser.host.ready",
+      session: {
+        tabs: [
+          {
+            id: "tab_1",
+            url: "https://example.com/",
+            title: "Example",
+            isLoading: false,
+            pinned: false,
+            kept: false,
+            lastActiveAt: null,
+          },
+        ],
+        activeTabId: "tab_1",
+      },
+    })
+
+    await expect(ready).resolves.toBe(connection)
+    expect(BrowserHostControl.status(owner, "tab_1")).toBe("ready")
+    expect(BrowserHostControl.isReady(owner, "tab_1")).toBe(true)
+  })
+
+  test("throws a typed error when no host can handle a command", async () => {
+    await expect(BrowserHostControl.execute(owner, { type: "reload", tabId: "missing" })).rejects.toBeInstanceOf(
+      BrowserHostControlNotAttachedError,
+    )
   })
 
   test("merges takeover ready state but lets session state replace removed tabs", () => {

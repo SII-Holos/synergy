@@ -73,10 +73,11 @@ export namespace BrowserHost {
   export async function execute(
     owner: BrowserOwner.Info,
     command: BrowserControl.Command,
+    options: BrowserHostControl.ExecuteOptions = {},
   ): Promise<BrowserControl.Result> {
     if (BrowserHostControl.has(owner)) {
       try {
-        return await BrowserHostControl.execute(owner, command)
+        return await BrowserHostControl.execute(owner, command, options)
       } catch (error) {
         if (!(error instanceof BrowserHostControlUnsupportedCommandError)) throw error
       }

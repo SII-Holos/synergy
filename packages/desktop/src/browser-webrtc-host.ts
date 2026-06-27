@@ -1,6 +1,5 @@
 import { BrowserWindow, ipcMain } from "electron"
 import fs from "node:fs/promises"
-import { randomUUID } from "node:crypto"
 import os from "node:os"
 import path from "node:path"
 import { BrowserHostDiagnostics, type BrowserHostUploadFile } from "./browser-host-diagnostics.js"
@@ -17,6 +16,7 @@ export interface BrowserWebRTCHostOptions {
   url?: string
   width?: number
   height?: number
+  traceId?: string
 }
 
 interface BrowserHostTabState {
@@ -43,6 +43,7 @@ function createHostSignalingUrl(options: BrowserWebRTCHostOptions) {
   })
   if (options.scopeID) params.set("scopeID", options.scopeID)
   else if (options.directory) params.set("directory", options.directory)
+  if (options.traceId) params.set("traceId", options.traceId)
 
   return (
     options.serverUrl.replace(/^http/, "ws") +
@@ -64,6 +65,7 @@ function createHostControlUrl(options: BrowserWebRTCHostOptions) {
   })
   if (options.scopeID) params.set("scopeID", options.scopeID)
   else if (options.directory) params.set("directory", options.directory)
+  if (options.traceId) params.set("traceId", options.traceId)
 
   return (
     options.serverUrl.replace(/^http/, "ws") +
@@ -345,12 +347,7 @@ export class BrowserWebRTCHost {
     if (!contents || contents.isDestroyed()) throw new Error("Browser Host webContents is unavailable")
     switch (command.type) {
       case "createTab": {
-        const tabId = randomUUID()
-        const tab = this.createTabState(tabId, typeof command.url === "string" ? command.url : "about:blank", "", false)
-        this.tabs.set(tabId, tab)
-        this.activeTabId = tabId
-        this.sendHostSession()
-        return { type: "tab", tab }
+        throw new UnsupportedHostCommandError(String(command.type))
       }
       case "closeTab": {
         const tabId = String(command.tabId ?? this.activeTabId ?? "")
