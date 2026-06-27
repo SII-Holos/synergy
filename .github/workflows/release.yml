@@ -126,6 +126,7 @@ jobs:
           SYNERGY_VERSION: ${{ needs.stable_candidate.outputs.version }}
           SYNERGY_CHANNEL: stable
           SYNERGY_BUILD_TARGETS: ${{ matrix.runtime_targets }}
+          SYNERGY_REUSE_PUBLISHED_RUNTIME: ${{ matrix.platform == 'win32' && '1' || '' }}
 
       - name: Build desktop main process
         run: bun run --cwd packages/desktop desktop:build
@@ -133,8 +134,21 @@ jobs:
       - name: Package desktop artifact
         shell: bash
         run: |
+          BUILDER_ARGS=(${{ matrix.builder_args }})
+          if [ -z "${CSC_LINK:-}" ]; then
+            unset CSC_LINK
+            unset CSC_KEY_PASSWORD
+            if [ "${{ matrix.platform }}" = "darwin" ]; then
+              BUILDER_ARGS+=(--config.mac.identity=null)
+            fi
+          fi
+          if [ -z "${APPLE_ID:-}" ]; then
+            unset APPLE_ID
+            unset APPLE_APP_SPECIFIC_PASSWORD
+            unset APPLE_TEAM_ID
+          fi
           cd packages/desktop
-          bunx electron-builder ${{ matrix.builder_args }} --publish=never
+          bunx electron-builder "${BUILDER_ARGS[@]}" --publish=never
         env:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}

@@ -132,6 +132,12 @@ for (const item of targets) {
     .filter(Boolean)
     .join("-")
   console.log(`building ${name}`)
+  if (shouldReusePublishedRuntime(item)) {
+    await extractPublishedRuntimePackage(name, Script.version)
+    binaries[name] = Script.version
+    continue
+  }
+
   await $`mkdir -p dist/${name}/bin`
 
   await retryBuild(name, () =>
@@ -256,6 +262,30 @@ async function ensureNpmPackageExtracted(name: string, version: string) {
       throw new Error(`npm pack did not produce a tarball for ${name}@${version}`)
     }
 
+    fs.mkdirSync(destination, { recursive: true })
+    await $`tar -xzf ${path.join(temp, tarball)} -C ${destination} --strip-components=1`
+  } finally {
+    fs.rmSync(temp, { recursive: true, force: true })
+  }
+}
+
+function shouldReusePublishedRuntime(item: { os: string; arch: string }): boolean {
+  return process.env.SYNERGY_REUSE_PUBLISHED_RUNTIME === "1" && item.os === "win32" && item.arch === "arm64"
+}
+
+async function extractPublishedRuntimePackage(name: string, version: string) {
+  const packageName = `@ericsanchezok/${name}`
+  const destination = path.join(dir, "dist", name)
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), "synergy-runtime-package-"))
+  try {
+    console.log(`reusing published runtime package ${packageName}@${version}`)
+    await retryCommand(packageName, () => $`npm pack ${`${packageName}@${version}`} --silent`.cwd(temp).quiet())
+    const tarball = fs.readdirSync(temp).find((entry) => entry.endsWith(".tgz"))
+    if (!tarball) {
+      throw new Error(`npm pack did not produce a tarball for ${packageName}@${version}`)
+    }
+
+    fs.rmSync(destination, { recursive: true, force: true })
     fs.mkdirSync(destination, { recursive: true })
     await $`tar -xzf ${path.join(temp, tarball)} -C ${destination} --strip-components=1`
   } finally {
