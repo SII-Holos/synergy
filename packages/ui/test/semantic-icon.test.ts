@@ -7,7 +7,7 @@ const allowedDuplicateIcons: Record<string, string[]> = {
   cable: ["connection.mcp", "settings.mcp"],
   circle: ["session.idle", "state.empty"],
   globe: ["settings.channels", "browser.main"],
-  "help-circle": ["session.waiting", "settings.questions"],
+  "help-circle": ["action.info", "session.waiting", "settings.questions"],
   "refresh-ccw": ["action.refresh", "browser.refresh"],
   satellite: ["connection.holos", "settings.holos"],
   sun: ["settings.appearance", "settings.colorLight"],

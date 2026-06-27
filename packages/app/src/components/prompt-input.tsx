@@ -413,28 +413,39 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   const addMenuSections = createMemo<PromptAddMenuSection[]>(() => [
     {
       id: "context",
+      label: "Context",
       items: [
         {
           id: "files",
           label: "Add files",
-          icon: "paperclip",
+          description: "Attach files or images",
+          icon: getSemanticIcon("prompt.attach"),
           onSelect: () => fileInputRef.click(),
         },
+      ],
+    },
+    {
+      id: "workflow",
+      label: "Workflow",
+      items: [
         {
           id: "plan-mode",
           label: "Plan mode",
-          icon: planMode() ? "check" : "list-checks",
-          disabled: planMode(),
-          ariaDisabled: blueprintModeLocked(),
+          description: planMode() ? "Planning before execution" : "Ask for an approach first",
+          icon: getSemanticIcon("prompt.plan"),
+          selected: planMode(),
+          ariaDisabled: blueprintModeLocked() || planMode(),
           title: blueprintModeLocked()
             ? "Plan Mode is unavailable while a Blueprint is equipped"
             : planMode()
               ? "Plan Mode is already enabled"
               : undefined,
           tooltip: blueprintModeLocked() ? "Plan Mode is unavailable while a Blueprint is equipped" : undefined,
-          iconClass: planMode() || blueprintModeLocked() ? "text-icon-weak" : "text-icon-base",
+          iconClass: planMode() ? "text-icon-base" : blueprintModeLocked() ? "text-icon-weak" : "text-icon-base",
           labelClass: blueprintModeLocked() ? "text-text-weak" : undefined,
           classList: {
+            "bg-workbench-selected-bg": planMode(),
+            "text-text-base": planMode(),
             "opacity-60": blueprintModeLocked(),
           },
           onSelect: selectPlanModeFromMenu,

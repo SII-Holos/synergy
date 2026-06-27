@@ -1,13 +1,16 @@
-import { For, Show } from "solid-js"
-import { DropdownMenu } from "@ericsanchezok/synergy-ui/dropdown-menu"
 import { Icon, type IconName } from "@ericsanchezok/synergy-ui/icon"
+import { List } from "@ericsanchezok/synergy-ui/list"
+import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { Tooltip } from "@ericsanchezok/synergy-ui/tooltip"
+import { ToolbarSelectorPopover } from "@/components/toolbar-selector"
 
 export type PromptAddMenuItem = {
   id: string
   label: string
+  description?: string
   icon: IconName
-  onSelect: () => void
+  onSelect: (event?: Event) => void
+  selected?: boolean
   disabled?: boolean
   ariaDisabled?: boolean
   title?: string
@@ -25,16 +28,19 @@ export type PromptAddMenuSection = {
 
 function PromptAddMenuItemRow(props: { item: PromptAddMenuItem }) {
   const row = (
-    <DropdownMenu.Item
-      disabled={props.item.disabled}
-      aria-disabled={props.item.ariaDisabled ? "true" : undefined}
+    <div
       title={props.item.title}
-      classList={props.item.classList}
-      onSelect={props.item.onSelect}
+      classList={{
+        "flex items-center justify-between gap-3 px-2 py-1.5": true,
+        "opacity-45": !!props.item.ariaDisabled || !!props.item.disabled,
+        ...(props.item.classList ?? {}),
+      }}
     >
-      <Icon name={props.item.icon} size="small" class={props.item.iconClass ?? "text-icon-base"} />
-      <DropdownMenu.ItemLabel class={props.item.labelClass}>{props.item.label}</DropdownMenu.ItemLabel>
-    </DropdownMenu.Item>
+      <div class="flex min-w-0 items-center gap-2">
+        <Icon name={props.item.icon} size="small" class={`shrink-0 ${props.item.iconClass ?? "text-icon-base"}`} />
+        <div class={`text-13-medium text-text-base truncate ${props.item.labelClass ?? ""}`}>{props.item.label}</div>
+      </div>
+    </div>
   )
 
   return (
@@ -45,38 +51,42 @@ function PromptAddMenuItemRow(props: { item: PromptAddMenuItem }) {
 }
 
 export function PromptAddMenu(props: { sections: PromptAddMenuSection[] }) {
+  const items = () => props.sections.flatMap((section) => section.items)
+  const currentItem = () => items().find((item) => item.selected)
+
   return (
-    <DropdownMenu placement="top-start" gutter={8}>
-      <Tooltip placement="top" value="Add">
-        <DropdownMenu.Trigger
-          type="button"
-          aria-label="Add"
-          class="prompt-input-toolbar-icon-button flex items-center justify-center text-icon-base"
+    <ToolbarSelectorPopover
+      trigger={
+        <Tooltip placement="top" value="Add">
+          <button
+            type="button"
+            aria-label="Add"
+            class="prompt-input-toolbar-icon-button flex items-center justify-center text-icon-base"
+          >
+            <Icon name={getSemanticIcon("action.add")} size="small" />
+          </button>
+        </Tooltip>
+      }
+      title="Add"
+      contentClass="w-52 max-h-80"
+      placement="top-start"
+    >
+      {(close) => (
+        <List
+          class="p-1"
+          items={items()}
+          key={(item) => item.id}
+          current={currentItem()}
+          onSelect={(item) => {
+            if (!item) return
+            if (item.disabled || item.ariaDisabled) return
+            item.onSelect()
+            close()
+          }}
         >
-          <Icon name="plus" size="small" />
-        </DropdownMenu.Trigger>
-      </Tooltip>
-      <DropdownMenu.Portal>
-        <DropdownMenu.Content class="w-48 bg-surface-raised-stronger-non-alpha">
-          <For each={props.sections}>
-            {(section, index) => (
-              <>
-                <Show when={section.label}>
-                  <DropdownMenu.GroupLabel class="px-2.5 py-1.5 text-11-medium text-text-subtle">
-                    {section.label}
-                  </DropdownMenu.GroupLabel>
-                </Show>
-                <DropdownMenu.Group>
-                  <For each={section.items}>{(item) => <PromptAddMenuItemRow item={item} />}</For>
-                </DropdownMenu.Group>
-                <Show when={index() < props.sections.length - 1}>
-                  <DropdownMenu.Separator />
-                </Show>
-              </>
-            )}
-          </For>
-        </DropdownMenu.Content>
-      </DropdownMenu.Portal>
-    </DropdownMenu>
+          {(item) => <PromptAddMenuItemRow item={item} />}
+        </List>
+      )}
+    </ToolbarSelectorPopover>
   )
 }

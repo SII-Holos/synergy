@@ -21,6 +21,10 @@ export const SemanticIconToken = {
   "session.channel": "message-circle", // channel session
   "session.default": "message-square",
 
+  // Prompt composer
+  "prompt.attach": "paperclip",
+  "prompt.plan": "list-checks",
+
   // Connection state
   "connection.holos": "satellite",
   "connection.lsp": "braces", // language server

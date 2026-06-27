@@ -1,5 +1,6 @@
-import { For, Show } from "solid-js"
+import { Show } from "solid-js"
 import { Icon, type IconName } from "@ericsanchezok/synergy-ui/icon"
+import { List } from "@ericsanchezok/synergy-ui/list"
 import { Tooltip } from "@ericsanchezok/synergy-ui/tooltip"
 import { ToolbarSelectorPopover } from "@/components/toolbar-selector"
 
@@ -20,83 +21,72 @@ export type PromptStartOptionGroup = {
   options: PromptStartOption[]
 }
 
-function PromptStartModeItem(props: { option: PromptStartOption; close: () => void }) {
+function PromptStartModeItem(props: { option: PromptStartOption }) {
   const disabled = () => !!props.option.disabled
 
-  const button = (
-    <button
-      type="button"
-      aria-label={props.option.label}
-      aria-pressed={props.option.selected}
-      aria-disabled={disabled() ? "true" : undefined}
-      class="prompt-input-start-mode-item"
+  const row = (
+    <div
+      title={props.option.tooltip}
       classList={{
-        "is-selected": props.option.selected,
-        "is-disabled": disabled(),
-      }}
-      onClick={(event) => {
-        if (disabled()) {
-          event.preventDefault()
-          return
-        }
-        props.option.onSelect()
-        props.close()
+        "flex items-center justify-between gap-3 px-2 py-1.5": true,
+        "opacity-45": disabled(),
       }}
     >
-      <Icon name={props.option.icon} size="small" class="prompt-input-start-mode-icon" />
-      <span class="prompt-input-start-mode-copy">
-        <span class="prompt-input-start-mode-label">{props.option.label}</span>
-        <Show when={props.option.description}>
-          {(description) => <span class="prompt-input-start-mode-description">{description()}</span>}
-        </Show>
-      </span>
-      <Show when={props.option.selected}>
-        <Icon name="check" size="small" class="prompt-input-start-mode-check" />
-      </Show>
-    </button>
+      <div class="flex min-w-0 items-center gap-2">
+        <Icon name={props.option.icon} size="small" class="shrink-0 text-icon-base" />
+        <div class="text-13-medium text-text-base truncate">{props.option.label}</div>
+      </div>
+    </div>
   )
 
   return (
-    <Tooltip placement="top" inactive={!props.option.tooltip} value={props.option.tooltip}>
-      {button}
+    <Tooltip placement="right" inactive={!props.option.tooltip} value={props.option.tooltip}>
+      {row}
     </Tooltip>
   )
 }
 
 export function PromptStartModeSelector(props: { groups: PromptStartOptionGroup[] }) {
+  const options = () => props.groups.flatMap((group) => group.options)
   const selectedOption = () => props.groups.flatMap((group) => group.options).find((option) => option.selected)
 
   return (
     <Show when={props.groups.length > 0}>
       <ToolbarSelectorPopover
         trigger={
-          <button
-            type="button"
-            aria-label="Start mode"
-            class="prompt-input-toolbar-button prompt-input-compact-control flex items-center gap-1.5 transition-colors"
-          >
-            <Icon name={selectedOption()?.icon ?? "circle"} size="small" class="shrink-0 text-icon-base" />
-            <span class="prompt-input-compact-label text-12-medium whitespace-nowrap text-text-base">
-              {selectedOption()?.label ?? "Start"}
-            </span>
-            <Icon name="chevron-down" size="small" class="prompt-input-compact-chevron opacity-70 shrink-0" />
-          </button>
+          <Tooltip placement="top" value="Start mode">
+            <button
+              type="button"
+              aria-label="Start mode"
+              class="prompt-input-toolbar-button prompt-input-compact-control flex items-center gap-1.5 transition-colors"
+            >
+              <Icon name={selectedOption()?.icon ?? "circle"} size="small" class="shrink-0 text-icon-base" />
+              <span class="prompt-input-compact-label text-12-medium whitespace-nowrap text-text-base">
+                {selectedOption()?.label ?? "Start"}
+              </span>
+              <Icon name="chevron-down" size="small" class="prompt-input-compact-chevron opacity-70 shrink-0" />
+            </button>
+          </Tooltip>
         }
         title="Start mode"
-        contentClass="w-64"
+        contentClass="w-52 max-h-80"
         placement="top-start"
       >
         {(close) => (
-          <div class="prompt-input-start-mode-menu">
-            <For each={props.groups}>
-              {(group) => (
-                <div class="prompt-input-start-mode-group">
-                  <div class="prompt-input-start-mode-group-label">{group.label}</div>
-                  <For each={group.options}>{(option) => <PromptStartModeItem option={option} close={close} />}</For>
-                </div>
-              )}
-            </For>
-          </div>
+          <List
+            class="p-1"
+            items={options()}
+            key={(option) => option.id}
+            current={selectedOption()}
+            onSelect={(option) => {
+              if (!option) return
+              if (option.disabled) return
+              option.onSelect()
+              close()
+            }}
+          >
+            {(option) => <PromptStartModeItem option={option} />}
+          </List>
         )}
       </ToolbarSelectorPopover>
     </Show>
