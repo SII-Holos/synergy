@@ -1307,7 +1307,7 @@
 
 .providers-workspace {
   display: grid;
-  grid-template-columns: minmax(280px, 360px) minmax(420px, 1fr);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 16px;
   height: clamp(460px, calc(100dvh - 250px), 660px);
   min-height: 0;

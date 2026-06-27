@@ -64,19 +64,27 @@ export function ProvidersPanel(props: {
     if (!q) return summaries()
     return summaries().filter((provider) => `${provider.name} ${provider.id}`.toLowerCase().includes(q))
   })
-  const selected = createMemo(() => {
-    const current = selectedID()
-    return summaries().find((provider) => provider.id === current) ?? filtered()[0] ?? summaries()[0]
-  })
   const recommended = createMemo(() =>
     filtered()
-      .filter((provider) => SETTINGS_RECOMMENDED_PROVIDER_RANK.has(provider.id) && !provider.connected)
+      .filter((provider) => SETTINGS_RECOMMENDED_PROVIDER_RANK.has(provider.id))
       .sort((a, b) => settingsRecommendedRank(a.id) - settingsRecommendedRank(b.id)),
   )
-  const connected = createMemo(() => filtered().filter((provider) => provider.connected))
+  const connected = createMemo(() =>
+    filtered().filter((provider) => provider.connected && !SETTINGS_RECOMMENDED_PROVIDER_RANK.has(provider.id)),
+  )
   const other = createMemo(() =>
     filtered().filter((provider) => !SETTINGS_RECOMMENDED_PROVIDER_RANK.has(provider.id) && !provider.connected),
   )
+  const selected = createMemo(() => {
+    const current = selectedID()
+    return (
+      summaries().find((provider) => provider.id === current) ??
+      recommended()[0] ??
+      connected()[0] ??
+      other()[0] ??
+      summaries()[0]
+    )
+  })
 
   function statusLabel(provider: ProviderConnectionSummary) {
     if (provider.authStatus === "dead") return "Relogin"
