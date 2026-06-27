@@ -70,6 +70,8 @@ New-session initialization controls should sit in the composer toolbar next to t
 
 Use icons sparingly. Icons should clarify primary navigation or compact controls, not decorate every row of a form.
 
+Treat brand assets as a hierarchy, not interchangeable decoration. SII is the institutional parent, Holos is the platform and account identity, and Synergy is the product. The Synergy product icon is the canonical app, favicon, notification, social, and external-attribution icon; Holos wordmarks should only identify the platform/account layer, and SII marks should only identify the institute layer.
+
 Provider discovery should be metadata-driven. Settings, connection dialogs, and model selection should use the same provider profile metadata for recommendation order, explanatory copy, and external sign-up CTAs; custom providers remain standard alphabetical entries unless they declare metadata.
 
 Clarifying question prompts are decision surfaces, not tool-output cards. They should use a solid outer shell, filled option rows, quiet step chips, clear disabled primary actions, and only the minimum icons needed to show disclosure or selection state.

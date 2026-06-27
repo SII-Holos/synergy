@@ -1,9 +1,9 @@
 import "./logo.css"
-import markImage from "./mark.png"
+import markImage from "../assets/brand/synergy-product-icon.png"
 
 export const Mark = (props: { class?: string }) => {
   return (
-    <img data-component="logo-mark" classList={{ [props.class ?? ""]: !!props.class }} src={markImage} alt="Holos" />
+    <img data-component="logo-mark" classList={{ [props.class ?? ""]: !!props.class }} src={markImage} alt="Synergy" />
   )
 }
 

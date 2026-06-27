@@ -2,7 +2,7 @@
 import { render } from "solid-js/web"
 import { AppBaseProviders, AppInterface } from "@/app"
 import { Platform, PlatformProvider } from "@/context/platform"
-import { assetPath } from "@/utils/proxy"
+import { BRAND_ASSETS, brandAssetPath } from "@/utils/brand-assets"
 import pkg from "../package.json"
 
 declare global {
@@ -45,7 +45,7 @@ const platform: Platform = {
       .then(() => {
         const notification = new Notification(title, {
           body: description ?? "",
-          icon: assetPath("/favicon-96x96.png"),
+          icon: brandAssetPath(BRAND_ASSETS.synergy.notificationIcon),
         })
         notification.onclick = () => {
           window.focus()

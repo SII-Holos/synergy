@@ -10,7 +10,7 @@ import { useTheme } from "@ericsanchezok/synergy-ui/theme"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { Tooltip } from "@ericsanchezok/synergy-ui/tooltip"
-import { assetPath } from "@/utils/proxy"
+import { BRAND_ASSETS, brandAssetPath, holosLogoPath } from "@/utils/brand-assets"
 import { base64Encode } from "@ericsanchezok/synergy-util/encode"
 import { getScopeLabel } from "@/utils/scope"
 import { useHolos } from "@/context/holos"
@@ -297,7 +297,7 @@ export function Sidebar(props: SidebarProps) {
             <Tooltip value="Expand sidebar" placement="right">
               <button type="button" class="sb-collapsed-toggle" onClick={() => layout.sidebar.toggle()}>
                 <img
-                  src={isDark() ? assetPath("/holos-logo-white.svg") : assetPath("/holos-logo.svg")}
+                  src={holosLogoPath(isDark() ? "dark" : "light")}
                   alt="HOLOS"
                   class="sb-collapsed-logo"
                 />
@@ -308,7 +308,7 @@ export function Sidebar(props: SidebarProps) {
         >
           <A href={`/${base64Encode("home")}/session`} class="sb-logo">
             <img
-              src={isDark() ? assetPath("/holos-logo-white.svg") : assetPath("/holos-logo.svg")}
+              src={holosLogoPath(isDark() ? "dark" : "light")}
               alt="HOLOS"
               class="sb-logo-img"
             />
@@ -883,7 +883,7 @@ function SidebarAgentHub(props: { isExpanded: boolean; globalSDK: ReturnType<typ
   const [menuOpen, setMenuOpen] = createSignal(false)
   const [agentSwitcherOpen, setAgentSwitcherOpen] = createSignal(false)
 
-  const avatarSrc = () => assetPath("/agent-avatars/synergy-agent-icon.png")
+  const avatarSrc = () => brandAssetPath(BRAND_ASSETS.synergy.productIcon)
 
   const displayName = () => {
     if (!holos.loaded) return "Synergy"
