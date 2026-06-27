@@ -38,19 +38,23 @@ function arrayBufferToBase64(buffer: ArrayBuffer): string {
 export function BrowserSurface(props: { sessionID: string; routeDirectory?: string }) {
   let wrapperRef: HTMLDivElement | undefined
   let videoRef: HTMLVideoElement | undefined
+  let textInputRef: HTMLTextAreaElement | undefined
   let fileInputRef: HTMLInputElement | undefined
   let webrtcClient: BrowserWebRTCClient | null = null
   let composing = false
+  let suppressNextInputValue: string | null = null
   let pendingFitFrame: number | undefined
   let lastFitViewportKey = ""
   let lastWebRTCResizeKey = ""
   let activeWebRTCKey = ""
+  const rawKeys = new Set<string>()
 
   const browser = useBrowser()
   const platform = usePlatform()
   const sdk = useSDK()
   const [webrtcStatus, setWebrtcStatus] = createSignal<BrowserWebRTCStatus>("idle")
   const [webrtcDetail, setWebrtcDetail] = createSignal<unknown>(null)
+  const [textInputPosition, setTextInputPosition] = createSignal({ x: 0, y: 0 })
 
   const nativePresentation = () => {
     return browser.presentation()?.kind === "native" && platform.browserNative
@@ -328,13 +332,61 @@ export function BrowserSurface(props: { sessionID: string; routeDirectory?: stri
     browser.send(payload)
   }
 
+  function sendTextInput(text: string) {
+    const tabId = browser.activeTabId()
+    if (!tabId || !text) return
+    sendInteractiveInput({ type: "input.text", tabId, text })
+  }
+
+  function sendKeyInput(action: "down" | "up", input: Record<string, unknown>) {
+    const tabId = browser.activeTabId()
+    if (!tabId) return false
+    sendInteractiveInput({
+      type: "input.key",
+      action,
+      tabId,
+      ...input,
+    })
+    return true
+  }
+
+  function sendKeyStroke(key: string, code = key) {
+    const input = { key, code, modifiers: [] }
+    if (sendKeyInput("down", input)) sendKeyInput("up", input)
+  }
+
+  function keySignature(e: KeyboardEvent) {
+    return e.code || e.key
+  }
+
+  function shouldSendRawKey(e: KeyboardEvent) {
+    if (e.key.length !== 1) return true
+    return e.altKey || e.ctrlKey || e.metaKey
+  }
+
+  function resetTextInput() {
+    if (textInputRef) textInputRef.value = ""
+  }
+
+  function focusTextInput(e?: MouseEvent) {
+    if (!webrtcPresentation() || nativePresentation()) return
+    if (e && wrapperRef) {
+      const rect = wrapperRef.getBoundingClientRect()
+      setTextInputPosition({
+        x: Math.max(0, Math.min(rect.width, Math.round(e.clientX - rect.left))),
+        y: Math.max(0, Math.min(rect.height, Math.round(e.clientY - rect.top))),
+      })
+    }
+    textInputRef?.focus({ preventScroll: true })
+  }
+
   function handleMouse(action: "move" | "down" | "up", e: MouseEvent) {
     if (nativePresentation()) return
     const tabId = browser.activeTabId()
     const p = point(e)
     if (!tabId || !p) return
     if (action === "down") {
-      videoRef?.focus()
+      focusTextInput(e)
       if (browser.annotationMode()) {
         const wrapper = wrapperRef?.getBoundingClientRect()
         browser.setAnnotationTarget({
@@ -378,21 +430,89 @@ export function BrowserSurface(props: { sessionID: string; routeDirectory?: stri
     e.preventDefault()
   }
 
-  function handleKey(action: "down" | "up", e: KeyboardEvent) {
+  function handleKeyDown(e: KeyboardEvent) {
     if (nativePresentation()) return
-    const tabId = browser.activeTabId()
-    if (!tabId || composing) return
-    sendInteractiveInput({
-      type: "input.key",
-      action,
-      tabId,
+    if (composing) return
+    if (!shouldSendRawKey(e)) return
+    const input = {
       key: e.key,
       code: e.code,
-      text: e.key.length === 1 ? e.key : undefined,
       autoRepeat: e.repeat,
       modifiers: modifiers(e),
-    })
+    }
+    if (sendKeyInput("down", input)) rawKeys.add(keySignature(e))
     e.preventDefault()
+  }
+
+  function handleKeyUp(e: KeyboardEvent) {
+    if (nativePresentation()) return
+    const signature = keySignature(e)
+    if (!rawKeys.has(signature) && !shouldSendRawKey(e)) return
+    const input = {
+      key: e.key,
+      code: e.code,
+      autoRepeat: e.repeat,
+      modifiers: modifiers(e),
+    }
+    if (sendKeyInput("up", input)) rawKeys.delete(signature)
+    e.preventDefault()
+  }
+
+  function handleBeforeInput(e: InputEvent) {
+    if (nativePresentation() || composing || e.isComposing) return
+    if (e.inputType === "insertText" || e.inputType === "insertReplacementText") {
+      if (e.data) sendTextInput(e.data)
+      resetTextInput()
+      e.preventDefault()
+      return
+    }
+    if (e.inputType === "insertLineBreak" || e.inputType === "insertParagraph") {
+      sendKeyStroke("Enter")
+      resetTextInput()
+      e.preventDefault()
+      return
+    }
+    if (e.inputType === "deleteContentBackward") {
+      sendKeyStroke("Backspace")
+      resetTextInput()
+      e.preventDefault()
+      return
+    }
+    if (e.inputType === "deleteContentForward") {
+      sendKeyStroke("Delete")
+      resetTextInput()
+      e.preventDefault()
+    }
+  }
+
+  function handleTextInput(e: InputEvent & { currentTarget: HTMLTextAreaElement }) {
+    if (nativePresentation() || composing || e.isComposing) return
+    const value = e.currentTarget.value
+    if (!value) return
+    if (suppressNextInputValue === value) {
+      suppressNextInputValue = null
+      resetTextInput()
+      return
+    }
+    sendTextInput(value)
+    resetTextInput()
+  }
+
+  function handleCompositionStart() {
+    composing = true
+  }
+
+  function handleCompositionEnd(e: CompositionEvent & { currentTarget: HTMLTextAreaElement }) {
+    composing = false
+    const text = e.data || e.currentTarget.value
+    if (text) {
+      suppressNextInputValue = text
+      sendTextInput(text)
+    }
+    resetTextInput()
+    queueMicrotask(() => {
+      suppressNextInputValue = null
+    })
   }
 
   function handlePaste(e: ClipboardEvent) {
@@ -401,6 +521,7 @@ export function BrowserSurface(props: { sessionID: string; routeDirectory?: stri
     const text = e.clipboardData?.getData("text/plain")
     if (!tabId || !text) return
     sendInteractiveInput({ type: "input.text", tabId, text })
+    resetTextInput()
     e.preventDefault()
   }
 
@@ -476,9 +597,30 @@ export function BrowserSurface(props: { sessionID: string; routeDirectory?: stri
       >
         <Show when={!nativePresentation()} fallback={<div class="absolute inset-0" onPointerDown={focusNativeView} />}>
           <Show when={webrtcPresentation()}>
+            <textarea
+              ref={textInputRef}
+              aria-label="Remote browser text input"
+              autocomplete="off"
+              autocapitalize="off"
+              autocorrect="off"
+              spellcheck={false}
+              tabIndex={-1}
+              class="absolute z-30 h-px w-px resize-none overflow-hidden border-0 bg-transparent p-0 text-transparent opacity-0 outline-none pointer-events-none"
+              style={{
+                left: `${textInputPosition().x}px`,
+                top: `${textInputPosition().y}px`,
+              }}
+              onBeforeInput={handleBeforeInput}
+              onInput={handleTextInput}
+              onKeyDown={handleKeyDown}
+              onKeyUp={handleKeyUp}
+              onCompositionStart={handleCompositionStart}
+              onCompositionEnd={handleCompositionEnd}
+              onPaste={handlePaste}
+            />
             <video
               ref={videoRef}
-              tabIndex={0}
+              tabIndex={-1}
               autoplay
               playsinline
               muted
@@ -487,17 +629,8 @@ export function BrowserSurface(props: { sessionID: string; routeDirectory?: stri
               onMouseDown={(e) => handleMouse("down", e)}
               onMouseUp={(e) => handleMouse("up", e)}
               onWheel={handleWheel}
-              onKeyDown={(e) => handleKey("down", e)}
-              onKeyUp={(e) => handleKey("up", e)}
-              onCompositionStart={() => {
-                composing = true
-              }}
-              onCompositionEnd={(e) => {
-                composing = false
-                const text = e.data
-                const tabId = browser.activeTabId()
-                if (tabId && text) sendInteractiveInput({ type: "input.text", tabId, text })
-              }}
+              onKeyDown={handleKeyDown}
+              onKeyUp={handleKeyUp}
               onPaste={handlePaste}
             />
             <Show when={!streamReady()}>

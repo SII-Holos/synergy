@@ -4,6 +4,7 @@ import os from "node:os"
 import path from "node:path"
 import { normalizeBrowserURL } from "@ericsanchezok/synergy-util/browser-protocol"
 import { BrowserHostDiagnostics, type BrowserHostUploadFile } from "./browser-host-diagnostics.js"
+import { inputModifiers } from "./browser-input.js"
 import { browserProfilePartition } from "./browser-profile.js"
 
 export interface BrowserWebRTCHostOptions {
@@ -193,6 +194,8 @@ export class BrowserWebRTCHost {
       return
     }
 
+    contents.focus()
+
     if (payload.type === "input.text") {
       const text = typeof payload.text === "string" ? payload.text : ""
       if (text) void contents.insertText(text)
@@ -222,6 +225,7 @@ export class BrowserWebRTCHost {
         y: Number(payload.y ?? 0),
         deltaX: Number(payload.deltaX ?? 0),
         deltaY: Number(payload.deltaY ?? 0),
+        modifiers: inputModifiers(payload.modifiers),
       } as Electron.MouseWheelInputEvent)
       return
     }
@@ -235,6 +239,7 @@ export class BrowserWebRTCHost {
       y: Number(payload.y ?? 0),
       button: this.mouseButton(payload.button),
       clickCount: Number(payload.clickCount ?? 1),
+      modifiers: inputModifiers(payload.modifiers),
     } as Electron.MouseInputEvent)
   }
 
@@ -245,6 +250,7 @@ export class BrowserWebRTCHost {
     contents.sendInputEvent({
       type,
       keyCode: String(payload.key ?? payload.code ?? ""),
+      modifiers: inputModifiers(payload.modifiers, { autoRepeat: payload.autoRepeat }),
     } as Electron.KeyboardInputEvent)
   }
 
@@ -383,22 +389,28 @@ export class BrowserWebRTCHost {
         return { type: "tab", tab: this.tabState() }
       }
       case "click":
+        contents.focus()
         this.dispatchMouse({ action: "down", x: command.x, y: command.y, button: "left" }, contents)
         this.dispatchMouse({ action: "up", x: command.x, y: command.y, button: "left" }, contents)
         return { type: "void" }
       case "typeText":
+        contents.focus()
         await contents.insertText(String(command.text ?? ""))
         return { type: "void" }
       case "scroll":
+        contents.focus()
         this.dispatchMouse({ action: "wheel", deltaX: command.deltaX, deltaY: command.deltaY }, contents)
         return { type: "void" }
       case "mouse":
+        contents.focus()
         this.dispatchMouse((command.input as Record<string, unknown>) ?? command, contents)
         return { type: "void" }
       case "key":
+        contents.focus()
         this.dispatchKey((command.input as Record<string, unknown>) ?? command, contents)
         return { type: "void" }
       case "insertText":
+        contents.focus()
         await contents.insertText(String(command.text ?? ""))
         return { type: "void" }
       case "evaluate":

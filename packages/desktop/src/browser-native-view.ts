@@ -2,6 +2,7 @@ import { BrowserWindow, WebContentsView } from "electron"
 import { randomUUID } from "node:crypto"
 import { normalizeBrowserURL } from "@ericsanchezok/synergy-util/browser-protocol"
 import { BrowserHostDiagnostics, type BrowserHostUploadFile } from "./browser-host-diagnostics.js"
+import { inputModifiers } from "./browser-input.js"
 import { browserProfilePartition } from "./browser-profile.js"
 
 export interface BrowserNativeBounds {
@@ -396,13 +397,16 @@ class BrowserNativeHostControlConnection {
       case "setViewport":
         return { type: "tab", tab: this.tabState(tabId!, view) }
       case "click":
+        contents.focus()
         this.dispatchMouse({ type: "input.mouse", action: "down", x: command.x, y: command.y, button: "left" })
         this.dispatchMouse({ type: "input.mouse", action: "up", x: command.x, y: command.y, button: "left" })
         return { type: "void" }
       case "typeText":
+        contents.focus()
         await contents.insertText(String(command.text ?? ""))
         return { type: "void" }
       case "scroll":
+        contents.focus()
         this.dispatchMouse({
           type: "input.mouse",
           action: "wheel",
@@ -411,12 +415,15 @@ class BrowserNativeHostControlConnection {
         })
         return { type: "void" }
       case "mouse":
+        contents.focus()
         this.dispatchMouse((command.input as Record<string, unknown>) ?? command)
         return { type: "void" }
       case "key":
+        contents.focus()
         this.dispatchKey((command.input as Record<string, unknown>) ?? command)
         return { type: "void" }
       case "insertText":
+        contents.focus()
         await contents.insertText(String(command.text ?? ""))
         return { type: "void" }
       case "evaluate":
@@ -500,6 +507,7 @@ class BrowserNativeHostControlConnection {
         y: Number(payload.y ?? 0),
         deltaX: Number(payload.deltaX ?? 0),
         deltaY: Number(payload.deltaY ?? 0),
+        modifiers: inputModifiers(payload.modifiers),
       } as Electron.MouseWheelInputEvent)
       return
     }
@@ -511,6 +519,7 @@ class BrowserNativeHostControlConnection {
       y: Number(payload.y ?? 0),
       button: this.mouseButton(payload.button),
       clickCount: Number(payload.clickCount ?? 1),
+      modifiers: inputModifiers(payload.modifiers),
     } as Electron.MouseInputEvent)
   }
 
@@ -607,6 +616,7 @@ class BrowserNativeHostControlConnection {
     view.webContents.sendInputEvent({
       type,
       keyCode: String(payload.key ?? payload.code ?? ""),
+      modifiers: inputModifiers(payload.modifiers, { autoRepeat: payload.autoRepeat }),
     } as Electron.KeyboardInputEvent)
   }
 
