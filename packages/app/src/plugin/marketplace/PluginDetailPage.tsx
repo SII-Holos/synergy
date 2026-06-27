@@ -18,6 +18,7 @@ import type {
 import type { PermissionItem, PluginPermissionDiff, TrustTier, PermissionSeverity } from "../consent/schema"
 import { computeVersionDiffs } from "./changelog-utils"
 import { getInstalledVersion, checkUpdateAvailable } from "./install-utils"
+import "./marketplace.css"
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -41,7 +42,7 @@ function formatDate(ts: number): string {
 }
 
 function formatSigner(signer?: string): string {
-  if (!signer) return "—"
+  if (!signer) return "Not signed"
   return `${signer.slice(0, 10)}…${signer.slice(-8)}`
 }
 
@@ -275,10 +276,10 @@ export function PluginDetailPage() {
   const pluginData = () => summary()
 
   return (
-    <div class="synergy-workbench-canvas flex flex-col h-full min-h-0 bg-background-stronger text-text-base">
+    <div class="synergy-workbench-canvas plugin-marketplace-page flex flex-col h-full min-h-0 bg-background-stronger text-text-base">
       {/* ── Header ── */}
-      <div class="shrink-0 px-6 pt-6 pb-3 border-b border-border-weaker-base/40">
-        <div class="flex items-start justify-between gap-3">
+      <div class="shrink-0 px-5 pt-7 pb-3 sm:px-6">
+        <div class="mx-auto flex w-full max-w-[760px] items-start justify-between gap-3">
           <div class="flex-1 min-w-0">
             <div class="flex items-center gap-2">
               <button
@@ -289,7 +290,10 @@ export function PluginDetailPage() {
               >
                 <Icon name="arrow-left" size="small" />
               </button>
-              <h1 class="text-15-medium text-text-strong truncate">{pluginData()?.name ?? pluginId()}</h1>
+              <span class="plugin-marketplace-icon-tile">
+                <Icon name="package" size="small" class="text-icon-weak" />
+              </span>
+              <h1 class="text-18-medium text-text-strong truncate">{pluginData()?.name ?? pluginId()}</h1>
               <Show when={pluginData()}>
                 <VerifiedBadge verified={pluginData()!.verified} official={pluginData()!.official} />
               </Show>
@@ -297,7 +301,7 @@ export function PluginDetailPage() {
                 {source() === "local" ? "Local" : "Official"}
               </span>
             </div>
-            <p class="text-12-regular text-text-weak mt-1">{pluginData()?.description}</p>
+            <p class="mt-2 max-w-[62ch] text-13-regular leading-relaxed text-text-weak">{pluginData()?.description}</p>
             <Show when={installError()}>
               <p class="text-12-regular text-text-critical mt-2">{installError()}</p>
             </Show>
@@ -353,22 +357,20 @@ export function PluginDetailPage() {
         </div>
 
         {/* Tab bar */}
-        <div class="flex items-center gap-0.5 mt-4 -mb-px">
+        <div class="mx-auto mt-5 flex w-full max-w-[760px] items-center gap-0.5 rounded-xl bg-surface-inset-base p-0.5 ring-1 ring-inset ring-border-weaker-base/55">
           <For each={TABS}>
             {(tab) => (
               <button
                 type="button"
                 classList={{
-                  "px-3.5 py-2 text-13-medium border-b-2 transition-colors": true,
-                  "border-text-action text-text-strong": activeTab() === tab.id,
-                  "border-transparent text-text-weak hover:text-text-base": activeTab() !== tab.id,
+                  "inline-flex h-8 flex-1 items-center justify-center gap-1.5 rounded-lg px-3 text-12-medium transition-colors": true,
+                  "workbench-selected-surface text-text-strong": activeTab() === tab.id,
+                  "text-text-weak hover:text-text-base": activeTab() !== tab.id,
                 }}
                 onClick={() => setActiveTab(tab.id)}
               >
-                <span class="flex items-center gap-1.5">
-                  <Icon name={tab.icon} size="small" />
-                  {tab.label}
-                </span>
+                <Icon name={tab.icon} size="small" />
+                {tab.label}
               </button>
             )}
           </For>
@@ -377,32 +379,40 @@ export function PluginDetailPage() {
 
       {/* ── Loading ── */}
       <Show when={isLoading()}>
-        <div class="flex items-center justify-center py-16">
-          <div class="size-5 rounded-full border-2 border-border-weaker-base border-t-text-base animate-spin" />
+        <div class="px-5 sm:px-6">
+          <div class="mx-auto flex w-full max-w-[760px] flex-col gap-2 py-6">
+            <div class="plugin-marketplace-skeleton-row workbench-card-surface h-[96px] rounded-2xl" />
+            <div class="plugin-marketplace-skeleton-row workbench-card-surface h-[180px] rounded-2xl" />
+          </div>
         </div>
       </Show>
 
       {/* ── Error ── */}
       <Show when={!isLoading() && isError()}>
-        <div class="flex flex-col items-center justify-center py-16 gap-3">
-          <Icon name="alert-triangle" size="large" class="text-icon-critical-base" />
-          <p class="text-14-medium text-text-weak">Failed to load plugin</p>
-          <p class="text-12-regular text-text-weaker">{errorMessage()}</p>
+        <div class="px-5 sm:px-6">
+          <div class="workbench-card-surface mx-auto flex w-full max-w-[760px] flex-col items-center justify-center gap-3 rounded-2xl px-6 py-14 text-center">
+            <Icon name="alert-triangle" size="large" class="text-icon-critical-base" />
+            <p class="text-14-medium text-text-strong">Failed to load plugin</p>
+            <p class="text-12-regular text-text-weak">{errorMessage()}</p>
+          </div>
         </div>
       </Show>
 
       {/* ── Not found ── */}
       <Show when={!isLoading() && !isError() && !pluginData()}>
-        <div class="flex flex-col items-center justify-center py-16 gap-3">
-          <Icon name="package-search" size="large" class="text-icon-weak" />
-          <p class="text-14-medium text-text-weak">Plugin not found</p>
-          <p class="text-12-regular text-text-weaker">"{pluginId()}" does not exist in the registry.</p>
+        <div class="px-5 sm:px-6">
+          <div class="workbench-card-surface mx-auto flex w-full max-w-[760px] flex-col items-center justify-center gap-3 rounded-2xl px-6 py-14 text-center">
+            <Icon name="scan-search" size="large" class="text-icon-weak" />
+            <p class="text-14-medium text-text-strong">Plugin not found</p>
+            <p class="text-12-regular text-text-weak">"{pluginId()}" does not exist in the registry.</p>
+          </div>
         </div>
       </Show>
 
       {/* ── Tab content ── */}
       <Show when={pluginData()}>
-        <div class="flex-1 min-h-0 overflow-y-auto px-6 pb-6 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <div class="plugin-marketplace-scroll flex-1 min-h-0 overflow-y-auto px-5 pb-7 sm:px-6">
+          <div class="mx-auto w-full max-w-[760px]">
           <Switch>
             {/* ── Overview ── */}
             <Match when={activeTab() === "overview"}>
@@ -710,6 +720,7 @@ export function PluginDetailPage() {
               </div>
             </Match>
           </Switch>
+          </div>
         </div>
       </Show>
     </div>
