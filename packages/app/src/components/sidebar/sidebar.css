@@ -1,11 +1,11 @@
 .sb-root {
-  --sb-bg: light-dark(rgb(236 238 241), rgb(31 32 35));
-  --sb-hover-bg: light-dark(rgb(226 230 235), rgb(43 44 48));
-  --sb-control-hover-bg: light-dark(rgb(216 222 230), rgb(51 52 57));
-  --sb-active-bg: light-dark(rgb(214 221 230), rgb(55 56 61));
-  --sb-popover-bg: light-dark(rgb(235 237 240), rgb(37 38 42));
-  --sb-popover-card-bg: light-dark(rgb(226 231 237), rgb(48 49 54));
-  --sb-border: light-dark(rgba(17, 24, 39, 0.08), rgba(244, 244, 245, 0.08));
+  --sb-bg: var(--background-base);
+  --sb-hover-bg: var(--surface-hover-base);
+  --sb-control-hover-bg: var(--surface-inset-base-hover);
+  --sb-active-bg: var(--surface-interactive-selected);
+  --sb-popover-bg: var(--surface-raised-stronger-non-alpha);
+  --sb-popover-card-bg: var(--surface-raised-base);
+  --sb-border: var(--border-weaker-base);
   display: flex;
   flex-direction: column;
   height: 100%;

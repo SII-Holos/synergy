@@ -266,20 +266,23 @@ describe("Visual Token Contract", () => {
     })
   })
 
-  describe("1b. Static theme fallback preserves surface polarity", () => {
-    test("light fallback makes stronger raised content darker than raised containers", async () => {
+  describe("1b. Static theme fallback preserves neutral workbench surfaces", () => {
+    test("light fallback uses a near-white canvas with white raised rows", async () => {
       const css = extractLightFallbackBlock(await readThemeCss())
-      expect(extractCustomPropValue(css, "surface-raised-base")).toBe("#e9ecef")
-      expect(extractCustomPropValue(css, "surface-raised-stronger")).toBe("#dce2ea")
-      expect(extractCustomPropValue(css, "surface-raised-stronger-non-alpha")).toBe("#dce2ea")
+      expect(extractCustomPropValue(css, "background-stronger")).toBe("#FAFAFA")
+      expect(extractCustomPropValue(css, "surface-raised-base")).toBe("#FFFFFF")
+      expect(extractCustomPropValue(css, "surface-raised-stronger")).toBe("#FFFFFF")
+      expect(extractCustomPropValue(css, "surface-raised-stronger-non-alpha")).toBe("#FFFFFF")
+      expect(extractCustomPropValue(css, "surface-inset-base")).toBe("#F4F4F5")
     })
 
-    test("dark fallback makes stronger raised content brighter than raised containers", async () => {
+    test("dark fallback makes raised content brighter than the canvas", async () => {
       const css = extractDarkFallbackBlock(await readThemeCss())
-      expect(extractCustomPropValue(css, "surface-raised-base")).toBe("var(--smoke-dark-4)")
-      expect(extractCustomPropValue(css, "surface-raised-strong")).toBe("#2f3034")
-      expect(extractCustomPropValue(css, "surface-raised-stronger")).toBe("#35363a")
-      expect(extractCustomPropValue(css, "surface-raised-stronger-non-alpha")).toBe("#35363a")
+      expect(extractCustomPropValue(css, "background-stronger")).toBe("#0F0F10")
+      expect(extractCustomPropValue(css, "surface-raised-base")).toBe("#1B1B1D")
+      expect(extractCustomPropValue(css, "surface-raised-strong")).toBe("#222326")
+      expect(extractCustomPropValue(css, "surface-raised-stronger")).toBe("#2A2B2F")
+      expect(extractCustomPropValue(css, "surface-raised-stronger-non-alpha")).toBe("#2A2B2F")
     })
   })
 

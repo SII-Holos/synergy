@@ -54,7 +54,22 @@ export function UsagePanel(props: { onConnectProvider: (providerID?: string) => 
   }
 
   return (
-    <SettingsPage title="Usage" description="Review quota windows, credits, and provider account health.">
+    <SettingsPage
+      title="Usage"
+      description="Review quota windows, credits, and provider account health."
+      actions={
+        <Button
+          type="button"
+          variant="secondary"
+          size="small"
+          icon={getSemanticIcon("action.refresh")}
+          disabled={usage.loading}
+          onClick={() => void refetch()}
+        >
+          Refresh
+        </Button>
+      }
+    >
       <div class="usage-page-shell">
         <div class="usage-overview">
           <div class="usage-overview-metrics">
@@ -75,16 +90,6 @@ export function UsagePanel(props: { onConnectProvider: (providerID?: string) => 
               )}
             </Show>
           </div>
-          <Button
-            type="button"
-            variant="secondary"
-            size="small"
-            icon={getSemanticIcon("action.refresh")}
-            disabled={usage.loading}
-            onClick={() => void refetch()}
-          >
-            Refresh
-          </Button>
         </div>
 
         <SettingsSection

@@ -9,11 +9,11 @@
 }
 
 [data-component="dialog"] [data-slot="dialog-content"].agenda-form-dialog {
-  --agenda-dialog-bg: light-dark(rgb(247 248 250), rgb(38 38 41));
-  --agenda-control-bg: light-dark(rgb(235 238 242), rgb(48 48 51));
-  --agenda-control-bg-hover: light-dark(rgb(226 231 237), rgb(54 54 58));
-  --agenda-selected-bg: light-dark(rgb(222 228 236), rgb(58 58 63));
-  --agenda-selected-bg-hover: light-dark(rgb(214 221 230), rgb(64 64 69));
+  --agenda-dialog-bg: var(--background-stronger);
+  --agenda-control-bg: var(--surface-inset-base);
+  --agenda-control-bg-hover: var(--surface-inset-base-hover);
+  --agenda-selected-bg: var(--surface-interactive-selected);
+  --agenda-selected-bg-hover: var(--surface-base-active);
   --agenda-control-border: light-dark(
     color-mix(in oklab, var(--border-base) 32%, transparent),
     color-mix(in oklab, var(--border-base) 18%, transparent)
@@ -22,7 +22,7 @@
     color-mix(in oklab, var(--text-strong) 24%, transparent),
     color-mix(in oklab, var(--text-strong) 28%, transparent)
   );
-  --agenda-popup-bg: light-dark(rgb(242 244 247), rgb(42 42 45));
+  --agenda-popup-bg: var(--surface-raised-stronger-non-alpha);
 
   min-height: 0;
   max-height: min(calc(100vh - 48px), 720px);
@@ -81,10 +81,10 @@
 }
 
 .agenda-form-surface {
-  --agenda-control-bg: light-dark(rgb(235 238 242), rgb(48 48 51));
-  --agenda-control-bg-hover: light-dark(rgb(226 231 237), rgb(54 54 58));
-  --agenda-selected-bg: light-dark(rgb(222 228 236), rgb(58 58 63));
-  --agenda-selected-bg-hover: light-dark(rgb(214 221 230), rgb(64 64 69));
+  --agenda-control-bg: var(--surface-inset-base);
+  --agenda-control-bg-hover: var(--surface-inset-base-hover);
+  --agenda-selected-bg: var(--surface-interactive-selected);
+  --agenda-selected-bg-hover: var(--surface-base-active);
   --agenda-control-border: light-dark(
     color-mix(in oklab, var(--border-base) 30%, transparent),
     color-mix(in oklab, var(--border-base) 18%, transparent)
@@ -93,7 +93,7 @@
     color-mix(in oklab, var(--text-strong) 24%, transparent),
     color-mix(in oklab, var(--text-strong) 28%, transparent)
   );
-  --agenda-popup-bg: light-dark(rgb(242 244 247), rgb(42 42 45));
+  --agenda-popup-bg: var(--surface-raised-stronger-non-alpha);
 }
 
 .agenda-control-surface {
@@ -254,15 +254,15 @@
 }
 
 .agenda-main-surface {
-  --agenda-panel-bg: var(--workbench-panel-bg, light-dark(rgb(235 237 240), rgb(34 34 36)));
-  --agenda-panel-bg-hover: var(--workbench-panel-bg-hover, light-dark(rgb(228 231 235), rgb(42 42 45)));
-  --agenda-content-bg: var(--workbench-card-bg, light-dark(rgb(229 232 236), rgb(52 52 54)));
-  --agenda-content-bg-hover: var(--workbench-card-bg-hover, light-dark(rgb(222 226 232), rgb(60 60 63)));
-  --agenda-control-bg: var(--workbench-control-bg, light-dark(rgb(223 227 233), rgb(64 64 67)));
-  --agenda-control-bg-hover: var(--workbench-control-bg-hover, light-dark(rgb(214 220 228), rgb(72 72 75)));
-  --agenda-grid-bg: var(--workbench-panel-bg, light-dark(rgb(235 237 240), rgb(30 30 33)));
-  --agenda-selected-bg: var(--workbench-selected-bg, light-dark(rgb(207 215 225), rgb(58 58 63)));
-  --agenda-selected-bg-hover: var(--workbench-selected-bg-hover, light-dark(rgb(198 207 219), rgb(64 64 69)));
+  --agenda-panel-bg: var(--workbench-panel-bg, var(--background-base));
+  --agenda-panel-bg-hover: var(--workbench-panel-bg-hover, var(--surface-hover-base));
+  --agenda-content-bg: var(--workbench-row-bg, var(--surface-raised-base));
+  --agenda-content-bg-hover: var(--workbench-row-bg-hover, var(--surface-raised-base-hover));
+  --agenda-control-bg: var(--workbench-control-bg, var(--surface-inset-base));
+  --agenda-control-bg-hover: var(--workbench-control-bg-hover, var(--surface-inset-base-hover));
+  --agenda-grid-bg: var(--workbench-panel-bg, var(--background-base));
+  --agenda-selected-bg: var(--workbench-selected-bg, var(--surface-interactive-selected));
+  --agenda-selected-bg-hover: var(--workbench-selected-bg-hover, var(--surface-base-active));
   --agenda-grid-line: light-dark(rgba(15, 23, 42, 0.095), rgba(255, 255, 255, 0.105));
   --agenda-grid-line-strong: light-dark(rgba(15, 23, 42, 0.13), rgba(255, 255, 255, 0.145));
 
@@ -278,15 +278,15 @@
 }
 
 .agenda-calendar-frame {
-  --agenda-panel-bg: var(--workbench-panel-bg, light-dark(rgb(235 237 240), rgb(34 34 36)));
-  --agenda-panel-bg-hover: var(--workbench-panel-bg-hover, light-dark(rgb(228 231 235), rgb(42 42 45)));
-  --agenda-content-bg: var(--workbench-card-bg, light-dark(rgb(229 232 236), rgb(52 52 54)));
-  --agenda-content-bg-hover: var(--workbench-card-bg-hover, light-dark(rgb(222 226 232), rgb(60 60 63)));
-  --agenda-control-bg: var(--workbench-control-bg, light-dark(rgb(223 227 233), rgb(64 64 67)));
-  --agenda-control-bg-hover: var(--workbench-control-bg-hover, light-dark(rgb(214 220 228), rgb(72 72 75)));
-  --agenda-grid-bg: var(--workbench-panel-bg, light-dark(rgb(235 237 240), rgb(30 30 33)));
-  --agenda-selected-bg: var(--workbench-selected-bg, light-dark(rgb(207 215 225), rgb(58 58 63)));
-  --agenda-selected-bg-hover: var(--workbench-selected-bg-hover, light-dark(rgb(198 207 219), rgb(64 64 69)));
+  --agenda-panel-bg: var(--workbench-panel-bg, var(--background-base));
+  --agenda-panel-bg-hover: var(--workbench-panel-bg-hover, var(--surface-hover-base));
+  --agenda-content-bg: var(--workbench-row-bg, var(--surface-raised-base));
+  --agenda-content-bg-hover: var(--workbench-row-bg-hover, var(--surface-raised-base-hover));
+  --agenda-control-bg: var(--workbench-control-bg, var(--surface-inset-base));
+  --agenda-control-bg-hover: var(--workbench-control-bg-hover, var(--surface-inset-base-hover));
+  --agenda-grid-bg: var(--workbench-panel-bg, var(--background-base));
+  --agenda-selected-bg: var(--workbench-selected-bg, var(--surface-interactive-selected));
+  --agenda-selected-bg-hover: var(--workbench-selected-bg-hover, var(--surface-base-active));
   --agenda-grid-line: light-dark(rgba(15, 23, 42, 0.095), rgba(255, 255, 255, 0.105));
   --agenda-grid-line-strong: light-dark(rgba(15, 23, 42, 0.13), rgba(255, 255, 255, 0.145));
 
@@ -388,20 +388,20 @@
 }
 
 .agenda-activity-surface {
-  --agenda-content-bg: var(--workbench-card-bg, light-dark(rgb(229 232 236), rgb(52 52 54)));
-  --agenda-content-bg-hover: var(--workbench-card-bg-hover, light-dark(rgb(222 226 232), rgb(60 60 63)));
-  --agenda-control-bg: var(--workbench-control-bg, light-dark(rgb(223 227 233), rgb(64 64 67)));
-  --agenda-control-bg-hover: var(--workbench-control-bg-hover, light-dark(rgb(214 220 228), rgb(72 72 75)));
+  --agenda-content-bg: var(--workbench-row-bg, var(--surface-raised-base));
+  --agenda-content-bg-hover: var(--workbench-row-bg-hover, var(--surface-raised-base-hover));
+  --agenda-control-bg: var(--workbench-control-bg, var(--surface-inset-base));
+  --agenda-control-bg-hover: var(--workbench-control-bg-hover, var(--surface-inset-base-hover));
 }
 
 .agenda-detail-popover {
-  --agenda-detail-bg: light-dark(rgb(238 240 243), rgb(42 42 45));
-  --agenda-detail-card-bg: light-dark(rgb(229 232 236), rgb(52 52 54));
-  --agenda-detail-card-bg-hover: light-dark(rgb(222 226 232), rgb(60 60 63));
-  --agenda-detail-control-bg: light-dark(rgb(223 227 233), rgb(58 58 61));
-  --agenda-detail-control-bg-hover: light-dark(rgb(214 220 228), rgb(66 66 70));
-  --agenda-detail-divider: light-dark(rgba(15, 23, 42, 0.08), rgba(255, 255, 255, 0.08));
-  --agenda-detail-chip-bg: light-dark(rgb(226 230 235), rgb(55 55 58));
+  --agenda-detail-bg: var(--workbench-popover-bg, var(--surface-raised-stronger-non-alpha));
+  --agenda-detail-card-bg: var(--workbench-row-bg, var(--surface-raised-base));
+  --agenda-detail-card-bg-hover: var(--workbench-row-bg-hover, var(--surface-raised-base-hover));
+  --agenda-detail-control-bg: var(--workbench-control-bg, var(--surface-inset-base));
+  --agenda-detail-control-bg-hover: var(--workbench-control-bg-hover, var(--surface-inset-base-hover));
+  --agenda-detail-divider: var(--workbench-border, var(--border-weaker-base));
+  --agenda-detail-chip-bg: var(--workbench-control-bg, var(--surface-inset-base));
   --agenda-control-bg: var(--agenda-detail-control-bg);
   --agenda-control-bg-hover: var(--agenda-detail-control-bg-hover);
   --agenda-content-bg-hover: var(--agenda-detail-card-bg-hover);

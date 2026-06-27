@@ -28,20 +28,36 @@
 }
 
 .settings-panel-frame {
-  --settings-canvas-bg: light-dark(rgb(240 241 244), rgb(24 24 27));
-  --settings-panel-bg: light-dark(rgb(235 237 240), rgb(30 30 33));
-  --settings-panel-bg-hover: light-dark(rgb(228 231 235), rgb(36 36 39));
-  --settings-card-bg: light-dark(rgb(229 232 236), rgb(40 40 43));
-  --settings-card-bg-hover: light-dark(rgb(222 226 232), rgb(46 46 49));
-  --settings-card-secondary-bg: light-dark(rgb(224 228 233), rgb(44 44 47));
-  --settings-popover-bg: light-dark(rgb(226 230 235), rgb(46 46 49));
-  --settings-control-bg: light-dark(rgb(223 227 233), rgb(48 48 51));
-  --settings-control-bg-hover: light-dark(rgb(214 220 228), rgb(54 54 58));
-  --settings-input-bg: light-dark(rgb(221 226 232), rgb(50 50 54));
-  --settings-input-bg-hover: light-dark(rgb(212 219 227), rgb(56 56 60));
-  --settings-selected-bg: light-dark(rgb(207 215 225), rgb(58 58 63));
-  --settings-selected-bg-hover: light-dark(rgb(198 207 219), rgb(64 64 69));
-  --settings-border: light-dark(rgba(17, 24, 39, 0.08), rgba(244, 244, 245, 0.08));
+  --settings-canvas-bg: var(--background-stronger);
+  --settings-panel-bg: var(--background-base);
+  --settings-panel-bg-hover: var(--surface-hover-base);
+  --settings-card-bg: var(--surface-raised-base);
+  --settings-card-bg-hover: var(--surface-raised-base-hover);
+  --settings-card-secondary-bg: var(--surface-base);
+  --settings-popover-bg: var(--surface-raised-stronger-non-alpha);
+  --settings-control-bg: var(--surface-inset-base);
+  --settings-control-bg-hover: var(--surface-inset-base-hover);
+  --settings-input-bg: var(--input-base);
+  --settings-input-bg-hover: var(--input-hover);
+  --settings-selected-bg: var(--surface-interactive-selected);
+  --settings-selected-bg-hover: var(--surface-base-active);
+  --settings-border: var(--border-weaker-base);
+  --workbench-canvas-bg: var(--settings-canvas-bg);
+  --workbench-panel-bg: var(--settings-panel-bg);
+  --workbench-panel-bg-hover: var(--settings-panel-bg-hover);
+  --workbench-row-bg: color-mix(in srgb, var(--settings-card-bg) 84%, transparent);
+  --workbench-row-bg-hover: var(--settings-card-bg-hover);
+  --workbench-card-bg: var(--settings-card-bg);
+  --workbench-card-bg-hover: var(--settings-card-bg-hover);
+  --workbench-card-secondary-bg: var(--settings-card-secondary-bg);
+  --workbench-control-bg: var(--settings-control-bg);
+  --workbench-control-bg-hover: var(--settings-control-bg-hover);
+  --workbench-input-bg: var(--settings-input-bg);
+  --workbench-input-bg-hover: var(--settings-input-bg-hover);
+  --workbench-popover-bg: var(--settings-popover-bg);
+  --workbench-selected-bg: var(--settings-selected-bg);
+  --workbench-selected-bg-hover: var(--settings-selected-bg-hover);
+  --workbench-border: var(--settings-border);
   --settings-focus-ring:
     0 0 0 1px color-mix(in srgb, var(--text-strong) 24%, transparent),
     0 0 0 3px color-mix(in srgb, var(--text-strong) 7%, transparent);
@@ -79,28 +95,6 @@
 }
 
 .settings-panel-root {
-  --workbench-canvas-bg: var(--settings-canvas-bg);
-  --workbench-panel-bg: var(--settings-panel-bg);
-  --workbench-panel-bg-hover: var(--settings-panel-bg-hover);
-  --workbench-card-bg: var(--settings-card-bg);
-  --workbench-card-bg-hover: var(--settings-card-bg-hover);
-  --workbench-card-secondary-bg: var(--settings-card-secondary-bg);
-  --workbench-control-bg: var(--settings-control-bg);
-  --workbench-control-bg-hover: var(--settings-control-bg-hover);
-  --workbench-input-bg: var(--settings-input-bg);
-  --workbench-input-bg-hover: var(--settings-input-bg-hover);
-  --workbench-popover-bg: var(--settings-popover-bg);
-  --workbench-selected-bg: var(--settings-selected-bg);
-  --workbench-selected-bg-hover: var(--settings-selected-bg-hover);
-  --workbench-border: var(--settings-border);
-  --background-base: var(--settings-panel-bg);
-  --background-stronger: var(--settings-canvas-bg);
-  --surface-raised-base: var(--settings-card-bg);
-  --surface-raised-base-hover: var(--settings-card-bg-hover);
-  --surface-raised-stronger-non-alpha: var(--settings-popover-bg);
-  --surface-inset-base: var(--settings-control-bg);
-  --input-base: var(--settings-input-bg);
-  --input-hover: var(--settings-input-bg-hover);
   --shadow-xs-border-select: var(--settings-focus-ring);
 
   height: 100%;
@@ -1739,7 +1733,7 @@
 .usage-overview {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
   gap: 16px;
   padding: 12px 14px;
   border-radius: 12px;

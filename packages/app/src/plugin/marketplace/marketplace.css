@@ -1,13 +1,13 @@
 .plugin-marketplace-workbench {
-  --plugin-panel-bg: light-dark(rgb(238 240 244), rgb(30 30 32));
-  --plugin-panel-bg-hover: light-dark(rgb(231 235 241), rgb(38 38 41));
-  --plugin-control-bg: light-dark(rgb(223 228 236), rgb(50 50 53));
-  --plugin-control-bg-hover: light-dark(rgb(214 221 231), rgb(58 58 62));
-  --plugin-input-bg: light-dark(rgb(218 224 233), rgb(46 46 49));
-  --plugin-card-bg: light-dark(rgb(226 231 238), rgb(44 44 47));
-  --plugin-card-bg-hover: light-dark(rgb(218 225 234), rgb(52 52 56));
-  --plugin-selected-bg: light-dark(rgb(203 213 226), rgb(62 62 66));
-  --plugin-line: light-dark(rgba(15, 23, 42, 0.09), rgba(255, 255, 255, 0.09));
+  --plugin-panel-bg: var(--workbench-panel-bg);
+  --plugin-panel-bg-hover: var(--workbench-panel-bg-hover);
+  --plugin-control-bg: var(--workbench-control-bg);
+  --plugin-control-bg-hover: var(--workbench-control-bg-hover);
+  --plugin-input-bg: var(--workbench-input-bg);
+  --plugin-card-bg: var(--workbench-row-bg);
+  --plugin-card-bg-hover: var(--workbench-row-bg-hover);
+  --plugin-selected-bg: var(--workbench-selected-bg);
+  --plugin-line: var(--workbench-border);
 
   background: var(--workbench-canvas-bg);
 }
@@ -384,7 +384,7 @@
 [data-component="dialog"] [data-slot="dialog-content"].plugin-detail-dialog {
   overflow: hidden;
   border-radius: 1rem;
-  background: light-dark(rgb(247 248 250), rgb(38 38 41));
+  background: var(--surface-raised-stronger-non-alpha);
   box-shadow:
     0 24px 76px rgba(0, 0, 0, 0.34),
     0 1px 0 color-mix(in oklch, var(--border-base) 34%, transparent);
