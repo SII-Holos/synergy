@@ -556,6 +556,37 @@
   padding: 0.875rem 1.5rem;
 }
 
+.skill-detail-footer.is-confirming {
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.skill-delete-confirm-copy {
+  min-width: 0;
+}
+
+.skill-delete-confirm-title {
+  color: var(--text-strong);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.skill-delete-confirm-text {
+  margin-top: 0.1875rem;
+  color: var(--text-weak);
+  font-size: 0.75rem;
+  line-height: 1.4;
+}
+
+.skill-delete-confirm-actions {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 0.5rem;
+}
+
 .skill-detail-button {
   display: inline-flex;
   min-height: 2.25rem;
@@ -590,6 +621,16 @@
 
 .skill-detail-button-danger:hover {
   background: color-mix(in oklab, var(--text-diff-delete-base) 9%, transparent);
+}
+
+.skill-detail-button-danger-solid {
+  background: color-mix(in oklab, var(--text-diff-delete-base) 78%, black);
+  color: white;
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, white 18%, transparent);
+}
+
+.skill-detail-button-danger-solid:hover {
+  background: color-mix(in oklab, var(--text-diff-delete-base) 88%, black);
 }
 
 .skill-detail-button.is-disabled {
@@ -697,5 +738,14 @@
   .skill-detail-row {
     grid-template-columns: minmax(0, 1fr);
     gap: 0.25rem;
+  }
+
+  .skill-detail-footer.is-confirming {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .skill-delete-confirm-actions {
+    justify-content: flex-end;
   }
 }

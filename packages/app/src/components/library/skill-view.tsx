@@ -569,6 +569,7 @@ function SkillCard(props: { skill: SkillItem; onOpen: () => void }) {
 function SkillDetailDialog(props: { skill: SkillItem; onDelete?: () => Promise<boolean>; onDeleted: () => void }) {
   const dialog = useDialog()
   const [deleting, setDeleting] = createSignal(false)
+  const [confirmingDelete, setConfirmingDelete] = createSignal(false)
   const scopeLabel = () => skillScopeLabel(props.skill)
   const displayLocation = () => compactPath(props.skill.location)
   const displayEntryFile = () => compactPath(props.skill.entryFile)
@@ -577,11 +578,11 @@ function SkillDetailDialog(props: { skill: SkillItem; onDelete?: () => Promise<b
 
   async function handleDelete() {
     if (!props.onDelete || deleting()) return
-    if (!confirm(`Delete skill "${props.skill.name}"?`)) return
     setDeleting(true)
     const deleted = await props.onDelete()
     setDeleting(false)
     if (deleted) props.onDeleted()
+    else setConfirmingDelete(false)
   }
 
   return (
@@ -656,32 +657,63 @@ function SkillDetailDialog(props: { skill: SkillItem; onDelete?: () => Promise<b
           </Show>
         </div>
 
-        <div class="skill-detail-footer">
-          <Show when={props.onDelete}>
-            <button
-              type="button"
-              classList={{
-                "skill-detail-button skill-detail-button-danger": true,
-                "is-disabled": deleting(),
-              }}
-              onClick={handleDelete}
-              disabled={deleting()}
-            >
-              <Show when={deleting()} fallback="Delete skill">
-                <span class="inline-flex items-center gap-1.5">
-                  <Spinner class="size-3" />
-                  Deleting...
-                </span>
-              </Show>
-            </button>
-          </Show>
-          <button
-            type="button"
-            class="skill-detail-button skill-detail-button-secondary ml-auto"
-            onClick={() => dialog.close()}
+        <div classList={{ "skill-detail-footer": true, "is-confirming": confirmingDelete() }}>
+          <Show
+            when={confirmingDelete() && props.onDelete}
+            fallback={
+              <>
+                <Show when={props.onDelete}>
+                  <button
+                    type="button"
+                    class="skill-detail-button skill-detail-button-danger"
+                    onClick={() => setConfirmingDelete(true)}
+                  >
+                    Delete skill
+                  </button>
+                </Show>
+                <button
+                  type="button"
+                  class="skill-detail-button skill-detail-button-secondary ml-auto"
+                  onClick={() => dialog.close()}
+                >
+                  Close
+                </button>
+              </>
+            }
           >
-            Close
-          </button>
+            <div class="skill-delete-confirm-copy">
+              <div class="skill-delete-confirm-title">Delete this skill?</div>
+              <div class="skill-delete-confirm-text">
+                This removes "{props.skill.name}" from disk. This cannot be undone.
+              </div>
+            </div>
+            <div class="skill-delete-confirm-actions">
+              <button
+                type="button"
+                class="skill-detail-button skill-detail-button-secondary"
+                onClick={() => setConfirmingDelete(false)}
+                disabled={deleting()}
+              >
+                Keep skill
+              </button>
+              <button
+                type="button"
+                classList={{
+                  "skill-detail-button skill-detail-button-danger-solid": true,
+                  "is-disabled": deleting(),
+                }}
+                onClick={handleDelete}
+                disabled={deleting()}
+              >
+                <Show when={deleting()} fallback="Delete">
+                  <span class="inline-flex items-center gap-1.5">
+                    <Spinner class="size-3" />
+                    Deleting...
+                  </span>
+                </Show>
+              </button>
+            </div>
+          </Show>
         </div>
       </div>
     </Dialog>
