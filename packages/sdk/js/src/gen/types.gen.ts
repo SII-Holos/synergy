@@ -1079,6 +1079,20 @@ export type ExternalAgentConfig = {
 export type ProviderConfig = {
   api?: string
   name?: string
+  description?: string
+  signupUrl?: string
+  recommendation?: {
+    level: "featured" | "recommended" | "standard"
+    rank?: number
+    headline?: string
+    reason?: string
+    cta?: {
+      kind: "external"
+      label: string
+      url: string
+    }
+    defaultModel?: string
+  }
   env?: Array<string>
   id?: string
   npm?: string
@@ -3460,6 +3474,28 @@ export type Command = {
   hints: Array<string>
 }
 
+export type ProviderRecommendation = {
+  level: "featured" | "recommended" | "standard"
+  rank?: number
+  headline?: string
+  reason?: string
+  cta?: {
+    kind: "external"
+    label: string
+    url: string
+  }
+  defaultModel?: string
+}
+
+export type ProviderProfileMetadata = {
+  id: string
+  name: string
+  displayName?: string
+  description?: string
+  signupUrl?: string
+  recommendation?: ProviderRecommendation
+}
+
 export type ProviderAuthHealth = {
   providerID: string
   status: "connected" | "not_configured" | "expired" | "exhausted" | "dead"
@@ -4751,21 +4787,6 @@ export type EventMcpFailed = {
   }
 }
 
-export type EventLspClientDiagnostics = {
-  type: "lsp.client.diagnostics"
-  properties: {
-    serverID: string
-    path: string
-  }
-}
-
-export type EventLspUpdated = {
-  type: "lsp.updated"
-  properties: {
-    [key: string]: unknown
-  }
-}
-
 export type EventMessageUpdated = {
   type: "message.updated"
   properties: {
@@ -4899,6 +4920,21 @@ export type EventSessionCompacted = {
   type: "session.compacted"
   properties: {
     sessionID: string
+  }
+}
+
+export type EventLspClientDiagnostics = {
+  type: "lsp.client.diagnostics"
+  properties: {
+    serverID: string
+    path: string
+  }
+}
+
+export type EventLspUpdated = {
+  type: "lsp.updated"
+  properties: {
+    [key: string]: unknown
   }
 }
 
@@ -5218,8 +5254,6 @@ export type Event =
   | EventMcpResourcesChanged
   | EventMcpReady
   | EventMcpFailed
-  | EventLspClientDiagnostics
-  | EventLspUpdated
   | EventMessageUpdated
   | EventMessageRemoved
   | EventMessagePartUpdated
@@ -5238,6 +5272,8 @@ export type Event =
   | EventQuestionRejected
   | EventQuestionTimedOut
   | EventSessionCompacted
+  | EventLspClientDiagnostics
+  | EventLspUpdated
   | EventFileEdited
   | EventRuntimeReloaded
   | EventDagUpdated
@@ -8503,6 +8539,20 @@ export type ProviderListResponses = {
     all: Array<{
       api?: string
       name: string
+      description?: string
+      signupUrl?: string
+      recommendation?: {
+        level: "featured" | "recommended" | "standard"
+        rank?: number
+        headline?: string
+        reason?: string
+        cta?: {
+          kind: "external"
+          label: string
+          url: string
+        }
+        defaultModel?: string
+      }
       env: Array<string>
       id: string
       npm?: string
@@ -8566,6 +8616,9 @@ export type ProviderListResponses = {
     connected: Array<string>
     configProviders: Array<string>
     catalogProviders: Array<string>
+    profiles: {
+      [key: string]: ProviderProfileMetadata
+    }
     authHealth: {
       [key: string]: ProviderAuthHealth
     }

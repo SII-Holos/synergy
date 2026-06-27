@@ -7155,6 +7155,54 @@
                           "name": {
                             "type": "string"
                           },
+                          "description": {
+                            "type": "string"
+                          },
+                          "signupUrl": {
+                            "type": "string"
+                          },
+                          "recommendation": {
+                            "type": "object",
+                            "properties": {
+                              "level": {
+                                "type": "string",
+                                "enum": ["featured", "recommended", "standard"]
+                              },
+                              "rank": {
+                                "type": "integer",
+                                "minimum": -9007199254740991,
+                                "maximum": 9007199254740991
+                              },
+                              "headline": {
+                                "type": "string"
+                              },
+                              "reason": {
+                                "type": "string"
+                              },
+                              "cta": {
+                                "type": "object",
+                                "properties": {
+                                  "kind": {
+                                    "type": "string",
+                                    "const": "external"
+                                  },
+                                  "label": {
+                                    "type": "string"
+                                  },
+                                  "url": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": ["kind", "label", "url"],
+                                "additionalProperties": false
+                              },
+                              "defaultModel": {
+                                "type": "string"
+                              }
+                            },
+                            "required": ["level"],
+                            "additionalProperties": false
+                          },
                           "env": {
                             "type": "array",
                             "items": {
@@ -7376,6 +7424,15 @@
                         "type": "string"
                       }
                     },
+                    "profiles": {
+                      "type": "object",
+                      "propertyNames": {
+                        "type": "string"
+                      },
+                      "additionalProperties": {
+                        "$ref": "#/components/schemas/ProviderProfileMetadata"
+                      }
+                    },
                     "authHealth": {
                       "type": "object",
                       "propertyNames": {
@@ -7401,6 +7458,7 @@
                     "connected",
                     "configProviders",
                     "catalogProviders",
+                    "profiles",
                     "authHealth",
                     "runtimeAvailability"
                   ]
@@ -18347,6 +18405,54 @@
           "name": {
             "type": "string"
           },
+          "description": {
+            "type": "string"
+          },
+          "signupUrl": {
+            "type": "string"
+          },
+          "recommendation": {
+            "type": "object",
+            "properties": {
+              "level": {
+                "type": "string",
+                "enum": ["featured", "recommended", "standard"]
+              },
+              "rank": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "headline": {
+                "type": "string"
+              },
+              "reason": {
+                "type": "string"
+              },
+              "cta": {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "external"
+                  },
+                  "label": {
+                    "type": "string"
+                  },
+                  "url": {
+                    "type": "string"
+                  }
+                },
+                "required": ["kind", "label", "url"],
+                "additionalProperties": false
+              },
+              "defaultModel": {
+                "type": "string"
+              }
+            },
+            "required": ["level"],
+            "additionalProperties": false
+          },
           "env": {
             "type": "array",
             "items": {
@@ -23750,6 +23856,73 @@
         },
         "required": ["name", "hints"]
       },
+      "ProviderRecommendation": {
+        "type": "object",
+        "properties": {
+          "level": {
+            "type": "string",
+            "enum": ["featured", "recommended", "standard"]
+          },
+          "rank": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "headline": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "cta": {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "external"
+              },
+              "label": {
+                "type": "string"
+              },
+              "url": {
+                "type": "string"
+              }
+            },
+            "required": ["kind", "label", "url"],
+            "additionalProperties": false
+          },
+          "defaultModel": {
+            "type": "string"
+          }
+        },
+        "required": ["level"],
+        "additionalProperties": false
+      },
+      "ProviderProfileMetadata": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "signupUrl": {
+            "type": "string"
+          },
+          "recommendation": {
+            "$ref": "#/components/schemas/ProviderRecommendation"
+          }
+        },
+        "required": ["id", "name"],
+        "additionalProperties": false
+      },
       "ProviderAuthHealth": {
         "type": "object",
         "properties": {
@@ -27752,42 +27925,6 @@
         },
         "required": ["type", "properties"]
       },
-      "Event.lsp.client.diagnostics": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "lsp.client.diagnostics"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "serverID": {
-                "type": "string"
-              },
-              "path": {
-                "type": "string"
-              }
-            },
-            "required": ["serverID", "path"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.lsp.updated": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "lsp.updated"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {}
-          }
-        },
-        "required": ["type", "properties"]
-      },
       "Event.message.updated": {
         "type": "object",
         "properties": {
@@ -28164,6 +28301,42 @@
               }
             },
             "required": ["sessionID"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.lsp.client.diagnostics": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "lsp.client.diagnostics"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "serverID": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              }
+            },
+            "required": ["serverID", "path"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.lsp.updated": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "lsp.updated"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {}
           }
         },
         "required": ["type", "properties"]
@@ -29052,12 +29225,6 @@
             "$ref": "#/components/schemas/Event.mcp.failed"
           },
           {
-            "$ref": "#/components/schemas/Event.lsp.client.diagnostics"
-          },
-          {
-            "$ref": "#/components/schemas/Event.lsp.updated"
-          },
-          {
             "$ref": "#/components/schemas/Event.message.updated"
           },
           {
@@ -29110,6 +29277,12 @@
           },
           {
             "$ref": "#/components/schemas/Event.session.compacted"
+          },
+          {
+            "$ref": "#/components/schemas/Event.lsp.client.diagnostics"
+          },
+          {
+            "$ref": "#/components/schemas/Event.lsp.updated"
           },
           {
             "$ref": "#/components/schemas/Event.file.edited"

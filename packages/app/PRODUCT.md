@@ -66,6 +66,8 @@ Prompt composers should read as one grounded input surface with a quiet bottom t
 
 Use icons sparingly. Icons should clarify primary navigation or compact controls, not decorate every row of a form.
 
+Provider discovery should be metadata-driven. Settings, connection dialogs, and model selection should use the same provider profile metadata for recommendation order, explanatory copy, and external sign-up CTAs; custom providers remain standard alphabetical entries unless they declare metadata.
+
 Clarifying question prompts are decision surfaces, not tool-output cards. They should use a solid outer shell, filled option rows, quiet step chips, clear disabled primary actions, and only the minimum icons needed to show disclosure or selection state.
 
 ## Accessibility & Inclusion

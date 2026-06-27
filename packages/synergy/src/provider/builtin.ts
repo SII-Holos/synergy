@@ -9,10 +9,28 @@ import { Auth } from "./api-key"
 import { Env } from "@/util/env"
 import { BunProc } from "@/util/bun"
 import { iife } from "@/util/iife"
+import { SYNERGY_REFERER } from "@/holos/constants"
 import type { AmazonBedrockProviderSettings } from "@ai-sdk/amazon-bedrock"
 import { createAnthropic } from "@ai-sdk/anthropic"
 
 let registered = false
+
+function recommended(input: {
+  rank: number
+  headline: string
+  reason: string
+  defaultModel?: string
+  cta?: ProviderProfile.Recommendation["cta"]
+}): ProviderProfile.Recommendation {
+  return {
+    level: "recommended",
+    rank: input.rank,
+    headline: input.headline,
+    reason: input.reason,
+    ...(input.defaultModel ? { defaultModel: input.defaultModel } : {}),
+    ...(input.cta ? { cta: input.cta } : {}),
+  }
+}
 
 export function registerBuiltinProviderProfiles() {
   if (registered) return
@@ -25,12 +43,25 @@ export function registerBuiltinProviderProfiles() {
     aiSdkPackage: "@ai-sdk/openai",
     modelFactory: "openaiResponses",
     modelsDevProviderID: "openai",
+    recommendation: recommended({
+      rank: 40,
+      headline: "OpenAI Platform",
+      reason: "Use OpenAI Platform API keys for GPT models and OpenAI billing.",
+      defaultModel: "gpt-4o",
+      cta: { kind: "external", label: "Create OpenAI API key", url: "https://platform.openai.com/api-keys" },
+    }),
   })
 
   ProviderProfile.register({
     id: CodexProvider.PROVIDER_ID,
     name: "OpenAI Codex",
     description: "OpenAI Codex via ChatGPT/Codex subscription login",
+    recommendation: recommended({
+      rank: 20,
+      headline: "ChatGPT/Codex subscription",
+      reason: "Connect a ChatGPT/Codex subscription for Codex-backed coding models.",
+      defaultModel: "gpt-5.4-mini",
+    }),
     baseURL: CodexProvider.BASE_URL,
     apiMode: "codex_responses",
     authKind: "oauth_external",
@@ -62,6 +93,13 @@ export function registerBuiltinProviderProfiles() {
     id: "anthropic",
     name: "Anthropic",
     description: "Anthropic API key or Claude subscription OAuth",
+    recommendation: recommended({
+      rank: 10,
+      headline: "Claude Pro/Max or API key",
+      reason: "Connect Claude subscription OAuth or an Anthropic Platform key.",
+      defaultModel: "claude-sonnet-4-5",
+      cta: { kind: "external", label: "Create Anthropic API key", url: "https://console.anthropic.com/settings/keys" },
+    }),
     baseURL: "https://api.anthropic.com/v1",
     apiMode: "anthropic_messages",
     authKind: "api_key",
@@ -91,9 +129,31 @@ export function registerBuiltinProviderProfiles() {
   })
 
   ProviderProfile.register({
+    id: "google",
+    name: "Google",
+    authKind: "api_key",
+    aiSdkPackage: "@ai-sdk/google",
+    modelFactory: "languageModel",
+    modelsDevProviderID: "google",
+    recommendation: recommended({
+      rank: 50,
+      headline: "Google Gemini API",
+      reason: "Connect a Gemini API key for Google models.",
+      defaultModel: "gemini-2.5-flash",
+      cta: { kind: "external", label: "Create Gemini API key", url: "https://aistudio.google.com/apikey" },
+    }),
+  })
+
+  ProviderProfile.register({
     id: "github-copilot",
     name: "GitHub Copilot",
     aliases: ["copilot", "github-models"],
+    recommendation: recommended({
+      rank: 30,
+      headline: "GitHub Copilot subscription",
+      reason: "Use an existing GitHub Copilot subscription for coding-focused models.",
+      defaultModel: "gpt-5.4-mini",
+    }),
     env: ["COPILOT_GITHUB_TOKEN", "GH_TOKEN", "GITHUB_TOKEN"],
     baseURL: CopilotProvider.BASE_URL,
     apiMode: "chat_completions",
@@ -376,6 +436,13 @@ export function registerBuiltinProviderProfiles() {
     authKind: "api_key",
     aiSdkPackage: "@ai-sdk/vercel",
     modelsDevProviderID: "vercel",
+    recommendation: recommended({
+      rank: 70,
+      headline: "Vercel AI Gateway",
+      reason: "Connect Vercel AI Gateway for model routing through Vercel.",
+      defaultModel: "gpt-4o",
+      cta: { kind: "external", label: "Create Vercel AI Gateway token", url: "https://vercel.link/ai-gateway-token" },
+    }),
     runtimeOptions: async () => ({
       headers: {
         "http-referer": "https://synergy.holosai.io/",
@@ -465,11 +532,28 @@ export function registerBuiltinProviderProfiles() {
   ProviderProfile.register({
     id: "openrouter",
     name: "OpenRouter",
+    description: "OpenRouter API key with optional credits and access to free model variants.",
+    signupUrl: "https://openrouter.ai/keys",
+    recommendation: recommended({
+      rank: 60,
+      headline: "OpenRouter models",
+      reason:
+        "An OpenRouter API key and user-managed credits or free-model access are required; Synergy does not provide hosted quota.",
+      defaultModel: "openai/gpt-4o",
+      cta: { kind: "external", label: "Create OpenRouter API key", url: "https://openrouter.ai/keys" },
+    }),
     baseURL: "https://openrouter.ai/api/v1",
     authKind: "api_key",
     aiSdkPackage: "@openrouter/ai-sdk-provider",
     modelsDevProviderID: "openrouter",
     usageKind: "openrouter",
+    runtimeOptions: async () => ({
+      headers: {
+        "HTTP-Referer": SYNERGY_REFERER,
+        "X-OpenRouter-Title": "Synergy",
+        "X-OpenRouter-Categories": "cli-agent,personal-agent",
+      },
+    }),
     fetchUsage: () => AccountUsage.openrouter("openrouter"),
   })
 }

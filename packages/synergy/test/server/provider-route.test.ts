@@ -82,6 +82,66 @@ test("/provider returns catalog, auth health, and runtime availability", async (
     available: false,
     reason: "not_connected",
   })
+  expect(body.profiles[CodexProvider.PROVIDER_ID]).toMatchObject({
+    id: CodexProvider.PROVIDER_ID,
+    recommendation: {
+      level: "recommended",
+      rank: 20,
+    },
+  })
+  expect(body.profiles.openrouter).toMatchObject({
+    id: "openrouter",
+    signupUrl: "https://openrouter.ai/keys",
+    recommendation: {
+      level: "recommended",
+      rank: 60,
+      cta: {
+        kind: "external",
+        label: "Create OpenRouter API key",
+        url: "https://openrouter.ai/keys",
+      },
+    },
+  })
+})
+
+test("/provider returns custom providers without recommendation metadata", async () => {
+  await using tmp = await tmpdir({
+    init: async (dir) => {
+      await Bun.write(
+        path.join(dir, "synergy.json"),
+        JSON.stringify({
+          $schema: "file:///test/config.schema.json",
+          provider: {
+            "custom-provider": {
+              name: "Custom Provider",
+              npm: "@ai-sdk/openai-compatible",
+              api: "https://example.test/v1",
+              env: [],
+              options: { apiKey: "test-key" },
+              models: {
+                model: {
+                  name: "Custom Model",
+                  limit: { context: 4000, output: 1000 },
+                },
+              },
+            },
+          },
+        }),
+      )
+    },
+  })
+
+  const app = Server.App()
+  const response = await app.request(`/provider?directory=${encodeURIComponent(tmp.path)}`)
+  expect(response.status).toBe(200)
+  const body = await response.json()
+
+  expect(body.all.some((provider: any) => provider.id === "custom-provider")).toBe(true)
+  expect(body.profiles["custom-provider"]).toMatchObject({
+    id: "custom-provider",
+    name: "Custom Provider",
+  })
+  expect(body.profiles["custom-provider"].recommendation).toBeUndefined()
 })
 
 test("/provider/auth exposes Codex OAuth and import methods", async () => {

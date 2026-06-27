@@ -36,6 +36,7 @@ export namespace ProviderCatalog {
       id: z.string(),
       name: z.string(),
       modelsDevProviderID: z.string().optional(),
+      recommendation: ProviderProfile.Recommendation.optional(),
       authStrategy: z.string().optional(),
       runtimeStrategy: z.string().optional(),
       usageStrategy: z.string().optional(),
@@ -95,6 +96,9 @@ export namespace ProviderCatalog {
     const provider: ModelsDev.Provider = {
       id: profile.id,
       name: profile.name,
+      description: profile.description,
+      signupUrl: profile.signupUrl,
+      recommendation: profile.recommendation,
       env: profile.env ?? (inheritsSourceEnv ? (source?.env ?? []) : []),
       api: profile.baseURL ?? source?.api,
       npm: profile.aiSdkPackage ?? source?.npm,
@@ -135,6 +139,37 @@ export namespace ProviderCatalog {
     merged.env ??= []
     merged.models ??= {}
     return merged
+  }
+
+  type ProviderMetadataSource = {
+    id: string
+    name: string
+    description?: string
+    signupUrl?: string
+    recommendation?: ProviderProfile.Recommendation
+  }
+
+  export function providerMetadata(provider: ProviderMetadataSource): ProviderProfile.Metadata {
+    const profile = ProviderProfile.get(provider.id)
+    return {
+      id: provider.id,
+      name: profile?.name ?? provider.name,
+      ...(profile?.displayName ? { displayName: profile.displayName } : {}),
+      ...(profile?.description || provider.description
+        ? { description: profile?.description ?? provider.description }
+        : {}),
+      ...(profile?.signupUrl || provider.signupUrl ? { signupUrl: profile?.signupUrl ?? provider.signupUrl } : {}),
+      ...(profile?.recommendation || provider.recommendation
+        ? { recommendation: profile?.recommendation ?? (provider.recommendation as ProviderProfile.Recommendation) }
+        : {}),
+    }
+  }
+
+  export async function metadata(input?: {
+    config?: Partial<Config> | Record<string, unknown>
+  }): Promise<Record<string, ProviderProfile.Metadata>> {
+    const providers = await resolve(input)
+    return Object.fromEntries(Object.entries(providers).map(([id, provider]) => [id, providerMetadata(provider)]))
   }
 
   async function verifySignature(text: string, signature: string, publicKey: string): Promise<boolean> {
@@ -306,6 +341,7 @@ export namespace ProviderCatalog {
           aliases: profile.aliases,
           description: profile.description,
           signupUrl: profile.signupUrl,
+          recommendation: profile.recommendation,
           env: profile.env,
           baseURL: profile.baseURL,
           modelsURL: profile.modelsURL,

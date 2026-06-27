@@ -143,6 +143,7 @@ export const ProviderRoute = new Hono()
                   connected: z.array(z.string()),
                   configProviders: z.array(z.string()),
                   catalogProviders: z.array(z.string()),
+                  profiles: z.record(z.string(), ProviderProfile.Metadata),
                   authHealth: z.record(z.string(), ProviderAuthHealth),
                   runtimeAvailability: z.record(z.string(), ProviderRuntimeAvailability),
                 }),
@@ -175,6 +176,12 @@ export const ProviderRoute = new Hono()
       const providers = Object.assign(
         mapValues(filteredProviders, (x) => Provider.fromModelsDevProvider(x)),
         connected,
+      )
+      const profiles = Object.fromEntries(
+        Object.entries(providers).map(([providerID, provider]) => [
+          providerID,
+          ProviderCatalog.providerMetadata(filteredProviders[providerID] ?? provider),
+        ]),
       )
       const entries = await Auth.entries()
       const authHealthByProvider = Object.fromEntries(
@@ -211,6 +218,7 @@ export const ProviderRoute = new Hono()
         connected: Object.keys(connected),
         configProviders,
         catalogProviders: Object.keys(filteredProviders),
+        profiles,
         authHealth: authHealthByProvider,
         runtimeAvailability,
       })

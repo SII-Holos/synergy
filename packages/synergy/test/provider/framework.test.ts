@@ -1,4 +1,4 @@
-import { afterEach, expect, test } from "bun:test"
+import { afterEach, expect, mock, test } from "bun:test"
 import fs from "fs/promises"
 import { Global } from "../../src/global"
 import { Auth } from "../../src/provider/api-key"
@@ -7,9 +7,11 @@ import { ProviderCatalog } from "../../src/provider/catalog"
 import { CodexProvider } from "../../src/provider/codex"
 import { AccountUsage } from "../../src/provider/usage"
 import { ProviderProfile } from "../../src/provider/profile"
+import { Plugin } from "../../src/plugin"
 
 const originalFetch = globalThis.fetch
 const originalProviderCatalogFetchDisabled = process.env.SYNERGY_DISABLE_PROVIDER_CATALOG_FETCH
+const originalPluginAllHooks = Plugin.allHooks
 
 function nowSeconds() {
   return Math.floor(Date.now() / 1000)
@@ -57,6 +59,7 @@ afterEach(async () => {
   } else {
     process.env.SYNERGY_DISABLE_PROVIDER_CATALOG_FETCH = originalProviderCatalogFetchDisabled
   }
+  ;(Plugin as any).allHooks = originalPluginAllHooks
   ProviderCatalog.reset()
   await cleanupAuth()
 })
@@ -115,6 +118,20 @@ test("provider catalog merges signed remote providers with models.dev metadata m
       "remote-codex": {
         id: "remote-codex",
         name: "Remote Codex",
+        description: "Remote provider description",
+        signupUrl: "https://remote.test/signup",
+        recommendation: {
+          level: "recommended",
+          rank: 42,
+          headline: "Remote Recommended",
+          reason: "Remote provider reason",
+          cta: {
+            kind: "external",
+            label: "Create remote key",
+            url: "https://remote.test/keys",
+          },
+          defaultModel: "remote-only-model",
+        },
         modelsDevProviderID: "openai",
         authStrategy: "codex-chatgpt-oauth",
         fallbackModels: ["gpt-4.1-nano", "remote-only-model"],
@@ -139,6 +156,79 @@ test("provider catalog merges signed remote providers with models.dev metadata m
   expect(catalog["remote-codex"].models["gpt-4.1-nano"].name).toBe("GPT-4.1 nano")
   expect(catalog["remote-codex"].models["gpt-4.1-nano"].provider?.npm).toBe("@ai-sdk/openai")
   expect(catalog["remote-codex"].models["remote-only-model"]).toBeDefined()
+  expect(ProviderCatalog.providerMetadata(catalog["remote-codex"])).toMatchObject({
+    id: "remote-codex",
+    name: "Remote Codex",
+    description: "Remote provider description",
+    signupUrl: "https://remote.test/signup",
+    recommendation: {
+      level: "recommended",
+      rank: 42,
+      headline: "Remote Recommended",
+      reason: "Remote provider reason",
+      cta: {
+        kind: "external",
+        label: "Create remote key",
+        url: "https://remote.test/keys",
+      },
+      defaultModel: "remote-only-model",
+    },
+  })
+})
+
+test("provider catalog exposes plugin provider recommendation metadata", async () => {
+  ;(Plugin as any).allHooks = mock(async () => [
+    {
+      provider: {
+        id: "plugin-recommended-provider",
+        name: "Plugin Recommended",
+        description: "Plugin provider description",
+        signupUrl: "https://plugin.test/signup",
+        baseURL: "https://plugin.test/v1",
+        authKind: "api_key",
+        aiSdkPackage: "@ai-sdk/openai-compatible",
+        fallbackModels: ["plugin-model"],
+        recommendation: {
+          level: "featured",
+          rank: 7,
+          headline: "Plugin Featured",
+          reason: "Plugin provider reason",
+          cta: {
+            kind: "external",
+            label: "Create plugin key",
+            url: "https://plugin.test/keys",
+          },
+          defaultModel: "plugin-model",
+        },
+      },
+    },
+  ])
+  ProviderCatalog.reset()
+
+  const catalog = await ProviderCatalog.resolve({
+    forceRefresh: true,
+    config: { providerCatalog: { enabled: false, offlineCache: false } },
+  })
+
+  expect(catalog["plugin-recommended-provider"].models["plugin-model"]).toBeDefined()
+  expect(ProviderCatalog.providerMetadata(catalog["plugin-recommended-provider"])).toMatchObject({
+    id: "plugin-recommended-provider",
+    name: "Plugin Recommended",
+    description: "Plugin provider description",
+    signupUrl: "https://plugin.test/signup",
+    recommendation: {
+      level: "featured",
+      rank: 7,
+      headline: "Plugin Featured",
+      reason: "Plugin provider reason",
+      cta: {
+        kind: "external",
+        label: "Create plugin key",
+        url: "https://plugin.test/keys",
+      },
+      defaultModel: "plugin-model",
+    },
+  })
 })
 
 test("provider catalog rejects bad signatures and falls back to last verified cache", async () => {

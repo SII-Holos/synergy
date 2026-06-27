@@ -132,6 +132,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
         cooldownUntil: health?.cooldownUntil,
         resetAt: health?.resetAt,
         failureCode: health?.failureCode,
+        profile: data.profiles?.[provider.id],
       }
     })
   })

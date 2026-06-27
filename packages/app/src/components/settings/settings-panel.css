@@ -1061,6 +1061,12 @@
   font-size: 11px;
 }
 
+.providers-detail-cta {
+  margin: -6px 0 16px;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
 .providers-empty-detail {
   min-height: 300px;
   display: flex;

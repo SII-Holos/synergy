@@ -4,12 +4,16 @@ import { ProviderIcon } from "@ericsanchezok/synergy-ui/provider-icon"
 import { TextField } from "@ericsanchezok/synergy-ui/text-field"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { createEffect, createMemo, createSignal, For, Show } from "solid-js"
+import { ProviderConnectionFlow } from "@/components/provider/ProviderConnectionFlow"
 import {
-  ProviderConnectionFlow,
+  compareProviderIDs,
+  isRecommendedProvider,
   providerConnectCopy,
-  sortProviderIDs,
-} from "@/components/provider/ProviderConnectionFlow"
-import { popularProviders } from "@/hooks/use-providers"
+  providerConnectReason,
+  providerCTA,
+  type ProviderRecommendationMetadata,
+} from "@/components/provider/provider-recommendation"
+import { Link } from "@/components/link"
 import { SettingsFieldGrid, SettingsPage, SettingsSection } from "../components/SettingsPrimitives"
 import type { ProvidersStore } from "../types"
 
@@ -25,6 +29,7 @@ export type ProviderConnectionSummary = {
   cooldownUntil?: number
   resetAt?: number
   failureCode?: string
+  profile?: ProviderRecommendationMetadata
 }
 
 export function ProvidersPanel(props: {
@@ -41,7 +46,14 @@ export function ProvidersPanel(props: {
     if (props.providerFocusID) setSelectedID(props.providerFocusID)
   })
 
-  const summaries = createMemo(() => props.summaries.slice().sort((a, b) => sortProviderIDs(a.id, b.id)))
+  const profileMap = createMemo(() =>
+    Object.fromEntries(props.summaries.map((provider) => [provider.id, provider.profile])),
+  )
+  const summaries = createMemo(() =>
+    props.summaries
+      .slice()
+      .sort((a, b) => compareProviderIDs(profileMap(), { id: a.id, name: a.name }, { id: b.id, name: b.name })),
+  )
   const filtered = createMemo(() => {
     const q = query().trim().toLowerCase()
     if (!q) return summaries()
@@ -52,11 +64,11 @@ export function ProvidersPanel(props: {
     return summaries().find((provider) => provider.id === current) ?? filtered()[0] ?? summaries()[0]
   })
   const recommended = createMemo(() =>
-    filtered().filter((provider) => popularProviders.includes(provider.id) && !provider.connected),
+    filtered().filter((provider) => isRecommendedProvider(profileMap(), provider.id) && !provider.connected),
   )
   const connected = createMemo(() => filtered().filter((provider) => provider.connected))
   const other = createMemo(() =>
-    filtered().filter((provider) => !popularProviders.includes(provider.id) && !provider.connected),
+    filtered().filter((provider) => !isRecommendedProvider(profileMap(), provider.id) && !provider.connected),
   )
 
   function statusLabel(provider: ProviderConnectionSummary) {
@@ -120,7 +132,10 @@ export function ProvidersPanel(props: {
                     <ProviderIcon id={provider().id} class="providers-detail-icon" />
                     <div class="min-w-0">
                       <div class="providers-detail-title">{provider().name}</div>
-                      <div class="providers-detail-copy">{providerConnectCopy(provider().id)}</div>
+                      <div class="providers-detail-copy">
+                        {providerConnectReason(provider().id, profileMap()) ??
+                          providerConnectCopy(provider().id, profileMap(), provider().name)}
+                      </div>
                     </div>
                   </div>
                   <span
@@ -143,6 +158,13 @@ export function ProvidersPanel(props: {
                     <span>{provider().availabilityReason?.replace(/_/g, " ")}</span>
                   </Show>
                 </div>
+                <Show when={providerCTA(provider().id, profileMap())}>
+                  {(cta) => (
+                    <div class="providers-detail-cta">
+                      <Link href={cta().url}>{cta().label}</Link>
+                    </div>
+                  )}
+                </Show>
                 <ProviderConnectionFlow providerID={provider().id} compact />
               </>
             )}
@@ -199,7 +221,9 @@ function ProviderGroup(props: {
               <ProviderIcon id={provider.id} class="providers-row-icon" />
               <div class="min-w-0 flex-1">
                 <div class="providers-row-name">{provider.name}</div>
-                <div class="providers-row-copy">{providerConnectCopy(provider.id)}</div>
+                <div class="providers-row-copy">
+                  {providerConnectCopy(provider.id, { [provider.id]: provider.profile }, provider.name)}
+                </div>
               </div>
               <span
                 class="ds-inline-badge"

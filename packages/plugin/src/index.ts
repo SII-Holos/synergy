@@ -308,6 +308,18 @@ export type ProviderProfileHook = {
   aliases?: string[]
   description?: string
   signupUrl?: string
+  recommendation?: {
+    level: "featured" | "recommended" | "standard"
+    rank?: number
+    headline?: string
+    reason?: string
+    cta?: {
+      kind: "external"
+      label: string
+      url: string
+    }
+    defaultModel?: string
+  }
   env?: string[]
   baseURL?: string
   modelsURL?: string
