@@ -8,10 +8,11 @@ import { RewardRadar } from "./reward-radar"
 function SyncBar(props: { syncing: boolean; syncError: string | null; onSync: () => void }) {
   return (
     <div class="library-sync-row">
-      <div class="min-w-0">
-        <div class="text-12-regular text-text-weak">
-          {props.syncing ? "Computing stats…" : (props.syncError ?? "Recompute for a fresh snapshot")}
-        </div>
+      <div class="library-toolbar-left">
+        <span class="library-control-pill">Snapshot</span>
+        <span class="library-toolbar-summary">
+          {props.syncing ? "Computing stats…" : (props.syncError ?? "Fresh library health and learning signals")}
+        </span>
       </div>
       <button
         type="button"

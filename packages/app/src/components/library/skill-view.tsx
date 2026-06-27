@@ -17,7 +17,6 @@ import {
   libraryInsetClass,
   libraryMenuClass,
   libraryMetaLabelClass,
-  LibraryFilterChip,
 } from "./shared"
 
 type SkillScope = "all" | "project" | "global" | "builtin"
@@ -88,7 +87,6 @@ export function SkillView(props: {
   sdk: ReturnType<typeof useGlobalSDK>
   search: string
   directory?: string
-  onRegisterRefetch: (fn: () => void) => void
 }) {
   const dialog = useDialog()
   const platform = usePlatform()
@@ -102,6 +100,7 @@ export function SkillView(props: {
     })
   })
   const [filter, setFilter] = createSignal<SkillScope>("all")
+  const [filterOpen, setFilterOpen] = createSignal(false)
   const [reloading, setReloading] = createSignal(false)
   const [diagnosticsExpanded, setDiagnosticsExpanded] = createSignal(false)
 
@@ -109,8 +108,6 @@ export function SkillView(props: {
     const result = await scopedClient().skill.list()
     return (result.data as SkillListData | undefined) ?? { items: [], diagnostics: [] }
   })
-
-  props.onRegisterRefetch(() => refetch())
 
   async function reloadSkills() {
     setReloading(true)
@@ -172,6 +169,19 @@ export function SkillView(props: {
     ))
   }
 
+  const filterLabel = createMemo(() => {
+    switch (filter()) {
+      case "project":
+        return "Project skills"
+      case "global":
+        return "Global skills"
+      case "builtin":
+        return "Built-in skills"
+      default:
+        return "All skills"
+    }
+  })
+
   const [importOpen, setImportOpen] = createSignal(false)
   const [importMode, setImportMode] = createSignal<"menu" | "url">("menu")
   const [importUrl, setImportUrl] = createSignal("")
@@ -225,33 +235,84 @@ export function SkillView(props: {
   }
 
   return (
-    <div>
-      <div class="flex items-center gap-1.5 flex-wrap mb-3">
-        <LibraryFilterChip active={filter() === "all"} onClick={() => setFilter("all")}>
-          All
-          <Show when={(skills()?.items ?? []).length > 0}>
-            <span class="ml-0.5">{(skills()?.items ?? []).length}</span>
-          </Show>
-        </LibraryFilterChip>
-        <Show when={scopeCounts().project > 0}>
-          <LibraryFilterChip active={filter() === "project"} onClick={() => setFilter("project")}>
-            Project
-            <span class="ml-0.5">{scopeCounts().project}</span>
-          </LibraryFilterChip>
-        </Show>
-        <Show when={scopeCounts().global > 0}>
-          <LibraryFilterChip active={filter() === "global"} onClick={() => setFilter("global")}>
-            Global
-            <span class="ml-0.5">{scopeCounts().global}</span>
-          </LibraryFilterChip>
-        </Show>
-        <Show when={scopeCounts().builtin > 0}>
-          <LibraryFilterChip active={filter() === "builtin"} onClick={() => setFilter("builtin")}>
-            Builtin
-            <span class="ml-0.5">{scopeCounts().builtin}</span>
-          </LibraryFilterChip>
-        </Show>
-        <div class="ml-auto flex items-center gap-0.5">
+    <div class="library-list-pane">
+      <div class="library-list-toolbar">
+        <div class="library-toolbar-left">
+          <Popover open={filterOpen()} onOpenChange={setFilterOpen} placement="bottom-start" gutter={6}>
+            <Popover.Trigger as="button" class="library-control-pill">
+              <span>{filterLabel()}</span>
+              <Icon name="chevron-down" size="small" class="opacity-60" />
+            </Popover.Trigger>
+            <Popover.Portal>
+              <Popover.Content class={`library-filter-menu ${libraryMenuClass}`}>
+                <button
+                  type="button"
+                  classList={{
+                    "library-menu-item": true,
+                    "is-active": filter() === "all",
+                  }}
+                  onClick={() => {
+                    setFilter("all")
+                    setFilterOpen(false)
+                  }}
+                >
+                  <span>All skills</span>
+                  <span class="library-menu-count">{(skills()?.items ?? []).length}</span>
+                </button>
+                <Show when={scopeCounts().project > 0}>
+                  <button
+                    type="button"
+                    classList={{
+                      "library-menu-item": true,
+                      "is-active": filter() === "project",
+                    }}
+                    onClick={() => {
+                      setFilter("project")
+                      setFilterOpen(false)
+                    }}
+                  >
+                    <span>Project</span>
+                    <span class="library-menu-count">{scopeCounts().project}</span>
+                  </button>
+                </Show>
+                <Show when={scopeCounts().global > 0}>
+                  <button
+                    type="button"
+                    classList={{
+                      "library-menu-item": true,
+                      "is-active": filter() === "global",
+                    }}
+                    onClick={() => {
+                      setFilter("global")
+                      setFilterOpen(false)
+                    }}
+                  >
+                    <span>Global</span>
+                    <span class="library-menu-count">{scopeCounts().global}</span>
+                  </button>
+                </Show>
+                <Show when={scopeCounts().builtin > 0}>
+                  <button
+                    type="button"
+                    classList={{
+                      "library-menu-item": true,
+                      "is-active": filter() === "builtin",
+                    }}
+                    onClick={() => {
+                      setFilter("builtin")
+                      setFilterOpen(false)
+                    }}
+                  >
+                    <span>Built-in</span>
+                    <span class="library-menu-count">{scopeCounts().builtin}</span>
+                  </button>
+                </Show>
+              </Popover.Content>
+            </Popover.Portal>
+          </Popover>
+          <span class="library-toolbar-summary">{filtered().length} skills</span>
+        </div>
+        <div class="library-toolbar-right">
           <Popover
             open={importOpen()}
             onOpenChange={(open) => {
@@ -421,7 +482,7 @@ export function SkillView(props: {
             />
           }
         >
-          <div class="grid grid-cols-1 gap-2.5 sm:grid-cols-2 xl:grid-cols-3">
+          <div class="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
             <For each={filtered()}>
               {(skill: SkillItem) => <SkillCard skill={skill} onOpen={() => openSkillDetail(skill)} />}
             </For>

@@ -185,21 +185,6 @@ export function SelectionBar(props: {
     </div>
   )
 }
-export function LibraryFilterChip(props: { active: boolean; onClick: () => void; children: any }) {
-  return (
-    <button
-      type="button"
-      classList={{
-        "library-filter-chip": true,
-        "is-active": props.active,
-      }}
-      onClick={props.onClick}
-    >
-      {props.children}
-    </button>
-  )
-}
-
 export function ViewTab(props: { active: boolean; onClick: () => void; children: any }) {
   return (
     <button

@@ -48,27 +48,27 @@ function StatsSyncBar(props: {
   })
 
   return (
-    <div class="mb-4 rounded-[1.15rem] bg-surface-inset-base/42 p-3 ring-1 ring-inset ring-border-base/45 shadow-[inset_0_1px_0_rgba(214,204,190,0.07)]">
-      <div class="flex flex-wrap items-center justify-between gap-3">
-        <div class="min-w-0 flex-1">
-          <div class="text-[10px] font-medium uppercase tracking-[0.16em] text-text-weaker">Usage Stats</div>
-          <div class="mt-1 text-13-medium text-text-base">
+    <div class="mb-4">
+      <div class="library-sync-row">
+        <div class="library-toolbar-left">
+          <span class="library-control-pill">Usage stats</span>
+          <span class="library-toolbar-summary">
             {props.syncing
               ? (props.progress?.message ?? phaseLabel(props.progress?.phase ?? "scan"))
-              : (props.syncError ?? "Sync usage stats manually when you want a fresh rollup.")}
-          </div>
+              : (props.syncError ?? "Manual rollup for workspace activity")}
+          </span>
           <Show when={props.syncing && props.progress}>
             {(progress) => (
-              <div class="mt-1 text-[10px] font-medium text-text-weak">
+              <span class="library-toolbar-summary">
                 {phaseLabel(progress().phase)} · {progress().current}/{progress().total}
-              </div>
+              </span>
             )}
           </Show>
         </div>
 
         <button
           type="button"
-          class="rounded-full bg-surface-raised-stronger-non-alpha px-3 py-1.5 text-12-medium text-text-interactive-base ring-1 ring-inset ring-border-base/50 transition hover:bg-surface-raised-base-hover hover:text-text-interactive-hover disabled:cursor-default disabled:opacity-60"
+          class="library-action-button shrink-0 disabled:cursor-default disabled:opacity-60"
           disabled={props.syncing}
           onClick={() => void props.onSync()}
         >
@@ -77,9 +77,9 @@ function StatsSyncBar(props: {
       </div>
 
       <Show when={props.syncing && props.progress}>
-        <div class="mt-3 h-2 rounded-full bg-surface-base/70 p-0.5 shadow-[inset_0_1px_0_rgba(214,204,190,0.07)]">
+        <div class="library-sync-progress">
           <div
-            class="h-full rounded-full bg-[linear-gradient(90deg,rgba(62,122,98,0.92),rgba(84,162,134,0.88),rgba(136,198,170,0.82))] transition-[width] duration-300"
+            class="h-full rounded-full bg-text-strong/60 transition-[width] duration-300"
             style={{ width: `${percent()}%` }}
           />
         </div>
