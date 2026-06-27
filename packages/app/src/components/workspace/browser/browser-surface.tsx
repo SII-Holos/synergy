@@ -312,8 +312,8 @@ export function BrowserSurface(props: { sessionID: string; routeDirectory?: stri
     if (!target) return null
     const rect = target.getBoundingClientRect()
     if (rect.width <= 0 || rect.height <= 0) return null
-    const width = videoRef?.videoWidth || browser.viewportWidth()
-    const height = videoRef?.videoHeight || browser.viewportHeight()
+    const width = browser.viewportWidth()
+    const height = browser.viewportHeight()
     return {
       x: Math.round(((e.clientX - rect.left) / rect.width) * width),
       y: Math.round(((e.clientY - rect.top) / rect.height) * height),

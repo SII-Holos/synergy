@@ -734,16 +734,12 @@ export const BrowserRoute = new Hono()
           const tab = tabId ? session.tabs.find((item) => item.id === tabId) : undefined
           if (tabId) {
             attachedTabId = tabId
-            BrowserWebRTCSignaling.attachViewer(state.owner, tabId, ws)
-            BrowserHostControl.markStatus(
-              state.owner,
-              tabId,
-              BrowserHostControl.isReady(state.owner, tabId) ? "ready" : "pending",
-              {
-                traceId: routeTraceId,
-                reason: "webrtc_viewer_connected",
-              },
-            )
+            const hostReady = BrowserHostControl.isReady(state.owner, tabId)
+            BrowserWebRTCSignaling.attachViewer(state.owner, tabId, ws, { hostReady })
+            BrowserHostControl.markStatus(state.owner, tabId, hostReady ? "ready" : "pending", {
+              traceId: routeTraceId,
+              reason: "webrtc_viewer_connected",
+            })
             const ensure = BrowserElectronHostProcess.ensure({
               owner: state.owner,
               tabId,
@@ -764,7 +760,7 @@ export const BrowserRoute = new Hono()
               hostProcessKey: ensure.key,
               hostStatus: BrowserHostControl.status(state.owner, tabId),
             })
-            if (!BrowserHostControl.isReady(state.owner, tabId)) {
+            if (!hostReady) {
               send(ws, {
                 type: "browser.host.status",
                 status: "pending",
@@ -782,6 +778,7 @@ export const BrowserRoute = new Hono()
               void BrowserHostControl.waitForReady(state.owner, tabId, hostReadyTimeoutMs())
                 .then(() => {
                   send(ws, { type: "browser.host.status", status: "ready", tabId, traceId: routeTraceId })
+                  BrowserWebRTCSignaling.notifyHostReady(state.owner, tabId, routeTraceId)
                   log.info("browser.webrtc.host.ready", {
                     ownerKey: BrowserOwner.key(state.owner),
                     tabId,
@@ -875,7 +872,9 @@ export const BrowserRoute = new Hono()
             ws.close(1008, "Missing WebRTC host tab id")
             return
           }
-          BrowserWebRTCSignaling.attachHost(state.owner, attachedTabId, ws)
+          BrowserWebRTCSignaling.attachHost(state.owner, attachedTabId, ws, {
+            hostReady: BrowserHostControl.isReady(state.owner, attachedTabId),
+          })
           log.info("browser.webrtc.host.connected", {
             directory: state.directory,
             ownerKey: BrowserOwner.key(state.owner),

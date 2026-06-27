@@ -48,8 +48,8 @@ describe("BrowserWebRTCSignaling", () => {
     const viewer = socket()
     const host = socket()
 
-    BrowserWebRTCSignaling.attachHost(owner, "tab_1", host.peer)
-    BrowserWebRTCSignaling.attachViewer(owner, "tab_1", viewer.peer)
+    BrowserWebRTCSignaling.attachHost(owner, "tab_1", host.peer, { hostReady: true })
+    BrowserWebRTCSignaling.attachViewer(owner, "tab_1", viewer.peer, { hostReady: true })
     BrowserWebRTCSignaling.handleViewerMessage(owner, "tab_1", viewer.peer, {
       type: "webrtc.offer",
       tabId: "tab_1",
@@ -70,8 +70,8 @@ describe("BrowserWebRTCSignaling", () => {
     const viewer = socket()
     const host = socket()
 
-    BrowserWebRTCSignaling.attachViewer(owner, "tab_1", viewer.peer)
-    BrowserWebRTCSignaling.attachHost(owner, "tab_1", host.peer)
+    BrowserWebRTCSignaling.attachViewer(owner, "tab_1", viewer.peer, { hostReady: false })
+    BrowserWebRTCSignaling.attachHost(owner, "tab_1", host.peer, { hostReady: true })
     BrowserWebRTCSignaling.detachHost(owner, "tab_1", host.peer)
 
     expect(viewer.messages).toContainEqual({
@@ -87,9 +87,9 @@ describe("BrowserWebRTCSignaling", () => {
     const newViewer = socket()
     const host = socket()
 
-    BrowserWebRTCSignaling.attachHost(owner, "tab_1", host.peer)
-    BrowserWebRTCSignaling.attachViewer(owner, "tab_1", oldViewer.peer)
-    BrowserWebRTCSignaling.attachViewer(owner, "tab_1", newViewer.peer)
+    BrowserWebRTCSignaling.attachHost(owner, "tab_1", host.peer, { hostReady: true })
+    BrowserWebRTCSignaling.attachViewer(owner, "tab_1", oldViewer.peer, { hostReady: true })
+    BrowserWebRTCSignaling.attachViewer(owner, "tab_1", newViewer.peer, { hostReady: true })
     BrowserWebRTCSignaling.handleViewerMessage(owner, "tab_1", oldViewer.peer, {
       type: "webrtc.close",
       tabId: "tab_1",
@@ -116,5 +116,19 @@ describe("BrowserWebRTCSignaling", () => {
     })
 
     expect(host.messages).toContainEqual({ type: "webrtc.offer", tabId: "tab_1", sdp: "offer" })
+  })
+
+  test("waits for explicit Host control readiness before notifying the viewer", () => {
+    const viewer = socket()
+    const host = socket()
+
+    BrowserWebRTCSignaling.attachHost(owner, "tab_1", host.peer, { hostReady: false })
+    BrowserWebRTCSignaling.attachViewer(owner, "tab_1", viewer.peer, { hostReady: false })
+
+    expect(viewer.messages).not.toContainEqual({ type: "webrtc.host.ready", tabId: "tab_1" })
+
+    BrowserWebRTCSignaling.notifyHostReady(owner, "tab_1", "trace_1")
+
+    expect(viewer.messages).toContainEqual({ type: "webrtc.host.ready", tabId: "tab_1", traceId: "trace_1" })
   })
 })

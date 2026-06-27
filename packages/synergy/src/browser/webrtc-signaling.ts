@@ -29,16 +29,32 @@ export namespace BrowserWebRTCSignaling {
     return `${BrowserOwner.key(owner)}:tab:${tabId}`
   }
 
-  export function attachViewer(owner: BrowserOwner.Info, tabId: string, socket: BrowserWebRTCSocket): void {
+  export function attachViewer(
+    owner: BrowserOwner.Info,
+    tabId: string,
+    socket: BrowserWebRTCSocket,
+    options: { hostReady: boolean },
+  ): void {
     const channel = getChannel(owner, tabId)
     channel.viewer = { socket }
-    if (channel.host) send(socket, { type: "webrtc.host.ready", tabId })
+    if (channel.host && options.hostReady) send(socket, { type: "webrtc.host.ready", tabId })
   }
 
-  export function attachHost(owner: BrowserOwner.Info, tabId: string, socket: BrowserWebRTCSocket): void {
+  export function attachHost(
+    owner: BrowserOwner.Info,
+    tabId: string,
+    socket: BrowserWebRTCSocket,
+    options: { hostReady: boolean },
+  ): void {
     const channel = getChannel(owner, tabId)
     channel.host = { socket }
-    if (channel.viewer) send(channel.viewer.socket, { type: "webrtc.host.ready", tabId })
+    if (channel.viewer && options.hostReady) send(channel.viewer.socket, { type: "webrtc.host.ready", tabId })
+  }
+
+  export function notifyHostReady(owner: BrowserOwner.Info, tabId: string, traceId?: string): void {
+    const channel = getChannel(owner, tabId)
+    if (!channel.host || !channel.viewer) return
+    send(channel.viewer.socket, { type: "webrtc.host.ready", tabId, traceId })
   }
 
   export function detachViewer(owner: BrowserOwner.Info, tabId: string, socket: BrowserWebRTCSocket): void {
