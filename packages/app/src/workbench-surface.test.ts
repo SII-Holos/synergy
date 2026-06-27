@@ -10,6 +10,9 @@ const settingsCss = await Bun.file(new URL("./components/settings/settings-panel
 const agendaCss = await Bun.file(new URL("./components/agenda/agenda-dialog.css", import.meta.url)).text()
 const agendaCalendar = await Bun.file(new URL("./components/agenda/calendar.tsx", import.meta.url)).text()
 const agendaPanel = await Bun.file(new URL("./components/agenda/panel.tsx", import.meta.url)).text()
+const libraryCss = await Bun.file(new URL("./components/library/library-panel.css", import.meta.url)).text()
+const libraryPanel = await Bun.file(new URL("./components/library/library-panel.tsx", import.meta.url)).text()
+const libraryShared = await Bun.file(new URL("./components/library/shared.tsx", import.meta.url)).text()
 const questionPromptCss = await Bun.file(new URL("./components/session/question-prompt.css", import.meta.url)).text()
 const questionPrompt = await Bun.file(new URL("./components/session/question-prompt.tsx", import.meta.url)).text()
 const appSrc = fileURLToPath(new URL(".", import.meta.url))
@@ -177,6 +180,25 @@ describe("workbench surface polarity", () => {
     expect(agendaCss).toContain(".agenda-run-row")
     expect(agendaPanel).not.toContain("workbench-card-surface flex flex-col gap-3")
     expect(agendaPanel).not.toContain("workbench-control-surface overflow-hidden rounded-[1rem]")
+  })
+
+  test("library uses top-level tabs instead of a secondary icon sidebar", () => {
+    expect(libraryPanel).toContain("library-tabbar")
+    expect(libraryPanel).toContain("Overview")
+    expect(libraryPanel).toContain("Memories")
+    expect(libraryPanel).toContain("Experiences")
+    expect(libraryPanel).toContain("Skills")
+    expect(libraryPanel).not.toContain("<AppPanel.Nav>")
+    expect(libraryPanel).not.toContain("AppPanel.NavItem")
+    expect(libraryPanel).not.toContain('icon="activity"')
+    expect(libraryPanel).not.toContain('icon="book-open"')
+    expect(libraryPanel).not.toContain('icon="zap"')
+    expect(libraryPanel).not.toContain('icon="sparkles"')
+
+    expect(libraryCss).toContain(".library-tabbar")
+    expect(libraryCss).toContain("--library-panel-bg")
+    expect(libraryShared).toContain('export const libraryCardBaseClass =\n  "library-card-surface')
+    expect(libraryShared).not.toContain("uppercase tracking-[0.16em]")
   })
 
   test("question prompts use a dedicated decision surface instead of a generic tool card", () => {

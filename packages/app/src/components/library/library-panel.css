@@ -1,0 +1,337 @@
+.library-workbench {
+  --library-panel-bg: var(--workbench-panel-bg, light-dark(rgb(235 237 240), rgb(30 30 33)));
+  --library-panel-bg-hover: var(--workbench-panel-bg-hover, light-dark(rgb(228 231 235), rgb(42 42 45)));
+  --library-content-bg: var(--workbench-card-bg, light-dark(rgb(229 232 236), rgb(40 40 43)));
+  --library-content-bg-hover: var(--workbench-card-bg-hover, light-dark(rgb(222 226 232), rgb(48 48 51)));
+  --library-control-bg: var(--workbench-control-bg, light-dark(rgb(223 227 233), rgb(52 52 55)));
+  --library-control-bg-hover: var(--workbench-control-bg-hover, light-dark(rgb(214 220 228), rgb(60 60 63)));
+  --library-input-bg: var(--workbench-input-bg, light-dark(rgb(217 223 230), rgb(58 58 61)));
+  --library-selected-bg: var(--workbench-selected-bg, light-dark(rgb(207 215 225), rgb(66 66 70)));
+  --library-selected-bg-hover: var(--workbench-selected-bg-hover, light-dark(rgb(198 207 219), rgb(72 72 76)));
+  --library-popover-bg: var(--workbench-popover-bg, light-dark(rgb(226 230 235), rgb(46 46 49)));
+  --library-line: light-dark(rgba(15, 23, 42, 0.085), rgba(255, 255, 255, 0.09));
+  --library-line-strong: light-dark(rgba(15, 23, 42, 0.12), rgba(255, 255, 255, 0.13));
+
+  background: var(--workbench-canvas-bg);
+}
+
+.library-header {
+  gap: 0.75rem;
+  border-bottom-color: color-mix(in oklab, var(--border-weaker-base) 48%, transparent);
+  padding: 1.25rem 1.5rem 1rem;
+}
+
+.library-storage-size,
+.library-view-caption {
+  color: var(--text-weaker);
+  font-size: 0.75rem;
+  font-weight: 400;
+  line-height: 1.35;
+}
+
+.library-view-caption {
+  margin-top: -0.25rem;
+}
+
+.library-header-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.875rem;
+}
+
+.library-tabbar {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.125rem;
+  align-self: flex-start;
+  border-radius: 0.625rem;
+  background: var(--library-control-bg);
+  padding: 0.125rem;
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--border-base) 26%, transparent);
+}
+
+.library-tab {
+  display: inline-flex;
+  min-height: 2rem;
+  align-items: center;
+  gap: 0.45rem;
+  border-radius: 0.5rem;
+  padding: 0 0.8rem;
+  color: var(--text-weak);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  line-height: 1;
+  transition:
+    background-color 150ms ease,
+    color 150ms ease;
+}
+
+.library-tab:hover {
+  color: var(--text-base);
+}
+
+.library-tab.is-active {
+  background: var(--library-selected-bg);
+  color: var(--text-strong);
+}
+
+.library-tab-count {
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--library-control-bg) 76%, var(--text-strong) 4%);
+  color: var(--text-weaker);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  line-height: 1;
+  padding: 0.2rem 0.45rem;
+}
+
+.library-tab.is-active .library-tab-count {
+  background: color-mix(in oklab, var(--library-selected-bg-hover) 84%, var(--text-strong) 5%);
+  color: var(--text-weak);
+}
+
+.library-search-field {
+  display: flex;
+  min-height: 2.25rem;
+  width: min(25rem, 44vw);
+  min-width: 15rem;
+  align-items: center;
+  gap: 0.625rem;
+  border-radius: 0.75rem;
+  background: var(--library-input-bg);
+  padding: 0 0.75rem;
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--border-base) 24%, transparent);
+  transition:
+    background-color 150ms ease,
+    box-shadow 150ms ease;
+}
+
+.library-search-field:focus-within {
+  background: var(--library-control-bg-hover);
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--text-strong) 22%, transparent);
+}
+
+.library-icon-button {
+  display: inline-flex;
+  width: 1.375rem;
+  height: 1.375rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.5rem;
+  color: var(--icon-weak);
+  transition:
+    background-color 150ms ease,
+    color 150ms ease;
+}
+
+.library-icon-button:hover {
+  background: var(--library-control-bg-hover);
+  color: var(--icon-base);
+}
+
+.library-body {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 1.125rem 1.5rem 1.5rem;
+}
+
+.library-main-surface {
+  border-radius: 0.875rem;
+  border: 1px solid var(--library-line-strong);
+  background: var(--library-panel-bg);
+}
+
+.library-inner-surface {
+  border-radius: 0.75rem;
+  background: var(--library-content-bg);
+  box-shadow: inset 0 0 0 1px var(--library-line);
+}
+
+.library-card-surface {
+  border-radius: 0.875rem;
+  border: 1px solid var(--library-line);
+  background: var(--library-content-bg);
+  box-shadow: none;
+  transition:
+    background-color 150ms ease,
+    border-color 150ms ease;
+}
+
+.library-card-surface.library-card-hover:hover,
+.library-card-surface.is-expanded {
+  border-color: var(--library-line-strong);
+  background: var(--library-content-bg-hover);
+}
+
+.library-action-button {
+  display: inline-flex;
+  min-height: 2rem;
+  align-items: center;
+  gap: 0.45rem;
+  border-radius: 999px;
+  background: var(--library-control-bg);
+  padding: 0 0.75rem;
+  color: var(--text-weak);
+  font-size: 0.75rem;
+  font-weight: 500;
+  line-height: 1;
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--border-base) 28%, transparent);
+  transition:
+    background-color 150ms ease,
+    color 150ms ease;
+}
+
+.library-action-button:hover {
+  background: var(--library-control-bg-hover);
+  color: var(--text-base);
+}
+
+.library-menu-surface {
+  z-index: 50;
+  min-width: 9rem;
+  overflow: hidden;
+  border-radius: 0.875rem;
+  border: 1px solid var(--library-line-strong);
+  background: var(--library-popover-bg);
+  padding: 0.375rem;
+  outline: none;
+}
+
+.library-meta-label {
+  color: var(--text-weaker);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  line-height: 1.25;
+}
+
+.library-filter-chip {
+  border-radius: 999px;
+  padding: 0.375rem 0.65rem;
+  color: var(--text-weak);
+  font-size: 0.75rem;
+  font-weight: 500;
+  line-height: 1;
+  transition:
+    background-color 150ms ease,
+    color 150ms ease;
+}
+
+.library-filter-chip:hover {
+  background: var(--library-control-bg-hover);
+  color: var(--text-base);
+}
+
+.library-filter-chip.is-active {
+  background: var(--library-selected-bg);
+  color: var(--text-strong);
+}
+
+.library-section-heading {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  padding: 0 0.125rem;
+}
+
+.library-section-title {
+  color: var(--text-strong);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  line-height: 1.35;
+}
+
+.library-section-subtitle {
+  color: var(--text-weaker);
+  font-size: 0.75rem;
+  font-weight: 400;
+  line-height: 1.35;
+}
+
+.library-section-block {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  border-top: 1px solid var(--library-line);
+  padding-top: 1.125rem;
+}
+
+.library-sync-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.875rem;
+  border-radius: 0.875rem;
+  background: var(--library-panel-bg);
+  padding: 0.75rem 0.875rem;
+  box-shadow: inset 0 0 0 1px var(--library-line-strong);
+}
+
+.library-metric-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.625rem;
+}
+
+.library-metric-card {
+  border-radius: 0.875rem;
+  background: var(--library-content-bg);
+  padding: 0.75rem 0.875rem;
+  box-shadow: inset 0 0 0 1px var(--library-line);
+}
+
+.library-chart-surface {
+  border-radius: 0.875rem;
+  background: var(--library-panel-bg);
+  padding: 1rem;
+  box-shadow: inset 0 0 0 1px var(--library-line-strong);
+}
+
+.library-chart-inner {
+  border-radius: 0.75rem;
+  background: var(--library-content-bg);
+  padding: 0.75rem;
+  box-shadow: inset 0 0 0 1px var(--library-line);
+}
+
+.library-empty-row {
+  border-radius: 0.75rem;
+  background: var(--library-content-bg);
+  padding: 1.25rem 0.875rem;
+  color: var(--text-weak);
+  font-size: 0.75rem;
+  font-weight: 400;
+}
+
+.library-workbench .bg-surface-raised-base,
+.library-workbench .bg-surface-inset-base,
+.library-workbench .bg-surface-raised-base-hover,
+.library-workbench .bg-surface-raised-stronger-non-alpha {
+  background-color: var(--library-control-bg);
+}
+
+.library-workbench .hover\:bg-surface-raised-base-hover:hover,
+.library-workbench .hover\:bg-surface-inset-base:hover {
+  background-color: var(--library-control-bg-hover);
+}
+
+.library-workbench .workbench-card-surface {
+  background-color: var(--library-panel-bg);
+}
+
+@media (max-width: 860px) {
+  .library-header-controls {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .library-search-field {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .library-metric-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

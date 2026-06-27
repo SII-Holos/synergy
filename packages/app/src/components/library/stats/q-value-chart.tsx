@@ -149,18 +149,14 @@ export function QValueChart(props: {
   const hasData = () => total() > 0
 
   return (
-    <div class="workbench-card-surface mt-4 rounded-[1.25rem] bg-surface-raised-base p-4">
+    <div class="library-chart-surface mt-4">
       <div class="pb-2">
         <h3 class="text-13-medium text-text-strong">Q‑value distribution</h3>
       </div>
 
       <Show
         when={hasData()}
-        fallback={
-          <div class="rounded-xl bg-surface-inset-base px-3.5 py-5 text-11-regular text-text-weak">
-            No evaluated experiences yet
-          </div>
-        }
+        fallback={<div class="library-empty-row">No evaluated experiences yet</div>}
       >
         {/* Summary row */}
         <div class="mb-3 grid grid-cols-5 gap-2">
@@ -188,7 +184,7 @@ export function QValueChart(props: {
 
         {/* Histogram + trend side-by-side */}
         <div class="grid grid-cols-1 gap-2.5">
-          <div class="rounded-xl bg-surface-inset-base px-3 py-2.5 ring-1 ring-inset ring-border-base/45">
+          <div class="library-chart-inner">
             <div class="text-[8px] font-medium uppercase tracking-[0.12em] text-text-weak mb-1.5">
               Composite Q Histogram
             </div>
@@ -198,7 +194,7 @@ export function QValueChart(props: {
           </div>
 
           <Show when={dist().trend.length >= 2}>
-            <div class="rounded-xl bg-surface-inset-base px-3 py-2.5 ring-1 ring-inset ring-border-base/45">
+            <div class="library-chart-inner">
               <div class="text-[8px] font-medium uppercase tracking-[0.12em] text-text-weak mb-1.5">
                 Median Q · Weekly Trend
               </div>

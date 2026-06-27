@@ -206,7 +206,7 @@ a:active,
   box-shadow: none;
 }
 
-.synergy-workbench-canvas :where(.bg-background-stronger) {
+.synergy-workbench-canvas :where(.bg-background-stronger, .bg-background-strong\/80) {
   background-color: var(--workbench-canvas-bg);
 }
 

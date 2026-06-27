@@ -48,7 +48,7 @@ function buildMetrics(overview: {
 function MetricCard(props: { metric: OverviewMetric; delay: number }) {
   return (
     <div
-      class="rounded-xl bg-surface-inset-base px-3 py-2.5 ring-1 ring-inset ring-border-base/25"
+      class="library-metric-card"
       style={{ animation: `overviewCardEnter 0.28s ease-out ${props.delay}ms both` }}
     >
       <div class="flex items-baseline gap-2">
@@ -77,7 +77,7 @@ export function LibraryOverviewCards(props: {
   return (
     <>
       <style>{`@keyframes overviewCardEnter{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}`}</style>
-      <div class="grid grid-cols-4 gap-2">
+      <div class="library-metric-grid">
         <For each={metrics()}>{(metric, index) => <MetricCard metric={metric} delay={index() * 40} />}</For>
       </div>
     </>

@@ -1,4 +1,4 @@
-import { createMemo, createResource, createSignal, Show } from "solid-js"
+import { createMemo, createResource, createSignal, For, Show } from "solid-js"
 import { useParams } from "@solidjs/router"
 import { base64Decode } from "@ericsanchezok/synergy-util/encode"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
@@ -12,12 +12,51 @@ import { StatsSection } from "@/components/stats/stats-section"
 import { MemoryView } from "./memory-view"
 import { ExperienceView } from "./experience-view"
 import { SkillView } from "./skill-view"
+import "./library-panel.css"
 
 const viewLabel: Record<View, string> = {
   stats: "Health, collection, and learning signals",
   memory: "Browse, search, and manage knowledge",
   experience: "Browse, search, and manage behavioral records",
   skill: "Installed capabilities and imports",
+}
+
+function LibraryTabBar(props: {
+  view: View
+  memoryCount: number
+  experienceCount: number
+  onChange: (view: View) => void
+}) {
+  const items = (): Array<{ id: View; label: string; count?: number }> => [
+    { id: "stats", label: "Overview" },
+    { id: "memory", label: "Memories", count: props.memoryCount },
+    { id: "experience", label: "Experiences", count: props.experienceCount },
+    { id: "skill", label: "Skills" },
+  ]
+
+  return (
+    <div class="library-tabbar" role="tablist" aria-label="Library views">
+      <For each={items()}>
+        {(item) => (
+        <button
+          type="button"
+          role="tab"
+          aria-selected={props.view === item.id}
+          classList={{
+            "library-tab": true,
+            "is-active": props.view === item.id,
+          }}
+          onClick={() => props.onChange(item.id)}
+        >
+          <span>{item.label}</span>
+          <Show when={(item.count ?? 0) > 0}>
+            <span class="library-tab-count">{item.count}</span>
+          </Show>
+        </button>
+        )}
+      </For>
+    </div>
+  )
 }
 
 export function LibraryPanel() {
@@ -78,91 +117,61 @@ export function LibraryPanel() {
   const showSearch = () => view() !== "stats"
 
   return (
-    <AppPanel.Root>
-      <AppPanel.Nav>
-        <AppPanel.NavSection label="Library">
-          <AppPanel.NavItem
-            icon="activity"
-            label="Overview"
-            active={view() === "stats"}
-            onClick={() => setView("stats")}
-          />
-          <AppPanel.NavItem
-            icon="book-open"
-            label="Memories"
-            active={view() === "memory"}
-            onClick={() => setView("memory")}
-            badge={
-              <Show when={memoryCount() > 0}>
-                <span class="text-11-regular text-text-weaker">{memoryCount()}</span>
-              </Show>
-            }
-          />
-          <AppPanel.NavItem
-            icon="zap"
-            label="Experiences"
-            active={view() === "experience"}
-            onClick={() => setView("experience")}
-            badge={
-              <Show when={experienceCount() > 0}>
-                <span class="text-11-regular text-text-weaker">{experienceCount()}</span>
-              </Show>
-            }
-          />
-          <AppPanel.NavItem
-            icon="sparkles"
-            label="Skills"
-            active={view() === "skill"}
-            onClick={() => setView("skill")}
-          />
-        </AppPanel.NavSection>
-      </AppPanel.Nav>
-
+    <AppPanel.Root class="library-workbench">
       <AppPanel.Content>
-        <AppPanel.Header class="pt-3 pb-2 gap-2">
+        <AppPanel.Header class="library-header">
           <AppPanel.HeaderRow>
             <AppPanel.Title>Library</AppPanel.Title>
             <AppPanel.Actions>
               <Show when={stats()}>
-                <span class="text-11-regular text-text-weaker tabular-nums">{formatBytes(stats()!.dbSizeBytes)}</span>
+                <span class="library-storage-size tabular-nums">{formatBytes(stats()!.dbSizeBytes)}</span>
               </Show>
               <Show when={view() !== "stats"}>
-                <AppPanel.Action icon="refresh-ccw" title="Refresh" onClick={refetchAll} />
+                <button type="button" class="library-action-button" title="Refresh" onClick={refetchAll}>
+                  <Icon name="refresh-ccw" size="small" />
+                  <span>Refresh</span>
+                </button>
               </Show>
             </AppPanel.Actions>
           </AppPanel.HeaderRow>
-          <AppPanel.Subtitle>{viewLabel[view()]}</AppPanel.Subtitle>
-        </AppPanel.Header>
-        <Show when={showSearch()}>
-          <div class="shrink-0 px-6 pt-1 pb-2">
-            <div class="flex items-center gap-2.5 rounded-xl bg-surface-inset-base px-3.5 py-2">
-              <Icon name="search" size="small" class="text-icon-weak shrink-0" />
-              <input
-                type="text"
-                placeholder={
-                  view() === "memory"
-                    ? "Search memories..."
-                    : view() === "experience"
-                      ? "Search experiences..."
-                      : "Search skills..."
-                }
-                class="flex-1 bg-transparent text-13-regular text-text-base placeholder:text-text-weak outline-none"
-                value={search()}
-                onInput={(e) => onSearchInput(e.currentTarget.value)}
-              />
-              <Show when={search()}>
-                <button
-                  type="button"
-                  aria-label="Clear search"
-                  class="flex items-center justify-center size-5 rounded-md text-icon-weak hover:text-icon-base transition-colors"
-                  onClick={() => onSearchInput("")}
-                >
-                  <Icon name="x" size="small" />
-                </button>
-              </Show>
-            </div>
+          <div class="library-header-controls">
+            <LibraryTabBar
+              view={view()}
+              memoryCount={memoryCount()}
+              experienceCount={experienceCount()}
+              onChange={setView}
+            />
+            <Show when={showSearch()}>
+              <div class="library-search-field">
+                <Icon name="search" size="small" class="text-icon-weak shrink-0" />
+                <input
+                  type="text"
+                  placeholder={
+                    view() === "memory"
+                      ? "Search memories..."
+                      : view() === "experience"
+                        ? "Search experiences..."
+                        : "Search skills..."
+                  }
+                  class="flex-1 bg-transparent text-13-regular text-text-base placeholder:text-text-weak outline-none"
+                  value={search()}
+                  onInput={(e) => onSearchInput(e.currentTarget.value)}
+                />
+                <Show when={search()}>
+                  <button
+                    type="button"
+                    aria-label="Clear search"
+                    class="library-icon-button"
+                    onClick={() => onSearchInput("")}
+                  >
+                    <Icon name="x" size="small" />
+                  </button>
+                </Show>
+              </div>
+            </Show>
           </div>
-        </Show>
+          <div class="library-view-caption">{viewLabel[view()]}</div>
+        </AppPanel.Header>
         <Show when={searchError()}>
           <div class="shrink-0 px-6 pb-1">
             <span class="text-11-regular text-text-diff-delete-base">
@@ -170,13 +179,13 @@ export function LibraryPanel() {
             </span>
           </div>
         </Show>
-        <AppPanel.Body>
+        <AppPanel.Body padding={false} class="library-body">
           <Show when={view() === "stats"}>
             <StatsView />
-            <div class="mt-6 pt-5 border-t border-border-base/20">
-              <div class="flex items-baseline gap-2 mb-3 px-0.5">
-                <span class="text-12-medium text-text-strong">Workspace usage</span>
-                <span class="text-11-regular text-text-weaker">Activity analytics across all projects</span>
+            <div class="library-section-block">
+              <div class="library-section-heading">
+                <span class="library-section-title">Workspace usage</span>
+                <span class="library-section-subtitle">Activity analytics across all projects</span>
               </div>
               <StatsSection />
             </div>

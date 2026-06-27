@@ -7,15 +7,15 @@ import { RewardRadar } from "./reward-radar"
 
 function SyncBar(props: { syncing: boolean; syncError: string | null; onSync: () => void }) {
   return (
-    <div class="mb-4 flex items-center justify-between gap-3 rounded-xl bg-surface-inset-base px-3.5 py-2.5 ring-1 ring-inset ring-border-base/45">
+    <div class="library-sync-row">
       <div class="min-w-0">
-        <div class="text-11-regular text-text-weak">
+        <div class="text-12-regular text-text-weak">
           {props.syncing ? "Computing stats…" : (props.syncError ?? "Recompute for a fresh snapshot")}
         </div>
       </div>
       <button
         type="button"
-        class="shrink-0 rounded-full bg-surface-raised-stronger-non-alpha px-3 py-1.5 text-11-medium text-text-base ring-1 ring-inset ring-border-base/50 transition hover:bg-surface-raised-base-hover hover:text-text-strong disabled:cursor-default disabled:opacity-60"
+        class="library-action-button shrink-0 disabled:cursor-default disabled:opacity-60"
         disabled={props.syncing}
         onClick={() => void props.onSync()}
       >
@@ -27,9 +27,9 @@ function SyncBar(props: { syncing: boolean; syncError: string | null; onSync: ()
 
 function SectionHeader(props: { label: string; subtitle: string }) {
   return (
-    <div class="flex items-baseline gap-2 mt-5 mb-2 px-0.5">
-      <span class="text-12-medium text-text-strong">{props.label}</span>
-      <span class="text-11-regular text-text-weaker">{props.subtitle}</span>
+    <div class="library-section-heading mt-5 mb-2 first:mt-4">
+      <span class="library-section-title">{props.label}</span>
+      <span class="library-section-subtitle">{props.subtitle}</span>
     </div>
   )
 }

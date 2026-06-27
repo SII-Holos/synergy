@@ -179,18 +179,14 @@ export function RewardRadar(props: { dimensions: DimStats[] }) {
   }))
 
   return (
-    <div class="workbench-card-surface mt-4 rounded-[1.25rem] bg-surface-raised-base p-4">
+    <div class="library-chart-surface mt-4">
       <div class="pb-2">
         <h3 class="text-13-medium text-text-strong">Reward dimensions</h3>
       </div>
 
       <Show
         when={dims().length > 0}
-        fallback={
-          <div class="rounded-xl bg-surface-inset-base px-3.5 py-5 text-11-regular text-text-weak">
-            No evaluated experiences yet
-          </div>
-        }
+        fallback={<div class="library-empty-row">No evaluated experiences yet</div>}
       >
         <div class="flex gap-4">
           {/* Radar chart — left */}
@@ -239,7 +235,7 @@ export function RewardRadar(props: { dimensions: DimStats[] }) {
         </div>
 
         {/* Stacked bar chart below */}
-        <div class="mt-3 rounded-xl bg-surface-inset-base px-3 py-3 ring-1 ring-inset ring-border-base/25">
+        <div class="library-chart-inner mt-3">
           <div class="text-[8px] font-medium uppercase tracking-[0.12em] text-text-weak mb-2">
             Reward Distribution by Dimension
           </div>
