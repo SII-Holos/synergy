@@ -2,6 +2,7 @@ import { BrowserWindow, ipcMain } from "electron"
 import fs from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
+import { normalizeBrowserURL } from "@ericsanchezok/synergy-util/browser-protocol"
 import { BrowserHostDiagnostics, type BrowserHostUploadFile } from "./browser-host-diagnostics.js"
 import { browserProfilePartition } from "./browser-profile.js"
 
@@ -92,7 +93,7 @@ export class BrowserWebRTCHost {
     this.inputChannel = `browser-host:${options.tabId}:input`
     this.browserWindowTitle = `Synergy Browser Host ${options.sessionID} ${options.tabId}`
     this.activeTabId = options.tabId
-    this.tabs.set(options.tabId, this.createTabState(options.tabId, options.url || "about:blank", "", false))
+    this.tabs.set(options.tabId, this.createTabState(options.tabId, this.initialURL(), "", false))
   }
 
   async start(): Promise<void> {
@@ -163,7 +164,7 @@ export class BrowserWebRTCHost {
 
     const controllerPath = await this.writeControllerHtml(signalingUrl)
     await this.rtcWindow.loadFile(controllerPath)
-    await this.browserWindow.loadURL(this.options.url || "about:blank")
+    await this.browserWindow.loadURL(this.initialURL())
     this.tabs.set(this.options.tabId, this.tabState())
     this.connectControl()
   }
@@ -372,7 +373,7 @@ export class BrowserWebRTCHost {
         if (typeof command.tabId === "string" && command.tabId !== this.options.tabId) {
           throw new UnsupportedHostCommandError(String(command.type))
         }
-        const url = String(command.url ?? "about:blank")
+        const url = normalizeBrowserURL(String(command.url ?? "about:blank"))
         await contents.loadURL(url)
         return { type: "navigation", tab: this.tabState(), url: contents.getURL(), title: contents.getTitle() }
       }
@@ -598,6 +599,10 @@ export class BrowserWebRTCHost {
       kept: false,
       lastActiveAt: null,
     }
+  }
+
+  private initialURL(): string {
+    return this.options.url ? normalizeBrowserURL(this.options.url) : "about:blank"
   }
 
   private sessionState() {

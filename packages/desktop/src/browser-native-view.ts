@@ -1,5 +1,6 @@
 import { BrowserWindow, WebContentsView } from "electron"
 import { randomUUID } from "node:crypto"
+import { normalizeBrowserURL } from "@ericsanchezok/synergy-util/browser-protocol"
 import { BrowserHostDiagnostics, type BrowserHostUploadFile } from "./browser-host-diagnostics.js"
 import { browserProfilePartition } from "./browser-profile.js"
 
@@ -51,8 +52,9 @@ export class BrowserNativeViewManager {
       this.lastBounds = input.bounds
       this.resize(input.tabId, input.bounds)
     }
-    if (input.url && view.webContents.getURL() !== input.url) {
-      await view.webContents.loadURL(input.url)
+    if (input.url) {
+      const url = normalizeBrowserURL(input.url)
+      if (view.webContents.getURL() !== url) await view.webContents.loadURL(url)
     }
   }
 
@@ -123,7 +125,7 @@ export class BrowserNativeViewManager {
     this.views.set(tabId, view)
     this.activate(tabId, view)
     if (this.lastBounds) this.resize(tabId, this.lastBounds)
-    if (url) await view.webContents.loadURL(url)
+    if (url) await view.webContents.loadURL(normalizeBrowserURL(url))
     const tab = this.tabState(tabId, view)
     for (const connection of this.controlConnections.values()) {
       connection.emitHostEvent({ type: "tab.created", tab, active: true })
@@ -370,7 +372,7 @@ class BrowserNativeHostControlConnection {
     const contents = view.webContents
     switch (command.type) {
       case "navigate": {
-        const url = String(command.url ?? "about:blank")
+        const url = normalizeBrowserURL(String(command.url ?? "about:blank"))
         await contents.loadURL(url)
         return {
           type: "navigation",

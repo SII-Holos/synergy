@@ -10,6 +10,29 @@ export function parseBrowserPresentationPreference(value: string | null | undefi
   return "auto"
 }
 
+export function normalizeBrowserURL(input: string, base?: string): string {
+  const raw = input.trim()
+  if (!raw) throw new Error("URL is required")
+
+  if (/^(localhost|127\.0\.0\.1|\[::1\]|::1)(:\d+)?(\/.*)?$/i.test(raw)) {
+    return `http://${raw}`
+  }
+
+  if (/^[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}(:\d+)?(\/.*)?$/.test(raw)) {
+    return `https://${raw}`
+  }
+
+  if (base || /^[a-zA-Z][a-zA-Z\d+.-]*:/.test(raw)) {
+    try {
+      return new URL(raw, base).toString()
+    } catch {
+      // Continue to search fallback below.
+    }
+  }
+
+  return `https://www.google.com/search?q=${encodeURIComponent(raw)}`
+}
+
 export interface BrowserPresentationCapabilities {
   native: boolean
   webrtc: boolean

@@ -351,6 +351,60 @@ describe("BrowserHostControl", () => {
     }
   })
 
+  test("BrowserHost normalizes address-bar URLs before sending commands to an attached host", async () => {
+    const host = socket()
+    const connection = BrowserHostControl.attach(owner, host.peer, { tabId: "tab_1" })
+    const restore = BrowserHost.useRuntimeForTest({
+      async ensure() {
+        throw new Error("runtime should not be used when host is attached")
+      },
+      async health() {
+        return { running: false, chromiumPath: null, installed: false, version: null }
+      },
+      async getOrCreateSession() {
+        throw new Error("runtime should not be used when host is attached")
+      },
+    })
+
+    try {
+      const resultPromise = BrowserHost.execute(owner, {
+        type: "navigate",
+        tabId: "tab_1",
+        url: "www.google.com",
+        source: "user",
+      })
+      const request = host.messages.find((message) => message.type === "browser.host.command")!
+
+      expect(request).toMatchObject({
+        type: "browser.host.command",
+        command: { type: "navigate", tabId: "tab_1", url: "https://www.google.com" },
+      })
+
+      connection.handleMessage({
+        type: "browser.host.result",
+        id: request.id,
+        result: {
+          type: "navigation",
+          url: "https://www.google.com/",
+          title: "Google",
+          tab: {
+            id: "tab_1",
+            url: "https://www.google.com/",
+            title: "Google",
+            isLoading: false,
+            pinned: false,
+            kept: false,
+            lastActiveAt: null,
+          },
+        },
+      })
+
+      await expect(resultPromise).resolves.toMatchObject({ type: "navigation", title: "Google" })
+    } finally {
+      restore()
+    }
+  })
+
   test("tool helpers resolve attached Browser Host tabs before runtime fallback", async () => {
     const host = socket()
     const connection = BrowserHostControl.attach(owner, host.peer)

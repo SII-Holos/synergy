@@ -75,15 +75,16 @@ export namespace BrowserHost {
     command: BrowserControl.Command,
     options: BrowserHostControl.ExecuteOptions = {},
   ): Promise<BrowserControl.Result> {
+    const normalizedCommand = BrowserControl.normalizeCommand(command)
     if (BrowserHostControl.has(owner)) {
       try {
-        return await BrowserHostControl.execute(owner, command, options)
+        return await BrowserHostControl.execute(owner, normalizedCommand, options)
       } catch (error) {
         if (!(error instanceof BrowserHostControlUnsupportedCommandError)) throw error
       }
     }
     const session = await ensureSession(owner)
-    return BrowserControl.execute(session, command)
+    return BrowserControl.execute(session, normalizedCommand)
   }
 
   export function sessions(): Map<string, BrowserSession> {

@@ -1,3 +1,4 @@
+import { normalizeBrowserURL } from "@ericsanchezok/synergy-util/browser-protocol"
 import type { BrowserAnnotation, BrowserSession } from "./types.js"
 import { BrowserAssets } from "./assets.js"
 import type {
@@ -111,6 +112,14 @@ export namespace BrowserControl {
       tabs: session.tabs.map(tabState),
       activeTabId: session.activeTab?.id ?? null,
     }
+  }
+
+  export function normalizeCommand(command: Command): Command {
+    if (command.type === "navigate") return { ...command, url: normalizeBrowserURL(command.url) }
+    if (command.type === "createTab" && typeof command.url === "string" && command.url.trim()) {
+      return { ...command, url: normalizeBrowserURL(command.url) }
+    }
+    return command
   }
 
   export function resolveTab(session: Pick<BrowserSession, "activeTab" | "getTab">, tabId?: string): BrowserTab {
