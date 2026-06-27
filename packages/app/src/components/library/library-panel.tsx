@@ -1,4 +1,4 @@
-import { createMemo, createResource, createSignal, For, Show } from "solid-js"
+import { createMemo, createResource, createSignal, Show } from "solid-js"
 import { useParams } from "@solidjs/router"
 import { base64Decode } from "@ericsanchezok/synergy-util/encode"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
@@ -7,50 +7,12 @@ import { useGlobalSync } from "@/context/global-sync"
 import { AppPanel } from "@/components/app-panel"
 import type { MemoryStats } from "@ericsanchezok/synergy-sdk/client"
 import { type View, formatBytes } from "./shared"
-import { StatsView } from "./stats/stats-view"
-import { StatsSection } from "@/components/stats/stats-section"
+import { StatsView, type LibraryStatsSyncHandle } from "./stats/stats-view"
+import { StatsSection, type WorkspaceStatsSyncHandle } from "@/components/stats/stats-section"
 import { MemoryView } from "./memory-view"
 import { ExperienceView } from "./experience-view"
 import { SkillView } from "./skill-view"
 import "./library-panel.css"
-
-function LibraryTabBar(props: {
-  view: View
-  memoryCount: number
-  experienceCount: number
-  onChange: (view: View) => void
-}) {
-  const items = (): Array<{ id: View; label: string; count?: number }> => [
-    { id: "stats", label: "Overview" },
-    { id: "memory", label: "Memories", count: props.memoryCount },
-    { id: "experience", label: "Experiences", count: props.experienceCount },
-    { id: "skill", label: "Skills" },
-  ]
-
-  return (
-    <div class="library-tabbar" role="tablist" aria-label="Library views">
-      <For each={items()}>
-        {(item) => (
-          <button
-            type="button"
-            role="tab"
-            aria-selected={props.view === item.id}
-            classList={{
-              "library-tab": true,
-              "is-active": props.view === item.id,
-            }}
-            onClick={() => props.onChange(item.id)}
-          >
-            <span>{item.label}</span>
-            <Show when={(item.count ?? 0) > 0}>
-              <span class="library-tab-count">{item.count}</span>
-            </Show>
-          </button>
-        )}
-      </For>
-    </div>
-  )
-}
 
 export function LibraryPanel() {
   const sdk = useGlobalSDK()
@@ -59,6 +21,8 @@ export function LibraryPanel() {
   const [view, setView] = createSignal<View>("stats")
   const [search, setSearch] = createSignal("")
   const [searchError, setSearchError] = createSignal(false)
+  const [workspaceStatsSync, setWorkspaceStatsSync] = createSignal<WorkspaceStatsSyncHandle>()
+  const [libraryStatsSync, setLibraryStatsSync] = createSignal<LibraryStatsSyncHandle>()
 
   const directory = createMemo(() => (params.dir ? base64Decode(params.dir) : undefined))
   const currentSession = createMemo(() => {
@@ -97,6 +61,29 @@ export function LibraryPanel() {
   const experienceCount = () => stats()?.experience.count ?? 0
 
   const showSearch = () => view() !== "stats"
+  const navItems = createMemo(() => [
+    { id: "stats", label: "Overview" },
+    { id: "memory", label: memoryCount() > 0 ? `Memories ${memoryCount()}` : "Memories" },
+    { id: "experience", label: experienceCount() > 0 ? `Experiences ${experienceCount()}` : "Experiences" },
+    { id: "skill", label: "Skills" },
+  ])
+  const storageLabel = createMemo(() => {
+    const snapshot = stats()
+    return snapshot ? formatBytes(snapshot.dbSizeBytes) : undefined
+  })
+  const isSyncing = createMemo(() => Boolean(workspaceStatsSync()?.syncing() || libraryStatsSync()?.syncing()))
+
+  async function syncAll() {
+    if (isSyncing()) return
+    const tasks: Array<Promise<void>> = []
+    const workspace = workspaceStatsSync()
+    const library = libraryStatsSync()
+    if (workspace) tasks.push(Promise.resolve(workspace.sync()))
+    if (library) tasks.push(Promise.resolve(library.sync()))
+    if (tasks.length === 0) return
+    await Promise.all(tasks)
+    await refetchStats()
+  }
 
   return (
     <AppPanel.Root class="library-workbench">
@@ -106,18 +93,18 @@ export function LibraryPanel() {
             <AppPanel.HeaderRow>
               <AppPanel.Title>Library</AppPanel.Title>
               <AppPanel.Actions>
-                <Show when={stats()}>
-                  <span class="library-storage-size tabular-nums">{formatBytes(stats()!.dbSizeBytes)}</span>
-                </Show>
+                <button
+                  type="button"
+                  class="library-primary-action disabled:cursor-default disabled:opacity-55"
+                  disabled={isSyncing()}
+                  onClick={() => void syncAll()}
+                >
+                  {isSyncing() ? "Syncing..." : "Sync"}
+                </button>
               </AppPanel.Actions>
             </AppPanel.HeaderRow>
             <div class="library-header-controls">
-              <LibraryTabBar
-                view={view()}
-                memoryCount={memoryCount()}
-                experienceCount={experienceCount()}
-                onChange={setView}
-              />
+              <AppPanel.SegmentedNav items={navItems()} active={view()} onChange={(id) => setView(id as View)} />
               <Show when={showSearch()}>
                 <div class="library-search-field">
                   <Icon name="search" size="small" class="text-icon-weak shrink-0" />
@@ -163,10 +150,10 @@ export function LibraryPanel() {
                 <div class="library-section-heading">
                   <span class="library-section-title">Usage</span>
                 </div>
-                <StatsSection />
+                <StatsSection registerSync={setWorkspaceStatsSync} />
               </div>
               <div class="library-section-block">
-                <StatsView />
+                <StatsView registerSync={setLibraryStatsSync} storageLabel={storageLabel()} />
               </div>
             </Show>
             <Show when={view() === "memory"}>

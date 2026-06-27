@@ -1,4 +1,4 @@
-import { createMemo, Show } from "solid-js"
+import { createEffect, createMemo, Show } from "solid-js"
 import type { StatsSnapshot } from "@ericsanchezok/synergy-sdk"
 import { useStats } from "./use-stats"
 import { OverviewCards } from "./overview-cards"
@@ -30,7 +30,13 @@ function phaseLabel(phase: "scan" | "digest" | "bucket" | "snapshot") {
   return "Computing snapshot"
 }
 
-function StatsSyncBar(props: {
+export type WorkspaceStatsSyncHandle = {
+  sync: () => void | Promise<void>
+  syncing: () => boolean
+  error: () => string | null
+}
+
+function StatsSyncStatus(props: {
   syncing: boolean
   progress: {
     phase: "scan" | "digest" | "bucket" | "snapshot"
@@ -39,7 +45,6 @@ function StatsSyncBar(props: {
     message?: string
   } | null
   syncError: string | null
-  onSync: () => void | Promise<void>
 }) {
   const percent = createMemo(() => {
     const progress = props.progress
@@ -48,9 +53,9 @@ function StatsSyncBar(props: {
   })
 
   return (
-    <div class="mb-4">
-      <div class="library-sync-row library-sync-row-compact">
-        <Show when={props.syncing || props.syncError}>
+    <Show when={props.syncing || props.syncError}>
+      <div class="mb-4">
+        <div class="library-sync-row library-sync-row-compact">
           <div class="library-toolbar-left">
             <span class="library-toolbar-summary">
               {props.syncing
@@ -65,36 +70,35 @@ function StatsSyncBar(props: {
               )}
             </Show>
           </div>
-        </Show>
-
-        <button
-          type="button"
-          class="library-action-button shrink-0 disabled:cursor-default disabled:opacity-60"
-          disabled={props.syncing}
-          onClick={() => void props.onSync()}
-        >
-          {props.syncing ? "Syncing…" : "Sync stats"}
-        </button>
-      </div>
-
-      <Show when={props.syncing && props.progress}>
-        <div class="library-sync-progress">
-          <div
-            class="h-full rounded-full bg-text-strong/60 transition-[width] duration-300"
-            style={{ width: `${percent()}%` }}
-          />
         </div>
-      </Show>
-    </div>
+
+        <Show when={props.syncing && props.progress}>
+          <div class="library-sync-progress">
+            <div
+              class="h-full rounded-full bg-text-strong/60 transition-[width] duration-300"
+              style={{ width: `${percent()}%` }}
+            />
+          </div>
+        </Show>
+      </div>
+    </Show>
   )
 }
 
-export function StatsSection() {
+export function StatsSection(props: { registerSync?: (handle: WorkspaceStatsSyncHandle) => void }) {
   const { data, error, loading, refresh, sync, syncing, progress, syncError } = useStats()
+
+  createEffect(() => {
+    props.registerSync?.({
+      sync,
+      syncing,
+      error: syncError,
+    })
+  })
 
   return (
     <div>
-      <StatsSyncBar syncing={syncing()} progress={progress()} syncError={syncError()} onSync={sync} />
+      <StatsSyncStatus syncing={syncing()} progress={progress()} syncError={syncError()} />
       <Show
         when={data()}
         fallback={
@@ -113,14 +117,6 @@ export function StatsSection() {
                   onClick={refresh}
                 >
                   {loading ? "Loading…" : "Retry loading stats"}
-                </button>
-                <button
-                  type="button"
-                  class="rounded-full bg-surface-raised-stronger-non-alpha px-3 py-1.5 text-12-medium text-text-interactive-base ring-1 ring-inset ring-border-base/50 transition hover:bg-surface-raised-base-hover hover:text-text-interactive-hover disabled:cursor-default disabled:opacity-60"
-                  disabled={syncing()}
-                  onClick={() => void sync()}
-                >
-                  {syncing() ? "Syncing…" : "Sync stats"}
                 </button>
               </div>
             </div>
@@ -141,7 +137,7 @@ function StatsContent(props: { snapshot: StatsSnapshot }) {
   const toolRows = createMemo(() => buildToolRows(snapshot()))
 
   return (
-    <div class="flex flex-col gap-5 pb-5">
+    <div class="library-stats-content flex flex-col gap-5 pb-5">
       <OverviewCards
         metrics={overviewMetrics()}
         streak={{
