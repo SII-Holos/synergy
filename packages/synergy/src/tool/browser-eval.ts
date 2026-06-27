@@ -14,7 +14,7 @@ export const BrowserEvalTool = Tool.define("browser_eval", {
       .default("readonly")
       .describe("Eval mode: readonly=no side effects, trusted=allow mutations."),
     maxBytes: z.number().int().default(64000).describe("Maximum output size in bytes."),
-    tabId: z.string().optional(),
+    pageId: z.string().optional(),
     throwOnSideEffect: z
       .boolean()
       .optional()
@@ -26,7 +26,7 @@ export const BrowserEvalTool = Tool.define("browser_eval", {
     }
 
     const owner = BrowserOwner.fromToolContext(ctx)
-    const tab = await BrowserToolHelper.resolveTab(ctx, params.tabId)
+    const tab = await BrowserToolHelper.resolvePage(ctx, params.pageId)
     const activityKind = params.mode === "trusted" ? "acting" : "reading"
     return BrowserToolHelper.withActivity(
       ctx,
@@ -44,7 +44,7 @@ export const BrowserEvalTool = Tool.define("browser_eval", {
 
         const result = await BrowserToolHelper.executeControl(owner, {
           type: "evaluate",
-          tabId: tab.id,
+          pageId: tab.id,
           expression: evalPayload.expression,
           throwOnSideEffect: isReadonly ? true : undefined,
         })

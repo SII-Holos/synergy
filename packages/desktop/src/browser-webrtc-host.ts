@@ -10,7 +10,7 @@ import { browserProfilePartition } from "./browser-profile.js"
 export interface BrowserWebRTCHostOptions {
   serverUrl: string
   sessionID: string
-  tabId: string
+  pageId: string
   routeDirectory?: string
   directory?: string
   scopeID?: string
@@ -21,13 +21,11 @@ export interface BrowserWebRTCHostOptions {
   traceId?: string
 }
 
-interface BrowserHostTabState {
+interface BrowserHostPageState {
   id: string
   url: string
   title: string
   isLoading: boolean
-  pinned: boolean
-  kept: boolean
   lastActiveAt: number | null
 }
 
@@ -41,7 +39,7 @@ function createHostSignalingUrl(options: BrowserWebRTCHostOptions) {
     presentation: "webrtc",
     client: "desktop",
     sameHost: "1",
-    tabId: options.tabId,
+    pageId: options.pageId,
   })
   if (options.scopeID) params.set("scopeID", options.scopeID)
   else if (options.directory) params.set("directory", options.directory)
@@ -63,7 +61,7 @@ function createHostControlUrl(options: BrowserWebRTCHostOptions) {
     presentation: "webrtc",
     client: "desktop",
     sameHost: "1",
-    tabId: options.tabId,
+    pageId: options.pageId,
   })
   if (options.scopeID) params.set("scopeID", options.scopeID)
   else if (options.directory) params.set("directory", options.directory)
@@ -88,8 +86,8 @@ export class BrowserWebRTCHost {
   private controllerDir: string | null = null
 
   constructor(private options: BrowserWebRTCHostOptions) {
-    this.inputChannel = `browser-host:${options.tabId}:input`
-    this.browserWindowTitle = `Synergy Browser Host ${options.sessionID} ${options.tabId}`
+    this.inputChannel = `browser-host:${options.pageId}:input`
+    this.browserWindowTitle = `Synergy Browser Host ${options.sessionID} ${options.pageId}`
   }
 
   async start(): Promise<void> {
@@ -119,20 +117,20 @@ export class BrowserWebRTCHost {
     })
     this.installBrowserEvents()
     this.diagnostics = new BrowserHostDiagnostics({
-      tabId: this.options.tabId,
+      pageId: this.options.pageId,
       contents: this.browserWindow.webContents,
       emitHostEvent: (event) => this.emitHostEvent(event),
     })
     this.diagnostics.start()
     this.control = new BrowserWebContentsControl({
-      tabId: this.options.tabId,
+      pageId: this.options.pageId,
       contents: () => this.browserWindow?.webContents,
       diagnostics: () => this.diagnostics ?? undefined,
       resize: (nextWidth, nextHeight) => {
         this.browserWindow?.setSize(nextWidth, nextHeight)
         this.rtcWindow?.setSize(nextWidth, nextHeight)
       },
-      tabState: () => this.tabState(),
+      pageState: () => this.pageState(),
     })
 
     this.rtcWindow = new BrowserWindow({
@@ -205,29 +203,29 @@ export class BrowserWebRTCHost {
     const contents = this.browserWindow?.webContents
     if (!contents) return
     contents.on("did-start-loading", () => {
-      this.emitHostEvent({ type: "page.loading", tabId: this.options.tabId, url: contents.getURL() })
+      this.emitHostEvent({ type: "page.loading", pageId: this.options.pageId, url: contents.getURL() })
     })
     contents.on("did-stop-loading", () => {
       this.emitHostEvent({
         type: "page.loaded",
-        tabId: this.options.tabId,
+        pageId: this.options.pageId,
         url: contents.getURL(),
         title: contents.getTitle(),
       })
       this.sendHostSession()
     })
     contents.on("did-navigate", () => {
-      this.emitHostEvent({ type: "tab.updated", tab: this.tabState() })
+      this.emitHostEvent({ type: "page.updated", page: this.pageState() })
       this.sendHostSession()
     })
     contents.on("did-navigate-in-page", () => {
-      this.emitHostEvent({ type: "tab.updated", tab: this.tabState() })
+      this.emitHostEvent({ type: "page.updated", page: this.pageState() })
       this.sendHostSession()
     })
     contents.on("did-fail-load", (_event, _code, message, url) => {
       this.emitHostEvent({
         type: "page.error",
-        tabId: this.options.tabId,
+        pageId: this.options.pageId,
         url,
         message,
       })
@@ -278,48 +276,29 @@ export class BrowserWebRTCHost {
   }
 
   private async executeControlCommand(command: Record<string, unknown>): Promise<Record<string, unknown>> {
-    switch (command.type) {
-      case "createTab": {
-        throw new UnsupportedHostCommandError(String(command.type))
-      }
-      case "closeTab": {
-        const tabId = String(command.tabId ?? "")
-        if (tabId !== this.options.tabId) throw new UnsupportedHostCommandError(String(command.type))
-        setTimeout(() => this.destroy(), 0)
-        return { type: "session", session: { tabs: [], activeTabId: null } }
-      }
-      case "switchTab": {
-        const tabId = String(command.tabId ?? "")
-        if (tabId !== this.options.tabId) throw new UnsupportedHostCommandError(String(command.type))
-        return { type: "tab", tab: this.tabState() }
-      }
-      default:
-        if (typeof command.tabId === "string" && command.tabId !== this.options.tabId) {
-          throw new UnsupportedHostCommandError(String(command.type ?? "unknown"))
-        }
-        if (!this.control) throw new Error("Browser Host control is unavailable")
-        return this.control.execute(command)
+    if (typeof command.pageId === "string" && command.pageId !== this.options.pageId) {
+      throw new UnsupportedHostCommandError(String(command.type ?? "unknown"))
     }
+    if (!this.control) throw new Error("Browser Host control is unavailable")
+    return this.control.execute(command)
   }
 
-  private tabState(): BrowserHostTabState {
+  private pageState(): BrowserHostPageState {
     const contents = this.browserWindow?.webContents
-    return this.createTabState(
-      this.options.tabId,
+    return this.createPageState(
+      this.options.pageId,
       contents?.getURL() ?? this.initialURL(),
       contents?.getTitle() ?? "",
       contents?.isLoading() ?? false,
     )
   }
 
-  private createTabState(tabId: string, url: string, title: string, isLoading: boolean): BrowserHostTabState {
+  private createPageState(pageId: string, url: string, title: string, isLoading: boolean): BrowserHostPageState {
     return {
-      id: tabId,
+      id: pageId,
       url,
       title,
       isLoading,
-      pinned: false,
-      kept: false,
       lastActiveAt: null,
     }
   }
@@ -329,7 +308,7 @@ export class BrowserWebRTCHost {
   }
 
   private sessionState() {
-    return { tabs: [this.tabState()], activeTabId: this.options.tabId }
+    return { page: this.pageState() }
   }
 
   private sendHostSession(): void {
@@ -353,7 +332,7 @@ export class BrowserWebRTCHost {
 <script>
 const { ipcRenderer } = require("electron")
 const signalingUrl = ${JSON.stringify(signalingUrl)}
-const tabId = ${JSON.stringify(this.options.tabId)}
+const pageId = ${JSON.stringify(this.options.pageId)}
 const inputChannel = ${JSON.stringify(this.inputChannel)}
 const preview = document.getElementById("preview")
 let pc = null
@@ -390,7 +369,7 @@ async function ensurePeer() {
   pc = new RTCPeerConnection()
   for (const track of mediaStream.getTracks()) pc.addTrack(track, mediaStream)
   pc.onicecandidate = (event) => {
-    if (event.candidate) send({ type: "webrtc.ice", tabId, candidate: event.candidate.toJSON() })
+    if (event.candidate) send({ type: "webrtc.ice", pageId, candidate: event.candidate.toJSON() })
   }
   pc.ondatachannel = (event) => {
     event.channel.onmessage = (message) => {
@@ -421,9 +400,9 @@ async function handleSignal(message) {
       await peer.setRemoteDescription({ type: "offer", sdp: message.sdp })
       const answer = await peer.createAnswer()
       await peer.setLocalDescription(answer)
-      send({ type: "webrtc.answer", tabId, sdp: answer.sdp })
+      send({ type: "webrtc.answer", pageId, sdp: answer.sdp })
     } catch (error) {
-      send({ type: "webrtc.error", tabId, message: String(error?.message || error) })
+      send({ type: "webrtc.error", pageId, message: String(error?.message || error) })
     }
     return
   }
@@ -441,10 +420,10 @@ function connect() {
   ws.onmessage = (event) => {
     try {
       void handleSignal(JSON.parse(event.data)).catch((error) => {
-        send({ type: "webrtc.error", tabId, message: String(error?.message || error) })
+        send({ type: "webrtc.error", pageId, message: String(error?.message || error) })
       })
     } catch (error) {
-      send({ type: "webrtc.error", tabId, message: String(error?.message || error) })
+      send({ type: "webrtc.error", pageId, message: String(error?.message || error) })
     }
   }
   ws.onclose = () => setTimeout(connect, 1000)

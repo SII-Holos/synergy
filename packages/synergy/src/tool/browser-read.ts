@@ -16,12 +16,12 @@ const parameters = z.object({
     "Element locator. Required for attributes/style; optional for accessibility/dom/text/visibleDom (limits reading to a specific element).",
   ),
   maxBytes: z.number().int().min(1).default(64000).describe("Maximum output size in bytes."),
-  tabId: z.string().optional().describe("Tab ID. Uses the active tab if omitted."),
+  pageId: z.string().optional().describe("Page ID. Uses the session page if omitted."),
 })
 
 interface BrowserReadMetadata {
   url: string
-  tabId: string
+  pageId: string
   type: string
   truncated: boolean
   elementsCount?: number
@@ -32,16 +32,16 @@ interface BrowserReadMetadata {
 
 export const BrowserReadTool = Tool.define<typeof parameters, BrowserReadMetadata>("browser_read", {
   description:
-    "Read page content from the current browser tab. Choose the content type: accessibility (structured accessibility tree), dom (full HTML), text (visible plain text), attributes (element attributes, requires locator), style (computed CSS, requires locator), or visibleDom (only elements visible in the viewport).",
+    "Read page content from the current browser page. Choose the content type: accessibility (structured accessibility tree), dom (full HTML), text (visible plain text), attributes (element attributes, requires locator), style (computed CSS, requires locator), or visibleDom (only elements visible in the viewport).",
   parameters,
   async execute(params, ctx) {
     const owner = BrowserOwner.fromToolContext(ctx)
-    const tab = await BrowserToolHelper.resolveTab(ctx, params.tabId)
+    const tab = await BrowserToolHelper.resolvePage(ctx, params.pageId)
     await BrowserToolHelper.markActivity(ctx, tab, "reading", "browser_read", `Reading ${params.type}`)
     try {
       switch (params.type) {
         case "accessibility": {
-          const snap = await BrowserToolHelper.executeControl(owner, { type: "snapshot", tabId: tab.id })
+          const snap = await BrowserToolHelper.executeControl(owner, { type: "snapshot", pageId: tab.id })
           if (snap.type !== "snapshot") throw new Error("Browser snapshot command returned an unexpected result")
           const text = formatSnapshotText(snap.elements, { interactiveOnly: false })
 
@@ -54,7 +54,7 @@ export const BrowserReadTool = Tool.define<typeof parameters, BrowserReadMetadat
             output,
             metadata: {
               url: tab.url,
-              tabId: tab.id,
+              pageId: tab.id,
               type: "accessibility",
               elementsCount: snap.elements.length,
               truncated,
@@ -72,7 +72,7 @@ export const BrowserReadTool = Tool.define<typeof parameters, BrowserReadMetadat
             output,
             metadata: {
               url: tab.url,
-              tabId: tab.id,
+              pageId: tab.id,
               type: "dom",
               byteLength: Buffer.byteLength(html, "utf-8"),
               truncated,
@@ -93,7 +93,7 @@ export const BrowserReadTool = Tool.define<typeof parameters, BrowserReadMetadat
             output: output || "(no visible text)",
             metadata: {
               url: tab.url,
-              tabId: tab.id,
+              pageId: tab.id,
               type: "text",
               byteLength: Buffer.byteLength(rawText, "utf-8"),
               truncated,
@@ -116,7 +116,7 @@ export const BrowserReadTool = Tool.define<typeof parameters, BrowserReadMetadat
             output,
             metadata: {
               url: tab.url,
-              tabId: tab.id,
+              pageId: tab.id,
               type: "attributes",
               attributeCount: Object.keys(attrs).length,
               truncated: false,
@@ -139,7 +139,7 @@ export const BrowserReadTool = Tool.define<typeof parameters, BrowserReadMetadat
             output,
             metadata: {
               url: tab.url,
-              tabId: tab.id,
+              pageId: tab.id,
               type: "style",
               propertyCount: Object.keys(styles).length,
               truncated: false,
@@ -148,7 +148,7 @@ export const BrowserReadTool = Tool.define<typeof parameters, BrowserReadMetadat
         }
 
         case "visibleDom": {
-          const snap = await BrowserToolHelper.executeControl(owner, { type: "snapshot", tabId: tab.id })
+          const snap = await BrowserToolHelper.executeControl(owner, { type: "snapshot", pageId: tab.id })
           if (snap.type !== "snapshot") throw new Error("Browser snapshot command returned an unexpected result")
           const elements = snap.elements
           const filtered = visibleDOM(
@@ -170,7 +170,7 @@ export const BrowserReadTool = Tool.define<typeof parameters, BrowserReadMetadat
             output,
             metadata: {
               url: tab.url,
-              tabId: tab.id,
+              pageId: tab.id,
               type: "visibleDom",
               elementsCount: filtered.length,
               truncated,
@@ -189,7 +189,7 @@ export const BrowserReadTool = Tool.define<typeof parameters, BrowserReadMetadat
 type LocatorInput = z.infer<typeof BrowserLocator.LocatorInputSchema>
 
 async function evaluate(owner: BrowserOwner.Info, tab: BrowserTab, expression: string): Promise<unknown> {
-  const result = await BrowserToolHelper.executeControl(owner, { type: "evaluate", tabId: tab.id, expression })
+  const result = await BrowserToolHelper.executeControl(owner, { type: "evaluate", pageId: tab.id, expression })
   if (result.type !== "evaluation") throw new Error("Browser evaluate command returned an unexpected result")
   return result.value
 }

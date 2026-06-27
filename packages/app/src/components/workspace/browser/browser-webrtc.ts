@@ -3,7 +3,7 @@ import type { BrowserWebRTCSignalMessage } from "@ericsanchezok/synergy-util/bro
 type BrowserWebRTCSignalingUrlOptions = {
   serverUrl: string
   sessionID: string
-  tabId?: string
+  pageId?: string
   routeDirectory?: string
   directory?: string
   scopeID?: string
@@ -26,7 +26,7 @@ export function createBrowserWebRTCSignalingUrl(options: BrowserWebRTCSignalingU
   if (options.scopeID) params.set("scopeID", options.scopeID)
   else if (options.directory) params.set("directory", options.directory)
   if (options.sameHost) params.set("sameHost", "1")
-  if (options.tabId) params.set("tabId", options.tabId)
+  if (options.pageId) params.set("pageId", options.pageId)
   if (options.traceId) params.set("traceId", options.traceId)
 
   return (
@@ -47,7 +47,7 @@ export type BrowserWebRTCStatus =
 
 export interface BrowserWebRTCClientOptions {
   signalingUrl: string
-  tabId: string
+  pageId: string
   rtcConfiguration?: RTCConfiguration
   traceId?: string
   onStatus?(status: BrowserWebRTCStatus, detail?: unknown): void
@@ -82,7 +82,7 @@ export class BrowserWebRTCClient {
   close(): void {
     this.closed = true
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer)
-    this.sendSignal({ type: "webrtc.close", tabId: this.options.tabId, traceId: this.options.traceId })
+    this.sendSignal({ type: "webrtc.close", pageId: this.options.pageId, traceId: this.options.traceId })
     this.closePeer()
     this.ws?.close()
     this.ws = null
@@ -104,7 +104,7 @@ export class BrowserWebRTCClient {
       if (!event.candidate) return
       this.sendSignal({
         type: "webrtc.ice",
-        tabId: this.options.tabId,
+        pageId: this.options.pageId,
         traceId: this.options.traceId,
         candidate: event.candidate.toJSON(),
       })
@@ -169,7 +169,7 @@ export class BrowserWebRTCClient {
     await pc.setLocalDescription(offer)
     this.sendSignal({
       type: "webrtc.offer",
-      tabId: this.options.tabId,
+      pageId: this.options.pageId,
       traceId: this.options.traceId,
       sdp: offer.sdp ?? "",
     })

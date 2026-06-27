@@ -5,20 +5,20 @@ const browserNative = {
   attachView(input: BrowserNativeAttachRequest) {
     return ipcRenderer.invoke("browserNative.attach", input) as Promise<void>
   },
-  detachView(input: { tabId: string }) {
+  detachView(input: { pageId: string }) {
     return ipcRenderer.invoke("browserNative.detach", input) as Promise<void>
   },
-  focusView(input: { tabId: string }) {
+  focusView(input: { pageId: string }) {
     return ipcRenderer.invoke("browserNative.focus", input) as Promise<void>
   },
-  resizeView(input: { tabId: string; width: number; height: number; x?: number; y?: number }) {
+  resizeView(input: { pageId: string; width: number; height: number; x?: number; y?: number }) {
     const bounds: BrowserNativeBounds = {
       x: input.x ?? 0,
       y: input.y ?? 0,
       width: input.width,
       height: input.height,
     }
-    return ipcRenderer.invoke("browserNative.resize", { tabId: input.tabId, bounds }) as Promise<void>
+    return ipcRenderer.invoke("browserNative.resize", { pageId: input.pageId, bounds }) as Promise<void>
   },
   onEvent(listener: (event: BrowserNativeViewEvent) => void) {
     const wrapped = (_event: IpcRendererEvent, payload: BrowserNativeViewEvent) => listener(payload)

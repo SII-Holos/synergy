@@ -46,17 +46,17 @@ Synergy spans several product surfaces and workflows:
 
 ### Built-In Browser Workspace
 
-The Web client includes a right-side Browser workspace backed by real Chromium. Users can navigate, search, click, type, scroll, upload, and download in the workspace while browser tools operate on the same underlying tab/session state.
+The Web client includes a right-side Browser workspace backed by real Chromium. Users can navigate, search, click, type, scroll, upload, and download in the workspace while browser tools operate on the same underlying session page.
 
-Browser control and Browser presentation are intentionally separate. The shared control protocol owns sessions, tabs, navigation, screenshots, snapshots, diagnostics, downloads, dialogs, and tool actions. Interactive presentation has two modes: local desktop clients use an embedded Electron `WebContentsView`, and remote Web clients use WebRTC media plus input data channels. Browser Hosts register over the same control protocol so human UI and browser tools operate on the same visible tab whenever a native or WebRTC host is attached.
+Browser control and Browser presentation are intentionally separate. The shared control protocol owns the session page, navigation, screenshots, snapshots, diagnostics, downloads, dialogs, and tool actions. Interactive presentation has two modes: local desktop clients use an embedded Electron `WebContentsView`, and remote Web clients use WebRTC media plus input data channels. Browser Hosts register over the same control protocol so human UI and browser tools operate on the same visible page whenever a native or WebRTC host is attached.
 
-The Browser server boundary follows the same split: session/control endpoints carry tab state and commands, Browser Host control has its own route, and WebRTC signaling has its own route. Production interactive viewing uses native desktop presentation or WebRTC. Remote text, IME composition, paste, pointer, wheel, and shortcut input travel over the WebRTC data channel so the remote surface behaves like a local browser window.
+The Browser server boundary follows the same split: session/control endpoints carry page state and commands, Browser Host control has its own route, and WebRTC signaling has its own route. Production interactive viewing uses native desktop presentation or WebRTC. Remote text, IME composition, paste, pointer, wheel, and shortcut input travel over the WebRTC data channel so the remote surface behaves like a local browser window.
 
-Opening the Browser workspace reads the current session state. Tabs are created by explicit actions such as the new-tab button, address-bar navigation from an empty workspace, browser tools, or direct `createTab` control commands.
+Each Synergy session has at most one Browser page. Opening the Browser workspace reads the current session state and does not create a page. The first address-bar navigation or browser tool navigation creates the page; later navigation reuses that same page.
 
 Remote WebRTC Browser Hosts autostart by default when a remote Browser viewer connects. Set `SYNERGY_BROWSER_HOST_AUTOSTART=0` to disable server-managed host startup, or set `SYNERGY_BROWSER_HOST_COMMAND` to provide a custom Electron host command.
 
-Browser contexts are isolated by Synergy owner/session and persist tab state plus browser storage state. User-explicit navigation and page interaction run without approval prompts but still pass hard safety checks such as invalid protocols, sensitive local ports, and out-of-scope `file://` access. Agent-driven browser tools continue to use the active control profile, so guarded/autonomous/full-access behavior remains consistent with the rest of Synergy.
+Browser contexts are isolated by Synergy owner/session and persist page state plus browser storage state. User-explicit navigation and page interaction run without approval prompts but still pass hard safety checks such as invalid protocols, sensitive local ports, and out-of-scope `file://` access. Agent-driven browser tools continue to use the active control profile, so guarded/autonomous/full-access behavior remains consistent with the rest of Synergy.
 
 Large browser diagnostics such as console, network, snapshots, assets, and downloads appear in the Browser workspace developer drawer and compact tool cards. The normal chat transcript stays focused on user-visible results.
 

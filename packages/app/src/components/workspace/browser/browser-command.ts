@@ -9,56 +9,52 @@ export function createBrowserCommandId() {
 export function browserControlCommandFromMessage(msg: Record<string, unknown>): Record<string, unknown> | null {
   switch (msg.type) {
     case "navigate":
-      return { type: "navigate", source: "user", tabId: msg.tabId, url: String(msg.url ?? "") }
+      return { type: "navigate", source: "user", pageId: msg.pageId, url: String(msg.url ?? "") }
     case "reload":
-      return { type: "reload", tabId: msg.tabId }
+      return { type: "reload", pageId: msg.pageId }
     case "stop":
-      return { type: "stop", tabId: msg.tabId }
+      return { type: "stop", pageId: msg.pageId }
     case "history":
       if (msg.direction !== "back" && msg.direction !== "forward") return null
-      return { type: "history", tabId: msg.tabId, direction: msg.direction }
-    case "createTab":
-      return typeof msg.url === "string" ? { type: "createTab", url: msg.url } : { type: "createTab" }
-    case "closeTab":
-      return { type: "closeTab", tabId: String(msg.tabId ?? "") }
-    case "switchTab":
-      return { type: "switchTab", tabId: String(msg.tabId ?? "") }
+      return { type: "history", pageId: msg.pageId, direction: msg.direction }
     case "input.resize":
       return {
         type: "setViewport",
-        tabId: msg.tabId,
+        pageId: msg.pageId,
         width: Number(msg.width),
         height: Number(msg.height),
       }
+    case "click":
+      return { type: "click", pageId: msg.pageId, x: Number(msg.x), y: Number(msg.y) }
     case "input.mouse":
       if (msg.action !== "move" && msg.action !== "down" && msg.action !== "up" && msg.action !== "wheel") return null
-      return { type: "mouse", tabId: msg.tabId, action: msg.action, input: msg }
+      return { type: "mouse", pageId: msg.pageId, action: msg.action, input: msg }
     case "input.key":
       if (msg.action !== "down" && msg.action !== "up") return null
-      return { type: "key", tabId: msg.tabId, action: msg.action, input: msg }
+      return { type: "key", pageId: msg.pageId, action: msg.action, input: msg }
     case "input.text":
-      return { type: "insertText", tabId: msg.tabId, text: String(msg.text ?? "") }
+      return { type: "insertText", pageId: msg.pageId, text: String(msg.text ?? "") }
     case "requestConsole":
-      return { type: "console", tabId: msg.tabId, maxEntries: msg.maxEntries }
+      return { type: "console", pageId: msg.pageId, maxEntries: msg.maxEntries }
     case "requestNetwork":
-      return { type: "network", tabId: msg.tabId, maxEntries: msg.maxEntries }
+      return { type: "network", pageId: msg.pageId, maxEntries: msg.maxEntries }
     case "requestSnapshot":
-      return { type: "snapshot", tabId: msg.tabId }
+      return { type: "snapshot", pageId: msg.pageId }
     case "requestAssets":
-      return { type: "assets", tabId: msg.tabId, maxEntries: msg.maxEntries }
+      return { type: "assets", pageId: msg.pageId, maxEntries: msg.maxEntries }
     case "requestScreenshot":
-      return { type: "screenshot", tabId: msg.tabId }
+      return { type: "screenshot", pageId: msg.pageId }
     case "filechooser.select":
       return {
         type: "filechooser.select",
-        tabId: msg.tabId,
+        pageId: msg.pageId,
         requestId: String(msg.requestId ?? ""),
         files: msg.files ?? [],
       }
     case "dialog.respond":
       return {
         type: "dialog.respond",
-        tabId: msg.tabId,
+        pageId: msg.pageId,
         requestId: String(msg.requestId ?? ""),
         accept: Boolean(msg.accept),
         promptText: msg.promptText,
@@ -66,12 +62,12 @@ export function browserControlCommandFromMessage(msg: Record<string, unknown>): 
     case "createAnnotation":
       return {
         type: "createAnnotation",
-        tabId: msg.tabId,
+        pageId: msg.pageId,
         comment: String(msg.comment ?? ""),
         styleFeedback: msg.styleFeedback,
       }
     case "clearLogs":
-      return { type: "clearDiagnostics", tabId: msg.tabId }
+      return { type: "clearDiagnostics", pageId: msg.pageId }
     case "setFollowAgent":
     case "followAgentNow":
       return null
@@ -82,43 +78,41 @@ export function browserControlCommandFromMessage(msg: Record<string, unknown>): 
 
 export function applyBrowserControlResult(store: BrowserStoreAPI, result: any) {
   switch (result?.type) {
-    case "tab":
-      store.upsertTab(result.tab)
-      store.activateTabFromServer(result.tab.id)
-      if (typeof result.hostStatus === "string") store.setHostStatus(result.tab.id, result.hostStatus)
+    case "page":
+      store.upsertPage(result.page)
+      if (typeof result.hostStatus === "string") store.setHostStatus(result.page?.id, result.hostStatus)
       break
     case "navigation":
-      store.upsertTab(result.tab)
-      store.setTabLoading(result.tab.id, false)
+      store.upsertPage(result.page)
+      store.setPageLoading(result.page?.id, false)
+      if (typeof result.hostStatus === "string") store.setHostStatus(result.page?.id, result.hostStatus)
       break
     case "session":
-      store.setSession("tabs", result.session?.tabs ?? [])
-      store.setSession("activeTabId", result.session?.activeTabId ?? null)
-      if (!store.session.visibleTabId) store.setSession("visibleTabId", result.session?.activeTabId ?? null)
+      store.setSession("page", result.session?.page ?? null)
       break
     case "console":
-      store.setConsoleEntries(result.tabId, result.entries ?? [])
+      store.setConsoleEntries(result.pageId, result.entries ?? [])
       break
     case "network":
-      store.setNetworkRequests(result.tabId, result.requests ?? [])
+      store.setNetworkRequests(result.pageId, result.requests ?? [])
       break
     case "snapshot":
-      store.setElements(result.tabId, result.elements ?? [])
+      store.setElements(result.pageId, result.elements ?? [])
       break
     case "assets":
-      store.setPageAssets(result.tabId, result.assets ?? [])
+      store.setPageAssets(result.pageId, result.assets ?? [])
       break
     case "screenshot":
-      store.setTabScreenshots(result.tabId, {
+      store.setPageScreenshots(result.pageId, {
         url: result.dataUrl,
         width: result.width ?? 0,
         height: result.height ?? 0,
       })
       break
     case "diagnostics.cleared":
-      store.setConsoleEntries(result.tabId, [])
-      store.setNetworkRequests(result.tabId, [])
-      store.setPageAssets(result.tabId, [])
+      store.setConsoleEntries(result.pageId, [])
+      store.setNetworkRequests(result.pageId, [])
+      store.setPageAssets(result.pageId, [])
       break
   }
 }

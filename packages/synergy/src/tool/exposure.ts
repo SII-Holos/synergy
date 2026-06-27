@@ -67,7 +67,6 @@ export namespace ToolExposure {
         "browser_click",
         "browser_type",
         "browser_scroll",
-        "browser_tab",
         "browser_console",
         "browser_network",
         "browser_download",

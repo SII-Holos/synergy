@@ -26,7 +26,7 @@ export namespace BrowserWorkspace {
   export interface ControlResult {
     status: number
     payload: Record<string, unknown>
-    tabId: string | null
+    pageId: string | null
   }
 
   interface PendingViewportCommand {
@@ -41,12 +41,12 @@ export namespace BrowserWorkspace {
 
   BrowserHostControl.addGlobalObserver((owner, event) => {
     if (event.type !== "browser.host.status") return
-    if (event.status !== "ready" || typeof event.tabId !== "string") return
-    flushPendingViewport(owner, event.tabId)
+    if (event.status !== "ready" || typeof event.pageId !== "string") return
+    flushPendingViewport(owner, event.pageId)
   })
 
-  export function tabPayload(tab: import("./tab.js").BrowserTab) {
-    return BrowserControl.tabState(tab)
+  export function pagePayload(page: import("./tab.js").BrowserTab) {
+    return BrowserControl.pageState(page)
   }
 
   export function sessionStatePayload(
@@ -56,8 +56,7 @@ export namespace BrowserWorkspace {
   ) {
     return {
       type: "session.state",
-      tabs: session.tabs,
-      activeTabId: session.activeTabId,
+      page: session.page,
       connection: { status: "connected" },
       presentation,
       runtimeHealth,
@@ -70,13 +69,10 @@ export namespace BrowserWorkspace {
 
   export function mergeCanonicalHostSession(
     canonical: BrowserControl.SessionState,
-    hostSession: BrowserControl.SessionState,
+    hostSession: BrowserControl.SessionState | null,
   ): BrowserControl.SessionState {
-    const hostTabs = new Map(hostSession.tabs.map((tab) => [tab.id, tab]))
-    return {
-      tabs: canonical.tabs.map((tab) => hostTabs.get(tab.id) ?? tab),
-      activeTabId: canonical.activeTabId,
-    }
+    if (!hostSession?.page || hostSession.page.id !== canonical.page?.id) return canonical
+    return { page: hostSession.page }
   }
 
   export async function sessionState(
@@ -85,14 +81,13 @@ export namespace BrowserWorkspace {
     const session = await ensureSession(state.owner)
     const canonical = BrowserControl.sessionState(session)
     const hostSession = BrowserHostControl.sessionState(state.owner)
-    if (!hostSession) return canonical
     if (state.presentation.kind === "webrtc") return mergeCanonicalHostSession(canonical, hostSession)
-    return hostSession
+    return hostSession ?? canonical
   }
 
-  export function commandTabId(owner: BrowserOwner.Info, command: BrowserControl.Command): string | null {
-    if ("tabId" in command && typeof command.tabId === "string" && command.tabId) return command.tabId
-    return BrowserHostControl.sessionState(owner)?.activeTabId ?? null
+  export function commandPageId(owner: BrowserOwner.Info, command: BrowserControl.Command): string | null {
+    if ("pageId" in command && typeof command.pageId === "string" && command.pageId) return command.pageId
+    return BrowserHostControl.sessionState(owner)?.page?.id ?? null
   }
 
   export function hostReadyTimeoutMs(): number {
@@ -107,49 +102,72 @@ export namespace BrowserWorkspace {
   ): Promise<ControlResult> {
     const { owner, presentation } = state
     const command = BrowserControl.normalizeCommand(request.command)
-    const tabId = commandTabId(owner, command)
+    let pageId = commandPageId(owner, command)
 
-    if (presentation.kind === "webrtc" && command.type === "createTab") {
-      const result = await executeWebRTCCreateTab(state, command, request, serverUrl)
+    if (presentation.kind === "webrtc" && command.type === "navigate") {
+      if (pageId && BrowserHostControl.isReady(owner, pageId)) {
+        const result = await BrowserHost.executeAttached(
+          owner,
+          { ...command, pageId },
+          {
+            commandId: request.commandId,
+            traceId: request.traceId,
+          },
+        )
+        await syncCanonicalPageFromHostResult(owner, result)
+        return {
+          status: 200,
+          payload: { type: "control.result", result },
+          pageId: resultPageId(result) ?? pageId,
+        }
+      }
+      const result = await executeWebRTCNavigate(state, command, request, serverUrl)
       return {
         status: 202,
         payload: { type: "control.result", result },
-        tabId: result.type === "tab" ? result.tab.id : tabId,
+        pageId: result.type === "navigation" ? result.page.id : pageId,
       }
     }
-
-    if (presentation.kind === "webrtc" && (command.type === "switchTab" || command.type === "closeTab")) {
-      const result = await executeWebRTCTabCommand(owner, command)
-      return { status: 200, payload: { type: "control.result", result }, tabId }
+    if (
+      presentation.kind !== "webrtc" &&
+      command.type === "navigate" &&
+      (!pageId || !BrowserHostControl.isReady(owner, pageId))
+    ) {
+      const result = await BrowserHost.executeRuntime(owner, command)
+      return {
+        status: 200,
+        payload: { type: "control.result", result },
+        pageId: resultPageId(result) ?? pageId,
+      }
     }
 
     if (
       presentation.kind === "webrtc" &&
       command.type === "setViewport" &&
-      tabId &&
-      !BrowserHostControl.isReady(owner, tabId)
+      pageId &&
+      !BrowserHostControl.isReady(owner, pageId)
     ) {
       deferViewport(owner, command, request)
       return {
         status: 202,
         payload: { type: "control.result", result: { type: "void" }, deferred: true, hostStatus: "pending" },
-        tabId,
+        pageId,
       }
     }
 
     if (
       presentation.kind === "webrtc" &&
       commandNeedsReadyHost(command) &&
-      tabId &&
-      !BrowserHostControl.isReady(owner, tabId)
+      pageId &&
+      !BrowserHostControl.isReady(owner, pageId)
     ) {
-      BrowserHostControl.markStatus(owner, tabId, "pending", {
+      BrowserHostControl.markStatus(owner, pageId, "pending", {
         traceId: request.traceId,
         reason: "control_received_before_host_ready",
       })
       log.info("browser.route.control.deferred", {
         ownerKey: BrowserOwner.key(owner),
-        tabId,
+        pageId,
         commandId: request.commandId,
         commandType: command.type,
         traceId: request.traceId,
@@ -157,8 +175,8 @@ export namespace BrowserWorkspace {
       })
       return {
         status: 409,
-        payload: hostPendingPayload({ command, commandId: request.commandId, traceId: request.traceId, tabId }),
-        tabId,
+        payload: hostPendingPayload({ command, commandId: request.commandId, traceId: request.traceId, pageId }),
+        pageId,
       }
     }
 
@@ -166,14 +184,15 @@ export namespace BrowserWorkspace {
       commandId: request.commandId,
       traceId: request.traceId,
     })
-    return { status: 200, payload: { type: "control.result", result }, tabId }
+    await syncCanonicalPageFromHostResult(owner, result)
+    return { status: 200, payload: { type: "control.result", result }, pageId: resultPageId(result) ?? pageId }
   }
 
   export function hostPendingPayload(input: {
     command: BrowserControl.Command
     commandId?: string
     traceId?: string
-    tabId?: string | null
+    pageId?: string | null
   }) {
     return {
       type: "error",
@@ -181,14 +200,32 @@ export namespace BrowserWorkspace {
       message: "Browser Host is still preparing.",
       retryable: true,
       traceId: input.traceId,
-      tabId: input.tabId ?? null,
+      pageId: input.pageId ?? null,
       commandId: input.commandId,
       commandType: input.command.type,
     }
   }
 
-  function pendingViewportKey(owner: BrowserOwner.Info, tabId: string): string {
-    return `${BrowserOwner.key(owner)}:tab:${tabId}:viewport`
+  export function pageMissingPayload(input: {
+    command: BrowserControl.Command
+    commandId?: string
+    traceId?: string
+    pageId?: string | null
+  }) {
+    return {
+      type: "error",
+      code: "browser_page_missing",
+      message: "No browser page is open.",
+      retryable: false,
+      traceId: input.traceId,
+      pageId: input.pageId ?? null,
+      commandId: input.commandId,
+      commandType: input.command.type,
+    }
+  }
+
+  function pendingViewportKey(owner: BrowserOwner.Info, pageId: string): string {
+    return `${BrowserOwner.key(owner)}:page:${pageId}:viewport`
   }
 
   function deferViewport(
@@ -196,22 +233,22 @@ export namespace BrowserWorkspace {
     command: Extract<BrowserControl.Command, { type: "setViewport" }>,
     request: { commandId?: string; traceId?: string },
   ) {
-    const tabId = commandTabId(owner, command)
-    if (!tabId) return false
-    pendingViewportCommands.set(pendingViewportKey(owner, tabId), {
+    const pageId = commandPageId(owner, command)
+    if (!pageId) return false
+    pendingViewportCommands.set(pendingViewportKey(owner, pageId), {
       owner,
-      command: { ...command, tabId },
+      command: { ...command, pageId },
       commandId: request.commandId,
       traceId: request.traceId,
       updatedAt: Date.now(),
     })
-    BrowserHostControl.markStatus(owner, tabId, "pending", {
+    BrowserHostControl.markStatus(owner, pageId, "pending", {
       traceId: request.traceId,
       reason: "viewport_deferred_until_host_ready",
     })
     log.info("browser.route.control.deferred", {
       ownerKey: BrowserOwner.key(owner),
-      tabId,
+      pageId,
       commandId: request.commandId,
       commandType: command.type,
       traceId: request.traceId,
@@ -220,10 +257,10 @@ export namespace BrowserWorkspace {
     return true
   }
 
-  function flushPendingViewport(owner: BrowserOwner.Info, tabId: string): void {
-    const key = pendingViewportKey(owner, tabId)
+  function flushPendingViewport(owner: BrowserOwner.Info, pageId: string): void {
+    const key = pendingViewportKey(owner, pageId)
     const pending = pendingViewportCommands.get(key)
-    if (!pending || !BrowserHostControl.isReady(owner, tabId)) return
+    if (!pending || !BrowserHostControl.isReady(owner, pageId)) return
     pendingViewportCommands.delete(key)
     void BrowserHostControl.execute(pending.owner, pending.command, {
       commandId: pending.commandId,
@@ -231,7 +268,7 @@ export namespace BrowserWorkspace {
     }).catch((error) => {
       log.warn("browser.route.control.failed", {
         ownerKey: BrowserOwner.key(owner),
-        tabId,
+        pageId,
         commandId: pending.commandId,
         commandType: pending.command.type,
         traceId: pending.traceId,
@@ -242,53 +279,65 @@ export namespace BrowserWorkspace {
   }
 
   function commandNeedsReadyHost(command: BrowserControl.Command): boolean {
-    return command.type !== "createTab" && command.type !== "setViewport" && command.type !== "closeTab"
+    return command.type !== "setViewport"
   }
 
-  async function executeWebRTCCreateTab(
+  function resultPageId(result: BrowserControl.Result): string | null {
+    if (result.type === "page" || result.type === "navigation") return result.page.id
+    if ("pageId" in result && typeof result.pageId === "string") return result.pageId
+    return null
+  }
+
+  async function syncCanonicalPageFromHostResult(
+    owner: BrowserOwner.Info,
+    result: BrowserControl.Result,
+  ): Promise<void> {
+    if (result.type !== "page" && result.type !== "navigation") return
+    const session = await ensureSession(owner)
+    const page = session.getPage(result.page.id)
+    if (!page) return
+    page.url = result.page.url
+    page.title = result.page.title
+    page.loading = result.page.isLoading
+    page.lastActiveAt = result.page.lastActiveAt
+    await session.save()
+    if (result.type === "navigation") await session.notifyPageNavigated(page)
+  }
+
+  async function executeWebRTCNavigate(
     state: State,
-    command: Extract<BrowserControl.Command, { type: "createTab" }>,
+    command: Extract<BrowserControl.Command, { type: "navigate" }>,
     request: { commandId?: string; traceId?: string },
     serverUrl: string,
   ) {
     const session = await ensureSession(state.owner)
     const result = await BrowserControl.execute(session, command)
-    if (result.type !== "tab") return result
+    if (result.type !== "navigation") return result
 
-    BrowserHostControl.markStatus(state.owner, result.tab.id, "pending", {
+    BrowserHostControl.markStatus(state.owner, result.page.id, "pending", {
       traceId: request.traceId,
-      reason: "tab_created",
+      reason: "page_navigated",
     })
     const ensure = BrowserElectronHostProcess.ensure({
       owner: state.owner,
-      tabId: result.tab.id,
+      pageId: result.page.id,
       serverUrl,
       routeDirectory: state.directory,
-      url: result.tab.url,
+      url: result.page.url,
       traceId: request.traceId,
     })
     log.info("browser.route.control.deferred", {
       ownerKey: BrowserOwner.key(state.owner),
-      tabId: result.tab.id,
+      pageId: result.page.id,
       commandId: request.commandId,
       commandType: command.type,
       traceId: request.traceId,
       hostProcessKey: ensure.key,
-      hostStatus: BrowserHostControl.status(state.owner, result.tab.id),
+      hostStatus: BrowserHostControl.status(state.owner, result.page.id),
     })
     return {
       ...result,
-      hostStatus: BrowserHostControl.status(state.owner, result.tab.id),
+      hostStatus: BrowserHostControl.status(state.owner, result.page.id),
     }
-  }
-
-  async function executeWebRTCTabCommand(
-    owner: BrowserOwner.Info,
-    command: Extract<BrowserControl.Command, { type: "switchTab" | "closeTab" }>,
-  ) {
-    const session = await ensureSession(owner)
-    const result = await BrowserControl.execute(session, command)
-    if (command.type === "closeTab") BrowserElectronHostProcess.stop(owner, command.tabId)
-    return result
   }
 }

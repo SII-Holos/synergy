@@ -181,11 +181,10 @@ describe("Contract 5: browser_clipboard → Playwright context.grantPermissions 
     expect(src).toMatch(/grantPermissions/)
   })
 
-  test("browser-clipboard.ts does NOT use tab.evaluate for clipboard operations", () => {
+  test("browser-clipboard.ts does not use the browser page wrapper for clipboard operations", () => {
     const src = toolSource("browser-clipboard")
-    // After Playwright migration, clipboard read/write should go through
-    // Playwright's page.evaluate (after context.grantPermissions), not
-    // through the legacy BrowserTab.evaluate.
+    // Clipboard read/write goes through Playwright page.evaluate after
+    // context.grantPermissions.
     expect(src).not.toMatch(/tab\.evaluate\(BrowserClipboard\.build(Read|Write)/)
   })
 })

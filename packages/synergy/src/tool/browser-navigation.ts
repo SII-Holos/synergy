@@ -9,11 +9,11 @@ export const BrowserNavigationTool = Tool.define("browser_navigation", {
   parameters: z.object({
     action: z.enum(["back", "forward", "reload", "stop", "current"]),
     ignoreCache: z.boolean().optional(),
-    tabId: z.string().optional(),
+    pageId: z.string().optional(),
   }),
   async execute(params, ctx) {
     const owner = BrowserOwner.fromToolContext(ctx)
-    const tab = await BrowserToolHelper.resolveTab(ctx, params.tabId)
+    const tab = await BrowserToolHelper.resolvePage(ctx, params.pageId)
     const kind = params.action === "current" ? "reading" : "acting"
     return BrowserToolHelper.withActivity(
       ctx,
@@ -24,20 +24,20 @@ export const BrowserNavigationTool = Tool.define("browser_navigation", {
       async () => {
         switch (params.action) {
           case "back":
-            await BrowserToolHelper.executeControl(owner, { type: "history", tabId: tab.id, direction: "back" })
+            await BrowserToolHelper.executeControl(owner, { type: "history", pageId: tab.id, direction: "back" })
             break
           case "forward":
-            await BrowserToolHelper.executeControl(owner, { type: "history", tabId: tab.id, direction: "forward" })
+            await BrowserToolHelper.executeControl(owner, { type: "history", pageId: tab.id, direction: "forward" })
             break
           case "reload":
             await BrowserToolHelper.executeControl(owner, {
               type: "reload",
-              tabId: tab.id,
+              pageId: tab.id,
               ignoreCache: params.ignoreCache,
             })
             break
           case "stop":
-            await BrowserToolHelper.executeControl(owner, { type: "stop", tabId: tab.id })
+            await BrowserToolHelper.executeControl(owner, { type: "stop", pageId: tab.id })
             break
         }
 
@@ -46,7 +46,7 @@ export const BrowserNavigationTool = Tool.define("browser_navigation", {
         return {
           title: params.action === "current" ? "Current page" : `Navigation: ${params.action}`,
           output: `URL: ${url}\nTitle: ${title}`,
-          metadata: { url, title, tabId: tab.id },
+          metadata: { url, title, pageId: tab.id },
         }
       },
     )

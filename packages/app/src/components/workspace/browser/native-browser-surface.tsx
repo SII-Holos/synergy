@@ -17,21 +17,21 @@ export function NativeBrowserSurface(props: {
     return platform.browserNative ?? null
   }
 
-  function syncNativeNavigation(tabId: string, url?: string) {
+  function syncNativeNavigation(pageId: string, url?: string) {
     if (!url || url === "about:blank") return
-    const tab = browser.session.tabs.find((item) => item.id === tabId)
-    if (tab?.url === url) return
-    browser.send({ type: "navigate", source: "user", tabId, url })
+    const page = browser.page()
+    if (page?.id !== pageId || page.url === url) return
+    browser.send({ type: "navigate", source: "user", pageId, url })
   }
 
   function syncBounds() {
     const native = bridge()
-    const tabId = browser.activeTabId()
+    const pageId = browser.pageId()
     const container = props.container()
-    if (!native || !tabId || !container) return
+    if (!native || !pageId || !container) return
     const rect = container.getBoundingClientRect()
     void native.resizeView({
-      tabId,
+      pageId,
       x: rect.x,
       y: rect.y,
       width: rect.width,
@@ -41,33 +41,33 @@ export function NativeBrowserSurface(props: {
 
   onMount(() => {
     const unsubscribeNative = platform.browserNative?.onEvent?.((event) => {
-      if (event.tabId !== browser.activeTabId()) return
+      if (event.pageId !== browser.pageId()) return
       switch (event.type) {
         case "native.loading": {
-          browser.setTabLoading(event.tabId, true)
+          browser.setPageLoading(event.pageId, true)
           if (event.url) {
-            syncNativeNavigation(event.tabId, event.url)
-            browser.setTabUrl(event.tabId, event.url)
+            syncNativeNavigation(event.pageId, event.url)
+            browser.setPageUrl(event.pageId, event.url)
           }
           break
         }
         case "native.loaded": {
-          browser.setTabLoading(event.tabId, false)
-          if (event.url) browser.setTabUrl(event.tabId, event.url)
-          if (event.title) browser.setTabTitle(event.tabId, event.title)
+          browser.setPageLoading(event.pageId, false)
+          if (event.url) browser.setPageUrl(event.pageId, event.url)
+          if (event.title) browser.setPageTitle(event.pageId, event.title)
           break
         }
         case "native.navigated": {
-          syncNativeNavigation(event.tabId, event.url)
-          browser.setTabUrl(event.tabId, event.url)
+          syncNativeNavigation(event.pageId, event.url)
+          browser.setPageUrl(event.pageId, event.url)
           break
         }
         case "native.title": {
-          browser.setTabTitle(event.tabId, event.title)
+          browser.setPageTitle(event.pageId, event.title)
           break
         }
         case "native.error": {
-          browser.setTabLoading(event.tabId, false)
+          browser.setPageLoading(event.pageId, false)
           browser.setBrowserError({ severity: "error", message: event.message, code: String(event.code ?? "") })
           break
         }
@@ -86,9 +86,9 @@ export function NativeBrowserSurface(props: {
 
   createEffect(() => {
     const native = bridge()
-    const tab = browser.activeTab()
+    const page = browser.page()
     const container = props.container()
-    if (!native || !tab || !container) return
+    if (!native || !page || !container) return
 
     const rect = container.getBoundingClientRect()
     void native.attachView({
@@ -98,8 +98,8 @@ export function NativeBrowserSurface(props: {
       directory: sdk.directory,
       scopeID: sdk.scopeID,
       scopeKey: sdk.scopeKey,
-      tabId: tab.id,
-      url: tab.url || undefined,
+      pageId: page.id,
+      url: page.url || undefined,
       bounds: {
         x: rect.x,
         y: rect.y,
@@ -110,21 +110,21 @@ export function NativeBrowserSurface(props: {
   })
 
   createEffect(() => {
-    browser.activeTabId()
+    browser.pageId()
     browser.viewportWidth()
     browser.viewportHeight()
     syncBounds()
   })
 
   onCleanup(() => {
-    const tabId = browser.activeTabId()
-    if (tabId) void platform.browserNative?.detachView({ tabId })
+    const pageId = browser.pageId()
+    if (pageId) void platform.browserNative?.detachView({ pageId })
   })
 
   function focusNativeView() {
-    const tabId = browser.activeTabId()
-    if (!tabId) return
-    void platform.browserNative?.focusView({ tabId })
+    const pageId = browser.pageId()
+    if (!pageId) return
+    void platform.browserNative?.focusView({ pageId })
   }
 
   return <div class="absolute inset-0" onPointerDown={focusNativeView} />

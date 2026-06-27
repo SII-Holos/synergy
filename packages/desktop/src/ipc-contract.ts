@@ -20,21 +20,21 @@ export const browserNativeAttachSchema = z
     directory: z.string().optional(),
     scopeID: z.string().optional(),
     scopeKey: z.string().optional(),
-    tabId: nonEmptyString,
+    pageId: nonEmptyString,
     url: z.string().url().optional(),
     bounds: browserNativeBoundsSchema.optional(),
   })
   .strict()
 
-export const browserNativeTabSchema = z
+export const browserNativePageSchema = z
   .object({
-    tabId: nonEmptyString,
+    pageId: nonEmptyString,
   })
   .strict()
 
 export const browserNativeResizeSchema = z
   .object({
-    tabId: nonEmptyString,
+    pageId: nonEmptyString,
     bounds: browserNativeBoundsSchema,
   })
   .strict()
@@ -54,11 +54,11 @@ export function parseBrowserNativeAttach(input: unknown): BrowserNativeAttachReq
   return browserNativeAttachSchema.parse(input)
 }
 
-export function parseBrowserNativeTab(input: unknown): { tabId: string } {
-  return browserNativeTabSchema.parse(input)
+export function parseBrowserNativePage(input: unknown): { pageId: string } {
+  return browserNativePageSchema.parse(input)
 }
 
-export function parseBrowserNativeResize(input: unknown): { tabId: string; bounds: BrowserNativeBounds } {
+export function parseBrowserNativeResize(input: unknown): { pageId: string; bounds: BrowserNativeBounds } {
   return browserNativeResizeSchema.parse(input)
 }
 

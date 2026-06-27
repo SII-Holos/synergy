@@ -1,4 +1,4 @@
-import { For, Show, createMemo, createSignal } from "solid-js"
+import { For, Show, createEffect, createMemo, createSignal } from "solid-js"
 import { IconButton } from "@ericsanchezok/synergy-ui/icon-button"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { useBrowser, type DevPanel } from "./browser-store"
@@ -7,7 +7,7 @@ import { browserDebug } from "./browser-debug"
 export type AddressBarProps = {
   activeUrl: () => string
   isLoading: () => boolean
-  hasActiveTab: () => boolean
+  hasPage: () => boolean
   onNavigate: (url: string) => void
   onHistory: (direction: "back" | "forward") => void
   onReload: () => void
@@ -34,10 +34,25 @@ const DEV_SERVER_URLS = [
   { label: "localhost:8080", url: "http://localhost:8080" },
 ] as const
 
+function displayUrl(url: string) {
+  return url && url !== "about:blank" ? url : ""
+}
+
 export function AddressBar(props: AddressBarProps) {
   let inputEl: HTMLInputElement | undefined
   const browser = useBrowser()
   const [menuOpen, setMenuOpen] = createSignal(false)
+  const [draft, setDraft] = createSignal(displayUrl(props.activeUrl()))
+  const [editing, setEditing] = createSignal(false)
+  const [dirty, setDirty] = createSignal(false)
+
+  createEffect(() => {
+    const next = displayUrl(props.activeUrl())
+    if (editing()) return
+    if (dirty() && !next) return
+    setDraft(next)
+    setDirty(false)
+  })
 
   const selectedViewport = createMemo(() => {
     if (browser.viewportMode() === "fit") return "Fit"
@@ -48,18 +63,20 @@ export function AddressBar(props: AddressBarProps) {
   })
 
   function handleNavigate() {
-    const raw = inputEl?.value.trim() ?? ""
+    const raw = draft().trim()
     browserDebug("address.navigate", {
       raw,
       activeUrl: props.activeUrl(),
-      activeTabId: browser.activeTabId(),
+      pageId: browser.pageId(),
       connectionStatus: browser.session.connectionStatus,
-      tabCount: browser.session.tabs.length,
+      hasPage: Boolean(browser.page()),
     })
     if (!raw) {
       browserDebug("address.navigate.ignored", { reason: "empty" })
       return
     }
+    setDraft(raw)
+    setDirty(true)
     props.onNavigate(raw)
     inputEl?.blur()
   }
@@ -73,12 +90,12 @@ export function AddressBar(props: AddressBarProps) {
 
   function requestPanel(panel: DevPanel) {
     browser.toggleDevPanel(panel)
-    const tabId = browser.activeTabId()
-    if (!tabId) return
-    if (panel === "console") browser.send({ type: "requestConsole", tabId, maxEntries: 100 })
-    if (panel === "network") browser.send({ type: "requestNetwork", tabId, maxEntries: 200 })
-    if (panel === "elements") browser.send({ type: "requestSnapshot", tabId })
-    if (panel === "assets") browser.send({ type: "requestAssets", tabId, maxEntries: 200 })
+    const pageId = browser.pageId()
+    if (!pageId) return
+    if (panel === "console") browser.send({ type: "requestConsole", pageId, maxEntries: 100 })
+    if (panel === "network") browser.send({ type: "requestNetwork", pageId, maxEntries: 200 })
+    if (panel === "elements") browser.send({ type: "requestSnapshot", pageId })
+    if (panel === "assets") browser.send({ type: "requestAssets", pageId, maxEntries: 200 })
   }
 
   return (
@@ -87,21 +104,21 @@ export function AddressBar(props: AddressBarProps) {
         icon={getSemanticIcon("browser.back")}
         variant="ghost"
         title="Back"
-        disabled={!props.hasActiveTab()}
+        disabled={!props.hasPage()}
         onClick={() => props.onHistory("back")}
       />
       <IconButton
         icon={getSemanticIcon("browser.forward")}
         variant="ghost"
         title="Forward"
-        disabled={!props.hasActiveTab()}
+        disabled={!props.hasPage()}
         onClick={() => props.onHistory("forward")}
       />
       <IconButton
         icon={props.isLoading() ? getSemanticIcon("browser.stop") : getSemanticIcon("browser.refresh")}
         variant="ghost"
         title={props.isLoading() ? "Stop" : "Reload"}
-        disabled={!props.hasActiveTab()}
+        disabled={!props.hasPage()}
         classList={{ "animate-spin": props.isLoading() }}
         onClick={() => (props.isLoading() ? props.onStop() : props.onReload())}
       />
@@ -111,8 +128,17 @@ export function AddressBar(props: AddressBarProps) {
           ref={inputEl}
           type="text"
           class="h-7 w-full rounded-md border border-border-weak-base/60 bg-surface-inset-base px-2.5 text-12 text-text-base outline-none transition-colors placeholder:text-text-weak focus:border-border-strong-base"
-          value={props.activeUrl()}
+          value={draft()}
           placeholder="Enter URL or search"
+          onFocus={() => setEditing(true)}
+          onBlur={() => {
+            setEditing(false)
+            if (!draft().trim()) setDirty(false)
+          }}
+          onInput={(event) => {
+            setDraft(event.currentTarget.value)
+            setDirty(true)
+          }}
           onKeyDown={handleKeyDown}
         />
       </div>
@@ -223,7 +249,7 @@ export function AddressBar(props: AddressBarProps) {
               <button
                 type="button"
                 class="w-full px-3 py-1.5 text-left text-text-weak transition-colors hover:bg-surface-raised-base-hover hover:text-text-base"
-                onClick={() => browser.send({ type: "clearLogs", tabId: browser.activeTabId() })}
+                onClick={() => browser.send({ type: "clearLogs", pageId: browser.pageId() })}
               >
                 Clear diagnostics
               </button>

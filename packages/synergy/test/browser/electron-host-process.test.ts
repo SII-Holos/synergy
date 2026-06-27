@@ -63,7 +63,7 @@ describe("BrowserElectronHostProcess", () => {
 
     const input = {
       owner,
-      tabId: "tab_1",
+      pageId: "page_1",
       serverUrl: "http://localhost:4096",
       routeDirectory: "scope",
     }
@@ -71,6 +71,6 @@ describe("BrowserElectronHostProcess", () => {
     expect(BrowserElectronHostProcess.ensure(input).status).toBe("started")
     expect(BrowserElectronHostProcess.ensure(input).status).toBe("restarted")
     expect(BrowserElectronHostProcess.ensure(input).status).toBe("failed")
-    expect(BrowserHostControl.status(owner, "tab_1")).toBe("failed")
+    expect(BrowserHostControl.status(owner, "page_1")).toBe("failed")
   })
 })

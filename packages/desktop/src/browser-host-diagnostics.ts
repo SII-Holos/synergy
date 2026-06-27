@@ -48,7 +48,7 @@ export interface BrowserHostNetworkRequest {
 
 export interface BrowserHostPageAsset {
   id: string
-  tabID: string
+  pageID: string
   url: string
   type: "image" | "script" | "stylesheet" | "font" | "media" | "document" | "other"
   mimeType?: string
@@ -94,7 +94,7 @@ interface BrowserHostDownloadEntry {
 }
 
 interface BrowserHostDiagnosticsOptions {
-  tabId: string
+  pageId: string
   contents: Electron.WebContents
   emitHostEvent(event: Record<string, unknown>): void
 }
@@ -155,10 +155,10 @@ export class BrowserHostDiagnostics {
     return this.networkBuffer.slice(-maxEntries)
   }
 
-  pageAssets(tabId = this.options.tabId, maxEntries = 100): BrowserHostPageAsset[] {
+  pageAssets(pageId = this.options.pageId, maxEntries = 100): BrowserHostPageAsset[] {
     return this.networkRequests(maxEntries).map((request) => ({
       id: request.requestId,
-      tabID: tabId,
+      pageID: pageId,
       url: request.url,
       type: classifyAssetByMime(request.mimeType ?? ""),
       mimeType: request.mimeType,
@@ -279,7 +279,7 @@ export class BrowserHostDiagnostics {
     this.pendingDialogs.set(requestId, timer)
     this.options.emitHostEvent({
       type: "dialog.opened",
-      tabId: this.options.tabId,
+      pageId: this.options.pageId,
       requestId,
       dialogType: String(data.type ?? "alert"),
       message: String(data.message ?? ""),
@@ -295,7 +295,7 @@ export class BrowserHostDiagnostics {
     })
     this.options.emitHostEvent({
       type: "filechooser.request",
-      tabId: this.options.tabId,
+      pageId: this.options.pageId,
       requestId,
       multiple: data.mode === "selectMultiple",
       accept: [],
@@ -345,13 +345,13 @@ export class BrowserHostDiagnostics {
   private emitDownload(entry: BrowserHostDownloadEntry): void {
     this.options.emitHostEvent({
       type: "downloads.updated",
-      tabId: this.options.tabId,
+      pageId: this.options.pageId,
       entry,
     })
   }
 
   private async writeUploadFiles(requestId: string, files: BrowserHostUploadFile[]): Promise<string[]> {
-    const uploadDir = path.join(os.tmpdir(), "synergy-browser-uploads", this.options.tabId, requestId)
+    const uploadDir = path.join(os.tmpdir(), "synergy-browser-uploads", this.options.pageId, requestId)
     await fs.mkdir(uploadDir, { recursive: true })
     const paths: string[] = []
     for (const [index, file] of files.entries()) {

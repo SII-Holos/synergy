@@ -8,11 +8,11 @@ export const BrowserClickTool = Tool.define("browser_click", {
     "Click on an element in the browser. Use a @eN snapshot ref or a CSS selector. Ref is preferred after taking a snapshot.",
   parameters: z.object({
     selector: z.string().describe("Snap ref (e.g. @e42) or CSS selector of the element to click"),
-    tabId: z.string().optional().describe("Tab to operate on. Uses the active tab when omitted."),
+    pageId: z.string().optional().describe("Page to operate on. Uses the session page when omitted."),
   }),
   async execute(params, ctx) {
     const owner = BrowserOwner.fromToolContext(ctx)
-    const tab = await BrowserToolHelper.resolveTab(ctx, params.tabId)
+    const tab = await BrowserToolHelper.resolvePage(ctx, params.pageId)
     return BrowserToolHelper.withActivity(
       ctx,
       tab,
@@ -23,7 +23,7 @@ export const BrowserClickTool = Tool.define("browser_click", {
         if (params.selector.startsWith("@e")) {
           const resolved = await BrowserToolHelper.executeControl(owner, {
             type: "resolveRef",
-            tabId: tab.id,
+            pageId: tab.id,
             ref: params.selector,
           })
           if (resolved.type !== "resolvedRef") throw new Error("Browser ref command returned an unexpected result")
@@ -32,7 +32,7 @@ export const BrowserClickTool = Tool.define("browser_click", {
           }
           const cx = resolved.box.x + resolved.box.width / 2
           const cy = resolved.box.y + resolved.box.height / 2
-          await BrowserToolHelper.executeControl(owner, { type: "click", tabId: tab.id, x: cx, y: cy })
+          await BrowserToolHelper.executeControl(owner, { type: "click", pageId: tab.id, x: cx, y: cy })
           return {
             title: "Clicked",
             output: `Clicked element ${params.selector} at (${Math.round(cx)}, ${Math.round(cy)})`,
@@ -43,7 +43,7 @@ export const BrowserClickTool = Tool.define("browser_click", {
         // CSS selector path — evaluate via CDP to find position and click
         const evaluated = await BrowserToolHelper.executeControl(owner, {
           type: "evaluate",
-          tabId: tab.id,
+          pageId: tab.id,
           expression: `(() => {
         const el = document.querySelector(${JSON.stringify(params.selector)});
         if (!el) return null;
@@ -60,7 +60,7 @@ export const BrowserClickTool = Tool.define("browser_click", {
 
         const cx = box.x + box.width / 2
         const cy = box.y + box.height / 2
-        await BrowserToolHelper.executeControl(owner, { type: "click", tabId: tab.id, x: cx, y: cy })
+        await BrowserToolHelper.executeControl(owner, { type: "click", pageId: tab.id, x: cx, y: cy })
         return {
           title: "Clicked",
           output: `Clicked "${params.selector}" at (${Math.round(cx)}, ${Math.round(cy)})`,

@@ -13,11 +13,11 @@ export const BrowserViewportTool = Tool.define("browser_viewport", {
     deviceScaleFactor: z.number().min(BrowserViewport.MIN_DSF).max(BrowserViewport.MAX_DSF).optional(),
     mobile: z.boolean().optional(),
     action: z.enum(["set", "reset", "status"]).default("set"),
-    tabId: z.string().optional(),
+    pageId: z.string().optional(),
   }),
   async execute(params, ctx) {
     const owner = BrowserOwner.fromToolContext(ctx)
-    const tab = await BrowserToolHelper.resolveTab(ctx, params.tabId)
+    const tab = await BrowserToolHelper.resolvePage(ctx, params.pageId)
     const kind = params.action === "status" ? "reading" : "acting"
     return BrowserToolHelper.withActivity(ctx, tab, kind, "browser_viewport", `Viewport ${params.action}`, async () => {
       if (params.action === "status") {
@@ -27,7 +27,7 @@ export const BrowserViewportTool = Tool.define("browser_viewport", {
         return {
           title: "Viewport status",
           output: viewport ? `Viewport: ${viewport.width}x${viewport.height}` : "Viewport status unavailable",
-          metadata: { ...(viewport ?? {}), tabId: tab.id },
+          metadata: { ...(viewport ?? {}), pageId: tab.id },
         }
       }
 
@@ -35,7 +35,7 @@ export const BrowserViewportTool = Tool.define("browser_viewport", {
         const config = BrowserViewport.DEFAULT
         await BrowserToolHelper.executeControl(owner, {
           type: "setViewport",
-          tabId: tab.id,
+          pageId: tab.id,
           width: config.width,
           height: config.height,
           deviceScaleFactor: config.deviceScaleFactor,
@@ -43,7 +43,7 @@ export const BrowserViewportTool = Tool.define("browser_viewport", {
         return {
           title: "Viewport reset",
           output: `Viewport reset to ${config.width}x${config.height}`,
-          metadata: { width: config.width, height: config.height, tabId: tab.id },
+          metadata: { width: config.width, height: config.height, pageId: tab.id },
         }
       }
 
@@ -58,7 +58,7 @@ export const BrowserViewportTool = Tool.define("browser_viewport", {
 
       await BrowserToolHelper.executeControl(owner, {
         type: "setViewport",
-        tabId: tab.id,
+        pageId: tab.id,
         width: config.width,
         height: config.height,
         deviceScaleFactor: config.deviceScaleFactor,
@@ -66,7 +66,7 @@ export const BrowserViewportTool = Tool.define("browser_viewport", {
       return {
         title: "Viewport set",
         output: `Viewport set to ${config.width}x${config.height}${config.mobile ? " (mobile)" : ""}`,
-        metadata: { ...config, tabId: tab.id },
+        metadata: { ...config, pageId: tab.id },
       }
     })
   },

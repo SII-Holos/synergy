@@ -14,8 +14,8 @@ import {
 } from "./identity.js"
 import {
   parseBrowserNativeAttach,
+  parseBrowserNativePage,
   parseBrowserNativeResize,
-  parseBrowserNativeTab,
   parseExternalUrl,
 } from "./ipc-contract.js"
 import { installAppMenu } from "./menu.js"
@@ -125,22 +125,22 @@ async function resolveAppURL(): Promise<string> {
 async function createBrowserHost() {
   const serverUrl = process.env.SYNERGY_BROWSER_HOST_SERVER_URL
   const sessionID = process.env.SYNERGY_BROWSER_HOST_SESSION_ID
-  const tabId = process.env.SYNERGY_BROWSER_HOST_TAB_ID
+  const pageId = process.env.SYNERGY_BROWSER_HOST_PAGE_ID
 
-  if (!serverUrl || !sessionID || !tabId) {
-    throw new Error("Browser Host mode requires SYNERGY_BROWSER_HOST_SERVER_URL, SESSION_ID, and TAB_ID")
+  if (!serverUrl || !sessionID || !pageId) {
+    throw new Error("Browser Host mode requires SYNERGY_BROWSER_HOST_SERVER_URL, SESSION_ID, and PAGE_ID")
   }
 
   runtimeLog("createBrowserHost", {
     serverUrl,
     sessionID,
-    tabId,
+    pageId,
     routeDirectory: process.env.SYNERGY_BROWSER_HOST_ROUTE_DIRECTORY,
   })
   browserHost = new BrowserWebRTCHost({
     serverUrl,
     sessionID,
-    tabId,
+    pageId,
     routeDirectory: process.env.SYNERGY_BROWSER_HOST_ROUTE_DIRECTORY,
     directory: process.env.SYNERGY_BROWSER_HOST_DIRECTORY,
     scopeID: process.env.SYNERGY_BROWSER_HOST_SCOPE_ID,
@@ -158,16 +158,16 @@ function registerIpcHandlers() {
     await nativeViews?.attach(parseBrowserNativeAttach(input))
   })
   registerNativeViewHandlers("browserNative.detach", (input) => {
-    const { tabId } = parseBrowserNativeTab(input)
-    nativeViews?.detach(tabId)
+    const { pageId } = parseBrowserNativePage(input)
+    nativeViews?.detach(pageId)
   })
   registerNativeViewHandlers("browserNative.focus", (input) => {
-    const { tabId } = parseBrowserNativeTab(input)
-    nativeViews?.focus(tabId)
+    const { pageId } = parseBrowserNativePage(input)
+    nativeViews?.focus(pageId)
   })
   registerNativeViewHandlers("browserNative.resize", (input) => {
-    const { tabId, bounds } = parseBrowserNativeResize(input)
-    nativeViews?.resize(tabId, bounds)
+    const { pageId, bounds } = parseBrowserNativeResize(input)
+    nativeViews?.resize(pageId, bounds)
   })
 
   ipcMain.handle("desktop.server.status", () => serverManager?.status() ?? null)

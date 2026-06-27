@@ -53,24 +53,21 @@ function send(ws: BrowserWS, payload: Record<string, unknown>) {
 
 function subscribeBrowserEvents(ws: BrowserWS, session: BrowserSession) {
   return session.addObserver({
-    onTabCreated: (tab) => {
-      send(ws, { type: "tab.created", tab: BrowserWorkspace.tabPayload(tab), active: session.activeTab === tab })
+    onPageCreated: (page) => {
+      send(ws, { type: "page.created", page: BrowserWorkspace.pagePayload(page) })
     },
-    onTabClosed: (tabId) => {
-      send(ws, { type: "tab.closed", tabId })
+    onPageClosed: (pageId) => {
+      send(ws, { type: "page.closed", pageId })
     },
-    onTabUpdated: (tab) => {
-      send(ws, { type: "tab.updated", tab: BrowserWorkspace.tabPayload(tab) })
+    onPageUpdated: (page) => {
+      send(ws, { type: "page.updated", page: BrowserWorkspace.pagePayload(page) })
     },
-    onTabActivated: (tab) => {
-      send(ws, { type: "tab.activated", tabId: tab.id, tab: BrowserWorkspace.tabPayload(tab) })
+    onPageNavigated: (page) => {
+      send(ws, { type: "page.updated", page: BrowserWorkspace.pagePayload(page) })
     },
-    onTabNavigated: (tab) => {
-      send(ws, { type: "tab.updated", tab: BrowserWorkspace.tabPayload(tab) })
-    },
-    onPageLoadState: (tab, state, message) => {
+    onPageLoadState: (page, state, message) => {
       const type = state === "loading" ? "page.loading" : state === "loaded" ? "page.loaded" : "page.error"
-      send(ws, { type, tabId: tab.id, url: tab.url, title: tab.title, message })
+      send(ws, { type, pageId: page.id, url: page.url, title: page.title, message })
     },
     onAgentActivity: (activity) => {
       send(ws, { type: "agent.activity", ...activity })
@@ -78,16 +75,16 @@ function subscribeBrowserEvents(ws: BrowserWS, session: BrowserSession) {
     onControlChanged: (mode) => {
       send(ws, { type: "control.changed", mode })
     },
-    onDownload: (tab, entry) => {
-      send(ws, { type: "downloads.updated", tabId: tab.id, entry })
+    onDownload: (page, entry) => {
+      send(ws, { type: "downloads.updated", pageId: page.id, entry })
     },
-    onFileChooser: (tab, request) => {
-      send(ws, { type: "filechooser.request", tabId: tab.id, ...request })
+    onFileChooser: (page, request) => {
+      send(ws, { type: "filechooser.request", pageId: page.id, ...request })
     },
-    onDialog: (tab, request) => {
+    onDialog: (page, request) => {
       send(ws, {
         type: "dialog.opened",
-        tabId: tab.id,
+        pageId: page.id,
         requestId: request.requestId,
         dialogType: request.type,
         message: request.message,
@@ -182,7 +179,7 @@ export const BrowserRoute = new Hono()
       request.traceId = traceId(c, request.traceId)
       const { owner, presentation } = state
       const { command } = request
-      const tabId = BrowserWorkspace.commandTabId(owner, command)
+      const pageId = BrowserWorkspace.commandPageId(owner, command)
       log.info("browser.route.control.received", {
         ownerKey: BrowserOwner.key(owner),
         scopeID: owner.scopeID,
@@ -190,7 +187,7 @@ export const BrowserRoute = new Hono()
         client: state.client,
         presentation: presentation.kind,
         presentationReason: presentation.reason,
-        tabId,
+        pageId,
         commandId: request.commandId,
         commandType: command.type,
         traceId: request.traceId,
@@ -199,7 +196,7 @@ export const BrowserRoute = new Hono()
       const result = await BrowserWorkspace.executeControl(state, request, requestOrigin(c))
       log.info("browser.route.control.completed", {
         ownerKey: BrowserOwner.key(owner),
-        tabId: result.tabId,
+        pageId: result.pageId,
         commandId: request.commandId,
         commandType: command.type,
         traceId: request.traceId,
@@ -208,11 +205,22 @@ export const BrowserRoute = new Hono()
       return c.json(result.payload, result.status as any)
     } catch (e: any) {
       const command = request?.command
-      const tabId = state && command ? BrowserWorkspace.commandTabId(state.owner, command) : null
+      const pageId = state && command ? BrowserWorkspace.commandPageId(state.owner, command) : null
+      if (e instanceof BrowserControl.PageMissingError && state && command) {
+        return c.json(
+          BrowserWorkspace.pageMissingPayload({
+            command,
+            commandId: request?.commandId,
+            traceId: request?.traceId,
+            pageId,
+          }),
+          409,
+        )
+      }
       if (e instanceof BrowserHostControlNotAttachedError && state && command) {
         log.info("browser.route.control.deferred", {
           ownerKey: BrowserOwner.key(state.owner),
-          tabId,
+          pageId,
           commandId: request?.commandId,
           commandType: command.type,
           traceId: request?.traceId,
@@ -223,14 +231,14 @@ export const BrowserRoute = new Hono()
             command,
             commandId: request?.commandId,
             traceId: request?.traceId,
-            tabId,
+            pageId,
           }),
           409,
         )
       }
       log.error("browser.route.control.failed", {
         ownerKey: state ? BrowserOwner.key(state.owner) : undefined,
-        tabId,
+        pageId,
         commandId: request?.commandId,
         commandType: command?.type,
         traceId: request?.traceId,
@@ -244,7 +252,7 @@ export const BrowserRoute = new Hono()
           message: e?.message ?? "Browser error",
           retryable: false,
           traceId: request?.traceId,
-          tabId,
+          pageId,
           commandId: request?.commandId,
         },
         500,
@@ -314,10 +322,7 @@ export const BrowserRoute = new Hono()
             unsubscribe = subscribeBrowserEvents(ws, session)
             unsubscribeHost = BrowserHostControl.addObserver(owner, (event) => {
               if (presentation.kind === "webrtc" && event.type === "session.state") {
-                const hostSession = {
-                  tabs: Array.isArray(event.tabs) ? event.tabs : [],
-                  activeTabId: typeof event.activeTabId === "string" ? event.activeTabId : null,
-                } as BrowserControl.SessionState
+                const hostSession = { page: event.page ?? null } as BrowserControl.SessionState
                 send(ws, {
                   type: "session.state",
                   ...BrowserWorkspace.mergeCanonicalHostSession(BrowserControl.sessionState(session), hostSession),
@@ -411,12 +416,12 @@ export const BrowserRoute = new Hono()
       }
 
       let connection: BrowserHostControl.HostConnection | undefined
-      const hostTabId = c.req.query("tabId")
+      const hostPageId = c.req.query("pageId")
       const routeTraceId = c.req.query("traceId")
 
       return {
         onOpen(_event: any, ws: BrowserWS) {
-          connection = BrowserHostControl.attach(state.owner, ws, { tabId: hostTabId, traceId: routeTraceId })
+          connection = BrowserHostControl.attach(state.owner, ws, { pageId: hostPageId, traceId: routeTraceId })
           log.info("browser.host.control.attached", {
             directory: state.directory,
             ownerKey: BrowserOwner.key(state.owner),
@@ -424,7 +429,7 @@ export const BrowserRoute = new Hono()
             sessionID: state.owner.sessionID,
             client: state.client,
             presentation: state.presentation.kind,
-            tabId: hostTabId,
+            pageId: hostPageId,
             traceId: routeTraceId,
           })
           send(ws, { type: "browser.host.attached", protocolVersion: BrowserHost.protocolVersion })
@@ -444,7 +449,7 @@ export const BrowserRoute = new Hono()
             ownerKey: BrowserOwner.key(state.owner),
             client: state.client,
             presentation: state.presentation.kind,
-            tabId: hostTabId,
+            pageId: hostPageId,
             traceId: routeTraceId,
             closeCode: event?.code,
             closeReason: event?.reason,
@@ -457,7 +462,7 @@ export const BrowserRoute = new Hono()
     "/:directory/browser/webrtc/connect",
     upgradeWebSocket((c) => {
       let state: BrowserRouteState
-      const initialTabId = c.req.query("tabId")
+      const initialPageId = c.req.query("pageId")
       const routeTraceId = c.req.query("traceId")
       try {
         state = routeState(c)
@@ -472,27 +477,27 @@ export const BrowserRoute = new Hono()
         }
       }
 
-      let attachedTabId: string | null = null
+      let attachedPageId: string | null = null
 
       return {
         onOpen: async (_e: any, ws: BrowserWS) => {
           const session = await BrowserWorkspace.sessionState(state)
-          const tabId = initialTabId || session.activeTabId || null
-          const tab = tabId ? session.tabs.find((item) => item.id === tabId) : undefined
-          if (tabId) {
-            attachedTabId = tabId
-            const hostReady = BrowserHostControl.isReady(state.owner, tabId)
-            BrowserWebRTCSignaling.attachViewer(state.owner, tabId, ws, { hostReady })
-            BrowserHostControl.markStatus(state.owner, tabId, hostReady ? "ready" : "pending", {
+          const pageId = initialPageId || session.page?.id || null
+          const page = pageId === session.page?.id ? session.page : undefined
+          if (pageId) {
+            attachedPageId = pageId
+            const hostReady = BrowserHostControl.isReady(state.owner, pageId)
+            BrowserWebRTCSignaling.attachViewer(state.owner, pageId, ws, { hostReady })
+            BrowserHostControl.markStatus(state.owner, pageId, hostReady ? "ready" : "pending", {
               traceId: routeTraceId,
               reason: "webrtc_viewer_connected",
             })
             const ensure = BrowserElectronHostProcess.ensure({
               owner: state.owner,
-              tabId,
+              pageId,
               serverUrl: requestOrigin(c),
               routeDirectory: state.directory,
-              url: tab?.url,
+              url: page?.url,
               traceId: routeTraceId,
             })
             log.info("browser.webrtc.viewer.connected", {
@@ -502,33 +507,33 @@ export const BrowserRoute = new Hono()
               sessionID: state.owner.sessionID,
               client: state.client,
               presentation: state.presentation.kind,
-              tabId,
+              pageId,
               traceId: routeTraceId,
               hostProcessKey: ensure.key,
-              hostStatus: BrowserHostControl.status(state.owner, tabId),
+              hostStatus: BrowserHostControl.status(state.owner, pageId),
             })
             if (!hostReady) {
               send(ws, {
                 type: "browser.host.status",
                 status: "pending",
-                tabId,
+                pageId,
                 traceId: routeTraceId,
                 reason: "webrtc_viewer_connected",
               })
               send(ws, {
                 type: "webrtc.host.pending",
-                tabId,
+                pageId,
                 traceId: routeTraceId,
                 code: "browser_host_pending",
                 message: "Waiting for Browser Host.",
               })
-              void BrowserHostControl.waitForReady(state.owner, tabId, BrowserWorkspace.hostReadyTimeoutMs())
+              void BrowserHostControl.waitForReady(state.owner, pageId, BrowserWorkspace.hostReadyTimeoutMs())
                 .then(() => {
-                  send(ws, { type: "browser.host.status", status: "ready", tabId, traceId: routeTraceId })
-                  BrowserWebRTCSignaling.notifyHostReady(state.owner, tabId, routeTraceId)
+                  send(ws, { type: "browser.host.status", status: "ready", pageId, traceId: routeTraceId })
+                  BrowserWebRTCSignaling.notifyHostReady(state.owner, pageId, routeTraceId)
                   log.info("browser.webrtc.host.ready", {
                     ownerKey: BrowserOwner.key(state.owner),
-                    tabId,
+                    pageId,
                     traceId: routeTraceId,
                     hostStatus: "ready",
                   })
@@ -537,7 +542,7 @@ export const BrowserRoute = new Hono()
                   send(ws, {
                     type: "browser.host.status",
                     status: "failed",
-                    tabId,
+                    pageId,
                     traceId: routeTraceId,
                     reason: error instanceof Error ? error.message : String(error),
                   })
@@ -548,7 +553,7 @@ export const BrowserRoute = new Hono()
             type: "webrtc.signaling.ready",
             presentation: state.presentation,
             session,
-            tabId,
+            pageId,
             traceId: routeTraceId,
           })
         },
@@ -561,28 +566,28 @@ export const BrowserRoute = new Hono()
             return
           }
 
-          const tabId = typeof msg.tabId === "string" ? msg.tabId : attachedTabId
-          if (!tabId) {
-            send(ws, { type: "error", code: "browser_webrtc_missing_tab", message: "Missing WebRTC tab id" })
+          const pageId = typeof msg.pageId === "string" ? msg.pageId : attachedPageId
+          if (!pageId) {
+            send(ws, { type: "error", code: "browser_webrtc_missing_page", message: "Missing WebRTC page id" })
             return
           }
 
-          attachedTabId = tabId
+          attachedPageId = pageId
           log.info("browser.webrtc.viewer.signal", {
             ownerKey: BrowserOwner.key(state.owner),
-            tabId,
+            pageId,
             traceId: typeof msg.traceId === "string" ? msg.traceId : routeTraceId,
             signalType: msg.type,
             hasSdp: typeof msg.sdp === "string",
             hasCandidate: Boolean(msg.candidate),
           })
-          BrowserWebRTCSignaling.handleViewerMessage(state.owner, tabId, ws, msg)
+          BrowserWebRTCSignaling.handleViewerMessage(state.owner, pageId, ws, msg)
         },
         onClose(_event: any, ws: BrowserWS) {
-          if (attachedTabId) BrowserWebRTCSignaling.detachViewer(state.owner, attachedTabId, ws)
+          if (attachedPageId) BrowserWebRTCSignaling.detachViewer(state.owner, attachedPageId, ws)
           log.info("browser.webrtc.viewer.disconnected", {
             ownerKey: BrowserOwner.key(state.owner),
-            tabId: attachedTabId,
+            pageId: attachedPageId,
             traceId: routeTraceId,
           })
         },
@@ -593,7 +598,7 @@ export const BrowserRoute = new Hono()
     "/:directory/browser/webrtc/host",
     upgradeWebSocket((c) => {
       let state: BrowserRouteState
-      const initialTabId = c.req.query("tabId")
+      const initialPageId = c.req.query("pageId")
       const routeTraceId = c.req.query("traceId")
       try {
         state = routeState(c)
@@ -608,19 +613,23 @@ export const BrowserRoute = new Hono()
         }
       }
 
-      let attachedTabId: string | null = initialTabId ?? null
+      let attachedPageId: string | null = initialPageId ?? null
 
       return {
         onOpen: async (_e: any, ws: BrowserWS) => {
           const session = await BrowserWorkspace.sessionState(state)
-          attachedTabId = attachedTabId || session.activeTabId || null
-          if (!attachedTabId) {
-            send(ws, { type: "error", code: "browser_webrtc_host_missing_tab", message: "Missing WebRTC host tab id" })
-            ws.close(1008, "Missing WebRTC host tab id")
+          attachedPageId = attachedPageId || session.page?.id || null
+          if (!attachedPageId) {
+            send(ws, {
+              type: "error",
+              code: "browser_webrtc_host_missing_page",
+              message: "Missing WebRTC host page id",
+            })
+            ws.close(1008, "Missing WebRTC host page id")
             return
           }
-          BrowserWebRTCSignaling.attachHost(state.owner, attachedTabId, ws, {
-            hostReady: BrowserHostControl.isReady(state.owner, attachedTabId),
+          BrowserWebRTCSignaling.attachHost(state.owner, attachedPageId, ws, {
+            hostReady: BrowserHostControl.isReady(state.owner, attachedPageId),
           })
           log.info("browser.webrtc.host.connected", {
             directory: state.directory,
@@ -629,14 +638,14 @@ export const BrowserRoute = new Hono()
             sessionID: state.owner.sessionID,
             client: state.client,
             presentation: state.presentation.kind,
-            tabId: attachedTabId,
+            pageId: attachedPageId,
             traceId: routeTraceId,
           })
           send(ws, {
             type: "webrtc.host.signaling.ready",
             presentation: state.presentation,
             session,
-            tabId: attachedTabId,
+            pageId: attachedPageId,
             traceId: routeTraceId,
           })
         },
@@ -649,24 +658,24 @@ export const BrowserRoute = new Hono()
             return
           }
 
-          const tabId = typeof msg.tabId === "string" ? msg.tabId : attachedTabId
-          if (!tabId) return
-          attachedTabId = tabId
+          const pageId = typeof msg.pageId === "string" ? msg.pageId : attachedPageId
+          if (!pageId) return
+          attachedPageId = pageId
           log.info("browser.webrtc.host.signal", {
             ownerKey: BrowserOwner.key(state.owner),
-            tabId,
+            pageId,
             traceId: typeof msg.traceId === "string" ? msg.traceId : routeTraceId,
             signalType: msg.type,
             hasSdp: typeof msg.sdp === "string",
             hasCandidate: Boolean(msg.candidate),
           })
-          BrowserWebRTCSignaling.handleHostMessage(state.owner, tabId, msg)
+          BrowserWebRTCSignaling.handleHostMessage(state.owner, pageId, msg)
         },
         onClose(_event: any, ws: BrowserWS) {
-          if (attachedTabId) BrowserWebRTCSignaling.detachHost(state.owner, attachedTabId, ws)
+          if (attachedPageId) BrowserWebRTCSignaling.detachHost(state.owner, attachedPageId, ws)
           log.info("browser.webrtc.host.disconnected", {
             ownerKey: BrowserOwner.key(state.owner),
-            tabId: attachedTabId,
+            pageId: attachedPageId,
             traceId: routeTraceId,
           })
         },

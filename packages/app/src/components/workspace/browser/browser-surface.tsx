@@ -52,8 +52,8 @@ export function BrowserSurface(props: { sessionID: string; routeDirectory?: stri
     const size = fitViewportSize()
     if (!size) return
 
-    const tabId = browser.activeTabId() ?? "active"
-    const key = `${tabId}:${size.width}x${size.height}`
+    const pageId = browser.pageId() ?? "active"
+    const key = `${pageId}:${size.width}x${size.height}`
     if (key === lastFitViewportKey) return
     lastFitViewportKey = key
     browser.setViewport(size.width, size.height, { mode: "fit" })
@@ -66,7 +66,7 @@ export function BrowserSurface(props: { sessionID: string; routeDirectory?: stri
 
   createEffect(() => {
     browser.viewportMode()
-    browser.activeTabId()
+    browser.pageId()
     browser.hostStatus()
     scheduleFitViewport()
   })
@@ -86,7 +86,7 @@ export function BrowserSurface(props: { sessionID: string; routeDirectory?: stri
     const request = browser.fileChooserRequest()
     if (!request) return
     if (!files || files.length === 0) {
-      browser.send({ type: "filechooser.select", tabId: request.tabId, requestId: request.requestId, files: [] })
+      browser.send({ type: "filechooser.select", pageId: request.pageId, requestId: request.requestId, files: [] })
       browser.setFileChooserRequest(null)
       return
     }
@@ -97,14 +97,14 @@ export function BrowserSurface(props: { sessionID: string; routeDirectory?: stri
         data: arrayBufferToBase64(await file.arrayBuffer()),
       })),
     )
-    browser.send({ type: "filechooser.select", tabId: request.tabId, requestId: request.requestId, files: payload })
+    browser.send({ type: "filechooser.select", pageId: request.pageId, requestId: request.requestId, files: payload })
     browser.setFileChooserRequest(null)
   }
 
   function respondDialog(accept: boolean) {
     const request = browser.dialogRequest()
     if (!request) return
-    browser.send({ type: "dialog.respond", tabId: request.tabId, requestId: request.requestId, accept })
+    browser.send({ type: "dialog.respond", pageId: request.pageId, requestId: request.requestId, accept })
     browser.setDialogRequest(null)
   }
 

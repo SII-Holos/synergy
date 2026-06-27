@@ -97,10 +97,10 @@ function createBrowserHttpControlSender(
         const payload = await response.json().catch(() => null)
         if (!response.ok) {
           if (response.status === 409 && payload?.code === "browser_host_pending") {
-            if (typeof payload.tabId === "string") store.setHostStatus(payload.tabId, "pending")
+            if (typeof payload.pageId === "string") store.setHostStatus(payload.pageId, "pending")
             browserDebug("control.pending", {
               type: msg.type,
-              tabId: payload?.tabId,
+              pageId: payload?.pageId,
               commandId: payload?.commandId,
               traceId: payload?.traceId,
             })
@@ -108,8 +108,8 @@ function createBrowserHttpControlSender(
           }
           throw new Error(payload?.message ?? `Browser control failed: ${response.status}`)
         }
-        if (payload?.hostStatus && "tabId" in command && typeof command.tabId === "string") {
-          store.setHostStatus(command.tabId, payload.hostStatus)
+        if (payload?.hostStatus && "pageId" in command && typeof command.pageId === "string") {
+          store.setHostStatus(command.pageId, payload.hostStatus)
         }
         store.clearTransientHostError()
         applyBrowserControlResult(store, payload?.result)
@@ -210,62 +210,46 @@ export function createBrowserWebSocket(store: BrowserStoreAPI, options: BrowserW
       switch (msg.type) {
         case "session.state": {
           if (msg.presentation) store.setPresentation(msg.presentation)
-          if (msg.tabs) store.setSession("tabs", msg.tabs)
-          if (msg.activeTabId !== undefined) {
-            store.setSession("activeTabId", msg.activeTabId)
-            if (!store.session.visibleTabId) store.setSession("visibleTabId", msg.activeTabId)
-          }
+          if ("page" in msg) store.setSession("page", msg.page ?? null)
           store.clearTransientHostError()
           break
         }
         case "browser.host.status": {
-          if (typeof msg.tabId === "string" && isBrowserHostStatus(msg.status)) {
-            store.setHostStatus(msg.tabId, msg.status)
+          if (typeof msg.pageId === "string" && isBrowserHostStatus(msg.status)) {
+            store.setHostStatus(msg.pageId, msg.status)
           }
           break
         }
-        case "tab.created": {
-          store.upsertTab(msg.tab)
-          if (msg.active) store.activateTabFromServer(msg.tab.id)
+        case "page.created": {
+          store.upsertPage(msg.page)
           break
         }
-        case "tab.updated": {
-          if (msg.tab) store.upsertTab(msg.tab)
+        case "page.updated": {
+          if (msg.page) store.upsertPage(msg.page)
           break
         }
-        case "tab.activated": {
-          if (msg.tab) store.upsertTab(msg.tab)
-          if (msg.tabId) store.activateTabFromServer(msg.tabId)
-          break
-        }
-        case "tab.closed": {
-          store.removeTab(msg.tabId)
-          break
-        }
-        case "tab.navigated": {
-          store.setTabUrl(msg.tabId, msg.url)
-          store.setTabLoading(msg.tabId, false)
-          if (msg.title !== undefined) store.setTabTitle(msg.tabId, msg.title)
+        case "page.closed": {
+          store.removePage(msg.pageId)
           break
         }
         case "page.loading": {
-          store.setTabLoading(msg.tabId, true)
-          if (msg.url) store.setTabUrl(msg.tabId, msg.url)
+          store.setPageLoading(msg.pageId, true)
+          if (msg.url) store.setPageUrl(msg.pageId, msg.url)
           break
         }
         case "page.loaded": {
-          store.setTabLoading(msg.tabId, false)
-          if (msg.url) store.setTabUrl(msg.tabId, msg.url)
-          if (msg.title !== undefined) store.setTabTitle(msg.tabId, msg.title)
+          store.setPageLoading(msg.pageId, false)
+          if (msg.url) store.setPageUrl(msg.pageId, msg.url)
+          if (msg.title !== undefined) store.setPageTitle(msg.pageId, msg.title)
           break
         }
         case "page.error": {
-          store.setTabLoading(msg.tabId, false)
+          store.setPageLoading(msg.pageId, false)
           store.setBrowserError({ severity: "error", message: msg.message ?? "Browser page error" })
           break
         }
         case "screenshot": {
-          store.setTabScreenshots(msg.tabId, {
+          store.setPageScreenshots(msg.pageId, {
             url: msg.dataUrl,
             width: msg.width ?? 0,
             height: msg.height ?? 0,
@@ -273,31 +257,31 @@ export function createBrowserWebSocket(store: BrowserStoreAPI, options: BrowserW
           break
         }
         case "console.entries": {
-          store.setConsoleEntries(msg.tabId, msg.entries ?? [])
+          store.setConsoleEntries(msg.pageId, msg.entries ?? [])
           break
         }
         case "network.entries": {
-          store.setNetworkRequests(msg.tabId, msg.requests ?? [])
+          store.setNetworkRequests(msg.pageId, msg.requests ?? [])
           break
         }
         case "snapshot.result": {
-          store.setElements(msg.tabId, msg.elements ?? [])
+          store.setElements(msg.pageId, msg.elements ?? [])
           break
         }
         case "assets.entries": {
-          store.setPageAssets(msg.tabId, msg.assets ?? [])
+          store.setPageAssets(msg.pageId, msg.assets ?? [])
           break
         }
         case "diagnostics.cleared": {
-          store.setConsoleEntries(msg.tabId, [])
-          store.setNetworkRequests(msg.tabId, [])
-          store.setPageAssets(msg.tabId, [])
+          store.setConsoleEntries(msg.pageId, [])
+          store.setNetworkRequests(msg.pageId, [])
+          store.setPageAssets(msg.pageId, [])
           break
         }
         case "agent.action":
         case "agent.activity": {
           store.applyAgentActivity({
-            tabId: msg.tabId ?? null,
+            pageId: msg.pageId ?? null,
             url: msg.url ?? null,
             title: msg.title,
             kind: msg.kind ?? "acting",
@@ -311,12 +295,12 @@ export function createBrowserWebSocket(store: BrowserStoreAPI, options: BrowserW
           break
         }
         case "downloads.updated": {
-          store.addDownload(msg.tabId, msg.entry)
+          store.addDownload(msg.pageId, msg.entry)
           break
         }
         case "filechooser.request": {
           store.setFileChooserRequest({
-            tabId: msg.tabId,
+            pageId: msg.pageId,
             requestId: msg.requestId,
             multiple: Boolean(msg.multiple),
             accept: msg.accept ?? [],
@@ -325,7 +309,7 @@ export function createBrowserWebSocket(store: BrowserStoreAPI, options: BrowserW
         }
         case "dialog.opened": {
           store.setDialogRequest({
-            tabId: msg.tabId,
+            pageId: msg.pageId,
             requestId: msg.requestId,
             type: msg.dialogType,
             message: msg.message,
@@ -335,8 +319,8 @@ export function createBrowserWebSocket(store: BrowserStoreAPI, options: BrowserW
         }
         case "error": {
           store.setSession("connectionStatus", "error")
-          if (msg.code === "browser_host_pending" && typeof msg.tabId === "string") {
-            store.setHostStatus(msg.tabId, "pending")
+          if (msg.code === "browser_host_pending" && typeof msg.pageId === "string") {
+            store.setHostStatus(msg.pageId, "pending")
             break
           }
           store.setBrowserError({

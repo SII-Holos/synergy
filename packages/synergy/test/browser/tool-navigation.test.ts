@@ -1,12 +1,12 @@
 import { describe, expect, test } from "bun:test"
-import { BrowserToolHelper, BrowserTabNotFoundError } from "../../src/tool/browser-shared"
 import { BrowserControl } from "../../src/browser/control"
 import { BrowserHost } from "../../src/browser/host"
 import { BlockedURLNavigationError, type BrowserTab } from "../../src/browser/tab"
 import type { BrowserSession } from "../../src/browser/types"
+import { BrowserPageNotFoundError, BrowserToolHelper } from "../../src/tool/browser-shared"
 import type { Tool } from "../../src/tool/tool"
 
-function tab(id: string): BrowserTab {
+function page(id: string): BrowserTab {
   return {
     id,
     url: "",
@@ -81,17 +81,63 @@ function ctx(asks: unknown[]): Tool.Context {
   }
 }
 
+function controlSession(fakePage: BrowserTab | null): BrowserSession {
+  return {
+    owner: {
+      directory: "/tmp/synergy",
+      scopeID: "scope",
+      sessionID: "ses_test",
+      mode: "session",
+    },
+    get page() {
+      return fakePage
+    },
+    annotations: [],
+    async ensurePage() {
+      if (!fakePage) fakePage = page("created")
+      return fakePage
+    },
+    async closePage() {
+      fakePage = null
+    },
+    getPage(id: string) {
+      return fakePage?.id === id ? fakePage : undefined
+    },
+    addAnnotation() {
+      throw new Error("not implemented")
+    },
+    removeAnnotation() {
+      return false
+    },
+    clearAnnotations() {},
+    formatAnnotationsForContext() {
+      return ""
+    },
+    addObserver() {
+      return () => {}
+    },
+    async notifyPageNavigated() {},
+    async notifyAgentActivity() {},
+    async notifyControlChanged() {},
+    async save() {},
+    async restore() {
+      return true
+    },
+    async dispose() {},
+  }
+}
+
 describe("browser tool navigation helpers", () => {
-  test("resolveOrCreateTab creates a tab when no active tab exists", async () => {
-    const created = tab("created")
+  test("resolveOrCreatePage creates a page when no session page exists", async () => {
+    const created = page("created")
     let createCalls = 0
 
-    const resolved = await BrowserToolHelper.resolveOrCreateTab({
-      activeTab: null,
-      getTab() {
+    const resolved = await BrowserToolHelper.resolveOrCreatePage({
+      page: null,
+      getPage() {
         return undefined
       },
-      async createTab() {
+      async ensurePage() {
         createCalls++
         return created
       },
@@ -101,28 +147,28 @@ describe("browser tool navigation helpers", () => {
     expect(createCalls).toBe(1)
   })
 
-  test("resolveOrCreateTab throws for a missing explicit tab id", async () => {
+  test("resolveOrCreatePage throws for a missing explicit page id", async () => {
     await expect(
-      BrowserToolHelper.resolveOrCreateTab(
+      BrowserToolHelper.resolveOrCreatePage(
         {
-          activeTab: tab("active"),
-          getTab() {
+          page: page("active"),
+          getPage() {
             return undefined
           },
-          async createTab() {
-            return tab("created")
+          async ensurePage() {
+            return page("created")
           },
         },
         "missing",
       ),
-    ).rejects.toBeInstanceOf(BrowserTabNotFoundError)
+    ).rejects.toBeInstanceOf(BrowserPageNotFoundError)
   })
 
   test("navigateWithPolicyApproval asks and retries blocked URLs with override", async () => {
     const asks: unknown[] = []
     const visited: string[] = []
-    const fakeTab = {
-      ...tab("tab-1"),
+    const fakePage = {
+      ...page("page-1"),
       async navigate() {
         throw new BlockedURLNavigationError("Public URL requires approval", "https://www.google.com/")
       },
@@ -132,7 +178,7 @@ describe("browser tool navigation helpers", () => {
       },
     }
 
-    const result = await BrowserToolHelper.navigateWithPolicyApproval(ctx(asks), fakeTab, "https://www.google.com")
+    const result = await BrowserToolHelper.navigateWithPolicyApproval(ctx(asks), fakePage, "https://www.google.com")
 
     expect(asks).toHaveLength(1)
     expect(visited).toEqual(["https://www.google.com/"])
@@ -141,94 +187,48 @@ describe("browser tool navigation helpers", () => {
 })
 
 describe("BrowserControl", () => {
-  function controlSession(fakeTab: BrowserTab): BrowserSession {
-    return {
-      owner: {
-        directory: "/tmp/synergy",
-        scopeID: "scope",
-        sessionID: "ses_test",
-        mode: "session",
-      },
-      tabs: [fakeTab],
-      activeTab: fakeTab,
-      annotations: [],
-      async createTab() {
-        return fakeTab
-      },
-      switchTab() {},
-      async closeTab() {},
-      async closeOthers() {},
-      getTab(id: string) {
-        return id === fakeTab.id ? fakeTab : undefined
-      },
-      addAnnotation() {
-        throw new Error("not implemented")
-      },
-      removeAnnotation() {
-        return false
-      },
-      clearAnnotations() {},
-      formatAnnotationsForContext() {
-        return ""
-      },
-      addObserver() {
-        return () => {}
-      },
-      async notifyTabNavigated() {},
-      async notifyAgentActivity() {},
-      async notifyControlChanged() {},
-      async save() {},
-      async restore() {
-        return true
-      },
-      async dispose() {},
-    }
-  }
-
   test("executes navigation through the shared control interface", async () => {
-    const fakeTab = {
-      ...tab("tab-1"),
+    const fakePage = {
+      ...page("page-1"),
       async navigateForUser(url: string) {
-        fakeTab.url = `${url}/`
-        fakeTab.title = "Example"
-        return { url: fakeTab.url, title: fakeTab.title }
+        fakePage.url = `${url}/`
+        fakePage.title = "Example"
+        return { url: fakePage.url, title: fakePage.title }
       },
     }
     const saved: string[] = []
     const notified: string[] = []
     const session = {
-      ...controlSession(fakeTab),
+      ...controlSession(fakePage),
       async save() {
         saved.push("save")
       },
-      async notifyTabNavigated(tab: BrowserTab) {
-        notified.push(tab.id)
+      async notifyPageNavigated(nextPage: BrowserTab) {
+        notified.push(nextPage.id)
       },
     }
 
     const result = await BrowserControl.execute(session, {
       type: "navigate",
       source: "user",
-      tabId: "tab-1",
+      pageId: "page-1",
       url: "https://example.com",
     })
 
     expect(result).toEqual({
       type: "navigation",
-      tab: {
-        id: "tab-1",
+      page: {
+        id: "page-1",
         url: "https://example.com/",
         title: "Example",
         isLoading: false,
-        pinned: false,
-        kept: false,
         lastActiveAt: null,
       },
       url: "https://example.com/",
       title: "Example",
     })
     expect(saved).toEqual(["save"])
-    expect(notified).toEqual(["tab-1"])
+    expect(notified).toEqual(["page-1"])
   })
 
   test("executes input and diagnostic commands through the shared control interface", async () => {
@@ -240,8 +240,8 @@ describe("BrowserControl", () => {
     const scrolled: unknown[] = []
     const evaluated: unknown[] = []
     let cleared = false
-    const fakeTab = {
-      ...tab("tab-2"),
+    const fakePage = {
+      ...page("page-2"),
       async click(x: number, y: number) {
         clicks.push({ x, y })
       },
@@ -288,38 +288,38 @@ describe("BrowserControl", () => {
         cleared = true
       },
     }
-    const session = controlSession(fakeTab)
+    const session = controlSession(fakePage)
 
     await BrowserControl.execute(session, {
       type: "mouse",
-      tabId: "tab-2",
+      pageId: "page-2",
       action: "wheel",
       input: { x: 5, y: 6, deltaX: 0, deltaY: 120 },
     })
     await BrowserControl.execute(session, {
       type: "key",
-      tabId: "tab-2",
+      pageId: "page-2",
       action: "down",
       input: { key: "A", code: "KeyA" },
     })
-    await BrowserControl.execute(session, { type: "insertText", tabId: "tab-2", text: "hi" })
-    await BrowserControl.execute(session, { type: "click", tabId: "tab-2", x: 9, y: 10 })
-    await BrowserControl.execute(session, { type: "typeText", tabId: "tab-2", text: "typed" })
-    await BrowserControl.execute(session, { type: "scroll", tabId: "tab-2", deltaX: 1, deltaY: 2 })
-    const resolvedResult = await BrowserControl.execute(session, { type: "resolveRef", tabId: "tab-2", ref: "@e1" })
+    await BrowserControl.execute(session, { type: "insertText", pageId: "page-2", text: "hi" })
+    await BrowserControl.execute(session, { type: "click", pageId: "page-2", x: 9, y: 10 })
+    await BrowserControl.execute(session, { type: "typeText", pageId: "page-2", text: "typed" })
+    await BrowserControl.execute(session, { type: "scroll", pageId: "page-2", deltaX: 1, deltaY: 2 })
+    const resolvedResult = await BrowserControl.execute(session, { type: "resolveRef", pageId: "page-2", ref: "@e1" })
     const evalResult = await BrowserControl.execute(session, {
       type: "evaluate",
-      tabId: "tab-2",
+      pageId: "page-2",
       expression: "(() => true)()",
     })
-    const consoleResult = await BrowserControl.execute(session, { type: "console", tabId: "tab-2" })
-    const assetsResult = await BrowserControl.execute(session, { type: "assets", tabId: "tab-2" })
+    const consoleResult = await BrowserControl.execute(session, { type: "console", pageId: "page-2" })
+    const assetsResult = await BrowserControl.execute(session, { type: "assets", pageId: "page-2" })
     const screenshotResult = await BrowserControl.execute(session, {
       type: "screenshot",
-      tabId: "tab-2",
+      pageId: "page-2",
       format: "jpeg",
     })
-    const clearedResult = await BrowserControl.execute(session, { type: "clearDiagnostics", tabId: "tab-2" })
+    const clearedResult = await BrowserControl.execute(session, { type: "clearDiagnostics", pageId: "page-2" })
 
     expect(mouseActions).toEqual([{ action: "wheel", input: { x: 5, y: 6, deltaX: 0, deltaY: 120 } }])
     expect(keyActions).toEqual([{ action: "down", input: { key: "A", code: "KeyA" } }])
@@ -329,37 +329,37 @@ describe("BrowserControl", () => {
     expect(scrolled).toEqual([{ deltaX: 1, deltaY: 2 }])
     expect(resolvedResult).toEqual({
       type: "resolvedRef",
-      tabId: "tab-2",
+      pageId: "page-2",
       ref: "@e1",
       box: { backendNodeId: 1, x: 10, y: 20, width: 30, height: 40 },
     })
     expect(evaluated).toEqual(["(() => true)()"])
-    expect(evalResult).toEqual({ type: "evaluation", tabId: "tab-2", value: { ok: true } })
+    expect(evalResult).toEqual({ type: "evaluation", pageId: "page-2", value: { ok: true } })
     expect(consoleResult).toEqual({
       type: "console",
-      tabId: "tab-2",
+      pageId: "page-2",
       entries: [{ type: "log", text: "hello", timestamp: 1 }],
     })
     expect(assetsResult).toMatchObject({
       type: "assets",
-      tabId: "tab-2",
+      pageId: "page-2",
       assets: [{ id: "req-1", type: "image", url: "https://example.com/image.png" }],
     })
     expect(screenshotResult).toEqual({
       type: "screenshot",
-      tabId: "tab-2",
+      pageId: "page-2",
       dataUrl: `data:image/jpeg;base64,${Buffer.from("ok").toString("base64")}`,
       width: 10,
       height: 20,
     })
     expect(cleared).toBe(true)
-    expect(clearedResult).toEqual({ type: "diagnostics.cleared", tabId: "tab-2" })
+    expect(clearedResult).toEqual({ type: "diagnostics.cleared", pageId: "page-2" })
   })
 
   test("BrowserHost executes commands through its runtime-backed control adapter", async () => {
     let ensureCalls = 0
-    const fakeTab = {
-      ...tab("tab-3"),
+    const fakePage = {
+      ...page("page-3"),
       async networkRequests() {
         return [
           {
@@ -372,7 +372,7 @@ describe("BrowserControl", () => {
         ]
       },
     }
-    const session = controlSession(fakeTab)
+    const session = controlSession(fakePage)
     const restore = BrowserHost.useRuntimeForTest({
       async ensure() {
         ensureCalls++
@@ -387,12 +387,12 @@ describe("BrowserControl", () => {
     })
 
     try {
-      const result = await BrowserHost.executeRuntime(session.owner, { type: "network", tabId: "tab-3" })
+      const result = await BrowserHost.executeRuntime(session.owner, { type: "network", pageId: "page-3" })
 
       expect(ensureCalls).toBe(1)
       expect(result).toEqual({
         type: "network",
-        tabId: "tab-3",
+        pageId: "page-3",
         requests: [
           {
             requestId: "req-host",

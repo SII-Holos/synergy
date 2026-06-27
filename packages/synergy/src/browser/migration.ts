@@ -6,7 +6,7 @@ import fs from "fs/promises"
 import path from "path"
 
 export namespace BrowserMigration {
-  const CURRENT_VERSION = 2
+  const CURRENT_VERSION = 3
 
   export interface Result {
     ownerKey: string
@@ -14,20 +14,11 @@ export namespace BrowserMigration {
     version: number
   }
 
-  interface StoredTab {
-    id?: string
-    url?: string
-    title?: string
-    order?: number
-    pinned?: boolean
-    kept?: boolean
-    lastActiveAt?: number | null
-  }
-
   interface StoredState {
     version?: number
-    tabs?: StoredTab[]
-    activeTabID?: string | null
+    page?: unknown
+    tabs?: unknown
+    activeTabID?: unknown
     panelWidth?: number
     timestamp?: number
     annotations?: unknown[]
@@ -96,25 +87,27 @@ export namespace BrowserMigration {
 
     await ensureStorageState(owner)
 
-    const tabs = Array.isArray(state.tabs) ? state.tabs : []
-    const activeTabExists = state.activeTabID ? tabs.some((tab) => tab.id === state.activeTabID) : false
-    const nextActiveTabID = activeTabExists ? state.activeTabID! : (tabs[0]?.id ?? null)
     const nextProfileDir = profileDir(owner)
     const nextStorageStatePath = storageStatePath(owner)
 
     const next: StoredState = {
       ...state,
       version: CURRENT_VERSION,
-      tabs,
-      activeTabID: nextActiveTabID,
+      page: null,
+      annotations: [],
       timestamp: typeof state.timestamp === "number" ? state.timestamp : Date.now(),
       storageStatePath: nextStorageStatePath,
       profileDir: nextProfileDir,
     }
+    delete next.tabs
+    delete next.activeTabID
 
     const changed =
       state.version !== CURRENT_VERSION ||
-      state.activeTabID !== next.activeTabID ||
+      state.page !== next.page ||
+      "tabs" in state ||
+      "activeTabID" in state ||
+      state.annotations !== next.annotations ||
       state.storageStatePath !== next.storageStatePath ||
       state.profileDir !== next.profileDir ||
       state.timestamp !== next.timestamp
@@ -194,6 +187,14 @@ export const migrations: Migration[] = [
   {
     id: "20260624-browser-storage-v2",
     description: "Upgrade browser workspace state to isolated Playwright profile storage",
+    domain: "browser",
+    async up(progress) {
+      await BrowserMigration.runAll(progress)
+    },
+  },
+  {
+    id: "20260627-browser-single-page-v3",
+    description: "Reset browser workspace page state to the single-page model while preserving profile storage",
     domain: "browser",
     async up(progress) {
       await BrowserMigration.runAll(progress)

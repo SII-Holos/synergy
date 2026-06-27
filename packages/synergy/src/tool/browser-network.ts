@@ -6,15 +6,15 @@ import { BrowserOwner } from "../browser/owner"
 
 export const BrowserNetworkTool = Tool.define("browser_network", {
   description:
-    "Get network requests from a browser tab's network buffer. Returns request details (URL, method, status, MIME type) with sensitive headers stripped. Use this to inspect page loading, API calls, and resource fetches.",
+    "Get network requests from a browser page's network buffer. Returns request details (URL, method, status, MIME type) with sensitive headers stripped. Use this to inspect page loading, API calls, and resource fetches.",
   parameters: z.object({
-    tabId: z.string().describe("Browser tab ID. Uses the active tab if omitted.").optional(),
+    pageId: z.string().describe("Browser page ID. Uses the session page if omitted.").optional(),
     maxEntries: z.number().describe("Maximum entries to return (default 20).").default(20).optional(),
     filter: z.string().describe("Optional regex pattern to filter requests by URL.").optional(),
   }),
   async execute(params, ctx) {
     const owner = BrowserOwner.fromToolContext(ctx)
-    const tab = await BrowserToolHelper.resolveTab(ctx, params.tabId)
+    const tab = await BrowserToolHelper.resolvePage(ctx, params.pageId)
     return BrowserToolHelper.withActivity(
       ctx,
       tab,
@@ -24,7 +24,7 @@ export const BrowserNetworkTool = Tool.define("browser_network", {
       async () => {
         const result = await BrowserToolHelper.executeControl(owner, {
           type: "network",
-          tabId: tab.id,
+          pageId: tab.id,
           maxEntries: params.maxEntries ?? 20,
         })
         if (result.type !== "network") throw new Error("Browser network command returned an unexpected result")

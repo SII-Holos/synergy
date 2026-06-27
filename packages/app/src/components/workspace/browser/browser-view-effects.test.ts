@@ -46,14 +46,13 @@ describe("applyBrowserViewCommand", () => {
 })
 
 describe("shouldAutoShowBrowserTool", () => {
-  test("shows Browser workspace for completed browser tool metadata with tab identity", () => {
-    expect(shouldAutoShowBrowserTool("browser_navigate", { tabId: "tab-1" })).toBe(true)
-    expect(shouldAutoShowBrowserTool("browser_tab", { tab: { id: "tab-1" } })).toBe(true)
-    expect(shouldAutoShowBrowserTool("browser_tab", { activeTabId: "tab-1" })).toBe(true)
+  test("shows Browser workspace for completed browser tool metadata with page identity", () => {
+    expect(shouldAutoShowBrowserTool("browser_navigate", { pageId: "page-1" })).toBe(true)
+    expect(shouldAutoShowBrowserTool("browser_navigate", { page: { id: "page-1" } })).toBe(true)
   })
 
-  test("ignores non-browser tools and browser metadata without a tab identity", () => {
-    expect(shouldAutoShowBrowserTool("read", { tabId: "tab-1" })).toBe(false)
+  test("ignores non-browser tools and browser metadata without a page identity", () => {
+    expect(shouldAutoShowBrowserTool("read", { pageId: "page-1" })).toBe(false)
     expect(shouldAutoShowBrowserTool("browser_navigate", {})).toBe(false)
   })
 })

@@ -20,7 +20,7 @@ export namespace BrowserEval {
   const MAX_DEPTH = 10
 
   /**
-   * Build an expression payload for readonly evaluation (used via BrowserTab.evaluate).
+   * Build an expression payload for readonly evaluation.
    * Sets throwOnSideEffect so the CDP runtime rejects side-effecting expressions.
    */
   export function buildReadonlyEval(expression: string): { expression: string; throwOnSideEffect: boolean } {
@@ -28,7 +28,7 @@ export namespace BrowserEval {
   }
 
   /**
-   * Build an expression payload for trusted evaluation (used via BrowserTab.evaluate).
+   * Build an expression payload for trusted evaluation.
    * Does not set throwOnSideEffect — the expression may have side effects.
    */
   export function buildTrustedEval(expression: string): { expression: string } {

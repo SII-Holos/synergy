@@ -206,7 +206,6 @@ const REGISTRY: Record<string, ToolTaxonomyEntry> = {
   browser_type: entry("browser.interact", { stateful: true }),
   browser_scroll: entry("browser.interact", { stateful: true }),
   browser_action: entry("browser.interact", { stateful: true }),
-  browser_tab: entry("browser.tab", { stateful: true }),
   browser_console: entry("browser.inspect"),
   browser_network: entry("browser.inspect"),
   browser_download: entry("browser.download", { externalIO: true }),

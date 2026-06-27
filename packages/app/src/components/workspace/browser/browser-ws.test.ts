@@ -116,18 +116,18 @@ describe("createBrowserWebSocketUrl", () => {
     expect(parsed.searchParams.get("directory")).toBe("/Users/eric/project")
   })
 
-  test("can bind WebRTC signaling to a specific tab", () => {
+  test("can bind WebRTC signaling to a specific page", () => {
     const url = createBrowserWebRTCSignalingUrl({
       serverUrl: "https://synergy.local",
       sessionID: "ses_4",
-      tabId: "tab_123",
+      pageId: "page_123",
       routeDirectory: "project-route",
       directory: "/Users/eric/project",
     })
 
     expect(url).not.toBeNull()
     const parsed = new URL(url!)
-    expect(parsed.searchParams.get("tabId")).toBe("tab_123")
+    expect(parsed.searchParams.get("pageId")).toBe("page_123")
   })
 
   test("adds trace ids to browser route URLs", () => {
@@ -141,7 +141,7 @@ describe("createBrowserWebSocketUrl", () => {
     const webrtcUrl = createBrowserWebRTCSignalingUrl({
       serverUrl: "http://localhost:4096",
       sessionID: "ses_trace",
-      tabId: "tab_1",
+      pageId: "page_1",
       routeDirectory: "aG9tZQ",
       scopeID: "home",
       traceId: "browser_trace_1",
@@ -158,39 +158,35 @@ describe("createBrowserWebSocketUrl", () => {
 
 describe("browserControlCommandFromMessage", () => {
   test("maps browser chrome commands to host control commands", () => {
-    expect(browserControlCommandFromMessage({ type: "createTab", url: "https://example.com" })).toEqual({
-      type: "createTab",
-      url: "https://example.com",
-    })
-    expect(browserControlCommandFromMessage({ type: "navigate", tabId: "tab_1", url: "www.google.com" })).toEqual({
+    expect(browserControlCommandFromMessage({ type: "navigate", pageId: "page_1", url: "www.google.com" })).toEqual({
       type: "navigate",
       source: "user",
-      tabId: "tab_1",
+      pageId: "page_1",
       url: "www.google.com",
     })
   })
 
   test("maps remote input messages to host control commands", () => {
-    expect(browserControlCommandFromMessage({ type: "input.text", tabId: "tab_1", text: "中文搜索" })).toEqual({
+    expect(browserControlCommandFromMessage({ type: "input.text", pageId: "page_1", text: "中文搜索" })).toEqual({
       type: "insertText",
-      tabId: "tab_1",
+      pageId: "page_1",
       text: "中文搜索",
     })
     expect(
       browserControlCommandFromMessage({
         type: "input.key",
-        tabId: "tab_1",
+        pageId: "page_1",
         action: "down",
         key: "Enter",
         code: "Enter",
       }),
     ).toEqual({
       type: "key",
-      tabId: "tab_1",
+      pageId: "page_1",
       action: "down",
       input: {
         type: "input.key",
-        tabId: "tab_1",
+        pageId: "page_1",
         action: "down",
         key: "Enter",
         code: "Enter",
@@ -199,17 +195,17 @@ describe("browserControlCommandFromMessage", () => {
     expect(
       browserControlCommandFromMessage({
         type: "input.mouse",
-        tabId: "tab_1",
+        pageId: "page_1",
         action: "wheel",
         deltaY: 120,
       }),
     ).toEqual({
       type: "mouse",
-      tabId: "tab_1",
+      pageId: "page_1",
       action: "wheel",
       input: {
         type: "input.mouse",
-        tabId: "tab_1",
+        pageId: "page_1",
         action: "wheel",
         deltaY: 120,
       },

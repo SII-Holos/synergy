@@ -7,7 +7,7 @@ import { BrowserOwner } from "./owner.js"
 export namespace BrowserElectronHostProcess {
   export interface EnsureInput {
     owner: BrowserOwner.Info
-    tabId: string
+    pageId: string
     serverUrl: string
     routeDirectory: string
     url?: string
@@ -23,7 +23,7 @@ export namespace BrowserElectronHostProcess {
   interface ProcessEntry {
     proc: HostSubprocess
     owner: BrowserOwner.Info
-    tabId: string
+    pageId: string
     routeDirectory: string
     startedAt: number
     lastEnsureAt: number
@@ -35,8 +35,8 @@ export namespace BrowserElectronHostProcess {
   const processes = new Map<string, ProcessEntry>()
   const log = Log.create({ service: "browser.host.process" })
 
-  export function key(owner: BrowserOwner.Info, tabId: string): string {
-    return `${BrowserOwner.key(owner)}:tab:${tabId}`
+  export function key(owner: BrowserOwner.Info, pageId: string): string {
+    return `${BrowserOwner.key(owner)}:page:${pageId}`
   }
 
   export function enabled(): boolean {
@@ -46,25 +46,25 @@ export namespace BrowserElectronHostProcess {
   }
 
   export function ensure(input: EnsureInput): EnsureResult {
-    const processKey = key(input.owner, input.tabId)
+    const processKey = key(input.owner, input.pageId)
     const now = Date.now()
     const existing = processes.get(processKey)
     log.info("browser.host.process.ensure", {
       ownerKey: BrowserOwner.key(input.owner),
-      tabId: input.tabId,
+      pageId: input.pageId,
       hostProcessKey: processKey,
       routeDirectory: input.routeDirectory,
-      hostStatus: BrowserHostControl.status(input.owner, input.tabId),
+      hostStatus: BrowserHostControl.status(input.owner, input.pageId),
       traceId: input.traceId,
     })
 
     if (existing?.proc.exitCode === null) {
       existing.lastEnsureAt = now
-      if (BrowserHostControl.isReady(input.owner, input.tabId)) {
+      if (BrowserHostControl.isReady(input.owner, input.pageId)) {
         existing.lastControlAttachedAt = now
         log.info("browser.host.process.reused", {
           ownerKey: BrowserOwner.key(input.owner),
-          tabId: input.tabId,
+          pageId: input.pageId,
           hostProcessKey: processKey,
           pid: existing.proc.pid,
           hostStatus: "ready",
@@ -75,13 +75,13 @@ export namespace BrowserElectronHostProcess {
 
       const elapsed = now - existing.startedAt
       if (elapsed < readyTimeoutMs()) {
-        BrowserHostControl.markStatus(input.owner, input.tabId, "pending", {
+        BrowserHostControl.markStatus(input.owner, input.pageId, "pending", {
           reason: "host_process_starting",
           traceId: input.traceId,
         })
         log.info("browser.host.process.reused", {
           ownerKey: BrowserOwner.key(input.owner),
-          tabId: input.tabId,
+          pageId: input.pageId,
           hostProcessKey: processKey,
           pid: existing.proc.pid,
           hostStatus: "pending",
@@ -92,13 +92,13 @@ export namespace BrowserElectronHostProcess {
       }
 
       if (existing.restartCount >= restartLimit()) {
-        BrowserHostControl.markStatus(input.owner, input.tabId, "failed", {
+        BrowserHostControl.markStatus(input.owner, input.pageId, "failed", {
           reason: "host_control_not_ready",
           traceId: input.traceId,
         })
         log.error("browser.host.process.failed", {
           ownerKey: BrowserOwner.key(input.owner),
-          tabId: input.tabId,
+          pageId: input.pageId,
           hostProcessKey: processKey,
           pid: existing.proc.pid,
           restartCount: existing.restartCount,
@@ -109,7 +109,7 @@ export namespace BrowserElectronHostProcess {
         return { status: "failed", key: processKey }
       }
 
-      BrowserHostControl.markStatus(input.owner, input.tabId, "restarting", {
+      BrowserHostControl.markStatus(input.owner, input.pageId, "restarting", {
         reason: "host_control_not_ready",
         traceId: input.traceId,
       })
@@ -130,7 +130,7 @@ export namespace BrowserElectronHostProcess {
     status: "started" | "restarted",
   ): EnsureResult {
     if (!enabled()) return { status: "disabled", key: processKey }
-    BrowserHostControl.markStatus(input.owner, input.tabId, status === "restarted" ? "restarting" : "pending", {
+    BrowserHostControl.markStatus(input.owner, input.pageId, status === "restarted" ? "restarting" : "pending", {
       reason: status === "restarted" ? "host_process_restart" : "host_process_start",
       traceId: input.traceId,
     })
@@ -144,7 +144,7 @@ export namespace BrowserElectronHostProcess {
         SYNERGY_DESKTOP_MODE: "browser-host",
         SYNERGY_BROWSER_HOST_SERVER_URL: input.serverUrl,
         SYNERGY_BROWSER_HOST_SESSION_ID: input.owner.sessionID ?? "",
-        SYNERGY_BROWSER_HOST_TAB_ID: input.tabId,
+        SYNERGY_BROWSER_HOST_PAGE_ID: input.pageId,
         SYNERGY_BROWSER_HOST_ROUTE_DIRECTORY: input.routeDirectory,
         SYNERGY_BROWSER_HOST_DIRECTORY: input.owner.directory,
         SYNERGY_BROWSER_HOST_SCOPE_ID: input.owner.scopeID ?? "",
@@ -157,7 +157,7 @@ export namespace BrowserElectronHostProcess {
     const entry: ProcessEntry = {
       proc,
       owner: input.owner,
-      tabId: input.tabId,
+      pageId: input.pageId,
       routeDirectory: input.routeDirectory,
       startedAt: Date.now(),
       lastEnsureAt: Date.now(),
@@ -167,7 +167,7 @@ export namespace BrowserElectronHostProcess {
     processes.set(processKey, entry)
     log.info(status === "restarted" ? "browser.host.process.restarted" : "browser.host.process.started", {
       ownerKey: BrowserOwner.key(input.owner),
-      tabId: input.tabId,
+      pageId: input.pageId,
       hostProcessKey: processKey,
       pid: proc.pid,
       routeDirectory: input.routeDirectory,
@@ -183,13 +183,13 @@ export namespace BrowserElectronHostProcess {
       if (current?.proc !== proc) return
       current.lastExitReason = `exitCode:${proc.exitCode}`
       processes.delete(processKey)
-      BrowserHostControl.markStatus(input.owner, input.tabId, "detached", {
+      BrowserHostControl.markStatus(input.owner, input.pageId, "detached", {
         reason: current.lastExitReason,
         traceId: input.traceId,
       })
       log.info("browser.host.process.exited", {
         ownerKey: BrowserOwner.key(input.owner),
-        tabId: input.tabId,
+        pageId: input.pageId,
         hostProcessKey: processKey,
         pid: proc.pid,
         exitCode: proc.exitCode,
@@ -200,13 +200,13 @@ export namespace BrowserElectronHostProcess {
     return { status, key: processKey }
   }
 
-  export function stop(owner: BrowserOwner.Info, tabId: string): void {
-    const processKey = key(owner, tabId)
+  export function stop(owner: BrowserOwner.Info, pageId: string): void {
+    const processKey = key(owner, pageId)
     const entry = processes.get(processKey)
     if (!entry) return
     entry.proc.kill()
     processes.delete(processKey)
-    BrowserHostControl.markStatus(owner, tabId, "detached", { reason: "host_process_stopped" })
+    BrowserHostControl.markStatus(owner, pageId, "detached", { reason: "host_process_stopped" })
   }
 
   export function resetForTest(): void {

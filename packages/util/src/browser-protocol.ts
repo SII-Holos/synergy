@@ -53,19 +53,16 @@ export interface BrowserPresentationEnvironment {
   capabilities?: Partial<BrowserPresentationCapabilities>
 }
 
-export interface BrowserTab {
+export interface BrowserPage {
   id: string
   url: string
   title: string
   isLoading: boolean
-  pinned?: boolean
-  kept?: boolean
   lastActiveAt?: number | null
 }
 
 export interface BrowserSession {
-  tabs: BrowserTab[]
-  activeTabId: string | null
+  page: BrowserPage | null
 }
 
 export interface BrowserPresentation {
@@ -73,15 +70,12 @@ export interface BrowserPresentation {
 }
 
 export interface BrowserControl {
-  createTab(input?: { url?: string }): Promise<BrowserTab>
-  closeTab(input: { tabId: string }): Promise<void>
-  switchTab(input: { tabId: string }): Promise<BrowserTab | null>
-  navigate(input: { tabId?: string; url: string }): Promise<{ url: string; title: string }>
-  reload(input?: { tabId?: string }): Promise<void>
-  stop(input?: { tabId?: string }): Promise<void>
-  setViewport(input: { tabId?: string; width: number; height: number }): Promise<void>
-  snapshot(input?: { tabId?: string }): Promise<unknown>
-  screenshot(input?: { tabId?: string }): Promise<{ dataUrl: string; width: number; height: number }>
+  navigate(input: { pageId?: string; url: string }): Promise<{ url: string; title: string }>
+  reload(input?: { pageId?: string }): Promise<void>
+  stop(input?: { pageId?: string }): Promise<void>
+  setViewport(input: { pageId?: string; width: number; height: number }): Promise<void>
+  snapshot(input?: { pageId?: string }): Promise<unknown>
+  screenshot(input?: { pageId?: string }): Promise<{ dataUrl: string; width: number; height: number }>
 }
 
 export interface BrowserHost {
@@ -121,7 +115,7 @@ export function selectBrowserPresentation(input: BrowserPresentationEnvironment)
 }
 
 export type BrowserWebRTCSignalMessage =
-  | { type: "webrtc.offer"; tabId: string; sdp: string; traceId?: string }
-  | { type: "webrtc.answer"; tabId: string; sdp: string }
-  | { type: "webrtc.ice"; tabId: string; candidate: unknown; traceId?: string }
-  | { type: "webrtc.close"; tabId: string; traceId?: string }
+  | { type: "webrtc.offer"; pageId: string; sdp: string; traceId?: string }
+  | { type: "webrtc.answer"; pageId: string; sdp: string }
+  | { type: "webrtc.ice"; pageId: string; candidate: unknown; traceId?: string }
+  | { type: "webrtc.close"; pageId: string; traceId?: string }

@@ -23,10 +23,10 @@ export const BrowserWaitTool = Tool.define("browser_wait", {
       .describe(
         `Timeout in milliseconds. Max ${ToolTimeout.DEFAULTS.browserWaitMaxMs}. Default ${ToolTimeout.DEFAULTS.browserWaitMs}.`,
       ),
-    tabId: z.string().optional().describe("Tab ID. Uses the active tab if omitted."),
+    pageId: z.string().optional().describe("Page ID. Uses the session page if omitted."),
   }),
   async execute(params, ctx) {
-    const tab = await BrowserToolHelper.resolveTab(ctx, params.tabId)
+    const tab = await BrowserToolHelper.resolvePage(ctx, params.pageId)
     return BrowserToolHelper.withActivity(
       ctx,
       tab,
@@ -47,7 +47,7 @@ export const BrowserWaitTool = Tool.define("browser_wait", {
             ? `Condition met: ${conditionDesc} (after waiting)`
             : `Condition not met within ${params.timeout}ms: ${conditionDesc}`,
           metadata: {
-            tabId: tab.id,
+            pageId: tab.id,
             condition: params.condition,
             timeout: params.timeout,
             satisfied: met,

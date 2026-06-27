@@ -60,8 +60,8 @@ export function RemoteBrowserSurface(props: {
   }
 
   createEffect(() => {
-    const tabId = browser.activeTabId()
-    if (browser.presentation()?.kind !== "webrtc" || !tabId) {
+    const pageId = browser.pageId()
+    if (browser.presentation()?.kind !== "webrtc" || !pageId) {
       if (webrtcClient) closeWebRTCClient()
       return
     }
@@ -70,7 +70,7 @@ export function RemoteBrowserSurface(props: {
     const signalingUrl = createBrowserWebRTCSignalingUrl({
       serverUrl: sdk.url,
       sessionID: props.sessionID,
-      tabId,
+      pageId,
       routeDirectory: props.routeDirectory,
       directory: sdk.directory,
       scopeID: sdk.scopeID,
@@ -87,19 +87,19 @@ export function RemoteBrowserSurface(props: {
       return
     }
 
-    const clientKey = `${tabId}:${signalingUrl}`
+    const clientKey = `${pageId}:${signalingUrl}`
     if (webrtcClient && activeWebRTCKey === clientKey) return
     closeWebRTCClient()
 
     const client = new BrowserWebRTCClient({
       signalingUrl,
-      tabId,
+      pageId,
       traceId,
       onStatus: (status, detail) => {
         if (webrtcClient !== client) return
         setWebrtcStatus(status)
         setWebrtcDetail(detail ?? null)
-        if (status === "host_pending") browser.setHostStatus(tabId, "pending")
+        if (status === "host_pending") browser.setHostStatus(pageId, "pending")
       },
       onStream: (stream) => {
         if (webrtcClient !== client) return
@@ -110,9 +110,9 @@ export function RemoteBrowserSurface(props: {
       onMessage: (message) => {
         if (webrtcClient !== client) return
         if (typeof message !== "object" || message === null) return
-        const msg = message as { type?: unknown; tabId?: unknown; status?: unknown }
+        const msg = message as { type?: unknown; pageId?: unknown; status?: unknown }
         if (msg.type !== "browser.host.status") return
-        if (typeof msg.tabId !== "string") return
+        if (typeof msg.pageId !== "string") return
         if (
           msg.status === "pending" ||
           msg.status === "ready" ||
@@ -120,7 +120,7 @@ export function RemoteBrowserSurface(props: {
           msg.status === "restarting" ||
           msg.status === "failed"
         ) {
-          browser.setHostStatus(msg.tabId, msg.status)
+          browser.setHostStatus(msg.pageId, msg.status)
         }
       },
     })
@@ -135,14 +135,14 @@ export function RemoteBrowserSurface(props: {
   })
 
   createEffect(() => {
-    const tabId = browser.activeTabId()
+    const pageId = browser.pageId()
     const width = browser.viewportWidth()
     const height = browser.viewportHeight()
     webrtcStatus()
-    if (!tabId) return
-    const key = `${tabId}:${width}x${height}`
+    if (!pageId) return
+    const key = `${pageId}:${width}x${height}`
     if (key === lastWebRTCResizeKey) return
-    if (webrtcClient?.sendInput({ type: "input.resize", tabId, width, height })) {
+    if (webrtcClient?.sendInput({ type: "input.resize", pageId, width, height })) {
       lastWebRTCResizeKey = key
     }
   })
@@ -167,18 +167,18 @@ export function RemoteBrowserSurface(props: {
   }
 
   function sendTextInput(text: string) {
-    const tabId = browser.activeTabId()
-    if (!tabId || !text) return
-    sendInput({ type: "input.text", tabId, text })
+    const pageId = browser.pageId()
+    if (!pageId || !text) return
+    sendInput({ type: "input.text", pageId, text })
   }
 
   function sendKeyInput(action: "down" | "up", input: Record<string, unknown>) {
-    const tabId = browser.activeTabId()
-    if (!tabId) return false
+    const pageId = browser.pageId()
+    if (!pageId) return false
     sendInput({
       type: "input.key",
       action,
-      tabId,
+      pageId,
       ...input,
     })
     return true
@@ -216,9 +216,9 @@ export function RemoteBrowserSurface(props: {
 
   function handleMouse(action: "move" | "down" | "up", e: MouseEvent) {
     e.stopPropagation()
-    const tabId = browser.activeTabId()
+    const pageId = browser.pageId()
     const p = point(e)
-    if (!tabId || !p) return
+    if (!pageId || !p) return
     if (action === "down") {
       focusTextInput(e)
       if (browser.annotationMode()) {
@@ -236,7 +236,7 @@ export function RemoteBrowserSurface(props: {
     sendInput({
       type: "input.mouse",
       action,
-      tabId,
+      pageId,
       x: p.x,
       y: p.y,
       button: mouseButton(e.button),
@@ -248,13 +248,13 @@ export function RemoteBrowserSurface(props: {
 
   function handleWheel(e: WheelEvent) {
     e.stopPropagation()
-    const tabId = browser.activeTabId()
+    const pageId = browser.pageId()
     const p = point(e)
-    if (!tabId || !p) return
+    if (!pageId || !p) return
     sendInput({
       type: "input.mouse",
       action: "wheel",
-      tabId,
+      pageId,
       x: p.x,
       y: p.y,
       deltaX: e.deltaX,
@@ -355,10 +355,10 @@ export function RemoteBrowserSurface(props: {
 
   function handlePaste(e: ClipboardEvent) {
     e.stopPropagation()
-    const tabId = browser.activeTabId()
+    const pageId = browser.pageId()
     const text = e.clipboardData?.getData("text/plain")
-    if (!tabId || !text) return
-    sendInput({ type: "input.text", tabId, text })
+    if (!pageId || !text) return
+    sendInput({ type: "input.text", pageId, text })
     resetTextInput()
     e.preventDefault()
   }

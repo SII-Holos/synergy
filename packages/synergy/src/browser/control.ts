@@ -12,278 +12,251 @@ import type {
 import type { BrowserKeyInput, BrowserMouseInput } from "./input.js"
 
 export namespace BrowserControl {
-  export interface TabState {
+  export interface PageState {
     id: string
     url: string
     title: string
     isLoading: boolean
-    pinned: boolean
-    kept: boolean
     lastActiveAt: number | null
   }
 
   export interface SessionState {
-    tabs: TabState[]
-    activeTabId: string | null
+    page: PageState | null
   }
 
   export type Command =
-    | { type: "createTab"; url?: string }
-    | { type: "closeTab"; tabId: string }
-    | { type: "switchTab"; tabId: string }
-    | { type: "navigate"; tabId?: string; url: string; source?: "agent" | "user"; policyOverride?: boolean }
-    | { type: "reload"; tabId?: string; ignoreCache?: boolean }
-    | { type: "stop"; tabId?: string }
-    | { type: "history"; tabId?: string; direction: "back" | "forward" }
-    | { type: "setViewport"; tabId?: string; width: number; height: number; deviceScaleFactor?: number }
-    | { type: "click"; tabId?: string; x: number; y: number }
-    | { type: "typeText"; tabId?: string; text: string }
-    | { type: "scroll"; tabId?: string; deltaX: number; deltaY: number }
-    | { type: "mouse"; tabId?: string; action: "move" | "down" | "up" | "wheel"; input: BrowserMouseInput }
-    | { type: "key"; tabId?: string; action: "down" | "up"; input: BrowserKeyInput }
-    | { type: "insertText"; tabId?: string; text: string }
-    | { type: "evaluate"; tabId?: string; expression: string; throwOnSideEffect?: boolean }
-    | { type: "cdp"; tabId?: string; method: string; params?: Record<string, unknown> }
-    | { type: "resolveRef"; tabId?: string; ref: string }
-    | { type: "console"; tabId?: string; maxEntries?: number }
-    | { type: "network"; tabId?: string; maxEntries?: number }
-    | { type: "snapshot"; tabId?: string }
-    | { type: "assets"; tabId?: string; maxEntries?: number }
+    | { type: "navigate"; pageId?: string; url: string; source?: "agent" | "user"; policyOverride?: boolean }
+    | { type: "reload"; pageId?: string; ignoreCache?: boolean }
+    | { type: "stop"; pageId?: string }
+    | { type: "history"; pageId?: string; direction: "back" | "forward" }
+    | { type: "setViewport"; pageId?: string; width: number; height: number; deviceScaleFactor?: number }
+    | { type: "click"; pageId?: string; x: number; y: number }
+    | { type: "typeText"; pageId?: string; text: string }
+    | { type: "scroll"; pageId?: string; deltaX: number; deltaY: number }
+    | { type: "mouse"; pageId?: string; action: "move" | "down" | "up" | "wheel"; input: BrowserMouseInput }
+    | { type: "key"; pageId?: string; action: "down" | "up"; input: BrowserKeyInput }
+    | { type: "insertText"; pageId?: string; text: string }
+    | { type: "evaluate"; pageId?: string; expression: string; throwOnSideEffect?: boolean }
+    | { type: "cdp"; pageId?: string; method: string; params?: Record<string, unknown> }
+    | { type: "resolveRef"; pageId?: string; ref: string }
+    | { type: "console"; pageId?: string; maxEntries?: number }
+    | { type: "network"; pageId?: string; maxEntries?: number }
+    | { type: "snapshot"; pageId?: string }
+    | { type: "assets"; pageId?: string; maxEntries?: number }
     | {
         type: "screenshot"
-        tabId?: string
+        pageId?: string
         format?: "jpeg" | "png"
         quality?: number
         fullPage?: boolean
         clip?: { x: number; y: number; width: number; height: number; scale?: number }
       }
-    | { type: "filechooser.select"; tabId?: string; requestId: string; files: BrowserUploadFile[] }
-    | { type: "dialog.respond"; tabId?: string; requestId: string; accept: boolean; promptText?: string }
+    | { type: "filechooser.select"; pageId?: string; requestId: string; files: BrowserUploadFile[] }
+    | { type: "dialog.respond"; pageId?: string; requestId: string; accept: boolean; promptText?: string }
     | {
         type: "createAnnotation"
-        tabId?: string
+        pageId?: string
         comment: string
         styleFeedback?: Record<string, string>
       }
-    | { type: "clearDiagnostics"; tabId?: string }
+    | { type: "clearDiagnostics"; pageId?: string }
 
   export type Result =
-    | { type: "tab"; tab: TabState }
-    | { type: "navigation"; tab: TabState; url: string; title: string }
+    | { type: "page"; page: PageState }
+    | { type: "navigation"; page: PageState; url: string; title: string }
     | { type: "session"; session: SessionState }
-    | { type: "console"; tabId: string; entries: ConsoleMessage[] }
-    | { type: "network"; tabId: string; requests: NetworkRequest[] }
-    | { type: "snapshot"; tabId: string; elements: AccessibilityElement[]; truncated: boolean }
-    | { type: "assets"; tabId: string; assets: BrowserAssets.PageAsset[] }
-    | { type: "screenshot"; tabId: string; dataUrl: string; width: number; height: number }
-    | { type: "evaluation"; tabId: string; value: unknown }
-    | { type: "cdp"; tabId: string; value: unknown }
+    | { type: "console"; pageId: string; entries: ConsoleMessage[] }
+    | { type: "network"; pageId: string; requests: NetworkRequest[] }
+    | { type: "snapshot"; pageId: string; elements: AccessibilityElement[]; truncated: boolean }
+    | { type: "assets"; pageId: string; assets: BrowserAssets.PageAsset[] }
+    | { type: "screenshot"; pageId: string; dataUrl: string; width: number; height: number }
+    | { type: "evaluation"; pageId: string; value: unknown }
+    | { type: "cdp"; pageId: string; value: unknown }
     | {
         type: "resolvedRef"
-        tabId: string
+        pageId: string
         ref: string
         box: { backendNodeId: number; x: number; y: number; width: number; height: number } | null
       }
     | { type: "annotation"; annotation: BrowserAnnotation }
-    | { type: "diagnostics.cleared"; tabId: string }
+    | { type: "diagnostics.cleared"; pageId: string }
     | { type: "void" }
 
-  export class TabNotFoundError extends Error {
-    constructor(tabId?: string) {
-      super(tabId ? `Browser tab not found: ${tabId}` : "No active browser tab")
-      this.name = "BrowserControlTabNotFoundError"
+  export class PageMissingError extends Error {
+    constructor(pageId?: string) {
+      super(pageId ? `Browser page not found: ${pageId}` : "No browser page is open")
+      this.name = "BrowserControlPageMissingError"
     }
   }
 
-  export function tabState(tab: BrowserTab): TabState {
+  export function pageState(page: BrowserTab): PageState {
     return {
-      id: tab.id,
-      url: tab.url,
-      title: tab.title,
-      isLoading: tab.loading,
-      pinned: tab.pinned,
-      kept: tab.kept,
-      lastActiveAt: tab.lastActiveAt,
+      id: page.id,
+      url: page.url,
+      title: page.title,
+      isLoading: page.loading,
+      lastActiveAt: page.lastActiveAt,
     }
   }
 
   export function sessionState(session: BrowserSession): SessionState {
     return {
-      tabs: session.tabs.map(tabState),
-      activeTabId: session.activeTab?.id ?? null,
+      page: session.page ? pageState(session.page) : null,
     }
   }
 
   export function normalizeCommand(command: Command): Command {
     if (command.type === "navigate") return { ...command, url: normalizeBrowserURL(command.url) }
-    if (command.type === "createTab" && typeof command.url === "string" && command.url.trim()) {
-      return { ...command, url: normalizeBrowserURL(command.url) }
-    }
     return command
   }
 
-  export function resolveTab(session: Pick<BrowserSession, "activeTab" | "getTab">, tabId?: string): BrowserTab {
-    if (tabId) {
-      const tab = session.getTab(tabId)
-      if (!tab) throw new TabNotFoundError(tabId)
-      return tab
+  export function resolvePage(session: Pick<BrowserSession, "page" | "getPage">, pageId?: string): BrowserTab {
+    if (pageId) {
+      const page = session.getPage(pageId)
+      if (!page) throw new PageMissingError(pageId)
+      return page
     }
-    if (!session.activeTab) throw new TabNotFoundError()
-    return session.activeTab
+    if (!session.page) throw new PageMissingError()
+    return session.page
   }
 
-  export async function resolveOrCreateTab(
-    session: Pick<BrowserSession, "activeTab" | "createTab" | "getTab">,
-    tabId?: string,
+  export async function resolveOrCreatePage(
+    session: Pick<BrowserSession, "page" | "ensurePage" | "getPage">,
+    pageId?: string,
   ): Promise<BrowserTab> {
-    if (tabId) {
-      const tab = session.getTab(tabId)
-      if (!tab) throw new TabNotFoundError(tabId)
-      return tab
+    if (pageId) {
+      const page = session.getPage(pageId)
+      if (!page) throw new PageMissingError(pageId)
+      return page
     }
-    return session.activeTab ?? session.createTab()
+    return session.page ?? session.ensurePage()
   }
 
   export async function execute(session: BrowserSession, command: Command): Promise<Result> {
     switch (command.type) {
-      case "createTab": {
-        const tab = await session.createTab(command.url)
-        session.switchTab(tab.id)
-        await session.save()
-        return { type: "tab", tab: tabState(tab) }
-      }
-      case "closeTab": {
-        await session.closeTab(command.tabId)
-        return { type: "session", session: sessionState(session) }
-      }
-      case "switchTab": {
-        session.switchTab(command.tabId)
-        const tab = resolveTab(session, command.tabId)
-        return { type: "tab", tab: tabState(tab) }
-      }
       case "navigate": {
-        const tab = resolveTab(session, command.tabId)
+        const page = await resolveOrCreatePage(session, command.pageId)
         const result = command.policyOverride
-          ? await tab.navigateWithOverride(command.url)
+          ? await page.navigateWithOverride(command.url)
           : command.source === "user"
-            ? await tab.navigateForUser(command.url)
-            : await tab.navigate(command.url)
+            ? await page.navigateForUser(command.url)
+            : await page.navigate(command.url)
         await session.save()
-        await session.notifyTabNavigated(tab)
-        return { type: "navigation", tab: tabState(tab), url: result.url, title: result.title }
+        await session.notifyPageNavigated(page)
+        return { type: "navigation", page: pageState(page), url: result.url, title: result.title }
       }
       case "reload": {
-        const tab = resolveTab(session, command.tabId)
-        await tab.reload(command.ignoreCache)
+        const page = resolvePage(session, command.pageId)
+        await page.reload(command.ignoreCache)
         await session.save()
         return { type: "void" }
       }
       case "stop": {
-        const tab = resolveTab(session, command.tabId)
-        await tab.stop()
+        const page = resolvePage(session, command.pageId)
+        await page.stop()
         return { type: "void" }
       }
       case "history": {
-        const tab = resolveTab(session, command.tabId)
-        if (command.direction === "back") await tab.goBack()
-        else await tab.goForward()
+        const page = resolvePage(session, command.pageId)
+        if (command.direction === "back") await page.goBack()
+        else await page.goForward()
         await session.save()
         return { type: "void" }
       }
       case "setViewport": {
-        const tab = resolveTab(session, command.tabId)
-        await tab.setViewport(command.width, command.height, command.deviceScaleFactor ?? 1)
-        return { type: "tab", tab: tabState(tab) }
+        const page = resolvePage(session, command.pageId)
+        await page.setViewport(command.width, command.height, command.deviceScaleFactor ?? 1)
+        return { type: "page", page: pageState(page) }
       }
       case "click": {
-        const tab = resolveTab(session, command.tabId)
-        await tab.click(command.x, command.y)
+        const page = resolvePage(session, command.pageId)
+        await page.click(command.x, command.y)
         return { type: "void" }
       }
       case "typeText": {
-        const tab = resolveTab(session, command.tabId)
-        await tab.type(command.text)
+        const page = resolvePage(session, command.pageId)
+        await page.type(command.text)
         return { type: "void" }
       }
       case "scroll": {
-        const tab = resolveTab(session, command.tabId)
-        await tab.scroll(command.deltaX, command.deltaY)
+        const page = resolvePage(session, command.pageId)
+        await page.scroll(command.deltaX, command.deltaY)
         return { type: "void" }
       }
       case "mouse": {
-        const tab = resolveTab(session, command.tabId)
-        await tab.dispatchMouse(command.action, command.input)
+        const page = resolvePage(session, command.pageId)
+        await page.dispatchMouse(command.action, command.input)
         return { type: "void" }
       }
       case "key": {
-        const tab = resolveTab(session, command.tabId)
-        await tab.dispatchKey(command.action, command.input)
+        const page = resolvePage(session, command.pageId)
+        await page.dispatchKey(command.action, command.input)
         return { type: "void" }
       }
       case "insertText": {
-        const tab = resolveTab(session, command.tabId)
-        await tab.insertText(command.text)
+        const page = resolvePage(session, command.pageId)
+        await page.insertText(command.text)
         return { type: "void" }
       }
       case "evaluate": {
-        const tab = resolveTab(session, command.tabId)
+        const page = resolvePage(session, command.pageId)
         return {
           type: "evaluation",
-          tabId: tab.id,
-          value: await tab.evaluate(command.expression, { throwOnSideEffect: command.throwOnSideEffect }),
+          pageId: page.id,
+          value: await page.evaluate(command.expression, { throwOnSideEffect: command.throwOnSideEffect }),
         }
       }
       case "cdp": {
-        const tab = resolveTab(session, command.tabId)
-        const cdp = await tab.ensureCDP()
+        const page = resolvePage(session, command.pageId)
+        const cdp = await page.ensureCDP()
         return {
           type: "cdp",
-          tabId: tab.id,
+          pageId: page.id,
           value: await cdp.send(command.method, command.params),
         }
       }
       case "resolveRef": {
-        const tab = resolveTab(session, command.tabId)
-        return { type: "resolvedRef", tabId: tab.id, ref: command.ref, box: await tab.resolveRef(command.ref) }
+        const page = resolvePage(session, command.pageId)
+        return { type: "resolvedRef", pageId: page.id, ref: command.ref, box: await page.resolveRef(command.ref) }
       }
       case "console": {
-        const tab = resolveTab(session, command.tabId)
-        return { type: "console", tabId: tab.id, entries: await tab.consoleEntries(command.maxEntries ?? 50) }
+        const page = resolvePage(session, command.pageId)
+        return { type: "console", pageId: page.id, entries: await page.consoleEntries(command.maxEntries ?? 50) }
       }
       case "network": {
-        const tab = resolveTab(session, command.tabId)
-        return { type: "network", tabId: tab.id, requests: await tab.networkRequests(command.maxEntries ?? 100) }
+        const page = resolvePage(session, command.pageId)
+        return { type: "network", pageId: page.id, requests: await page.networkRequests(command.maxEntries ?? 100) }
       }
       case "snapshot": {
-        const tab = resolveTab(session, command.tabId)
-        const snapshot = await tab.snapshot()
-        return { type: "snapshot", tabId: tab.id, elements: snapshot.elements, truncated: snapshot.truncated }
+        const page = resolvePage(session, command.pageId)
+        const snapshot = await page.snapshot()
+        return { type: "snapshot", pageId: page.id, elements: snapshot.elements, truncated: snapshot.truncated }
       }
       case "assets": {
-        const tab = resolveTab(session, command.tabId)
-        const requests = await tab.networkRequests(command.maxEntries ?? 200)
-        return { type: "assets", tabId: tab.id, assets: BrowserAssets.fromNetworkBuffer(requests, tab.id) }
+        const page = resolvePage(session, command.pageId)
+        const requests = await page.networkRequests(command.maxEntries ?? 200)
+        return { type: "assets", pageId: page.id, assets: BrowserAssets.fromNetworkBuffer(requests, page.id) }
       }
       case "screenshot": {
-        const tab = resolveTab(session, command.tabId)
-        const shot = await tab.screenshot(command.format, command.quality, command.fullPage, command.clip)
+        const page = resolvePage(session, command.pageId)
+        const shot = await page.screenshot(command.format, command.quality, command.fullPage, command.clip)
         const mime = command.format === "jpeg" ? "image/jpeg" : "image/png"
         return {
           type: "screenshot",
-          tabId: tab.id,
+          pageId: page.id,
           dataUrl: `data:${mime};base64,${shot.buffer.toString("base64")}`,
           width: shot.width,
           height: shot.height,
         }
       }
       case "filechooser.select": {
-        const tab = resolveTab(session, command.tabId)
-        await tab.respondToFileChooser(command.requestId, command.files)
+        const page = resolvePage(session, command.pageId)
+        await page.respondToFileChooser(command.requestId, command.files)
         return { type: "void" }
       }
       case "dialog.respond": {
-        const tab = resolveTab(session, command.tabId)
-        await tab.respondToDialog(command.requestId, command.accept, command.promptText)
+        const page = resolvePage(session, command.pageId)
+        await page.respondToDialog(command.requestId, command.accept, command.promptText)
         return { type: "void" }
       }
       case "createAnnotation": {
@@ -291,14 +264,14 @@ export namespace BrowserControl {
           comment: command.comment,
           styleFeedback: command.styleFeedback,
           createdBy: "user",
-          tabID: command.tabId,
+          pageID: command.pageId,
         })
         return { type: "annotation", annotation }
       }
       case "clearDiagnostics": {
-        const tab = resolveTab(session, command.tabId)
-        await tab.clearDiagnostics()
-        return { type: "diagnostics.cleared", tabId: tab.id }
+        const page = resolvePage(session, command.pageId)
+        await page.clearDiagnostics()
+        return { type: "diagnostics.cleared", pageId: page.id }
       }
     }
   }

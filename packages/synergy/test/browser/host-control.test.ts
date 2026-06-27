@@ -5,14 +5,24 @@ import {
   BrowserHostControlNotAttachedError,
   type BrowserHostControlSocket,
 } from "../../src/browser/host-control"
-import { BrowserToolHelper } from "../../src/tool/browser-shared"
 import type { BrowserOwner } from "../../src/browser/owner"
+import { BrowserToolHelper } from "../../src/tool/browser-shared"
 
 const owner: BrowserOwner.Info = {
   directory: "/tmp/synergy",
   scopeID: "scope",
   sessionID: "ses_host",
   mode: "session",
+}
+
+function page(id: string, url = "https://example.com/") {
+  return {
+    id,
+    url,
+    title: "Example",
+    isLoading: false,
+    lastActiveAt: null,
+  }
 }
 
 function socket() {
@@ -31,39 +41,26 @@ describe("BrowserHostControl", () => {
     BrowserHostControl.resetForTest()
   })
 
-  test("records host session state and resolves command results", async () => {
+  test("records host page state and resolves command results", async () => {
     const host = socket()
-    const connection = BrowserHostControl.attach(owner, host.peer)
+    const connection = BrowserHostControl.attach(owner, host.peer, { pageId: "page_1" })
     connection.handleMessage({
       type: "browser.host.ready",
-      session: {
-        tabs: [
-          {
-            id: "tab_1",
-            url: "https://example.com/",
-            title: "Example",
-            isLoading: false,
-            pinned: false,
-            kept: false,
-            lastActiveAt: null,
-          },
-        ],
-        activeTabId: "tab_1",
-      },
+      session: { page: page("page_1") },
     })
 
-    expect(BrowserHostControl.sessionState(owner)?.activeTabId).toBe("tab_1")
+    expect(BrowserHostControl.sessionState(owner)?.page?.id).toBe("page_1")
 
     const resultPromise = BrowserHostControl.execute(owner, {
       type: "navigate",
-      tabId: "tab_1",
+      pageId: "page_1",
       url: "https://example.com/docs",
     })
     const request = host.messages.find((message) => message.type === "browser.host.command")!
 
     expect(request).toMatchObject({
       type: "browser.host.command",
-      command: { type: "navigate", tabId: "tab_1", url: "https://example.com/docs" },
+      command: { type: "navigate", pageId: "page_1", url: "https://example.com/docs" },
     })
 
     connection.handleMessage({
@@ -73,14 +70,9 @@ describe("BrowserHostControl", () => {
         type: "navigation",
         url: "https://example.com/docs",
         title: "Docs",
-        tab: {
-          id: "tab_1",
-          url: "https://example.com/docs",
+        page: {
+          ...page("page_1", "https://example.com/docs"),
           title: "Docs",
-          isLoading: false,
-          pinned: false,
-          kept: false,
-          lastActiveAt: null,
         },
       },
     })
@@ -88,180 +80,63 @@ describe("BrowserHostControl", () => {
     await expect(resultPromise).resolves.toMatchObject({ type: "navigation", title: "Docs" })
   })
 
-  test("forwards host events to owner observers", () => {
+  test("forwards host page events to owner observers", () => {
     const host = socket()
     const events: Record<string, unknown>[] = []
     const unsubscribe = BrowserHostControl.addObserver(owner, (event) => events.push(event))
-    const connection = BrowserHostControl.attach(owner, host.peer)
+    const connection = BrowserHostControl.attach(owner, host.peer, { pageId: "page_1" })
 
     connection.handleMessage({
       type: "browser.host.event",
-      event: { type: "page.loaded", tabId: "tab_1", url: "https://example.com/" },
+      event: { type: "page.loaded", pageId: "page_1", url: "https://example.com/" },
     })
 
     unsubscribe()
-    expect(events).toContainEqual({ type: "page.loaded", tabId: "tab_1", url: "https://example.com/" })
+    expect(events).toContainEqual({ type: "page.loaded", pageId: "page_1", url: "https://example.com/" })
   })
 
   test("tracks host readiness and resolves ready waiters", async () => {
     const host = socket()
-    const ready = BrowserHostControl.waitForReady(owner, "tab_1", 1_000)
-    const connection = BrowserHostControl.attach(owner, host.peer, { tabId: "tab_1", traceId: "trace_1" })
+    const ready = BrowserHostControl.waitForReady(owner, "page_1", 1_000)
+    const connection = BrowserHostControl.attach(owner, host.peer, { pageId: "page_1", traceId: "trace_1" })
 
-    expect(BrowserHostControl.status(owner, "tab_1")).toBe("pending")
-    expect(BrowserHostControl.isReady(owner, "tab_1")).toBe(false)
+    expect(BrowserHostControl.status(owner, "page_1")).toBe("pending")
+    expect(BrowserHostControl.isReady(owner, "page_1")).toBe(false)
 
     connection.handleMessage({
       type: "browser.host.ready",
-      session: {
-        tabs: [
-          {
-            id: "tab_1",
-            url: "https://example.com/",
-            title: "Example",
-            isLoading: false,
-            pinned: false,
-            kept: false,
-            lastActiveAt: null,
-          },
-        ],
-        activeTabId: "tab_1",
-      },
+      session: { page: page("page_1") },
     })
 
     await expect(ready).resolves.toBe(connection)
-    expect(BrowserHostControl.status(owner, "tab_1")).toBe("ready")
-    expect(BrowserHostControl.isReady(owner, "tab_1")).toBe(true)
+    expect(BrowserHostControl.status(owner, "page_1")).toBe("ready")
+    expect(BrowserHostControl.isReady(owner, "page_1")).toBe(true)
   })
 
   test("throws a typed error when no host can handle a command", async () => {
-    await expect(BrowserHostControl.execute(owner, { type: "reload", tabId: "missing" })).rejects.toBeInstanceOf(
+    await expect(BrowserHostControl.execute(owner, { type: "reload", pageId: "missing" })).rejects.toBeInstanceOf(
       BrowserHostControlNotAttachedError,
     )
   })
 
-  test("merges takeover ready state but lets session state replace removed tabs", () => {
-    const host = socket()
-    const connection = BrowserHostControl.attach(owner, host.peer)
-
-    connection.handleMessage({
-      type: "browser.host.ready",
-      session: {
-        tabs: [
-          {
-            id: "tab_1",
-            url: "https://example.com/",
-            title: "Example",
-            isLoading: false,
-            pinned: false,
-            kept: false,
-            lastActiveAt: null,
-          },
-        ],
-        activeTabId: "tab_1",
-      },
-    })
-    connection.handleMessage({
-      type: "browser.host.ready",
-      session: {
-        tabs: [
-          {
-            id: "tab_2",
-            url: "https://example.org/",
-            title: "Example Org",
-            isLoading: false,
-            pinned: false,
-            kept: false,
-            lastActiveAt: null,
-          },
-        ],
-        activeTabId: "tab_2",
-      },
-    })
-
-    expect(BrowserHostControl.sessionState(owner)).toMatchObject({
-      tabs: [{ id: "tab_1" }, { id: "tab_2" }],
-      activeTabId: "tab_2",
-    })
-
-    connection.handleMessage({
-      type: "browser.host.session",
-      session: {
-        tabs: [
-          {
-            id: "tab_2",
-            url: "https://example.org/",
-            title: "Example Org",
-            isLoading: false,
-            pinned: false,
-            kept: false,
-            lastActiveAt: null,
-          },
-        ],
-        activeTabId: "tab_2",
-      },
-    })
-
-    expect(BrowserHostControl.sessionState(owner)).toMatchObject({
-      tabs: [{ id: "tab_2" }],
-      activeTabId: "tab_2",
-    })
-  })
-
-  test("routes commands across per-tab Browser Host connections", async () => {
+  test("routes commands to the exact per-page Browser Host connection", async () => {
     const host1 = socket()
     const host2 = socket()
-    const connection1 = BrowserHostControl.attach(owner, host1.peer, { tabId: "tab_1" })
-    const connection2 = BrowserHostControl.attach(owner, host2.peer, { tabId: "tab_2" })
+    const connection1 = BrowserHostControl.attach(owner, host1.peer, { pageId: "page_1" })
+    const connection2 = BrowserHostControl.attach(owner, host2.peer, { pageId: "page_2" })
 
-    connection1.handleMessage({
-      type: "browser.host.ready",
-      session: {
-        tabs: [
-          {
-            id: "tab_1",
-            url: "https://example.com/",
-            title: "Example",
-            isLoading: false,
-            pinned: false,
-            kept: false,
-            lastActiveAt: null,
-          },
-        ],
-        activeTabId: "tab_1",
-      },
-    })
-    connection2.handleMessage({
-      type: "browser.host.ready",
-      session: {
-        tabs: [
-          {
-            id: "tab_2",
-            url: "https://example.org/",
-            title: "Example Org",
-            isLoading: false,
-            pinned: false,
-            kept: false,
-            lastActiveAt: null,
-          },
-        ],
-        activeTabId: "tab_2",
-      },
-    })
-
-    expect(BrowserHostControl.sessionState(owner)).toMatchObject({
-      tabs: [{ id: "tab_1" }, { id: "tab_2" }],
-      activeTabId: "tab_2",
-    })
+    connection1.handleMessage({ type: "browser.host.ready", session: { page: page("page_1") } })
+    connection2.handleMessage({ type: "browser.host.ready", session: { page: page("page_2", "https://example.org/") } })
 
     const navigatePromise = BrowserHostControl.execute(owner, {
       type: "navigate",
-      tabId: "tab_1",
+      pageId: "page_1",
       url: "https://example.com/docs",
     })
     const navigateRequest = host1.messages.find((message) => message.type === "browser.host.command")!
-    expect(navigateRequest).toMatchObject({ command: { type: "navigate", tabId: "tab_1" } })
+    expect(navigateRequest).toMatchObject({ command: { type: "navigate", pageId: "page_1" } })
     expect(host2.messages.find((message) => message.type === "browser.host.command")).toBeUndefined()
+
     connection1.handleMessage({
       type: "browser.host.result",
       id: navigateRequest.id,
@@ -269,91 +144,18 @@ describe("BrowserHostControl", () => {
         type: "navigation",
         url: "https://example.com/docs",
         title: "Docs",
-        tab: {
-          id: "tab_1",
-          url: "https://example.com/docs",
+        page: {
+          ...page("page_1", "https://example.com/docs"),
           title: "Docs",
-          isLoading: false,
-          pinned: false,
-          kept: false,
-          lastActiveAt: null,
         },
       },
     })
-    await expect(navigatePromise).resolves.toMatchObject({ type: "navigation", tab: { id: "tab_1" } })
-
-    const createPromise = BrowserHostControl.execute(owner, { type: "createTab", url: "https://example.net/" })
-    const createRequest = host2.messages.find((message) => message.type === "browser.host.command")!
-    expect(createRequest).toMatchObject({ command: { type: "createTab", url: "https://example.net/" } })
-    connection2.handleMessage({
-      type: "browser.host.result",
-      id: createRequest.id,
-      result: {
-        type: "tab",
-        tab: {
-          id: "tab_3",
-          url: "https://example.net/",
-          title: "Example Net",
-          isLoading: false,
-          pinned: false,
-          kept: false,
-          lastActiveAt: null,
-        },
-      },
-    })
-    await expect(createPromise).resolves.toMatchObject({ type: "tab", tab: { id: "tab_3" } })
-  })
-
-  test("BrowserHost routes tab creation through an attached host", async () => {
-    const host = socket()
-    const connection = BrowserHostControl.attach(owner, host.peer)
-    const restore = BrowserHost.useRuntimeForTest({
-      async ensure() {
-        throw new Error("runtime should not be used when host is attached")
-      },
-      async health() {
-        return { running: false, chromiumPath: null, installed: false, version: null }
-      },
-      async getOrCreateSession() {
-        throw new Error("runtime should not be used when host is attached")
-      },
-    })
-
-    try {
-      const resultPromise = BrowserHost.executeAttached(owner, { type: "createTab", url: "https://example.com/" })
-      const request = host.messages.find((message) => message.type === "browser.host.command")!
-
-      expect(request).toMatchObject({
-        type: "browser.host.command",
-        command: { type: "createTab", url: "https://example.com/" },
-      })
-
-      connection.handleMessage({
-        type: "browser.host.result",
-        id: request.id,
-        result: {
-          type: "tab",
-          tab: {
-            id: "tab_2",
-            url: "https://example.com/",
-            title: "Example",
-            isLoading: false,
-            pinned: false,
-            kept: false,
-            lastActiveAt: null,
-          },
-        },
-      })
-
-      await expect(resultPromise).resolves.toMatchObject({ type: "tab", tab: { id: "tab_2" } })
-    } finally {
-      restore()
-    }
+    await expect(navigatePromise).resolves.toMatchObject({ type: "navigation", page: { id: "page_1" } })
   })
 
   test("BrowserHost normalizes address-bar URLs before sending commands to an attached host", async () => {
     const host = socket()
-    const connection = BrowserHostControl.attach(owner, host.peer, { tabId: "tab_1" })
+    const connection = BrowserHostControl.attach(owner, host.peer, { pageId: "page_1" })
     const restore = BrowserHost.useRuntimeForTest({
       async ensure() {
         throw new Error("runtime should not be used when host is attached")
@@ -369,7 +171,7 @@ describe("BrowserHostControl", () => {
     try {
       const resultPromise = BrowserHost.executeAttached(owner, {
         type: "navigate",
-        tabId: "tab_1",
+        pageId: "page_1",
         url: "www.google.com",
         source: "user",
       })
@@ -377,7 +179,7 @@ describe("BrowserHostControl", () => {
 
       expect(request).toMatchObject({
         type: "browser.host.command",
-        command: { type: "navigate", tabId: "tab_1", url: "https://www.google.com" },
+        command: { type: "navigate", pageId: "page_1", url: "https://www.google.com" },
       })
 
       connection.handleMessage({
@@ -387,14 +189,9 @@ describe("BrowserHostControl", () => {
           type: "navigation",
           url: "https://www.google.com/",
           title: "Google",
-          tab: {
-            id: "tab_1",
-            url: "https://www.google.com/",
+          page: {
+            ...page("page_1", "https://www.google.com/"),
             title: "Google",
-            isLoading: false,
-            pinned: false,
-            kept: false,
-            lastActiveAt: null,
           },
         },
       })
@@ -405,25 +202,12 @@ describe("BrowserHostControl", () => {
     }
   })
 
-  test("tool helpers resolve attached Browser Host tabs before runtime fallback", async () => {
+  test("tool helpers resolve attached Browser Host pages before runtime", async () => {
     const host = socket()
-    const connection = BrowserHostControl.attach(owner, host.peer)
+    const connection = BrowserHostControl.attach(owner, host.peer, { pageId: "page_1" })
     connection.handleMessage({
       type: "browser.host.ready",
-      session: {
-        tabs: [
-          {
-            id: "tab_1",
-            url: "https://example.com/",
-            title: "Example",
-            isLoading: false,
-            pinned: false,
-            kept: false,
-            lastActiveAt: null,
-          },
-        ],
-        activeTabId: "tab_1",
-      },
+      session: { page: page("page_1") },
     })
     const restore = BrowserHost.useRuntimeForTest({
       async ensure() {
@@ -438,24 +222,24 @@ describe("BrowserHostControl", () => {
     })
 
     try {
-      const tab = await BrowserToolHelper.getTab(owner)
-      expect(tab.id).toBe("tab_1")
-      expect(tab.page).toBeUndefined()
+      const resolved = await BrowserToolHelper.getPage(owner)
+      expect(resolved.id).toBe("page_1")
+      expect(resolved.page).toBeUndefined()
 
-      const screenshotPromise = tab.screenshot("png")
+      const screenshotPromise = resolved.screenshot("png")
       const request = host.messages.find(
         (message) =>
           message.type === "browser.host.command" && (message.command as { type?: string }).type === "screenshot",
       )!
       expect(request).toMatchObject({
-        command: { type: "screenshot", tabId: "tab_1", format: "png" },
+        command: { type: "screenshot", pageId: "page_1", format: "png" },
       })
       connection.handleMessage({
         type: "browser.host.result",
         id: request.id,
         result: {
           type: "screenshot",
-          tabId: "tab_1",
+          pageId: "page_1",
           dataUrl: `data:image/png;base64,${Buffer.from("ok").toString("base64")}`,
           width: 10,
           height: 20,
@@ -463,31 +247,6 @@ describe("BrowserHostControl", () => {
       })
 
       await expect(screenshotPromise).resolves.toEqual({ buffer: Buffer.from("ok"), width: 10, height: 20 })
-
-      const cdp = await tab.ensureCDP()
-      const cdpPromise = cdp.send("Runtime.evaluate", { expression: "1 + 1" })
-      const cdpRequest = host.messages.find(
-        (message) => message.type === "browser.host.command" && (message.command as { type?: string }).type === "cdp",
-      )!
-      expect(cdpRequest).toMatchObject({
-        command: {
-          type: "cdp",
-          tabId: "tab_1",
-          method: "Runtime.evaluate",
-          params: { expression: "1 + 1" },
-        },
-      })
-      connection.handleMessage({
-        type: "browser.host.result",
-        id: cdpRequest.id,
-        result: {
-          type: "cdp",
-          tabId: "tab_1",
-          value: { result: { value: 2 } },
-        },
-      })
-
-      await expect(cdpPromise).resolves.toEqual({ result: { value: 2 } })
     } finally {
       restore()
     }

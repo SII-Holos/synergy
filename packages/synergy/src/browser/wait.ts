@@ -38,7 +38,7 @@ export namespace BrowserWait {
   /**
    * Wait for a locator to appear in the page.
    * Uses Playwright locator.waitFor when a page is available, falling back
-   * to BrowserLocator.resolve polling on snapshot-based tabs.
+   * to BrowserLocator.resolve polling on snapshot-based pages.
    */
   export async function waitForLocator(
     tab: BrowserTab,

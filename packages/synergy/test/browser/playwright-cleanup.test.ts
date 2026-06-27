@@ -51,9 +51,8 @@ describe("playwright cleanup: banned CDP tokens", () => {
 })
 
 // ── Runtime.evaluate scoping ────────────────────────────────────
-// After migration, Runtime.evaluate must live ONLY in eval.ts for
-// the readonly eval bridge. It must not appear in actions.ts,
-// tab.ts, or any other browser module.
+// Runtime.evaluate lives only in eval.ts for the readonly eval bridge.
+// It must not appear in actions.ts, tab.ts, or any other browser module.
 
 describe("playwright cleanup: Runtime.evaluate scoping", () => {
   const runtimeEvalFiles = browserFiles().filter((f) => f !== "eval.ts")

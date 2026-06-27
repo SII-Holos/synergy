@@ -15,8 +15,8 @@ let seq = 0
 function nextContextId(): string {
   return `ctx-${++seq}`
 }
-function nextTabId(): string {
-  return `tab-${++seq}`
+function nextPageId(): string {
+  return `page-${++seq}`
 }
 
 export class PlaywrightBrowserDriver implements BrowserDriver.Driver {
@@ -127,9 +127,9 @@ export class PlaywrightBrowserDriver implements BrowserDriver.Driver {
     const ctx = this.contexts.get(key)!
     if (!ctx.browserContext) throw new Error("Browser context is not available")
     const page = await ctx.browserContext.newPage()
-    const tabID = nextTabId()
-    ;(page as unknown as Record<string, unknown>)._synergyTabID = tabID
-    this.pages.get(key)!.set(tabID, page)
+    const pageID = nextPageId()
+    ;(page as unknown as Record<string, unknown>)._synergyPageID = pageID
+    this.pages.get(key)!.set(pageID, page)
     // Do not navigate here. BrowserSession/BrowserTab.navigate performs URL policy checks.
     return page
   }

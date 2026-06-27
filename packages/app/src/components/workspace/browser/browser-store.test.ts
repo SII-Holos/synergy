@@ -2,60 +2,29 @@ import { describe, expect, test } from "bun:test"
 import { createRoot } from "solid-js"
 import { createBrowserStore } from "./browser-store"
 
-describe("createBrowserStore follow agent", () => {
-  test("follows agent activity by default", () => {
+describe("createBrowserStore activity", () => {
+  test("records agent activity without changing the single visible page", () => {
     createRoot((dispose) => {
       const store = createBrowserStore()
-      const sent: Record<string, unknown>[] = []
-      store._setSend((msg) => sent.push(msg))
-      store.setSession("tabs", [
-        { id: "user-tab", title: "User", url: "https://user.test", isLoading: false },
-        { id: "agent-tab", title: "Agent", url: "https://agent.test", isLoading: false },
-      ])
-      store.setSession("visibleTabId", "user-tab")
+      store.setSession("page", { id: "page-user", title: "User", url: "https://user.test", isLoading: false })
 
       store.applyAgentActivity({
-        tabId: "agent-tab",
+        pageId: "page-agent",
         url: "https://agent.test",
         kind: "acting",
         tool: "browser_click",
         label: "Clicking",
       })
 
-      expect(store.activeTabId()).toBe("agent-tab")
-      expect(sent).toEqual([])
-      dispose()
-    })
-  })
-
-  test("does not steal focus when follow agent is disabled", () => {
-    createRoot((dispose) => {
-      const store = createBrowserStore()
-      store._setSend(() => {})
-      store.setSession("tabs", [
-        { id: "user-tab", title: "User", url: "https://user.test", isLoading: false },
-        { id: "agent-tab", title: "Agent", url: "https://agent.test", isLoading: false },
-      ])
-      store.setSession("visibleTabId", "user-tab")
-      store.setFollowAgent(false)
-
-      store.applyAgentActivity({
-        tabId: "agent-tab",
-        url: "https://agent.test",
-        kind: "acting",
-        tool: "browser_type",
-        label: "Typing",
-      })
-
-      expect(store.activeTabId()).toBe("user-tab")
-      expect(store.agentActivity().tabId).toBe("agent-tab")
+      expect(store.pageId()).toBe("page-user")
+      expect(store.agentActivity().pageId).toBe("page-agent")
       dispose()
     })
   })
 })
 
 describe("createBrowserStore navigate", () => {
-  test("creates a tab with the URL when no tab is open", () => {
+  test("sends navigate without a page id when no page exists", () => {
     createRoot((dispose) => {
       const store = createBrowserStore()
       const sent: Record<string, unknown>[] = []
@@ -65,26 +34,25 @@ describe("createBrowserStore navigate", () => {
 
       expect(sent).toEqual([
         { type: "setFollowAgent", enabled: false },
-        { type: "createTab", url: "www.google.com" },
+        { type: "navigate", source: "user", url: "www.google.com", pageId: undefined },
       ])
       dispose()
     })
   })
 
-  test("navigates the active tab when one is open", () => {
+  test("navigates the existing page when one is open", () => {
     createRoot((dispose) => {
       const store = createBrowserStore()
       const sent: Record<string, unknown>[] = []
       store._setSend((msg) => sent.push(msg))
-      store.setSession("tabs", [{ id: "tab-1", title: "Start", url: "about:blank", isLoading: false }])
-      store.setSession("activeTabId", "tab-1")
+      store.setSession("page", { id: "page-1", title: "Start", url: "about:blank", isLoading: false })
 
       store.navigate("www.google.com")
 
-      expect(store.session.tabs[0]?.isLoading).toBe(true)
+      expect(store.session.page?.isLoading).toBe(true)
       expect(sent).toEqual([
         { type: "setFollowAgent", enabled: false },
-        { type: "navigate", source: "user", url: "www.google.com", tabId: "tab-1" },
+        { type: "navigate", source: "user", url: "www.google.com", pageId: "page-1" },
       ])
       dispose()
     })
@@ -92,13 +60,11 @@ describe("createBrowserStore navigate", () => {
 })
 
 describe("createBrowserStore viewport", () => {
-  test("starts in fit mode and records tabless manual viewport changes locally", () => {
+  test("records pageless manual viewport changes locally", () => {
     createRoot((dispose) => {
       const store = createBrowserStore()
       const sent: Record<string, unknown>[] = []
       store._setSend((msg) => sent.push(msg))
-
-      expect(store.viewportMode()).toBe("fit")
 
       store.setViewport(375.4, 667.6)
 
@@ -115,8 +81,7 @@ describe("createBrowserStore viewport", () => {
       const store = createBrowserStore()
       const sent: Record<string, unknown>[] = []
       store._setSend((msg) => sent.push(msg))
-      store.setSession("tabs", [{ id: "tab-1", title: "Start", url: "about:blank", isLoading: false }])
-      store.setSession("activeTabId", "tab-1")
+      store.setSession("page", { id: "page-1", title: "Start", url: "about:blank", isLoading: false })
 
       store.setViewport(900, 640, { mode: "fit" })
 
@@ -125,7 +90,7 @@ describe("createBrowserStore viewport", () => {
       expect(store.viewportHeight()).toBe(640)
       expect(sent.at(-1)).toMatchObject({
         type: "input.resize",
-        tabId: "tab-1",
+        pageId: "page-1",
         width: 900,
         height: 640,
       })
@@ -144,20 +109,19 @@ describe("createBrowserStore viewport", () => {
         capabilities: { native: true, webrtc: true },
         reason: "remote-client",
       })
-      store.setSession("tabs", [{ id: "tab-1", title: "Start", url: "about:blank", isLoading: false }])
-      store.setSession("activeTabId", "tab-1")
+      store.setSession("page", { id: "page-1", title: "Start", url: "about:blank", isLoading: false })
 
       store.setViewport(800, 600, { mode: "fit" })
       store.setViewport(1024, 768, { mode: "fit" })
 
       expect(sent).toEqual([])
 
-      store.setHostStatus("tab-1", "ready")
+      store.setHostStatus("page-1", "ready")
 
       expect(sent).toHaveLength(1)
       expect(sent[0]).toMatchObject({
         type: "input.resize",
-        tabId: "tab-1",
+        pageId: "page-1",
         width: 1024,
         height: 768,
       })

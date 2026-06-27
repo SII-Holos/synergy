@@ -362,7 +362,7 @@ export class BrowserTabImpl implements BrowserTab {
       this.downloads.push(entry)
       BrowserDownloads.add({
         id,
-        tabID: this.id,
+        pageID: this.id,
         url: entry.url,
         suggestedFilename: entry.fileName,
         mimeType,

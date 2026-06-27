@@ -1,5 +1,4 @@
 import { BrowserWindow, WebContentsView } from "electron"
-import { randomUUID } from "node:crypto"
 import { normalizeBrowserURL } from "@ericsanchezok/synergy-util/browser-protocol"
 import { BrowserHostDiagnostics } from "./browser-host-diagnostics.js"
 import { BrowserWebContentsControl, UnsupportedBrowserWebContentsCommandError } from "./browser-webcontents-control.js"
@@ -19,68 +18,67 @@ export interface BrowserNativeAttachRequest {
   directory?: string
   scopeID?: string
   scopeKey?: string
-  tabId: string
+  pageId: string
   url?: string
   bounds?: BrowserNativeBounds
 }
 
 export type BrowserNativeViewEvent =
-  | { type: "native.loading"; tabId: string; url?: string }
-  | { type: "native.loaded"; tabId: string; url?: string; title?: string }
-  | { type: "native.navigated"; tabId: string; url: string }
-  | { type: "native.title"; tabId: string; title: string }
-  | { type: "native.console"; tabId: string; level: number; message: string; line?: number; sourceId?: string }
-  | { type: "native.error"; tabId: string; code?: number; message: string; url?: string }
+  | { type: "native.loading"; pageId: string; url?: string }
+  | { type: "native.loaded"; pageId: string; url?: string; title?: string }
+  | { type: "native.navigated"; pageId: string; url: string }
+  | { type: "native.title"; pageId: string; title: string }
+  | { type: "native.console"; pageId: string; level: number; message: string; line?: number; sourceId?: string }
+  | { type: "native.error"; pageId: string; code?: number; message: string; url?: string }
 
 export class BrowserNativeViewManager {
-  private views = new Map<string, WebContentsView>()
-  private diagnostics = new Map<string, BrowserHostDiagnostics>()
-  private controlConnections = new Map<string, BrowserNativeHostControlConnection>()
-  private activeTabId: string | null = null
+  private view: WebContentsView | null = null
+  private diagnostics: BrowserHostDiagnostics | null = null
+  private controlConnection: BrowserNativeHostControlConnection | null = null
+  private currentPageId: string | null = null
+  private currentOwnerKey: string | null = null
   private lastBounds: BrowserNativeBounds | null = null
 
   constructor(private window: BrowserWindow) {}
 
   async attach(input: BrowserNativeAttachRequest): Promise<void> {
-    const view = this.views.get(input.tabId) ?? this.createView(input.tabId, input)
-    if (!this.views.has(input.tabId)) {
-      this.views.set(input.tabId, view)
+    const nextOwnerKey = ownerKey(input)
+    if (this.currentPageId && (this.currentPageId !== input.pageId || this.currentOwnerKey !== nextOwnerKey)) {
+      this.destroyView()
     }
-    this.ensureHostControl(input)
 
-    this.activate(input.tabId, view)
+    if (!this.view) {
+      this.view = this.createView(input)
+      this.currentPageId = input.pageId
+      this.currentOwnerKey = nextOwnerKey
+      this.window.contentView.addChildView(this.view)
+    }
+
+    this.ensureHostControl(input)
     if (input.bounds) {
       this.lastBounds = input.bounds
-      this.resize(input.tabId, input.bounds)
+      this.resize(input.pageId, input.bounds)
     }
     if (input.url) {
       const url = normalizeBrowserURL(input.url)
-      if (view.webContents.getURL() !== url) await view.webContents.loadURL(url)
+      if (this.view.webContents.getURL() !== url) await this.view.webContents.loadURL(url)
     }
   }
 
-  detach(tabId: string): void {
-    const view = this.views.get(tabId)
-    if (!view) return
-    if (this.activeTabId === tabId) {
-      this.window.contentView.removeChildView(view)
-      this.activeTabId = null
-    }
-    this.diagnostics.get(tabId)?.dispose()
-    this.diagnostics.delete(tabId)
-    view.webContents.close()
-    this.views.delete(tabId)
-    this.sendHostSessions()
+  detach(pageId: string): void {
+    if (this.currentPageId !== pageId) return
+    this.destroyView()
+    this.sendHostSession()
   }
 
-  focus(tabId: string): void {
-    this.views.get(tabId)?.webContents.focus()
+  focus(pageId: string): void {
+    if (this.currentPageId !== pageId) return
+    this.view?.webContents.focus()
   }
 
-  resize(tabId: string, bounds: BrowserNativeBounds): void {
-    const view = this.views.get(tabId)
-    if (!view) return
-    view.setBounds({
+  resize(pageId: string, bounds: BrowserNativeBounds): void {
+    if (this.currentPageId !== pageId || !this.view) return
+    this.view.setBounds({
       x: Math.max(0, Math.round(bounds.x)),
       y: Math.max(0, Math.round(bounds.y)),
       width: Math.max(1, Math.round(bounds.width)),
@@ -89,67 +87,40 @@ export class BrowserNativeViewManager {
   }
 
   destroy(): void {
-    for (const tabId of this.views.keys()) {
-      this.detach(tabId)
+    this.destroyView()
+    this.controlConnection?.close()
+    this.controlConnection = null
+  }
+
+  private destroyView(): void {
+    if (this.view) {
+      this.window.contentView.removeChildView(this.view)
+      this.view.webContents.close()
     }
-    for (const connection of this.controlConnections.values()) connection.close()
-    this.controlConnections.clear()
+    this.diagnostics?.dispose()
+    this.diagnostics = null
+    this.view = null
+    this.currentPageId = null
   }
 
   private ensureHostControl(input: BrowserNativeAttachRequest): void {
+    if (!input.serverUrl) return
     const key = ownerKey(input)
-    if (!input.serverUrl || this.controlConnections.has(key)) return
-    const connection = new BrowserNativeHostControlConnection(input, {
+    if (this.controlConnection && this.controlConnection.key === key) return
+    this.controlConnection?.close()
+    this.controlConnection = new BrowserNativeHostControlConnection(input, {
       getSessionState: () => this.sessionState(),
-      getActiveTabId: () => this.activeTabId,
-      getView: (tabId?: string | null) => this.views.get(tabId || this.activeTabId || ""),
-      getDiagnostics: (tabId?: string | null) => this.diagnostics.get(tabId || this.activeTabId || ""),
-      createTab: (url?: string) => this.createManagedTab(input, url),
-      closeTab: async (tabId: string) => {
-        this.detach(tabId)
-        return this.sessionState()
-      },
-      switchTab: (tabId: string) => {
-        const view = this.views.get(tabId)
-        if (!view) throw new Error(`Browser tab not found: ${tabId}`)
-        this.activate(tabId, view)
-        return this.tabState(tabId, view)
-      },
+      getPageId: () => this.currentPageId,
+      getView: () => this.view ?? undefined,
+      getDiagnostics: () => this.diagnostics ?? undefined,
     })
-    this.controlConnections.set(key, connection)
-    connection.connect()
+    this.controlConnection.connect()
   }
 
-  private async createManagedTab(input: BrowserNativeAttachRequest, url?: string): Promise<BrowserNativeTabState> {
-    const tabId = randomUUID()
-    const view = this.createView(tabId, input)
-    this.views.set(tabId, view)
-    this.activate(tabId, view)
-    if (this.lastBounds) this.resize(tabId, this.lastBounds)
-    if (url) await view.webContents.loadURL(normalizeBrowserURL(url))
-    const tab = this.tabState(tabId, view)
-    for (const connection of this.controlConnections.values()) {
-      connection.emitHostEvent({ type: "tab.created", tab, active: true })
-      connection.sendHostSession()
-    }
-    return tab
-  }
-
-  private activate(tabId: string, view: WebContentsView): void {
-    if (this.activeTabId === tabId) return
-    if (this.activeTabId) {
-      const active = this.views.get(this.activeTabId)
-      if (active) this.window.contentView.removeChildView(active)
-    }
-    this.window.contentView.addChildView(view)
-    this.activeTabId = tabId
-  }
-
-  private createView(tabId: string, input: BrowserNativeAttachRequest): WebContentsView {
-    const partition = browserProfilePartition(input)
+  private createView(input: BrowserNativeAttachRequest): WebContentsView {
     const view = new WebContentsView({
       webPreferences: {
-        partition,
+        partition: browserProfilePartition(input),
         contextIsolation: true,
         nodeIntegration: false,
         sandbox: true,
@@ -160,103 +131,97 @@ export class BrowserNativeViewManager {
       callback(false)
     })
     contents.on("did-start-loading", () => {
-      this.emit({ type: "native.loading", tabId, url: contents.getURL() })
+      this.emit({ type: "native.loading", pageId: input.pageId, url: contents.getURL() })
     })
     contents.on("did-stop-loading", () => {
-      this.emit({ type: "native.loaded", tabId, url: contents.getURL(), title: contents.getTitle() })
+      this.emit({ type: "native.loaded", pageId: input.pageId, url: contents.getURL(), title: contents.getTitle() })
     })
     contents.on("did-navigate", (_event, url) => {
-      this.emit({ type: "native.navigated", tabId, url })
+      this.emit({ type: "native.navigated", pageId: input.pageId, url })
     })
     contents.on("did-navigate-in-page", (_event, url) => {
-      this.emit({ type: "native.navigated", tabId, url })
+      this.emit({ type: "native.navigated", pageId: input.pageId, url })
     })
     contents.on("page-title-updated", (_event, title) => {
-      this.emit({ type: "native.title", tabId, title })
+      this.emit({ type: "native.title", pageId: input.pageId, title })
     })
     contents.on("console-message", (_event, level, message, line, sourceId) => {
-      this.emit({ type: "native.console", tabId, level, message, line, sourceId })
+      this.emit({ type: "native.console", pageId: input.pageId, level, message, line, sourceId })
     })
     contents.on("did-fail-load", (_event, code, message, url) => {
-      this.emit({ type: "native.error", tabId, code, message, url })
+      this.emit({ type: "native.error", pageId: input.pageId, code, message, url })
     })
-    const diagnostics = new BrowserHostDiagnostics({
-      tabId,
+    this.diagnostics = new BrowserHostDiagnostics({
+      pageId: input.pageId,
       contents,
       emitHostEvent: (event) => this.emitHostEvent(event),
     })
-    diagnostics.start()
-    this.diagnostics.set(tabId, diagnostics)
+    this.diagnostics.start()
     return view
   }
 
   private emit(event: BrowserNativeViewEvent): void {
-    for (const connection of this.controlConnections.values()) connection.emitNativeEvent(event)
+    this.controlConnection?.emitNativeEvent(event)
     if (this.window.isDestroyed()) return
     this.window.webContents.send("browser-native:event", event)
   }
 
   private emitHostEvent(event: Record<string, unknown>): void {
-    for (const connection of this.controlConnections.values()) connection.emitHostEvent(event)
+    this.controlConnection?.emitHostEvent(event)
   }
 
   private sessionState(): BrowserNativeSessionState {
-    const tabs = Array.from(this.views.entries()).map(([id, view]) => this.tabState(id, view))
-    return { tabs, activeTabId: this.activeTabId }
+    if (!this.currentPageId || !this.view) return { page: null }
+    return { page: this.pageState(this.currentPageId, this.view) }
   }
 
-  private tabState(tabId: string, view: WebContentsView): BrowserNativeTabState {
+  private pageState(pageId: string, view: WebContentsView): BrowserNativePageState {
     return {
-      id: tabId,
+      id: pageId,
       url: view.webContents.getURL(),
       title: view.webContents.getTitle(),
       isLoading: view.webContents.isLoading(),
-      pinned: false,
-      kept: false,
       lastActiveAt: null,
     }
   }
 
-  private sendHostSessions(): void {
-    for (const connection of this.controlConnections.values()) connection.sendHostSession()
+  private sendHostSession(): void {
+    this.controlConnection?.sendHostSession()
   }
 }
 
-interface BrowserNativeTabState {
+interface BrowserNativePageState {
   id: string
   url: string
   title: string
   isLoading: boolean
-  pinned: boolean
-  kept: boolean
   lastActiveAt: number | null
 }
 
 interface BrowserNativeSessionState {
-  tabs: BrowserNativeTabState[]
-  activeTabId: string | null
+  page: BrowserNativePageState | null
 }
 
 interface BrowserNativeHostCallbacks {
   getSessionState(): BrowserNativeSessionState
-  getActiveTabId(): string | null
-  getView(tabId?: string | null): WebContentsView | undefined
-  getDiagnostics(tabId?: string | null): BrowserHostDiagnostics | undefined
-  createTab(url?: string): Promise<BrowserNativeTabState>
-  closeTab(tabId: string): Promise<BrowserNativeSessionState>
-  switchTab(tabId: string): BrowserNativeTabState
+  getPageId(): string | null
+  getView(): WebContentsView | undefined
+  getDiagnostics(): BrowserHostDiagnostics | undefined
 }
 
 class BrowserNativeHostControlConnection {
   private ws: WebSocket | null = null
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null
   private closed = false
-  private controls = new Map<string, BrowserWebContentsControl>()
+  private control: BrowserWebContentsControl | null = null
+  readonly key: string
 
   constructor(
     private input: BrowserNativeAttachRequest,
     private host: BrowserNativeHostCallbacks,
-  ) {}
+  ) {
+    this.key = ownerKey(input)
+  }
 
   connect(): void {
     if (this.closed || !this.input.serverUrl) return
@@ -291,31 +256,26 @@ class BrowserNativeHostControlConnection {
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer)
     this.ws?.close()
     this.ws = null
+    this.control = null
   }
 
   emitNativeEvent(event: BrowserNativeViewEvent): void {
     switch (event.type) {
       case "native.loading":
-        this.send({ type: "browser.host.event", event: { type: "page.loading", tabId: event.tabId, url: event.url } })
+        this.send({ type: "browser.host.event", event: { type: "page.loading", pageId: event.pageId, url: event.url } })
         break
       case "native.loaded":
         this.send({
           type: "browser.host.event",
-          event: { type: "page.loaded", tabId: event.tabId, url: event.url, title: event.title },
+          event: { type: "page.loaded", pageId: event.pageId, url: event.url, title: event.title },
         })
         this.sendHostSession()
         break
       case "native.navigated":
-        this.send({
-          type: "browser.host.event",
-          event: { type: "tab.updated", tab: this.tabStateForEvent(event.tabId) },
-        })
-        this.sendHostSession()
-        break
       case "native.title":
         this.send({
           type: "browser.host.event",
-          event: { type: "tab.updated", tab: this.tabStateForEvent(event.tabId) },
+          event: { type: "page.updated", page: this.host.getSessionState().page },
         })
         this.sendHostSession()
         break
@@ -324,7 +284,7 @@ class BrowserNativeHostControlConnection {
           type: "browser.host.event",
           event: {
             type: "page.error",
-            tabId: event.tabId,
+            pageId: event.pageId,
             url: event.url,
             message: event.message,
           },
@@ -355,56 +315,33 @@ class BrowserNativeHostControlConnection {
   }
 
   private async execute(command: Record<string, unknown>): Promise<Record<string, unknown>> {
-    if (command.type === "createTab") {
-      const tab = await this.host.createTab(typeof command.url === "string" ? command.url : undefined)
-      return { type: "tab", tab }
-    }
-    if (command.type === "closeTab") {
-      const tabId = String(command.tabId ?? this.host.getActiveTabId() ?? "")
-      const session = await this.host.closeTab(tabId)
-      this.controls.delete(tabId)
-      return { type: "session", session }
-    }
-    if (command.type === "switchTab") {
-      const tab = this.host.switchTab(String(command.tabId ?? ""))
-      this.sendHostSession()
-      return { type: "tab", tab }
-    }
-
-    const tabId = typeof command.tabId === "string" ? command.tabId : this.host.getActiveTabId()
-    const view = this.host.getView(tabId)
-    if (!view) throw new Error(tabId ? `Browser tab not found: ${tabId}` : "No active browser tab")
-    return this.controlFor(tabId!, view).execute(command)
+    const pageId = typeof command.pageId === "string" ? command.pageId : this.host.getPageId()
+    if (!pageId) throw new Error("No browser page is open")
+    if (pageId !== this.host.getPageId()) throw new UnsupportedNativeCommandError(String(command.type ?? "unknown"))
+    const view = this.host.getView()
+    if (!view) throw new Error("Browser page not found")
+    return this.controlFor(pageId, view).execute(command)
   }
 
-  private controlFor(tabId: string, view: WebContentsView): BrowserWebContentsControl {
-    const existing = this.controls.get(tabId)
-    if (existing) return existing
-    const control = new BrowserWebContentsControl({
-      tabId,
+  private controlFor(pageId: string, view: WebContentsView): BrowserWebContentsControl {
+    if (this.control) return this.control
+    this.control = new BrowserWebContentsControl({
+      pageId,
       contents: () => view.webContents,
-      diagnostics: () => this.host.getDiagnostics(tabId),
-      tabState: () => this.tabState(tabId, view),
+      diagnostics: () => this.host.getDiagnostics(),
+      pageState: () => this.pageState(pageId, view),
     })
-    this.controls.set(tabId, control)
-    return control
+    return this.control
   }
 
-  private tabState(tabId: string, view: WebContentsView): BrowserNativeTabState {
+  private pageState(pageId: string, view: WebContentsView): BrowserNativePageState {
     return {
-      id: tabId,
+      id: pageId,
       url: view.webContents.getURL(),
       title: view.webContents.getTitle(),
       isLoading: view.webContents.isLoading(),
-      pinned: false,
-      kept: false,
       lastActiveAt: null,
     }
-  }
-
-  private tabStateForEvent(tabId: string): BrowserNativeTabState | null {
-    const view = this.host.getView(tabId)
-    return view ? this.tabState(tabId, view) : null
   }
 
   private controlUrl(): string | null {
@@ -416,6 +353,7 @@ class BrowserNativeHostControlConnection {
       presentation: "native",
       client: "desktop",
       sameHost: "1",
+      pageId: this.input.pageId,
     })
     if (this.input.scopeID) params.set("scopeID", this.input.scopeID)
     else if (this.input.directory) params.set("directory", this.input.directory)

@@ -2,22 +2,20 @@ import { normalizeBrowserURL } from "@ericsanchezok/synergy-util/browser-protoco
 import { BrowserHostDiagnostics, type BrowserHostUploadFile } from "./browser-host-diagnostics.js"
 import { inputModifiers } from "./browser-input.js"
 
-export interface BrowserWebContentsTabState {
+export interface BrowserWebContentsPageState {
   id: string
   url: string
   title: string
   isLoading: boolean
-  pinned: boolean
-  kept: boolean
   lastActiveAt: number | null
 }
 
 export interface BrowserWebContentsControlTarget {
-  tabId: string
+  pageId: string
   contents(): Electron.WebContents | undefined
   diagnostics?(): BrowserHostDiagnostics | undefined
   resize?(width: number, height: number): void
-  tabState(): BrowserWebContentsTabState
+  pageState(): BrowserWebContentsPageState
 }
 
 export class UnsupportedBrowserWebContentsCommandError extends Error {
@@ -60,7 +58,7 @@ export class BrowserWebContentsControl {
   async execute(command: Record<string, unknown>): Promise<Record<string, unknown>> {
     const contents = this.requireContents()
     const diagnostics = this.target.diagnostics?.()
-    const tabId = this.target.tabId
+    const pageId = this.target.pageId
 
     switch (command.type) {
       case "navigate": {
@@ -68,7 +66,7 @@ export class BrowserWebContentsControl {
         await contents.loadURL(url)
         return {
           type: "navigation",
-          tab: this.target.tabState(),
+          page: this.target.pageState(),
           url: contents.getURL(),
           title: contents.getTitle(),
         }
@@ -88,7 +86,7 @@ export class BrowserWebContentsControl {
         return { type: "void" }
       case "setViewport":
         this.resize(command.width, command.height)
-        return { type: "tab", tab: this.target.tabState() }
+        return { type: "page", page: this.target.pageState() }
       case "click":
         contents.focus()
         this.dispatchMouse({ action: "down", x: command.x, y: command.y, button: "left" }, contents)
@@ -117,40 +115,40 @@ export class BrowserWebContentsControl {
       case "evaluate":
         return {
           type: "evaluation",
-          tabId,
+          pageId,
           value: await contents.executeJavaScript(String(command.expression ?? ""), true),
         }
       case "cdp":
         return {
           type: "cdp",
-          tabId,
+          pageId,
           value: await this.sendCDP(contents, String(command.method ?? ""), command.params as Record<string, unknown>),
         }
       case "snapshot": {
         const snapshot = await this.snapshot(contents)
-        return { type: "snapshot", tabId, elements: snapshot.elements, truncated: snapshot.truncated }
+        return { type: "snapshot", pageId, elements: snapshot.elements, truncated: snapshot.truncated }
       }
       case "resolveRef": {
         const ref = String(command.ref ?? "")
-        return { type: "resolvedRef", tabId, ref, box: this.refMap.get(ref) ?? null }
+        return { type: "resolvedRef", pageId, ref, box: this.refMap.get(ref) ?? null }
       }
       case "console":
         return {
           type: "console",
-          tabId,
+          pageId,
           entries: diagnostics?.consoleEntries(Number(command.maxEntries ?? 50)) ?? [],
         }
       case "network":
         return {
           type: "network",
-          tabId,
+          pageId,
           requests: diagnostics?.networkRequests(Number(command.maxEntries ?? 100)) ?? [],
         }
       case "assets":
         return {
           type: "assets",
-          tabId,
-          assets: diagnostics?.pageAssets(tabId, Number(command.maxEntries ?? 100)) ?? [],
+          pageId,
+          assets: diagnostics?.pageAssets(pageId, Number(command.maxEntries ?? 100)) ?? [],
         }
       case "filechooser.select":
         await diagnostics?.respondToFileChooser(
@@ -170,7 +168,7 @@ export class BrowserWebContentsControl {
         const size = image.getSize()
         return {
           type: "screenshot",
-          tabId,
+          pageId,
           dataUrl: image.toDataURL(),
           width: size.width,
           height: size.height,
@@ -178,7 +176,7 @@ export class BrowserWebContentsControl {
       }
       case "clearDiagnostics":
         diagnostics?.clear()
-        return { type: "diagnostics.cleared", tabId }
+        return { type: "diagnostics.cleared", pageId }
       default:
         throw new UnsupportedBrowserWebContentsCommandError(String(command.type ?? "unknown"))
     }

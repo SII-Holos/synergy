@@ -99,7 +99,7 @@ describe("BrowserWebRTCClient", () => {
     globalThis.RTCPeerConnection = FakeRTCPeerConnection as unknown as typeof RTCPeerConnection
     const client = new BrowserWebRTCClient({
       signalingUrl: "ws://localhost/browser/webrtc/connect",
-      tabId: "tab_1",
+      pageId: "page_1",
     })
 
     await client.connect()
@@ -108,14 +108,14 @@ describe("BrowserWebRTCClient", () => {
 
     expect(ws.sent).toEqual([])
 
-    ws.emit("message", { data: JSON.stringify({ type: "webrtc.host.pending", tabId: "tab_1" }) })
+    ws.emit("message", { data: JSON.stringify({ type: "webrtc.host.pending", pageId: "page_1" }) })
     expect(ws.sent).toEqual([])
 
-    ws.emit("message", { data: JSON.stringify({ type: "webrtc.host.ready", tabId: "tab_1" }) })
+    ws.emit("message", { data: JSON.stringify({ type: "webrtc.host.ready", pageId: "page_1" }) })
     await Promise.resolve()
     await Promise.resolve()
 
-    expect(ws.sent).toContainEqual({ type: "webrtc.offer", tabId: "tab_1", sdp: "fake-offer" })
+    expect(ws.sent).toContainEqual({ type: "webrtc.offer", pageId: "page_1", sdp: "fake-offer" })
     client.close()
   })
 
@@ -124,23 +124,23 @@ describe("BrowserWebRTCClient", () => {
     globalThis.RTCPeerConnection = FakeRTCPeerConnection as unknown as typeof RTCPeerConnection
     const client = new BrowserWebRTCClient({
       signalingUrl: "ws://localhost/browser/webrtc/connect",
-      tabId: "tab_1",
+      pageId: "page_1",
     })
 
     await client.connect()
     const ws = FakeWebSocket.instances[0]!
     ws.emit("open", {})
-    ws.emit("message", { data: JSON.stringify({ type: "webrtc.host.ready", tabId: "tab_1" }) })
+    ws.emit("message", { data: JSON.stringify({ type: "webrtc.host.ready", pageId: "page_1" }) })
     await Promise.resolve()
     await Promise.resolve()
-    ws.emit("message", { data: JSON.stringify({ type: "webrtc.answer", tabId: "tab_1", sdp: "fake-answer" }) })
+    ws.emit("message", { data: JSON.stringify({ type: "webrtc.answer", pageId: "page_1", sdp: "fake-answer" }) })
     await Promise.resolve()
 
     const firstPeer = FakeRTCPeerConnection.instances[0]!
     firstPeer.connectionState = "failed"
     firstPeer.onconnectionstatechange?.()
 
-    ws.emit("message", { data: JSON.stringify({ type: "webrtc.host.ready", tabId: "tab_1" }) })
+    ws.emit("message", { data: JSON.stringify({ type: "webrtc.host.ready", pageId: "page_1" }) })
     await Promise.resolve()
     await Promise.resolve()
 
@@ -156,7 +156,7 @@ describe("BrowserWebRTCClient", () => {
     const statuses: string[] = []
     const client = new BrowserWebRTCClient({
       signalingUrl: "ws://localhost/browser/webrtc/connect",
-      tabId: "tab_1",
+      pageId: "page_1",
       onStatus: (status) => statuses.push(status),
     })
 
@@ -164,8 +164,8 @@ describe("BrowserWebRTCClient", () => {
     const ws = FakeWebSocket.instances[0]!
     ws.emit("open", {})
 
-    ws.emit("message", { data: JSON.stringify({ type: "webrtc.error", tabId: "tab_1", message: "capture failed" }) })
-    ws.emit("message", { data: JSON.stringify({ type: "webrtc.closed", tabId: "tab_1" }) })
+    ws.emit("message", { data: JSON.stringify({ type: "webrtc.error", pageId: "page_1", message: "capture failed" }) })
+    ws.emit("message", { data: JSON.stringify({ type: "webrtc.closed", pageId: "page_1" }) })
 
     expect(statuses).toContain("error")
     expect(statuses).toContain("closed")

@@ -92,7 +92,6 @@ import { BrowserWaitTool } from "./browser-wait"
 import { BrowserClickTool } from "./browser-click"
 import { BrowserTypeTool } from "./browser-type"
 import { BrowserScrollTool } from "./browser-scroll"
-import { BrowserTabTool } from "./browser-tab"
 import { BrowserConsoleTool } from "./browser-console"
 import { BrowserNetworkTool } from "./browser-network"
 import { BrowserDownloadTool } from "./browser-download"
@@ -394,7 +393,6 @@ export namespace ToolRegistry {
       BrowserClickTool,
       BrowserTypeTool,
       BrowserScrollTool,
-      BrowserTabTool,
       BrowserConsoleTool,
       BrowserNetworkTool,
       BrowserDownloadTool,

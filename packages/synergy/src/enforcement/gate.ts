@@ -892,10 +892,6 @@ export namespace EnforcementGate {
         caps.push({ class: "browser_inspect", nonBypassable: false })
         return { capabilities: caps }
       }
-      if (toolName === "browser_tab") {
-        caps.push({ class: "session_state", nonBypassable: false })
-        return { capabilities: caps }
-      }
       if (toolName === "browser_download") {
         caps.push({ class: "network_request", nonBypassable: false })
         return { capabilities: caps }

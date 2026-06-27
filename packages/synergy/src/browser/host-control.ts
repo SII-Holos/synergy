@@ -67,7 +67,7 @@ export namespace BrowserHostControl {
 
   interface StatusEntry {
     status: HostStatus
-    tabId: string | null
+    pageId: string | null
     traceId?: string
     reason?: string
     updatedAt: number
@@ -80,7 +80,7 @@ export namespace BrowserHostControl {
   }
 
   const ownerHosts = new Map<string, HostConnection>()
-  const tabHosts = new Map<string, Map<string, HostConnection>>()
+  const pageHosts = new Map<string, Map<string, HostConnection>>()
   const observers = new Map<string, Set<(event: EventPayload) => void>>()
   const globalObservers = new Set<(owner: BrowserOwner.Info, event: EventPayload) => void>()
   const statuses = new Map<string, StatusEntry>()
@@ -89,7 +89,7 @@ export namespace BrowserHostControl {
   let nextRequestId = 1
 
   export interface AttachOptions {
-    tabId?: string | null
+    pageId?: string | null
     traceId?: string
   }
 
@@ -102,7 +102,7 @@ export namespace BrowserHostControl {
     constructor(
       readonly owner: BrowserOwner.Info,
       private socket: BrowserHostControlSocket,
-      readonly tabId: string | null = null,
+      readonly pageId: string | null = null,
       readonly traceId?: string,
     ) {}
 
@@ -116,7 +116,7 @@ export namespace BrowserHostControl {
       const startedAt = Date.now()
       log.info("browser.host.control.command.started", {
         ownerKey: BrowserOwner.key(this.owner),
-        tabId: this.tabId,
+        pageId: this.pageId,
         commandId: options.commandId ?? id,
         commandType: command.type,
         traceId: options.traceId ?? this.traceId,
@@ -127,7 +127,7 @@ export namespace BrowserHostControl {
           const error = new Error(`Browser Host command timed out: ${command.type}`)
           log.warn("browser.host.control.command.failed", {
             ownerKey: BrowserOwner.key(this.owner),
-            tabId: this.tabId,
+            pageId: this.pageId,
             commandId: options.commandId ?? id,
             commandType: command.type,
             traceId: options.traceId ?? this.traceId,
@@ -161,14 +161,14 @@ export namespace BrowserHostControl {
       switch (msg.type) {
         case "browser.host.ready":
           this.ready = true
-          this.session = msg.session ? mergeReadySession(this.session, msg.session) : this.session
-          markStatus(this.owner, this.tabId, "ready", { traceId: this.traceId })
+          this.session = msg.session ?? this.session
+          markStatus(this.owner, this.pageId, "ready", { traceId: this.traceId })
           if (this.session) emit(this.owner, { type: "session.state", ...this.session })
           break
         case "browser.host.session":
           this.ready = true
           this.session = msg.session
-          markStatus(this.owner, this.tabId, "ready", { traceId: this.traceId })
+          markStatus(this.owner, this.pageId, "ready", { traceId: this.traceId })
           emit(this.owner, { type: "session.state", ...msg.session })
           break
         case "browser.host.event":
@@ -187,7 +187,7 @@ export namespace BrowserHostControl {
                 : new Error(message)
             log.warn("browser.host.control.command.failed", {
               ownerKey: BrowserOwner.key(this.owner),
-              tabId: this.tabId,
+              pageId: this.pageId,
               commandId: pending.commandId ?? msg.id,
               commandType: pending.commandType,
               traceId: pending.traceId ?? this.traceId,
@@ -199,7 +199,7 @@ export namespace BrowserHostControl {
           }
           log.info("browser.host.control.command.completed", {
             ownerKey: BrowserOwner.key(this.owner),
-            tabId: this.tabId,
+            pageId: this.pageId,
             commandId: pending.commandId ?? msg.id,
             commandType: pending.commandType,
             traceId: pending.traceId ?? this.traceId,
@@ -233,17 +233,17 @@ export namespace BrowserHostControl {
   ): HostConnection {
     BrowserOwner.assertValid(owner)
     const key = BrowserOwner.key(owner)
-    const tabId = options?.tabId ?? null
-    const connection = new HostConnection(owner, socket, tabId, options?.traceId)
-    if (tabId) {
-      const tabs = tabHosts.get(key) ?? new Map<string, HostConnection>()
-      tabs.get(tabId)?.close()
-      tabs.set(tabId, connection)
-      tabHosts.set(key, tabs)
-      markStatus(owner, tabId, "pending", { traceId: options?.traceId })
+    const pageId = options?.pageId ?? null
+    const connection = new HostConnection(owner, socket, pageId, options?.traceId)
+    if (pageId) {
+      const pages = pageHosts.get(key) ?? new Map<string, HostConnection>()
+      pages.get(pageId)?.close()
+      pages.set(pageId, connection)
+      pageHosts.set(key, pages)
+      markStatus(owner, pageId, "pending", { traceId: options?.traceId })
       log.info("browser.host.control.attached", {
         ownerKey: key,
-        tabId,
+        pageId,
         traceId: options?.traceId,
       })
       return connection
@@ -253,7 +253,7 @@ export namespace BrowserHostControl {
     markStatus(owner, null, "pending", { traceId: options?.traceId })
     log.info("browser.host.control.attached", {
       ownerKey: key,
-      tabId: null,
+      pageId: null,
       traceId: options?.traceId,
     })
     return connection
@@ -261,20 +261,20 @@ export namespace BrowserHostControl {
 
   export function detach(owner: BrowserOwner.Info, connection: HostConnection): void {
     const key = BrowserOwner.key(owner)
-    if (connection.tabId) {
-      const tabs = tabHosts.get(key)
-      if (tabs?.get(connection.tabId) !== connection) return
-      tabs.delete(connection.tabId)
-      if (tabs.size === 0) tabHosts.delete(key)
+    if (connection.pageId) {
+      const pages = pageHosts.get(key)
+      if (pages?.get(connection.pageId) !== connection) return
+      pages.delete(connection.pageId)
+      if (pages.size === 0) pageHosts.delete(key)
     } else {
       if (ownerHosts.get(key) !== connection) return
       ownerHosts.delete(key)
     }
     connection.close()
-    markStatus(owner, connection.tabId, "detached", { traceId: connection.traceId })
+    markStatus(owner, connection.pageId, "detached", { traceId: connection.traceId })
     log.info("browser.host.control.detached", {
       ownerKey: key,
-      tabId: connection.tabId,
+      pageId: connection.pageId,
       traceId: connection.traceId,
     })
     if (!has(owner)) {
@@ -287,39 +287,39 @@ export namespace BrowserHostControl {
     }
   }
 
-  export function get(owner: BrowserOwner.Info, tabId?: string | null): HostConnection | undefined {
+  export function get(owner: BrowserOwner.Info, pageId?: string | null): HostConnection | undefined {
     const key = BrowserOwner.key(owner)
-    if (tabId) {
-      const tabHost = tabHosts.get(key)?.get(tabId)
-      if (tabHost) return tabHost
+    if (pageId) {
+      const pageHost = pageHosts.get(key)?.get(pageId)
+      if (pageHost) return pageHost
     }
     return ownerHosts.get(key)
   }
 
   export function has(owner: BrowserOwner.Info): boolean {
     const key = BrowserOwner.key(owner)
-    return Boolean(ownerHosts.get(key) || tabHosts.get(key)?.size)
+    return Boolean(ownerHosts.get(key) || pageHosts.get(key)?.size)
   }
 
-  export function status(owner: BrowserOwner.Info, tabId?: string | null): HostStatus {
-    const connection = get(owner, tabId)
+  export function status(owner: BrowserOwner.Info, pageId?: string | null): HostStatus {
+    const connection = get(owner, pageId)
     if (connection?.isReady()) return "ready"
     if (connection) return "pending"
-    return statuses.get(statusKey(owner, tabId ?? null))?.status ?? "detached"
+    return statuses.get(statusKey(owner, pageId ?? null))?.status ?? "detached"
   }
 
-  export function isReady(owner: BrowserOwner.Info, tabId?: string | null): boolean {
-    return Boolean(get(owner, tabId)?.isReady())
+  export function isReady(owner: BrowserOwner.Info, pageId?: string | null): boolean {
+    return Boolean(get(owner, pageId)?.isReady())
   }
 
   export function waitForReady(
     owner: BrowserOwner.Info,
-    tabId?: string | null,
+    pageId?: string | null,
     timeoutMs = 5_000,
   ): Promise<HostConnection> {
-    const connection = get(owner, tabId)
+    const connection = get(owner, pageId)
     if (connection?.isReady()) return Promise.resolve(connection)
-    const key = statusKey(owner, tabId ?? null)
+    const key = statusKey(owner, pageId ?? null)
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         const waiters = readyWaiters.get(key)
@@ -336,15 +336,15 @@ export namespace BrowserHostControl {
 
   export function markStatus(
     owner: BrowserOwner.Info,
-    tabId: string | null | undefined,
+    pageId: string | null | undefined,
     nextStatus: HostStatus,
     options: { traceId?: string; reason?: string } = {},
   ): void {
-    const normalizedTabId = tabId ?? null
-    const key = statusKey(owner, normalizedTabId)
+    const normalizedPageId = pageId ?? null
+    const key = statusKey(owner, normalizedPageId)
     statuses.set(key, {
       status: nextStatus,
-      tabId: normalizedTabId,
+      pageId: normalizedPageId,
       traceId: options.traceId,
       reason: options.reason,
       updatedAt: Date.now(),
@@ -352,23 +352,23 @@ export namespace BrowserHostControl {
     const event: EventPayload = {
       type: "browser.host.status",
       status: nextStatus,
-      tabId: normalizedTabId,
+      pageId: normalizedPageId,
       traceId: options.traceId,
       reason: options.reason,
     }
     emit(owner, event)
     emitGlobal(owner, event)
-    if (nextStatus === "ready") resolveReadyWaiters(owner, normalizedTabId)
+    if (nextStatus === "ready") resolveReadyWaiters(owner, normalizedPageId)
   }
 
   export function sessionState(owner: BrowserOwner.Info): BrowserControl.SessionState | null {
     const key = BrowserOwner.key(owner)
     const sessions = [
       ownerHosts.get(key)?.session ?? null,
-      ...Array.from(tabHosts.get(key)?.values() ?? []).map((connection) => connection.session),
+      ...Array.from(pageHosts.get(key)?.values() ?? []).map((connection) => connection.session),
     ].filter((session): session is BrowserControl.SessionState => Boolean(session))
     if (sessions.length === 0) return null
-    return mergeSessions(sessions)
+    return sessions.at(-1) ?? null
   }
 
   export async function execute(
@@ -401,11 +401,11 @@ export namespace BrowserHostControl {
 
   export function resetForTest(): void {
     for (const connection of ownerHosts.values()) connection.close()
-    for (const tabs of tabHosts.values()) {
-      for (const connection of tabs.values()) connection.close()
+    for (const pages of pageHosts.values()) {
+      for (const connection of pages.values()) connection.close()
     }
     ownerHosts.clear()
-    tabHosts.clear()
+    pageHosts.clear()
     observers.clear()
     statuses.clear()
     for (const waiters of readyWaiters.values()) {
@@ -428,14 +428,14 @@ export namespace BrowserHostControl {
     for (const listener of globalObservers) listener(owner, event)
   }
 
-  function statusKey(owner: BrowserOwner.Info, tabId: string | null): string {
-    return tabId ? `${BrowserOwner.key(owner)}:tab:${tabId}` : `${BrowserOwner.key(owner)}:owner`
+  function statusKey(owner: BrowserOwner.Info, pageId: string | null): string {
+    return pageId ? `${BrowserOwner.key(owner)}:page:${pageId}` : `${BrowserOwner.key(owner)}:owner`
   }
 
-  function resolveReadyWaiters(owner: BrowserOwner.Info, tabId: string | null): void {
-    const key = statusKey(owner, tabId)
+  function resolveReadyWaiters(owner: BrowserOwner.Info, pageId: string | null): void {
+    const key = statusKey(owner, pageId)
     const waiters = readyWaiters.get(key)
-    const connection = get(owner, tabId)
+    const connection = get(owner, pageId)
     if (!waiters || !connection?.isReady()) return
     readyWaiters.delete(key)
     for (const waiter of waiters) {
@@ -446,42 +446,19 @@ export namespace BrowserHostControl {
 
   function resolveHost(owner: BrowserOwner.Info, command: BrowserControl.Command): HostConnection | undefined {
     const key = BrowserOwner.key(owner)
-    if ("tabId" in command && command.tabId) {
-      const tabHost = tabHosts.get(key)?.get(command.tabId)
-      if (tabHost) return tabHost
+    if ("pageId" in command && command.pageId) {
+      const pageHost = pageHosts.get(key)?.get(command.pageId)
+      if (pageHost) return pageHost
     }
     const ownerHost = ownerHosts.get(key)
     if (ownerHost) return ownerHost
     const session = sessionState(owner)
-    if (session?.activeTabId) {
-      const activeHost = tabHosts.get(key)?.get(session.activeTabId)
+    if (session?.page?.id) {
+      const activeHost = pageHosts.get(key)?.get(session.page.id)
       if (activeHost) return activeHost
     }
-    const tabs = tabHosts.get(key)
-    if (tabs?.size === 1) return tabs.values().next().value
+    const pages = pageHosts.get(key)
+    if (pages?.size === 1) return pages.values().next().value
     return undefined
-  }
-
-  function mergeSessions(sessions: BrowserControl.SessionState[]): BrowserControl.SessionState {
-    const tabs = new Map<string, BrowserControl.TabState>()
-    let activeTabId: string | null = null
-    for (const session of sessions) {
-      for (const tab of session.tabs) tabs.set(tab.id, tab)
-      activeTabId = session.activeTabId ?? activeTabId
-    }
-    return { tabs: Array.from(tabs.values()), activeTabId }
-  }
-
-  function mergeReadySession(
-    previous: BrowserControl.SessionState | null,
-    incoming: BrowserControl.SessionState,
-  ): BrowserControl.SessionState {
-    if (!previous) return incoming
-    const tabs = new Map(previous.tabs.map((tab) => [tab.id, tab]))
-    for (const tab of incoming.tabs) tabs.set(tab.id, tab)
-    return {
-      tabs: Array.from(tabs.values()),
-      activeTabId: incoming.activeTabId ?? previous.activeTabId,
-    }
   }
 }

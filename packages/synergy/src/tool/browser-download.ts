@@ -54,7 +54,7 @@ export const BrowserDownloadTool = Tool.define("browser_download", {
   parameters: z.object({
     url: z.string().describe("The URL of the asset to download."),
     filename: z.string().describe("Optional filename for the saved file.").optional(),
-    tabId: z.string().describe("Browser tab ID for policy context. Uses the active tab if omitted.").optional(),
+    pageId: z.string().describe("Browser page ID for policy context. Uses the session page if omitted.").optional(),
   }),
   async execute(params, ctx) {
     const workspace = ScopeContext.current.directory
@@ -69,8 +69,8 @@ export const BrowserDownloadTool = Tool.define("browser_download", {
     // Optionally check tab's network buffer for MIME type hint
     let networkMimeType: string | undefined
     try {
-      const tab = await BrowserToolHelper.resolveTab(ctx, params.tabId)
-      const result = await BrowserToolHelper.executeControl(owner, { type: "network", tabId: tab.id, maxEntries: 50 })
+      const tab = await BrowserToolHelper.resolvePage(ctx, params.pageId)
+      const result = await BrowserToolHelper.executeControl(owner, { type: "network", pageId: tab.id, maxEntries: 50 })
       const matched = result.type === "network" ? result.requests.find((r) => r.url === params.url && r.mimeType) : null
       if (matched?.mimeType) {
         networkMimeType = matched.mimeType
