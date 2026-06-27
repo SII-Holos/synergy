@@ -11566,6 +11566,39 @@ export type ApiPluginsListResponses = {
 
 export type ApiPluginsListResponse = ApiPluginsListResponses[keyof ApiPluginsListResponses]
 
+export type ApiPluginsRemoveData = {
+  body?: never
+  path: {
+    pluginId: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/api/plugins/{pluginId}"
+}
+
+export type ApiPluginsRemoveErrors = {
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type ApiPluginsRemoveError = ApiPluginsRemoveErrors[keyof ApiPluginsRemoveErrors]
+
+export type ApiPluginsRemoveResponses = {
+  /**
+   * Plugin removed
+   */
+  200: {
+    pluginId: string
+    removed: true
+  }
+}
+
+export type ApiPluginsRemoveResponse = ApiPluginsRemoveResponses[keyof ApiPluginsRemoveResponses]
+
 export type ApiPluginsGetData = {
   body?: never
   path: {
