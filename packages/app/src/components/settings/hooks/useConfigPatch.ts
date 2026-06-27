@@ -1,5 +1,5 @@
 import type { Config } from "@ericsanchezok/synergy-sdk/client"
-import { MODEL_ROLES, TOAST_TYPES, UI_DEFAULTS, resolvePermissionForUi } from "../types"
+import { MODEL_ROLES, TOAST_TYPES, UI_DEFAULTS, resolvePermissionForUi, snapToastDuration } from "../types"
 import type { SettingsState } from "../types"
 
 export type BuildPatchParams = {
@@ -351,7 +351,10 @@ function buildLibraryPatch(cfg: Config, state: SettingsState, patch: Record<stri
   patch.library = nextLibrary
 }
 
-function buildToastPatch(muted: string[], durations: SettingsState["general"]["toastDurations"]): Record<string, unknown> {
+function buildToastPatch(
+  muted: string[],
+  durations: SettingsState["general"]["toastDurations"],
+): Record<string, unknown> {
   const toast: Record<string, unknown> = {}
   const normalizedMuted = muted.filter((value) => ["info", "success", "warning", "error"].includes(value))
   if (normalizedMuted.length) toast.muted = normalizedMuted
@@ -367,7 +370,7 @@ function parseToastDurations(durations: SettingsState["general"]["toastDurations
     if (!raw.trim()) continue
     const parsed = Number(raw)
     if (!Number.isNaN(parsed) && Number.isInteger(parsed) && parsed > 0 && parsed <= 30000) {
-      result[type] = parsed
+      result[type] = snapToastDuration(parsed)
     }
   }
   return result

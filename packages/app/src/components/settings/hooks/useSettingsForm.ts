@@ -2,7 +2,14 @@ import type { Config } from "@ericsanchezok/synergy-sdk/client"
 import type { SetStoreFunction } from "solid-js/store"
 import type { SendShortcut } from "@/context/input"
 import type { SettingsState } from "../types"
-import { MODEL_DEFAULTS, TOAST_TYPES, UI_DEFAULTS, emptyToastDurationOverrides, resolvePermissionForUi } from "../types"
+import {
+  MODEL_DEFAULTS,
+  TOAST_TYPES,
+  UI_DEFAULTS,
+  emptyToastDurationOverrides,
+  resolvePermissionForUi,
+  snapToastDuration,
+} from "../types"
 
 export type EnsureInitParams = {
   cfg: Config | undefined
@@ -188,7 +195,9 @@ function formatToastDurations(values: Record<string, number> | undefined) {
   if (!values) return result
   for (const type of TOAST_TYPES) {
     const value = values[type]
-    if (typeof value === "number") result[type] = String(value)
+    if (typeof value === "number" && Number.isFinite(value) && value > 0) {
+      result[type] = String(snapToastDuration(value))
+    }
   }
   return result
 }

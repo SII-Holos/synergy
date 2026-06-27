@@ -6,7 +6,14 @@ import { useTheme, type ColorScheme } from "@ericsanchezok/synergy-ui/theme"
 import { SettingRow } from "../components/SettingRow"
 import { SegmentPill } from "../components/SegmentPill"
 import { SettingsPage, SettingsSection } from "../components/SettingsPrimitives"
-import { TOAST_TYPES, type GeneralStore, type ToastType } from "../types"
+import {
+  DEFAULT_TOAST_DURATION_MS,
+  TOAST_DURATION_STOPS,
+  TOAST_TYPES,
+  snapToastDuration,
+  type GeneralStore,
+  type ToastType,
+} from "../types"
 
 const colorSchemeOptions: Array<{
   value: ColorScheme
@@ -25,9 +32,6 @@ const toastCopy: Record<ToastType, { label: string; description: string }> = {
   warning: { label: "Warning", description: "Attention needed, without blocking work" },
   error: { label: "Error", description: "Failures and blocked actions" },
 }
-
-const toastDurationStops = [1000, 2000, 4000, 8000] as const
-const defaultToastDuration = 5000
 
 export function GeneralPanel(props: {
   general: GeneralStore
@@ -102,7 +106,10 @@ export function GeneralPanel(props: {
         />
       </SettingsSection>
 
-      <SettingsSection title="Notifications" description="Tune which toast cards appear and how long they stay visible.">
+      <SettingsSection
+        title="Notifications"
+        description="Tune which toast cards appear and how long they stay visible."
+      >
         <div class="settings-toast-list">
           <For each={TOAST_TYPES}>
             {(type) => (
@@ -133,7 +140,7 @@ function ToastPreferenceRow(props: {
   const copy = () => toastCopy[props.type]
   const duration = () => {
     const parsed = Number(props.duration)
-    return Number.isNaN(parsed) || parsed <= 0 ? defaultToastDuration : parsed
+    return Number.isFinite(parsed) && parsed > 0 ? snapToastDuration(parsed) : DEFAULT_TOAST_DURATION_MS
   }
   const hasOverride = () => props.duration.trim().length > 0
   const durationIndex = () => nearestDurationIndex(duration())
@@ -155,7 +162,9 @@ function ToastPreferenceRow(props: {
 
         <div class="settings-duration-control">
           <div class="settings-duration-header">
-            <span>{hasOverride() ? `${formatSeconds(duration())}` : `Default ${formatSeconds(defaultToastDuration)}`}</span>
+            <span>
+              {hasOverride() ? `${formatSeconds(duration())}` : `Default ${formatSeconds(DEFAULT_TOAST_DURATION_MS)}`}
+            </span>
             <button
               type="button"
               class="settings-duration-reset"
@@ -169,17 +178,17 @@ function ToastPreferenceRow(props: {
             class="settings-duration-slider"
             type="range"
             min="0"
-            max={String(toastDurationStops.length - 1)}
+            max={String(TOAST_DURATION_STOPS.length - 1)}
             step="1"
             value={durationIndex()}
             aria-label={`${copy().label} toast duration`}
             onInput={(event) => {
               const index = Number(event.currentTarget.value)
-              props.onDurationChange(String(toastDurationStops[index] ?? toastDurationStops[0]))
+              props.onDurationChange(String(TOAST_DURATION_STOPS[index] ?? TOAST_DURATION_STOPS[0]))
             }}
           />
           <div class="settings-duration-ticks" aria-hidden="true">
-            <For each={toastDurationStops}>{(stop) => <span>{formatSeconds(stop)}</span>}</For>
+            <For each={TOAST_DURATION_STOPS}>{(stop) => <span>{formatSeconds(stop)}</span>}</For>
           </div>
         </div>
       </div>
@@ -188,10 +197,11 @@ function ToastPreferenceRow(props: {
 }
 
 function nearestDurationIndex(value: number): number {
+  const snapped = snapToastDuration(value)
   let bestIndex = 0
   let bestDistance = Number.POSITIVE_INFINITY
-  for (let index = 0; index < toastDurationStops.length; index++) {
-    const distance = Math.abs(toastDurationStops[index] - value)
+  for (let index = 0; index < TOAST_DURATION_STOPS.length; index++) {
+    const distance = Math.abs(TOAST_DURATION_STOPS[index] - snapped)
     if (distance < bestDistance) {
       bestDistance = distance
       bestIndex = index

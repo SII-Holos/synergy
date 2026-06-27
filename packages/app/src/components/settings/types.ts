@@ -137,11 +137,28 @@ export type ChannelSettings = {
 }
 
 export const TOAST_TYPES = ["info", "success", "warning", "error"] as const
+export const DEFAULT_TOAST_DURATION_MS = 4000
+export const TOAST_DURATION_STOPS = [1000, 2000, DEFAULT_TOAST_DURATION_MS, 8000] as const
 export type ToastType = (typeof TOAST_TYPES)[number]
 export type ToastDurationOverrides = Record<ToastType, string>
 
 export function emptyToastDurationOverrides(): ToastDurationOverrides {
   return { info: "", success: "", warning: "", error: "" }
+}
+
+export function snapToastDuration(value: number): number {
+  if (!Number.isFinite(value) || value <= 0) return DEFAULT_TOAST_DURATION_MS
+
+  let best: number = TOAST_DURATION_STOPS[0]
+  let bestDistance = Math.abs(best - value)
+  for (const stop of TOAST_DURATION_STOPS) {
+    const distance = Math.abs(stop - value)
+    if (distance < bestDistance || (distance === bestDistance && stop > best)) {
+      best = stop
+      bestDistance = distance
+    }
+  }
+  return best
 }
 
 export function emptyMcp(): McpEntry {
