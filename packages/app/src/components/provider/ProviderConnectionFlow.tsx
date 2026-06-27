@@ -1,5 +1,4 @@
 import type {
-  AccountUsageSnapshot,
   ProviderAuthAuthorization,
   ProviderAuthMethod,
 } from "@ericsanchezok/synergy-sdk/client"
@@ -46,27 +45,11 @@ export function ProviderConnectionFlow(props: {
   const [store, setStore] = createStore({
     methodIndex: undefined as undefined | number,
     authorization: undefined as undefined | ProviderAuthAuthorization,
-    usage: undefined as undefined | AccountUsageSnapshot,
-    usageState: "idle" as "idle" | "pending" | "complete" | "error",
     state: "pending" as undefined | "pending" | "complete" | "error",
     error: undefined as string | undefined,
   })
 
   const method = createMemo(() => (store.methodIndex !== undefined ? methods().at(store.methodIndex) : undefined))
-
-  async function loadUsage() {
-    if (!connected()) return
-    setStore("usageState", "pending")
-    await globalSDK.client.provider.usage
-      .get({ providerID: props.providerID }, { throwOnError: true })
-      .then((x) => {
-        setStore("usage", x.data)
-        setStore("usageState", "complete")
-      })
-      .catch(() => {
-        setStore("usageState", "error")
-      })
-  }
 
   async function selectMethod(index: number) {
     const selected = methods()[index]
@@ -118,14 +101,12 @@ export function ProviderConnectionFlow(props: {
   }
 
   onMount(() => {
-    if (methods().length === 1) void selectMethod(0)
-    void loadUsage()
+    if (!connected() && methods().length === 1) void selectMethod(0)
   })
 
   async function complete() {
     await globalSDK.client.global.dispose()
     await globalSync.refreshAllConfigs()
-    await loadUsage()
     await props.onComplete?.()
     showToast({
       type: "success",
@@ -176,17 +157,13 @@ export function ProviderConnectionFlow(props: {
         </div>
       </div>
 
-      <Show when={connected()}>
-        <UsageSummary usage={store.usage} state={store.usageState} />
-      </Show>
-
       <div class="provider-flow-body">
         <Switch>
           <Match when={store.methodIndex === undefined}>
             <div class="provider-method-list">
               <div class="provider-flow-intro">
-                <div class="provider-flow-eyebrow">Connection method</div>
-                <div class="provider-flow-heading">Choose how to connect</div>
+                <div class="provider-flow-eyebrow">{connected() ? "Credential refresh" : "Connection method"}</div>
+                <div class="provider-flow-heading">{connected() ? "Refresh credentials" : "Choose how to connect"}</div>
               </div>
               <For each={methods()}>
                 {(item, index) => (
@@ -405,74 +382,6 @@ export function ProviderConnectionFlow(props: {
       </div>
     </div>
   )
-}
-
-function UsageSummary(props: { usage?: AccountUsageSnapshot; state: "idle" | "pending" | "complete" | "error" }) {
-  return (
-    <div class="provider-flow-usage">
-      <Switch>
-        <Match when={props.state === "pending" || props.state === "idle"}>
-          <div class="provider-flow-message">
-            <Spinner />
-            <span>Loading usage...</span>
-          </div>
-        </Match>
-        <Match when={props.state === "error"}>
-          <div class="text-13-regular text-text-weak">Usage is unavailable right now.</div>
-        </Match>
-        <Match when={props.usage}>
-          {(usage) => (
-            <>
-              <div class="provider-usage-head">
-                <span class="ds-inline-badge" classList={{ "ds-inline-badge-muted": usage().status !== "available" }}>
-                  {usage().status === "available" ? "Connected" : usage().status}
-                </span>
-                <Show when={usage().plan}>
-                  <span>{usage().plan}</span>
-                </Show>
-              </div>
-              <Show when={usage().unavailableReason}>
-                <div class="provider-flow-copy">{usage().unavailableReason}</div>
-              </Show>
-              <For each={usage().windows}>
-                {(window) => (
-                  <div class="provider-usage-window">
-                    <span>{window.label}</span>
-                    <span>
-                      {formatUsageWindow(window.remainingPercent, window.usedPercent)}
-                      {window.resetAt ? ` resets ${new Date(window.resetAt).toLocaleString()}` : ""}
-                    </span>
-                  </div>
-                )}
-              </For>
-              <Show when={usage().credits}>
-                {(credits) => (
-                  <div class="provider-usage-window">
-                    <span>Credits</span>
-                    <span>
-                      {credits().unlimited
-                        ? "unlimited"
-                        : credits().balance !== undefined
-                          ? `${credits().balance}${credits().currency ? ` ${credits().currency}` : ""}`
-                          : credits().hasCredits === false
-                            ? "none"
-                            : "available"}
-                    </span>
-                  </div>
-                )}
-              </Show>
-            </>
-          )}
-        </Match>
-      </Switch>
-    </div>
-  )
-}
-
-function formatUsageWindow(remaining?: number, used?: number) {
-  const value = remaining ?? used
-  if (value === undefined) return "n/a"
-  return `${Math.round(value)}%`
 }
 
 function formDataValue(form: FormData, key: string) {

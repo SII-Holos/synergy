@@ -6,12 +6,23 @@ import { createEffect, createMemo, createSignal, For, Show } from "solid-js"
 import { ProviderConnectionFlow } from "@/components/provider/ProviderConnectionFlow"
 import {
   compareProviderIDs,
-  isRecommendedProvider,
   providerConnectCopy,
   providerConnectReason,
   type ProviderRecommendationMetadata,
 } from "@/components/provider/provider-recommendation"
 import { SettingsPage } from "../components/SettingsPrimitives"
+
+const SETTINGS_RECOMMENDED_PROVIDER_IDS = [
+  "deepseek",
+  "openrouter",
+  "openai-codex",
+  "zhipu-ai-coding-plan",
+  "zhipu-coding-plan",
+] as const
+
+const SETTINGS_RECOMMENDED_PROVIDER_RANK = new Map<string, number>(
+  SETTINGS_RECOMMENDED_PROVIDER_IDS.map((id, index) => [id, index]),
+)
 
 export type ProviderConnectionSummary = {
   id: string
@@ -58,11 +69,13 @@ export function ProvidersPanel(props: {
     return summaries().find((provider) => provider.id === current) ?? filtered()[0] ?? summaries()[0]
   })
   const recommended = createMemo(() =>
-    filtered().filter((provider) => isRecommendedProvider(profileMap(), provider.id) && !provider.connected),
+    filtered()
+      .filter((provider) => SETTINGS_RECOMMENDED_PROVIDER_RANK.has(provider.id) && !provider.connected)
+      .sort((a, b) => settingsRecommendedRank(a.id) - settingsRecommendedRank(b.id)),
   )
   const connected = createMemo(() => filtered().filter((provider) => provider.connected))
   const other = createMemo(() =>
-    filtered().filter((provider) => !isRecommendedProvider(profileMap(), provider.id) && !provider.connected),
+    filtered().filter((provider) => !SETTINGS_RECOMMENDED_PROVIDER_RANK.has(provider.id) && !provider.connected),
   )
 
   function statusLabel(provider: ProviderConnectionSummary) {
@@ -166,7 +179,7 @@ export function ProvidersPanel(props: {
                     <div class="providers-connect-title">{provider().connected ? "Account" : "Connect"}</div>
                     <p class="providers-connect-copy">
                       {provider().connected
-                        ? "Review usage and refresh credentials when needed."
+                        ? "Credentials are connected. Use Usage for quota and billing details."
                         : "Choose a sign-in method. Synergy will make available models selectable after connection."}
                     </p>
                   </div>
@@ -179,6 +192,10 @@ export function ProvidersPanel(props: {
       </div>
     </SettingsPage>
   )
+}
+
+function settingsRecommendedRank(providerID: string) {
+  return SETTINGS_RECOMMENDED_PROVIDER_RANK.get(providerID) ?? Number.MAX_SAFE_INTEGER
 }
 
 function ProviderGroup(props: {

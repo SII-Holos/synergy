@@ -40,7 +40,7 @@ Settings should be a human-facing preference surface, not a raw config editor. K
 
 Model settings should keep role routing and quick-switcher visibility together in one Models page. Specialist model roles are the first section; connected models and their quick-switch toggles are the second section. Avoid reopening a separate Manage Models modal from inside Settings.
 
-Provider settings should behave like a connection workspace, not a config editor. Keep provider discovery, selected-provider detail, usage, and login flows together in the Providers page; the provider list should scroll inside its own column so the selected detail remains anchored. Do not expose raw provider allow/deny text lists in the primary settings UI.
+Provider settings should behave like a connection workspace, not a config editor. Keep provider discovery, selected-provider detail, and login flows together in the Providers page; provider quota, billing, and account-health details belong in Usage. The provider list should scroll inside its own column so the selected detail remains anchored. Do not expose raw provider allow/deny text lists in the primary settings UI.
 
 Session, Agenda, Library, and Plugins should feel like one continuous workbench canvas in both light and dark modes. Their root backgrounds should align with the session message-flow background; inner surfaces can step up or down for hierarchy, but should not look like separate apps.
 
@@ -76,7 +76,7 @@ Use icons sparingly. Icons should clarify primary navigation or compact controls
 
 Treat brand assets as a hierarchy, not interchangeable decoration. SII is the institutional parent, Holos is the platform and account identity, and Synergy is the product. The Synergy product icon is the canonical app, favicon, notification, social, and external-attribution icon; Holos wordmarks should only identify the platform/account layer, and SII marks should only identify the institute layer.
 
-Provider discovery should be metadata-driven. Settings, connection dialogs, and model selection should use the same provider profile metadata for recommendation order, explanatory copy, and external sign-up CTAs; custom providers remain standard alphabetical entries unless they declare metadata.
+Provider discovery should use provider profile metadata for explanatory copy and external sign-up CTAs. Settings may curate a short Recommended provider set for product guidance; custom providers remain standard alphabetical entries unless they declare metadata.
 
 Clarifying question prompts are decision surfaces, not tool-output cards. They should use a solid outer shell, filled option rows, quiet step chips, clear disabled primary actions, and only the minimum icons needed to show disclosure or selection state.
 

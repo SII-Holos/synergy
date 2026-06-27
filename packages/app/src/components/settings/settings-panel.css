@@ -1564,8 +1564,7 @@
   color: var(--text-base);
 }
 
-.provider-flow-body,
-.provider-flow-usage {
+.provider-flow-body {
   padding: 14px;
   border-radius: 12px;
   border: 1px solid var(--settings-border);
@@ -1687,8 +1686,6 @@
   color: var(--text-base);
 }
 
-.provider-usage-head,
-.provider-usage-window,
 .usage-window-row {
   display: flex;
   align-items: center;

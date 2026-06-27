@@ -24,4 +24,21 @@ describe("Providers panel UI contract", () => {
     expect(providerFlow).toContain("provider-auth-link")
     expect(providerFlow).not.toContain("this link")
   })
+
+  test("keeps usage out of provider connection details", () => {
+    expect(providerFlow).not.toContain("provider.usage")
+    expect(providerFlow).not.toContain("Loading usage")
+    expect(providerFlow).not.toContain("UsageSummary")
+    expect(settingsCss).not.toContain(".provider-flow-usage")
+    expect(providerFlow).toContain("!connected() && methods().length === 1")
+  })
+
+  test("uses the curated settings recommendation set", () => {
+    expect(providersPanel).toContain("SETTINGS_RECOMMENDED_PROVIDER_IDS")
+    expect(providersPanel).toContain("\"deepseek\"")
+    expect(providersPanel).toContain("\"openrouter\"")
+    expect(providersPanel).toContain("\"openai-codex\"")
+    expect(providersPanel).toContain("\"zhipu-ai-coding-plan\"")
+    expect(providersPanel).not.toContain("isRecommendedProvider")
+  })
 })
