@@ -34,6 +34,7 @@ Synergy currently spans several product surfaces and workflows:
 
 - A central `server` process that handles requests independently of a single working directory
 - A `web` client for browser-based interaction
+- A production desktop application that embeds and supervises a local Synergy server
 - A built-in Browser workspace backed by Chromium, with shared control state for humans and browser tools
 - A `send` command for one-off, non-interactive execution
 - CLI commands for session, config, library, Holos identity, and operational workflows
@@ -56,6 +57,14 @@ Remote WebRTC Browser Hosts autostart by default when a remote Browser viewer co
 Browser contexts are isolated by Synergy owner/session and persist tab state plus browser storage state. User-explicit navigation and page interaction run without approval prompts but still pass hard safety checks such as invalid protocols, sensitive local ports, and out-of-scope `file://` access. Agent-driven browser tools continue to use the active control profile, so guarded/autonomous/full-access behavior remains consistent with the rest of Synergy.
 
 Large browser diagnostics such as console, network, snapshots, assets, and downloads are surfaced in the Browser workspace developer drawer and compact tool cards instead of flooding the normal chat transcript.
+
+### Desktop Application
+
+`packages/desktop` is the Electron desktop product for Synergy. Its production identity is `io.holosai.synergy`, product name `Synergy`, executable name `synergy`, and URL protocol `synergy://`.
+
+Production desktop builds default to managed server mode: the app starts a packaged local Synergy server runtime, waits for `/global/health`, then loads the Web UI from the local server origin. If the managed server fails, the app shows a desktop error page instead of a blank window. Development builds can attach to an external app/server by setting `SYNERGY_DESKTOP_CHANNEL=dev`, `SYNERGY_DESKTOP_SERVER_MODE=external`, and `SYNERGY_DESKTOP_APP_URL`.
+
+Desktop release artifacts are produced with `electron-builder` for macOS, Windows, and Linux and published through GitHub Releases. Stable builds use GitHub Releases update metadata through `electron-updater`; dev builds do not auto-update.
 
 ### Session History, File Restore, And Forking
 
@@ -537,6 +546,7 @@ This repository is a Bun monorepo.
 
 - `packages/synergy` — core runtime, server, agent system, CLI, tools, sessions, permissions, integrations
 - `packages/app` — main web application
+- `packages/desktop` — Electron desktop application, managed local server host, packaging, updates
 - `packages/plugin` — plugin SDK published as `@ericsanchezok/synergy-plugin` (see `packages/plugin/README.md` for plugin authoring)
 - `packages/plugin-kit` — standalone plugin development CLI published as `@ericsanchezok/synergy-plugin-kit`
 - `packages/sdk/js` — TypeScript SDK published as `@ericsanchezok/synergy-sdk`
@@ -590,6 +600,26 @@ bun dev server
 
 If Rust is not installed, prepare skips the sandbox step with a clear message and link. Re-run after installing Rust to complete sandbox setup.
 
+### Desktop development
+
+Run the desktop shell against a separately running Web/server dev instance:
+
+```bash
+bun dev server
+SYNERGY_DESKTOP_CHANNEL=dev SYNERGY_DESKTOP_SERVER_MODE=external SYNERGY_DESKTOP_APP_URL=http://localhost:3000 bun run --cwd packages/desktop dev
+```
+
+Build, test, and package the desktop app:
+
+```bash
+bun run desktop:build   # compile Electron main/preload
+bun run desktop:test    # desktop typecheck + unit tests
+bun run desktop:pack    # local unsigned directory package
+bun run desktop:dist    # local installer/package for the current platform
+```
+
+`desktop:pack` and `desktop:dist` prepare a current-platform Synergy runtime before invoking `electron-builder`. Release builds use the GitHub Actions desktop matrix to produce macOS, Windows, and Linux artifacts.
+
 ### Sandbox setup details
 
 `bun dev prepare` compiles the sandbox helper on Linux and Windows automatically. If you need to recompile it separately:
@@ -630,6 +660,7 @@ cd packages/synergy/src/sandbox/helper && cargo test         # Windows helper
 ```bash
 ./packages/synergy/script/build.ts --single   # build the synergy CLI binary
 bun dev prepare                                # regenerate SDK + rebuild frontend
+bun run desktop:pack                           # validate local desktop packaging
 ```
 
 Regenerate the SDK after modifying server routes or route schemas.

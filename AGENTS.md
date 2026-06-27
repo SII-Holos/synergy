@@ -12,6 +12,7 @@ Synergy is an AI agent platform with multiple product surfaces. The current prod
 
 - a stateless server runtime
 - a Web client
+- a production Electron desktop client
 - one-off CLI execution via `send`
 - configurable agents and subagents
 - session persistence
@@ -35,6 +36,7 @@ Use current terms consistently.
 
 - `packages/synergy` — core runtime, server, CLI, sessions, tools, permissions, integrations, orchestration
 - `packages/app` — main Web application
+- `packages/desktop` — Electron desktop app, managed local server host, packaging, signing, updates
 - `packages/plugin` — plugin SDK published as `@ericsanchezok/synergy-plugin`
 - `packages/plugin-kit` — standalone plugin development CLI published as `@ericsanchezok/synergy-plugin-kit`
 - `packages/sdk/js` — TypeScript SDK published as `@ericsanchezok/synergy-sdk`
@@ -106,6 +108,16 @@ Connect clients from another terminal:
 bun dev web --dev
 bun dev send "your message here"
 ```
+
+Desktop development:
+
+```bash
+bun run desktop:build
+bun run desktop:test
+bun run desktop:pack
+```
+
+`packages/desktop` production builds use `electron-builder`, app id `io.holosai.synergy`, protocol `synergy://`, and managed server mode by default. Dev can attach to an external app/server with `SYNERGY_DESKTOP_CHANNEL=dev`, `SYNERGY_DESKTOP_SERVER_MODE=external`, and `SYNERGY_DESKTOP_APP_URL`.
 
 ### Type checking and formatting
 
@@ -361,6 +373,7 @@ You must review docs when a change affects:
 - agent names or user-facing roles
 - config paths or config schema
 - server / client startup flow
+- desktop packaging, signing, updating, managed server startup, or protocol handling
 - package ownership or package responsibilities
 - user-facing product areas such as MCP, channels, login, identity, agenda, notes, library, Agora, or Web behavior
 
@@ -393,10 +406,12 @@ Releases are triggered through GitHub Actions. Keep versioning and release docs 
 
 The release workflow has two targets:
 
-- `product` for the full Synergy release, including app, schema, binaries, npm wrapper, platform packages, SDK, plugin SDK, plugin kit, and meta-protocol.
+- `product` for the full Synergy release, including app, desktop installers, schema, binaries, npm wrapper, platform packages, SDK, plugin SDK, plugin kit, and meta-protocol.
 - `packages` for package-only npm releases such as `plugin-kit`, `plugin`, `sdk`, and `meta-protocol`; this path does not build app/binaries or create product GitHub release assets.
 
 If you change release behavior, update the internal documentation in the same task.
+
+Desktop release behavior is documented in `docs/desktop-release.md`. If you touch `packages/desktop`, `.github/workflows/release.yml`, Electron signing/updater config, or desktop release scripts, review that runbook and keep artifact names, required secrets, and failure recovery steps in sync.
 
 ## Project Documentation Index
 
@@ -408,6 +423,7 @@ Key documents in the repo that agents should be aware of:
 - `.github/SECURITY.md` — security vulnerability reporting process (never open public issues for security bugs)
 - `.github/PULL_REQUEST_TEMPLATE.md` — required PR template (what/why/test/checklist)
 - `.github/RELEASE_NOTES_TEMPLATE.md` — release notes format and writing guidelines
+- `docs/desktop-release.md` — desktop packaging, signing, update, and release runbook
 - `packages/app/PRODUCT.md` — Web product principles, interaction model, and visual design contract
 - `packages/synergy/AGENTS.md` — agent guidelines specific to the core runtime package
 - `packages/app/AGENTS.md` — agent guidelines specific to the web app package

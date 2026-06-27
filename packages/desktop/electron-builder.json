@@ -1,0 +1,133 @@
+{
+  "$schema": "https://raw.githubusercontent.com/electron-userland/electron-builder/master/packages/app-builder-lib/scheme.json",
+  "appId": "io.holosai.synergy",
+  "productName": "Synergy",
+  "icon": "build/icon.png",
+  "asar": true,
+  "asarUnpack": ["**/*.node"],
+  "afterPack": "script/after-pack.cjs",
+  "directories": {
+    "buildResources": "build",
+    "output": "release"
+  },
+  "files": ["dist/**", "package.json"],
+  "protocols": [
+    {
+      "name": "Synergy",
+      "schemes": ["synergy"]
+    }
+  ],
+  "publish": [
+    {
+      "provider": "github",
+      "owner": "SII-Holos",
+      "repo": "synergy"
+    }
+  ],
+  "mac": {
+    "artifactName": "Synergy-darwin-${arch}-${version}.${ext}",
+    "bundleVersion": "${version}",
+    "category": "public.app-category.developer-tools",
+    "darkModeSupport": true,
+    "entitlements": "build/entitlements.mac.plist",
+    "entitlementsInherit": "build/entitlements.mac.plist",
+    "hardenedRuntime": true,
+    "icon": "build/icon.icns",
+    "target": [
+      {
+        "target": "dmg",
+        "arch": ["x64", "arm64"]
+      },
+      {
+        "target": "zip",
+        "arch": ["x64", "arm64"]
+      }
+    ],
+    "type": "distribution",
+    "extendInfo": {
+      "CFBundleIdentifier": "io.holosai.synergy",
+      "CFBundleName": "Synergy",
+      "CFBundleDisplayName": "Synergy",
+      "CFBundleURLTypes": [
+        {
+          "CFBundleURLName": "Synergy",
+          "CFBundleURLSchemes": ["synergy"]
+        }
+      ],
+      "LSApplicationCategoryType": "public.app-category.developer-tools"
+    }
+  },
+  "dmg": {
+    "sign": false,
+    "contents": [
+      {
+        "x": 130,
+        "y": 220
+      },
+      {
+        "x": 410,
+        "y": 220,
+        "type": "link",
+        "path": "/Applications"
+      }
+    ]
+  },
+  "win": {
+    "artifactName": "Synergy-win32-${arch}-${version}.${ext}",
+    "executableName": "synergy",
+    "icon": "build/icon.ico",
+    "target": [
+      {
+        "target": "nsis",
+        "arch": ["x64", "arm64"]
+      },
+      {
+        "target": "zip",
+        "arch": ["x64", "arm64"]
+      }
+    ],
+    "signExts": [".exe", ".dll", ".node"]
+  },
+  "nsis": {
+    "allowToChangeInstallationDirectory": true,
+    "createDesktopShortcut": true,
+    "createStartMenuShortcut": true,
+    "oneClick": false,
+    "perMachine": false,
+    "shortcutName": "Synergy"
+  },
+  "linux": {
+    "artifactName": "Synergy-linux-${arch}-${version}.${ext}",
+    "category": "Development",
+    "desktop": {
+      "entry": {
+        "Name": "Synergy",
+        "StartupWMClass": "synergy"
+      }
+    },
+    "executableName": "synergy",
+    "icon": "build/icons",
+    "target": [
+      {
+        "target": "AppImage",
+        "arch": ["x64", "arm64"]
+      },
+      {
+        "target": "deb",
+        "arch": ["x64", "arm64"]
+      },
+      {
+        "target": "tar.gz",
+        "arch": ["x64", "arm64"]
+      }
+    ]
+  },
+  "electronFuses": {
+    "runAsNode": false,
+    "enableCookieEncryption": true,
+    "enableNodeOptionsEnvironmentVariable": false,
+    "enableNodeCliInspectArguments": false,
+    "enableEmbeddedAsarIntegrityValidation": true,
+    "onlyLoadAppFromAsar": true
+  }
+}

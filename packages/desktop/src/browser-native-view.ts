@@ -153,6 +153,9 @@ export class BrowserNativeViewManager {
       },
     })
     const contents = view.webContents
+    contents.session.setPermissionRequestHandler((_webContents, _permission, callback) => {
+      callback(false)
+    })
     contents.on("did-start-loading", () => {
       this.emit({ type: "native.loading", tabId, url: contents.getURL() })
     })

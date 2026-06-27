@@ -7,6 +7,7 @@ import { computeStableVersion, configureNpmAuth, saveReleaseState } from "./shar
 import { rewriteVersions } from "./shared/versions"
 import { bunInstall } from "./nodes/bun-install"
 import { buildApp } from "./nodes/build-app"
+import { buildDesktop } from "./nodes/build-desktop"
 import { generateSchema } from "./nodes/generate-schema"
 import { generateSdk } from "./nodes/generate-sdk"
 import { buildMetaProtocol } from "./nodes/build-meta-protocol"
@@ -54,6 +55,7 @@ try {
   await buildPlugin()
   await buildPluginKit()
   await buildApp()
+  await buildDesktop()
   const platformNames = await buildSynergyBinaries(version, state.channel)
   const metaSynergyPlatformNames = await buildMetaSynergyBinaries(version)
   const platformPackages = await prepareSynergyPackages(version, platformNames)

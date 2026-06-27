@@ -13,6 +13,7 @@ export const VERSION_MANAGED_PACKAGE_PATHS = [
   // meta-synergy npm publish removed — package too large for npm registry
   // path.join(REPO_ROOT, "packages/meta-synergy/package.json"),
   path.join(REPO_ROOT, "packages/app/package.json"),
+  path.join(REPO_ROOT, "packages/desktop/package.json"),
 ] as const
 
 export type RegistryPackageName =
@@ -40,12 +41,14 @@ export const PLUGIN_DIR = path.join(REPO_ROOT, "packages/plugin")
 export const PLUGIN_KIT_DIR = path.join(REPO_ROOT, "packages/plugin-kit")
 export const SYNERGY_DIR = path.join(REPO_ROOT, "packages/synergy")
 export const APP_DIR = path.join(REPO_ROOT, "packages/app")
+export const DESKTOP_DIR = path.join(REPO_ROOT, "packages/desktop")
 
 export const META_SYNERGY_DIR = path.join(REPO_ROOT, "packages/meta-synergy")
 export const META_SYNERGY_DIST_DIR = path.join(META_SYNERGY_DIR, "dist")
 
 export const APP_DIST_DIR = path.join(APP_DIR, "dist")
 export const SYNERGY_DIST_DIR = path.join(SYNERGY_DIR, "dist")
+export const DESKTOP_RELEASE_DIR = path.join(DESKTOP_DIR, "release")
 
 export type ReleaseKind = "dev" | "stable"
 
@@ -57,6 +60,9 @@ export type ReleaseState = {
   createdAt: string
   registryPackages: string[]
   binaryAssets: string[]
+  desktopAssets: string[]
+  desktopChecksums: string | null
+  desktopUpdateMetadata: string[]
   releaseTag: string | null
   githubReleaseID: string | null
   githubReleaseTagName: string | null
