@@ -17,6 +17,12 @@ import { Script } from "@ericsanchezok/synergy-script"
 const singleFlag = process.argv.includes("--single")
 const baselineFlag = process.argv.includes("--baseline")
 const skipInstall = process.argv.includes("--skip-install")
+const requestedTargets = new Set(
+  (process.env.SYNERGY_BUILD_TARGETS ?? "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean),
+)
 
 const allTargets: {
   os: string
@@ -72,26 +78,37 @@ const allTargets: {
   },
   {
     os: "win32",
+    arch: "arm64",
+  },
+  {
+    os: "win32",
     arch: "x64",
     avx2: false,
   },
 ]
 
-const targets = singleFlag
-  ? allTargets.filter((item) => {
-      if (item.os !== process.platform || item.arch !== process.arch) {
-        return false
-      }
+const targets =
+  requestedTargets.size > 0
+    ? allTargets.filter((item) => requestedTargets.has(targetKey(item)))
+    : singleFlag
+      ? allTargets.filter((item) => {
+          if (item.os !== process.platform || item.arch !== process.arch) {
+            return false
+          }
 
-      // When building for the current platform, prefer a single native binary by default.
-      // Baseline binaries require additional Bun artifacts and can be flaky to download.
-      if (item.avx2 === false) {
-        return baselineFlag
-      }
+          // When building for the current platform, prefer a single native binary by default.
+          // Baseline binaries require additional Bun artifacts and can be flaky to download.
+          if (item.avx2 === false) {
+            return baselineFlag
+          }
 
-      return true
-    })
-  : allTargets
+          return true
+        })
+      : allTargets
+
+if (targets.length === 0) {
+  throw new Error(`No Synergy build targets matched SYNERGY_BUILD_TARGETS=${process.env.SYNERGY_BUILD_TARGETS}`)
+}
 
 fs.rmSync("dist", { recursive: true, force: true })
 
@@ -200,6 +217,10 @@ async function copySandboxHelper(item: { os: string; arch: string }, name: strin
   console.log(`Copying sandbox helper: ${helperSrc} → ${helperDest}`)
   fs.mkdirSync(path.dirname(helperDest), { recursive: true })
   fs.copyFileSync(helperSrc, helperDest)
+}
+
+function targetKey(item: { os: string; arch: string; abi?: string; avx2?: false }): string {
+  return [item.os, item.arch, item.avx2 === false ? "baseline" : undefined, item.abi].filter(Boolean).join("-")
 }
 
 export { binaries }

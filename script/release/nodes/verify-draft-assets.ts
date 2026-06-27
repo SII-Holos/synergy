@@ -16,4 +16,18 @@ export async function verifyDraftAssets(state: ReleaseState) {
       throw new Error(`missing draft release asset ${assetName}`)
     }
   }
+  for (const assetPath of state.desktopAssets) {
+    const assetName = path.basename(assetPath)
+    if (!names.has(assetName)) {
+      throw new Error(`missing draft release desktop asset ${assetName}`)
+    }
+  }
+  if (state.desktopChecksums && !names.has(path.basename(state.desktopChecksums))) {
+    throw new Error(`missing draft release desktop checksum ${path.basename(state.desktopChecksums)}`)
+  }
+  for (const metadata of state.desktopUpdateMetadata) {
+    if (!names.has(metadata)) {
+      throw new Error(`missing draft release desktop update metadata ${metadata}`)
+    }
+  }
 }
