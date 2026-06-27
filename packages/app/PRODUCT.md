@@ -38,6 +38,8 @@ Keep navigation surfaces mentally aligned with where they live. Sidebar destinat
 
 Session, Agenda, Library, and Plugins should feel like one continuous workbench canvas in both light and dark modes. Their root backgrounds should align with the session message-flow background; inner surfaces can step up or down for hierarchy, but should not look like separate apps.
 
+Opening a workspace panel should not force the session message stream or prompt composer into a separate narrow fixed measure. Keep the session column at its normal readable working measure and let it shrink only when the actual pane width requires it.
+
 Library modes are peer views inside the main workbench, not a settings-style secondary sidebar. Put Overview, Memories, Experiences, and Skills in a top tab control aligned with Agenda's Schedule/History pattern, and keep those Library tabs text-only unless an icon adds necessary meaning.
 
 Library content should not expand just because the viewport is wide. Use a centered working measure for Library dashboards and item grids, and let only genuinely tabular or timeline surfaces earn full width. Keep tab-level controls in one predictable toolbar: filter on the left, search or secondary actions on the right, with refresh/recompute/reload actions presented in that toolbar instead of scattered inside each section.

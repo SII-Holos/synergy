@@ -1,4 +1,4 @@
-import { createMemo, Show } from "solid-js"
+import { Show } from "solid-js"
 import type { Accessor } from "solid-js"
 import { useNavigate } from "@solidjs/router"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
@@ -42,7 +42,6 @@ export function PromptDock(props: {
   lastModified: Accessor<string | null | undefined>
 }) {
   const nav = useNavigate()
-  const workspaceOpen = createMemo(() => props.workspaceOpen?.() ?? false)
   return (
     <div
       ref={props.ref}
@@ -58,8 +57,7 @@ export function PromptDock(props: {
       <div
         classList={{
           "w-full min-w-0 md:px-6 pointer-events-auto relative": true,
-          "md:max-w-[50rem]": !props.showTabs() && !workspaceOpen(),
-          "md:max-w-[34rem]": !props.showTabs() && workspaceOpen(),
+          "md:max-w-[50rem]": !props.showTabs(),
         }}
       >
         {/* Out-of-flow overlay anchored to the top of the content area:
