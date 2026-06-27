@@ -460,6 +460,7 @@ export function BrowserSurface(props: { sessionID: string; routeDirectory?: stri
   return (
     <div
       ref={wrapperRef}
+      data-prevent-autofocus
       class="relative w-full h-full overflow-hidden bg-background-strong flex items-center justify-center"
     >
       <Show

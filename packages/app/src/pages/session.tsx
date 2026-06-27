@@ -485,6 +485,7 @@ function SessionPageContent() {
   })
 
   const handleKeyDown = (event: KeyboardEvent) => {
+    if (event.defaultPrevented) return
     const activeElement = document.activeElement as HTMLElement | undefined
     if (activeElement) {
       const isProtected = activeElement.closest("[data-prevent-autofocus]")
