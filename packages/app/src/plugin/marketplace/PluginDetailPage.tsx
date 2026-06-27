@@ -18,6 +18,7 @@ import type {
 import type { PermissionItem, PluginPermissionDiff, TrustTier, PermissionSeverity } from "../consent/schema"
 import { computeVersionDiffs } from "./changelog-utils"
 import { getInstalledVersion, checkUpdateAvailable } from "./install-utils"
+import { MarketplacePluginIcon } from "./MarketplacePluginIcon"
 import "./marketplace.css"
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -290,9 +291,7 @@ export function PluginDetailPage() {
               >
                 <Icon name="arrow-left" size="small" />
               </button>
-              <span class="plugin-marketplace-icon-tile">
-                <Icon name="package" size="small" class="text-icon-weak" />
-              </span>
+              <MarketplacePluginIcon plugin={pluginData()} class="plugin-marketplace-icon-tile" />
               <h1 class="text-18-medium text-text-strong truncate">{pluginData()?.name ?? pluginId()}</h1>
               <Show when={pluginData()}>
                 <VerifiedBadge verified={pluginData()!.verified} official={pluginData()!.official} />

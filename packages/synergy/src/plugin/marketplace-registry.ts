@@ -17,7 +17,7 @@ export namespace PluginMarketplaceRegistry {
   export const Source = z.enum(["official", "local"])
   export type Source = z.infer<typeof Source>
 
-  export const DEFAULT_REGISTRY_URL = PLUGIN_MARKETPLACE_DEFAULTS.registryUrl
+  export const DEFAULT_REGISTRY_URL: string = PLUGIN_MARKETPLACE_DEFAULTS.registryUrl
 
   const Risk = z.enum(["low", "medium", "high"])
   const RuntimeMode = z.enum(["in-process", "worker", "process"])
@@ -36,6 +36,10 @@ export namespace PluginMarketplaceRegistry {
     algorithm: z.literal("ed25519"),
     signer: z.string().regex(/^[a-f0-9]{64}$/i),
   })
+  const RemoteIcon = z.discriminatedUnion("type", [
+    z.object({ type: z.literal("lucide"), name: z.string().min(1) }),
+    z.object({ type: z.literal("registry-svg"), path: z.string().min(1) }),
+  ])
   const RemoteVersion = z.object({
     version: z.string(),
     downloadUrl: z.string().url(),
@@ -60,6 +64,7 @@ export namespace PluginMarketplaceRegistry {
     repo: z.string().url(),
     homepage: z.string().url().optional(),
     author: Author,
+    icon: RemoteIcon.optional(),
     verified: z.boolean(),
     official: z.boolean(),
     keywords: z.array(z.string()),
@@ -74,6 +79,7 @@ export namespace PluginMarketplaceRegistry {
     repo: z.string().url(),
     entry: z.string(),
     author: Author,
+    icon: RemoteIcon.optional(),
     verified: z.boolean(),
     official: z.boolean(),
     keywords: z.array(z.string()),
@@ -93,6 +99,8 @@ export namespace PluginMarketplaceRegistry {
   export type RemoteEntry = z.infer<typeof RemoteEntry>
   export type RemoteVersion = z.infer<typeof RemoteVersion>
   export type RemoteSummary = z.infer<typeof RemoteSummary>
+
+  export type NormalizedIcon = { type: "lucide"; name: string } | { type: "image"; url: string; alt?: string }
 
   export interface NormalizedVersion {
     version: string
@@ -119,6 +127,7 @@ export namespace PluginMarketplaceRegistry {
     repo?: string
     homepage?: string
     author: { name: string; email?: string; url?: string }
+    icon?: NormalizedIcon
     verified: boolean
     official: boolean
     keywords: string[]
@@ -147,6 +156,7 @@ export namespace PluginMarketplaceRegistry {
     description: string
     repo?: string
     author: { name: string; email?: string; url?: string }
+    icon?: NormalizedIcon
     verified: boolean
     official: boolean
     keywords: string[]
@@ -220,6 +230,15 @@ export namespace PluginMarketplaceRegistry {
     }))
   }
 
+  function normalizeIcon(
+    icon: z.infer<typeof RemoteIcon> | undefined,
+    registryUrl: string,
+  ): NormalizedIcon | undefined {
+    if (!icon) return undefined
+    if (icon.type === "lucide") return { type: "lucide", name: icon.name }
+    return { type: "image", url: resolveEntryUrl(registryUrl, icon.path) }
+  }
+
   function normalizeVersion(version: RemoteVersion, source: Source): NormalizedVersion {
     return {
       version: version.version,
@@ -240,7 +259,12 @@ export namespace PluginMarketplaceRegistry {
     }
   }
 
-  function normalizeEntry(entry: RemoteEntry, source: Source, entryUrl?: string): NormalizedEntry {
+  function normalizeEntry(
+    entry: RemoteEntry,
+    source: Source,
+    entryUrl?: string,
+    registryUrl: string = DEFAULT_REGISTRY_URL,
+  ): NormalizedEntry {
     const versions = entry.versions.map((version) => normalizeVersion(version, source))
     const latest = [...versions].sort((a, b) => b.publishedAt - a.publishedAt)[0]
     return {
@@ -250,6 +274,7 @@ export namespace PluginMarketplaceRegistry {
       repo: entry.repo,
       homepage: entry.homepage,
       author: entry.author,
+      icon: normalizeIcon(entry.icon, registryUrl),
       verified: entry.verified,
       official: entry.official,
       keywords: entry.keywords,
@@ -271,13 +296,14 @@ export namespace PluginMarketplaceRegistry {
     }
   }
 
-  function normalizeSummary(summary: RemoteSummary): NormalizedSummary {
+  function normalizeSummary(summary: RemoteSummary, registryUrl: string = DEFAULT_REGISTRY_URL): NormalizedSummary {
     return {
       id: summary.id,
       name: summary.name,
       description: summary.description,
       repo: summary.repo,
       author: summary.author,
+      icon: normalizeIcon(summary.icon, registryUrl),
       verified: summary.verified,
       official: summary.official,
       keywords: summary.keywords,
@@ -364,7 +390,8 @@ export namespace PluginMarketplaceRegistry {
 
   export async function searchOfficial(input: { q?: string; offset?: number; limit?: number } = {}) {
     const { q = "", offset = 0, limit = 20 } = input
-    const registry = await remoteRegistry()
+    const config = await currentConfig()
+    const registry = await remoteRegistry(config)
     const query = q.toLowerCase().trim()
     let results = registry.plugins
     if (query) {
@@ -376,7 +403,7 @@ export namespace PluginMarketplaceRegistry {
       )
     }
     return {
-      plugins: results.slice(offset, offset + limit).map(normalizeSummary),
+      plugins: results.slice(offset, offset + limit).map((summary) => normalizeSummary(summary, config.registryUrl)),
       total: results.length,
     }
   }
@@ -393,13 +420,13 @@ export namespace PluginMarketplaceRegistry {
     } catch (err) {
       if (!config.offlineCache) throw err
       const cached = await readJsonFile(entryCachePath(id), RemoteEntry)
-      return cached ? normalizeEntry(cached, "official") : null
+      return cached ? normalizeEntry(cached, "official", undefined, config.registryUrl) : null
     }
 
     const cachedPath = entryCachePath(id)
     if (await isFresh(cachedPath, config.cacheTtlMs)) {
       const cached = await readJsonFile(cachedPath, RemoteEntry)
-      if (cached) return normalizeEntry(cached, "official", entryUrl)
+      if (cached) return normalizeEntry(cached, "official", entryUrl, config.registryUrl)
     }
 
     try {
@@ -408,11 +435,11 @@ export namespace PluginMarketplaceRegistry {
         throw new Error(`Official plugin entry identity mismatch for ${id}`)
       }
       await writeJsonFile(cachedPath, entry)
-      return normalizeEntry(entry, "official", entryUrl)
+      return normalizeEntry(entry, "official", entryUrl, config.registryUrl)
     } catch (err) {
       if (config.offlineCache) {
         const cached = await readJsonFile(cachedPath, RemoteEntry)
-        if (cached) return normalizeEntry(cached, "official", entryUrl)
+        if (cached) return normalizeEntry(cached, "official", entryUrl, config.registryUrl)
       }
       throw err
     }

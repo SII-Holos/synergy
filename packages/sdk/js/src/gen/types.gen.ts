@@ -4410,6 +4410,17 @@ export type PluginRuntimeLogEntry = {
   message: string
 }
 
+export type RegistryPluginIcon =
+  | {
+      type: "lucide"
+      name: string
+    }
+  | {
+      type: "image"
+      url: string
+      alt?: string
+    }
+
 export type RegistryPluginSummary = {
   id: string
   name: string
@@ -4420,6 +4431,7 @@ export type RegistryPluginSummary = {
     email?: string
     url?: string
   }
+  icon?: RegistryPluginIcon
   verified: boolean
   official: boolean
   keywords: Array<string>
@@ -4484,6 +4496,7 @@ export type RegistryPluginEntry = {
     email?: string
     url?: string
   }
+  icon?: RegistryPluginIcon
   verified: boolean
   official: boolean
   keywords: Array<string>
@@ -4519,6 +4532,7 @@ export type RegistryPublishInput = {
     email?: string
     url?: string
   }
+  icon?: RegistryPluginIcon
   verified: boolean
   official: boolean
   keywords: Array<string>

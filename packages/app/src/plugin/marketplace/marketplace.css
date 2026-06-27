@@ -39,6 +39,13 @@
   border-radius: 14px;
 }
 
+.plugin-marketplace-icon-image {
+  width: 70%;
+  height: 70%;
+  object-fit: contain;
+  display: block;
+}
+
 .plugin-marketplace-skeleton-row {
   position: relative;
   overflow: hidden;

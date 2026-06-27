@@ -5,6 +5,7 @@ import { useGlobalSDK } from "@/context/global-sdk"
 import { VerifiedBadge } from "./VerifiedBadge"
 import { PermissionRiskBadge } from "../consent/PermissionRiskBadge"
 import type { RegistryPluginSummary } from "@ericsanchezok/synergy-sdk/client"
+import { MarketplacePluginIcon } from "./MarketplacePluginIcon"
 import "./marketplace.css"
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -18,15 +19,6 @@ function timeAgo(ts: number): string {
   const days = Math.floor(hours / 24)
   if (days < 30) return `${days}d ago`
   return new Date(ts).toLocaleDateString()
-}
-
-function pluginIcon(plugin: RegistryPluginSummary) {
-  const keywords = plugin.keywords.map((item) => item.toLowerCase())
-  if (keywords.some((item) => item.includes("image") || item.includes("meme"))) return "image"
-  if (keywords.some((item) => item.includes("frontend") || item.includes("ui"))) return "layout-grid"
-  if (keywords.some((item) => item.includes("hash") || item.includes("password") || item.includes("id")))
-    return "fingerprint"
-  return "package"
 }
 
 // ── Component ────────────────────────────────────────────────────────────────
@@ -187,9 +179,7 @@ function PluginRow(props: { plugin: RegistryPluginSummary; onClick: () => void }
       class="plugin-marketplace-row workbench-card-surface group flex w-full items-center gap-3 rounded-2xl px-3.5 py-3 text-left transition-colors hover:bg-surface-raised-base-hover focus:outline-none focus:ring-2 focus:ring-border-base/35"
       onClick={props.onClick}
     >
-      <span class="plugin-marketplace-plugin-icon">
-        <Icon name={pluginIcon(props.plugin)} size="normal" class="text-icon-weak" />
-      </span>
+      <MarketplacePluginIcon plugin={props.plugin} class="plugin-marketplace-plugin-icon" />
 
       <span class="min-w-0 flex-1">
         <span class="flex min-w-0 flex-wrap items-center gap-1.5">

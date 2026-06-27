@@ -6,6 +6,11 @@ import { PluginBuildCommand } from "../../src/cli/cmd/plugin-build"
 import { PluginCreateCommand } from "../../src/cli/cmd/plugin-create"
 import { PluginPackCommand } from "../../src/cli/cmd/plugin-pack"
 import { PluginValidateCommand } from "../../src/cli/cmd/plugin-validate"
+import { PluginManifest } from "@ericsanchezok/synergy-plugin"
+import { baseCapabilities } from "../../../plugin-kit/src/lib/capability"
+import { sha256File } from "../../../plugin-kit/src/lib/crypto"
+import { computeManifestHash, computePermissionsHash } from "../../../plugin-kit/src/lib/hash"
+import { copyGithubEntryIcon, githubEntry, writeGithubEntry } from "../../../plugin-kit/src/lib/market-entry"
 
 const repoRoot = path.resolve(import.meta.dir, "../../../..")
 const repoNodeModules = path.join(repoRoot, "node_modules")
@@ -66,6 +71,7 @@ describe("plugin scaffold toolchain", () => {
           name: "asset-fixture",
           version: "0.1.0",
           description: "Fixture plugin with declared contribution assets",
+          icon: "./icons/market.svg",
           main: "./src/index.ts",
           contributes: {
             skills: [{ name: "frontend", description: "Frontend workflow skill", dir: "./skills/frontend" }],
@@ -128,6 +134,10 @@ export default plugin
       path.join(pluginDir, "icons", "logo.svg"),
       '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1"></svg>\n',
     )
+    await Bun.write(
+      path.join(pluginDir, "icons", "market.svg"),
+      '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1"></svg>\n',
+    )
 
     await runCommand(PluginBuildCommand, { path: pluginDir })
     await runCommand(PluginPackCommand, { path: pluginDir })
@@ -143,6 +153,7 @@ export default plugin
       "dist/scripts/install.ts",
       "dist/themes/default.css",
       "dist/icons/logo.svg",
+      "dist/icons/market.svg",
     ]
     for (const relative of expectedFiles) {
       expect(await Bun.file(path.join(pluginDir, relative)).exists()).toBe(true)
@@ -153,6 +164,7 @@ export default plugin
     expect(integrity.files["src/route.js"]).toBeDefined()
     expect(integrity.files["src/panel-sandbox.js"]).toBeDefined()
     expect(integrity.files["scripts/install.ts"]).toBeDefined()
+    expect(integrity.files["icons/market.svg"]).toBeDefined()
 
     const tarball = path.join(pluginDir, "asset-fixture-0.1.0.synergy-plugin.tgz")
     const list = Bun.spawnSync(["tar", "-tzf", tarball], { stdout: "pipe", stderr: "pipe" })
@@ -168,5 +180,43 @@ export default plugin
     expect(files.has("src/route.js")).toBe(true)
     expect(files.has("src/panel-sandbox.js")).toBe(true)
     expect(files.has("scripts/install.ts")).toBe(true)
+    expect(files.has("icons/market.svg")).toBe(true)
+
+    const manifest = PluginManifest.parse(await Bun.file(path.join(pluginDir, "dist", "plugin.json")).json())
+    const capabilities = baseCapabilities(manifest)
+    await Bun.write(
+      `${tarball}.sig`,
+      JSON.stringify(
+        {
+          signatureVersion: 1,
+          pluginId: "asset-fixture",
+          version: "0.1.0",
+          algorithm: "ed25519",
+          signer: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          signature: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          signedAt: 1,
+          payload: {
+            tarballHash: sha256File(tarball),
+            manifestHash: computeManifestHash(manifest),
+            permissionsHash: computePermissionsHash(manifest, capabilities),
+          },
+        },
+        null,
+        2,
+      ),
+    )
+
+    const entry = githubEntry({
+      tarballPath: tarball,
+      repo: "https://github.com/example/asset-fixture",
+      publishedAt: "2026-06-27T00:00:00.000Z",
+    })
+    expect(entry.icon).toEqual({ type: "registry-svg", path: "icons/asset-fixture.svg" })
+
+    const registryEntryPath = path.join(tmp.path, "registry", "plugins", "asset-fixture.json")
+    writeGithubEntry(registryEntryPath, entry)
+    const copiedIcon = copyGithubEntryIcon({ tarballPath: tarball, entryPath: registryEntryPath, entry })
+    expect(copiedIcon).toBe(path.join(tmp.path, "registry", "icons", "asset-fixture.svg"))
+    expect(await Bun.file(copiedIcon!).exists()).toBe(true)
   })
 })
