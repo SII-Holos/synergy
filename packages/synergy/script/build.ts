@@ -2,6 +2,7 @@
 
 import path from "path"
 import fs from "fs"
+import os from "os"
 import { $ } from "bun"
 import { fileURLToPath } from "url"
 
@@ -117,22 +118,7 @@ await $`bun run --cwd ${path.resolve(dir, "../app")} build`
 
 const binaries: Record<string, string> = {}
 if (!skipInstall) {
-  await $`bun install --os="*" --cpu="*" @parcel/watcher@${pkg.dependencies["@parcel/watcher"]}`
-  await $`bun install --os="*" --cpu="*" sqlite-vec@${pkg.dependencies["sqlite-vec"]}`
-  // Explicitly install platform-specific sqlite-vec packages with --os="*" --cpu="*"
-  // so they are available for all cross-platform builds (without these flags, bun only
-  // installs the current platform's variant)
-  const sqliteVecVersion = pkg.dependencies["sqlite-vec"]
-  const sqliteVecPlatforms = [
-    "sqlite-vec-darwin-arm64",
-    "sqlite-vec-darwin-x64",
-    "sqlite-vec-linux-arm64",
-    "sqlite-vec-linux-x64",
-    "sqlite-vec-windows-x64",
-  ]
-  for (const vecPkg of sqliteVecPlatforms) {
-    await $`bun install --os="*" --cpu="*" ${vecPkg}@${sqliteVecVersion}`
-  }
+  await ensureNativeBuildPackages()
 }
 for (const item of targets) {
   const name = [
@@ -238,6 +224,55 @@ async function retryBuild(name: string, build: () => Promise<BunBuildOutput>) {
       lastError = error
       if (attempt === 3) break
       console.warn(`building ${name} failed on attempt ${attempt}/3; retrying in 5s`)
+      await new Promise((resolve) => setTimeout(resolve, 5_000))
+    }
+  }
+  throw lastError
+}
+
+async function ensureNativeBuildPackages() {
+  const dependencies = {
+    ...pkg.dependencies,
+    ...pkg.devDependencies,
+  } as Record<string, string>
+  const packages = Object.entries(dependencies).filter(
+    ([name]) => name.startsWith("@parcel/watcher-") || name.startsWith("sqlite-vec-"),
+  )
+
+  for (const [name, version] of packages) {
+    await ensureNpmPackageExtracted(name, version)
+  }
+}
+
+async function ensureNpmPackageExtracted(name: string, version: string) {
+  const destination = path.join(dir, "node_modules", ...name.split("/"))
+  if (fs.existsSync(path.join(destination, "package.json"))) return
+
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), "synergy-native-package-"))
+  try {
+    await retryCommand(name, () => $`npm pack ${`${name}@${version}`} --silent`.cwd(temp).quiet())
+    const tarball = fs.readdirSync(temp).find((entry) => entry.endsWith(".tgz"))
+    if (!tarball) {
+      throw new Error(`npm pack did not produce a tarball for ${name}@${version}`)
+    }
+
+    fs.mkdirSync(destination, { recursive: true })
+    await $`tar -xzf ${path.join(temp, tarball)} -C ${destination} --strip-components=1`
+  } finally {
+    fs.rmSync(temp, { recursive: true, force: true })
+  }
+}
+
+async function retryCommand(name: string, command: () => Promise<unknown>) {
+  let lastError: unknown
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      await command()
+      return
+    } catch (error) {
+      lastError = error
+      if (attempt === 3) break
+      console.warn(`installing ${name} failed on attempt ${attempt}/3; retrying in 5s`)
       await new Promise((resolve) => setTimeout(resolve, 5_000))
     }
   }
