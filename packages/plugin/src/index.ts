@@ -124,6 +124,8 @@ export interface PluginAgent {
   mode?: "subagent" | "primary" | "all"
   /** Model override in "providerID/modelID" format */
   model?: string
+  /** Model role to resolve when model is not set */
+  modelRole?: "vision" | "nano" | "mini" | "mid" | "thinking" | "long" | "creative"
   temperature?: number
   topP?: number
   /** Maximum agentic iterations */

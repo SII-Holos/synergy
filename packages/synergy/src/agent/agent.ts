@@ -21,9 +21,128 @@ import { Log } from "@/util/log"
 import { ExternalAgent } from "@/external-agent/bridge"
 import { ExternalAgentDiscovery } from "@/external-agent/discovery"
 import { Plugin } from "../plugin"
+import { MODEL_ROLE_IDS } from "../provider/model-role"
 
 export namespace Agent {
   const log = Log.create({ service: "agent" })
+
+  const ModelRef = z.object({
+    providerID: z.string(),
+    modelID: z.string(),
+  })
+
+  const MODEL_ROLE_SUMMARY_IDS = ["default", ...MODEL_ROLE_IDS] as const
+  const ModelRoleSummaryID = z.enum(MODEL_ROLE_SUMMARY_IDS)
+
+  const ModelRoleField = z.enum([
+    "model",
+    "nano_model",
+    "mini_model",
+    "mid_model",
+    "thinking_model",
+    "long_context_model",
+    "creative_model",
+    "vision_model",
+  ])
+
+  const ModelRoleUsage = z
+    .object({
+      name: z.string(),
+      description: z.string().optional(),
+      mode: z.enum(["subagent", "primary", "all"]),
+      hidden: z.boolean().optional(),
+      visibleTo: z.array(z.string()).optional(),
+      native: z.boolean().optional(),
+      source: z.enum(["builtin", "config", "plugin", "external"]).optional(),
+      modelSource: z.enum(["role", "explicit"]).optional(),
+      model: ModelRef.optional(),
+    })
+    .meta({ ref: "ModelRoleUsage" })
+
+  export const ModelRoleSummary = z
+    .object({
+      id: ModelRoleSummaryID,
+      role: Provider.ModelRole.optional(),
+      field: ModelRoleField,
+      label: z.string(),
+      summary: z.string(),
+      fallbackChain: z.array(ModelRoleField),
+      configuredModel: ModelRef.optional(),
+      resolvedModel: ModelRef.extend({ via: ModelRoleField }).optional(),
+      usedBy: z.array(ModelRoleUsage),
+      requiresExplicitModel: z.boolean().optional(),
+      disabledReason: z.string().optional(),
+    })
+    .meta({ ref: "ModelRoleSummary" })
+  export type ModelRoleSummary = z.infer<typeof ModelRoleSummary>
+
+  const MODEL_ROLE_DEFINITIONS: Array<{
+    id: z.infer<typeof ModelRoleSummaryID>
+    role?: Provider.ModelRole
+    field: z.infer<typeof ModelRoleField>
+    label: string
+    summary: string
+    requiresExplicitModel?: boolean
+    disabledReason?: string
+  }> = [
+    {
+      id: "default",
+      field: "model",
+      label: "Default",
+      summary: "Main conversation model when no specialist role applies.",
+    },
+    {
+      id: "nano",
+      role: "nano",
+      field: "nano_model",
+      label: "Nano",
+      summary: "Cheap quick tasks like titles and summaries.",
+    },
+    {
+      id: "mini",
+      role: "mini",
+      field: "mini_model",
+      label: "Mini",
+      summary: "Lightweight routing, intent, and extraction.",
+    },
+    {
+      id: "mid",
+      role: "mid",
+      field: "mid_model",
+      label: "Mid",
+      summary: "Routine background agents and code exploration.",
+    },
+    {
+      id: "thinking",
+      role: "thinking",
+      field: "thinking_model",
+      label: "Thinking",
+      summary: "Deep reasoning for architecture, implementation, and reviews.",
+    },
+    {
+      id: "long",
+      role: "long",
+      field: "long_context_model",
+      label: "Long context",
+      summary: "Compaction and very long inputs.",
+    },
+    {
+      id: "creative",
+      role: "creative",
+      field: "creative_model",
+      label: "Creative",
+      summary: "Writing, design, and visual work.",
+    },
+    {
+      id: "vision",
+      role: "vision",
+      field: "vision_model",
+      label: "Vision",
+      summary: "Enables screenshot and image analysis.",
+      requiresExplicitModel: true,
+      disabledReason: "Image analysis is disabled until a vision model is configured.",
+    },
+  ]
 
   export const Info = z
     .object({
@@ -44,6 +163,9 @@ export namespace Agent {
           providerID: z.string(),
         })
         .optional(),
+      modelRole: Provider.ModelRole.optional(),
+      modelSource: z.enum(["role", "explicit"]).optional(),
+      source: z.enum(["builtin", "config", "plugin", "external"]).optional(),
       prompt: z.string().optional(),
       options: z.record(z.string(), z.any()),
       steps: z.number().int().positive().optional(),
@@ -98,6 +220,9 @@ export namespace Agent {
       ...createBuiltinMaxSubagents(builtinContext),
       ...createBuiltinInternalAgents(builtinContext),
     }
+    for (const item of Object.values(result)) {
+      item.source ??= "builtin"
+    }
 
     for (const [key, value] of Object.entries(cfg.agent ?? {})) {
       if (value.disable) {
@@ -112,8 +237,17 @@ export namespace Agent {
           permission: PermissionNext.merge(defaults, user),
           options: {},
           native: false,
+          source: "config",
         }
-      if (value.model) item.model = Provider.parseModel(value.model)
+      if (value.modelRole) {
+        item.modelRole = value.modelRole
+        item.model = role(value.modelRole)
+        item.modelSource = "role"
+      }
+      if (value.model) {
+        item.model = Provider.parseModel(value.model)
+        item.modelSource = "explicit"
+      }
       item.prompt = value.prompt ?? item.prompt
       item.description = value.description ?? item.description
       item.temperature = value.temperature ?? item.temperature
@@ -143,7 +277,11 @@ export namespace Agent {
         permission: PermissionNext.merge(defaults, user, PermissionNext.fromConfig(agent.permission ?? {})),
         options: {},
         native: false,
-        ...(agent.model ? { model: Provider.parseModel(agent.model) } : {}),
+        source: "plugin",
+        ...(agent.modelRole
+          ? { modelRole: agent.modelRole, model: role(agent.modelRole), modelSource: "role" as const }
+          : {}),
+        ...(agent.model ? { model: Provider.parseModel(agent.model), modelSource: "explicit" as const } : {}),
         temperature: agent.temperature,
         topP: agent.topP,
         steps: agent.steps,
@@ -242,6 +380,7 @@ export namespace Agent {
           permission: PermissionNext.merge(defaults, user),
           options: {},
           external: externalField,
+          source: "external",
         }
       }
     }
@@ -283,6 +422,68 @@ export namespace Agent {
       values(),
       sortBy([(x) => (cfg.default_agent ? x.name === cfg.default_agent : x.name === "synergy"), "desc"]),
     )
+  }
+
+  export async function modelRoleSummaries(): Promise<ModelRoleSummary[]> {
+    const cfg = await Config.current()
+    const agents = await list()
+
+    return MODEL_ROLE_DEFINITIONS.map((definition) => {
+      const fallbackChain = (
+        definition.role ? Provider.getRoleFallbackChain(definition.role) : [definition.field]
+      ) as Array<z.infer<typeof ModelRoleField>>
+      const configuredModel = parseConfigModel(cfg[definition.field])
+      const resolvedModel = resolveSummaryModel(cfg, definition.role, fallbackChain)
+      const usedBy = agents
+        .filter((agent) =>
+          definition.role ? agent.modelRole === definition.role : !agent.modelRole && agent.modelSource !== "explicit",
+        )
+        .map((agent) => ({
+          name: agent.name,
+          description: agent.description,
+          mode: agent.mode,
+          hidden: agent.hidden,
+          visibleTo: agent.visibleTo,
+          native: agent.native,
+          source: agent.source,
+          modelSource: agent.modelSource,
+          model: agent.model,
+        }))
+
+      return {
+        id: definition.id,
+        role: definition.role,
+        field: definition.field,
+        label: definition.label,
+        summary: definition.summary,
+        fallbackChain,
+        configuredModel,
+        resolvedModel,
+        usedBy,
+        requiresExplicitModel: definition.requiresExplicitModel,
+        disabledReason: definition.requiresExplicitModel && !resolvedModel ? definition.disabledReason : undefined,
+      }
+    })
+  }
+
+  function parseConfigModel(value: unknown): { providerID: string; modelID: string } | undefined {
+    if (typeof value !== "string" || !value) return undefined
+    return Provider.parseModel(value)
+  }
+
+  function resolveSummaryModel(
+    cfg: Config.Info,
+    role: Provider.ModelRole | undefined,
+    fallbackChain: Array<z.infer<typeof ModelRoleField>>,
+  ): ({ providerID: string; modelID: string } & { via: z.infer<typeof ModelRoleField> }) | undefined {
+    for (const field of fallbackChain) {
+      const model = parseConfigModel(cfg[field])
+      if (model) return { ...model, via: field }
+    }
+    if (!role) return undefined
+    const resolved = Provider.resolveRoleModelSync(cfg, role)
+    if (!resolved) return undefined
+    return { ...resolved, via: fallbackChain[0] }
   }
 
   export async function defaultAgent() {

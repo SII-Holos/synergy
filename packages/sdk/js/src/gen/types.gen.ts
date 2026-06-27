@@ -959,6 +959,8 @@ export type ProviderCatalogConfig = {
   offlineCache?: boolean
 }
 
+export type ModelRole = "vision" | "nano" | "mini" | "mid" | "thinking" | "long" | "creative"
+
 export type PermissionActionConfig = "ask" | "allow" | "deny"
 
 export type PermissionObjectConfig = {
@@ -999,6 +1001,7 @@ export type ControlProfileId = "guarded" | "autonomous" | "full_access"
 
 export type AgentConfig = {
   model?: string
+  modelRole?: ModelRole
   temperature?: number
   top_p?: number
   prompt?: string
@@ -1038,6 +1041,7 @@ export type AgentConfig = {
   [key: string]:
     | unknown
     | string
+    | ModelRole
     | number
     | {
         [key: string]: boolean
@@ -4562,12 +4566,76 @@ export type Agent = {
     modelID: string
     providerID: string
   }
+  modelRole?: ModelRole
+  modelSource?: "role" | "explicit"
+  source?: "builtin" | "config" | "plugin" | "external"
   prompt?: string
   options: {
     [key: string]: unknown
   }
   steps?: number
   external?: ExternalAgentInfo
+}
+
+export type ModelRoleUsage = {
+  name: string
+  description?: string
+  mode: "subagent" | "primary" | "all"
+  hidden?: boolean
+  visibleTo?: Array<string>
+  native?: boolean
+  source?: "builtin" | "config" | "plugin" | "external"
+  modelSource?: "role" | "explicit"
+  model?: {
+    providerID: string
+    modelID: string
+  }
+}
+
+export type ModelRoleSummary = {
+  id: "default" | "vision" | "nano" | "mini" | "mid" | "thinking" | "long" | "creative"
+  role?: ModelRole
+  field:
+    | "model"
+    | "nano_model"
+    | "mini_model"
+    | "mid_model"
+    | "thinking_model"
+    | "long_context_model"
+    | "creative_model"
+    | "vision_model"
+  label: string
+  summary: string
+  fallbackChain: Array<
+    | "model"
+    | "nano_model"
+    | "mini_model"
+    | "mid_model"
+    | "thinking_model"
+    | "long_context_model"
+    | "creative_model"
+    | "vision_model"
+  >
+  configuredModel?: {
+    providerID: string
+    modelID: string
+  }
+  resolvedModel?: {
+    providerID: string
+    modelID: string
+    via:
+      | "model"
+      | "nano_model"
+      | "mini_model"
+      | "mid_model"
+      | "thinking_model"
+      | "long_context_model"
+      | "creative_model"
+      | "vision_model"
+  }
+  usedBy: Array<ModelRoleUsage>
+  requiresExplicitModel?: boolean
+  disabledReason?: string
 }
 
 export type McpStatusUninitialized = {
@@ -12199,6 +12267,25 @@ export type AppAgentsResponses = {
 }
 
 export type AppAgentsResponse = AppAgentsResponses[keyof AppAgentsResponses]
+
+export type AppAgentModelRolesData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/agent/model-roles"
+}
+
+export type AppAgentModelRolesResponses = {
+  /**
+   * List of model role summaries
+   */
+  200: Array<ModelRoleSummary>
+}
+
+export type AppAgentModelRolesResponse = AppAgentModelRolesResponses[keyof AppAgentModelRolesResponses]
 
 export type McpStatusData = {
   body?: never

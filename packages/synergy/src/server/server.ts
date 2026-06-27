@@ -980,6 +980,27 @@ export namespace Server {
             return c.json(modes)
           },
         )
+        .get(
+          "/agent/model-roles",
+          describeRoute({
+            summary: "List model role summaries",
+            description: "Get model role configuration, fallback, and usage metadata for the settings UI.",
+            operationId: "app.agentModelRoles",
+            responses: {
+              200: {
+                description: "List of model role summaries",
+                content: {
+                  "application/json": {
+                    schema: resolver(Agent.ModelRoleSummary.array()),
+                  },
+                },
+              },
+            },
+          }),
+          async (c) => {
+            return c.json(await Agent.modelRoleSummaries())
+          },
+        )
 
         .route("/mcp", McpRoute)
         .route("/channel", ChannelRoute)

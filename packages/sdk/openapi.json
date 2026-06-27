@@ -14939,6 +14939,50 @@
         ]
       }
     },
+    "/agent/model-roles": {
+      "get": {
+        "operationId": "app.agentModelRoles",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "List model role summaries",
+        "description": "Get model role configuration, fallback, and usage metadata for the settings UI.",
+        "responses": {
+          "200": {
+            "description": "List of model role summaries",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ModelRoleSummary"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.app.agentModelRoles({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/mcp": {
       "get": {
         "operationId": "mcp.status",
@@ -18198,6 +18242,10 @@
         },
         "additionalProperties": false
       },
+      "ModelRole": {
+        "type": "string",
+        "enum": ["vision", "nano", "mini", "mid", "thinking", "long", "creative"]
+      },
       "PermissionActionConfig": {
         "type": "string",
         "enum": ["ask", "allow", "deny"]
@@ -18306,6 +18354,9 @@
         "properties": {
           "model": {
             "type": "string"
+          },
+          "modelRole": {
+            "$ref": "#/components/schemas/ModelRole"
           },
           "temperature": {
             "type": "number"
@@ -27300,6 +27351,17 @@
             },
             "required": ["modelID", "providerID"]
           },
+          "modelRole": {
+            "$ref": "#/components/schemas/ModelRole"
+          },
+          "modelSource": {
+            "type": "string",
+            "enum": ["role", "explicit"]
+          },
+          "source": {
+            "type": "string",
+            "enum": ["builtin", "config", "plugin", "external"]
+          },
           "prompt": {
             "type": "string"
           },
@@ -27320,6 +27382,151 @@
           }
         },
         "required": ["name", "mode", "permission", "options"]
+      },
+      "ModelRoleUsage": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "mode": {
+            "type": "string",
+            "enum": ["subagent", "primary", "all"]
+          },
+          "hidden": {
+            "type": "boolean"
+          },
+          "visibleTo": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "native": {
+            "type": "boolean"
+          },
+          "source": {
+            "type": "string",
+            "enum": ["builtin", "config", "plugin", "external"]
+          },
+          "modelSource": {
+            "type": "string",
+            "enum": ["role", "explicit"]
+          },
+          "model": {
+            "type": "object",
+            "properties": {
+              "providerID": {
+                "type": "string"
+              },
+              "modelID": {
+                "type": "string"
+              }
+            },
+            "required": ["providerID", "modelID"]
+          }
+        },
+        "required": ["name", "mode"]
+      },
+      "ModelRoleSummary": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "enum": ["default", "vision", "nano", "mini", "mid", "thinking", "long", "creative"]
+          },
+          "role": {
+            "$ref": "#/components/schemas/ModelRole"
+          },
+          "field": {
+            "type": "string",
+            "enum": [
+              "model",
+              "nano_model",
+              "mini_model",
+              "mid_model",
+              "thinking_model",
+              "long_context_model",
+              "creative_model",
+              "vision_model"
+            ]
+          },
+          "label": {
+            "type": "string"
+          },
+          "summary": {
+            "type": "string"
+          },
+          "fallbackChain": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "model",
+                "nano_model",
+                "mini_model",
+                "mid_model",
+                "thinking_model",
+                "long_context_model",
+                "creative_model",
+                "vision_model"
+              ]
+            }
+          },
+          "configuredModel": {
+            "type": "object",
+            "properties": {
+              "providerID": {
+                "type": "string"
+              },
+              "modelID": {
+                "type": "string"
+              }
+            },
+            "required": ["providerID", "modelID"]
+          },
+          "resolvedModel": {
+            "type": "object",
+            "properties": {
+              "providerID": {
+                "type": "string"
+              },
+              "modelID": {
+                "type": "string"
+              },
+              "via": {
+                "type": "string",
+                "enum": [
+                  "model",
+                  "nano_model",
+                  "mini_model",
+                  "mid_model",
+                  "thinking_model",
+                  "long_context_model",
+                  "creative_model",
+                  "vision_model"
+                ]
+              }
+            },
+            "required": ["providerID", "modelID", "via"]
+          },
+          "usedBy": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ModelRoleUsage"
+            }
+          },
+          "requiresExplicitModel": {
+            "type": "boolean"
+          },
+          "disabledReason": {
+            "type": "string"
+          }
+        },
+        "required": ["id", "field", "label", "summary", "fallbackChain", "usedBy"]
       },
       "MCPStatusUninitialized": {
         "type": "object",

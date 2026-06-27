@@ -17,9 +17,9 @@ export type ModelKey =
   | "long_context_model"
   | "creative_model"
 
-/** Resolved defaults returned by Config.current()/Config.forScope(). These are the actual active defaults, never undefined. */
+/** Empty strings mean this role falls back to runtime model resolution. */
 export const MODEL_DEFAULTS: Record<ModelKey, string> = {
-  model: "synergy",
+  model: "",
   nano_model: "",
   mini_model: "",
   mid_model: "",

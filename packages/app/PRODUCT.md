@@ -36,6 +36,8 @@ Treat the Holos agent as the Synergy account identity. Model subscriptions, API 
 
 Keep navigation surfaces mentally aligned with where they live. Sidebar destinations such as Agenda, Library, and Plugins open in the main session-side canvas. Settings may be modal, and it should dim the whole app because it interrupts the current task.
 
+Settings should be a human-facing preference surface, not a raw config editor. Keep common settings in a left-aligned readable measure, use direct controls for choices, toggles, and stepped values, and reserve raw domain-file syntax for import/export or advanced configuration views.
+
 Session, Agenda, Library, and Plugins should feel like one continuous workbench canvas in both light and dark modes. Their root backgrounds should align with the session message-flow background; inner surfaces can step up or down for hierarchy, but should not look like separate apps.
 
 Opening a workspace panel should not force the session message stream or prompt composer into a separate narrow fixed measure. Keep the session column at its normal readable working measure and let it shrink only when the actual pane width requires it. The normal session measure should feel like a broad workbench column for coding and tool-rich conversations, not a narrow chat lane. In constrained panes, preserve a minimum horizontal gutter around the message stream and tool cards so they do not visually stick to the sidebar or workspace boundary. Auto-opened workspace panels should occupy about half the viewport; user-resized workspace widths can remain sticky.

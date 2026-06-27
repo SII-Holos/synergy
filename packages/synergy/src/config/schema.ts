@@ -2,6 +2,7 @@ import { Log } from "../util/log"
 import z from "zod"
 import { ModelsDev } from "../provider/models"
 import { LSPServer } from "../lsp/server"
+import { ModelRole } from "../provider/model-role"
 
 export const McpRetry = z
   .object({
@@ -425,6 +426,7 @@ export type Command = z.infer<typeof Command>
 export const Agent = z
   .object({
     model: z.string().optional(),
+    modelRole: ModelRole.optional().describe("Model role to resolve for this agent when model is not set"),
     temperature: z.number().optional(),
     top_p: z.number().optional(),
     prompt: z.string().optional(),
@@ -457,6 +459,7 @@ export const Agent = z
     const knownKeys = new Set([
       "name",
       "model",
+      "modelRole",
       "prompt",
       "description",
       "temperature",

@@ -93,6 +93,7 @@ export const SemanticIconToken = {
   "action.copy": "copy",
   "action.open": "arrow-up-right",
   "action.more": "ellipsis",
+  "action.info": "help-circle",
   "action.search": "search",
   "action.remove": "trash-2",
   "action.refresh": "refresh-ccw",

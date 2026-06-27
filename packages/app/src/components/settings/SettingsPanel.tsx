@@ -19,7 +19,12 @@ import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
-import type { ConfigDomainSummary, ControlProfileSummary, SandboxStatus } from "@ericsanchezok/synergy-sdk/client"
+import type {
+  ConfigDomainSummary,
+  ControlProfileSummary,
+  ModelRoleSummary,
+  SandboxStatus,
+} from "@ericsanchezok/synergy-sdk/client"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { useInput, type SendShortcut } from "@/context/input"
 import { useGlobalSync } from "@/context/global-sync"
@@ -98,6 +103,11 @@ export function SettingsPanel(props: SettingsPanelProps) {
     return res.data ?? []
   })
 
+  const [modelRoleSummaries, { refetch: refetchModelRoleSummaries }] = createResource(async () => {
+    const res = await globalSDK.client.app.agentModelRoles()
+    return (res.data ?? []) as ModelRoleSummary[]
+  })
+
   const providerModels = createMemo(() => {
     const data = globalSync.data.provider
     const list: ProviderModel[] = []
@@ -170,7 +180,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
     doEnsureInit()
   })
 
-  const ready = () => initialized() && !!domainSummaries()
+  const ready = () => initialized() && !!domainSummaries() && !!modelRoleSummaries()
   const cancelDebouncesRef = { current: () => {} }
 
   function resetEditor() {
@@ -183,7 +193,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
     setRefreshing(true)
     resetEditor()
     await globalSync.refreshAllConfigs()
-    await Promise.all([refetchConfig(), refetchDomains()])
+    await Promise.all([refetchConfig(), refetchDomains(), refetchModelRoleSummaries()])
     setRefreshing(false)
     doEnsureInit()
   }
@@ -433,6 +443,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
           <ModelsPanel
             models={settings.models}
             providerModels={providerModels}
+            modelRoleSummaries={() => modelRoleSummaries() ?? []}
             onModelChange={(key, value) => setSettings("models", key, value)}
             onManageModels={() => dialog.show(() => <DialogSelectModel />)}
           />

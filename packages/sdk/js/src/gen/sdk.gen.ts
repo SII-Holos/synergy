@@ -58,6 +58,7 @@ import type {
   ApiPluginsStatusResponses,
   ApiPluginsUpdateFromRegistryErrors,
   ApiPluginsUpdateFromRegistryResponses,
+  AppAgentModelRolesResponses,
   AppAgentsResponses,
   AppLogErrors,
   AppLogResponses,
@@ -7872,6 +7873,36 @@ export class App extends HeyApiClient {
     )
     return (options?.client ?? this.client).get<AppAgentsResponses, unknown, ThrowOnError>({
       url: "/agent",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * List model role summaries
+   *
+   * Get model role configuration, fallback, and usage metadata for the settings UI.
+   */
+  public agentModelRoles<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      scopeID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<AppAgentModelRolesResponses, unknown, ThrowOnError>({
+      url: "/agent/model-roles",
       ...options,
       ...params,
     })

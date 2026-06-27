@@ -1,49 +1,58 @@
 import { Button } from "@ericsanchezok/synergy-ui/button"
+import type { ModelRoleSummary } from "@ericsanchezok/synergy-sdk/client"
 import { For, Show } from "solid-js"
-import { DialogSelectModel } from "@/components/dialog/dialog-select-model"
-import type { ProviderGroup } from "../types"
-import { MODEL_ROLES } from "../types"
-import { ModelsStore } from "../types"
 import { groupByProvider } from "../types"
-import { ProviderModel } from "../types"
 import { ModelRoleRow } from "../components/ModelRoleRow"
+import type { ModelKey, ModelsStore, ProviderModel } from "../types"
 
 export function ModelsPanel(props: {
   models: ModelsStore
   providerModels: () => ProviderModel[]
-  onModelChange: (key: keyof ModelsStore, value: string) => void
+  modelRoleSummaries: () => ModelRoleSummary[]
+  onModelChange: (key: ModelKey, value: string) => void
   onManageModels: () => void
 }) {
   const providerGroups = () => groupByProvider(props.providerModels())
 
   return (
     <div class="ds-content-inner">
-      <h1 class="ds-content-title">Models</h1>
-      <p class="ds-section-hint">
-        Assign specific models for different task types. Leave empty to use the default model.
-      </p>
-      <Button type="button" variant="ghost" size="small" onClick={props.onManageModels}>
-        Manage models
-      </Button>
+      <div class="ds-content-header">
+        <div>
+          <h1 class="ds-content-title">Models</h1>
+          <p class="ds-section-hint">
+            Choose specialist models for agent roles. Leave a role on fallback to inherit the next available model.
+          </p>
+        </div>
+        <Button type="button" variant="ghost" size="small" onClick={props.onManageModels}>
+          Manage models
+        </Button>
+      </div>
+
       <Show
-        when={props.providerModels().length > 0}
+        when={props.modelRoleSummaries().length > 0}
         fallback={
           <div class="ds-empty-state">
-            <span>No connected models found</span>
+            <span>Model roles are loading</span>
           </div>
         }
       >
-        <For each={MODEL_ROLES}>
-          {(role) => (
-            <ModelRoleRow
-              label={role.label}
-              description={role.description}
-              value={props.models[role.key]}
-              providers={providerGroups()}
-              onChange={(value: string) => props.onModelChange(role.key, value)}
-            />
-          )}
-        </For>
+        <div class="settings-model-list">
+          <For each={props.modelRoleSummaries()}>
+            {(summary) => (
+              <ModelRoleRow
+                summary={summary}
+                value={props.models[summary.field as ModelKey]}
+                providers={providerGroups()}
+                onChange={props.onModelChange}
+              />
+            )}
+          </For>
+        </div>
+        <Show when={props.providerModels().length === 0}>
+          <div class="ds-empty-state settings-model-empty">
+            <span>Connect a provider to choose concrete models. Roles can still use fallback.</span>
+          </div>
+        </Show>
       </Show>
     </div>
   )
