@@ -79,7 +79,7 @@ See the [Development section in README](README.md#development) for the full work
 
 Match the patterns you find in the surrounding code. A few specifics worth knowing:
 
-- **Namespace-based organization** is the established pattern for modules. Extend it rather than introducing a parallel style.
+- **Namespace-based organization** is the established pattern for modules. Extend that pattern for related code.
 - **Zod** handles runtime validation. Add `.meta({ ref: "TypeName" })` for API-exposed schemas.
 - **`const` over `let`**, early returns over deep nesting.
 - **No inline comments** unless explicitly needed. The code should be clear without them.

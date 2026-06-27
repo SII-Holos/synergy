@@ -10,7 +10,7 @@
 
 ## If You Are Building A Synergy Plugin
 
-You do not need `AGENTS.md` unless you are modifying Synergy itself. Plugin authors should use `@ericsanchezok/synergy-plugin-kit` and the `@ericsanchezok/synergy-plugin` SDK instead of cloning this monorepo.
+Plugin authors should use `@ericsanchezok/synergy-plugin-kit` and the `@ericsanchezok/synergy-plugin` SDK. Read `AGENTS.md` when modifying Synergy source.
 
 - [docs/plugins/agent-quickstart.md](docs/plugins/agent-quickstart.md): shortest agent-facing plugin authoring path.
 - [docs/plugins/development-kit.md](docs/plugins/development-kit.md): what the Plugin Development Kit includes and when a source checkout is needed.
@@ -53,12 +53,12 @@ Read `AGENTS.md` before changing this repository. That file is for Synergy sourc
 - [docs/plugins](docs/plugins): plugin platform documentation.
 - [docs/plugin](docs/plugin): plugin toolchain, marketplace, runtime, and permission topics.
 
-## Current Synergy Terminology
+## Synergy Terminology
 
-- Prefer `Scope` for workspace/context resolution in current source and docs.
-- Prefer `library` for the memory/knowledge subsystem.
+- Use `Scope` for workspace/context resolution in source and docs.
+- Use `library` for the memory/knowledge subsystem.
 - The built-in primary orchestrators are `synergy` and `synergy-max`.
-- Do not reintroduce `master` as a built-in agent name.
+- Built-in primary agent names are `synergy` and `synergy-max`.
 
 ## Plugin Verification
 

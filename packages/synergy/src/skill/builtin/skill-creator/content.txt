@@ -86,7 +86,7 @@ Documentation and reference material intended to be loaded as needed into contex
 
 ##### Assets (`assets/`)
 
-Files not intended to be loaded into context, but rather used within the output Claude produces.
+Files used in final outputs and normally kept out of model context.
 
 - **When to include**: When the skill needs files that will be used in the final output
 - **Examples**: `assets/logo.png` for brand assets, `assets/slides.pptx` for PowerPoint templates, `assets/frontend-template/` for HTML/React boilerplate, `assets/font.ttf` for typography
@@ -302,7 +302,7 @@ Synergy currently also scans these native config roots and plural directory vari
 <SYNERGY_CONFIG_DIR>/skills/<skill-name>/SKILL.md
 ```
 
-These are valid discovery sources, but they are less ideal as first-choice documentation examples because they are either less explicit, more environment-dependent, or less common for users.
+These are valid discovery sources. Prefer the explicit project and config-domain paths above in user-facing examples.
 
 ##### Compatibility
 
@@ -313,7 +313,7 @@ Synergy also supports Claude Code compatibility skill directories:
 ~/.claude/skills/<skill-name>/SKILL.md
 ```
 
-Treat `.claude/skills/` as a compatibility source rather than the primary recommendation for new Synergy-native skills.
+Use Synergy-native skill directories for new skills. `.claude/skills/` directories are supported for Claude Code compatibility.
 
 ##### Important Notes
 
@@ -343,7 +343,7 @@ Add the operational guidance another Synergy agent needs.
 
 Then add `scripts/`, `references/`, and `assets/` only if the skill truly needs them.
 
-If you are developing inside the Synergy source repository itself, you may use the built-in scaffold helper script as a maintainer convenience. That is optional and should not be presented as the primary end-user workflow.
+If you are developing inside the Synergy source repository itself, you may use the built-in scaffold helper script as a maintainer convenience. Present direct skill-directory creation as the primary end-user workflow.
 
 ### Step 4: Edit the Skill
 
@@ -372,7 +372,7 @@ Good fits for `scripts/`:
 - Stable workflows that are annoying or error-prone to rewrite every time
 - Logic that benefits from being tested once and reused many times
 
-Keep logic in `SKILL.md` instead when the work is mainly about judgment, branching decisions, heuristics, or communication style rather than deterministic execution.
+Keep logic in `SKILL.md` when the work is mainly about judgment, branching decisions, heuristics, or communication style.
 
 A good rule of thumb is:
 
@@ -392,7 +392,7 @@ When adding code resources:
 - Make environment requirements explicit if the script depends on Bun, Python, external CLIs, or specific files
 - Write code for reuse by another Synergy agent, not just for one immediate task
 
-Any example files and directories not needed for the skill should be deleted. The initialization script creates example files in `scripts/`, `references/`, and `assets/` to demonstrate structure, but most skills won't need all of them.
+Delete example files and directories the skill does not need. The initialization script creates examples in `scripts/`, `references/`, and `assets/` to demonstrate structure.
 
 #### Update SKILL.md
 
@@ -406,7 +406,7 @@ Write the YAML frontmatter with at least `name` and `description`:
 - `description`: This is the primary triggering mechanism for your skill, and helps Synergy understand when to use it.
   - Include both what the Skill does and specific triggers/contexts for when to use it.
   - Include all "when to use" information here, not in the body. The body is only loaded after triggering, so a body section like "When to Use This Skill" does not help initial routing.
-  - Write with enough coverage that the skill does not under-trigger on realistic user phrasing. Aim for specific, concrete routing language rather than vague summaries.
+  - Write with enough coverage that the skill does not under-trigger on realistic user phrasing. Aim for specific, concrete routing language.
   - Example description for a `docx` skill: "Comprehensive document creation, editing, and analysis with support for tracked changes, comments, formatting preservation, and text extraction. Use when Synergy needs to work with professional documents (.docx files) for: (1) Creating new documents, (2) Modifying or editing content, (3) Working with tracked changes, (4) Adding comments, or any other document tasks"
 
 Current validation also allows a small number of additional frontmatter fields such as `license`, `allowed-tools`, and `metadata`. Only include them when they are genuinely needed.
@@ -424,7 +424,7 @@ Before broad rollout, write 2-3 realistic test prompts that resemble what a user
 - whether the description should trigger the skill
 - whether the body and bundled resources actually help produce better work
 
-For objective skills, compare outputs against clear expectations. For subjective skills, ask for human review rather than forcing fake precision.
+For objective skills, compare outputs against clear expectations. For subjective skills, ask for human review.
 
 #### Local development in the current project or global config
 
@@ -458,4 +458,4 @@ When improving an existing skill, preserve its identity unless there is a strong
 3. Identify how `description`, `SKILL.md`, or bundled resources should be updated
 4. Implement changes and test again
 
-If repeated test runs keep reinventing the same helper code, that is a signal to bundle a reusable script into `scripts/` rather than letting every future run rediscover it.
+If repeated test runs keep reinventing the same helper code, bundle a reusable script into `scripts/`.

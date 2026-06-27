@@ -102,7 +102,7 @@ The `description` field is NOT just a label. It is the primary signal Synergy us
 
 Format: `"provider/model"` (e.g., `"anthropic/claude-sonnet-4-5"`, `"openai/gpt-4o"`). If omitted, the agent falls back to the scope's default model.
 
-You can also reference a model role instead of a specific model. Built-in agents use roles like `mid` (for explore/scout), `thinking` (for advisor), `nano` (for title/summary). Custom agents currently need an explicit `provider/model` string.
+You can also reference a model role. Built-in agents use roles like `mid` (for explore/scout), `thinking` (for advisor), `nano` (for title/summary). Custom agents require an explicit `provider/model` string.
 
 ### `steps` — controlling agent autonomy
 

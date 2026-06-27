@@ -121,7 +121,7 @@ These live at the top level of config:
 
 Memory categories: `user`, `self`, `relationship`, `interaction`, `workflow`, `coding`, `writing`, `asset`, `insight`, `knowledge`, `personal`, `general`.
 
-Memory retrieval is driven per row by `recallMode`: `always`, `contextual`, or `search_only`. Use `always` sparingly for durable identity and interaction rules rather than assuming a whole category is always loaded.
+Memory retrieval is driven per row by `recallMode`: `always`, `contextual`, or `search_only`. Use `always` sparingly for durable identity and interaction rules.
 
 ### CLI commands
 

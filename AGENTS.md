@@ -6,9 +6,9 @@ Guidelines for AI coding agents and developers working in this repository.
 
 Synergy is an open-source AI agent platform built as a Bun monorepo with TypeScript ESM modules.
 
-This repository has evolved substantially. Do not assume older README text, old blog-style architecture notes, or legacy naming still reflect the current system. Before changing code or docs, verify the current implementation.
+Before changing code or docs, verify the implementation you are touching.
 
-Synergy is an AI agent platform with multiple product surfaces. The current product surface includes:
+Synergy has multiple product surfaces:
 
 - a stateless server runtime
 - a Web client
@@ -21,14 +21,14 @@ Synergy is an AI agent platform with multiple product surfaces. The current prod
 - agenda and automation features
 - note, library, and community-facing capabilities
 
-## Current Architecture Vocabulary
+## Architecture Vocabulary
 
-Use current terms consistently.
+Use repository vocabulary consistently.
 
-- Prefer `Scope` over older `Project`-centric descriptions when referring to current scope resolution and workspace context.
-- Prefer current `library` terminology for the knowledge/memory subsystem rather than older historical naming.
-- Prefer current session management terminology and current CLI command names.
-- Do not reintroduce old names in new docs unless you are explicitly documenting migration history.
+- Use `Scope` for scope resolution and workspace context.
+- Use `library` terminology for the knowledge/memory subsystem.
+- Use the session management terminology and CLI command names implemented in the current source.
+- Migration-history documents are the only place for retired names.
 
 ## Monorepo Map
 
@@ -44,9 +44,9 @@ Use current terms consistently.
 - `packages/util` — shared utilities and error helpers
 - `packages/script` — build and release utilities
 
-### Important areas in `packages/synergy/src`
+### Important Areas in `packages/synergy/src`
 
-Current work commonly touches these domains:
+Work commonly touches these domains:
 
 - `agent/` — built-in agent definitions and prompts
 - `agenda/` — scheduling and autonomous task execution
@@ -82,7 +82,7 @@ Key practical consequence:
 - clients attach to it and provide a working directory or scope context
 - many CLI flows are built around `server` first, then `web` or `send`
 
-Do not write docs or code comments that assume the old "single local CLI process bound to one directory" mental model.
+Docs and code comments should describe the client-server runtime model.
 
 ## Development Commands
 
@@ -148,7 +148,7 @@ Regenerate the SDK after modifying server routes or route schemas.
 
 ### Frontend API calls
 
-Frontend code should use the generated SDK for Synergy server APIs instead of hand-written `fetch()` calls.
+Frontend code should use the generated SDK for Synergy server APIs. Avoid hand-written `fetch()` calls for internal Synergy routes.
 
 - Use `createSynergyClient()` / existing SDK contexts for internal Synergy routes.
 - If a server route is needed by the frontend but is missing from the SDK, add OpenAPI metadata to the route, run `./script/generate.ts`, and call the generated SDK method.
@@ -162,7 +162,7 @@ Non-tool product UI icons must use semantic tokens from `packages/ui/src/compone
 
 - Add a token before introducing icons for new app shell, sidebar, status bar, settings, notes, browser, navigation, state, or action semantics.
 - Reuse a token only when the UI element has the same meaning. If a Lucide glyph appears under multiple tokens, the overlap must be intentional and covered by semantic icon tests.
-- Raw Lucide icon literals are allowed only for narrow generic actions or local legacy cleanup with an explicit reason. Prefer tokens such as `action.close`, `action.add`, `action.search`, `navigation.back`, and section-specific `settings.*` tokens.
+- Raw Lucide icon literals are allowed only for narrow generic actions with an explicit reason. Prefer tokens such as `action.close`, `action.add`, `action.search`, `navigation.back`, and section-specific `settings.*` tokens.
 - Tool cards remain governed by the tool registry, `message-part` metadata, `tool-renders`, taxonomy, and classifier rules below.
 
 ## Code Style
@@ -178,9 +178,9 @@ Non-tool product UI icons must use semantic tokens from `packages/ui/src/compone
 
 ### Compatibility and migrations
 
-- Do not accumulate adapters, fallback branches, or compatibility layers in core code as a substitute for a clean current model.
-- Prefer one explicit current code path. If old persisted state, schema data, or protocol records need to be upgraded, use the relevant Synergy migration module and central migration runner.
-- Keep temporary compatibility shims narrow, named, tested, and removed in the same change whenever migration can make old shapes impossible.
+- Do not accumulate adapters, fallback branches, or compatibility layers in core code as a substitute for a clean model.
+- Prefer one explicit code path. Use the relevant Synergy migration module and central migration runner for persisted state, schema data, or protocol records that need upgrades.
+- Keep temporary compatibility shims narrow, named, tested, and removed in the same change whenever migration can make obsolete shapes impossible.
 - Do not hide ownership or routing uncertainty behind generic adapters. Define the boundary directly and make the logs/errors trace that boundary.
 
 ### Module organization
@@ -248,13 +248,13 @@ Treat schema and data migrations as a first-class architectural concern.
 
 - Put versioned persistence upgrades in the dedicated migration modules and runner, not inline in request handlers, business logic, or ad hoc startup code.
 - For `packages/synergy/src`, prefer the domain migration files such as `*/migration.ts` plus the central `packages/synergy/src/migration` runner.
-- Database initialization code may create the current schema for fresh installs, but one-off upgrade logic, backfills, and legacy data rewrites belong in migrations.
-- If a persistence change affects existing data, add or update a migration in the same task rather than silently relying on new code paths to repair old rows over time.
+- Database initialization code may create the fresh-install schema, but one-off upgrade logic, backfills, and data rewrites belong in migrations.
+- If a persistence change affects existing data, add or update a migration in the same task.
 - When changing migrations, verify the startup path that runs them and test both the narrow affected area and any relevant integration surface.
 
 ## Configuration Rules
 
-### Current config locations
+### Config Locations
 
 Primary global config uses one canonical domain directory under:
 
@@ -288,7 +288,7 @@ Project-level config uses the same domain layout under:
 
 Project instruction discovery is configured in the agents domain. `AGENTS.override.md` is preferred over `AGENTS.md`; `project_doc_fallback_filenames` can add fallback names such as `PRODUCT.md` or `WORKFLOW.md`; `instructions` remains an explicit append list.
 
-Legacy monolithic config files are migration inputs only. Do not add new runtime load paths or long-term compatibility branches for them.
+Monolithic config files are handled only by migrations. Do not add runtime load paths for them.
 
 Provider auth paths are distinct. The built-in `openai-codex` provider uses ChatGPT/Codex OAuth device-code credentials and the Codex backend; the normal `openai` provider remains the OpenAI Platform API-key path. Do not merge their config, auth storage semantics, or billing language.
 
@@ -310,11 +310,11 @@ then review both `README.md` and any related setup/help text.
 
 ## Tool and Agent Work
 
-### Current agent reality
+### Agent Reality
 
-The repository now has two built-in primary orchestrators: `synergy` for the classic general workflow and `synergy-max` for the expanded coding-harness workflow. Built-in subagents are scoped with visibility masks: classic subagents such as `developer`, `explore`, `scout`, `advisor`, `inspector`, `scribe`, and `scholar` are visible to `synergy`; the new coding-harness and knowledge subagents such as `intent-analyst`, `requirements-engineer`, `code-cartographer`, `solution-architect`, `test-strategist`, `implementation-engineer`, `research-scout`, `docs-researcher`, `literature-searcher`, `literature-analyst`, `research-methodologist`, `quality-gatekeeper`, `memory-curator`, `note-librarian`, `session-historian`, and reviewer agents are visible to `synergy-max`.
+The repository has two built-in primary orchestrators: `synergy` for the classic general workflow and `synergy-max` for the expanded coding-harness workflow. Built-in subagents are scoped with visibility masks: classic subagents such as `developer`, `explore`, `scout`, `advisor`, `inspector`, `scribe`, and `scholar` are visible to `synergy`; coding-harness and knowledge subagents such as `intent-analyst`, `requirements-engineer`, `code-cartographer`, `solution-architect`, `test-strategist`, `implementation-engineer`, `research-scout`, `docs-researcher`, `literature-searcher`, `literature-analyst`, `research-methodologist`, `quality-gatekeeper`, `memory-curator`, `note-librarian`, `session-historian`, and reviewer agents are visible to `synergy-max`.
 
-Do not reintroduce `master` as a built-in agent name. The classic coding executor is `developer`; the coding-harness executor is `implementation-engineer`.
+Built-in primary agent names are `synergy` and `synergy-max`. The classic coding executor is `developer`; the coding-harness executor is `implementation-engineer`.
 
 ### Tool implementation
 
@@ -355,7 +355,7 @@ Skipping any of these causes the tool to fall back to a generic icon and label, 
 
 - **Avoid testing source text.** Checking that source code contains or lacks specific
   strings (e.g., verifying a flag is absent from a command) is brittle — it couples
-  the test to implementation wording rather than behavior. Prefer calling the function
+  the test to implementation wording. Prefer calling the function
   and checking the result.
 
 - **Test location:** `packages/synergy/test/{domain}/`, mirroring the `src/` directory
@@ -386,9 +386,19 @@ You must review docs when a change affects:
 
 At minimum, check whether `README.md` and `AGENTS.md` need updates.
 
+### Documentation style
+
+Write docs as the final current state of the system.
+
+- Describe the supported behavior directly. Avoid framing docs as "previously X, now Y" or "not X, but Y" when the reader only needs Y.
+- Remove obsolete design notes, migration narratives, and stale architecture explanations instead of preserving them with caveats.
+- Keep migration history only in dedicated migration or release-history documents where the history itself is the subject.
+- Prefer concise product and architecture facts over rationale about retired implementations.
+- When a document conflicts with code, update the document to the implementation and delete stale wording.
+
 When a change affects product design, interaction structure, visual hierarchy, or durable UX taste, also update `packages/app/PRODUCT.md` in the same task. Treat that file as the Web product contract for principles that should survive future frontend refactors.
 
-For frontend surface work, follow the polarity rule in `packages/app/PRODUCT.md`: in dark mode, content and selected surfaces should step brighter than their containers; in light mode, content and selected surfaces should step darker. If a feature cannot use the shared workbench classes directly, add scoped tokens that preserve that same outer-to-inner lightness order rather than leaning on generic raised surfaces.
+For frontend surface work, follow the polarity rule in `packages/app/PRODUCT.md`: in dark mode, content and selected surfaces should step brighter than their containers; in light mode, content and selected surfaces should step darker. If a feature cannot use the shared workbench classes directly, add scoped tokens that preserve that same outer-to-inner lightness order.
 
 ## Release and Git Workflow
 
@@ -439,14 +449,14 @@ Key documents in the repo that agents should be aware of:
 
 - Read first, then edit.
 - Verify command names against the current CLI.
-- Verify config paths against the current implementation.
-- Search before assuming a concept still exists under its old name.
-- Prefer current product terminology over historical terminology.
+- Verify config paths against the implementation.
+- Search before assuming a concept name exists.
+- Prefer product terminology used by the current source.
 
 ## When Unsure
 
-If you discover tension between an old document and the code:
+If you discover tension between a document and the code:
 
-- trust the current implementation
+- trust the implementation
 - update the document
-- remove stale wording instead of trying to preserve historical phrasing
+- remove stale wording

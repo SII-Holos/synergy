@@ -164,7 +164,7 @@ For built-in providers, adding the API key to the credential store is ALL you ne
 
 ## Credential store
 
-Located at `~/.synergy/data/auth/provider-auth.json`. File is chmod 600, separate from config. Legacy `api-key.json` is migration input only.
+Located at `~/.synergy/data/auth/provider-auth.json`. File is chmod 600 and separate from config. Imported auth files are handled by migrations only.
 
 Format — v2 JSON object mapping provider IDs to credential entries:
 ```json
@@ -397,7 +397,7 @@ For any OpenAI-compatible server, use `@ai-sdk/openai-compatible` as the SDK and
 
 ### Cloudflare AI Gateway
 - Requires `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_GATEWAY_ID` env vars.
-- Uses `cf-aig-authorization` header instead of standard `Authorization`.
+- Uses the `cf-aig-authorization` header.
 
 ### OpenRouter / Vercel
 - Adds `HTTP-Referer` and `X-Title` headers automatically.

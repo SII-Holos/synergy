@@ -65,7 +65,7 @@ Your output must be a valid JSON object with exactly these fields:
 
 Key principles for your system prompts:
 
-- Be specific rather than generic - avoid vague instructions
+- Be specific and avoid vague instructions
 - Include concrete examples when they would clarify behavior
 - Balance comprehensiveness with clarity - every instruction should add value
 - Ensure the agent has enough context to handle variations of the core task

@@ -37,7 +37,7 @@ Tool args, config values, auth values, network responses, and files read through
 
 ## Prefer Runtime APIs
 
-Use plugin `config`, `auth`, and `cache` stores instead of ad hoc files. In worker/process mode these stores go through the host bridge and permission enforcement.
+Use plugin `config`, `auth`, and `cache` stores for persistent plugin state. In worker/process mode these stores go through the host bridge and permission enforcement.
 
 ## Package Only Build Output
 

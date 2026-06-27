@@ -12,7 +12,7 @@ Current project constants:
 
 ## Child Doc Title Template
 
-In this project, prefer the historical Feishu naming style:
+In this project, use the Feishu naming style:
 
 - `1.2.1-20260413`
 - `1.2.0-20260412` if creating from scratch
@@ -24,7 +24,7 @@ Do not default to `Synergy 1.2.1` for Feishu child docs in this workspace unless
 
 ## Child Doc Structure Template
 
-Follow the historical Feishu release-note style already used in this workspace, for example `1.1.25-20250408` and `1.1.26-20250406`.
+Follow the Feishu release-note style used in this workspace, for example `1.1.25-20250408` and `1.1.26-20250406`.
 
 Use:
 

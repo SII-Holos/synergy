@@ -2,7 +2,7 @@
 
 `@ericsanchezok/synergy-plugin` is the authoring SDK for Synergy plugins.
 
-Plugins extend the Synergy server runtime and can also contribute Web UI surfaces through `plugin.json`. The current API is intentionally strict: a plugin module exports an object descriptor with a canonical `id` and an `init()` method. The descriptor id, `plugin.json.name`, registry id, lockfile key, and approval key must all be the same canonical plugin id.
+Plugins extend the Synergy server runtime and can also contribute Web UI surfaces through `plugin.json`. A plugin module exports an object descriptor with a canonical `id` and an `init()` method. The descriptor id, `plugin.json.name`, registry id, lockfile key, and approval key must all be the same canonical plugin id.
 
 Plugin authors should use `@ericsanchezok/synergy-plugin-kit` and this SDK from a standalone plugin project. Cloning the Synergy source repository is only needed when changing or debugging the plugin platform itself.
 
@@ -59,13 +59,13 @@ export const plugin: PluginDescriptor = {
 export default plugin
 ```
 
-There is no compatibility layer for legacy descriptor shapes. `plugin.json.name` must match `plugin.id`; Synergy fails validation or loading if they differ.
+`plugin.json.name` must match `plugin.id`; Synergy fails validation or loading if they differ.
 
 ## Tool Results And Attachments
 
 Tools can return user-facing files through `attachments`. Use the generated SDK `asset.upload()` route or the public `/asset` endpoint to upload binary data, then return the resulting `asset://...` URL. Do not import Synergy internal asset modules from a plugin.
 
-For visual tools whose output should appear as the main answer instead of a tool card, set `metadata.display.presentation` to `artifact-only` and list the attachment ids to promote:
+For visual tools whose output belongs in the main answer area, set `metadata.display.presentation` to `artifact-only` and list the attachment ids to promote:
 
 ```ts
 return {
@@ -121,7 +121,7 @@ tool({
 })
 ```
 
-Use `visibility: "media"` for tools whose running and completed success states should be represented by the media surface instead of the ordinary tool transcript. Error states still fall back to normal tool cards.
+Use `visibility: "media"` for tools whose running and completed success states belong on the media surface. Error states still fall back to normal tool cards.
 
 ## Internal Tools And Delegated Tasks
 

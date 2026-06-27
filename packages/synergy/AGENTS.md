@@ -27,10 +27,10 @@
 - **Validation**: All inputs validated with Zod schemas
 - **Logging**: Use `Log.create({ service: "name" })` pattern
 - **Storage**: Use `Storage` namespace for persistence
-- **Migrations**: Put versioned schema/data upgrades in the dedicated migration modules and runner. Fresh-install table creation can live with database initialization, but legacy upgrades, backfills, and data rewrites must not be scattered through runtime or request code.
+- **Migrations**: Put versioned schema/data upgrades in the dedicated migration modules and runner. Fresh-install table creation can live with database initialization, but upgrades, backfills, and data rewrites must not be scattered through runtime or request code.
 - **API Client**: When modifying server endpoints in `packages/synergy/src/server/server.ts`, run `./script/generate.ts` to regenerate the SDK.
 - **Provider framework**: Provider existence comes from the profile/catalog resolver, not directly from `models.dev`. Keep remote catalogs data-only and signature-verified; complex auth, transport, and usage behavior belongs in built-in strategies or explicitly installed plugins.
-- **Provider auth**: Keep `openai-codex` as the ChatGPT/Codex OAuth device-code provider. Do not mix it with the `openai` Platform API-key provider or share/write Codex CLI `auth.json` credentials directly. Runtime auth reads the v2 provider auth store at `~/.synergy/data/auth/provider-auth.json`; legacy auth files are migration inputs only.
+- **Provider auth**: Keep `openai-codex` as the ChatGPT/Codex OAuth device-code provider. Do not mix it with the `openai` Platform API-key provider or share/write Codex CLI `auth.json` credentials directly. Runtime auth reads the provider auth store at `~/.synergy/data/auth/provider-auth.json`; imported auth files are handled by migrations only.
 
 ### Sandbox Architecture
 
@@ -90,9 +90,8 @@ pub struct PermissionProfile {
 }
 ```
 
-Do not reintroduce the old flat `SandboxConfig { level, mode, command, args }`
-shape. The TS backend passes process command/args through argv, not through the
-profile JSON.
+The TS backend passes process command/args through argv, not through the
+profile JSON. `SandboxConfig` stays focused on file-system and network policy.
 
 The helper uses `windows-sys` crate for native Win32 APIs. Cross-compile from non-Windows with:
 

@@ -69,7 +69,7 @@ PR/package validation must work without signing secrets. Release workflows sign 
 Product release keeps the existing candidate/finalize model:
 
 1. `stable_candidate` runs `script/release/stable-start.ts`, publishes npm candidates, builds core runtime assets, creates the draft GitHub Release, and uploads release state.
-2. `stable_desktop_package` runs a three-way desktop matrix for macOS, Windows, and Linux. Each platform job builds both `x64` and `arm64` artifacts in one `electron-builder` invocation so updater metadata is generated per platform instead of per architecture.
+2. `stable_desktop_package` runs a three-way desktop matrix for macOS, Windows, and Linux. Each platform job builds both `x64` and `arm64` artifacts in one `electron-builder` invocation and generates updater metadata per platform.
 3. Each desktop matrix job rewrites package versions to the candidate version, builds the matching Synergy runtimes via `SYNERGY_BUILD_TARGETS`, then packages the platform artifact set with `electron-builder`.
 4. `stable_desktop_publish` downloads all desktop artifacts, generates `Synergy-${version}-checksums.txt`, and uploads the desktop assets to the draft GitHub Release.
 5. `stable_finalize` verifies npm candidates, runtime assets, desktop artifacts, checksum, updater metadata, promotes npm tags, and publishes the GitHub Release.
