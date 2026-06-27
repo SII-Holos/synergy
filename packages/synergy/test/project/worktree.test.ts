@@ -7,6 +7,7 @@ import { ScopeContext } from "../../src/scope/context"
 import { Session } from "../../src/session"
 import { Worktree } from "../../src/project/worktree"
 import { Log } from "../../src/util/log"
+import { Identifier } from "../../src/id/id"
 
 Log.init({ print: false })
 
@@ -87,6 +88,70 @@ describe("git worktree integration", () => {
 
           await Worktree.remove({ sessionID: session.id, target: created.id, force: true })
           await Session.remove(session.id)
+        })(),
+    })
+  })
+
+  test("creates a managed worktree from an explicit base revision", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await Bun.write(path.join(tmp.path, "later.txt"), "later")
+    await $`git add later.txt`.cwd(tmp.path).quiet()
+    await $`git commit -m later`.cwd(tmp.path).quiet()
+    const baseCommit = (await $`git rev-parse HEAD~1`.cwd(tmp.path).quiet().text()).trim()
+    const scope = await tmp.scope()
+
+    await ScopeContext.provide({
+      scope,
+      fn: () =>
+        using(async () => {
+          const created = await Worktree.create({
+            name: "explicit-base",
+            baseRef: "current",
+            bind: false,
+            baseRevision: baseCommit,
+          })
+
+          expect(created.baseRevision).toBe(baseCommit)
+          expect(created.resolvedBaseCommit).toBe(baseCommit)
+          expect(await Bun.file(path.join(created.path, "later.txt")).exists()).toBe(false)
+          const head = (await $`git rev-parse HEAD`.cwd(created.path).quiet().text()).trim()
+          expect(head).toBe(baseCommit)
+
+          const listed = await Worktree.list()
+          const managed = listed.find((item) => item.id === created.id)
+          expect(managed?.resolvedBaseCommit).toBe(baseCommit)
+
+          await Worktree.remove({ sessionID: "none", target: created.id, force: true })
+        })(),
+    })
+  })
+
+  test("records superplan worktree owner", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const scope = await tmp.scope()
+
+    await ScopeContext.provide({
+      scope,
+      fn: () =>
+        using(async () => {
+          const owner = {
+            type: "superplan" as const,
+            runID: Identifier.ascending("superplan_run"),
+            nodeID: Identifier.ascending("superplan_node"),
+          }
+          const created = await Worktree.create({
+            name: "superplan-node",
+            baseRef: "current",
+            bind: false,
+            owner,
+          })
+
+          expect(created.owner).toEqual(owner)
+          const listed = await Worktree.list()
+          const managed = listed.find((item) => item.id === created.id)
+          expect(managed?.owner).toEqual(owner)
+
+          await Worktree.remove({ sessionID: "none", target: created.id, force: true })
         })(),
     })
   })

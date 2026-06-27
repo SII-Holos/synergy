@@ -1,4 +1,4 @@
-Use this as supervisor when the audit finds remaining work.
+Use this from the active Blueprint audit session when the audit finds remaining work.
 
 This sends a restart message to the original execution session, records the audit reason, and returns the loop to running.
 

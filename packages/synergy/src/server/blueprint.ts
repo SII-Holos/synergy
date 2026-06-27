@@ -58,6 +58,12 @@ async function resolveBlueprintAgent(sessionID: string, noteID: string): Promise
     .catch(() => undefined)
 }
 
+async function resolveBlueprintAuditAgent(noteID: string): Promise<string> {
+  const note = await NoteStore.getAny(ScopeContext.current.scope.id, noteID).catch(() => undefined)
+  const noteAgent = await knownAgentName(note?.blueprint?.auditAgent)
+  return noteAgent ?? "supervisor"
+}
+
 function defaultFirstPrompt(loop: { id: string; title: string; noteID: string }, agentName?: string) {
   if (isCodingBlueprintAgent(agentName)) {
     return `Execute the coding Blueprint "${loop.title}" (note ID: ${loop.noteID}, loop ID: ${loop.id}).
@@ -79,18 +85,18 @@ When the Blueprint is ready for audit, call blueprint_loop_finish({ loopID: "${l
 If the task is blocked beyond recovery, call blueprint_loop_finish({ loopID: "${loop.id}", status: "failed", summary: "..." }).`
 }
 
-async function bindSessionToLoop(sessionID: string, loopID: string) {
+async function bindSessionToLoop(sessionID: string, loopID: string, loopRole: "execution" | "audit") {
   await Session.update(sessionID, (draft) => {
-    draft.blueprint = { ...draft.blueprint, loopID }
+    draft.blueprint = { ...draft.blueprint, loopID, loopRole }
   })
 }
 
 async function deliverFirstPrompt(
   sessionID: string,
-  loop: { id: string; noteID: string; title: string; firstPrompt?: string },
+  loop: { id: string; noteID: string; title: string; firstPrompt?: string; executionAgent?: string },
   userPrompt?: string,
 ) {
-  const agentName = await resolveBlueprintAgent(sessionID, loop.noteID)
+  const agentName = loop.executionAgent ?? (await resolveBlueprintAgent(sessionID, loop.noteID))
   let text = loop.firstPrompt?.trim() || defaultFirstPrompt(loop, agentName)
   if (userPrompt?.trim()) {
     text += `\n\nUser instruction:\n${userPrompt.trim()}`
@@ -163,8 +169,14 @@ export const BlueprintRoute = new Hono()
     async (c) => {
       try {
         const body = c.req.valid("json")
+        const [executionAgent, auditAgent] = await Promise.all([
+          resolveBlueprintAgent(body.sessionID, body.noteID),
+          resolveBlueprintAuditAgent(body.noteID),
+        ])
         const loop = await BlueprintLoopStore.create({
           ...body,
+          executionAgent,
+          auditAgent,
           runMode: body.runMode ?? "current",
         })
         return c.json(loop)
@@ -276,7 +288,7 @@ export const BlueprintRoute = new Hono()
         const id = c.req.valid("param").id
         const { sessionID } = c.req.valid("json")
         const loop = await BlueprintLoopStore.get(ScopeContext.current.scope.id, id)
-        await bindSessionToLoop(sessionID, id)
+        await bindSessionToLoop(sessionID, id, "execution")
         return c.json(loop)
       } catch (err: any) {
         if (err instanceof Storage.NotFoundError)
@@ -319,7 +331,7 @@ export const BlueprintRoute = new Hono()
         const before = await BlueprintLoopStore.get(ScopeContext.current.scope.id, id)
         const loop = await BlueprintLoopStore.updateStatus(ScopeContext.current.scope.id, id, { status: "running" })
         started = true
-        await bindSessionToLoop(before.sessionID, id)
+        await bindSessionToLoop(before.sessionID, id, "execution")
         await deliverFirstPrompt(before.sessionID, before, body?.userPrompt)
         return c.json(loop)
       } catch (err: any) {

@@ -12,6 +12,11 @@ const parameters = z.object({
     .optional()
     .default("current")
     .describe("Base reference for new worktree: current HEAD or fresh from origin"),
+  baseRevision: z
+    .string()
+    .min(1)
+    .optional()
+    .describe("Explicit git revision/ref/commit to create the worktree from. Overrides baseRef when provided."),
   reason: z.string().optional().describe("Optional short note about why the worktree is being entered"),
   force: z
     .boolean()
@@ -37,6 +42,9 @@ function buildWorkspaceMetadata(info: Worktree.Info): Record<string, unknown> {
     worktreeID: info.id,
     name: info.name,
     branch: info.branch,
+    baseRef: info.baseRef,
+    baseRevision: info.baseRevision,
+    resolvedBaseCommit: info.resolvedBaseCommit,
   }
 }
 
@@ -113,6 +121,7 @@ export const WorktreeEnterTool = Tool.define<typeof parameters, WorktreeEnterMet
         metadata: {
           target: params.target,
           baseRef: params.baseRef,
+          baseRevision: params.baseRevision,
           reason: params.reason,
         },
       })
@@ -177,15 +186,17 @@ export const WorktreeEnterTool = Tool.define<typeof parameters, WorktreeEnterMet
         name: params.target,
         sessionID: ctx.sessionID,
         baseRef: params.baseRef,
+        baseRevision: params.baseRevision,
         bind: true,
       })
+      const baseLabel = params.baseRevision ?? `${params.baseRef} base`
       return {
         title: "worktree_enter",
         output: `Created and entered worktree "${created.name}" at ${created.path}.`,
         metadata: {
           action: "entered",
           created: true,
-          message: `Created new worktree "${created.name}" from ${params.baseRef} base.`,
+          message: `Created new worktree "${created.name}" from ${baseLabel}.`,
           worktree: created,
           workspace: buildWorkspaceMetadata(created),
         },

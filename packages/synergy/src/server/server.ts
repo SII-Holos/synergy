@@ -804,7 +804,7 @@ export namespace Server {
               ...errors(400),
             },
           }),
-          validator("json", Worktree.create.schema),
+          validator("json", Worktree.PublicCreateInput),
           async (c) => {
             const body = c.req.valid("json")
             const worktree = await Worktree.create(body)

@@ -32,6 +32,8 @@ export namespace BlueprintLoopStore {
     title: string
     description?: string
     sessionID: string
+    executionAgent?: string
+    auditAgent?: string
     runMode?: Info["runMode"]
     parentSessionID?: string
     firstPrompt?: string
@@ -48,6 +50,8 @@ export namespace BlueprintLoopStore {
       title: input.title,
       description: input.description,
       sessionID: input.sessionID,
+      executionAgent: input.executionAgent,
+      auditAgent: input.auditAgent?.trim() || "supervisor",
       scopeID,
       status: "armed",
       runMode: input.runMode,
@@ -99,7 +103,7 @@ export namespace BlueprintLoopStore {
       status: LoopStatus
       error?: string
       audit?: Info["audit"]
-      supervisorSessionID?: string
+      auditSessionID?: string | null
     },
   ): Promise<Info> {
     const sid = Identifier.asScopeID(scopeID)
@@ -123,10 +127,25 @@ export namespace BlueprintLoopStore {
       if (patch.status === "running" && !draft.time.started) {
         draft.time.started = Date.now()
       }
+      if (patch.status === "running" && current.status === "auditing" && patch.auditSessionID === undefined) {
+        draft.auditSessionID = undefined
+      }
       if (patch.audit) draft.audit = patch.audit
-      if (patch.supervisorSessionID !== undefined) draft.supervisorSessionID = patch.supervisorSessionID
+      if (patch.auditSessionID !== undefined) draft.auditSessionID = patch.auditSessionID ?? undefined
       if (patch.error !== undefined) draft.error = patch.error
     })
+
+    if (isTerminal || (patch.status === "running" && current.status === "auditing")) {
+      try {
+        if (current.auditSessionID) {
+          await Session.update(current.auditSessionID, (draft) => {
+            draft.blueprint = { ...draft.blueprint, loopID: undefined, loopRole: undefined }
+          })
+        }
+      } catch {
+        // best effort
+      }
+    }
 
     if (isTerminal) {
       try {
@@ -143,7 +162,7 @@ export namespace BlueprintLoopStore {
       try {
         if (updated.sessionID) {
           await Session.update(updated.sessionID, (draft) => {
-            draft.blueprint = { ...draft.blueprint, loopID: undefined }
+            draft.blueprint = { ...draft.blueprint, loopID: undefined, loopRole: undefined }
           })
         }
       } catch {

@@ -5,6 +5,7 @@ import path from "path"
 import z from "zod"
 import { parse as parseJsonc } from "jsonc-parser"
 import { NamedError } from "@ericsanchezok/synergy-util/error"
+import { Identifier } from "../id/id"
 import { Session } from "../session"
 import type { Scope } from "../scope"
 import { ScopeContext } from "../scope/context"
@@ -14,6 +15,12 @@ import { Log } from "../util/log"
 export namespace Worktree {
   export const Owner = z.discriminatedUnion("type", [
     z.object({ type: z.literal("session"), sessionID: z.string() }),
+    z.object({
+      type: z.literal("superplan"),
+      runID: Identifier.schema("superplan_run"),
+      nodeID: Identifier.schema("superplan_node").optional(),
+      mergeID: Identifier.schema("superplan_merge").optional(),
+    }),
     z.object({ type: z.literal("user") }),
     z.object({ type: z.literal("external") }),
   ])
@@ -28,6 +35,8 @@ export namespace Worktree {
       scopeID: z.string(),
       head: z.string().optional(),
       baseRef: z.string().optional(),
+      baseRevision: z.string().optional(),
+      resolvedBaseCommit: z.string().optional(),
       detached: z.boolean().optional(),
       bare: z.boolean().optional(),
       isMain: z.boolean().optional(),
@@ -55,14 +64,20 @@ export namespace Worktree {
   }).meta({ ref: "WorktreeRegistryInfo" })
   export type RegistryInfo = z.infer<typeof RegistryInfo>
 
-  export const CreateInput = z
+  export const PublicCreateInput = z
     .object({
       name: z.string().optional(),
       sessionID: z.string().optional(),
       baseRef: z.enum(["current", "fresh"]).optional().default("current"),
+      baseRevision: z.string().min(1).optional(),
       bind: z.boolean().optional().default(true),
     })
     .meta({ ref: "WorktreeCreateInput" })
+  export type PublicCreateInput = z.infer<typeof PublicCreateInput>
+
+  export const CreateInput = PublicCreateInput.extend({
+    owner: Owner.optional(),
+  }).meta({ ref: "WorktreeInternalCreateInput" })
   export type CreateInput = z.infer<typeof CreateInput>
 
   export const TargetInput = z
@@ -354,6 +369,8 @@ export namespace Worktree {
       scopeID,
       head: entry.head,
       baseRef: registry?.baseRef,
+      baseRevision: registry?.baseRevision,
+      resolvedBaseCommit: registry?.resolvedBaseCommit,
       detached: entry.detached,
       bare: entry.bare,
       isMain,
@@ -447,15 +464,32 @@ export namespace Worktree {
     }
   }
 
-  async function resolveBase(baseRef: "current" | "fresh", repoRoot: string) {
-    if (baseRef === "current") return "HEAD"
-    const originHead = await $`git symbolic-ref --quiet --short refs/remotes/origin/HEAD`
-      .quiet()
-      .nothrow()
-      .cwd(repoRoot)
-    if (originHead.exitCode === 0) return outputText(originHead.stdout)
-    const branch = await $`git branch --show-current`.quiet().nothrow().cwd(repoRoot)
-    return outputText(branch.stdout) || "HEAD"
+  async function resolveBase(input: { baseRef: "current" | "fresh"; baseRevision?: string }, repoRoot: string) {
+    let revision = input.baseRevision?.trim()
+    if (!revision) {
+      revision = "HEAD"
+      if (input.baseRef === "fresh") {
+        const originHead = await $`git symbolic-ref --quiet --short refs/remotes/origin/HEAD`
+          .quiet()
+          .nothrow()
+          .cwd(repoRoot)
+        if (originHead.exitCode === 0) revision = outputText(originHead.stdout)
+        else {
+          const branch = await $`git branch --show-current`.quiet().nothrow().cwd(repoRoot)
+          revision = outputText(branch.stdout) || "HEAD"
+        }
+      }
+    }
+
+    const verified = await $`git rev-parse --verify ${`${revision}^{commit}`}`.quiet().nothrow().cwd(repoRoot)
+    if (verified.exitCode !== 0) {
+      throw new CreateFailedError({ message: errorText(verified) || `Invalid worktree base revision: ${revision}` })
+    }
+
+    return {
+      revision,
+      resolvedCommit: outputText(verified.stdout),
+    }
   }
 
   async function candidate(repoRoot: string, baseName?: string, sessionID?: string) {
@@ -489,9 +523,9 @@ export namespace Worktree {
     const session = parsed.sessionID ? await Session.get(parsed.sessionID) : undefined
     const titleName = session?.title && !session.title.startsWith("New Session") ? session.title : undefined
     const info = await candidate(repoRoot, parsed.name ?? titleName, parsed.sessionID)
-    const base = await resolveBase(parsed.baseRef, repoRoot)
+    const base = await resolveBase({ baseRef: parsed.baseRef, baseRevision: parsed.baseRevision }, repoRoot)
 
-    const created = await $`git worktree add -b ${info.branch} ${info.directory} ${base}`
+    const created = await $`git worktree add -b ${info.branch} ${info.directory} ${base.revision}`
       .quiet()
       .nothrow()
       .cwd(repoRoot)
@@ -506,8 +540,10 @@ export namespace Worktree {
       path: path.resolve(info.directory),
       scopeID: scope.id,
       baseRef: parsed.baseRef,
+      baseRevision: parsed.baseRevision,
+      resolvedBaseCommit: base.resolvedCommit,
       managed: true,
-      owner: parsed.sessionID ? { type: "session", sessionID: parsed.sessionID } : { type: "user" },
+      owner: parsed.owner ?? (parsed.sessionID ? { type: "session", sessionID: parsed.sessionID } : { type: "user" }),
       bindings: parsed.sessionID && parsed.bind ? [parsed.sessionID] : [],
       lifecycle: "active",
       createdAt: now,
@@ -572,6 +608,8 @@ export namespace Worktree {
       name: info.name,
       branch: info.branch,
       baseRef: info.baseRef,
+      baseRevision: info.baseRevision,
+      resolvedBaseCommit: info.resolvedBaseCommit,
       originalCheckout: path.resolve(repoRoot),
     }
     await Session.updateWorkspace(sessionID, workspace)

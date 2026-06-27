@@ -13,6 +13,10 @@ function asRecord(value: unknown): Record<string, unknown> | undefined {
   return value as Record<string, unknown>
 }
 
+function asString(value: unknown): string | undefined {
+  return typeof value === "string" && value.length > 0 ? value : undefined
+}
+
 function isLiveLoopStatus(status: BlueprintLoopInfo["status"]) {
   return status === "running" || status === "waiting" || status === "auditing"
 }
@@ -41,6 +45,7 @@ async function clearSessionLoop(loop: BlueprintLoopInfo) {
   if (!session || blueprint?.loopID !== loop.id) return false
 
   delete blueprint.loopID
+  delete blueprint.loopRole
   if (Object.keys(blueprint).length === 0) {
     delete session.blueprint
   } else {
@@ -100,6 +105,61 @@ export const migrations: Migration[] = [
       }
 
       log.info("stale armed BlueprintLoop cleanup complete", { totalLoops: loops.length, cancelled, clearedReferences })
+    },
+  },
+  {
+    id: "20260628-blueprint-loop-audit-agent",
+    description: "Replace supervisorSessionID with auditSessionID and snapshot auditAgent on BlueprintLoops",
+    domain: "blueprint_loop",
+    dependsOn: ["20260624-blueprint-cancel-stale-armed-loops"],
+    async up(progress) {
+      const scopeIDs = await Storage.scan(["blueprint_loops"])
+      const loops: Array<{ scopeID: string; loopID: string }> = []
+
+      for (const scopeID of scopeIDs) {
+        const scope = Identifier.asScopeID(scopeID)
+        const loopIDs = await Storage.scan(StoragePath.blueprintLoopsRoot(scope))
+        for (const loopID of loopIDs) {
+          loops.push({ scopeID, loopID })
+        }
+      }
+
+      let done = 0
+      let changed = 0
+      for (const { scopeID, loopID } of loops) {
+        const scope = Identifier.asScopeID(scopeID)
+        const loopPath = StoragePath.blueprintLoop(scope, loopID)
+        try {
+          const loop = await Storage.read<Record<string, unknown>>(loopPath)
+          let didChange = false
+          const legacySupervisorSessionID = asString(loop.supervisorSessionID)
+          if (legacySupervisorSessionID && !asString(loop.auditSessionID)) {
+            loop.auditSessionID = legacySupervisorSessionID
+            didChange = true
+          }
+          if ("supervisorSessionID" in loop) {
+            delete loop.supervisorSessionID
+            didChange = true
+          }
+          if (!asString(loop.auditAgent)) {
+            loop.auditAgent = "supervisor"
+            didChange = true
+          }
+          if (didChange) {
+            await Storage.write(loopPath, loop)
+            changed++
+          }
+        } catch (err) {
+          log.warn("failed to migrate BlueprintLoop audit agent fields", { scopeID, loopID, error: String(err) })
+        }
+
+        done++
+        if (done % 10 === 0 || done === loops.length) {
+          progress(done, loops.length)
+        }
+      }
+
+      log.info("BlueprintLoop audit agent migration complete", { totalLoops: loops.length, changed })
     },
   },
 ]

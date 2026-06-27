@@ -2496,6 +2496,8 @@ export type Worktree = {
   scopeID: string
   head?: string
   baseRef?: string
+  baseRevision?: string
+  resolvedBaseCommit?: string
   detached?: boolean
   bare?: boolean
   isMain?: boolean
@@ -2506,6 +2508,12 @@ export type Worktree = {
     | {
         type: "session"
         sessionID: string
+      }
+    | {
+        type: "superplan"
+        runID: string
+        nodeID?: string
+        mergeID?: string
       }
     | {
         type: "user"
@@ -2526,6 +2534,7 @@ export type WorktreeCreateInput = {
   name?: string
   sessionID?: string
   baseRef?: "current" | "fresh"
+  baseRevision?: string
   bind?: boolean
 }
 
@@ -2617,6 +2626,13 @@ export type SessionCortexDelegation = {
   outputResult?: unknown
 }
 
+export type SessionSuperPlanInfo = {
+  runID: string
+  role: "planner" | "node" | "merge" | "audit"
+  nodeID?: string
+  mergeID?: string
+}
+
 export type SessionWorkingInfo =
   | {
       status: "busy"
@@ -2686,10 +2702,12 @@ export type Session = {
   }
   history?: SessionHistoryInfo
   cortex?: SessionCortexDelegation
+  superplan?: SessionSuperPlanInfo
   working?: SessionWorkingInfo
   workspace?: SessionWorkspace
   blueprint?: {
     loopID?: string
+    loopRole?: "execution" | "audit"
     planMode?: boolean
   }
 }
@@ -3289,6 +3307,7 @@ export type NoteInfo = {
   blueprint?: {
     description?: string
     defaultAgent?: string
+    auditAgent?: string
     activeLoopID?: string
     runCount?: number
     lastRunAt?: number
@@ -4023,6 +4042,7 @@ export type NoteMetaInfo = {
   blueprint?: {
     description?: string
     defaultAgent?: string
+    auditAgent?: string
     activeLoopID?: string
     runCount?: number
     lastRunAt?: number
@@ -4049,6 +4069,7 @@ export type NoteCreateInput = {
   blueprint?: {
     description?: string
     defaultAgent?: string
+    auditAgent?: string
     activeLoopID?: string
     runCount?: number
     lastRunAt?: number
@@ -4065,6 +4086,7 @@ export type NotePatchInput = {
   blueprint?: {
     description?: string
     defaultAgent?: string
+    auditAgent?: string
     activeLoopID?: string | null
     runCount?: number
     lastRunAt?: number
@@ -4079,7 +4101,9 @@ export type BlueprintLoopInfo = {
   title: string
   description?: string
   sessionID: string
-  supervisorSessionID?: string
+  executionAgent?: string
+  auditAgent: string
+  auditSessionID?: string
   scopeID: string
   status: "armed" | "running" | "waiting" | "auditing" | "completed" | "failed" | "cancelled"
   runMode?: "current" | "new" | "worktree"
@@ -7363,6 +7387,7 @@ export type SessionForkData = {
           mode: "create"
           name?: string
           baseRef?: "current" | "fresh"
+          baseRevision?: string
         }
     title?: string
     controlProfile?: "guarded" | "autonomous" | "full_access"

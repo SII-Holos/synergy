@@ -46,7 +46,9 @@ describe("Blueprint types", () => {
         title: "Test Blueprint",
         description: "A test blueprint",
         sessionID: "ses_xyz",
-        supervisorSessionID: "ses_super",
+        executionAgent: "implementation-engineer",
+        auditAgent: "security-reviewer",
+        auditSessionID: "ses_audit",
         scopeID: "scp_test",
         status: "armed" as const,
         time: {
@@ -66,6 +68,7 @@ describe("Blueprint types", () => {
         noteID: "note_abc",
         title: "Running Loop",
         sessionID: "ses_xyz",
+        auditAgent: "supervisor",
         scopeID: "scp_test",
         status: "running",
         time: {
@@ -84,6 +87,7 @@ describe("Blueprint types", () => {
         noteID: "note_abc",
         title: "Waiting Loop",
         sessionID: "ses_xyz",
+        auditAgent: "supervisor",
         scopeID: "scp_test",
         status: "waiting" as const,
         time: {
@@ -102,6 +106,8 @@ describe("Blueprint types", () => {
         noteID: "note_abc",
         title: "Audited Loop",
         sessionID: "ses_xyz",
+        auditAgent: "supervisor",
+        auditSessionID: "ses_audit",
         scopeID: "scp_test",
         status: "auditing",
         audit: {
@@ -125,6 +131,7 @@ describe("Blueprint types", () => {
         noteID: "note_abc",
         title: "Completed Loop",
         sessionID: "ses_xyz",
+        auditAgent: "supervisor",
         scopeID: "scp_test",
         status: "completed",
         time: {

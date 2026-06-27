@@ -9,6 +9,7 @@ import { EnforcementGate } from "../../src/enforcement/gate"
 import { Scope } from "../../src/scope"
 import { Log } from "../../src/util/log"
 import { Info as InfoSchema, type Workspace } from "../../src/session/types"
+import { Identifier } from "../../src/id/id"
 import path from "path"
 
 Log.init({ print: false })
@@ -119,6 +120,56 @@ describe("session workspace binding", () => {
             const read = await Session.get(session.id)
             const readWs = (read as Record<string, unknown>).workspace as SessionWorkspace
             expect(readWs).toEqual(customWs)
+
+            await Session.remove(session.id)
+          })(),
+      })
+    })
+  })
+
+  describe("Session superplan metadata", () => {
+    test("schema accepts optional superplan ownership metadata", () => {
+      const runID = Identifier.ascending("superplan_run")
+      const nodeID = Identifier.ascending("superplan_node")
+      const data = {
+        id: "ses_0123456789abcdefghijklmnopqrstuvwxyz0123456789ab",
+        scope: { id: "d_abc123" },
+        title: "superplan node session",
+        version: "0.0.0",
+        time: { created: 1, updated: 1 },
+        superplan: {
+          runID,
+          role: "node",
+          nodeID,
+        },
+      }
+
+      const result = InfoSchema.safeParse(data)
+      expect(result.success).toBe(true)
+      if (result.success) {
+        expect(result.data.superplan).toEqual({ runID, role: "node", nodeID })
+      }
+    })
+
+    test("Session.create stores supplied superplan metadata", async () => {
+      await using tmp = await tmpdir({ git: true })
+      const scope = await tmp.scope()
+
+      await ScopeContext.provide({
+        scope,
+        fn: () =>
+          using(async () => {
+            const superplan = {
+              runID: Identifier.ascending("superplan_run"),
+              role: "merge" as const,
+              mergeID: Identifier.ascending("superplan_merge"),
+            }
+
+            const session = await Session.create({ superplan })
+            expect(session.superplan).toEqual(superplan)
+
+            const read = await Session.get(session.id)
+            expect(read.superplan).toEqual(superplan)
 
             await Session.remove(session.id)
           })(),

@@ -35,6 +35,11 @@ export const BlueprintLoopRestartTool = Tool.define("blueprint_loop_restart", {
         `Cannot restart BlueprintLoop ${params.loopID}: expected status "auditing" but current status is "${loop.status}".`,
       )
     }
+    if (ctx.sessionID !== loop.auditSessionID) {
+      throw new Error(
+        `Session "${ctx.sessionID}" cannot restart BlueprintLoop ${params.loopID}. Only the active audit session can request changes.`,
+      )
+    }
 
     const now = Date.now()
     const audit = {
