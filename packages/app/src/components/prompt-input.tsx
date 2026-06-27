@@ -65,6 +65,7 @@ import { PromptAttachments } from "@/components/prompt-input/attachments"
 import { PromptPopover } from "@/components/prompt-input/popover"
 import { PermissionModeSelector } from "@/components/prompt-input/permission-selector"
 import { PromptAddMenu, type PromptAddMenuSection } from "@/components/prompt-input/add-menu"
+import { PromptStartOptions, type PromptStartOptionGroup } from "@/components/prompt-input/start-options"
 import { usePromptSubmit } from "@/components/prompt-input/submit"
 import { usePromptAttachments } from "@/components/prompt-input/attachments-hook"
 import { usePromptEditor } from "@/components/prompt-input/editor-hook"
@@ -441,6 +442,44 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       ],
     },
   ])
+
+  const newSessionStartOptions = createMemo<PromptStartOptionGroup[]>(() => {
+    if (params.id) return []
+
+    const creatingWorktree = props.newSessionWorktree === "create"
+    const canCreateWorktree = props.newSessionCanCreateWorktree ?? (!sdk.isHome && !!sdk.directory)
+    const localLabel = isHomeScope(sdk.scopeKey) ? "Home" : "Local"
+    const localDescription = isHomeScope(sdk.scopeKey) ? "Global context" : "Current checkout"
+
+    return [
+      {
+        id: "workspace",
+        label: "Workspace",
+        options: [
+          {
+            id: "workspace.local",
+            label: localLabel,
+            description: localDescription,
+            icon: getSemanticIcon("workspace.main"),
+            selected: !creatingWorktree,
+            onSelect: () => props.onNewSessionWorktreeChange?.("main"),
+          },
+          {
+            id: "workspace.worktree",
+            label: "Worktree",
+            description: "Isolated checkout",
+            icon: getSemanticIcon("workspace.worktree"),
+            selected: creatingWorktree,
+            disabled: !canCreateWorktree,
+            tooltip: canCreateWorktree
+              ? "Create an isolated worktree for this session."
+              : "Choose a project to use worktree isolation.",
+            onSelect: () => props.onNewSessionWorktreeChange?.("create"),
+          },
+        ],
+      },
+    ]
+  })
 
   createEffect(
     on(
@@ -1181,6 +1220,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
             </div>
           </Show>
         </div>
+        <PromptStartOptions groups={newSessionStartOptions()} />
         <div class="prompt-input-toolbar flex flex-wrap items-center justify-between gap-2">
           <div class="prompt-input-toolbar-main min-w-0 flex flex-wrap items-center gap-1">
             <Switch>

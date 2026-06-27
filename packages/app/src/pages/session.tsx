@@ -978,6 +978,7 @@ function SessionPageContent() {
               forkedFromTitle={forkedFromSession()?.title ?? currentSession()?.forkedFrom?.title}
               backPath={backPath}
               newSessionWorktree={newSessionWorktree}
+              onNewSessionWorktreeChange={(worktree) => setStore("newSessionWorktree", worktree)}
               onNewSessionWorktreeReset={() => setStore("newSessionWorktree", "main")}
               scopeName={scopeName}
               branch={branch}

@@ -359,6 +359,114 @@ a:active,
   padding: 8px 14px 12px;
 }
 
+.synergy-workbench-canvas .prompt-input-start-options {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  padding: 0 14px 2px;
+  margin-top: -2px;
+}
+
+.synergy-workbench-canvas .prompt-input-start-group {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+}
+
+.synergy-workbench-canvas .prompt-input-start-group-label {
+  color: var(--text-subtle);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 16px;
+}
+
+.synergy-workbench-canvas .prompt-input-start-group-items {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+
+.synergy-workbench-canvas .prompt-input-start-option {
+  display: flex;
+  min-height: 32px;
+  max-width: 220px;
+  min-width: 0;
+  align-items: center;
+  gap: 7px;
+  border: 0;
+  border-radius: 8px;
+  background-color: transparent;
+  color: var(--text-weak);
+  padding: 0 9px;
+  text-align: left;
+  transition:
+    background-color 150ms ease,
+    color 150ms ease,
+    opacity 150ms ease;
+}
+
+.synergy-workbench-canvas .prompt-input-start-option:not(.is-disabled):hover {
+  background-color: color-mix(in srgb, var(--text-strong) 7%, transparent);
+  color: var(--text-base);
+}
+
+.synergy-workbench-canvas .prompt-input-start-option:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--text-strong) 14%, transparent);
+}
+
+.synergy-workbench-canvas .prompt-input-start-option.is-selected {
+  background-color: var(--workbench-selected-bg);
+  color: var(--text-base);
+}
+
+.synergy-workbench-canvas .prompt-input-start-option.is-selected:hover {
+  background-color: var(--workbench-selected-bg-hover);
+}
+
+.synergy-workbench-canvas .prompt-input-start-option.is-disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
+}
+
+.synergy-workbench-canvas .prompt-input-start-option-icon,
+.synergy-workbench-canvas .prompt-input-start-option-check {
+  flex: 0 0 auto;
+  color: currentColor;
+}
+
+.synergy-workbench-canvas .prompt-input-start-option-copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  justify-content: center;
+  gap: 1px;
+}
+
+.synergy-workbench-canvas .prompt-input-start-option-label,
+.synergy-workbench-canvas .prompt-input-start-option-description {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.synergy-workbench-canvas .prompt-input-start-option-label {
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 14px;
+}
+
+.synergy-workbench-canvas .prompt-input-start-option-description {
+  color: var(--text-subtle);
+  font-size: 10px;
+  font-weight: 400;
+  line-height: 12px;
+}
+
 .synergy-workbench-canvas .prompt-input-toolbar-button,
 .synergy-workbench-canvas .prompt-input-toolbar-chip,
 .synergy-workbench-canvas .prompt-input-toolbar-icon-button {
@@ -402,6 +510,10 @@ a:active,
 }
 
 @container prompt-input (max-width: 560px) {
+  .synergy-workbench-canvas .prompt-input-start-option-description {
+    display: none;
+  }
+
   .synergy-workbench-canvas .prompt-input-compact-control {
     width: 32px;
     flex: 0 0 32px;
@@ -413,6 +525,27 @@ a:active,
   .synergy-workbench-canvas .prompt-input-compact-label,
   .synergy-workbench-canvas .prompt-input-compact-chevron {
     display: none;
+  }
+}
+
+@container prompt-input (max-width: 420px) {
+  .synergy-workbench-canvas .prompt-input-start-options {
+    gap: 6px;
+    padding-inline: 10px;
+  }
+
+  .synergy-workbench-canvas .prompt-input-start-group-label,
+  .synergy-workbench-canvas .prompt-input-start-option-copy,
+  .synergy-workbench-canvas .prompt-input-start-option-check {
+    display: none;
+  }
+
+  .synergy-workbench-canvas .prompt-input-start-option {
+    width: 32px;
+    flex: 0 0 32px;
+    justify-content: center;
+    gap: 0;
+    padding-inline: 0;
   }
 }
 

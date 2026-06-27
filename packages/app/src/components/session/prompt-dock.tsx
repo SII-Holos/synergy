@@ -36,6 +36,7 @@ export function PromptDock(props: {
   forkedFromTitle?: string
   backPath?: Accessor<string | undefined>
   newSessionWorktree: Accessor<string>
+  onNewSessionWorktreeChange: (worktree: string) => void
   onNewSessionWorktreeReset: () => void
   scopeName: Accessor<string>
   branch: Accessor<string | undefined>
@@ -155,6 +156,8 @@ export function PromptDock(props: {
                   <PromptInput
                     ref={props.inputRef}
                     newSessionWorktree={props.newSessionWorktree()}
+                    newSessionCanCreateWorktree={!props.isGlobal}
+                    onNewSessionWorktreeChange={props.onNewSessionWorktreeChange}
                     onNewSessionWorktreeReset={props.onNewSessionWorktreeReset}
                     hideAgentSelector={!props.meta().showInputBar}
                   />
