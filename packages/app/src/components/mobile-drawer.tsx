@@ -54,11 +54,7 @@ export function MobileDrawer() {
           {/* Header */}
           <div class="flex items-center justify-between px-4 h-12 shrink-0 border-b border-border-weaker-base/60">
             <A href="/" class="flex items-center gap-2" onClick={close}>
-              <img
-                src={holosLogoPath(theme.mode())}
-                alt="Holos"
-                class="size-6 shrink-0"
-              />
+              <img src={holosLogoPath(theme.mode())} alt="Holos" class="size-6 shrink-0" />
               <span class="text-14-medium text-text-strong">Synergy</span>
             </A>
             <button

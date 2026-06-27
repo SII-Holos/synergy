@@ -297,22 +297,14 @@ export function Sidebar(props: SidebarProps) {
           fallback={
             <Tooltip value="Expand sidebar" placement="right">
               <button type="button" class="sb-collapsed-toggle" onClick={() => layout.sidebar.toggle()}>
-                <img
-                  src={holosLogoPath(isDark() ? "dark" : "light")}
-                  alt="HOLOS"
-                  class="sb-collapsed-logo"
-                />
+                <img src={holosLogoPath(isDark() ? "dark" : "light")} alt="HOLOS" class="sb-collapsed-logo" />
                 <Icon name="panel-left-open" size="normal" class="sb-collapsed-toggle-icon" />
               </button>
             </Tooltip>
           }
         >
           <A href={`/${base64Encode("home")}/session`} class="sb-logo">
-            <img
-              src={holosLogoPath(isDark() ? "dark" : "light")}
-              alt="HOLOS"
-              class="sb-logo-img"
-            />
+            <img src={holosLogoPath(isDark() ? "dark" : "light")} alt="HOLOS" class="sb-logo-img" />
             <span class="sb-logo-text">HOLOS</span>
           </A>
           <div class="sb-header-actions">
