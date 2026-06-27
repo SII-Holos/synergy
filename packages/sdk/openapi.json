@@ -21762,6 +21762,10 @@
               "loopID": {
                 "type": "string"
               },
+              "loopRole": {
+                "type": "string",
+                "enum": ["execution", "audit"]
+              },
               "planMode": {
                 "type": "boolean"
               }
@@ -23423,6 +23427,9 @@
                 "type": "string"
               },
               "defaultAgent": {
+                "type": "string"
+              },
+              "auditAgent": {
                 "type": "string"
               },
               "activeLoopID": {
@@ -25699,6 +25706,9 @@
               "defaultAgent": {
                 "type": "string"
               },
+              "auditAgent": {
+                "type": "string"
+              },
               "activeLoopID": {
                 "type": "string"
               },
@@ -25777,6 +25787,9 @@
               "defaultAgent": {
                 "type": "string"
               },
+              "auditAgent": {
+                "type": "string"
+              },
               "activeLoopID": {
                 "type": "string"
               },
@@ -25823,6 +25836,9 @@
                     "type": "string"
                   },
                   "defaultAgent": {
+                    "type": "string"
+                  },
+                  "auditAgent": {
                     "type": "string"
                   },
                   "activeLoopID": {
@@ -25875,7 +25891,13 @@
           "sessionID": {
             "type": "string"
           },
-          "supervisorSessionID": {
+          "executionAgent": {
+            "type": "string"
+          },
+          "auditAgent": {
+            "type": "string"
+          },
+          "auditSessionID": {
             "type": "string"
           },
           "scopeID": {
@@ -25935,7 +25957,7 @@
             "required": ["created", "updated"]
           }
         },
-        "required": ["id", "noteID", "title", "sessionID", "scopeID", "status", "time"]
+        "required": ["id", "noteID", "title", "sessionID", "auditAgent", "scopeID", "status", "time"]
       },
       "BlueprintLoopCreateInput": {
         "type": "object",

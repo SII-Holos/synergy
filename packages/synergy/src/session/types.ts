@@ -185,6 +185,7 @@ export const Info = z
       blueprint: z
         .object({
           loopID: z.string().optional(),
+          loopRole: z.enum(["execution", "audit"]).optional(),
           planMode: z.boolean().optional(),
         })
         .optional(),

@@ -2707,6 +2707,7 @@ export type Session = {
   workspace?: SessionWorkspace
   blueprint?: {
     loopID?: string
+    loopRole?: "execution" | "audit"
     planMode?: boolean
   }
 }
@@ -3306,6 +3307,7 @@ export type NoteInfo = {
   blueprint?: {
     description?: string
     defaultAgent?: string
+    auditAgent?: string
     activeLoopID?: string
     runCount?: number
     lastRunAt?: number
@@ -4040,6 +4042,7 @@ export type NoteMetaInfo = {
   blueprint?: {
     description?: string
     defaultAgent?: string
+    auditAgent?: string
     activeLoopID?: string
     runCount?: number
     lastRunAt?: number
@@ -4066,6 +4069,7 @@ export type NoteCreateInput = {
   blueprint?: {
     description?: string
     defaultAgent?: string
+    auditAgent?: string
     activeLoopID?: string
     runCount?: number
     lastRunAt?: number
@@ -4082,6 +4086,7 @@ export type NotePatchInput = {
   blueprint?: {
     description?: string
     defaultAgent?: string
+    auditAgent?: string
     activeLoopID?: string | null
     runCount?: number
     lastRunAt?: number
@@ -4096,7 +4101,9 @@ export type BlueprintLoopInfo = {
   title: string
   description?: string
   sessionID: string
-  supervisorSessionID?: string
+  executionAgent?: string
+  auditAgent: string
+  auditSessionID?: string
   scopeID: string
   status: "armed" | "running" | "waiting" | "auditing" | "completed" | "failed" | "cancelled"
   runMode?: "current" | "new" | "worktree"

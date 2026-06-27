@@ -112,7 +112,7 @@ export namespace SessionModePolicy {
 
   export function unavailable(input: {
     toolName: string
-    reason: "deferred" | "permission" | "user_disabled" | "supervisor_only"
+    reason: "deferred" | "permission" | "user_disabled" | "audit_only" | "blueprint_loop_required"
     session?: Pick<SessionInfo, "blueprint">
     metadata?: Record<string, unknown>
   }): ToolDiagnostic {
@@ -136,12 +136,22 @@ export namespace SessionModePolicy {
       }
     }
 
-    if (input.reason === "supervisor_only") {
+    if (input.reason === "audit_only") {
       return {
         code: "tool_unavailable",
         toolName: input.toolName,
         mode: isPlanMode(input.session) ? "plan" : undefined,
-        message: `The "${input.toolName}" tool is only available to the active Blueprint supervisor flow.`,
+        message: `The "${input.toolName}" tool is only available to the active Blueprint audit session.`,
+        metadata: input.metadata,
+      }
+    }
+
+    if (input.reason === "blueprint_loop_required") {
+      return {
+        code: "tool_unavailable",
+        toolName: input.toolName,
+        mode: isPlanMode(input.session) ? "plan" : undefined,
+        message: `The "${input.toolName}" tool requires an active BlueprintLoop session.`,
         metadata: input.metadata,
       }
     }
