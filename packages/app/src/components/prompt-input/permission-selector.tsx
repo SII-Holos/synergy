@@ -21,6 +21,7 @@ export function PermissionModeSelector(props: {
       trigger={
         <button
           type="button"
+          aria-label={`${props.activeMode().label} permission mode`}
           aria-disabled={props.working() || props.switching()}
           onClick={(event) => {
             if (!props.working() && !props.switching()) return
@@ -33,7 +34,7 @@ export function PermissionModeSelector(props: {
               description: "Stop the session before changing its permission mode.",
             })
           }}
-          class="prompt-input-toolbar-button flex items-center gap-1.5 transition-colors"
+          class="prompt-input-toolbar-button prompt-input-compact-control flex items-center gap-1.5 transition-colors"
           classList={{
             "opacity-60 cursor-not-allowed": props.working() || props.switching(),
           }}
@@ -43,10 +44,10 @@ export function PermissionModeSelector(props: {
             fallback={
               <>
                 <Icon name={props.activeMode().icon} size="small" class={`shrink-0 ${props.activeMode().iconClass}`} />
-                <span class={`text-12-medium whitespace-nowrap ${props.activeMode().iconClass}`}>
+                <span class={`prompt-input-compact-label text-12-medium whitespace-nowrap ${props.activeMode().iconClass}`}>
                   {props.activeMode().shortLabel}
                 </span>
-                <Icon name="chevron-down" size="small" class="opacity-70 shrink-0" />
+                <Icon name="chevron-down" size="small" class="prompt-input-compact-chevron opacity-70 shrink-0" />
               </>
             }
           >

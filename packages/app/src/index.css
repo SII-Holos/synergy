@@ -330,6 +330,7 @@ a:active,
 }
 
 .synergy-workbench-canvas .prompt-input-shell {
+  container: prompt-input / inline-size;
   border-radius: 16px;
   background-color: var(--workbench-input-bg);
   border-color: color-mix(in srgb, var(--text-strong) 12%, transparent);
@@ -397,6 +398,21 @@ a:active,
 
 .synergy-workbench-canvas [data-component="icon-button"].prompt-input-submit {
   box-shadow: none;
+}
+
+@container prompt-input (max-width: 560px) {
+  .synergy-workbench-canvas .prompt-input-compact-control {
+    width: 32px;
+    flex: 0 0 32px;
+    justify-content: center;
+    gap: 0;
+    padding-inline: 0;
+  }
+
+  .synergy-workbench-canvas .prompt-input-compact-label,
+  .synergy-workbench-canvas .prompt-input-compact-chevron {
+    display: none;
+  }
 }
 
 @media (max-width: 767px) {

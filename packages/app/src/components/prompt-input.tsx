@@ -36,7 +36,6 @@ import { useSync } from "@/context/sync"
 import { FileIcon } from "@ericsanchezok/synergy-ui/file-icon"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { IconButton } from "@ericsanchezok/synergy-ui/icon-button"
-import { DropdownMenu } from "@ericsanchezok/synergy-ui/dropdown-menu"
 import { Tooltip } from "@ericsanchezok/synergy-ui/tooltip"
 import { getDirectory, getFilename } from "@ericsanchezok/synergy-util/path"
 import { useCommand } from "@/context/command"
@@ -65,6 +64,7 @@ import type {
 import { PromptAttachments } from "@/components/prompt-input/attachments"
 import { PromptPopover } from "@/components/prompt-input/popover"
 import { PermissionModeSelector } from "@/components/prompt-input/permission-selector"
+import { PromptAddMenu, type PromptAddMenuSection } from "@/components/prompt-input/add-menu"
 import { usePromptSubmit } from "@/components/prompt-input/submit"
 import { usePromptAttachments } from "@/components/prompt-input/attachments-hook"
 import { usePromptEditor } from "@/components/prompt-input/editor-hook"
@@ -408,6 +408,39 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     if (planMode()) return
     void togglePlanMode()
   }
+
+  const addMenuSections = createMemo<PromptAddMenuSection[]>(() => [
+    {
+      id: "context",
+      items: [
+        {
+          id: "files",
+          label: "Add files",
+          icon: "paperclip",
+          onSelect: () => fileInputRef.click(),
+        },
+        {
+          id: "plan-mode",
+          label: "Plan mode",
+          icon: planMode() ? "check" : "list-checks",
+          disabled: planMode(),
+          ariaDisabled: blueprintModeLocked(),
+          title: blueprintModeLocked()
+            ? "Plan Mode is unavailable while a Blueprint is equipped"
+            : planMode()
+              ? "Plan Mode is already enabled"
+              : undefined,
+          tooltip: blueprintModeLocked() ? "Plan Mode is unavailable while a Blueprint is equipped" : undefined,
+          iconClass: planMode() || blueprintModeLocked() ? "text-icon-weak" : "text-icon-base",
+          labelClass: blueprintModeLocked() ? "text-text-weak" : undefined,
+          classList: {
+            "opacity-60": blueprintModeLocked(),
+          },
+          onSelect: selectPlanModeFromMenu,
+        },
+      ],
+    },
+  ])
 
   createEffect(
     on(
@@ -1229,7 +1262,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                     <button
                       type="button"
                       aria-label="Exit Plan Mode"
-                      class="prompt-input-toolbar-button group flex items-center gap-1.5 text-text-weak hover:text-text-base"
+                      class="prompt-input-toolbar-button prompt-input-compact-control group flex items-center gap-1.5 text-text-weak hover:text-text-base"
                       onClick={() => void togglePlanMode()}
                     >
                       <span class="relative flex size-4 shrink-0 items-center justify-center">
@@ -1240,59 +1273,11 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                           <Icon name="x" size="small" class="text-icon-base" />
                         </span>
                       </span>
-                      <span class="text-12-medium leading-none">Plan</span>
+                      <span class="prompt-input-compact-label text-12-medium leading-none">Plan</span>
                     </button>
                   </Tooltip>
                 </Show>
-                <DropdownMenu placement="top-start" gutter={8}>
-                  <Tooltip placement="top" value="Add">
-                    <DropdownMenu.Trigger
-                      type="button"
-                      aria-label="Add"
-                      class="prompt-input-toolbar-icon-button flex items-center justify-center text-icon-base"
-                    >
-                      <Icon name="plus" size="small" />
-                    </DropdownMenu.Trigger>
-                  </Tooltip>
-                  <DropdownMenu.Portal>
-                    <DropdownMenu.Content class="w-44 bg-surface-raised-stronger-non-alpha">
-                      <DropdownMenu.Item onSelect={() => fileInputRef.click()}>
-                        <Icon name="paperclip" size="small" class="text-icon-base" />
-                        <DropdownMenu.ItemLabel>Add files</DropdownMenu.ItemLabel>
-                      </DropdownMenu.Item>
-                      <Tooltip
-                        placement="right"
-                        inactive={!blueprintModeLocked()}
-                        value="Plan Mode is unavailable while a Blueprint is equipped"
-                      >
-                        <DropdownMenu.Item
-                          disabled={planMode()}
-                          aria-disabled={blueprintModeLocked() ? "true" : undefined}
-                          title={
-                            blueprintModeLocked()
-                              ? "Plan Mode is unavailable while a Blueprint is equipped"
-                              : planMode()
-                                ? "Plan Mode is already enabled"
-                                : undefined
-                          }
-                          classList={{
-                            "opacity-60": blueprintModeLocked(),
-                          }}
-                          onSelect={selectPlanModeFromMenu}
-                        >
-                          <Icon
-                            name={planMode() ? "check" : "list-checks"}
-                            size="small"
-                            class={planMode() || blueprintModeLocked() ? "text-icon-weak" : "text-icon-base"}
-                          />
-                          <DropdownMenu.ItemLabel class={blueprintModeLocked() ? "text-text-weak" : undefined}>
-                            Plan mode
-                          </DropdownMenu.ItemLabel>
-                        </DropdownMenu.Item>
-                      </Tooltip>
-                    </DropdownMenu.Content>
-                  </DropdownMenu.Portal>
-                </DropdownMenu>
+                <PromptAddMenu sections={addMenuSections()} />
               </Match>
             </Switch>
           </div>
