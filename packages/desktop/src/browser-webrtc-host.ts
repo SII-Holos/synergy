@@ -660,9 +660,21 @@ async function ensurePeer() {
   return pc
 }
 
+function closePeer(options = {}) {
+  if (pc) {
+    pc.close()
+    pc = null
+  }
+  if (options.stopStream && stream) {
+    for (const track of stream.getTracks()) track.stop()
+    stream = null
+  }
+}
+
 async function handleSignal(message) {
   if (message.type === "webrtc.offer") {
     try {
+      closePeer()
       const peer = await ensurePeer()
       await peer.setRemoteDescription({ type: "offer", sdp: message.sdp })
       const answer = await peer.createAnswer()
@@ -677,13 +689,8 @@ async function handleSignal(message) {
     await pc.addIceCandidate(message.candidate)
     return
   }
-  if (message.type === "webrtc.close" && pc) {
-    pc.close()
-    pc = null
-    if (stream) {
-      for (const track of stream.getTracks()) track.stop()
-      stream = null
-    }
+  if (message.type === "webrtc.close") {
+    closePeer({ stopStream: true })
   }
 }
 
