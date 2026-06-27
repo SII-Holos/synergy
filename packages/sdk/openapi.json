@@ -4413,6 +4413,10 @@
                           "baseRef": {
                             "type": "string",
                             "enum": ["current", "fresh"]
+                          },
+                          "baseRevision": {
+                            "type": "string",
+                            "minLength": 1
                           }
                         },
                         "required": ["mode"]
@@ -21114,6 +21118,12 @@
           "baseRef": {
             "type": "string"
           },
+          "baseRevision": {
+            "type": "string"
+          },
+          "resolvedBaseCommit": {
+            "type": "string"
+          },
           "detached": {
             "type": "boolean"
           },
@@ -21146,6 +21156,28 @@
                   }
                 },
                 "required": ["type", "sessionID"]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "const": "superplan"
+                  },
+                  "runID": {
+                    "type": "string",
+                    "pattern": "^spr.*"
+                  },
+                  "nodeID": {
+                    "type": "string",
+                    "pattern": "^spn.*"
+                  },
+                  "mergeID": {
+                    "type": "string",
+                    "pattern": "^spm.*"
+                  }
+                },
+                "required": ["type", "runID"]
               },
               {
                 "type": "object",
@@ -21210,6 +21242,10 @@
             "default": "current",
             "type": "string",
             "enum": ["current", "fresh"]
+          },
+          "baseRevision": {
+            "type": "string",
+            "minLength": 1
           },
           "bind": {
             "default": true,
@@ -21478,6 +21514,28 @@
         },
         "required": ["parentSessionID", "parentMessageID", "description", "agent", "startedAt", "status"]
       },
+      "SessionSuperPlanInfo": {
+        "type": "object",
+        "properties": {
+          "runID": {
+            "type": "string",
+            "pattern": "^spr.*"
+          },
+          "role": {
+            "type": "string",
+            "enum": ["planner", "node", "merge", "audit"]
+          },
+          "nodeID": {
+            "type": "string",
+            "pattern": "^spn.*"
+          },
+          "mergeID": {
+            "type": "string",
+            "pattern": "^spm.*"
+          }
+        },
+        "required": ["runID", "role"]
+      },
       "SessionWorkingInfo": {
         "anyOf": [
           {
@@ -21688,6 +21746,9 @@
           },
           "cortex": {
             "$ref": "#/components/schemas/SessionCortexDelegation"
+          },
+          "superplan": {
+            "$ref": "#/components/schemas/SessionSuperPlanInfo"
           },
           "working": {
             "$ref": "#/components/schemas/SessionWorkingInfo"

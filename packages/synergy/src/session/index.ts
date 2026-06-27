@@ -28,6 +28,7 @@ import type {
   StatusInfo as StatusInfoType,
   WorkingInfo as WorkingInfoType,
   CortexDelegationInfo as CortexDelegationInfoType,
+  SuperPlanSessionInfo as SuperPlanSessionInfoType,
 } from "./types"
 import { SessionNav, type SessionNavEntry } from "./nav"
 import { SessionEndpoint } from "./endpoint"
@@ -174,6 +175,7 @@ export namespace Session {
     agenda?: { itemID: string }
     interaction?: SessionInteraction.Info
     cortex?: CortexDelegationInfoType
+    superplan?: SuperPlanSessionInfoType
     workspace?: import("./types").Workspace
     forkedFrom?: Info["forkedFrom"]
   }) {
@@ -214,6 +216,7 @@ export namespace Session {
       interaction: inheritedInteraction,
       agenda: input?.agenda,
       cortex: input?.cortex,
+      superplan: input?.superplan,
       workspace,
       time: {
         created: createdAt,
@@ -274,6 +277,7 @@ export namespace Session {
             mode: z.literal("create"),
             name: z.string().optional(),
             baseRef: z.enum(["current", "fresh"]).optional(),
+            baseRevision: z.string().min(1).optional(),
           }),
         ])
         .optional(),
@@ -326,6 +330,7 @@ export namespace Session {
             sessionID: session.id,
             name: input.workspace.name,
             baseRef: input.workspace.baseRef ?? "current",
+            baseRevision: input.workspace.baseRevision,
             bind: true,
           })
           session = await get(session.id)

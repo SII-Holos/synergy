@@ -2496,6 +2496,8 @@ export type Worktree = {
   scopeID: string
   head?: string
   baseRef?: string
+  baseRevision?: string
+  resolvedBaseCommit?: string
   detached?: boolean
   bare?: boolean
   isMain?: boolean
@@ -2506,6 +2508,12 @@ export type Worktree = {
     | {
         type: "session"
         sessionID: string
+      }
+    | {
+        type: "superplan"
+        runID: string
+        nodeID?: string
+        mergeID?: string
       }
     | {
         type: "user"
@@ -2526,6 +2534,7 @@ export type WorktreeCreateInput = {
   name?: string
   sessionID?: string
   baseRef?: "current" | "fresh"
+  baseRevision?: string
   bind?: boolean
 }
 
@@ -2617,6 +2626,13 @@ export type SessionCortexDelegation = {
   outputResult?: unknown
 }
 
+export type SessionSuperPlanInfo = {
+  runID: string
+  role: "planner" | "node" | "merge" | "audit"
+  nodeID?: string
+  mergeID?: string
+}
+
 export type SessionWorkingInfo =
   | {
       status: "busy"
@@ -2686,6 +2702,7 @@ export type Session = {
   }
   history?: SessionHistoryInfo
   cortex?: SessionCortexDelegation
+  superplan?: SessionSuperPlanInfo
   working?: SessionWorkingInfo
   workspace?: SessionWorkspace
   blueprint?: {
@@ -7363,6 +7380,7 @@ export type SessionForkData = {
           mode: "create"
           name?: string
           baseRef?: "current" | "fresh"
+          baseRevision?: string
         }
     title?: string
     controlProfile?: "guarded" | "autonomous" | "full_access"

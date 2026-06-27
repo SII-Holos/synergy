@@ -1839,6 +1839,7 @@ export class Session extends HeyApiClient {
             mode: "create"
             name?: string
             baseRef?: "current" | "fresh"
+            baseRevision?: string
           }
       title?: string
       controlProfile?: "guarded" | "autonomous" | "full_access"

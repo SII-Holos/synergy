@@ -30,6 +30,10 @@ export namespace Identifier {
     inbox: "inb",
     note: "nte",
     blueprint_loop: "bll",
+    superplan_run: "spr",
+    superplan_node: "spn",
+    superplan_merge: "spm",
+    superplan_event: "spe",
     history: "hst",
   } as const
 

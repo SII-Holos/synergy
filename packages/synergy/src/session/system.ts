@@ -27,6 +27,12 @@ export namespace SystemPrompt {
       time: { created: number }
       endpoint?: SessionEndpoint.Info
       interaction?: { mode: string; source?: string }
+      superplan?: {
+        runID: string
+        role: string
+        nodeID?: string
+        mergeID?: string
+      }
     }
   }) {
     const scope = ScopeContext.current.scope
@@ -47,6 +53,8 @@ export namespace SystemPrompt {
         if (workspace.name) envLines.push(`  Worktree name: ${workspace.name}`)
         if (workspace.branch) envLines.push(`  Worktree branch: ${workspace.branch}`)
         if (workspace.baseRef) envLines.push(`  Worktree base: ${workspace.baseRef}`)
+        if (workspace.baseRevision) envLines.push(`  Worktree base revision: ${workspace.baseRevision}`)
+        if (workspace.resolvedBaseCommit) envLines.push(`  Worktree base commit: ${workspace.resolvedBaseCommit}`)
         envLines.push(
           `  Worktree isolation: this session's active workspace is the worktree path above. Stay inside it by default; access outside the active workspace, including the original checkout, requires explicit permission. Do not use cd or workdir to operate outside the worktree unless the user asks for that specific path.`,
         )
@@ -58,6 +66,13 @@ export namespace SystemPrompt {
           `  Leaving: use worktree_leave when isolated work is complete or you need to return to the main checkout.`,
         )
       }
+    }
+
+    if (session?.superplan) {
+      envLines.push(`  SuperPlan run: ${session.superplan.runID}`)
+      envLines.push(`  SuperPlan role: ${session.superplan.role}`)
+      if (session.superplan.nodeID) envLines.push(`  SuperPlan node: ${session.superplan.nodeID}`)
+      if (session.superplan.mergeID) envLines.push(`  SuperPlan merge: ${session.superplan.mergeID}`)
     }
 
     if (scope.type === "home") {
