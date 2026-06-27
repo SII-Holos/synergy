@@ -65,7 +65,7 @@ export function MarketplacePage() {
       <div class="plugin-marketplace-scroll flex-1 min-h-0 overflow-y-auto px-5 py-7 sm:px-6">
         <div class="plugin-marketplace-shell mx-auto flex w-full max-w-[760px] flex-col gap-5">
           <header class="flex flex-col gap-4">
-            <div class="flex items-start justify-between gap-4">
+            <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
               <div class="min-w-0">
                 <div class="flex items-center gap-2.5">
                   <span class="plugin-marketplace-icon-tile">

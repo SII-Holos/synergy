@@ -279,7 +279,7 @@ export function PluginDetailPage() {
     <div class="synergy-workbench-canvas plugin-marketplace-page flex flex-col h-full min-h-0 bg-background-stronger text-text-base">
       {/* ── Header ── */}
       <div class="shrink-0 px-5 pt-7 pb-3 sm:px-6">
-        <div class="mx-auto flex w-full max-w-[760px] items-start justify-between gap-3">
+        <div class="mx-auto flex w-full max-w-[760px] flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div class="flex-1 min-w-0">
             <div class="flex items-center gap-2">
               <button
@@ -357,13 +357,13 @@ export function PluginDetailPage() {
         </div>
 
         {/* Tab bar */}
-        <div class="mx-auto mt-5 flex w-full max-w-[760px] items-center gap-0.5 rounded-xl bg-surface-inset-base p-0.5 ring-1 ring-inset ring-border-weaker-base/55">
+        <div class="plugin-marketplace-scroll mx-auto mt-5 flex w-full max-w-[760px] items-center gap-0.5 overflow-x-auto rounded-xl bg-surface-inset-base p-0.5 ring-1 ring-inset ring-border-weaker-base/55">
           <For each={TABS}>
             {(tab) => (
               <button
                 type="button"
                 classList={{
-                  "inline-flex h-8 flex-1 items-center justify-center gap-1.5 rounded-lg px-3 text-12-medium transition-colors": true,
+                  "inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-lg px-3 text-12-medium transition-colors sm:flex-1": true,
                   "workbench-selected-surface text-text-strong": activeTab() === tab.id,
                   "text-text-weak hover:text-text-base": activeTab() !== tab.id,
                 }}
