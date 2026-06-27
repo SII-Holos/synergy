@@ -47,4 +47,17 @@ describe("Providers panel UI contract", () => {
   test("uses equal provider list and detail columns", () => {
     expect(settingsCss).toContain("grid-template-columns: repeat(2, minmax(0, 1fr))")
   })
+
+  test("pins provider status badges without stretching them", () => {
+    expect(settingsCss).toContain(".providers-row > .ds-inline-badge")
+    expect(settingsCss).toContain("justify-self: end")
+    expect(settingsCss).toContain("width: max-content")
+    expect(settingsCss).toContain("min-width: 88px")
+  })
+
+  test("does not nest a bordered connection card inside the provider detail panel", () => {
+    expect(settingsCss).toContain(".providers-detail .provider-flow-body")
+    expect(settingsCss).toContain("border: 0")
+    expect(settingsCss).toContain("background: transparent")
+  })
 })

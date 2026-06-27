@@ -1,4 +1,4 @@
-import type { AccountUsageSnapshot } from "@ericsanchezok/synergy-sdk/client"
+import type { AccountUsageSnapshot, AccountUsageWindow } from "@ericsanchezok/synergy-sdk/client"
 import { Button } from "@ericsanchezok/synergy-ui/button"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { ProviderIcon } from "@ericsanchezok/synergy-ui/provider-icon"
@@ -39,92 +39,120 @@ export function UsagePanel(props: { onConnectProvider: (providerID?: string) => 
       .map((id) => ({ providerID: id, snapshot: usage()?.[id] }))
       .sort((a, b) => sortProviderIDs(a.providerID, b.providerID)),
   )
+  const lastFetched = createMemo(() => {
+    const times = connectedUsage()
+      .map((item) => item.snapshot?.fetchedAt)
+      .filter((value): value is string => !!value)
+      .map((value) => new Date(value).getTime())
+      .filter((value) => Number.isFinite(value))
+    if (times.length === 0) return undefined
+    return formatDate(new Date(Math.max(...times)).toISOString())
+  })
 
   function providerName(providerID: string) {
     return providers().find((provider) => provider.id === providerID)?.name ?? providerID
   }
 
   return (
-    <SettingsPage
-      title="Usage"
-      description="Review subscription windows, credits, and provider account health."
-      actions={
-        <Button
-          type="button"
-          variant="secondary"
-          size="small"
-          icon={getSemanticIcon("action.refresh")}
-          onClick={() => void refetch()}
-        >
-          Refresh
-        </Button>
-      }
-    >
-      <SettingsSection
-        title="Connectable providers"
-        description="Providers not connected yet stay here until credentials are added."
-      >
-        <SettingsEntityList
-          isEmpty={unconnected().length === 0}
-          emptyTitle="Every tracked provider is connected"
-          emptyDescription="Usage-capable providers will appear below as account panels."
-        >
-          <div class="usage-connect-grid">
-            <For each={unconnected()}>
-              {(providerID) => (
-                <button type="button" class="usage-connect-card" onClick={() => props.onConnectProvider(providerID)}>
-                  <ProviderIcon id={providerID} class="usage-provider-icon" />
-                  <div class="min-w-0 flex-1">
-                    <div class="usage-provider-name">{providerName(providerID)}</div>
-                    <div class="usage-provider-copy">
-                      {providerConnectCopy(providerID, globalSync.data.provider.profiles, providerName(providerID))}
-                    </div>
-                  </div>
-                  <Icon name={getSemanticIcon("action.add")} size="small" />
-                </button>
-              )}
-            </For>
-          </div>
-        </SettingsEntityList>
-      </SettingsSection>
-
-      <SettingsSection
-        title="Connected usage"
-        description="Quota data is provider-specific; unavailable means Synergy has no reliable endpoint for that account."
-      >
-        <Show
-          when={!usage.loading}
-          fallback={
-            <div class="usage-loading">
-              <Spinner />
-              <span>Loading usage...</span>
+    <SettingsPage title="Usage" description="Review quota windows, credits, and provider account health.">
+      <div class="usage-page-shell">
+        <div class="usage-overview">
+          <div class="usage-overview-metrics">
+            <div class="usage-overview-metric">
+              <span class="usage-overview-value">{connectedUsage().length}</span>
+              <span class="usage-overview-label">Connected accounts</span>
             </div>
-          }
+            <div class="usage-overview-metric">
+              <span class="usage-overview-value">{unconnected().length}</span>
+              <span class="usage-overview-label">Available to connect</span>
+            </div>
+            <Show when={lastFetched()}>
+              {(value) => (
+                <div class="usage-overview-metric">
+                  <span class="usage-overview-value usage-overview-date">{value()}</span>
+                  <span class="usage-overview-label">Last refreshed</span>
+                </div>
+              )}
+            </Show>
+          </div>
+          <Button
+            type="button"
+            variant="secondary"
+            size="small"
+            icon={getSemanticIcon("action.refresh")}
+            disabled={usage.loading}
+            onClick={() => void refetch()}
+          >
+            Refresh
+          </Button>
+        </div>
+
+        <SettingsSection
+          title="Connectable providers"
+          description="Providers not connected yet stay here until credentials are added."
         >
           <SettingsEntityList
-            isEmpty={connectedUsage().length === 0}
-            emptyTitle="No connected usage providers"
-            emptyDescription="Connect Codex, Anthropic, Copilot, or OpenRouter to see account usage here."
+            isEmpty={unconnected().length === 0}
+            emptyTitle="Every tracked provider is connected"
+            emptyDescription="Usage-capable providers will appear below as account panels."
           >
-            <div class="usage-panel-list">
-              <For each={connectedUsage()}>
-                {(item) => (
-                  <UsageProviderPanel
-                    providerID={item.providerID}
-                    providerName={providerName(item.providerID)}
-                    snapshot={item.snapshot}
-                    reloginRequired={globalSync.data.provider.authHealth?.[item.providerID]?.reloginRequired}
-                    cooldownUntil={globalSync.data.provider.authHealth?.[item.providerID]?.cooldownUntil}
-                    resetAt={globalSync.data.provider.authHealth?.[item.providerID]?.resetAt}
-                    status={globalSync.data.provider.authHealth?.[item.providerID]?.status}
-                    onConnect={() => props.onConnectProvider(item.providerID)}
-                  />
+            <div class="usage-connect-grid">
+              <For each={unconnected()}>
+                {(providerID) => (
+                  <button type="button" class="usage-connect-card" onClick={() => props.onConnectProvider(providerID)}>
+                    <ProviderIcon id={providerID} class="usage-provider-icon" />
+                    <div class="min-w-0 flex-1">
+                      <div class="usage-provider-name">{providerName(providerID)}</div>
+                      <div class="usage-provider-copy">
+                        {providerConnectCopy(providerID, globalSync.data.provider.profiles, providerName(providerID))}
+                      </div>
+                    </div>
+                    <Icon name={getSemanticIcon("action.add")} size="small" />
+                  </button>
                 )}
               </For>
             </div>
           </SettingsEntityList>
-        </Show>
-      </SettingsSection>
+        </SettingsSection>
+
+        <SettingsSection
+          title="Connected usage"
+          description="Quota data is provider-specific; unavailable means Synergy has no reliable endpoint for that account."
+        >
+          <Show
+            when={!usage.loading}
+            fallback={
+              <div class="usage-loading">
+                <Spinner />
+                <span>Loading usage...</span>
+              </div>
+            }
+          >
+            <SettingsEntityList
+              isEmpty={connectedUsage().length === 0}
+              emptyTitle="No connected usage providers"
+              emptyDescription="Connect Codex, Anthropic, Copilot, or OpenRouter to see account usage here."
+            >
+              <div class="usage-panel-list">
+                <For each={connectedUsage()}>
+                  {(item) => (
+                    <UsageProviderPanel
+                      providerID={item.providerID}
+                      providerName={providerName(item.providerID)}
+                      snapshot={item.snapshot}
+                      reloginRequired={globalSync.data.provider.authHealth?.[item.providerID]?.reloginRequired}
+                      cooldownUntil={globalSync.data.provider.authHealth?.[item.providerID]?.cooldownUntil}
+                      resetAt={globalSync.data.provider.authHealth?.[item.providerID]?.resetAt}
+                      status={globalSync.data.provider.authHealth?.[item.providerID]?.status}
+                      onConnect={() => props.onConnectProvider(item.providerID)}
+                    />
+                  )}
+                </For>
+              </div>
+            </SettingsEntityList>
+          </Show>
+        </SettingsSection>
+      </div>
     </SettingsPage>
   )
 }
@@ -183,16 +211,16 @@ function UsageProviderPanel(props: {
             <For each={snapshot().windows}>
               {(window) => (
                 <div class="usage-window-row">
-                  <div>
-                    <div class="usage-window-label">{window.label}</div>
-                    <Show when={window.detail}>
-                      <div class="usage-provider-copy">{window.detail}</div>
+                  <div class="usage-window-copy">
+                    <div class="usage-window-label">{formatUsageWindowLabel(window.label)}</div>
+                    <Show when={formatUsageWindowDetail(window)}>
+                      {(value) => <div class="usage-provider-copy">{value()}</div>}
                     </Show>
                   </div>
-                  <div class="usage-window-value">
-                    {formatPercent(window.remainingPercent ?? window.usedPercent)}
-                    {window.resetAt ? ` · ${formatDate(window.resetAt)}` : ""}
+                  <div class="usage-window-meter" aria-hidden="true">
+                    <span style={{ width: `${usageWindowMeterPercent(window)}%` }} />
                   </div>
+                  <div class="usage-window-value">{formatUsageWindowValue(window)}</div>
                 </div>
               )}
             </For>
@@ -200,6 +228,7 @@ function UsageProviderPanel(props: {
               {(credits) => (
                 <div class="usage-window-row">
                   <div class="usage-window-label">Credits</div>
+                  <div class="usage-window-meter usage-window-meter-empty" aria-hidden="true" />
                   <div class="usage-window-value">
                     {credits().unlimited
                       ? "unlimited"
@@ -223,6 +252,37 @@ function UsageProviderPanel(props: {
 function formatPercent(value: number | undefined) {
   if (value === undefined) return "n/a"
   return `${Math.round(value)}%`
+}
+
+function formatUsageWindowLabel(label: string) {
+  const normalized = label.trim().toLowerCase()
+  if (normalized === "session") return "5-hour window"
+  if (normalized === "weekly") return "Weekly window"
+  if (normalized === "monthly") return "Monthly window"
+  return label
+}
+
+function formatUsageWindowValue(window: AccountUsageWindow) {
+  if (window.remainingPercent !== undefined) return `${formatPercent(window.remainingPercent)} remaining`
+  if (window.usedPercent !== undefined) return `${formatPercent(window.usedPercent)} used`
+  return "n/a"
+}
+
+function formatUsageWindowDetail(window: AccountUsageWindow) {
+  const detail = window.detail?.trim()
+  const reset = window.resetAt ? `Resets ${formatDate(window.resetAt)}` : undefined
+  if (detail && reset) return `${detail} · ${reset}`
+  return detail || reset
+}
+
+function usageWindowMeterPercent(window: AccountUsageWindow) {
+  const value =
+    window.remainingPercent !== undefined
+      ? window.remainingPercent
+      : window.usedPercent !== undefined
+        ? 100 - window.usedPercent
+        : 0
+  return Math.max(0, Math.min(100, Math.round(value)))
 }
 
 function formatDate(value: string) {

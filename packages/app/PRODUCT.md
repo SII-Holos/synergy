@@ -42,6 +42,8 @@ Model settings should keep role routing and quick-switcher visibility together i
 
 Provider settings should behave like a connection workspace, not a config editor. Keep provider discovery, selected-provider detail, and login flows together in the Providers page; provider quota, billing, and account-health details belong in Usage. The provider list should scroll inside its own column so the selected detail remains anchored. Do not expose raw provider allow/deny text lists in the primary settings UI.
 
+Usage settings should read as compact account summaries, not a wide report. Keep refresh controls inside the content flow, label quota windows with user-facing durations such as a 5-hour window, and avoid stretching quota rows across the full modal width.
+
 Session, Agenda, Library, and Plugins should feel like one continuous workbench canvas in both light and dark modes. Their root backgrounds should align with the session message-flow background; inner surfaces can step up or down for hierarchy, but should not look like separate apps.
 
 Opening a workspace panel should not force the session message stream or prompt composer into a separate narrow fixed measure. Keep the session column at its normal readable working measure and let it shrink only when the actual pane width requires it. The normal session measure should feel like a broad workbench column for coding and tool-rich conversations, not a narrow chat lane. In constrained panes, preserve a minimum horizontal gutter around the message stream and tool cards so they do not visually stick to the sidebar or workspace boundary. Auto-opened workspace panels should occupy about half the viewport; user-resized workspace widths can remain sticky.
