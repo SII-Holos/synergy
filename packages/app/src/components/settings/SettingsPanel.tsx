@@ -36,8 +36,6 @@ import { ensureInit } from "./hooks/useSettingsForm"
 import { buildPatch } from "./hooks/useConfigPatch"
 import { useSettingsSave } from "./hooks/useSettingsSave"
 import { GeneralPanel } from "./panels/GeneralPanel"
-import { ProfilePanel } from "./panels/ProfilePanel"
-import { AppearancePanel } from "./panels/AppearancePanel"
 import { ModelsPanel } from "./panels/ModelsPanel"
 import { ProvidersPanel } from "./panels/ProvidersPanel"
 import { AccountPanel } from "./panels/AccountPanel"
@@ -55,8 +53,10 @@ import { DiagnosticsPanel } from "@/components/diagnostics-panel"
 
 const legacyInitialTabs: Record<string, string> = {
   advanced: "control-profile",
+  appearance: "general",
   holos: "account",
   library: "learning",
+  profile: "account",
 }
 
 export type SettingsPanelProps = DialogSettingsProps & {
@@ -420,25 +420,11 @@ export function SettingsPanel(props: SettingsPanelProps) {
     switch (active) {
       case "account":
         return <AccountPanel />
-      case "profile":
-        return (
-          <ProfilePanel
-            username={settings.general.username}
-            onUsernameChange={(value) => setSettings("general", "username", value)}
-          />
-        )
       case "general":
         return (
           <GeneralPanel
             general={settings.general}
             onGeneralChange={(key, value) => setSettings("general", key, value)}
-          />
-        )
-      case "appearance":
-        return (
-          <AppearancePanel
-            themeId={settings.general.theme}
-            onThemeChange={(value) => setSettings("general", "theme", value)}
           />
         )
       case "models":

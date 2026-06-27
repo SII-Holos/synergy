@@ -10,6 +10,7 @@ const allowedDuplicateIcons: Record<string, string[]> = {
   "help-circle": ["session.waiting", "settings.questions"],
   "refresh-ccw": ["action.refresh", "browser.refresh"],
   satellite: ["connection.holos", "settings.holos"],
+  sun: ["settings.appearance", "settings.colorLight"],
 }
 
 describe("semantic icons", () => {

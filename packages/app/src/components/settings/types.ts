@@ -136,6 +136,14 @@ export type ChannelSettings = {
   feishuAccounts: AccountToggle[]
 }
 
+export const TOAST_TYPES = ["info", "success", "warning", "error"] as const
+export type ToastType = (typeof TOAST_TYPES)[number]
+export type ToastDurationOverrides = Record<ToastType, string>
+
+export function emptyToastDurationOverrides(): ToastDurationOverrides {
+  return { info: "", success: "", warning: "", error: "" }
+}
+
 export function emptyMcp(): McpEntry {
   return { key: "", type: "local", enabled: true, command: "", url: "", timeout: "", environment: "", headers: "" }
 }
@@ -170,7 +178,7 @@ export type GeneralStore = {
   username: string
   theme: string
   mutedToasts: string[]
-  toastDurations: string
+  toastDurations: ToastDurationOverrides
   sendShortcut: SendShortcut
 }
 
@@ -253,7 +261,7 @@ export function defaultSettingsState(sendShortcut: SendShortcut): SettingsState 
       username: UI_DEFAULTS.username,
       theme: UI_DEFAULTS.theme,
       mutedToasts: [],
-      toastDurations: "",
+      toastDurations: emptyToastDurationOverrides(),
       sendShortcut,
     },
     models: {

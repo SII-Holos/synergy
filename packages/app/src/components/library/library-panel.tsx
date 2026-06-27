@@ -15,7 +15,7 @@ import { SkillView } from "./skill-view"
 import "./library-panel.css"
 
 const viewLabel: Record<View, string> = {
-  stats: "Health, collection, and learning signals",
+  stats: "Usage, collection, and learning signals",
   memory: "Browse, search, and manage knowledge",
   experience: "Browse, search, and manage behavioral records",
   skill: "Installed capabilities and imports",
@@ -167,13 +167,15 @@ export function LibraryPanel() {
         <AppPanel.Body padding={false} class="library-body">
           <div class="library-stage">
             <Show when={view() === "stats"}>
-              <StatsView />
               <div class="library-section-block">
                 <div class="library-section-heading">
                   <span class="library-section-title">Workspace usage</span>
                   <span class="library-section-subtitle">Activity analytics across all projects</span>
                 </div>
                 <StatsSection />
+              </div>
+              <div class="library-section-block">
+                <StatsView />
               </div>
             </Show>
             <Show when={view() === "memory"}>

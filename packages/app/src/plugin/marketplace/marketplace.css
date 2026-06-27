@@ -1,0 +1,98 @@
+.plugin-marketplace-scroll {
+  scrollbar-width: none;
+}
+
+.plugin-marketplace-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+.plugin-marketplace-shell {
+  animation: plugin-marketplace-enter 180ms ease-out both;
+}
+
+.plugin-marketplace-icon-tile,
+.plugin-marketplace-plugin-icon,
+.plugin-marketplace-empty-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  background: var(--surface-raised-base);
+  box-shadow: inset 0 0 0 1px var(--border-weaker-base);
+}
+
+.plugin-marketplace-icon-tile {
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+}
+
+.plugin-marketplace-plugin-icon {
+  width: 42px;
+  height: 42px;
+  border-radius: 13px;
+}
+
+.plugin-marketplace-empty-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
+}
+
+.plugin-marketplace-skeleton-row {
+  position: relative;
+  overflow: hidden;
+}
+
+.plugin-marketplace-skeleton-row::after {
+  position: absolute;
+  inset: 0;
+  content: "";
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in srgb, var(--surface-raised-base-hover) 70%, transparent),
+    transparent
+  );
+  transform: translateX(-100%);
+  animation: plugin-marketplace-shimmer 1.2s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .plugin-marketplace-shell,
+  .plugin-marketplace-skeleton-row::after {
+    animation: none;
+  }
+}
+
+@media (max-width: 640px) {
+  .plugin-marketplace-source-switch {
+    width: 100%;
+  }
+
+  .plugin-marketplace-source-switch > button {
+    flex: 1;
+    justify-content: center;
+  }
+
+  .plugin-marketplace-row {
+    align-items: flex-start;
+  }
+}
+
+@keyframes plugin-marketplace-enter {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes plugin-marketplace-shimmer {
+  to {
+    transform: translateX(100%);
+  }
+}

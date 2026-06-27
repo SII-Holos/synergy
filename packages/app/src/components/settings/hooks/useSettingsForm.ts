@@ -2,7 +2,7 @@ import type { Config } from "@ericsanchezok/synergy-sdk/client"
 import type { SetStoreFunction } from "solid-js/store"
 import type { SendShortcut } from "@/context/input"
 import type { SettingsState } from "../types"
-import { MODEL_DEFAULTS, UI_DEFAULTS, resolvePermissionForUi } from "../types"
+import { MODEL_DEFAULTS, TOAST_TYPES, UI_DEFAULTS, emptyToastDurationOverrides, resolvePermissionForUi } from "../types"
 
 export type EnsureInitParams = {
   cfg: Config | undefined
@@ -29,7 +29,7 @@ export function ensureInit(params: EnsureInitParams): string | undefined {
     username: cfg.username ?? UI_DEFAULTS.username,
     theme: cfg.theme ?? UI_DEFAULTS.theme,
     mutedToasts: cfg.toast?.muted ?? [],
-    toastDurations: formatRecord(cfg.toast?.durationOverrides),
+    toastDurations: formatToastDurations(cfg.toast?.durationOverrides),
     sendShortcut: params.sendShortcut(),
   })
 
@@ -181,4 +181,14 @@ function formatRecord(values: Record<string, string | number> | undefined, separ
         .map(([key, value]) => `${key}${separator}${value}`)
         .join("\n")
     : ""
+}
+
+function formatToastDurations(values: Record<string, number> | undefined) {
+  const result = emptyToastDurationOverrides()
+  if (!values) return result
+  for (const type of TOAST_TYPES) {
+    const value = values[type]
+    if (typeof value === "number") result[type] = String(value)
+  }
+  return result
 }

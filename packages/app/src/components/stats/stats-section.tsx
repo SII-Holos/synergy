@@ -51,7 +51,7 @@ function StatsSyncBar(props: {
     <div class="mb-4">
       <div class="library-sync-row">
         <div class="library-toolbar-left">
-          <span class="library-control-pill">Usage stats</span>
+          <span class="library-toolbar-label">Usage stats</span>
           <span class="library-toolbar-summary">
             {props.syncing
               ? (props.progress?.message ?? phaseLabel(props.progress?.phase ?? "scan"))

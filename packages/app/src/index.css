@@ -21,8 +21,9 @@ a:active,
 }
 
 [data-slot="dialog-container"]:has(.dialog-skill-detail) {
-  width: min(calc(100vw - 20px), 760px);
-  height: min(calc(100vh - 20px), 760px);
+  width: min(calc(100vw - 40px), 680px);
+  height: auto;
+  max-height: min(calc(100vh - 48px), 720px);
 }
 
 [data-slot="dialog-container"]:has(.dialog-skill-detail) [data-slot="dialog-body"] {
@@ -477,7 +478,8 @@ a:active,
   }
 
   [data-slot="dialog-container"]:has(.dialog-skill-detail) {
-    height: min(calc(100dvh - 20px), 760px);
+    width: min(calc(100vw - 16px), 100vw);
+    max-height: min(calc(100dvh - 16px), 100dvh);
   }
 }
 @keyframes spin {
