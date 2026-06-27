@@ -84,16 +84,11 @@ export class BrowserWebRTCHost {
   private readonly browserWindowTitle: string
   private diagnostics: BrowserHostDiagnostics | null = null
   private refMap = new Map<string, { backendNodeId: number; x: number; y: number; width: number; height: number }>()
-  private activeTabId: string | null
-  private tabs = new Map<string, BrowserHostTabState>()
-  private closedTabIds = new Set<string>()
   private controllerDir: string | null = null
 
   constructor(private options: BrowserWebRTCHostOptions) {
     this.inputChannel = `browser-host:${options.tabId}:input`
     this.browserWindowTitle = `Synergy Browser Host ${options.sessionID} ${options.tabId}`
-    this.activeTabId = options.tabId
-    this.tabs.set(options.tabId, this.createTabState(options.tabId, this.initialURL(), "", false))
   }
 
   async start(): Promise<void> {
@@ -165,7 +160,6 @@ export class BrowserWebRTCHost {
     const controllerPath = await this.writeControllerHtml(signalingUrl)
     await this.rtcWindow.loadFile(controllerPath)
     await this.browserWindow.loadURL(this.initialURL())
-    this.tabs.set(this.options.tabId, this.tabState())
     this.connectControl()
   }
 
@@ -351,23 +345,15 @@ export class BrowserWebRTCHost {
         throw new UnsupportedHostCommandError(String(command.type))
       }
       case "closeTab": {
-        const tabId = String(command.tabId ?? this.activeTabId ?? "")
-        this.tabs.delete(tabId)
-        this.closedTabIds.add(tabId)
-        if (this.activeTabId === tabId) {
-          this.activeTabId = this.tabs.keys().next().value ?? null
-        }
-        this.sendHostSession()
-        if (tabId === this.options.tabId) setTimeout(() => this.destroy(), 0)
-        return { type: "session", session: this.sessionState() }
+        const tabId = String(command.tabId ?? "")
+        if (tabId !== this.options.tabId) throw new UnsupportedHostCommandError(String(command.type))
+        setTimeout(() => this.destroy(), 0)
+        return { type: "session", session: { tabs: [], activeTabId: null } }
       }
       case "switchTab": {
         const tabId = String(command.tabId ?? "")
-        const tab = this.tabs.get(tabId)
-        if (!tab) throw new Error(`Browser tab not found: ${tabId}`)
-        this.activeTabId = tabId
-        this.sendHostSession()
-        return { type: "tab", tab }
+        if (tabId !== this.options.tabId) throw new UnsupportedHostCommandError(String(command.type))
+        return { type: "tab", tab: this.tabState() }
       }
       case "navigate": {
         if (typeof command.tabId === "string" && command.tabId !== this.options.tabId) {
@@ -575,18 +561,13 @@ export class BrowserWebRTCHost {
   }
 
   private tabState(): BrowserHostTabState {
-    if (this.closedTabIds.has(this.options.tabId)) {
-      return this.createTabState(this.options.tabId, "", "", false)
-    }
     const contents = this.browserWindow?.webContents
-    const tab = this.createTabState(
+    return this.createTabState(
       this.options.tabId,
-      contents?.getURL() ?? this.tabs.get(this.options.tabId)?.url ?? "",
-      contents?.getTitle() ?? this.tabs.get(this.options.tabId)?.title ?? "",
+      contents?.getURL() ?? this.initialURL(),
+      contents?.getTitle() ?? "",
       contents?.isLoading() ?? false,
     )
-    this.tabs.set(this.options.tabId, tab)
-    return tab
   }
 
   private createTabState(tabId: string, url: string, title: string, isLoading: boolean): BrowserHostTabState {
@@ -606,8 +587,7 @@ export class BrowserWebRTCHost {
   }
 
   private sessionState() {
-    if (!this.closedTabIds.has(this.options.tabId)) this.tabState()
-    return { tabs: Array.from(this.tabs.values()), activeTabId: this.activeTabId }
+    return { tabs: [this.tabState()], activeTabId: this.options.tabId }
   }
 
   private sendHostSession(): void {

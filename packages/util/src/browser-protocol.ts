@@ -137,7 +137,7 @@ export function browserControlEnvelope<TType extends string, TPayload>(
 }
 
 export type BrowserWebRTCSignalMessage =
-  | { type: "webrtc.offer"; tabId: string; sdp: string }
+  | { type: "webrtc.offer"; tabId: string; sdp: string; traceId?: string }
   | { type: "webrtc.answer"; tabId: string; sdp: string }
-  | { type: "webrtc.ice"; tabId: string; candidate: unknown }
-  | { type: "webrtc.close"; tabId: string }
+  | { type: "webrtc.ice"; tabId: string; candidate: unknown; traceId?: string }
+  | { type: "webrtc.close"; tabId: string; traceId?: string }

@@ -63,20 +63,6 @@ function tabPayload(tab: BrowserTab) {
   return BrowserControl.tabState(tab)
 }
 
-function sessionPayload(
-  session: BrowserSession,
-  presentation: BrowserPresentationSelection,
-  runtimeHealth?: Awaited<ReturnType<typeof BrowserHost.health>>,
-) {
-  return {
-    type: "session.state",
-    ...BrowserControl.sessionState(session),
-    connection: { status: "connected" },
-    presentation,
-    runtimeHealth,
-  }
-}
-
 function sessionStatePayload(
   session: BrowserControl.SessionState,
   presentation: BrowserPresentationSelection,
@@ -191,6 +177,30 @@ async function ensureSession(
   options?: BrowserHost.EnsureSessionOptions,
 ): Promise<BrowserSession> {
   return BrowserHost.ensureSession(owner, options)
+}
+
+function mergeCanonicalHostSession(
+  canonical: BrowserControl.SessionState,
+  hostSession: BrowserControl.SessionState,
+): BrowserControl.SessionState {
+  const hostTabs = new Map(hostSession.tabs.map((tab) => [tab.id, tab]))
+  return {
+    tabs: canonical.tabs.map((tab) => hostTabs.get(tab.id) ?? tab),
+    activeTabId: canonical.activeTabId,
+  }
+}
+
+async function routeSessionState(
+  owner: BrowserOwner.Info,
+  presentation: BrowserPresentationSelection,
+  options?: BrowserHost.EnsureSessionOptions,
+): Promise<BrowserControl.SessionState> {
+  const session = await ensureSession(owner, options)
+  const canonical = BrowserControl.sessionState(session)
+  const hostSession = BrowserHostControl.sessionState(owner)
+  if (!hostSession) return canonical
+  if (presentation.kind === "webrtc") return mergeCanonicalHostSession(canonical, hostSession)
+  return hostSession
 }
 
 async function readControlRequest(c: BrowserRouteContext): Promise<BrowserControlRequest> {
@@ -340,16 +350,22 @@ async function executeWebRTCCreateTab(
   }
 }
 
+async function executeWebRTCTabCommand(
+  owner: BrowserOwner.Info,
+  command: Extract<BrowserControl.Command, { type: "switchTab" | "closeTab" }>,
+) {
+  const session = await ensureSession(owner)
+  const result = await BrowserControl.execute(session, command)
+  if (command.type === "closeTab") BrowserElectronHostProcess.stop(owner, command.tabId)
+  return result
+}
+
 export const BrowserRoute = new Hono()
   .get("/:directory/browser/session", async (c) => {
     try {
       const { owner, presentation } = routeState(c)
-      const hostSession = BrowserHostControl.sessionState(owner)
-      if (hostSession) {
-        return c.json(sessionStatePayload(hostSession, presentation, await BrowserHost.health()))
-      }
-      const session = await ensureSession(owner, { createInitialTab: true })
-      return c.json(sessionPayload(session, presentation, await BrowserHost.health()))
+      const session = await routeSessionState(owner, presentation, { createInitialTab: true })
+      return c.json(sessionStatePayload(session, presentation, await BrowserHost.health()))
     } catch (e: any) {
       log.error("browser session route error", { error: e?.message ?? String(e) })
       return c.json({ type: "error", code: "browser_session_failed", message: e?.message ?? "Browser error" }, 500)
@@ -390,6 +406,19 @@ export const BrowserRoute = new Hono()
           durationMs: Date.now() - startedAt,
         })
         return c.json({ type: "control.result", result }, 202)
+      }
+
+      if (presentation.kind === "webrtc" && (command.type === "switchTab" || command.type === "closeTab")) {
+        const result = await executeWebRTCTabCommand(owner, command)
+        log.info("browser.route.control.completed", {
+          ownerKey: BrowserOwner.key(owner),
+          tabId,
+          commandId: request.commandId,
+          commandType: command.type,
+          traceId: request.traceId,
+          durationMs: Date.now() - startedAt,
+        })
+        return c.json({ type: "control.result", result })
       }
 
       if (
@@ -538,15 +567,42 @@ export const BrowserRoute = new Hono()
       return {
         onOpen: async (_e: any, ws: BrowserWS) => {
           try {
-            unsubscribeHost = BrowserHostControl.addObserver(owner, (event) => send(ws, event))
+            const session = await ensureSession(owner, { createInitialTab: true })
+            unsubscribe = subscribeBrowserEvents(ws, session)
+            unsubscribeHost = BrowserHostControl.addObserver(owner, (event) => {
+              if (presentation.kind === "webrtc" && event.type === "session.state") {
+                const hostSession = {
+                  tabs: Array.isArray(event.tabs) ? event.tabs : [],
+                  activeTabId: typeof event.activeTabId === "string" ? event.activeTabId : null,
+                } as BrowserControl.SessionState
+                send(ws, {
+                  type: "session.state",
+                  ...mergeCanonicalHostSession(BrowserControl.sessionState(session), hostSession),
+                })
+                return
+              }
+              send(ws, event)
+            })
             const hostSession = BrowserHostControl.sessionState(owner)
+            if (hostSession && presentation.kind === "webrtc") {
+              send(
+                ws,
+                sessionStatePayload(
+                  mergeCanonicalHostSession(BrowserControl.sessionState(session), hostSession),
+                  presentation,
+                  await BrowserHost.health(),
+                ),
+              )
+              return
+            }
             if (hostSession) {
               send(ws, sessionStatePayload(hostSession, presentation, await BrowserHost.health()))
               return
             }
-            const session = await ensureSession(owner, { createInitialTab: true })
-            unsubscribe = subscribeBrowserEvents(ws, session)
-            send(ws, sessionPayload(session, presentation, await BrowserHost.health()))
+            send(
+              ws,
+              sessionStatePayload(BrowserControl.sessionState(session), presentation, await BrowserHost.health()),
+            )
           } catch (e: any) {
             log.error("browser events WS onOpen error", { error: e?.message ?? String(e) })
             send(ws, {
@@ -673,9 +729,7 @@ export const BrowserRoute = new Hono()
 
       return {
         onOpen: async (_e: any, ws: BrowserWS) => {
-          const hostSession = BrowserHostControl.sessionState(state.owner)
-          const session =
-            hostSession ?? BrowserControl.sessionState(await ensureSession(state.owner, { createInitialTab: true }))
+          const session = await routeSessionState(state.owner, state.presentation, { createInitialTab: true })
           const tabId = initialTabId || session.activeTabId || null
           const tab = tabId ? session.tabs.find((item) => item.id === tabId) : undefined
           if (tabId) {
@@ -770,6 +824,14 @@ export const BrowserRoute = new Hono()
           }
 
           attachedTabId = tabId
+          log.info("browser.webrtc.viewer.signal", {
+            ownerKey: BrowserOwner.key(state.owner),
+            tabId,
+            traceId: typeof msg.traceId === "string" ? msg.traceId : routeTraceId,
+            signalType: msg.type,
+            hasSdp: typeof msg.sdp === "string",
+            hasCandidate: Boolean(msg.candidate),
+          })
           BrowserWebRTCSignaling.handleViewerMessage(state.owner, tabId, ws, msg)
         },
         onClose(_event: any, ws: BrowserWS) {
@@ -806,9 +868,7 @@ export const BrowserRoute = new Hono()
 
       return {
         onOpen: async (_e: any, ws: BrowserWS) => {
-          const hostSession = BrowserHostControl.sessionState(state.owner)
-          const session =
-            hostSession ?? BrowserControl.sessionState(await ensureSession(state.owner, { createInitialTab: true }))
+          const session = await routeSessionState(state.owner, state.presentation, { createInitialTab: true })
           attachedTabId = attachedTabId || session.activeTabId || null
           if (!attachedTabId) {
             send(ws, { type: "error", code: "browser_webrtc_host_missing_tab", message: "Missing WebRTC host tab id" })
@@ -846,6 +906,14 @@ export const BrowserRoute = new Hono()
           const tabId = typeof msg.tabId === "string" ? msg.tabId : attachedTabId
           if (!tabId) return
           attachedTabId = tabId
+          log.info("browser.webrtc.host.signal", {
+            ownerKey: BrowserOwner.key(state.owner),
+            tabId,
+            traceId: typeof msg.traceId === "string" ? msg.traceId : routeTraceId,
+            signalType: msg.type,
+            hasSdp: typeof msg.sdp === "string",
+            hasCandidate: Boolean(msg.candidate),
+          })
           BrowserWebRTCSignaling.handleHostMessage(state.owner, tabId, msg)
         },
         onClose(_event: any, ws: BrowserWS) {

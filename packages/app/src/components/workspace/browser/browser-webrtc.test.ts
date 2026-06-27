@@ -149,4 +149,26 @@ describe("BrowserWebRTCClient", () => {
     expect(ws.sent.filter((message) => (message as { type?: string }).type === "webrtc.offer")).toHaveLength(2)
     client.close()
   })
+
+  test("surfaces host signaling errors and closed messages as statuses", async () => {
+    globalThis.WebSocket = FakeWebSocket as unknown as typeof WebSocket
+    globalThis.RTCPeerConnection = FakeRTCPeerConnection as unknown as typeof RTCPeerConnection
+    const statuses: string[] = []
+    const client = new BrowserWebRTCClient({
+      signalingUrl: "ws://localhost/browser/webrtc/connect",
+      tabId: "tab_1",
+      onStatus: (status) => statuses.push(status),
+    })
+
+    await client.connect()
+    const ws = FakeWebSocket.instances[0]!
+    ws.emit("open", {})
+
+    ws.emit("message", { data: JSON.stringify({ type: "webrtc.error", tabId: "tab_1", message: "capture failed" }) })
+    ws.emit("message", { data: JSON.stringify({ type: "webrtc.closed", tabId: "tab_1" }) })
+
+    expect(statuses).toContain("error")
+    expect(statuses).toContain("closed")
+    client.close()
+  })
 })

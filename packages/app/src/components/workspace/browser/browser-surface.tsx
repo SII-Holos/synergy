@@ -44,6 +44,7 @@ export function BrowserSurface(props: { sessionID: string; routeDirectory?: stri
   let pendingFitFrame: number | undefined
   let lastFitViewportKey = ""
   let lastWebRTCResizeKey = ""
+  let activeWebRTCKey = ""
 
   const browser = useBrowser()
   const platform = usePlatform()
@@ -59,9 +60,31 @@ export function BrowserSurface(props: { sessionID: string; routeDirectory?: stri
     return browser.presentation()?.kind === "webrtc"
   }
 
+  function clearVideoStream() {
+    if (videoRef?.srcObject instanceof MediaStream) {
+      for (const track of videoRef.srcObject.getTracks()) track.stop()
+    }
+    if (videoRef) videoRef.srcObject = null
+  }
+
+  function closeWebRTCClient() {
+    const client = webrtcClient
+    webrtcClient = null
+    activeWebRTCKey = ""
+    client?.close()
+    clearVideoStream()
+    setWebrtcStatus("idle")
+    setWebrtcDetail(null)
+  }
+
   createEffect(() => {
     const tabId = browser.activeTabId()
-    if (!webrtcPresentation() || !tabId) return
+    if (!webrtcPresentation() || !tabId) {
+      if (webrtcClient) closeWebRTCClient()
+      return
+    }
+
+    const traceId = browser.browserTraceId()
 
     const signalingUrl = createBrowserWebRTCSignalingUrl({
       serverUrl: sdk.url,
@@ -73,29 +96,38 @@ export function BrowserSurface(props: { sessionID: string; routeDirectory?: stri
       scopeKey: sdk.scopeKey,
       client: platform.platform === "desktop" ? "desktop" : "web",
       sameHost: platform.platform === "desktop",
-      traceId: browser.browserTraceId(),
+      traceId,
     })
 
     if (!signalingUrl) {
+      if (webrtcClient) closeWebRTCClient()
       setWebrtcStatus("error")
       setWebrtcDetail({ message: "Missing browser signaling route" })
       return
     }
 
+    const clientKey = `${tabId}:${signalingUrl}`
+    if (webrtcClient && activeWebRTCKey === clientKey) return
+    closeWebRTCClient()
+
     const client = new BrowserWebRTCClient({
       signalingUrl,
       tabId,
+      traceId,
       onStatus: (status, detail) => {
+        if (webrtcClient !== client) return
         setWebrtcStatus(status)
         setWebrtcDetail(detail ?? null)
         if (status === "host_pending") browser.setHostStatus(tabId, "pending")
       },
       onStream: (stream) => {
+        if (webrtcClient !== client) return
         if (!videoRef) return
         videoRef.srcObject = stream
         void videoRef.play().catch(() => {})
       },
       onMessage: (message) => {
+        if (webrtcClient !== client) return
         if (typeof message !== "object" || message === null) return
         const msg = message as { type?: unknown; tabId?: unknown; status?: unknown }
         if (msg.type !== "browser.host.status") return
@@ -112,23 +144,16 @@ export function BrowserSurface(props: { sessionID: string; routeDirectory?: stri
       },
     })
     webrtcClient = client
+    activeWebRTCKey = clientKey
     void client.connect().catch((error) => {
+      if (webrtcClient !== client) return
       const message = error instanceof Error ? error.message : String(error)
       setWebrtcStatus("error")
       setWebrtcDetail({ message })
     })
-
-    onCleanup(() => {
-      if (webrtcClient === client) webrtcClient = null
-      client.close()
-      if (videoRef?.srcObject instanceof MediaStream) {
-        for (const track of videoRef.srcObject.getTracks()) track.stop()
-      }
-      if (videoRef) videoRef.srcObject = null
-      setWebrtcStatus("idle")
-      setWebrtcDetail(null)
-    })
   })
+
+  onCleanup(closeWebRTCClient)
 
   function fitViewportSize() {
     if (!wrapperRef) return null

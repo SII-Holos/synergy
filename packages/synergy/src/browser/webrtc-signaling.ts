@@ -72,10 +72,16 @@ export namespace BrowserWebRTCSignaling {
     message: Record<string, unknown>,
   ): void {
     const channel = getChannel(owner, tabId)
-    channel.viewer = { socket }
     if (message.type === "webrtc.close") {
+      if (channel.viewer?.socket !== socket) return
       if (channel.host) send(channel.host.socket, message)
       send(socket, { type: "webrtc.closed", tabId })
+      return
+    }
+
+    if (message.type === "webrtc.offer") {
+      channel.viewer = { socket }
+    } else if (channel.viewer?.socket !== socket) {
       return
     }
 

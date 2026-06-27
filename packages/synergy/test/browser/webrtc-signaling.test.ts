@@ -81,4 +81,40 @@ describe("BrowserWebRTCSignaling", () => {
       message: "Browser Host media transport disconnected.",
     })
   })
+
+  test("ignores signaling messages from a stale viewer socket", () => {
+    const oldViewer = socket()
+    const newViewer = socket()
+    const host = socket()
+
+    BrowserWebRTCSignaling.attachHost(owner, "tab_1", host.peer)
+    BrowserWebRTCSignaling.attachViewer(owner, "tab_1", oldViewer.peer)
+    BrowserWebRTCSignaling.attachViewer(owner, "tab_1", newViewer.peer)
+    BrowserWebRTCSignaling.handleViewerMessage(owner, "tab_1", oldViewer.peer, {
+      type: "webrtc.close",
+      tabId: "tab_1",
+    })
+
+    expect(host.messages).not.toContainEqual({ type: "webrtc.close", tabId: "tab_1" })
+
+    BrowserWebRTCSignaling.handleViewerMessage(owner, "tab_1", oldViewer.peer, {
+      type: "webrtc.ice",
+      tabId: "tab_1",
+      candidate: { candidate: "stale" },
+    })
+
+    expect(host.messages).not.toContainEqual({
+      type: "webrtc.ice",
+      tabId: "tab_1",
+      candidate: { candidate: "stale" },
+    })
+
+    BrowserWebRTCSignaling.handleViewerMessage(owner, "tab_1", newViewer.peer, {
+      type: "webrtc.offer",
+      tabId: "tab_1",
+      sdp: "offer",
+    })
+
+    expect(host.messages).toContainEqual({ type: "webrtc.offer", tabId: "tab_1", sdp: "offer" })
+  })
 })

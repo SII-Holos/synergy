@@ -49,6 +49,7 @@ export interface BrowserWebRTCClientOptions {
   signalingUrl: string
   tabId: string
   rtcConfiguration?: RTCConfiguration
+  traceId?: string
   onStatus?(status: BrowserWebRTCStatus, detail?: unknown): void
   onStream?(stream: MediaStream): void
   onMessage?(message: unknown): void
@@ -81,7 +82,7 @@ export class BrowserWebRTCClient {
   close(): void {
     this.closed = true
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer)
-    this.sendSignal({ type: "webrtc.close", tabId: this.options.tabId })
+    this.sendSignal({ type: "webrtc.close", tabId: this.options.tabId, traceId: this.options.traceId })
     this.closePeer()
     this.ws?.close()
     this.ws = null
@@ -104,6 +105,7 @@ export class BrowserWebRTCClient {
       this.sendSignal({
         type: "webrtc.ice",
         tabId: this.options.tabId,
+        traceId: this.options.traceId,
         candidate: event.candidate.toJSON(),
       })
     }
@@ -165,7 +167,12 @@ export class BrowserWebRTCClient {
     this.options.onStatus?.("negotiating")
     const offer = await pc.createOffer()
     await pc.setLocalDescription(offer)
-    this.sendSignal({ type: "webrtc.offer", tabId: this.options.tabId, sdp: offer.sdp ?? "" })
+    this.sendSignal({
+      type: "webrtc.offer",
+      tabId: this.options.tabId,
+      traceId: this.options.traceId,
+      sdp: offer.sdp ?? "",
+    })
   }
 
   private needsFreshPeer(pc: RTCPeerConnection): boolean {
@@ -202,6 +209,14 @@ export class BrowserWebRTCClient {
     }
     if (msg.type === "webrtc.host.pending") {
       this.options.onStatus?.("host_pending", msg)
+      return
+    }
+    if (msg.type === "webrtc.error") {
+      this.options.onStatus?.("error", msg)
+      return
+    }
+    if (msg.type === "webrtc.closed") {
+      this.options.onStatus?.("closed", msg)
     }
   }
 
