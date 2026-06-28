@@ -1258,6 +1258,95 @@
   font-size: 12px;
 }
 
+.account-profile-form {
+  width: min(100%, 720px);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.account-profile-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.account-profile-form [data-component="input"] {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.account-profile-form [data-slot="input-label"] {
+  color: var(--text-base);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.account-profile-form [data-slot="input-wrapper"] {
+  border-radius: 10px;
+  background: var(--settings-control-bg);
+  border: 1px solid var(--settings-border);
+  transition:
+    background-color 140ms ease,
+    border-color 140ms ease,
+    box-shadow 140ms ease;
+}
+
+.account-profile-form [data-component="input"]:focus-within [data-slot="input-wrapper"] {
+  background: var(--settings-control-bg-hover);
+  border-color: color-mix(in oklch, var(--border-base) 62%, transparent);
+  box-shadow: var(--settings-focus-ring);
+}
+
+.account-profile-form [data-slot="input-input"] {
+  width: 100%;
+  min-height: 36px;
+  padding: 8px 10px;
+  color: var(--text-strong);
+  font-size: 13px;
+}
+
+.account-profile-form textarea[data-slot="input-input"] {
+  min-height: 76px;
+  line-height: 1.45;
+  resize: vertical;
+}
+
+.account-profile-form [data-slot="input-input"]::placeholder {
+  color: var(--text-weaker);
+}
+
+.account-profile-form [data-slot="input-error"] {
+  color: var(--text-critical);
+  font-size: 11px;
+}
+
+.account-profile-warning {
+  width: min(100%, 720px);
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 9px 10px;
+  border-radius: 10px;
+  color: var(--text-weak);
+  background: color-mix(in oklch, var(--icon-warning-base) 10%, transparent);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.account-profile-warning svg {
+  flex-shrink: 0;
+  margin-top: 1px;
+  color: var(--icon-warning-base);
+}
+
+.account-profile-actions {
+  display: flex;
+  justify-content: flex-start;
+  padding-top: 2px;
+}
+
 .account-agent-list,
 .usage-panel-list {
   display: flex;
@@ -1886,6 +1975,10 @@
   }
 
   .usage-window-row {
+    grid-template-columns: 1fr;
+  }
+
+  .account-profile-grid {
     grid-template-columns: 1fr;
   }
 

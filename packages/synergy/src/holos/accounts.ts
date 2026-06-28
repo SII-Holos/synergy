@@ -8,7 +8,6 @@ export namespace HolosAccounts {
   export const AccountInfo = z.object({
     agentId: z.string(),
     agentSecret: z.string(),
-    label: z.string().nullable(),
     createdAt: z.number(),
     updatedAt: z.number(),
   })
@@ -78,7 +77,7 @@ export namespace HolosAccounts {
     return store.accounts[agentId]
   }
 
-  export async function saveAndActivateAccount(agentId: string, agentSecret: string, label?: string): Promise<void> {
+  export async function saveAndActivateAccount(agentId: string, agentSecret: string): Promise<void> {
     const store = await readStore()
     const now = Date.now()
     const existing = store.accounts[agentId]
@@ -86,7 +85,6 @@ export namespace HolosAccounts {
     store.accounts[agentId] = {
       agentId,
       agentSecret,
-      label: label ?? existing?.label ?? null,
       createdAt: existing?.createdAt ?? now,
       updatedAt: now,
     }
@@ -128,7 +126,6 @@ export namespace HolosAccounts {
     store.accounts[holos.agentId] = {
       agentId: holos.agentId,
       agentSecret: holos.agentSecret,
-      label: existing?.label ?? null,
       createdAt: existing?.createdAt ?? now,
       updatedAt: now,
     }

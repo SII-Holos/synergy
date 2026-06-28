@@ -2,13 +2,53 @@ import * as prompts from "@clack/prompts"
 import open from "open"
 import { UI } from "@/cli/ui"
 import { HolosLoginFlow } from "./login-flow"
+import { HolosProfile } from "./profile"
 
 const LOGIN_TIMEOUT_MS = 5 * 60_000
 const DIM = UI.Style.TEXT_DIM
 const RESET = UI.Style.TEXT_NORMAL
 const GREEN = UI.Style.TEXT_SUCCESS
 
-export async function performHolosLogin(options?: { silent?: boolean }): Promise<{ agentId: string } | null> {
+async function promptProfile(options?: {
+  silent?: boolean
+  profile?: HolosProfile.Input
+}): Promise<HolosProfile.Input | null> {
+  if (options?.profile) return options.profile
+  if (options?.silent) return null
+
+  const name = await prompts.text({
+    message: "Agent profile name",
+    placeholder: "Synergy Agent",
+  })
+  const trimmedName = prompts.isCancel(name) ? "" : String(name).trim()
+  if (!trimmedName) return null
+
+  const description = await prompts.text({
+    message: "Description",
+    placeholder: "Optional",
+  })
+  if (prompts.isCancel(description)) return null
+
+  const avatarUrl = await prompts.text({
+    message: "Avatar URL",
+    placeholder: "Optional",
+  })
+  if (prompts.isCancel(avatarUrl)) return null
+
+  return {
+    name: trimmedName,
+    ...(description ? { description: String(description).trim() } : {}),
+    ...(avatarUrl ? { avatarUrl: String(avatarUrl).trim() } : {}),
+  }
+}
+
+export async function performHolosLogin(options?: {
+  silent?: boolean
+  profile?: HolosProfile.Input
+}): Promise<{ agentId: string } | null> {
+  const profile = await promptProfile(options)
+  if (!profile) return null
+
   const state = crypto.randomUUID()
   const port = 19836 + Math.floor(Math.random() * 1000)
   const callbackUrl = `http://127.0.0.1:${port}/holos/login`
@@ -75,7 +115,7 @@ export async function performHolosLogin(options?: { silent?: boolean }): Promise
 
     spinner?.message("Exchanging credentials...")
 
-    const { agentId, agentSecret } = await HolosLoginFlow.exchange({ code: params.code, state: params.state })
+    const { agentId, agentSecret } = await HolosLoginFlow.exchange({ code: params.code, state: params.state, profile })
     await HolosLoginFlow.saveAndReload({ agentId, agentSecret })
 
     spinner?.stop(`${GREEN}●${RESET} Bound as ${DIM}${agentId}${RESET}`)

@@ -296,22 +296,14 @@ export function Sidebar(props: SidebarProps) {
           fallback={
             <Tooltip value="Expand sidebar" placement="right">
               <button type="button" class="sb-collapsed-toggle" onClick={() => layout.sidebar.toggle()}>
-                <img
-                  src={holosLogoPath(isDark() ? "dark" : "light")}
-                  alt="HOLOS"
-                  class="sb-collapsed-logo"
-                />
+                <img src={holosLogoPath(isDark() ? "dark" : "light")} alt="HOLOS" class="sb-collapsed-logo" />
                 <Icon name="panel-left-open" size="normal" class="sb-collapsed-toggle-icon" />
               </button>
             </Tooltip>
           }
         >
           <A href={`/${base64Encode("home")}/session`} class="sb-logo">
-            <img
-              src={holosLogoPath(isDark() ? "dark" : "light")}
-              alt="HOLOS"
-              class="sb-logo-img"
-            />
+            <img src={holosLogoPath(isDark() ? "dark" : "light")} alt="HOLOS" class="sb-logo-img" />
             <span class="sb-logo-text">HOLOS</span>
           </A>
           <div class="sb-header-actions">
@@ -883,7 +875,7 @@ function SidebarAgentHub(props: { isExpanded: boolean; globalSDK: ReturnType<typ
   const [menuOpen, setMenuOpen] = createSignal(false)
   const [agentSwitcherOpen, setAgentSwitcherOpen] = createSignal(false)
 
-  const avatarSrc = () => brandAssetPath(BRAND_ASSETS.synergy.productIcon)
+  const avatarSrc = () => holos.state.social.profile?.avatarUrl || brandAssetPath(BRAND_ASSETS.synergy.productIcon)
 
   const displayName = () => {
     if (!holos.loaded) return "Synergy"
@@ -944,7 +936,7 @@ function SidebarAgentHub(props: { isExpanded: boolean; globalSDK: ReturnType<typ
     return false
   }
 
-  const accountLabel = (a: { agentId: string; label: string | null }) => a.label || a.agentId.slice(0, 8)
+  const accountLabel = (a: { agentId: string }) => (isActiveAccount(a.agentId) ? displayName() : a.agentId.slice(0, 8))
 
   const isActiveAccount = (agentId: string) => holos.state.identity.activeAccount?.agentId === agentId
 

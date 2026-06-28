@@ -10,6 +10,11 @@ import { useGlobalSDK } from "@/context/global-sdk"
 import { useHolos } from "@/context/holos"
 
 type GlobalSDK = ReturnType<typeof useGlobalSDK>
+type HolosProfileInput = {
+  name: string
+  description?: string
+  avatarUrl?: string
+}
 
 export function useHolosAgentActions(globalSDK: GlobalSDK) {
   const dialog = useDialog()
@@ -29,13 +34,13 @@ export function useHolosAgentActions(globalSDK: GlobalSDK) {
 
   onCleanup(clearLoginMessageHandler)
 
-  async function createAgent() {
+  async function startCreateAgent(profile: HolosProfileInput): Promise<boolean> {
     try {
-      const res = await globalSDK.client.holos.login({ callbackUrl: callbackUrl() }, { throwOnError: true })
+      const res = await globalSDK.client.holos.login({ callbackUrl: callbackUrl(), profile }, { throwOnError: true })
       const authUrl = res.data?.url
       if (!authUrl) {
         showToast({ type: "error", title: "Holos login failed", description: "No login URL returned." })
-        return
+        return false
       }
 
       clearLoginMessageHandler()
@@ -65,10 +70,17 @@ export function useHolosAgentActions(globalSDK: GlobalSDK) {
           description: "Allow popups for this site to sign in to Holos.",
           duration: 8000,
         })
+        return false
       }
+      return true
     } catch (e) {
       showToast({ type: "error", title: "Holos login failed", description: getErrorMessage(e, String(e)) })
+      return false
     }
+  }
+
+  function createAgent() {
+    dialog.show(() => <DialogCreateHolosAgent onCreate={startCreateAgent} />)
   }
 
   async function reconnect() {
@@ -134,33 +146,140 @@ export function getErrorMessage(err: unknown, fallback: string): string {
   return fallback
 }
 
+function validateUrl(value: string): string | undefined {
+  const trimmed = value.trim()
+  if (!trimmed) return undefined
+  try {
+    new URL(trimmed)
+    return undefined
+  } catch {
+    return "Enter a valid URL"
+  }
+}
+
+export function DialogCreateHolosAgent(props: { onCreate: (profile: HolosProfileInput) => Promise<boolean> }) {
+  const dialog = useDialog()
+  const [form, setForm] = createStore({
+    name: "",
+    description: "",
+    avatarUrl: "",
+    nameError: undefined as string | undefined,
+    avatarUrlError: undefined as string | undefined,
+    submitting: false,
+  })
+
+  async function handleSubmit(e: SubmitEvent) {
+    e.preventDefault()
+    const name = form.name.trim()
+    const description = form.description.trim()
+    const avatarUrl = form.avatarUrl.trim()
+    const avatarUrlError = validateUrl(avatarUrl)
+
+    setForm("nameError", name ? undefined : "Name is required")
+    setForm("avatarUrlError", avatarUrlError)
+    if (!name || avatarUrlError) return
+
+    setForm("submitting", true)
+    try {
+      const started = await props.onCreate({
+        name,
+        ...(description ? { description } : {}),
+        ...(avatarUrl ? { avatarUrl } : {}),
+      })
+      if (started) dialog.close()
+    } finally {
+      setForm("submitting", false)
+    }
+  }
+
+  return (
+    <Dialog title="Create Agent">
+      <form onSubmit={handleSubmit} class="sidebar-agent-import-form">
+        <div class="sidebar-agent-import-hero">
+          <span class="sidebar-agent-import-icon">
+            <Icon name="sparkles" size="normal" />
+          </span>
+          <div class="sidebar-agent-import-heading">
+            <span class="sidebar-agent-import-kicker">Agent profile</span>
+            <p>Set the initial Holos profile. Holos remains the source of truth after the agent is created.</p>
+          </div>
+        </div>
+        <div class="sidebar-agent-import-fields">
+          <TextField
+            autofocus
+            label="Name"
+            type="text"
+            placeholder="Agent name"
+            value={form.name}
+            onChange={(value) => {
+              setForm("name", value)
+              if (value.trim()) setForm("nameError", undefined)
+            }}
+            validationState={form.nameError ? "invalid" : undefined}
+            error={form.nameError}
+          />
+          <TextField
+            label="Description"
+            multiline
+            placeholder="What this agent represents"
+            value={form.description}
+            onChange={(value) => setForm("description", value)}
+          />
+          <TextField
+            label="Avatar URL"
+            type="url"
+            placeholder="https://..."
+            value={form.avatarUrl}
+            onChange={(value) => {
+              setForm("avatarUrl", value)
+              setForm("avatarUrlError", validateUrl(value))
+            }}
+            validationState={form.avatarUrlError ? "invalid" : undefined}
+            error={form.avatarUrlError}
+          />
+        </div>
+        <div class="sidebar-agent-import-note">
+          <Icon name="shield-check" size="small" />
+          <span>The profile is sent to Holos during creation and is not stored in local Synergy settings.</span>
+        </div>
+        <div class="sidebar-agent-import-actions">
+          <Button type="button" variant="ghost" size="large" onClick={() => dialog.close()}>
+            Cancel
+          </Button>
+          <Button type="submit" variant="primary" size="large" disabled={form.submitting}>
+            {form.submitting ? "Opening..." : "Continue"}
+          </Button>
+        </div>
+      </form>
+    </Dialog>
+  )
+}
+
 export function DialogImportHolosAgent(props: { globalSDK: GlobalSDK; onImported?: () => void | Promise<void> }) {
   const dialog = useDialog()
   const [form, setForm] = createStore({
-    agentId: "",
     agentSecret: "",
-    agentIdError: undefined as string | undefined,
     agentSecretError: undefined as string | undefined,
     submitting: false,
   })
 
   async function handleSubmit(e: SubmitEvent) {
     e.preventDefault()
-    const agentId = form.agentId.trim()
     const agentSecret = form.agentSecret.trim()
 
-    setForm("agentIdError", agentId ? undefined : "Agent ID is required")
     setForm("agentSecretError", agentSecret ? undefined : "Agent secret is required")
-    if (!agentId || !agentSecret) return
+    if (!agentSecret) return
 
     setForm("submitting", true)
     try {
-      await props.globalSDK.client.holos.credentials({ agentId, agentSecret }, { throwOnError: true })
+      const res = await props.globalSDK.client.holos.credentials({ agentSecret }, { throwOnError: true })
       await props.onImported?.()
+      const agentId = res.data?.agentId
+      const name = res.data?.profile.name || agentId?.slice(0, 8) || "Holos agent"
       showToast({
         type: "success",
         title: "Agent imported",
-        description: `Imported ${agentId.slice(0, 8)}`,
+        description: `Imported ${name}`,
       })
       dialog.close()
     } catch (err) {
@@ -183,26 +302,12 @@ export function DialogImportHolosAgent(props: { globalSDK: GlobalSDK; onImported
           </span>
           <div class="sidebar-agent-import-heading">
             <span class="sidebar-agent-import-kicker">Holos Agent</span>
-            <p>
-              Connect an existing agent with its ID and secret. The secret is stored locally and never shown here again.
-            </p>
+            <p>Connect an existing agent with its secret. Synergy verifies the identity from Holos before saving.</p>
           </div>
         </div>
         <div class="sidebar-agent-import-fields">
           <TextField
             autofocus
-            label="Agent ID"
-            type="text"
-            placeholder="agent_..."
-            value={form.agentId}
-            onChange={(value) => {
-              setForm("agentId", value)
-              if (value.trim()) setForm("agentIdError", undefined)
-            }}
-            validationState={form.agentIdError ? "invalid" : undefined}
-            error={form.agentIdError}
-          />
-          <TextField
             label="Agent Secret"
             type="password"
             placeholder="Secret"
@@ -217,7 +322,7 @@ export function DialogImportHolosAgent(props: { globalSDK: GlobalSDK; onImported
         </div>
         <div class="sidebar-agent-import-note">
           <Icon name="shield-check" size="small" />
-          <span>The agent secret is saved in local Synergy storage and is not displayed after import.</span>
+          <span>Only the agent secret and canonical agent ID are stored locally. Profile stays in Holos.</span>
         </div>
         <div class="sidebar-agent-import-actions">
           <Button type="button" variant="ghost" size="large" onClick={() => dialog.close()}>

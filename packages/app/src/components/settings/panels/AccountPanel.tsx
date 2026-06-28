@@ -1,7 +1,10 @@
-import { createMemo, For, Show } from "solid-js"
+import { createEffect, createMemo, For, Show } from "solid-js"
+import { createStore } from "solid-js/store"
 import { Button } from "@ericsanchezok/synergy-ui/button"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
+import { TextField } from "@ericsanchezok/synergy-ui/text-field"
+import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import type { HolosAccountMeta } from "@ericsanchezok/synergy-sdk/client"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { useHolos } from "@/context/holos"
@@ -13,13 +16,24 @@ export function AccountPanel() {
   const globalSDK = useGlobalSDK()
   const holos = useHolos()
   const actions = useHolosAgentActions(globalSDK)
+  const [profileForm, setProfileForm] = createStore({
+    name: "",
+    description: "",
+    avatarUrl: "",
+    nameError: undefined as string | undefined,
+    avatarUrlError: undefined as string | undefined,
+    saving: false,
+  })
   const activeAgentId = createMemo(() => holos.state.identity.activeAccount?.agentId)
   const displayName = createMemo(
     () => holos.state.social.profile?.name || holos.state.identity.agentId?.slice(0, 8) || "Synergy",
   )
+  const avatarSrc = createMemo(
+    () => holos.state.social.profile?.avatarUrl || brandAssetPath(BRAND_ASSETS.synergy.productIcon),
+  )
 
   function accountLabel(account: HolosAccountMeta) {
-    return account.label || account.agentId.slice(0, 8)
+    return account.agentId === activeAgentId() ? displayName() : account.agentId.slice(0, 8)
   }
 
   function connectionLabel() {
@@ -32,6 +46,64 @@ export function AccountPanel() {
     if (account.agentId !== activeAgentId()) return "Saved"
     if (!holos.loaded) return "Loading"
     return holos.state.connection.status === "connected" ? "Active" : connectionLabel()
+  }
+
+  function validateAvatarUrl(value: string): string | undefined {
+    const trimmed = value.trim()
+    if (!trimmed) return undefined
+    try {
+      new URL(trimmed)
+      return undefined
+    } catch {
+      return "Enter a valid URL"
+    }
+  }
+
+  createEffect(() => {
+    const profile = holos.state.social.profile
+    setProfileForm({
+      name: profile?.name ?? "",
+      description: profile?.description ?? "",
+      avatarUrl: profile?.avatarUrl ?? "",
+      nameError: undefined,
+      avatarUrlError: undefined,
+    })
+  })
+
+  async function saveProfile(e: SubmitEvent) {
+    e.preventDefault()
+    const name = profileForm.name.trim()
+    const description = profileForm.description.trim()
+    const avatarUrl = profileForm.avatarUrl.trim()
+    const avatarUrlError = validateAvatarUrl(avatarUrl)
+
+    setProfileForm("nameError", name ? undefined : "Name is required")
+    setProfileForm("avatarUrlError", avatarUrlError)
+    if (!name || avatarUrlError) return
+
+    setProfileForm("saving", true)
+    try {
+      await globalSDK.client.holos.profile.update(
+        {
+          holosAgentProfileInput: {
+            name,
+            ...(description ? { description } : { description: "" }),
+            ...(avatarUrl ? { avatarUrl } : { avatarUrl: "" }),
+          },
+        },
+        { throwOnError: true },
+      )
+      await holos.refresh()
+      showToast({ type: "success", title: "Profile saved", description: "Holos profile was updated." })
+    } catch (err) {
+      showToast({
+        type: "error",
+        title: "Profile save failed",
+        description: err instanceof Error ? err.message : "Unable to update Holos profile.",
+      })
+    } finally {
+      setProfileForm("saving", false)
+    }
   }
 
   return (
@@ -64,7 +136,7 @@ export function AccountPanel() {
       <SettingsSection>
         <div class="account-identity-card">
           <div class="account-identity-avatar">
-            <img src={brandAssetPath(BRAND_ASSETS.synergy.productIcon)} alt="" />
+            <img src={avatarSrc()} alt="" />
           </div>
           <div class="min-w-0 flex-1">
             <div class="account-identity-name">{displayName()}</div>
@@ -86,6 +158,63 @@ export function AccountPanel() {
             </Button>
           </Show>
         </div>
+      </SettingsSection>
+
+      <SettingsSection title="Profile" description="This profile is stored in Holos and synced directly when you save.">
+        <form class="account-profile-form" onSubmit={saveProfile}>
+          <div class="account-profile-grid">
+            <TextField
+              label="Name"
+              type="text"
+              placeholder="Agent name"
+              value={profileForm.name}
+              disabled={!holos.state.identity.loggedIn || profileForm.saving}
+              onChange={(value) => {
+                setProfileForm("name", value)
+                if (value.trim()) setProfileForm("nameError", undefined)
+              }}
+              validationState={profileForm.nameError ? "invalid" : undefined}
+              error={profileForm.nameError}
+            />
+            <TextField
+              label="Avatar URL"
+              type="url"
+              placeholder="https://..."
+              value={profileForm.avatarUrl}
+              disabled={!holos.state.identity.loggedIn || profileForm.saving}
+              onChange={(value) => {
+                setProfileForm("avatarUrl", value)
+                setProfileForm("avatarUrlError", validateAvatarUrl(value))
+              }}
+              validationState={profileForm.avatarUrlError ? "invalid" : undefined}
+              error={profileForm.avatarUrlError}
+            />
+          </div>
+          <TextField
+            label="Description"
+            multiline
+            placeholder="What this agent represents"
+            value={profileForm.description}
+            disabled={!holos.state.identity.loggedIn || profileForm.saving}
+            onChange={(value) => setProfileForm("description", value)}
+          />
+          <Show when={holos.state.social.profileError}>
+            <div class="account-profile-warning">
+              <Icon name={getSemanticIcon("state.warning")} size="small" />
+              <span>{holos.state.social.profileError}</span>
+            </div>
+          </Show>
+          <div class="account-profile-actions">
+            <Button
+              type="submit"
+              variant="primary"
+              size="small"
+              disabled={!holos.state.identity.loggedIn || profileForm.saving}
+            >
+              {profileForm.saving ? "Saving..." : "Save Profile"}
+            </Button>
+          </div>
+        </form>
       </SettingsSection>
 
       <SettingsSection title="Agents" description="Stored agent identities are local to this Synergy installation.">
