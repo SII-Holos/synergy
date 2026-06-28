@@ -345,7 +345,6 @@ describe("Visual Token Contract", () => {
       const hasMotion = /var\(--motion-(duration|ease)/.test(css)
       expect(hasMotion, "tabs.css 应使用 motion token").toBe(true)
     })
-
   })
 
   describe("5. Pill / chip elements use --radius-full", () => {

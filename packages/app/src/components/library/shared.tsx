@@ -105,21 +105,17 @@ export const DISCRETE_DIMENSIONS: Array<{ key: keyof RewardsInfo; short: string;
   { key: "expression", short: "Exp", full: "Expression" },
 ]
 
-export const libraryShellClass =
-  "library-main-surface"
+export const libraryShellClass = "library-main-surface"
 
-export const libraryInsetClass =
-  "library-inner-surface"
+export const libraryInsetClass = "library-inner-surface"
 
-export const libraryCardBaseClass =
-  "library-card-surface flex flex-col overflow-hidden"
+export const libraryCardBaseClass = "library-card-surface flex flex-col overflow-hidden"
 
 export const libraryCardExpandedClass = "is-expanded"
 
 export const libraryCardHoverClass = "library-card-hover"
 
-export const libraryActionButtonClass =
-  "library-action-button"
+export const libraryActionButtonClass = "library-action-button"
 
 export const libraryMenuClass = "library-menu-surface"
 
