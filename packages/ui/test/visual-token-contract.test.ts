@@ -36,6 +36,10 @@ function extractCustomPropValue(css: string, token: string): string | undefined 
   return matches.at(-1)?.[1]?.trim()
 }
 
+function expectCustomPropValue(css: string, token: string, expected: string) {
+  expect(extractCustomPropValue(css, token)?.toLowerCase()).toBe(expected.toLowerCase())
+}
+
 function extractLightFallbackBlock(css: string): string {
   const start = css.indexOf(":root:not([data-color-scheme]) {")
   const end = css.indexOf("@media (prefers-color-scheme: dark)")
@@ -269,20 +273,20 @@ describe("Visual Token Contract", () => {
   describe("1b. Static theme fallback preserves neutral workbench surfaces", () => {
     test("light fallback uses a near-white canvas with white raised rows", async () => {
       const css = extractLightFallbackBlock(await readThemeCss())
-      expect(extractCustomPropValue(css, "background-stronger")).toBe("#FAFAFA")
-      expect(extractCustomPropValue(css, "surface-raised-base")).toBe("#FFFFFF")
-      expect(extractCustomPropValue(css, "surface-raised-stronger")).toBe("#FFFFFF")
-      expect(extractCustomPropValue(css, "surface-raised-stronger-non-alpha")).toBe("#FFFFFF")
-      expect(extractCustomPropValue(css, "surface-inset-base")).toBe("#F4F4F5")
+      expectCustomPropValue(css, "background-stronger", "#FAFAFA")
+      expectCustomPropValue(css, "surface-raised-base", "#FFFFFF")
+      expectCustomPropValue(css, "surface-raised-stronger", "#FFFFFF")
+      expectCustomPropValue(css, "surface-raised-stronger-non-alpha", "#FFFFFF")
+      expectCustomPropValue(css, "surface-inset-base", "#F4F4F5")
     })
 
     test("dark fallback makes raised content brighter than the canvas", async () => {
       const css = extractDarkFallbackBlock(await readThemeCss())
-      expect(extractCustomPropValue(css, "background-stronger")).toBe("#0F0F10")
-      expect(extractCustomPropValue(css, "surface-raised-base")).toBe("#1B1B1D")
-      expect(extractCustomPropValue(css, "surface-raised-strong")).toBe("#222326")
-      expect(extractCustomPropValue(css, "surface-raised-stronger")).toBe("#2A2B2F")
-      expect(extractCustomPropValue(css, "surface-raised-stronger-non-alpha")).toBe("#2A2B2F")
+      expectCustomPropValue(css, "background-stronger", "#0F0F10")
+      expectCustomPropValue(css, "surface-raised-base", "#1B1B1D")
+      expectCustomPropValue(css, "surface-raised-strong", "#222326")
+      expectCustomPropValue(css, "surface-raised-stronger", "#2A2B2F")
+      expectCustomPropValue(css, "surface-raised-stronger-non-alpha", "#2A2B2F")
     })
   })
 
@@ -348,7 +352,6 @@ describe("Visual Token Contract", () => {
       const hasMotion = /var\(--motion-(duration|ease)/.test(css)
       expect(hasMotion, "tabs.css 应使用 motion token").toBe(true)
     })
-
   })
 
   describe("5. Pill / chip elements use --radius-full", () => {

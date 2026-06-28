@@ -2,7 +2,6 @@ import { createMemo, createResource, createSignal, For, onMount, Show } from "so
 import { useNavigate, type RouteSectionProps } from "@solidjs/router"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
-import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { AppPanel } from "@/components/app-panel"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { VerifiedBadge } from "./VerifiedBadge"
@@ -98,7 +97,9 @@ export function MarketplacePage(props: MarketplacePageProps) {
     )
   })
 
-  const resultCount = createMemo(() => (view() === "installed" ? installedList().length : (searchResults()?.length ?? 0)))
+  const resultCount = createMemo(() =>
+    view() === "installed" ? installedList().length : (searchResults()?.length ?? 0),
+  )
   const currentLabel = createMemo(() => NAV_ITEMS.find((item) => item.id === view())?.label ?? "Official")
 
   async function refreshMarketplace() {
@@ -129,7 +130,9 @@ export function MarketplacePage(props: MarketplacePageProps) {
 
   onMount(() => {
     if (!props.initialPluginId) return
-    queueMicrotask(() => openPlugin(props.initialPluginId!, props.initialSource ?? "official", { closeToMarketplace: true }))
+    queueMicrotask(() =>
+      openPlugin(props.initialPluginId!, props.initialSource ?? "official", { closeToMarketplace: true }),
+    )
   })
 
   return (
@@ -142,7 +145,11 @@ export function MarketplacePage(props: MarketplacePageProps) {
             </AppPanel.HeaderRow>
             <div class="plugin-marketplace-header-controls">
               <div class="plugin-marketplace-nav">
-                <AppPanel.SegmentedNav items={NAV_ITEMS} active={view()} onChange={(id) => setView(id as MarketplaceView)} />
+                <AppPanel.SegmentedNav
+                  items={NAV_ITEMS}
+                  active={view()}
+                  onChange={(id) => setView(id as MarketplaceView)}
+                />
               </div>
               <div class="plugin-marketplace-search">
                 <Icon name="search" size="small" class="text-icon-weak shrink-0" />
@@ -169,10 +176,7 @@ export function MarketplacePage(props: MarketplacePageProps) {
                 <div>
                   <h2>{currentLabel()} plugins</h2>
                   <p>
-                    <Show
-                      when={!searchResults.loading && !installedPlugins.loading}
-                      fallback="Checking plugins"
-                    >
+                    <Show when={!searchResults.loading && !installedPlugins.loading} fallback="Checking plugins">
                       {resultCount()} {resultCount() === 1 ? "plugin" : "plugins"}
                       <Show when={debouncedQuery()}> matching "{debouncedQuery()}"</Show>
                     </Show>
@@ -216,7 +220,9 @@ export function MarketplacePage(props: MarketplacePageProps) {
                 <div class="plugin-marketplace-list">
                   <For each={searchResults()}>
                     {(plugin) => {
-                      const installed = () => installedVersionById().get(plugin.id) ?? getInstalledVersion(installedPlugins() ?? [], plugin.id)
+                      const installed = () =>
+                        installedVersionById().get(plugin.id) ??
+                        getInstalledVersion(installedPlugins() ?? [], plugin.id)
                       const rowState = (): RowState =>
                         !installed()
                           ? "available"
@@ -242,7 +248,9 @@ export function MarketplacePage(props: MarketplacePageProps) {
                     {(plugin) => (
                       <InstalledPluginRow
                         plugin={plugin}
-                        onClick={() => openPlugin(plugin.pluginId, props.initialSource ?? "local", { installedPlugin: plugin })}
+                        onClick={() =>
+                          openPlugin(plugin.pluginId, props.initialSource ?? "local", { installedPlugin: plugin })
+                        }
                       />
                     )}
                   </For>
@@ -262,12 +270,22 @@ function PluginRow(props: {
   installedVersion: string | null
   onClick: () => void
 }) {
-  const installedLabel = () => (props.installedVersion ? `Installed v${props.installedVersion}` : "Installed")
-  const installedStatusLabel = () =>
-    props.state === "update" ? `${installedLabel()}, update available` : installedLabel()
+  const installStatusLabel = () =>
+    props.state === "update"
+      ? `Update available${props.installedVersion ? ` from v${props.installedVersion}` : ""}`
+      : props.installedVersion
+        ? `Installed v${props.installedVersion}`
+        : "Installed"
 
   return (
     <button type="button" class="plugin-marketplace-row group" onClick={props.onClick}>
+      <Show when={props.state !== "available"}>
+        <span
+          class={`plugin-marketplace-install-dot plugin-marketplace-install-dot-${props.state === "update" ? "update" : "installed"}`}
+          aria-label={installStatusLabel()}
+          title={installStatusLabel()}
+        />
+      </Show>
       <MarketplacePluginIcon plugin={props.plugin} class="plugin-marketplace-plugin-icon" />
 
       <span class="plugin-marketplace-row-main">
@@ -292,20 +310,6 @@ function PluginRow(props: {
       <span class="plugin-marketplace-row-status">
         <VerifiedBadge verified={props.plugin.verified} official={props.plugin.official} />
         <PermissionRiskBadge risk={props.plugin.risk} />
-        <Show when={props.state !== "available"}>
-          <span
-            class="plugin-marketplace-installed-indicator"
-            aria-label={installedStatusLabel()}
-            title={installedStatusLabel()}
-          >
-            <Icon name={getSemanticIcon("state.success")} size="small" aria-hidden="true" />
-            <span>Installed</span>
-            <Show when={props.state === "update"}>
-              <span class="plugin-marketplace-update-dot" aria-hidden="true" />
-              <span class="sr-only">Update available</span>
-            </Show>
-          </span>
-        </Show>
       </span>
       <Icon name="chevron-right" size="small" class="plugin-marketplace-row-arrow" />
     </button>
@@ -327,7 +331,8 @@ function InstalledPluginRow(props: { plugin: ApiPluginInfo; onClick: () => void 
           <span class="plugin-marketplace-version">v{props.plugin.version ?? "0.0.0"}</span>
         </span>
         <span class="plugin-marketplace-row-description">
-          {props.plugin.skillCount} skills · {props.plugin.agentCount} agents · {props.plugin.cliCommands.length} commands
+          {props.plugin.skillCount} skills · {props.plugin.agentCount} agents · {props.plugin.cliCommands.length}{" "}
+          commands
         </span>
         <span class="plugin-marketplace-row-meta">
           <span>{props.plugin.trustTier}</span>
