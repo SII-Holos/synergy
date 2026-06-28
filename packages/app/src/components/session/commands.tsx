@@ -7,6 +7,7 @@ import type { useSync } from "@/context/sync"
 import type { useTerminal } from "@/context/terminal"
 import type { useLayout } from "@/context/layout"
 import { useWorkspace } from "@/context/workspace"
+import { useServer } from "@/context/server"
 import { extractPromptFromParts } from "@/utils/prompt"
 import type { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import type { UserMessage } from "@ericsanchezok/synergy-sdk"
@@ -58,6 +59,7 @@ export function useSessionCommands(params: {
   } = params
 
   const workspace = useWorkspace()
+  const server = useServer()
 
   command.register(() => [
     {
@@ -259,6 +261,27 @@ export function useSessionCommands(params: {
           title: "Files restored",
           description: `${restoredFiles} file${restoredFiles === 1 ? "" : "s"} restored`,
         })
+      },
+    },
+    {
+      id: "merge-dev",
+      title: "Merge dev branch",
+      description: "Fetch and merge latest dev branch",
+      category: "Session",
+      slash: "merge-dev",
+      disabled: server.channel() !== "local",
+      onSelect: async () => {
+        prompt.set(
+          [
+            {
+              type: "text",
+              content: "please fetch latest origin/dev, merge into current branch, then kill the old server process",
+              start: 0,
+              end: 80,
+            },
+          ],
+          80,
+        )
       },
     },
     {

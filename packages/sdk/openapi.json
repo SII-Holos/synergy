@@ -23,6 +23,9 @@
                       "type": "boolean",
                       "const": true
                     },
+                    "channel": {
+                      "type": "string"
+                    },
                     "version": {
                       "type": "string"
                     },
@@ -31,7 +34,7 @@
                       "type": "boolean"
                     }
                   },
-                  "required": ["healthy", "version", "modelReady"]
+                  "required": ["healthy", "channel", "version", "modelReady"]
                 }
               }
             }

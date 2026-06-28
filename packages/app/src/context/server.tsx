@@ -95,6 +95,7 @@ export const { use: useServer, provider: ServerProvider } = createSimpleContext(
 
     const [healthy, setHealthy] = createSignal<boolean | undefined>(undefined)
     const [modelReady, setModelReady] = createSignal<boolean | undefined>(undefined)
+    const [channel, setChannel] = createSignal<string | undefined>(undefined)
     const [refreshToken, setRefreshToken] = createSignal(0)
 
     const check = (url: string) => {
@@ -105,8 +106,8 @@ export const { use: useServer, provider: ServerProvider } = createSimpleContext(
       })
       return sdk.global
         .health()
-        .then((x) => ({ healthy: x.data?.healthy === true, modelReady: x.data?.modelReady }))
-        .catch(() => ({ healthy: false, modelReady: undefined }))
+        .then((x) => ({ healthy: x.data?.healthy === true, modelReady: x.data?.modelReady, channel: x.data?.channel }))
+        .catch(() => ({ healthy: false, modelReady: undefined, channel: undefined }))
     }
 
     createEffect(() => {
@@ -122,6 +123,7 @@ export const { use: useServer, provider: ServerProvider } = createSimpleContext(
         if (!current) return
         setHealthy(result.healthy)
         setModelReady(result.modelReady)
+        setChannel(result.channel)
       })
       onCleanup(() => {
         current = false
@@ -136,6 +138,7 @@ export const { use: useServer, provider: ServerProvider } = createSimpleContext(
       ready: isReady,
       healthy,
       modelReady,
+      channel,
       isLocal,
       get url() {
         return active()

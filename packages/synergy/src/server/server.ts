@@ -367,6 +367,7 @@ export namespace Server {
                     schema: resolver(
                       z.object({
                         healthy: z.literal(true),
+                        channel: z.string(),
                         version: z.string(),
                         modelReady: z.boolean().meta({
                           description: "Whether at least one AI provider with a usable model is configured",
@@ -386,7 +387,7 @@ export namespace Server {
               return {}
             })
             const modelReady = Object.keys(providers).length > 0
-            return c.json({ healthy: true, version: Installation.VERSION, modelReady })
+            return c.json({ healthy: true, channel: Installation.CHANNEL, version: Installation.VERSION, modelReady })
           },
         )
         .get(

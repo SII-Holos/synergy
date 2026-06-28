@@ -5433,6 +5433,7 @@ export type GlobalHealthResponses = {
    */
   200: {
     healthy: true
+    channel: string
     version: string
     /**
      * Whether at least one AI provider with a usable model is configured
