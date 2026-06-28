@@ -290,19 +290,28 @@
   line-height: 1rem;
 }
 
-.plugin-marketplace-state-available {
-  background: var(--surface-inset-base);
-  color: var(--text-weaker);
-}
-
 .plugin-marketplace-state-installed {
   background: var(--surface-success-soft);
   color: var(--text-success);
 }
 
-.plugin-marketplace-state-update {
-  background: var(--surface-warning-soft);
-  color: var(--text-warning);
+.plugin-marketplace-installed-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  color: var(--text-success);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  line-height: 1rem;
+}
+
+.plugin-marketplace-update-dot {
+  width: 0.4375rem;
+  height: 0.4375rem;
+  margin-left: 0.125rem;
+  border-radius: 999px;
+  background: var(--surface-critical-strong);
+  box-shadow: 0 0 0 2px var(--surface-critical-soft);
 }
 
 .plugin-marketplace-row-arrow {

@@ -2,6 +2,7 @@ import { createMemo, createResource, createSignal, For, onMount, Show } from "so
 import { useNavigate, type RouteSectionProps } from "@solidjs/router"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
+import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { AppPanel } from "@/components/app-panel"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { VerifiedBadge } from "./VerifiedBadge"
@@ -261,11 +262,9 @@ function PluginRow(props: {
   installedVersion: string | null
   onClick: () => void
 }) {
-  const stateLabel = () => {
-    if (props.state === "update") return "Update"
-    if (props.state === "installed") return `Installed${props.installedVersion ? ` v${props.installedVersion}` : ""}`
-    return "Open"
-  }
+  const installedLabel = () => (props.installedVersion ? `Installed v${props.installedVersion}` : "Installed")
+  const installedStatusLabel = () =>
+    props.state === "update" ? `${installedLabel()}, update available` : installedLabel()
 
   return (
     <button type="button" class="plugin-marketplace-row group" onClick={props.onClick}>
@@ -293,7 +292,20 @@ function PluginRow(props: {
       <span class="plugin-marketplace-row-status">
         <VerifiedBadge verified={props.plugin.verified} official={props.plugin.official} />
         <PermissionRiskBadge risk={props.plugin.risk} />
-        <span class={`plugin-marketplace-state plugin-marketplace-state-${props.state}`}>{stateLabel()}</span>
+        <Show when={props.state !== "available"}>
+          <span
+            class="plugin-marketplace-installed-indicator"
+            aria-label={installedStatusLabel()}
+            title={installedStatusLabel()}
+          >
+            <Icon name={getSemanticIcon("state.success")} size="small" aria-hidden="true" />
+            <span>Installed</span>
+            <Show when={props.state === "update"}>
+              <span class="plugin-marketplace-update-dot" aria-hidden="true" />
+              <span class="sr-only">Update available</span>
+            </Show>
+          </span>
+        </Show>
       </span>
       <Icon name="chevron-right" size="small" class="plugin-marketplace-row-arrow" />
     </button>
