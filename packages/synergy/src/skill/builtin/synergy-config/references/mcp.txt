@@ -147,7 +147,7 @@ Converted:
 ### "Command not found" for local MCP
 
 - The MCP process runs in Synergy's shell, not the user's interactive shell. Programs installed via npm/npx, Homebrew, or custom paths may not be on PATH.
-- Use an absolute path in the command array: `["/usr/local/bin/node", "server.js"]` instead of `["node", "server.js"]`.
+- Use an absolute path in the command array, for example `["/usr/local/bin/node", "server.js"]`.
 - Alternatively, set `PATH` in the `environment` field.
 
 ### Remote MCP timeout

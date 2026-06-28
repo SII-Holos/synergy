@@ -10,10 +10,12 @@ const parameters = z.object({
   limit: z.coerce.number().int().positive().max(20).default(8).describe("Maximum number of matches to return."),
 })
 
+const MATCHED_TOOL_PREVIEW_LIMIT = 8
+
 export const SearchToolsTool = Tool.define("search_tools", async (initCtx) => ({
   description: [
     "Discover non-resident tool capabilities that are not currently visible to the model. This tool searches deferred groups and search-only tools; it does not enable, expand, activate, execute, or grant permission to any tool.",
-    'When a result has type="group" or includes a group field, prefer expand_tools({ groups: [group] }) so the whole capability group becomes available on the next model step or subsequent turns.',
+    'When a result has type="group" or includes a group field, prefer expand_tools({ groups: [group] }) so the whole capability group becomes available on the next model request or subsequent turns.',
     "When a result is a search-only individual tool with no group, use expand_tools({ tools: [id] }) to activate it. If you already know the capability domain, call expand_tools directly instead of searching first.",
   ].join("\n\n"),
   parameters,
@@ -42,7 +44,6 @@ export const SearchToolsTool = Tool.define("search_tools", async (initCtx) => ({
       .map((entry) => ({ ...entry, score: ToolExposure.score(entry, params.query) }))
       .filter((entry) => entry.score > 0)
       .sort((a, b) => (b.score ?? 0) - (a.score ?? 0) || a.id.localeCompare(b.id))
-      .slice(0, params.limit)
 
     if (matches.length === 0) {
       return {
@@ -50,10 +51,7 @@ export const SearchToolsTool = Tool.define("search_tools", async (initCtx) => ({
         output: [
           `No deferred tool groups or search-only tools matched "${params.query}".`,
           "",
-          "No session state changed. Try a broader capability query, or call expand_tools with one of the known groups if the domain is clear.",
-          "",
-          "Known groups:",
-          catalog.groups.map((group) => `- ${group.id}: ${group.description}`).join("\n"),
+          "No session state changed. Try a broader capability query, or expand a known group directly if the domain is clear.",
         ].join("\n"),
         metadata: {
           query: params.query,
@@ -65,40 +63,26 @@ export const SearchToolsTool = Tool.define("search_tools", async (initCtx) => ({
       }
     }
 
-    const resultMetadata = matches.map((entry) => ({
-      type: entry.type,
-      id: entry.id,
-      title: entry.title,
-      group: entry.group,
-      groupTitle: entry.groupTitle,
-      active: entry.active,
-      disabled:
-        entry.type === "tool" ? catalog.disabled.has(entry.id) : entry.tools?.every((id) => catalog.disabled.has(id)),
-      score: entry.score,
-      next:
-        entry.type === "group" || entry.group
-          ? `expand_tools({ "groups": ["${entry.group ?? entry.id}"] })`
-          : `expand_tools({ "tools": ["${entry.id}"] })`,
-    }))
+    const resultMetadata = aggregateMatches(matches, catalog).slice(0, params.limit)
 
     const lines = resultMetadata.map((entry, index) => {
       const target = entry.type === "group" ? `group ${entry.id}` : `tool ${entry.id}`
-      const group = entry.group && entry.type !== "group" ? ` (group: ${entry.group})` : ""
-      const state = entry.active ? "already active" : entry.disabled ? "permission-hidden if expanded" : "deferred"
-      return `${index + 1}. ${target}${group} - ${state}\n   ${entry.next}`
+      const state = entry.active ? "already active" : entry.disabled ? "unavailable if expanded" : "deferred"
+      const matchedTools =
+        entry.type === "group" && entry.matchedToolCount > 0
+          ? `\n   matchedTools: ${formatMatchedTools(entry.matchedToolPreview, entry.matchedToolCount)}`
+          : ""
+      return `${index + 1}. ${target} - ${state}${matchedTools}\n   next: ${entry.next}`
     })
 
     return {
-      title: `Tool search: ${matches.length} match${matches.length === 1 ? "" : "es"}`,
+      title: `Tool search: ${resultMetadata.length} match${resultMetadata.length === 1 ? "" : "es"}`,
       output: [
-        `Found ${matches.length} deferred tool match${matches.length === 1 ? "" : "es"} for "${params.query}".`,
+        `Found ${resultMetadata.length} deferred capability match${resultMetadata.length === 1 ? "" : "es"} for "${params.query}".`,
         "",
-        "No session state changed. Use expand_tools next if one of these capabilities is needed.",
+        "No session state changed.",
         "",
         ...lines,
-        "",
-        "Structured results:",
-        JSON.stringify(resultMetadata, null, 2),
       ].join("\n"),
       metadata: {
         query: params.query,
@@ -110,3 +94,99 @@ export const SearchToolsTool = Tool.define("search_tools", async (initCtx) => ({
     }
   },
 }))
+
+type ScoredEntry = ToolExposure.SearchEntry & { score: number }
+
+type SearchResult =
+  | {
+      type: "group"
+      id: string
+      title: string
+      active: boolean
+      disabled: boolean
+      score: number
+      matchedToolCount: number
+      matchedToolPreview: string[]
+      next: string
+    }
+  | {
+      type: "tool"
+      id: string
+      title: string
+      active: boolean
+      disabled: boolean
+      score: number
+      next: string
+    }
+
+function aggregateMatches(matches: ScoredEntry[], catalog: ToolDiscovery.Catalog): SearchResult[] {
+  const groups = new Map<
+    string,
+    {
+      id: string
+      title: string
+      active: boolean
+      disabled: boolean
+      score: number
+      matchedTools: string[]
+    }
+  >()
+  const standaloneTools: SearchResult[] = []
+
+  for (const entry of matches) {
+    if (entry.type === "group" || entry.group) {
+      const groupID = entry.group ?? entry.id
+      const groupInfo = catalog.groups.find((group) => group.id === groupID)
+      const existing = groups.get(groupID)
+      const group = existing ?? {
+        id: groupID,
+        title: groupInfo?.title ?? entry.groupTitle ?? entry.title,
+        active: groupIsActive(groupID, catalog),
+        disabled: groupInfo ? groupInfo.tools.every((id) => catalog.disabled.has(id)) : catalog.disabled.has(entry.id),
+        score: 0,
+        matchedTools: [],
+      }
+
+      group.score = Math.max(group.score, entry.score)
+      if (entry.type === "tool") group.matchedTools.push(entry.id)
+      groups.set(groupID, group)
+      continue
+    }
+
+    standaloneTools.push({
+      type: "tool",
+      id: entry.id,
+      title: entry.title,
+      active: entry.active,
+      disabled: catalog.disabled.has(entry.id),
+      score: entry.score,
+      next: `expand_tools({ "tools": ["${entry.id}"] })`,
+    })
+  }
+
+  const groupResults: SearchResult[] = [...groups.values()].map((group) => {
+    const matchedTools = ToolExposure.unique(group.matchedTools)
+    return {
+      type: "group",
+      id: group.id,
+      title: group.title,
+      active: group.active,
+      disabled: group.disabled,
+      score: group.score,
+      matchedToolCount: matchedTools.length,
+      matchedToolPreview: matchedTools.slice(0, MATCHED_TOOL_PREVIEW_LIMIT),
+      next: `expand_tools({ "groups": ["${group.id}"] })`,
+    }
+  })
+
+  return [...groupResults, ...standaloneTools].sort((a, b) => b.score - a.score || a.id.localeCompare(b.id))
+}
+
+function groupIsActive(groupID: string, catalog: ToolDiscovery.Catalog) {
+  return catalog.state.expandedGroups.includes(groupID)
+}
+
+function formatMatchedTools(preview: string[], total: number) {
+  const remaining = total - preview.length
+  return remaining > 0 ? `${preview.join(", ")} (+${remaining} more)` : preview.join(", ")
+}

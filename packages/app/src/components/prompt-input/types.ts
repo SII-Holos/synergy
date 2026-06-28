@@ -44,6 +44,8 @@ export interface PromptInputProps {
   class?: string
   ref?: (el: HTMLDivElement) => void
   newSessionWorktree?: string
+  newSessionCanCreateWorktree?: boolean
+  onNewSessionWorktreeChange?: (worktree: string) => void
   onNewSessionWorktreeReset?: () => void
   hideAgentSelector?: boolean
 }

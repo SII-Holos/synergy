@@ -5,21 +5,23 @@ import { BrowserToolHelper } from "./browser-shared"
 import { BrowserAssets } from "../browser/assets"
 import { ScopeContext } from "../scope/context"
 import { Filesystem } from "../util/filesystem"
+import { BrowserOwner } from "../browser/owner"
 
 export const BrowserAssetsTool = Tool.define("browser_assets", {
   description:
-    "List or export assets loaded by a browser tab (images, scripts, stylesheets, fonts, media, documents, other). Returns assets classified by MIME type with URL, status, and size. Use this to inspect page resources and download candidates.",
+    "List or export assets loaded by a browser page (images, scripts, stylesheets, fonts, media, documents, other). Returns assets classified by MIME type with URL, status, and size. Use this to inspect page resources and download candidates.",
   parameters: z.object({
     action: z.enum(["list", "export"]).describe("Action to perform: list assets or export them as a bundle."),
     types: z
       .array(z.enum(["image", "script", "stylesheet", "font", "media", "document", "other"]))
       .describe("Filter by asset type. Returns all types if omitted.")
       .optional(),
-    tabId: z.string().describe("Browser tab ID. Uses the active tab if omitted.").optional(),
+    pageId: z.string().describe("Browser page ID. Uses the session page if omitted.").optional(),
     outputDir: z.string().describe("Directory to write exported assets. Required for export action.").optional(),
   }),
   async execute(params, ctx) {
-    const tab = await BrowserToolHelper.resolveTab(ctx, params.tabId)
+    const owner = BrowserOwner.fromToolContext(ctx)
+    const tab = await BrowserToolHelper.resolvePage(ctx, params.pageId)
     return BrowserToolHelper.withActivity(
       ctx,
       tab,
@@ -27,8 +29,9 @@ export const BrowserAssetsTool = Tool.define("browser_assets", {
       "browser_assets",
       `${params.action} page assets`,
       async () => {
-        const requests = await tab.networkRequests()
-        let assets = BrowserAssets.fromNetworkBuffer(requests, tab.id)
+        const result = await BrowserToolHelper.executeControl(owner, { type: "assets", pageId: tab.id })
+        if (result.type !== "assets") throw new Error("Browser assets command returned an unexpected result")
+        let assets = result.assets
 
         if (params.types && params.types.length > 0) {
           assets = BrowserAssets.filterByType(assets, params.types)

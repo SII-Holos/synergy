@@ -1,6 +1,7 @@
 import z from "zod"
 import { Tool } from "./tool"
 import { BrowserToolHelper } from "./browser-shared"
+import { BrowserOwner } from "../browser/owner"
 
 export const BrowserNavigationTool = Tool.define("browser_navigation", {
   description:
@@ -8,10 +9,11 @@ export const BrowserNavigationTool = Tool.define("browser_navigation", {
   parameters: z.object({
     action: z.enum(["back", "forward", "reload", "stop", "current"]),
     ignoreCache: z.boolean().optional(),
-    tabId: z.string().optional(),
+    pageId: z.string().optional(),
   }),
   async execute(params, ctx) {
-    const tab = await BrowserToolHelper.resolveTab(ctx, params.tabId)
+    const owner = BrowserOwner.fromToolContext(ctx)
+    const tab = await BrowserToolHelper.resolvePage(ctx, params.pageId)
     const kind = params.action === "current" ? "reading" : "acting"
     return BrowserToolHelper.withActivity(
       ctx,
@@ -22,16 +24,20 @@ export const BrowserNavigationTool = Tool.define("browser_navigation", {
       async () => {
         switch (params.action) {
           case "back":
-            await tab.goBack()
+            await BrowserToolHelper.executeControl(owner, { type: "history", pageId: tab.id, direction: "back" })
             break
           case "forward":
-            await tab.goForward()
+            await BrowserToolHelper.executeControl(owner, { type: "history", pageId: tab.id, direction: "forward" })
             break
           case "reload":
-            await tab.reload(params.ignoreCache)
+            await BrowserToolHelper.executeControl(owner, {
+              type: "reload",
+              pageId: tab.id,
+              ignoreCache: params.ignoreCache,
+            })
             break
           case "stop":
-            await tab.stop()
+            await BrowserToolHelper.executeControl(owner, { type: "stop", pageId: tab.id })
             break
         }
 
@@ -40,7 +46,7 @@ export const BrowserNavigationTool = Tool.define("browser_navigation", {
         return {
           title: params.action === "current" ? "Current page" : `Navigation: ${params.action}`,
           output: `URL: ${url}\nTitle: ${title}`,
-          metadata: { url, title, tabId: tab.id },
+          metadata: { url, title, pageId: tab.id },
         }
       },
     )

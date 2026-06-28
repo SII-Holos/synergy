@@ -2413,6 +2413,90 @@
         ]
       }
     },
+    "/config/domains/{domain}/open": {
+      "post": {
+        "operationId": "config.domain.open",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "domain",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "general",
+                "models",
+                "providers",
+                "library",
+                "mcp",
+                "plugins",
+                "agents",
+                "commands",
+                "permissions",
+                "channels",
+                "holos",
+                "email",
+                "runtime"
+              ]
+            },
+            "required": true
+          }
+        ],
+        "summary": "Open config domain file",
+        "description": "Materialize and open one canonical global config domain file with the operating system default.",
+        "responses": {
+          "200": {
+            "description": "Opened config domain file",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfigDomainOpenResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Unsupported platform",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfigDomainOpenError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Failed to open config domain file",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfigDomainOpenError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.config.domain.open({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/config/import/plan": {
       "post": {
         "operationId": "config.import.plan",
@@ -4329,6 +4413,10 @@
                           "baseRef": {
                             "type": "string",
                             "enum": ["current", "fresh"]
+                          },
+                          "baseRevision": {
+                            "type": "string",
+                            "minLength": 1
                           }
                         },
                         "required": ["mode"]
@@ -7071,6 +7159,54 @@
                           "name": {
                             "type": "string"
                           },
+                          "description": {
+                            "type": "string"
+                          },
+                          "signupUrl": {
+                            "type": "string"
+                          },
+                          "recommendation": {
+                            "type": "object",
+                            "properties": {
+                              "level": {
+                                "type": "string",
+                                "enum": ["featured", "recommended", "standard"]
+                              },
+                              "rank": {
+                                "type": "integer",
+                                "minimum": -9007199254740991,
+                                "maximum": 9007199254740991
+                              },
+                              "headline": {
+                                "type": "string"
+                              },
+                              "reason": {
+                                "type": "string"
+                              },
+                              "cta": {
+                                "type": "object",
+                                "properties": {
+                                  "kind": {
+                                    "type": "string",
+                                    "const": "external"
+                                  },
+                                  "label": {
+                                    "type": "string"
+                                  },
+                                  "url": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": ["kind", "label", "url"],
+                                "additionalProperties": false
+                              },
+                              "defaultModel": {
+                                "type": "string"
+                              }
+                            },
+                            "required": ["level"],
+                            "additionalProperties": false
+                          },
                           "env": {
                             "type": "array",
                             "items": {
@@ -7285,9 +7421,51 @@
                       "items": {
                         "type": "string"
                       }
+                    },
+                    "catalogProviders": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "profiles": {
+                      "type": "object",
+                      "propertyNames": {
+                        "type": "string"
+                      },
+                      "additionalProperties": {
+                        "$ref": "#/components/schemas/ProviderProfileMetadata"
+                      }
+                    },
+                    "authHealth": {
+                      "type": "object",
+                      "propertyNames": {
+                        "type": "string"
+                      },
+                      "additionalProperties": {
+                        "$ref": "#/components/schemas/ProviderAuthHealth"
+                      }
+                    },
+                    "runtimeAvailability": {
+                      "type": "object",
+                      "propertyNames": {
+                        "type": "string"
+                      },
+                      "additionalProperties": {
+                        "$ref": "#/components/schemas/ProviderRuntimeAvailability"
+                      }
                     }
                   },
-                  "required": ["all", "default", "connected", "configProviders"]
+                  "required": [
+                    "all",
+                    "default",
+                    "connected",
+                    "configProviders",
+                    "catalogProviders",
+                    "profiles",
+                    "authHealth",
+                    "runtimeAvailability"
+                  ]
                 }
               }
             }
@@ -7297,6 +7475,113 @@
           {
             "lang": "js",
             "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.provider.list({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/provider/usage": {
+      "get": {
+        "operationId": "provider.usage.list",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "List provider account usage",
+        "description": "Retrieve account usage snapshots for connected providers that expose usage information.",
+        "responses": {
+          "200": {
+            "description": "Provider account usage snapshots",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {
+                    "$ref": "#/components/schemas/AccountUsageSnapshot"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.provider.usage.list({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/provider/{providerID}/usage": {
+      "get": {
+        "operationId": "provider.usage.get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "providerID",
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "description": "Provider ID"
+          }
+        ],
+        "summary": "Get provider account usage",
+        "description": "Retrieve account usage and quota windows for a provider.",
+        "responses": {
+          "200": {
+            "description": "Provider account usage snapshot",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountUsageSnapshot"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.provider.usage.get({\n  ...\n})"
           }
         ]
       }
@@ -7503,6 +7788,82 @@
           {
             "lang": "js",
             "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.provider.oauth.callback({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/provider/{providerID}/import": {
+      "post": {
+        "operationId": "provider.credentials.importCredentials",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "providerID",
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "description": "Provider ID"
+          }
+        ],
+        "summary": "Import provider credentials",
+        "description": "Import credentials from a local provider-specific credential source.",
+        "responses": {
+          "200": {
+            "description": "Credentials imported successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "boolean"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "method": {
+                    "description": "Auth method index",
+                    "type": "number"
+                  }
+                },
+                "required": ["method"]
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.provider.credentials.importCredentials({\n  ...\n})"
           }
         ]
       }
@@ -7822,9 +8183,9 @@
         ]
       }
     },
-    "/find": {
+    "/workspace/files/children": {
       "get": {
-        "operationId": "find.text",
+        "operationId": "workspace.files.children",
         "parameters": [
           {
             "in": "query",
@@ -7842,76 +8203,53 @@
           },
           {
             "in": "query",
-            "name": "pattern",
+            "name": "path",
             "schema": {
               "type": "string"
-            },
-            "required": true
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1000
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "showHidden",
+            "schema": {
+              "type": "string",
+              "enum": ["true", "false"]
+            }
+          },
+          {
+            "in": "query",
+            "name": "showIgnored",
+            "schema": {
+              "type": "string",
+              "enum": ["true", "false"]
+            }
           }
         ],
-        "summary": "Find text",
-        "description": "Search for text patterns across files in the project using ripgrep.",
+        "summary": "List workspace file children",
+        "description": "List direct children for a workspace directory with lazy-loading friendly pagination.",
         "responses": {
           "200": {
-            "description": "Matches",
+            "description": "Workspace file children",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "array",
-                  "items": {
-                    "type": "object",
-                    "properties": {
-                      "path": {
-                        "type": "object",
-                        "properties": {
-                          "text": {
-                            "type": "string"
-                          }
-                        },
-                        "required": ["text"]
-                      },
-                      "lines": {
-                        "type": "object",
-                        "properties": {
-                          "text": {
-                            "type": "string"
-                          }
-                        },
-                        "required": ["text"]
-                      },
-                      "line_number": {
-                        "type": "number"
-                      },
-                      "absolute_offset": {
-                        "type": "number"
-                      },
-                      "submatches": {
-                        "type": "array",
-                        "items": {
-                          "type": "object",
-                          "properties": {
-                            "match": {
-                              "type": "object",
-                              "properties": {
-                                "text": {
-                                  "type": "string"
-                                }
-                              },
-                              "required": ["text"]
-                            },
-                            "start": {
-                              "type": "number"
-                            },
-                            "end": {
-                              "type": "number"
-                            }
-                          },
-                          "required": ["match", "start", "end"]
-                        }
-                      }
-                    },
-                    "required": ["path", "lines", "line_number", "absolute_offset", "submatches"]
-                  }
+                  "$ref": "#/components/schemas/WorkspaceFileChildrenResponse"
                 }
               }
             }
@@ -7920,14 +8258,145 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.find.text({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.workspace.files.children({\n  ...\n})"
           }
         ]
       }
     },
-    "/find/file": {
+    "/workspace/files/read": {
       "get": {
-        "operationId": "find.files",
+        "operationId": "workspace.files.read",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "path",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          },
+          {
+            "in": "query",
+            "name": "range",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 5000
+            }
+          },
+          {
+            "in": "query",
+            "name": "preview",
+            "schema": {
+              "type": "string",
+              "enum": ["true", "false"]
+            }
+          }
+        ],
+        "summary": "Read workspace file",
+        "description": "Read a workspace file as text, image preview, or binary metadata.",
+        "responses": {
+          "200": {
+            "description": "Workspace file read result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceFileReadResult"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.workspace.files.read({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/workspace/files/stat": {
+      "get": {
+        "operationId": "workspace.files.stat",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "path",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "summary": "Stat workspace file",
+        "description": "Return metadata for a workspace file or directory.",
+        "responses": {
+          "200": {
+            "description": "Workspace file node",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceFileNode"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.workspace.files.stat({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/workspace/files/search": {
+      "get": {
+        "operationId": "workspace.files.search",
         "parameters": [
           {
             "in": "query",
@@ -7953,18 +8422,11 @@
           },
           {
             "in": "query",
-            "name": "dirs",
+            "name": "kind",
             "schema": {
+              "default": "files",
               "type": "string",
-              "enum": ["true", "false"]
-            }
-          },
-          {
-            "in": "query",
-            "name": "type",
-            "schema": {
-              "type": "string",
-              "enum": ["file", "directory"]
+              "enum": ["files", "content", "symbol"]
             }
           },
           {
@@ -7975,20 +8437,38 @@
               "minimum": 1,
               "maximum": 200
             }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "include",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "exclude",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
-        "summary": "Find files",
-        "description": "Search for files or directories by name or pattern in the project directory.",
+        "summary": "Search workspace files",
+        "description": "Search workspace files, content, or active LSP symbols.",
         "responses": {
           "200": {
-            "description": "File paths",
+            "description": "Workspace search response",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "array",
-                  "items": {
-                    "type": "string"
-                  }
+                  "$ref": "#/components/schemas/WorkspaceFileSearchResponse"
                 }
               }
             }
@@ -7997,167 +8477,14 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.find.files({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.workspace.files.search({\n  ...\n})"
           }
         ]
       }
     },
-    "/find/symbol": {
+    "/workspace/files/status": {
       "get": {
-        "operationId": "find.symbols",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "directory",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "scopeID",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "query",
-            "schema": {
-              "type": "string"
-            },
-            "required": true
-          }
-        ],
-        "summary": "Find symbols",
-        "description": "Search for workspace symbols like functions, classes, and variables using LSP.",
-        "responses": {
-          "200": {
-            "description": "Symbols",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/Symbol"
-                  }
-                }
-              }
-            }
-          }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.find.symbols({\n  ...\n})"
-          }
-        ]
-      }
-    },
-    "/file": {
-      "get": {
-        "operationId": "file.list",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "directory",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "scopeID",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "path",
-            "schema": {
-              "type": "string"
-            },
-            "required": true
-          }
-        ],
-        "summary": "List files",
-        "description": "List files and directories in a specified path.",
-        "responses": {
-          "200": {
-            "description": "Files and directories",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/FileNode"
-                  }
-                }
-              }
-            }
-          }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.file.list({\n  ...\n})"
-          }
-        ]
-      }
-    },
-    "/file/content": {
-      "get": {
-        "operationId": "file.read",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "directory",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "scopeID",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "path",
-            "schema": {
-              "type": "string"
-            },
-            "required": true
-          }
-        ],
-        "summary": "Read file",
-        "description": "Read the content of a specified file.",
-        "responses": {
-          "200": {
-            "description": "File content",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/FileContent"
-                }
-              }
-            }
-          }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.file.read({\n  ...\n})"
-          }
-        ]
-      }
-    },
-    "/file/status": {
-      "get": {
-        "operationId": "file.status",
+        "operationId": "workspace.files.status",
         "parameters": [
           {
             "in": "query",
@@ -8174,18 +8501,15 @@
             }
           }
         ],
-        "summary": "Get file status",
-        "description": "Get the git status of all files in the project.",
+        "summary": "Get workspace file status",
+        "description": "Return git-backed file status for the current workspace.",
         "responses": {
           "200": {
-            "description": "File status",
+            "description": "Workspace file status",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/File"
-                  }
+                  "$ref": "#/components/schemas/WorkspaceFileStatusSummary"
                 }
               }
             }
@@ -8194,7 +8518,7 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.file.status({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.workspace.files.status({\n  ...\n})"
           }
         ]
       }
@@ -14619,6 +14943,50 @@
         ]
       }
     },
+    "/agent/model-roles": {
+      "get": {
+        "operationId": "app.agentModelRoles",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "List model role summaries",
+        "description": "Get model role configuration, fallback, and usage metadata for the settings UI.",
+        "responses": {
+          "200": {
+            "description": "List of model role summaries",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ModelRoleSummary"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.app.agentModelRoles({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/mcp": {
       "get": {
         "operationId": "mcp.status",
@@ -17848,6 +18216,40 @@
         },
         "additionalProperties": false
       },
+      "ProviderCatalogConfig": {
+        "description": "Signed remote provider catalog configuration",
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "description": "Enable signed remote provider catalog updates",
+            "type": "boolean"
+          },
+          "registryUrl": {
+            "description": "Signed provider catalog URL. The signature is fetched from the same URL plus .sig.",
+            "type": "string",
+            "format": "uri"
+          },
+          "publicKey": {
+            "description": "Base64 Ed25519 public key used to verify provider catalog signatures",
+            "type": "string"
+          },
+          "cacheTtlMs": {
+            "description": "Provider catalog cache TTL in milliseconds",
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "offlineCache": {
+            "description": "Use the last verified provider catalog when offline",
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "ModelRole": {
+        "type": "string",
+        "enum": ["vision", "nano", "mini", "mid", "thinking", "long", "creative"]
+      },
       "PermissionActionConfig": {
         "type": "string",
         "enum": ["ask", "allow", "deny"]
@@ -17957,6 +18359,9 @@
           "model": {
             "type": "string"
           },
+          "modelRole": {
+            "$ref": "#/components/schemas/ModelRole"
+          },
           "temperature": {
             "type": "number"
           },
@@ -18054,6 +18459,54 @@
           },
           "name": {
             "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "signupUrl": {
+            "type": "string"
+          },
+          "recommendation": {
+            "type": "object",
+            "properties": {
+              "level": {
+                "type": "string",
+                "enum": ["featured", "recommended", "standard"]
+              },
+              "rank": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "headline": {
+                "type": "string"
+              },
+              "reason": {
+                "type": "string"
+              },
+              "cta": {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "external"
+                  },
+                  "label": {
+                    "type": "string"
+                  },
+                  "url": {
+                    "type": "string"
+                  }
+                },
+                "required": ["kind", "label", "url"],
+                "additionalProperties": false
+              },
+              "defaultModel": {
+                "type": "string"
+              }
+            },
+            "required": ["level"],
+            "additionalProperties": false
           },
           "env": {
             "type": "array",
@@ -19458,6 +19911,9 @@
               "type": "string"
             }
           },
+          "providerCatalog": {
+            "$ref": "#/components/schemas/ProviderCatalogConfig"
+          },
           "model": {
             "description": "Default model in the format of provider/model, eg anthropic/claude-sonnet-4-5",
             "type": "string"
@@ -19738,6 +20194,19 @@
               "type": "string"
             }
           },
+          "project_doc_fallback_filenames": {
+            "description": "Ordered fallback instruction filenames to try when AGENTS.md is missing in a directory",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "project_doc_max_bytes": {
+            "description": "Maximum bytes to include from each automatically discovered instruction file (default: 32768; 0 disables automatic discovery)",
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
           "layout": {
             "$ref": "#/components/schemas/LayoutConfig"
           },
@@ -19966,6 +20435,38 @@
           }
         },
         "required": ["config"]
+      },
+      "ConfigDomainOpenResponse": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "const": true
+          },
+          "path": {
+            "type": "string"
+          }
+        },
+        "required": ["success", "path"]
+      },
+      "ConfigDomainOpenError": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "const": false
+          },
+          "error": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          }
+        },
+        "required": ["success", "error", "message"]
       },
       "ConfigDomainImportChange": {
         "type": "object",
@@ -20617,6 +21118,12 @@
           "baseRef": {
             "type": "string"
           },
+          "baseRevision": {
+            "type": "string"
+          },
+          "resolvedBaseCommit": {
+            "type": "string"
+          },
           "detached": {
             "type": "boolean"
           },
@@ -20649,6 +21156,28 @@
                   }
                 },
                 "required": ["type", "sessionID"]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "const": "superplan"
+                  },
+                  "runID": {
+                    "type": "string",
+                    "pattern": "^spr.*"
+                  },
+                  "nodeID": {
+                    "type": "string",
+                    "pattern": "^spn.*"
+                  },
+                  "mergeID": {
+                    "type": "string",
+                    "pattern": "^spm.*"
+                  }
+                },
+                "required": ["type", "runID"]
               },
               {
                 "type": "object",
@@ -20713,6 +21242,10 @@
             "default": "current",
             "type": "string",
             "enum": ["current", "fresh"]
+          },
+          "baseRevision": {
+            "type": "string",
+            "minLength": 1
           },
           "bind": {
             "default": true,
@@ -20962,9 +21495,46 @@
           },
           "error": {
             "type": "string"
-          }
+          },
+          "visibility": {
+            "type": "string",
+            "enum": ["visible", "hidden"]
+          },
+          "tools": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "type": "boolean"
+            }
+          },
+          "output": {},
+          "outputResult": {}
         },
         "required": ["parentSessionID", "parentMessageID", "description", "agent", "startedAt", "status"]
+      },
+      "SessionSuperPlanInfo": {
+        "type": "object",
+        "properties": {
+          "runID": {
+            "type": "string",
+            "pattern": "^spr.*"
+          },
+          "role": {
+            "type": "string",
+            "enum": ["planner", "node", "merge", "audit"]
+          },
+          "nodeID": {
+            "type": "string",
+            "pattern": "^spn.*"
+          },
+          "mergeID": {
+            "type": "string",
+            "pattern": "^spm.*"
+          }
+        },
+        "required": ["runID", "role"]
       },
       "SessionWorkingInfo": {
         "anyOf": [
@@ -21177,6 +21747,9 @@
           "cortex": {
             "$ref": "#/components/schemas/SessionCortexDelegation"
           },
+          "superplan": {
+            "$ref": "#/components/schemas/SessionSuperPlanInfo"
+          },
           "working": {
             "$ref": "#/components/schemas/SessionWorkingInfo"
           },
@@ -21188,6 +21761,10 @@
             "properties": {
               "loopID": {
                 "type": "string"
+              },
+              "loopRole": {
+                "type": "string",
+                "enum": ["execution", "audit"]
               },
               "planMode": {
                 "type": "boolean"
@@ -22852,6 +23429,9 @@
               "defaultAgent": {
                 "type": "string"
               },
+              "auditAgent": {
+                "type": "string"
+              },
               "activeLoopID": {
                 "type": "string"
               },
@@ -23194,6 +23774,132 @@
           },
           "notifyParentOnComplete": {
             "type": "boolean"
+          },
+          "visibility": {
+            "type": "string",
+            "enum": ["visible", "hidden"]
+          },
+          "tools": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "type": "boolean"
+            }
+          },
+          "output": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "mode": {
+                    "type": "string",
+                    "const": "summary"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "mode": {
+                    "type": "string",
+                    "const": "final_response"
+                  }
+                },
+                "required": ["mode"]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "mode": {
+                    "type": "string",
+                    "const": "structured"
+                  },
+                  "schema": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {}
+                  },
+                  "maxRepairTurns": {
+                    "anyOf": [
+                      {
+                        "type": "number",
+                        "const": 0
+                      },
+                      {
+                        "type": "number",
+                        "const": 1
+                      },
+                      {
+                        "type": "number",
+                        "const": 2
+                      },
+                      {
+                        "type": "number",
+                        "const": 3
+                      }
+                    ]
+                  }
+                },
+                "required": ["mode", "schema"]
+              }
+            ]
+          },
+          "outputResult": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "mode": {
+                    "type": "string",
+                    "const": "final_response"
+                  },
+                  "text": {
+                    "type": "string"
+                  }
+                },
+                "required": ["mode", "text"]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "mode": {
+                    "type": "string",
+                    "const": "structured"
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": ["valid", "invalid"]
+                  },
+                  "source": {
+                    "type": "string",
+                    "enum": ["structured_tool", "final_response"]
+                  },
+                  "data": {},
+                  "text": {
+                    "type": "string"
+                  },
+                  "repairTurns": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "error": {
+                    "type": "string"
+                  },
+                  "validationErrors": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "required": ["mode", "status", "repairTurns"]
+              }
+            ]
           }
         },
         "required": [
@@ -23269,6 +23975,214 @@
         },
         "required": ["name", "hints"]
       },
+      "ProviderRecommendation": {
+        "type": "object",
+        "properties": {
+          "level": {
+            "type": "string",
+            "enum": ["featured", "recommended", "standard"]
+          },
+          "rank": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "headline": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "cta": {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "external"
+              },
+              "label": {
+                "type": "string"
+              },
+              "url": {
+                "type": "string"
+              }
+            },
+            "required": ["kind", "label", "url"],
+            "additionalProperties": false
+          },
+          "defaultModel": {
+            "type": "string"
+          }
+        },
+        "required": ["level"],
+        "additionalProperties": false
+      },
+      "ProviderProfileMetadata": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "signupUrl": {
+            "type": "string"
+          },
+          "recommendation": {
+            "$ref": "#/components/schemas/ProviderRecommendation"
+          }
+        },
+        "required": ["id", "name"],
+        "additionalProperties": false
+      },
+      "ProviderAuthHealth": {
+        "type": "object",
+        "properties": {
+          "providerID": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["connected", "not_configured", "expired", "exhausted", "dead"]
+          },
+          "authKind": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "type": "number"
+          },
+          "reloginRequired": {
+            "type": "boolean"
+          },
+          "cooldownUntil": {
+            "type": "number"
+          },
+          "resetAt": {
+            "type": "number"
+          },
+          "failureCode": {
+            "type": "string"
+          }
+        },
+        "required": ["providerID", "status"]
+      },
+      "ProviderRuntimeAvailability": {
+        "type": "object",
+        "properties": {
+          "providerID": {
+            "type": "string"
+          },
+          "available": {
+            "type": "boolean"
+          },
+          "reason": {
+            "type": "string",
+            "enum": ["connected", "not_connected", "disabled", "no_models"]
+          },
+          "healthCheck": {
+            "type": "string",
+            "enum": ["models", "none"]
+          },
+          "modelCount": {
+            "type": "number"
+          }
+        },
+        "required": ["providerID", "available", "modelCount"]
+      },
+      "AccountUsageWindow": {
+        "type": "object",
+        "properties": {
+          "label": {
+            "type": "string"
+          },
+          "usedPercent": {
+            "type": "number",
+            "minimum": 0
+          },
+          "remainingPercent": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "resetAt": {
+            "type": "string"
+          },
+          "detail": {
+            "type": "string"
+          }
+        },
+        "required": ["label"]
+      },
+      "AccountUsageCredits": {
+        "type": "object",
+        "properties": {
+          "hasCredits": {
+            "type": "boolean"
+          },
+          "balance": {
+            "type": "number"
+          },
+          "unlimited": {
+            "type": "boolean"
+          },
+          "currency": {
+            "type": "string"
+          }
+        }
+      },
+      "AccountUsageSnapshot": {
+        "type": "object",
+        "properties": {
+          "providerID": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["available", "unavailable", "error"]
+          },
+          "source": {
+            "type": "string"
+          },
+          "fetchedAt": {
+            "type": "string"
+          },
+          "plan": {
+            "type": "string"
+          },
+          "windows": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AccountUsageWindow"
+            }
+          },
+          "details": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "credits": {
+            "$ref": "#/components/schemas/AccountUsageCredits"
+          },
+          "reloginRequired": {
+            "type": "boolean"
+          },
+          "unavailableReason": {
+            "type": "string"
+          }
+        },
+        "required": ["providerID", "status", "fetchedAt", "windows", "details"]
+      },
       "ProviderAuthMethod": {
         "type": "object",
         "properties": {
@@ -23281,6 +24195,10 @@
               {
                 "type": "string",
                 "const": "api"
+              },
+              {
+                "type": "string",
+                "const": "import"
               }
             ]
           },
@@ -23409,145 +24327,477 @@
         },
         "required": ["items", "diagnostics"]
       },
-      "Symbol": {
+      "WorkspaceFileNode": {
         "type": "object",
         "properties": {
+          "path": {
+            "type": "string"
+          },
           "name": {
             "type": "string"
           },
-          "kind": {
-            "type": "number"
+          "type": {
+            "type": "string",
+            "enum": ["file", "directory", "symlink", "unknown"]
           },
-          "location": {
-            "type": "object",
-            "properties": {
-              "uri": {
-                "type": "string"
-              },
-              "range": {
-                "$ref": "#/components/schemas/Range"
-              }
-            },
-            "required": ["uri", "range"]
+          "size": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "mtime": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "ctime": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "ignored": {
+            "type": "boolean"
+          },
+          "hidden": {
+            "type": "boolean"
+          },
+          "readonly": {
+            "type": "boolean"
+          },
+          "symlink": {
+            "type": "boolean"
+          },
+          "binary": {
+            "type": "boolean"
+          },
+          "gitStatus": {
+            "type": "string",
+            "enum": ["added", "deleted", "modified", "renamed", "untracked"]
           }
         },
-        "required": ["name", "kind", "location"]
+        "required": [
+          "path",
+          "name",
+          "type",
+          "size",
+          "mtime",
+          "ctime",
+          "ignored",
+          "hidden",
+          "readonly",
+          "symlink",
+          "binary"
+        ]
       },
-      "FileNode": {
+      "WorkspaceFileChildrenResponse": {
         "type": "object",
         "properties": {
-          "name": {
+          "path": {
             "type": "string"
+          },
+          "parent": {
+            "$ref": "#/components/schemas/WorkspaceFileNode"
+          },
+          "children": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WorkspaceFileNode"
+            }
+          },
+          "nextCursor": {
+            "type": "string"
+          },
+          "truncated": {
+            "type": "boolean"
+          }
+        },
+        "required": ["path", "children", "truncated"]
+      },
+      "WorkspaceFileTextRange": {
+        "type": "object",
+        "properties": {
+          "offset": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "limit": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "startLine": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "endLine": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": ["offset", "limit", "startLine", "endLine"]
+      },
+      "WorkspaceFileReadText": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "text"
           },
           "path": {
             "type": "string"
           },
-          "absolute": {
+          "node": {
+            "$ref": "#/components/schemas/WorkspaceFileNode"
+          },
+          "content": {
+            "type": "string"
+          },
+          "mimeType": {
+            "type": "string"
+          },
+          "encoding": {
+            "type": "string",
+            "const": "utf-8"
+          },
+          "range": {
+            "$ref": "#/components/schemas/WorkspaceFileTextRange"
+          },
+          "totalBytes": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "lineCount": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "truncated": {
+            "type": "boolean"
+          },
+          "nextRange": {
+            "$ref": "#/components/schemas/WorkspaceFileTextRange"
+          }
+        },
+        "required": ["kind", "path", "node", "content", "encoding", "range", "totalBytes", "truncated"]
+      },
+      "WorkspaceFileReadImage": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "image"
+          },
+          "path": {
+            "type": "string"
+          },
+          "node": {
+            "$ref": "#/components/schemas/WorkspaceFileNode"
+          },
+          "content": {
+            "type": "string"
+          },
+          "mimeType": {
+            "type": "string"
+          },
+          "encoding": {
+            "type": "string",
+            "const": "base64"
+          },
+          "totalBytes": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "truncated": {
+            "type": "boolean"
+          }
+        },
+        "required": ["kind", "path", "node", "content", "mimeType", "encoding", "totalBytes", "truncated"]
+      },
+      "WorkspaceFileReadBinary": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "binary"
+          },
+          "path": {
+            "type": "string"
+          },
+          "node": {
+            "$ref": "#/components/schemas/WorkspaceFileNode"
+          },
+          "mimeType": {
+            "type": "string"
+          },
+          "totalBytes": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "truncated": {
+            "type": "boolean"
+          },
+          "unsupportedReason": {
+            "type": "string"
+          }
+        },
+        "required": ["kind", "path", "node", "totalBytes", "truncated", "unsupportedReason"]
+      },
+      "WorkspaceFileReadResult": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/WorkspaceFileReadText"
+          },
+          {
+            "$ref": "#/components/schemas/WorkspaceFileReadImage"
+          },
+          {
+            "$ref": "#/components/schemas/WorkspaceFileReadBinary"
+          }
+        ]
+      },
+      "WorkspaceFileSearchItem": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "file"
+          },
+          "path": {
+            "type": "string"
+          },
+          "name": {
             "type": "string"
           },
           "type": {
             "type": "string",
             "enum": ["file", "directory"]
           },
-          "ignored": {
-            "type": "boolean"
+          "score": {
+            "type": "number"
+          },
+          "indices": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            }
+          },
+          "node": {
+            "$ref": "#/components/schemas/WorkspaceFileNode"
           }
         },
-        "required": ["name", "path", "absolute", "type", "ignored"]
+        "required": ["kind", "path", "name", "type", "score", "indices"]
       },
-      "FileContent": {
+      "WorkspaceContentSearchItem": {
         "type": "object",
         "properties": {
-          "type": {
+          "kind": {
             "type": "string",
-            "const": "text"
+            "const": "content"
           },
-          "content": {
-            "type": "string"
-          },
-          "diff": {
-            "type": "string"
-          },
-          "patch": {
-            "type": "object",
-            "properties": {
-              "oldFileName": {
-                "type": "string"
-              },
-              "newFileName": {
-                "type": "string"
-              },
-              "oldHeader": {
-                "type": "string"
-              },
-              "newHeader": {
-                "type": "string"
-              },
-              "hunks": {
-                "type": "array",
-                "items": {
-                  "type": "object",
-                  "properties": {
-                    "oldStart": {
-                      "type": "number"
-                    },
-                    "oldLines": {
-                      "type": "number"
-                    },
-                    "newStart": {
-                      "type": "number"
-                    },
-                    "newLines": {
-                      "type": "number"
-                    },
-                    "lines": {
-                      "type": "array",
-                      "items": {
-                        "type": "string"
-                      }
-                    }
-                  },
-                  "required": ["oldStart", "oldLines", "newStart", "newLines", "lines"]
-                }
-              },
-              "index": {
-                "type": "string"
-              }
-            },
-            "required": ["oldFileName", "newFileName", "hunks"]
-          },
-          "encoding": {
-            "type": "string",
-            "const": "base64"
-          },
-          "mimeType": {
-            "type": "string"
-          }
-        },
-        "required": ["type", "content"]
-      },
-      "File": {
-        "type": "object",
-        "properties": {
           "path": {
             "type": "string"
           },
-          "added": {
+          "lineNumber": {
             "type": "integer",
-            "minimum": -9007199254740991,
+            "exclusiveMinimum": 0,
             "maximum": 9007199254740991
           },
-          "removed": {
+          "column": {
             "type": "integer",
-            "minimum": -9007199254740991,
+            "minimum": 0,
             "maximum": 9007199254740991
           },
-          "status": {
-            "type": "string",
-            "enum": ["added", "deleted", "modified"]
+          "line": {
+            "type": "string"
+          },
+          "score": {
+            "type": "number"
+          },
+          "submatches": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "text": {
+                  "type": "string"
+                },
+                "start": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "end": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                }
+              },
+              "required": ["text", "start", "end"]
+            }
+          },
+          "previewRanges": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "start": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "end": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                }
+              },
+              "required": ["start", "end"]
+            }
           }
         },
-        "required": ["path", "added", "removed", "status"]
+        "required": ["kind", "path", "lineNumber", "column", "line", "score", "submatches", "previewRanges"]
+      },
+      "WorkspaceSymbolSearchItem": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "symbol"
+          },
+          "name": {
+            "type": "string"
+          },
+          "symbolKind": {
+            "type": "number"
+          },
+          "path": {
+            "type": "string"
+          },
+          "range": {
+            "type": "object",
+            "properties": {
+              "start": {
+                "type": "object",
+                "properties": {
+                  "line": {
+                    "type": "number"
+                  },
+                  "character": {
+                    "type": "number"
+                  }
+                },
+                "required": ["line", "character"]
+              },
+              "end": {
+                "type": "object",
+                "properties": {
+                  "line": {
+                    "type": "number"
+                  },
+                  "character": {
+                    "type": "number"
+                  }
+                },
+                "required": ["line", "character"]
+              }
+            },
+            "required": ["start", "end"]
+          },
+          "score": {
+            "type": "number"
+          }
+        },
+        "required": ["kind", "name", "symbolKind", "path", "range", "score"]
+      },
+      "WorkspaceSearchCapability": {
+        "type": "object",
+        "properties": {
+          "available": {
+            "type": "boolean"
+          },
+          "reason": {
+            "type": "string"
+          }
+        },
+        "required": ["available"]
+      },
+      "WorkspaceFileSearchResponse": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": ["files", "content", "symbol"]
+          },
+          "query": {
+            "type": "string"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/WorkspaceFileSearchItem"
+                },
+                {
+                  "$ref": "#/components/schemas/WorkspaceContentSearchItem"
+                },
+                {
+                  "$ref": "#/components/schemas/WorkspaceSymbolSearchItem"
+                }
+              ]
+            }
+          },
+          "nextCursor": {
+            "type": "string"
+          },
+          "truncated": {
+            "type": "boolean"
+          },
+          "capability": {
+            "$ref": "#/components/schemas/WorkspaceSearchCapability"
+          }
+        },
+        "required": ["kind", "query", "items", "truncated"]
+      },
+      "WorkspaceFileStatusSummary": {
+        "type": "object",
+        "properties": {
+          "files": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "path": {
+                  "type": "string"
+                },
+                "status": {
+                  "type": "string",
+                  "enum": ["added", "deleted", "modified", "renamed", "untracked"]
+                },
+                "added": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "removed": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                }
+              },
+              "required": ["path", "status"]
+            }
+          }
+        },
+        "required": ["files"]
       },
       "RewardsInfo": {
         "type": "object",
@@ -24456,6 +25706,9 @@
               "defaultAgent": {
                 "type": "string"
               },
+              "auditAgent": {
+                "type": "string"
+              },
               "activeLoopID": {
                 "type": "string"
               },
@@ -24534,6 +25787,9 @@
               "defaultAgent": {
                 "type": "string"
               },
+              "auditAgent": {
+                "type": "string"
+              },
               "activeLoopID": {
                 "type": "string"
               },
@@ -24580,6 +25836,9 @@
                     "type": "string"
                   },
                   "defaultAgent": {
+                    "type": "string"
+                  },
+                  "auditAgent": {
                     "type": "string"
                   },
                   "activeLoopID": {
@@ -24632,7 +25891,13 @@
           "sessionID": {
             "type": "string"
           },
-          "supervisorSessionID": {
+          "executionAgent": {
+            "type": "string"
+          },
+          "auditAgent": {
+            "type": "string"
+          },
+          "auditSessionID": {
             "type": "string"
           },
           "scopeID": {
@@ -24692,7 +25957,7 @@
             "required": ["created", "updated"]
           }
         },
-        "required": ["id", "noteID", "title", "sessionID", "scopeID", "status", "time"]
+        "required": ["id", "noteID", "title", "sessionID", "auditAgent", "scopeID", "status", "time"]
       },
       "BlueprintLoopCreateInput": {
         "type": "object",
@@ -25590,6 +26855,41 @@
         },
         "required": ["timestamp", "level", "message"]
       },
+      "RegistryPluginIcon": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "lucide"
+              },
+              "name": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": ["type", "name"]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "image"
+              },
+              "url": {
+                "type": "string",
+                "format": "uri"
+              },
+              "alt": {
+                "type": "string"
+              }
+            },
+            "required": ["type", "url"]
+          }
+        ]
+      },
       "RegistryPluginSummary": {
         "type": "object",
         "properties": {
@@ -25619,6 +26919,9 @@
               }
             },
             "required": ["name"]
+          },
+          "icon": {
+            "$ref": "#/components/schemas/RegistryPluginIcon"
           },
           "verified": {
             "type": "boolean"
@@ -25849,6 +27152,9 @@
             },
             "required": ["name"]
           },
+          "icon": {
+            "$ref": "#/components/schemas/RegistryPluginIcon"
+          },
           "verified": {
             "type": "boolean"
           },
@@ -25991,6 +27297,9 @@
               }
             },
             "required": ["name"]
+          },
+          "icon": {
+            "$ref": "#/components/schemas/RegistryPluginIcon"
           },
           "verified": {
             "type": "boolean"
@@ -26169,6 +27478,17 @@
             },
             "required": ["modelID", "providerID"]
           },
+          "modelRole": {
+            "$ref": "#/components/schemas/ModelRole"
+          },
+          "modelSource": {
+            "type": "string",
+            "enum": ["role", "explicit"]
+          },
+          "source": {
+            "type": "string",
+            "enum": ["builtin", "config", "plugin", "external"]
+          },
           "prompt": {
             "type": "string"
           },
@@ -26189,6 +27509,151 @@
           }
         },
         "required": ["name", "mode", "permission", "options"]
+      },
+      "ModelRoleUsage": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "mode": {
+            "type": "string",
+            "enum": ["subagent", "primary", "all"]
+          },
+          "hidden": {
+            "type": "boolean"
+          },
+          "visibleTo": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "native": {
+            "type": "boolean"
+          },
+          "source": {
+            "type": "string",
+            "enum": ["builtin", "config", "plugin", "external"]
+          },
+          "modelSource": {
+            "type": "string",
+            "enum": ["role", "explicit"]
+          },
+          "model": {
+            "type": "object",
+            "properties": {
+              "providerID": {
+                "type": "string"
+              },
+              "modelID": {
+                "type": "string"
+              }
+            },
+            "required": ["providerID", "modelID"]
+          }
+        },
+        "required": ["name", "mode"]
+      },
+      "ModelRoleSummary": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "enum": ["default", "vision", "nano", "mini", "mid", "thinking", "long", "creative"]
+          },
+          "role": {
+            "$ref": "#/components/schemas/ModelRole"
+          },
+          "field": {
+            "type": "string",
+            "enum": [
+              "model",
+              "nano_model",
+              "mini_model",
+              "mid_model",
+              "thinking_model",
+              "long_context_model",
+              "creative_model",
+              "vision_model"
+            ]
+          },
+          "label": {
+            "type": "string"
+          },
+          "summary": {
+            "type": "string"
+          },
+          "fallbackChain": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "model",
+                "nano_model",
+                "mini_model",
+                "mid_model",
+                "thinking_model",
+                "long_context_model",
+                "creative_model",
+                "vision_model"
+              ]
+            }
+          },
+          "configuredModel": {
+            "type": "object",
+            "properties": {
+              "providerID": {
+                "type": "string"
+              },
+              "modelID": {
+                "type": "string"
+              }
+            },
+            "required": ["providerID", "modelID"]
+          },
+          "resolvedModel": {
+            "type": "object",
+            "properties": {
+              "providerID": {
+                "type": "string"
+              },
+              "modelID": {
+                "type": "string"
+              },
+              "via": {
+                "type": "string",
+                "enum": [
+                  "model",
+                  "nano_model",
+                  "mini_model",
+                  "mid_model",
+                  "thinking_model",
+                  "long_context_model",
+                  "creative_model",
+                  "vision_model"
+                ]
+              }
+            },
+            "required": ["providerID", "modelID", "via"]
+          },
+          "usedBy": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ModelRoleUsage"
+            }
+          },
+          "requiresExplicitModel": {
+            "type": "boolean"
+          },
+          "disabledReason": {
+            "type": "string"
+          }
+        },
+        "required": ["id", "field", "label", "summary", "fallbackChain", "usedBy"]
       },
       "MCPStatusUninitialized": {
         "type": "object",
@@ -26490,6 +27955,13 @@
           },
           "enterpriseUrl": {
             "type": "string"
+          },
+          "metadata": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {}
           }
         },
         "required": ["type", "refresh", "access", "expires"]
@@ -26503,6 +27975,13 @@
           },
           "key": {
             "type": "string"
+          },
+          "metadata": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {}
           }
         },
         "required": ["type", "key"]
@@ -26519,6 +27998,13 @@
           },
           "token": {
             "type": "string"
+          },
+          "metadata": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {}
           }
         },
         "required": ["type", "key", "token"]
@@ -26535,6 +28021,13 @@
           },
           "agentSecret": {
             "type": "string"
+          },
+          "metadata": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {}
           }
         },
         "required": ["type", "agentId", "agentSecret"]
@@ -26762,144 +28255,6 @@
               }
             },
             "required": ["server", "error"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.command.executed": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "command.executed"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "name": {
-                "type": "string"
-              },
-              "sessionID": {
-                "type": "string",
-                "pattern": "^ses.*"
-              },
-              "arguments": {
-                "type": "string"
-              },
-              "messageID": {
-                "type": "string",
-                "pattern": "^msg.*"
-              }
-            },
-            "required": ["name", "sessionID", "arguments", "messageID"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.file.edited": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "file.edited"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "file": {
-                "type": "string"
-              }
-            },
-            "required": ["file"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.file.watcher.updated": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "file.watcher.updated"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "file": {
-                "type": "string"
-              },
-              "event": {
-                "anyOf": [
-                  {
-                    "type": "string",
-                    "const": "add"
-                  },
-                  {
-                    "type": "string",
-                    "const": "change"
-                  },
-                  {
-                    "type": "string",
-                    "const": "unlink"
-                  }
-                ]
-              }
-            },
-            "required": ["file", "event"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.lsp.client.diagnostics": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "lsp.client.diagnostics"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "serverID": {
-                "type": "string"
-              },
-              "path": {
-                "type": "string"
-              }
-            },
-            "required": ["serverID", "path"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.lsp.updated": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "lsp.updated"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {}
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.vcs.branch.updated": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "vcs.branch.updated"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "branch": {
-                "type": "string"
-              }
-            }
           }
         },
         "required": ["type", "properties"]
@@ -27180,66 +28535,6 @@
         },
         "required": ["type", "properties"]
       },
-      "Event.note.created": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "note.created"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "note": {
-                "$ref": "#/components/schemas/NoteInfo"
-              }
-            },
-            "required": ["note"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.note.updated": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "note.updated"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "note": {
-                "$ref": "#/components/schemas/NoteInfo"
-              }
-            },
-            "required": ["note"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.note.deleted": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "note.deleted"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "id": {
-                "type": "string"
-              },
-              "scopeID": {
-                "type": "string"
-              }
-            },
-            "required": ["id", "scopeID"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
       "Event.question.asked": {
         "type": "object",
         "properties": {
@@ -27321,6 +28616,80 @@
               }
             },
             "required": ["sessionID", "requestID"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.session.compacted": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "session.compacted"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "sessionID": {
+                "type": "string"
+              }
+            },
+            "required": ["sessionID"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.lsp.client.diagnostics": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "lsp.client.diagnostics"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "serverID": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              }
+            },
+            "required": ["serverID", "path"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.lsp.updated": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "lsp.updated"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {}
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.file.edited": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "file.edited"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "file": {
+                "type": "string"
+              }
+            },
+            "required": ["file"]
           }
         },
         "required": ["type", "properties"]
@@ -27411,6 +28780,66 @@
               }
             },
             "required": ["sessionID", "todos"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.note.created": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "note.created"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "note": {
+                "$ref": "#/components/schemas/NoteInfo"
+              }
+            },
+            "required": ["note"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.note.updated": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "note.updated"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "note": {
+                "$ref": "#/components/schemas/NoteInfo"
+              }
+            },
+            "required": ["note"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.note.deleted": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "note.deleted"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "scopeID": {
+                "type": "string"
+              }
+            },
+            "required": ["id", "scopeID"]
           }
         },
         "required": ["type", "properties"]
@@ -27554,25 +28983,6 @@
         },
         "required": ["type", "properties"]
       },
-      "Event.session.compacted": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "session.compacted"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "sessionID": {
-                "type": "string"
-              }
-            },
-            "required": ["sessionID"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
       "Event.agenda.item.created": {
         "type": "object",
         "properties": {
@@ -27689,6 +29099,90 @@
               }
             },
             "required": ["tasks"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.command.executed": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "command.executed"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "sessionID": {
+                "type": "string",
+                "pattern": "^ses.*"
+              },
+              "arguments": {
+                "type": "string"
+              },
+              "messageID": {
+                "type": "string",
+                "pattern": "^msg.*"
+              }
+            },
+            "required": ["name", "sessionID", "arguments", "messageID"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.file.watcher.updated": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "file.watcher.updated"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "file": {
+                "type": "string"
+              },
+              "event": {
+                "type": "string",
+                "enum": ["added", "changed", "deleted", "renamed"]
+              },
+              "absolute": {
+                "type": "string"
+              },
+              "oldPath": {
+                "type": "string"
+              },
+              "oldAbsolute": {
+                "type": "string"
+              },
+              "parent": {
+                "type": "string"
+              },
+              "node": {}
+            },
+            "required": ["file", "event"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.vcs.branch.updated": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "vcs.branch.updated"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "branch": {
+                "type": "string"
+              }
+            }
           }
         },
         "required": ["type", "properties"]
@@ -28065,24 +29559,6 @@
             "$ref": "#/components/schemas/Event.mcp.failed"
           },
           {
-            "$ref": "#/components/schemas/Event.command.executed"
-          },
-          {
-            "$ref": "#/components/schemas/Event.file.edited"
-          },
-          {
-            "$ref": "#/components/schemas/Event.file.watcher.updated"
-          },
-          {
-            "$ref": "#/components/schemas/Event.lsp.client.diagnostics"
-          },
-          {
-            "$ref": "#/components/schemas/Event.lsp.updated"
-          },
-          {
-            "$ref": "#/components/schemas/Event.vcs.branch.updated"
-          },
-          {
             "$ref": "#/components/schemas/Event.message.updated"
           },
           {
@@ -28122,15 +29598,6 @@
             "$ref": "#/components/schemas/Event.session.inbox.updated"
           },
           {
-            "$ref": "#/components/schemas/Event.note.created"
-          },
-          {
-            "$ref": "#/components/schemas/Event.note.updated"
-          },
-          {
-            "$ref": "#/components/schemas/Event.note.deleted"
-          },
-          {
             "$ref": "#/components/schemas/Event.question.asked"
           },
           {
@@ -28143,6 +29610,18 @@
             "$ref": "#/components/schemas/Event.question.timed_out"
           },
           {
+            "$ref": "#/components/schemas/Event.session.compacted"
+          },
+          {
+            "$ref": "#/components/schemas/Event.lsp.client.diagnostics"
+          },
+          {
+            "$ref": "#/components/schemas/Event.lsp.updated"
+          },
+          {
+            "$ref": "#/components/schemas/Event.file.edited"
+          },
+          {
             "$ref": "#/components/schemas/Event.runtime.reloaded"
           },
           {
@@ -28150,6 +29629,15 @@
           },
           {
             "$ref": "#/components/schemas/Event.todo.updated"
+          },
+          {
+            "$ref": "#/components/schemas/Event.note.created"
+          },
+          {
+            "$ref": "#/components/schemas/Event.note.updated"
+          },
+          {
+            "$ref": "#/components/schemas/Event.note.deleted"
           },
           {
             "$ref": "#/components/schemas/Event.blueprint_loop.created"
@@ -28173,9 +29661,6 @@
             "$ref": "#/components/schemas/Event.blueprint_loop.restarted"
           },
           {
-            "$ref": "#/components/schemas/Event.session.compacted"
-          },
-          {
             "$ref": "#/components/schemas/Event.agenda.item.created"
           },
           {
@@ -28192,6 +29677,15 @@
           },
           {
             "$ref": "#/components/schemas/Event.cortex.tasks.updated"
+          },
+          {
+            "$ref": "#/components/schemas/Event.command.executed"
+          },
+          {
+            "$ref": "#/components/schemas/Event.file.watcher.updated"
+          },
+          {
+            "$ref": "#/components/schemas/Event.vcs.branch.updated"
           },
           {
             "$ref": "#/components/schemas/Event.pty.created"

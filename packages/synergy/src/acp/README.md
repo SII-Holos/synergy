@@ -16,8 +16,8 @@ The implementation follows a clean separation of concerns:
 
 - **`client.ts`** - Implements the `Client` interface for client-side capabilities
   - File operations (`readTextFile`, `writeTextFile`)
-  - Permission requests (auto-approves for now)
-  - Terminal support (stub implementation)
+  - Permission requests
+  - Terminal support placeholder
 
 - **`session.ts`** - Session state management
   - Creates and tracks ACP sessions
@@ -81,11 +81,11 @@ This implementation follows the ACP specification v1:
 - Permission requests
 - Terminal support (stub for future)
 
-## Current Limitations
+## Limitations
 
-### Not Yet Implemented
+### Protocol Gaps
 
-1. **Streaming Responses** - Currently returns complete responses instead of streaming via `session/update` notifications
+1. **Streaming Responses** - Responses are returned as complete messages.
 2. **Tool Call Reporting** - Doesn't report tool execution progress
 3. **Session Modes** - No mode switching support yet
 4. **Authentication** - No actual auth implementation
@@ -115,12 +115,12 @@ echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":
 
 ### Why the Official Library?
 
-We use `@agentclientprotocol/sdk` instead of implementing JSON-RPC ourselves because:
+Synergy uses `@agentclientprotocol/sdk` because it:
 
-- Ensures protocol compliance
-- Handles edge cases and future protocol versions
-- Reduces maintenance burden
-- Works with other ACP clients automatically
+- ensures protocol compliance
+- handles edge cases and future protocol versions
+- reduces maintenance burden
+- works with other ACP clients automatically
 
 ### Clean Architecture
 

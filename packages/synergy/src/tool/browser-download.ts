@@ -7,6 +7,7 @@ import { BrowserOwner } from "../browser/owner"
 import { BrowserPolicy } from "../browser/policy"
 import { ScopeContext } from "../scope/context"
 import { Global } from "../global"
+import { ToolTimeout } from "./timeout"
 
 const MAX_DOWNLOAD_SIZE = 100 * 1024 * 1024 // 100MB
 
@@ -53,10 +54,11 @@ export const BrowserDownloadTool = Tool.define("browser_download", {
   parameters: z.object({
     url: z.string().describe("The URL of the asset to download."),
     filename: z.string().describe("Optional filename for the saved file.").optional(),
-    tabId: z.string().describe("Browser tab ID for policy context. Uses the active tab if omitted.").optional(),
+    pageId: z.string().describe("Browser page ID for policy context. Uses the session page if omitted.").optional(),
   }),
   async execute(params, ctx) {
     const workspace = ScopeContext.current.directory
+    const owner = BrowserOwner.fromToolContext(ctx)
 
     // Check URL policy
     const policyResult = BrowserPolicy.evaluateURL(params.url, workspace)
@@ -67,9 +69,9 @@ export const BrowserDownloadTool = Tool.define("browser_download", {
     // Optionally check tab's network buffer for MIME type hint
     let networkMimeType: string | undefined
     try {
-      const tab = await BrowserToolHelper.resolveTab(ctx, params.tabId)
-      const requests = await tab.networkRequests(50)
-      const matched = requests.find((r) => r.url === params.url && r.mimeType)
+      const tab = await BrowserToolHelper.resolvePage(ctx, params.pageId)
+      const result = await BrowserToolHelper.executeControl(owner, { type: "network", pageId: tab.id, maxEntries: 50 })
+      const matched = result.type === "network" ? result.requests.find((r) => r.url === params.url && r.mimeType) : null
       if (matched?.mimeType) {
         networkMimeType = matched.mimeType
       }
@@ -79,7 +81,10 @@ export const BrowserDownloadTool = Tool.define("browser_download", {
 
     // Fetch the URL
     const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(new Error("Download timeout after 120s")), 120_000)
+    const timeoutId = setTimeout(
+      () => controller.abort(new Error("Download timeout after 120s")),
+      ToolTimeout.DEFAULTS.browserDownloadMs,
+    )
 
     let response: Response
     try {

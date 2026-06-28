@@ -2,8 +2,14 @@
 import { render } from "solid-js/web"
 import { AppBaseProviders, AppInterface } from "@/app"
 import { Platform, PlatformProvider } from "@/context/platform"
-import { assetPath } from "@/utils/proxy"
+import { BRAND_ASSETS, brandAssetPath } from "@/utils/brand-assets"
 import pkg from "../package.json"
+
+declare global {
+  interface Window {
+    synergyDesktop?: Pick<Platform, "platform" | "browserNative">
+  }
+}
 
 const root = document.getElementById("root")
 if (import.meta.env.DEV && !(root instanceof HTMLElement)) {
@@ -13,8 +19,9 @@ if (import.meta.env.DEV && !(root instanceof HTMLElement)) {
 }
 
 const platform: Platform = {
-  platform: "web",
+  platform: window.synergyDesktop?.platform === "desktop" ? "desktop" : "web",
   version: pkg.version,
+  browserNative: window.synergyDesktop?.browserNative,
   openLink(url: string) {
     window.open(url, "_blank")
   },
@@ -38,7 +45,7 @@ const platform: Platform = {
       .then(() => {
         const notification = new Notification(title, {
           body: description ?? "",
-          icon: assetPath("/favicon-96x96.png"),
+          icon: brandAssetPath(BRAND_ASSETS.synergy.notificationIcon),
         })
         notification.onclick = () => {
           window.focus()

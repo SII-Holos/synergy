@@ -43,6 +43,7 @@ import { registerGlobalPanel, listGlobalPanels, getGlobalPanel, clearGlobalPanel
 
 // ── Settings Registry ──────────────────────────────────────────────
 import { registerSettingsSection, getSettingsSections, getSettingsSection } from "./settings-registry"
+import { BUILTIN_SETTINGS_IDS } from "@/components/settings/catalog"
 
 // ── Theme Registry ─────────────────────────────────────────────────
 import { registerTheme, listThemes, getTheme, activateTheme, getActiveThemeId, getActiveTheme } from "./theme-registry"
@@ -357,18 +358,8 @@ describe("WorkspaceRegistry", () => {
 // ═══════════════════════════════════════════════════════════════════
 
 describe("PanelRegistry", () => {
-  // Note: panel-registry has 3 built-in panels (library, agenda, lucid) registered at module init.
-  const BUILTIN_COUNT = 3
-
   beforeEach(() => {
     clearGlobalPanels()
-    // Re-register built-ins (they get cleared by clearGlobalPanels())
-    const builtins = [
-      { id: "library", label: "Library", icon: "book-open", pluginId: "" },
-      { id: "agenda", label: "Agenda", icon: "clipboard-list", pluginId: "" },
-      { id: "lucid", label: "Lucid", icon: "sparkles", pluginId: "" },
-    ]
-    for (const p of builtins) registerGlobalPanel(p)
   })
 
   test("registerGlobalPanel adds entry and returns disposer", () => {
@@ -395,17 +386,14 @@ describe("PanelRegistry", () => {
     expect(getGlobalPanel("removable-panel")).toBeDefined()
     disposer()
     expect(getGlobalPanel("removable-panel")).toBeUndefined()
-    expect(listGlobalPanels().length).toBe(BUILTIN_COUNT)
+    expect(listGlobalPanels().length).toBe(0)
   })
 
-  test("listGlobalPanels includes built-in and plugin panels", () => {
+  test("listGlobalPanels includes plugin panels", () => {
     registerGlobalPanel({ id: "p1", label: "P1", icon: "package", pluginId: "plugin-x" })
     const list = listGlobalPanels()
-    expect(list.length).toBe(BUILTIN_COUNT + 1)
+    expect(list.length).toBe(1)
     const ids = list.map((e) => e.id)
-    expect(ids).toContain("library")
-    expect(ids).toContain("agenda")
-    expect(ids).toContain("lucid")
     expect(ids).toContain("p1")
   })
 
@@ -413,18 +401,12 @@ describe("PanelRegistry", () => {
     expect(getGlobalPanel("nonexistent")).toBeUndefined()
   })
 
-  test("getGlobalPanel finds built-in panel", () => {
-    const panel = getGlobalPanel("library")
-    expect(panel).toBeDefined()
-    expect(panel!.label).toBe("Library")
-  })
-
-  test("clearGlobalPanels with pluginId removes only matching entries (preserves built-ins)", () => {
+  test("clearGlobalPanels with pluginId removes only matching entries", () => {
     registerGlobalPanel({ id: "p1", label: "P1", icon: "star", pluginId: "plugin-x" })
     registerGlobalPanel({ id: "p2", label: "P2", icon: "star", pluginId: "plugin-y" })
     clearGlobalPanels("plugin-x")
     const list = listGlobalPanels()
-    expect(list.length).toBe(BUILTIN_COUNT + 1)
+    expect(list.length).toBe(1)
     const ids = list.map((e) => e.id)
     expect(ids).not.toContain("p1")
     expect(ids).toContain("p2")
@@ -442,9 +424,6 @@ describe("PanelRegistry", () => {
 // ═══════════════════════════════════════════════════════════════════
 
 describe("SettingsRegistry", () => {
-  // Note: settings-registry registers 9 built-in sections at module init.
-  const BUILTIN_IDS = ["general", "models", "mcp", "plugins", "email", "channels", "import", "library", "advanced"]
-
   test("registerSettingsSection adds entry and returns disposer", () => {
     const disposer = registerSettingsSection({
       id: "custom-setting",
@@ -483,7 +462,7 @@ describe("SettingsRegistry", () => {
     })
     const list = getSettingsSections()
     const ids = list.map((s) => s.id)
-    for (const bid of BUILTIN_IDS) {
+    for (const bid of BUILTIN_SETTINGS_IDS) {
       expect(ids).toContain(bid)
     }
     expect(ids).toContain("extra-setting")

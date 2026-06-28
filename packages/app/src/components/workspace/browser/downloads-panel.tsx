@@ -30,12 +30,12 @@ function formatTime(ts: number): string {
 }
 
 export function DownloadsPanel() {
-  const { activeTabId, downloads } = useBrowser()
+  const { pageId: currentPageId, downloads } = useBrowser()
 
   const entries = createMemo((): DownloadEntry[] => {
-    const tabId = activeTabId()
-    if (!tabId) return []
-    return downloads[tabId] ?? []
+    const pageId = currentPageId()
+    if (!pageId) return []
+    return downloads[pageId] ?? []
   })
 
   return (

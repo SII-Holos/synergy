@@ -1,9 +1,18 @@
-Read the full content of one or more notes by their IDs. Blueprint documents are read with this same tool; they are notes with kind:"blueprint".
+Read the full content of one or more notes by ID. Blueprint documents are notes with kind:"blueprint" and are read with this same tool.
 
-Two output formats:
-- "markdown" (default): Content rendered as Markdown. Some rich elements (Mermaid diagrams, videos, images, tables) may show as placeholder text like "[Mermaid diagram]" or "[Image: url]". This is informational only — the actual content preserved in storage is richer.
-- "blocks": Flattened numbered block list. Each block maps 1:1 to the note's internal document model. Use this format with `note_edit` to reference specific blocks by their index (e.g., `[block:0]`, `[block:1]`).
+Formats:
+- "markdown" (default): Human-readable Markdown export. Useful for reading, not for precise edits.
+- "blocks": Editable block anchor listing for note_edit. Each block includes the note Version, DocHash, stable block id, type, path, hash, summary, text preview, and table row/cell coordinates where relevant.
+- "json": Structured note data. Use detail:"json" when exact node JSON is needed.
 
-Use this after `note_list` or `note_search` to read the full details of specific notes or Blueprint notes. For BlueprintLoop execution, read the Blueprint note with `note_read({ ids: [...] })` before implementation.
+Precise edit workflow:
+1. Call note_read with format:"blocks" before note_edit.
+2. Copy Version, DocHash, target block id, and target block hash into note_edit.
+3. Use blockId operations in note_edit. Do not use block numbers as edit targets.
+4. Re-read after conflicts or hash mismatches. Do not guess a new target from stale block numbers.
 
-Supports pagination via `offset` and `limit` (line-based) for reading long notes. Pagination is line-based for markdown format and block-filtering for blocks format. If not specified, returns the full content.
+Use this after `note_list` or `note_search` to read the full details of specific notes or Blueprint notes. For BlueprintLoop execution, read the Blueprint note with `note_read({ ids: [...] })` before carrying out the Blueprint.
+
+Pagination:
+- markdown pagination is line-based.
+- blocks pagination is block-based, so multi-line code blocks and tables are not split across output slices.

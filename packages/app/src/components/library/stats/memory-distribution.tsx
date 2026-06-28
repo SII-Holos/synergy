@@ -70,19 +70,12 @@ export function MemoryDistribution(props: {
   }))
 
   return (
-    <div class="mt-4 rounded-[1.25rem] bg-surface-raised-base/95 p-4 shadow-[inset_0_1px_0_rgba(214,204,190,0.06),inset_0_-1px_0_rgba(24,28,38,0.04)]">
+    <div class="library-chart-surface mt-4">
       <div class="pb-2">
         <h3 class="text-13-medium text-text-strong">Memory categories</h3>
       </div>
 
-      <Show
-        when={props.totalMemories > 0}
-        fallback={
-          <div class="rounded-xl bg-surface-inset-base/45 px-3.5 py-5 text-11-regular text-text-weak">
-            No memories yet
-          </div>
-        }
-      >
+      <Show when={props.totalMemories > 0} fallback={<div class="library-empty-row">No memories yet</div>}>
         <div class="flex gap-4">
           {/* Doughnut */}
           <div class="shrink-0 w-32 h-32 flex items-center justify-center">

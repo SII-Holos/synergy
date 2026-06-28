@@ -28,8 +28,5 @@ export function computeWorkspaceRailRight(workspaceWidth: number, viewportWidth:
 }
 
 export function computeDefaultWorkspaceWidth(viewportWidth: number, constraints: WorkspaceWidthConstraints = {}) {
-  const sessionMinWidth = constraints.sessionMinWidth ?? WORKSPACE_SESSION_MIN_WIDTH
-  const remaining = viewportWidth - sessionMinWidth
-  // 3/5 of the remaining space, but not below WORKSPACE_MIN_WIDTH
-  return Math.max(WORKSPACE_MIN_WIDTH, Math.round(remaining * 0.6))
+  return clampWorkspaceWidth(Math.round(viewportWidth * 0.5), viewportWidth, constraints)
 }

@@ -8,6 +8,7 @@ import { SessionEvent } from "./event"
 import { MessageV2 } from "./message-v2"
 import { Identifier } from "@/id/id"
 import { Snapshot } from "@/session/snapshot"
+import { SnapshotSchema } from "@/session/snapshot-schema"
 
 import { Log } from "@/util/log"
 import path from "path"
@@ -202,9 +203,9 @@ export namespace SessionSummary {
     async (input) => {
       const session = await SessionManager.requireSession(input.sessionID)
       const scopeID = asScopeID((session.scope as Scope).id)
-      return Storage.read<Snapshot.FileDiff[]>(StoragePath.sessionSummary(scopeID, asSessionID(input.sessionID))).catch(
-        () => [],
-      )
+      return Storage.read<SnapshotSchema.FileDiff[]>(
+        StoragePath.sessionSummary(scopeID, asSessionID(input.sessionID)),
+      ).catch(() => [])
     },
   )
 

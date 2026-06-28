@@ -16,7 +16,9 @@ import { ProviderTransform } from "@/provider/transform"
 import type { Provider } from "@/provider/provider"
 import { Tool } from "@/tool/tool"
 import { ToolRegistry } from "@/tool/registry"
+import { ToolTimeout } from "@/tool/timeout"
 import { ToolExposure } from "@/tool/exposure"
+import type { ToolDisplay } from "@ericsanchezok/synergy-plugin/tool"
 import { Log } from "@/util/log"
 import { TimeoutConfig } from "@/util/timeout-config"
 import { Session } from "."
@@ -34,6 +36,8 @@ import { ControlProfileCompiler } from "@/control-profile/compiler"
 import { ApprovalPolicy, type ApprovalMetadata } from "@/control-profile/approval"
 import { ExecutionBudget } from "@/util/execution-budget"
 import { Observability } from "@/observability"
+import { SessionModePolicy } from "./tool-mode-policy"
+import { ToolDiagnostic, ToolDiagnosticError, type ToolDiagnostic as ToolDiagnosticInfo } from "@/tool/diagnostic"
 
 export namespace ToolResolver {
   const log = Log.create({ service: "tool.resolver" })
@@ -48,15 +52,39 @@ export namespace ToolResolver {
     processor: SessionProcessor.Info
     session?: Info
     userTools?: Record<string, boolean>
+    ephemeralTools?: EphemeralTool[]
     includeMCP?: boolean
+  }
+
+  export interface EphemeralTool {
+    id: string
+    description: string
+    inputSchema: JSONSchema7
+    display?: ToolDisplay
+    execute(args: Record<string, unknown>): Promise<{
+      title: string
+      output: string
+      metadata?: Record<string, any>
+    }>
   }
 
   export interface Definition {
     id: string
     exposure?: ToolExposure.Info
+    display?: ToolDisplay
     description: string
     inputSchema: JSONSchema7
     createRuntimeTool?(input: Input): AITool
+  }
+
+  export interface Availability {
+    visible: Definition[]
+    diagnostics: Map<string, ToolDiagnosticInfo>
+  }
+
+  export interface ResolvedTools {
+    tools: Record<string, AITool>
+    activeToolIDs: string[]
   }
 
   /**
@@ -374,7 +402,7 @@ export namespace ToolResolver {
       state: {
         ...match.state,
         title: state.title ?? match.state.title,
-        metadata: state.metadata ?? match.state.metadata,
+        metadata: ToolTimeout.preserveMetadata(match.state.metadata, state.metadata) ?? match.state.metadata,
         status: "running",
         input: args,
         time: {
@@ -385,7 +413,12 @@ export namespace ToolResolver {
     Object.assign(match, updated)
   }
 
-  async function markExecutionStarted(input: Input, ctx: Tool.Context, args: Record<string, any>) {
+  async function markExecutionStarted(
+    input: Input,
+    ctx: Tool.Context,
+    args: Record<string, any>,
+    toolTimeout: ToolTimeout.Metadata,
+  ) {
     const timing = toolTiming(ctx)
     if (timing.executionStartedAt !== undefined) return
 
@@ -401,8 +434,10 @@ export namespace ToolResolver {
     const match = ctx.callID ? input.processor.partFromToolCall(ctx.callID) : undefined
     const metadata = {
       ...(match?.state.status === "running" ? (match.state.metadata ?? {}) : {}),
+      toolTimeout,
       ...(approvalFromContext(ctx) ? { approval: approvalFromContext(ctx) } : {}),
     }
+    ;(ctx.extra as any).toolTimeout = toolTimeout
     await updateRunningToolPart(input, ctx, args, {
       metadata,
       start: timing.executionStartedAt,
@@ -586,6 +621,10 @@ export namespace ToolResolver {
   }
 
   function formatErrorForModel(error: unknown): string {
+    if (error instanceof ToolDiagnosticError) {
+      return error.message
+    }
+
     if (error instanceof EnforcementError.PolicyDenied) {
       return [
         `Permission denied by profile "${error.profileId}".`,
@@ -609,6 +648,15 @@ export namespace ToolResolver {
     }
 
     return (error as any).toString()
+  }
+
+  function metadataForError(error: unknown, approval?: ApprovalMetadata): Record<string, any> | undefined {
+    const diagnostic = ToolDiagnostic.fromError(error)
+    const metadata = {
+      ...(diagnostic ? ToolDiagnostic.metadata(diagnostic) : {}),
+      ...(approval ? { approval } : {}),
+    }
+    return Object.keys(metadata).length > 0 ? metadata : undefined
   }
 
   async function setApprovalMetadata(ctx: Tool.Context, approval: ApprovalMetadata) {
@@ -725,54 +773,6 @@ export namespace ToolResolver {
     }
   }
 
-  const PLAN_MODE_ALLOWED_TOOLS = new Set([
-    // Read tools
-    "read",
-    "glob",
-    "grep",
-    "view_file",
-    "scan_files",
-    "parse_code",
-    "look_at",
-    "scan_document",
-    "ast_grep",
-    "lsp",
-    // Session read
-    "session_list",
-    "session_read",
-    "session_search",
-    // Note read
-    "note_list",
-    "note_read",
-    "note_search",
-    "note_write",
-    "note_edit",
-    // Memory read
-    "memory_search",
-    "memory_get",
-    // Coordination read/write
-    "task_list",
-    "task_output",
-    "dagread",
-    "dagwrite",
-    "dagpatch",
-    "task",
-    "task_cancel",
-    // UI
-    "question",
-    "skill",
-    "search_tools",
-    "expand_tools",
-    // Network
-    "websearch",
-    "webfetch",
-    // Agenda read
-    "agenda_list",
-    "agenda_logs",
-    // Platform read
-    "worktree_list",
-  ])
-
   function forcedToolGroups(session?: Info) {
     const result = new Set<string>()
     if (session?.blueprint?.planMode || session?.blueprint?.loopID) {
@@ -781,9 +781,215 @@ export namespace ToolResolver {
     return result
   }
 
-  export async function definitions(input: Omit<Input, "processor">): Promise<Definition[]> {
-    using _ = log.time("definitions")
+  function forcedTools(userTools?: Record<string, boolean>) {
+    return Object.entries(userTools ?? {})
+      .filter(([id, enabled]) => id !== "*" && enabled === true)
+      .map(([id]) => id)
+  }
+
+  function userToolAllows(toolID: string, userTools?: Record<string, boolean>) {
+    if (!userTools) return true
+    if (userTools[toolID] === true) return true
+    if (userTools[toolID] === false) return false
+    if (userTools["*"] === false) return false
+    return true
+  }
+
+  function applyAvailability(defs: Definition[], input: Omit<Input, "processor">): Availability {
+    const visible: Definition[] = []
+    const diagnostics = new Map<string, ToolDiagnosticInfo>()
+    const disabled = PermissionNext.disabled(
+      defs.map((item) => item.id),
+      PermissionNext.merge(input.agent.permission, PermissionNext.sessionRuleset(input.session)),
+    )
+    const activeBlueprintLoopID = input.session?.blueprint?.loopID
+    const blueprintLoopRole = input.session?.blueprint?.loopRole
+    const forcedGroups = forcedToolGroups(input.session)
+    const forcedToolIDs = forcedTools(input.userTools)
+    const ephemeralToolIds = new Set(input.ephemeralTools?.map((item) => item.id) ?? [])
+
+    for (const def of defs) {
+      const isEphemeral = ephemeralToolIds.has(def.id)
+      const modeDiagnostic = isEphemeral
+        ? undefined
+        : SessionModePolicy.visibility({ toolName: def.id, session: input.session })
+      if (modeDiagnostic) {
+        diagnostics.set(def.id, modeDiagnostic)
+        continue
+      }
+
+      if (
+        !ToolExposure.isVisible(def.id, def.exposure, input.session?.toolState, {
+          forcedGroups,
+          forcedTools: forcedToolIDs,
+        })
+      ) {
+        diagnostics.set(
+          def.id,
+          SessionModePolicy.unavailable({
+            toolName: def.id,
+            reason: "deferred",
+            session: input.session,
+            metadata: { exposure: def.exposure },
+          }),
+        )
+        continue
+      }
+
+      if (def.id === "blueprint_loop_restart" && (!activeBlueprintLoopID || blueprintLoopRole !== "audit")) {
+        diagnostics.set(
+          def.id,
+          SessionModePolicy.unavailable({
+            toolName: def.id,
+            reason: "audit_only",
+            session: input.session,
+          }),
+        )
+        continue
+      }
+
+      if (def.id === "blueprint_loop_finish" && !activeBlueprintLoopID) {
+        diagnostics.set(
+          def.id,
+          SessionModePolicy.unavailable({
+            toolName: def.id,
+            reason: "blueprint_loop_required",
+            session: input.session,
+          }),
+        )
+        continue
+      }
+
+      if (disabled.has(def.id) && !isEphemeral) {
+        diagnostics.set(
+          def.id,
+          SessionModePolicy.unavailable({
+            toolName: def.id,
+            reason: "permission",
+            session: input.session,
+          }),
+        )
+        continue
+      }
+
+      if (!userToolAllows(def.id, input.userTools)) {
+        diagnostics.set(
+          def.id,
+          SessionModePolicy.unavailable({
+            toolName: def.id,
+            reason: "user_disabled",
+            session: input.session,
+          }),
+        )
+        continue
+      }
+
+      visible.push(def)
+    }
+
+    return { visible, diagnostics }
+  }
+
+  function diagnosticRuntimeTool(input: Input, diagnostic: ToolDiagnosticInfo): AITool {
+    const schema = {
+      type: "object",
+      additionalProperties: true,
+    } satisfies JSONSchema7
+
+    return tool({
+      id: diagnostic.toolName as any,
+      description: diagnostic.message,
+      inputSchema: jsonSchema(schema),
+      async execute(args: Record<string, unknown>, options: ToolCallOptions) {
+        const error = new ToolDiagnosticError({
+          ...diagnostic,
+          metadata: {
+            ...(diagnostic.metadata ?? {}),
+            attemptedInput: args as Record<string, unknown>,
+          },
+        })
+        input.processor.trackExecution(
+          options.toolCallId,
+          Promise.resolve({
+            status: "error",
+            input: args,
+            error: error.message,
+            metadata: ToolDiagnostic.metadata(error.diagnostic),
+          }),
+        )
+        throw error
+      },
+      toModelOutput(result: { output: string }) {
+        return {
+          type: "text",
+          value: result.output,
+        }
+      },
+    } as any) as AITool
+  }
+
+  async function collectDefinitions(input: Omit<Input, "processor">): Promise<Definition[]> {
+    using _ = log.time("definitions.collect")
     let result: Definition[] = []
+
+    for (const item of input.ephemeralTools ?? []) {
+      const schema = ProviderTransform.schema(input.model, item.inputSchema as any, {
+        tool: item.id,
+      }) as JSONSchema7
+      result.push({
+        id: item.id,
+        exposure: { mode: "internal" },
+        display: item.display,
+        description: item.description,
+        inputSchema: schema,
+        createRuntimeTool(runtimeInput) {
+          return tool({
+            id: item.id as any,
+            description: item.description,
+            inputSchema: jsonSchema(schema as any),
+            async execute(args, options) {
+              let resolveExecution!: (outcome: SessionProcessor.ToolOutcome) => void
+              const executionPromise = new Promise<SessionProcessor.ToolOutcome>((r) => {
+                resolveExecution = r
+              })
+              runtimeInput.processor.trackExecution(options.toolCallId, executionPromise)
+
+              try {
+                const result = await item.execute(args as Record<string, unknown>)
+                resolveExecution({
+                  status: "completed",
+                  input: args,
+                  result: {
+                    title: result.title,
+                    output: result.output,
+                    metadata: result.metadata ?? {},
+                  },
+                })
+                return {
+                  title: result.title,
+                  output: result.output,
+                  metadata: result.metadata ?? {},
+                }
+              } catch (error) {
+                const message = error instanceof Error ? error.message : String(error)
+                resolveExecution({
+                  status: "error",
+                  input: args,
+                  error: message,
+                })
+                throw error
+              }
+            },
+            toModelOutput(result) {
+              return {
+                type: "text",
+                value: result.output,
+              }
+            },
+          })
+        },
+      })
+    }
 
     for (const item of await ToolRegistry.tools(input.model.providerID, input.agent)) {
       const schema = ProviderTransform.schema(input.model, z.toJSONSchema(item.parameters), {
@@ -792,6 +998,7 @@ export namespace ToolResolver {
       result.push({
         id: item.id,
         exposure: item.exposure,
+        display: item.display,
         description: item.description,
         inputSchema: schema,
         createRuntimeTool(runtimeInput) {
@@ -841,6 +1048,13 @@ export namespace ToolResolver {
                 })
 
                 const envelope = gate.evaluate(item.id, args as Record<string, any>)
+                const modeDiagnostic = SessionModePolicy.evaluateCall({
+                  toolName: item.id,
+                  args: args as Record<string, any>,
+                  session: runtimeInput.session,
+                  capabilities: envelope.capabilities,
+                })
+                if (modeDiagnostic) throw new ToolDiagnosticError(modeDiagnostic)
                 await applyGateApproval(ctx, gate, envelope, item.id, args as Record<string, any>, runtimeInput.session)
                 await toolTrace.phase("tool.approval.resolved", "approval resolved", {
                   decision: envelope.decision,
@@ -849,9 +1063,14 @@ export namespace ToolResolver {
 
                 const timeoutCfg = await TimeoutConfig.resolve()
                 const toolTimeoutMs = timeoutCfg.toolOverrides[item.id] ?? timeoutCfg.toolDefaultMs
+                const toolTimeout = ToolTimeout.metadataForTool({
+                  tool: item.id,
+                  args: args as Record<string, any>,
+                  executionBudgetMs: toolTimeoutMs,
+                })
                 const combinedAbort = startExecutionBudget(ctx, toolTimeoutMs)
                 ctx.abort = combinedAbort
-                await markExecutionStarted(runtimeInput, ctx, args as Record<string, any>)
+                await markExecutionStarted(runtimeInput, ctx, args as Record<string, any>, toolTimeout)
                 await toolTrace.phase("tool.execution.started", "execution started", {
                   timeoutMs: toolTimeoutMs,
                 })
@@ -972,7 +1191,7 @@ export namespace ToolResolver {
                   status: "error",
                   input: args,
                   error: formatErrorForModel(error),
-                  metadata: approvalFromContext(ctx) ? { approval: approvalFromContext(ctx) } : undefined,
+                  metadata: metadataForError(error, approvalFromContext(ctx)),
                 })
                 await toolTrace?.error(error)
                 throw error
@@ -1056,6 +1275,13 @@ export namespace ToolResolver {
                     workspaceType: workspaceInfo?.type ?? "scope",
                   })
                   const envelope = gate.evaluate(key, args as Record<string, any>)
+                  const modeDiagnostic = SessionModePolicy.evaluateCall({
+                    toolName: key,
+                    args: args as Record<string, any>,
+                    session: runtimeInput.session,
+                    capabilities: envelope.capabilities,
+                  })
+                  if (modeDiagnostic) throw new ToolDiagnosticError(modeDiagnostic)
                   await applyGateApproval(ctx, gate, envelope, key, args as Record<string, any>, runtimeInput.session)
                   await toolTrace.phase("tool.approval.resolved", "approval resolved", {
                     decision: envelope.decision,
@@ -1064,9 +1290,15 @@ export namespace ToolResolver {
 
                   const timeoutCfg = await TimeoutConfig.resolve()
                   const toolTimeoutMs = timeoutCfg.toolOverrides[key] ?? timeoutCfg.toolDefaultMs
+                  const toolTimeout = ToolTimeout.metadataForTool({
+                    tool: key,
+                    args: args as Record<string, any>,
+                    executionBudgetMs: toolTimeoutMs,
+                    mcpCallTimeoutMs: MCP.toolCallTimeout(key),
+                  })
                   const combinedAbort = startExecutionBudget(ctx, toolTimeoutMs)
                   ctx.abort = combinedAbort
-                  await markExecutionStarted(runtimeInput, ctx, args as Record<string, any>)
+                  await markExecutionStarted(runtimeInput, ctx, args as Record<string, any>, toolTimeout)
                   await toolTrace.phase("tool.execution.started", "execution started", {
                     timeoutMs: toolTimeoutMs,
                   })
@@ -1167,7 +1399,7 @@ export namespace ToolResolver {
                     status: "error",
                     input: args,
                     error: formatErrorForModel(error),
-                    metadata: approvalFromContext(ctx) ? { approval: approvalFromContext(ctx) } : undefined,
+                    metadata: metadataForError(error, approvalFromContext(ctx)),
                   })
                   await toolTrace?.error(error)
                   throw error
@@ -1188,32 +1420,39 @@ export namespace ToolResolver {
       }
     }
 
-    result = result.filter((d) =>
-      ToolExposure.isVisible(d.id, d.exposure, input.session?.toolState, {
-        forcedGroups: forcedToolGroups(input.session),
-      }),
-    )
+    return result
+  }
 
-    if (input.session?.blueprint?.planMode) {
-      result = result.filter((d) => PLAN_MODE_ALLOWED_TOOLS.has(d.id))
+  export async function availability(input: Omit<Input, "processor">): Promise<Availability> {
+    using _ = log.time("availability")
+    return applyAvailability(await collectDefinitions(input), input)
+  }
+
+  export async function definitions(input: Omit<Input, "processor">): Promise<Definition[]> {
+    return (await availability(input)).visible
+  }
+
+  export async function resolveWithAvailability(input: Input): Promise<ResolvedTools> {
+    using _ = log.time("resolveWithAvailability")
+    const tools: Record<string, AITool> = {}
+    const availabilityResult = await availability(input)
+
+    for (const item of availabilityResult.visible) {
+      const runtimeTool = item.createRuntimeTool?.(input)
+      if (runtimeTool) {
+        tools[item.id] = runtimeTool
+      }
     }
 
-    const activeBlueprintLoopID = input.session?.blueprint?.loopID
-    const isSupervisor = input.agent.name === "supervisor"
-    if (!isSupervisor) {
-      result = result.filter((d) => d.id !== "blueprint_loop_restart")
+    for (const diagnostic of availabilityResult.diagnostics.values()) {
+      if (tools[diagnostic.toolName]) continue
+      tools[diagnostic.toolName] = diagnosticRuntimeTool(input, diagnostic)
     }
-    if (!isSupervisor && !activeBlueprintLoopID) {
-      result = result.filter((d) => d.id !== "blueprint_loop_finish")
-    }
-    const disabled = PermissionNext.disabled(
-      result.map((item) => item.id),
-      PermissionNext.merge(input.agent.permission, PermissionNext.sessionRuleset(input.session)),
-    )
 
-    return result.filter(
-      (item) => !disabled.has(item.id) && input.userTools?.[item.id] !== false && input.userTools?.["*"] !== false,
-    )
+    return {
+      tools,
+      activeToolIDs: availabilityResult.visible.map((item) => item.id),
+    }
   }
 
   export async function resolve(input: Input): Promise<Record<string, AITool>> {
@@ -1223,9 +1462,7 @@ export namespace ToolResolver {
 
     for (const item of defs) {
       const runtimeTool = item.createRuntimeTool?.(input)
-      if (runtimeTool) {
-        tools[item.id] = runtimeTool
-      }
+      if (runtimeTool) tools[item.id] = runtimeTool
     }
 
     return tools

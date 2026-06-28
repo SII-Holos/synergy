@@ -38,8 +38,8 @@ test("provider loaded from env variable", async () => {
     fn: async () => {
       const providers = await Provider.list()
       expect(providers["anthropic"]).toBeDefined()
-      // Note: source becomes "custom" because CUSTOM_LOADERS run after env loading
-      // and anthropic has a custom loader that merges additional options
+      // Note: source becomes "custom" because the Anthropic provider profile
+      // merges additional runtime options after env loading.
       expect(providers["anthropic"].source).toBe("custom")
     },
   })
@@ -1593,6 +1593,43 @@ test("provider options are deeply merged", async () => {
       expect(providers["anthropic"].options.headers["X-Custom"]).toBe("custom-value")
       // anthropic custom loader adds its own headers, they should coexist
       expect(providers["anthropic"].options.headers["anthropic-beta"]).toBeDefined()
+    },
+  })
+})
+
+test("openrouter provider adds attribution headers and merges custom headers", async () => {
+  await using tmp = await tmpdir({
+    init: async (dir) => {
+      await Bun.write(
+        path.join(dir, "synergy.json"),
+        JSON.stringify({
+          $schema: "file:///test/config.schema.json",
+          provider: {
+            openrouter: {
+              options: {
+                headers: {
+                  "X-Custom": "custom-value",
+                },
+              },
+            },
+          },
+        }),
+      )
+    },
+  })
+  await provideTestScope({
+    scope: await tmp.scope(),
+    init: async () => {
+      Env.set("OPENROUTER_API_KEY", "test-api-key")
+    },
+    fn: async () => {
+      const providers = await Provider.list()
+      expect(providers["openrouter"].options.headers).toMatchObject({
+        "HTTP-Referer": "https://synergy.holosai.io/",
+        "X-OpenRouter-Title": "Synergy",
+        "X-OpenRouter-Categories": "cli-agent,personal-agent",
+        "X-Custom": "custom-value",
+      })
     },
   })
 })

@@ -43,8 +43,7 @@ import { PtyRoute } from "./pty"
 import { ProviderRoute } from "./provider"
 import { McpRoute } from "./mcp-route"
 import { PermissionRoute } from "./permission"
-import { FindRoute } from "./find"
-import { FileRoute } from "./file"
+import { WorkspaceFilesRoute } from "./workspace-files"
 import { File as SynergyFile } from "../file"
 import { ConfigRoute } from "./config-route"
 import { ChannelRoute } from "./channel"
@@ -92,24 +91,24 @@ export namespace Server {
   // style-src 'unsafe-inline' is required for Solid's reactive CSS-in-JS <style> injection.
   // script-src is extended per-request: the theme preloader hash is always included;
   // the fallback handler adds a per-request nonce for the dynamic route-tag script.
-  const CSP_BASELINE =
+  export const CSP_BASELINE =
     "default-src 'self'; " +
     "script-src 'self'; " +
     "style-src 'self' 'unsafe-inline'; " +
     "img-src 'self' data: https: blob:; " +
-    "font-src 'self'; " +
+    "font-src 'self' data:; " +
     "connect-src 'self' ws: wss:; " +
     "frame-src 'self'; " +
-    "media-src 'none'; " +
+    "media-src 'self'; " +
     "object-src 'none'; " +
     "base-uri 'self'; " +
     "form-action 'self'"
 
   // SHA-256 of index.html's <script id="synergy-theme-preload-script"> body.
   // Update this hash when the inline theme preloader script changes.
-  const CSP_THEME_SCRIPT_HASH = "sha256-Qf8GAcLAwW4P3mUyGKGC4j67XnDPP6d00NW/TNjPNE0="
+  export const CSP_THEME_SCRIPT_HASH = "'sha256-Qf8GAcLAwW4P3mUyGKGC4j67XnDPP6d00NW/TNjPNE0='"
 
-  function spaCsp(nonce?: string): string {
+  export function spaCsp(nonce?: string): string {
     const sources = [CSP_THEME_SCRIPT_HASH]
     if (nonce) sources.push(`'nonce-${nonce}'`)
     return CSP_BASELINE.replace("script-src 'self'", `script-src 'self' ${sources.join(" ")}`)
@@ -189,10 +188,8 @@ export namespace Server {
       pathname.startsWith("/experimental/worktree/") ||
       pathname === "/vcs" ||
       pathname.startsWith("/vcs/") ||
-      pathname === "/find" ||
-      pathname.startsWith("/find/") ||
-      pathname === "/file" ||
-      pathname.startsWith("/file/") ||
+      pathname === "/workspace/files" ||
+      pathname.startsWith("/workspace/files/") ||
       pathname === "/note" ||
       pathname.startsWith("/note/") ||
       pathname === "/blueprint" ||
@@ -807,7 +804,7 @@ export namespace Server {
               ...errors(400),
             },
           }),
-          validator("json", Worktree.create.schema),
+          validator("json", Worktree.PublicCreateInput),
           async (c) => {
             const body = c.req.valid("json")
             const worktree = await Worktree.create(body)
@@ -895,8 +892,7 @@ export namespace Server {
 
         .route("/provider", ProviderRoute)
         .route("/skill", SkillRoute)
-        .route("/find", FindRoute)
-        .route("/file", FileRoute)
+        .route("/workspace/files", WorkspaceFilesRoute)
         .route("/library", LibraryRoute)
         .route("/agenda", AgendaRoute)
         .route("/note", NoteRoute)
@@ -982,6 +978,27 @@ export namespace Server {
           async (c) => {
             const modes = await Agent.list()
             return c.json(modes)
+          },
+        )
+        .get(
+          "/agent/model-roles",
+          describeRoute({
+            summary: "List model role summaries",
+            description: "Get model role configuration, fallback, and usage metadata for the settings UI.",
+            operationId: "app.agentModelRoles",
+            responses: {
+              200: {
+                description: "List of model role summaries",
+                content: {
+                  "application/json": {
+                    schema: resolver(Agent.ModelRoleSummary.array()),
+                  },
+                },
+              },
+            },
+          }),
+          async (c) => {
+            return c.json(await Agent.modelRoleSummaries())
           },
         )
 
@@ -1081,6 +1098,7 @@ export namespace Server {
             const providerID = c.req.valid("param").providerID
             const info = c.req.valid("json")
             await Auth.set(providerID, info)
+            await Provider.reload()
             return c.json(true)
           },
         )

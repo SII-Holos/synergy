@@ -1,20 +1,19 @@
 import { onCleanup, onMount } from "solid-js"
+import type { BrowserPresentationPreference } from "@ericsanchezok/synergy-util/browser-protocol"
+import { usePlatform } from "@/context/platform"
 import { useSDK } from "@/context/sdk"
-import type { BrowserStoreAPI } from "./browser-store"
+import type { BrowserHostStatus, BrowserStoreAPI } from "./browser-store"
+import { applyBrowserControlResult, browserControlCommandFromMessage, createBrowserCommandId } from "./browser-command"
 import { browserDebug, shouldLogBrowserMessage, summarizeBrowserMessage } from "./browser-debug"
 
 const MAX_RECONNECT_ATTEMPTS = 10
 const RECONNECT_DELAY = 2000
-const MAX_PENDING_MESSAGES = 50
-
-type BrowserSocket = {
-  readyState: number
-  send(data: string): void
-}
 
 type BrowserWebSocketOptions = {
   sessionID: string
   routeDirectory?: string
+  client?: "web" | "desktop"
+  sameHost?: boolean
 }
 
 type BrowserWebSocketUrlOptions = {
@@ -24,91 +23,131 @@ type BrowserWebSocketUrlOptions = {
   directory?: string
   scopeID?: string
   scopeKey?: string
+  presentation?: BrowserPresentationPreference
+  client?: "web" | "desktop"
+  sameHost?: boolean
+  traceId?: string
 }
 
-export function createBrowserWebSocketUrl(options: BrowserWebSocketUrlOptions) {
+export function createBrowserEventsWebSocketUrl(options: BrowserWebSocketUrlOptions) {
+  return createBrowserRouteUrl(options, "events", "ws")
+}
+
+export function createBrowserControlUrl(options: BrowserWebSocketUrlOptions) {
+  return createBrowserRouteUrl(options, "control", "http")
+}
+
+function createBrowserRouteUrl(
+  options: BrowserWebSocketUrlOptions,
+  route: "events" | "control",
+  scheme: "ws" | "http",
+) {
   const pathDirectory = options.routeDirectory ?? options.directory ?? options.scopeID ?? options.scopeKey
   if (!pathDirectory) return null
 
   const params = new URLSearchParams({
     mode: "session",
     sessionID: options.sessionID,
+    presentation: options.presentation ?? "auto",
+    client: options.client ?? "web",
   })
   if (options.scopeID) params.set("scopeID", options.scopeID)
   else if (options.directory) params.set("directory", options.directory)
+  if (options.sameHost) params.set("sameHost", "1")
+  if (options.traceId) params.set("traceId", options.traceId)
 
+  const baseUrl = scheme === "ws" ? options.serverUrl.replace(/^http/, "ws") : options.serverUrl
+  return baseUrl + `/${encodeURIComponent(pathDirectory)}/browser/${route}?${params.toString()}`
+}
+
+function isBrowserHostStatus(value: unknown): value is BrowserHostStatus {
   return (
-    options.serverUrl.replace(/^http/, "ws") +
-    `/${encodeURIComponent(pathDirectory)}/browser/connect?${params.toString()}`
+    value === "pending" || value === "ready" || value === "detached" || value === "restarting" || value === "failed"
   )
 }
 
-export function createQueuedBrowserSender(
-  getSocket: () => BrowserSocket | undefined,
-  options: { openState?: number; maxPending?: number } = {},
+function createBrowserHttpControlSender(
+  store: BrowserStoreAPI,
+  options: BrowserWebSocketUrlOptions & { fetch?: typeof fetch },
 ) {
-  const openState = options.openState ?? WebSocket.OPEN
-  const maxPending = options.maxPending ?? MAX_PENDING_MESSAGES
-  const pending: Record<string, unknown>[] = []
-
-  function send(msg: Record<string, unknown>) {
-    const socket = getSocket()
-    if (socket?.readyState === openState) {
-      if (shouldLogBrowserMessage(msg)) browserDebug("ws.send", summarizeBrowserMessage(msg))
-      socket.send(JSON.stringify(msg))
+  const send = (msg: Record<string, unknown>) => {
+    const command = browserControlCommandFromMessage(msg)
+    if (!command) {
+      if (shouldLogBrowserMessage(msg)) browserDebug("control.skip", summarizeBrowserMessage(msg))
       return
     }
-
-    if (shouldLogBrowserMessage(msg)) {
-      browserDebug("ws.queue", {
-        ...summarizeBrowserMessage(msg),
-        readyState: socket?.readyState ?? "missing",
-        pendingBefore: pending.length,
+    const url = createBrowserControlUrl(options)
+    if (!url) {
+      browserDebug("control.dropped", { reason: "missing scope", type: msg.type })
+      return
+    }
+    if (shouldLogBrowserMessage(msg)) browserDebug("control.send", summarizeBrowserMessage(msg))
+    const request = options.fetch ?? fetch
+    const traceId = options.traceId
+    const commandId = typeof msg.commandId === "string" ? msg.commandId : createBrowserCommandId()
+    void request(url, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        ...(traceId ? { "x-synergy-browser-trace": traceId } : {}),
+      },
+      body: JSON.stringify({ command, commandId, traceId }),
+    })
+      .then(async (response) => {
+        const payload = await response.json().catch(() => null)
+        if (!response.ok) {
+          if (response.status === 409 && payload?.code === "browser_host_pending") {
+            if (typeof payload.pageId === "string") store.setHostStatus(payload.pageId, "pending")
+            browserDebug("control.pending", {
+              type: msg.type,
+              pageId: payload?.pageId,
+              commandId: payload?.commandId,
+              traceId: payload?.traceId,
+            })
+            return
+          }
+          throw new Error(payload?.message ?? `Browser control failed: ${response.status}`)
+        }
+        if (payload?.hostStatus && "pageId" in command && typeof command.pageId === "string") {
+          store.setHostStatus(command.pageId, payload.hostStatus)
+        }
+        store.clearTransientHostError()
+        applyBrowserControlResult(store, payload?.result)
       })
-    }
-    pending.push(msg)
-    if (pending.length > maxPending) {
-      const dropped = pending.shift()
-      if (dropped && shouldLogBrowserMessage(dropped)) browserDebug("ws.queue.drop", summarizeBrowserMessage(dropped))
-    }
+      .catch((error) => {
+        const message = error instanceof Error ? error.message : String(error)
+        browserDebug("control.error", { type: msg.type, message })
+        store.setBrowserError({ severity: "error", message })
+      })
   }
 
-  function flush() {
-    const socket = getSocket()
-    if (socket?.readyState !== openState) {
-      browserDebug("ws.flush.skipped", { readyState: socket?.readyState ?? "missing", pending: pending.length })
-      return
-    }
-    const messages = pending.splice(0)
-    browserDebug("ws.flush", { count: messages.length })
-    for (const msg of messages) {
-      if (shouldLogBrowserMessage(msg)) browserDebug("ws.send.queued", summarizeBrowserMessage(msg))
-      socket.send(JSON.stringify(msg))
-    }
-  }
-
-  function clear() {
-    browserDebug("ws.queue.clear", { count: pending.length })
-    pending.length = 0
-  }
-
-  function size() {
-    return pending.length
-  }
-
-  return { send, flush, clear, size }
+  return { send }
 }
 
 export function createBrowserWebSocket(store: BrowserStoreAPI, options: BrowserWebSocketOptions | string) {
   const sdk = useSDK()
+  const platform = usePlatform()
   const sessionID = typeof options === "string" ? options : options.sessionID
   const routeDirectory = typeof options === "string" ? undefined : options.routeDirectory
+  const client = typeof options === "string" ? "web" : (options.client ?? "web")
+  const sameHost = typeof options === "string" ? false : (options.sameHost ?? false)
   let ws: WebSocket | undefined
   let reconnectTimer: ReturnType<typeof setTimeout> | undefined
   let disposed = false
   let reconnectAttempts = 0
-  const queued = createQueuedBrowserSender(() => ws)
-  const send = queued.send
+  const controlSender = createBrowserHttpControlSender(store, {
+    serverUrl: sdk.url,
+    sessionID,
+    routeDirectory,
+    directory: sdk.directory,
+    scopeID: sdk.scopeID,
+    scopeKey: sdk.scopeKey,
+    client,
+    sameHost,
+    traceId: store.browserTraceId(),
+    fetch: platform.fetch,
+  })
+  const send = controlSender.send
 
   store._setSend(send)
 
@@ -117,13 +156,16 @@ export function createBrowserWebSocket(store: BrowserStoreAPI, options: BrowserW
       browserDebug("ws.connect.skipped", { reason: "disposed" })
       return
     }
-    const wsUrl = createBrowserWebSocketUrl({
+    const wsUrl = createBrowserEventsWebSocketUrl({
       serverUrl: sdk.url,
       sessionID,
       routeDirectory,
       directory: sdk.directory,
       scopeID: sdk.scopeID,
       scopeKey: sdk.scopeKey,
+      client,
+      sameHost,
+      traceId: store.browserTraceId(),
     })
     if (!wsUrl) {
       browserDebug("ws.connect.skipped", {
@@ -151,8 +193,7 @@ export function createBrowserWebSocket(store: BrowserStoreAPI, options: BrowserW
     socket.addEventListener("open", () => {
       reconnectAttempts = 0
       store.setSession("connectionStatus", "connected")
-      browserDebug("ws.open", { sessionID, pending: queued.size() })
-      queued.flush()
+      browserDebug("ws.open", { sessionID })
     })
 
     socket.addEventListener("message", (event) => {
@@ -168,97 +209,79 @@ export function createBrowserWebSocket(store: BrowserStoreAPI, options: BrowserW
       if (shouldLogBrowserMessage(msg)) browserDebug("ws.message", summarizeBrowserMessage(msg))
       switch (msg.type) {
         case "session.state": {
-          if (msg.tabs) store.setSession("tabs", msg.tabs)
-          if (msg.activeTabId !== undefined) {
-            store.setSession("activeTabId", msg.activeTabId)
-            if (!store.session.visibleTabId) store.setSession("visibleTabId", msg.activeTabId)
-            if (msg.activeTabId) send({ type: "stream.start", tabId: msg.activeTabId })
+          if (msg.presentation) store.setPresentation(msg.presentation)
+          if ("page" in msg) store.setSession("page", msg.page ?? null)
+          store.clearTransientHostError()
+          break
+        }
+        case "browser.host.status": {
+          if (typeof msg.pageId === "string" && isBrowserHostStatus(msg.status)) {
+            store.setHostStatus(msg.pageId, msg.status)
           }
           break
         }
-        case "tab.created": {
-          store.upsertTab(msg.tab)
-          if (msg.active) store.activateTabFromServer(msg.tab.id)
+        case "page.created": {
+          store.upsertPage(msg.page)
           break
         }
-        case "tab.updated": {
-          if (msg.tab) store.upsertTab(msg.tab)
+        case "page.updated": {
+          if (msg.page) store.upsertPage(msg.page)
           break
         }
-        case "tab.activated": {
-          if (msg.tab) store.upsertTab(msg.tab)
-          if (msg.tabId) store.activateTabFromServer(msg.tabId)
-          break
-        }
-        case "tab.closed": {
-          store.removeTab(msg.tabId)
-          break
-        }
-        case "tab.navigated": {
-          store.setTabUrl(msg.tabId, msg.url)
-          store.setTabLoading(msg.tabId, false)
-          if (msg.title !== undefined) store.setTabTitle(msg.tabId, msg.title)
+        case "page.closed": {
+          store.removePage(msg.pageId)
           break
         }
         case "page.loading": {
-          store.setTabLoading(msg.tabId, true)
-          if (msg.url) store.setTabUrl(msg.tabId, msg.url)
+          store.setPageLoading(msg.pageId, true)
+          if (msg.url) store.setPageUrl(msg.pageId, msg.url)
           break
         }
         case "page.loaded": {
-          store.setTabLoading(msg.tabId, false)
-          if (msg.url) store.setTabUrl(msg.tabId, msg.url)
-          if (msg.title !== undefined) store.setTabTitle(msg.tabId, msg.title)
+          store.setPageLoading(msg.pageId, false)
+          if (msg.url) store.setPageUrl(msg.pageId, msg.url)
+          if (msg.title !== undefined) store.setPageTitle(msg.pageId, msg.title)
           break
         }
         case "page.error": {
-          store.setTabLoading(msg.tabId, false)
+          store.setPageLoading(msg.pageId, false)
           store.setBrowserError({ severity: "error", message: msg.message ?? "Browser page error" })
           break
         }
-        case "frame": {
-          store.setFrame(msg.tabId, {
-            src: `data:${msg.mime ?? "image/jpeg"};base64,${msg.data}`,
-            metadata: msg.metadata,
-          })
-          break
-        }
         case "screenshot": {
-          store.setTabScreenshots(msg.tabId, {
+          store.setPageScreenshots(msg.pageId, {
             url: msg.dataUrl,
             width: msg.width ?? 0,
             height: msg.height ?? 0,
           })
           break
         }
-        case "console":
         case "console.entries": {
-          store.setConsoleEntries(msg.tabId, msg.entries ?? [])
+          store.setConsoleEntries(msg.pageId, msg.entries ?? [])
           break
         }
-        case "network":
         case "network.entries": {
-          store.setNetworkRequests(msg.tabId, msg.requests ?? [])
+          store.setNetworkRequests(msg.pageId, msg.requests ?? [])
           break
         }
         case "snapshot.result": {
-          store.setElements(msg.tabId, msg.elements ?? [])
+          store.setElements(msg.pageId, msg.elements ?? [])
           break
         }
         case "assets.entries": {
-          store.setPageAssets(msg.tabId, msg.assets ?? [])
+          store.setPageAssets(msg.pageId, msg.assets ?? [])
           break
         }
         case "diagnostics.cleared": {
-          store.setConsoleEntries(msg.tabId, [])
-          store.setNetworkRequests(msg.tabId, [])
-          store.setPageAssets(msg.tabId, [])
+          store.setConsoleEntries(msg.pageId, [])
+          store.setNetworkRequests(msg.pageId, [])
+          store.setPageAssets(msg.pageId, [])
           break
         }
         case "agent.action":
         case "agent.activity": {
           store.applyAgentActivity({
-            tabId: msg.tabId ?? null,
+            pageId: msg.pageId ?? null,
             url: msg.url ?? null,
             title: msg.title,
             kind: msg.kind ?? "acting",
@@ -272,12 +295,12 @@ export function createBrowserWebSocket(store: BrowserStoreAPI, options: BrowserW
           break
         }
         case "downloads.updated": {
-          store.addDownload(msg.tabId, msg.entry)
+          store.addDownload(msg.pageId, msg.entry)
           break
         }
         case "filechooser.request": {
           store.setFileChooserRequest({
-            tabId: msg.tabId,
+            pageId: msg.pageId,
             requestId: msg.requestId,
             multiple: Boolean(msg.multiple),
             accept: msg.accept ?? [],
@@ -286,7 +309,7 @@ export function createBrowserWebSocket(store: BrowserStoreAPI, options: BrowserW
         }
         case "dialog.opened": {
           store.setDialogRequest({
-            tabId: msg.tabId,
+            pageId: msg.pageId,
             requestId: msg.requestId,
             type: msg.dialogType,
             message: msg.message,
@@ -296,6 +319,10 @@ export function createBrowserWebSocket(store: BrowserStoreAPI, options: BrowserW
         }
         case "error": {
           store.setSession("connectionStatus", "error")
+          if (msg.code === "browser_host_pending" && typeof msg.pageId === "string") {
+            store.setHostStatus(msg.pageId, "pending")
+            break
+          }
           store.setBrowserError({
             severity: msg.severity ?? "error",
             code: msg.code,
@@ -346,10 +373,9 @@ export function createBrowserWebSocket(store: BrowserStoreAPI, options: BrowserW
   })
 
   onCleanup(() => {
-    browserDebug("ws.cleanup", { sessionID, hasSocket: Boolean(ws), pending: queued.size() })
+    browserDebug("ws.cleanup", { sessionID, hasSocket: Boolean(ws) })
     disposed = true
     if (reconnectTimer) clearTimeout(reconnectTimer)
-    queued.clear()
     ws?.close()
     ws = undefined
   })

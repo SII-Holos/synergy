@@ -30,6 +30,25 @@ function extractVarRefs(css: string): string[] {
   return refs
 }
 
+function extractCustomPropValue(css: string, token: string): string | undefined {
+  const re = new RegExp(`^\\s*--${token}\\s*:\\s*([^;]+);`, "gm")
+  const matches = [...css.matchAll(re)]
+  return matches.at(-1)?.[1]?.trim()
+}
+
+function extractLightFallbackBlock(css: string): string {
+  const start = css.indexOf(":root:not([data-color-scheme]) {")
+  const end = css.indexOf("@media (prefers-color-scheme: dark)")
+  if (start === -1 || end === -1 || end <= start) throw new Error("Could not locate light fallback block")
+  return css.slice(start, end)
+}
+
+function extractDarkFallbackBlock(css: string): string {
+  const start = css.indexOf("@media (prefers-color-scheme: dark)")
+  if (start === -1) throw new Error("Could not locate dark fallback block")
+  return css.slice(start)
+}
+
 // ── P0 scope ─────────────────────────────────────────────────
 
 /** Tokens this phase MUST add to theme.css */
@@ -52,10 +71,10 @@ const P0_FORBIDDEN_TOKENS = ["font-size-xs", "font-size-2xs", "font-size-3xs", "
 
 /** P0 UI component CSS files covered by the visual token contract */
 const P0_UI_FILES = [
+  "src/components/dialog.css",
   "src/components/tabs.css",
   "src/components/switch.css",
   "src/components/checkbox.css",
-  "src/components/dropdown-menu.css",
   "src/components/message-part.css",
   "src/components/diagram.css",
   "src/components/session-turn.css",
@@ -127,6 +146,7 @@ function buildP0ValidTokenSet(): Set<string> {
     "shadow-xs-border-base",
     "shadow-xs-border-select",
     "shadow-xs-border-focus",
+    "dialog-left-margin",
     "text-mix-blend-mode",
     "kb-popover-content-transform-origin",
     "kb-menu-content-transform-origin",
@@ -147,6 +167,22 @@ function buildP0ValidTokenSet(): Set<string> {
     "session-turn-title-border",
     "session-turn-title-highlight",
     "session-turn-title-glow",
+    "workbench-canvas-bg",
+    "workbench-panel-bg",
+    "workbench-panel-bg-hover",
+    "workbench-card-bg",
+    "workbench-card-bg-hover",
+    "workbench-card-secondary-bg",
+    "workbench-control-bg",
+    "workbench-control-bg-hover",
+    "workbench-input-bg",
+    "workbench-input-bg-hover",
+    "workbench-popover-bg",
+    "workbench-selected-bg",
+    "workbench-selected-bg-hover",
+    "workbench-border",
+    "workbench-popover-shadow",
+    "workbench-tab-shadow",
   ]
   for (const t of localTokens) valid.add(t)
 
@@ -215,6 +251,38 @@ describe("Visual Token Contract", () => {
     })
   })
 
+  describe("1b. Modal material stays grounded", () => {
+    test("dialog overlay uses a subtle blur rather than strong glass", async () => {
+      const css = await readFileSafe("src/components/dialog.css")
+      expect(css).toContain("backdrop-filter: blur(4px);")
+      expect(css).not.toMatch(/backdrop-filter:\s*blur\((?:[5-9]|[1-9]\d)px\)/)
+    })
+
+    test("toast material remains solid instead of glassy", async () => {
+      const css = await readFileSafe("src/components/toast.css")
+      expect(css).toContain("background: var(--surface-raised-stronger-non-alpha);")
+      expect(css).toContain("var(--workbench-popover-shadow")
+      expect(css).not.toContain("backdrop-filter")
+    })
+  })
+
+  describe("1b. Static theme fallback preserves surface polarity", () => {
+    test("light fallback makes stronger raised content darker than raised containers", async () => {
+      const css = extractLightFallbackBlock(await readThemeCss())
+      expect(extractCustomPropValue(css, "surface-raised-base")).toBe("#e9ecef")
+      expect(extractCustomPropValue(css, "surface-raised-stronger")).toBe("#dce2ea")
+      expect(extractCustomPropValue(css, "surface-raised-stronger-non-alpha")).toBe("#dce2ea")
+    })
+
+    test("dark fallback makes stronger raised content brighter than raised containers", async () => {
+      const css = extractDarkFallbackBlock(await readThemeCss())
+      expect(extractCustomPropValue(css, "surface-raised-base")).toBe("var(--smoke-dark-4)")
+      expect(extractCustomPropValue(css, "surface-raised-strong")).toBe("#2f3034")
+      expect(extractCustomPropValue(css, "surface-raised-stronger")).toBe("#35363a")
+      expect(extractCustomPropValue(css, "surface-raised-stronger-non-alpha")).toBe("#35363a")
+    })
+  })
+
   // ── Section 2: No forbidden tokens in P0 files ─────────────
 
   describe("2. Forbidden token references absent from P0 files", () => {
@@ -278,11 +346,6 @@ describe("Visual Token Contract", () => {
       expect(hasMotion, "tabs.css 应使用 motion token").toBe(true)
     })
 
-    test("dropdown-menu.css animation 使用 motion token", async () => {
-      const css = await readFileSafe("src/components/dropdown-menu.css")
-      const hasMotion = /var\(--motion-(duration|ease)/.test(css)
-      expect(hasMotion, "dropdown-menu.css 应使用 motion token").toBe(true)
-    })
   })
 
   describe("5. Pill / chip elements use --radius-full", () => {
@@ -327,6 +390,14 @@ describe("Visual Token Contract", () => {
       const css = await readFileSafe("src/components/message-part.css")
       const hasXSmall = /var\(--font-size-x-small\)/.test(css)
       expect(hasXSmall, "message-part.css 的小号文字应使用 --font-size-x-small").toBe(true)
+    })
+
+    test("工具输出使用 workbench 内层 surface", async () => {
+      const css = await readFileSafe("src/components/message-part.css")
+      const outputBlock = css.match(/\[data-component="tool-output"\]\s*\{[\s\S]*?\n\}/)?.[0] ?? ""
+      expect(outputBlock, "message-part.css 应定义 tool-output 样式块").not.toBe("")
+      expect(outputBlock).toContain("var(--workbench-control-bg")
+      expect(outputBlock).toContain("var(--workbench-border")
     })
   })
 

@@ -15,6 +15,9 @@ export namespace ToolExposure {
         title?: string
         keywords?: string[]
       }
+    | {
+        mode: "internal"
+      }
 
   export interface GroupInfo {
     id: string
@@ -64,7 +67,6 @@ export namespace ToolExposure {
         "browser_click",
         "browser_type",
         "browser_scroll",
-        "browser_tab",
         "browser_console",
         "browser_network",
         "browser_download",
@@ -188,11 +190,14 @@ export namespace ToolExposure {
     state: ToolState | undefined,
     options?: {
       forcedGroups?: Iterable<string>
+      forcedTools?: Iterable<string>
     },
   ): boolean {
     const normalized = normalize(toolID, exposure)
+    if (new Set(options?.forcedTools ?? []).has(toolID)) return true
     if (normalized.mode === "resident") return true
     if (normalized.mode === "search") return new Set(state?.activatedTools ?? []).has(toolID)
+    if (normalized.mode === "internal") return false
 
     const expanded = new Set(state?.expandedGroups ?? [])
     for (const group of options?.forcedGroups ?? []) {

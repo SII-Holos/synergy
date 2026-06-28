@@ -1,5 +1,26 @@
 # Agents
 
+## Project instruction files
+
+Synergy automatically includes instruction files discovered inside the active Scope. In each directory from the Scope root to the current working directory, Synergy uses the first matching file in this order:
+
+1. `AGENTS.override.md`
+2. `AGENTS.md`
+3. entries from `project_doc_fallback_filenames`
+4. `CLAUDE.md`
+5. `CONTEXT.md`
+
+Use `AGENTS.override.md` for local-only overrides. Configure fallback filenames in `60-agents.jsonc`:
+
+```jsonc
+{
+  "project_doc_fallback_filenames": ["PRODUCT.md", "WORKFLOW.md"],
+  "project_doc_max_bytes": 32768
+}
+```
+
+`instructions` is separate: it explicitly appends files, globs, or URLs and does not participate in the fallback order.
+
 ## Quick start — create a custom agent
 
 1. **Decide scope** — project (`.synergy/agent/`) or global (`~/.synergy/config/agent/`). Project overrides global.
@@ -81,7 +102,7 @@ The `description` field is NOT just a label. It is the primary signal Synergy us
 
 Format: `"provider/model"` (e.g., `"anthropic/claude-sonnet-4-5"`, `"openai/gpt-4o"`). If omitted, the agent falls back to the scope's default model.
 
-You can also reference a model role instead of a specific model. Built-in agents use roles like `mid` (for explore/scout), `thinking` (for advisor), `nano` (for title/summary). Custom agents currently need an explicit `provider/model` string.
+You can also reference a model role. Built-in agents use roles like `mid` (for explore/scout), `thinking` (for advisor), `nano` (for title/summary). Custom agents require an explicit `provider/model` string.
 
 ### `steps` — controlling agent autonomy
 

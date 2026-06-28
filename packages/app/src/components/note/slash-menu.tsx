@@ -296,7 +296,7 @@ function SlashDropdown(props: {
         data-idx={rowProps.idx}
         classList={{
           "w-full flex items-center gap-2.5 px-2 py-1.5 rounded-lg text-left transition-colors": true,
-          "bg-surface-interactive-base/15": isSelected(),
+          "bg-surface-raised-base-hover": isSelected(),
           "hover:bg-surface-raised-base-hover": !isSelected(),
         }}
         onMouseDown={(e) => {
@@ -356,7 +356,7 @@ function SlashDropdown(props: {
                           data-idx={idx}
                           classList={{
                             "flex flex-col items-center justify-center gap-0.5 rounded-lg py-1.5 transition-colors": true,
-                            "bg-surface-interactive-base/15 text-text-interactive-base": isSelected(),
+                            "bg-surface-raised-base-hover text-text-strong": isSelected(),
                             "text-text-weak hover:bg-surface-raised-base-hover hover:text-text-strong": !isSelected(),
                           }}
                           onMouseDown={(e) => {

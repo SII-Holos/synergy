@@ -1,11 +1,12 @@
 import * as path from "path"
 import { withTimeout } from "@/util/timeout"
+import { ToolTimeout } from "@/tool/timeout"
 
 /** File size cap for document extraction. Larger files are rejected with a clear error. */
 const MAX_FILE_BYTES = 50 * 1024 * 1024
 
 /** Default extraction timeout in milliseconds. */
-const DEFAULT_TIMEOUT_MS = 60_000
+const DEFAULT_TIMEOUT_MS = ToolTimeout.DEFAULTS.documentExtractMs
 
 /** Supported document extensions — markitdown-ts dispatches by extension. */
 const SUPPORTED_EXTENSIONS = new Set([
@@ -95,7 +96,7 @@ export namespace Document {
    * - Files exceeding the size limit.
    * - Extraction timeout.
    */
-  export async function extract(filepath: string, timeoutMs = DEFAULT_TIMEOUT_MS): Promise<Extraction | null> {
+  export async function extract(filepath: string, timeoutMs: number = DEFAULT_TIMEOUT_MS): Promise<Extraction | null> {
     const stat = await Bun.file(filepath).stat()
     if (stat.size > MAX_FILE_BYTES) {
       throw new Error(

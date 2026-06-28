@@ -43,7 +43,7 @@ After writing config changes, use `runtime_reload` to apply without restarting.
 
 ## Auto-cascade rules (when target is `config`)
 
-When you reload `config`, Synergy diffs old vs new config and cascades based on changed fields:
+When you reload `config`, Synergy diffs the previous and reloaded config and cascades based on changed fields:
 
 | Changed field(s) | Cascaded targets |
 |---|---|

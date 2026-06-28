@@ -7,18 +7,12 @@ import { useGlobalSync } from "@/context/global-sync"
 import { AppPanel } from "@/components/app-panel"
 import type { MemoryStats } from "@ericsanchezok/synergy-sdk/client"
 import { type View, formatBytes } from "./shared"
-import { StatsView } from "./stats/stats-view"
-import { StatsSection } from "@/components/stats/stats-section"
+import { StatsView, type LibraryStatsSyncHandle } from "./stats/stats-view"
+import { StatsSection, type WorkspaceStatsSyncHandle } from "@/components/stats/stats-section"
 import { MemoryView } from "./memory-view"
 import { ExperienceView } from "./experience-view"
 import { SkillView } from "./skill-view"
-
-const viewLabel: Record<View, string> = {
-  stats: "Health, collection, and learning signals",
-  memory: "Browse, search, and manage knowledge",
-  experience: "Browse, search, and manage behavioral records",
-  skill: "Installed capabilities and imports",
-}
+import "./library-panel.css"
 
 export function LibraryPanel() {
   const sdk = useGlobalSDK()
@@ -27,6 +21,8 @@ export function LibraryPanel() {
   const [view, setView] = createSignal<View>("stats")
   const [search, setSearch] = createSignal("")
   const [searchError, setSearchError] = createSignal(false)
+  const [workspaceStatsSync, setWorkspaceStatsSync] = createSignal<WorkspaceStatsSyncHandle>()
+  const [libraryStatsSync, setLibraryStatsSync] = createSignal<LibraryStatsSyncHandle>()
 
   const directory = createMemo(() => (params.dir ? base64Decode(params.dir) : undefined))
   const currentSession = createMemo(() => {
@@ -64,105 +60,82 @@ export function LibraryPanel() {
   const memoryCount = () => stats()?.memory.count ?? 0
   const experienceCount = () => stats()?.experience.count ?? 0
 
-  function refetchAll() {
-    refetchStats()
-    if (view() === "memory") refetchMemoryData()
-    else if (view() === "experience") refetchExperienceData()
-    else refetchSkillData()
+  const showSearch = () => view() !== "stats"
+  const navItems = createMemo(() => [
+    { id: "stats", label: "Overview" },
+    { id: "memory", label: memoryCount() > 0 ? `Memories ${memoryCount()}` : "Memories" },
+    { id: "experience", label: experienceCount() > 0 ? `Experiences ${experienceCount()}` : "Experiences" },
+    { id: "skill", label: "Skills" },
+  ])
+  const storageLabel = createMemo(() => {
+    const snapshot = stats()
+    return snapshot ? formatBytes(snapshot.dbSizeBytes) : undefined
+  })
+  const isSyncing = createMemo(() => Boolean(workspaceStatsSync()?.syncing() || libraryStatsSync()?.syncing()))
+
+  async function syncAll() {
+    if (isSyncing()) return
+    const tasks: Array<Promise<void>> = []
+    const workspace = workspaceStatsSync()
+    const library = libraryStatsSync()
+    if (workspace) tasks.push(Promise.resolve(workspace.sync()))
+    if (library) tasks.push(Promise.resolve(library.sync()))
+    if (tasks.length === 0) return
+    await Promise.all(tasks)
+    await refetchStats()
   }
 
-  let refetchMemoryData = () => {}
-  let refetchExperienceData = () => {}
-  let refetchSkillData = () => {}
-
-  const showSearch = () => view() !== "stats"
-
   return (
-    <AppPanel.Root>
-      <AppPanel.Nav>
-        <AppPanel.NavSection label="Library">
-          <AppPanel.NavItem
-            icon="activity"
-            label="Overview"
-            active={view() === "stats"}
-            onClick={() => setView("stats")}
-          />
-          <AppPanel.NavItem
-            icon="book-open"
-            label="Memories"
-            active={view() === "memory"}
-            onClick={() => setView("memory")}
-            badge={
-              <Show when={memoryCount() > 0}>
-                <span class="text-11-regular text-text-weaker">{memoryCount()}</span>
-              </Show>
-            }
-          />
-          <AppPanel.NavItem
-            icon="zap"
-            label="Experiences"
-            active={view() === "experience"}
-            onClick={() => setView("experience")}
-            badge={
-              <Show when={experienceCount() > 0}>
-                <span class="text-11-regular text-text-weaker">{experienceCount()}</span>
-              </Show>
-            }
-          />
-          <AppPanel.NavItem
-            icon="sparkles"
-            label="Skills"
-            active={view() === "skill"}
-            onClick={() => setView("skill")}
-          />
-        </AppPanel.NavSection>
-      </AppPanel.Nav>
-
+    <AppPanel.Root class="library-workbench">
       <AppPanel.Content>
-        <AppPanel.Header class="pt-3 pb-2 gap-2">
-          <AppPanel.HeaderRow>
-            <AppPanel.Title>Library</AppPanel.Title>
-            <AppPanel.Actions>
-              <Show when={stats()}>
-                <span class="text-11-regular text-text-weaker tabular-nums">{formatBytes(stats()!.dbSizeBytes)}</span>
-              </Show>
-              <Show when={view() !== "stats"}>
-                <AppPanel.Action icon="refresh-ccw" title="Refresh" onClick={refetchAll} />
-              </Show>
-            </AppPanel.Actions>
-          </AppPanel.HeaderRow>
-          <AppPanel.Subtitle>{viewLabel[view()]}</AppPanel.Subtitle>
-        </AppPanel.Header>
-        <Show when={showSearch()}>
-          <div class="shrink-0 px-6 pt-1 pb-2">
-            <div class="flex items-center gap-2.5 rounded-xl bg-surface-inset-base/60 px-3.5 py-2">
-              <Icon name="search" size="small" class="text-icon-weak shrink-0" />
-              <input
-                type="text"
-                placeholder={
-                  view() === "memory"
-                    ? "Search memories..."
-                    : view() === "experience"
-                      ? "Search experiences..."
-                      : "Search skills..."
-                }
-                class="flex-1 bg-transparent text-13-regular text-text-base placeholder:text-text-weak outline-none"
-                value={search()}
-                onInput={(e) => onSearchInput(e.currentTarget.value)}
-              />
-              <Show when={search()}>
+        <AppPanel.Header class="library-header">
+          <div class="library-header-inner">
+            <AppPanel.HeaderRow>
+              <AppPanel.Title>Library</AppPanel.Title>
+              <AppPanel.Actions>
                 <button
                   type="button"
-                  aria-label="Clear search"
-                  class="flex items-center justify-center size-5 rounded-md text-icon-weak hover:text-icon-base transition-colors"
-                  onClick={() => onSearchInput("")}
+                  class="library-primary-action disabled:cursor-default disabled:opacity-55"
+                  disabled={isSyncing()}
+                  onClick={() => void syncAll()}
                 >
-                  <Icon name="x" size="small" />
+                  {isSyncing() ? "Syncing..." : "Sync"}
                 </button>
+              </AppPanel.Actions>
+            </AppPanel.HeaderRow>
+            <div class="library-header-controls">
+              <AppPanel.SegmentedNav items={navItems()} active={view()} onChange={(id) => setView(id as View)} />
+              <Show when={showSearch()}>
+                <div class="library-search-field">
+                  <Icon name="search" size="small" class="text-icon-weak shrink-0" />
+                  <input
+                    type="text"
+                    placeholder={
+                      view() === "memory"
+                        ? "Search memories..."
+                        : view() === "experience"
+                          ? "Search experiences..."
+                          : "Search skills..."
+                    }
+                    class="flex-1 bg-transparent text-13-regular text-text-base placeholder:text-text-weak outline-none"
+                    value={search()}
+                    onInput={(e) => onSearchInput(e.currentTarget.value)}
+                  />
+                  <Show when={search()}>
+                    <button
+                      type="button"
+                      aria-label="Clear search"
+                      class="library-icon-button"
+                      onClick={() => onSearchInput("")}
+                    >
+                      <Icon name="x" size="small" />
+                    </button>
+                  </Show>
+                </div>
               </Show>
             </div>
           </div>
-        </Show>
+        </AppPanel.Header>
         <Show when={searchError()}>
           <div class="shrink-0 px-6 pb-1">
             <span class="text-11-regular text-text-diff-delete-base">
@@ -170,47 +143,43 @@ export function LibraryPanel() {
             </span>
           </div>
         </Show>
-        <AppPanel.Body>
-          <Show when={view() === "stats"}>
-            <StatsView />
-            <div class="mt-6 pt-5 border-t border-border-base/20">
-              <div class="flex items-baseline gap-2 mb-3 px-0.5">
-                <span class="text-12-medium text-text-strong">Workspace usage</span>
-                <span class="text-11-regular text-text-weaker">Activity analytics across all projects</span>
+        <AppPanel.Body padding={false} class="library-body">
+          <div class="library-stage">
+            <Show when={view() === "stats"}>
+              <div class="library-section-block">
+                <div class="library-section-heading">
+                  <span class="library-section-title">Usage</span>
+                </div>
+                <StatsSection registerSync={setWorkspaceStatsSync} />
               </div>
-              <StatsSection />
-            </div>
-          </Show>
-          <Show when={view() === "memory"}>
-            <MemoryView
-              sdk={sdk}
-              search={debouncedSearch()}
-              isSearching={isSearching()}
-              setSearchError={setSearchError}
-              onRegisterRefetch={(fn) => (refetchMemoryData = fn)}
-              refetchStats={refetchStats}
-            />
-          </Show>
-          <Show when={view() === "experience"}>
-            <ExperienceView
-              sdk={sdk}
-              search={debouncedSearch()}
-              isSearching={isSearching()}
-              setSearchError={setSearchError}
-              onRegisterRefetch={(fn) => (refetchExperienceData = fn)}
-              refetchStats={refetchStats}
-              currentScopeID={currentScopeID()}
-              currentSessionID={currentSessionID()}
-            />
-          </Show>
-          <Show when={view() === "skill"}>
-            <SkillView
-              sdk={sdk}
-              search={debouncedSearch()}
-              directory={directory()}
-              onRegisterRefetch={(fn) => (refetchSkillData = fn)}
-            />
-          </Show>
+              <div class="library-section-block">
+                <StatsView registerSync={setLibraryStatsSync} storageLabel={storageLabel()} />
+              </div>
+            </Show>
+            <Show when={view() === "memory"}>
+              <MemoryView
+                sdk={sdk}
+                search={debouncedSearch()}
+                isSearching={isSearching()}
+                setSearchError={setSearchError}
+                refetchStats={refetchStats}
+              />
+            </Show>
+            <Show when={view() === "experience"}>
+              <ExperienceView
+                sdk={sdk}
+                search={debouncedSearch()}
+                isSearching={isSearching()}
+                setSearchError={setSearchError}
+                refetchStats={refetchStats}
+                currentScopeID={currentScopeID()}
+                currentSessionID={currentSessionID()}
+              />
+            </Show>
+            <Show when={view() === "skill"}>
+              <SkillView sdk={sdk} search={debouncedSearch()} directory={directory()} />
+            </Show>
+          </div>
         </AppPanel.Body>
       </AppPanel.Content>
     </AppPanel.Root>

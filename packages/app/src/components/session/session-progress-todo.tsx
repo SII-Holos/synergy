@@ -65,7 +65,7 @@ function labelClass(status: string): string {
     case "completed":
       return "bg-surface-success-base/20 text-on-success-base ring-1 ring-inset ring-border-success-base/15"
     case "cancelled":
-      return "bg-surface-raised-stronger text-text-weaker ring-1 ring-inset ring-border-weak-base"
+      return "workbench-control-surface text-text-weaker ring-1 ring-inset ring-border-weak-base"
     default:
       return ""
   }
@@ -120,9 +120,9 @@ export function SessionProgressTodo(props: SessionProgressTodoProps) {
                         toggleTodo(todo.id)
                       }
                     }}
-                    class="flex items-center gap-2 px-2.5 py-1.5 transition-colors cursor-pointer select-none hover:bg-surface-raised-base-hover"
+                    class="workbench-control-surface-hover flex items-center gap-2 px-2.5 py-1.5 transition-colors cursor-pointer select-none"
                     classList={{
-                      "bg-text-interactive-base/5 border-l-2 border-l-text-interactive-base": isActive(),
+                      "workbench-selected-surface ring-1 ring-inset ring-border-base/32": isActive(),
                     }}
                   >
                     {/* Status icon */}
@@ -155,7 +155,7 @@ export function SessionProgressTodo(props: SessionProgressTodoProps) {
 
                   {/* Expanded detail for long content */}
                   <Show when={isExpanded()}>
-                    <div class="flex items-center gap-2 px-2.5 py-1.5 bg-surface-raised-base border-t border-border-weak-base/40">
+                    <div class="workbench-card-surface flex items-center gap-2 px-2.5 py-1.5 border-t border-border-weak-base/40">
                       <span class="shrink-0 text-sm leading-none text-text-weaker"> </span>
                       <span class="text-xs leading-snug text-text-base whitespace-pre-wrap break-words flex-1 min-w-0">
                         {todo.content}

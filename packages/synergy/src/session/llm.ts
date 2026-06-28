@@ -1,6 +1,7 @@
 import { Provider } from "@/provider/provider"
 import { Log } from "@/util/log"
 import {
+  stepCountIs,
   streamText,
   wrapLanguageModel,
   type ModelMessage,
@@ -33,7 +34,6 @@ export namespace LLM {
    *  2. Recover tool call input JSON that is syntactically truncated (e.g. missing
    *     the outer closing `}` when the last field is itself an object/array — a
    *     common LLM tokenization artifact).
-   *  3. Fall back to the "invalid" tool path so the agent sees an actionable error.
    *
    * Guardrails:
    *  - JSON recovery is only attempted when native JSON.parse fails. If the input
@@ -111,6 +111,7 @@ export namespace LLM {
     messages: ModelMessage[]
     small?: boolean
     tools: Record<string, Tool>
+    activeToolIDs?: string[]
     retries?: number
   }
 
@@ -228,21 +229,15 @@ export namespace LLM {
           }
           return repaired
         }
-        return {
-          ...failed.toolCall,
-          input: JSON.stringify({
-            tool: failed.toolCall.toolName,
-            error: failed.error.message,
-          }),
-          toolName: "invalid",
-        }
+        return null
       },
       temperature: params.temperature,
       topP: params.topP,
       topK: params.topK,
       providerOptions: ProviderTransform.providerOptions(input.model, params.options),
-      activeTools: Object.keys(tools).filter((x) => x !== "invalid"),
+      activeTools: input.activeToolIDs ?? Object.keys(tools),
       tools,
+      stopWhen: stepCountIs(1),
       maxOutputTokens,
       abortSignal: input.abort,
       headers: input.model.headers,

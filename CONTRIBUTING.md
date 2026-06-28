@@ -38,17 +38,15 @@ bun dev prepare        # install deps, generate SDK, build frontend
 Start the dev server:
 
 ```bash
-bun dev server         # start the server
-bun dev web            # open the server-served web UI (separate terminal)
+bun dev web            # start the server + Vite web UI
+bun dev desktop        # optional: start the Electron desktop shell too
 ```
-
-Only use `bun dev web --dev` when actively debugging Vite/HMR behavior. Do not leave the Vite dev server running by default.
 
 After editing code:
 
 ```bash
-bun dev build       # rebuild frontend (after app changes)
-bun dev server      # restart the server
+bun dev build app       # rebuild the web app
+bun dev build desktop   # rebuild Electron main/preload
 ```
 
 See the [Development section in README](README.md#development) for the full workflow — production builds, test commands, SDK generation, and more.
@@ -81,7 +79,7 @@ See the [Development section in README](README.md#development) for the full work
 
 Match the patterns you find in the surrounding code. A few specifics worth knowing:
 
-- **Namespace-based organization** is the established pattern for modules. Extend it rather than introducing a parallel style.
+- **Namespace-based organization** is the established pattern for modules. Extend that pattern for related code.
 - **Zod** handles runtime validation. Add `.meta({ ref: "TypeName" })` for API-exposed schemas.
 - **`const` over `let`**, early returns over deep nesting.
 - **No inline comments** unless explicitly needed. The code should be clear without them.

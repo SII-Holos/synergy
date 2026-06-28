@@ -1,7 +1,7 @@
 import { createEffect, createMemo, createRoot, onCleanup } from "solid-js"
 import { createStore, produce } from "solid-js/store"
 import { createSimpleContext } from "@ericsanchezok/synergy-ui/context"
-import type { FileContent } from "@ericsanchezok/synergy-sdk"
+import type { WorkspaceFileReadResult } from "@ericsanchezok/synergy-sdk"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import { useParams } from "@solidjs/router"
 import { getFilename } from "@ericsanchezok/synergy-util/path"
@@ -35,7 +35,7 @@ export type FileState = {
   loaded?: boolean
   loading?: boolean
   error?: string
-  content?: FileContent
+  content?: WorkspaceFileReadResult
 }
 
 function stripFileProtocol(input: string) {
@@ -299,7 +299,7 @@ export const { use: useFile, provider: FileProvider } = createSimpleContext({
         }),
       )
 
-      const promise = sdk.client.file
+      const promise = sdk.client.workspace.files
         .read({ path })
         .then((x) => {
           setStore(
@@ -341,6 +341,35 @@ export const { use: useFile, provider: FileProvider } = createSimpleContext({
       const path = normalize(event.properties.file)
       if (!path) return
       if (path.startsWith(".git/")) return
+      if (event.properties.event === "deleted") {
+        setStore(
+          "file",
+          produce((draft) => {
+            delete draft[path]
+          }),
+        )
+        return
+      }
+      if (event.properties.event === "renamed") {
+        const oldPath = normalize(event.properties.oldPath ?? "")
+        if (oldPath && store.file[oldPath]) {
+          setStore(
+            "file",
+            produce((draft) => {
+              draft[path] = {
+                ...draft[oldPath],
+                path,
+                name: getFilename(path),
+                loaded: false,
+              }
+              delete draft[oldPath]
+            }),
+          )
+          load(path, { force: true })
+        }
+        return
+      }
+      if (event.properties.event === "added") return
       if (!store.file[path]) return
       load(path, { force: true })
     })
@@ -385,9 +414,19 @@ export const { use: useFile, provider: FileProvider } = createSimpleContext({
       selectedLines,
       setSelectedLines,
       searchFiles: (query: string) =>
-        sdk.client.find.files({ query, dirs: "false" }).then((x) => (x.data ?? []).map(normalize)),
+        sdk.client.workspace.files
+          .search({ query, kind: "files" })
+          .then((x) =>
+            (x.data?.items ?? [])
+              .filter((item) => item.kind === "file" && item.type === "file")
+              .map((item) => normalize(item.path)),
+          ),
       searchFilesAndDirectories: (query: string) =>
-        sdk.client.find.files({ query, dirs: "true" }).then((x) => (x.data ?? []).map(normalize)),
+        sdk.client.workspace.files
+          .search({ query, kind: "files" })
+          .then((x) =>
+            (x.data?.items ?? []).filter((item) => item.kind === "file").map((item) => normalize(item.path)),
+          ),
     }
   },
 })

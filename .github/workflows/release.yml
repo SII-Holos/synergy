@@ -74,10 +74,149 @@ jobs:
           name: release-state-${{ steps.publish.outputs.version }}
           path: ${{ steps.publish.outputs.state_path }}
 
+  stable_desktop_package:
+    name: Build Desktop Artifacts (${{ matrix.platform }})
+    needs: [stable_candidate]
+    if: ${{ inputs.target == 'product' && needs.stable_candidate.result == 'success' }}
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            platform: darwin
+            runtime_targets: darwin-x64,darwin-arm64
+            builder_args: --mac dmg zip --x64 --arm64
+          - os: windows-latest
+            platform: win32
+            runtime_targets: win32-x64,win32-arm64
+            builder_args: --win nsis zip --x64 --arm64
+          - os: ubuntu-latest
+            platform: linux
+            runtime_targets: linux-x64,linux-arm64
+            builder_args: --linux AppImage deb tar.gz --x64 --arm64
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.13"
+
+      - name: Install Linux packaging dependencies
+        if: ${{ matrix.platform == 'linux' }}
+        run: sudo apt-get update && sudo apt-get install -y libarchive-tools rpm
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Prepare release version
+        run: bun run ./script/release/desktop-prepare-version.ts
+        env:
+          SYNERGY_VERSION: ${{ needs.stable_candidate.outputs.version }}
+
+      - name: Build Synergy runtime for desktop package
+        run: bun run ./packages/synergy/script/build.ts
+        env:
+          SYNERGY_VERSION: ${{ needs.stable_candidate.outputs.version }}
+          SYNERGY_CHANNEL: stable
+          SYNERGY_BUILD_TARGETS: ${{ matrix.runtime_targets }}
+          SYNERGY_REUSE_PUBLISHED_RUNTIME: ${{ matrix.platform == 'win32' && '1' || '' }}
+
+      - name: Build desktop main process
+        run: bun run --cwd packages/desktop desktop:build
+
+      - name: Package desktop artifact
+        shell: bash
+        run: |
+          BUILDER_ARGS=(${{ matrix.builder_args }})
+          if [ -z "${CSC_LINK:-}" ]; then
+            unset CSC_LINK
+            unset CSC_KEY_PASSWORD
+            if [ "${{ matrix.platform }}" = "darwin" ]; then
+              BUILDER_ARGS+=(--config.mac.identity=null)
+            fi
+          fi
+          if [ -z "${APPLE_ID:-}" ]; then
+            unset APPLE_ID
+            unset APPLE_APP_SPECIFIC_PASSWORD
+            unset APPLE_TEAM_ID
+          fi
+          cd packages/desktop
+          bunx electron-builder "${BUILDER_ARGS[@]}" --publish=never
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          CSC_LINK: ${{ matrix.platform == 'win32' && secrets.WINDOWS_CERTIFICATE || secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ matrix.platform == 'win32' && secrets.WINDOWS_CERTIFICATE_PASSWORD || secrets.CSC_KEY_PASSWORD }}
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload desktop artifact bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-artifacts-${{ matrix.platform }}
+          path: |
+            packages/desktop/release/*.AppImage
+            packages/desktop/release/*.blockmap
+            packages/desktop/release/*.deb
+            packages/desktop/release/*.dmg
+            packages/desktop/release/*.exe
+            packages/desktop/release/*.tar.gz
+            packages/desktop/release/*.yml
+            packages/desktop/release/*.zip
+
+  stable_desktop_publish:
+    name: Upload Desktop Artifacts
+    needs: [stable_candidate, stable_desktop_package]
+    if: ${{ inputs.target == 'product' && needs.stable_candidate.result == 'success' && needs.stable_desktop_package.result == 'success' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      RELEASE_VERSION: ${{ needs.stable_candidate.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.13"
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Download desktop artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: desktop-release-input
+          pattern: desktop-artifacts-*
+          merge-multiple: true
+
+      - name: Generate checksums
+        shell: bash
+        run: |
+          mkdir -p desktop-release
+          find desktop-release-input -maxdepth 2 -type f -exec cp {} desktop-release/ \;
+          SYNERGY_VERSION="${RELEASE_VERSION}" bun run --cwd packages/desktop script/checksums.ts "${GITHUB_WORKSPACE}/desktop-release"
+
+      - name: Upload desktop assets to draft release
+        shell: bash
+        run: gh release upload "v${RELEASE_VERSION}" desktop-release/* --clobber
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
   stable_finalize:
     name: Finalize Stable Release
-    needs: [stable_candidate]
-    if: ${{ inputs.target == 'product' && always() && needs.stable_candidate.result == 'success' }}
+    needs: [stable_candidate, stable_desktop_publish]
+    if: ${{ inputs.target == 'product' && always() && needs.stable_candidate.result == 'success' && needs.stable_desktop_publish.result == 'success' }}
     runs-on: ubuntu-latest
     permissions:
       contents: write

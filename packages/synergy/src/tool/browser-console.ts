@@ -1,17 +1,19 @@
 import z from "zod"
 import { Tool } from "./tool"
 import { BrowserToolHelper } from "./browser-shared"
+import { BrowserOwner } from "../browser/owner"
 
 export const BrowserConsoleTool = Tool.define("browser_console", {
   description:
-    "Get console entries from a browser tab's console buffer. Returns entries formatted as plain text lines with timestamp, level, and message. Use this to inspect JavaScript runtime errors, warnings, and log output from the page.",
+    "Get console entries from a browser page's console buffer. Returns entries formatted as plain text lines with timestamp, level, and message. Use this to inspect JavaScript runtime errors, warnings, and log output from the page.",
   parameters: z.object({
-    tabId: z.string().describe("Browser tab ID. Uses the active tab if omitted.").optional(),
+    pageId: z.string().describe("Browser page ID. Uses the session page if omitted.").optional(),
     maxEntries: z.number().describe("Maximum entries to return (default 50).").default(50).optional(),
     filter: z.string().describe("Optional regex pattern to filter entries by text content.").optional(),
   }),
   async execute(params, ctx) {
-    const tab = await BrowserToolHelper.resolveTab(ctx, params.tabId)
+    const owner = BrowserOwner.fromToolContext(ctx)
+    const tab = await BrowserToolHelper.resolvePage(ctx, params.pageId)
     return BrowserToolHelper.withActivity(
       ctx,
       tab,
@@ -19,7 +21,13 @@ export const BrowserConsoleTool = Tool.define("browser_console", {
       "browser_console",
       "Reading console entries",
       async () => {
-        const entries = await tab.consoleEntries(params.maxEntries ?? 50)
+        const result = await BrowserToolHelper.executeControl(owner, {
+          type: "console",
+          pageId: tab.id,
+          maxEntries: params.maxEntries ?? 50,
+        })
+        if (result.type !== "console") throw new Error("Browser console command returned an unexpected result")
+        const entries = result.entries
 
         let filtered = entries
         if (params.filter) {

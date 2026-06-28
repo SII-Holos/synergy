@@ -7,9 +7,10 @@ import { SessionInteraction } from "@/session/interaction"
 import { ScopeContext } from "@/scope/context"
 import { ScopedState } from "@/scope/scoped-state"
 import { Log } from "@/util/log"
+import { ToolTimeout } from "@/tool/timeout"
 import z from "zod"
 
-export const DEFAULT_TIMEOUT = 1800
+export const DEFAULT_TIMEOUT = ToolTimeout.DEFAULTS.questionMs / 1_000
 
 export namespace Question {
   const log = Log.create({ service: "question" })

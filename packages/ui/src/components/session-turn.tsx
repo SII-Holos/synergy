@@ -20,7 +20,13 @@ import { DiffChanges } from "./diff-changes"
 import { Typewriter } from "./typewriter"
 import { Message, Part } from "./message-part"
 import { ArtifactGallery } from "./attachment-card"
-import { isArtifactOnlyToolPart, primaryToolAttachments } from "./tool-result-presentation"
+import {
+  isActiveMediaGenerationToolPart,
+  isPromotedToolResultPart,
+  primaryToolAttachments,
+  shouldHideToolPart,
+} from "./tool-result-presentation"
+import { MediaGenerationCard } from "./media-generation-card"
 import "./session-turn.css"
 import "./tool-renders"
 import { Markdown } from "./markdown"
@@ -242,7 +248,7 @@ export function SessionTurn(
       for (let pi = msgParts.length - 1; pi >= 0; pi--) {
         const part = msgParts[pi]
         if (part?.type === "text") return part as TextPart
-        if (part?.type === "tool") return undefined
+        if (part?.type === "tool" && !shouldHideToolPart(part)) return undefined
       }
     }
     return undefined
@@ -254,7 +260,7 @@ export function SessionTurn(
       for (let pi = msgParts.length - 1; pi >= 0; pi--) {
         const part = msgParts[pi]
         if (part?.type === "reasoning") return part as ReasoningPart
-        if (part?.type === "tool") return undefined
+        if (part?.type === "tool" && !shouldHideToolPart(part)) return undefined
       }
     }
     return undefined
@@ -265,7 +271,7 @@ export function SessionTurn(
       const msgParts = data.store.part[m.id]
       if (!msgParts) continue
       for (const p of msgParts) {
-        if (p?.type === "tool" && !isArtifactOnlyToolPart(p)) return true
+        if (p?.type === "tool" && !shouldHideToolPart(p)) return true
       }
     }
     return false
@@ -277,7 +283,7 @@ export function SessionTurn(
       const msgParts = data.store.part[m.id]
       if (!msgParts) continue
       for (const p of msgParts) {
-        if (p?.type === "tool" && !isArtifactOnlyToolPart(p)) count++
+        if (p?.type === "tool" && !shouldHideToolPart(p)) count++
       }
     }
     return count
@@ -397,17 +403,36 @@ export function SessionTurn(
       const msgParts = data.store.part[m.id]
       if (!msgParts) continue
       for (const p of msgParts) {
-        if (isArtifactOnlyToolPart(p)) attachments.push(...primaryToolAttachments(p))
+        if (isPromotedToolResultPart(p)) attachments.push(...primaryToolAttachments(p))
       }
     }
     return attachments
   })
+  const activeMediaGenerationParts = createMemo<ToolPart[]>(() => {
+    const parts: ToolPart[] = []
+    for (const m of assistantMessages()) {
+      const msgParts = data.store.part[m.id]
+      if (!msgParts) continue
+      for (const p of msgParts) {
+        if (isActiveMediaGenerationToolPart(p)) parts.push(p as ToolPart)
+      }
+    }
+    return parts
+  })
+  const hasActiveMediaGenerationParts = createMemo(() => activeMediaGenerationParts().length > 0)
   const hasPrimaryResultAttachments = createMemo(() => primaryResultAttachments().length > 0)
   const onlyPrimaryResult = createMemo(
     () => hasPrimaryResultAttachments() && !response() && !hasDiffs() && !hasSteps() && !chroniclerSessionID(),
   )
+  const onlyActiveMediaGeneration = createMemo(
+    () => hasActiveMediaGenerationParts() && !hasSteps() && !chroniclerSessionID(),
+  )
   const showStepsRow = createMemo(
-    () => working() || hasSteps() || chroniclerSessionID() || (assistantMessages().length > 0 && !onlyPrimaryResult()),
+    () =>
+      hasSteps() ||
+      chroniclerSessionID() ||
+      (working() && !onlyActiveMediaGeneration()) ||
+      (assistantMessages().length > 0 && !onlyPrimaryResult() && !hasActiveMediaGenerationParts()),
   )
 
   const injectedContext = createMemo(() => getInjectedContext(message() as UserMessage | undefined))
@@ -699,7 +724,12 @@ export function SessionTurn(
                       </div>
                     </Show>
                     {/* Steps content (expanded) */}
-                    <Show when={(working() || (props.stepsExpanded && hasSteps())) && assistantMessages().length > 0}>
+                    <Show
+                      when={
+                        ((working() && hasSteps()) || (props.stepsExpanded && hasSteps())) &&
+                        assistantMessages().length > 0
+                      }
+                    >
                       <div data-slot="session-turn-collapsible-content-inner">
                         <For each={assistantMessages()}>
                           {(assistantMessage) => (
@@ -717,9 +747,15 @@ export function SessionTurn(
                       </div>
                     </Show>
                     {/* Response — no label, just content */}
-                    <Show when={!working() && (response() || hasDiffs() || hasPrimaryResultAttachments())}>
+                    <Show
+                      when={
+                        hasActiveMediaGenerationParts() ||
+                        (!working() && (response() || hasDiffs() || hasPrimaryResultAttachments()))
+                      }
+                    >
                       <div data-slot="session-turn-response-section">
-                        <Show when={response()}>
+                        <For each={activeMediaGenerationParts()}>{(part) => <MediaGenerationCard part={part} />}</For>
+                        <Show when={response() && (!working() || (hasActiveMediaGenerationParts() && !hasSteps()))}>
                           <div data-slot="session-turn-response-body">
                             <Markdown
                               data-slot="session-turn-markdown"
@@ -728,84 +764,86 @@ export function SessionTurn(
                             />
                           </div>
                         </Show>
-                        <Show when={hasPrimaryResultAttachments()}>
+                        <Show when={!working() && hasPrimaryResultAttachments()}>
                           <ArtifactGallery
                             files={primaryResultAttachments()}
                             serverUrl={data.serverUrl}
                             variant="result"
                           />
                         </Show>
-                        <Accordion
-                          data-slot="session-turn-accordion"
-                          multiple
-                          value={store.diffsOpen}
-                          onChange={(value) => {
-                            if (!Array.isArray(value)) return
-                            setStore("diffsOpen", value)
-                          }}
-                        >
-                          <For each={(msg().summary?.diffs ?? []).slice(0, store.diffLimit)}>
-                            {(diff) => (
-                              <Accordion.Item value={diff.file}>
-                                <StickyAccordionHeader>
-                                  <Accordion.Trigger>
-                                    <div data-slot="session-turn-accordion-trigger-content">
-                                      <div data-slot="session-turn-file-info">
-                                        <FileIcon
-                                          node={{ path: diff.file, type: "file" }}
-                                          data-slot="session-turn-file-icon"
-                                        />
-                                        <div data-slot="session-turn-file-path">
-                                          <Show when={diff.file.includes("/")}>
-                                            <span data-slot="session-turn-directory">
-                                              {getDirectory(diff.file)}&lrm;
-                                            </span>
-                                          </Show>
-                                          <span data-slot="session-turn-filename">{getFilename(diff.file)}</span>
-                                        </div>
-                                      </div>
-                                      <div data-slot="session-turn-accordion-actions">
-                                        <DiffChanges changes={diff} />
-                                        <Icon name="grip-vertical" size="small" />
-                                      </div>
-                                    </div>
-                                  </Accordion.Trigger>
-                                </StickyAccordionHeader>
-                                <Accordion.Content data-slot="session-turn-accordion-content">
-                                  <Show when={store.diffsOpen.includes(diff.file!)}>
-                                    <Dynamic
-                                      component={diffComponent}
-                                      before={{
-                                        name: diff.file!,
-                                        contents: diff.before!,
-                                      }}
-                                      after={{
-                                        name: diff.file!,
-                                        contents: diff.after!,
-                                      }}
-                                    />
-                                  </Show>
-                                </Accordion.Content>
-                              </Accordion.Item>
-                            )}
-                          </For>
-                        </Accordion>
-                        <Show when={(msg().summary?.diffs?.length ?? 0) > store.diffLimit}>
-                          <Button
-                            data-slot="session-turn-accordion-more"
-                            variant="ghost"
-                            size="small"
-                            onClick={() => {
-                              const total = msg().summary?.diffs?.length ?? 0
-                              setStore("diffLimit", (limit) => {
-                                const next = limit + diffBatch
-                                if (next > total) return total
-                                return next
-                              })
+                        <Show when={!working() && hasDiffs()}>
+                          <Accordion
+                            data-slot="session-turn-accordion"
+                            multiple
+                            value={store.diffsOpen}
+                            onChange={(value) => {
+                              if (!Array.isArray(value)) return
+                              setStore("diffsOpen", value)
                             }}
                           >
-                            Show more changes ({(msg().summary?.diffs?.length ?? 0) - store.diffLimit})
-                          </Button>
+                            <For each={(msg().summary?.diffs ?? []).slice(0, store.diffLimit)}>
+                              {(diff) => (
+                                <Accordion.Item value={diff.file}>
+                                  <StickyAccordionHeader>
+                                    <Accordion.Trigger>
+                                      <div data-slot="session-turn-accordion-trigger-content">
+                                        <div data-slot="session-turn-file-info">
+                                          <FileIcon
+                                            node={{ path: diff.file, type: "file" }}
+                                            data-slot="session-turn-file-icon"
+                                          />
+                                          <div data-slot="session-turn-file-path">
+                                            <Show when={diff.file.includes("/")}>
+                                              <span data-slot="session-turn-directory">
+                                                {getDirectory(diff.file)}&lrm;
+                                              </span>
+                                            </Show>
+                                            <span data-slot="session-turn-filename">{getFilename(diff.file)}</span>
+                                          </div>
+                                        </div>
+                                        <div data-slot="session-turn-accordion-actions">
+                                          <DiffChanges changes={diff} />
+                                          <Icon name="grip-vertical" size="small" />
+                                        </div>
+                                      </div>
+                                    </Accordion.Trigger>
+                                  </StickyAccordionHeader>
+                                  <Accordion.Content data-slot="session-turn-accordion-content">
+                                    <Show when={store.diffsOpen.includes(diff.file!)}>
+                                      <Dynamic
+                                        component={diffComponent}
+                                        before={{
+                                          name: diff.file!,
+                                          contents: diff.before!,
+                                        }}
+                                        after={{
+                                          name: diff.file!,
+                                          contents: diff.after!,
+                                        }}
+                                      />
+                                    </Show>
+                                  </Accordion.Content>
+                                </Accordion.Item>
+                              )}
+                            </For>
+                          </Accordion>
+                          <Show when={(msg().summary?.diffs?.length ?? 0) > store.diffLimit}>
+                            <Button
+                              data-slot="session-turn-accordion-more"
+                              variant="ghost"
+                              size="small"
+                              onClick={() => {
+                                const total = msg().summary?.diffs?.length ?? 0
+                                setStore("diffLimit", (limit) => {
+                                  const next = limit + diffBatch
+                                  if (next > total) return total
+                                  return next
+                                })
+                              }}
+                            >
+                              Show more changes ({(msg().summary?.diffs?.length ?? 0) - store.diffLimit})
+                            </Button>
+                          </Show>
                         </Show>
                       </div>
                     </Show>

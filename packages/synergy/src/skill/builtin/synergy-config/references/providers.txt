@@ -48,8 +48,8 @@ If the provider is in the registry, it is a **built-in provider**. All metadata 
 IMPORTANT: Do NOT write provider config to `20-providers.jsonc` for built-in providers. It is unnecessary and can cause conflicts.
 
 ```
-1. Read ~/.synergy/data/auth/api-key.json (create with {} if missing)
-2. Add/merge: "<provider-id>": { "type": "api", "key": "<user's key>" }
+1. Read ~/.synergy/data/auth/provider-auth.json (create with the v2 store shape if missing)
+2. Add/merge `credentials["<provider-id>"]` as a v2 entry with `authKind: "api_key"` and `tokens.apiKey`
    - The provider ID is the key from the registry (e.g., "minimax", "anthropic", "openai")
 3. Write back the file
 4. runtime_reload(target: "provider")
@@ -66,14 +66,14 @@ IMPORTANT: Do NOT write provider config to `20-providers.jsonc` for built-in pro
 
 **CRITICAL:** `20-providers.jsonc` is a core configuration file. Incorrect modifications can prevent Synergy from starting.
 - NEVER overwrite the entire file — always use surgical edit (`oldString`/`newString` via the `edit` tool)
-- For built-in providers (found in registry), ONLY save API key to `api-key.json` — do NOT add provider config to `20-providers.jsonc`
+- For built-in providers (found in registry), ONLY save credentials to `provider-auth.json` — do NOT add provider config to `20-providers.jsonc`
 - Read the file FIRST before any edit, and preserve all existing content including comments
 
 If the provider is not in the registry (e.g., a local vLLM server, a private proxy, a niche provider), you need BOTH credential store entry AND provider config in `20-providers.jsonc`:
 
 ```
-1. Read ~/.synergy/data/auth/api-key.json (create with {} if missing)
-2. Add/merge: "<provider-id>": { "type": "api", "key": "<user's key>" }
+1. Read ~/.synergy/data/auth/provider-auth.json (create with the v2 store shape if missing)
+2. Add/merge `credentials["<provider-id>"]` as a v2 entry with `authKind: "api_key"` and `tokens.apiKey`
 3. Write back the file
 4. Add provider config to `~/.synergy/config/synergy.d/20-providers.jsonc` under "provider":
    "<provider-id>": {
@@ -140,7 +140,7 @@ If a provider IS in the registry but the user wants to customize it (whitelist m
 ```
 
 **IMPORTANT: API key placement.** Never put API keys directly in domain config files — they are stored in plain text. Instead:
-- **Provider-level key** → save to credential store (`~/.synergy/data/auth/api-key.json`). See Step 2a/2b above.
+- **Provider-level key** → save to credential store (`~/.synergy/data/auth/provider-auth.json`). See Step 2a/2b above.
 - **Model-level key** → use `{env:VAR_NAME}` reference in `options.apiKey`, or save to credential store under a separate provider ID for that model's backend.
 
 The credential store is the preferred and most secure location for all API keys. The `{env:VAR_NAME}` syntax is the recommended way to reference keys in config when you need per-model overrides.
@@ -156,7 +156,7 @@ Synergy loads providers from two sources:
 When loading a provider, Synergy resolves credentials in this order (highest priority last):
 
 1. **Environment variables** — provider-specific env vars (e.g., `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`). Each provider in the registry defines which env vars it checks.
-2. **Credential store** — `~/.synergy/data/auth/api-key.json`. This is the preferred method.
+2. **Credential store** — `~/.synergy/data/auth/provider-auth.json`. This is the preferred method.
 3. **Config inline** — `provider.<id>.options.apiKey` or `provider.<id>.models.<name>.options.apiKey` in config. Supports `{env:VAR_NAME}` references. Model-level takes precedence over provider-level.
 4. **Plugin auth loaders** — for providers like GitHub Copilot that use OAuth flows.
 
@@ -164,22 +164,40 @@ For built-in providers, adding the API key to the credential store is ALL you ne
 
 ## Credential store
 
-Located at `~/.synergy/data/auth/api-key.json`. File is chmod 600, separate from config.
+Located at `~/.synergy/data/auth/provider-auth.json`. File is chmod 600 and separate from config. Imported auth files are handled by migrations only.
 
-Format — JSON object mapping provider IDs to auth entries:
+Format — v2 JSON object mapping provider IDs to credential entries:
 ```json
 {
-  "anthropic": { "type": "api", "key": "sk-ant-..." },
-  "openai": { "type": "api", "key": "sk-..." },
-  "minimax": { "type": "api", "key": "sk-cp-..." }
+  "schemaVersion": 2,
+  "credentials": {
+    "openai": {
+      "providerID": "openai",
+      "authKind": "api_key",
+      "tokens": { "apiKey": "sk-..." },
+      "source": "cli",
+      "updatedAt": 1782345600000,
+      "pool": [
+        {
+          "id": "openai",
+          "status": "active",
+          "authKind": "api_key",
+          "tokens": { "apiKey": "sk-..." },
+          "source": "cli",
+          "usageCount": 0,
+          "updatedAt": 1782345600000
+        }
+      ]
+    }
+  }
 }
 ```
 
 Auth entry types:
-- `{ "type": "api", "key": "<key>" }` — standard API key (most common)
-- `{ "type": "oauth", "refresh": "...", "access": "...", "expires": <timestamp> }` — OAuth token (managed by plugins)
-- `{ "type": "holos", "agentId": "...", "agentSecret": "..." }` — Holos identity auth
-- `{ "type": "wellknown", "key": "...", "token": "..." }` — well-known remote config auth
+- `authKind: "api_key"` with `tokens.apiKey` — standard API key (most common)
+- `authKind: "oauth"` with `tokens.accessToken`, `tokens.refreshToken`, and `expiresAt` — subscription/OAuth token
+- `authKind: "holos"` with `tokens.agentId` and `tokens.agentSecret` — Holos identity auth
+- `authKind: "wellknown"` with `tokens.key` and `tokens.token` — well-known remote config auth
 
 ## Environment variable references
 
@@ -379,7 +397,7 @@ For any OpenAI-compatible server, use `@ai-sdk/openai-compatible` as the SDK and
 
 ### Cloudflare AI Gateway
 - Requires `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_GATEWAY_ID` env vars.
-- Uses `cf-aig-authorization` header instead of standard `Authorization`.
+- Uses the `cf-aig-authorization` header.
 
 ### OpenRouter / Vercel
 - Adds `HTTP-Referer` and `X-Title` headers automatically.

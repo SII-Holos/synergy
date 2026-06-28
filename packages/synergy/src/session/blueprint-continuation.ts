@@ -111,10 +111,10 @@ export namespace BlueprintContinuation {
     return [
       `BlueprintLoop ${loop.id} status is \`running\`.`,
       "",
-      `A normal final response does not finish this loop. Inspect the Blueprint note (${loop.noteID}), the current implementation state, and any test or verification results before deciding what to do next.`,
+      `A normal final response does not finish this loop. Inspect the Blueprint note (${loop.noteID}), the current delivered state, and any domain-appropriate quality evidence before deciding what to do next.`,
       "",
-      `If the Blueprint is not fully implemented, continue the remaining implementation work now.`,
-      `If the Blueprint is fully implemented and ready for review, call blueprint_loop_finish({ loopID: "${loop.id}", status: "auditing", summary: "..." }).`,
+      `If the Blueprint outcome is not complete, continue the remaining execution work now.`,
+      `If the Blueprint outcome is complete and ready for review, call blueprint_loop_finish({ loopID: "${loop.id}", status: "auditing", summary: "..." }).`,
       `If the task is blocked beyond recovery, call blueprint_loop_finish({ loopID: "${loop.id}", status: "failed", summary: "..." }).`,
     ].join("\n")
   }

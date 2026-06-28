@@ -26,7 +26,9 @@ When you need detailed schema, fields, or examples for a specific config area, l
 
 **Precedence** (low → high): remote/well-known → global → project → `SYNERGY_CONFIG_CONTENT` env var.
 
-**Note:** If the `SYNERGY_HOME` environment variable is set, the base directory for all data and config paths below is `$SYNERGY_HOME/.synergy/` instead of `~/.synergy/`. Always check `echo $SYNERGY_HOME` first — if empty, use `~/.synergy/` as normal.
+Web Settings uses these same canonical domains. Common fields are editable in forms, and complex domains can be opened from Settings with the system default editor.
+
+**Note:** If the `SYNERGY_HOME` environment variable is set, the base directory for all data and config paths below is `$SYNERGY_HOME/.synergy/`. Otherwise, use `~/.synergy/`. Always check `echo $SYNERGY_HOME` first.
 
 ### Domain files
 
@@ -37,20 +39,20 @@ When you need detailed schema, fields, or examples for a specific config area, l
 | `20-providers.jsonc` | `provider`, `enabled_providers`, `disabled_providers` |
 | `30-library.jsonc` | `library` |
 | `40-mcp.jsonc` | `mcp`, `mcpDefaults` |
-| `50-plugins.jsonc` | `plugin`, `pluginConfig` |
+| `50-plugins.jsonc` | `plugin`, `pluginConfig`, `pluginApprovalPolicy`, `pluginRuntimePolicy`, `pluginMarketplace` |
 | `60-agents.jsonc` | `default_agent`, `agent`, `external_agent`, `instructions`, `category` |
 | `70-commands.jsonc` | `command` |
-| `80-permissions.jsonc` | `permission`, `tools`, `controlProfile`, `sandbox` |
+| `80-permissions.jsonc` | `permission`, `tools`, `controlProfile`, `sandbox`, `smartAllow` |
 | `90-channels.jsonc` | `channel` |
 | `100-holos.jsonc` | `holos`, `enterprise` |
 | `110-email.jsonc` | `email` |
-| `120-runtime.jsonc` | `server`, `timeout`, `watcher`, `formatter`, `lsp`, `question`, `compaction`, `experimental` |
+| `120-runtime.jsonc` | `server`, `timeout`, `watcher`, `formatter`, `lsp`, `question`, `compaction`, `experimental`, `observability` |
 
 ### Key data paths
 
 | What | Path |
 |---|---|
-| API key credential store | `~/.synergy/data/auth/api-key.json` |
+| Provider credential store | `~/.synergy/data/auth/provider-auth.json` |
 | MCP OAuth credentials | `~/.synergy/data/auth/mcp.json` |
 | Provider/model cache | `~/.synergy/cache/models.json` |
 | Agent markdown (global) | `~/.synergy/config/agent/<name>.md` |
@@ -82,7 +84,7 @@ Every config change follows this pattern:
 ### Critical rules
 
 1. Always read before writing — merge, never overwrite
-2. Never hardcode API keys in config files — use the credential store (`~/.synergy/data/auth/api-key.json`) or `{env:VAR_NAME}` references
+2. Never hardcode API keys in config files — use the credential store (`~/.synergy/data/auth/provider-auth.json`) or `{env:VAR_NAME}` references
 3. Preserve existing JSONC comments
 4. Always reload after writing — changes don't apply until reloaded
 5. `$schema` belongs only in `00-general.jsonc`; other domain files should contain only their owned keys

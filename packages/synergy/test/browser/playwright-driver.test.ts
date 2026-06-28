@@ -241,16 +241,16 @@ describe("PlaywrightBrowserDriver page lifecycle (RED)", () => {
     const page = await driver.newPage(owner)
 
     // The page has an internal tracking ID stored by the driver
-    const tabID = (page as any)._synergyTabID as string
-    expect(tabID).toBeTruthy()
-    expect(typeof tabID).toBe("string")
+    const pageID = (page as any)._synergyPageID as string
+    expect(pageID).toBeTruthy()
+    expect(typeof pageID).toBe("string")
 
     // getPage returns the same page object
-    const found = driver.getPage(owner, tabID)
+    const found = driver.getPage(owner, pageID)
     expect(found).toBe(page)
   })
 
-  test("getPage returns undefined for unknown tabID", async () => {
+  test("getPage returns undefined for unknown pageID", async () => {
     const mod = await importFresh("../../src/browser/playwright-driver.js")
     expect(mod).not.toBeNull()
     expect(mod!.PlaywrightBrowserDriver).toBeDefined()
@@ -264,7 +264,7 @@ describe("PlaywrightBrowserDriver page lifecycle (RED)", () => {
 
     const Driver = mod!.PlaywrightBrowserDriver as { new (): any }
     const driver = new Driver()
-    const found = driver.getPage(owner, "nonexistent-tab-id")
+    const found = driver.getPage(owner, "nonexistent-page-id")
     expect(found).toBeUndefined()
   })
 
@@ -283,14 +283,14 @@ describe("PlaywrightBrowserDriver page lifecycle (RED)", () => {
     const Driver = mod!.PlaywrightBrowserDriver as { new (): any }
     const driver = new Driver()
     const created = await driver.newPage(owner, "https://example.com")
-    const tabID = (created as any)._synergyTabID as string
-    const found = driver.getPage(owner, tabID)
+    const pageID = (created as any)._synergyPageID as string
+    const found = driver.getPage(owner, pageID)
 
     expect(found).not.toBeUndefined()
     expect(found).toBe(created)
   })
 
-  test("closePage(owner, tabID) removes the page", async () => {
+  test("closePage(owner, pageID) removes the page", async () => {
     const mod = await importFresh("../../src/browser/playwright-driver.js")
     expect(mod).not.toBeNull()
     expect(mod!.PlaywrightBrowserDriver).toBeDefined()
@@ -305,18 +305,18 @@ describe("PlaywrightBrowserDriver page lifecycle (RED)", () => {
     const Driver = mod!.PlaywrightBrowserDriver as { new (): any }
     const driver = new Driver()
     const created = await driver.newPage(owner, "https://example.com")
-    const tabID = (created as any)._synergyTabID as string
+    const pageID = (created as any)._synergyPageID as string
 
     // Page exists before close
-    expect(driver.getPage(owner, tabID)).not.toBeUndefined()
+    expect(driver.getPage(owner, pageID)).not.toBeUndefined()
 
-    await driver.closePage(owner, tabID)
+    await driver.closePage(owner, pageID)
 
     // Page is gone after close
-    expect(driver.getPage(owner, tabID)).toBeUndefined()
+    expect(driver.getPage(owner, pageID)).toBeUndefined()
   })
 
-  test("closePage is idempotent for non-existent tabID", async () => {
+  test("closePage is idempotent for non-existent pageID", async () => {
     const mod = await importFresh("../../src/browser/playwright-driver.js")
     expect(mod).not.toBeNull()
     expect(mod!.PlaywrightBrowserDriver).toBeDefined()
@@ -331,7 +331,7 @@ describe("PlaywrightBrowserDriver page lifecycle (RED)", () => {
     const Driver = mod!.PlaywrightBrowserDriver as { new (): any }
     const driver = new Driver()
     // Should not throw
-    await driver.closePage(owner, "nonexistent-tab-id")
+    await driver.closePage(owner, "nonexistent-page-id")
   })
 })
 

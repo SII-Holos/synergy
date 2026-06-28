@@ -9,10 +9,11 @@ import { Agent } from "../agent/agent"
 import { ScopeContext } from "../scope/context"
 import DESCRIPTION from "./lookat.txt"
 import { Asset } from "../asset/asset"
+import { ToolTimeout } from "./timeout"
 
 const MULTIMODAL_AGENT = "multimodal-looker"
 const MAX_IMAGES = 5
-const DEFAULT_TIMEOUT_S = 120
+const DEFAULT_TIMEOUT_S = ToolTimeout.DEFAULTS.lookAtMs / 1_000
 
 const parameters = z.object({
   file_path: z
@@ -142,8 +143,8 @@ export const LookAtTool = Tool.define<typeof parameters, LookAtMetadata>("look_a
       const model = await Agent.getAvailableModel(agent)
       if (!model) {
         return {
-          title: "Model not available",
-          output: `Error: No vision model is configured. The look_at tool requires a vision model to analyze images. Run 'synergy config --advanced' to configure one, or add 'vision_model' to 10-models.jsonc.`,
+          title: "Image analysis disabled",
+          output: `Error: Image analysis is disabled because no vision model is configured. Set vision_model in 10-models.jsonc to enable the look_at tool.`,
           metadata: { error: "model_not_available" },
         }
       }

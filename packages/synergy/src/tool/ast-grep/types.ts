@@ -1,3 +1,5 @@
+import { ToolTimeout } from "../timeout"
+
 // Supported languages (25 total)
 export const AST_GREP_LANGUAGES = [
   "bash",
@@ -61,7 +63,7 @@ export interface SgResult {
 }
 
 // Limits
-export const DEFAULT_TIMEOUT_MS = 60_000
+export const DEFAULT_TIMEOUT_MS = ToolTimeout.DEFAULTS.astGrepMs
 export const DEFAULT_MAX_OUTPUT_BYTES = 1 * 1024 * 1024
 export const DEFAULT_MAX_MATCHES = 500
 

@@ -36,7 +36,6 @@ import { useSync } from "@/context/sync"
 import { FileIcon } from "@ericsanchezok/synergy-ui/file-icon"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { IconButton } from "@ericsanchezok/synergy-ui/icon-button"
-import { DropdownMenu } from "@ericsanchezok/synergy-ui/dropdown-menu"
 import { Tooltip } from "@ericsanchezok/synergy-ui/tooltip"
 import { getDirectory, getFilename } from "@ericsanchezok/synergy-util/path"
 import { useCommand } from "@/context/command"
@@ -65,6 +64,8 @@ import type {
 import { PromptAttachments } from "@/components/prompt-input/attachments"
 import { PromptPopover } from "@/components/prompt-input/popover"
 import { PermissionModeSelector } from "@/components/prompt-input/permission-selector"
+import { PromptAddMenu, type PromptAddMenuSection } from "@/components/prompt-input/add-menu"
+import { PromptStartModeSelector, type PromptStartOptionGroup } from "@/components/prompt-input/start-options"
 import { usePromptSubmit } from "@/components/prompt-input/submit"
 import { usePromptAttachments } from "@/components/prompt-input/attachments-hook"
 import { usePromptEditor } from "@/components/prompt-input/editor-hook"
@@ -105,6 +106,14 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   const storedPlanMode = createMemo(() => (params.id ? (info()?.blueprint?.planMode ?? false) : pendingPlanMode()))
   const blueprintModeLocked = createMemo(() => !!localArmedLoop() || !!info()?.blueprint?.loopID)
   const planMode = createMemo(() => !blueprintModeLocked() && storedPlanMode())
+  const sessionScopeDirectory = createMemo(() => {
+    const scope = info()?.scope
+    if (!scope || typeof scope !== "object") return undefined
+    if (!("directory" in scope) || typeof scope.directory !== "string") return undefined
+    return scope.directory
+  })
+  const blueprintLoopRequest = (loopID: string, directory = sessionScopeDirectory()) =>
+    directory ? { id: loopID, directory } : { id: loopID }
 
   createEffect(
     on(
@@ -115,18 +124,21 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     ),
   )
 
-  const [sessionLoop] = createResource(
-    () => (params.id ? info()?.blueprint?.loopID : null),
-    async (loopID) => {
-      if (!loopID) return null
-      try {
-        const result = await sdk.client.blueprint.loop.get({ id: loopID })
-        return (result.data as BlueprintLoopInfo) ?? null
-      } catch {
-        return null
-      }
-    },
-  )
+  const sessionLoopSource = createMemo(() => {
+    const loopID = params.id ? info()?.blueprint?.loopID : undefined
+    if (!loopID) return null
+    return { loopID, directory: sessionScopeDirectory() }
+  })
+
+  const [sessionLoop] = createResource(sessionLoopSource, async ({ loopID, directory }) => {
+    if (!loopID) return null
+    try {
+      const result = await sdk.client.blueprint.loop.get(blueprintLoopRequest(loopID, directory))
+      return (result.data as BlueprintLoopInfo) ?? null
+    } catch {
+      return null
+    }
+  })
 
   type BlueprintSlotDisplay = {
     slot: BlueprintSlot
@@ -175,12 +187,61 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     }
   }
 
+  function requestErrorMessage(err: unknown) {
+    if (err && typeof err === "object" && "data" in err) {
+      const data = (err as { data?: { message?: string } }).data
+      if (data?.message) return data.message
+    }
+    if (err instanceof Error) return err.message
+    return "Request failed"
+  }
+
+  const getBlueprintSlotHoldLabel = (slot: BlueprintSlotDisplay) => {
+    if (slot.slot.type === "loop" && working()) return "Hold for 2 seconds to stop this Blueprint run."
+    if (slot.mode === "waiting" || slot.mode === "auditing") return "Hold for 2 seconds to cancel this BlueprintLoop."
+    return "Hold for 2 seconds to unequip."
+  }
+
+  const getBlueprintSlotAriaLabel = (slot: BlueprintSlotDisplay) => {
+    if (slot.slot.type === "loop" && working()) return `Hold to stop Blueprint run: ${slot.slot.title}`
+    if (slot.mode === "waiting" || slot.mode === "auditing") return `Hold to cancel BlueprintLoop: ${slot.slot.title}`
+    return `Hold to unequip Blueprint: ${slot.slot.title}`
+  }
+
+  const getBlueprintFailureTitle = (stopRunningSession: boolean, stoppedSession: boolean) => {
+    if (!stopRunningSession) return "Failed to unequip Blueprint"
+    if (stoppedSession) return "Session stopped, Blueprint still equipped"
+    return "Failed to stop Blueprint run"
+  }
+
+  const abortSession = async (sessionID = params.id) => {
+    if (!sessionID) return
+    await sdk.client.session.abort({ sessionID })
+  }
+
+  const abort = () => {
+    abortSession().catch(() => {})
+  }
+
+  const clearBoundLoop = (sessionID: string | undefined, loopID: string) => {
+    if (!sessionID) return
+    sync.set(
+      produce((draft) => {
+        const session = draft.session.find((item) => item.id === sessionID)
+        if (session && session.blueprint?.loopID === loopID) {
+          session.blueprint = { ...session.blueprint, loopID: undefined }
+        }
+      }),
+    )
+  }
+
   const [slotLongPress, setSlotLongPress] = createSignal<ReturnType<typeof setTimeout> | null>(null)
   const [slotLongPressProgress, setSlotLongPressProgress] = createSignal(0)
   let slotLongPressFrame: number | undefined
 
   const startLongPress = (slot: BlueprintSlotDisplay) => {
     if (slotLongPress()) return
+    const sessionID = params.id
     const startedAt = performance.now()
     const duration = 2000
     const tick = (now: number) => {
@@ -194,24 +255,33 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       if (slotLongPressFrame !== undefined) cancelAnimationFrame(slotLongPressFrame)
       slotLongPressFrame = undefined
       setSlotLongPressProgress(1)
-      if (slot.slot.type === "loop") {
-        const loopID = slot.slot.loopID
-        await sdk.client.blueprint.loop.cancel({ id: loopID }).catch(() => {})
-        const sessionID = params.id
-        if (sessionID) {
-          sync.set(
-            produce((draft) => {
-              const session = draft.session.find((item) => item.id === sessionID)
-              if (session && session.blueprint?.loopID === loopID) {
-                session.blueprint = { ...session.blueprint, loopID: undefined }
-              }
-            }),
-          )
+      const stopRunningSession = slot.slot.type === "loop" && working()
+      let stoppedSession = false
+      try {
+        if (stopRunningSession) {
+          await abortSession(sessionID)
+          stoppedSession = true
         }
+        if (slot.slot.type === "loop") {
+          const loopID = slot.slot.loopID
+          await sdk.client.blueprint.loop.cancel(blueprintLoopRequest(loopID))
+          clearBoundLoop(sessionID, loopID)
+        }
+        if (localArmedLoop()?.noteID === slot.slot.noteID) setLocalArmedLoop(null)
+        showToast({
+          type: "info",
+          title: stopRunningSession ? "Blueprint run stopped" : "Blueprint unequipped",
+          description: slot.slot.title,
+        })
+      } catch (err) {
+        showToast({
+          type: "error",
+          title: getBlueprintFailureTitle(stopRunningSession, stoppedSession),
+          description: requestErrorMessage(err),
+        })
+      } finally {
+        setSlotLongPressProgress(0)
       }
-      if (localArmedLoop()?.noteID === slot.slot.noteID) setLocalArmedLoop(null)
-      setSlotLongPressProgress(0)
-      showToast({ type: "info", title: "Blueprint unequipped", description: slot.slot.title })
     }, 2000)
     setSlotLongPress(t)
   }
@@ -267,7 +337,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     if (!slot) return
     setBlueprintLoading(true)
     try {
-      if (slot.type === "loop") await sdk.client.blueprint.loop.cancel({ id: slot.loopID })
+      if (slot.type === "loop") await sdk.client.blueprint.loop.cancel(blueprintLoopRequest(slot.loopID))
     } catch {
       // If cancellation fails, still clear the slot locally — the loop is orphaned.
     } finally {
@@ -339,6 +409,88 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     if (planMode()) return
     void togglePlanMode()
   }
+
+  const addMenuSections = createMemo<PromptAddMenuSection[]>(() => [
+    {
+      id: "context",
+      label: "Context",
+      items: [
+        {
+          id: "files",
+          label: "Add files",
+          description: "Attach files or images",
+          icon: getSemanticIcon("prompt.attach"),
+          onSelect: () => fileInputRef.click(),
+        },
+      ],
+    },
+    {
+      id: "workflow",
+      label: "Workflow",
+      items: [
+        {
+          id: "plan-mode",
+          label: "Plan mode",
+          description: planMode() ? "Planning before execution" : "Ask for an approach first",
+          icon: getSemanticIcon("prompt.plan"),
+          selected: planMode(),
+          ariaDisabled: blueprintModeLocked() || planMode(),
+          title: blueprintModeLocked()
+            ? "Plan Mode is unavailable while a Blueprint is equipped"
+            : planMode()
+              ? "Plan Mode is already enabled"
+              : undefined,
+          tooltip: blueprintModeLocked() ? "Plan Mode is unavailable while a Blueprint is equipped" : undefined,
+          iconClass: planMode() ? "text-icon-base" : blueprintModeLocked() ? "text-icon-weak" : "text-icon-base",
+          labelClass: blueprintModeLocked() ? "text-text-weak" : undefined,
+          classList: {
+            "bg-workbench-selected-bg": planMode(),
+            "text-text-base": planMode(),
+            "opacity-60": blueprintModeLocked(),
+          },
+          onSelect: selectPlanModeFromMenu,
+        },
+      ],
+    },
+  ])
+
+  const newSessionStartOptions = createMemo<PromptStartOptionGroup[]>(() => {
+    if (params.id) return []
+
+    const creatingWorktree = props.newSessionWorktree === "create"
+    const canCreateWorktree = props.newSessionCanCreateWorktree ?? (!sdk.isHome && !!sdk.directory)
+    const localLabel = isHomeScope(sdk.scopeKey) ? "Home" : "Local"
+    const localDescription = isHomeScope(sdk.scopeKey) ? "Global context" : "Current checkout"
+
+    return [
+      {
+        id: "workspace",
+        label: "Workspace",
+        options: [
+          {
+            id: "workspace.local",
+            label: localLabel,
+            description: localDescription,
+            icon: getSemanticIcon("workspace.main"),
+            selected: !creatingWorktree,
+            onSelect: () => props.onNewSessionWorktreeChange?.("main"),
+          },
+          {
+            id: "workspace.worktree",
+            label: "Worktree",
+            description: "Isolated checkout",
+            icon: getSemanticIcon("workspace.worktree"),
+            selected: creatingWorktree,
+            disabled: !canCreateWorktree,
+            tooltip: canCreateWorktree
+              ? "Create an isolated worktree for this session."
+              : "Choose a project to use worktree isolation.",
+            onSelect: () => props.onNewSessionWorktreeChange?.("create"),
+          },
+        ],
+      },
+    ]
+  })
 
   createEffect(
     on(
@@ -656,11 +808,6 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       setStore,
     })
 
-  const abort = () => {
-    const sessionID = params.id!
-    sdk.client.session.abort({ sessionID }).catch(() => {})
-  }
-
   const sendQuickAction = (text: string) => {
     const sessionID = params.id
     if (!sessionID) return
@@ -965,15 +1112,15 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
         classList={{
-          "bg-surface-raised-stronger-non-alpha relative": true,
+          "prompt-input-shell bg-surface-raised-stronger-non-alpha relative": true,
+          "prompt-input-shell-dragging": store.dragging,
           "overflow-hidden": true,
-          "focus-within:ring-1 focus-within:ring-border-weak-base": true,
           "border border-border-base": !store.dragging,
           "border border-icon-info-active border-dashed": store.dragging,
           "max-md:border-t max-md:border-x-0 max-md:border-b-0 max-md:shadow-none": true,
           [props.class ?? ""]: !!props.class,
         }}
-        style={{ "border-radius": layout.isDesktop() ? "24px" : "0px", "z-index": 1 }}
+        style={{ "z-index": 1 }}
       >
         <Show when={store.dragging}>
           <div class="absolute inset-0 z-10 flex items-center justify-center bg-surface-raised-stronger-non-alpha/90 pointer-events-none">
@@ -1084,13 +1231,13 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
             </div>
           </Show>
         </div>
-        <div class="px-4 py-2.5 flex flex-wrap items-center justify-between gap-2">
-          <div class="min-w-0 flex flex-wrap items-center gap-1.5">
+        <div class="prompt-input-toolbar flex flex-wrap items-center justify-between gap-2">
+          <div class="prompt-input-toolbar-main min-w-0 flex flex-wrap items-center gap-1">
             <Switch>
               <Match when={store.mode === "shell"}>
-                <div class="flex items-center gap-2 px-3 h-7 rounded-full bg-surface-base">
-                  <Icon name="terminal" size="small" class="text-icon-primary" />
-                  <span class="text-12-medium text-text-primary">Shell</span>
+                <div class="prompt-input-toolbar-chip flex items-center gap-2">
+                  <Icon name="terminal" size="small" class="text-icon-interactive-base" />
+                  <span class="text-12-medium text-text-interactive-base">Shell</span>
                   <span class="text-11-regular text-text-subtle">esc to exit</span>
                 </div>
               </Match>
@@ -1098,10 +1245,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                 <Show when={!props.hideAgentSelector}>
                   <ToolbarSelectorPopover
                     trigger={
-                      <button
-                        type="button"
-                        class="flex items-center gap-1.5 h-7 px-3 rounded-full border border-border-weak-base bg-surface-base hover:bg-surface-raised-base-hover transition-colors"
-                      >
+                      <button type="button" class="prompt-input-toolbar-button flex items-center gap-1.5">
                         <span class="text-12-medium text-text-base whitespace-nowrap">
                           {getAgentVisual(local.agent.current()).label}
                         </span>
@@ -1165,7 +1309,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                     <button
                       type="button"
                       aria-label="Exit Plan Mode"
-                      class="group flex h-7 items-center gap-1.5 rounded-full border border-border-weak-base bg-surface-base px-2.5 text-text-weak transition-colors hover:bg-surface-raised-base-hover hover:text-text-base focus:outline-none focus-visible:ring-2 focus-visible:ring-border-strong-base/35"
+                      class="prompt-input-toolbar-button prompt-input-compact-control group flex items-center gap-1.5 text-text-weak hover:text-text-base"
                       onClick={() => void togglePlanMode()}
                     >
                       <span class="relative flex size-4 shrink-0 items-center justify-center">
@@ -1176,63 +1320,16 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                           <Icon name="x" size="small" class="text-icon-base" />
                         </span>
                       </span>
-                      <span class="text-12-medium leading-none">Plan</span>
+                      <span class="prompt-input-compact-label text-12-medium leading-none">Plan</span>
                     </button>
                   </Tooltip>
                 </Show>
-                <DropdownMenu placement="top-start" gutter={8}>
-                  <Tooltip placement="top" value="Add">
-                    <DropdownMenu.Trigger
-                      type="button"
-                      aria-label="Add"
-                      class="flex items-center justify-center size-7 rounded-full border border-border-weak-base bg-surface-base text-icon-base hover:bg-surface-raised-base-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-border-strong-base/35 transition-colors"
-                    >
-                      <Icon name="plus" size="small" />
-                    </DropdownMenu.Trigger>
-                  </Tooltip>
-                  <DropdownMenu.Portal>
-                    <DropdownMenu.Content class="w-44 bg-surface-raised-stronger-non-alpha">
-                      <DropdownMenu.Item onSelect={() => fileInputRef.click()}>
-                        <Icon name="paperclip" size="small" class="text-icon-base" />
-                        <DropdownMenu.ItemLabel>Add files</DropdownMenu.ItemLabel>
-                      </DropdownMenu.Item>
-                      <Tooltip
-                        placement="right"
-                        inactive={!blueprintModeLocked()}
-                        value="Plan Mode is unavailable while a Blueprint is equipped"
-                      >
-                        <DropdownMenu.Item
-                          disabled={planMode()}
-                          aria-disabled={blueprintModeLocked() ? "true" : undefined}
-                          title={
-                            blueprintModeLocked()
-                              ? "Plan Mode is unavailable while a Blueprint is equipped"
-                              : planMode()
-                                ? "Plan Mode is already enabled"
-                                : undefined
-                          }
-                          classList={{
-                            "opacity-60": blueprintModeLocked(),
-                          }}
-                          onSelect={selectPlanModeFromMenu}
-                        >
-                          <Icon
-                            name={planMode() ? "check" : "list-checks"}
-                            size="small"
-                            class={planMode() || blueprintModeLocked() ? "text-icon-weak" : "text-icon-base"}
-                          />
-                          <DropdownMenu.ItemLabel class={blueprintModeLocked() ? "text-text-weak" : undefined}>
-                            Plan mode
-                          </DropdownMenu.ItemLabel>
-                        </DropdownMenu.Item>
-                      </Tooltip>
-                    </DropdownMenu.Content>
-                  </DropdownMenu.Portal>
-                </DropdownMenu>
+                <PromptAddMenu sections={addMenuSections()} />
+                <PromptStartModeSelector groups={newSessionStartOptions()} />
               </Match>
             </Switch>
           </div>
-          <div class="ml-auto flex min-w-0 shrink-0 items-center justify-end gap-2">
+          <div class="prompt-input-toolbar-actions ml-auto flex min-w-0 shrink-0 items-center justify-end gap-1.5">
             <input
               ref={fileInputRef}
               type="file"
@@ -1254,21 +1351,21 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
             <Switch>
               <Match when={blueprintSubmitActive() && displayedBlueprintLoop()}>
                 {(bp) => (
-                  <div class="flex h-9 max-w-full items-center rounded-full border border-border-interactive-base/35 bg-surface-interactive-selected-weak/70 p-0.5 shadow-xs">
+                  <div class="flex h-9 max-w-full items-center rounded-lg border border-border-interactive-base/35 bg-surface-interactive-selected-weak/70 p-0.5 shadow-xs">
                     <Tooltip
                       placement="top"
                       value={
                         <div class="min-w-56 max-w-72">
                           <div class="text-12-medium text-text-strong truncate">{bp().slot.title}</div>
                           <div class="mt-1 text-10-regular text-text-weak">Ready to start this BlueprintLoop.</div>
-                          <div class="mt-2 text-10-regular text-text-weak">Hold for 2 seconds to unequip.</div>
+                          <div class="mt-2 text-10-regular text-text-weak">{getBlueprintSlotHoldLabel(bp())}</div>
                         </div>
                       }
                     >
                       <button
                         type="button"
-                        class="group relative flex h-8 min-w-0 max-w-36 items-center gap-1.5 overflow-hidden rounded-full px-2.5 text-text-interactive-base transition-colors hover:bg-surface-raised-base-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-border-strong-base/35 select-none"
-                        aria-label={`Hold to unequip Blueprint: ${bp().slot.title}`}
+                        class="group relative flex h-8 min-w-0 max-w-36 items-center gap-1.5 overflow-hidden rounded-md px-2.5 text-text-interactive-base transition-colors hover:bg-surface-raised-base-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-border-strong-base/35 select-none"
+                        aria-label={getBlueprintSlotAriaLabel(bp())}
                         onPointerDown={() => startLongPress(bp())}
                         onPointerUp={cancelLongPress}
                         onPointerCancel={cancelLongPress}
@@ -1306,7 +1403,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                         type="submit"
                         icon="zap"
                         variant="primary"
-                        class="size-9 rounded-full! bg-text-interactive-base!"
+                        class="prompt-input-submit size-8 rounded-full! bg-text-interactive-base!"
                       />
                     </Tooltip>
                   </div>
@@ -1323,14 +1420,14 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                           <div class="mt-1 text-10-regular text-text-weak">
                             Blueprint {getBlueprintSlotStatusLabel(bp().mode).toLowerCase()}
                           </div>
-                          <div class="mt-2 text-10-regular text-text-weak">Hold for 2 seconds to unequip.</div>
+                          <div class="mt-2 text-10-regular text-text-weak">{getBlueprintSlotHoldLabel(bp())}</div>
                         </div>
                       }
                     >
                       <button
                         type="button"
-                        class="bp-slot group relative flex items-center justify-center size-8 overflow-hidden rounded-full border border-border-weak-base bg-surface-base hover:bg-surface-raised-base-hover transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-border-strong-base/35 cursor-default select-none"
-                        aria-label={`Hold to unequip Blueprint: ${bp().slot.title}`}
+                        class="prompt-input-toolbar-icon-button bp-slot group relative flex items-center justify-center size-8 overflow-hidden cursor-default select-none"
+                        aria-label={getBlueprintSlotAriaLabel(bp())}
                         onPointerDown={() => startLongPress(bp())}
                         onPointerUp={cancelLongPress}
                         onPointerCancel={cancelLongPress}
@@ -1381,7 +1478,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                     disabled={!canSubmit()}
                     icon={working() && !prompt.dirty() ? "square" : "arrow-up"}
                     variant="primary"
-                    class="size-9 rounded-full!"
+                    class="prompt-input-submit size-9 rounded-full!"
                   />
                 </Tooltip>
               </Match>

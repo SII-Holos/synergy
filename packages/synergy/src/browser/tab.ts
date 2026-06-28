@@ -4,11 +4,11 @@ import type { Dialog, Download, FileChooser, Page } from "playwright"
 import { BrowserPolicy } from "./policy.js"
 import { BrowserEval } from "./eval.js"
 import { BrowserCDP, type CDPHandle } from "./cdp.js"
-import { BrowserFrameStreamer, type BrowserScreencastFrame, type BrowserScreencastOptions } from "./screencast.js"
 import { BrowserInputDispatcher, type BrowserKeyInput, type BrowserMouseInput } from "./input.js"
 import { BrowserDownloads } from "./downloads.js"
 import { BrowserStorage } from "./storage.js"
 import type { BrowserOwner } from "./owner.js"
+import { ToolTimeout } from "@/tool/timeout"
 
 export interface AccessibilityElement {
   ref: string
@@ -107,8 +107,6 @@ export interface BrowserTab {
   insertText(text: string): Promise<void>
   respondToFileChooser(requestId: string, files: BrowserUploadFile[]): Promise<void>
   respondToDialog(requestId: string, accept: boolean, promptText?: string): Promise<void>
-  startFrameStream(options: BrowserScreencastOptions, onFrame: (frame: BrowserScreencastFrame) => void): Promise<void>
-  stopFrameStream(): Promise<void>
   ensureCDP(): Promise<CDPHandle>
   detachCDP(): Promise<void>
 
@@ -244,7 +242,6 @@ export class BrowserTabImpl implements BrowserTab {
   private refMap = new Map<string, RefEntry>()
   private cdpHandle: CDPHandle | null = null
   private input: BrowserInputDispatcher
-  private streamer = new BrowserFrameStreamer()
   private pendingFileChoosers = new Map<string, FileChooser>()
   private pendingDialogs = new Map<string, Dialog>()
   private downloads: BrowserDownloadEntry[] = []
@@ -365,7 +362,7 @@ export class BrowserTabImpl implements BrowserTab {
       this.downloads.push(entry)
       BrowserDownloads.add({
         id,
-        tabID: this.id,
+        pageID: this.id,
         url: entry.url,
         suggestedFilename: entry.fileName,
         mimeType,
@@ -598,17 +595,6 @@ export class BrowserTabImpl implements BrowserTab {
     await dialog.dismiss()
   }
 
-  async startFrameStream(
-    options: BrowserScreencastOptions,
-    onFrame: (frame: BrowserScreencastFrame) => void,
-  ): Promise<void> {
-    await this.streamer.start(this.id, this.page, options, onFrame)
-  }
-
-  async stopFrameStream(): Promise<void> {
-    await this.streamer.stop(this.id)
-  }
-
   async ensureCDP(): Promise<CDPHandle> {
     if (!this.cdpHandle) {
       this.cdpHandle = await BrowserCDP.attach(this.page)
@@ -822,7 +808,7 @@ export class BrowserTabImpl implements BrowserTab {
   // ── wait ───────────────────────────────────────────────────────────
 
   async waitFor(condition: WaitCondition, timeoutMs?: number): Promise<boolean> {
-    const timeout = timeoutMs ?? 10_000
+    const timeout = timeoutMs ?? ToolTimeout.DEFAULTS.browserWaitMs
     const start = Date.now()
 
     while (Date.now() - start < timeout) {
@@ -846,7 +832,6 @@ export class BrowserTabImpl implements BrowserTab {
   // ── close ──────────────────────────────────────────────────────────
 
   async close(): Promise<void> {
-    await this.stopFrameStream()
     await this.detachCDP()
     if (this.onConsoleHandler) this.page.off("console", this.onConsoleHandler)
     if (this.onRequestHandler) this.page.off("request", this.onRequestHandler)

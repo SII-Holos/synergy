@@ -38,7 +38,7 @@ export const CortexRoute = new Hono()
     async (c) => {
       const { sessionID } = c.req.valid("query")
       const Cortex = await getCortex()
-      const tasks = sessionID ? Cortex.getTasksForSession(sessionID) : Cortex.list()
+      const tasks = sessionID ? Cortex.getVisibleTasks(sessionID) : Cortex.listVisible()
       return c.json(tasks)
     },
   )

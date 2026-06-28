@@ -29,6 +29,7 @@ export const BRIDGE_METHOD_CAPABILITY: Record<HostBridgeMethod, string> = {
   "workspace.getMetadata": "plugin_workspace_read",
   "tool.invoke": "plugin_invoke",
   "permission.request": "plugin_invoke",
+  "task.run": "plugin_task",
 }
 
 // ---------------------------------------------------------------------------
@@ -84,4 +85,5 @@ const GATE_TO_MANIFEST_CAP: Record<string, string> = {
   plugin_config_write: "config:write",
   plugin_secret_read: "secrets",
   plugin_invoke: "plugin_invoke",
+  plugin_task: "task",
 }

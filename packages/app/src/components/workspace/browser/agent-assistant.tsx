@@ -34,7 +34,7 @@ export function AgentAssistant() {
           <span class="truncate">
             Agent {activity().kind} {hostLabel(activity().url)}
           </span>
-          <Show when={!browser.followAgent() && activity().tabId}>
+          <Show when={!browser.followAgent() && activity().pageId}>
             <button
               type="button"
               class="ml-1 text-text-base hover:text-text-strong"

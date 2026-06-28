@@ -1,4 +1,5 @@
 import type { Page } from "playwright"
+import { ToolTimeout } from "@/tool/timeout"
 
 function nextId(): string {
   return `dl-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
@@ -7,7 +8,7 @@ function nextId(): string {
 export namespace BrowserDownloads {
   export interface DownloadRecord {
     id: string
-    tabID: string
+    pageID: string
     url: string
     suggestedFilename: string
     mimeType?: string
@@ -49,7 +50,10 @@ export namespace BrowserDownloads {
 
   const TERMINAL_STATES: ReadonlySet<DownloadRecord["state"]> = new Set(["completed", "failed", "blocked"])
 
-  export async function waitForDownload(id: string, timeoutMs = 30_000): Promise<DownloadRecord> {
+  export async function waitForDownload(
+    id: string,
+    timeoutMs: number = ToolTimeout.DEFAULTS.browserDownloadsWaitMs,
+  ): Promise<DownloadRecord> {
     const rec = get(id)
     if (!rec) throw new Error(`Download record ${id} not found`)
     if (TERMINAL_STATES.has(rec.state)) return rec
@@ -68,10 +72,10 @@ export namespace BrowserDownloads {
     // Register download handler that populates in-memory records
     page.on("download", async (download) => {
       const id = nextId()
-      const tabID = ((download.page() as unknown as Record<string, unknown>)._synergyTabID as string) ?? "unknown"
+      const pageID = ((download.page() as unknown as Record<string, unknown>)._synergyPageID as string) ?? "unknown"
       const rec: DownloadRecord = {
         id,
-        tabID,
+        pageID,
         url: download.url(),
         suggestedFilename: download.suggestedFilename(),
         state: "pending",
@@ -91,7 +95,11 @@ export namespace BrowserDownloads {
     })
   }
 
-  export async function waitForPageDownload(page: Page, id: string, timeoutMs = 30_000): Promise<DownloadRecord> {
+  export async function waitForPageDownload(
+    page: Page,
+    id: string,
+    timeoutMs: number = ToolTimeout.DEFAULTS.browserDownloadsWaitMs,
+  ): Promise<DownloadRecord> {
     return waitForDownload(id, timeoutMs)
   }
 }

@@ -23,7 +23,6 @@ import {
   libraryInsetClass,
   libraryMenuClass,
   libraryMetaLabelClass,
-  LibraryFilterChip,
   SelectionBar,
   SelectionCheckbox,
 } from "./shared"
@@ -40,11 +39,11 @@ export function MemoryView(props: {
   search: string
   isSearching: boolean
   setSearchError: (v: boolean) => void
-  onRegisterRefetch: (fn: () => void) => void
   refetchStats: () => void
 }) {
   const [sort, setSort] = createSignal<MemorySortKey>("newest")
   const [sortOpen, setSortOpen] = createSignal(false)
+  const [filterOpen, setFilterOpen] = createSignal(false)
   const [categoryFilter, setCategoryFilter] = createSignal<Set<MemoryCategory>>(new Set())
   const [expandedCards, setExpandedCards] = createSignal<Set<string>>(new Set())
   const [selecting, setSelecting] = createSignal(false)
@@ -67,8 +66,6 @@ export function MemoryView(props: {
       return result.data ?? []
     },
   )
-
-  props.onRegisterRefetch(() => refetch())
 
   const filtered = createMemo(() => {
     const cats = categoryFilter()
@@ -185,8 +182,15 @@ export function MemoryView(props: {
     return counts
   })
 
+  const filterLabel = createMemo(() => {
+    const count = categoryFilter().size
+    if (count === 0) return "All categories"
+    if (count === 1) return categoryLabels[[...categoryFilter()][0]]
+    return `${count} categories`
+  })
+
   return (
-    <div>
+    <div class="library-list-pane">
       <Show
         when={!selecting()}
         fallback={
@@ -200,31 +204,55 @@ export function MemoryView(props: {
           />
         }
       >
-        <div class="flex items-center gap-1.5 flex-wrap mb-3">
-          <For each={MEMORY_CATEGORIES}>
-            {(cat) => {
-              const count = () => categoryCounts().get(cat) ?? 0
-              return (
-                <Show when={count() > 0}>
-                  <LibraryFilterChip active={categoryFilter().has(cat)} onClick={() => toggleCategory(cat)}>
-                    {categoryLabels[cat]}
-                    <span class="ml-0.5">{count()}</span>
-                  </LibraryFilterChip>
-                </Show>
-              )
-            }}
-          </For>
-          <Show when={categoryFilter().size > 0}>
-            <button
-              type="button"
-              class="rounded-full px-2.5 py-1 text-11-medium text-text-weaker ring-1 ring-inset ring-border-base/35 transition-all hover:bg-surface-raised-base/72 hover:text-text-weak"
-              onClick={() => setCategoryFilter(new Set())}
-            >
-              Clear
-            </button>
-          </Show>
-
-          <div class="ml-auto flex items-center gap-1">
+        <div class="library-list-toolbar">
+          <div class="library-toolbar-left">
+            <Popover open={filterOpen()} onOpenChange={setFilterOpen} placement="bottom-start" gutter={6}>
+              <Popover.Trigger as="button" class="library-control-pill">
+                <span>{filterLabel()}</span>
+                <Icon name="chevron-down" size="small" class="opacity-60" />
+              </Popover.Trigger>
+              <Popover.Portal>
+                <Popover.Content class={`library-filter-menu ${libraryMenuClass}`}>
+                  <button
+                    type="button"
+                    classList={{
+                      "library-menu-item": true,
+                      "is-active": categoryFilter().size === 0,
+                    }}
+                    onClick={() => {
+                      setCategoryFilter(new Set<MemoryCategory>())
+                      setFilterOpen(false)
+                    }}
+                  >
+                    <span>All categories</span>
+                    <span class="library-menu-count">{memories()?.length ?? 0}</span>
+                  </button>
+                  <For each={MEMORY_CATEGORIES}>
+                    {(cat) => {
+                      const count = () => categoryCounts().get(cat) ?? 0
+                      return (
+                        <Show when={count() > 0}>
+                          <button
+                            type="button"
+                            classList={{
+                              "library-menu-item": true,
+                              "is-active": categoryFilter().has(cat),
+                            }}
+                            onClick={() => toggleCategory(cat)}
+                          >
+                            <span>{categoryLabels[cat]}</span>
+                            <span class="library-menu-count">{count()}</span>
+                          </button>
+                        </Show>
+                      )
+                    }}
+                  </For>
+                </Popover.Content>
+              </Popover.Portal>
+            </Popover>
+            <span class="library-toolbar-summary">{sorted().length} memories</span>
+          </div>
+          <div class="library-toolbar-right">
             <Show when={sorted().length > 0}>
               <button type="button" class={libraryActionButtonClass} onClick={() => setSelecting(true)}>
                 <Icon name="square-check" size="small" class="opacity-70" />
@@ -244,8 +272,8 @@ export function MemoryView(props: {
                         type="button"
                         classList={{
                           "w-full rounded-[0.8rem] px-3 py-2 text-left text-12-medium transition-colors": true,
-                          "bg-surface-inset-base/7 text-text-interactive-base": sort() === key,
-                          "text-text-base hover:bg-surface-inset-base/55": sort() !== key,
+                          "workbench-selected-surface text-text-strong": sort() === key,
+                          "text-text-base hover:bg-surface-inset-base": sort() !== key,
                         }}
                         onClick={() => {
                           setSort(key)
@@ -278,8 +306,8 @@ export function MemoryView(props: {
             />
           }
         >
-          <div class="flex gap-3 items-start">
-            <div class="flex-1 min-w-0 flex flex-col gap-3">
+          <div class="library-card-grid">
+            <div class="min-w-0 flex flex-col gap-3">
               <For each={leftColumn()}>
                 {(item) => (
                   <MemoryCard
@@ -295,7 +323,7 @@ export function MemoryView(props: {
                 )}
               </For>
             </div>
-            <div class="flex-1 min-w-0 flex flex-col gap-3">
+            <div class="min-w-0 flex flex-col gap-3">
               <For each={rightColumn()}>
                 {(item) => (
                   <MemoryCard
@@ -338,8 +366,7 @@ function MemoryCard(props: {
         [`${libraryCardBaseClass} cursor-pointer`]: true,
         [libraryCardExpandedClass]: props.expanded && !props.selecting,
         [libraryCardHoverClass]: !props.expanded && !props.selecting,
-        "bg-surface-interactive-base/12 ring-1 ring-inset ring-text-interactive-base/28 shadow-[inset_0_1px_0_rgba(214,204,190,0.08)]":
-          props.selecting && props.selected,
+        "workbench-selected-surface ring-1 ring-inset ring-border-base/32": props.selecting && props.selected,
         "hover:bg-surface-raised-base/98": props.selecting && !props.selected,
       }}
       onClick={props.onToggle}
@@ -374,14 +401,14 @@ function MemoryCard(props: {
               </span>
             </Show>
             <Show when={props.searching && props.similarity !== undefined}>
-              <span class="rounded-full bg-surface-interactive-base/10 px-2.5 py-1 text-[10px] font-medium text-text-interactive-base ring-1 ring-inset ring-text-interactive-base/12">
+              <span class="rounded-full bg-surface-inset-base px-2.5 py-1 text-[10px] font-medium text-text-base ring-1 ring-inset ring-border-base/35">
                 {Math.round(props.similarity! * 100)}%
               </span>
             </Show>
             <Show when={props.expanded && !props.selecting}>
               <button
                 type="button"
-                class="flex size-6 items-center justify-center rounded-full bg-surface-inset-base/5 text-icon-weak ring-1 ring-inset ring-border-base/35 transition-all hover:bg-surface-raised-base/72 hover:text-text-diff-delete-base"
+                class="flex size-6 items-center justify-center rounded-full bg-surface-inset-base text-icon-weak ring-1 ring-inset ring-border-base/35 transition-all hover:bg-surface-raised-base-hover hover:text-text-diff-delete-base"
                 onClick={props.onDelete}
               >
                 <Icon name="x" size="small" />
@@ -422,8 +449,8 @@ function MemoryCard(props: {
             </span>
             <span
               classList={{
-                "flex size-6 items-center justify-center rounded-full bg-surface-inset-base/36 text-icon-weak ring-1 ring-inset ring-border-base/35 transition-all": true,
-                "rotate-180 bg-surface-inset-base/5": props.expanded,
+                "flex size-6 items-center justify-center rounded-full bg-surface-inset-base text-icon-weak ring-1 ring-inset ring-border-base/35 transition-all": true,
+                "rotate-180 bg-surface-raised-base-hover": props.expanded,
               }}
             >
               <Icon name="chevron-down" size="small" />

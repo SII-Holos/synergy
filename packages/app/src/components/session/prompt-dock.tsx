@@ -1,4 +1,4 @@
-import { createMemo, Show } from "solid-js"
+import { Show } from "solid-js"
 import type { Accessor } from "solid-js"
 import { useNavigate } from "@solidjs/router"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
@@ -36,13 +36,13 @@ export function PromptDock(props: {
   forkedFromTitle?: string
   backPath?: Accessor<string | undefined>
   newSessionWorktree: Accessor<string>
+  onNewSessionWorktreeChange: (worktree: string) => void
   onNewSessionWorktreeReset: () => void
   scopeName: Accessor<string>
   branch: Accessor<string | undefined>
   lastModified: Accessor<string | null | undefined>
 }) {
   const nav = useNavigate()
-  const workspaceOpen = createMemo(() => props.workspaceOpen?.() ?? false)
   return (
     <div
       ref={props.ref}
@@ -58,8 +58,7 @@ export function PromptDock(props: {
       <div
         classList={{
           "w-full min-w-0 md:px-6 pointer-events-auto relative": true,
-          "md:max-w-[50rem]": !props.showTabs() && !workspaceOpen(),
-          "md:max-w-[34rem]": !props.showTabs() && workspaceOpen(),
+          "md:max-w-[62.5rem]": !props.showTabs(),
         }}
       >
         {/* Out-of-flow overlay anchored to the top of the content area:
@@ -102,11 +101,9 @@ export function PromptDock(props: {
                     <Tooltip value={props.parentTitle || "Parent session"} placement="top">
                       <button
                         type="button"
-                        class="flex items-center justify-center gap-1.5 h-8 px-3 rounded-full
-                        border border-border-base bg-surface-raised-stronger-non-alpha
-                        shadow-sm
+                        class="workbench-control-surface workbench-control-surface-hover flex items-center justify-center gap-1.5 h-8 px-3 rounded-full
+                        border border-border-base
                         text-12-medium text-text-weak hover:text-text-base
-                        hover:bg-surface-raised-stronger-hover
                         active:scale-95
                         transition-all duration-150"
                         onClick={() => props.navigate(props.meta().parentID!)}
@@ -123,11 +120,9 @@ export function PromptDock(props: {
                       <Tooltip value={props.forkedFromTitle || "Fork source"} placement="top">
                         <button
                           type="button"
-                          class="flex items-center justify-center gap-1.5 h-8 px-3 rounded-full
-                          border border-border-base bg-surface-raised-stronger-non-alpha
-                          shadow-sm
+                          class="workbench-control-surface workbench-control-surface-hover flex items-center justify-center gap-1.5 h-8 px-3 rounded-full
+                          border border-border-base
                           text-12-medium text-text-weak hover:text-text-base
-                          hover:bg-surface-raised-stronger-hover
                           active:scale-95
                           transition-all duration-150"
                           onClick={() => props.navigate(sourceID())}
@@ -144,11 +139,9 @@ export function PromptDock(props: {
                     <div class="flex items-center justify-center pb-2">
                       <button
                         type="button"
-                        class="flex items-center justify-center gap-1.5 h-8 px-3 rounded-full
-                        border border-border-base bg-surface-raised-stronger-non-alpha
-                        shadow-sm
+                        class="workbench-control-surface workbench-control-surface-hover flex items-center justify-center gap-1.5 h-8 px-3 rounded-full
+                        border border-border-base
                         text-12-medium text-text-weak hover:text-text-base
-                        hover:bg-surface-raised-stronger-hover
                         active:scale-95
                         transition-all duration-150"
                         onClick={() => nav(from())}
@@ -163,6 +156,8 @@ export function PromptDock(props: {
                   <PromptInput
                     ref={props.inputRef}
                     newSessionWorktree={props.newSessionWorktree()}
+                    newSessionCanCreateWorktree={!props.isGlobal}
+                    onNewSessionWorktreeChange={props.onNewSessionWorktreeChange}
                     onNewSessionWorktreeReset={props.onNewSessionWorktreeReset}
                     hideAgentSelector={!props.meta().showInputBar}
                   />

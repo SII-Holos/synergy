@@ -1,40 +1,41 @@
-import { createSignal, Show } from "solid-js"
+import { createEffect, createSignal, Show } from "solid-js"
 import { useLibraryStats, type LibraryStatsSnapshot, EMPTY_SNAPSHOT } from "./use-library-stats"
 import { LibraryOverviewCards } from "./overview-cards"
 import { MemoryDistribution } from "./memory-distribution"
 import { QValueChart } from "./q-value-chart"
 import { RewardRadar } from "./reward-radar"
 
-function SyncBar(props: { syncing: boolean; syncError: string | null; onSync: () => void }) {
+export type LibraryStatsSyncHandle = {
+  sync: () => Promise<void>
+  syncing: () => boolean
+  error: () => string | null
+}
+
+function SyncStatus(props: { syncing: boolean; syncError: string | null }) {
   return (
-    <div class="mb-4 flex items-center justify-between gap-3 rounded-xl bg-surface-inset-base/42 px-3.5 py-2.5 ring-1 ring-inset ring-border-base/45">
-      <div class="min-w-0">
-        <div class="text-11-regular text-text-weak">
-          {props.syncing ? "Computing stats…" : (props.syncError ?? "Recompute for a fresh snapshot")}
-        </div>
+    <Show when={props.syncing || props.syncError}>
+      <div class="library-sync-row library-sync-row-compact">
+        <span class="library-toolbar-summary">{props.syncing ? "Computing stats…" : (props.syncError ?? "")}</span>
       </div>
-      <button
-        type="button"
-        class="shrink-0 rounded-full bg-surface-raised-stronger-non-alpha px-3 py-1.5 text-11-medium text-text-interactive-base ring-1 ring-inset ring-border-base/50 transition hover:bg-surface-raised-base-hover hover:text-text-interactive-hover disabled:cursor-default disabled:opacity-60"
-        disabled={props.syncing}
-        onClick={() => void props.onSync()}
-      >
-        {props.syncing ? "Computing…" : "Recompute"}
-      </button>
-    </div>
+    </Show>
   )
 }
 
-function SectionHeader(props: { label: string; subtitle: string }) {
+function SectionHeader(props: { label: string; meta?: string }) {
   return (
-    <div class="flex items-baseline gap-2 mt-5 mb-2 px-0.5">
-      <span class="text-12-medium text-text-strong">{props.label}</span>
-      <span class="text-11-regular text-text-weaker">{props.subtitle}</span>
+    <div class="library-section-heading mt-5 mb-2 first:mt-4">
+      <span class="library-section-title">{props.label}</span>
+      <Show when={props.meta}>
+        <span class="library-section-subtitle">{props.meta}</span>
+      </Show>
     </div>
   )
 }
 
-export function StatsView() {
+export function StatsView(props: {
+  registerSync?: (handle: LibraryStatsSyncHandle) => void
+  storageLabel?: string
+}) {
   const { data, error, loading, recompute } = useLibraryStats()
   const [syncing, setSyncing] = createSignal(false)
   const [syncError, setSyncError] = createSignal<string | null>(null)
@@ -52,9 +53,17 @@ export function StatsView() {
     }
   }
 
+  createEffect(() => {
+    props.registerSync?.({
+      sync: handleSync,
+      syncing,
+      error: syncError,
+    })
+  })
+
   return (
     <>
-      <SyncBar syncing={syncing()} syncError={syncError()} onSync={handleSync} />
+      <SyncStatus syncing={syncing()} syncError={syncError()} />
       <Show
         when={data()}
         fallback={
@@ -70,28 +79,29 @@ export function StatsView() {
           </div>
         }
       >
-        {(snapshot) => <LibraryStatsContent snapshot={snapshot() ?? EMPTY_SNAPSHOT} />}
+        {(snapshot) => <LibraryStatsContent snapshot={snapshot() ?? EMPTY_SNAPSHOT} storageLabel={props.storageLabel} />}
       </Show>
     </>
   )
 }
 
-function LibraryStatsContent(props: { snapshot: LibraryStatsSnapshot }) {
+function LibraryStatsContent(props: { snapshot: LibraryStatsSnapshot; storageLabel?: string }) {
   const s = () => props.snapshot
   const ov = () => s().overview
+  const collectionMeta = () => {
+    const itemCount = `${ov().totalMemories + ov().totalExperiences} items`
+    return props.storageLabel ? `${itemCount} · ${props.storageLabel} local store` : itemCount
+  }
 
   return (
     <div class="flex flex-col gap-0 pb-5">
-      <SectionHeader
-        label="Collection"
-        subtitle={`${ov().totalMemories + ov().totalExperiences} items over ${ov().scopeCount} scopes`}
-      />
+      <SectionHeader label="Collection" meta={collectionMeta()} />
       <LibraryOverviewCards overview={ov()} />
 
-      <SectionHeader label="Signals" subtitle="Memory distribution and recall patterns" />
+      <SectionHeader label="Signals" />
       <MemoryDistribution distribution={s().memoryDistribution} totalMemories={ov().totalMemories} />
 
-      <SectionHeader label="Learning" subtitle="Reward dimensions and quality trends" />
+      <SectionHeader label="Learning" />
       <RewardRadar dimensions={s().experienceRL.rewardDimensions} />
       <QValueChart distribution={s().experienceRL.qDistribution} rl={s().experienceRL} />
     </div>

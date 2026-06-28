@@ -1,3 +1,7 @@
+import { splitCompoundCommands, stripWrappers } from "./shell-command"
+
+export { splitCompoundCommands, stripWrappers } from "./shell-command"
+
 export interface ApprovalCacheEntry {
   decision: "approved_for_session" | "denied"
   timestamp: number
@@ -147,90 +151,6 @@ const DESTRUCTIVE_PATTERNS = [
 ]
 
 const DESTRUCTIVE_REGEX = /(?:^|[\s;&|])dd\s/
-
-/**
- * Shell command wrappers that should be stripped before destructive analysis.
- * `timeout 10 rm -rf /` should be analyzed as `rm -rf /`.
- */
-const COMMAND_WRAPPERS = ["timeout", "nice", "nohup", "exec", "command", "env", "xargs", "sudo", "time"]
-
-/**
- * Split a compound shell command into its sub-commands for independent
- * destructive analysis. `rm -rf / && echo done` yields two sub-commands.
- */
-export function splitCompoundCommands(command: string): string[] {
-  const parts: string[] = []
-  let current = ""
-  let inSingle = false
-  let inDouble = false
-  for (let i = 0; i < command.length; i++) {
-    const ch = command[i]
-    if (ch === "'" && !inDouble) {
-      inSingle = !inSingle
-      current += ch
-      continue
-    }
-    if (ch === '"' && !inSingle) {
-      inDouble = !inDouble
-      current += ch
-      continue
-    }
-    if (!inSingle && !inDouble) {
-      if (ch === "&" && command[i + 1] === "&") {
-        parts.push(current)
-        current = ""
-        i++
-        continue
-      }
-      if (ch === "|" && command[i + 1] === "|") {
-        parts.push(current)
-        current = ""
-        i++
-        continue
-      }
-      if (ch === ";" || ch === "|") {
-        parts.push(current)
-        current = ""
-        continue
-      }
-    }
-    current += ch
-  }
-  if (current.trim()) parts.push(current)
-  return parts
-}
-
-/**
- * Strip leading wrapper commands (timeout, sudo, etc.) to reveal the actual
- * command being run.
- */
-export function stripWrappers(command: string): string {
-  let cmd = command.trim()
-  let changed = true
-  while (changed) {
-    changed = false
-    for (const wrapper of COMMAND_WRAPPERS) {
-      const regex = new RegExp(`^${wrapper}\\s+`, "i")
-      const match = cmd.match(regex)
-      if (match) {
-        cmd = cmd.slice(match[0].length)
-        // Strip a single following argument (the wrapper's own arg, e.g. "10s" for timeout)
-        // But be careful not to strip the actual command. Heuristic: if the next token
-        // looks like a flag (-x) or a number/time, strip it. Otherwise leave it.
-        const nextTokenMatch = cmd.match(/^(\S+)\s+/)
-        if (nextTokenMatch) {
-          const nextToken = nextTokenMatch[1]
-          if (/^(-|\d)/.test(nextToken)) {
-            cmd = cmd.slice(nextTokenMatch[0].length)
-          }
-        }
-        changed = true
-        break
-      }
-    }
-  }
-  return cmd
-}
 
 export interface DestructiveMatch {
   matched: boolean
@@ -652,6 +572,7 @@ export namespace EnforcementGate {
         toolName === "read" ||
         toolName === "glob" ||
         toolName === "grep" ||
+        toolName === "file_search" ||
         toolName === "view_file" ||
         toolName === "scan_files" ||
         toolName === "parse_code"
@@ -969,10 +890,6 @@ export namespace EnforcementGate {
       }
       if (toolName === "browser_console" || toolName === "browser_network") {
         caps.push({ class: "browser_inspect", nonBypassable: false })
-        return { capabilities: caps }
-      }
-      if (toolName === "browser_tab") {
-        caps.push({ class: "session_state", nonBypassable: false })
         return { capabilities: caps }
       }
       if (toolName === "browser_download") {

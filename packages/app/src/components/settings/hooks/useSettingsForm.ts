@@ -1,17 +1,16 @@
 import type { Config } from "@ericsanchezok/synergy-sdk/client"
+import type { SetStoreFunction } from "solid-js/store"
 import type { SendShortcut } from "@/context/input"
-import type {
-  GeneralStore,
-  ModelsStore,
-  PluginsStore,
-  McpsStore,
-  McpEntry,
-  LibrarySettingsStore,
-  AdvancedStore,
-  EmailSettings,
-  ChannelSettings,
+import type { SettingsState } from "../types"
+import {
+  MODEL_DEFAULTS,
+  TOAST_TYPES,
+  UI_DEFAULTS,
+  emptyToastDurationOverrides,
+  resolvePermissionForUi,
+  snapToastDuration,
 } from "../types"
-import { MODEL_DEFAULTS, UI_DEFAULTS, resolvePermissionForUi } from "../types"
+
 export type EnsureInitParams = {
   cfg: Config | undefined
   setName: string | undefined
@@ -19,23 +18,11 @@ export type EnsureInitParams = {
   initialized: () => boolean
   initializedForSet: string | undefined
   sendShortcut: () => SendShortcut
-  setGeneral: (values: Partial<GeneralStore>) => void
-  setModels: (values: Partial<ModelsStore>) => void
-  setPlugins: (values: Partial<PluginsStore>) => void
-  setMcps: (values: Partial<McpsStore>) => void
-  setAdvanced: (values: Partial<AdvancedStore>) => void
-  setEmail: (values: Partial<EmailSettings>) => void
-  setChannels: (values: Partial<ChannelSettings>) => void
-  setLibrary: (values: Partial<LibrarySettingsStore>) => void
+  setSettings: SetStoreFunction<SettingsState>
   setInitialized: (value: boolean) => void
   originalMcpsRef: { current: Record<string, Record<string, unknown>> }
 }
 
-/**
- * Populate local form stores from resolved config.
- * Phase 1 backend returns resolved defaults, so values are never undefined;
- * all booleans and strings are their actual resolved values.
- */
 export function ensureInit(params: EnsureInitParams): string | undefined {
   if (params.refreshing()) return undefined
   const cfg = params.cfg
@@ -43,12 +30,17 @@ export function ensureInit(params: EnsureInitParams): string | undefined {
   if (!cfg || !setName) return undefined
   if (params.initialized() && params.initializedForSet === setName) return undefined
 
-  params.setGeneral({
+  params.setSettings("general", {
     snapshot: cfg.snapshot ?? UI_DEFAULTS.snapshot,
     autoupdate: String(cfg.autoupdate ?? UI_DEFAULTS.autoupdate),
+    username: cfg.username ?? UI_DEFAULTS.username,
+    theme: cfg.theme ?? UI_DEFAULTS.theme,
+    mutedToasts: cfg.toast?.muted ?? [],
+    toastDurations: formatToastDurations(cfg.toast?.durationOverrides),
     sendShortcut: params.sendShortcut(),
   })
-  params.setModels({
+
+  params.setSettings("models", {
     model: cfg.model ?? MODEL_DEFAULTS.model,
     nano_model: cfg.nano_model ?? MODEL_DEFAULTS.nano_model,
     mini_model: cfg.mini_model ?? MODEL_DEFAULTS.mini_model,
@@ -59,57 +51,83 @@ export function ensureInit(params: EnsureInitParams): string | undefined {
     creative_model: cfg.creative_model ?? MODEL_DEFAULTS.creative_model,
   })
 
-  params.setPlugins({
-    entries: (cfg.plugin ?? []).map((v) => ({ value: v })),
+  params.setSettings("providers", {
+    enabledProviders: formatList(cfg.enabled_providers),
+    disabledProviders: formatList(cfg.disabled_providers),
+  })
+
+  params.setSettings("plugins", {
+    entries: (cfg.plugin ?? []).map((value) => ({ value })),
   })
 
   params.originalMcpsRef.current = {}
   if (cfg.mcp) {
-    for (const [key, m] of Object.entries(cfg.mcp)) {
-      params.originalMcpsRef.current[key] = { ...(m as Record<string, unknown>) }
+    for (const [key, value] of Object.entries(cfg.mcp)) {
+      params.originalMcpsRef.current[key] = { ...(value as Record<string, unknown>) }
     }
   }
-  params.setMcps({
+  params.setSettings("mcps", {
     entries: cfg.mcp
-      ? Object.entries(cfg.mcp).map(([key, m]) => {
-          const mcp = m as Record<string, unknown>
+      ? Object.entries(cfg.mcp).map(([key, value]) => {
+          const mcp = value as Record<string, unknown>
           const isLocal = mcp.type === "local"
           const env = mcp.environment as Record<string, string> | undefined
-          const hdrs = mcp.headers as Record<string, string> | undefined
+          const headers = mcp.headers as Record<string, string> | undefined
           return {
             key,
-            type: (isLocal ? "local" : "remote") as "local" | "remote",
+            type: isLocal ? "local" : "remote",
             enabled: mcp.enabled !== false,
             command: isLocal && Array.isArray(mcp.command) ? (mcp.command as string[]).join(" ") : "",
             url: !isLocal && typeof mcp.url === "string" ? mcp.url : "",
             timeout: mcp.timeout !== undefined ? String(mcp.timeout) : "",
-            environment: env
-              ? Object.entries(env)
-                  .map(([k, v]) => `${k}=${v}`)
-                  .join("\n")
-              : "",
-            headers: hdrs
-              ? Object.entries(hdrs)
-                  .map(([k, v]) => `${k}: ${v}`)
-                  .join("\n")
-              : "",
+            environment: formatRecord(env, "="),
+            headers: formatRecord(headers, ": "),
           }
         })
       : [],
   })
 
-  params.setAdvanced({
+  params.setSettings("safety", {
     controlProfile: cfg.controlProfile ?? UI_DEFAULTS.controlProfile,
-    compaction_auto: cfg.compaction?.auto !== false ? UI_DEFAULTS.compactionAuto : "false",
-    compaction_overflow_threshold: String(
-      cfg.compaction?.overflowThreshold ?? Number(UI_DEFAULTS.compactionOverflowThreshold),
-    ),
     permission: resolvePermissionForUi(cfg.permission),
-    question_timeout: String(cfg.question?.timeout ?? UI_DEFAULTS.questionTimeout),
     smartAllow: cfg.smartAllow === true ? "true" : "false",
+    sandboxEnabled: cfg.sandbox?.enabled === false ? "false" : UI_DEFAULTS.sandboxEnabled,
+    sandboxFallbackPolicy: cfg.sandbox?.fallbackPolicy ?? UI_DEFAULTS.sandboxFallbackPolicy,
   })
 
-  params.setEmail({
+  params.setSettings("runtime", {
+    questionTimeout: String(cfg.question?.timeout ?? UI_DEFAULTS.questionTimeout),
+    compactionAuto: cfg.compaction?.auto !== false ? UI_DEFAULTS.compactionAuto : "false",
+    compactionPrune: cfg.compaction?.prune !== false ? UI_DEFAULTS.compactionPrune : "false",
+    compactionOverflowThreshold: String(
+      cfg.compaction?.overflowThreshold ?? Number(UI_DEFAULTS.compactionOverflowThreshold),
+    ),
+    compactionMaxHistoryImages: String(
+      cfg.compaction?.maxHistoryImages ?? Number(UI_DEFAULTS.compactionMaxHistoryImages),
+    ),
+    invokeTimeout: cfg.timeout?.invoke_sec !== undefined ? String(cfg.timeout.invoke_sec) : UI_DEFAULTS.invokeTimeout,
+    providerTtfbTimeout:
+      cfg.timeout?.provider?.ttfb_sec !== undefined
+        ? String(cfg.timeout.provider.ttfb_sec)
+        : UI_DEFAULTS.providerTtfbTimeout,
+    providerIdleTimeout:
+      cfg.timeout?.provider?.idle_sec !== undefined
+        ? String(cfg.timeout.provider.idle_sec)
+        : UI_DEFAULTS.providerIdleTimeout,
+    providerWallTimeout:
+      cfg.timeout?.provider?.wall_sec !== undefined
+        ? String(cfg.timeout.provider.wall_sec)
+        : UI_DEFAULTS.providerWallTimeout,
+    toolDefaultTimeout:
+      cfg.timeout?.tool?.default_sec !== undefined
+        ? String(cfg.timeout.tool.default_sec)
+        : UI_DEFAULTS.toolDefaultTimeout,
+    toolOverrides: formatRecord(cfg.timeout?.tool?.overrides),
+    watcherIgnore: formatList(cfg.watcher?.ignore),
+    logLevel: cfg.logLevel ?? UI_DEFAULTS.logLevel,
+  })
+
+  params.setSettings("email", {
     enabled: cfg.email?.enabled ?? true,
     fromAddress: cfg.email?.from?.address ?? "",
     fromName: cfg.email?.from?.name ?? "",
@@ -125,10 +143,9 @@ export function ensureInit(params: EnsureInitParams): string | undefined {
     imapPassword: cfg.email?.imap?.password ?? "",
   })
 
-  const feishuAccounts = cfg.channel?.feishu?.accounts
-  params.setChannels({
-    feishuAccounts: feishuAccounts
-      ? Object.entries(feishuAccounts).map(([key, account]) => ({
+  params.setSettings("channels", {
+    feishuAccounts: cfg.channel?.feishu?.accounts
+      ? Object.entries(cfg.channel.feishu.accounts).map(([key, account]) => ({
           key,
           enabled: account.enabled !== false,
         }))
@@ -138,50 +155,49 @@ export function ensureInit(params: EnsureInitParams): string | undefined {
   const library = cfg.library
   const memory = library?.memory
   const experience = library?.experience
-  params.setLibrary({
-    learning: (() => {
-      const memoryEnabled = memory?.enabled
-      const experienceEncode = experience?.encode
-      const experienceRetrieve = experience?.retrieve
-      if (memoryEnabled === false && experienceEncode === false && experienceRetrieve === false) return "false"
-      return "true"
-    })(),
-    autonomy: (() => {
-      if (library?.autonomy === undefined) return UI_DEFAULTS.libraryAutonomy
-      return library.autonomy ? "true" : "false"
-    })(),
-    memorySimThreshold: (() => {
-      const retrieve = typeof memory?.retrieval === "object" ? memory.retrieval : undefined
-      return typeof retrieve === "object" && retrieve?.simThreshold !== undefined
-        ? String(retrieve.simThreshold)
-        : UI_DEFAULTS.memorySimThreshold
-    })(),
-    memoryTopK: (() => {
-      const retrieve = typeof memory?.retrieval === "object" ? memory.retrieval : undefined
-      return typeof retrieve === "object" && retrieve?.topK !== undefined
-        ? String(retrieve.topK)
-        : UI_DEFAULTS.memoryTopK
-    })(),
-    experienceSimThreshold: (() => {
-      const retrieve = typeof experience?.retrieve === "object" ? experience.retrieve : undefined
-      return retrieve && typeof retrieve === "object" && retrieve.simThreshold !== undefined
-        ? String(retrieve.simThreshold)
-        : UI_DEFAULTS.experienceSimThreshold
-    })(),
-    experienceTopK: (() => {
-      const retrieve = typeof experience?.retrieve === "object" ? experience.retrieve : undefined
-      return retrieve && typeof retrieve === "object" && retrieve.topK !== undefined
-        ? String(retrieve.topK)
-        : UI_DEFAULTS.experienceTopK
-    })(),
-    experienceEpsilon: (() => {
-      const retrieve = typeof experience?.retrieve === "object" ? experience.retrieve : undefined
-      return retrieve && typeof retrieve === "object" && retrieve.epsilon !== undefined
-        ? String(retrieve.epsilon)
-        : UI_DEFAULTS.experienceEpsilon
-    })(),
+  const memoryRetrieve = typeof memory?.retrieval === "object" ? memory.retrieval : undefined
+  const experienceRetrieve = typeof experience?.retrieve === "object" ? experience.retrieve : undefined
+  params.setSettings("library", {
+    learning:
+      memory?.enabled === false && experience?.encode === false && experience?.retrieve === false ? "false" : "true",
+    autonomy: library?.autonomy === undefined ? UI_DEFAULTS.libraryAutonomy : library.autonomy ? "true" : "false",
+    memorySimThreshold:
+      memoryRetrieve?.simThreshold !== undefined ? String(memoryRetrieve.simThreshold) : UI_DEFAULTS.memorySimThreshold,
+    memoryTopK: memoryRetrieve?.topK !== undefined ? String(memoryRetrieve.topK) : UI_DEFAULTS.memoryTopK,
+    experienceSimThreshold:
+      experienceRetrieve?.simThreshold !== undefined
+        ? String(experienceRetrieve.simThreshold)
+        : UI_DEFAULTS.experienceSimThreshold,
+    experienceTopK:
+      experienceRetrieve?.topK !== undefined ? String(experienceRetrieve.topK) : UI_DEFAULTS.experienceTopK,
+    experienceEpsilon:
+      experienceRetrieve?.epsilon !== undefined ? String(experienceRetrieve.epsilon) : UI_DEFAULTS.experienceEpsilon,
   })
 
   params.setInitialized(true)
   return setName
+}
+
+function formatList(values: string[] | undefined): string {
+  return values?.join("\n") ?? ""
+}
+
+function formatRecord(values: Record<string, string | number> | undefined, separator = "="): string {
+  return values
+    ? Object.entries(values)
+        .map(([key, value]) => `${key}${separator}${value}`)
+        .join("\n")
+    : ""
+}
+
+function formatToastDurations(values: Record<string, number> | undefined) {
+  const result = emptyToastDurationOverrides()
+  if (!values) return result
+  for (const type of TOAST_TYPES) {
+    const value = values[type]
+    if (typeof value === "number" && Number.isFinite(value) && value > 0) {
+      result[type] = String(snapToastDuration(value))
+    }
+  }
+  return result
 }

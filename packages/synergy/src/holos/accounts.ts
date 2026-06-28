@@ -49,6 +49,19 @@ export namespace HolosAccounts {
     await fs.chmod(file, 0o600)
   }
 
+  async function removeLegacyHolosEntry(): Promise<void> {
+    const file = Auth.legacyFilepath()
+    const data = await Bun.file(file)
+      .json()
+      .catch(() => undefined)
+    if (!data || typeof data !== "object" || Array.isArray(data) || !("holos" in data)) return
+
+    delete (data as Record<string, unknown>)["holos"]
+    await fs.mkdir(path.dirname(file), { recursive: true })
+    await Bun.write(file, JSON.stringify(data, null, 2))
+    await fs.chmod(file, 0o600).catch(() => {})
+  }
+
   export async function getActiveAccount(): Promise<AccountInfo | undefined> {
     const store = await readStore()
     if (!store.activeAccountId) return undefined
@@ -101,6 +114,7 @@ export namespace HolosAccounts {
   }
 
   export async function migrateFromLegacy(): Promise<{ migrated: boolean }> {
+    await Auth.migrateLegacy({ backup: false })
     const authData = await Auth.all()
     const holos = authData["holos"]
     if (!holos || holos.type !== "holos") {
@@ -122,6 +136,7 @@ export namespace HolosAccounts {
     await writeStore(store)
 
     await Auth.remove("holos")
+    await removeLegacyHolosEntry()
 
     return { migrated: true }
   }

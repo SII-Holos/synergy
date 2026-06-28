@@ -4,12 +4,12 @@ import { useBrowser, type ScreenshotEntry } from "./browser-store"
 export function ScreenshotCanvas() {
   let wrapperRef: HTMLDivElement | undefined
   let imgRef: HTMLImageElement | undefined
-  const { activeTabId, tabScreenshots, annotationMode, setAnnotationTarget, send } = useBrowser()
+  const { pageId: currentPageId, pageScreenshots, annotationMode, setAnnotationTarget, send } = useBrowser()
 
   const activeScreenshot = (): ScreenshotEntry | undefined => {
-    const id = activeTabId()
+    const id = currentPageId()
     if (!id) return undefined
-    return tabScreenshots[id]
+    return pageScreenshots[id]
   }
 
   const handleClick = (e: MouseEvent) => {
@@ -36,7 +36,7 @@ export function ScreenshotCanvas() {
         pageY,
       })
     } else {
-      send({ type: "click", x: pageX, y: pageY })
+      send({ type: "click", pageId: currentPageId(), x: pageX, y: pageY })
     }
   }
 

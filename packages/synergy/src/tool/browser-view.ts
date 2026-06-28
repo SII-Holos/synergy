@@ -18,7 +18,7 @@ interface BrowserViewMetadata {
 
 export const BrowserViewTool = Tool.define<typeof parameters, BrowserViewMetadata>("browser_view", {
   description:
-    "Control the browser workspace panel. Show or hide the browser workspace UI, switch focus to the browser tab, or query the workspace open state. This does not affect CDP or the running browser — only the frontend view.",
+    "Control the browser workspace panel. Show or hide the browser workspace UI, switch focus to the browser page, or query the workspace open state. This does not affect CDP or the running browser — only the frontend view.",
   parameters,
   async execute(params) {
     switch (params.action) {

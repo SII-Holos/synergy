@@ -62,7 +62,12 @@ export namespace ConfigDomain {
       "creative_model",
       "vision_model",
     ]),
-    def("providers", "20-providers.jsonc", "Providers", ["provider", "enabled_providers", "disabled_providers"]),
+    def("providers", "20-providers.jsonc", "Providers", [
+      "provider",
+      "providerCatalog",
+      "enabled_providers",
+      "disabled_providers",
+    ]),
     def("library", "30-library.jsonc", "Library", ["library"]),
     def("mcp", "40-mcp.jsonc", "MCP", ["mcp", "mcpDefaults"]),
     def(
@@ -77,6 +82,8 @@ export namespace ConfigDomain {
       "agent",
       "external_agent",
       "instructions",
+      "project_doc_fallback_filenames",
+      "project_doc_max_bytes",
       "category",
     ]),
     def("commands", "70-commands.jsonc", "Commands", ["command"]),

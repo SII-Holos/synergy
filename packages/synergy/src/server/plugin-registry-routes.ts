@@ -36,6 +36,20 @@ const PluginSignature = z
   })
   .meta({ ref: "RegistryPluginSignature" })
 
+const RegistryPluginIcon = z
+  .discriminatedUnion("type", [
+    z.object({
+      type: z.literal("lucide"),
+      name: z.string().min(1),
+    }),
+    z.object({
+      type: z.literal("image"),
+      url: z.string().url(),
+      alt: z.string().optional(),
+    }),
+  ])
+  .meta({ ref: "RegistryPluginIcon" })
+
 const RegistryPluginVersion = z
   .object({
     version: z.string(),
@@ -68,6 +82,7 @@ const RegistryPluginEntry = z
       email: z.string().optional(),
       url: z.string().optional(),
     }),
+    icon: RegistryPluginIcon.optional(),
     verified: z.boolean(),
     official: z.boolean(),
     keywords: z.array(z.string()),
@@ -106,6 +121,7 @@ const RegistryPluginSummary = z
       email: z.string().optional(),
       url: z.string().optional(),
     }),
+    icon: RegistryPluginIcon.optional(),
     verified: z.boolean(),
     official: z.boolean(),
     keywords: z.array(z.string()),
@@ -164,6 +180,7 @@ function localSummary(p: RegistryPluginEntry): RegistryPluginSummary {
     description: p.description,
     repo: p.repo,
     author: p.author,
+    icon: p.icon,
     verified: p.verified,
     official: p.official,
     keywords: p.keywords,

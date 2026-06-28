@@ -2,8 +2,9 @@ import z from "zod"
 import { MetaProtocolEnv } from "@ericsanchezok/meta-protocol"
 import { Tool } from "./tool"
 import { RemoteExecution } from "./remote-execution"
+import { ToolTimeout } from "./timeout"
 
-const CONNECT_TIMEOUT_MS = 30_000
+const CONNECT_TIMEOUT_MS = ToolTimeout.DEFAULTS.connectMs
 
 const parameters = z.object({
   action: z.enum(["open", "close", "status", "list"]).describe("Remote session action to perform"),

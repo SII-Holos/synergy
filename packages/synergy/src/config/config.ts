@@ -116,6 +116,8 @@ export namespace Config {
   export type LibraryConfig = Schema.LibraryConfig
   export const Provider = Schema.Provider
   export type Provider = Schema.Provider
+  export const ProviderCatalog = Schema.ProviderCatalog
+  export type ProviderCatalog = Schema.ProviderCatalog
   export const Info = Schema.Info
   export type Info = Schema.Info
 
@@ -163,6 +165,11 @@ export namespace Config {
     }
     if (target.instructions && source.instructions) {
       merged.instructions = Array.from(new Set([...target.instructions, ...source.instructions]))
+    }
+    if (target.project_doc_fallback_filenames && source.project_doc_fallback_filenames) {
+      merged.project_doc_fallback_filenames = Array.from(
+        new Set([...target.project_doc_fallback_filenames, ...source.project_doc_fallback_filenames]),
+      )
     }
     return merged
   }
@@ -318,6 +325,8 @@ export namespace Config {
     if (result.autoupdate === undefined) result.autoupdate = true
     if (result.snapshot === undefined) result.snapshot = true
     if (result.default_agent === undefined) result.default_agent = "synergy"
+    if (result.project_doc_fallback_filenames === undefined) result.project_doc_fallback_filenames = []
+    if (result.project_doc_max_bytes === undefined) result.project_doc_max_bytes = 32 * 1024
     if (result.question === undefined) result.question = { timeout: 1800 }
     else if (result.question.timeout === undefined) result.question.timeout = 1800
     if (result.compaction === undefined) {
@@ -512,11 +521,10 @@ export namespace Config {
       .readdir(domainDir)
       .then((entries) => entries.some((entry) => ConfigDomain.domainForFile(entry)))
       .catch(() => false)
-    if (existingDomainFiles) return
 
     const legacy = await findLegacyGlobalConfig()
     if (!legacy) {
-      await ConfigDomain.ensureDir()
+      if (!existingDomainFiles) await ConfigDomain.ensureDir()
       return
     }
 
@@ -528,12 +536,19 @@ export namespace Config {
     await fs.mkdir(tempDir, { recursive: true })
 
     try {
+      if (existingDomainFiles) {
+        await fs.cp(domainDir, tempDir, { recursive: true, force: true })
+      }
+
       for (const domain of ConfigDomain.definitions) {
+        const filepath = path.join(tempDir, domain.filename)
+        const existing = await loadFile(filepath, { addSchema: false })
         const fragment = split.get(domain.id) ?? {}
-        await Bun.write(path.join(tempDir, domain.filename), serializeConfig(fragment))
+        await Bun.write(filepath, serializeConfig(mergeConfigConcatArrays(existing, fragment as Info)))
       }
 
       await fs.mkdir(path.dirname(domainDir), { recursive: true })
+      await fs.rm(domainDir, { recursive: true, force: true })
       await fs.rename(tempDir, domainDir).catch(async (err) => {
         if (err?.code !== "EXDEV") throw err
         await fs.cp(tempDir, domainDir, { recursive: true, force: true })

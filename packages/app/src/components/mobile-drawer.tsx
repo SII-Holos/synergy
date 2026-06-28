@@ -1,5 +1,5 @@
 import { createMemo, createSignal, For, Show, onMount } from "solid-js"
-import { A, useNavigate, useParams } from "@solidjs/router"
+import { A, useLocation, useNavigate, useParams } from "@solidjs/router"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { base64Decode, base64Encode } from "@ericsanchezok/synergy-util/encode"
 import { createSynergyClient } from "@ericsanchezok/synergy-sdk/client"
@@ -7,13 +7,12 @@ import { useLayout, type LocalScope, SESSION_PAGE_SIZE } from "@/context/layout"
 import { useGlobalSync } from "@/context/global-sync"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { useNotification } from "@/context/notification"
-import { assetPath } from "@/utils/proxy"
+import { holosLogoPath } from "@/utils/brand-assets"
 import { useTheme } from "@ericsanchezok/synergy-ui/theme"
 import { getScopeLabel, isHomeScope } from "@/utils/scope"
 import { ActiveZone } from "@/components/scopes/active-zone"
 import { SessionRow } from "@/components/scopes/session-row"
 import { PaginationBar } from "@/components/scopes/pagination-bar"
-import { usePanel, PANELS } from "@/context/panel"
 import type { Session } from "@ericsanchezok/synergy-sdk/client"
 
 export function MobileDrawer() {
@@ -56,8 +55,8 @@ export function MobileDrawer() {
           <div class="flex items-center justify-between px-4 h-12 shrink-0 border-b border-border-weaker-base/60">
             <A href="/" class="flex items-center gap-2" onClick={close}>
               <img
-                src={theme.mode() === "dark" ? assetPath("/holos-logo-white.svg") : assetPath("/holos-logo.svg")}
-                alt="Synergy"
+                src={holosLogoPath(theme.mode())}
+                alt="Holos"
                 class="size-6 shrink-0"
               />
               <span class="text-14-medium text-text-strong">Synergy</span>
@@ -105,8 +104,11 @@ export function MobileDrawer() {
   )
 }
 
-// Tools grid uses shared PANELS (excluding lucid which is desktop-only for now)
-const DRAWER_TOOLS = PANELS.filter((p) => p.id !== "lucid")
+const DRAWER_TOOLS = [
+  { id: "agenda", label: "Agenda", icon: "clock", href: "/agenda" },
+  { id: "library", label: "Library", icon: "book-open", href: "/library" },
+  { id: "plugins", label: "Plugins", icon: "package", href: "/plugins/marketplace" },
+] as const
 
 function ScopeListView(props: {
   currentDir: string | undefined
@@ -115,8 +117,9 @@ function ScopeListView(props: {
   onClose: () => void
 }) {
   const layout = useLayout()
-  const panel = usePanel()
   const globalSync = useGlobalSync()
+  const navigate = useNavigate()
+  const location = useLocation()
 
   const scopes = createMemo(() => {
     const homePath = globalSync.data.paths?.home
@@ -138,7 +141,7 @@ function ScopeListView(props: {
         type="button"
         classList={{
           "w-full flex items-center gap-3 px-4 py-2.5 transition-colors": true,
-          "bg-surface-interactive-base/8 text-text-interactive-base": isHomeActive(),
+          "bg-surface-raised-base-hover text-text-strong": isHomeActive(),
           "text-text-base hover:bg-surface-raised-base-hover": !isHomeActive(),
         }}
         onClick={props.onNavigateHome}
@@ -167,7 +170,7 @@ function ScopeListView(props: {
               type="button"
               classList={{
                 "w-full flex items-center gap-3 px-4 py-2.5 transition-colors": true,
-                "bg-surface-interactive-base/8": isActive(),
+                "bg-surface-raised-base-hover": isActive(),
                 "hover:bg-surface-raised-base-hover": !isActive(),
               }}
               onClick={() => props.onSelectScope(scope)}
@@ -176,7 +179,7 @@ function ScopeListView(props: {
               <span
                 classList={{
                   "text-14-medium truncate": true,
-                  "text-text-interactive-base": isActive(),
+                  "text-text-strong": isActive(),
                   "text-text-base": !isActive(),
                 }}
               >
@@ -202,12 +205,14 @@ function ScopeListView(props: {
               type="button"
               classList={{
                 "flex flex-col items-center gap-1 py-2.5 rounded-xl transition-colors": true,
-                "bg-surface-interactive-base/8 text-text-interactive-base": panel.active() === tool.id,
-                "text-text-weak hover:text-text-base hover:bg-surface-raised-base-hover": panel.active() !== tool.id,
+                "bg-surface-raised-base-hover text-text-strong":
+                  tool.id === "plugins" ? location.pathname.startsWith("/plugins") : location.pathname === tool.href,
+                "text-text-weak hover:text-text-base hover:bg-surface-raised-base-hover":
+                  tool.id === "plugins" ? !location.pathname.startsWith("/plugins") : location.pathname !== tool.href,
               }}
               onClick={() => {
+                navigate(tool.href)
                 props.onClose()
-                panel.toggle(tool.id)
               }}
             >
               <Icon name={tool.icon} size="normal" />
@@ -295,7 +300,7 @@ function SessionListDrawerView(props: {
       {/* New session */}
       <button
         type="button"
-        class="flex items-center gap-2.5 mx-3 mt-2.5 mb-1 px-3 py-2 rounded-xl border border-dashed border-border-base/50 text-13-medium text-text-weak hover:text-text-interactive-base hover:border-text-interactive-base/30 hover:bg-surface-interactive-base/5 transition-all"
+        class="flex items-center gap-2.5 mx-3 mt-2.5 mb-1 px-3 py-2 rounded-xl border border-dashed border-border-base/50 text-13-medium text-text-weak hover:text-text-strong hover:border-border-base hover:bg-surface-raised-base-hover transition-all"
         onClick={props.onNewSession}
       >
         <Icon name="plus" size="small" />

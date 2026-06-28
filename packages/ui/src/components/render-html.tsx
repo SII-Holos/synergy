@@ -39,11 +39,11 @@ const THEME_VARIABLES = [
 ] as const
 
 const FALLBACK_THEME: Record<(typeof THEME_VARIABLES)[number], string> = {
-  "background-base": "#f8f7f7",
-  "surface-base": "rgba(5, 0, 0, 0.04)",
-  "surface-raised-base": "rgba(255, 255, 255, 0.72)",
-  "surface-raised-stronger-non-alpha": "#ffffff",
-  "surface-inset-base": "rgba(5, 0, 0, 0.04)",
+  "background-base": "#f6f7f8",
+  "surface-base": "#e9ecef",
+  "surface-raised-base": "#e9ecef",
+  "surface-raised-stronger-non-alpha": "#dce2ea",
+  "surface-inset-base": "#e4e8ee",
   "surface-brand-base": "#b98522",
   "surface-interactive-base": "#4f67c8",
   "surface-success-strong": "#218a62",

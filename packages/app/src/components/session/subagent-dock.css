@@ -60,7 +60,7 @@
 
 .subagent-avatar-holding {
   transform: scale(1.04);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--text-interactive-base) 26%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--text-strong) 18%, transparent);
 }
 
 .subagent-hold-ring {
@@ -71,11 +71,11 @@
 }
 
 .subagent-hold-ring-track {
-  stroke: color-mix(in srgb, var(--subagent-glow-color, rgba(59, 130, 246, 0.35)) 28%, transparent);
+  stroke: color-mix(in srgb, var(--subagent-accent-color, var(--text-weaker)) 16%, transparent);
 }
 
 .subagent-hold-ring-progress {
-  stroke: color-mix(in srgb, var(--subagent-glow-color, rgba(59, 130, 246, 0.35)) 92%, white 8%);
+  stroke: color-mix(in srgb, var(--subagent-accent-color, var(--text-strong)) 72%, var(--text-strong) 10%);
   stroke-linecap: round;
   transition: stroke-dashoffset 40ms linear;
 }

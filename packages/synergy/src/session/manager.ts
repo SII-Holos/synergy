@@ -8,8 +8,7 @@ import { StoragePath } from "@/storage/path"
 import type { MessageV2 } from "./message-v2"
 import { BusyError } from "./error"
 import { SessionEvent } from "./event"
-import { Scope } from "@/scope"
-import { ScopeRuntime } from "@/scope/runtime"
+import type { Scope } from "@/scope"
 import { Info, type StatusInfo } from "./types"
 import { SessionEndpoint } from "./endpoint"
 import { SessionInbox } from "./inbox"
@@ -169,6 +168,7 @@ export namespace SessionManager {
         path: scope.directory,
         scopeID: scope.id,
       }
+      const { ScopeRuntime } = await import("@/scope/runtime")
       return await ScopeRuntime.provide({
         scope,
         workspace,

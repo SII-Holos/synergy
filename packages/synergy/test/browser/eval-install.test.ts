@@ -73,31 +73,20 @@ describe("BrowserEval", () => {
 })
 
 // ════════════════════════════════════════════════════════════════════════
-//  RED: BrowserTab.evaluate signature — must accept CDP options
+//  BrowserTab.evaluate signature accepts CDP options
 // ════════════════════════════════════════════════════════════════════════
 
-describe("BrowserTab.evaluate — RED signature gap", () => {
-  test("RED: evaluate accepts options { throwOnSideEffect } as second argument", () => {
-    // BrowserTabImpl.evaluate currently declares: evaluate(expression: string): Promise<unknown>
-    // It does NOT accept a second options parameter.
+describe("BrowserTab.evaluate", () => {
+  test("evaluate accepts options { throwOnSideEffect } as second argument", () => {
     // The .length property reports the declared parameter count.
-    // RED: the interface should accept 2 parameters: (expression, options?)
-    //
-    // We check the Runtime.evaluate call inside the implementation. Currently:
-    //   await this.sendCmd("Runtime.evaluate", { expression, returnByValue: true })
-    // It should become:
-    //   await this.sendCmd("Runtime.evaluate", { expression, returnByValue: true, ...options })
+    // The interface accepts 2 parameters: (expression, options?)
 
-    // The declared parameter count of the current evaluate method
     const paramCount = BrowserTabImpl.prototype.evaluate.length
-    // RED: currently it's 1 (just expression); it should be 2
     expect(paramCount).toBe(2)
   })
 
-  test("RED: readonly eval tool should forward throwOnSideEffect to tab", () => {
-    // The browser_eval tool's execute() currently does:
-    //   const raw = await tab.evaluate(params.expression)
-    // RED: when mode is "readonly", it should call:
+  test("readonly eval tool forwards throwOnSideEffect to the page wrapper", () => {
+    // When mode is "readonly", browser_eval should call:
     //   const raw = await tab.evaluate(params.expression, { throwOnSideEffect: true })
     //
     // We verify BuildReadonlyEval produces the right payload — the gap is that
@@ -134,7 +123,7 @@ describe("browser_eval tool — RED schema gap", () => {
     const info = await BrowserEvalTool.init()
     const schema = info.parameters
 
-    // Current schema: expression, mode, maxBytes, tabId
+    // Current schema: expression, mode, maxBytes, pageId
     // RED: it should also accept throwOnSideEffect: z.boolean().optional()
     const result = schema.safeParse({
       expression: "document.title",

@@ -6,6 +6,8 @@ import { ScopeContext } from "../../src/scope/context"
 import { Session } from "../../src/session"
 import { SessionInvoke } from "../../src/session/invoke"
 import { SessionManager } from "../../src/session/manager"
+import { Identifier } from "../../src/id/id"
+import { CortexOutput } from "../../src/cortex/output"
 import { tmpdir } from "../fixture/fixture"
 
 async function launchAndCaptureCreatedTask(
@@ -33,7 +35,98 @@ async function launchAndCaptureCreatedTask(
   return { createdTask, launchPromise }
 }
 
-describe("Cortex", () => {
+async function writeAssistantText(sessionID: string, text: string) {
+  const message = await Session.updateMessage({
+    id: Identifier.ascending("message"),
+    role: "assistant",
+    parentID: Identifier.ascending("message"),
+    mode: "test",
+    agent: "developer",
+    path: {
+      cwd: ScopeContext.current.directory,
+      root: ScopeContext.current.directory,
+    },
+    cost: 0,
+    tokens: {
+      input: 0,
+      output: 0,
+      reasoning: 0,
+      cache: { read: 0, write: 0 },
+    },
+    modelID: "test-model",
+    providerID: "test-provider",
+    time: {
+      created: Date.now(),
+      completed: Date.now(),
+    },
+    sessionID,
+  })
+  await Session.updatePart({
+    id: Identifier.ascending("part"),
+    messageID: message.id,
+    sessionID,
+    type: "text",
+    text,
+  })
+}
+
+async function writeStructuredToolResult(sessionID: string, input: Record<string, unknown>) {
+  const message = await Session.updateMessage({
+    id: Identifier.ascending("message"),
+    role: "assistant",
+    parentID: Identifier.ascending("message"),
+    mode: "test",
+    agent: "developer",
+    path: {
+      cwd: ScopeContext.current.directory,
+      root: ScopeContext.current.directory,
+    },
+    cost: 0,
+    tokens: {
+      input: 0,
+      output: 0,
+      reasoning: 0,
+      cache: { read: 0, write: 0 },
+    },
+    modelID: "test-model",
+    providerID: "test-provider",
+    time: {
+      created: Date.now(),
+      completed: Date.now(),
+    },
+    sessionID,
+  })
+  await Session.updatePart({
+    id: Identifier.ascending("part"),
+    messageID: message.id,
+    sessionID,
+    type: "tool",
+    callID: "call_structured_task_result",
+    tool: CortexOutput.STRUCTURED_TOOL_ID,
+    state: {
+      status: "completed",
+      input,
+      output: JSON.stringify(input),
+      title: "Structured task result",
+      metadata: {},
+      time: {
+        start: Date.now(),
+        end: Date.now(),
+      },
+    },
+  })
+}
+
+async function waitUntilTerminal(taskID: string) {
+  for (let i = 0; i < 50; i++) {
+    const task = Cortex.get(taskID)
+    if (task?.status === "completed" || task?.status === "error" || task?.status === "cancelled") return task
+    await Bun.sleep(10)
+  }
+  return Cortex.get(taskID)
+}
+
+describe.serial("Cortex", () => {
   beforeEach(() => {
     Cortex.reset()
   })
@@ -70,6 +163,37 @@ describe("Cortex", () => {
     test("returns empty array for session with no tasks", () => {
       const tasks = Cortex.getTasksForSession("ses_nonexistent")
       expect(tasks).toEqual([])
+    })
+
+    test("hidden delegated tasks are audited but not visible", async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const rootSession = await Session.create({})
+          const agent = "developer"
+          const hiddenTask = await Cortex.launch({
+            description: "Hidden planner",
+            prompt: "Plan something",
+            agent,
+            executionRole: "delegated_subagent",
+            parentSessionID: rootSession.id,
+            parentMessageID: "msg_test01234567890abe",
+            visibility: "hidden",
+            tools: { "*": false, example_internal_tool: true },
+            notifyParentOnComplete: false,
+          })
+
+          expect(Cortex.getTasksForSession(rootSession.id).map((task) => task.id)).toContain(hiddenTask.id)
+          expect(Cortex.getVisibleTasks(rootSession.id).map((task) => task.id)).not.toContain(hiddenTask.id)
+          expect(Cortex.listVisible().map((task) => task.id)).not.toContain(hiddenTask.id)
+          expect(Cortex.getRunningTasks().map((task) => task.id)).not.toContain(hiddenTask.id)
+          expect(hiddenTask.tools).toEqual({ "*": false, example_internal_tool: true })
+          expect(hiddenTask.visibility).toBe("hidden")
+
+          await Cortex.cancel(hiddenTask.id)
+        },
+      })
     })
   })
 
@@ -482,6 +606,248 @@ describe("Cortex", () => {
     })
   })
 
+  describe("structured output", () => {
+    const planSchema = {
+      type: "object",
+      additionalProperties: false,
+      required: ["choice"],
+      properties: {
+        choice: { type: "string" },
+      },
+    }
+
+    test("summary mode keeps task.result as trajectory summary", async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const originalInvokeInternal = SessionInvoke.invokeInternal
+          ;(SessionInvoke.invokeInternal as any) = mock(
+            async (input: Parameters<typeof SessionInvoke.invokeInternal>[0]) => {
+              await writeAssistantText(input.sessionID, "plain answer")
+            },
+          )
+          try {
+            const parentSession = await Session.create({})
+            const task = await Cortex.launch({
+              description: "Summary output",
+              prompt: "Do something",
+              agent: "developer",
+              parentSessionID: parentSession.id,
+              parentMessageID: "msg_test01234567890abc",
+              model: { providerID: "test-provider", modelID: "test-model" },
+              notifyParentOnComplete: false,
+            })
+
+            const completed = await waitUntilTerminal(task.id)
+            expect(completed?.status).toBe("completed")
+            expect(completed?.result).toContain("Execution Trajectory")
+            expect(completed?.outputResult).toBeUndefined()
+          } finally {
+            ;(SessionInvoke.invokeInternal as any) = originalInvokeInternal
+          }
+        },
+      })
+    })
+
+    test("structured mode accepts hidden structured tool output", async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const originalInvokeInternal = SessionInvoke.invokeInternal
+          ;(SessionInvoke.invokeInternal as any) = mock(
+            async (input: Parameters<typeof SessionInvoke.invokeInternal>[0]) => {
+              expect(input.tools?.[CortexOutput.STRUCTURED_TOOL_ID]).toBe(true)
+              expect(input.ephemeralTools?.[0]?.id).toBe(CortexOutput.STRUCTURED_TOOL_ID)
+              await writeStructuredToolResult(input.sessionID, { choice: "drake" })
+            },
+          )
+          try {
+            const parentSession = await Session.create({})
+            const task = await Cortex.launch({
+              description: "Structured output",
+              prompt: "Choose one",
+              agent: "developer",
+              parentSessionID: parentSession.id,
+              parentMessageID: "msg_test01234567890abc",
+              model: { providerID: "test-provider", modelID: "test-model" },
+              notifyParentOnComplete: false,
+              output: { mode: "structured", schema: planSchema },
+            })
+
+            const completed = await waitUntilTerminal(task.id)
+            expect(completed?.status).toBe("completed")
+            expect(completed?.result).toContain("Execution Trajectory")
+            expect(completed?.outputResult).toEqual({
+              mode: "structured",
+              status: "valid",
+              source: "structured_tool",
+              data: { choice: "drake" },
+              text: "",
+              repairTurns: 0,
+            })
+          } finally {
+            ;(SessionInvoke.invokeInternal as any) = originalInvokeInternal
+          }
+        },
+      })
+    })
+
+    test("structured mode falls back to final response JSON", async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const originalInvokeInternal = SessionInvoke.invokeInternal
+          ;(SessionInvoke.invokeInternal as any) = mock(
+            async (input: Parameters<typeof SessionInvoke.invokeInternal>[0]) => {
+              await writeAssistantText(input.sessionID, '{"choice":"final"}')
+            },
+          )
+          try {
+            const parentSession = await Session.create({})
+            const task = await Cortex.launch({
+              description: "Structured final text",
+              prompt: "Choose one",
+              agent: "developer",
+              parentSessionID: parentSession.id,
+              parentMessageID: "msg_test01234567890abc",
+              model: { providerID: "test-provider", modelID: "test-model" },
+              notifyParentOnComplete: false,
+              output: { mode: "structured", schema: planSchema },
+            })
+
+            const completed = await waitUntilTerminal(task.id)
+            expect(completed?.status).toBe("completed")
+            expect(completed?.outputResult?.mode).toBe("structured")
+            expect((completed?.outputResult as any).source).toBe("final_response")
+            expect((completed?.outputResult as any).data).toEqual({ choice: "final" })
+          } finally {
+            ;(SessionInvoke.invokeInternal as any) = originalInvokeInternal
+          }
+        },
+      })
+    })
+
+    test("structured mode runs repair turns until schema is valid", async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const originalInvokeInternal = SessionInvoke.invokeInternal
+          let calls = 0
+          ;(SessionInvoke.invokeInternal as any) = mock(
+            async (input: Parameters<typeof SessionInvoke.invokeInternal>[0]) => {
+              calls++
+              if (calls === 1) {
+                await writeAssistantText(input.sessionID, '{"wrong":true}')
+                return
+              }
+              await writeStructuredToolResult(input.sessionID, { choice: "repaired" })
+            },
+          )
+          try {
+            const parentSession = await Session.create({})
+            const task = await Cortex.launch({
+              description: "Structured repair",
+              prompt: "Choose one",
+              agent: "developer",
+              parentSessionID: parentSession.id,
+              parentMessageID: "msg_test01234567890abc",
+              model: { providerID: "test-provider", modelID: "test-model" },
+              notifyParentOnComplete: false,
+              output: { mode: "structured", schema: planSchema, maxRepairTurns: 3 },
+            })
+
+            const completed = await waitUntilTerminal(task.id)
+            expect(calls).toBe(2)
+            expect(completed?.status).toBe("completed")
+            expect((completed?.outputResult as any).repairTurns).toBe(1)
+            expect((completed?.outputResult as any).data).toEqual({ choice: "repaired" })
+          } finally {
+            ;(SessionInvoke.invokeInternal as any) = originalInvokeInternal
+          }
+        },
+      })
+    })
+
+    test("structured mode errors after repair budget without writing a fake result", async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const originalInvokeInternal = SessionInvoke.invokeInternal
+          let calls = 0
+          ;(SessionInvoke.invokeInternal as any) = mock(
+            async (input: Parameters<typeof SessionInvoke.invokeInternal>[0]) => {
+              calls++
+              await writeAssistantText(input.sessionID, '{"wrong":true}')
+            },
+          )
+          try {
+            const parentSession = await Session.create({})
+            const task = await Cortex.launch({
+              description: "Structured failure",
+              prompt: "Choose one",
+              agent: "developer",
+              parentSessionID: parentSession.id,
+              parentMessageID: "msg_test01234567890abc",
+              model: { providerID: "test-provider", modelID: "test-model" },
+              notifyParentOnComplete: false,
+              output: { mode: "structured", schema: planSchema, maxRepairTurns: 1 },
+            })
+
+            const completed = await waitUntilTerminal(task.id)
+            expect(calls).toBe(2)
+            expect(completed?.status).toBe("error")
+            expect(completed?.result).toBeUndefined()
+            expect(completed?.outputResult?.mode).toBe("structured")
+            expect((completed?.outputResult as any).status).toBe("invalid")
+            expect((completed?.outputResult as any).repairTurns).toBe(1)
+          } finally {
+            ;(SessionInvoke.invokeInternal as any) = originalInvokeInternal
+          }
+        },
+      })
+    })
+
+    test("final_response captures final assistant text without changing the summary", async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const originalInvokeInternal = SessionInvoke.invokeInternal
+          ;(SessionInvoke.invokeInternal as any) = mock(
+            async (input: Parameters<typeof SessionInvoke.invokeInternal>[0]) => {
+              await writeAssistantText(input.sessionID, "final prose")
+            },
+          )
+          try {
+            const parentSession = await Session.create({})
+            const task = await Cortex.launch({
+              description: "Final response",
+              prompt: "Answer",
+              agent: "developer",
+              parentSessionID: parentSession.id,
+              parentMessageID: "msg_test01234567890abc",
+              model: { providerID: "test-provider", modelID: "test-model" },
+              notifyParentOnComplete: false,
+              output: { mode: "final_response" },
+            })
+
+            const completed = await waitUntilTerminal(task.id)
+            expect(completed?.status).toBe("completed")
+            expect(completed?.result).toContain("Execution Trajectory")
+            expect(completed?.outputResult).toEqual({ mode: "final_response", text: "final prose" })
+          } finally {
+            ;(SessionInvoke.invokeInternal as any) = originalInvokeInternal
+          }
+        },
+      })
+    })
+  })
+
   describe("waitFor integration", () => {
     test("returns immediately for cancelled task", async () => {
       await using tmp = await tmpdir({ git: true })
@@ -524,10 +890,14 @@ describe("Cortex", () => {
       await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
-          const originalInvoke = SessionInvoke.invoke
+          const originalInvokeInternal = SessionInvoke.invokeInternal
           const originalDeliver = SessionManager.deliver
           const deliveries: Parameters<typeof SessionManager.deliver>[0][] = []
-          ;(SessionInvoke.invoke as any) = mock(async () => undefined)
+          ;(SessionInvoke.invokeInternal as any) = mock(
+            async (input: Parameters<typeof SessionInvoke.invokeInternal>[0]) => {
+              await writeAssistantText(input.sessionID, "completed")
+            },
+          )
           ;(SessionManager.deliver as any) = mock(async (input: Parameters<typeof SessionManager.deliver>[0]) => {
             deliveries.push(input)
           })
@@ -550,7 +920,7 @@ describe("Cortex", () => {
             expect(deliveries[0].mail.type).toBe("user")
             expect(deliveries[0].mail.metadata?.source).toBe("cortex")
           } finally {
-            ;(SessionInvoke.invoke as any) = originalInvoke
+            ;(SessionInvoke.invokeInternal as any) = originalInvokeInternal
             ;(SessionManager.deliver as any) = originalDeliver
           }
         },
@@ -562,10 +932,14 @@ describe("Cortex", () => {
       await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
-          const originalInvoke = SessionInvoke.invoke
+          const originalInvokeInternal = SessionInvoke.invokeInternal
           const originalDeliver = SessionManager.deliver
           const deliver = mock(async () => {})
-          ;(SessionInvoke.invoke as any) = mock(async () => undefined)
+          ;(SessionInvoke.invokeInternal as any) = mock(
+            async (input: Parameters<typeof SessionInvoke.invokeInternal>[0]) => {
+              await writeAssistantText(input.sessionID, "completed")
+            },
+          )
           ;(SessionManager.deliver as any) = deliver
           try {
             const parentSession = await Session.create({})
@@ -584,7 +958,7 @@ describe("Cortex", () => {
             expect(completed?.status).toBe("completed")
             expect(deliver).not.toHaveBeenCalled()
           } finally {
-            ;(SessionInvoke.invoke as any) = originalInvoke
+            ;(SessionInvoke.invokeInternal as any) = originalInvokeInternal
             ;(SessionManager.deliver as any) = originalDeliver
           }
         },

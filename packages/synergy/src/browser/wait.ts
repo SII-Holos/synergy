@@ -2,6 +2,7 @@ import type { Page } from "playwright"
 import type { BrowserTab } from "./tab.js"
 import { BrowserLocator } from "./locator.js"
 import type { Locator } from "playwright"
+import { ToolTimeout } from "@/tool/timeout"
 
 type LocatorInput = BrowserLocator.LocatorInput
 type ResolvedElement = BrowserLocator.ResolvedElement
@@ -13,7 +14,7 @@ export namespace BrowserWait {
     signal?: AbortSignal
   }
 
-  const DEFAULT_TIMEOUT = 30_000
+  const DEFAULT_TIMEOUT = ToolTimeout.DEFAULTS.browserHelperWaitMs
   const DEFAULT_POLL = 100
 
   // ── helpers ──────────────────────────────────────────────────────
@@ -37,7 +38,7 @@ export namespace BrowserWait {
   /**
    * Wait for a locator to appear in the page.
    * Uses Playwright locator.waitFor when a page is available, falling back
-   * to BrowserLocator.resolve polling on snapshot-based tabs.
+   * to BrowserLocator.resolve polling on snapshot-based pages.
    */
   export async function waitForLocator(
     tab: BrowserTab,

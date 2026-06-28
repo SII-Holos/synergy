@@ -31,6 +31,7 @@ import {
 
 export namespace MCP {
   const log = Log.create({ service: "mcp" })
+  const toolCallTimeouts = new Map<string, number | undefined>()
 
   // ── Public schemas/events (re-exposed via the MCP namespace) ────────
   // These are declared here to satisfy the public API surface; the actual
@@ -108,6 +109,10 @@ export namespace MCP {
 
   export function ensureStarted(): void {
     McpSupervisor.ensureStarted()
+  }
+
+  export function toolCallTimeout(toolName: string): number | undefined {
+    return toolCallTimeouts.get(toolName)
   }
 
   // ── Lifecycle ───────────────────────────────────────────────────────
@@ -222,6 +227,7 @@ export namespace MCP {
   export async function toolEntries(): Promise<ToolEntry[]> {
     await McpSupervisor.ready()
     const result: ToolEntry[] = []
+    toolCallTimeouts.clear()
     const cfg = await Config.current()
     const callTimeout = cfg.experimental?.mcp_timeout
 
@@ -231,11 +237,14 @@ export namespace MCP {
 
       for (const mcpTool of handle.toolDefs) {
         const perServerCallTimeout = await resolveCallTimeout(handle.name)
+        const toolName = ToolExposure.mcpToolID(handle.name, mcpTool.name)
+        const effectiveCallTimeout = perServerCallTimeout ?? callTimeout
+        toolCallTimeouts.set(toolName, effectiveCallTimeout)
         result.push({
-          id: ToolExposure.mcpToolID(handle.name, mcpTool.name),
+          id: toolName,
           serverName: handle.name,
           toolName: mcpTool.name,
-          tool: await convertMcpTool(mcpTool, handle.client, perServerCallTimeout ?? callTimeout),
+          tool: await convertMcpTool(mcpTool, handle.client, effectiveCallTimeout),
         })
       }
     }

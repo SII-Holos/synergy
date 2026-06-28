@@ -30,11 +30,12 @@ Only read [AGENTS.md](AGENTS.md) when you are modifying Synergy source code.
 
 ## What Synergy Includes
 
-Synergy currently spans several product surfaces and workflows:
+Synergy spans several product surfaces and workflows:
 
 - A central `server` process that handles requests independently of a single working directory
 - A `web` client for browser-based interaction
-- A built-in Browser workspace backed by Playwright/Chromium for interactive page control
+- A production desktop application that embeds and supervises a local Synergy server
+- A built-in Browser workspace backed by Chromium, with shared control state for humans and browser tools
 - A `send` command for one-off, non-interactive execution
 - CLI commands for session, config, library, Holos identity, and operational workflows
 - Configurable agents for orchestration, coding, research, writing, search, and review
@@ -45,11 +46,27 @@ Synergy currently spans several product surfaces and workflows:
 
 ### Built-In Browser Workspace
 
-The Web client includes a right-side Browser workspace that runs a real Playwright Chromium page, not an iframe or a screenshot-only mock. Users can navigate, search, click, type, scroll, upload, and download in the workspace while browser tools operate on the same underlying page and BrowserContext.
+The Web client includes a right-side Browser workspace backed by real Chromium. Users can navigate, search, click, type, scroll, upload, and download in the workspace while browser tools operate on the same underlying session page.
 
-Browser contexts are isolated by Synergy owner/session and persist tab state plus browser storage state. User-explicit navigation and page interaction run without approval prompts but still pass hard safety checks such as invalid protocols, sensitive local ports, and out-of-scope `file://` access. Agent-driven browser tools continue to use the active control profile, so guarded/autonomous/full-access behavior remains consistent with the rest of Synergy.
+Browser control and Browser presentation are intentionally separate. The shared control protocol owns the session page, navigation, screenshots, snapshots, diagnostics, downloads, dialogs, and tool actions. Interactive presentation has two modes: local desktop clients use an embedded Electron `WebContentsView`, and remote Web clients use WebRTC media plus input data channels. Browser Hosts register over the same control protocol so human UI and browser tools operate on the same visible page whenever a native or WebRTC host is attached.
 
-Large browser diagnostics such as console, network, snapshots, assets, and downloads are surfaced in the Browser workspace developer drawer and compact tool cards instead of flooding the normal chat transcript.
+The Browser server boundary follows the same split: session/control endpoints carry page state and commands, Browser Host control has its own route, and WebRTC signaling has its own route. Production interactive viewing uses native desktop presentation or WebRTC. Remote text, IME composition, paste, pointer, wheel, and shortcut input travel over the WebRTC data channel so the remote surface behaves like a local browser window.
+
+Each Synergy session has at most one Browser page. Opening the Browser workspace reads the current session state and does not create a page. The first address-bar navigation or browser tool navigation creates the page; later navigation reuses that same page.
+
+Remote WebRTC Browser Hosts autostart by default when a remote Browser viewer connects. Set `SYNERGY_BROWSER_HOST_AUTOSTART=0` to disable server-managed host startup, or set `SYNERGY_BROWSER_HOST_COMMAND` to provide a custom Electron host command.
+
+Browser contexts are isolated by Synergy owner/session and persist page state plus browser storage state. User-explicit navigation and page interaction run without approval prompts but still pass hard safety checks such as invalid protocols, sensitive local ports, and out-of-scope `file://` access. Agent-driven browser tools continue to use the active control profile, so guarded/autonomous/full-access behavior remains consistent with the rest of Synergy.
+
+Large browser diagnostics such as console, network, snapshots, assets, and downloads appear in the Browser workspace developer drawer and compact tool cards. The normal chat transcript stays focused on user-visible results.
+
+### Desktop Application
+
+`packages/desktop` is the Electron desktop product for Synergy. Its production identity is `io.holosai.synergy`, product name `Synergy`, executable name `synergy`, and URL protocol `synergy://`.
+
+Production desktop builds default to managed server mode: the app starts a packaged local Synergy server runtime, waits for `/global/health`, then loads the Web UI from the local server origin. Managed server failures show a desktop error page. Source-checkout desktop development uses `bun dev desktop`, which defaults to external mode against the local Vite app and Synergy server.
+
+Desktop release artifacts are produced with `electron-builder` for macOS, Windows, and Linux and published through GitHub Releases. Stable builds use GitHub Releases update metadata through `electron-updater`; dev builds do not auto-update.
 
 ### Session History, File Restore, And Forking
 
@@ -137,7 +154,7 @@ Background service management currently supports:
 - Linux via `systemd --user`
 - Windows via `schtasks`
 
-`synergy start`, `synergy status`, `synergy stop`, and `synergy logs` print a compact terminal summary with the service state, server URL, log file location, and suggested next commands. The managed service keeps structured logs in the daemon log file instead of mixing them into the startup UI. For foreground debugging, use `synergy server --print-logs` when you want live structured logs alongside the startup summary.
+`synergy start`, `synergy status`, `synergy stop`, and `synergy logs` print a compact terminal summary with the service state, server URL, log file location, and suggested next commands. The managed service writes structured logs to the daemon log file. For foreground debugging, use `synergy server --print-logs` when you want live structured logs alongside the startup summary.
 
 On Linux, user services usually require a working user manager session. To keep the service alive across logout, enable lingering with:
 
@@ -147,33 +164,27 @@ loginctl enable-linger "$USER"
 
 ### Running from this repository
 
-One command to set up everything — deps, SDK, frontend, and sandbox helper:
+Use `bun dev` as the source-checkout development orchestrator. It is intentionally separate from the installed/product `synergy` CLI.
 
 ```bash
 bun dev prepare    # install deps, generate SDK, build frontend, compile sandbox helper
-bun dev server     # start the server
 ```
 
-Then connect from another terminal:
+Common development flows:
 
 ```bash
-bun dev web        # preferred: use the server-served Web UI
-bun dev send "hello"
+bun dev server            # server only, fixed development port
+bun dev app --open        # Vite web app against an existing server
+bun dev web               # server + Vite web app
+bun dev desktop           # server + Vite web app + Electron desktop shell
 ```
-
-Only start the Vite dev server when you are actively debugging frontend/HMR behavior:
-
-```bash
-bun dev web --dev
-```
-
-Do not leave `web --dev` running by default; the built Web UI served by the Synergy server is the normal path.
 
 After editing code:
 
 ```bash
-bun dev build       # rebuild frontend (after app changes)
-bun dev server      # restart the server
+bun dev build app       # rebuild the web app
+bun dev build desktop   # rebuild Electron main/preload
+bun dev send "hello"    # run a one-off prompt from source
 ```
 
 ### Core runtime
@@ -203,6 +214,9 @@ synergy holos login         # Bind to Holos platform
 
 ```bash
 synergy models              # List available models
+synergy models --refresh    # Refresh provider catalog, models.dev metadata, and live model discovery
+synergy auth login          # Connect a model provider
+synergy auth usage          # Show provider account usage and quota windows when available
 synergy session list        # List sessions
 synergy export <sessionID>  # Export session data
 synergy import <file>       # Import session data
@@ -217,7 +231,7 @@ synergy channel start       # Start configured channels
 synergy channel status      # Show channel status
 ```
 
-## Current Agent Model
+## Agent Model
 
 Synergy provides two built-in primary orchestrators: `synergy` for the classic general workflow and `synergy-max` for the expanded coding-harness workflow. Each primary agent sees a different built-in subagent set through agent visibility masks.
 
@@ -255,6 +269,8 @@ Useful command:
 synergy config path
 ```
 
+The Web Settings UI uses the same canonical domains. Common settings are editable as forms, and low-frequency or nested domains can be opened directly from Settings with the system default editor.
+
 ### Project config
 
 Project-level config uses the same domain layout under:
@@ -270,6 +286,45 @@ Synergy also supports project-scoped extension directories under:
 ```
 
 That scoped directory is where project-specific agents, commands, plugins, skills, and related assets may live.
+
+### Provider authentication
+
+Use `synergy auth login` or the Web UI's **Connect provider** dialog to connect model providers. Provider credentials are stored in Synergy's own credential file:
+
+```bash
+~/.synergy/data/auth/provider-auth.json
+```
+
+Synergy resolves providers from a built-in provider profile registry, an optional signed remote catalog, `models.dev` metadata, live model discovery, and user config overrides. The remote catalog is data-only and must verify with the configured Ed25519 public key before Synergy uses it; provider-specific auth and transport behavior comes from built-in code or explicitly installed plugins, not remote executable code.
+
+`openai-codex` is the built-in OpenAI Codex provider for ChatGPT/Codex subscription login. It uses a ChatGPT/Codex device-code sign-in and the Codex backend, then exposes account-visible Codex models such as `gpt-5.4-mini` in `synergy models openai-codex` and the model picker. This is separate from the normal `openai` provider: OpenAI Platform API keys still use `openai` and follow Platform API billing.
+
+Synergy also supports subscription-style provider profiles such as Claude Pro/Max OAuth, GitHub Copilot, MiniMax OAuth, and usage-aware providers such as OpenRouter. Run `synergy auth usage [provider]` to inspect quota or credit snapshots when a provider exposes a reliable endpoint. Providers without a reliable usage endpoint report usage as unavailable.
+
+When `CODEX_HOME` or `~/.codex/auth.json` exists, the CLI can copy valid Codex CLI credentials into Synergy. Synergy does not share or write back to the Codex CLI auth file, so refresh-token rotation stays isolated between the two tools.
+
+### Project instruction files
+
+For every turn, Synergy includes instruction files discovered inside the active Scope. In each directory from the Scope root to the current working directory, it uses the first matching file in this order:
+
+```text
+AGENTS.override.md
+AGENTS.md
+<project_doc_fallback_filenames entries>
+CLAUDE.md
+CONTEXT.md
+```
+
+`AGENTS.override.md` is useful for local-only overrides. Configure fallback filenames, such as `PRODUCT.md` or `WORKFLOW.md`, in `60-agents.jsonc`:
+
+```jsonc
+{
+  "project_doc_fallback_filenames": ["PRODUCT.md", "WORKFLOW.md"],
+  "project_doc_max_bytes": 32768,
+}
+```
+
+`instructions` remains the explicit include list for extra files, globs, or URLs; it appends content and does not participate in the fallback order.
 
 ### Plugins
 
@@ -295,13 +350,13 @@ Synergy uses one command registry with two command kinds:
 - **Prompt commands** expand a template and enter the normal conversation flow. Built-ins such as `/review` and project commands from `.synergy/command/*.md` are prompt commands.
 - **Action commands** perform deterministic session/runtime actions. They can be shown in the session timeline, but they are marked as not prompt-visible and are excluded from future model history. `/worktree` is an action command.
 
-Frontend-only shortcuts such as model selection or panel toggles can also use slash syntax, but they are UI actions rather than backend commands. The slash syntax is only an entry point; the command kind decides whether the action talks to the model.
+Frontend-only shortcuts such as model selection or panel toggles can also use slash syntax. These UI actions do not enter the backend command registry or model prompt flow. The slash syntax is only an entry point; the command kind decides whether the action talks to the model.
 
 Modules that implement deterministic behavior should register an action handler with the command framework. For example, the worktree implementation lives under `packages/synergy/src/project/`, while the shared command registry lives under `packages/synergy/src/command/`.
 
 ### Session worktrees
 
-When you want to work on multiple features in the same Git repository at the same time, bind a Synergy session to a Git worktree. The session keeps the same Scope identity, but tools run from the session workspace instead of the main checkout.
+When you want to work on multiple features in the same Git repository at the same time, bind a Synergy session to a Git worktree. The session keeps the same Scope identity, and tools run from the session workspace.
 
 Use this when:
 
@@ -309,7 +364,7 @@ Use this when:
 - you want a separate branch for a task before asking an agent to implement it
 - you want to review or test another branch in an isolated checkout
 
-Do not use this for non-Git directories. Normal sessions still work there, but Git worktrees require a Git-backed Scope.
+Use worktrees only for Git-backed Scopes. Normal sessions support non-Git directories.
 
 #### Commands
 
@@ -353,7 +408,7 @@ Control profiles are configured in the permissions domain (`80-permissions.jsonc
 
 **Precedence:** agent config `controlProfile` > top-level config `controlProfile` > default `guarded`.
 
-`smartAllow` enables a hidden internal agent that can auto-allow safe asks and eligible soft denies. It never overrides hard safety boundaries such as protected paths, external writes, identity actions, plugin secrets, destructive shell commands, or hardline commands. In autonomous sessions, failed Smart allow checks deny rather than prompting.
+`smartAllow` enables a hidden internal agent that can auto-allow safe asks and eligible soft denies. It never overrides hard safety boundaries such as protected paths, external writes, identity actions, plugin secrets, destructive shell commands, or hardline commands. Autonomous sessions deny failed Smart allow checks.
 
 Built-in profiles:
 
@@ -406,7 +461,7 @@ The global `sandbox` config fields control backend selection and fallback behavi
       "denialLogger": true, // Log sandbox denials via macOS Seatbelt (default: true)
     },
     "linux": {
-      "bundledBwrap": true, // Use bundled bwrap binary instead of system bwrap (default: true)
+      "bundledBwrap": true, // Prefer bundled bwrap binary (default: true)
       "landlockFallback": true, // Fall back to Landlock LSM when bwrap is unavailable (default: true)
     },
     "windows": {
@@ -473,7 +528,7 @@ Only use setup files in repositories you trust. They run local shell commands wh
 - Child sessions inherit the parent session's current workspace.
 - `/worktree leave` only unbinds the session; it does not remove files.
 - Session archive/delete detaches Synergy metadata from the worktree, but dirty or externally managed worktrees are not automatically deleted.
-- Synergy does not symlink dependency folders by default. Prefer package-manager caches (`bun`, `pnpm`, `uv`) over sharing `node_modules` across worktrees.
+- Synergy keeps dependency folders per worktree by default. Use package-manager caches (`bun`, `pnpm`, `uv`) for dependency reuse across worktrees.
 
 ### Resolution order
 
@@ -485,7 +540,7 @@ At a high level:
 - project config has the highest local precedence
 - `SYNERGY_CONFIG_CONTENT` can inject config at runtime
 
-Do not document configuration examples from memory when they involve provider-specific fields or active integrations. Verify them against the current implementation before updating docs.
+Do not document configuration examples from memory when they involve provider-specific fields or active integrations. Verify them against the implementation before updating docs.
 
 ## Package Map
 
@@ -495,6 +550,7 @@ This repository is a Bun monorepo.
 
 - `packages/synergy` — core runtime, server, agent system, CLI, tools, sessions, permissions, integrations
 - `packages/app` — main web application
+- `packages/desktop` — Electron desktop application, managed local server host, packaging, updates
 - `packages/plugin` — plugin SDK published as `@ericsanchezok/synergy-plugin` (see `packages/plugin/README.md` for plugin authoring)
 - `packages/plugin-kit` — standalone plugin development CLI published as `@ericsanchezok/synergy-plugin-kit`
 - `packages/sdk/js` — TypeScript SDK published as `@ericsanchezok/synergy-sdk`
@@ -541,12 +597,37 @@ One command sets up everything: dependencies, SDK, frontend, and sandbox helper.
 
 ```bash
 bun dev prepare
-bun dev server
 ```
 
 `bun dev prepare` handles the full stack — on macOS the sandbox works immediately (built-in `sandbox-exec`). On Linux and Windows it compiles the Rust sandbox helper automatically (requires `cargo` — install from https://rustup.rs if missing).
 
 If Rust is not installed, prepare skips the sandbox step with a clear message and link. Re-run after installing Rust to complete sandbox setup.
+
+Start the source development stack:
+
+```bash
+bun dev web       # server + Vite web app
+bun dev desktop   # server + Vite web app + Electron desktop shell
+```
+
+### Desktop development
+
+Run the desktop shell in the default external development mode:
+
+```bash
+bun dev desktop
+```
+
+Build, test, and package the desktop app:
+
+```bash
+bun dev build desktop   # compile Electron main/preload
+bun run desktop:test    # desktop typecheck + unit tests
+bun run desktop:pack    # local unsigned directory package
+bun run desktop:dist    # local installer/package for the current platform
+```
+
+`desktop:pack` and `desktop:dist` prepare a current-platform Synergy runtime before invoking `electron-builder`. Release builds use the GitHub Actions desktop matrix to produce macOS, Windows, and Linux artifacts.
 
 ### Sandbox setup details
 
@@ -555,7 +636,7 @@ If Rust is not installed, prepare skips the sandbox step with a clear message an
 **Linux:** `cd packages/synergy/src/sandbox/helper-linux && cargo build --release`
 **Windows:** `cd packages/synergy/src/sandbox/helper && cargo build --release`
 
-Synergy auto-discovers the locally-built binary on startup. If the hash table is empty (pre-release state), the helper is still usable — Synergy runs minimum plausibility checks (file size, executable permission) instead of precise SHA-256 verification.
+Synergy auto-discovers the locally-built binary on startup. If the hash table is empty (pre-release state), the helper is still usable with minimum plausibility checks: file size and executable permission.
 
 ### Quality checks
 
@@ -588,6 +669,8 @@ cd packages/synergy/src/sandbox/helper && cargo test         # Windows helper
 ```bash
 ./packages/synergy/script/build.ts --single   # build the synergy CLI binary
 bun dev prepare                                # regenerate SDK + rebuild frontend
+bun dev build app                              # rebuild only the web app
+bun run desktop:pack                           # validate local desktop packaging
 ```
 
 Regenerate the SDK after modifying server routes or route schemas.

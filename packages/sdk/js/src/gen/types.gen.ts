@@ -933,6 +933,34 @@ export type PluginMarketplaceConfig = {
   offlineCache?: boolean
 }
 
+/**
+ * Signed remote provider catalog configuration
+ */
+export type ProviderCatalogConfig = {
+  /**
+   * Enable signed remote provider catalog updates
+   */
+  enabled?: boolean
+  /**
+   * Signed provider catalog URL. The signature is fetched from the same URL plus .sig.
+   */
+  registryUrl?: string
+  /**
+   * Base64 Ed25519 public key used to verify provider catalog signatures
+   */
+  publicKey?: string
+  /**
+   * Provider catalog cache TTL in milliseconds
+   */
+  cacheTtlMs?: number
+  /**
+   * Use the last verified provider catalog when offline
+   */
+  offlineCache?: boolean
+}
+
+export type ModelRole = "vision" | "nano" | "mini" | "mid" | "thinking" | "long" | "creative"
+
 export type PermissionActionConfig = "ask" | "allow" | "deny"
 
 export type PermissionObjectConfig = {
@@ -973,6 +1001,7 @@ export type ControlProfileId = "guarded" | "autonomous" | "full_access"
 
 export type AgentConfig = {
   model?: string
+  modelRole?: ModelRole
   temperature?: number
   top_p?: number
   prompt?: string
@@ -1012,6 +1041,7 @@ export type AgentConfig = {
   [key: string]:
     | unknown
     | string
+    | ModelRole
     | number
     | {
         [key: string]: boolean
@@ -1053,6 +1083,20 @@ export type ExternalAgentConfig = {
 export type ProviderConfig = {
   api?: string
   name?: string
+  description?: string
+  signupUrl?: string
+  recommendation?: {
+    level: "featured" | "recommended" | "standard"
+    rank?: number
+    headline?: string
+    reason?: string
+    cta?: {
+      kind: "external"
+      label: string
+      url: string
+    }
+    defaultModel?: string
+  }
   env?: Array<string>
   id?: string
   npm?: string
@@ -1948,6 +1992,7 @@ export type Config = {
    * When set, ONLY these providers will be enabled. All other providers will be ignored
    */
   enabled_providers?: Array<string>
+  providerCatalog?: ProviderCatalogConfig
   /**
    * Default model in the format of provider/model, eg anthropic/claude-sonnet-4-5
    */
@@ -2075,6 +2120,14 @@ export type Config = {
    * Additional instruction files or patterns to include
    */
   instructions?: Array<string>
+  /**
+   * Ordered fallback instruction filenames to try when AGENTS.md is missing in a directory
+   */
+  project_doc_fallback_filenames?: Array<string>
+  /**
+   * Maximum bytes to include from each automatically discovered instruction file (default: 32768; 0 disables automatic discovery)
+   */
+  project_doc_max_bytes?: number
   layout?: LayoutConfig
   permission?: PermissionConfig
   /**
@@ -2196,6 +2249,18 @@ export type ConfigDomainSummary = {
 export type ConfigDomainUpdateInput = {
   config: Config
   mode?: "merge" | "replace-domain" | "append"
+}
+
+export type ConfigDomainOpenResponse = {
+  success: true
+  path: string
+}
+
+export type ConfigDomainOpenError = {
+  success: false
+  error: string
+  message: string
+  path?: string
 }
 
 export type ConfigDomainImportChange = {
@@ -2431,6 +2496,8 @@ export type Worktree = {
   scopeID: string
   head?: string
   baseRef?: string
+  baseRevision?: string
+  resolvedBaseCommit?: string
   detached?: boolean
   bare?: boolean
   isMain?: boolean
@@ -2441,6 +2508,12 @@ export type Worktree = {
     | {
         type: "session"
         sessionID: string
+      }
+    | {
+        type: "superplan"
+        runID: string
+        nodeID?: string
+        mergeID?: string
       }
     | {
         type: "user"
@@ -2461,6 +2534,7 @@ export type WorktreeCreateInput = {
   name?: string
   sessionID?: string
   baseRef?: "current" | "fresh"
+  baseRevision?: string
   bind?: boolean
 }
 
@@ -2544,6 +2618,19 @@ export type SessionCortexDelegation = {
   }
   result?: string
   error?: string
+  visibility?: "visible" | "hidden"
+  tools?: {
+    [key: string]: boolean
+  }
+  output?: unknown
+  outputResult?: unknown
+}
+
+export type SessionSuperPlanInfo = {
+  runID: string
+  role: "planner" | "node" | "merge" | "audit"
+  nodeID?: string
+  mergeID?: string
 }
 
 export type SessionWorkingInfo =
@@ -2615,10 +2702,12 @@ export type Session = {
   }
   history?: SessionHistoryInfo
   cortex?: SessionCortexDelegation
+  superplan?: SessionSuperPlanInfo
   working?: SessionWorkingInfo
   workspace?: SessionWorkspace
   blueprint?: {
     loopID?: string
+    loopRole?: "execution" | "audit"
     planMode?: boolean
   }
 }
@@ -3218,6 +3307,7 @@ export type NoteInfo = {
   blueprint?: {
     description?: string
     defaultAgent?: string
+    auditAgent?: string
     activeLoopID?: string
     runCount?: number
     lastRunAt?: number
@@ -3357,6 +3447,39 @@ export type CortexTask = {
     }>
   }
   notifyParentOnComplete?: boolean
+  visibility?: "visible" | "hidden"
+  tools?: {
+    [key: string]: boolean
+  }
+  output?:
+    | {
+        mode?: "summary"
+      }
+    | {
+        mode: "final_response"
+      }
+    | {
+        mode: "structured"
+        schema: {
+          [key: string]: unknown
+        }
+        maxRepairTurns?: 0 | 1 | 2 | 3
+      }
+  outputResult?:
+    | {
+        mode: "final_response"
+        text: string
+      }
+    | {
+        mode: "structured"
+        status: "valid" | "invalid"
+        source?: "structured_tool" | "final_response"
+        data?: unknown
+        text?: string
+        repairTurns: number
+        error?: string
+        validationErrors?: Array<string>
+      }
 }
 
 export type Command = {
@@ -3374,8 +3497,78 @@ export type Command = {
   hints: Array<string>
 }
 
+export type ProviderRecommendation = {
+  level: "featured" | "recommended" | "standard"
+  rank?: number
+  headline?: string
+  reason?: string
+  cta?: {
+    kind: "external"
+    label: string
+    url: string
+  }
+  defaultModel?: string
+}
+
+export type ProviderProfileMetadata = {
+  id: string
+  name: string
+  displayName?: string
+  description?: string
+  signupUrl?: string
+  recommendation?: ProviderRecommendation
+}
+
+export type ProviderAuthHealth = {
+  providerID: string
+  status: "connected" | "not_configured" | "expired" | "exhausted" | "dead"
+  authKind?: string
+  source?: string
+  updatedAt?: number
+  reloginRequired?: boolean
+  cooldownUntil?: number
+  resetAt?: number
+  failureCode?: string
+}
+
+export type ProviderRuntimeAvailability = {
+  providerID: string
+  available: boolean
+  reason?: "connected" | "not_connected" | "disabled" | "no_models"
+  healthCheck?: "models" | "none"
+  modelCount: number
+}
+
+export type AccountUsageWindow = {
+  label: string
+  usedPercent?: number
+  remainingPercent?: number
+  resetAt?: string
+  detail?: string
+}
+
+export type AccountUsageCredits = {
+  hasCredits?: boolean
+  balance?: number
+  unlimited?: boolean
+  currency?: string
+}
+
+export type AccountUsageSnapshot = {
+  providerID: string
+  status: "available" | "unavailable" | "error"
+  source?: string
+  fetchedAt: string
+  plan?: string
+  windows: Array<AccountUsageWindow>
+  details: Array<string>
+  credits?: AccountUsageCredits
+  reloginRequired?: boolean
+  unavailableReason?: string
+}
+
 export type ProviderAuthMethod = {
-  type: "oauth" | "api"
+  type: "oauth" | "api" | "import"
   label: string
 }
 
@@ -3410,50 +3603,140 @@ export type SkillList = {
   }>
 }
 
-export type Symbol = {
-  name: string
-  kind: number
-  location: {
-    uri: string
-    range: Range
-  }
-}
-
-export type FileNode = {
-  name: string
+export type WorkspaceFileNode = {
   path: string
-  absolute: string
-  type: "file" | "directory"
+  name: string
+  type: "file" | "directory" | "symlink" | "unknown"
+  size: number
+  mtime: number
+  ctime: number
   ignored: boolean
+  hidden: boolean
+  readonly: boolean
+  symlink: boolean
+  binary: boolean
+  gitStatus?: "added" | "deleted" | "modified" | "renamed" | "untracked"
 }
 
-export type FileContent = {
-  type: "text"
-  content: string
-  diff?: string
-  patch?: {
-    oldFileName: string
-    newFileName: string
-    oldHeader?: string
-    newHeader?: string
-    hunks: Array<{
-      oldStart: number
-      oldLines: number
-      newStart: number
-      newLines: number
-      lines: Array<string>
-    }>
-    index?: string
-  }
-  encoding?: "base64"
-  mimeType?: string
-}
-
-export type File = {
+export type WorkspaceFileChildrenResponse = {
   path: string
-  added: number
-  removed: number
-  status: "added" | "deleted" | "modified"
+  parent?: WorkspaceFileNode
+  children: Array<WorkspaceFileNode>
+  nextCursor?: string
+  truncated: boolean
+}
+
+export type WorkspaceFileTextRange = {
+  offset: number
+  limit: number
+  startLine: number
+  endLine: number
+}
+
+export type WorkspaceFileReadText = {
+  kind: "text"
+  path: string
+  node: WorkspaceFileNode
+  content: string
+  mimeType?: string
+  encoding: "utf-8"
+  range: WorkspaceFileTextRange
+  totalBytes: number
+  lineCount?: number
+  truncated: boolean
+  nextRange?: WorkspaceFileTextRange
+}
+
+export type WorkspaceFileReadImage = {
+  kind: "image"
+  path: string
+  node: WorkspaceFileNode
+  content: string
+  mimeType: string
+  encoding: "base64"
+  totalBytes: number
+  truncated: boolean
+}
+
+export type WorkspaceFileReadBinary = {
+  kind: "binary"
+  path: string
+  node: WorkspaceFileNode
+  mimeType?: string
+  totalBytes: number
+  truncated: boolean
+  unsupportedReason: string
+}
+
+export type WorkspaceFileReadResult = WorkspaceFileReadText | WorkspaceFileReadImage | WorkspaceFileReadBinary
+
+export type WorkspaceFileSearchItem = {
+  kind: "file"
+  path: string
+  name: string
+  type: "file" | "directory"
+  score: number
+  indices: Array<number>
+  node?: WorkspaceFileNode
+}
+
+export type WorkspaceContentSearchItem = {
+  kind: "content"
+  path: string
+  lineNumber: number
+  column: number
+  line: string
+  score: number
+  submatches: Array<{
+    text: string
+    start: number
+    end: number
+  }>
+  previewRanges: Array<{
+    start: number
+    end: number
+  }>
+}
+
+export type WorkspaceSymbolSearchItem = {
+  kind: "symbol"
+  name: string
+  symbolKind: number
+  path: string
+  range: {
+    start: {
+      line: number
+      character: number
+    }
+    end: {
+      line: number
+      character: number
+    }
+  }
+  score: number
+}
+
+export type WorkspaceSearchCapability = {
+  available: boolean
+  reason?: string
+}
+
+export type WorkspaceFileSearchResponse = {
+  kind: "files" | "content" | "symbol"
+  query: string
+  items: Array<WorkspaceFileSearchItem | WorkspaceContentSearchItem | WorkspaceSymbolSearchItem>
+  nextCursor?: string
+  truncated: boolean
+  capability?: WorkspaceSearchCapability
+}
+
+export type WorkspaceFileStatusSummary = {
+  files: Array<{
+    path: string
+    status: "added" | "deleted" | "modified" | "renamed" | "untracked"
+    added?: number
+    removed?: number
+  }>
 }
 
 export type RewardsInfo = {
@@ -3759,6 +4042,7 @@ export type NoteMetaInfo = {
   blueprint?: {
     description?: string
     defaultAgent?: string
+    auditAgent?: string
     activeLoopID?: string
     runCount?: number
     lastRunAt?: number
@@ -3785,6 +4069,7 @@ export type NoteCreateInput = {
   blueprint?: {
     description?: string
     defaultAgent?: string
+    auditAgent?: string
     activeLoopID?: string
     runCount?: number
     lastRunAt?: number
@@ -3801,6 +4086,7 @@ export type NotePatchInput = {
   blueprint?: {
     description?: string
     defaultAgent?: string
+    auditAgent?: string
     activeLoopID?: string | null
     runCount?: number
     lastRunAt?: number
@@ -3815,7 +4101,9 @@ export type BlueprintLoopInfo = {
   title: string
   description?: string
   sessionID: string
-  supervisorSessionID?: string
+  executionAgent?: string
+  auditAgent: string
+  auditSessionID?: string
   scopeID: string
   status: "armed" | "running" | "waiting" | "auditing" | "completed" | "failed" | "cancelled"
   runMode?: "current" | "new" | "worktree"
@@ -4146,6 +4434,17 @@ export type PluginRuntimeLogEntry = {
   message: string
 }
 
+export type RegistryPluginIcon =
+  | {
+      type: "lucide"
+      name: string
+    }
+  | {
+      type: "image"
+      url: string
+      alt?: string
+    }
+
 export type RegistryPluginSummary = {
   id: string
   name: string
@@ -4156,6 +4455,7 @@ export type RegistryPluginSummary = {
     email?: string
     url?: string
   }
+  icon?: RegistryPluginIcon
   verified: boolean
   official: boolean
   keywords: Array<string>
@@ -4220,6 +4520,7 @@ export type RegistryPluginEntry = {
     email?: string
     url?: string
   }
+  icon?: RegistryPluginIcon
   verified: boolean
   official: boolean
   keywords: Array<string>
@@ -4255,6 +4556,7 @@ export type RegistryPublishInput = {
     email?: string
     url?: string
   }
+  icon?: RegistryPluginIcon
   verified: boolean
   official: boolean
   keywords: Array<string>
@@ -4302,12 +4604,76 @@ export type Agent = {
     modelID: string
     providerID: string
   }
+  modelRole?: ModelRole
+  modelSource?: "role" | "explicit"
+  source?: "builtin" | "config" | "plugin" | "external"
   prompt?: string
   options: {
     [key: string]: unknown
   }
   steps?: number
   external?: ExternalAgentInfo
+}
+
+export type ModelRoleUsage = {
+  name: string
+  description?: string
+  mode: "subagent" | "primary" | "all"
+  hidden?: boolean
+  visibleTo?: Array<string>
+  native?: boolean
+  source?: "builtin" | "config" | "plugin" | "external"
+  modelSource?: "role" | "explicit"
+  model?: {
+    providerID: string
+    modelID: string
+  }
+}
+
+export type ModelRoleSummary = {
+  id: "default" | "vision" | "nano" | "mini" | "mid" | "thinking" | "long" | "creative"
+  role?: ModelRole
+  field:
+    | "model"
+    | "nano_model"
+    | "mini_model"
+    | "mid_model"
+    | "thinking_model"
+    | "long_context_model"
+    | "creative_model"
+    | "vision_model"
+  label: string
+  summary: string
+  fallbackChain: Array<
+    | "model"
+    | "nano_model"
+    | "mini_model"
+    | "mid_model"
+    | "thinking_model"
+    | "long_context_model"
+    | "creative_model"
+    | "vision_model"
+  >
+  configuredModel?: {
+    providerID: string
+    modelID: string
+  }
+  resolvedModel?: {
+    providerID: string
+    modelID: string
+    via:
+      | "model"
+      | "nano_model"
+      | "mini_model"
+      | "mid_model"
+      | "thinking_model"
+      | "long_context_model"
+      | "creative_model"
+      | "vision_model"
+  }
+  usedBy: Array<ModelRoleUsage>
+  requiresExplicitModel?: boolean
+  disabledReason?: string
 }
 
 export type McpStatusUninitialized = {
@@ -4416,23 +4782,35 @@ export type OAuth = {
   access: string
   expires: number
   enterpriseUrl?: string
+  metadata?: {
+    [key: string]: unknown
+  }
 }
 
 export type ApiAuth = {
   type: "api"
   key: string
+  metadata?: {
+    [key: string]: unknown
+  }
 }
 
 export type WellKnownAuth = {
   type: "wellknown"
   key: string
   token: string
+  metadata?: {
+    [key: string]: unknown
+  }
 }
 
 export type HolosAuth = {
   type: "holos"
   agentId: string
   agentSecret: string
+  metadata?: {
+    [key: string]: unknown
+  }
 }
 
 export type Auth = OAuth | ApiAuth | WellKnownAuth | HolosAuth
@@ -4512,53 +4890,6 @@ export type EventMcpFailed = {
   properties: {
     server: string
     error: string
-  }
-}
-
-export type EventCommandExecuted = {
-  type: "command.executed"
-  properties: {
-    name: string
-    sessionID: string
-    arguments: string
-    messageID: string
-  }
-}
-
-export type EventFileEdited = {
-  type: "file.edited"
-  properties: {
-    file: string
-  }
-}
-
-export type EventFileWatcherUpdated = {
-  type: "file.watcher.updated"
-  properties: {
-    file: string
-    event: "add" | "change" | "unlink"
-  }
-}
-
-export type EventLspClientDiagnostics = {
-  type: "lsp.client.diagnostics"
-  properties: {
-    serverID: string
-    path: string
-  }
-}
-
-export type EventLspUpdated = {
-  type: "lsp.updated"
-  properties: {
-    [key: string]: unknown
-  }
-}
-
-export type EventVcsBranchUpdated = {
-  type: "vcs.branch.updated"
-  properties: {
-    branch?: string
   }
 }
 
@@ -4661,28 +4992,6 @@ export type EventSessionInboxUpdated = {
   }
 }
 
-export type EventNoteCreated = {
-  type: "note.created"
-  properties: {
-    note: NoteInfo
-  }
-}
-
-export type EventNoteUpdated = {
-  type: "note.updated"
-  properties: {
-    note: NoteInfo
-  }
-}
-
-export type EventNoteDeleted = {
-  type: "note.deleted"
-  properties: {
-    id: string
-    scopeID: string
-  }
-}
-
 export type EventQuestionAsked = {
   type: "question.asked"
   properties: QuestionRequest
@@ -4713,6 +5022,35 @@ export type EventQuestionTimedOut = {
   }
 }
 
+export type EventSessionCompacted = {
+  type: "session.compacted"
+  properties: {
+    sessionID: string
+  }
+}
+
+export type EventLspClientDiagnostics = {
+  type: "lsp.client.diagnostics"
+  properties: {
+    serverID: string
+    path: string
+  }
+}
+
+export type EventLspUpdated = {
+  type: "lsp.updated"
+  properties: {
+    [key: string]: unknown
+  }
+}
+
+export type EventFileEdited = {
+  type: "file.edited"
+  properties: {
+    file: string
+  }
+}
+
 export type EventRuntimeReloaded = {
   type: "runtime.reloaded"
   properties: {
@@ -4736,6 +5074,28 @@ export type EventTodoUpdated = {
   properties: {
     sessionID: string
     todos: Array<Todo>
+  }
+}
+
+export type EventNoteCreated = {
+  type: "note.created"
+  properties: {
+    note: NoteInfo
+  }
+}
+
+export type EventNoteUpdated = {
+  type: "note.updated"
+  properties: {
+    note: NoteInfo
+  }
+}
+
+export type EventNoteDeleted = {
+  type: "note.deleted"
+  properties: {
+    id: string
+    scopeID: string
   }
 }
 
@@ -4790,13 +5150,6 @@ export type EventBlueprintLoopRestarted = {
   }
 }
 
-export type EventSessionCompacted = {
-  type: "session.compacted"
-  properties: {
-    sessionID: string
-  }
-}
-
 export type EventAgendaItemCreated = {
   type: "agenda.item.created"
   properties: {
@@ -4837,6 +5190,36 @@ export type EventCortexTasksUpdated = {
   type: "cortex.tasks.updated"
   properties: {
     tasks: Array<CortexTask>
+  }
+}
+
+export type EventCommandExecuted = {
+  type: "command.executed"
+  properties: {
+    name: string
+    sessionID: string
+    arguments: string
+    messageID: string
+  }
+}
+
+export type EventFileWatcherUpdated = {
+  type: "file.watcher.updated"
+  properties: {
+    file: string
+    event: "added" | "changed" | "deleted" | "renamed"
+    absolute?: string
+    oldPath?: string
+    oldAbsolute?: string
+    parent?: string
+    node?: unknown
+  }
+}
+
+export type EventVcsBranchUpdated = {
+  type: "vcs.branch.updated"
+  properties: {
+    branch?: string
   }
 }
 
@@ -4977,12 +5360,6 @@ export type Event =
   | EventMcpResourcesChanged
   | EventMcpReady
   | EventMcpFailed
-  | EventCommandExecuted
-  | EventFileEdited
-  | EventFileWatcherUpdated
-  | EventLspClientDiagnostics
-  | EventLspUpdated
-  | EventVcsBranchUpdated
   | EventMessageUpdated
   | EventMessageRemoved
   | EventMessagePartUpdated
@@ -4996,16 +5373,20 @@ export type Event =
   | EventSessionStatus
   | EventSessionIdle
   | EventSessionInboxUpdated
-  | EventNoteCreated
-  | EventNoteUpdated
-  | EventNoteDeleted
   | EventQuestionAsked
   | EventQuestionReplied
   | EventQuestionRejected
   | EventQuestionTimedOut
+  | EventSessionCompacted
+  | EventLspClientDiagnostics
+  | EventLspUpdated
+  | EventFileEdited
   | EventRuntimeReloaded
   | EventDagUpdated
   | EventTodoUpdated
+  | EventNoteCreated
+  | EventNoteUpdated
+  | EventNoteDeleted
   | EventBlueprintLoopCreated
   | EventBlueprintLoopUpdated
   | EventBlueprintLoopCompleted
@@ -5013,13 +5394,15 @@ export type Event =
   | EventBlueprintLoopCancelled
   | EventBlueprintLoopAuditing
   | EventBlueprintLoopRestarted
-  | EventSessionCompacted
   | EventAgendaItemCreated
   | EventAgendaItemUpdated
   | EventAgendaItemDeleted
   | EventCortexTaskCreated
   | EventCortexTaskCompleted
   | EventCortexTasksUpdated
+  | EventCommandExecuted
+  | EventFileWatcherUpdated
+  | EventVcsBranchUpdated
   | EventPtyCreated
   | EventPtyUpdated
   | EventPtyExited
@@ -6113,6 +6496,53 @@ export type ConfigDomainUpdateResponses = {
 
 export type ConfigDomainUpdateResponse = ConfigDomainUpdateResponses[keyof ConfigDomainUpdateResponses]
 
+export type ConfigDomainOpenData = {
+  body?: never
+  path: {
+    domain:
+      | "general"
+      | "models"
+      | "providers"
+      | "library"
+      | "mcp"
+      | "plugins"
+      | "agents"
+      | "commands"
+      | "permissions"
+      | "channels"
+      | "holos"
+      | "email"
+      | "runtime"
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/config/domains/{domain}/open"
+}
+
+export type ConfigDomainOpenErrors = {
+  /**
+   * Unsupported platform
+   */
+  400: ConfigDomainOpenError
+  /**
+   * Failed to open config domain file
+   */
+  500: ConfigDomainOpenError
+}
+
+export type ConfigDomainOpenError2 = ConfigDomainOpenErrors[keyof ConfigDomainOpenErrors]
+
+export type ConfigDomainOpenResponses = {
+  /**
+   * Opened config domain file
+   */
+  200: ConfigDomainOpenResponse
+}
+
+export type ConfigDomainOpenResponse2 = ConfigDomainOpenResponses[keyof ConfigDomainOpenResponses]
+
 export type ConfigImportPlanData = {
   body?: ConfigDomainImportPlanInput
   path?: never
@@ -6957,6 +7387,7 @@ export type SessionForkData = {
           mode: "create"
           name?: string
           baseRef?: "current" | "fresh"
+          baseRevision?: string
         }
     title?: string
     controlProfile?: "guarded" | "autonomous" | "full_access"
@@ -8215,6 +8646,20 @@ export type ProviderListResponses = {
     all: Array<{
       api?: string
       name: string
+      description?: string
+      signupUrl?: string
+      recommendation?: {
+        level: "featured" | "recommended" | "standard"
+        rank?: number
+        headline?: string
+        reason?: string
+        cta?: {
+          kind: "external"
+          label: string
+          url: string
+        }
+        defaultModel?: string
+      }
       env: Array<string>
       id: string
       npm?: string
@@ -8277,10 +8722,74 @@ export type ProviderListResponses = {
     }
     connected: Array<string>
     configProviders: Array<string>
+    catalogProviders: Array<string>
+    profiles: {
+      [key: string]: ProviderProfileMetadata
+    }
+    authHealth: {
+      [key: string]: ProviderAuthHealth
+    }
+    runtimeAvailability: {
+      [key: string]: ProviderRuntimeAvailability
+    }
   }
 }
 
 export type ProviderListResponse = ProviderListResponses[keyof ProviderListResponses]
+
+export type ProviderUsageListData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/provider/usage"
+}
+
+export type ProviderUsageListResponses = {
+  /**
+   * Provider account usage snapshots
+   */
+  200: {
+    [key: string]: AccountUsageSnapshot
+  }
+}
+
+export type ProviderUsageListResponse = ProviderUsageListResponses[keyof ProviderUsageListResponses]
+
+export type ProviderUsageGetData = {
+  body?: never
+  path: {
+    /**
+     * Provider ID
+     */
+    providerID: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/provider/{providerID}/usage"
+}
+
+export type ProviderUsageGetErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type ProviderUsageGetError = ProviderUsageGetErrors[keyof ProviderUsageGetErrors]
+
+export type ProviderUsageGetResponses = {
+  /**
+   * Provider account usage snapshot
+   */
+  200: AccountUsageSnapshot
+}
+
+export type ProviderUsageGetResponse = ProviderUsageGetResponses[keyof ProviderUsageGetResponses]
 
 export type ProviderAuthData = {
   body?: never
@@ -8382,6 +8891,46 @@ export type ProviderOauthCallbackResponses = {
 }
 
 export type ProviderOauthCallbackResponse = ProviderOauthCallbackResponses[keyof ProviderOauthCallbackResponses]
+
+export type ProviderCredentialsImportCredentialsData = {
+  body?: {
+    /**
+     * Auth method index
+     */
+    method: number
+  }
+  path: {
+    /**
+     * Provider ID
+     */
+    providerID: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/provider/{providerID}/import"
+}
+
+export type ProviderCredentialsImportCredentialsErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type ProviderCredentialsImportCredentialsError =
+  ProviderCredentialsImportCredentialsErrors[keyof ProviderCredentialsImportCredentialsErrors]
+
+export type ProviderCredentialsImportCredentialsResponses = {
+  /**
+   * Credentials imported successfully
+   */
+  200: boolean
+}
+
+export type ProviderCredentialsImportCredentialsResponse =
+  ProviderCredentialsImportCredentialsResponses[keyof ProviderCredentialsImportCredentialsResponses]
 
 export type SkillListData = {
   body?: never
@@ -8523,143 +9072,117 @@ export type SkillImportUrlResponses = {
 
 export type SkillImportUrlResponse = SkillImportUrlResponses[keyof SkillImportUrlResponses]
 
-export type FindTextData = {
+export type WorkspaceFilesChildrenData = {
   body?: never
   path?: never
-  query: {
+  query?: {
     directory?: string
     scopeID?: string
-    pattern: string
-  }
-  url: "/find"
-}
-
-export type FindTextResponses = {
-  /**
-   * Matches
-   */
-  200: Array<{
-    path: {
-      text: string
-    }
-    lines: {
-      text: string
-    }
-    line_number: number
-    absolute_offset: number
-    submatches: Array<{
-      match: {
-        text: string
-      }
-      start: number
-      end: number
-    }>
-  }>
-}
-
-export type FindTextResponse = FindTextResponses[keyof FindTextResponses]
-
-export type FindFilesData = {
-  body?: never
-  path?: never
-  query: {
-    directory?: string
-    scopeID?: string
-    query: string
-    dirs?: "true" | "false"
-    type?: "file" | "directory"
+    path?: string
     limit?: number
+    cursor?: string
+    showHidden?: "true" | "false"
+    showIgnored?: "true" | "false"
   }
-  url: "/find/file"
+  url: "/workspace/files/children"
 }
 
-export type FindFilesResponses = {
+export type WorkspaceFilesChildrenResponses = {
   /**
-   * File paths
+   * Workspace file children
    */
-  200: Array<string>
+  200: WorkspaceFileChildrenResponse
 }
 
-export type FindFilesResponse = FindFilesResponses[keyof FindFilesResponses]
+export type WorkspaceFilesChildrenResponse = WorkspaceFilesChildrenResponses[keyof WorkspaceFilesChildrenResponses]
 
-export type FindSymbolsData = {
+export type WorkspaceFilesReadData = {
+  body?: never
+  path?: never
+  query: {
+    directory?: string
+    scopeID?: string
+    path: string
+    range?: string
+    offset?: number
+    limit?: number
+    preview?: "true" | "false"
+  }
+  url: "/workspace/files/read"
+}
+
+export type WorkspaceFilesReadResponses = {
+  /**
+   * Workspace file read result
+   */
+  200: WorkspaceFileReadResult
+}
+
+export type WorkspaceFilesReadResponse = WorkspaceFilesReadResponses[keyof WorkspaceFilesReadResponses]
+
+export type WorkspaceFilesStatData = {
+  body?: never
+  path?: never
+  query: {
+    directory?: string
+    scopeID?: string
+    path: string
+  }
+  url: "/workspace/files/stat"
+}
+
+export type WorkspaceFilesStatResponses = {
+  /**
+   * Workspace file node
+   */
+  200: WorkspaceFileNode
+}
+
+export type WorkspaceFilesStatResponse = WorkspaceFilesStatResponses[keyof WorkspaceFilesStatResponses]
+
+export type WorkspaceFilesSearchData = {
   body?: never
   path?: never
   query: {
     directory?: string
     scopeID?: string
     query: string
+    kind?: "files" | "content" | "symbol"
+    limit?: number
+    cursor?: string
+    include?: string
+    exclude?: string
   }
-  url: "/find/symbol"
+  url: "/workspace/files/search"
 }
 
-export type FindSymbolsResponses = {
+export type WorkspaceFilesSearchResponses = {
   /**
-   * Symbols
+   * Workspace search response
    */
-  200: Array<Symbol>
+  200: WorkspaceFileSearchResponse
 }
 
-export type FindSymbolsResponse = FindSymbolsResponses[keyof FindSymbolsResponses]
+export type WorkspaceFilesSearchResponse = WorkspaceFilesSearchResponses[keyof WorkspaceFilesSearchResponses]
 
-export type FileListData = {
-  body?: never
-  path?: never
-  query: {
-    directory?: string
-    scopeID?: string
-    path: string
-  }
-  url: "/file"
-}
-
-export type FileListResponses = {
-  /**
-   * Files and directories
-   */
-  200: Array<FileNode>
-}
-
-export type FileListResponse = FileListResponses[keyof FileListResponses]
-
-export type FileReadData = {
-  body?: never
-  path?: never
-  query: {
-    directory?: string
-    scopeID?: string
-    path: string
-  }
-  url: "/file/content"
-}
-
-export type FileReadResponses = {
-  /**
-   * File content
-   */
-  200: FileContent
-}
-
-export type FileReadResponse = FileReadResponses[keyof FileReadResponses]
-
-export type FileStatusData = {
+export type WorkspaceFilesStatusData = {
   body?: never
   path?: never
   query?: {
     directory?: string
     scopeID?: string
   }
-  url: "/file/status"
+  url: "/workspace/files/status"
 }
 
-export type FileStatusResponses = {
+export type WorkspaceFilesStatusResponses = {
   /**
-   * File status
+   * Workspace file status
    */
-  200: Array<File>
+  200: WorkspaceFileStatusSummary
 }
 
-export type FileStatusResponse = FileStatusResponses[keyof FileStatusResponses]
+export type WorkspaceFilesStatusResponse = WorkspaceFilesStatusResponses[keyof WorkspaceFilesStatusResponses]
 
 export type LibraryExperienceSearchData = {
   body?: {
@@ -11783,6 +12306,25 @@ export type AppAgentsResponses = {
 }
 
 export type AppAgentsResponse = AppAgentsResponses[keyof AppAgentsResponses]
+
+export type AppAgentModelRolesData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/agent/model-roles"
+}
+
+export type AppAgentModelRolesResponses = {
+  /**
+   * List of model role summaries
+   */
+  200: Array<ModelRoleSummary>
+}
+
+export type AppAgentModelRolesResponse = AppAgentModelRolesResponses[keyof AppAgentModelRolesResponses]
 
 export type McpStatusData = {
   body?: never

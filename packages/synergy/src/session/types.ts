@@ -1,7 +1,7 @@
 import z from "zod"
 import { Identifier } from "@/id/id"
 import type { Scope } from "@/scope/types"
-import { Snapshot } from "@/session/snapshot"
+import { SnapshotSchema } from "@/session/snapshot-schema"
 import { PermissionNext } from "@/permission/next"
 import { SessionInteraction } from "@/session/interaction"
 import { opaque } from "@/util/schema"
@@ -50,12 +50,26 @@ const CortexDelegationInfoInner = z.object({
     .optional(),
   result: z.string().optional(),
   error: z.string().optional(),
+  visibility: z.enum(["visible", "hidden"]).optional(),
+  tools: z.record(z.string(), z.boolean()).optional(),
+  output: z.any().optional(),
+  outputResult: z.any().optional(),
 })
 
 export const CortexDelegationInfo = CortexDelegationInfoInner.meta({ ref: "SessionCortexDelegation" })
 export type CortexDelegationInfo = z.infer<typeof CortexDelegationInfoInner>
 
 const ControlProfileId = z.enum(["guarded", "autonomous", "full_access"])
+
+export const SuperPlanSessionInfo = z
+  .object({
+    runID: Identifier.schema("superplan_run"),
+    role: z.enum(["planner", "node", "merge", "audit"]),
+    nodeID: Identifier.schema("superplan_node").optional(),
+    mergeID: Identifier.schema("superplan_merge").optional(),
+  })
+  .meta({ ref: "SessionSuperPlanInfo" })
+export type SuperPlanSessionInfo = z.infer<typeof SuperPlanSessionInfo>
 
 export const HistoryInfo = z
   .object({
@@ -124,7 +138,7 @@ export const Info = z
           additions: z.number(),
           deletions: z.number(),
           files: z.number(),
-          diffs: Snapshot.FileDiff.array().optional(),
+          diffs: SnapshotSchema.FileDiff.array().optional(),
         })
         .optional(),
       title: z.string(),
@@ -165,11 +179,13 @@ export const Info = z
         .optional(),
       history: HistoryInfo.optional(),
       cortex: CortexDelegationInfo.optional(),
+      superplan: SuperPlanSessionInfo.optional(),
       working: WorkingInfo.optional(),
       workspace: Workspace.optional(),
       blueprint: z
         .object({
           loopID: z.string().optional(),
+          loopRole: z.enum(["execution", "audit"]).optional(),
           planMode: z.boolean().optional(),
         })
         .optional(),

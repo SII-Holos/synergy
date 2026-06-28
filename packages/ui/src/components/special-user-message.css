@@ -14,6 +14,15 @@
     border-left-color: color-mix(in srgb, var(--syntax-info) 72%, var(--border-weak-base));
   }
 
+  &[data-kind="plan-mode-request"] {
+    border-left-color: color-mix(in srgb, var(--syntax-info) 48%, var(--border-weak-base));
+  }
+
+  &[data-kind="plan-mode-request"] [data-slot="user-message-text"] {
+    border-left: 0;
+    padding: 0;
+  }
+
   [data-slot="special-message-body"] {
     min-width: 0;
     display: flex;
@@ -116,7 +125,7 @@
   [data-slot="special-message-field"] {
     padding: 7px 9px;
     border-radius: var(--radius-md);
-    background: color-mix(in srgb, var(--surface-base) 72%, transparent);
+    background: color-mix(in srgb, var(--workbench-control-bg, var(--surface-base)) 78%, transparent);
     border: 1px solid var(--border-weaker-base);
   }
 

@@ -116,7 +116,10 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         },
         sessionTabs: {} as Record<string, SessionTabs>,
         sessionView: {} as Record<string, SessionView>,
-        workspaceSessions: {} as Record<string, { opened: boolean; active: string | null; width?: number }>,
+        workspaceSessions: {} as Record<
+          string,
+          { opened: boolean; active: string | null; width?: number; resized?: boolean }
+        >,
       }),
     )
 
@@ -1008,12 +1011,17 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         return {
           opened: createMemo(() => ws().opened),
           active: createMemo(() => ws().active),
-          width: createMemo(() => ws().width ?? computeDefaultWorkspaceWidth(window.innerWidth)),
+          width: createMemo(() => {
+            const current = ws()
+            return current.resized && typeof current.width === "number"
+              ? current.width
+              : computeDefaultWorkspaceWidth(window.innerWidth)
+          }),
           open() {
             setStore("workspaceSessions", sessionKey, {
+              ...ws(),
               opened: true,
               active: ws().active ?? null,
-              width: ws().width ?? computeDefaultWorkspaceWidth(window.innerWidth),
             })
           },
           close() {
@@ -1027,7 +1035,6 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
               setStore("workspaceSessions", sessionKey, {
                 opened: false,
                 active: tool,
-                width: computeDefaultWorkspaceWidth(window.innerWidth),
               })
             } else {
               setStore("workspaceSessions", sessionKey, "active", tool)
@@ -1035,9 +1042,10 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
           },
           setWidth(width: number) {
             if (!store.workspaceSessions[sessionKey]) {
-              setStore("workspaceSessions", sessionKey, { opened: false, active: null, width })
+              setStore("workspaceSessions", sessionKey, { opened: false, active: null, width, resized: true })
             } else {
               setStore("workspaceSessions", sessionKey, "width", width)
+              setStore("workspaceSessions", sessionKey, "resized", true)
             }
           },
         }

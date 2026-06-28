@@ -104,6 +104,7 @@ export const Toast = Object.assign(ToastRoot, {
 export { toaster }
 
 export type ToastType = "info" | "success" | "warning" | "error"
+export const DEFAULT_TOAST_DURATION_MS = 4000
 
 export interface ToastAction {
   label: string
@@ -152,7 +153,7 @@ export function showToast(options: ToastOptions): number {
   const iconName = options.icon ?? defaultIconForType(type)
   return toaster.show((props) => {
     const [countdown, setCountdown] = createSignal("")
-    const duration = resolvedDuration ?? 5000
+    const duration = resolvedDuration ?? DEFAULT_TOAST_DURATION_MS
     const hasCountdown = !options.persistent && duration !== 0
 
     const COUNTDOWN_TICK_MS = 200

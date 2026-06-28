@@ -1,6 +1,6 @@
 # Synergy Plugin Docs
 
-These docs describe the current plugin platform. Older v2/v3/v4 migration notes have been removed from this tree; trust the current implementation and SDK contracts.
+These docs describe the plugin platform and SDK contracts.
 
 Start here:
 
@@ -27,7 +27,7 @@ synergy-plugin validate --runtime-discovery
 synergy-plugin publish-market
 ```
 
-Public marketplace publishing uses the GitHub aggregator repository instead of a deployed registry server:
+Public marketplace publishing uses the GitHub aggregator repository:
 
 ```bash
 synergy-plugin publish-market --repo https://github.com/owner/my-plugin

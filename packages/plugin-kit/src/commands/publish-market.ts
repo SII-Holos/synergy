@@ -10,6 +10,7 @@ import { packPluginProject } from "./pack"
 import { signPluginTarball } from "./sign"
 import { validatePluginProject } from "./validate"
 import {
+  copyGithubEntryIcon,
   githubEntry,
   githubRepoSlug,
   normalizeRepoUrl,
@@ -128,6 +129,8 @@ async function openRegistryPr(input: { registryDir: string; pluginId: string; ve
   const branch = `publish/${input.pluginId}-${input.version}`
   await $`git checkout -B ${branch}`.cwd(input.registryDir)
   await $`git add plugins/${input.pluginId}.json registry.json`.cwd(input.registryDir).nothrow()
+  const iconPath = path.join(input.registryDir, "icons", `${input.pluginId}.svg`)
+  if (fs.existsSync(iconPath)) await $`git add icons/${input.pluginId}.svg`.cwd(input.registryDir).nothrow()
   const diff = await $`git diff --cached --quiet`.cwd(input.registryDir).nothrow()
   if (diff.exitCode === 0) {
     UI.println(`${UI.Style.TEXT_DIM}No registry changes to commit.${UI.Style.TEXT_NORMAL}`)
@@ -257,6 +260,7 @@ export const PluginPublishMarketCommand = cmd({
       await ensureRegistryCheckout(registryDir, (args["registry-repo"] as string | undefined) ?? DEFAULT_REGISTRY_REPO)
       const entryPath = path.join(registryDir, "plugins", `${entry.id}.json`)
       writeGithubEntry(entryPath, entry)
+      copyGithubEntryIcon({ tarballPath, entryPath, entry })
 
       await runRegistryValidation(registryDir)
       await openRegistryPr({

@@ -4,8 +4,8 @@ export namespace BrowserAnnotationHelper {
   export function create(input: BrowserAnnotationInput): BrowserAnnotation {
     return {
       id: crypto.randomUUID(),
-      tabURL: input.tabURL ?? "",
-      tabID: input.tabID ?? "",
+      pageURL: input.pageURL ?? "",
+      pageID: input.pageID ?? "",
       ref: input.ref,
       element: input.element,
       comment: input.comment,
@@ -21,7 +21,7 @@ export namespace BrowserAnnotationHelper {
     const items = pending
       .map(
         (a) =>
-          `  <browser-annotation id="${a.id}"${a.ref ? ` ref="${a.ref}"` : ""}${a.element ? ` element="${a.element}"` : ""}${a.tabURL ? ` tab="${a.tabURL}"` : ""}>\n    ${a.comment}${a.styleFeedback ? `\n    style-feedback: ${JSON.stringify(a.styleFeedback)}` : ""}\n  </browser-annotation>`,
+          `  <browser-annotation id="${a.id}"${a.ref ? ` ref="${a.ref}"` : ""}${a.element ? ` element="${a.element}"` : ""}${a.pageURL ? ` page="${a.pageURL}"` : ""}>\n    ${a.comment}${a.styleFeedback ? `\n    style-feedback: ${JSON.stringify(a.styleFeedback)}` : ""}\n  </browser-annotation>`,
       )
       .join("\n")
     return `<browser-annotations>\n${items}\n</browser-annotations>`

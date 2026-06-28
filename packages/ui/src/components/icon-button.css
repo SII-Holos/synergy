@@ -35,25 +35,25 @@
 
   &[data-variant="secondary"] {
     border: transparent;
-    background-color: var(--button-secondary-base);
+    background-color: var(--workbench-control-bg, var(--button-secondary-base));
     color: var(--text-strong);
     box-shadow: var(--shadow-xs-border);
 
     &:hover:not(:disabled) {
-      background-color: var(--button-secondary-hover);
+      background-color: var(--workbench-control-bg-hover, var(--button-secondary-hover));
     }
     &:focus:not(:disabled) {
-      background-color: var(--button-secondary-base);
+      background-color: var(--workbench-control-bg, var(--button-secondary-base));
     }
     &:focus-visible:not(:active) {
-      background-color: var(--button-secondary-base);
+      background-color: var(--workbench-control-bg, var(--button-secondary-base));
       box-shadow: var(--shadow-xs-border-focus);
     }
     &:focus-visible:active {
       box-shadow: none;
     }
     &:active:not(:disabled) {
-      background-color: var(--button-secondary-base);
+      background-color: var(--workbench-selected-bg, var(--button-secondary-base));
     }
 
     [data-slot="icon-svg"] {
@@ -69,13 +69,13 @@
     }
 
     &:hover:not(:disabled) {
-      background-color: var(--surface-raised-base-hover);
+      background-color: var(--workbench-control-bg-hover, var(--surface-raised-base-hover));
     }
     &:focus:not(:disabled) {
-      background-color: var(--surface-focus);
+      background-color: var(--workbench-control-bg-hover, var(--surface-focus));
     }
     &:active:not(:disabled) {
-      background-color: var(--surface-raised-base-active);
+      background-color: var(--workbench-selected-bg-hover, var(--surface-raised-base-active));
     }
   }
 

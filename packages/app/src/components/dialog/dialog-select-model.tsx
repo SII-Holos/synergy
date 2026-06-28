@@ -2,25 +2,30 @@ import { Component, createMemo, JSX, Show } from "solid-js"
 import { ToolbarSelectorPopover } from "@/components/toolbar-selector"
 import { useLocal, type LocalModel } from "@/context/local"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
-import { popularProviders, useProviders } from "@/hooks/use-providers"
+import { useProviders } from "@/hooks/use-providers"
 import { useGlobalSync } from "@/context/global-sync"
+import { compareProviderIDs, type ProviderRecommendationMap } from "@/components/provider/provider-recommendation"
 import { Button } from "@ericsanchezok/synergy-ui/button"
 import { Switch } from "@ericsanchezok/synergy-ui/switch"
 import { Tag } from "@ericsanchezok/synergy-ui/tag"
 import { Dialog } from "@ericsanchezok/synergy-ui/dialog"
 import { List } from "@ericsanchezok/synergy-ui/list"
-import { DialogSelectProvider } from "./dialog-select-provider"
+import { SettingsDialog } from "@/components/settings"
 
-function sortGroups(a: { category: string; items: LocalModel[] }, b: { category: string; items: LocalModel[] }) {
-  if (a.category === "Recent" && b.category !== "Recent") return -1
-  if (b.category === "Recent" && a.category !== "Recent") return 1
+function sortGroups(profiles: ProviderRecommendationMap) {
+  return (a: { category: string; items: LocalModel[] }, b: { category: string; items: LocalModel[] }) => {
+    if (a.category === "Recent" && b.category !== "Recent") return -1
+    if (b.category === "Recent" && a.category !== "Recent") return 1
 
-  const aProvider = a.items[0]?.provider.id
-  const bProvider = b.items[0]?.provider.id
-  if (!aProvider || !bProvider) return a.category.localeCompare(b.category)
-  if (popularProviders.includes(aProvider) && !popularProviders.includes(bProvider)) return -1
-  if (!popularProviders.includes(aProvider) && popularProviders.includes(bProvider)) return 1
-  return popularProviders.indexOf(aProvider) - popularProviders.indexOf(bProvider)
+    const aProvider = a.items[0]?.provider
+    const bProvider = b.items[0]?.provider
+    if (!aProvider || !bProvider) return a.category.localeCompare(b.category)
+    return compareProviderIDs(
+      profiles,
+      { id: aProvider.id, name: aProvider.name },
+      { id: bProvider.id, name: bProvider.name },
+    )
+  }
 }
 
 function ModelRow(props: { model: LocalModel; compact?: boolean }) {
@@ -53,6 +58,7 @@ const QuickSwitcherList: Component<{
   onSelect: () => void
 }> = (props) => {
   const local = useLocal()
+  const globalSync = useGlobalSync()
 
   const models = createMemo<QuickSwitcherEntry[]>(() => {
     const filtered = local.model
@@ -95,7 +101,7 @@ const QuickSwitcherList: Component<{
       current={current()}
       filterKeys={["provider.name", "name", "id"]}
       groupBy={(x) => x.group}
-      sortGroupsBy={sortGroups}
+      sortGroupsBy={sortGroups(globalSync.data.provider.profiles)}
       onSelect={(x) => {
         if (!x) return
         local.model.set({ modelID: x.id, providerID: x.provider.id }, { recent: true })
@@ -159,7 +165,7 @@ const ConnectedModelManager: Component<{
       current={currentModel()}
       filterKeys={["provider.name", "name", "id"]}
       groupBy={(x) => x.provider.name}
-      sortGroupsBy={sortGroups}
+      sortGroupsBy={sortGroups(globalSync.data.provider.profiles)}
       onSelect={(x) => {
         if (!x) return
         local?.model.set({ modelID: x.id, providerID: x.provider.id }, { recent: true })
@@ -211,7 +217,7 @@ export const ModelSelectorPopover: Component<{
               class="h-7 px-2.5 text-12-medium text-text-weak"
               onClick={() => {
                 close()
-                dialog.show(() => <DialogSelectProvider />)
+                dialog.show(() => <SettingsDialog initialTab="providers" />)
               }}
             >
               Connect provider
@@ -235,7 +241,9 @@ export const DialogSelectModel: Component<{ provider?: string }> = (props) => {
           class="h-7 -my-1 text-14-medium"
           icon="plus"
           tabIndex={-1}
-          onClick={() => dialog.show(() => <DialogSelectProvider />)}
+          onClick={() => {
+            dialog.show(() => <SettingsDialog initialTab="providers" />)
+          }}
         >
           Connect provider
         </Button>

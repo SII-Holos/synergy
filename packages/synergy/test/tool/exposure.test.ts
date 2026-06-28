@@ -81,7 +81,7 @@ function toolContext(sessionID: string): Tool.Context {
 }
 
 describe("tool exposure", () => {
-  test("defaults to resident and classifies built-in groups and explicit search tools", () => {
+  test("defaults to resident and classifies built-in groups and explicit search/internal tools", () => {
     const explicit = Tool.define(
       "explicit_search_tool",
       {
@@ -93,10 +93,22 @@ describe("tool exposure", () => {
       },
       { exposure: { mode: "search", title: "Explicit Search Tool", keywords: ["needle"] } },
     )
+    const internal = Tool.define(
+      "internal_helper_tool",
+      {
+        description: "Only visible when force-enabled by the host.",
+        parameters: z.object({}),
+        async execute() {
+          return { title: "internal_helper_tool", output: "ok", metadata: {} }
+        },
+      },
+      { exposure: { mode: "internal" } },
+    )
 
     expect(ToolExposure.normalize("ordinary_tool")).toEqual({ mode: "resident" })
     expect(ToolExposure.normalize("browser_navigate")).toEqual({ mode: "group", group: "browser" })
     expect(explicit.exposure).toEqual({ mode: "search", title: "Explicit Search Tool", keywords: ["needle"] })
+    expect(internal.exposure).toEqual({ mode: "internal" })
   })
 
   test("ToolResolver hides deferred groups until the session expands them", async () => {
@@ -162,6 +174,37 @@ describe("tool exposure", () => {
     })
   })
 
+  test("internal tools are hidden from search and visible only when force-enabled", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const id = `internal_test_${Math.random().toString(36).slice(2)}`
+        await ToolRegistry.register(
+          Tool.define(
+            id,
+            {
+              description: "A test-only internal tool.",
+              parameters: z.object({}),
+              async execute() {
+                return { title: id, output: "ok", metadata: {} }
+              },
+            },
+            { exposure: { mode: "internal" } },
+          ),
+        )
+
+        const session = await Session.create({})
+        expect((await definitionIDs(session)).has(id)).toBe(false)
+        expect((await definitionIDs(session, { userTools: { [id]: true } })).has(id)).toBe(true)
+
+        const search = await SearchToolsTool.init({ agent: allowAllAgent })
+        const searchResult = await search.execute({ query: id, limit: 8 }, toolContext(session.id))
+        expect((searchResult.metadata.results as Array<any>).some((entry) => entry.id === id)).toBe(false)
+      },
+    })
+  })
+
   test("search_tools is read-only and expand_tools persists session state", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({
@@ -169,7 +212,15 @@ describe("tool exposure", () => {
       fn: async () => {
         const session = await Session.create({})
         const search = await SearchToolsTool.init({ agent: allowAllAgent })
-        await search.execute({ query: "browser", limit: 5 }, toolContext(session.id))
+        const searchResult = await search.execute({ query: "memory note", limit: 8 }, toolContext(session.id))
+        const searchResults = searchResult.metadata.results as Array<any>
+        const memoryResult = searchResults.find((result) => result.id === "memory")
+        const noteResult = searchResults.find((result) => result.id === "note")
+        expect(memoryResult).toMatchObject({ type: "group", id: "memory" })
+        expect(memoryResult.matchedToolPreview).toContain("memory_search")
+        expect(noteResult).toMatchObject({ type: "group", id: "note" })
+        expect(searchResults.some((result) => result.type === "tool" && result.id.startsWith("memory_"))).toBe(false)
+        expect(searchResult.output).not.toContain("Structured results")
         expect((await Session.get(session.id)).toolState).toBeUndefined()
 
         const expand = await ExpandToolsTool.init({ agent: allowAllAgent })
@@ -178,6 +229,11 @@ describe("tool exposure", () => {
           toolContext(session.id),
         )
         expect(result.metadata.availableNextStep).toBe(true)
+        expect(result.metadata.availableOn).toBe("next_model_request")
+        expect(result.metadata.newlyVisibleTools).toContain("browser_navigate")
+        expect(result.metadata.newlyVisibleTools).not.toContain("search_tools")
+        expect(result.metadata.visibleTools).toBeUndefined()
+        expect(result.output).not.toContain("Structured result")
         expect((await Session.get(session.id)).toolState?.expandedGroups).toEqual(["browser"])
       },
     })
@@ -207,7 +263,7 @@ describe("tool exposure", () => {
     })
   })
 
-  test("Plan Mode forces the note group without exposing other deferred groups", async () => {
+  test("Plan Mode keeps bash visible and forces the note group without exposing other deferred groups", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({
       scope: await tmp.scope(),
@@ -218,12 +274,81 @@ describe("tool exposure", () => {
         })
 
         const ids = await definitionIDs(await Session.get(session.id))
+        expect(ids.has("bash")).toBe(true)
+        expect(ids.has("edit")).toBe(false)
         expect(ids.has("search_tools")).toBe(true)
         expect(ids.has("expand_tools")).toBe(true)
         expect(ids.has("note_read")).toBe(true)
         expect(ids.has("note_write")).toBe(true)
         expect(ids.has("memory_get")).toBe(false)
         expect(ids.has("agenda_list")).toBe(false)
+      },
+    })
+  })
+
+  test("Plan Mode does not override explicit permission denial for bash", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({})
+        await Session.update(session.id, (draft) => {
+          draft.blueprint = { planMode: true }
+        })
+        const denyBash: Agent.Info = {
+          ...allowAllAgent,
+          permission: PermissionNext.fromConfig({ "*": "allow", bash: "deny" }),
+        }
+
+        const availability = await ToolResolver.availability({
+          agent: denyBash,
+          model,
+          sessionID: session.id,
+          session: await Session.get(session.id),
+          includeMCP: false,
+        })
+
+        expect(availability.visible.some((def) => def.id === "bash")).toBe(false)
+        expect(availability.diagnostics.get("bash")?.code).toBe("permission_denied")
+      },
+    })
+  })
+
+  test("Plan Mode resolve keeps hidden tools inactive while preserving semantic diagnostic wrappers", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({})
+        await Session.update(session.id, (draft) => {
+          draft.blueprint = { planMode: true }
+        })
+        const executions = new Map<string, Promise<any>>()
+        const processor = {
+          message: { id: "message_test" },
+          partFromToolCall: () => undefined,
+          trackExecution: (id: string, promise: Promise<any>) => executions.set(id, promise),
+        } as any
+
+        const resolved = await ToolResolver.resolveWithAvailability({
+          agent: allowAllAgent,
+          model,
+          sessionID: session.id,
+          processor,
+          session: await Session.get(session.id),
+          includeMCP: false,
+        })
+
+        expect(resolved.activeToolIDs).toContain("bash")
+        expect(resolved.activeToolIDs).not.toContain("edit")
+        expect(resolved.tools.edit).toBeDefined()
+
+        await expect(
+          (resolved.tools.edit as any).execute({ filePath: "x" }, { toolCallId: "call_edit" }),
+        ).rejects.toThrow("Plan Mode")
+        const outcome = await executions.get("call_edit")
+        expect(outcome.status).toBe("error")
+        expect(outcome.metadata.toolDiagnostic.code).toBe("plan_mode_blocked")
       },
     })
   })

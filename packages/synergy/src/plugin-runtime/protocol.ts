@@ -1,10 +1,12 @@
 import type { Info as ScopeInfo } from "../scope/types.js"
+import type { ToolDisplay } from "@ericsanchezok/synergy-plugin/tool"
 
 // === Direction: Host → Plugin ===
 
 export type HostToPlugin =
   | { type: "init"; pluginId: string; input: IsolatedPluginInputData }
   | { type: "invokeTool"; requestId: string; toolId: string; args: unknown; context?: RuntimeToolContextData }
+  | { type: "abortTool"; requestId: string; reason?: string }
   | { type: "triggerHook"; requestId: string; hook: string; input: unknown; output: unknown }
   | { type: "bridgeResponse"; requestId: string; ok: true; value: unknown }
   | { type: "bridgeResponse"; requestId: string; ok: false; error: SerializedError }
@@ -44,6 +46,7 @@ export type HostBridgeMethod =
   | "workspace.getMetadata"
   | "tool.invoke"
   | "permission.request"
+  | "task.run"
 
 // === Supporting types ===
 
@@ -58,6 +61,7 @@ export interface IsolatedPluginInputData {
 export interface RuntimeToolDescriptor {
   id: string
   description: string
+  display?: ToolDisplay
   schema?: unknown
   capabilities?: string[]
 }
@@ -67,6 +71,7 @@ export interface RuntimeToolContextData {
   messageID: string
   agent: string
   directory?: string
+  callID?: string
 }
 
 export interface SerializedError {

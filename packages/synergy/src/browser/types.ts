@@ -1,12 +1,13 @@
 import type { BrowserOwner } from "./owner.js"
 import type { BrowserDialogRequest, BrowserDownloadEntry, BrowserFileChooserRequest, BrowserTab } from "./tab.js"
 
+export type BrowserPage = BrowserTab
 export type { BrowserTab }
 
 export interface BrowserAnnotation {
   id: string
-  tabURL: string
-  tabID: string
+  pageURL: string
+  pageID: string
   ref?: string
   element?: string
   comment: string
@@ -21,27 +22,26 @@ export interface BrowserAnnotationInput {
   comment: string
   styleFeedback?: Record<string, string>
   createdBy: "user" | "agent"
-  tabID?: string
-  tabURL?: string
+  pageID?: string
+  pageURL?: string
 }
 
 export interface BrowserSessionObserver {
-  onTabCreated?: (tab: BrowserTab) => void
-  onTabClosed?: (tabID: string) => void
-  onTabNavigated?: (tab: BrowserTab) => void
-  onTabUpdated?: (tab: BrowserTab) => void
-  onTabActivated?: (tab: BrowserTab) => void
-  onScreenshotAvailable?: (tab: BrowserTab, dataUrl: string, width: number, height: number) => void
+  onPageCreated?: (page: BrowserPage) => void
+  onPageClosed?: (pageID: string) => void
+  onPageNavigated?: (page: BrowserPage) => void
+  onPageUpdated?: (page: BrowserPage) => void
+  onScreenshotAvailable?: (page: BrowserPage, dataUrl: string, width: number, height: number) => void
   onAgentActivity?: (activity: BrowserAgentActivity) => void
   onControlChanged?: (mode: "user" | "agent") => void
-  onPageLoadState?: (tab: BrowserTab, state: "loading" | "loaded" | "error", message?: string) => void
-  onDownload?: (tab: BrowserTab, entry: BrowserDownloadEntry) => void
-  onFileChooser?: (tab: BrowserTab, request: BrowserFileChooserRequest) => void
-  onDialog?: (tab: BrowserTab, request: BrowserDialogRequest) => void
+  onPageLoadState?: (page: BrowserPage, state: "loading" | "loaded" | "error", message?: string) => void
+  onDownload?: (page: BrowserPage, entry: BrowserDownloadEntry) => void
+  onFileChooser?: (page: BrowserPage, request: BrowserFileChooserRequest) => void
+  onDialog?: (page: BrowserPage, request: BrowserDialogRequest) => void
 }
 
 export interface BrowserAgentActivity {
-  tabId: string
+  pageId: string
   url: string
   title?: string
   kind: "reading" | "acting" | "idle"
@@ -51,15 +51,12 @@ export interface BrowserAgentActivity {
 
 export interface BrowserSession {
   readonly owner: BrowserOwner.Info
-  readonly tabs: readonly BrowserTab[]
-  readonly activeTab: BrowserTab | null
+  readonly page: BrowserPage | null
   readonly annotations: BrowserAnnotation[]
 
-  createTab(url?: string): Promise<BrowserTab>
-  switchTab(tabID: string): void
-  closeTab(tabID: string): Promise<void>
-  closeOthers(tabID: string): Promise<void>
-  getTab(tabID: string): BrowserTab | undefined
+  ensurePage(url?: string): Promise<BrowserPage>
+  closePage(): Promise<void>
+  getPage(pageID: string): BrowserPage | undefined
 
   addAnnotation(input: BrowserAnnotationInput): BrowserAnnotation
   removeAnnotation(id: string): boolean
@@ -67,7 +64,7 @@ export interface BrowserSession {
   formatAnnotationsForContext(): string
 
   addObserver(observer: BrowserSessionObserver): () => void
-  notifyTabNavigated(tab: BrowserTab): Promise<void>
+  notifyPageNavigated(page: BrowserPage): Promise<void>
   notifyAgentActivity(activity: BrowserAgentActivity): Promise<void>
   notifyControlChanged(mode: "user" | "agent"): Promise<void>
 

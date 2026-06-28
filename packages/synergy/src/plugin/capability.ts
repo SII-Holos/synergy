@@ -65,6 +65,10 @@ function buildCapabilitySet(
     caps.add("mcp:spawn")
   }
 
+  // Delegated Synergy tasks — plugin-wide only. This maps to the existing
+  // internal "task" permission rather than a separate plugin-only model.
+  if (pt?.task) caps.add("task")
+
   // Session — tool-level wins over plugin-wide default
   const sess = tc?.session ?? pd?.session ?? "none"
   if (sess === "read") caps.add("session_data")

@@ -17,15 +17,15 @@ function formatTime(ts: number): string {
 
 export function ConsolePanel() {
   let scrollEl: HTMLDivElement | undefined
-  const { activeTabId, consoleEntries } = useBrowser()
+  const { pageId: currentPageId, consoleEntries } = useBrowser()
 
   // Auto-scroll to bottom when entries change
   createEffect(
     on(
       () => {
-        const tabId = activeTabId()
-        if (!tabId) return 0
-        return consoleEntries[tabId]?.length ?? 0
+        const pageId = currentPageId()
+        if (!pageId) return 0
+        return consoleEntries[pageId]?.length ?? 0
       },
       () => {
         if (!scrollEl) return
@@ -37,9 +37,9 @@ export function ConsolePanel() {
   )
 
   const entries = (): ConsoleEntry[] => {
-    const tabId = activeTabId()
-    if (!tabId) return []
-    return consoleEntries[tabId] ?? []
+    const pageId = currentPageId()
+    if (!pageId) return []
+    return consoleEntries[pageId] ?? []
   }
 
   return (

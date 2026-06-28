@@ -19,6 +19,9 @@ import { Flag } from "@/flag/flag"
 import { readdir } from "fs/promises"
 
 import { existsSync } from "fs"
+import { WorkspaceFileIndexer } from "../workspace-file/indexer"
+import { WorkspaceFileService } from "../workspace-file/service"
+import { WorkspaceFileStatus } from "../workspace-file/status"
 
 const SUBSCRIBE_TIMEOUT_MS = 10_000
 
@@ -26,15 +29,96 @@ declare const SYNERGY_LIBC: string | undefined
 
 export namespace FileWatcher {
   const log = Log.create({ service: "file.watcher" })
+  type WorkspaceFileEvent = "added" | "changed" | "deleted" | "renamed"
 
   export const Event = {
     Updated: BusEvent.define(
       "file.watcher.updated",
       z.object({
         file: z.string(),
-        event: z.union([z.literal("add"), z.literal("change"), z.literal("unlink")]),
+        event: z.enum(["added", "changed", "deleted", "renamed"]),
+        absolute: z.string().optional(),
+        oldPath: z.string().optional(),
+        oldAbsolute: z.string().optional(),
+        parent: z.string().optional(),
+        node: z.any().optional(),
       }),
     ),
+  }
+
+  function indexerEvent(event: Exclude<WorkspaceFileEvent, "renamed">): "add" | "change" | "unlink" {
+    if (event === "added") return "add"
+    if (event === "deleted") return "unlink"
+    return "change"
+  }
+
+  async function publishWorkspaceFileEvent(file: string, event: WorkspaceFileEvent, options?: { oldPath?: string }) {
+    try {
+      const relative = WorkspaceFileService.relative(file)
+      WorkspaceFileStatus.invalidate()
+      const oldRelative = options?.oldPath ? WorkspaceFileService.relative(options.oldPath) : undefined
+      if (event === "renamed" && oldRelative) {
+        await WorkspaceFileIndexer.applyRename({ from: oldRelative, to: relative }).catch(() =>
+          WorkspaceFileIndexer.invalidate(),
+        )
+      } else {
+        const changeEvent = event === "renamed" ? "added" : event
+        await WorkspaceFileIndexer.applyChange({ path: relative, event: indexerEvent(changeEvent) }).catch(() =>
+          WorkspaceFileIndexer.invalidate(),
+        )
+      }
+      const node = event === "deleted" ? undefined : await WorkspaceFileService.maybeNode(relative)
+      Bus.publish(Event.Updated, {
+        file: relative,
+        event,
+        absolute: file,
+        oldPath: oldRelative,
+        oldAbsolute: options?.oldPath,
+        parent: path.dirname(relative) === "." ? "" : path.dirname(relative),
+        node,
+      })
+    } catch (error) {
+      log.warn("failed to publish workspace file event", { file, event, error: String(error) })
+      WorkspaceFileIndexer.invalidate()
+      WorkspaceFileStatus.invalidate()
+    }
+  }
+
+  function parentOf(input: string) {
+    return path.dirname(input)
+  }
+
+  function normalizeWorkspaceEvents(evts: ParcelWatcher.Event[]) {
+    const deletes = evts.filter((evt) => evt.type === "delete")
+    const creates = evts.filter((evt) => evt.type === "create")
+    const updates = evts.filter((evt) => evt.type === "update")
+    const usedDeletes = new Set<number>()
+    const result: Array<{ path: string; event: WorkspaceFileEvent; oldPath?: string }> = []
+
+    for (const create of creates) {
+      const deleteIndex = deletes.findIndex((item, index) => {
+        if (usedDeletes.has(index)) return false
+        if (parentOf(item.path) === parentOf(create.path)) return true
+        return deletes.length === 1 && creates.length === 1
+      })
+      if (deleteIndex === -1) {
+        result.push({ path: create.path, event: "added" })
+        continue
+      }
+      usedDeletes.add(deleteIndex)
+      result.push({ path: create.path, event: "renamed", oldPath: deletes[deleteIndex]!.path })
+    }
+
+    for (const update of updates) {
+      result.push({ path: update.path, event: "changed" })
+    }
+
+    for (const [index, deleted] of deletes.entries()) {
+      if (usedDeletes.has(index)) continue
+      result.push({ path: deleted.path, event: "deleted" })
+    }
+
+    return result
   }
 
   const watcher = lazy(() => {
@@ -95,10 +179,8 @@ export namespace FileWatcher {
 
       const subscribe: ParcelWatcher.SubscribeCallback = (err, evts) => {
         if (err) return
-        for (const evt of evts) {
-          if (evt.type === "create") Bus.publish(Event.Updated, { file: evt.path, event: "add" })
-          if (evt.type === "update") Bus.publish(Event.Updated, { file: evt.path, event: "change" })
-          if (evt.type === "delete") Bus.publish(Event.Updated, { file: evt.path, event: "unlink" })
+        for (const evt of normalizeWorkspaceEvents(evts)) {
+          void publishWorkspaceFileEvent(evt.path, evt.event, { oldPath: evt.oldPath })
         }
       }
 

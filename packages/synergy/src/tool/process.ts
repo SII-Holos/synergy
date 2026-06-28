@@ -6,6 +6,7 @@ import { RemoteExecution } from "./remote-execution"
 import { LocalProcessBackend } from "./process/local"
 import { RemoteProcessBackend } from "./process/remote"
 import type { ProcessMetadata, ProcessParams } from "./process/shared"
+import { ToolTimeout } from "./timeout"
 
 const parameters = z.object({
   action: z
@@ -17,7 +18,10 @@ const parameters = z.object({
   offset: z.number().optional().describe("Line offset for log retrieval"),
   limit: z.number().optional().describe("Number of lines to retrieve for log"),
   block: z.boolean().optional().describe("Wait for process to exit before returning (for poll action)"),
-  timeout: z.number().optional().describe("Max seconds to wait when block is true (default: 30)"),
+  timeout: z
+    .number()
+    .optional()
+    .describe(`Max seconds to wait when block is true (default: ${ToolTimeout.DEFAULTS.processPollWaitMs / 1_000})`),
   envID: MetaProtocolEnv.EnvID.optional().describe(
     "Optional execution environment ID. Omit for local execution; provide one to target a remote execution backend.",
   ),

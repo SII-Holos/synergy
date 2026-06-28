@@ -8,13 +8,23 @@ Log.init({ print: false })
 let mockPlugin: any | null = null
 let mockManifest: any | null = null
 let pluginId = ""
+const mockLoaderState = Object.assign(
+  mock(async () => ({ loaded: [] })),
+  {
+    resetAll: mock(async () => {}),
+  },
+)
 
 mock.module("../../src/plugin/loader.js", () => ({
+  state: mockLoaderState,
+  specToPluginId: new Map(),
+  resolveSpecPluginDir: mock(() => "/tmp/rollback-test"),
   getPlugin: mock(async (id: string) => {
     if (mockPlugin && mockPlugin.id === id) return mockPlugin
     return null
   }),
   getLoadedPlugins: mock(async () => []),
+  incrementReloadVersion: mock(() => {}),
 }))
 
 mock.module("../../src/plugin/manifest-reader.js", () => ({

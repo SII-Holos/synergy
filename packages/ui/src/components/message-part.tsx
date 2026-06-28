@@ -47,7 +47,8 @@ import { checksum } from "@ericsanchezok/synergy-util/encode"
 import { parsePartialJson } from "@ericsanchezok/synergy-util/json"
 import { createAutoScroll, createTypewriter, createAnimatedNumber } from "../hooks"
 import { getApprovalAudit } from "../utils/approval-audit"
-import { isArtifactOnlyToolPart } from "./tool-result-presentation"
+import { getSemanticIcon } from "./semantic-icon"
+import { shouldHideToolPart } from "./tool-result-presentation"
 
 interface Diagnostic {
   range: {
@@ -221,6 +222,8 @@ function isBlueprintToolKind(input: any = {}, metadata: any = {}) {
   const kinds = metadata.kinds
   return Array.isArray(kinds) && kinds.length > 0 && kinds.every((kind) => kind === "blueprint")
 }
+
+const BLUEPRINT_ICON = getSemanticIcon("orchestration.blueprint")
 
 const browserToolLabels: Record<string, { icon: IconName; title: string }> = {
   browser_navigate: { icon: "globe", title: "Navigate" },
@@ -544,6 +547,12 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
         title: "Grep",
         subtitle: input.pattern,
       }
+    case "file_search":
+      return {
+        icon: "scan-document",
+        title: "File Search",
+        subtitle: input.query,
+      }
     case "scan_files":
       return {
         icon: "scan-search",
@@ -732,7 +741,7 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
     case "note_list":
       if (isBlueprintToolKind(input, metadata)) {
         return {
-          icon: "stamp",
+          icon: BLUEPRINT_ICON,
           title: "Blueprints",
           subtitle: input.scope,
         }
@@ -745,7 +754,7 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
     case "note_read":
       if (isBlueprintToolKind(input, metadata)) {
         return {
-          icon: "stamp",
+          icon: BLUEPRINT_ICON,
           title: "Read Blueprint",
           subtitle: Array.isArray(input.ids)
             ? input.ids.length === 1
@@ -766,7 +775,7 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
     case "note_search":
       if (isBlueprintToolKind(input, metadata)) {
         return {
-          icon: "stamp",
+          icon: BLUEPRINT_ICON,
           title: "Blueprint Search",
           subtitle: input.pattern,
         }
@@ -779,7 +788,7 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
     case "note_write":
       if (isBlueprintToolKind(input, metadata)) {
         return {
-          icon: "stamp",
+          icon: BLUEPRINT_ICON,
           title: "Write Blueprint",
           subtitle: input.title || input.mode,
         }
@@ -792,7 +801,7 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
     case "note_edit":
       if (isBlueprintToolKind(input, metadata)) {
         return {
-          icon: "stamp",
+          icon: BLUEPRINT_ICON,
           title: "Edit Blueprint",
           subtitle: input.title || input.id,
         }
@@ -804,13 +813,13 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
       }
     case "blueprint_loop_finish":
       return {
-        icon: "stamp",
+        icon: BLUEPRINT_ICON,
         title: "Finish BlueprintLoop",
         subtitle: input.loopID,
       }
     case "blueprint_loop_restart":
       return {
-        icon: "stamp",
+        icon: BLUEPRINT_ICON,
         title: "Restart BlueprintLoop",
         subtitle: input.loopID,
       }
@@ -1457,7 +1466,7 @@ export function AssistantMessageDisplay(props: { message: AssistantMessage; part
       props.parts.filter((x) => {
         return (
           x.type !== "tool" ||
-          ((x as ToolPart).tool !== "todoread" && (x as ToolPart).tool !== "dagread" && !isArtifactOnlyToolPart(x))
+          ((x as ToolPart).tool !== "todoread" && (x as ToolPart).tool !== "dagread" && !shouldHideToolPart(x))
         )
       }),
     emptyParts,
@@ -1776,6 +1785,7 @@ PART_MAPPING["tool"] = function ToolPartDisplay(props) {
       status={p.status}
       charsReceived={p.charsReceived}
       metadata={p.metadata}
+      time={p.time}
       hideDetails={p.hideDetails}
       fallbackMeta={externalFallbackLookup?.(p.tool)}
     />
@@ -1817,6 +1827,8 @@ PART_MAPPING["tool"] = function ToolPartDisplay(props) {
               // @ts-expect-error — output exists on completed state
               output={part().state.output}
               status={part().state.status}
+              // @ts-expect-error — time exists on running/completed/error states
+              time={part().state.time}
               raw={part().state.status === "generating" ? (part().state as ToolStateGenerating).raw : undefined}
               charsReceived={charsAnimated()}
               hideDetails={props.hideDetails}

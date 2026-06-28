@@ -17,6 +17,9 @@ export function createReleaseState(context: ReleaseContext): ReleaseState {
     createdAt: new Date().toISOString(),
     registryPackages: [...FIXED_REGISTRY_PACKAGES],
     binaryAssets: [],
+    desktopAssets: [],
+    desktopChecksums: null,
+    desktopUpdateMetadata: [],
     releaseTag: context.kind === "stable" ? `v${context.version}` : null,
     githubReleaseID: null,
     githubReleaseTagName: null,
@@ -31,6 +34,7 @@ export function summarizeState(state: ReleaseState) {
     promoteTag: state.promoteTag,
     packages: state.registryPackages.length,
     assets: state.binaryAssets.length,
+    desktopAssets: state.desktopAssets.length,
     ...(state.kind === "stable" ? { statePath: releaseStatePath(state.kind, state.version) } : {}),
   }
 }

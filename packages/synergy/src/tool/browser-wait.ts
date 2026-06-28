@@ -1,6 +1,7 @@
 import z from "zod"
 import { Tool } from "./tool"
 import { BrowserToolHelper } from "./browser-shared"
+import { ToolTimeout } from "./timeout"
 
 const waitConditionSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("load") }),
@@ -17,13 +18,15 @@ export const BrowserWaitTool = Tool.define("browser_wait", {
       .number()
       .int()
       .min(500)
-      .max(60000)
-      .default(10000)
-      .describe("Timeout in milliseconds. Max 60000. Default 10000."),
-    tabId: z.string().optional().describe("Tab ID. Uses the active tab if omitted."),
+      .max(ToolTimeout.DEFAULTS.browserWaitMaxMs)
+      .default(ToolTimeout.DEFAULTS.browserWaitMs)
+      .describe(
+        `Timeout in milliseconds. Max ${ToolTimeout.DEFAULTS.browserWaitMaxMs}. Default ${ToolTimeout.DEFAULTS.browserWaitMs}.`,
+      ),
+    pageId: z.string().optional().describe("Page ID. Uses the session page if omitted."),
   }),
   async execute(params, ctx) {
-    const tab = await BrowserToolHelper.resolveTab(ctx, params.tabId)
+    const tab = await BrowserToolHelper.resolvePage(ctx, params.pageId)
     return BrowserToolHelper.withActivity(
       ctx,
       tab,
@@ -44,7 +47,7 @@ export const BrowserWaitTool = Tool.define("browser_wait", {
             ? `Condition met: ${conditionDesc} (after waiting)`
             : `Condition not met within ${params.timeout}ms: ${conditionDesc}`,
           metadata: {
-            tabId: tab.id,
+            pageId: tab.id,
             condition: params.condition,
             timeout: params.timeout,
             satisfied: met,

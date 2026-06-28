@@ -20,6 +20,22 @@ ToolRegistry.register({ name: "revise_file", render: AnchoredReviseTool })
 ToolRegistry.register({ name: "save_file", render: AnchoredSaveTool })
 
 ToolRegistry.register({
+  name: "file_search",
+  render(props) {
+    return (
+      <BasicTool
+        {...props}
+        trigger={{
+          icon: "scan-document",
+          title: "File Search",
+          subtitle: props.input.query as string | undefined,
+        }}
+      />
+    )
+  },
+})
+
+ToolRegistry.register({
   name: "edit",
   render(props) {
     const diffComponent = useDiffComponent()

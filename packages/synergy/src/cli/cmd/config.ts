@@ -7,6 +7,8 @@ import { Global } from "../../global"
 import { ConfigSetup } from "../../config/setup"
 import { ConfigDomain } from "../../config/domain"
 import { parse as parseJsonc } from "jsonc-parser"
+import { ProviderCatalog } from "@/provider/catalog"
+import { ProviderRecommendation } from "@/provider/recommendation"
 
 export const ConfigCommand = cmd({
   command: "config",
@@ -334,6 +336,46 @@ const PROVIDER_ENV_MAP: Record<string, ProviderEntry> = {
   vercel: { name: "Vercel", envVars: ["AI_GATEWAY_API_KEY", "VERCEL_API_KEY"], defaultModel: "gpt-4o", order: 20 },
 }
 
+type ProviderEntryWithID = ProviderEntry & { id: string }
+
+async function providerMetadata() {
+  return ProviderCatalog.metadata().catch(() => ({}))
+}
+
+function sortedProviderEntries(entries: ProviderEntryWithID[], profiles: ProviderRecommendation.MetadataMap) {
+  return entries
+    .slice()
+    .sort((a, b) =>
+      ProviderRecommendation.compare(
+        profiles,
+        { id: a.id, name: a.name, fallbackRank: a.order },
+        { id: b.id, name: b.name, fallbackRank: b.order },
+      ),
+    )
+}
+
+function providerDefaultModel(entry: ProviderEntryWithID, profiles: ProviderRecommendation.MetadataMap) {
+  return ProviderRecommendation.defaultModel(profiles, entry.id, entry.defaultModel)
+}
+
+function providerHint(entry: ProviderEntryWithID, profiles: ProviderRecommendation.MetadataMap) {
+  return ProviderRecommendation.headline(profiles, entry.id, providerDefaultModel(entry, profiles))
+}
+
+function providerOption(entry: ProviderEntryWithID, profiles: ProviderRecommendation.MetadataMap) {
+  const recommended = ProviderRecommendation.isRecommended(profiles, entry.id)
+  return {
+    value: entry.id,
+    label: recommended ? `✦ ${entry.name}` : entry.name,
+    hint: providerHint(entry, profiles),
+  }
+}
+
+function logProviderCTA(providerID: string, profiles: ProviderRecommendation.MetadataMap) {
+  const cta = ProviderRecommendation.cta(profiles, providerID)
+  if (cta?.kind === "external") prompts.log.info(`${cta.label}: ${cta.url}`)
+}
+
 interface DetectedProvider {
   providerID: string
   providerName: string
@@ -342,25 +384,28 @@ interface DetectedProvider {
   defaultModel: string
 }
 
-function detectProviders(): DetectedProvider[] {
+function detectProviders(profiles: ProviderRecommendation.MetadataMap): DetectedProvider[] {
   const results: DetectedProvider[] = []
 
   for (const [providerID, info] of Object.entries(PROVIDER_ENV_MAP)) {
+    const entry = { id: providerID, ...info }
     const detected = info.envVars.some((v) => Boolean(process.env[v]))
     results.push({
       providerID,
       providerName: info.name,
       envVars: info.envVars,
       detected,
-      defaultModel: info.defaultModel,
+      defaultModel: providerDefaultModel(entry, profiles),
     })
   }
 
-  results.sort((a, b) => {
-    const infoA = PROVIDER_ENV_MAP[a.providerID]
-    const infoB = PROVIDER_ENV_MAP[b.providerID]
-    return infoA.order - infoB.order || a.providerName.localeCompare(b.providerName)
-  })
+  results.sort((a, b) =>
+    ProviderRecommendation.compare(
+      profiles,
+      { id: a.providerID, name: a.providerName, fallbackRank: PROVIDER_ENV_MAP[a.providerID].order },
+      { id: b.providerID, name: b.providerName, fallbackRank: PROVIDER_ENV_MAP[b.providerID].order },
+    ),
+  )
 
   return results
 }
@@ -385,7 +430,8 @@ export async function runConfigWizard() {
   UI.empty()
   prompts.intro("Synergy Config Wizard")
 
-  const detected = detectProviders()
+  const profiles = await providerMetadata()
+  const detected = detectProviders(profiles)
   const detectedEnv = detected.filter((p) => p.detected)
   const notDetected = detected.filter((p) => !p.detected)
 
@@ -441,17 +487,17 @@ export async function runConfigWizard() {
       return await useDetectedProviders(detectedEnv, selectedProvider)
     }
     if (action === "add-another") {
-      return await manualProviderSelection()
+      return await manualProviderSelection(0, profiles)
     }
     if (action === "advanced") {
-      return await advancedConfig()
+      return await advancedConfig(profiles)
     }
   } else {
     // No env vars detected — go straight to provider selection
     prompts.log.warn("No API keys detected in environment.")
     prompts.log.info("Configure a provider to get started:")
     prompts.log.info("")
-    return await manualProviderSelection()
+    return await manualProviderSelection(0, profiles)
   }
 }
 
@@ -503,17 +549,17 @@ async function useDetectedProviders(detectedEnv: DetectedProvider[], primaryProv
   })
 }
 
-async function manualProviderSelection(selectedCount = 0): Promise<boolean> {
-  const entries = Object.entries(PROVIDER_ENV_MAP).map(([id, info]) => ({ id, ...info }))
-  const featured = entries.filter((e) => e.order <= 4).sort((a, b) => a.order - b.order)
-  const rest = entries.filter((e) => e.order > 4).sort((a, b) => a.name.localeCompare(b.name))
-  const selectOptions = [...featured, ...rest].map((e) => ({
-    value: e.id,
-    label: featured.includes(e) ? `✦ ${e.name}` : e.name,
-    hint: e.defaultModel,
-  }))
-
-  const firstValue = entries.sort((a, b) => a.order - b.order)[0].id
+async function manualProviderSelection(
+  selectedCount = 0,
+  profiles?: ProviderRecommendation.MetadataMap,
+): Promise<boolean> {
+  const metadata = profiles ?? (await providerMetadata())
+  const entries = sortedProviderEntries(
+    Object.entries(PROVIDER_ENV_MAP).map(([id, info]) => ({ id, ...info })),
+    metadata,
+  )
+  const selectOptions = entries.map((entry) => providerOption(entry, metadata))
+  const firstValue = entries[0].id
 
   UI.empty()
   prompts.intro(selectedCount > 0 ? "Add Another Provider" : "Select a Provider")
@@ -539,6 +585,7 @@ async function manualProviderSelection(selectedCount = 0): Promise<boolean> {
   if (envKey) {
     prompts.log.info(`${providerInfo.name} key found in ${envKey}`)
   } else {
+    logProviderCTA(providerID as string, metadata)
     const key = await prompts.password({
       message: `${providerInfo.name} API key:`,
       validate: (x) => (x && x.length > 0 ? undefined : "Required"),
@@ -550,7 +597,7 @@ async function manualProviderSelection(selectedCount = 0): Promise<boolean> {
     apiKey = key as string
   }
 
-  const modelString = `${providerID}/${providerInfo.defaultModel}`
+  const modelString = `${providerID}/${ProviderRecommendation.defaultModel(metadata, providerID as string, providerInfo.defaultModel)}`
 
   const spinner = prompts.spinner()
   spinner.start("Saving configuration...")
@@ -585,14 +632,15 @@ async function manualProviderSelection(selectedCount = 0): Promise<boolean> {
     return true
   }
   if (addAnother) {
-    return await manualProviderSelection(selectedCount + 1)
+    return await manualProviderSelection(selectedCount + 1, metadata)
   }
 
   prompts.outro("Done")
   return true
 }
 
-async function advancedConfig(): Promise<boolean> {
+async function advancedConfig(profiles?: ProviderRecommendation.MetadataMap): Promise<boolean> {
+  const metadata = profiles ?? (await providerMetadata())
   UI.empty()
   prompts.intro("Advanced Configuration")
 
@@ -607,14 +655,13 @@ async function advancedConfig(): Promise<boolean> {
   }
 
   // Full interactive setup: walk through core fields
-  const allEntries = Object.entries(PROVIDER_ENV_MAP)
-    .map(([id, info]) => ({ id, ...info }))
-    .sort((a, b) => a.order - b.order || a.name.localeCompare(b.name))
+  const allEntries = Object.entries(PROVIDER_ENV_MAP).map(([id, info]) => ({ id, ...info }))
+  const sortedEntries = sortedProviderEntries(allEntries, metadata)
 
   const primary = await prompts.select({
     message: "Select primary AI provider:",
-    options: allEntries.map((e) => ({ value: e.id, label: e.name, hint: e.defaultModel })),
-    initialValue: allEntries[0].id,
+    options: sortedEntries.map((entry) => providerOption(entry, metadata)),
+    initialValue: sortedEntries[0].id,
   })
   if (prompts.isCancel(primary)) {
     prompts.outro("Cancelled")
@@ -627,6 +674,7 @@ async function advancedConfig(): Promise<boolean> {
   if (envKey) {
     prompts.log.info(`${primaryInfo.name} key found in ${envKey}`)
   } else {
+    logProviderCTA(primary as string, metadata)
     const key = await prompts.password({
       message: `${primaryInfo.name} API key:`,
       validate: (x) => (x && x.length > 0 ? undefined : "Required"),
@@ -692,7 +740,7 @@ async function advancedConfig(): Promise<boolean> {
     }
   }
 
-  const modelString = `${primary}/${primaryInfo.defaultModel}`
+  const modelString = `${primary}/${ProviderRecommendation.defaultModel(metadata, primary as string, primaryInfo.defaultModel)}`
   const configData: Record<string, unknown> = { model: modelString }
   if (visionModel) configData.vision_model = visionModel
   Object.assign(configData, roleModels)

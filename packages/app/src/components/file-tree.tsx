@@ -2,7 +2,7 @@ import { useLocal, type LocalFile } from "@/context/local"
 import { Collapsible } from "@ericsanchezok/synergy-ui/collapsible"
 import { FileIcon } from "@ericsanchezok/synergy-ui/file-icon"
 import { Tooltip } from "@ericsanchezok/synergy-ui/tooltip"
-import { For, Match, Switch, type ComponentProps, type ParentProps } from "solid-js"
+import { createEffect, For, Match, Show, Switch, type ComponentProps, type ParentProps } from "solid-js"
 import { Dynamic } from "solid-js/web"
 
 export default function FileTree(props: {
@@ -14,13 +14,25 @@ export default function FileTree(props: {
 }) {
   const local = useLocal()
   const level = props.level ?? 0
+  const statusLabel = (status: LocalFile["gitStatus"]) => {
+    if (status === "modified") return "M"
+    if (status === "added") return "A"
+    if (status === "deleted") return "D"
+    if (status === "renamed") return "R"
+    if (status === "untracked") return "U"
+  }
+
+  createEffect(() => {
+    if (level !== 0) return
+    local.file.expand(props.path)
+  })
 
   const Node = (p: ParentProps & ComponentProps<"div"> & { node: LocalFile; as?: "div" | "button" }) => (
     <Dynamic
       component={p.as ?? "div"}
       classList={{
-        "p-0.5 w-full flex items-center gap-x-2 hover:bg-background-element": true,
-        // "bg-background-element": local.file.active()?.path === p.node.path,
+        "p-0.5 w-full flex items-center gap-x-2 hover:bg-surface-raised-base-hover": true,
+        // "bg-surface-raised-base-hover": local.file.active()?.path === p.node.path,
         [props.nodeClass ?? ""]: !!props.nodeClass,
       }}
       style={`padding-left: ${level * 10}px`}
@@ -33,7 +45,7 @@ export default function FileTree(props: {
         // Create custom drag image without margins
         const dragImage = document.createElement("div")
         dragImage.className =
-          "flex items-center gap-x-2 px-2 py-1 bg-background-element rounded-md border border-border-1"
+          "flex items-center gap-x-2 px-2 py-1 bg-surface-raised-base rounded-md border border-border-base"
         dragImage.style.position = "absolute"
         dragImage.style.top = "-1000px"
 
@@ -57,7 +69,7 @@ export default function FileTree(props: {
           "text-text-muted/40": p.node.ignored,
           "text-text-muted/80": !p.node.ignored,
           // "!text-text": local.file.active()?.path === p.node.path,
-          // "!text-primary": local.file.changed(p.node.path),
+          // "!text-text-interactive-base": local.file.changed(p.node.path),
         }}
       >
         {p.node.name}
@@ -65,6 +77,9 @@ export default function FileTree(props: {
       {/* <Show when={local.file.changed(p.node.path)}> */}
       {/*   <span class="ml-auto mr-1 w-1.5 h-1.5 rounded-full bg-primary/50 shrink-0" /> */}
       {/* </Show> */}
+      <Show when={statusLabel(p.node.gitStatus)}>
+        {(status) => <span class="ml-auto mr-1 text-[10px] font-medium text-primary/80">{status()}</span>}
+      </Show>
     </Dynamic>
   )
 
@@ -86,7 +101,7 @@ export default function FileTree(props: {
                     <Node node={node}>
                       <Collapsible.Arrow class="text-text-muted/60 ml-1" />
                       <FileIcon
-                        node={node}
+                        node={{ path: node.path, type: "directory" }}
                         // expanded={local.file.node(node.path).expanded}
                         class="text-text-muted/60 -ml-1"
                       />
@@ -100,7 +115,7 @@ export default function FileTree(props: {
               <Match when={node.type === "file"}>
                 <Node node={node} as="button" onClick={() => props.onFileClick?.(node)}>
                   <div class="w-4 shrink-0" />
-                  <FileIcon node={node} class="text-primary" />
+                  <FileIcon node={{ path: node.path, type: "file" }} class="text-icon-weak" />
                 </Node>
               </Match>
             </Switch>

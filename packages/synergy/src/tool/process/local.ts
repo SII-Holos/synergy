@@ -6,6 +6,7 @@ import { ScopeContext } from "@/scope/context"
 import { ArtifactPromotion } from "../artifact-promotion"
 import type { Tool } from "../tool"
 import type { MessageV2 } from "@/session/message-v2"
+import { ToolTimeout } from "../timeout"
 
 export namespace LocalProcessBackend {
   export async function execute(params: ProcessParams, ctx?: Tool.Context): Promise<ProcessResult> {
@@ -65,7 +66,7 @@ export namespace LocalProcessBackend {
     switch (action) {
       case "poll": {
         if (proc && !proc.exited && params.block) {
-          await waitForExit(processId, (params.timeout ?? 30) * 1000)
+          await waitForExit(processId, (params.timeout ?? ToolTimeout.DEFAULTS.processPollWaitMs / 1_000) * 1000)
         }
 
         const current = ProcessRegistry.get(processId)

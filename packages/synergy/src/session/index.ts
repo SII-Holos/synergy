@@ -14,6 +14,7 @@ import { ScopeContext } from "../scope/context"
 import { Scope } from "@/scope"
 import { fn } from "@/util/fn"
 import { Snapshot } from "@/session/snapshot"
+import { SnapshotSchema } from "@/session/snapshot-schema"
 import { SessionHistory } from "./history"
 
 import type { Provider } from "@/provider/provider"
@@ -27,6 +28,7 @@ import type {
   StatusInfo as StatusInfoType,
   WorkingInfo as WorkingInfoType,
   CortexDelegationInfo as CortexDelegationInfoType,
+  SuperPlanSessionInfo as SuperPlanSessionInfoType,
 } from "./types"
 import { SessionNav, type SessionNavEntry } from "./nav"
 import { SessionEndpoint } from "./endpoint"
@@ -173,6 +175,7 @@ export namespace Session {
     agenda?: { itemID: string }
     interaction?: SessionInteraction.Info
     cortex?: CortexDelegationInfoType
+    superplan?: SuperPlanSessionInfoType
     workspace?: import("./types").Workspace
     forkedFrom?: Info["forkedFrom"]
   }) {
@@ -213,6 +216,7 @@ export namespace Session {
       interaction: inheritedInteraction,
       agenda: input?.agenda,
       cortex: input?.cortex,
+      superplan: input?.superplan,
       workspace,
       time: {
         created: createdAt,
@@ -273,6 +277,7 @@ export namespace Session {
             mode: z.literal("create"),
             name: z.string().optional(),
             baseRef: z.enum(["current", "fresh"]).optional(),
+            baseRevision: z.string().min(1).optional(),
           }),
         ])
         .optional(),
@@ -325,6 +330,7 @@ export namespace Session {
             sessionID: session.id,
             name: input.workspace.name,
             baseRef: input.workspace.baseRef ?? "current",
+            baseRevision: input.workspace.baseRevision,
             bind: true,
           })
           session = await get(session.id)
@@ -434,7 +440,9 @@ export namespace Session {
   export const diff = fn(Identifier.schema("session"), async (sessionID) => {
     const session = await SessionManager.requireSession(sessionID)
     const scopeID = asScopeID((session.scope as Scope).id)
-    const diffs = await Storage.read<Snapshot.FileDiff[]>(StoragePath.sessionSummary(scopeID, asSessionID(sessionID)))
+    const diffs = await Storage.read<SnapshotSchema.FileDiff[]>(
+      StoragePath.sessionSummary(scopeID, asSessionID(sessionID)),
+    )
     return diffs ?? []
   })
 
@@ -797,3 +805,5 @@ export namespace Session {
     await SessionManager.deliver(input)
   }
 }
+
+MessageV2.installSessionResolver((sessionID) => SessionManager.requireSession(sessionID))

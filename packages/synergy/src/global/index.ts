@@ -52,6 +52,9 @@ export namespace Global {
     get authApiKey() {
       return path.join(root(), "data", "auth", "api-key.json")
     },
+    get authProvider() {
+      return path.join(root(), "data", "auth", "provider-auth.json")
+    },
     get authHolosAccounts() {
       return path.join(root(), "data", "auth", "holos-accounts.json")
     },
@@ -93,6 +96,9 @@ export namespace Global {
     },
     get modelsCache() {
       return path.join(root(), "cache", "models.json")
+    },
+    get providerCatalogCache() {
+      return path.join(root(), "cache", "provider-catalog.json")
     },
     get schema() {
       return path.join(root(), "schema")

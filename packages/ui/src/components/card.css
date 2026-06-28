@@ -2,8 +2,8 @@
   width: 100%;
   display: flex;
   flex-direction: column;
-  background-color: var(--surface-raised-base);
-  border: 1px solid var(--border-weaker-base);
+  background-color: var(--workbench-card-bg, var(--surface-raised-base));
+  border: 1px solid var(--workbench-border, var(--border-weaker-base));
   transition: background-color 0.15s ease;
   border-radius: var(--radius-md);
   padding: 6px 12px;

@@ -16,6 +16,7 @@ import { ArtifactPromotion } from "../artifact-promotion"
 import type { MessageV2 } from "@/session/message-v2"
 import type { BashResult } from "./shared"
 import { Observability } from "@/observability"
+import { ToolTimeout } from "../timeout"
 
 /**
  * Derive a human-readable abort reason from an AbortSignal's .reason.
@@ -272,7 +273,7 @@ export const LocalBashBackend: BashBackend = {
           env: sandboxEnv,
           cwd,
           signal: ctx.abort,
-          timeoutMs: 3_600_000, // 60-minute hard ceiling
+          timeoutMs: ToolTimeout.DEFAULTS.bashHardCeilingMs, // 60-minute hard ceiling
           maxOutputBytes: 1024 * 1024, // 1 MB
           onStdout: append,
           onStderr: append,
@@ -373,7 +374,10 @@ export const LocalBashBackend: BashBackend = {
     let exited = false
     let yielded = false
     let childError: Error | undefined
-    let rejectChildError: ((error: Error) => void) | undefined
+    let resolveChildFinished: (result: "exited" | "error") => void = () => {}
+    const childFinished = new Promise<"exited" | "error">((resolve) => {
+      resolveChildFinished = resolve
+    })
     child.once("error", (error) => {
       childError = error
       exited = true
@@ -388,26 +392,18 @@ export const LocalBashBackend: BashBackend = {
         },
         "error",
       )
-      rejectChildError?.(error)
+      resolveChildFinished("error")
     })
     // Wire the spawned child into the existing ProcessRegistry entry
     regProc.child = child
     regProc.stdin = child.stdin ?? undefined
     regProc.pid = child.pid
-    await trace("process.spawn", {
-      processId: regProc.id,
-      pid: child.pid,
-      command: params.command,
-      sandboxed: Boolean(sandboxWrapper && !sandboxWrapper.skipReason),
-      background: params.background === true,
-      yieldSeconds: params.yieldSeconds,
-    })
-    if (childError) throw childError
 
     child.stdout?.on("data", append)
     child.stderr?.on("data", append)
 
     child.once("exit", (code, signal) => {
+      exited = true
       if (metadataDirty) flushMetadata()
       if (params.background || regProc.backgrounded) {
         ProcessRegistry.markExited(regProc, code, signal)
@@ -422,7 +418,18 @@ export const LocalBashBackend: BashBackend = {
         exitSignal: signal,
         outputChars: regProc?.output.length ?? 0,
       })
+      resolveChildFinished("exited")
     })
+
+    await trace("process.spawn", {
+      processId: regProc.id,
+      pid: child.pid,
+      command: params.command,
+      sandboxed: Boolean(sandboxWrapper && !sandboxWrapper.skipReason),
+      background: params.background === true,
+      yieldSeconds: params.yieldSeconds,
+    })
+    if (childError) throw childError
 
     if (params.background) {
       ProcessRegistry.markBackgrounded(regProc)
@@ -447,7 +454,7 @@ export const LocalBashBackend: BashBackend = {
       }
     }
 
-    const HARD_BASH_CEILING_MS = 3_600_000 // 60 minutes absolute hard limit
+    const HARD_BASH_CEILING_MS = ToolTimeout.DEFAULTS.bashHardCeilingMs // 60 minutes absolute hard limit
 
     const kill = () => Shell.killTree(child, { exited: () => exited })
 
@@ -487,21 +494,19 @@ export const LocalBashBackend: BashBackend = {
         ctx.abort.removeEventListener("abort", abortHandler)
       }
 
-      child.once("exit", () => {
-        exited = true
-        cleanup()
-        resolve("exited")
-      })
-
       if (childError) {
         cleanup()
         reject(childError)
         return
       }
-      rejectChildError = (error) => {
+      childFinished.then((result) => {
         cleanup()
-        reject(error)
-      }
+        if (result === "error") {
+          reject(childError ?? new Error("Bash child process failed"))
+          return
+        }
+        resolve("exited")
+      })
     })
 
     if (yieldResult === "yielded") {

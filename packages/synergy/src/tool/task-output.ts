@@ -1,5 +1,8 @@
 import { Tool } from "./tool"
 import z from "zod"
+import { ToolTimeout } from "./timeout"
+
+const DEFAULT_WAIT_S = ToolTimeout.DEFAULTS.taskOutputWaitMs / 1_000
 
 const parameters = z.object({
   task_id: z.string().optional().describe("Task ID from a visible background task"),
@@ -10,7 +13,7 @@ const parameters = z.object({
       "Output mode: progress for live status, tail for recent session activity, full for final output. Default: full",
     ),
   block: z.boolean().optional().describe("Wait for completion if still running"),
-  timeout: z.number().optional().describe("Max seconds to wait (default: 300)"),
+  timeout: z.number().optional().describe(`Max seconds to wait (default: ${DEFAULT_WAIT_S})`),
 })
 
 interface TaskOutputMetadata {
@@ -134,7 +137,7 @@ task_output(task_id: "ctx_abc123", block: true)
     })
 
     if ((task.status === "running" || task.status === "queued") && params.block) {
-      await Cortex.waitFor(params.task_id, params.timeout ?? 300)
+      await Cortex.waitFor(params.task_id, params.timeout ?? DEFAULT_WAIT_S)
     }
 
     const current = Cortex.getVisibleTask(ctx.sessionID, params.task_id) ?? task

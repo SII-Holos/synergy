@@ -485,6 +485,7 @@ function SessionPageContent() {
   })
 
   const handleKeyDown = (event: KeyboardEvent) => {
+    if (event.defaultPrevented) return
     const activeElement = document.activeElement as HTMLElement | undefined
     if (activeElement) {
       const isProtected = activeElement.closest("[data-prevent-autofocus]")
@@ -828,7 +829,7 @@ function SessionPageContent() {
         <WorkspaceBrowserTool />
       </Show>
       <WorkspaceNotesTool />
-      <div class="relative bg-background-base size-full overflow-hidden flex flex-col">
+      <div class="synergy-workbench-canvas relative bg-background-stronger size-full overflow-hidden flex flex-col">
         <div class="flex-1 min-h-0 flex flex-col md:flex-row">
           {/* Mobile tab bar */}
           <Show when={!isDesktop() && hasReview()}>
@@ -855,7 +856,7 @@ function SessionPageContent() {
           </Show>
 
           <div
-            class="@container relative min-w-0 flex flex-col min-h-0 h-full bg-background-stronger pt-3 pb-0 md:py-3"
+            class="synergy-workbench-canvas @container relative min-w-0 flex flex-col min-h-0 h-full bg-background-stronger pt-3 pb-0 md:py-3"
             classList={{
               "flex-1": !(isDesktop() && showTabs()),
             }}
@@ -977,6 +978,7 @@ function SessionPageContent() {
               forkedFromTitle={forkedFromSession()?.title ?? currentSession()?.forkedFrom?.title}
               backPath={backPath}
               newSessionWorktree={newSessionWorktree}
+              onNewSessionWorktreeChange={(worktree) => setStore("newSessionWorktree", worktree)}
               onNewSessionWorktreeReset={() => setStore("newSessionWorktree", "main")}
               scopeName={scopeName}
               branch={branch}

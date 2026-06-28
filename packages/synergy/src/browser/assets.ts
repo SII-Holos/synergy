@@ -6,7 +6,7 @@ import type { NetworkRequest } from "./tab.js"
 export namespace BrowserAssets {
   export interface PageAsset {
     id: string
-    tabID: string
+    pageID: string
     url: string
     type: "image" | "script" | "stylesheet" | "font" | "media" | "document" | "other"
     mimeType?: string
@@ -43,10 +43,10 @@ export namespace BrowserAssets {
 
   // ── fromNetworkBuffer ───────────────────────────────────────────────
 
-  export function fromNetworkBuffer(requests: NetworkRequest[], tabID: string): PageAsset[] {
+  export function fromNetworkBuffer(requests: NetworkRequest[], pageID: string): PageAsset[] {
     return requests.map((req) => ({
       id: req.requestId,
-      tabID,
+      pageID,
       url: req.url,
       type: classifyByMime(req.mimeType ?? ""),
       mimeType: req.mimeType,
@@ -83,11 +83,11 @@ export namespace BrowserAssets {
 
   /**
    * Wire Playwright page network events to populate asset records.
-   * Called once per BrowserTab page to track loaded resources.
+   * Called once per browser page to track loaded resources.
    */
   export function attachToPage(page: Page): { getAssets: () => PageAsset[]; clear: () => void } {
     const assetRecords: Map<string, PageAsset> = new Map()
-    const tabID = ((page as unknown as Record<string, unknown>)._synergyTabID as string) ?? "unknown"
+    const pageID = ((page as unknown as Record<string, unknown>)._synergyPageID as string) ?? "unknown"
     let seq = 0
 
     page.on("request", (req) => {
@@ -96,7 +96,7 @@ export namespace BrowserAssets {
       const id = `${method}:${url}:${++seq}`
       assetRecords.set(id, {
         id,
-        tabID,
+        pageID,
         url,
         type: "other",
         status: undefined,

@@ -18,6 +18,7 @@ import { fn } from "@/util/fn"
 import { Dag } from "../session/dag"
 import { CortexEvent } from "./event"
 import { Plugin } from "../plugin"
+import { CortexOutput } from "./output"
 
 export namespace Cortex {
   const log = Log.create({ service: "cortex" })
@@ -136,6 +137,9 @@ export namespace Cortex {
           executionRole,
           status: "queued",
           startedAt: Date.now(),
+          visibility: input.visibility,
+          tools: input.tools,
+          output: input.output,
         },
         workspace: (parent as import("../session/types").Info).workspace,
       })
@@ -181,12 +185,17 @@ export namespace Cortex {
         lastUpdate: Date.now(),
         recentTools: [],
       },
-      notifyParentOnComplete: input.notifyParentOnComplete,
+      notifyParentOnComplete: input.notifyParentOnComplete ?? (input.visibility === "hidden" ? false : undefined),
+      visibility: input.visibility,
+      tools: input.tools,
+      output: input.output,
     }
 
     tasks.set(taskID, task)
 
-    Bus.publish(Event.TaskCreated, { task })
+    if (task.visibility !== "hidden") {
+      Bus.publish(Event.TaskCreated, { task })
+    }
 
     await CortexConcurrency.acquire(input.agent)
     acquiredTasks.add(taskID)
@@ -229,7 +238,7 @@ export namespace Cortex {
       log.error("failed to persist task status", { taskID, status, error })
     })
 
-    Bus.publish(Event.TasksUpdated, { tasks: list() })
+    Bus.publish(Event.TasksUpdated, { tasks: listVisible() })
   }
 
   async function runTask(task: CortexTypes.Task, model?: { providerID: string; modelID: string }): Promise<void> {
@@ -243,6 +252,10 @@ export namespace Cortex {
 
     if (!resolvedModel) {
       throw new Error(`No model configured for agent ${task.agent}`)
+    }
+    const output = CortexOutput.normalize(task.output)
+    if (agent.external && output.mode === "structured") {
+      throw new Error("Structured Cortex output is not supported for external agents")
     }
     // Persist resolved model to session metadata
     void Session.update(task.sessionID, (draft) => {
@@ -299,21 +312,58 @@ export namespace Cortex {
         }
       })
 
-      const parts = await resolveInputParts(task.prompt)
+      const parts = await resolveInputParts(CortexOutput.initialPrompt(task.prompt, output))
+      const invokeTools = CortexOutput.toolsFor(task.tools, output)
+      const ephemeralTools = CortexOutput.ephemeralTools(output)
 
-      await SessionInvoke.invoke({
+      await SessionInvoke.invokeInternal({
         sessionID: task.sessionID,
         model: resolvedModel,
         agent: task.agent,
         parts,
+        tools: invokeTools,
+        ephemeralTools,
       })
 
+      let outputResult = await CortexOutput.resolve(task.sessionID, output, 0)
+      if (output.mode === "structured") {
+        let repairTurns = 0
+        while (outputResult?.mode === "structured" && outputResult.status === "invalid") {
+          if (repairTurns >= CortexOutput.maxRepairTurns(output)) break
+          repairTurns++
+          const repairParts = await resolveInputParts(CortexOutput.repairPrompt(output, outputResult, repairTurns))
+          await SessionInvoke.invokeInternal({
+            sessionID: task.sessionID,
+            model: resolvedModel,
+            agent: task.agent,
+            parts: repairParts,
+            tools: invokeTools,
+            ephemeralTools,
+          })
+          outputResult = await CortexOutput.resolve(task.sessionID, output, repairTurns)
+        }
+
+        if (outputResult?.mode === "structured" && outputResult.status === "invalid") {
+          unsub()
+          unsub = undefined
+          updateTaskStatus(
+            task.id,
+            "error",
+            outputResult.error ?? "Structured Cortex output is invalid",
+            undefined,
+            outputResult,
+          )
+          return
+        }
+      }
+
       unsub()
+      unsub = undefined
 
       const result = agent.external
         ? await extractExternalTaskResult(task.sessionID)
         : await Trajectory.summarize(task.sessionID)
-      updateTaskStatus(task.id, "completed", undefined, result || undefined)
+      updateTaskStatus(task.id, "completed", undefined, result || undefined, outputResult)
     } catch (error) {
       unsub?.()
       log.error("task execution failed", { taskID: task.id, error })
@@ -321,7 +371,13 @@ export namespace Cortex {
     }
   }
 
-  function updateTaskStatus(taskID: string, status: CortexTypes.TaskStatus, error?: string, result?: string): void {
+  function updateTaskStatus(
+    taskID: string,
+    status: CortexTypes.TaskStatus,
+    error?: string,
+    result?: string,
+    outputResult?: CortexTypes.OutputResult,
+  ): void {
     const task = tasks.get(taskID)
     if (!task) return
 
@@ -333,6 +389,7 @@ export namespace Cortex {
     task.completedAt = Date.now()
     if (error) task.error = error
     if (result) task.result = result
+    if (outputResult) task.outputResult = outputResult
     tasks.set(taskID, task)
 
     setTaskStatus(taskID, status)
@@ -343,6 +400,7 @@ export namespace Cortex {
         draft.cortex.completedAt = task.completedAt
         if (error) draft.cortex.error = error
         if (result) draft.cortex.result = result
+        if (outputResult) draft.cortex.outputResult = outputResult
       }
     }).catch((error) => {
       log.error("failed to persist terminal task fields", { taskID, error })
@@ -352,7 +410,9 @@ export namespace Cortex {
       CortexConcurrency.release(task.agent)
     }
 
-    Bus.publish(Event.TaskCompleted, { task })
+    if (task.visibility !== "hidden") {
+      Bus.publish(Event.TaskCompleted, { task })
+    }
     void Plugin.trigger(
       "cortex.task.after",
       {
@@ -387,6 +447,7 @@ export namespace Cortex {
         task.prompt = ""
         task.result = undefined
         task.error = undefined
+        task.outputResult = undefined
         log.info("task strings evicted", { taskID })
       }
     }, CLEANUP_DELAY_MS)
@@ -522,12 +583,16 @@ export namespace Cortex {
     return Array.from(tasks.values())
   }
 
+  export function listVisible(): CortexTypes.Task[] {
+    return Array.from(tasks.values()).filter((task) => task.visibility !== "hidden")
+  }
+
   export function getRunningTasks(): CortexTypes.Task[] {
-    return Array.from(tasks.values()).filter((t) => t.status === "running")
+    return listVisible().filter((t) => t.status === "running")
   }
 
   export function getCompletedTasks(): CortexTypes.Task[] {
-    return Array.from(tasks.values()).filter((t) => t.status === "completed" || t.status === "error")
+    return listVisible().filter((t) => t.status === "completed" || t.status === "error")
   }
 
   export function getTasksForSession(sessionID: string): CortexTypes.Task[] {
@@ -535,7 +600,7 @@ export namespace Cortex {
   }
 
   export function getVisibleTasks(sessionID: string): CortexTypes.Task[] {
-    return getTasksForSession(sessionID)
+    return getTasksForSession(sessionID).filter((task) => task.visibility !== "hidden")
   }
 
   export function getVisibleTask(sessionID: string, taskID: string): CortexTypes.Task | undefined {

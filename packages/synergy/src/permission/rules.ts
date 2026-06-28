@@ -2,7 +2,7 @@ import { Storage } from "@/storage/storage"
 import { StoragePath } from "@/storage/path"
 import { Log } from "@/util/log"
 import { Wildcard } from "@/util/wildcard"
-import { splitCompoundCommands, stripWrappers } from "@/enforcement/gate"
+import { splitCompoundCommands, stripWrappers } from "@/enforcement/shell-command"
 import z from "zod"
 
 export namespace PermissionRules {

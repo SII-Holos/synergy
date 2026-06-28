@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import { tmpdir } from "../fixture/fixture"
+import { BlueprintLoopStore } from "../../src/blueprint"
+import { Worktree } from "../../src/project/worktree"
 import { Session } from "../../src/session"
 import { SessionManager } from "../../src/session/manager"
 import { ScopeContext } from "../../src/scope/context"
@@ -7,6 +9,7 @@ import { EnforcementGate } from "../../src/enforcement/gate"
 import { Scope } from "../../src/scope"
 import { Log } from "../../src/util/log"
 import { Info as InfoSchema, type Workspace } from "../../src/session/types"
+import { Identifier } from "../../src/id/id"
 import path from "path"
 
 Log.init({ print: false })
@@ -124,6 +127,56 @@ describe("session workspace binding", () => {
     })
   })
 
+  describe("Session superplan metadata", () => {
+    test("schema accepts optional superplan ownership metadata", () => {
+      const runID = Identifier.ascending("superplan_run")
+      const nodeID = Identifier.ascending("superplan_node")
+      const data = {
+        id: "ses_0123456789abcdefghijklmnopqrstuvwxyz0123456789ab",
+        scope: { id: "d_abc123" },
+        title: "superplan node session",
+        version: "0.0.0",
+        time: { created: 1, updated: 1 },
+        superplan: {
+          runID,
+          role: "node",
+          nodeID,
+        },
+      }
+
+      const result = InfoSchema.safeParse(data)
+      expect(result.success).toBe(true)
+      if (result.success) {
+        expect(result.data.superplan).toEqual({ runID, role: "node", nodeID })
+      }
+    })
+
+    test("Session.create stores supplied superplan metadata", async () => {
+      await using tmp = await tmpdir({ git: true })
+      const scope = await tmp.scope()
+
+      await ScopeContext.provide({
+        scope,
+        fn: () =>
+          using(async () => {
+            const superplan = {
+              runID: Identifier.ascending("superplan_run"),
+              role: "merge" as const,
+              mergeID: Identifier.ascending("superplan_merge"),
+            }
+
+            const session = await Session.create({ superplan })
+            expect(session.superplan).toEqual(superplan)
+
+            const read = await Session.get(session.id)
+            expect(read.superplan).toEqual(superplan)
+
+            await Session.remove(session.id)
+          })(),
+      })
+    })
+  })
+
   // === Requirement 4: Session.updateWorkspace() updates workspace without mutating scope ===
 
   describe("Session.updateWorkspace", () => {
@@ -165,6 +218,56 @@ describe("session workspace binding", () => {
 
             await Session.remove(session.id)
           })(),
+      })
+    })
+  })
+
+  describe("Session blueprint binding across worktree changes", () => {
+    test("preserves active BlueprintLoop when entering and leaving a worktree", async () => {
+      await using tmp = await tmpdir({ git: true })
+      const scope = await tmp.scope()
+
+      await ScopeContext.provide({
+        scope,
+        fn: async () => {
+          let session: Session.Info | undefined
+          let worktree: Worktree.Info | undefined
+
+          try {
+            session = await Session.create({})
+            const loop = await BlueprintLoopStore.create({
+              noteID: "note_blueprint",
+              title: "Worktree Blueprint",
+              sessionID: session.id,
+            })
+            await Session.update(session.id, (draft) => {
+              draft.blueprint = { loopID: loop.id, planMode: true }
+            })
+
+            worktree = await Worktree.create({
+              sessionID: session.id,
+              name: "blueprint-binding",
+              baseRef: "current",
+              bind: false,
+            })
+            await Worktree.enter({ sessionID: session.id, target: worktree.id, force: true })
+
+            const entered = await Session.get(session.id)
+            expect(entered.blueprint).toEqual({ loopID: loop.id, planMode: true })
+            expect(entered.workspace?.type).toBe("git_worktree")
+            expect(entered.workspace?.path).toBe(worktree.path)
+
+            await Worktree.leave(session.id)
+            const left = await Session.get(session.id)
+            expect(left.blueprint).toEqual({ loopID: loop.id, planMode: true })
+            expect(left.workspace?.type).toBe("main")
+          } finally {
+            if (session) await Worktree.leave(session.id).catch(() => undefined)
+            if (session && worktree)
+              await Worktree.remove({ sessionID: session.id, target: worktree.id, force: true }).catch(() => undefined)
+            if (session) await Session.remove(session.id).catch(() => undefined)
+          }
+        },
       })
     })
   })

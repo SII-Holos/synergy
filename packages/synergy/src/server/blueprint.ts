@@ -10,6 +10,8 @@ import { Storage } from "../storage/storage"
 import { Session } from "../session"
 import { SessionManager } from "../session/manager"
 import { MessageV2 } from "../session/message-v2"
+import { Agent } from "../agent/agent"
+import { NoteStore } from "../note"
 
 const CreateInput = z
   .object({
@@ -25,26 +27,77 @@ const CreateInput = z
   })
   .meta({ ref: "BlueprintLoopCreateInput" })
 
-function defaultFirstPrompt(loop: { title: string; noteID: string }) {
-  return `Execute the "${loop.title}" blueprint (note ID: ${loop.noteID}).
-Before doing any implementation work, call note_read with ids=["${loop.noteID}"] to read the full Blueprint content.
-Continue working until fully implemented.
-When the blueprint is ready for audit, call blueprint_loop_finish with status="auditing".
-If the task is blocked beyond recovery, call blueprint_loop_finish with status="failed".`
+const CODING_BLUEPRINT_AGENTS = new Set(["synergy-max", "developer", "implementation-engineer", "refactoring-engineer"])
+
+function isCodingBlueprintAgent(agentName?: string): boolean {
+  return !!agentName && CODING_BLUEPRINT_AGENTS.has(agentName)
 }
 
-async function bindSessionToLoop(sessionID: string, loopID: string) {
+async function knownAgentName(agentName?: string): Promise<string | undefined> {
+  const trimmed = agentName?.trim()
+  if (!trimmed) return undefined
+  const agent = await Agent.get(trimmed).catch(() => undefined)
+  return agent?.name
+}
+
+async function resolveBlueprintAgent(sessionID: string, noteID: string): Promise<string | undefined> {
+  const note = await NoteStore.getAny(ScopeContext.current.scope.id, noteID).catch(() => undefined)
+  const noteAgent = await knownAgentName(note?.blueprint?.defaultAgent)
+  if (noteAgent) return noteAgent
+
+  const messages = await Session.messages({ sessionID, raw: true }).catch(() => [])
+  for (let index = messages.length - 1; index >= 0; index--) {
+    const message = messages[index]
+    if (message.info.role !== "user") continue
+    const messageAgent = await knownAgentName(message.info.agent)
+    if (messageAgent) return messageAgent
+  }
+
+  return Agent.defaultAgent()
+    .then(knownAgentName)
+    .catch(() => undefined)
+}
+
+async function resolveBlueprintAuditAgent(noteID: string): Promise<string> {
+  const note = await NoteStore.getAny(ScopeContext.current.scope.id, noteID).catch(() => undefined)
+  const noteAgent = await knownAgentName(note?.blueprint?.auditAgent)
+  return noteAgent ?? "supervisor"
+}
+
+function defaultFirstPrompt(loop: { id: string; title: string; noteID: string }, agentName?: string) {
+  if (isCodingBlueprintAgent(agentName)) {
+    return `Execute the coding Blueprint "${loop.title}" (note ID: ${loop.noteID}, loop ID: ${loop.id}).
+First call note_read with ids=["${loop.noteID}"] and read the full Blueprint content.
+Treat the Blueprint as the authoritative engineering contract for this run: requirements, non-goals, codebase entry points, tests, migration or compatibility expectations, cleanup, and verification commands.
+Create or update a DAG when the work has multiple phases, dependencies, parallel implementation slices, or review gates. Split independent code work by module or concern and keep each delegated task narrow.
+Continue until every Blueprint requirement is implemented, verified, and integrated. Keep the codebase clean: remove obsolete paths when the Blueprint replaces them, avoid redundant logic, and preserve local conventions.
+When the Blueprint is ready for audit, call blueprint_loop_finish({ loopID: "${loop.id}", status: "auditing", summary: "..." }).
+If the task is blocked beyond recovery, call blueprint_loop_finish({ loopID: "${loop.id}", status: "failed", summary: "..." }).`
+  }
+
+  return `Execute the Blueprint "${loop.title}" (note ID: ${loop.noteID}, loop ID: ${loop.id}).
+First call note_read with ids=["${loop.noteID}"] and read the full Blueprint content.
+Treat the Blueprint as the authoritative brief for this run: goal, deliverables, constraints, audience, chosen approach, quality criteria, and acceptance criteria.
+Choose the execution shape that fits the Blueprint's domain and complexity. Work directly for small linear tasks; create or update a DAG when there are multiple phases, real dependencies, parallel workstreams, or useful progress checkpoints.
+Use domain-appropriate specialists when they improve the outcome. Do not import software-engineering workflow unless the Blueprint is software work.
+Continue until the requested outcome is complete. For every material requirement, produce or update the requested artifact or result, keep the whole deliverable coherent, and apply quality checks appropriate to the domain.
+When the Blueprint is ready for audit, call blueprint_loop_finish({ loopID: "${loop.id}", status: "auditing", summary: "..." }).
+If the task is blocked beyond recovery, call blueprint_loop_finish({ loopID: "${loop.id}", status: "failed", summary: "..." }).`
+}
+
+async function bindSessionToLoop(sessionID: string, loopID: string, loopRole: "execution" | "audit") {
   await Session.update(sessionID, (draft) => {
-    draft.blueprint = { ...draft.blueprint, loopID }
+    draft.blueprint = { ...draft.blueprint, loopID, loopRole }
   })
 }
 
 async function deliverFirstPrompt(
   sessionID: string,
-  loop: { id: string; noteID: string; title: string; firstPrompt?: string },
+  loop: { id: string; noteID: string; title: string; firstPrompt?: string; executionAgent?: string },
   userPrompt?: string,
 ) {
-  let text = loop.firstPrompt?.trim() || defaultFirstPrompt(loop)
+  const agentName = loop.executionAgent ?? (await resolveBlueprintAgent(sessionID, loop.noteID))
+  let text = loop.firstPrompt?.trim() || defaultFirstPrompt(loop, agentName)
   if (userPrompt?.trim()) {
     text += `\n\nUser instruction:\n${userPrompt.trim()}`
   }
@@ -58,6 +111,7 @@ async function deliverFirstPrompt(
   const mail: SessionManager.SessionMail.User = {
     type: "user",
     parts: [textPart],
+    ...(agentName ? { agent: agentName } : {}),
     summary: {
       title: `Execute ${loop.title} blueprint`,
     },
@@ -66,6 +120,7 @@ async function deliverFirstPrompt(
       loopID: loop.id,
       noteID: loop.noteID,
       title: loop.title,
+      ...(agentName ? { agent: agentName } : {}),
       ...(userPrompt?.trim() ? { userPrompt: userPrompt.trim() } : {}),
     },
   }
@@ -114,8 +169,14 @@ export const BlueprintRoute = new Hono()
     async (c) => {
       try {
         const body = c.req.valid("json")
+        const [executionAgent, auditAgent] = await Promise.all([
+          resolveBlueprintAgent(body.sessionID, body.noteID),
+          resolveBlueprintAuditAgent(body.noteID),
+        ])
         const loop = await BlueprintLoopStore.create({
           ...body,
+          executionAgent,
+          auditAgent,
           runMode: body.runMode ?? "current",
         })
         return c.json(loop)
@@ -227,7 +288,7 @@ export const BlueprintRoute = new Hono()
         const id = c.req.valid("param").id
         const { sessionID } = c.req.valid("json")
         const loop = await BlueprintLoopStore.get(ScopeContext.current.scope.id, id)
-        await bindSessionToLoop(sessionID, id)
+        await bindSessionToLoop(sessionID, id, "execution")
         return c.json(loop)
       } catch (err: any) {
         if (err instanceof Storage.NotFoundError)
@@ -270,7 +331,7 @@ export const BlueprintRoute = new Hono()
         const before = await BlueprintLoopStore.get(ScopeContext.current.scope.id, id)
         const loop = await BlueprintLoopStore.updateStatus(ScopeContext.current.scope.id, id, { status: "running" })
         started = true
-        await bindSessionToLoop(before.sessionID, id)
+        await bindSessionToLoop(before.sessionID, id, "execution")
         await deliverFirstPrompt(before.sessionID, before, body?.userPrompt)
         return c.json(loop)
       } catch (err: any) {

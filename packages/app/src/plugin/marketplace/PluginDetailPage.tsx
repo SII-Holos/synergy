@@ -18,6 +18,8 @@ import type {
 import type { PermissionItem, PluginPermissionDiff, TrustTier, PermissionSeverity } from "../consent/schema"
 import { computeVersionDiffs } from "./changelog-utils"
 import { getInstalledVersion, checkUpdateAvailable } from "./install-utils"
+import { MarketplacePluginIcon } from "./MarketplacePluginIcon"
+import "./marketplace.css"
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -41,7 +43,7 @@ function formatDate(ts: number): string {
 }
 
 function formatSigner(signer?: string): string {
-  if (!signer) return "—"
+  if (!signer) return "Not signed"
   return `${signer.slice(0, 10)}…${signer.slice(-8)}`
 }
 
@@ -275,10 +277,10 @@ export function PluginDetailPage() {
   const pluginData = () => summary()
 
   return (
-    <div class="flex flex-col h-full min-h-0">
+    <div class="synergy-workbench-canvas plugin-marketplace-page flex flex-col h-full min-h-0 bg-background-stronger text-text-base">
       {/* ── Header ── */}
-      <div class="shrink-0 px-6 pt-6 pb-3 border-b border-border-weaker-base/40">
-        <div class="flex items-start justify-between gap-3">
+      <div class="shrink-0 px-5 pt-7 pb-3 sm:px-6">
+        <div class="mx-auto flex w-full max-w-[760px] flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div class="flex-1 min-w-0">
             <div class="flex items-center gap-2">
               <button
@@ -289,7 +291,8 @@ export function PluginDetailPage() {
               >
                 <Icon name="arrow-left" size="small" />
               </button>
-              <h1 class="text-15-medium text-text-strong truncate">{pluginData()?.name ?? pluginId()}</h1>
+              <MarketplacePluginIcon plugin={pluginData()} class="plugin-marketplace-icon-tile" />
+              <h1 class="text-18-medium text-text-strong truncate">{pluginData()?.name ?? pluginId()}</h1>
               <Show when={pluginData()}>
                 <VerifiedBadge verified={pluginData()!.verified} official={pluginData()!.official} />
               </Show>
@@ -297,7 +300,7 @@ export function PluginDetailPage() {
                 {source() === "local" ? "Local" : "Official"}
               </span>
             </div>
-            <p class="text-12-regular text-text-weak mt-1">{pluginData()?.description}</p>
+            <p class="mt-2 max-w-[62ch] text-13-regular leading-relaxed text-text-weak">{pluginData()?.description}</p>
             <Show when={installError()}>
               <p class="text-12-regular text-text-critical mt-2">{installError()}</p>
             </Show>
@@ -353,22 +356,20 @@ export function PluginDetailPage() {
         </div>
 
         {/* Tab bar */}
-        <div class="flex items-center gap-0.5 mt-4 -mb-px">
+        <div class="plugin-marketplace-scroll mx-auto mt-5 flex w-full max-w-[760px] items-center gap-0.5 overflow-x-auto rounded-xl bg-surface-inset-base p-0.5 ring-1 ring-inset ring-border-weaker-base/55">
           <For each={TABS}>
             {(tab) => (
               <button
                 type="button"
                 classList={{
-                  "px-3.5 py-2 text-13-medium border-b-2 transition-colors": true,
-                  "border-text-action text-text-strong": activeTab() === tab.id,
-                  "border-transparent text-text-weak hover:text-text-base": activeTab() !== tab.id,
+                  "inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-lg px-3 text-12-medium transition-colors sm:flex-1": true,
+                  "workbench-selected-surface text-text-strong": activeTab() === tab.id,
+                  "text-text-weak hover:text-text-base": activeTab() !== tab.id,
                 }}
                 onClick={() => setActiveTab(tab.id)}
               >
-                <span class="flex items-center gap-1.5">
-                  <Icon name={tab.icon} size="small" />
-                  {tab.label}
-                </span>
+                <Icon name={tab.icon} size="small" />
+                {tab.label}
               </button>
             )}
           </For>
@@ -377,339 +378,352 @@ export function PluginDetailPage() {
 
       {/* ── Loading ── */}
       <Show when={isLoading()}>
-        <div class="flex items-center justify-center py-16">
-          <div class="size-5 rounded-full border-2 border-border-weaker-base border-t-text-base animate-spin" />
+        <div class="px-5 sm:px-6">
+          <div class="mx-auto flex w-full max-w-[760px] flex-col gap-2 py-6">
+            <div class="plugin-marketplace-skeleton-row workbench-card-surface h-[96px] rounded-2xl" />
+            <div class="plugin-marketplace-skeleton-row workbench-card-surface h-[180px] rounded-2xl" />
+          </div>
         </div>
       </Show>
 
       {/* ── Error ── */}
       <Show when={!isLoading() && isError()}>
-        <div class="flex flex-col items-center justify-center py-16 gap-3">
-          <Icon name="alert-triangle" size="large" class="text-icon-critical-base" />
-          <p class="text-14-medium text-text-weak">Failed to load plugin</p>
-          <p class="text-12-regular text-text-weaker">{errorMessage()}</p>
+        <div class="px-5 sm:px-6">
+          <div class="workbench-card-surface mx-auto flex w-full max-w-[760px] flex-col items-center justify-center gap-3 rounded-2xl px-6 py-14 text-center">
+            <Icon name="alert-triangle" size="large" class="text-icon-critical-base" />
+            <p class="text-14-medium text-text-strong">Failed to load plugin</p>
+            <p class="text-12-regular text-text-weak">{errorMessage()}</p>
+          </div>
         </div>
       </Show>
 
       {/* ── Not found ── */}
       <Show when={!isLoading() && !isError() && !pluginData()}>
-        <div class="flex flex-col items-center justify-center py-16 gap-3">
-          <Icon name="package-search" size="large" class="text-icon-weak" />
-          <p class="text-14-medium text-text-weak">Plugin not found</p>
-          <p class="text-12-regular text-text-weaker">"{pluginId()}" does not exist in the registry.</p>
+        <div class="px-5 sm:px-6">
+          <div class="workbench-card-surface mx-auto flex w-full max-w-[760px] flex-col items-center justify-center gap-3 rounded-2xl px-6 py-14 text-center">
+            <Icon name="scan-search" size="large" class="text-icon-weak" />
+            <p class="text-14-medium text-text-strong">Plugin not found</p>
+            <p class="text-12-regular text-text-weak">"{pluginId()}" does not exist in the registry.</p>
+          </div>
         </div>
       </Show>
 
       {/* ── Tab content ── */}
       <Show when={pluginData()}>
-        <div class="flex-1 min-h-0 overflow-y-auto px-6 pb-6 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          <Switch>
-            {/* ── Overview ── */}
-            <Match when={activeTab() === "overview"}>
-              <div class="flex flex-col gap-5 pt-5">
-                {/* Meta grid */}
-                <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                  <MetaBox icon="tag" label="Latest Version" value={latestVersion()?.version ?? "—"} />
-                  <MetaBox icon="user" label="Author" value={pluginData()!.author?.name ?? "Unknown"} />
-                  <MetaBox
-                    icon="shield-check"
-                    label="Risk Level"
-                    value={<PermissionRiskBadge risk={(latestVersion()?.risk as PermissionSeverity) ?? "low"} />}
-                  />
-                  <MetaBox icon="calendar" label="Updated" value={timeAgo(pluginData()!.updatedAt)} />
-                  <MetaBox icon="download" label="Downloads" value={pluginData()!.downloads?.toLocaleString() ?? "0"} />
-                  <MetaBox icon="package-open" label="Source" value={source() === "local" ? "Local" : "Official"} />
-                  <MetaBox icon="key-round" label="Signer" value={formatSigner(latestVersion()?.signature?.signer)} />
-                </div>
-
-                {/* Description */}
-                <div>
-                  <h3 class="text-12-medium text-text-weak uppercase tracking-wider mb-2">About</h3>
-                  <p class="text-13-regular text-text-base leading-relaxed whitespace-pre-wrap">
-                    {pluginData()!.description || "No description provided."}
-                  </p>
-                </div>
-
-                {/* Keywords */}
-                <Show when={pluginData()!.keywords?.length > 0}>
-                  <div>
-                    <h3 class="text-12-medium text-text-weak uppercase tracking-wider mb-2">Keywords</h3>
-                    <div class="flex flex-wrap gap-1.5">
-                      <For each={pluginData()!.keywords}>
-                        {(kw) => (
-                          <span class="text-11-medium text-text-weak bg-surface-inset-base rounded-full px-2.5 py-0.5">
-                            {kw}
-                          </span>
-                        )}
-                      </For>
-                    </div>
+        <div class="plugin-marketplace-scroll flex-1 min-h-0 overflow-y-auto px-5 pb-7 sm:px-6">
+          <div class="mx-auto w-full max-w-[760px]">
+            <Switch>
+              {/* ── Overview ── */}
+              <Match when={activeTab() === "overview"}>
+                <div class="flex flex-col gap-5 pt-5">
+                  {/* Meta grid */}
+                  <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    <MetaBox icon="tag" label="Latest Version" value={latestVersion()?.version ?? "—"} />
+                    <MetaBox icon="user" label="Author" value={pluginData()!.author?.name ?? "Unknown"} />
+                    <MetaBox
+                      icon="shield-check"
+                      label="Risk Level"
+                      value={<PermissionRiskBadge risk={(latestVersion()?.risk as PermissionSeverity) ?? "low"} />}
+                    />
+                    <MetaBox icon="calendar" label="Updated" value={timeAgo(pluginData()!.updatedAt)} />
+                    <MetaBox
+                      icon="download"
+                      label="Downloads"
+                      value={pluginData()!.downloads?.toLocaleString() ?? "0"}
+                    />
+                    <MetaBox icon="package" label="Source" value={source() === "local" ? "Local" : "Official"} />
+                    <MetaBox icon="key-round" label="Signer" value={formatSigner(latestVersion()?.signature?.signer)} />
                   </div>
-                </Show>
 
-                <Show when={(pluginData() as any)!.repo}>
+                  {/* Description */}
                   <div>
-                    <h3 class="text-12-medium text-text-weak uppercase tracking-wider mb-2">Repository</h3>
-                    <a
-                      href={(pluginData() as any)!.repo}
-                      target="_blank"
-                      rel="noreferrer"
-                      class="inline-flex items-center gap-1.5 text-13-medium text-text-action hover:underline"
-                    >
-                      <Icon name="external-link" size="small" />
-                      {(pluginData() as any)!.repo}
-                    </a>
+                    <h3 class="text-12-medium text-text-weak uppercase tracking-wider mb-2">About</h3>
+                    <p class="text-13-regular text-text-base leading-relaxed whitespace-pre-wrap">
+                      {pluginData()!.description || "No description provided."}
+                    </p>
                   </div>
-                </Show>
 
-                <Show when={pluginData()!.tools?.length > 0}>
-                  <div>
-                    <h3 class="text-12-medium text-text-weak uppercase tracking-wider mb-2">Tools</h3>
-                    <div class="flex flex-wrap gap-1.5">
-                      <For each={pluginData()!.tools}>
-                        {(tool) => (
-                          <span class="text-11-medium text-text-weak bg-surface-inset-base rounded-full px-2.5 py-0.5">
-                            {tool}
-                          </span>
-                        )}
-                      </For>
-                    </div>
-                  </div>
-                </Show>
-
-                <Show when={pluginData()!.uiSurfaces?.length > 0}>
-                  <div>
-                    <h3 class="text-12-medium text-text-weak uppercase tracking-wider mb-2">UI Surfaces</h3>
-                    <div class="flex flex-wrap gap-1.5">
-                      <For each={pluginData()!.uiSurfaces}>
-                        {(surface) => (
-                          <span class="text-11-medium text-text-weak bg-surface-inset-base rounded-full px-2.5 py-0.5">
-                            {surface}
-                          </span>
-                        )}
-                      </For>
-                    </div>
-                  </div>
-                </Show>
-
-                {/* Trust tier */}
-                <div>
-                  <h3 class="text-12-medium text-text-weak uppercase tracking-wider mb-2">Trust Model</h3>
-                  <TrustTierExplanation tier="trusted-import" />
-                </div>
-              </div>
-            </Match>
-
-            {/* ── Permissions ── */}
-            <Match when={activeTab() === "permissions"}>
-              <div class="pt-5">
-                <Show
-                  when={allPermissions().length > 0}
-                  fallback={
-                    <div class="flex flex-col items-center justify-center py-16 gap-3">
-                      <Icon name="shield-check" size="large" class="text-icon-weak" />
-                      <p class="text-14-medium text-text-weak">No permissions declared</p>
-                      <p class="text-12-regular text-text-weaker">
-                        This plugin does not request any special permissions.
-                      </p>
-                    </div>
-                  }
-                >
-                  <PermissionDiffList items={allPermissions().map(toConsentPermission)} mode="added" />
-                </Show>
-              </div>
-            </Match>
-
-            {/* ── Versions ── */}
-            <Match when={activeTab() === "versions"}>
-              <div class="flex flex-col gap-2 pt-5">
-                <Show
-                  when={versions() && versions()!.length > 0}
-                  fallback={
-                    <div class="flex flex-col items-center justify-center py-16 gap-3">
-                      <Icon name="history" size="large" class="text-icon-weak" />
-                      <p class="text-14-medium text-text-weak">No versions available</p>
-                    </div>
-                  }
-                >
-                  <For each={[...versions()!].toSorted((a, b) => b.publishedAt - a.publishedAt)}>
-                    {(ver) => (
-                      <div class="flex items-start gap-4 px-4 py-3 rounded-xl bg-surface-raised-base">
-                        <div class="flex-1 min-w-0">
-                          <div class="flex items-center gap-2">
-                            <span class="text-14-medium text-text-strong">v{ver.version}</span>
-                            <PermissionRiskBadge risk={ver.risk as PermissionSeverity} />
-                          </div>
-                          <Show when={ver.changelog}>
-                            <p class="text-12-regular text-text-weak mt-1 line-clamp-2">{ver.changelog}</p>
-                          </Show>
-                          <div class="flex items-center gap-3 mt-2 text-11-regular text-text-weaker">
-                            <span>Published {formatDate(ver.publishedAt)}</span>
-                            <span>•</span>
-                            <span>{ver.permissionsSummary?.length ?? 0} permissions</span>
-                            <Show when={ver.signature || ver.signatureUrl}>
-                              <span>•</span>
-                              <span class="text-text-success">Signed</span>
-                            </Show>
-                          </div>
-                        </div>
+                  {/* Keywords */}
+                  <Show when={pluginData()!.keywords?.length > 0}>
+                    <div>
+                      <h3 class="text-12-medium text-text-weak uppercase tracking-wider mb-2">Keywords</h3>
+                      <div class="flex flex-wrap gap-1.5">
+                        <For each={pluginData()!.keywords}>
+                          {(kw) => (
+                            <span class="text-11-medium text-text-weak bg-surface-inset-base rounded-full px-2.5 py-0.5">
+                              {kw}
+                            </span>
+                          )}
+                        </For>
                       </div>
-                    )}
-                  </For>
-                </Show>
-              </div>
-            </Match>
-
-            {/* ── Changelog ── */}
-            <Match when={activeTab() === "changelog"}>
-              <div class="flex flex-col gap-4 pt-5">
-                <Show
-                  when={changelogEntries().length > 0}
-                  fallback={
-                    <div class="flex flex-col items-center justify-center py-16 gap-3">
-                      <Icon name="scroll-text" size="large" class="text-icon-weak" />
-                      <p class="text-14-medium text-text-weak">No versions available</p>
-                      <p class="text-12-regular text-text-weaker">
-                        Versions must be published before changelogs appear.
-                      </p>
                     </div>
-                  }
-                >
-                  <For each={changelogEntries()}>
-                    {(entry) => (
-                      <div class="flex flex-col gap-3 p-4 rounded-xl bg-surface-raised-base">
-                        {/* Version header */}
-                        <div class="flex items-center justify-between gap-3">
-                          <div class="flex items-center gap-2">
-                            <span class="text-14-medium text-text-strong">v{entry.version}</span>
-                            <PermissionRiskBadge risk={entry.risk as PermissionSeverity} />
-                          </div>
-                          <span class="text-11-regular text-text-weaker">{formatDate(entry.publishedAt)}</span>
-                        </div>
+                  </Show>
 
-                        {/* Changelog text */}
-                        <Show when={entry.changelog}>
-                          <div class="rounded-lg bg-surface-inset-base px-3 py-2">
-                            <p class="text-12-regular text-text-weak whitespace-pre-wrap leading-relaxed">
-                              {entry.changelog}
-                            </p>
-                          </div>
-                        </Show>
+                  <Show when={(pluginData() as any)!.repo}>
+                    <div>
+                      <h3 class="text-12-medium text-text-weak uppercase tracking-wider mb-2">Repository</h3>
+                      <a
+                        href={(pluginData() as any)!.repo}
+                        target="_blank"
+                        rel="noreferrer"
+                        class="inline-flex items-center gap-1.5 text-13-medium text-text-action hover:underline"
+                      >
+                        <Icon name="external-link" size="small" />
+                        {(pluginData() as any)!.repo}
+                      </a>
+                    </div>
+                  </Show>
 
-                        {/* Permission summary */}
-                        <div class="flex flex-col gap-1">
-                          <p class="text-11-medium text-text-weaker uppercase tracking-wider mb-1">
-                            Permission Changes
-                          </p>
-                          <Show
-                            when={
-                              entry.added.length +
-                                entry.removed.length +
-                                entry.changed.length +
-                                entry.unchanged.length >
-                              0
-                            }
-                            fallback={
-                              <p class="text-12-regular text-text-weaker">No permission changes in this version.</p>
-                            }
-                          >
-                            <div class="flex flex-wrap gap-1.5 text-11-medium">
-                              <Show when={entry.added.length > 0}>
-                                <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-surface-success-soft text-text-success">
-                                  <Icon name="plus" size="small" />
-                                  {entry.added.length} added
-                                </span>
-                              </Show>
-                              <Show when={entry.removed.length > 0}>
-                                <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-surface-critical-soft text-text-critical">
-                                  <Icon name="minus" size="small" />
-                                  {entry.removed.length} removed
-                                </span>
-                              </Show>
-                              <Show when={entry.changed.length > 0}>
-                                <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-surface-warning-soft text-text-warning">
-                                  <Icon name="arrow-up-down" size="small" />
-                                  {entry.changed.length} changed
-                                </span>
+                  <Show when={pluginData()!.tools?.length > 0}>
+                    <div>
+                      <h3 class="text-12-medium text-text-weak uppercase tracking-wider mb-2">Tools</h3>
+                      <div class="flex flex-wrap gap-1.5">
+                        <For each={pluginData()!.tools}>
+                          {(tool) => (
+                            <span class="text-11-medium text-text-weak bg-surface-inset-base rounded-full px-2.5 py-0.5">
+                              {tool}
+                            </span>
+                          )}
+                        </For>
+                      </div>
+                    </div>
+                  </Show>
+
+                  <Show when={pluginData()!.uiSurfaces?.length > 0}>
+                    <div>
+                      <h3 class="text-12-medium text-text-weak uppercase tracking-wider mb-2">UI Surfaces</h3>
+                      <div class="flex flex-wrap gap-1.5">
+                        <For each={pluginData()!.uiSurfaces}>
+                          {(surface) => (
+                            <span class="text-11-medium text-text-weak bg-surface-inset-base rounded-full px-2.5 py-0.5">
+                              {surface}
+                            </span>
+                          )}
+                        </For>
+                      </div>
+                    </div>
+                  </Show>
+
+                  {/* Trust tier */}
+                  <div>
+                    <h3 class="text-12-medium text-text-weak uppercase tracking-wider mb-2">Trust Model</h3>
+                    <TrustTierExplanation tier="trusted-import" />
+                  </div>
+                </div>
+              </Match>
+
+              {/* ── Permissions ── */}
+              <Match when={activeTab() === "permissions"}>
+                <div class="pt-5">
+                  <Show
+                    when={allPermissions().length > 0}
+                    fallback={
+                      <div class="flex flex-col items-center justify-center py-16 gap-3">
+                        <Icon name="shield-check" size="large" class="text-icon-weak" />
+                        <p class="text-14-medium text-text-weak">No permissions declared</p>
+                        <p class="text-12-regular text-text-weaker">
+                          This plugin does not request any special permissions.
+                        </p>
+                      </div>
+                    }
+                  >
+                    <PermissionDiffList items={allPermissions().map(toConsentPermission)} mode="added" />
+                  </Show>
+                </div>
+              </Match>
+
+              {/* ── Versions ── */}
+              <Match when={activeTab() === "versions"}>
+                <div class="flex flex-col gap-2 pt-5">
+                  <Show
+                    when={versions() && versions()!.length > 0}
+                    fallback={
+                      <div class="flex flex-col items-center justify-center py-16 gap-3">
+                        <Icon name="history" size="large" class="text-icon-weak" />
+                        <p class="text-14-medium text-text-weak">No versions available</p>
+                      </div>
+                    }
+                  >
+                    <For each={[...versions()!].toSorted((a, b) => b.publishedAt - a.publishedAt)}>
+                      {(ver) => (
+                        <div class="flex items-start gap-4 px-4 py-3 rounded-xl bg-surface-raised-base">
+                          <div class="flex-1 min-w-0">
+                            <div class="flex items-center gap-2">
+                              <span class="text-14-medium text-text-strong">v{ver.version}</span>
+                              <PermissionRiskBadge risk={ver.risk as PermissionSeverity} />
+                            </div>
+                            <Show when={ver.changelog}>
+                              <p class="text-12-regular text-text-weak mt-1 line-clamp-2">{ver.changelog}</p>
+                            </Show>
+                            <div class="flex items-center gap-3 mt-2 text-11-regular text-text-weaker">
+                              <span>Published {formatDate(ver.publishedAt)}</span>
+                              <span>•</span>
+                              <span>{ver.permissionsSummary?.length ?? 0} permissions</span>
+                              <Show when={ver.signature || ver.signatureUrl}>
+                                <span>•</span>
+                                <span class="text-text-success">Signed</span>
                               </Show>
                             </div>
-
-                            {/* Added permissions details */}
-                            <Show when={entry.added.length > 0}>
-                              <div class="mt-3 rounded-lg bg-surface-inset-base px-3 py-2">
-                                <p class="text-11-medium text-text-success mb-1.5 uppercase tracking-wider">
-                                  Added ({entry.added.length})
-                                </p>
-                                <ul class="flex flex-col gap-1">
-                                  <For each={entry.added}>
-                                    {(perm) => (
-                                      <li class="flex items-start gap-1.5 text-12-regular text-text-base">
-                                        <span class="text-text-success shrink-0 mt-0.5">+</span>
-                                        <span class="min-w-0">
-                                          <span class="text-text-strong">{perm.key}</span>
-                                          <Show when={perm.description}>
-                                            <span class="text-text-weak"> — {perm.description}</span>
-                                          </Show>
-                                        </span>
-                                      </li>
-                                    )}
-                                  </For>
-                                </ul>
-                              </div>
-                            </Show>
-
-                            {/* Removed permissions details */}
-                            <Show when={entry.removed.length > 0}>
-                              <div class="mt-2 rounded-lg bg-surface-inset-base px-3 py-2">
-                                <p class="text-11-medium text-text-critical mb-1.5 uppercase tracking-wider">
-                                  Removed ({entry.removed.length})
-                                </p>
-                                <ul class="flex flex-col gap-1">
-                                  <For each={entry.removed}>
-                                    {(perm) => (
-                                      <li class="flex items-start gap-1.5 text-12-regular text-text-weak opacity-70">
-                                        <span class="text-text-weaker shrink-0 mt-0.5">−</span>
-                                        <span class="min-w-0 line-through">{perm.key}</span>
-                                      </li>
-                                    )}
-                                  </For>
-                                </ul>
-                              </div>
-                            </Show>
-
-                            {/* Changed permissions details */}
-                            <Show when={entry.changed.length > 0}>
-                              <div class="mt-2 rounded-lg bg-surface-inset-base px-3 py-2">
-                                <p class="text-11-medium text-text-warning mb-1.5 uppercase tracking-wider">
-                                  Changed ({entry.changed.length})
-                                </p>
-                                <ul class="flex flex-col gap-1">
-                                  <For each={entry.changed}>
-                                    {(ch) => (
-                                      <li class="flex items-start gap-1.5 text-12-regular">
-                                        <span class="text-text-warning shrink-0 mt-0.5">↔</span>
-                                        <span class="min-w-0">
-                                          <span class="text-text-strong">{ch.key}</span>
-                                          <span class="text-text-weak">
-                                            {" "}
-                                            <span class="uppercase">{ch.before}</span> →{" "}
-                                            <span class="uppercase">{ch.after}</span>
-                                          </span>
-                                        </span>
-                                      </li>
-                                    )}
-                                  </For>
-                                </ul>
-                              </div>
-                            </Show>
-                          </Show>
+                          </div>
                         </div>
+                      )}
+                    </For>
+                  </Show>
+                </div>
+              </Match>
+
+              {/* ── Changelog ── */}
+              <Match when={activeTab() === "changelog"}>
+                <div class="flex flex-col gap-4 pt-5">
+                  <Show
+                    when={changelogEntries().length > 0}
+                    fallback={
+                      <div class="flex flex-col items-center justify-center py-16 gap-3">
+                        <Icon name="scroll-text" size="large" class="text-icon-weak" />
+                        <p class="text-14-medium text-text-weak">No versions available</p>
+                        <p class="text-12-regular text-text-weaker">
+                          Versions must be published before changelogs appear.
+                        </p>
                       </div>
-                    )}
-                  </For>
-                </Show>
-              </div>
-            </Match>
-          </Switch>
+                    }
+                  >
+                    <For each={changelogEntries()}>
+                      {(entry) => (
+                        <div class="flex flex-col gap-3 p-4 rounded-xl bg-surface-raised-base">
+                          {/* Version header */}
+                          <div class="flex items-center justify-between gap-3">
+                            <div class="flex items-center gap-2">
+                              <span class="text-14-medium text-text-strong">v{entry.version}</span>
+                              <PermissionRiskBadge risk={entry.risk as PermissionSeverity} />
+                            </div>
+                            <span class="text-11-regular text-text-weaker">{formatDate(entry.publishedAt)}</span>
+                          </div>
+
+                          {/* Changelog text */}
+                          <Show when={entry.changelog}>
+                            <div class="rounded-lg bg-surface-inset-base px-3 py-2">
+                              <p class="text-12-regular text-text-weak whitespace-pre-wrap leading-relaxed">
+                                {entry.changelog}
+                              </p>
+                            </div>
+                          </Show>
+
+                          {/* Permission summary */}
+                          <div class="flex flex-col gap-1">
+                            <p class="text-11-medium text-text-weaker uppercase tracking-wider mb-1">
+                              Permission Changes
+                            </p>
+                            <Show
+                              when={
+                                entry.added.length +
+                                  entry.removed.length +
+                                  entry.changed.length +
+                                  entry.unchanged.length >
+                                0
+                              }
+                              fallback={
+                                <p class="text-12-regular text-text-weaker">No permission changes in this version.</p>
+                              }
+                            >
+                              <div class="flex flex-wrap gap-1.5 text-11-medium">
+                                <Show when={entry.added.length > 0}>
+                                  <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-surface-success-soft text-text-success">
+                                    <Icon name="plus" size="small" />
+                                    {entry.added.length} added
+                                  </span>
+                                </Show>
+                                <Show when={entry.removed.length > 0}>
+                                  <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-surface-critical-soft text-text-critical">
+                                    <Icon name="minus" size="small" />
+                                    {entry.removed.length} removed
+                                  </span>
+                                </Show>
+                                <Show when={entry.changed.length > 0}>
+                                  <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-surface-warning-soft text-text-warning">
+                                    <Icon name="arrow-up-down" size="small" />
+                                    {entry.changed.length} changed
+                                  </span>
+                                </Show>
+                              </div>
+
+                              {/* Added permissions details */}
+                              <Show when={entry.added.length > 0}>
+                                <div class="mt-3 rounded-lg bg-surface-inset-base px-3 py-2">
+                                  <p class="text-11-medium text-text-success mb-1.5 uppercase tracking-wider">
+                                    Added ({entry.added.length})
+                                  </p>
+                                  <ul class="flex flex-col gap-1">
+                                    <For each={entry.added}>
+                                      {(perm) => (
+                                        <li class="flex items-start gap-1.5 text-12-regular text-text-base">
+                                          <span class="text-text-success shrink-0 mt-0.5">+</span>
+                                          <span class="min-w-0">
+                                            <span class="text-text-strong">{perm.key}</span>
+                                            <Show when={perm.description}>
+                                              <span class="text-text-weak"> — {perm.description}</span>
+                                            </Show>
+                                          </span>
+                                        </li>
+                                      )}
+                                    </For>
+                                  </ul>
+                                </div>
+                              </Show>
+
+                              {/* Removed permissions details */}
+                              <Show when={entry.removed.length > 0}>
+                                <div class="mt-2 rounded-lg bg-surface-inset-base px-3 py-2">
+                                  <p class="text-11-medium text-text-critical mb-1.5 uppercase tracking-wider">
+                                    Removed ({entry.removed.length})
+                                  </p>
+                                  <ul class="flex flex-col gap-1">
+                                    <For each={entry.removed}>
+                                      {(perm) => (
+                                        <li class="flex items-start gap-1.5 text-12-regular text-text-weak opacity-70">
+                                          <span class="text-text-weaker shrink-0 mt-0.5">−</span>
+                                          <span class="min-w-0 line-through">{perm.key}</span>
+                                        </li>
+                                      )}
+                                    </For>
+                                  </ul>
+                                </div>
+                              </Show>
+
+                              {/* Changed permissions details */}
+                              <Show when={entry.changed.length > 0}>
+                                <div class="mt-2 rounded-lg bg-surface-inset-base px-3 py-2">
+                                  <p class="text-11-medium text-text-warning mb-1.5 uppercase tracking-wider">
+                                    Changed ({entry.changed.length})
+                                  </p>
+                                  <ul class="flex flex-col gap-1">
+                                    <For each={entry.changed}>
+                                      {(ch) => (
+                                        <li class="flex items-start gap-1.5 text-12-regular">
+                                          <span class="text-text-warning shrink-0 mt-0.5">↔</span>
+                                          <span class="min-w-0">
+                                            <span class="text-text-strong">{ch.key}</span>
+                                            <span class="text-text-weak">
+                                              {" "}
+                                              <span class="uppercase">{ch.before}</span> →{" "}
+                                              <span class="uppercase">{ch.after}</span>
+                                            </span>
+                                          </span>
+                                        </li>
+                                      )}
+                                    </For>
+                                  </ul>
+                                </div>
+                              </Show>
+                            </Show>
+                          </div>
+                        </div>
+                      )}
+                    </For>
+                  </Show>
+                </div>
+              </Match>
+            </Switch>
+          </div>
         </div>
       </Show>
     </div>

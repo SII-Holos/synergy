@@ -28,17 +28,17 @@ describe("browser_screenshot production schema (GREEN)", () => {
     }
   })
 
-  test("production schema has tabId, format, fullPage; optional locator/clip absent when omitted", async () => {
+  test("production schema has pageId, format, fullPage; optional locator/clip absent when omitted", async () => {
     const info = await BrowserScreenshotTool.init()
     const r = info.parameters.safeParse({
-      tabId: "tab-1",
+      pageId: "page-1",
       format: "jpeg",
       fullPage: true,
     })
     expect(r.success).toBe(true)
     if (r.success) {
       const keys = Object.keys(r.data)
-      expect(keys).toContain("tabId")
+      expect(keys).toContain("pageId")
       expect(keys).toContain("format")
       expect(keys).toContain("fullPage")
       // optional fields are not present when omitted
@@ -78,7 +78,7 @@ describe("browser_screenshot extended schema", () => {
   })
 
   const ExtendedScreenshotSchema = z.object({
-    tabId: z.string().optional(),
+    pageId: z.string().optional(),
     format: z.enum(["jpeg", "png"]).default("png"),
     fullPage: z.boolean().default(false),
     locator: z
@@ -228,7 +228,7 @@ describe("locator screenshot resolves bounds then uses clip", () => {
     expect(result).toEqual({ x: 10, y: 20, width: 200, height: 100 })
   })
 
-  test("browser_tab.screenshot accepts clip as CDP parameter shape", () => {
+  test("browser page screenshot accepts clip as CDP parameter shape", () => {
     const cdpClip = { x: 10, y: 20, width: 300, height: 200, scale: 1 }
     expect(cdpClip).toHaveProperty("x")
     expect(cdpClip).toHaveProperty("y")

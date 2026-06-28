@@ -11,6 +11,7 @@ playground
 tmp
 dist
 ts-dist
+packages/desktop/release/
 .release/
 .turbo
 **/.serena

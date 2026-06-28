@@ -6,6 +6,7 @@ import { Agent } from "../../src/agent/agent"
 import { PermissionNext } from "../../src/permission/next"
 import { Config } from "../../src/config/config"
 import { RuntimeReload } from "../../src/runtime/reload"
+import { Plugin } from "../../src/plugin"
 
 // Helper to evaluate permission for a tool with wildcard pattern
 function evalPerm(agent: Agent.Info | undefined, permission: string): PermissionNext.Action | undefined {
@@ -45,6 +46,44 @@ test("developer agent has correct default properties", async () => {
       expect(developer?.native).toBe(true)
       expect(evalPerm(developer, "edit")).toBe("ask")
       expect(evalPerm(developer, "bash")).toBe("allow")
+    },
+  })
+})
+
+test("built-in agents expose model role metadata", async () => {
+  await using tmp = await tmpdir()
+  await ScopeContext.provide({
+    scope: await tmp.scope(),
+    fn: async () => {
+      const developer = await Agent.get("developer")
+      const advisor = await Agent.get("advisor")
+      const looker = await Agent.get("multimodal-looker")
+
+      expect(developer?.modelRole).toBe("mid")
+      expect(developer?.modelSource).toBe("role")
+      expect(advisor?.modelRole).toBe("thinking")
+      expect(looker?.modelRole).toBe("vision")
+      expect(looker?.model).toBeUndefined()
+    },
+  })
+})
+
+test("model role summaries group built-in subagents", async () => {
+  await using tmp = await tmpdir()
+  await ScopeContext.provide({
+    scope: await tmp.scope(),
+    fn: async () => {
+      const summaries = await Agent.modelRoleSummaries()
+      const mid = summaries.find((summary) => summary.id === "mid")
+      const thinking = summaries.find((summary) => summary.id === "thinking")
+      const vision = summaries.find((summary) => summary.id === "vision")
+
+      expect(mid?.usedBy.map((agent) => agent.name)).toContain("developer")
+      expect(mid?.usedBy.map((agent) => agent.name)).toContain("explore")
+      expect(thinking?.usedBy.map((agent) => agent.name)).toContain("advisor")
+      expect(vision?.fallbackChain).toEqual(["vision_model"])
+      expect(vision?.resolvedModel).toBeUndefined()
+      expect(vision?.disabledReason).toContain("Image analysis is disabled")
     },
   })
 })
@@ -151,6 +190,103 @@ test("custom agent config overrides native agent properties", async () => {
       expect(developer?.native).toBe(true)
     },
   })
+})
+
+test("explicit agent model wins over configured model role", async () => {
+  await using tmp = await tmpdir({
+    config: {
+      model: "openai/gpt-4.1",
+      thinking_model: "openai/gpt-5-thinking",
+      agent: {
+        developer: {
+          modelRole: "thinking",
+          model: "anthropic/claude-3",
+        },
+      },
+    },
+  })
+  await ScopeContext.provide({
+    scope: await tmp.scope(),
+    fn: async () => {
+      const developer = await Agent.get("developer")
+      expect(developer?.modelRole).toBe("thinking")
+      expect(developer?.modelSource).toBe("explicit")
+      expect(developer?.model).toEqual({ providerID: "anthropic", modelID: "claude-3" })
+
+      const summaries = await Agent.modelRoleSummaries()
+      const thinking = summaries.find((summary) => summary.id === "thinking")
+      const usage = thinking?.usedBy.find((agent) => agent.name === "developer")
+      expect(usage?.modelSource).toBe("explicit")
+      expect(usage?.model).toEqual({ providerID: "anthropic", modelID: "claude-3" })
+    },
+  })
+})
+
+test("custom config agent can use a model role", async () => {
+  await using tmp = await tmpdir({
+    config: {
+      model: "openai/gpt-4.1",
+      creative_model: "openai/gpt-5-creative",
+      agent: {
+        design_reviewer: {
+          description: "Reviews interface design changes",
+          modelRole: "creative",
+        },
+      },
+    },
+  })
+  await ScopeContext.provide({
+    scope: await tmp.scope(),
+    fn: async () => {
+      const agent = await Agent.get("design_reviewer")
+      expect(agent?.source).toBe("config")
+      expect(agent?.modelRole).toBe("creative")
+      expect(agent?.modelSource).toBe("role")
+      expect(agent?.model).toEqual({ providerID: "openai", modelID: "gpt-5-creative" })
+
+      const creative = (await Agent.modelRoleSummaries()).find((summary) => summary.id === "creative")
+      expect(creative?.usedBy.map((item) => item.name)).toContain("design_reviewer")
+    },
+  })
+})
+
+test("plugin agent model role appears in role summaries", async () => {
+  const originalAgentEntries = Plugin.agentEntries
+  ;(Plugin as any).agentEntries = async () => ({
+    plugin_visual_reviewer: {
+      name: "plugin_visual_reviewer",
+      description: "Reviews visual output from a plugin",
+      prompt: "Review visual output.",
+      mode: "subagent",
+      modelRole: "creative",
+    },
+  })
+
+  try {
+    await using tmp = await tmpdir({
+      config: {
+        model: "openai/gpt-4.1",
+        creative_model: "openai/gpt-5-creative",
+      },
+    })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        await Agent.reload()
+
+        const agent = await Agent.get("plugin_visual_reviewer")
+        expect(agent?.source).toBe("plugin")
+        expect(agent?.modelRole).toBe("creative")
+        expect(agent?.model).toEqual({ providerID: "openai", modelID: "gpt-5-creative" })
+
+        const creative = (await Agent.modelRoleSummaries()).find((summary) => summary.id === "creative")
+        expect(creative?.usedBy.map((item) => item.name)).toContain("plugin_visual_reviewer")
+      },
+    })
+  } finally {
+    ;(Plugin as any).agentEntries = originalAgentEntries
+    await Agent.reload()
+  }
 })
 
 test("agent disable removes agent from list", async () => {

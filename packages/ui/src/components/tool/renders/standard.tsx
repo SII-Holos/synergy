@@ -9,12 +9,15 @@ import { RenderHtml } from "../../render-html"
 import { AttachmentList } from "../../attachment-card"
 import { ToolTextOutput } from "../../tool-output-text"
 import { ToolRegistry, getToolInfo, getDirectory } from "../../message-part"
+import { getSemanticIcon } from "../../semantic-icon"
 
 function isBlueprintToolKind(input: any = {}, metadata: any = {}) {
   if ((metadata.kind || input.kind) === "blueprint") return true
   const kinds = metadata.kinds
   return Array.isArray(kinds) && kinds.length > 0 && kinds.every((kind) => kind === "blueprint")
 }
+
+const BLUEPRINT_ICON = getSemanticIcon("orchestration.blueprint")
 
 ToolRegistry.register({
   name: "read",
@@ -293,7 +296,6 @@ ToolRegistry.register({
     return (
       <BasicTool
         {...props}
-        countdown={props.input.timeout ?? 30}
         trigger={{
           icon: "mouse-pointer-2",
           title: "Webfetch",
@@ -326,16 +328,9 @@ ToolRegistry.register({
       if (!raw) return undefined
       return raw.length > 40 ? raw.slice(0, 37) + "…" : raw
     }
-    const countdown = () => {
-      if (props.input.background) return undefined
-      const timeout = props.input.timeout ?? 120
-      const yieldS = props.input.yieldSeconds
-      return yieldS != null ? Math.min(timeout, yieldS) : timeout
-    }
     return (
       <BasicTool
         {...props}
-        countdown={countdown()}
         trigger={{
           icon: "terminal",
           title: "Shell",
@@ -426,14 +421,9 @@ ToolRegistry.register({
     const count = () => props.input.questions?.length ?? 0
     const answers = () => props.metadata?.answers as string[][] | undefined
     const timedOut = () => props.metadata?.timedOut as boolean | undefined
-    const countdown = () => {
-      if (timedOut()) return undefined
-      return (props.metadata?.timeout ?? 1800) as number
-    }
     return (
       <BasicTool
         {...props}
-        countdown={countdown()}
         trigger={{
           icon: "message-circle",
           title: timedOut() ? "Question Timed Out" : "Questions",
@@ -506,14 +496,9 @@ ToolRegistry.register({
       if (paths.length <= 3) return paths.map(getFilename).join(", ")
       return `${paths.length} files`
     }
-    const countdown = () => {
-      if (props.metadata?.timedOut) return undefined
-      return props.input.timeout ?? 120
-    }
     return (
       <BasicTool
         {...props}
-        countdown={countdown()}
         trigger={{
           icon: "eye",
           title: props.metadata?.timedOut ? "Analysis timed out" : "Look at",
@@ -791,14 +776,9 @@ ToolRegistry.register({
       if (props.input.processId) result.push(shortId())
       return result
     }
-    const countdown = () => {
-      if (props.input.action !== "poll" || !props.input.block) return undefined
-      return props.input.timeout ?? 30
-    }
     return (
       <BasicTool
         {...props}
-        countdown={countdown()}
         trigger={{
           icon: "terminal",
           title: "Process",
@@ -855,14 +835,9 @@ ToolRegistry.register({
       const id = props.input.task_id || ""
       return id.length > 12 ? id.slice(0, 9) + "…" : id
     }
-    const countdown = () => {
-      if (!props.input.block) return undefined
-      return props.input.timeout ?? 60
-    }
     return (
       <BasicTool
         {...props}
-        countdown={countdown()}
         trigger={{
           icon: "list-todo",
           title: "Task Output",
@@ -1038,7 +1013,7 @@ ToolRegistry.register({
       <BasicTool
         {...props}
         trigger={{
-          icon: isBlueprint() ? "stamp" : "notebook-pen",
+          icon: isBlueprint() ? BLUEPRINT_ICON : "notebook-pen",
           title: isBlueprint() ? "Blueprints" : "Notes",
           subtitle: scope(),
           tags:
@@ -1076,7 +1051,7 @@ ToolRegistry.register({
       <BasicTool
         {...props}
         trigger={{
-          icon: isBlueprint() ? "stamp" : "notebook-pen",
+          icon: isBlueprint() ? BLUEPRINT_ICON : "notebook-pen",
           title: isBlueprint() ? "Read Blueprint" : "Read Note",
           subtitle: subtitle(),
         }}
@@ -1112,7 +1087,7 @@ ToolRegistry.register({
       <BasicTool
         {...props}
         trigger={{
-          icon: isBlueprint() ? "stamp" : "notebook-pen",
+          icon: isBlueprint() ? BLUEPRINT_ICON : "notebook-pen",
           title: isBlueprint() ? "Blueprint Search" : "Note Search",
           subtitle: props.input.pattern || "",
           tags: (() => {
@@ -1156,7 +1131,7 @@ ToolRegistry.register({
       <BasicTool
         {...props}
         trigger={{
-          icon: isBlueprint() ? "stamp" : "notebook-pen",
+          icon: isBlueprint() ? BLUEPRINT_ICON : "notebook-pen",
           title: `Write ${label()}`,
           subtitle: noteTitle(),
           tags: actionLabel() ? [{ label: actionLabel() }] : undefined,
@@ -1184,7 +1159,7 @@ ToolRegistry.register({
       <BasicTool
         {...props}
         trigger={{
-          icon: isBlueprint() ? "stamp" : "notebook-pen",
+          icon: isBlueprint() ? BLUEPRINT_ICON : "notebook-pen",
           title: isBlueprint() ? "Edit Blueprint" : "Edit Note",
           subtitle: noteTitle(),
           tags: opCount() ? [{ label: `${opCount()} change(s)` }] : undefined,
@@ -1209,7 +1184,7 @@ function BlueprintLoopTool(props: any & { action: "finish" | "restart" }) {
     <BasicTool
       {...props}
       trigger={{
-        icon: "stamp",
+        icon: BLUEPRINT_ICON,
         title: title(),
         subtitle: (props.input.loopID as string) || "",
         tags: status() ? [{ label: status()! }] : undefined,
@@ -1250,7 +1225,12 @@ ToolRegistry.register({
           icon: "calendar-days",
           title: "Schedule Agenda",
           subtitle: (props.metadata?.title || props.input.title || "") as string,
-          tags: props.metadata?.status ? [{ label: props.metadata.status as string }] : undefined,
+          tags: [
+            props.metadata?.status ? { label: props.metadata.status as string } : undefined,
+            props.metadata?.scheduledTimeoutLabel
+              ? { label: props.metadata.scheduledTimeoutLabel as string }
+              : undefined,
+          ].filter(Boolean) as { label: string }[],
         }}
       >
         <Show when={props.output}>
@@ -1326,7 +1306,12 @@ ToolRegistry.register({
           icon: "refresh-ccw",
           title: "Update Agenda",
           subtitle: (props.metadata?.title || props.input.id || "") as string,
-          tags: props.metadata?.status ? [{ label: props.metadata.status as string }] : undefined,
+          tags: [
+            props.metadata?.status ? { label: props.metadata.status as string } : undefined,
+            props.metadata?.scheduledTimeoutLabel
+              ? { label: props.metadata.scheduledTimeoutLabel as string }
+              : undefined,
+          ].filter(Boolean) as { label: string }[],
         }}
       >
         <Show when={props.output}>

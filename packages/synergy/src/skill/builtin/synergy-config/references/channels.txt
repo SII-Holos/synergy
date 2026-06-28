@@ -112,6 +112,6 @@ Do not edit model, provider, email, Holos, or runtime domain files when importin
 
 - **Bot not responding in group chat** — check `requireMention` (default true); the bot needs to be @mentioned unless `requireMention: false`; verify the bot is added to the group; check `allowGroup` is true
 - **Bot not responding in DM** — check `allowDM` is true; verify the user has permission to message the bot
-- **Streaming not working** — check `streaming` is true; some older Feishu versions may not support streaming cards; try `streaming: false` for compatibility
+- **Streaming not working** — check `streaming` is true; clients without streaming-card support can use `streaming: false`
 - **Sender names showing as IDs** — set `resolveSenderNames: true` and ensure the app has `contact:user.base:readonly` scope
 - **Webhook not receiving events** — verify the Feishu app's event subscription URL is correct and publicly accessible; check the server is running and the `/api/channel/feishu/webhook` endpoint responds

@@ -16,7 +16,7 @@ import type { Session, SessionStatus } from "@ericsanchezok/synergy-sdk/client"
 
 function statusDotClass(status: "success" | "danger" | "muted" | "active") {
   return {
-    "size-1 rounded-full shadow-[0_0_0_1px_var(--color-surface-raised-base)]": true,
+    "size-1 rounded-full ring-1 ring-inset ring-border-weaker-base": true,
     "bg-icon-success-base text-icon-success-base animate-[statusbarDotPulse_3s_ease-in-out_infinite]":
       status === "success",
     "bg-icon-critical-base text-icon-critical-base animate-[statusbarDotPulse_1.5s_ease-in-out_infinite]":
@@ -333,7 +333,7 @@ export function StatusBar() {
             trigger={
               <Tooltip placement="top" value="Details">
                 <button type="button" classList={iconButtonClass()}>
-                  <Icon name="panel-bottom-open" size="small" />
+                  <Icon name={getSemanticIcon("app.statusBar.toggle")} size="small" />
                 </button>
               </Tooltip>
             }

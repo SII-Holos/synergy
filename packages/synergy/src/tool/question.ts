@@ -3,11 +3,13 @@ import { Tool } from "./tool"
 import { Question, DEFAULT_TIMEOUT } from "../question"
 import { Config } from "../config/config"
 import DESCRIPTION from "./question.txt"
+import { ToolTimeout } from "./timeout"
 
 interface QuestionMetadata {
   answers: Question.Answer[]
   timedOut: boolean
   timeout?: number
+  toolTimeout?: ToolTimeout.Metadata
   createdAt?: number
 }
 
@@ -22,9 +24,14 @@ export const QuestionTool = Tool.define<typeof parameters, QuestionMetadata>("qu
     const cfg = await Config.current()
     const configuredTimeout = cfg.question?.timeout
     const timeout = configuredTimeout === 0 ? undefined : (configuredTimeout ?? DEFAULT_TIMEOUT)
+    const toolTimeout = ToolTimeout.withOperation(
+      (ctx.extra as any)?.toolTimeout,
+      timeout === undefined ? undefined : timeout * 1_000,
+      "question",
+    )
     const createdAt = Date.now()
 
-    ctx.metadata({ metadata: { answers: [], timedOut: false, timeout, createdAt } })
+    ctx.metadata({ metadata: { answers: [], timedOut: false, timeout, createdAt, toolTimeout } })
 
     let answers: Question.Answer[]
     let timedOut = false
@@ -49,7 +56,7 @@ export const QuestionTool = Tool.define<typeof parameters, QuestionMetadata>("qu
         title: "Question timed out",
         output:
           "The user did not respond within the timeout period. They may be busy or away from the keyboard. Use your best judgment to proceed — you may continue without user input, use a sensible default, or skip the step that required this answer.",
-        metadata: { answers, timedOut, timeout, createdAt },
+        metadata: { answers, timedOut, timeout, createdAt, toolTimeout },
       }
     }
 
@@ -63,7 +70,7 @@ export const QuestionTool = Tool.define<typeof parameters, QuestionMetadata>("qu
     return {
       title: `Asked ${params.questions.length} question${params.questions.length > 1 ? "s" : ""}`,
       output: `User has answered your questions: ${formatted}. You can now continue with the user's answers in mind.`,
-      metadata: { answers, timedOut, timeout, createdAt },
+      metadata: { answers, timedOut, timeout, createdAt, toolTimeout },
     }
   },
 })

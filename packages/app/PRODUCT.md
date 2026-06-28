@@ -14,7 +14,7 @@ The app gives users a calm command surface for running agents, preserving contex
 
 ## Brand Personality
 
-Quiet, capable, precise. The interface should feel like a focused workbench rather than a marketing surface.
+Quiet, capable, precise. The interface should feel like a focused workbench.
 
 ## Anti-references
 
@@ -27,6 +27,54 @@ Make reciprocal actions visibly reciprocal.
 Reserve emphasis for workflow state and current selection.
 Let blueprints read as plans with status, activity, and next action, not as passive notes.
 Keep dense surfaces quiet enough for repeated daily use.
+Use mode-aware polarity: in dark mode, the active or inner thing is brighter than its shell; in light mode, the active or inner thing is darker than its shell.
+Treat that polarity as a surface hierarchy invariant, not a per-page decoration choice; if light mode feels reversed, audit the token source first, then the component consumer.
+
+## Interaction & Visual Principles
+
+Treat the Holos agent as the Synergy account identity. Model subscriptions, API keys, quota windows, and provider logins belong to Providers and Usage, not Account.
+
+Keep navigation surfaces mentally aligned with where they live. Sidebar destinations such as Agenda, Library, and Plugins open in the main session-side canvas. Settings may be modal, and it should dim the whole app because it interrupts the current task.
+
+Settings should be a human-facing preference surface, not a raw config editor. Keep common settings in a left-aligned readable measure, use direct controls for choices, toggles, and stepped values, and reserve raw domain-file syntax for import/export or advanced configuration views.
+
+Session, Agenda, Library, and Plugins should feel like one continuous workbench canvas in both light and dark modes. Their root backgrounds should align with the session message-flow background; inner surfaces can step up or down for hierarchy, but should not look like separate apps.
+
+Opening a workspace panel should not force the session message stream or prompt composer into a separate narrow fixed measure. Keep the session column at its normal readable working measure and let it shrink only when the actual pane width requires it. The normal session measure should feel like a broad workbench column for coding and tool-rich conversations, not a narrow chat lane. In constrained panes, preserve a minimum horizontal gutter around the message stream and tool cards so they do not visually stick to the sidebar or workspace boundary. Auto-opened workspace panels should occupy about half the viewport; user-resized workspace widths can remain sticky.
+
+Library modes are peer views inside the main workbench, not a settings-style secondary sidebar. Put Overview, Memories, Experiences, and Skills in a top tab control aligned with Agenda's Schedule/History pattern, and keep those Library tabs text-only unless an icon adds necessary meaning.
+
+Library content should not expand just because the viewport is wide. Use a centered working measure for Library dashboards and item grids, and let only genuinely tabular or timeline surfaces earn full width. Keep tab-level controls in one predictable toolbar: filter on the left, search or secondary actions on the right, with refresh/recompute/reload actions presented in that toolbar instead of scattered inside each section.
+
+Library tab controls should share the same visual contract as Agenda tab controls. Descriptive labels such as Snapshot or Usage stats are not actions; do not style them as pills or buttons unless they can be clicked. Detail dialogs for library items should use the same grounded modal language as Agenda forms: one solid shell, section labels, light row dividers, and no debug-style boxes nested inside boxes.
+
+The Browser workspace should feel like a browser window inside the workbench. Desktop mode uses the local native browser view; Web mode uses a remote WebRTC browser stream with data-channel input. A Synergy session has one Browser page, and an empty Browser workspace is a valid state. The first address-bar navigation or browser tool navigation creates that page; later navigation reuses it. Both modes should preserve normal browser expectations: click focus, visible text caret from the page, IME composition, paste, wheel scrolling, shortcuts, reload, downloads, file chooser, dialogs, and diagnostics. Host pending/ready/loading states are connection states, not fatal product errors.
+
+Content Polarity Rule: dark mode reads inward by getting brighter; light mode reads inward by getting darker. Content, controls, and selected items should usually be slightly brighter than their container in dark mode, and slightly darker than their container in light mode. Treat selected rows, active tabs, chips, tool cards, form fields, popovers, calendar cells, scheduled items, and provider/account rows as content surfaces; they should follow the same polarity rule unless a semantic status color is doing real state work. This is especially strict inside the main workbench canvas and must be reflected in global theme tokens, scoped workbench tokens, and component-level fallbacks. Verify the actual outer-to-inner lightness relationship for generic "raised" tokens. White raised surfaces are appropriate for deliberate paper-like or modal surfaces. Session, Agenda, Library, Plugins, and Settings use the workbench polarity model for inner content layers. Pages outside shared workbench classes should define scoped surface tokens with the same outer-to-inner lightness order. This rule governs perceived layer direction, not material choice; subtle translucency is allowed when it still reads grounded and preserves the same lightness relationship.
+
+When a surface violates polarity, first identify whether the theme source or the consuming component is wrong. Prefer fixing the relevant scoped token graph or component class mapping at the source.
+
+Favor grounded, pragmatic surfaces over obvious glassmorphism. A little translucency or floating quality is acceptable for transient overlays, but heavy transparency, blur, glow, and decorative shadows make the product feel less grounded. Do not remove all translucency reflexively; keep it subtle enough that the surface still feels solid.
+
+Use black, white, and neutral ramps as the primary visual language. Blue is a state color for active or running work, not a default accent for selection or decoration.
+
+Avoid border-on-border clutter. Joined panels should join cleanly, with no double rounded corners at seams and no unnecessary nested-card outlines.
+
+For item detail popovers, let the popover itself be the outer card. Use section labels, row rhythm, and light dividers inside; do not put large bordered Task, metadata, or history boxes inside another bordered container.
+
+Form controls should have filled surfaces. In dark mode, controls should be slightly brighter than their container; in light mode, controls should be slightly darker. Required-action buttons stay disabled until the required inputs are valid.
+
+Prompt composers should read as one grounded input surface with a quiet bottom toolbar. Ordinary mode, agent, permission, and add controls should behave like toolbar buttons rather than separate bordered pills; reserve filled chips for active modes, pending state, or meaningful workflow status. Composer add and initialization menus should use the shared toolbar selector and list primitives rather than bespoke popover themes. Composer controls that are secondary to sending should compact to icon-only controls at constrained widths instead of forcing toolbar wrapping or cramped labels.
+
+New-session initialization controls should sit in the composer toolbar next to the Add control as a quiet start-mode selector, not as a second row inside the typing area. Keep the selector menu data-driven so workspace mode, templates, cloud execution, and future start parameters can expand in one place while preserving the composer as a single grounded surface.
+
+Use icons sparingly. Icons should clarify primary navigation or compact controls, not decorate every row of a form.
+
+Treat brand assets as a hierarchy, not interchangeable decoration. SII is the institutional parent, Holos is the platform and account identity, and Synergy is the product. The Synergy product icon is the canonical app, favicon, notification, social, and external-attribution icon; Holos wordmarks should only identify the platform/account layer, and SII marks should only identify the institute layer.
+
+Provider discovery should be metadata-driven. Settings, connection dialogs, and model selection should use the same provider profile metadata for recommendation order, explanatory copy, and external sign-up CTAs; custom providers remain standard alphabetical entries unless they declare metadata.
+
+Clarifying question prompts are decision surfaces, not tool-output cards. They should use a solid outer shell, filled option rows, quiet step chips, clear disabled primary actions, and only the minimum icons needed to show disclosure or selection state.
 
 ## Accessibility & Inclusion
 

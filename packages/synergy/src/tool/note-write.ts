@@ -1,8 +1,9 @@
 import z from "zod"
 import { Tool } from "./tool"
-import { NoteError, NoteStore, NoteMarkdown } from "../note"
+import { NoteError, NoteStore, NoteMarkdown, NoteBlueprintPolicy } from "../note"
 import { ScopeContext } from "../scope/context"
 import DESCRIPTION from "./note-write.txt"
+import { Session } from "../session"
 
 const parameters = z.object({
   id: z.string().optional().describe("Note ID to update. If omitted, creates a new note."),
@@ -19,6 +20,7 @@ const parameters = z.object({
     .describe("Document kind. Use 'blueprint' when this note should be executable as a BlueprintLoop."),
   description: z.string().optional().describe("Short blueprint description. Only used when kind is 'blueprint'."),
   defaultAgent: z.string().optional().describe("Default agent for this blueprint. Only used when kind is 'blueprint'."),
+  auditAgent: z.string().optional().describe("Audit agent for this blueprint. Only used when kind is 'blueprint'."),
   scope: z
     .enum(["current", "home"])
     .default("current")
@@ -53,16 +55,33 @@ async function updateExisting(input: {
   kind?: "note" | "blueprint"
   description?: string
   defaultAgent?: string
-  content: unknown
+  auditAgent?: string
+  content(existing: Awaited<ReturnType<typeof NoteStore.getAny>>): unknown
+  ctx: Tool.Context
 }) {
   const existing = await NoteStore.getAny(ScopeContext.current.scope.id, input.id)
   const nextTitle = input.title ?? existing.title
-  const nextKind =
-    input.kind ?? (input.description !== undefined || input.defaultAgent !== undefined ? "blueprint" : undefined)
+  const nextKind = NoteBlueprintPolicy.requestedKind({
+    kind: input.kind,
+    description: input.description,
+    defaultAgent: input.defaultAgent,
+    auditAgent: input.auditAgent,
+  })
+  const session = await Session.get(input.ctx.sessionID)
+  const decision = NoteBlueprintPolicy.evaluateWrite({
+    planMode: session.blueprint?.planMode === true,
+    action: "update",
+    existingKind: existing.kind ?? "note",
+    requestedKind: nextKind,
+  })
+
+  if (!decision.allowed) {
+    return NoteBlueprintPolicy.blockedResult({ action: decision.action, id: input.id, title: nextTitle })
+  }
 
   const patch: Record<string, unknown> = {
     title: input.title ?? undefined,
-    content: input.content,
+    content: input.content(existing),
     tags: input.tags ?? undefined,
     expectedVersion: existing.version,
   }
@@ -76,6 +95,7 @@ async function updateExisting(input: {
       ...(existing.blueprint ?? {}),
       ...(input.description !== undefined ? { description: input.description } : {}),
       ...(input.defaultAgent !== undefined ? { defaultAgent: input.defaultAgent } : {}),
+      ...(input.auditAgent !== undefined ? { auditAgent: input.auditAgent } : {}),
     }
   }
 
@@ -113,7 +133,7 @@ async function updateExisting(input: {
 export const NoteWriteTool = Tool.define("note_write", {
   description: DESCRIPTION,
   parameters,
-  async execute(params: z.infer<typeof parameters>) {
+  async execute(params: z.infer<typeof parameters>, ctx) {
     const tiptapContent = NoteMarkdown.fromMarkdown(params.content)
 
     if (params.mode === "create") {
@@ -126,8 +146,22 @@ export const NoteWriteTool = Tool.define("note_write", {
       }
 
       const scopeID = params.scope === "home" ? "home" : ScopeContext.current.scope.id
-      const kind =
-        params.kind ?? (params.description !== undefined || params.defaultAgent !== undefined ? "blueprint" : "note")
+      const kind = NoteBlueprintPolicy.requestedKind({
+        kind: params.kind,
+        description: params.description,
+        defaultAgent: params.defaultAgent,
+        auditAgent: params.auditAgent,
+        fallback: "note",
+      })
+      const session = await Session.get(ctx.sessionID)
+      const decision = NoteBlueprintPolicy.evaluateWrite({
+        planMode: session.blueprint?.planMode === true,
+        action: "create",
+        requestedKind: kind,
+      })
+      if (!decision.allowed) {
+        return NoteBlueprintPolicy.blockedResult({ action: decision.action, title: params.title })
+      }
       const note = await NoteStore.create(
         {
           title: params.title,
@@ -139,6 +173,7 @@ export const NoteWriteTool = Tool.define("note_write", {
               ? {
                   description: params.description,
                   defaultAgent: params.defaultAgent,
+                  auditAgent: params.auditAgent,
                 }
               : undefined,
         },
@@ -169,11 +204,6 @@ export const NoteWriteTool = Tool.define("note_write", {
     }
 
     if (params.mode === "append") {
-      const existing = await NoteStore.getAny(ScopeContext.current.scope.id, params.id)
-      const merged = {
-        type: "doc" as const,
-        content: [...(existing.content?.content ?? []), ...(tiptapContent.content ?? [])],
-      }
       return updateExisting({
         id: params.id,
         action: "append",
@@ -182,7 +212,12 @@ export const NoteWriteTool = Tool.define("note_write", {
         kind: params.kind,
         description: params.description,
         defaultAgent: params.defaultAgent,
-        content: merged,
+        auditAgent: params.auditAgent,
+        content: (existing) => ({
+          type: "doc" as const,
+          content: [...(existing.content?.content ?? []), ...(tiptapContent.content ?? [])],
+        }),
+        ctx,
       })
     }
 
@@ -195,7 +230,9 @@ export const NoteWriteTool = Tool.define("note_write", {
         kind: params.kind,
         description: params.description,
         defaultAgent: params.defaultAgent,
-        content: tiptapContent,
+        auditAgent: params.auditAgent,
+        content: () => tiptapContent,
+        ctx,
       })
     }
 

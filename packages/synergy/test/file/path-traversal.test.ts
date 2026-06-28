@@ -33,11 +33,9 @@ describe("Filesystem.contains", () => {
 /*
  * Integration tests for File.read() and File.list() path traversal protection.
  *
- * These tests verify the HTTP API code path is protected. The HTTP endpoints
- * in server.ts (GET /file/content, GET /file) call File.read()/File.list()
- * directly - they do NOT go through ReadTool or the agent permission layer.
- *
- * This is a SEPARATE code path from ReadTool, which has its own checks.
+ * These tests cover the legacy File namespace used by older internal tools.
+ * Workspace file HTTP routes use WorkspaceFileService and have separate
+ * boundary coverage in test/workspace-file.
  */
 describe("File.read path traversal protection", () => {
   test("rejects ../ traversal attempting to read /etc/passwd", async () => {

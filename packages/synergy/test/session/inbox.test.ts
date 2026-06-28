@@ -93,7 +93,6 @@ describe("SessionInbox", () => {
         expect(items[0].source.type).toBe("cortex")
         expect(items[0].summary.preview).toContain("background task completed")
 
-        await SessionManager.release(session.id)
         SessionManager.unregisterRuntime(session.id)
       },
     })

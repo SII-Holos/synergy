@@ -4,6 +4,7 @@ import { Tool } from "./tool"
 import DESCRIPTION from "./glob.txt"
 import { Ripgrep } from "../file/ripgrep"
 import { ScopeContext } from "../scope/context"
+import { ToolTimeout } from "./timeout"
 
 export const GlobTool = Tool.define("glob", {
   description: DESCRIPTION,
@@ -29,7 +30,7 @@ export const GlobTool = Tool.define("glob", {
     let search = params.path ?? ScopeContext.current.directory
     search = path.isAbsolute(search) ? search : path.resolve(ScopeContext.current.directory, search)
 
-    const TIMEOUT_MS = 15_000
+    const TIMEOUT_MS = ToolTimeout.DEFAULTS.globMs
     const limit = 100
     const files = []
     let truncated = false

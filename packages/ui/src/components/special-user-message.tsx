@@ -1,6 +1,7 @@
 import { For, Show, createMemo, type Component } from "solid-js"
 import type { Part as PartType, UserMessage } from "@ericsanchezok/synergy-sdk/client"
 import { useData } from "../context"
+import { Message } from "./message-part"
 import "./special-user-message.css"
 
 export interface SpecialUserMessageProps {
@@ -61,6 +62,14 @@ function SourceSessionLink(props: { sessionID: string | undefined }) {
         </button>
       )}
     </Show>
+  )
+}
+
+function PlanModeUserRequestMessage(props: SpecialUserMessageProps) {
+  return (
+    <div data-component="special-user-message" data-kind="plan-mode-request" data-tone="plan">
+      <Message message={props.message} parts={props.parts} />
+    </div>
   )
 }
 
@@ -145,6 +154,14 @@ function BlueprintControlMessage(props: SpecialUserMessageProps) {
     </div>
   )
 }
+
+registerSpecialUserMessageRenderer({
+  id: "plan-mode-user-request",
+  match(message) {
+    return message.metadata?.planModeRequest === true
+  },
+  component: PlanModeUserRequestMessage,
+})
 
 registerSpecialUserMessageRenderer({
   id: "blueprint-control",

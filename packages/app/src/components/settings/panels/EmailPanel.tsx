@@ -44,7 +44,7 @@ export function EmailPanel(props: {
             />
             <TextField
               label="SMTP Port"
-              type="text"
+              type="number"
               value={props.email.smtpPort}
               onChange={(value) => props.onEmailChange("smtpPort", value)}
             />
@@ -67,7 +67,6 @@ export function EmailPanel(props: {
               <Switch checked={props.email.smtpSecure} onChange={(value) => props.onEmailChange("smtpSecure", value)} />
             }
           />
-          <p class="ds-section-hint ds-test-info">Test connection will be available in a future update.</p>
         </div>
       </div>
 
@@ -84,7 +83,7 @@ export function EmailPanel(props: {
             />
             <TextField
               label="IMAP Port"
-              type="text"
+              type="number"
               value={props.email.imapPort}
               onChange={(value) => props.onEmailChange("imapPort", value)}
             />
@@ -107,7 +106,6 @@ export function EmailPanel(props: {
               <Switch checked={props.email.imapSecure} onChange={(value) => props.onEmailChange("imapSecure", value)} />
             }
           />
-          <p class="ds-section-hint ds-test-info">Test connection will be available in a future update.</p>
         </div>
       </div>
     </div>

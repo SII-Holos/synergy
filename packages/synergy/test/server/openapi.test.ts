@@ -97,4 +97,20 @@ describe("OpenAPI spec generation", () => {
     expect(path!.get).toBeDefined()
     expect(path!.get!.operationId).toBe("global.nav.pinned")
   })
+
+  test("includes workspace file platform routes", async () => {
+    const spec = await Server.openapi()
+    expect(spec.paths["/workspace/files/children"]?.get?.operationId).toBe("workspace.files.children")
+    expect(spec.paths["/workspace/files/read"]?.get?.operationId).toBe("workspace.files.read")
+    expect(spec.paths["/workspace/files/stat"]?.get?.operationId).toBe("workspace.files.stat")
+    expect(spec.paths["/workspace/files/search"]?.get?.operationId).toBe("workspace.files.search")
+    expect(spec.paths["/workspace/files/status"]?.get?.operationId).toBe("workspace.files.status")
+  })
+
+  test("does not expose legacy file or find routes", async () => {
+    const spec = await Server.openapi()
+    const paths = Object.keys(spec.paths)
+    expect(paths.some((path) => path === "/file" || path.startsWith("/file/"))).toBe(false)
+    expect(paths.some((path) => path === "/find" || path.startsWith("/find/"))).toBe(false)
+  })
 })

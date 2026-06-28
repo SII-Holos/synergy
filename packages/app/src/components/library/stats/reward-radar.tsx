@@ -179,19 +179,12 @@ export function RewardRadar(props: { dimensions: DimStats[] }) {
   }))
 
   return (
-    <div class="mt-4 rounded-[1.25rem] bg-surface-raised-base/95 p-4 shadow-[inset_0_1px_0_rgba(214,204,190,0.06),inset_0_-1px_0_rgba(24,28,38,0.04)]">
+    <div class="library-chart-surface mt-4">
       <div class="pb-2">
         <h3 class="text-13-medium text-text-strong">Reward dimensions</h3>
       </div>
 
-      <Show
-        when={dims().length > 0}
-        fallback={
-          <div class="rounded-xl bg-surface-inset-base/45 px-3.5 py-5 text-11-regular text-text-weak">
-            No evaluated experiences yet
-          </div>
-        }
-      >
+      <Show when={dims().length > 0} fallback={<div class="library-empty-row">No evaluated experiences yet</div>}>
         <div class="flex gap-4">
           {/* Radar chart — left */}
           <div class="shrink-0" style={{ width: "280px" }}>
@@ -208,7 +201,7 @@ export function RewardRadar(props: { dimensions: DimStats[] }) {
                 const neg = dim.distribution.find((v) => v.value === -1)?.count ?? 0
                 const neu = dim.distribution.find((v) => v.value === 0)?.count ?? 0
                 return (
-                  <div class="flex items-center gap-3 rounded-lg bg-surface-inset-base/35 px-2.5 py-1.5 ring-1 ring-inset ring-border-base/25">
+                  <div class="flex items-center gap-3 rounded-lg bg-surface-inset-base px-2.5 py-1.5 ring-1 ring-inset ring-border-base/25">
                     <span class="shrink-0 w-20 text-10-medium text-text-base truncate">{label}</span>
                     <span class="shrink-0 w-12 text-11-semibold text-text-strong tabular-nums text-right">
                       {formatR(dim.avg)}
@@ -239,7 +232,7 @@ export function RewardRadar(props: { dimensions: DimStats[] }) {
         </div>
 
         {/* Stacked bar chart below */}
-        <div class="mt-3 rounded-xl bg-surface-inset-base/35 px-3 py-3 ring-1 ring-inset ring-border-base/25">
+        <div class="library-chart-inner mt-3">
           <div class="text-[8px] font-medium uppercase tracking-[0.12em] text-text-weak mb-2">
             Reward Distribution by Dimension
           </div>

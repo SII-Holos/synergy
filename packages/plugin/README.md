@@ -2,7 +2,7 @@
 
 `@ericsanchezok/synergy-plugin` is the authoring SDK for Synergy plugins.
 
-Plugins extend the Synergy server runtime and can also contribute Web UI surfaces through `plugin.json`. The current API is intentionally strict: a plugin module exports an object descriptor with a canonical `id` and an `init()` method. The descriptor id, `plugin.json.name`, registry id, lockfile key, and approval key must all be the same canonical plugin id.
+Plugins extend the Synergy server runtime and can also contribute Web UI surfaces through `plugin.json`. A plugin module exports an object descriptor with a canonical `id` and an `init()` method. The descriptor id, `plugin.json.name`, registry id, lockfile key, and approval key must all be the same canonical plugin id.
 
 Plugin authors should use `@ericsanchezok/synergy-plugin-kit` and this SDK from a standalone plugin project. Cloning the Synergy source repository is only needed when changing or debugging the plugin platform itself.
 
@@ -59,13 +59,13 @@ export const plugin: PluginDescriptor = {
 export default plugin
 ```
 
-There is no compatibility layer for legacy descriptor shapes. `plugin.json.name` must match `plugin.id`; Synergy fails validation or loading if they differ.
+`plugin.json.name` must match `plugin.id`; Synergy fails validation or loading if they differ.
 
 ## Tool Results And Attachments
 
 Tools can return user-facing files through `attachments`. Use the generated SDK `asset.upload()` route or the public `/asset` endpoint to upload binary data, then return the resulting `asset://...` URL. Do not import Synergy internal asset modules from a plugin.
 
-For visual tools whose output should appear as the main answer instead of a tool card, set `metadata.display.presentation` to `artifact-only` and list the attachment ids to promote:
+For visual tools whose output belongs in the main answer area, set `metadata.display.presentation` to `artifact-only` and list the attachment ids to promote:
 
 ```ts
 return {
@@ -91,6 +91,83 @@ return {
 ```
 
 Running and failed tool states still render normally, so progress, approvals, and errors remain visible.
+
+For image, video, or audio generation tools, declare the display protocol on the tool definition as well. This lets Synergy show its built-in media generation placeholder as soon as the tool starts, then replace it with the promoted attachment when the tool completes:
+
+```ts
+const mediaDisplay = {
+  kind: "media-generation",
+  visibility: "media",
+  presentation: "artifact-only",
+  media: {
+    type: "image",
+    actionLabel: "Create image",
+    pendingTitle: "Generating image",
+    pendingDescription: "Preparing the image...",
+    promptField: "prompt",
+    aspectRatio: "1:1",
+  },
+} as const
+
+tool({
+  description: "Generate an image",
+  display: mediaDisplay,
+  args: {
+    prompt: tool.schema.string(),
+  },
+  async execute(args, context) {
+    // Upload the generated image, then return metadata.display with primaryAttachmentIds.
+  },
+})
+```
+
+Use `visibility: "media"` for tools whose running and completed success states belong on the media surface. Error states still fall back to normal tool cards.
+
+## Internal Tools And Delegated Tasks
+
+Plugins can register helper tools that are only available to a controlled delegated task by setting `exposure: { mode: "internal" }`. Internal tools are not visible to the primary agent, resident tool lists, grouped tools, or `search_tools`; Synergy can still enable them explicitly for a delegated subagent run.
+
+```ts
+tool({
+  description: "Validate a private planning result",
+  exposure: { mode: "internal" },
+  args: {
+    choice: tool.schema.string(),
+  },
+  async execute(args) {
+    return { output: JSON.stringify({ choice: args.choice }) }
+  },
+})
+```
+
+Use `context.task.run()` when a public plugin tool needs Synergy's existing Cortex delegation flow. The host always fills `parentSessionID`, `parentMessageID`, and `executionRole: "delegated_subagent"`; plugins cannot forge those fields.
+
+```ts
+const plan = await context.task?.run({
+  subagent: "my-plugin-planner",
+  description: "Plan the plugin result",
+  prompt: "Choose a valid plan and return JSON.",
+  tools: {
+    "*": false,
+    "plugin__my-plugin__private_helper": true,
+  },
+  visibility: "hidden",
+  timeoutMs: 30_000,
+  output: {
+    mode: "structured",
+    schema: {
+      type: "object",
+      required: ["choice"],
+      properties: {
+        choice: { type: "string" },
+      },
+    },
+    maxRepairTurns: 3,
+  },
+})
+```
+
+When `output.mode` is `structured`, Cortex validates the child task result against the schema and may run repair turns before completing. Cortex still stores its normal task trajectory summary in `task.result`; the structured value is returned to the plugin call site as `plan.outputResult.data`.
 
 ## Plugin Input
 
@@ -138,6 +215,9 @@ Each distributable plugin has a root `plugin.json`:
         "name": "greet",
         "title": "Greet",
         "description": "Greet a user by name",
+        "display": {
+          "kind": "default",
+        },
         "capabilities": {
           "filesystem": "none",
           "network": false,
