@@ -2,7 +2,7 @@ import fs from "fs"
 import os from "os"
 import path from "path"
 import { PluginManifest, type PluginManifest as PluginManifestType } from "@ericsanchezok/synergy-plugin"
-import { baseCapabilities } from "./capability"
+import { baseCapabilities, registryPermissionSummary } from "@ericsanchezok/synergy-plugin/permissions"
 import { computeManifestHash, computePermissionsHash } from "./hash"
 import { computeRisk } from "./risk"
 import { resolveRuntimeMode } from "./runtime-mode"
@@ -133,14 +133,6 @@ export function uiSurfaces(manifest: PluginManifestType): string[] {
   return surfaces
 }
 
-function registryPermissions(capabilities: string[]) {
-  return capabilities.map((cap) => ({
-    key: cap,
-    description: `Requires ${cap}`,
-    risk: cap.includes("write") || cap === "shell" || cap === "secrets" ? "high" : "medium",
-  }))
-}
-
 export function githubEntry(input: {
   tarballPath: string
   repo?: string
@@ -219,7 +211,7 @@ export function githubEntry(input: {
         permissionsHash,
         risk,
         runtimeMode,
-        permissionsSummary: registryPermissions(capabilities),
+        permissionsSummary: registryPermissionSummary(manifest, capabilities),
         tools: (manifest.contributes?.tools ?? []).map((tool) => tool.name),
         uiSurfaces: uiSurfaces(manifest),
         publishedAt: input.publishedAt ?? new Date().toISOString(),

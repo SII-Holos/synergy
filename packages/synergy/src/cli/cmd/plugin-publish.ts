@@ -1,6 +1,7 @@
 import { cmd } from "./cmd"
 import { UI } from "../ui"
 import { PluginManifest, type PluginManifest as PluginManifestType } from "@ericsanchezok/synergy-plugin"
+import { permissionItems, registryPermissionSummary } from "@ericsanchezok/synergy-plugin/permissions"
 import { Global } from "../../global"
 import { baseCapabilities } from "../../plugin/capability"
 import { computeRisk } from "../../plugin/consent/risk"
@@ -123,16 +124,6 @@ function uiSurfaces(manifest: PluginManifestType): string[] {
   return surfaces
 }
 
-function registryPermissions(capabilities: string[]) {
-  return capabilities.map((cap) => ({
-    key: cap,
-    category: cap.split(":")[0] ?? "plugin",
-    severity: cap.includes("write") || cap === "shell" || cap === "secrets" ? "high" : "medium",
-    title: cap,
-    description: `Requires ${cap}`,
-  }))
-}
-
 function copyArtifact(tarballPath: string, id: string, version: string): string {
   const store = path.join(Global.Path.data, "registry", "artifacts", id, version)
   fs.mkdirSync(store, { recursive: true })
@@ -196,7 +187,7 @@ function githubEntry(input: {
     throw new Error("Signature permissions hash does not match manifest capabilities")
   }
 
-  const permissionsSummary = registryPermissions(input.capabilities)
+  const permissionsSummary = registryPermissionSummary(input.manifest, input.capabilities)
   return {
     schemaVersion: 1,
     id: input.manifest.name,
@@ -222,11 +213,7 @@ function githubEntry(input: {
         permissionsHash,
         risk: input.risk,
         runtimeMode: input.runtimeMode,
-        permissionsSummary: permissionsSummary.map((item) => ({
-          key: item.key,
-          description: item.description,
-          risk: item.severity,
-        })),
+        permissionsSummary,
         tools: (input.manifest.contributes?.tools ?? []).map((tool) => tool.name),
         uiSurfaces: uiSurfaces(input.manifest),
         publishedAt: new Date().toISOString(),
@@ -331,7 +318,8 @@ export const PluginPublishCommand = cmd({
         risk,
       })
       const integrity = `sha256-${sha256File(tarballPath)}`
-      const permissionsSummary = registryPermissions(capabilities)
+      const detailedPermissions = permissionItems(manifest, capabilities)
+      const registryPermissions = registryPermissionSummary(manifest, capabilities)
 
       if (registry === "github") {
         const entry = githubEntry({
@@ -376,7 +364,7 @@ export const PluginPublishCommand = cmd({
         risk,
         trustTier: manifest.trust?.requestedTier ?? "sandbox",
         runtimeMode,
-        permissionsSummary,
+        permissionsSummary: detailedPermissions,
         uiSurfaces: uiSurfaces(manifest),
         tools: (manifest.contributes?.tools ?? []).map((tool) => tool.name),
         downloads: 0,
@@ -386,11 +374,7 @@ export const PluginPublishCommand = cmd({
             manifestHash: computeManifestHash(manifest),
             permissionsHash: computePermissionsHash(manifest, capabilities),
             risk,
-            permissionsSummary: permissionsSummary.map((item) => ({
-              key: item.key,
-              description: item.description,
-              risk: item.severity,
-            })),
+            permissionsSummary: registryPermissions,
             publishedAt: Date.now(),
             integrity: artifactIntegrity,
             downloadUrl: `file://${artifactPath}`,

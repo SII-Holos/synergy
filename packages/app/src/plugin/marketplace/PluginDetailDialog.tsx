@@ -9,6 +9,8 @@ import { PermissionRiskBadge } from "../consent/PermissionRiskBadge"
 import { InstallConsentDialog } from "../consent/InstallConsentDialog"
 import { getInstalledVersion, checkUpdateAvailable } from "./install-utils"
 import { MarketplacePluginIcon } from "./MarketplacePluginIcon"
+import { baseCapabilities, computeRisk, registryPermissionSummary } from "@ericsanchezok/synergy-plugin/permissions"
+import type { PluginManifest } from "@ericsanchezok/synergy-plugin"
 import type {
   ApiPluginDetail,
   ApiPluginInfo,
@@ -62,13 +64,9 @@ function runtimeModeFromManifest(manifest: Record<string, unknown> | null | unde
 }
 
 function riskFromManifest(manifest: Record<string, unknown> | null | undefined): Risk {
-  const permissions = asRecord(manifest?.permissions)
-  const tools = asRecord(permissions?.tools)
-  if (tools?.shell === true || tools?.filesystem === "write") return "high"
-  if (tools?.network === true || tools?.filesystem === "read" || tools?.mcp === "spawn" || tools?.mcp === "invoke") {
-    return "medium"
-  }
-  return "low"
+  if (!manifest) return "low"
+  const pluginManifest = manifest as unknown as PluginManifest
+  return computeRisk(baseCapabilities(pluginManifest), pluginManifest)
 }
 
 function toolsFromManifest(manifest: Record<string, unknown> | null | undefined): string[] {
@@ -96,26 +94,9 @@ function uiSurfacesFromManifest(manifest: Record<string, unknown> | null | undef
 }
 
 function permissionsFromManifest(manifest: Record<string, unknown> | null | undefined): RegistryPermissionItem[] {
-  const permissions = asRecord(manifest?.permissions)
-  const tools = asRecord(permissions?.tools)
-  if (!tools) return []
-  const items: RegistryPermissionItem[] = []
-  const add = (key: string, risk: RegistryPermissionItem["risk"]) => {
-    items.push({ key, description: `Requires ${key}`, risk })
-  }
-  if (tools.filesystem === "read") add("filesystem:read", "medium")
-  if (tools.filesystem === "write") {
-    add("filesystem:read", "medium")
-    add("filesystem:write", "high")
-  }
-  if (tools.shell === true) add("shell", "high")
-  if (tools.network === true) add("network", "medium")
-  if (tools.mcp === "invoke") add("mcp:invoke", "medium")
-  if (tools.mcp === "spawn") {
-    add("mcp:invoke", "medium")
-    add("mcp:spawn", "medium")
-  }
-  return items
+  if (!manifest) return []
+  const pluginManifest = manifest as unknown as PluginManifest
+  return registryPermissionSummary(pluginManifest, baseCapabilities(pluginManifest))
 }
 
 function fallbackPluginSummary(input: {
