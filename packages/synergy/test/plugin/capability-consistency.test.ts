@@ -11,6 +11,32 @@ import {
 } from "../../../plugin-kit/src/lib/hash"
 
 describe("plugin capability consistency", () => {
+  test("does not grant plugin config access unless manifest declares it", () => {
+    const manifest = PluginManifest.parse({
+      name: "minimal-plugin",
+      version: "1.0.0",
+      description: "Plugin without config access",
+      permissions: {},
+    })
+
+    expect(baseCapabilities(manifest)).not.toContain("config:read")
+  })
+
+  test("grants plugin config access when manifest declares it", () => {
+    const manifest = PluginManifest.parse({
+      name: "config-plugin",
+      version: "1.0.0",
+      description: "Plugin with config access",
+      permissions: {
+        data: {
+          config: "plugin",
+        },
+      },
+    })
+
+    expect(baseCapabilities(manifest)).toContain("config:read")
+  })
+
   test("runtime and plugin-kit agree on delegated task permissions", () => {
     const manifest = PluginManifest.parse({
       name: "task-plugin",

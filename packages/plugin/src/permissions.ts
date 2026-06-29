@@ -432,7 +432,7 @@ function buildCapabilitySet(
   const ws = tc?.workspace ?? pd?.workspace ?? "none"
   if (ws === "read") caps.add("workspace_data")
 
-  const cfg = tc?.config ?? pd?.config ?? "plugin"
+  const cfg = tc?.config ?? pd?.config ?? "none"
   if (cfg === "global") {
     caps.add("config:read")
     caps.add("config:write")

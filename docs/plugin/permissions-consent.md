@@ -50,7 +50,7 @@ Capabilities come from `plugin.json`:
 }
 ```
 
-Plugin-wide permissions provide defaults. `data.config` can be `none`, `plugin`, or `global`; use `none` for plugins that do not read configuration. `contributes.tools[].capabilities` can narrow or override per-tool capability declarations. Synergy runtime, plugin-kit, and registry verification use the shared `@ericsanchezok/synergy-plugin/permissions` resolver for capability and permission-hash inputs.
+Plugin-wide permissions provide defaults. `data.config` can be `none`, `plugin`, or `global`; it defaults to `none`, so plugins that read Synergy plugin configuration must declare `plugin` or `global` explicitly. `contributes.tools[].capabilities` can narrow or override per-tool capability declarations. Synergy runtime, plugin-kit, and registry verification use the shared `@ericsanchezok/synergy-plugin/permissions` resolver for capability and permission-hash inputs.
 
 ## Runtime Capability Classes
 

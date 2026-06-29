@@ -72,7 +72,7 @@ During `synergy-plugin build`, the runtime entry is bundled to `dist/runtime/ind
 }
 ```
 
-`data.config` may be `none`, `plugin`, or `global`. Use `none` when the plugin does not read Synergy plugin config.
+`data.config` may be `none`, `plugin`, or `global`. It defaults to `none`; declare `plugin` or `global` only when the plugin reads Synergy configuration.
 
 Per-tool capabilities live under `contributes.tools[].capabilities` and are merged with plugin-wide defaults.
 Unknown permission and capability keys are rejected during manifest validation.
