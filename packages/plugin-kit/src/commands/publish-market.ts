@@ -15,7 +15,7 @@ import {
   githubEntry,
   githubRepoSlug,
   normalizeRepoUrl,
-  releaseAssetUrl,
+  resolveReleaseAssetUrls,
   readTarballManifest,
   writeGithubEntry,
 } from "../lib/market-entry"
@@ -97,50 +97,6 @@ function assertMarketplaceNaming(input: { tarballPath: string; manifest: { name:
       `Marketplace publishing requires artifact name "${expectedArtifact}", got "${path.basename(input.tarballPath)}".`,
     )
   }
-}
-
-function renderReleaseUrlTemplate(input: {
-  template: string
-  repo: string
-  version: string
-  filename: string
-}): string {
-  const tag = `v${input.version}`
-  return input.template
-    .replaceAll("{repo}", input.repo.replace(/\/+$/, ""))
-    .replaceAll("{version}", input.version)
-    .replaceAll("{tag}", tag)
-    .replaceAll("{filename}", encodeURIComponent(input.filename))
-}
-
-function resolveReleaseAssetUrls(input: {
-  backend: "github" | "manual"
-  repo: string
-  version: string
-  filename: string
-  downloadUrl?: string
-  signatureUrl?: string
-  urlTemplate?: string
-}): { downloadUrl: string; signatureUrl: string } {
-  const downloadUrl =
-    input.downloadUrl ??
-    (input.urlTemplate
-      ? renderReleaseUrlTemplate({
-          template: input.urlTemplate,
-          repo: input.repo,
-          version: input.version,
-          filename: input.filename,
-        })
-      : input.backend === "github"
-        ? releaseAssetUrl(input.repo, input.version, input.filename)
-        : undefined)
-  const signatureUrl = input.signatureUrl ?? (downloadUrl ? `${downloadUrl}.sig` : undefined)
-  if (!downloadUrl || !signatureUrl) {
-    throw new Error(
-      "Marketplace publishing requires release asset URLs. Use GitHub backend, --release-url-template, or explicit --download-url and --signature-url.",
-    )
-  }
-  return { downloadUrl, signatureUrl }
 }
 
 async function ensureRegistryCheckout(registryDir: string, registryRepo: string) {
@@ -352,13 +308,15 @@ export const PluginPublishMarketCommand = cmd({
         filename: path.basename(tarballPath),
         downloadUrl: args.downloadUrl as string | undefined,
         signatureUrl: args.signatureUrl as string | undefined,
-        urlTemplate: args["release-url-template"] as string | undefined,
+        releaseUrlTemplate: args["release-url-template"] as string | undefined,
       })
       const entry = githubEntry({
         tarballPath,
         repo,
         downloadUrl,
         signatureUrl,
+        releaseBackend,
+        releaseUrlTemplate: args["release-url-template"] as string | undefined,
         changelog: args.changelog as string | undefined,
       })
 

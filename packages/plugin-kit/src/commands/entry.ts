@@ -26,19 +26,19 @@ export const PluginEntryCommand = cmd({
         type: "string",
         describe: "release asset URL for the .sig file",
       })
+      .option("release-backend", {
+        type: "string",
+        choices: ["github", "manual"] as const,
+        default: "github",
+        describe: "release asset URL backend",
+      })
+      .option("release-url-template", {
+        type: "string",
+        describe: "release asset URL template using {repo}, {version}, {tag}, and {filename}",
+      })
       .option("write-entry", {
         type: "string",
         describe: "write or update a marketplace plugins/<id>.json entry",
-      })
-      .option("verified", {
-        type: "boolean",
-        default: false,
-        describe: "mark the entry as verified",
-      })
-      .option("official", {
-        type: "boolean",
-        default: false,
-        describe: "mark the entry as official",
       })
       .option("changelog", {
         type: "string",
@@ -52,8 +52,8 @@ export const PluginEntryCommand = cmd({
         repo: args.repo as string | undefined,
         downloadUrl: args.downloadUrl as string | undefined,
         signatureUrl: args.signatureUrl as string | undefined,
-        verified: Boolean(args.verified),
-        official: Boolean(args.official),
+        releaseBackend: args["release-backend"] as "github" | "manual" | undefined,
+        releaseUrlTemplate: args["release-url-template"] as string | undefined,
         changelog: args.changelog as string | undefined,
       })
       const writeEntry = args.writeEntry as string | undefined

@@ -20,6 +20,7 @@ import { sha256File } from "./crypto"
 import { isManifestIconPath, packageRelativePath, resolveUnder } from "./artifact-assets"
 
 export type GithubRegistryIcon = { type: "lucide"; name: string } | { type: "registry-svg"; path: string }
+export type MarketplaceReleaseBackend = "github" | "manual"
 
 export interface GithubRegistryEntry {
   schemaVersion: 1
@@ -79,6 +80,51 @@ export function releaseAssetUrl(repo: string | undefined, version: string, filen
   return githubReleaseAssetUrl({ repo, version, filename })
 }
 
+export function renderReleaseUrlTemplate(input: {
+  template: string
+  repo: string
+  version: string
+  filename: string
+}): string {
+  const tag = `v${input.version}`
+  return input.template
+    .replaceAll("{repo}", input.repo.replace(/\/+$/, ""))
+    .replaceAll("{version}", input.version)
+    .replaceAll("{tag}", tag)
+    .replaceAll("{filename}", encodeURIComponent(input.filename))
+}
+
+export function resolveReleaseAssetUrls(input: {
+  backend?: MarketplaceReleaseBackend
+  repo: string
+  version: string
+  filename: string
+  downloadUrl?: string
+  signatureUrl?: string
+  releaseUrlTemplate?: string
+}): { downloadUrl: string; signatureUrl: string } {
+  const backend = input.backend ?? "github"
+  const downloadUrl =
+    input.downloadUrl ??
+    (input.releaseUrlTemplate
+      ? renderReleaseUrlTemplate({
+          template: input.releaseUrlTemplate,
+          repo: input.repo,
+          version: input.version,
+          filename: input.filename,
+        })
+      : backend === "github"
+        ? releaseAssetUrl(input.repo, input.version, input.filename)
+        : undefined)
+  const signatureUrl = input.signatureUrl ?? (downloadUrl ? `${downloadUrl}.sig` : undefined)
+  if (!downloadUrl || !signatureUrl) {
+    throw new Error(
+      "Marketplace entry requires release asset URLs. Use GitHub backend, --release-url-template, or explicit --download-url and --signature-url.",
+    )
+  }
+  return { downloadUrl, signatureUrl }
+}
+
 function extractArchive(tarballPath: string): string {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "synergy-plugin-entry-"))
   const result = Bun.spawnSync(["tar", "-xzf", tarballPath, "-C", tmp], { stdout: "pipe", stderr: "pipe" })
@@ -136,8 +182,8 @@ export function githubEntry(input: {
   repo?: string
   downloadUrl?: string
   signatureUrl?: string
-  verified?: boolean
-  official?: boolean
+  releaseBackend?: MarketplaceReleaseBackend
+  releaseUrlTemplate?: string
   changelog?: string
   publishedAt?: string
 }): GithubRegistryEntry {
@@ -151,11 +197,15 @@ export function githubEntry(input: {
   if (!repo) throw new Error("GitHub registry entry requires --repo or manifest.repository")
 
   const filename = path.basename(input.tarballPath)
-  const downloadUrl = input.downloadUrl ?? releaseAssetUrl(repo, manifest.version, filename)
-  const signatureUrl = input.signatureUrl ?? (downloadUrl ? `${downloadUrl}.sig` : undefined)
-  if (!downloadUrl || !signatureUrl) {
-    throw new Error("GitHub registry entry requires --download-url and --signature-url")
-  }
+  const { downloadUrl, signatureUrl } = resolveReleaseAssetUrls({
+    backend: input.releaseBackend,
+    repo,
+    version: manifest.version,
+    filename,
+    downloadUrl: input.downloadUrl,
+    signatureUrl: input.signatureUrl,
+    releaseUrlTemplate: input.releaseUrlTemplate,
+  })
 
   const capabilities = baseCapabilities(manifest)
   const tools = publicToolNames(manifest)
@@ -192,8 +242,8 @@ export function githubEntry(input: {
     ...(manifest.homepage ? { homepage: manifest.homepage } : {}),
     author: parseAuthor(manifest.author),
     ...(icon ? { icon } : {}),
-    verified: Boolean(input.verified),
-    official: Boolean(input.official),
+    verified: false,
+    official: false,
     keywords: [...new Set([...(manifest.keywords ?? []), "synergy-plugin"])].sort(),
     versions: [
       {
@@ -253,7 +303,14 @@ export function writeGithubEntry(filepath: string, next: GithubRegistryEntry): G
       ...existing.versions.filter((version) => version.version !== next.versions[0]?.version),
       ...next.versions,
     ].sort((a, b) => Date.parse(a.publishedAt) - Date.parse(b.publishedAt))
-    merged = { ...existing, ...next, versions, yankedVersions: existing.yankedVersions ?? [] }
+    merged = {
+      ...existing,
+      ...next,
+      verified: existing.verified ?? next.verified,
+      official: existing.official ?? next.official,
+      versions,
+      yankedVersions: existing.yankedVersions ?? [],
+    }
   }
   fs.mkdirSync(path.dirname(filepath), { recursive: true })
   fs.writeFileSync(filepath, JSON.stringify(merged, null, 2) + "\n")
