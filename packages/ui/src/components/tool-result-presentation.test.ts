@@ -103,7 +103,7 @@ describe("tool result presentation", () => {
           display: {
             kind: "media-generation",
             visibility: "media",
-            media: { type: "image", promptField: "prompt" },
+            media: { type: "image" },
           },
         },
       },

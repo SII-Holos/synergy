@@ -53,22 +53,24 @@ Capabilities come from `plugin.json`:
 
 Plugin-wide permissions provide defaults. `data.config` can be `none`, `plugin`, or `global`; use `none` for plugins that do not read configuration. `contributes.tools[].capabilities` can narrow or override per-tool capability declarations. Synergy runtime, plugin-kit, and registry verification use the shared `@ericsanchezok/synergy-plugin/permissions` resolver for capability and permission-hash inputs.
 
-## Gate Mapping
+## Runtime Capability Classes
 
-At execution time Synergy registers plugin tools as `plugin__<pluginId>__<toolName>`. The enforcement gate decomposes manifest capabilities into gate capabilities:
+At execution time Synergy registers plugin tools as `plugin__<pluginId>__<toolName>`. The plugin resolver converts manifest fields into the same Synergy capability classes used by built-in tools:
 
-| Manifest capability | Gate capability         |
-| ------------------- | ----------------------- |
-| `filesystem:read`   | `plugin_file_read`      |
-| `filesystem:write`  | `plugin_file_write`     |
-| `shell`             | `plugin_shell`          |
-| `network`           | `plugin_network`        |
-| `session_data`      | `plugin_session_read`   |
-| `workspace_data`    | `plugin_workspace_read` |
-| `config:read`       | `plugin_config_read`    |
-| `config:write`      | `plugin_config_write`   |
-| `secrets`           | `plugin_secret_read`    |
-| `task`              | `task`                  |
+| Manifest field/value             | Synergy capability class |
+| -------------------------------- | ------------------------ |
+| `tools.filesystem: "read"`       | `file_read`              |
+| `tools.filesystem: "write"`      | `file_read`, `file_write` |
+| `tools.shell: true`              | `shell`                  |
+| `tools.network: true`            | `network_request`        |
+| `tools.mcp: "invoke"`            | `mcp_invoke`             |
+| `tools.mcp: "spawn"`             | `mcp_invoke`, `mcp_spawn` |
+| `tools.task`                     | `task`                   |
+| `data.session: "read"`           | `session_data`           |
+| `data.workspace: "read"`         | `workspace_data`         |
+| `data.config: "plugin"`          | `config:read`            |
+| `data.config: "global"`          | `config:read`, `config:write` |
+| `data.secrets: "own"`            | `secrets`                |
 
 Synergy does not add a coarse “plugin invoke” permission. Plugin tools are approved and profiled by the real Synergy capabilities they declare. Unknown plugin tools are treated as protected opaque operations and require user approval.
 
@@ -99,4 +101,4 @@ Registry installs follow the same path and never pass a hidden consent bypass fl
 
 ## Runtime Bridge Consent
 
-Worker/process plugins use a host bridge for config, secrets, cache, file, shell, network, session, and workspace access. The bridge checks the same approved manifest capabilities. This avoids split semantics such as approving `filesystem:read` in the manifest while requiring a separate bridge-only name.
+Worker/process plugins use a host bridge for config, secrets, cache, file, shell, network, session, workspace, delegated task, and tool invocation access. The bridge authorizes the corresponding Synergy capability class from the approved manifest. This keeps in-process and isolated plugins on the same permission path.

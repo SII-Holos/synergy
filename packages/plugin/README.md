@@ -101,10 +101,6 @@ const mediaDisplay = {
   presentation: "artifact-only",
   media: {
     type: "image",
-    actionLabel: "Create image",
-    pendingTitle: "Generating image",
-    pendingDescription: "Preparing the image...",
-    promptField: "prompt",
     aspectRatio: "1:1",
   },
 } as const
@@ -121,7 +117,7 @@ tool({
 })
 ```
 
-Use `visibility: "media"` for tools whose running and completed success states belong on the media surface. Error states still fall back to normal tool cards.
+Use `visibility: "media"` for tools whose running and completed success states belong on the media surface. Error states still fall back to normal tool cards. Optional media labels are for accessibility and host-specific status surfaces; Synergy does not show tool input parameters as transcript copy.
 
 ## Internal Tools And Delegated Tasks
 
@@ -152,7 +148,7 @@ const plan = await context.task?.run({
     "plugin__my-plugin__private_helper": true,
   },
   visibility: "hidden",
-  timeoutMs: 30_000,
+  timeoutMs: 120_000,
   output: {
     mode: "structured",
     schema: {

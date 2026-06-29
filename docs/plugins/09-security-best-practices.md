@@ -29,7 +29,7 @@ Prefer the narrowest manifest permissions:
 }
 ```
 
-Declare per-tool capabilities in `contributes.tools`. Avoid plugin-wide `filesystem:write`, `shell`, `network`, or `secrets` unless every tool needs them.
+Declare per-tool capabilities in `contributes.tools`. Avoid plugin-wide `tools.filesystem: "write"`, `tools.shell`, `tools.network`, or `data.secrets` unless every tool needs them.
 
 ## Treat Input As Untrusted
 

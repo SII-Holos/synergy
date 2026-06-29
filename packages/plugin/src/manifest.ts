@@ -147,7 +147,6 @@ const ToolDisplayDef = z
         actionLabel: z.string().min(1).max(80).optional(),
         pendingTitle: z.string().min(1).max(120).optional(),
         pendingDescription: z.string().min(1).max(200).optional(),
-        promptField: z.string().min(1).max(64).optional(),
         aspectRatio: z.enum(["1:1", "4:3", "16:9", "auto"]).optional(),
       })
       .strict()

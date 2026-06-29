@@ -21,7 +21,6 @@ export interface ToolMediaDisplay {
   actionLabel?: string
   pendingTitle?: string
   pendingDescription?: string
-  promptField?: string
   aspectRatio?: "1:1" | "4:3" | "16:9" | "auto"
 }
 

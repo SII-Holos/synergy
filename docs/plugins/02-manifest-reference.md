@@ -126,10 +126,6 @@ subagent or another host-controlled flow.
     "presentation": "artifact-only",
     "media": {
       "type": "image",
-      "actionLabel": "Create image",
-      "pendingTitle": "Generating image",
-      "pendingDescription": "Preparing the image...",
-      "promptField": "prompt",
       "aspectRatio": "1:1",
     },
   },
@@ -138,6 +134,7 @@ subagent or another host-controlled flow.
 
 - `kind: "media-generation"` uses Synergy's built-in image/video/audio generation placeholder while the tool is running.
 - `visibility: "media"` hides running and completed success states from the ordinary tool transcript so the media surface owns the experience.
+- `media.actionLabel` and `media.pendingTitle` are optional accessibility/status labels. The host does not display tool arguments as user-visible transcript text.
 - `presentation: "artifact-only"` promotes returned `attachments` into the final answer area.
 - `primaryAttachmentIds` may be returned from `metadata.display` at runtime to choose which attachment ids are promoted.
 - Error states are never hidden.

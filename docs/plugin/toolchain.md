@@ -70,10 +70,6 @@ tool({
     presentation: "artifact-only",
     media: {
       type: "image",
-      actionLabel: "Create image",
-      pendingTitle: "Generating image",
-      pendingDescription: "Preparing the image...",
-      promptField: "prompt",
       aspectRatio: "1:1",
     },
   },
@@ -86,7 +82,7 @@ tool({
 })
 ```
 
-`media-generation` tools use Synergy's built-in placeholder while running. Completed success states are hidden from the normal step list when they return promoted attachments; error states still render as normal tool cards.
+`media-generation` tools use Synergy's built-in placeholder while running. Completed success states are hidden from the normal step list when they return promoted attachments; error states still render as normal tool cards. Optional `media.actionLabel` and `media.pendingTitle` are accessibility labels, not transcript copy. Do not rely on tool input fields such as `prompt` being displayed by the host.
 
 ## Internal Helpers And Planners
 
@@ -104,7 +100,7 @@ await context.task?.run({
     "plugin__my-plugin__private_helper": true,
   },
   visibility: "hidden",
-  timeoutMs: 30_000,
+  timeoutMs: 120_000,
   output: {
     mode: "structured",
     schema: { type: "object" },

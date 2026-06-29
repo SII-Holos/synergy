@@ -34,20 +34,21 @@ Tool calls and hook calls are proxied back to the isolated runtime through `Plug
 
 Worker/process plugins access host services through a bridge. Every bridge method maps to the same manifest capability semantics used by the permission gate:
 
-| Bridge area        | Manifest capability                   |
-| ------------------ | ------------------------------------- |
-| cache              | none; scoped plugin cache only        |
-| config read/write  | `config:read`, `config:write`         |
-| secrets            | `secrets`                             |
-| file read/write    | `filesystem:read`, `filesystem:write` |
-| shell              | `shell`                               |
-| network            | `network`                             |
-| session data       | `session_data`                        |
-| workspace data     | `workspace_data`                      |
-| tool invocation    | target tool capabilities              |
-| permission request | requested Synergy permission          |
+| Bridge area        | Synergy capability class                    |
+| ------------------ | ------------------------------------------- |
+| cache              | none; scoped plugin cache only              |
+| config read/write  | `config:read`, `config:write`               |
+| secrets            | `secrets`                                   |
+| file read/write    | `file_read`, `file_write`                   |
+| shell              | `shell`                                     |
+| network            | `network_request`                           |
+| session data       | `session_data`                              |
+| workspace data     | `workspace_data`                            |
+| delegated task     | `task`                                      |
+| tool invocation    | target tool's Synergy capability classes    |
+| permission request | requested Synergy permission/capability     |
 
-Approval records store manifest capability names under the canonical plugin id. The bridge accepts those manifest names and does not require callers to know gate-internal names such as `plugin_file_read`.
+Approval records store Synergy capability classes under the canonical plugin id. The bridge uses the same approved classes as in-process plugin tools.
 
 ## Development Commands
 
