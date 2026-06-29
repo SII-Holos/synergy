@@ -72,7 +72,7 @@ function formatHookList(category?: HookCategory) {
 
 // ---------------------------------------------------------------------------
 
-async function readManifest(pluginDir: string): Promise<PluginManifest | null> {
+async function readManifest(pluginDir: string): Promise<PluginManifest> {
   return readManifestFile(pluginDir)
 }
 
@@ -94,7 +94,7 @@ interface ContributedSummary {
   mcpServers: number
 }
 
-function getContributed(manifest: PluginManifest | null): ContributedSummary {
+function getContributed(manifest: PluginManifest): ContributedSummary {
   return {
     skills: manifest?.contributes?.skills?.length ?? 0,
     agents: manifest?.contributes?.agents?.length ?? 0,
@@ -103,7 +103,7 @@ function getContributed(manifest: PluginManifest | null): ContributedSummary {
   }
 }
 
-function printContributed(manifest: PluginManifest | null) {
+function printContributed(manifest: PluginManifest) {
   const c = getContributed(manifest)
   const parts: string[] = []
   if (c.skills > 0) parts.push(`${c.skills} skill${c.skills !== 1 ? "s" : ""}`)
@@ -188,6 +188,7 @@ export const PluginAddCommand = cmd({
         try {
           const plugin = await Plugin.add(spec)
           const manifest = await Plugin.manifest(plugin.id)
+          if (!manifest) throw new Error(`Plugin manifest not found: ${plugin.id}`)
 
           spinner.stop(`${UI.Style.TEXT_SUCCESS}✔${UI.Style.TEXT_NORMAL} ${plugin.name ?? plugin.id}`)
           UI.println(`  ${UI.Style.TEXT_DIM}ID:${UI.Style.TEXT_NORMAL} ${plugin.id}`)
@@ -199,7 +200,7 @@ export const PluginAddCommand = cmd({
 
           printContributed(manifest)
 
-          if (manifest?.description) {
+          if (manifest.description) {
             UI.println(`  ${UI.Style.TEXT_DIM}Description:${UI.Style.TEXT_NORMAL} ${manifest.description}`)
           }
         } catch (e: unknown) {
@@ -392,7 +393,7 @@ export const PluginUpdateCommand = cmd({
           let newVersion: string | undefined
           try {
             oldVersion = current.installedVersion
-            newVersion = resolved.manifest?.version ?? readPkgVersion(resolved.pluginDir)
+            newVersion = resolved.manifest.version ?? readPkgVersion(resolved.pluginDir)
             await Plugin.add(spec, { skipConsent: true })
 
             const versionInfo =
@@ -726,12 +727,12 @@ interface ConfiguredPluginPackage {
   pkg: string
   version: string
   pluginDir: string
-  manifest: PluginManifest | null
+  manifest: PluginManifest
   installedVersion?: string
 }
 
 interface ResolvedPluginPackage {
-  manifest: PluginManifest | null
+  manifest: PluginManifest
   pluginDir: string
   pkg: string
   version: string
@@ -744,14 +745,14 @@ async function readConfiguredPluginPackage(spec: string): Promise<ConfiguredPlug
     refresh: false,
   })
   const pluginDir = resolved.pluginDir
-  const manifest = resolved.manifest ?? (await readManifest(pluginDir))
+  const manifest = resolved.manifest
   return {
     spec,
     pkg: resolved.pkg,
     version: resolved.version,
     pluginDir,
     manifest,
-    id: manifest?.name ?? PluginSpec.displayName(spec),
+    id: manifest.name,
     installedVersion: readPkgVersion(pluginDir),
   }
 }
@@ -760,7 +761,7 @@ function pluginMatches(plugin: ConfiguredPluginPackage, target: string): boolean
   return (
     plugin.id === target ||
     plugin.pkg === target ||
-    plugin.manifest?.name === target ||
+    plugin.manifest.name === target ||
     PluginSpec.displayName(plugin.spec) === target
   )
 }

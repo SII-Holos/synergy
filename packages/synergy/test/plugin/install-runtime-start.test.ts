@@ -18,6 +18,7 @@ let mockStartRuntimeError: Error | null = null
 // (so health/supervisor tests can find entries).
 const realSupervisor = await import("../../src/plugin-runtime/supervisor.js")
 const { defaultRuntimeRegistry } = await import("../../src/plugin-runtime/registry.js")
+const { DEFAULT_LIMITS } = await import("../../src/plugin-runtime/health.js")
 
 mock.module("../../src/plugin-runtime/supervisor.js", () => {
   const { startRuntime: _realStart, ...rest } = realSupervisor
@@ -26,7 +27,17 @@ mock.module("../../src/plugin-runtime/supervisor.js", () => {
     startRuntime: mock((pluginId: string, options: Record<string, unknown>) => {
       mockStartRuntimeCalls.push({ pluginId, options })
       if (mockStartRuntimeError) throw mockStartRuntimeError
-      const entry = { pluginId, mode: options.mode ?? "process", state: "ready" as const, restarts: 0, warnings: [] }
+      const entry = {
+        pluginId,
+        mode: options.mode ?? "process",
+        entryPath: options.entryPath,
+        pluginDir: options.pluginDir,
+        source: options.source,
+        state: "ready" as const,
+        restarts: 0,
+        limits: DEFAULT_LIMITS,
+        warnings: [],
+      }
       defaultRuntimeRegistry.set(entry as any)
       return entry
     }),
@@ -65,6 +76,7 @@ describe("autoStartRuntime", () => {
       mode: "process",
       entryPath: "/tmp/test-plugin/index.js",
       pluginDir: "/tmp/test-plugin",
+      source: "local",
     })
 
     expect(mockStartRuntimeCalls).toHaveLength(1)
@@ -82,6 +94,7 @@ describe("autoStartRuntime", () => {
       mode: "worker",
       entryPath: "/tmp/worker-plugin/index.js",
       pluginDir: "/tmp/worker-plugin",
+      source: "local",
     })
 
     expect(mockStartRuntimeCalls).toHaveLength(1)
@@ -97,6 +110,7 @@ describe("autoStartRuntime", () => {
       mode: "in-process",
       entryPath: "/tmp/inproc-plugin/index.js",
       pluginDir: "/tmp/inproc-plugin",
+      source: "local",
     })
 
     expect(mockStartRuntimeCalls).toHaveLength(0)
@@ -111,6 +125,7 @@ describe("autoStartRuntime", () => {
       mode: "process",
       entryPath: "/tmp/failing-plugin/index.js",
       pluginDir: "/tmp/failing-plugin",
+      source: "local",
     })
 
     // The call should have been attempted
@@ -127,6 +142,7 @@ describe("autoStartRuntime", () => {
       mode: "process",
       entryPath: "/tmp/ok-plugin/index.js",
       pluginDir: "/tmp/ok-plugin",
+      source: "local",
     })
 
     expect(result).toBe(true)

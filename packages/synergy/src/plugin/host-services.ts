@@ -173,7 +173,7 @@ export async function invokePluginTool(input: {
 
 async function assertTaskPermission(pluginDir: string, request: ToolTaskRunInput) {
   const manifest = await ManifestReader.read(pluginDir)
-  const task = manifest?.permissions?.tools?.task
+  const task = manifest.permissions?.tools?.task
   if (task === undefined) throw new Error("Plugin manifest does not declare permissions.tools.task")
   if (task === true) return
   if (task === false) throw new Error("Plugin manifest denies permissions.tools.task")
@@ -273,7 +273,7 @@ function normalizeTaskRunInput(input: ToolTaskRunInput): ToolTaskRunInput {
 
 async function defaultPluginRequestTimeoutMs(pluginDir?: string): Promise<number> {
   const config = await Config.current().catch(() => undefined)
-  const manifest = pluginDir ? await ManifestReader.read(pluginDir).catch(() => undefined) : undefined
+  const manifest = pluginDir ? await ManifestReader.read(pluginDir) : undefined
   return resolveRuntimeLimits(config?.pluginRuntimePolicy?.limits, manifest?.runtime?.resources).requestTimeoutMs
 }
 

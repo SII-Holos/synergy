@@ -80,6 +80,7 @@ export const PluginRuntimeRoute = new Hono()
       const pluginId = c.req.param("pluginId")
       const plugin = await Plugin.get(pluginId)
       if (!plugin) return c.json({ message: `Plugin not found: ${pluginId}` }, 404)
+      if (!plugin.source) return c.json({ message: `Plugin source not recorded: ${pluginId}` }, 500)
 
       try {
         await reloadRuntime(pluginId)
@@ -145,6 +146,7 @@ export const PluginRuntimeRoute = new Hono()
       const pluginId = c.req.param("pluginId")
       const plugin = await Plugin.get(pluginId)
       if (!plugin) return c.json({ message: `Plugin not found: ${pluginId}` }, 404)
+      if (!plugin.source) return c.json({ message: `Plugin source not recorded: ${pluginId}` }, 500)
 
       await startRuntime(pluginId, {
         mode: plugin.runtimeMode ?? "in-process",

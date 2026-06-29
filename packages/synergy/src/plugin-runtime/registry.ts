@@ -3,12 +3,21 @@ import type { RuntimeLimits } from "./health.js"
 import type { Worker } from "node:worker_threads"
 import type { ConcurrencyLimiter, LogRateLimiter } from "./resource-limits.js"
 import type { HostToPlugin, RuntimeRequestMessage, RuntimeToolDescriptor } from "./protocol.js"
+import type { PluginSource } from "../plugin/trust.js"
 
 // === Types ===
 
 export type RuntimeMode = "in-process" | "worker" | "process"
 
 export type RuntimeState = "starting" | "ready" | "unhealthy" | "stopped" | "crashed"
+
+const pluginSources = new Set<PluginSource>(["local", "official", "npm", "git", "url", "builtin"])
+
+function normalizePersistedSource(source: string | undefined): PluginSource | undefined {
+  if (!source) return undefined
+  if (pluginSources.has(source as PluginSource)) return source as PluginSource
+  return undefined
+}
 
 export type RuntimeWarningType =
   | "capability_denied"
@@ -32,7 +41,7 @@ export interface RuntimeEntry {
   runtimeDecision?: string
   entryPath?: string
   pluginDir?: string
-  source?: string
+  source?: PluginSource
   serverUrl?: string
   pid?: number
   state: RuntimeState
@@ -161,7 +170,7 @@ export class RuntimeRegistry {
         mode: persisted.mode as RuntimeMode,
         entryPath: persisted.entryPath,
         pluginDir: persisted.pluginDir,
-        source: persisted.source,
+        source: normalizePersistedSource(persisted.source),
         serverUrl: persisted.serverUrl,
         pid: persisted.pid,
         state: persisted.state,

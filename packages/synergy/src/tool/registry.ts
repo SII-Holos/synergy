@@ -131,7 +131,8 @@ export namespace ToolRegistry {
 
     const plugins = await Plugin.perPluginHooks()
     for (const plugin of plugins) {
-      const manifest = await Plugin.manifest(plugin.id).catch(() => null)
+      const manifest = await Plugin.manifest(plugin.id)
+      if (!manifest) continue
       for (const [id, def] of Object.entries(plugin.hooks.tool ?? {})) {
         const exposure = pluginToolExposure(def, id, manifest)
         const display = pluginToolDisplay(def, id, manifest)

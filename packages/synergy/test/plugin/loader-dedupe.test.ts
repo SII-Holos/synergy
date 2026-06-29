@@ -15,7 +15,12 @@ function candidate(configPath: string, pluginId: string): ResolvedLoadCandidate 
       source: "local",
       entryPath: `/tmp/${configPath}/runtime/index.js`,
       pluginDir: `/tmp/${configPath}`,
-      manifest: null,
+      manifest: {
+        name: pluginId,
+        version: "1.0.0",
+        main: "./runtime/index.js",
+        description: "Test plugin",
+      },
     },
   }
 }

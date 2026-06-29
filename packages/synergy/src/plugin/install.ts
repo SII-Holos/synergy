@@ -88,7 +88,7 @@ export async function resolveConfiguredPluginId(spec: string): Promise<string | 
       install: false,
       refresh: false,
     })
-    return resolved.manifest?.name ?? resolved.pkg
+    return resolved.manifest.name
   } catch {
     return null
   }
@@ -114,15 +114,11 @@ export async function add(
     })
     stagedDir = resolved.stagingDir
     const pluginDir = resolved.pluginDir
-    const manifestData: z.infer<typeof PluginManifest> | null = resolved.manifest
-    const canonicalPluginId = manifestData?.name ?? resolved.pkg
-    if (manifestData) {
-      log.info("plugin manifest loaded", { path: spec, manifest: manifestData })
-    } else {
-      log.warn("no valid plugin.json found, skipping manifest check", { path: spec })
-    }
+    const manifestData: z.infer<typeof PluginManifest> = resolved.manifest
+    const canonicalPluginId = manifestData.name
+    log.info("plugin manifest loaded", { path: spec, manifest: manifestData })
 
-    const synergyEngine = manifestData?.engines?.synergy?.trim()
+    const synergyEngine = manifestData.engines?.synergy?.trim()
     if (synergyEngine && Installation.VERSION !== "local") {
       const currentVersion = Installation.VERSION
       if (!satisfiesSynergyEngine(currentVersion, synergyEngine)) {
@@ -154,100 +150,98 @@ export async function add(
     const source: PluginSource = resolved.source
     const devMode = Installation.CHANNEL === "local"
 
-    if (manifestData) {
-      const capabilities = baseCapabilities(manifestData)
-      risk = pluginInstallRisk(manifestData)
-      permissionsHash = computePermissionsHash(manifestData, capabilities)
-      manifestHash = computeManifestHash(manifestData)
+    const capabilities = baseCapabilities(manifestData)
+    risk = pluginInstallRisk(manifestData)
+    permissionsHash = computePermissionsHash(manifestData, capabilities)
+    manifestHash = computeManifestHash(manifestData)
 
-      // Verify signature against computed hashes
-      if (sigMeta && permissionsHash && manifestHash) {
-        const valid = await Signature.verifySignatureFromHashes(sigMeta, manifestHash, permissionsHash)
-        if (valid) {
-          log.info("plugin signature verified", { plugin: spec, signer: sigMeta.signer.slice(0, 16) + "..." })
-        } else {
-          log.warn("plugin signature verification failed", {
-            plugin: spec,
-            signer: sigMeta.signer.slice(0, 16) + "...",
-          })
-          sigMeta = null
-        }
+    // Verify signature against computed hashes
+    if (sigMeta && permissionsHash && manifestHash) {
+      const valid = await Signature.verifySignatureFromHashes(sigMeta, manifestHash, permissionsHash)
+      if (valid) {
+        log.info("plugin signature verified", { plugin: spec, signer: sigMeta.signer.slice(0, 16) + "..." })
+      } else {
+        log.warn("plugin signature verification failed", {
+          plugin: spec,
+          signer: sigMeta.signer.slice(0, 16) + "...",
+        })
+        sigMeta = null
       }
-
-      const trust = decideTrust({ source, userTrusted: false, verifiedIntegrity: sigMeta != null, devMode })
-      const policy: PluginApprovalPolicy = config.pluginApprovalPolicy ?? PLUGIN_APPROVAL_POLICY_DEFAULTS
-
-      // Compute runtime mode for policy evaluation
-      const runtimeModeForConsent = resolveRuntimeMode({
-        source,
-        manifestMode: manifestData?.runtime?.mode,
-        devMode,
-        userTrusted: false,
-        risk,
-        policy: config.pluginRuntimePolicy,
-      })
-
-      // Evaluate policy — may deny or auto-approve before consent
-      const decision = evaluatePolicy({
-        source,
-        verified: sigMeta != null,
-        risk,
-        runtimeMode: runtimeModeForConsent,
-        trustTier: trust.tier,
-        signed: sigMeta != null,
-        policy,
-      })
-
-      if (!decision.allowed) {
-        throw new Error(`Plugin ${spec} installation denied by policy: ${decision.reason}`)
-      }
-
-      const autoApprove =
-        decision.autoApproved ||
-        opts.skipConsent === true ||
-        (devMode && source === "local") ||
-        trust.tier === "trusted-import"
-
-      if (!autoApprove) {
-        // Check for existing approval
-        const existingApproval = await getApproval(canonicalPluginId)
-        if (existingApproval && verifyApproval(existingApproval, manifestData, capabilities)) {
-          log.info("plugin consent: existing approval matches", { plugin: spec })
-        } else {
-          throw new Error(
-            `Plugin ${spec} requires approval before installation. ` +
-              `Use \`synergy plugin approve ${spec}\` or the consent API first.`,
-          )
-        }
-      }
-
-      const approvedBy: PluginApprovalRecord["approvedBy"] =
-        opts.skipConsent === true
-          ? "policy"
-          : devMode && source === "local"
-            ? "policy"
-            : trust.tier === "trusted-import"
-              ? "builtin"
-              : "user"
-      approvalRecord = {
-        pluginId: canonicalPluginId,
-        source,
-        version: manifestData.version ?? version,
-        manifestHash,
-        permissionsHash,
-        approvedAt: Date.now(),
-        approvedBy,
-        trustTier: trust.tier,
-        approvedCapabilities: capabilities,
-        approvedNetworkDomains: manifestData.permissions?.network?.connectDomains ?? [],
-        approvedUISurfaces: [],
-        risk,
-      }
-      log.info("plugin consent: approval recorded", { plugin: spec, risk, approvedBy })
     }
 
+    const trust = decideTrust({ source, userTrusted: false, verifiedIntegrity: sigMeta != null, devMode })
+    const policy: PluginApprovalPolicy = config.pluginApprovalPolicy ?? PLUGIN_APPROVAL_POLICY_DEFAULTS
+
+    // Compute runtime mode for policy evaluation
+    const runtimeModeForConsent = resolveRuntimeMode({
+      source,
+      manifestMode: manifestData.runtime?.mode,
+      devMode,
+      userTrusted: false,
+      risk,
+      policy: config.pluginRuntimePolicy,
+    })
+
+    // Evaluate policy — may deny or auto-approve before consent
+    const decision = evaluatePolicy({
+      source,
+      verified: sigMeta != null,
+      risk,
+      runtimeMode: runtimeModeForConsent,
+      trustTier: trust.tier,
+      signed: sigMeta != null,
+      policy,
+    })
+
+    if (!decision.allowed) {
+      throw new Error(`Plugin ${spec} installation denied by policy: ${decision.reason}`)
+    }
+
+    const autoApprove =
+      decision.autoApproved ||
+      opts.skipConsent === true ||
+      (devMode && source === "local") ||
+      trust.tier === "trusted-import"
+
+    if (!autoApprove) {
+      // Check for existing approval
+      const existingApproval = await getApproval(canonicalPluginId)
+      if (existingApproval && verifyApproval(existingApproval, manifestData, capabilities)) {
+        log.info("plugin consent: existing approval matches", { plugin: spec })
+      } else {
+        throw new Error(
+          `Plugin ${spec} requires approval before installation. ` +
+            `Use \`synergy plugin approve ${spec}\` or the consent API first.`,
+        )
+      }
+    }
+
+    const approvedBy: PluginApprovalRecord["approvedBy"] =
+      opts.skipConsent === true
+        ? "policy"
+        : devMode && source === "local"
+          ? "policy"
+          : trust.tier === "trusted-import"
+            ? "builtin"
+            : "user"
+    approvalRecord = {
+      pluginId: canonicalPluginId,
+      source,
+      version: manifestData.version ?? version,
+      manifestHash,
+      permissionsHash,
+      approvedAt: Date.now(),
+      approvedBy,
+      trustTier: trust.tier,
+      approvedCapabilities: capabilities,
+      approvedNetworkDomains: manifestData.permissions?.network?.connectDomains ?? [],
+      approvedUISurfaces: [],
+      risk,
+    }
+    log.info("plugin consent: approval recorded", { plugin: spec, risk, approvedBy })
+
     // Install declared dependencies
-    if (manifestData?.dependencies && Object.keys(manifestData.dependencies).length > 0) {
+    if (manifestData.dependencies && Object.keys(manifestData.dependencies).length > 0) {
       for (const [depName, depVersion] of Object.entries(manifestData.dependencies)) {
         await BunProc.install(depName, depVersion)
         log.info("plugin dependency installed", { plugin: spec, dependency: depName, version: depVersion })
@@ -257,7 +251,7 @@ export async function add(
     const integrity = await Lockfile.computeIntegrity(resolved.entryPath)
     const runtimeMode = resolveRuntimeMode({
       source,
-      manifestMode: manifestData?.runtime?.mode,
+      manifestMode: manifestData.runtime?.mode,
       devMode,
       userTrusted: false,
       risk,
@@ -265,14 +259,14 @@ export async function add(
     })
     const lockEntry = {
       spec,
-      version: manifestData?.version ?? version,
+      version: manifestData.version ?? version,
       resolved: resolved.entryPath,
       ...(integrity ? { integrity } : {}),
       ...(permissionsHash ? { permissionsHash } : {}),
       ...(manifestHash ? { manifestHash } : {}),
       ...(sigMeta ? { signature: Signature.toLockfileSignature(sigMeta) } : {}),
       runtimeMode,
-      ...(manifestData ? { approvalId: canonicalPluginId } : {}),
+      approvalId: canonicalPluginId,
     } satisfies import("./lockfile-schema").PluginLockEntry
 
     const plugin = await PluginInstallationTransaction.upsert({
@@ -357,7 +351,7 @@ export async function remove(pluginId: string, opts: { autoReload?: boolean } = 
 export interface AutoStartRuntimeInput {
   pluginId: string
   mode: string
-  source?: import("../plugin/trust").PluginSource
+  source: import("../plugin/trust").PluginSource
   entryPath: string
   pluginDir: string
 }

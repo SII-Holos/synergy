@@ -125,12 +125,13 @@ export namespace ToolResolver {
     const caps: Record<string, { capabilities: string[]; risk: "low" | "medium" | "high" }> = {}
     const approvals: Record<string, PluginApprovalRecord> = {}
     for (const plugin of await Plugin.getLoaded()) {
-      const manifest = await Plugin.manifest(plugin.id).catch(() => null)
+      const manifest = await Plugin.manifest(plugin.id)
+      if (!manifest) continue
       for (const toolId of Object.keys(plugin.hooks.tool ?? {})) {
         const capabilities = toolCapabilities(manifest, toolId)
         caps[PluginToolId.format(plugin.id, toolId)] = {
           capabilities,
-          risk: manifest ? computeRisk(capabilities, manifest) : "low",
+          risk: computeRisk(capabilities, manifest),
         }
       }
       const approval = await getApproval(plugin.id)

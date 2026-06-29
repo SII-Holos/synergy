@@ -9,21 +9,24 @@ const log = Log.create({ service: "plugin.manifest-reader" })
  * Read and validate plugin.json from an installed plugin directory.
  *
  * Returns the parsed manifest if valid.
- * Returns null if plugin.json doesn't exist (legacy plugins without a manifest).
- * Throws if plugin.json exists but is malformed.
+ * Throws if plugin.json is missing, empty, or malformed.
  */
-export async function read(pluginDir: string): Promise<PluginManifestType | null> {
+export async function read(pluginDir: string): Promise<PluginManifestType> {
   const manifestPath = path.join(pluginDir, "plugin.json")
 
   let text: string
   try {
     text = await Bun.file(manifestPath).text()
   } catch (err: any) {
-    if (err.code === "ENOENT") return null
+    if (err.code === "ENOENT") {
+      throw new Error(`Plugin manifest not found at ${manifestPath}. Synergy plugins must include plugin.json.`)
+    }
     throw err
   }
 
-  if (!text.trim()) return null
+  if (!text.trim()) {
+    throw new Error(`Plugin manifest is empty at ${manifestPath}. Synergy plugins must include a valid plugin.json.`)
+  }
 
   let raw: unknown
   try {

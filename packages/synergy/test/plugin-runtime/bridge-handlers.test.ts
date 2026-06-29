@@ -38,6 +38,24 @@ describe("bridge-handlers", () => {
     tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-bridge-test-"))
     pluginDir = path.join(tmpDir, "plugin")
     await fs.mkdir(pluginDir, { recursive: true })
+    await Bun.write(
+      path.join(pluginDir, "plugin.json"),
+      JSON.stringify(
+        {
+          name: "test-plugin",
+          version: "1.0.0",
+          description: "Bridge test plugin",
+          main: "./runtime/index.js",
+          runtime: {
+            resources: {
+              requestTimeoutMs: 120_000,
+            },
+          },
+        },
+        null,
+        2,
+      ),
+    )
   })
 
   afterAll(async () => {
@@ -164,14 +182,12 @@ describe("bridge-handlers", () => {
 
   // ── config.get / config.set ───────────────────────────────────
   describe("config", () => {
-    test("config.get returns empty by default", async () => {
-      const result = await call("config.get")
-      expect(result).toEqual({})
+    test("config.get surfaces missing scope context", async () => {
+      await expect(call("config.get")).rejects.toThrow("No context found for scope")
     })
 
-    test("config.get with key returns undefined by default", async () => {
-      const result = await call("config.get", { key: "nonexistent" })
-      expect(result).toBeUndefined()
+    test("config.get with key surfaces missing scope context", async () => {
+      await expect(call("config.get", { key: "nonexistent" })).rejects.toThrow("No context found for scope")
     })
   })
 

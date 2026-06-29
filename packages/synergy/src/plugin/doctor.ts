@@ -23,7 +23,7 @@ async function resolvePluginIdForSpec(spec: string, lockBySpec: Map<string, stri
   if (locked) return locked
   try {
     const resolved = await resolvePluginSpec(spec, { install: false, refresh: false })
-    return resolved.manifest?.name ?? resolved.pkg
+    return resolved.manifest.name
   } catch {
     return readLoosePluginIdForSpec(spec)
   }

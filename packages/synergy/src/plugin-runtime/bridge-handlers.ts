@@ -52,26 +52,16 @@ export async function executeBridgeMethod(input: BridgeHandlerInput): Promise<un
     // ── config ───────────────────────────────────────────────
     case "config.get": {
       await authorizeBridgeCapability(bridgeContext, "config:read", "config.get")
-      try {
-        const accessor = createConfigAccessor(pluginId)
-        const full = await accessor.get()
-        const key = (params as any)?.key
-        return key !== undefined ? full[key] : full
-      } catch {
-        // Config inaccessible (e.g. no scope context in isolated test)
-        const key = (params as any)?.key
-        return key !== undefined ? undefined : {}
-      }
+      const accessor = createConfigAccessor(pluginId)
+      const full = await accessor.get()
+      const key = (params as any)?.key
+      return key !== undefined ? full[key] : full
     }
     case "config.set": {
       await authorizeBridgeCapability(bridgeContext, "config:write", "config.set")
-      try {
-        const accessor = createConfigAccessor(pluginId)
-        const { key, value } = params as any
-        await accessor.set({ [key]: value })
-      } catch {
-        // Config inaccessible — silently no-op
-      }
+      const accessor = createConfigAccessor(pluginId)
+      const { key, value } = params as any
+      await accessor.set({ [key]: value })
       return undefined
     }
 
@@ -324,7 +314,7 @@ function stripBridgeContext(params: unknown): unknown {
 async function runtimeLimitsForPlugin(pluginDir: string) {
   const [config, manifest] = await Promise.all([
     Config.current().catch(() => undefined),
-    ManifestReader.read(pluginDir).catch(() => undefined),
+    ManifestReader.read(pluginDir),
   ])
   return resolveRuntimeLimits(config?.pluginRuntimePolicy?.limits, manifest?.runtime?.resources)
 }

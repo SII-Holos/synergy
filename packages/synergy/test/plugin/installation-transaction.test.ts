@@ -14,7 +14,12 @@ function resolved(spec: string, version: string): ResolvedPluginSpec {
     source: "local",
     pluginDir: `/tmp/${version}`,
     entryPath: `/tmp/${version}/runtime/index.js`,
-    manifest: null,
+    manifest: {
+      name: "demo-plugin",
+      version,
+      main: "./runtime/index.js",
+      description: "Demo plugin",
+    },
   }
 }
 

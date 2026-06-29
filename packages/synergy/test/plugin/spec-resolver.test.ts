@@ -38,7 +38,7 @@ describe("resolvePluginSpec", () => {
     expect(resolved.version).toBe("0.1.0")
     expect(resolved.pluginDir).toBe(tmp.path)
     expect(resolved.entryPath).toBe(path.join(tmp.path, "src", "index.ts"))
-    expect(resolved.manifest?.name).toBe("resolver-plugin")
+    expect(resolved.manifest.name).toBe("resolver-plugin")
   })
 
   test("resolves file:// entry files without losing the package root", async () => {
@@ -49,7 +49,7 @@ describe("resolvePluginSpec", () => {
 
     expect(resolved.pluginDir).toBe(tmp.path)
     expect(resolved.entryPath).toBe(entryPath)
-    expect(resolved.manifest?.name).toBe("entry-file-plugin")
+    expect(resolved.manifest.name).toBe("entry-file-plugin")
   })
 
   test("resolves packed plugin archives as local installable specs", async () => {
@@ -63,8 +63,24 @@ describe("resolvePluginSpec", () => {
 
     expect(resolved.source).toBe("local")
     expect(resolved.pkg).toBe("archive-plugin")
-    expect(resolved.manifest?.name).toBe("archive-plugin")
+    expect(resolved.manifest.name).toBe("archive-plugin")
     expect(resolved.entryPath.endsWith(path.join("src", "index.ts"))).toBe(true)
+  })
+
+  test("rejects plugin directories without plugin.json", async () => {
+    await using tmp = await tmpdir({
+      init: async (dir) => {
+        await fs.mkdir(path.join(dir, "src"), { recursive: true })
+        await Bun.write(
+          path.join(dir, "src", "index.ts"),
+          `export default { id: "missing-manifest", async init() { return {} } }\n`,
+        )
+      },
+    })
+
+    await expect(resolvePluginSpec(pathToFileURL(tmp.path).href, { install: false })).rejects.toThrow(
+      "Plugin manifest not found",
+    )
   })
 })
 

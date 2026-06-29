@@ -21,7 +21,6 @@ import { writeRuntimeState, readRuntimeState } from "./state-persist.js"
 import { createBridgeEnforcementHandler } from "./bridge-enforcement.js"
 import { executeBridgeMethod } from "./bridge-handlers.js"
 import { getApproval } from "../plugin/consent/approval-store.js"
-import type { PluginManifest as PluginManifestType } from "@ericsanchezok/synergy-plugin"
 import * as ManifestReader from "../plugin/manifest-reader"
 import { pluginInstallRisk } from "@ericsanchezok/synergy-plugin/permissions"
 import { PluginLogBuffer } from "./logs.js"
@@ -82,7 +81,7 @@ function runtimeMatchesRequest(
     mode: RuntimeMode
     entryPath: string
     pluginDir: string
-    source?: PluginSource
+    source: PluginSource
     serverUrl: string
     limits: RuntimeLimits
   },
@@ -91,7 +90,7 @@ function runtimeMatchesRequest(
     entry.mode === request.mode &&
     normalizeRuntimePath(entry.entryPath) === normalizeRuntimePath(request.entryPath) &&
     normalizeRuntimePath(entry.pluginDir) === normalizeRuntimePath(request.pluginDir) &&
-    (entry.source ?? "npm") === (request.source ?? "npm") &&
+    entry.source === request.source &&
     (entry.serverUrl ?? DEFAULT_SERVER_URL) === request.serverUrl &&
     sameRuntimeLimits(entry.limits, request.limits)
   )
@@ -113,7 +112,7 @@ const defaultPersistence: RuntimeStatePersistence = {
 
 export interface StartRuntimeOptions {
   mode?: RuntimeMode
-  source?: PluginSource
+  source: PluginSource
   entryPath: string
   pluginDir: string
   scope?: import("../scope/types.js").Info
@@ -370,15 +369,10 @@ export class PluginRuntimeSupervisor {
   async start(pluginId: string, options: StartRuntimeOptions): Promise<RuntimeEntry> {
     const existing = this.#registry.get(pluginId)
     // Read manifest for runtime preferences (mode, resources)
-    let manifest: PluginManifestType | null = null
-    try {
-      manifest = await ManifestReader.read(options.pluginDir)
-    } catch {
-      // Manifest may be missing or invalid; fall through with defaults
-    }
+    const manifest = await ManifestReader.read(options.pluginDir)
     const config = await Config.current().catch(() => undefined)
-    const source = options.source ?? "npm"
-    const risk = manifest ? pluginInstallRisk(manifest) : "low"
+    const source = options.source
+    const risk = pluginInstallRisk(manifest)
     const userTrusted = isTrustedPluginSource(source)
 
     // Resolve runtime mode: caller wins, then resolveRuntimeMode, then default
@@ -390,7 +384,7 @@ export class PluginRuntimeSupervisor {
     } else {
       resolvedMode = resolveRuntimeMode({
         source,
-        manifestMode: manifest?.runtime?.mode,
+        manifestMode: manifest.runtime?.mode,
         devMode: false,
         userTrusted,
         risk,
@@ -403,7 +397,7 @@ export class PluginRuntimeSupervisor {
     resolvedMode = launchMode.mode
     runtimeDecision = launchMode.runtimeDecision
 
-    const manifestResources = manifest?.runtime?.resources
+    const manifestResources = manifest.runtime?.resources
     const limits = resolveRuntimeLimits(config?.pluginRuntimePolicy?.limits, manifestResources)
     const serverUrl = options.serverUrl ?? DEFAULT_SERVER_URL
 
@@ -837,12 +831,16 @@ export class PluginRuntimeSupervisor {
 
     log.info("reloading plugin", { pluginId })
     await this.stop(pluginId, true)
+    const source = options?.source ?? entry.source
+    if (!source) {
+      throw new Error(`Cannot reload plugin runtime without a source: ${pluginId}`)
+    }
 
     return this.start(pluginId, {
       mode: options?.mode ?? entry.mode,
       entryPath: options?.entryPath ?? entry.entryPath ?? "",
       pluginDir: options?.pluginDir ?? entry.pluginDir ?? "",
-      source: options?.source ?? (entry.source as StartRuntimeOptions["source"] | undefined),
+      source,
       scope: options?.scope,
       serverUrl: options?.serverUrl ?? entry.serverUrl,
     })

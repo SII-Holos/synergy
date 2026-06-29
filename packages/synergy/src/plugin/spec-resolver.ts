@@ -16,7 +16,7 @@ export interface ResolvedPluginSpec {
   source: PluginSource
   entryPath: string
   pluginDir: string
-  manifest: PluginManifestType | null
+  manifest: PluginManifestType
   cached?: boolean
   stagingDir?: string
   finalPluginDir?: string
@@ -67,11 +67,17 @@ export function findPackageRoot(entryPath: string): string {
   return stat?.isDirectory() ? entryPath : path.dirname(entryPath)
 }
 
-export async function readPluginManifest(pluginDir: string): Promise<PluginManifestType | null> {
+export async function readPluginManifest(pluginDir: string): Promise<PluginManifestType> {
   const manifestPath = path.join(pluginDir, "plugin.json")
   const file = Bun.file(manifestPath)
-  if (!(await file.exists().catch(() => false))) return null
-  const parsed = PluginManifest.parse(JSON.parse(await file.text()))
+  if (!(await file.exists().catch(() => false))) {
+    throw new Error(`Plugin manifest not found at ${manifestPath}. Synergy plugins must include plugin.json.`)
+  }
+  const text = await file.text()
+  if (!text.trim()) {
+    throw new Error(`Plugin manifest is empty at ${manifestPath}. Synergy plugins must include a valid plugin.json.`)
+  }
+  const parsed = PluginManifest.parse(JSON.parse(text))
   return parsed as PluginManifestType
 }
 
@@ -89,9 +95,9 @@ function resolvePackageEntry(pluginDir: string): string {
   }
 }
 
-export function resolveEntryFromPluginDir(pluginDir: string, manifest: PluginManifestType | null): string {
+export function resolveEntryFromPluginDir(pluginDir: string, manifest: PluginManifestType): string {
   const candidates = [
-    manifest?.main ? path.resolve(pluginDir, manifest.main) : undefined,
+    manifest.main ? path.resolve(pluginDir, manifest.main) : undefined,
     path.join(pluginDir, "dist", "runtime", "index.js"),
     path.join(pluginDir, "runtime", "index.js"),
     resolvePackageEntry(pluginDir),
@@ -137,11 +143,11 @@ async function resolveLocalSpec(spec: string, options: ResolvePluginSpecOptions)
     fs.existsSync(absolute) && fs.statSync(absolute).isFile() && !archive
       ? absolute
       : resolveEntryFromPluginDir(pluginDir, manifest)
-  const pkg = manifest?.name ?? path.basename(pluginDir)
+  const pkg = manifest.name
   return {
     spec,
     pkg,
-    version: manifest?.version ?? "0.0.0",
+    version: manifest.version,
     source: "local",
     entryPath,
     pluginDir,
@@ -170,7 +176,7 @@ export async function resolvePluginSpec(
       source === "npm" ? pkg : BunProc.resolvePkgName(pkg),
     )
     const pluginDir = findPackageRoot(resolvedDir)
-    const manifest = await readPluginManifest(pluginDir).catch(() => null)
+    const manifest = await readPluginManifest(pluginDir)
     return {
       spec,
       pkg,
@@ -187,7 +193,7 @@ export async function resolvePluginSpec(
   }
   const installed = await BunProc.install(pkg, version)
   const pluginDir = findPackageRoot(installed.entryPath)
-  const manifest = await readPluginManifest(pluginDir).catch(() => null)
+  const manifest = await readPluginManifest(pluginDir)
   return {
     spec,
     pkg,
@@ -207,14 +213,14 @@ export function importUrlForEntry(entryPath: string, reloadVersion?: number): st
 
 export function assertCanonicalPluginIdentity(input: {
   spec?: string
-  manifest: PluginManifestType | null
+  manifest: PluginManifestType
   descriptor: PluginDescriptor
 }) {
   const { manifest, descriptor, spec } = input
   if (!PluginId.isValid(descriptor.id)) {
     throw new Error(`Plugin descriptor id "${descriptor.id}" is invalid`)
   }
-  if (manifest && manifest.name !== descriptor.id) {
+  if (manifest.name !== descriptor.id) {
     const suffix = spec ? ` for ${spec}` : ""
     throw new Error(
       `Plugin identity mismatch${suffix}: plugin.json name "${manifest.name}" must match PluginDescriptor.id "${descriptor.id}"`,

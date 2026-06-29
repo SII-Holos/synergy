@@ -185,7 +185,7 @@ export const state = ScopedState.create(async (): Promise<LoaderState> => {
       name,
       showInstallUI,
       resolved,
-      pluginId: resolved.manifest?.name ?? resolved.pkg,
+      pluginId: resolved.manifest.name,
     })
   }
 
@@ -213,10 +213,10 @@ export const state = ScopedState.create(async (): Promise<LoaderState> => {
       }
       loadedPluginIds.add(pluginId)
       const showLoadedUI = !printedPluginIds.has(pluginId)
-      const risk = resolved.manifest ? pluginInstallRisk(resolved.manifest) : "low"
+      const risk = pluginInstallRisk(resolved.manifest)
       const runtimeMode = resolveRuntimeMode({
         source: resolved.source,
-        manifestMode: resolved.manifest?.runtime?.mode,
+        manifestMode: resolved.manifest.runtime?.mode,
         devMode: Installation.CHANNEL === "local",
         userTrusted: isTrustedPluginSource(resolved.source),
         risk,

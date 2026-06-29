@@ -103,15 +103,15 @@ const UIContribution = z
 
 const PluginStatus = PluginStatusSchema
 
-function apiPluginDetail(loadedPlugin: Plugin.LoadedPlugin, manifest: PluginManifestType | null) {
+function apiPluginDetail(loadedPlugin: Plugin.LoadedPlugin, manifest: PluginManifestType) {
   return {
     pluginId: loadedPlugin.id,
-    name: loadedPlugin.name ?? manifest?.name,
-    version: manifest?.version ?? "0.0.0",
+    name: loadedPlugin.name ?? manifest.name,
+    version: manifest.version,
     trustTier: getPluginTrust(loadedPlugin.pluginDir).tier,
-    hasManifest: manifest !== null,
+    hasManifest: true,
     pluginDir: loadedPlugin.pluginDir,
-    manifest: manifest ?? null,
+    manifest,
     cliCommands: loadedPlugin.cli ? Object.keys(loadedPlugin.cli) : [],
     skills: loadedPlugin.skills ? loadedPlugin.skills.map((s: any) => s.name) : [],
     agents: loadedPlugin.agents ? Object.keys(loadedPlugin.agents) : [],
@@ -119,11 +119,7 @@ function apiPluginDetail(loadedPlugin: Plugin.LoadedPlugin, manifest: PluginMani
 }
 
 async function manifestFor(pluginId: string): Promise<PluginManifestType | null> {
-  try {
-    return await Plugin.manifest(pluginId)
-  } catch {
-    return null
-  }
+  return await Plugin.manifest(pluginId)
 }
 
 async function installOfficialRegistryPlugin(id: string, version: string) {
@@ -156,6 +152,7 @@ async function installOfficialRegistryPlugin(id: string, version: string) {
     skipConsent: true,
   })
   const manifest = await manifestFor(loadedPlugin.id)
+  if (!manifest) throw new Error(`Plugin manifest not found after install: ${loadedPlugin.id}`)
   return { type: "installed" as const, body: apiPluginDetail(loadedPlugin, manifest) }
 }
 
@@ -184,23 +181,19 @@ export const PluginRoute = new Hono()
       const loaded = await Plugin.getLoaded()
       const contributions = await Promise.all(
         loaded.map(async (p) => {
-          let manifest: PluginManifestType | null = null
-          try {
-            manifest = await Plugin.manifest(p.id)
-          } catch {
-            // plugin has no valid manifest — omit manifest fields
-          }
+          const manifest = await Plugin.manifest(p.id)
+          if (!manifest) return null
           return {
             pluginId: p.id,
-            name: p.name ?? manifest?.name,
-            version: manifest?.version ?? "0.0.0",
+            name: p.name ?? manifest.name,
+            version: manifest.version,
             trustTier: getPluginTrust(p.pluginDir).tier,
-            ui: manifest?.contributes?.ui ?? null,
-            permissions: manifest?.permissions ?? null,
+            ui: manifest.contributes?.ui ?? null,
+            permissions: manifest.permissions ?? null,
           }
         }),
       )
-      return c.json(contributions)
+      return c.json(contributions.filter(Boolean))
     },
   )
 
@@ -288,8 +281,9 @@ export const PluginRoute = new Hono()
       if (!plugin) return c.json({ message: `Plugin not found: ${pluginId}` }, 404)
 
       const manifest = await Plugin.manifest(pluginId)
-      const ui = manifest?.contributes?.ui
-      const version = manifest?.version ?? "0.0.0"
+      if (!manifest) return c.json({ message: `Plugin manifest not found: ${pluginId}` }, 404)
+      const ui = manifest.contributes?.ui
+      const version = manifest.version
 
       // Resolve entry: panel-level sandboxEntry > ui.entry > default
       const panels = [...(ui?.workspacePanels ?? []), ...(ui?.globalPanels ?? [])]
@@ -526,34 +520,24 @@ export const ApiPluginRoute = new Hono()
     }),
     async (c) => {
       const loaded = await Plugin.getLoaded()
-      const infos = loaded.map((p) => ({
-        pluginId: p.id,
-        name: p.name,
-        version: undefined as string | undefined,
-        trustTier: getPluginTrust(p.pluginDir).tier,
-        hasManifest: false,
-        pluginDir: p.pluginDir,
-        cliCommands: p.cli ? Object.keys(p.cli) : [],
-        skillCount: p.skills?.length ?? 0,
-        agentCount: p.agents ? Object.keys(p.agents).length : 0,
-      }))
-      // Enrich with manifest version and hasManifest
-      await Promise.all(
-        infos.map(async (info) => {
-          try {
-            const m = await Plugin.manifest(info.pluginId)
-            if (m) {
-              info.version = m.version
-              info.hasManifest = true
-            } else {
-              info.version = "0.0.0"
-            }
-          } catch {
-            info.version = "0.0.0"
+      const infos = await Promise.all(
+        loaded.map(async (p) => {
+          const manifest = await Plugin.manifest(p.id)
+          if (!manifest) return null
+          return {
+            pluginId: p.id,
+            name: p.name ?? manifest.name,
+            version: manifest.version,
+            trustTier: getPluginTrust(p.pluginDir).tier,
+            hasManifest: true,
+            pluginDir: p.pluginDir,
+            cliCommands: p.cli ? Object.keys(p.cli) : [],
+            skillCount: p.skills?.length ?? 0,
+            agentCount: p.agents ? Object.keys(p.agents).length : 0,
           }
         }),
       )
-      return c.json(infos)
+      return c.json(infos.filter(Boolean))
     },
   )
 
@@ -579,21 +563,17 @@ export const ApiPluginRoute = new Hono()
       const plugin = await Plugin.get(pluginId)
       if (!plugin) return c.json({ message: `Plugin not found: ${pluginId}` }, 404)
 
-      let manifest: PluginManifestType | null = null
-      try {
-        manifest = await Plugin.manifest(pluginId)
-      } catch {
-        // no-op
-      }
+      const manifest = await Plugin.manifest(pluginId)
+      if (!manifest) return c.json({ message: `Plugin manifest not found: ${pluginId}` }, 404)
 
       return c.json({
         pluginId: plugin.id,
-        name: plugin.name ?? manifest?.name,
-        version: manifest?.version ?? "0.0.0",
+        name: plugin.name ?? manifest.name,
+        version: manifest.version,
         trustTier: getPluginTrust(plugin.pluginDir).tier,
-        hasManifest: manifest !== null,
+        hasManifest: true,
         pluginDir: plugin.pluginDir,
-        manifest: manifest ?? null,
+        manifest,
         cliCommands: plugin.cli ? Object.keys(plugin.cli) : [],
         skills: plugin.skills ? plugin.skills.map((s) => s.name) : [],
         agents: plugin.agents ? Object.keys(plugin.agents) : [],
@@ -996,6 +976,7 @@ export const ApiPluginRoute = new Hono()
       }
 
       const manifest = await manifestFor(loadedPlugin.id)
+      if (!manifest) return c.json({ message: `Plugin manifest not found after install: ${loadedPlugin.id}` }, 500)
       return c.json(apiPluginDetail(loadedPlugin, manifest))
     },
   )

@@ -10,13 +10,39 @@ import { DEFAULT_LIMITS } from "../../src/plugin-runtime/health.js"
 import type { RuntimeEntry } from "../../src/plugin-runtime/registry.js"
 import type { RuntimeStatePersistence } from "../../src/plugin-runtime/supervisor.js"
 import { DEFAULT_SERVER_URL } from "../../src/server/defaults.js"
+import fs from "fs/promises"
+import os from "os"
+import path from "path"
 
 // === Helpers ===
 
 let counter = 0
+const pluginDirs = new Map<string, string>()
 
 function uniquePluginId(): string {
   return `sup-test-${Date.now()}-${counter++}`
+}
+
+async function pluginDirFor(pluginId: string): Promise<string> {
+  const existing = pluginDirs.get(pluginId)
+  if (existing) return existing
+
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), `${pluginId}-`))
+  await Bun.write(
+    path.join(dir, "plugin.json"),
+    JSON.stringify(
+      {
+        name: pluginId,
+        version: "1.0.0",
+        description: "Supervisor test plugin",
+        main: "./runtime/index.js",
+      },
+      null,
+      2,
+    ),
+  )
+  pluginDirs.set(pluginId, dir)
+  return dir
 }
 
 function createSupervisor(opts?: { persist?: RuntimeStatePersistence }): {
@@ -35,10 +61,12 @@ async function startInProcess(
   pluginId: string,
   overrides?: { entryPath?: string; pluginDir?: string },
 ): Promise<RuntimeEntry> {
+  const pluginDir = overrides?.pluginDir ?? (await pluginDirFor(pluginId))
   return supervisor.start(pluginId, {
     mode: "in-process",
     entryPath: overrides?.entryPath ?? "",
-    pluginDir: overrides?.pluginDir ?? process.cwd(),
+    pluginDir,
+    source: "local",
   })
 }
 
@@ -234,18 +262,20 @@ describe("PluginRuntimeSupervisor", () => {
     test("reuses the original runtime entry path and plugin directory", async () => {
       const { supervisor } = createSupervisor()
       const pluginId = uniquePluginId()
+      const pluginDir = await pluginDirFor(pluginId)
+      const entryPath = path.join(pluginDir, "dist/runtime.js")
 
       const first = await startInProcess(supervisor, pluginId, {
-        entryPath: "/tmp/test-plugin/dist/runtime.js",
-        pluginDir: "/tmp/test-plugin",
+        entryPath,
+        pluginDir,
       })
-      expect(first.entryPath).toBe("/tmp/test-plugin/dist/runtime.js")
-      expect(first.pluginDir).toBe("/tmp/test-plugin")
+      expect(first.entryPath).toBe(entryPath)
+      expect(first.pluginDir).toBe(pluginDir)
 
       const entry = await supervisor.reload(pluginId)
 
-      expect(entry.entryPath).toBe("/tmp/test-plugin/dist/runtime.js")
-      expect(entry.pluginDir).toBe("/tmp/test-plugin")
+      expect(entry.entryPath).toBe(entryPath)
+      expect(entry.pluginDir).toBe(pluginDir)
     })
 
     test("throws for unknown plugin", async () => {
@@ -388,10 +418,12 @@ describe("PluginRuntimeSupervisor", () => {
       const pluginId = uniquePluginId()
 
       // Start via facade
+      const pluginDir = await pluginDirFor(pluginId)
       const entry = await startRuntime(pluginId, {
         mode: "in-process",
         entryPath: "",
-        pluginDir: process.cwd(),
+        pluginDir,
+        source: "local",
       })
 
       expect(entry.state).toBe("ready")

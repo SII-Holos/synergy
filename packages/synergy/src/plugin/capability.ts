@@ -10,7 +10,7 @@ import {
 // ---------------------------------------------------------------------------
 
 export interface CapabilityWarning {
-  type: "undeclared_tool" | "capability_mismatch" | "missing_manifest"
+  type: "undeclared_tool" | "capability_mismatch"
   message: string
   toolId?: string
 }
@@ -52,12 +52,10 @@ function overallRisk(manifest: PluginManifest, _manifestTools: ManifestTool[]): 
 
 /**
  * Resolve capabilities from a plugin manifest.
- *
- * If manifest is null (no plugin.json), returns a minimal default with warnings.
  */
 export function resolve(input: {
   pluginId: string
-  manifest: PluginManifest | null
+  manifest: PluginManifest
   /** Tool IDs (short names) registered by the plugin at runtime via hooks.tool */
   declaredTools: string[]
   /** Full plugin__x__y IDs for all runtime tools (reserved for future cross-validation) */
@@ -65,20 +63,6 @@ export function resolve(input: {
 }): ResolvedPluginCapability {
   const { pluginId, manifest, declaredTools } = input
   const warnings: CapabilityWarning[] = []
-
-  if (!manifest) {
-    warnings.push({
-      type: "missing_manifest",
-      message: `Plugin "${pluginId}" has no plugin.json manifest; using conservative defaults.`,
-    })
-    return {
-      pluginId,
-      base: [],
-      tools: Object.fromEntries(declaredTools.map((t) => [t, []])),
-      overallRisk: "low",
-      warnings,
-    }
-  }
 
   const base = baseCapabilities(manifest)
 
@@ -114,12 +98,9 @@ export function resolve(input: {
  * Normalize capabilities for a single tool from manifest declarations.
  *
  * Merges plugin-wide permission defaults with per-tool overrides.
- * Returns an empty set when the manifest is null. If the tool is not
- * declared in contributes.tools, plugin-wide permission defaults apply.
+ * If the tool is not declared in contributes.tools, plugin-wide permission defaults apply.
  */
-export function toolCapabilities(manifest: PluginManifest | null, toolId: string): string[] {
-  if (!manifest) return []
-
+export function toolCapabilities(manifest: PluginManifest, toolId: string): string[] {
   const manifestTool = manifest.contributes?.tools?.find((t) => t.name === toolId || t.id === toolId)
   if (!manifestTool) return baseCapabilities(manifest)
 

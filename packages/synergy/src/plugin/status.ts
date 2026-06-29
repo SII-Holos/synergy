@@ -198,8 +198,8 @@ async function resolveCacheBytes(pluginId: string): Promise<number | undefined> 
 }
 
 /** Count UI contributions from the manifest. */
-function countUIContributions(manifest: PluginManifest | null): number {
-  if (!manifest?.contributes?.ui) return 0
+function countUIContributions(manifest: PluginManifest): number {
+  if (!manifest.contributes?.ui) return 0
   const ui = manifest.contributes.ui
   let count = 0
   if (ui.toolRenderers?.length) count += ui.toolRenderers.length
@@ -221,21 +221,11 @@ export async function getStatus(pluginId: string): Promise<PluginStatus | null> 
 
   const source = derivePluginSource(plugin.pluginDir)
   const warnings: PluginStatus["warnings"] = []
-  let manifest: PluginManifest | null = null
-  let manifestValid = false
-
-  try {
-    manifest = await ManifestReader.read(plugin.pluginDir)
-    manifestValid = manifest !== null
-  } catch (err: any) {
-    warnings.push({
-      type: "manifest_error",
-      message: `Failed to read manifest: ${err.message ?? String(err)}`,
-    })
-  }
+  const manifest = await ManifestReader.read(plugin.pluginDir)
+  const manifestValid = true
 
   // ── Capabilities ──
-  const manifestTools = manifest?.contributes?.tools?.map((t) => t.name) ?? []
+  const manifestTools = manifest.contributes?.tools?.map((t) => t.name) ?? []
   const runtimeToolNames = plugin.hooks.tool ? Object.keys(plugin.hooks.tool) : []
   const runtimeFullIds = runtimeToolNames.map((t) => PluginToolId.format(pluginId, t))
   const allDeclared = [...new Set([...manifestTools, ...runtimeToolNames])]
@@ -256,7 +246,7 @@ export async function getStatus(pluginId: string): Promise<PluginStatus | null> 
   })
 
   // ── Routes ──
-  const routes = manifest?.contributes?.ui?.routes?.map((r) => r.path) ?? []
+  const routes = manifest.contributes?.ui?.routes?.map((r) => r.path) ?? []
 
   // ── Tools ──
   const tools = runtimeToolNames.map((id) => ({
@@ -298,7 +288,7 @@ export async function getStatus(pluginId: string): Promise<PluginStatus | null> 
 
   // ── Hash consistency warnings ──
   const lockfileEntry = await findLockfileEntry(plugin.pluginDir)
-  if (lockfileEntry && manifest) {
+  if (lockfileEntry) {
     const capabilities = baseCapabilities(manifest)
     const currentPermissionsHash = computePermissionsHash(manifest, capabilities)
     const currentManifestHash = computeManifestHash(manifest)
@@ -354,8 +344,8 @@ export async function getStatus(pluginId: string): Promise<PluginStatus | null> 
 
   return {
     id: pluginId,
-    name: plugin.name ?? manifest?.name,
-    version: manifest?.version,
+    name: plugin.name ?? manifest.name,
+    version: manifest.version,
     source,
     trust,
     loaded: true,
