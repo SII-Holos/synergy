@@ -22,13 +22,14 @@ function app() {
   return new Hono().route("/blueprint", BlueprintRoute)
 }
 
-async function createBlueprint(defaultAgent: string) {
+async function createBlueprint(defaultAgent: string, auditAgent?: string) {
   return NoteStore.create({
     title: `${defaultAgent} Blueprint`,
     kind: "blueprint",
     blueprint: {
       description: `Run with ${defaultAgent}`,
       defaultAgent,
+      auditAgent,
     },
   })
 }
@@ -45,10 +46,25 @@ async function createLoop(noteID: string, sessionID: string) {
     }),
   })
   expect(response.status).toBe(200)
-  return response.json() as Promise<{ id: string }>
+  return response.json() as Promise<{ id: string; executionAgent?: string; auditAgent: string }>
 }
 
 describe("BlueprintRoute start prompt", () => {
+  test("snapshots execution and audit agents onto the loop", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({})
+        const note = await createBlueprint("synergy-max", "security-reviewer")
+        const loop = await createLoop(note.id, session.id)
+
+        expect(loop.executionAgent).toBe("synergy-max")
+        expect(loop.auditAgent).toBe("security-reviewer")
+      },
+    })
+  })
+
   test("uses the general Blueprint prompt for synergy", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({

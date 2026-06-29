@@ -1,16 +1,16 @@
 .library-workbench {
-  --library-panel-bg: light-dark(rgb(238 240 244), rgb(30 30 32));
-  --library-panel-bg-hover: light-dark(rgb(231 235 241), rgb(38 38 41));
-  --library-content-bg: light-dark(rgb(226 231 238), rgb(44 44 47));
-  --library-content-bg-hover: light-dark(rgb(218 225 234), rgb(52 52 56));
-  --library-control-bg: light-dark(rgb(223 228 236), rgb(50 50 53));
-  --library-control-bg-hover: light-dark(rgb(214 221 231), rgb(58 58 62));
-  --library-input-bg: light-dark(rgb(218 224 233), rgb(46 46 49));
-  --library-selected-bg: light-dark(rgb(203 213 226), rgb(62 62 66));
-  --library-selected-bg-hover: light-dark(rgb(194 206 221), rgb(70 70 74));
-  --library-popover-bg: light-dark(rgb(236 239 244), rgb(44 44 47));
-  --library-line: light-dark(rgba(15, 23, 42, 0.085), rgba(255, 255, 255, 0.09));
-  --library-line-strong: light-dark(rgba(15, 23, 42, 0.12), rgba(255, 255, 255, 0.13));
+  --library-panel-bg: var(--workbench-panel-bg);
+  --library-panel-bg-hover: var(--workbench-panel-bg-hover);
+  --library-content-bg: var(--workbench-row-bg);
+  --library-content-bg-hover: var(--workbench-row-bg-hover);
+  --library-control-bg: var(--workbench-control-bg);
+  --library-control-bg-hover: var(--workbench-control-bg-hover);
+  --library-input-bg: var(--workbench-input-bg);
+  --library-selected-bg: var(--workbench-selected-bg);
+  --library-selected-bg-hover: var(--workbench-selected-bg-hover);
+  --library-popover-bg: var(--workbench-popover-bg);
+  --library-line: var(--workbench-border);
+  --library-line-strong: var(--border-weak-base);
 
   background: var(--workbench-canvas-bg);
 }
@@ -325,10 +325,10 @@
 }
 
 [data-slot="dialog-content"].dialog-skill-detail {
-  --skill-detail-bg: light-dark(rgb(247 248 250), rgb(38 38 41));
-  --skill-detail-control-bg: light-dark(rgb(229 234 241), rgb(48 48 51));
-  --skill-detail-control-bg-hover: light-dark(rgb(218 225 235), rgb(56 56 60));
-  --skill-detail-divider: light-dark(rgba(15, 23, 42, 0.095), rgba(255, 255, 255, 0.09));
+  --skill-detail-bg: var(--surface-raised-stronger-non-alpha);
+  --skill-detail-control-bg: var(--surface-inset-base);
+  --skill-detail-control-bg-hover: var(--surface-inset-base-hover);
+  --skill-detail-divider: var(--border-weaker-base);
 
   max-height: min(calc(100vh - 48px), 720px);
   overflow: hidden;

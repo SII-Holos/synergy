@@ -117,47 +117,24 @@ a:active,
 }
 
 .synergy-workbench-canvas {
-  --workbench-canvas-bg: light-dark(rgb(240 241 244), rgb(24 24 27));
-  --workbench-panel-bg: light-dark(rgb(235 237 240), rgb(30 30 33));
-  --workbench-panel-bg-hover: light-dark(rgb(228 231 235), rgb(36 36 39));
-  --workbench-card-bg: light-dark(rgb(229 232 236), rgb(40 40 43));
-  --workbench-card-bg-hover: light-dark(rgb(222 226 232), rgb(46 46 49));
-  --workbench-card-secondary-bg: light-dark(rgb(224 228 233), rgb(44 44 47));
-  --workbench-control-bg: light-dark(rgb(223 227 233), rgb(48 48 51));
-  --workbench-control-bg-hover: light-dark(rgb(214 220 228), rgb(54 54 58));
-  --workbench-input-bg: light-dark(rgb(221 226 232), rgb(50 50 54));
-  --workbench-input-bg-hover: light-dark(rgb(212 219 227), rgb(56 56 60));
-  --workbench-popover-bg: light-dark(rgb(226 230 235), rgb(46 46 49));
-  --workbench-selected-bg: light-dark(rgb(207 215 225), rgb(58 58 63));
-  --workbench-selected-bg-hover: light-dark(rgb(198 207 219), rgb(64 64 69));
-  --workbench-border: light-dark(rgba(17, 24, 39, 0.08), rgba(244, 244, 245, 0.08));
+  --workbench-canvas-bg: var(--background-stronger);
+  --workbench-panel-bg: var(--background-base);
+  --workbench-panel-bg-hover: var(--surface-hover-base);
+  --workbench-row-bg: color-mix(in srgb, var(--surface-raised-base) 84%, transparent);
+  --workbench-row-bg-hover: var(--surface-raised-base-hover);
+  --workbench-card-bg: var(--surface-raised-base);
+  --workbench-card-bg-hover: var(--surface-raised-base-hover);
+  --workbench-card-secondary-bg: var(--surface-base);
+  --workbench-control-bg: var(--surface-inset-base);
+  --workbench-control-bg-hover: var(--surface-inset-base-hover);
+  --workbench-input-bg: var(--input-base);
+  --workbench-input-bg-hover: var(--input-hover);
+  --workbench-popover-bg: var(--surface-raised-stronger-non-alpha);
+  --workbench-selected-bg: color-mix(in srgb, var(--surface-interactive-selected) 88%, transparent);
+  --workbench-selected-bg-hover: var(--surface-interactive-selected);
+  --workbench-border: var(--border-weaker-base);
   --workbench-popover-shadow: 0 14px 34px light-dark(rgba(15, 23, 42, 0.1), rgba(0, 0, 0, 0.24));
   --workbench-tab-shadow: none;
-  --background-stronger: var(--workbench-canvas-bg);
-  --background-base: var(--workbench-panel-bg);
-  --surface-base: var(--workbench-card-bg);
-  --surface-base-hover: var(--workbench-card-bg-hover);
-  --surface-base-active: var(--workbench-selected-bg);
-  --surface-hover-base: var(--workbench-card-bg-hover);
-  --surface-inset-base: var(--workbench-control-bg);
-  --surface-inset-base-hover: var(--workbench-control-bg-hover);
-  --surface-raised-base: var(--workbench-card-bg);
-  --surface-raised-base-hover: var(--workbench-card-bg-hover);
-  --surface-raised-base-active: var(--workbench-selected-bg);
-  --surface-raised-strong: var(--workbench-card-bg);
-  --surface-raised-strong-hover: var(--workbench-card-bg-hover);
-  --surface-raised-stronger: var(--workbench-card-bg);
-  --surface-raised-stronger-hover: var(--workbench-card-bg-hover);
-  --surface-raised-stronger-non-alpha: var(--workbench-popover-bg);
-  --button-secondary-base: var(--workbench-control-bg);
-  --button-secondary-hover: var(--workbench-control-bg-hover);
-  --input-base: var(--workbench-input-bg);
-  --input-hover: var(--workbench-input-bg-hover);
-  --surface-focus: color-mix(in srgb, var(--text-strong) 8%, transparent);
-  --border-selected: color-mix(in srgb, var(--text-strong) 28%, transparent);
-  --border-weak-selected: color-mix(in srgb, var(--text-strong) 13%, transparent);
-  --border-strong-selected: color-mix(in srgb, var(--text-strong) 34%, transparent);
-  --border-interactive-selected: color-mix(in srgb, var(--text-strong) 30%, transparent);
   --shadow-xs-border: inset 0 0 0 1px var(--workbench-border);
   --shadow-xs-border-base: inset 0 0 0 1px var(--workbench-border);
   --shadow-xs-border-select: inset 0 0 0 1px color-mix(in srgb, var(--text-strong) 20%, transparent);
@@ -179,6 +156,16 @@ a:active,
 
 .synergy-workbench-canvas :where(.workbench-card-surface:hover, .workbench-card-surface-hover:hover) {
   background-color: var(--workbench-card-bg-hover);
+}
+
+.synergy-workbench-canvas :where(.workbench-row-surface) {
+  background-color: var(--workbench-row-bg);
+  border-color: var(--workbench-border);
+  box-shadow: inset 0 0 0 1px var(--workbench-border);
+}
+
+.synergy-workbench-canvas :where(.workbench-row-surface:hover, .workbench-row-surface-hover:hover) {
+  background-color: var(--workbench-row-bg-hover);
 }
 
 .synergy-workbench-canvas :where(.workbench-control-surface) {

@@ -67,14 +67,41 @@ export namespace ToolTimeout {
     })
   }
 
-  export function preserveMetadata(
+  export function mergeMetadata(
     existing: Record<string, any> | undefined,
     next: Record<string, any> | undefined,
   ): Record<string, any> | undefined {
     if (!next) return existing
-    if (!existing?.toolTimeout) return next
-    if (next.toolTimeout !== undefined) return next
-    return { ...next, toolTimeout: existing.toolTimeout }
+    if (!existing) return next
+
+    const existingDisplay =
+      existing.display && typeof existing.display === "object" && !Array.isArray(existing.display)
+        ? existing.display
+        : undefined
+    const nextDisplay =
+      next.display && typeof next.display === "object" && !Array.isArray(next.display) ? next.display : undefined
+    const existingMedia =
+      existingDisplay?.media && typeof existingDisplay.media === "object" && !Array.isArray(existingDisplay.media)
+        ? existingDisplay.media
+        : undefined
+    const nextMedia =
+      nextDisplay?.media && typeof nextDisplay.media === "object" && !Array.isArray(nextDisplay.media)
+        ? nextDisplay.media
+        : undefined
+    const display =
+      existingDisplay || nextDisplay
+        ? {
+            ...(existingDisplay ?? {}),
+            ...(nextDisplay ?? {}),
+            ...(existingMedia || nextMedia ? { media: { ...(existingMedia ?? {}), ...(nextMedia ?? {}) } } : {}),
+          }
+        : undefined
+
+    return {
+      ...existing,
+      ...next,
+      ...(display ? { display } : {}),
+    }
   }
 
   export function metadataForTool(input: {

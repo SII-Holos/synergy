@@ -296,22 +296,14 @@ export function Sidebar(props: SidebarProps) {
           fallback={
             <Tooltip value="Expand sidebar" placement="right">
               <button type="button" class="sb-collapsed-toggle" onClick={() => layout.sidebar.toggle()}>
-                <img
-                  src={holosLogoPath(isDark() ? "dark" : "light")}
-                  alt="HOLOS"
-                  class="sb-collapsed-logo"
-                />
+                <img src={holosLogoPath(isDark() ? "dark" : "light")} alt="HOLOS" class="sb-collapsed-logo" />
                 <Icon name="panel-left-open" size="normal" class="sb-collapsed-toggle-icon" />
               </button>
             </Tooltip>
           }
         >
           <A href={`/${base64Encode("home")}/session`} class="sb-logo">
-            <img
-              src={holosLogoPath(isDark() ? "dark" : "light")}
-              alt="HOLOS"
-              class="sb-logo-img"
-            />
+            <img src={holosLogoPath(isDark() ? "dark" : "light")} alt="HOLOS" class="sb-logo-img" />
             <span class="sb-logo-text">HOLOS</span>
           </A>
           <div class="sb-header-actions">
@@ -883,13 +875,25 @@ function SidebarAgentHub(props: { isExpanded: boolean; globalSDK: ReturnType<typ
   const [menuOpen, setMenuOpen] = createSignal(false)
   const [agentSwitcherOpen, setAgentSwitcherOpen] = createSignal(false)
 
-  const avatarSrc = () => brandAssetPath(BRAND_ASSETS.synergy.productIcon)
+  const avatarSrc = () => holos.state.social.profile?.avatarUrl || brandAssetPath(BRAND_ASSETS.synergy.productIcon)
+  const activeAgentId = () => holos.state.identity.activeAccount?.agentId ?? holos.state.identity.agentId ?? undefined
+  const activeAgentShortID = () => activeAgentId()?.slice(0, 8)
 
   const displayName = () => {
     if (!holos.loaded) return "Synergy"
     const profileName = holos.state.social.profile?.name
     if (holos.state.identity.loggedIn && profileName) return profileName
+    if (holos.state.identity.loggedIn && activeAgentShortID()) return `Agent ${activeAgentShortID()}`
     return "Synergy"
+  }
+
+  const displayDescription = () => {
+    if (!holos.loaded) return "Loading identity..."
+    if (!holos.state.identity.loggedIn) return "Local workspace"
+    if (holos.state.social.profileError) return "Profile unavailable"
+    const description = holos.state.social.profile?.description?.trim()
+    if (description) return description
+    return holos.state.connection.status === "connected" ? "Connected to Holos" : holosMenuRightLabel()
   }
 
   const connectionTone = () => {
@@ -944,9 +948,10 @@ function SidebarAgentHub(props: { isExpanded: boolean; globalSDK: ReturnType<typ
     return false
   }
 
-  const accountLabel = (a: { agentId: string; label: string | null }) => a.label || a.agentId.slice(0, 8)
+  const accountLabel = (a: { agentId: string }) =>
+    isActiveAccount(a.agentId) ? displayName() : `Agent ${a.agentId.slice(0, 8)}`
 
-  const isActiveAccount = (agentId: string) => holos.state.identity.activeAccount?.agentId === agentId
+  const isActiveAccount = (agentId: string) => activeAgentId() === agentId
 
   const handleSwitchAccount = async (agentId: string) => {
     await agentActions.switchAgent(agentId)
@@ -1009,6 +1014,7 @@ function SidebarAgentHub(props: { isExpanded: boolean; globalSDK: ReturnType<typ
           <Show when={props.isExpanded}>
             <div class="sidebar-account-identity">
               <span class="sidebar-account-name">{displayName()}</span>
+              <span class="sidebar-account-subtitle">{displayDescription()}</span>
             </div>
             <Icon name={menuOpen() ? "chevron-up" : "chevron-down"} size="small" class="sidebar-account-chevron" />
           </Show>
@@ -1031,9 +1037,8 @@ function SidebarAgentHub(props: { isExpanded: boolean; globalSDK: ReturnType<typ
               </span>
               <span class="sidebar-account-card-copy">
                 <span class="sidebar-account-card-name">{displayName()}</span>
-                <span class="sidebar-account-card-meta">
-                  {holos.state.identity.activeAccount?.agentId?.slice(0, 8) ?? "No agent"}
-                </span>
+                <span class="sidebar-account-card-description">{displayDescription()}</span>
+                <span class="sidebar-account-card-meta">{activeAgentShortID() ?? "No agent"}</span>
               </span>
               <Icon name={agentSwitcherOpen() ? "chevron-up" : "chevron-down"} size="small" />
             </button>
@@ -1065,8 +1070,10 @@ function SidebarAgentHub(props: { isExpanded: boolean; globalSDK: ReturnType<typ
                       }
                       size="small"
                     />
-                    <span>{accountLabel(account)}</span>
-                    <span class="sidebar-account-menuStatus">{isActiveAccount(account.agentId) ? "Active" : ""}</span>
+                    <span class="sidebar-account-menuCopy">
+                      <span>{accountLabel(account)}</span>
+                      <span>{isActiveAccount(account.agentId) ? displayDescription() : "Saved on this device"}</span>
+                    </span>
                   </button>
                 )}
               </For>

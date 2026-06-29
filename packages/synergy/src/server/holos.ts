@@ -13,12 +13,17 @@ import { Presence } from "../holos/presence"
 import { HolosRuntime } from "../holos/runtime"
 import { HolosState } from "../holos/state"
 import { HolosAccounts } from "../holos/accounts"
+import { HolosProfile } from "../holos/profile"
+import { Config } from "../config/config"
 import { Log } from "../util/log"
 import { errors } from "./error"
 
 const log = Log.create({ service: "server.holos" })
 
-const pendingStates = new Map<string, { state: string; createdAt: number; callbackOrigin: string }>()
+const pendingStates = new Map<
+  string,
+  { state: string; createdAt: number; callbackOrigin: string; profile: HolosProfile.Input }
+>()
 
 const STATE_TTL_MS = 5 * 60_000
 
@@ -44,6 +49,11 @@ function resolveCallbackUrl(input: { requested?: string; serverOrigin: string })
   } catch {
     return undefined
   }
+}
+
+async function currentHolosApiUrl(): Promise<string | undefined> {
+  const config = await Config.current().catch(() => undefined)
+  return config?.holos?.apiUrl
 }
 
 const LoginResponse = z
@@ -72,11 +82,10 @@ export const HolosRoute = new Hono()
     }),
     validator(
       "json",
-      z
-        .object({
-          callbackUrl: z.string().url().optional(),
-        })
-        .optional(),
+      z.object({
+        callbackUrl: z.string().url().optional(),
+        profile: HolosProfile.Input,
+      }),
     ),
     async (c) => {
       cleanupExpiredStates()
@@ -86,7 +95,12 @@ export const HolosRoute = new Hono()
       if (!callbackUrl) return c.json({ message: "callbackUrl must point to this server's /holos/callback" }, 400)
 
       const state = crypto.randomUUID()
-      pendingStates.set(state, { state, createdAt: Date.now(), callbackOrigin: new URL(callbackUrl).origin })
+      pendingStates.set(state, {
+        state,
+        createdAt: Date.now(),
+        callbackOrigin: new URL(callbackUrl).origin,
+        profile: body.profile,
+      })
 
       return c.json({ url: HolosLoginFlow.createBindUrl({ callbackUrl, state }) })
     },
@@ -120,7 +134,7 @@ export const HolosRoute = new Hono()
       pendingStates.delete(state)
 
       try {
-        const { agentId, agentSecret } = await HolosLoginFlow.exchange({ code, state })
+        const { agentId, agentSecret } = await HolosLoginFlow.exchange({ code, state, profile: pending.profile })
         await HolosLoginFlow.saveAndReload({ agentId, agentSecret })
         return c.html(
           resultPage("Login Successful", "You can close this window.", true, pending.callbackOrigin, { agentId }),
@@ -136,14 +150,22 @@ export const HolosRoute = new Hono()
     describeRoute({
       summary: "Set agent credentials",
       description:
-        "Validate and save existing agent credentials. Validates by fetching a ws_token, then saves and reloads the Holos runtime.",
+        "Validate and save existing agent credentials by fetching the canonical Holos agent profile from the remote API.",
       operationId: "holos.credentials",
       responses: {
         200: {
           description: "Credentials saved",
           content: {
             "application/json": {
-              schema: resolver(z.object({ success: z.literal(true) }).meta({ ref: "HolosCredentialsResponse" })),
+              schema: resolver(
+                z
+                  .object({
+                    success: z.literal(true),
+                    agentId: z.string(),
+                    profile: HolosProfile.Info,
+                  })
+                  .meta({ ref: "HolosCredentialsResponse" }),
+              ),
             },
           },
         },
@@ -153,24 +175,30 @@ export const HolosRoute = new Hono()
     validator(
       "json",
       z.object({
-        agentId: z.string().min(1),
         agentSecret: z.string().min(1),
+        expectedAgentId: z.string().min(1).optional(),
       }),
     ),
     async (c) => {
-      const { agentId, agentSecret } = c.req.valid("json")
+      const { agentSecret, expectedAgentId } = c.req.valid("json")
 
-      const result = await HolosAuth.verifyCredentials(agentSecret)
-      if (!result.valid) {
-        return c.json({ message: result.reason }, 400)
+      let me: HolosProfile.MeInfo
+      try {
+        me = await HolosProfile.getMe({ agentSecret, apiUrl: await currentHolosApiUrl() })
+      } catch (err) {
+        return c.json({ message: err instanceof Error ? err.message : String(err) }, 400)
       }
 
-      await HolosAuth.saveCredentialsAndConfigure(agentId, agentSecret)
+      if (expectedAgentId && me.agentId !== expectedAgentId) {
+        return c.json({ message: `Agent secret belongs to ${me.agentId}, not ${expectedAgentId}` }, 400)
+      }
+
+      await HolosAuth.saveCredentialsAndConfigure(me.agentId, agentSecret)
       HolosAuth.reloadRuntime().catch((err: unknown) =>
         log.warn("holos runtime reload after credentials save failed", { error: err }),
       )
 
-      return c.json({ success: true as const })
+      return c.json({ success: true as const, agentId: me.agentId, profile: me.profile })
     },
   )
   .delete(
@@ -299,6 +327,77 @@ export const HolosDataRoute = new Hono()
   )
 
   .get(
+    "/profile",
+    describeRoute({
+      summary: "Get current Holos agent profile",
+      description: "Fetch the active agent profile from Holos. Synergy does not cache profile data locally.",
+      operationId: "holos.profile.get",
+      responses: {
+        200: {
+          description: "Current Holos profile",
+          content: {
+            "application/json": {
+              schema: resolver(HolosProfile.MeInfo),
+            },
+          },
+        },
+        ...errors(400),
+      },
+    }),
+    async (c) => {
+      const credential = await HolosAuth.getStoredCredential()
+      if (!credential) return c.json({ message: "No Holos credentials found" }, 400)
+      try {
+        const profile = await HolosProfile.getCurrent({
+          agentId: credential.agentId,
+          agentSecret: credential.agentSecret,
+          apiUrl: await currentHolosApiUrl(),
+        })
+        return c.json(profile)
+      } catch (err) {
+        return c.json({ message: err instanceof Error ? err.message : String(err) }, 400)
+      }
+    },
+  )
+
+  .put(
+    "/profile",
+    describeRoute({
+      summary: "Update current Holos agent profile",
+      description:
+        "Merge editable profile fields into the active remote Holos profile while preserving unknown remote fields.",
+      operationId: "holos.profile.update",
+      responses: {
+        200: {
+          description: "Updated Holos profile",
+          content: {
+            "application/json": {
+              schema: resolver(HolosProfile.MeInfo),
+            },
+          },
+        },
+        ...errors(400),
+      },
+    }),
+    validator("json", HolosProfile.Input),
+    async (c) => {
+      const credential = await HolosAuth.getStoredCredential()
+      if (!credential) return c.json({ message: "No Holos credentials found" }, 400)
+      try {
+        const profile = await HolosProfile.updateCurrent({
+          agentId: credential.agentId,
+          agentSecret: credential.agentSecret,
+          profile: c.req.valid("json"),
+          apiUrl: await currentHolosApiUrl(),
+        })
+        return c.json(profile)
+      } catch (err) {
+        return c.json({ message: err instanceof Error ? err.message : String(err) }, 400)
+      }
+    },
+  )
+
+  .get(
     "/verify",
     describeRoute({
       summary: "Verify Holos credentials",
@@ -369,7 +468,6 @@ export const HolosDataRoute = new Hono()
         activeAccountId: active?.agentId ?? null,
         accounts: accounts.map((a) => ({
           agentId: a.agentId,
-          label: a.label,
           createdAt: a.createdAt,
           updatedAt: a.updatedAt,
         })),

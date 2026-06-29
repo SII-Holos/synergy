@@ -44,6 +44,7 @@ const _origPlugin = {
   manifest: Plugin.manifest,
   loaded: Plugin.getLoaded,
   add: Plugin.add,
+  remove: Plugin.remove,
 }
 
 const _origConfig = {
@@ -56,6 +57,7 @@ afterEach(() => {
   ;(Plugin as any).manifest = _origPlugin.manifest
   ;(Plugin as any).loaded = _origPlugin.loaded
   ;(Plugin as any).add = _origPlugin.add
+  ;(Plugin as any).remove = _origPlugin.remove
   ;(Plugin as any).getStatus = _origPluginStatus.getStatus
   ;(Config as any).current = _origConfig.current
   ;(Config as any).updateGlobal = _origConfig.updateGlobal
@@ -178,7 +180,7 @@ function buildStatusResponse(overrides: Partial<Record<string, any>> = {}): any 
     manifestValid: true,
     integrity: "unverified",
     permissions: {
-      base: ["plugin_invoke"],
+      base: [],
       tools: {},
       overallRisk: "low",
       warnings: [],
@@ -277,6 +279,48 @@ describe("GET /plugin/:pluginId/status — comprehensive status", () => {
         expect(res.status).toBe(404)
         const body = await res.json()
         expect(body.message).toContain("Plugin not found")
+      },
+    })
+  })
+})
+
+// ---------------------------------------------------------------------------
+// 4. Plugin removal — uninstall route
+// ---------------------------------------------------------------------------
+
+describe("DELETE /api/plugins/:pluginId", () => {
+  test("removes a loaded plugin", async () => {
+    await using tmp = await tmpdir({ git: true })
+    ;(Plugin as any).get = mock(async () => buildLoadedPlugin({ id: "remove-me", pluginDir: tmp.path }))
+    ;(Plugin as any).remove = mock(async () => undefined)
+
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const app = Server.App()
+        const res = await app.request("/api/plugins/remove-me", { method: "DELETE" })
+        expect(res.status).toBe(200)
+        const body = await res.json()
+        expect(body).toEqual({ pluginId: "remove-me", removed: true })
+        expect(Plugin.remove).toHaveBeenCalledWith("remove-me", { autoReload: true })
+      },
+    })
+  })
+
+  test("returns 404 when plugin is not installed", async () => {
+    await using tmp = await tmpdir({ git: true })
+    ;(Plugin as any).get = mock(async () => null)
+    ;(Plugin as any).remove = mock(async () => undefined)
+
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const app = Server.App()
+        const res = await app.request("/api/plugins/missing-plugin", { method: "DELETE" })
+        expect(res.status).toBe(404)
+        const body = await res.json()
+        expect(body.message).toBe("Plugin not found: missing-plugin")
+        expect(Plugin.remove).not.toHaveBeenCalled()
       },
     })
   })

@@ -1,8 +1,4 @@
-import type {
-  AccountUsageSnapshot,
-  ProviderAuthAuthorization,
-  ProviderAuthMethod,
-} from "@ericsanchezok/synergy-sdk/client"
+import type { ProviderAuthAuthorization, ProviderAuthMethod } from "@ericsanchezok/synergy-sdk/client"
 import { Button } from "@ericsanchezok/synergy-ui/button"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { ProviderIcon } from "@ericsanchezok/synergy-ui/provider-icon"
@@ -31,6 +27,7 @@ export function ProviderConnectionFlow(props: {
   const globalSDK = useGlobalSDK()
   const platform = usePlatform()
   const provider = createMemo(() => globalSync.data.provider.all.find((x) => x.id === props.providerID))
+  const providerName = createMemo(() => provider()?.name ?? props.providerID)
   const profiles = createMemo(() => globalSync.data.provider.profiles)
   const methods = createMemo<ProviderAuthMethod[]>(
     () =>
@@ -45,27 +42,11 @@ export function ProviderConnectionFlow(props: {
   const [store, setStore] = createStore({
     methodIndex: undefined as undefined | number,
     authorization: undefined as undefined | ProviderAuthAuthorization,
-    usage: undefined as undefined | AccountUsageSnapshot,
-    usageState: "idle" as "idle" | "pending" | "complete" | "error",
     state: "pending" as undefined | "pending" | "complete" | "error",
     error: undefined as string | undefined,
   })
 
   const method = createMemo(() => (store.methodIndex !== undefined ? methods().at(store.methodIndex) : undefined))
-
-  async function loadUsage() {
-    if (!connected()) return
-    setStore("usageState", "pending")
-    await globalSDK.client.provider.usage
-      .get({ providerID: props.providerID }, { throwOnError: true })
-      .then((x) => {
-        setStore("usage", x.data)
-        setStore("usageState", "complete")
-      })
-      .catch(() => {
-        setStore("usageState", "error")
-      })
-  }
 
   async function selectMethod(index: number) {
     const selected = methods()[index]
@@ -117,14 +98,12 @@ export function ProviderConnectionFlow(props: {
   }
 
   onMount(() => {
-    if (methods().length === 1) void selectMethod(0)
-    void loadUsage()
+    if (!connected() && methods().length === 1) void selectMethod(0)
   })
 
   async function complete() {
     await globalSDK.client.global.dispose()
     await globalSync.refreshAllConfigs()
-    await loadUsage()
     await props.onComplete?.()
     showToast({
       type: "success",
@@ -145,6 +124,19 @@ export function ProviderConnectionFlow(props: {
     )
   }
 
+  function methodDescription(item: ProviderAuthMethod) {
+    if (item.type === "api") return "Paste a provider API key."
+    if (item.type === "oauth") return "Authorize in the browser and return here."
+    if (item.type === "import") return "Use credentials already available on this device."
+    return "Connect this provider."
+  }
+
+  function methodIcon(item: ProviderAuthMethod) {
+    if (item.type === "api" || item.type === "import") return getSemanticIcon("account.import")
+    if (item.type === "oauth") return getSemanticIcon("action.open")
+    return getSemanticIcon("settings.providers")
+  }
+
   return (
     <div classList={{ "provider-flow": true, "provider-flow-compact": !!props.compact }}>
       <div class="provider-flow-header">
@@ -162,19 +154,24 @@ export function ProviderConnectionFlow(props: {
         </div>
       </div>
 
-      <Show when={connected()}>
-        <UsageSummary usage={store.usage} state={store.usageState} />
-      </Show>
-
       <div class="provider-flow-body">
         <Switch>
           <Match when={store.methodIndex === undefined}>
             <div class="provider-method-list">
+              <div class="provider-flow-intro">
+                <div class="provider-flow-eyebrow">{connected() ? "Credential refresh" : "Connection method"}</div>
+                <div class="provider-flow-heading">{connected() ? "Refresh credentials" : "Choose how to connect"}</div>
+              </div>
               <For each={methods()}>
                 {(item, index) => (
                   <button type="button" class="provider-method-row" onClick={() => void selectMethod(index())}>
-                    <span class="provider-method-indicator" />
-                    <span>{item.label}</span>
+                    <span class="provider-method-icon">
+                      <Icon name={methodIcon(item)} size="small" />
+                    </span>
+                    <span class="provider-method-copy">
+                      <span class="provider-method-title">{item.label}</span>
+                      <span class="provider-method-description">{methodDescription(item)}</span>
+                    </span>
                     <Icon name={getSemanticIcon("navigation.expand")} size="small" class="text-text-weaker" />
                   </button>
                 )}
@@ -226,11 +223,17 @@ export function ProviderConnectionFlow(props: {
 
               return (
                 <form onSubmit={handleSubmit} class="provider-api-form">
+                  <div class="provider-step-header">
+                    <div class="provider-flow-eyebrow">API key</div>
+                    <div class="provider-flow-heading">Add a {providerName()} key</div>
+                    <p>Use a key from your provider account to make this provider available in Synergy.</p>
+                  </div>
                   <Show when={providerCTA(props.providerID, profiles())}>
                     {(cta) => (
-                      <div class="provider-flow-copy">
-                        <Link href={cta().url}>{cta().label}</Link>
-                      </div>
+                      <Link href={cta().url} class="provider-auth-link">
+                        <span>{cta().label}</span>
+                        <Icon name={getSemanticIcon("action.open")} size="small" />
+                      </Link>
                     )}
                   </Show>
                   <TextField
@@ -293,13 +296,23 @@ export function ProviderConnectionFlow(props: {
 
                   return (
                     <form onSubmit={handleSubmit} class="provider-api-form">
-                      <div class="provider-flow-copy">
-                        Visit <Link href={store.authorization!.url}>this link</Link> to collect your authorization code.
+                      <div class="provider-step-header">
+                        <div class="provider-flow-eyebrow">Step 1</div>
+                        <div class="provider-flow-heading">Authorize in your browser</div>
+                        <p>We opened the authorization page automatically. Use the button if it did not appear.</p>
+                      </div>
+                      <Link href={store.authorization!.url} class="provider-auth-link">
+                        <span>Open authorization page</span>
+                        <Icon name={getSemanticIcon("action.open")} size="small" />
+                      </Link>
+                      <div class="provider-step-header provider-step-header-compact">
+                        <div class="provider-flow-eyebrow">Step 2</div>
+                        <div class="provider-flow-heading">Paste the authorization code</div>
                       </div>
                       <TextField
                         autofocus
                         type="text"
-                        label={`${method()?.label} authorization code`}
+                        label="Authorization code"
                         placeholder="Authorization code"
                         name="code"
                         value={formStore.value}
@@ -342,9 +355,15 @@ export function ProviderConnectionFlow(props: {
 
                   return (
                     <div class="provider-device-flow">
-                      <div class="provider-flow-copy">
-                        Visit <Link href={store.authorization!.url}>this link</Link> and enter the code below.
+                      <div class="provider-step-header">
+                        <div class="provider-flow-eyebrow">Authorize</div>
+                        <div class="provider-flow-heading">Finish in your browser</div>
+                        <p>Open the authorization page and enter this confirmation code when prompted.</p>
                       </div>
+                      <Link href={store.authorization!.url} class="provider-auth-link">
+                        <span>Open authorization page</span>
+                        <Icon name={getSemanticIcon("action.open")} size="small" />
+                      </Link>
                       <TextField label="Confirmation code" class="font-mono" value={code()} readOnly copyable />
                       <div class="provider-flow-message">
                         <Spinner />
@@ -360,74 +379,6 @@ export function ProviderConnectionFlow(props: {
       </div>
     </div>
   )
-}
-
-function UsageSummary(props: { usage?: AccountUsageSnapshot; state: "idle" | "pending" | "complete" | "error" }) {
-  return (
-    <div class="provider-flow-usage">
-      <Switch>
-        <Match when={props.state === "pending" || props.state === "idle"}>
-          <div class="provider-flow-message">
-            <Spinner />
-            <span>Loading usage...</span>
-          </div>
-        </Match>
-        <Match when={props.state === "error"}>
-          <div class="text-13-regular text-text-weak">Usage is unavailable right now.</div>
-        </Match>
-        <Match when={props.usage}>
-          {(usage) => (
-            <>
-              <div class="provider-usage-head">
-                <span class="ds-inline-badge" classList={{ "ds-inline-badge-muted": usage().status !== "available" }}>
-                  {usage().status === "available" ? "Connected" : usage().status}
-                </span>
-                <Show when={usage().plan}>
-                  <span>{usage().plan}</span>
-                </Show>
-              </div>
-              <Show when={usage().unavailableReason}>
-                <div class="provider-flow-copy">{usage().unavailableReason}</div>
-              </Show>
-              <For each={usage().windows}>
-                {(window) => (
-                  <div class="provider-usage-window">
-                    <span>{window.label}</span>
-                    <span>
-                      {formatUsageWindow(window.remainingPercent, window.usedPercent)}
-                      {window.resetAt ? ` resets ${new Date(window.resetAt).toLocaleString()}` : ""}
-                    </span>
-                  </div>
-                )}
-              </For>
-              <Show when={usage().credits}>
-                {(credits) => (
-                  <div class="provider-usage-window">
-                    <span>Credits</span>
-                    <span>
-                      {credits().unlimited
-                        ? "unlimited"
-                        : credits().balance !== undefined
-                          ? `${credits().balance}${credits().currency ? ` ${credits().currency}` : ""}`
-                          : credits().hasCredits === false
-                            ? "none"
-                            : "available"}
-                    </span>
-                  </div>
-                )}
-              </Show>
-            </>
-          )}
-        </Match>
-      </Switch>
-    </div>
-  )
-}
-
-function formatUsageWindow(remaining?: number, used?: number) {
-  const value = remaining ?? used
-  if (value === undefined) return "n/a"
-  return `${Math.round(value)}%`
 }
 
 function formDataValue(form: FormData, key: string) {

@@ -77,12 +77,29 @@ describe("ToolTimeout", () => {
     })
   })
 
-  test("preserves runtime timeout metadata when tool metadata replaces the rest", () => {
-    const existing = { approval: { status: "not_required" }, toolTimeout: metadata("glob") }
-    expect(ToolTimeout.preserveMetadata(existing, { matches: 1 })).toEqual({
-      matches: 1,
-      toolTimeout: existing.toolTimeout,
-    })
-    expect(ToolTimeout.preserveMetadata(existing, undefined)).toBe(existing)
+  test("merges durable runtime metadata when tool metadata updates", () => {
+    const existing = {
+      approval: { status: "not_required" },
+      toolTimeout: metadata("glob"),
+      display: {
+        kind: "media-generation",
+        presentation: "artifact-only",
+        media: { type: "image", pendingTitle: "Generating" },
+      },
+    }
+    expect(ToolTimeout.mergeMetadata(existing, { matches: 1, display: { primaryAttachmentIds: ["image-1"] } })).toEqual(
+      {
+        approval: existing.approval,
+        matches: 1,
+        toolTimeout: existing.toolTimeout,
+        display: {
+          kind: "media-generation",
+          presentation: "artifact-only",
+          primaryAttachmentIds: ["image-1"],
+          media: { type: "image", pendingTitle: "Generating" },
+        },
+      },
+    )
+    expect(ToolTimeout.mergeMetadata(existing, undefined)).toBe(existing)
   })
 })

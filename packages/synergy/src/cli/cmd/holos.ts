@@ -3,6 +3,7 @@ import * as prompts from "@clack/prompts"
 import { UI } from "../ui"
 import { performHolosLogin } from "../../holos/login"
 import { HolosAuth } from "../../holos/auth"
+import { HolosProfile } from "../../holos/profile"
 import { attachOption, ensureServer, fetchHolosApi } from "./holos-server"
 import { Server } from "../../server/server"
 
@@ -77,16 +78,24 @@ async function finishHolosLogin(agentId: string) {
   prompts.outro("Done")
 }
 
-async function importExistingHolosCredentials(input: { agentId: string; agentSecret: string }) {
-  const result = await HolosAuth.verifyCredentials(input.agentSecret)
-  if (!result.valid) {
-    prompts.log.error(`Credential validation failed: ${result.reason}`)
+async function importExistingHolosCredentials(input: { agentSecret: string; expectedAgentId?: string }) {
+  let me: HolosProfile.MeInfo
+  try {
+    me = await HolosProfile.getMe({ agentSecret: input.agentSecret })
+  } catch (err) {
+    prompts.log.error(`Credential validation failed: ${err instanceof Error ? err.message : String(err)}`)
     prompts.outro("Login failed")
     return false
   }
 
-  await HolosAuth.saveCredentialsAndConfigure(input.agentId, input.agentSecret)
-  await finishHolosLogin(input.agentId)
+  if (input.expectedAgentId && me.agentId !== input.expectedAgentId) {
+    prompts.log.error(`Credential validation failed: secret belongs to ${me.agentId}, not ${input.expectedAgentId}`)
+    prompts.outro("Login failed")
+    return false
+  }
+
+  await HolosAuth.saveCredentialsAndConfigure(me.agentId, input.agentSecret)
+  await finishHolosLogin(me.agentId)
   return true
 }
 
@@ -110,15 +119,15 @@ export async function runHolosLoginFlow(options?: { agentId?: string; agentSecre
   prompts.intro("Holos Login")
 
   if (options?.agentId || options?.agentSecret) {
-    if (!options.agentId || !options.agentSecret) {
-      prompts.log.error("`--agent-id` and `--agent-secret` must be provided together")
+    if (!options.agentSecret) {
+      prompts.log.error("`--agent-secret` is required to import an existing Holos agent")
       prompts.outro("Login failed")
       return
     }
 
     await importExistingHolosCredentials({
-      agentId: options.agentId,
       agentSecret: options.agentSecret,
+      expectedAgentId: options.agentId,
     })
     return
   }
@@ -137,19 +146,13 @@ export async function runHolosLoginFlow(options?: { agentId?: string; agentSecre
   }
 
   if (mode === "existing") {
-    const agentId = await prompts.text({ message: "Agent ID:" })
-    if (prompts.isCancel(agentId) || !agentId) {
-      prompts.outro("Cancelled")
-      return
-    }
-
     const agentSecret = await prompts.password({ message: "Agent Secret:" })
     if (prompts.isCancel(agentSecret) || !agentSecret) {
       prompts.outro("Cancelled")
       return
     }
 
-    await importExistingHolosCredentials({ agentId, agentSecret })
+    await importExistingHolosCredentials({ agentSecret })
     return
   }
 
@@ -169,7 +172,7 @@ export const HolosLoginCommand = cmd({
     yargs
       .option("agent-id", {
         type: "string",
-        describe: "log in with an existing Holos agent ID",
+        describe: "optional expected Holos agent ID when importing a secret",
       })
       .option("agent-secret", {
         type: "string",

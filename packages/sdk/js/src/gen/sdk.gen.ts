@@ -54,6 +54,8 @@ import type {
   ApiPluginsPreviewInstallResponses,
   ApiPluginsPreviewUpdateErrors,
   ApiPluginsPreviewUpdateResponses,
+  ApiPluginsRemoveErrors,
+  ApiPluginsRemoveResponses,
   ApiPluginsStatusErrors,
   ApiPluginsStatusResponses,
   ApiPluginsUpdateFromRegistryErrors,
@@ -158,6 +160,7 @@ import type {
   HolosAccountsRemoveResponses,
   HolosAccountsSwitchErrors,
   HolosAccountsSwitchResponses,
+  HolosAgentProfileInput,
   HolosAgentsGetErrors,
   HolosAgentsGetResponses,
   HolosAgentsListResponses,
@@ -178,6 +181,10 @@ import type {
   HolosLogoutResponses,
   HolosOutboxListResponses,
   HolosPresenceResponses,
+  HolosProfileGetErrors,
+  HolosProfileGetResponses,
+  HolosProfileUpdateErrors,
+  HolosProfileUpdateResponses,
   HolosReconnectErrors,
   HolosReconnectResponses,
   HolosSendResponses,
@@ -1839,6 +1846,7 @@ export class Session extends HeyApiClient {
             mode: "create"
             name?: string
             baseRef?: "current" | "fresh"
+            baseRevision?: string
           }
       title?: string
       controlProfile?: "guarded" | "autonomous" | "full_access"
@@ -2770,6 +2778,75 @@ export class Credentials extends HeyApiClient {
   }
 }
 
+export class Profile extends HeyApiClient {
+  /**
+   * Get current Holos agent profile
+   *
+   * Fetch the active agent profile from Holos. Synergy does not cache profile data locally.
+   */
+  public get<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      scopeID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<HolosProfileGetResponses, HolosProfileGetErrors, ThrowOnError>({
+      url: "/holos/profile",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Update current Holos agent profile
+   *
+   * Merge editable profile fields into the active remote Holos profile while preserving unknown remote fields.
+   */
+  public update<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      scopeID?: string
+      holosAgentProfileInput?: HolosAgentProfileInput
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { key: "holosAgentProfileInput", map: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).put<HolosProfileUpdateResponses, HolosProfileUpdateErrors, ThrowOnError>({
+      url: "/holos/profile",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+}
+
 export class Accounts extends HeyApiClient {
   /**
    * List Holos accounts
@@ -3266,10 +3343,21 @@ export class Holos extends HeyApiClient {
   public login<ThrowOnError extends boolean = false>(
     parameters?: {
       callbackUrl?: string
+      profile?: HolosAgentProfileInput
     },
     options?: Options<never, ThrowOnError>,
   ) {
-    const params = buildClientParams([parameters], [{ args: [{ in: "body", key: "callbackUrl" }] }])
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "body", key: "callbackUrl" },
+            { in: "body", key: "profile" },
+          ],
+        },
+      ],
+    )
     return (options?.client ?? this.client).post<HolosLoginResponses, unknown, ThrowOnError>({
       url: "/holos/login",
       ...options,
@@ -3309,12 +3397,12 @@ export class Holos extends HeyApiClient {
   /**
    * Set agent credentials
    *
-   * Validate and save existing agent credentials. Validates by fetching a ws_token, then saves and reloads the Holos runtime.
+   * Validate and save existing agent credentials by fetching the canonical Holos agent profile from the remote API.
    */
   public credentials<ThrowOnError extends boolean = false>(
     parameters?: {
-      agentId?: string
       agentSecret?: string
+      expectedAgentId?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -3323,8 +3411,8 @@ export class Holos extends HeyApiClient {
       [
         {
           args: [
-            { in: "body", key: "agentId" },
             { in: "body", key: "agentSecret" },
+            { in: "body", key: "expectedAgentId" },
           ],
         },
       ],
@@ -3515,6 +3603,8 @@ export class Holos extends HeyApiClient {
   }
 
   credentials2 = new Credentials({ client: this.client })
+
+  profile = new Profile({ client: this.client })
 
   accounts = new Accounts({ client: this.client })
 
@@ -7179,6 +7269,38 @@ export class Plugins extends HeyApiClient {
     )
     return (options?.client ?? this.client).get<ApiPluginsListResponses, unknown, ThrowOnError>({
       url: "/api/plugins",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Remove plugin
+   *
+   * Uninstall and deactivate a plugin, then reload the plugin runtime.
+   */
+  public remove<ThrowOnError extends boolean = false>(
+    parameters: {
+      pluginId: string
+      directory?: string
+      scopeID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "pluginId" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).delete<ApiPluginsRemoveResponses, ApiPluginsRemoveErrors, ThrowOnError>({
+      url: "/api/plugins/{pluginId}",
       ...options,
       ...params,
     })

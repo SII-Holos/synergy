@@ -6,8 +6,12 @@ import type {
   ToolTaskRunResult,
 } from "@ericsanchezok/synergy-plugin/tool"
 import { Agent } from "@/agent/agent"
+import { Config } from "@/config/config"
+import { ControlProfileCompiler } from "@/control-profile/compiler"
+import { ApprovalPolicy } from "@/control-profile/approval"
 import { Cortex } from "@/cortex"
 import type { CortexTypes } from "@/cortex/types"
+import { EnforcementError } from "@/enforcement/errors"
 import { PermissionNext } from "@/permission/next"
 import { Provider } from "@/provider/provider"
 import { ScopeContext } from "@/scope/context"
@@ -200,17 +204,49 @@ export async function requestPluginPermission(
 ) {
   const agent = await Agent.get(context.agent)
   const session = await Session.get(context.sessionID)
+  const topLevelProfile = await topLevelControlProfile()
+  const sessionProfile = session?.id ? await Session.resolveControlProfile(session.id) : undefined
+  const profileId = ControlProfileCompiler.normalize(sessionProfile ?? agent?.controlProfile ?? topLevelProfile)
+  const workspaceInfo = ScopeContext.current.workspace
+  const interaction = session?.interaction
+  const profile = await ControlProfileCompiler.resolve(profileId, {
+    workspace: context.directory ?? ScopeContext.current.directory,
+    workspaceType: workspaceInfo?.type === "git_worktree" ? "worktree" : "main",
+    interactionMode: interaction?.mode === "unattended" ? "unattended" : "attended",
+  })
+  const metadata = {
+    ...request.metadata,
+    ...PermissionNext.requestMetadata(session),
+  }
+  const decision = ApprovalPolicy.decidePermission(profile.approval, request.permission, metadata)
+  if (decision.action === "deny") {
+    throw new EnforcementError.PolicyDenied(
+      decision.reason,
+      decision.capabilities,
+      profile.summary?.profileId ?? profileId,
+    )
+  }
+  if (decision.action === "allow") return
+
   await PermissionNext.ask({
     sessionID: context.sessionID,
     permission: request.permission,
     patterns: request.patterns,
-    metadata: request.metadata ?? {},
+    metadata,
     tool: context.callID ? { messageID: context.messageID, callID: context.callID } : undefined,
     ruleset: PermissionNext.merge(agent?.permission ?? [], PermissionNext.sessionRuleset(session), [
       { permission: request.permission, pattern: "*", action: "ask" },
     ]),
     signal: context.abort,
   })
+}
+
+async function topLevelControlProfile(): Promise<string | undefined> {
+  try {
+    return (await Config.current()).controlProfile
+  } catch {
+    return undefined
+  }
 }
 
 async function parentModel(context: RuntimeContext) {

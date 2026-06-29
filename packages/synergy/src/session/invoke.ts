@@ -623,14 +623,17 @@ export namespace SessionInvoke {
         if (sessionBlueprint?.loopID) {
           const loop = await BlueprintLoopStore.get(scopeID, sessionBlueprint.loopID).catch(() => undefined)
           if (loop) {
-            const loopInstruction =
-              agent.name === "synergy-max"
+            const isAuditSession = sessionBlueprint.loopRole === "audit" || session?.id === loop.auditSessionID
+            const loopInstruction = isAuditSession
+              ? `You are auditing this BlueprintLoop. Read the Blueprint note with note_read ids=["${loop.noteID}"], inspect the execution evidence, and decide whether the Blueprint outcome is complete. If changes are required, call blueprint_loop_restart({ loopID: "${loop.id}", reason: "...", completed: "...", remaining: "...", instructions: "..." }). If complete, call blueprint_loop_finish({ loopID: "${loop.id}", status: "completed", summary: "..." }).`
+              : agent.name === "synergy-max"
                 ? `You are executing this coding BlueprintLoop. Before editing code, call note_read with ids=["${loop.noteID}"] and read the full Blueprint content. Continue until the Blueprint is fully implemented and verified. When ready for audit, call blueprint_loop_finish({ loopID: "${loop.id}", status: "auditing", summary: "..." }).`
                 : `You are executing this BlueprintLoop. Before carrying out the Blueprint, call note_read with ids=["${loop.noteID}"] and read the full Blueprint content. Continue until the requested outcome is fully delivered. When ready for audit, call blueprint_loop_finish({ loopID: "${loop.id}", status: "auditing", summary: "..." }).`
             systemParts.push(
               [
                 "<blueprint-loop-context>",
                 `Active BlueprintLoop: ${loop.id}`,
+                `BlueprintLoop role: ${isAuditSession ? "audit" : "execution"}`,
                 `Blueprint Note: ${loop.noteID}`,
                 `Title: ${loop.title}`,
                 `Description: ${loop.description ?? "N/A"}`,

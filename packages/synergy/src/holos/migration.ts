@@ -1,9 +1,12 @@
 import { Storage } from "@/storage/storage"
 import { StoragePath } from "@/storage/path"
+import { Global } from "@/global"
 import { HolosAccounts } from "./accounts"
 import { Log } from "@/util/log"
 import { MigrationRegistry } from "../migration/registry"
 import type { Migration } from "../migration"
+import path from "path"
+import fs from "fs/promises"
 
 const log = Log.create({ service: "holos.migration" })
 
@@ -34,6 +37,31 @@ function hasLegacyFields(contact: Record<string, unknown>): boolean {
   return "holosId" in contact || "bio" in contact || "status" in contact || "config" in contact
 }
 
+async function removePersistedAccountLabels(): Promise<number> {
+  const filepath = Global.Path.authHolosAccounts
+  const data = await Bun.file(filepath)
+    .json()
+    .catch(() => undefined)
+  if (!data || typeof data !== "object" || Array.isArray(data)) return 0
+
+  const accounts = (data as { accounts?: unknown }).accounts
+  if (!accounts || typeof accounts !== "object" || Array.isArray(accounts)) return 0
+
+  let count = 0
+  for (const account of Object.values(accounts)) {
+    if (!account || typeof account !== "object" || Array.isArray(account)) continue
+    if (!("label" in account)) continue
+    delete (account as Record<string, unknown>).label
+    count++
+  }
+  if (count === 0) return 0
+
+  await fs.mkdir(path.dirname(filepath), { recursive: true })
+  await Bun.write(filepath, JSON.stringify(data, null, 2))
+  await fs.chmod(filepath, 0o600).catch(() => {})
+  return count
+}
+
 export const migrations: Migration[] = [
   {
     id: "20260620-migrate-holos-legacy-credentials",
@@ -43,6 +71,17 @@ export const migrations: Migration[] = [
       const result = await HolosAccounts.migrateFromLegacy()
       if (result.migrated) {
         log.info("migrated legacy holos credentials to multi-account store")
+      }
+    },
+  },
+  {
+    id: "20260629-holos-account-profile-source-of-truth",
+    description: "Remove local Holos account labels so remote profile remains the identity source of truth.",
+    domain: "holos",
+    async up() {
+      const count = await removePersistedAccountLabels()
+      if (count > 0) {
+        log.info("removed local holos account labels", { count })
       }
     },
   },

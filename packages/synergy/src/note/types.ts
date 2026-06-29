@@ -15,6 +15,7 @@ export namespace NoteTypes {
         .object({
           description: z.string().optional(),
           defaultAgent: z.string().optional(),
+          auditAgent: z.string().optional(),
           activeLoopID: z.string().optional(),
           runCount: z.number().optional(),
           lastRunAt: z.number().optional(),
@@ -39,6 +40,7 @@ export namespace NoteTypes {
         .object({
           description: z.string().optional(),
           defaultAgent: z.string().optional(),
+          auditAgent: z.string().optional(),
           activeLoopID: z.string().optional(),
           runCount: z.number().optional(),
           lastRunAt: z.number().optional(),
@@ -60,6 +62,7 @@ export namespace NoteTypes {
         .object({
           description: z.string().optional(),
           defaultAgent: z.string().optional(),
+          auditAgent: z.string().optional(),
           activeLoopID: z.string().nullable().optional(),
           runCount: z.number().optional(),
           lastRunAt: z.number().optional(),
@@ -100,6 +103,7 @@ export namespace NoteTypes {
         .object({
           description: z.string().optional(),
           defaultAgent: z.string().optional(),
+          auditAgent: z.string().optional(),
           activeLoopID: z.string().optional(),
           runCount: z.number().optional(),
           lastRunAt: z.number().optional(),

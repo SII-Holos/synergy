@@ -68,12 +68,6 @@ const CAPABILITY_MAP: Record<string, Omit<PermissionItem, "key">> = {
     title: "Access stored credentials",
     description: "Can read stored API keys, tokens, and other credentials.",
   },
-  plugin_invoke: {
-    category: "runtime",
-    severity: "low",
-    title: "Invoke plugin runtime",
-    description: "Basic plugin execution — loaded and initialized.",
-  },
   task: {
     category: "tools",
     severity: "medium",

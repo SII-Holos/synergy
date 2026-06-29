@@ -3,6 +3,7 @@ import { Contact } from "./contact"
 import { Presence } from "./presence"
 import { HolosReadiness } from "./readiness"
 import { HolosAccounts } from "./accounts"
+import { HolosProfile } from "./profile"
 
 export namespace HolosState {
   export const ConnectionStatus = z.enum(["connected", "connecting", "disconnected", "disabled", "failed", "unknown"])
@@ -11,7 +12,6 @@ export namespace HolosState {
   export const AccountMeta = z
     .object({
       agentId: z.string(),
-      label: z.string().nullable(),
       createdAt: z.number(),
       updatedAt: z.number(),
     })
@@ -46,7 +46,8 @@ export namespace HolosState {
 
   export const Social = z
     .object({
-      profile: z.object({ name: z.string(), bio: z.string(), initialized: z.boolean() }).nullable(),
+      profile: HolosProfile.Info.nullable(),
+      profileError: z.string().optional(),
       contacts: Contact.Info.array(),
       presence: z.record(z.string(), z.enum(["online", "offline", "unknown"])),
     })
@@ -61,29 +62,42 @@ export namespace HolosState {
     .meta({ ref: "HolosState" })
   export type Info = z.infer<typeof Info>
 
-  function toAccountMeta(a: {
-    agentId: string
-    label: string | null
-    createdAt: number
-    updatedAt: number
-  }): AccountMeta {
+  function toAccountMeta(a: { agentId: string; createdAt: number; updatedAt: number }): AccountMeta {
     return {
       agentId: a.agentId,
-      label: a.label,
       createdAt: a.createdAt,
       updatedAt: a.updatedAt,
     }
   }
 
+  async function fetchProfile(input: {
+    credential: HolosReadiness.Snapshot["credential"]
+  }): Promise<{ profile: HolosProfile.Info | null; profileError?: string }> {
+    if (!input.credential) return { profile: null }
+    try {
+      const { Config } = await import("@/config/config")
+      const config = await Config.current().catch(() => undefined)
+      const me = await HolosProfile.getCurrent({
+        agentId: input.credential.agentId,
+        agentSecret: input.credential.agentSecret,
+        apiUrl: config?.holos?.apiUrl,
+      })
+      return { profile: me.profile }
+    } catch (err) {
+      return {
+        profile: null,
+        profileError: err instanceof Error ? err.message : String(err),
+      }
+    }
+  }
+
   export async function get(): Promise<Info> {
-    const [{ credential, status, readiness }, profile, contacts, accounts] = await Promise.all([
+    const [{ credential, status, readiness }, contacts, accounts] = await Promise.all([
       HolosReadiness.snapshot(),
-      new Promise<{ name: string; bio: string; initialized: boolean } | undefined>((r) =>
-        r({ name: "", bio: "", initialized: false }),
-      ),
       Contact.list(),
       HolosAccounts.listAccounts(),
     ])
+    const profileState = await fetchProfile({ credential })
 
     const activeAccount = accounts.find((a) => a.agentId === credential?.agentId) ?? null
 
@@ -106,7 +120,8 @@ export namespace HolosState {
       },
       readiness,
       social: {
-        profile: profile ?? null,
+        profile: profileState.profile,
+        ...(profileState.profileError ? { profileError: profileState.profileError } : {}),
         contacts,
         presence,
       },

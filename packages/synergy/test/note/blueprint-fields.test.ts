@@ -12,9 +12,7 @@ import { NoteStore } from "../../src/note"
  *   runCount: number (default 0)
  *   lastRunAt: number | undefined (epoch ms)
  *
- * Current NoteTypes.Info.blueprint only has description, status, defaultAgent.
- * Tests use `as any` to access contracted fields and assert they persist
- * through create/update. Schema + store must be updated for these to pass.
+ * Blueprint metadata carries authoring and execution defaults plus loop activity fields.
  */
 
 describe("Note blueprint fields", () => {
@@ -32,6 +30,7 @@ describe("Note blueprint fields", () => {
             description: "Run CI checks",
             status: "ready",
             defaultAgent: "synergy-max",
+            auditAgent: "security-reviewer",
           } as any,
         })
 
@@ -40,6 +39,7 @@ describe("Note blueprint fields", () => {
         // If schema already accepts extended fields, store persists them.
         // If not, these will be undefined (test encodes the contract gap).
         const bp = note.blueprint as any
+        expect(bp?.auditAgent).toBe("security-reviewer")
         // runCount should default to 0
         expect(bp?.runCount === 0 || bp?.runCount === undefined).toBe(true)
         // activeLoopID should be settable

@@ -402,7 +402,7 @@ export namespace ToolResolver {
       state: {
         ...match.state,
         title: state.title ?? match.state.title,
-        metadata: ToolTimeout.preserveMetadata(match.state.metadata, state.metadata) ?? match.state.metadata,
+        metadata: ToolTimeout.mergeMetadata(match.state.metadata, state.metadata) ?? match.state.metadata,
         status: "running",
         input: args,
         time: {
@@ -803,7 +803,7 @@ export namespace ToolResolver {
       PermissionNext.merge(input.agent.permission, PermissionNext.sessionRuleset(input.session)),
     )
     const activeBlueprintLoopID = input.session?.blueprint?.loopID
-    const isSupervisor = input.agent.name === "supervisor"
+    const blueprintLoopRole = input.session?.blueprint?.loopRole
     const forcedGroups = forcedToolGroups(input.session)
     const forcedToolIDs = forcedTools(input.userTools)
     const ephemeralToolIds = new Set(input.ephemeralTools?.map((item) => item.id) ?? [])
@@ -836,15 +836,24 @@ export namespace ToolResolver {
         continue
       }
 
-      if (
-        !isSupervisor &&
-        (def.id === "blueprint_loop_restart" || (def.id === "blueprint_loop_finish" && !activeBlueprintLoopID))
-      ) {
+      if (def.id === "blueprint_loop_restart" && (!activeBlueprintLoopID || blueprintLoopRole !== "audit")) {
         diagnostics.set(
           def.id,
           SessionModePolicy.unavailable({
             toolName: def.id,
-            reason: "supervisor_only",
+            reason: "audit_only",
+            session: input.session,
+          }),
+        )
+        continue
+      }
+
+      if (def.id === "blueprint_loop_finish" && !activeBlueprintLoopID) {
+        diagnostics.set(
+          def.id,
+          SessionModePolicy.unavailable({
+            toolName: def.id,
+            reason: "blueprint_loop_required",
             session: input.session,
           }),
         )

@@ -3,7 +3,7 @@ import z from "zod"
 export namespace HolosProtocol {
   export const PeerProfile = z.object({
     name: z.string(),
-    bio: z.string().optional(),
+    description: z.string().optional(),
   })
   export type PeerProfile = z.infer<typeof PeerProfile>
 

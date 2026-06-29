@@ -10,44 +10,11 @@ const parameters = z.object({
   loopID: z.string().describe("The BlueprintLoop ID to finish."),
   status: z
     .enum(["auditing", "failed", "completed"])
-    .describe("The new status — 'auditing' (execution agent only), 'failed', or 'completed' (supervisor only)."),
+    .describe(
+      "The new status — 'auditing' from the execution session, 'completed' from the audit session, or 'failed' from either.",
+    ),
   summary: z.string().optional().describe("Optional summary of the finish reason or audit result."),
 })
-
-const EXECUTION_AGENTS = new Set([
-  "synergy",
-  "synergy-max",
-  "developer",
-  "implementation-engineer",
-  "explore",
-  "scout",
-  "advisor",
-  "inspector",
-  "scribe",
-  "scholar",
-  "intent-analyst",
-  "requirements-engineer",
-  "code-cartographer",
-  "solution-architect",
-  "test-strategist",
-  "research-scout",
-  "docs-researcher",
-  "literature-searcher",
-  "literature-analyst",
-  "research-methodologist",
-  "quality-gatekeeper",
-  "memory-curator",
-  "note-librarian",
-  "session-historian",
-])
-
-function isSupervisor(agent: string): boolean {
-  return agent === "supervisor"
-}
-
-function isExecutionAgent(agent: string): boolean {
-  return EXECUTION_AGENTS.has(agent)
-}
 
 export const BlueprintLoopFinishTool = Tool.define("blueprint_loop_finish", {
   description: DESCRIPTION,
@@ -61,31 +28,27 @@ export const BlueprintLoopFinishTool = Tool.define("blueprint_loop_finish", {
       throw new LoopError.NotFound({ id: params.loopID })
     }
 
-    const agentName = ctx.agent
-
-    if (isSupervisor(agentName)) {
-      if (params.status === "auditing") {
-        throw new Error(
-          `Supervisor cannot set loop status to "auditing". Supervisors can only set "completed" or "failed".`,
-        )
-      }
-    } else if (isExecutionAgent(agentName)) {
-      if (params.status === "completed") {
-        throw new Error(
-          `Execution agent "${agentName}" cannot set loop status to "completed". Only the supervisor can complete a loop. Use "auditing" or "failed" instead.`,
-        )
-      }
-    } else {
-      if (params.status === "completed") {
-        throw new Error(
-          `Agent "${agentName}" does not have permission to set loop status to "completed". Only the supervisor can complete a loop.`,
-        )
-      }
-    }
-
     // Pre-check loop status for terminal and idempotent states
     const loop = await BlueprintLoopStore.get(scopeID, params.loopID)
     const currentStatus = loop.status
+    const isExecutionSession = ctx.sessionID === loop.sessionID
+    const isAuditSession = ctx.sessionID === loop.auditSessionID
+
+    if (params.status === "auditing" && !isExecutionSession) {
+      throw new Error(
+        `Session "${ctx.sessionID}" cannot move BlueprintLoop ${params.loopID} to auditing. Only the execution session ${loop.sessionID} can request audit.`,
+      )
+    }
+    if (params.status === "completed" && !isAuditSession) {
+      throw new Error(
+        `Session "${ctx.sessionID}" cannot complete BlueprintLoop ${params.loopID}. Only the active audit session can complete it.`,
+      )
+    }
+    if (params.status === "failed" && !isExecutionSession && !isAuditSession) {
+      throw new Error(
+        `Session "${ctx.sessionID}" cannot fail BlueprintLoop ${params.loopID}. Only the execution session or active audit session can fail it.`,
+      )
+    }
 
     if (currentStatus === "completed") {
       return {
@@ -130,7 +93,7 @@ export const BlueprintLoopFinishTool = Tool.define("blueprint_loop_finish", {
         },
       }
     }
-    let supervisorSessionID: string | undefined
+    let auditSessionID: string | undefined
 
     if (params.status === "auditing") {
       const auditPrompt = `Audit BlueprintLoop ${params.loopID} (Note ${loop.noteID}) in session ${loop.sessionID}.
@@ -138,20 +101,25 @@ Read the Blueprint Note via note_read, examine the execution evidence (session t
 If NOT complete, call blueprint_loop_restart({ loopID: "${params.loopID}", reason: "...", completed: "...", remaining: "...", instructions: "..." }) with a detailed reason and concrete next actions.
 If complete, call blueprint_loop_finish({ loopID: "${params.loopID}", status: "completed", summary: "..." }).`
       const { Cortex } = await import("../cortex")
+      const auditAgent = loop.auditAgent || "supervisor"
       const task = await Cortex.launch({
-        description: `[Supervisor] Audit BlueprintLoop ${params.loopID}`,
+        description: `[Audit] Audit BlueprintLoop ${params.loopID}`,
         prompt: auditPrompt,
-        agent: "supervisor",
+        agent: auditAgent,
         executionRole: "delegated_subagent",
         category: "general",
         parentSessionID: loop.sessionID,
         parentMessageID: ctx.messageID,
         notifyParentOnComplete: false,
       })
-      supervisorSessionID = task.sessionID
+      auditSessionID = task.sessionID
+      const { Session } = await import("../session")
+      await Session.update(auditSessionID, (draft) => {
+        draft.blueprint = { ...draft.blueprint, loopID: params.loopID, loopRole: "audit" }
+      })
       await BlueprintLoopStore.updateStatus(scopeID, params.loopID, {
         status: "auditing",
-        supervisorSessionID,
+        auditSessionID,
       })
       await Bus.publish(LoopEvent.Auditing, { loopID: params.loopID })
     } else if (params.status === "failed") {
@@ -172,7 +140,7 @@ If complete, call blueprint_loop_finish({ loopID: "${params.loopID}", status: "c
       title: `Loop ${params.loopID} → ${params.status}`,
       output: [
         `BlueprintLoop ${params.loopID} is now ${statusLabel[params.status]}.`,
-        supervisorSessionID ? `Supervisor session: ${supervisorSessionID}` : "",
+        auditSessionID ? `Audit session: ${auditSessionID}` : "",
         params.summary ? `Summary: ${params.summary}` : "",
       ]
         .filter(Boolean)
@@ -180,7 +148,7 @@ If complete, call blueprint_loop_finish({ loopID: "${params.loopID}", status: "c
       metadata: {
         loopID: params.loopID,
         status: params.status,
-        supervisorSessionID,
+        auditSessionID,
       } as Record<string, any>,
     }
   },

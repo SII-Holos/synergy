@@ -1,10 +1,10 @@
 Use this when the active BlueprintLoop is ready for audit or cannot continue.
 
 Execution agents may set:
-- auditing: the implementation is ready for supervisor audit
+- auditing: the implementation is ready for audit
 - failed: execution cannot continue
 
-Supervisors may set:
+Audit agents may set:
 - completed: audit passed
 - failed: audit cannot continue
 

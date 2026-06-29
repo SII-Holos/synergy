@@ -6,7 +6,7 @@ function buildCapabilitySet(
   permissions: PluginManifest["permissions"],
   toolOverrides?: ManifestTool["capabilities"],
 ): string[] {
-  const caps = new Set<string>(["plugin_invoke"])
+  const caps = new Set<string>()
   const pt = permissions?.tools
   const pd = permissions?.data
   const tc = toolOverrides
@@ -26,6 +26,8 @@ function buildCapabilitySet(
     caps.add("mcp:invoke")
     caps.add("mcp:spawn")
   }
+
+  if (pt?.task) caps.add("task")
 
   const sess = tc?.session ?? pd?.session ?? "none"
   if (sess === "read") caps.add("session_data")

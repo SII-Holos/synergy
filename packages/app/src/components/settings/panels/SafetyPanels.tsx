@@ -1,7 +1,8 @@
 import { For } from "solid-js"
 import type { ControlProfileSummary, SandboxStatus } from "@ericsanchezok/synergy-sdk/client"
+import { Switch } from "@ericsanchezok/synergy-ui/switch"
 import { SettingRow } from "../components/SettingRow"
-import { SegmentPill } from "../components/SegmentPill"
+import { SettingsStepScale } from "../components/SettingsStepScale"
 import { SettingsPage, SettingsSection } from "../components/SettingsPrimitives"
 import type { SafetyStore } from "../types"
 
@@ -35,17 +36,15 @@ export function PermissionsPanel(props: {
           title="Permission Mode"
           description="Default permission behavior when no narrower tool rule applies"
           trailing={
-            <SegmentPill
+            <SettingsStepScale
               value={props.safety.permission}
+              ariaLabel="Permission mode"
               options={[
                 { value: "ask", label: "Ask" },
                 { value: "allow", label: "Allow" },
                 { value: "deny", label: "Deny" },
               ]}
               onChange={(value) => props.onSafetyChange("permission", value)}
-              showReset
-              defaultValue="ask"
-              onReset={() => props.onSafetyChange("permission", "ask")}
             />
           }
         />
@@ -53,10 +52,9 @@ export function PermissionsPanel(props: {
           title="Smart Allow"
           description="Use an internal agent to auto-allow safe asks and soft denies"
           trailing={
-            <BooleanPill
-              value={props.safety.smartAllow}
-              defaultValue="false"
-              onChange={(value) => props.onSafetyChange("smartAllow", value)}
+            <Switch
+              checked={props.safety.smartAllow !== "false"}
+              onChange={(value) => props.onSafetyChange("smartAllow", value ? "true" : "false")}
             />
           }
         />
@@ -77,10 +75,9 @@ export function SandboxPanel(props: {
           title="Enabled"
           description="Use the sandbox runtime when it is available"
           trailing={
-            <BooleanPill
-              value={props.safety.sandboxEnabled}
-              defaultValue="true"
-              onChange={(value) => props.onSafetyChange("sandboxEnabled", value)}
+            <Switch
+              checked={props.safety.sandboxEnabled !== "false"}
+              onChange={(value) => props.onSafetyChange("sandboxEnabled", value ? "true" : "false")}
             />
           }
         />
@@ -88,17 +85,15 @@ export function SandboxPanel(props: {
           title="Fallback Policy"
           description="How to proceed when sandbox enforcement is unavailable"
           trailing={
-            <SegmentPill
+            <SettingsStepScale
               value={props.safety.sandboxFallbackPolicy}
+              ariaLabel="Sandbox fallback policy"
               options={[
                 { value: "warn", label: "Warn" },
                 { value: "allow", label: "Allow" },
                 { value: "deny", label: "Deny" },
               ]}
               onChange={(value) => props.onSafetyChange("sandboxFallbackPolicy", value)}
-              showReset
-              defaultValue="warn"
-              onReset={() => props.onSafetyChange("sandboxFallbackPolicy", "warn")}
             />
           }
         />
@@ -136,22 +131,6 @@ export function ControlProfilePanel(props: {
         </div>
       </SettingsSection>
     </SettingsPage>
-  )
-}
-
-function BooleanPill(props: { value: string; defaultValue: string; onChange: (value: string) => void }) {
-  return (
-    <SegmentPill
-      value={props.value}
-      options={[
-        { value: "true", label: "On" },
-        { value: "false", label: "Off" },
-      ]}
-      onChange={props.onChange}
-      showReset
-      defaultValue={props.defaultValue}
-      onReset={() => props.onChange(props.defaultValue)}
-    />
   )
 }
 

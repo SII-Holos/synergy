@@ -73,22 +73,20 @@ describe("HolosAccounts multi-account store", () => {
   // ── 2. Saving A then B stores both and makes latest active ──────────
 
   test("saveAndActivateAccount stores credential and makes latest active", async () => {
-    await HolosAccounts.saveAndActivateAccount("agent_a", "secret_a", "Account A")
+    await HolosAccounts.saveAndActivateAccount("agent_a", "secret_a")
 
     const activeAfterA = await HolosAccounts.getActiveAccount()
     expect(activeAfterA).toBeDefined()
     expect(activeAfterA!.agentId).toBe("agent_a")
     expect(activeAfterA!.agentSecret).toBe("secret_a")
-    expect(activeAfterA!.label).toBe("Account A")
 
-    await HolosAccounts.saveAndActivateAccount("agent_b", "secret_b", "Account B")
+    await HolosAccounts.saveAndActivateAccount("agent_b", "secret_b")
 
     // B should now be active (latest login wins)
     const activeAfterB = await HolosAccounts.getActiveAccount()
     expect(activeAfterB).toBeDefined()
     expect(activeAfterB!.agentId).toBe("agent_b")
     expect(activeAfterB!.agentSecret).toBe("secret_b")
-    expect(activeAfterB!.label).toBe("Account B")
 
     // Both accounts should be present in the list
     const accounts = await HolosAccounts.listAccounts()
@@ -97,18 +95,17 @@ describe("HolosAccounts multi-account store", () => {
   })
 
   test("saving same agentId again overwrites secret and makes it active", async () => {
-    await HolosAccounts.saveAndActivateAccount("agent_x", "old_secret", "Old")
+    await HolosAccounts.saveAndActivateAccount("agent_x", "old_secret")
 
     const list1 = await HolosAccounts.listAccounts()
     expect(list1).toHaveLength(1)
 
     // Re-login with updated secret
-    await HolosAccounts.saveAndActivateAccount("agent_x", "new_secret", "Updated")
+    await HolosAccounts.saveAndActivateAccount("agent_x", "new_secret")
 
     const active = await HolosAccounts.getActiveAccount()
     expect(active!.agentId).toBe("agent_x")
     expect(active!.agentSecret).toBe("new_secret")
-    expect(active!.label).toBe("Updated")
 
     // Still only one account (no duplicate agentId entries)
     const list2 = await HolosAccounts.listAccounts()
@@ -118,8 +115,8 @@ describe("HolosAccounts multi-account store", () => {
   // ── 3. Switching active account changes resolved credential ─────────
 
   test("setActiveAccount changes what getActiveAccount returns", async () => {
-    await HolosAccounts.saveAndActivateAccount("agent_a", "secret_a", "Alpha")
-    await HolosAccounts.saveAndActivateAccount("agent_b", "secret_b", "Beta")
+    await HolosAccounts.saveAndActivateAccount("agent_a", "secret_a")
+    await HolosAccounts.saveAndActivateAccount("agent_b", "secret_b")
 
     // B is active (latest saved)
     expect((await HolosAccounts.getActiveAccount())!.agentId).toBe("agent_b")
@@ -130,7 +127,6 @@ describe("HolosAccounts multi-account store", () => {
     const active = await HolosAccounts.getActiveAccount()
     expect(active!.agentId).toBe("agent_a")
     expect(active!.agentSecret).toBe("secret_a")
-    expect(active!.label).toBe("Alpha")
   })
 
   test("setActiveAccount with unknown ID does nothing or throws clearly", async () => {
@@ -148,7 +144,7 @@ describe("HolosAccounts multi-account store", () => {
   // ── 4. Removing active account leaves no active ─────────────────────
 
   test("deleteAccount with active account clears active state", async () => {
-    await HolosAccounts.saveAndActivateAccount("agent_a", "secret_a", "Only")
+    await HolosAccounts.saveAndActivateAccount("agent_a", "secret_a")
 
     expect((await HolosAccounts.getActiveAccount())!.agentId).toBe("agent_a")
 
@@ -162,8 +158,8 @@ describe("HolosAccounts multi-account store", () => {
   })
 
   test("deleteAccount with non-active account keeps active unchanged", async () => {
-    await HolosAccounts.saveAndActivateAccount("agent_a", "secret_a", "Alpha")
-    await HolosAccounts.saveAndActivateAccount("agent_b", "secret_b", "Beta")
+    await HolosAccounts.saveAndActivateAccount("agent_a", "secret_a")
+    await HolosAccounts.saveAndActivateAccount("agent_b", "secret_b")
 
     // B is active (latest saved)
     await HolosAccounts.deleteAccount("agent_a")
@@ -198,6 +194,7 @@ describe("HolosAccounts multi-account store", () => {
     expect(active).toBeDefined()
     expect(active!.agentId).toBe("legacy_agent")
     expect(active!.agentSecret).toBe("legacy_secret")
+    expect("label" in active!).toBe(false)
 
     // Verify old key was removed from api-key.json
     const keys = await apiKeyFile()
@@ -247,7 +244,7 @@ describe("writeStore error handling", () => {
       throw enoentErr
     }) as any
 
-    await expect(HolosAccounts.saveAndActivateAccount("test_agent", "secret", "Test")).rejects.toThrow(
+    await expect(HolosAccounts.saveAndActivateAccount("test_agent", "secret")).rejects.toThrow(
       /Unable to create data directory at .+: ENOENT: no such file or directory/,
     )
   })
@@ -264,7 +261,7 @@ describe("writeStore error handling", () => {
   test("successful mkdir proceeds to write store", async () => {
     fs.mkdir = (async () => undefined) as any
 
-    await HolosAccounts.saveAndActivateAccount("ok_agent", "secret_ok", "OK")
+    await HolosAccounts.saveAndActivateAccount("ok_agent", "secret_ok")
 
     const active = await HolosAccounts.getActiveAccount()
     expect(active!.agentId).toBe("ok_agent")

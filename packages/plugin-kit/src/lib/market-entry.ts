@@ -169,7 +169,8 @@ export function githubEntry(input: {
   }
 
   const capabilities = baseCapabilities(manifest)
-  const risk = computeRisk(capabilities, manifest)
+  const hasAgentCallableTools = (manifest.contributes?.tools ?? []).length > 0
+  const risk = computeRisk(hasAgentCallableTools ? capabilities : [], manifest)
   const runtimeMode = resolveRuntimeMode({
     source: "local",
     manifestMode: manifest.runtime?.mode,

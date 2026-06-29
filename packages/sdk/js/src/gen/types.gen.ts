@@ -168,8 +168,22 @@ export type HolosLoginResponse = {
   url: string
 }
 
+export type HolosAgentProfileInput = {
+  name: string
+  description?: string
+  avatarUrl?: string
+}
+
+export type HolosAgentProfile = {
+  name: string
+  description: string
+  avatarUrl: string | null
+}
+
 export type HolosCredentialsResponse = {
   success: true
+  agentId: string
+  profile: HolosAgentProfile
 }
 
 export type HolosLogoutResponse = {
@@ -2496,6 +2510,8 @@ export type Worktree = {
   scopeID: string
   head?: string
   baseRef?: string
+  baseRevision?: string
+  resolvedBaseCommit?: string
   detached?: boolean
   bare?: boolean
   isMain?: boolean
@@ -2506,6 +2522,12 @@ export type Worktree = {
     | {
         type: "session"
         sessionID: string
+      }
+    | {
+        type: "superplan"
+        runID: string
+        nodeID?: string
+        mergeID?: string
       }
     | {
         type: "user"
@@ -2526,6 +2548,7 @@ export type WorktreeCreateInput = {
   name?: string
   sessionID?: string
   baseRef?: "current" | "fresh"
+  baseRevision?: string
   bind?: boolean
 }
 
@@ -2617,6 +2640,13 @@ export type SessionCortexDelegation = {
   outputResult?: unknown
 }
 
+export type SessionSuperPlanInfo = {
+  runID: string
+  role: "planner" | "node" | "merge" | "audit"
+  nodeID?: string
+  mergeID?: string
+}
+
 export type SessionWorkingInfo =
   | {
       status: "busy"
@@ -2686,10 +2716,12 @@ export type Session = {
   }
   history?: SessionHistoryInfo
   cortex?: SessionCortexDelegation
+  superplan?: SessionSuperPlanInfo
   working?: SessionWorkingInfo
   workspace?: SessionWorkspace
   blueprint?: {
     loopID?: string
+    loopRole?: "execution" | "audit"
     planMode?: boolean
   }
 }
@@ -3289,6 +3321,7 @@ export type NoteInfo = {
   blueprint?: {
     description?: string
     defaultAgent?: string
+    auditAgent?: string
     activeLoopID?: string
     runCount?: number
     lastRunAt?: number
@@ -4023,6 +4056,7 @@ export type NoteMetaInfo = {
   blueprint?: {
     description?: string
     defaultAgent?: string
+    auditAgent?: string
     activeLoopID?: string
     runCount?: number
     lastRunAt?: number
@@ -4049,6 +4083,7 @@ export type NoteCreateInput = {
   blueprint?: {
     description?: string
     defaultAgent?: string
+    auditAgent?: string
     activeLoopID?: string
     runCount?: number
     lastRunAt?: number
@@ -4065,6 +4100,7 @@ export type NotePatchInput = {
   blueprint?: {
     description?: string
     defaultAgent?: string
+    auditAgent?: string
     activeLoopID?: string | null
     runCount?: number
     lastRunAt?: number
@@ -4079,7 +4115,9 @@ export type BlueprintLoopInfo = {
   title: string
   description?: string
   sessionID: string
-  supervisorSessionID?: string
+  executionAgent?: string
+  auditAgent: string
+  auditSessionID?: string
   scopeID: string
   status: "armed" | "running" | "waiting" | "auditing" | "completed" | "failed" | "cancelled"
   runMode?: "current" | "new" | "worktree"
@@ -4160,7 +4198,6 @@ export type HolosCredentialsStatusResponse = {
 
 export type HolosAccountMeta = {
   agentId: string
-  label: string | null
   createdAt: number
   updatedAt: number
 }
@@ -4202,11 +4239,8 @@ export type Contact = {
 }
 
 export type HolosSocialState = {
-  profile: {
-    name: string
-    bio: string
-    initialized: boolean
-  } | null
+  profile: HolosAgentProfile | null
+  profileError?: string
   contacts: Array<Contact>
   presence: {
     [key: string]: "online" | "offline" | "unknown"
@@ -4218,6 +4252,11 @@ export type HolosState = {
   connection: HolosConnectionState
   readiness: HolosReadinessState
   social: HolosSocialState
+}
+
+export type HolosAgentMe = {
+  agentId: string
+  profile: HolosAgentProfile
 }
 
 export type HolosVerifyResponse = {
@@ -5719,6 +5758,7 @@ export type GlobalDisposeResponse = GlobalDisposeResponses[keyof GlobalDisposeRe
 export type HolosLoginData = {
   body?: {
     callbackUrl?: string
+    profile: HolosAgentProfileInput
   }
   path?: never
   query?: never
@@ -5768,8 +5808,8 @@ export type HolosLogoutResponse2 = HolosLogoutResponses[keyof HolosLogoutRespons
 
 export type HolosCredentialsData = {
   body?: {
-    agentId: string
     agentSecret: string
+    expectedAgentId?: string
   }
   path?: never
   query?: never
@@ -7363,6 +7403,7 @@ export type SessionForkData = {
           mode: "create"
           name?: string
           baseRef?: "current" | "fresh"
+          baseRevision?: string
         }
     title?: string
     controlProfile?: "guarded" | "autonomous" | "full_access"
@@ -10799,6 +10840,62 @@ export type HolosStateResponses = {
 
 export type HolosStateResponse = HolosStateResponses[keyof HolosStateResponses]
 
+export type HolosProfileGetData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/holos/profile"
+}
+
+export type HolosProfileGetErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type HolosProfileGetError = HolosProfileGetErrors[keyof HolosProfileGetErrors]
+
+export type HolosProfileGetResponses = {
+  /**
+   * Current Holos profile
+   */
+  200: HolosAgentMe
+}
+
+export type HolosProfileGetResponse = HolosProfileGetResponses[keyof HolosProfileGetResponses]
+
+export type HolosProfileUpdateData = {
+  body?: HolosAgentProfileInput
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/holos/profile"
+}
+
+export type HolosProfileUpdateErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type HolosProfileUpdateError = HolosProfileUpdateErrors[keyof HolosProfileUpdateErrors]
+
+export type HolosProfileUpdateResponses = {
+  /**
+   * Updated Holos profile
+   */
+  200: HolosAgentMe
+}
+
+export type HolosProfileUpdateResponse = HolosProfileUpdateResponses[keyof HolosProfileUpdateResponses]
+
 export type HolosVerifyData = {
   body?: never
   path?: never
@@ -11540,6 +11637,39 @@ export type ApiPluginsListResponses = {
 }
 
 export type ApiPluginsListResponse = ApiPluginsListResponses[keyof ApiPluginsListResponses]
+
+export type ApiPluginsRemoveData = {
+  body?: never
+  path: {
+    pluginId: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/api/plugins/{pluginId}"
+}
+
+export type ApiPluginsRemoveErrors = {
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type ApiPluginsRemoveError = ApiPluginsRemoveErrors[keyof ApiPluginsRemoveErrors]
+
+export type ApiPluginsRemoveResponses = {
+  /**
+   * Plugin removed
+   */
+  200: {
+    pluginId: string
+    removed: true
+  }
+}
+
+export type ApiPluginsRemoveResponse = ApiPluginsRemoveResponses[keyof ApiPluginsRemoveResponses]
 
 export type ApiPluginsGetData = {
   body?: never

@@ -61,6 +61,16 @@ export type CortexDelegationInfo = z.infer<typeof CortexDelegationInfoInner>
 
 const ControlProfileId = z.enum(["guarded", "autonomous", "full_access"])
 
+export const SuperPlanSessionInfo = z
+  .object({
+    runID: Identifier.schema("superplan_run"),
+    role: z.enum(["planner", "node", "merge", "audit"]),
+    nodeID: Identifier.schema("superplan_node").optional(),
+    mergeID: Identifier.schema("superplan_merge").optional(),
+  })
+  .meta({ ref: "SessionSuperPlanInfo" })
+export type SuperPlanSessionInfo = z.infer<typeof SuperPlanSessionInfo>
+
 export const HistoryInfo = z
   .object({
     rollback: z
@@ -169,11 +179,13 @@ export const Info = z
         .optional(),
       history: HistoryInfo.optional(),
       cortex: CortexDelegationInfo.optional(),
+      superplan: SuperPlanSessionInfo.optional(),
       working: WorkingInfo.optional(),
       workspace: Workspace.optional(),
       blueprint: z
         .object({
           loopID: z.string().optional(),
+          loopRole: z.enum(["execution", "audit"]).optional(),
           planMode: z.boolean().optional(),
         })
         .optional(),
