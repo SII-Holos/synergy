@@ -346,7 +346,40 @@ export const PERMISSION_CAPABILITY: Record<string, string> = {
   websearch: "network_read",
   arxiv_search: "network_read",
   arxiv_download: "network_read",
+  download: "network_read",
   network_request: "network_request",
+  scan_document: "file_read",
+  look_at: "file_read",
+  attach: "file_read",
+  ast_grep: "file_read",
+  lsp: "file_read",
+  dagread: "file_read",
+  todoread: "file_read",
+  task_list: "file_read",
+  task_output: "file_read",
+  question: "file_read",
+  skill: "file_read",
+  render: "file_read",
+  diagram: "file_read",
+  agenda_list: "file_read",
+  agenda_logs: "file_read",
+  session_list: "file_read",
+  session_search: "file_read",
+  session_read: "file_read",
+  note_list: "file_read",
+  note_search: "file_read",
+  note_read: "file_read",
+  memory_search: "file_read",
+  memory_get: "file_read",
+  worktree_list: "file_read",
+  dagwrite: "session_state",
+  dagpatch: "session_state",
+  todowrite: "session_state",
+  task_cancel: "session_state",
+  batch: "session_state",
+  doom_loop: "session_state",
+  worktree_enter: "file_write",
+  worktree_leave: "file_write",
   session_data: "session_data",
   workspace_data: "workspace_data",
   "config:read": "config:read",
@@ -376,7 +409,7 @@ export function capabilityRisk(capability: string, manifest?: PluginManifest): P
   }
   const details = CAPABILITY_DETAILS[capability]
   if (details) return details.severity
-  return "low"
+  return "high"
 }
 
 function maxRisk(current: PluginRisk, next: PluginRisk): PluginRisk {

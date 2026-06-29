@@ -1,6 +1,11 @@
 import { describe, expect, test } from "bun:test"
 import { PluginManifest } from "@ericsanchezok/synergy-plugin"
-import { baseCapabilities, computeRisk } from "@ericsanchezok/synergy-plugin/permissions"
+import {
+  baseCapabilities,
+  capabilityRisk,
+  computeRisk,
+  permissionCapability,
+} from "@ericsanchezok/synergy-plugin/permissions"
 import {
   computePermissionsHash as runtimeComputePermissionsHash,
   computeManifestHash as runtimeComputeManifestHash,
@@ -72,5 +77,33 @@ describe("plugin capability consistency", () => {
     expect(kitComputePermissionsHash(manifest, kitCapabilities)).toBe(
       runtimeComputePermissionsHash(manifest, runtimeCapabilities),
     )
+  })
+
+  test("Synergy permission names map to shared capability classes", () => {
+    const mappings: Record<string, string> = {
+      download: "network_read",
+      scan_document: "file_read",
+      look_at: "file_read",
+      ast_grep: "file_read",
+      lsp: "file_read",
+      dagread: "file_read",
+      todoread: "file_read",
+      question: "file_read",
+      skill: "file_read",
+      dagwrite: "session_state",
+      dagpatch: "session_state",
+      todowrite: "session_state",
+      doom_loop: "session_state",
+      worktree_enter: "file_write",
+      worktree_leave: "file_write",
+    }
+
+    for (const [permission, capability] of Object.entries(mappings)) {
+      expect(permissionCapability(permission)).toBe(capability)
+    }
+  })
+
+  test("unknown capabilities fail closed as high risk", () => {
+    expect(capabilityRisk("unknown_future_capability")).toBe("high")
   })
 })
