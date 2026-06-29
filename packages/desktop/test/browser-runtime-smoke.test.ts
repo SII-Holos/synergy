@@ -9,6 +9,12 @@ const DESKTOP_DIR = fileURLToPath(new URL("..", import.meta.url))
 const ELECTRON_COMMAND = process.env.SYNERGY_DESKTOP_ELECTRON_BIN
   ? [process.env.SYNERGY_DESKTOP_ELECTRON_BIN]
   : ["bunx", "electron"]
+const ELECTRON_TEST_ARGS = process.platform === "linux" ? ["--no-sandbox"] : []
+const ELECTRON_TEST_ENV = {
+  ELECTRON_DISABLE_SECURITY_WARNINGS: "1",
+  ELECTRON_ENABLE_LOGGING: "1",
+  ...(process.platform === "linux" ? { ELECTRON_DISABLE_SANDBOX: "1" } : {}),
+}
 
 interface SmokeServerState {
   httpRequests: string[]
@@ -370,14 +376,13 @@ async function readPipe(pipe: ReadableStream<Uint8Array> | null): Promise<string
 }
 
 async function runDesktop(env: Record<string, string | undefined>, done: Promise<void>, state: SmokeServerState) {
-  const proc = Bun.spawn([...ELECTRON_COMMAND, "dist/main.js"], {
+  const proc = Bun.spawn([...ELECTRON_COMMAND, ...ELECTRON_TEST_ARGS, "dist/main.js"], {
     cwd: DESKTOP_DIR,
     stdout: "pipe",
     stderr: "pipe",
     env: {
       ...process.env,
-      ELECTRON_DISABLE_SECURITY_WARNINGS: "1",
-      ELECTRON_ENABLE_LOGGING: "1",
+      ...ELECTRON_TEST_ENV,
       ...env,
     },
   })
@@ -538,14 +543,13 @@ async function runViewer(
   const tmp = await mkdtemp(path.join(os.tmpdir(), "synergy-webrtc-viewer-"))
   const entry = path.join(tmp, "main.mjs")
   await Bun.write(entry, viewerScript(signalingUrl, mediaReadyUrl, mediaLogUrl, dataInputUrl))
-  const proc = Bun.spawn([...ELECTRON_COMMAND, entry], {
+  const proc = Bun.spawn([...ELECTRON_COMMAND, ...ELECTRON_TEST_ARGS, entry], {
     cwd: DESKTOP_DIR,
     stdout: "pipe",
     stderr: "pipe",
     env: {
       ...process.env,
-      ELECTRON_DISABLE_SECURITY_WARNINGS: "1",
-      ELECTRON_ENABLE_LOGGING: "1",
+      ...ELECTRON_TEST_ENV,
     },
   })
   try {

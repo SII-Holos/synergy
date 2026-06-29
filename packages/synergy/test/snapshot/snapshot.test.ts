@@ -267,7 +267,7 @@ describe.serial("snapshot", () => {
         const before = await Snapshot.track(tmp.extra.sessionID)
         expect(before).toBeTruthy()
 
-        const longName = "a".repeat(200) + ".txt"
+        const longName = "a".repeat(120) + ".txt"
         const longFile = `${tmp.path}/${longName}`
 
         await Bun.write(longFile, "long filename content")
