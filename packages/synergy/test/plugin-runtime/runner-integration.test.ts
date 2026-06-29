@@ -45,7 +45,6 @@ async function writeRuntimePlugin(dir: string, pluginId: string) {
         },
         permissions: {
           tools: {
-            invoke: true,
             filesystem: "none",
             shell: false,
             network: false,

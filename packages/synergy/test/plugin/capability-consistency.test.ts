@@ -21,7 +21,6 @@ describe("plugin capability consistency", () => {
       description: "Plugin with delegated task permission",
       permissions: {
         tools: {
-          invoke: true,
           filesystem: "read",
           network: false,
           shell: false,

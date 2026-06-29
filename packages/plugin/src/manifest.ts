@@ -185,7 +185,6 @@ const PluginPermissionsSchema = z
     /** Tool execution permissions */
     tools: z
       .object({
-        invoke: z.boolean().default(true),
         shell: z.boolean().default(false),
         filesystem: z.preprocess(
           (val) => {

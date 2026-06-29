@@ -95,7 +95,7 @@ describe("computePermissionsHash", () => {
   test("produces same hash for identical permissions and capabilities", () => {
     const m = minimalManifest({
       permissions: {
-        tools: { filesystem: "write", network: true, shell: false, invoke: true, mcp: "none" },
+        tools: { filesystem: "write", network: true, shell: false, mcp: "none" },
       },
     })
     const caps = ["execute", "read"]
@@ -117,12 +117,12 @@ describe("computePermissionsHash", () => {
   test("differs when permissions change", () => {
     const a = minimalManifest({
       permissions: {
-        tools: { filesystem: "read" as const, invoke: true, shell: false, network: false, mcp: "none" as const },
+        tools: { filesystem: "read" as const, shell: false, network: false, mcp: "none" as const },
       },
     })
     const b = minimalManifest({
       permissions: {
-        tools: { filesystem: "write" as const, invoke: true, shell: false, network: false, mcp: "none" as const },
+        tools: { filesystem: "write" as const, shell: false, network: false, mcp: "none" as const },
       },
     })
     expect(computePermissionsHash(a, [])).not.toBe(computePermissionsHash(b, []))
@@ -156,7 +156,7 @@ describe("computePermissionsHash", () => {
 describe("verifyApproval", () => {
   const manifest = minimalManifest({
     permissions: {
-      tools: { filesystem: "read" as const, invoke: true, shell: false, network: false, mcp: "none" as const },
+      tools: { filesystem: "read" as const, shell: false, network: false, mcp: "none" as const },
     },
   })
   const capabilities = ["execute"]
@@ -192,7 +192,7 @@ describe("verifyApproval", () => {
   test("returns false when permissions change", () => {
     const modified = minimalManifest({
       permissions: {
-        tools: { filesystem: "write" as const, invoke: true, shell: false, network: false, mcp: "none" as const },
+        tools: { filesystem: "write" as const, shell: false, network: false, mcp: "none" as const },
       },
     })
     expect(verifyApproval(record, modified, capabilities)).toBe(false)

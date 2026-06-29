@@ -201,7 +201,6 @@ Each distributable plugin has a root `plugin.json`:
   },
   "permissions": {
     "tools": {
-      "invoke": true,
       "filesystem": "none",
       "network": false,
       "shell": false,

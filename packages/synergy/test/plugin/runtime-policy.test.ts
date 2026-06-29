@@ -217,7 +217,7 @@ describe("validateRuntimePolicy", () => {
     const manifest = makeManifest({
       runtime: { mode: "worker" },
       permissions: {
-        tools: { invoke: true, shell: true, filesystem: "none", network: false, mcp: "none" },
+        tools: { shell: true, filesystem: "none", network: false, mcp: "none" },
       },
       contributes: {
         tools: [
@@ -244,7 +244,7 @@ describe("validateRuntimePolicy", () => {
     const manifest = makeManifest({
       runtime: { mode: "worker" },
       permissions: {
-        tools: { invoke: true, shell: false, filesystem: "write", network: false, mcp: "none" },
+        tools: { shell: false, filesystem: "write", network: false, mcp: "none" },
       },
     })
     const results = validateRuntimePolicy({
@@ -262,7 +262,7 @@ describe("validateRuntimePolicy", () => {
     const manifest = makeManifest({
       runtime: { mode: "worker" },
       permissions: {
-        tools: { invoke: true, shell: false, filesystem: "read", network: false, mcp: "none" },
+        tools: { shell: false, filesystem: "read", network: false, mcp: "none" },
       },
     })
     const results = validateRuntimePolicy({
