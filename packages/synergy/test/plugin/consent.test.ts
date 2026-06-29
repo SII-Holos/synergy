@@ -39,6 +39,10 @@ describe("consent module", () => {
       expect(computeRisk(["config:read"])).toBe("low")
     })
 
+    test("task delegation is medium", () => {
+      expect(computeRisk(["task"])).toBe("medium")
+    })
+
     test("plugin_invoke is low", () => {
       expect(computeRisk(["plugin_invoke"])).toBe("low")
     })
@@ -131,6 +135,13 @@ describe("consent module", () => {
       const manifest = makeManifest()
       const items = generatePermissionItems(manifest, ["network"])
       expect(items[0].severity).toBe("high")
+    })
+
+    test("task delegation is medium", () => {
+      const manifest = makeManifest()
+      const items = generatePermissionItems(manifest, ["task"])
+      expect(items[0].key).toBe("task")
+      expect(items[0].severity).toBe("medium")
     })
   })
 })

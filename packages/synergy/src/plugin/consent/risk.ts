@@ -5,7 +5,7 @@
  * - High: any of plugin_shell, plugin_file_write, plugin_secret_read,
  *         plugin_network with undeclared domains, hooks.promptTransform
  * - Medium: plugin_file_read, plugin_network with declared domains,
- *           plugin_session_read, plugin_config_write
+ *           plugin_session_read, plugin_config_write, task delegation
  * - Low: all others
  * - No capabilities: "low"
  */
@@ -19,7 +19,7 @@ import type { PluginManifest } from "@ericsanchezok/synergy-plugin"
  * - High: any of plugin_shell, plugin_file_write, plugin_secret_read,
  *         plugin_network with undeclared domains, hooks.promptTransform
  * - Medium: plugin_file_read, plugin_network with declared domains,
- *           plugin_session_read, plugin_config_write
+ *           plugin_session_read, plugin_config_write, task delegation
  * - Low: all others
  * - No capabilities: "low"
  */
@@ -42,6 +42,7 @@ export function computeRisk(capabilities: string[], manifest?: PluginManifest): 
       case "filesystem:read":
       case "session_data":
       case "config:write":
+      case "task":
         if (risk !== "high") risk = "medium"
         break
 

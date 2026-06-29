@@ -27,6 +27,8 @@ function buildCapabilitySet(
     caps.add("mcp:spawn")
   }
 
+  if (pt?.task) caps.add("task")
+
   const sess = tc?.session ?? pd?.session ?? "none"
   if (sess === "read") caps.add("session_data")
 
