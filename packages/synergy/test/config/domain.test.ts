@@ -29,3 +29,7 @@ test("config domain filenames are stable and ordered", () => {
     "120-runtime.jsonc",
   ])
 })
+
+test("plugins domain merges by default so imported plugin arrays replace stale specs", () => {
+  expect(ConfigDomain.byId.get("plugins")?.mergePolicy).toBe("merge")
+})
