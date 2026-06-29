@@ -35,10 +35,10 @@ describe("Providers panel UI contract", () => {
 
   test("uses the curated settings recommendation set", () => {
     expect(providersPanel).toContain("SETTINGS_RECOMMENDED_PROVIDER_IDS")
-    expect(providersPanel).toContain("\"deepseek\"")
-    expect(providersPanel).toContain("\"openrouter\"")
-    expect(providersPanel).toContain("\"openai-codex\"")
-    expect(providersPanel).toContain("\"zhipu-ai-coding-plan\"")
+    expect(providersPanel).toContain('"deepseek"')
+    expect(providersPanel).toContain('"openrouter"')
+    expect(providersPanel).toContain('"openai-codex"')
+    expect(providersPanel).toContain('"zhipu-ai-coding-plan"')
     expect(providersPanel).toContain("filter((provider) => SETTINGS_RECOMMENDED_PROVIDER_RANK.has(provider.id))")
     expect(providersPanel).toContain("provider.connected && !SETTINGS_RECOMMENDED_PROVIDER_RANK.has(provider.id)")
     expect(providersPanel).not.toContain("isRecommendedProvider")
