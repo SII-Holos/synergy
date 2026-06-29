@@ -293,6 +293,7 @@ const GATE_TO_MANIFEST_CAP: Record<string, string> = {
   plugin_config_read: "config:read",
   plugin_config_write: "config:write",
   plugin_secret_read: "secrets",
+  task: "task",
 }
 
 function isDestructive(command: string): string | null {
@@ -498,14 +499,15 @@ export namespace EnforcementGate {
       if (PluginToolId.is(toolName)) {
         const entry = pluginToolCapabilities[toolName]
         const known = registeredPluginTools.has(toolName) || !!entry
-        const opaque = !known
-
-        // Always emit plugin_invoke as the base capability
-        caps.push({
-          class: "plugin_invoke",
-          nonBypassable: true,
-          opaque,
-        })
+        if (!known) {
+          caps.push({
+            class: "protected_op",
+            nonBypassable: true,
+            opaque: true,
+            reason: "unknown plugin tool",
+          })
+          return { capabilities: caps }
+        }
 
         // If we have resolved capabilities from the plugin manifest, decompose them
         if (entry) {
@@ -516,13 +518,13 @@ export namespace EnforcementGate {
             caps.push({ class: "plugin_file_read", nonBypassable: false })
           }
           if (hasCap("filesystem:write")) {
-            caps.push({ class: "plugin_file_write", nonBypassable: true })
+            caps.push({ class: "plugin_file_write", nonBypassable: false })
           }
           if (hasCap("shell")) {
-            caps.push({ class: "plugin_shell", nonBypassable: true })
+            caps.push({ class: "plugin_shell", nonBypassable: false })
           }
           if (hasCap("network")) {
-            caps.push({ class: "plugin_network", nonBypassable: true })
+            caps.push({ class: "plugin_network", nonBypassable: false })
           }
           if (hasCap("session_data")) {
             caps.push({ class: "plugin_session_read", nonBypassable: false })
@@ -534,14 +536,14 @@ export namespace EnforcementGate {
             caps.push({ class: "plugin_config_read", nonBypassable: false })
           }
           if (hasCap("config:write")) {
-            caps.push({ class: "plugin_config_write", nonBypassable: true })
+            caps.push({ class: "plugin_config_write", nonBypassable: false })
           }
           if (hasCap("secrets")) {
             caps.push({ class: "plugin_secret_read", nonBypassable: true })
           }
-        } else if (opaque) {
-          // Tool is undeclared — opaque and high risk
-          caps[0].opaque = true
+          if (hasCap("task")) {
+            caps.push({ class: "task", nonBypassable: false })
+          }
         }
 
         // Approval check: mark sub-capabilities that haven't been approved by the user
@@ -550,7 +552,7 @@ export namespace EnforcementGate {
           if (parsed) {
             const approval = pluginApprovals[parsed.pluginId]
             const approvedSet = new Set(approval?.approvedCapabilities ?? [])
-            for (let i = 1; i < caps.length; i++) {
+            for (let i = 0; i < caps.length; i++) {
               const cap = caps[i]
               const manifestCap = GATE_TO_MANIFEST_CAP[cap.class]
               if (manifestCap && !approvedSet.has(manifestCap)) {
@@ -1011,6 +1013,13 @@ export namespace EnforcementGate {
         }
       }
 
+      const opaque = capabilities.some((c) => c.opaque === true)
+
+      if (opaque && decision === "allow") {
+        decision = resolved.approval.highRisk
+        deniedCapClass = capabilities.find((c) => c.opaque)?.class ?? deniedCapClass
+      }
+
       // When execPolicy says "ask", override profile decision to "ask"
       if (execPolicyMatch?.action === "ask") {
         decision = "ask"
@@ -1062,8 +1071,6 @@ export namespace EnforcementGate {
           }
         }
       }
-
-      const opaque = capabilities.some((c) => c.opaque === true)
 
       // Track pending capabilities
       for (const cap of capabilities) {

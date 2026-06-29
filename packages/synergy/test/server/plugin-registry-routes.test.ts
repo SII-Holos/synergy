@@ -38,7 +38,7 @@ function buildEntry(overrides: Record<string, any> = {}): Record<string, any> {
         permissionsHash: "def456",
         integrity: "sha256-xxx",
         risk: "low",
-        permissionsSummary: [{ key: "plugin_invoke", description: "Run plugin", risk: "low" }],
+        permissionsSummary: [{ key: "filesystem:read", description: "Read workspace files", risk: "medium" }],
         publishedAt: 1700000000000,
       },
     ],
@@ -47,11 +47,11 @@ function buildEntry(overrides: Record<string, any> = {}): Record<string, any> {
     runtimeMode: "in-process",
     permissionsSummary: [
       {
-        key: "plugin_invoke",
-        category: "runtime",
-        severity: "low",
-        title: "Invoke plugin",
-        description: "Basic plugin execution",
+        key: "filesystem:read",
+        category: "files",
+        severity: "medium",
+        title: "Read workspace files",
+        description: "Can read files and directories in your workspace.",
       },
     ],
     uiSurfaces: ["toolRenderers"],
@@ -144,7 +144,7 @@ async function writeOfficialRegistryCache(): Promise<void> {
             permissionsHash: "permissions-hash",
             risk: "low",
             runtimeMode: "process",
-            permissionsSummary: [{ key: "plugin_invoke", description: "Run plugin", risk: "low" }],
+            permissionsSummary: [{ key: "filesystem:read", description: "Read workspace files", risk: "medium" }],
             tools: ["greet"],
             uiSurfaces: ["toolRenderers"],
             publishedAt,
@@ -189,11 +189,11 @@ describe("plugin registry routes v2", () => {
         expect(body.downloads).toBe(0)
         expect(body.permissionsSummary).toEqual([
           {
-            key: "plugin_invoke",
-            category: "runtime",
-            severity: "low",
-            title: "Invoke plugin",
-            description: "Basic plugin execution",
+            key: "filesystem:read",
+            category: "files",
+            severity: "medium",
+            title: "Read workspace files",
+            description: "Can read files and directories in your workspace.",
           },
         ])
         expect(body.createdAt).toBeDefined()
@@ -296,11 +296,11 @@ describe("plugin registry routes v2", () => {
         expect(body.runtimeMode).toBe("in-process")
         expect(body.permissionsSummary).toEqual([
           {
-            key: "plugin_invoke",
-            category: "runtime",
-            severity: "low",
-            title: "Invoke plugin",
-            description: "Basic plugin execution",
+            key: "filesystem:read",
+            category: "files",
+            severity: "medium",
+            title: "Read workspace files",
+            description: "Can read files and directories in your workspace.",
           },
         ])
         expect(body.uiSurfaces).toEqual(["toolRenderers"])
@@ -441,7 +441,7 @@ describe("plugin registry routes v2", () => {
           permissionsHash: "def456",
           integrity: "sha256-xxx",
           risk: "low",
-          permissionsSummary: [{ key: "plugin_invoke", description: "Run plugin", risk: "low" }],
+          permissionsSummary: [{ key: "filesystem:read", description: "Read workspace files", risk: "medium" }],
           publishedAt: 1700000000000,
           downloadUrl,
         },

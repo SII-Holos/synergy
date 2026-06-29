@@ -1,5 +1,6 @@
 import { HolosAuth } from "./auth"
 import { HOLOS_PORTAL_URL, HOLOS_URL } from "./constants"
+import { HolosProfile } from "./profile"
 import { HolosProtocol } from "./protocol"
 
 export namespace HolosLoginFlow {
@@ -16,14 +17,18 @@ export namespace HolosLoginFlow {
     )
   }
 
-  export async function exchange(input: { code: string; state: string }): Promise<ExchangeResult> {
+  export async function exchange(input: {
+    code: string
+    state: string
+    profile: HolosProfile.Input
+  }): Promise<ExchangeResult> {
     const exchangeRes = await fetch(`${HOLOS_URL}/api/v1/holos/agent_tunnel/bind/exchange`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         code: input.code,
         state: input.state,
-        profile: { name: "Synergy Agent" },
+        profile: HolosProfile.toRemoteProfile(input.profile),
       }),
     })
 

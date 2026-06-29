@@ -201,7 +201,7 @@ function UsageProviderPanel(props: {
         {(value) => <div class="usage-muted-row">Cooldown until {formatUnix(value())}</div>}
       </Show>
       <Show when={props.resetAt}>
-        {(value) => <div class="usage-muted-row">Provider reset {formatUnix(value())}</div>}
+        {(value) => <div class="usage-muted-row">Provider renews {formatUnix(value())}</div>}
       </Show>
 
       <Show when={props.snapshot} fallback={<div class="usage-muted-row">Usage unavailable for this provider.</div>}>
@@ -275,9 +275,9 @@ function formatUsageWindowValue(window: AccountUsageWindow) {
 
 function formatUsageWindowDetail(window: AccountUsageWindow) {
   const detail = window.detail?.trim()
-  const reset = window.resetAt ? `Resets ${formatDate(window.resetAt)}` : undefined
-  if (detail && reset) return `${detail} · ${reset}`
-  return detail || reset
+  const renews = window.resetAt ? `Renews ${formatDate(window.resetAt)}` : undefined
+  if (detail && renews) return `${detail} · ${renews}`
+  return detail || renews
 }
 
 function usageWindowMeterPercent(window: AccountUsageWindow) {

@@ -39,8 +39,8 @@ describe("consent module", () => {
       expect(computeRisk(["config:read"])).toBe("low")
     })
 
-    test("plugin_invoke is low", () => {
-      expect(computeRisk(["plugin_invoke"])).toBe("low")
+    test("task delegation is medium", () => {
+      expect(computeRisk(["task"])).toBe("medium")
     })
 
     test("high + medium = high", () => {
@@ -51,7 +51,7 @@ describe("consent module", () => {
   describe("diffPermissions", () => {
     test("new plugin → all in added, requiresApproval=true", () => {
       const manifest = makeManifest()
-      const diff = diffPermissions("test-plugin", null, manifest, [], ["shell", "plugin_invoke"])
+      const diff = diffPermissions("test-plugin", null, manifest, [], ["shell"])
       expect(diff.added.length).toBeGreaterThan(0)
       expect(diff.removed.length).toBe(0)
       expect(diff.unchanged.length).toBe(0)
@@ -63,7 +63,7 @@ describe("consent module", () => {
 
     test("same capabilities → requiresApproval=false", () => {
       const manifest = makeManifest()
-      const caps = ["plugin_invoke", "filesystem:read"]
+      const caps = ["filesystem:read"]
       const diff = diffPermissions("test-plugin", manifest, manifest, caps, caps)
       expect(diff.requiresApproval).toBe(false)
       expect(diff.added.length).toBe(0)
@@ -74,21 +74,15 @@ describe("consent module", () => {
 
     test("capability added → requiresApproval=true", () => {
       const manifest = makeManifest()
-      const diff = diffPermissions(
-        "test-plugin",
-        manifest,
-        manifest,
-        ["plugin_invoke"],
-        ["plugin_invoke", "filesystem:read"],
-      )
+      const diff = diffPermissions("test-plugin", manifest, manifest, [], ["filesystem:read"])
       expect(diff.requiresApproval).toBe(true)
       expect(diff.added.length).toBe(1)
-      expect(diff.unchanged.length).toBe(1)
+      expect(diff.unchanged.length).toBe(0)
     })
 
     test("risk change → requiresApproval=true", () => {
       const manifest = makeManifest()
-      const diff = diffPermissions("test-plugin", manifest, manifest, ["plugin_invoke"], ["plugin_invoke", "shell"])
+      const diff = diffPermissions("test-plugin", manifest, manifest, [], ["shell"])
       expect(diff.requiresApproval).toBe(true)
       expect(diff.riskBefore).toBe("low")
       expect(diff.riskAfter).toBe("high")
@@ -131,6 +125,13 @@ describe("consent module", () => {
       const manifest = makeManifest()
       const items = generatePermissionItems(manifest, ["network"])
       expect(items[0].severity).toBe("high")
+    })
+
+    test("task delegation is medium", () => {
+      const manifest = makeManifest()
+      const items = generatePermissionItems(manifest, ["task"])
+      expect(items[0].key).toBe("task")
+      expect(items[0].severity).toBe("medium")
     })
   })
 })

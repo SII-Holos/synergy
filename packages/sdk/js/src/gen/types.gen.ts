@@ -168,8 +168,22 @@ export type HolosLoginResponse = {
   url: string
 }
 
+export type HolosAgentProfileInput = {
+  name: string
+  description?: string
+  avatarUrl?: string
+}
+
+export type HolosAgentProfile = {
+  name: string
+  description: string
+  avatarUrl: string | null
+}
+
 export type HolosCredentialsResponse = {
   success: true
+  agentId: string
+  profile: HolosAgentProfile
 }
 
 export type HolosLogoutResponse = {
@@ -4184,7 +4198,6 @@ export type HolosCredentialsStatusResponse = {
 
 export type HolosAccountMeta = {
   agentId: string
-  label: string | null
   createdAt: number
   updatedAt: number
 }
@@ -4226,11 +4239,8 @@ export type Contact = {
 }
 
 export type HolosSocialState = {
-  profile: {
-    name: string
-    bio: string
-    initialized: boolean
-  } | null
+  profile: HolosAgentProfile | null
+  profileError?: string
   contacts: Array<Contact>
   presence: {
     [key: string]: "online" | "offline" | "unknown"
@@ -4242,6 +4252,11 @@ export type HolosState = {
   connection: HolosConnectionState
   readiness: HolosReadinessState
   social: HolosSocialState
+}
+
+export type HolosAgentMe = {
+  agentId: string
+  profile: HolosAgentProfile
 }
 
 export type HolosVerifyResponse = {
@@ -5744,6 +5759,7 @@ export type GlobalDisposeResponse = GlobalDisposeResponses[keyof GlobalDisposeRe
 export type HolosLoginData = {
   body?: {
     callbackUrl?: string
+    profile: HolosAgentProfileInput
   }
   path?: never
   query?: never
@@ -5793,8 +5809,8 @@ export type HolosLogoutResponse2 = HolosLogoutResponses[keyof HolosLogoutRespons
 
 export type HolosCredentialsData = {
   body?: {
-    agentId: string
     agentSecret: string
+    expectedAgentId?: string
   }
   path?: never
   query?: never
@@ -10824,6 +10840,62 @@ export type HolosStateResponses = {
 }
 
 export type HolosStateResponse = HolosStateResponses[keyof HolosStateResponses]
+
+export type HolosProfileGetData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/holos/profile"
+}
+
+export type HolosProfileGetErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type HolosProfileGetError = HolosProfileGetErrors[keyof HolosProfileGetErrors]
+
+export type HolosProfileGetResponses = {
+  /**
+   * Current Holos profile
+   */
+  200: HolosAgentMe
+}
+
+export type HolosProfileGetResponse = HolosProfileGetResponses[keyof HolosProfileGetResponses]
+
+export type HolosProfileUpdateData = {
+  body?: HolosAgentProfileInput
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/holos/profile"
+}
+
+export type HolosProfileUpdateErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type HolosProfileUpdateError = HolosProfileUpdateErrors[keyof HolosProfileUpdateErrors]
+
+export type HolosProfileUpdateResponses = {
+  /**
+   * Updated Holos profile
+   */
+  200: HolosAgentMe
+}
+
+export type HolosProfileUpdateResponse = HolosProfileUpdateResponses[keyof HolosProfileUpdateResponses]
 
 export type HolosVerifyData = {
   body?: never

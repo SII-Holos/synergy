@@ -177,10 +177,9 @@ export class PluginRuntimeSupervisor {
   }
 
   async #createBridgeHandler(pluginId: string, pluginDir: string): Promise<HostBridgeHandler> {
-    const approval = await getApproval(pluginId)
-    const approvedCapabilities = approval?.approvedCapabilities ?? []
-    const enforcer = createBridgeEnforcementHandler(pluginId, approvedCapabilities)
     return async (_requestId, method, params) => {
+      const approval = await getApproval(pluginId)
+      const enforcer = createBridgeEnforcementHandler(pluginId, approval?.approvedCapabilities ?? [])
       const result = enforcer(method, params)
       if (!result.allowed) {
         this.#registry.pushWarning(

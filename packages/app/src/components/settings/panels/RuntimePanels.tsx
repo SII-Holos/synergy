@@ -1,6 +1,7 @@
 import { TextField } from "@ericsanchezok/synergy-ui/text-field"
+import { Switch } from "@ericsanchezok/synergy-ui/switch"
 import { SettingRow } from "../components/SettingRow"
-import { SegmentPill } from "../components/SegmentPill"
+import { SettingsStepScale } from "../components/SettingsStepScale"
 import { SettingsFieldGrid, SettingsPage, SettingsSection } from "../components/SettingsPrimitives"
 import type { RuntimeStore } from "../types"
 
@@ -15,19 +16,17 @@ export function QuestionsPanel(props: {
           title="Response Timeout"
           description="Auto-expire unanswered questions"
           trailing={
-            <SegmentPill
+            <SettingsStepScale
               value={props.runtime.questionTimeout}
+              ariaLabel="Question response timeout"
               options={[
                 { value: "0", label: "Never" },
-                { value: "300", label: "5min" },
-                { value: "600", label: "10min" },
-                { value: "1800", label: "30min" },
-                { value: "3600", label: "60min" },
+                { value: "300", label: "5 min" },
+                { value: "600", label: "10 min" },
+                { value: "1800", label: "30 min" },
+                { value: "3600", label: "60 min" },
               ]}
               onChange={(value) => props.onRuntimeChange("questionTimeout", value)}
-              showReset
-              defaultValue="1800"
-              onReset={() => props.onRuntimeChange("questionTimeout", "1800")}
             />
           }
         />
@@ -47,10 +46,9 @@ export function CompactionPanel(props: {
           title="Auto Compact"
           description="Compact sessions when context is full"
           trailing={
-            <BooleanPill
-              value={props.runtime.compactionAuto}
-              defaultValue="true"
-              onChange={(value) => props.onRuntimeChange("compactionAuto", value)}
+            <Switch
+              checked={props.runtime.compactionAuto !== "false"}
+              onChange={(value) => props.onRuntimeChange("compactionAuto", value ? "true" : "false")}
             />
           }
         />
@@ -58,10 +56,9 @@ export function CompactionPanel(props: {
           title="Prune Tool Output"
           description="Prune old tool outputs during compaction"
           trailing={
-            <BooleanPill
-              value={props.runtime.compactionPrune}
-              defaultValue="true"
-              onChange={(value) => props.onRuntimeChange("compactionPrune", value)}
+            <Switch
+              checked={props.runtime.compactionPrune !== "false"}
+              onChange={(value) => props.onRuntimeChange("compactionPrune", value ? "true" : "false")}
             />
           }
         />
@@ -69,8 +66,9 @@ export function CompactionPanel(props: {
           title="Overflow Threshold"
           description="Context usage fraction that triggers auto-compaction"
           trailing={
-            <SegmentPill
+            <SettingsStepScale
               value={props.runtime.compactionOverflowThreshold}
+              ariaLabel="Compaction overflow threshold"
               options={[
                 { value: "0.70", label: "70%" },
                 { value: "0.80", label: "80%" },
@@ -79,9 +77,6 @@ export function CompactionPanel(props: {
                 { value: "0.95", label: "95%" },
               ]}
               onChange={(value) => props.onRuntimeChange("compactionOverflowThreshold", value)}
-              showReset
-              defaultValue="0.85"
-              onReset={() => props.onRuntimeChange("compactionOverflowThreshold", "0.85")}
             />
           }
         />
@@ -89,8 +84,9 @@ export function CompactionPanel(props: {
           title="Max History Images"
           description="Maximum historical images sent as base64 per request"
           trailing={
-            <SegmentPill
+            <SettingsStepScale
               value={props.runtime.compactionMaxHistoryImages}
+              ariaLabel="Maximum history images"
               options={[
                 { value: "0", label: "0" },
                 { value: "4", label: "4" },
@@ -99,9 +95,6 @@ export function CompactionPanel(props: {
                 { value: "16", label: "16" },
               ]}
               onChange={(value) => props.onRuntimeChange("compactionMaxHistoryImages", value)}
-              showReset
-              defaultValue="8"
-              onReset={() => props.onRuntimeChange("compactionMaxHistoryImages", "8")}
             />
           }
         />
@@ -201,21 +194,5 @@ export function ObservabilityPanel(props: {
         </SettingsFieldGrid>
       </SettingsSection>
     </SettingsPage>
-  )
-}
-
-function BooleanPill(props: { value: string; defaultValue: string; onChange: (value: string) => void }) {
-  return (
-    <SegmentPill
-      value={props.value}
-      options={[
-        { value: "true", label: "On" },
-        { value: "false", label: "Off" },
-      ]}
-      onChange={props.onChange}
-      showReset
-      defaultValue={props.defaultValue}
-      onReset={() => props.onChange(props.defaultValue)}
-    />
   )
 }

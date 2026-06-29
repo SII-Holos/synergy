@@ -239,7 +239,7 @@ describe("bridge-enforcement (denied methods still throw)", () => {
   })
 
   test("enforcer allows when capabilities match", () => {
-    const enforcer = createBridgeEnforcementHandler("plugin-x", ["plugin_file_read"])
+    const enforcer = createBridgeEnforcementHandler("plugin-x", ["filesystem:read"])
     const result = enforcer("file.read", {})
     expect(result.allowed).toBe(true)
   })
@@ -251,23 +251,29 @@ describe("bridge-enforcement (denied methods still throw)", () => {
   })
 
   test("enforcer denies unknown bridge method", () => {
-    const enforcer = createBridgeEnforcementHandler("plugin-x", ["plugin_file_read"])
+    const enforcer = createBridgeEnforcementHandler("plugin-x", ["filesystem:read"])
     const result = enforcer("nonexistent.bridge.method" as any, {})
     expect(result.allowed).toBe(false)
     expect(result.reason).toContain("Unknown bridge method")
   })
 
   test("enforcer denies capability-specific methods individually", () => {
-    const enforcer = createBridgeEnforcementHandler("plugin-x", ["plugin_file_read"])
-    // shell.run requires plugin_shell, not granted
+    const enforcer = createBridgeEnforcementHandler("plugin-x", ["filesystem:read"])
+    // shell.run requires shell, not granted
     const result = enforcer("shell.run", {})
     expect(result.allowed).toBe(false)
     expect(result.reason).toContain("not approved")
   })
 
   test("network.fetch denied when only file capabilities approved", () => {
-    const enforcer = createBridgeEnforcementHandler("plugin-x", ["plugin_file_read", "plugin_file_write"])
+    const enforcer = createBridgeEnforcementHandler("plugin-x", ["filesystem:read", "filesystem:write"])
     const result = enforcer("network.fetch", {})
     expect(result.allowed).toBe(false)
+  })
+
+  test("enforcer does not require a coarse plugin capability for cache or tool.invoke", () => {
+    const enforcer = createBridgeEnforcementHandler("plugin-x", [])
+    expect(enforcer("cache.get", {}).allowed).toBe(true)
+    expect(enforcer("tool.invoke", {}).allowed).toBe(true)
   })
 })

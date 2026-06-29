@@ -2,6 +2,7 @@ import * as prompts from "@clack/prompts"
 import { UI } from "@/cli/ui"
 import { performHolosLogin } from "./login"
 import { HolosAuth } from "./auth"
+import { HolosProfile } from "./profile"
 
 const DIM = UI.Style.TEXT_DIM
 const RESET = UI.Style.TEXT_NORMAL
@@ -59,7 +60,7 @@ export namespace HolosStartup {
     }
 
     options.push(
-      { value: "import", label: "Import registered credentials", hint: "enter Agent ID & Secret" },
+      { value: "import", label: "Import registered credentials", hint: "enter Agent Secret" },
       { value: "create", label: "Create a new agent identity", hint: "register via browser" },
       { value: "skip", label: "Proceed without Holos", hint: "standalone mode" },
     )
@@ -99,15 +100,6 @@ export namespace HolosStartup {
     }
 
     if (choice === "import") {
-      const agentId = await prompts.text({
-        message: "Agent ID",
-        placeholder: "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
-      })
-      if (prompts.isCancel(agentId) || !agentId) {
-        prompts.log.info(`${DIM}Cancelled — launching in standalone mode.${RESET}`)
-        return
-      }
-
       const agentSecret = await prompts.password({ message: "Agent Secret" })
       if (prompts.isCancel(agentSecret) || !agentSecret) {
         prompts.log.info(`${DIM}Cancelled — launching in standalone mode.${RESET}`)
@@ -116,19 +108,21 @@ export namespace HolosStartup {
 
       const spinner = prompts.spinner()
       spinner.start(`${DIM}Verifying credentials…${RESET}`)
-      const result = await HolosAuth.verifyCredentials(agentSecret)
-      if (!result.valid) {
+      let me: HolosProfile.MeInfo
+      try {
+        me = await HolosProfile.getMe({ agentSecret })
+      } catch (err) {
         spinner.stop(`${WARN}●${RESET} Verification failed`, 1)
         prompts.log.warn(
           `${BOLD}Unrecognized credentials${RESET} — Holos did not accept this identity.\n` +
-            `  ${DIM}Reason: ${result.reason}${RESET}\n` +
+            `  ${DIM}Reason: ${err instanceof Error ? err.message : String(err)}${RESET}\n` +
             `  ${DIM}Falling back to standalone mode.${RESET}`,
         )
         return
       }
 
-      await HolosAuth.saveCredentialsAndConfigure(agentId, agentSecret)
-      spinner.stop(`${GREEN}●${RESET} Credentials imported ${DIM}— agent ${agentId.slice(0, 8)}…${RESET}`)
+      await HolosAuth.saveCredentialsAndConfigure(me.agentId, agentSecret)
+      spinner.stop(`${GREEN}●${RESET} Credentials imported ${DIM}— agent ${me.agentId.slice(0, 8)}…${RESET}`)
       return
     }
 

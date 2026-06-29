@@ -37,7 +37,7 @@ function buildCapabilitySet(
   permissions: PluginManifest["permissions"],
   toolOverrides?: ManifestTool["capabilities"],
 ): string[] {
-  const caps = new Set<string>(["plugin_invoke"])
+  const caps = new Set<string>()
   const pt = permissions?.tools
   const pd = permissions?.data
   const tc = toolOverrides
@@ -130,8 +130,8 @@ export function resolve(input: {
     })
     return {
       pluginId,
-      base: ["plugin_invoke"],
-      tools: Object.fromEntries(declaredTools.map((t) => [t, ["plugin_invoke"]])),
+      base: [],
+      tools: Object.fromEntries(declaredTools.map((t) => [t, []])),
       overallRisk: "low",
       warnings,
     }
@@ -171,11 +171,11 @@ export function resolve(input: {
  * Normalize capabilities for a single tool from manifest declarations.
  *
  * Merges plugin-wide permission defaults with per-tool overrides.
- * Returns `["plugin_invoke"]` when the manifest is null or the tool
- * is not found in contributes.tools.
+ * Returns an empty set when the manifest is null. If the tool is not
+ * declared in contributes.tools, plugin-wide permission defaults apply.
  */
 export function toolCapabilities(manifest: PluginManifest | null, toolId: string): string[] {
-  if (!manifest) return ["plugin_invoke"]
+  if (!manifest) return []
 
   const manifestTool = manifest.contributes?.tools?.find((t) => t.name === toolId || t.id === toolId)
   if (!manifestTool) return baseCapabilities(manifest)

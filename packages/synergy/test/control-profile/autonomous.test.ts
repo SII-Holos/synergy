@@ -54,15 +54,19 @@ describe("autonomous profile capabilities", () => {
     })
   })
 
-  test("autonomous allows mcp_invoke, asks for plugin_invoke", async () => {
+  test("autonomous allows mcp and ordinary plugin capabilities but denies plugin secrets", async () => {
     await using tmp = await tmpdir()
     await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const profile = await autonomousProfile()
         expect(rule(profile, "mcp_invoke")?.action).toBe("allow")
-        expect(rule(profile, "plugin_invoke")?.action).toBe("ask")
-        expect(rule(profile, "plugin_invoke")?.nonBypassable).toBe(true)
+        expect(rule(profile, "plugin_file_read")?.action).toBe("allow")
+        expect(rule(profile, "plugin_file_write")?.action).toBe("allow")
+        expect(rule(profile, "plugin_shell")?.action).toBe("allow")
+        expect(rule(profile, "plugin_network")?.action).toBe("allow")
+        expect(rule(profile, "plugin_secret_read")?.action).toBe("deny")
+        expect(rule(profile, "plugin_secret_read")?.nonBypassable).toBe(true)
       },
     })
   })

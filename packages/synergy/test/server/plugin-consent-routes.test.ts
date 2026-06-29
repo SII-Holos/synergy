@@ -112,7 +112,7 @@ describe("POST /api/plugins/:pluginId/approve-install", () => {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             manifest,
-            capabilities: ["plugin_invoke", "filesystem:read"],
+            capabilities: ["filesystem:read"],
           }),
         })
         expect(res.status).toBe(200)
@@ -211,7 +211,7 @@ describe("POST /api/plugins/:pluginId/approve-update", () => {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             manifest,
-            capabilities: ["plugin_invoke", "network"],
+            capabilities: ["network"],
           }),
         })
         expect(res.status).toBe(200)
@@ -246,7 +246,7 @@ describe("GET /api/plugins/:pluginId/approval", () => {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             manifest,
-            capabilities: ["plugin_invoke"],
+            capabilities: [],
           }),
         })
         // Then, retrieve it
@@ -293,13 +293,13 @@ describe("GET /api/plugins/:pluginId/permission-diff", () => {
       scope: await tmp.scope(),
       fn: async () => {
         const app = Server.App()
-        // Approve with just plugin_invoke (less than current manifest provides)
+        // Approve with no capabilities (less than current manifest provides)
         await app.request("/api/plugins/diff-plugin/approve-install", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             manifest,
-            capabilities: ["plugin_invoke"],
+            capabilities: [],
           }),
         })
         const res = await app.request("/api/plugins/diff-plugin/permission-diff", { method: "GET" })

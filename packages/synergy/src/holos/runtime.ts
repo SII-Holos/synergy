@@ -9,6 +9,7 @@ import { Log } from "@/util/log"
 import { Contact } from "./contact"
 import { Envelope } from "./envelope"
 import { HolosAuth } from "./auth"
+import { HolosProfile } from "./profile"
 import { HolosProtocol } from "./protocol"
 import { Presence } from "./presence"
 
@@ -264,6 +265,7 @@ type ConnectInput = {
 
 export class HolosProvider {
   readonly type = "holos"
+  private holosConfig: Config.Holos | null = null
   private state: ConnectionState = {
     ws: null,
     peerId: null,
@@ -277,6 +279,7 @@ export class HolosProvider {
 
   async connect(input: ConnectInput): Promise<void> {
     const { config: holosConfig, signal, onDisconnect } = input
+    this.holosConfig = holosConfig
 
     let capturedScope: Scope
     try {
@@ -509,10 +512,22 @@ export class HolosProvider {
   }
 
   private async buildPeerProfile(): Promise<HolosProtocol.PeerProfile> {
-    const osName = process.env.USER || process.env.USERNAME || "Synergy"
-    return {
-      name: osName,
-      bio: undefined,
+    const credential = await HolosAuth.getStoredCredential()
+    if (!credential) return { name: "Synergy" }
+    try {
+      const me = await HolosProfile.getCurrent({
+        agentId: credential.agentId,
+        agentSecret: credential.agentSecret,
+        apiUrl: this.holosConfig?.apiUrl,
+      })
+      return {
+        name: me.profile.name.trim() || credential.agentId.slice(0, 8),
+        description: me.profile.description.trim() || undefined,
+      }
+    } catch {
+      return {
+        name: credential.agentId.slice(0, 8) || "Synergy",
+      }
     }
   }
 }

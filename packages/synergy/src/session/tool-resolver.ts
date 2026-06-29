@@ -402,7 +402,7 @@ export namespace ToolResolver {
       state: {
         ...match.state,
         title: state.title ?? match.state.title,
-        metadata: ToolTimeout.preserveMetadata(match.state.metadata, state.metadata) ?? match.state.metadata,
+        metadata: ToolTimeout.mergeMetadata(match.state.metadata, state.metadata) ?? match.state.metadata,
         status: "running",
         input: args,
         time: {

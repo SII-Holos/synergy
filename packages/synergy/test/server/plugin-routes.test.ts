@@ -180,7 +180,7 @@ function buildStatusResponse(overrides: Partial<Record<string, any>> = {}): any 
     manifestValid: true,
     integrity: "unverified",
     permissions: {
-      base: ["plugin_invoke"],
+      base: [],
       tools: {},
       overallRisk: "low",
       warnings: [],

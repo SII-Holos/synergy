@@ -868,8 +868,12 @@
                   "callbackUrl": {
                     "type": "string",
                     "format": "uri"
+                  },
+                  "profile": {
+                    "$ref": "#/components/schemas/HolosAgentProfileInput"
                   }
-                }
+                },
+                "required": ["profile"]
               }
             }
           }
@@ -911,7 +915,7 @@
       "post": {
         "operationId": "holos.credentials",
         "summary": "Set agent credentials",
-        "description": "Validate and save existing agent credentials. Validates by fetching a ws_token, then saves and reloads the Holos runtime.",
+        "description": "Validate and save existing agent credentials by fetching the canonical Holos agent profile from the remote API.",
         "responses": {
           "200": {
             "description": "Credentials saved",
@@ -940,16 +944,16 @@
               "schema": {
                 "type": "object",
                 "properties": {
-                  "agentId": {
+                  "agentSecret": {
                     "type": "string",
                     "minLength": 1
                   },
-                  "agentSecret": {
+                  "expectedAgentId": {
                     "type": "string",
                     "minLength": 1
                   }
                 },
-                "required": ["agentId", "agentSecret"]
+                "required": ["agentSecret"]
               }
             }
           }
@@ -11708,6 +11712,115 @@
         ]
       }
     },
+    "/holos/profile": {
+      "get": {
+        "operationId": "holos.profile.get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Get current Holos agent profile",
+        "description": "Fetch the active agent profile from Holos. Synergy does not cache profile data locally.",
+        "responses": {
+          "200": {
+            "description": "Current Holos profile",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HolosAgentMe"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.holos.profile.get({\n  ...\n})"
+          }
+        ]
+      },
+      "put": {
+        "operationId": "holos.profile.update",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Update current Holos agent profile",
+        "description": "Merge editable profile fields into the active remote Holos profile while preserving unknown remote fields.",
+        "responses": {
+          "200": {
+            "description": "Updated Holos profile",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HolosAgentMe"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HolosAgentProfileInput"
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.holos.profile.update({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/holos/verify": {
       "get": {
         "operationId": "holos.verify",
@@ -17054,15 +17167,59 @@
         },
         "required": ["url"]
       },
+      "HolosAgentProfileInput": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": {
+            "type": "string"
+          },
+          "avatarUrl": {
+            "type": "string"
+          }
+        },
+        "required": ["name"]
+      },
+      "HolosAgentProfile": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "avatarUrl": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": ["name", "description", "avatarUrl"]
+      },
       "HolosCredentialsResponse": {
         "type": "object",
         "properties": {
           "success": {
             "type": "boolean",
             "const": true
+          },
+          "agentId": {
+            "type": "string"
+          },
+          "profile": {
+            "$ref": "#/components/schemas/HolosAgentProfile"
           }
         },
-        "required": ["success"]
+        "required": ["success", "agentId", "profile"]
       },
       "HolosLogoutResponse": {
         "type": "object",
@@ -26126,16 +26283,6 @@
           "agentId": {
             "type": "string"
           },
-          "label": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
           "createdAt": {
             "type": "number"
           },
@@ -26143,7 +26290,7 @@
             "type": "number"
           }
         },
-        "required": ["agentId", "label", "createdAt", "updatedAt"]
+        "required": ["agentId", "createdAt", "updatedAt"]
       },
       "HolosIdentityState": {
         "type": "object",
@@ -26235,24 +26382,15 @@
           "profile": {
             "anyOf": [
               {
-                "type": "object",
-                "properties": {
-                  "name": {
-                    "type": "string"
-                  },
-                  "bio": {
-                    "type": "string"
-                  },
-                  "initialized": {
-                    "type": "boolean"
-                  }
-                },
-                "required": ["name", "bio", "initialized"]
+                "$ref": "#/components/schemas/HolosAgentProfile"
               },
               {
                 "type": "null"
               }
             ]
+          },
+          "profileError": {
+            "type": "string"
           },
           "contacts": {
             "type": "array",
@@ -26290,6 +26428,18 @@
           }
         },
         "required": ["identity", "connection", "readiness", "social"]
+      },
+      "HolosAgentMe": {
+        "type": "object",
+        "properties": {
+          "agentId": {
+            "type": "string"
+          },
+          "profile": {
+            "$ref": "#/components/schemas/HolosAgentProfile"
+          }
+        },
+        "required": ["agentId", "profile"]
       },
       "HolosVerifyResponse": {
         "type": "object",

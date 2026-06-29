@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test"
-import { parseBrowserNativeAttach, parseBrowserNativeResize, parseExternalUrl } from "../src/ipc-contract.js"
+import {
+  parseBrowserNativeAttach,
+  parseBrowserNativePage,
+  parseBrowserNativeResize,
+  parseExternalUrl,
+} from "../src/ipc-contract.js"
 
 describe("desktop ipc contract", () => {
   test("accepts valid browser native attach payloads", () => {
@@ -21,6 +26,7 @@ describe("desktop ipc contract", () => {
   })
 
   test("rejects malformed browser native payloads", () => {
+    expect(() => parseBrowserNativePage({ pageId: "" })).toThrow()
     expect(() => parseBrowserNativeResize({ pageId: "page", bounds: { width: -1, height: 1, x: 0, y: 0 } })).toThrow()
     expect(() => parseBrowserNativeAttach({ sessionID: "session", pageId: "page", extra: true })).toThrow()
   })
