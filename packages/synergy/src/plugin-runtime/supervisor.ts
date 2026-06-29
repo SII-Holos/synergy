@@ -3,7 +3,7 @@ import { recordEvent } from "../plugin/audit.js"
 import type { HostToPlugin, IsolatedPluginInputData, HostBridgeHandler, RuntimeToolContextData } from "./protocol.js"
 import { resolveRuntimeMode } from "./mode-resolver.js"
 import { spawnPluginProcess } from "./process-host.js"
-import { spawnPluginWorker } from "./worker-host.js"
+import { canSpawnPluginWorker, spawnPluginWorker } from "./worker-host.js"
 import type { Worker } from "node:worker_threads"
 import { PluginRuntimeError } from "./errors.js"
 import { DEFAULT_LIMITS } from "./health.js"
@@ -32,6 +32,20 @@ const log = Log.create({ service: "plugin-runtime.supervisor" })
 
 // Re-export types for backward compatibility (consumers import from supervisor)
 export type { RuntimeMode, RuntimeState, RuntimeEntry, RuntimeHealth, PersistedRuntimeEntry }
+
+export function resolveRuntimeLaunchMode(
+  mode: RuntimeMode,
+  runtimeDecision: string,
+  workerAvailable = canSpawnPluginWorker(),
+): { mode: RuntimeMode; runtimeDecision: string } {
+  if (mode === "worker" && !workerAvailable) {
+    return {
+      mode: "process",
+      runtimeDecision: `${runtimeDecision}->process:packaged-runner`,
+    }
+  }
+  return { mode, runtimeDecision }
+}
 
 // === Persistence interface ===
 
@@ -286,6 +300,10 @@ export class PluginRuntimeSupervisor {
       })
       runtimeDecision = `policy:${resolvedMode}`
     }
+
+    const launchMode = resolveRuntimeLaunchMode(resolvedMode, runtimeDecision)
+    resolvedMode = launchMode.mode
+    runtimeDecision = launchMode.runtimeDecision
 
     // Resolve resource limits: manifest resources overlay DEFAULT_LIMITS
     const manifestResources = manifest?.runtime?.resources

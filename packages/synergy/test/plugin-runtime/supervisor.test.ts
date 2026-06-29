@@ -1,5 +1,9 @@
 import { describe, expect, test } from "bun:test"
-import { PluginRuntimeSupervisor, defaultPluginRuntimeSupervisor } from "../../src/plugin-runtime/supervisor.js"
+import {
+  PluginRuntimeSupervisor,
+  defaultPluginRuntimeSupervisor,
+  resolveRuntimeLaunchMode,
+} from "../../src/plugin-runtime/supervisor.js"
 import { RuntimeRegistry } from "../../src/plugin-runtime/registry.js"
 import { PluginLogBuffer } from "../../src/plugin-runtime/logs.js"
 import type { RuntimeEntry } from "../../src/plugin-runtime/registry.js"
@@ -39,6 +43,29 @@ async function startInProcess(
 // === Tests ===
 
 describe("PluginRuntimeSupervisor", () => {
+  describe("runtime launch mode", () => {
+    test("keeps worker mode when the runner file is available", () => {
+      expect(resolveRuntimeLaunchMode("worker", "policy:worker", true)).toEqual({
+        mode: "worker",
+        runtimeDecision: "policy:worker",
+      })
+    })
+
+    test("falls back from worker to process when packaged without a runner file", () => {
+      expect(resolveRuntimeLaunchMode("worker", "policy:worker", false)).toEqual({
+        mode: "process",
+        runtimeDecision: "policy:worker->process:packaged-runner",
+      })
+    })
+
+    test("keeps process mode even when the worker runner is unavailable", () => {
+      expect(resolveRuntimeLaunchMode("process", "policy:process", false)).toEqual({
+        mode: "process",
+        runtimeDecision: "policy:process",
+      })
+    })
+  })
+
   describe("construction and dependencies", () => {
     test("constructs with injected registry, logs, and optional persist", () => {
       const { supervisor } = createSupervisor()
