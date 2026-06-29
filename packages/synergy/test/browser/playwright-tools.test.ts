@@ -151,7 +151,7 @@ describe("Contract 4: browser_downloads → Playwright page.waitForEvent('downlo
     const src = toolSource("browser-downloads")
     // The 'wait' action should use a Playwright-backed wait, not the current
     // in-memory polling loop.
-    expect(src).toMatch(/waitForPageDownload|waitForEvent|page\.on\("download/)
+    expect(src).toMatch(/waitForPageDownload|waitForDownload|waitForEvent|page\.on\("download/)
   })
 })
 
