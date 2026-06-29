@@ -4,6 +4,7 @@ import { Button } from "@ericsanchezok/synergy-ui/button"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { Dialog } from "@ericsanchezok/synergy-ui/dialog"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
+import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { TextField } from "@ericsanchezok/synergy-ui/text-field"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import type { HolosAccountMeta, HolosAgentProfile } from "@ericsanchezok/synergy-sdk/client"
@@ -214,7 +215,11 @@ export function DialogSwitchHolosAgent(props: {
   }
 
   return (
-    <Dialog title="Switch Agent">
+    <Dialog
+      title="Switch Agent"
+      description="Choose which saved Holos agent Synergy should use."
+      class="sidebar-agent-switch-dialog-shell"
+    >
       <div class="sidebar-agent-switch-dialog">
         <Show
           when={props.accounts.length > 0}
@@ -236,7 +241,15 @@ export function DialogSwitchHolosAgent(props: {
                   onClick={() => void props.onSwitch(account.agentId)}
                 >
                   <span class="sidebar-agent-switch-avatar">
-                    <Show when={avatarUrl(account)} fallback={<Icon name="user" size="small" />}>
+                    <Show
+                      when={avatarUrl(account)}
+                      fallback={
+                        <Icon
+                          name={isActive(account) ? getSemanticIcon("state.success") : getSemanticIcon("state.empty")}
+                          size="small"
+                        />
+                      }
+                    >
                       {(src) => <img src={src()} alt="" />}
                     </Show>
                   </span>
@@ -245,7 +258,9 @@ export function DialogSwitchHolosAgent(props: {
                     <span class="sidebar-agent-switch-description">{description(account)}</span>
                     <span class="sidebar-agent-switch-id">{shortID(account.agentId)}</span>
                   </span>
-                  <span class="sidebar-agent-switch-status">{isActive(account) ? "Active" : "Switch"}</span>
+                  <Show when={!isActive(account)}>
+                    <span class="sidebar-agent-switch-status">Switch</span>
+                  </Show>
                 </button>
               )}
             </For>

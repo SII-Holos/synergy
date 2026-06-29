@@ -33,4 +33,11 @@ describe("Account settings profile panel", () => {
     expect(accountPanel).not.toContain("account-agent-row")
     expect(accountPanel).not.toContain("<For each={holos.state.identity.accounts}>")
   })
+
+  test("keeps logout with the current identity card and hides raw profile errors", () => {
+    expect(accountPanel).toContain("account-profile-card-actions")
+    expect(accountPanel).toContain("account-profile-logout")
+    expect(accountPanel).toContain("Holos could not load this profile")
+    expect(accountPanel).not.toContain("<span>{holos.state.social.profileError}</span>")
+  })
 })

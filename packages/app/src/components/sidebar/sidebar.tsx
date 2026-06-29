@@ -1074,7 +1074,6 @@ function SidebarAgentHub(props: { isExpanded: boolean; globalSDK: ReturnType<typ
                       <span>{accountLabel(account)}</span>
                       <span>{isActiveAccount(account.agentId) ? displayDescription() : "Saved on this device"}</span>
                     </span>
-                    <span class="sidebar-account-menuStatus">{isActiveAccount(account.agentId) ? "Active" : ""}</span>
                   </button>
                 )}
               </For>

@@ -37,6 +37,10 @@ export function AccountPanel() {
   const avatarSrc = createMemo(
     () => profile()?.avatarUrl || brandAssetPath(BRAND_ASSETS.synergy.productIcon),
   )
+  const profileErrorMessage = createMemo(() => {
+    if (!holos.state.social.profileError) return undefined
+    return "Holos could not load this profile. Retry, or import the agent again if this keeps failing."
+  })
 
   function connectionLabel() {
     if (!holos.loaded) return "Loading"
@@ -161,20 +165,39 @@ export function AccountPanel() {
                       </Show>
                     </div>
                   </div>
-                  <Show when={holos.state.identity.loggedIn && profile() && !holos.state.social.profileError}>
-                    <Button type="button" variant="secondary" size="small" onClick={beginProfileEdit}>
-                      Edit profile
-                    </Button>
+                  <Show when={holos.state.identity.loggedIn}>
+                    <div class="account-profile-card-actions">
+                      <Show when={profile() && !holos.state.social.profileError}>
+                        <Button type="button" variant="secondary" size="small" onClick={beginProfileEdit}>
+                          Edit profile
+                        </Button>
+                      </Show>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="small"
+                        icon={getSemanticIcon("account.logout")}
+                        class="account-profile-logout"
+                        onClick={() => void actions.logoutActiveAgent()}
+                      >
+                        Log out
+                      </Button>
+                    </div>
                   </Show>
                 </div>
-                <Show when={holos.state.social.profileError}>
-                  <div class="account-profile-warning account-profile-warning-inline">
-                    <Icon name={getSemanticIcon("state.warning")} size="small" />
-                    <span>{holos.state.social.profileError}</span>
-                    <Button type="button" variant="ghost" size="small" onClick={() => void holos.refresh()}>
-                      Retry
-                    </Button>
-                  </div>
+                <Show when={profileErrorMessage()}>
+                  {(message) => (
+                    <div
+                      class="account-profile-warning account-profile-warning-inline"
+                      title={holos.state.social.profileError}
+                    >
+                      <Icon name={getSemanticIcon("state.warning")} size="small" />
+                      <span>{message()}</span>
+                      <Button type="button" variant="ghost" size="small" onClick={() => void holos.refresh()}>
+                        Retry
+                      </Button>
+                    </div>
+                  )}
                 </Show>
               </>
             }
@@ -274,26 +297,17 @@ export function AccountPanel() {
               Copy
             </Button>
           </div>
-          <div class="account-detail-row">
-            <div>
-              <div class="account-detail-label">Active agent</div>
-              <div class="account-detail-copy">
-                {holos.state.identity.accounts.length} saved{" "}
-                {holos.state.identity.accounts.length === 1 ? "agent" : "agents"}
-              </div>
-            </div>
-            <Button
-              type="button"
-              variant="secondary"
-              size="small"
-              disabled={holos.state.identity.accounts.length <= 1}
-              onClick={() => actions.openAgentSwitcher()}
-            >
-              Switch
-            </Button>
-          </div>
         </div>
         <div class="account-agent-actions">
+          <Button
+            type="button"
+            variant="secondary"
+            size="small"
+            disabled={holos.state.identity.accounts.length <= 1}
+            onClick={() => actions.openAgentSwitcher()}
+          >
+            Switch Agent
+          </Button>
           <Button
             type="button"
             variant="secondary"
@@ -312,17 +326,6 @@ export function AccountPanel() {
           >
             Create Agent
           </Button>
-          <Show when={holos.state.identity.loggedIn}>
-            <Button
-              type="button"
-              variant="ghost"
-              size="small"
-              icon={getSemanticIcon("account.logout")}
-              onClick={() => void actions.logoutActiveAgent()}
-            >
-              Log out
-            </Button>
-          </Show>
         </div>
       </SettingsSection>
     </SettingsPage>

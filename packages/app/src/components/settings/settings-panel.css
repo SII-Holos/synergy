@@ -1277,6 +1277,24 @@
   font-size: 12px;
 }
 
+.account-profile-card-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.account-profile-logout {
+  color: var(--text-critical);
+}
+
+.account-profile-logout:hover:not(:disabled),
+.account-profile-logout:focus-visible:not(:disabled) {
+  background: color-mix(in oklch, var(--icon-critical-base) 10%, transparent);
+}
+
 .account-profile-form {
   width: 100%;
   display: flex;
@@ -2018,6 +2036,12 @@
   .usage-overview-metrics {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .account-profile-card-actions {
+    width: 100%;
+    justify-content: flex-start;
+    margin-left: 0;
   }
 
   .usage-window-row {

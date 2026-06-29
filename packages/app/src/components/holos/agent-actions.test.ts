@@ -23,5 +23,6 @@ describe("Holos agent actions", () => {
     expect(agentActions).toContain("openAgentSwitcher")
     expect(agentActions).toContain("Switch Agent")
     expect(agentActions).toContain("Saved on this device")
+    expect(agentActions).not.toContain('? "Active" : "Switch"')
   })
 })
