@@ -1,6 +1,7 @@
 import { Log } from "../util/log"
 import z from "zod"
 import { OFFICIAL_PLUGIN_REGISTRY_URL } from "@ericsanchezok/synergy-plugin/market"
+import { DEFAULT_PLUGIN_RUNTIME_POLICY } from "@ericsanchezok/synergy-plugin/policy"
 import { ModelsDev } from "../provider/models"
 import { LSPServer } from "../lsp/server"
 import { ModelRole } from "../provider/model-role"
@@ -1068,20 +1069,28 @@ export const PluginRuntimePolicy = z
     thirdPartyDefaultMode: z
       .enum(["process", "worker"])
       .optional()
-      .default("process")
+      .default(DEFAULT_PLUGIN_RUNTIME_POLICY.thirdPartyDefaultMode)
       .describe("Default isolation mode for third-party plugins (npm, git, url)"),
     highRiskRequiresProcess: z
       .boolean()
       .optional()
-      .default(true)
+      .default(DEFAULT_PLUGIN_RUNTIME_POLICY.highRiskRequiresProcess)
       .describe("Require process isolation for high-risk plugins regardless of source"),
     allowThirdPartyInProcess: z
       .boolean()
       .optional()
-      .default(false)
+      .default(DEFAULT_PLUGIN_RUNTIME_POLICY.allowThirdPartyInProcess)
       .describe("Allow third-party plugins to request in-process mode (not recommended)"),
-    allowWorkerMode: z.boolean().optional().default(true).describe("Allow plugins to request worker thread isolation"),
-    allowLocalInProcess: z.boolean().optional().default(true).describe("Allow local plugins to run in-process"),
+    allowWorkerMode: z
+      .boolean()
+      .optional()
+      .default(DEFAULT_PLUGIN_RUNTIME_POLICY.allowWorkerMode)
+      .describe("Allow plugins to request worker thread isolation"),
+    allowLocalInProcess: z
+      .boolean()
+      .optional()
+      .default(DEFAULT_PLUGIN_RUNTIME_POLICY.allowLocalInProcess)
+      .describe("Allow local plugins to run in-process"),
     limits: PluginRuntimeLimits.optional().describe("Default plugin runtime resource and request limits"),
   })
   .strict()
@@ -1089,11 +1098,7 @@ export const PluginRuntimePolicy = z
 export type PluginRuntimePolicy = z.infer<typeof PluginRuntimePolicy>
 
 export const PLUGIN_RUNTIME_POLICY_DEFAULTS = {
-  thirdPartyDefaultMode: "process" as const,
-  highRiskRequiresProcess: true,
-  allowThirdPartyInProcess: false,
-  allowWorkerMode: true,
-  allowLocalInProcess: true,
+  ...DEFAULT_PLUGIN_RUNTIME_POLICY,
   limits: {},
 } as const satisfies Required<PluginRuntimePolicy>
 

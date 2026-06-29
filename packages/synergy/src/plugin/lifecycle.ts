@@ -7,7 +7,7 @@ import { ScopedState } from "../scope/scoped-state"
 import { startForPlugin, stopForPlugin } from "./mcp"
 import * as ManifestReader from "./manifest-reader"
 import { state, getPlugin, incrementReloadVersion } from "./loader"
-import { restoreRuntimeState, startRuntime } from "../plugin-runtime/supervisor.js"
+import { restoreRuntimeState, startRuntime, stopRuntime } from "../plugin-runtime/supervisor.js"
 import { getRuntime, triggerRuntimeHook } from "../plugin-runtime/supervisor.js"
 import { PluginToolId } from "./ids"
 
@@ -96,8 +96,11 @@ export async function reload() {
   incrementReloadVersion()
   const current = await state().catch(() => null)
   if (current) {
-    for (const { hooks, id } of current.loaded) {
+    for (const { hooks, id, runtimeMode } of current.loaded) {
       await stopForPlugin(id).catch((err) => log.error("plugin mcp stop error", { id, err }))
+      if (runtimeMode && runtimeMode !== "in-process") {
+        await stopRuntime(id, true).catch((err) => log.error("plugin runtime stop error", { id, err }))
+      }
       if (hooks.dispose) {
         log.info("disposing plugin", { id })
         await hooks.dispose().catch((err) => log.error("plugin dispose error", { id, err }))
