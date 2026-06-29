@@ -356,9 +356,18 @@ export function capabilityNonBypassable(capability: string): boolean {
   return CAPABILITY_DETAILS[capability]?.nonBypassable === true
 }
 
-export function capabilityRisk(capability: string): PluginRisk {
+export function capabilityRisk(capability: string, manifest?: PluginManifest): PluginRisk {
+  if (capability === "network_request" && manifest) {
+    return (manifest.permissions?.network?.connectDomains ?? []).length > 0 ? "medium" : "high"
+  }
   const details = CAPABILITY_DETAILS[capability]
   if (details) return details.severity
+  return "low"
+}
+
+function maxRisk(current: PluginRisk, next: PluginRisk): PluginRisk {
+  if (current === "high" || next === "high") return "high"
+  if (current === "medium" || next === "medium") return "medium"
   return "low"
 }
 
@@ -441,34 +450,8 @@ export function computeRisk(capabilities: string[], manifest?: PluginManifest): 
   if (capabilities.length === 0) return "low"
 
   let risk: PluginRisk = "low"
-
   for (const cap of capabilities) {
-    switch (cap) {
-      case "shell":
-      case "file_write":
-      case "secrets":
-      case "prompt_transform":
-      case "compaction_transform":
-      case "permission_hook":
-        risk = "high"
-        break
-      case "file_read":
-      case "mcp_invoke":
-      case "mcp_spawn":
-      case "session_data":
-      case "config:write":
-      case "task":
-      case "tool_execution_hook":
-      case "event_hook":
-        if (risk !== "high") risk = "medium"
-        break
-      case "network_request":
-        if (risk === "high") break
-        risk = (manifest?.permissions?.network?.connectDomains ?? []).length > 0 ? "medium" : "high"
-        break
-      default:
-        break
-    }
+    risk = maxRisk(risk, capabilityRisk(cap, manifest))
   }
 
   return risk
@@ -476,10 +459,11 @@ export function computeRisk(capabilities: string[], manifest?: PluginManifest): 
 
 function networkPermissionItem(manifest: PluginManifest): PluginPermissionItem {
   const domains = manifest.permissions?.network?.connectDomains ?? []
+  const severity = capabilityRisk("network_request", manifest)
   return {
     key: "network_request",
     category: "network",
-    severity: domains.length > 0 ? "medium" : "high",
+    severity,
     title: "Access network",
     description:
       domains.length > 0

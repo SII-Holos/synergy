@@ -19,20 +19,54 @@ describe("consent module", () => {
       expect(computeRisk([])).toBe("low")
     })
 
-    test("shell is high", () => {
-      expect(computeRisk(["shell"])).toBe("high")
+    test("shell is medium", () => {
+      expect(computeRisk(["shell"])).toBe("medium")
     })
 
-    test("file_write is high", () => {
-      expect(computeRisk(["file_write"])).toBe("high")
+    test("file_write is medium", () => {
+      expect(computeRisk(["file_write"])).toBe("medium")
     })
 
     test("file_read is medium", () => {
       expect(computeRisk(["file_read"])).toBe("medium")
     })
 
-    test("network_request is high (undeclared domains)", () => {
-      expect(computeRisk(["network_request"])).toBe("high")
+    test("network_request uses catalog risk without manifest context", () => {
+      expect(computeRisk(["network_request"])).toBe("medium")
+    })
+
+    test("network_request is high when a manifest allows any domain", () => {
+      expect(
+        computeRisk(
+          ["network_request"],
+          makeManifest({
+            permissions: {
+              network: {
+                connectDomains: [],
+                resourceDomains: [],
+                frameDomains: [],
+              },
+            },
+          }),
+        ),
+      ).toBe("high")
+    })
+
+    test("network_request is medium when domains are constrained", () => {
+      expect(
+        computeRisk(
+          ["network_request"],
+          makeManifest({
+            permissions: {
+              network: {
+                connectDomains: ["api.example.com"],
+                resourceDomains: [],
+                frameDomains: [],
+              },
+            },
+          }),
+        ),
+      ).toBe("medium")
     })
 
     test("config:read is low", () => {
@@ -44,7 +78,7 @@ describe("consent module", () => {
     })
 
     test("high + medium = high", () => {
-      expect(computeRisk(["file_read", "shell"])).toBe("high")
+      expect(computeRisk(["file_read", "secrets"])).toBe("high")
     })
   })
 
@@ -58,7 +92,7 @@ describe("consent module", () => {
       expect(diff.changed.length).toBe(0)
       expect(diff.requiresApproval).toBe(true)
       expect(diff.fromVersion).toBeUndefined()
-      expect(diff.riskAfter).toBe("high")
+      expect(diff.riskAfter).toBe("medium")
     })
 
     test("same capabilities → requiresApproval=false", () => {
@@ -85,7 +119,7 @@ describe("consent module", () => {
       const diff = diffPermissions("test-plugin", manifest, manifest, [], ["shell"])
       expect(diff.requiresApproval).toBe(true)
       expect(diff.riskBefore).toBe("low")
-      expect(diff.riskAfter).toBe("high")
+      expect(diff.riskAfter).toBe("medium")
     })
   })
 
@@ -96,7 +130,7 @@ describe("consent module", () => {
       expect(items.length).toBe(1)
       expect(items[0].key).toBe("shell")
       expect(items[0].category).toBe("runtime")
-      expect(items[0].severity).toBe("high")
+      expect(items[0].severity).toBe("medium")
     })
 
     test("maps file_read to files item", () => {
