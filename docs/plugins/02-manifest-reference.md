@@ -9,10 +9,14 @@
   "name": "my-plugin",
   "version": "0.1.0",
   "description": "What this plugin does",
+  "engines": {
+    "synergy": ">=1.1.26",
+  },
 }
 ```
 
 `name` is the canonical plugin id and must match `PluginDescriptor.id`.
+`engines.synergy` is the only Synergy version contract. Synergy rejects installation when the current runtime does not satisfy the declared range.
 
 ## Runtime Entry
 
@@ -72,6 +76,7 @@ During `synergy-plugin build`, the runtime entry is bundled to `dist/runtime/ind
 `data.config` may be `none`, `plugin`, or `global`. Use `none` when the plugin does not read Synergy plugin config.
 
 Per-tool capabilities live under `contributes.tools[].capabilities` and are merged with plugin-wide defaults.
+Unknown permission and capability keys are rejected during manifest validation.
 
 ## Runtime Tool Contributions
 

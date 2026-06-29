@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import { canonicalizePluginSpecs } from "../../src/plugin/installation-transaction"
+import { satisfiesSynergyEngine } from "../../src/plugin/install"
 
 describe("canonicalizePluginSpecs", () => {
   test("replaces older specs that resolve to the same plugin id", async () => {
@@ -57,5 +58,23 @@ describe("canonicalizePluginSpecs", () => {
     expect(result.plugins).toEqual([oldSpec])
     expect(result.removed).toEqual([newSpec])
     expect(result.changed).toBe(true)
+  })
+})
+
+describe("satisfiesSynergyEngine", () => {
+  test("accepts current versions that satisfy engines.synergy", () => {
+    expect(satisfiesSynergyEngine("1.2.3", ">=1.2.0")).toBe(true)
+    expect(satisfiesSynergyEngine("1.2.3", "1.2.3")).toBe(true)
+    expect(satisfiesSynergyEngine("1.2.3", ">=1.0.0 <2.0.0")).toBe(true)
+  })
+
+  test("rejects current versions that do not satisfy engines.synergy", () => {
+    expect(satisfiesSynergyEngine("1.2.3", ">=1.3.0")).toBe(false)
+    expect(satisfiesSynergyEngine("1.2.3", "1.2.4")).toBe(false)
+    expect(satisfiesSynergyEngine("1.2.3", ">=2.0.0 <3.0.0")).toBe(false)
+  })
+
+  test("rejects unsupported engines.synergy ranges", () => {
+    expect(satisfiesSynergyEngine("1.2.3", "^1.2.0")).toBe(false)
   })
 })

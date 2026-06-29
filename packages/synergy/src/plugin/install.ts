@@ -32,16 +32,47 @@ import * as Signature from "./signature"
 const log = Log.create({ service: "plugin.install" })
 
 // ---------------------------------------------------------------------------
-// Semver helper — lightweight comparison for minSynergyVersion checks
+// Semver helper for plugin engines.synergy checks
 // ---------------------------------------------------------------------------
 
-function satisfiesMinVersion(current: string, required: string): boolean {
-  const [currentMajor, currentMinor, currentPatch] = current.split(".").map(Number)
-  const [requiredMajor, requiredMinor, requiredPatch] = required.split(".").map(Number)
-  if (isNaN(currentMajor) || isNaN(requiredMajor)) return false
-  if (currentMajor !== requiredMajor) return currentMajor >= requiredMajor
-  if (currentMinor !== requiredMinor) return currentMinor >= requiredMinor
-  return currentPatch >= requiredPatch
+function parseVersion(input: string): [number, number, number] | null {
+  const match = input
+    .trim()
+    .replace(/^v/, "")
+    .match(/^(\d+)\.(\d+)\.(\d+)(?:[-+].*)?$/)
+  if (!match) return null
+  return [Number(match[1]), Number(match[2]), Number(match[3])]
+}
+
+function compareVersion(current: string, required: string): number | null {
+  const a = parseVersion(current)
+  const b = parseVersion(required)
+  if (!a || !b) return null
+  for (let i = 0; i < 3; i++) {
+    if (a[i] > b[i]) return 1
+    if (a[i] < b[i]) return -1
+  }
+  return 0
+}
+
+function satisfiesSynergyComparator(current: string, comparator: string): boolean {
+  const match = comparator.trim().match(/^(>=|>|<=|<|=)?\s*(v?\d+\.\d+\.\d+(?:[-+][a-zA-Z0-9.-]+)?)$/)
+  if (!match) return false
+  const op = match[1] ?? "="
+  const required = match[2]
+  const compared = compareVersion(current, required)
+  if (compared === null) return false
+  if (op === ">=") return compared >= 0
+  if (op === ">") return compared > 0
+  if (op === "<=") return compared <= 0
+  if (op === "<") return compared < 0
+  return compared === 0
+}
+
+export function satisfiesSynergyEngine(current: string, range: string): boolean {
+  const comparators = range.trim().split(/\s+/).filter(Boolean)
+  if (comparators.length === 0) return false
+  return comparators.every((comparator) => satisfiesSynergyComparator(current, comparator))
 }
 
 // ---------------------------------------------------------------------------
@@ -92,12 +123,12 @@ export async function add(
       log.warn("no valid plugin.json found, skipping manifest check", { path: spec })
     }
 
-    // Check minSynergyVersion compatibility
-    if (manifestData?.minSynergyVersion && Installation.VERSION !== "local") {
+    const synergyEngine = manifestData?.engines?.synergy?.trim()
+    if (synergyEngine && Installation.VERSION !== "local") {
       const currentVersion = Installation.VERSION
-      if (!satisfiesMinVersion(currentVersion, manifestData.minSynergyVersion)) {
+      if (!satisfiesSynergyEngine(currentVersion, synergyEngine)) {
         throw new Error(
-          `Plugin ${spec} requires Synergy >= ${manifestData.minSynergyVersion}, but current version is ${currentVersion}`,
+          `Plugin ${spec} requires plugin.json engines.synergy "${synergyEngine}", but current Synergy version is ${currentVersion}`,
         )
       }
     }

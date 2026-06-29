@@ -40,38 +40,41 @@ export namespace PluginMarketplaceRegistry {
     z.object({ type: z.literal("lucide"), name: z.string().min(1) }),
     z.object({ type: z.literal("registry-svg"), path: z.string().min(1) }),
   ])
-  const RemoteVersion = z.object({
-    version: z.string(),
-    downloadUrl: z.string().url(),
-    signatureUrl: z.string().url(),
-    signature: RemoteSignature,
-    integrity: z.string().regex(/^sha256-[a-f0-9]{64}$/),
-    manifestHash: z.string(),
-    permissionsHash: z.string(),
-    risk: Risk,
-    runtimeMode: RuntimeMode,
-    permissionsSummary: z.array(RemotePermission),
-    tools: z.array(z.string()),
-    uiSurfaces: z.array(z.string()),
-    publishedAt: z.string(),
-    changelog: z.string().optional(),
-  })
-  const RemoteEntry = z.object({
-    schemaVersion: z.literal(1),
-    id: z.string(),
-    name: z.string(),
-    description: z.string(),
-    repo: z.string().url(),
-    homepage: z.string().url().optional(),
-    author: Author,
-    icon: RemoteIcon.optional(),
-    verified: z.boolean(),
-    official: z.boolean(),
-    keywords: z.array(z.string()),
-    compatibility: z.object({ synergy: z.string() }),
-    versions: z.array(RemoteVersion),
-    yankedVersions: z.array(z.string()).optional().default([]),
-  })
+  const RemoteVersion = z
+    .object({
+      version: z.string(),
+      downloadUrl: z.string().url(),
+      signatureUrl: z.string().url(),
+      signature: RemoteSignature,
+      integrity: z.string().regex(/^sha256-[a-f0-9]{64}$/),
+      manifestHash: z.string(),
+      permissionsHash: z.string(),
+      risk: Risk,
+      runtimeMode: RuntimeMode,
+      permissionsSummary: z.array(RemotePermission),
+      tools: z.array(z.string()),
+      uiSurfaces: z.array(z.string()),
+      publishedAt: z.string(),
+      changelog: z.string().optional(),
+    })
+    .strict()
+  const RemoteEntry = z
+    .object({
+      schemaVersion: z.literal(1),
+      id: z.string(),
+      name: z.string(),
+      description: z.string(),
+      repo: z.string().url(),
+      homepage: z.string().url().optional(),
+      author: Author,
+      icon: RemoteIcon.optional(),
+      verified: z.boolean(),
+      official: z.boolean(),
+      keywords: z.array(z.string()),
+      versions: z.array(RemoteVersion),
+      yankedVersions: z.array(z.string()).optional().default([]),
+    })
+    .strict()
   const RemoteSummary = z.object({
     id: z.string(),
     name: z.string(),
@@ -131,7 +134,6 @@ export namespace PluginMarketplaceRegistry {
     verified: boolean
     official: boolean
     keywords: string[]
-    compatibility: { synergy: string }
     versions: NormalizedVersion[]
     createdAt: number
     updatedAt: number
@@ -278,7 +280,6 @@ export namespace PluginMarketplaceRegistry {
       verified: entry.verified,
       official: entry.official,
       keywords: entry.keywords,
-      compatibility: entry.compatibility,
       versions,
       createdAt: versions.length ? Math.min(...versions.map((version) => version.publishedAt)) : 0,
       updatedAt: latest?.publishedAt ?? 0,

@@ -30,7 +30,6 @@ function buildEntry(overrides: Record<string, any> = {}): Record<string, any> {
     verified: false,
     official: false,
     keywords: ["test", "v2"],
-    compatibility: { synergy: ">=1.0.0" },
     versions: [
       {
         version: "1.0.0",
@@ -127,7 +126,6 @@ async function writeOfficialRegistryCache(): Promise<void> {
         verified: true,
         official: true,
         keywords: ["synergy-plugin", "official"],
-        compatibility: { synergy: ">=1.0.0" },
         versions: [
           {
             version: "1.0.0",
@@ -221,6 +219,26 @@ describe("plugin registry routes v2", () => {
           body: JSON.stringify(entry),
         })
         expect(res.status).toBe(403)
+      },
+    })
+  })
+
+  test("publish rejects removed compatibility field", async () => {
+    await using tmp = await tmpdir({ git: true })
+    cleanRegistry()
+
+    const entry = buildEntry({ compatibility: { synergy: ">=1.0.0" } })
+
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const app = Server.App()
+        const res = await app.request("/api/registry/publish", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(entry),
+        })
+        expect(res.status).toBe(400)
       },
     })
   })

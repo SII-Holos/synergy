@@ -27313,7 +27313,8 @@
           "risk",
           "permissionsSummary",
           "publishedAt"
-        ]
+        ],
+        "additionalProperties": false
       },
       "RegistryPermissionSummary": {
         "type": "object",
@@ -27383,15 +27384,6 @@
             "items": {
               "type": "string"
             }
-          },
-          "compatibility": {
-            "type": "object",
-            "properties": {
-              "synergy": {
-                "type": "string"
-              }
-            },
-            "required": ["synergy"]
           },
           "versions": {
             "type": "array",
@@ -27469,7 +27461,6 @@
           "verified",
           "official",
           "keywords",
-          "compatibility",
           "versions",
           "createdAt",
           "updatedAt",
@@ -27480,7 +27471,8 @@
           "uiSurfaces",
           "tools",
           "downloads"
-        ]
+        ],
+        "additionalProperties": false
       },
       "RegistryPublishInput": {
         "type": "object",
@@ -27529,15 +27521,6 @@
             "items": {
               "type": "string"
             }
-          },
-          "compatibility": {
-            "type": "object",
-            "properties": {
-              "synergy": {
-                "type": "string"
-              }
-            },
-            "required": ["synergy"]
           },
           "versions": {
             "type": "array",
@@ -27609,7 +27592,6 @@
           "verified",
           "official",
           "keywords",
-          "compatibility",
           "versions",
           "risk",
           "trustTier",
@@ -27618,7 +27600,8 @@
           "uiSurfaces",
           "tools",
           "downloads"
-        ]
+        ],
+        "additionalProperties": false
       },
       "ExternalAgentInfo": {
         "type": "object",

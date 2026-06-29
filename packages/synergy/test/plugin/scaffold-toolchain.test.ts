@@ -42,6 +42,7 @@ describe("plugin scaffold toolchain", () => {
 
         const manifest = await Bun.file(path.join(pluginDir, "dist", "plugin.json")).json()
         expect(manifest.name).toBe(name)
+        expect(manifest.engines?.synergy).toBe(">=1.1.26")
         expect(manifest.main).toBe("./runtime/index.js")
         if (manifest.contributes?.ui?.entry) {
           expect(manifest.contributes.ui.entry).toMatch(/^\.\/ui\/index\.js$/)
@@ -212,6 +213,7 @@ export default plugin
       publishedAt: "2026-06-27T00:00:00.000Z",
     })
     expect(entry.icon).toEqual({ type: "registry-svg", path: "icons/asset-fixture.svg" })
+    expect("compatibility" in entry).toBe(false)
 
     const registryEntryPath = path.join(tmp.path, "registry", "plugins", "asset-fixture.json")
     writeGithubEntry(registryEntryPath, entry)

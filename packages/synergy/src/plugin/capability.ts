@@ -1,4 +1,8 @@
 import type { PluginManifest } from "@ericsanchezok/synergy-plugin"
+import {
+  baseCapabilities as sharedBaseCapabilities,
+  toolCapabilities as sharedToolCapabilities,
+} from "@ericsanchezok/synergy-plugin/permissions"
 import { computeRisk } from "./consent/risk"
 
 // ---------------------------------------------------------------------------
@@ -29,74 +33,13 @@ export interface ResolvedPluginCapability {
 
 type ManifestTool = NonNullable<NonNullable<PluginManifest["contributes"]>["tools"]>[number]
 
-/**
- * Build a capability string set from permissions and optional tool-level overrides.
- * When toolOverrides is omitted or a field is absent, falls back to plugin-wide defaults.
- */
-function buildCapabilitySet(
-  permissions: PluginManifest["permissions"],
-  toolOverrides?: ManifestTool["capabilities"],
-): string[] {
-  const caps = new Set<string>()
-  const pt = permissions?.tools
-  const pd = permissions?.data
-  const tc = toolOverrides
-
-  // Filesystem — tool-level wins over plugin-wide default
-  const fs = tc?.filesystem ?? pt?.filesystem ?? "none"
-  if (fs === "read") caps.add("filesystem:read")
-  if (fs === "write") {
-    caps.add("filesystem:read")
-    caps.add("filesystem:write")
-  }
-
-  // Shell — tool-level wins
-  const shell = tc?.shell ?? pt?.shell ?? false
-  if (shell) caps.add("shell")
-
-  // Network — tool-level wins
-  const net = tc?.network ?? pt?.network ?? false
-  if (net) caps.add("network")
-
-  // MCP — plugin-wide only (no per-tool override in manifest)
-  if (pt?.mcp === "invoke") caps.add("mcp:invoke")
-  if (pt?.mcp === "spawn") {
-    caps.add("mcp:invoke")
-    caps.add("mcp:spawn")
-  }
-
-  // Delegated Synergy tasks — plugin-wide only. This maps to the existing
-  // internal "task" permission rather than a separate plugin-only model.
-  if (pt?.task) caps.add("task")
-
-  // Session — tool-level wins over plugin-wide default
-  const sess = tc?.session ?? pd?.session ?? "none"
-  if (sess === "read") caps.add("session_data")
-
-  // Workspace — tool-level wins
-  const ws = tc?.workspace ?? pd?.workspace ?? "none"
-  if (ws === "read") caps.add("workspace_data")
-
-  // Config — tool-level wins
-  const cfg = tc?.config ?? pd?.config ?? "plugin"
-  if (cfg === "global") {
-    caps.add("config:read")
-    caps.add("config:write")
-  }
-  if (cfg === "plugin") caps.add("config:read")
-
-  // Secrets — plugin-wide only (no per-tool override in manifest)
-  if (pd?.secrets === "own") caps.add("secrets")
-
-  return [...caps].sort()
-}
 export function baseCapabilities(manifest: PluginManifest): string[] {
-  return buildCapabilitySet(manifest.permissions)
+  return sharedBaseCapabilities(manifest)
 }
 
 /** Compute merged capabilities for a single tool: base defaults → tool-level overrides. */
 function mergedToolCapabilities(manifest: PluginManifest, tool: ManifestTool): string[] {
-  return buildCapabilitySet(manifest.permissions, tool.capabilities)
+  return sharedToolCapabilities(manifest, tool)
 }
 /** Derive overall risk by delegating to the canonical consent/risk calculator. */
 function overallRisk(manifest: PluginManifest, _manifestTools: ManifestTool[]): "low" | "medium" | "high" {

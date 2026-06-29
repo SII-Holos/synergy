@@ -24,7 +24,6 @@ export interface GithubRegistryEntry {
   verified: boolean
   official: boolean
   keywords: string[]
-  compatibility: { synergy: string }
   versions: Array<{
     version: string
     downloadUrl: string
@@ -206,7 +205,6 @@ export function githubEntry(input: {
     verified: Boolean(input.verified),
     official: Boolean(input.official),
     keywords: [...new Set([...(manifest.keywords ?? []), "synergy-plugin"])].sort(),
-    compatibility: { synergy: manifest.engines?.synergy ?? manifest.minSynergyVersion ?? ">=1.0.0" },
     versions: [
       {
         version: manifest.version,

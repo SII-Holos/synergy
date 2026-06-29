@@ -1,4 +1,9 @@
 import type { PluginManifest } from "@ericsanchezok/synergy-plugin"
+import {
+  manifestHashPayload,
+  permissionsHashPayload,
+  stablePluginJson,
+} from "@ericsanchezok/synergy-plugin/permissions"
 import type { PluginSource, TrustTier } from "../trust.js"
 import path from "path"
 import fs from "fs/promises"
@@ -89,25 +94,6 @@ export async function removeApproval(pluginId: string): Promise<void> {
   await writeAll(records.filter((r) => r.pluginId !== pluginId))
 }
 
-// ---------------------------------------------------------------------------
-// Hash helpers
-// ---------------------------------------------------------------------------
-
-/** Deep sort all object keys for deterministic serialization. */
-function sortKeys(obj: unknown): unknown {
-  if (Array.isArray(obj)) return obj.map(sortKeys)
-  if (obj !== null && typeof obj === "object") {
-    const entries = Object.entries(obj as Record<string, unknown>)
-    entries.sort(([a], [b]) => a.localeCompare(b))
-    const result: Record<string, unknown> = {}
-    for (const [k, v] of entries) {
-      result[k] = sortKeys(v)
-    }
-    return result
-  }
-  return obj
-}
-
 function sha256(input: string): string {
   return new Bun.CryptoHasher("sha256").update(input).digest("hex")
 }
@@ -121,13 +107,7 @@ function sha256(input: string): string {
  * the active capability list. Used to detect when re-approval is needed.
  */
 export function computePermissionsHash(manifest: PluginManifest, capabilities: string[]): string {
-  const normalized = {
-    capabilities: [...capabilities].sort(),
-    permissions: manifest.permissions ?? {},
-    contributes: manifest.contributes ?? {},
-    lifecycle: manifest.lifecycle ?? {},
-  }
-  return sha256(JSON.stringify(sortKeys(normalized)))
+  return sha256(stablePluginJson(permissionsHashPayload(manifest, capabilities)))
 }
 
 /**
@@ -136,7 +116,7 @@ export function computePermissionsHash(manifest: PluginManifest, capabilities: s
  * (e.g. key reordering) do not invalidate approvals.
  */
 export function computeManifestHash(manifest: PluginManifest): string {
-  return sha256(JSON.stringify(sortKeys(manifest)))
+  return sha256(stablePluginJson(manifestHashPayload(manifest)))
 }
 
 // ---------------------------------------------------------------------------
