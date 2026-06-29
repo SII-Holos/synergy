@@ -41,11 +41,6 @@ const HIGH_RISK = new Set([
   "file_external_write",
 
   "mcp_invoke",
-  "plugin_invoke",
-  "plugin_file_read",
-  "plugin_file_write",
-  "plugin_shell",
-  "plugin_network",
   "plugin_secret_read",
   "identity_act",
   "communication_email",
@@ -54,7 +49,18 @@ const HIGH_RISK = new Set([
   "protected_op",
 ])
 
-const MEDIUM_RISK = new Set(["file_write", "shell", "network_request"])
+const MEDIUM_RISK = new Set([
+  "file_write",
+  "shell",
+  "network_request",
+  "plugin_file_read",
+  "plugin_file_write",
+  "plugin_shell",
+  "plugin_network",
+  "plugin_session_read",
+  "plugin_config_write",
+  "task",
+])
 
 const PERMISSION_CAPABILITY: Record<string, string> = {
   read: "file_read",

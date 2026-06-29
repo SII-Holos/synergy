@@ -111,7 +111,7 @@ describe("EnforcementGate plugin opaque strategy", () => {
     expect(envelope.decision).toBe("ask")
   })
 
-  test("unknown plugin tool produces plugin_invoke capability with nonBypassable", async () => {
+  test("unknown plugin tool produces protected_op capability with nonBypassable", async () => {
     const gate = await EnforcementGate.create({
       activeWorkspace: "/Users/test/synergy-control-profile",
       workspaceType: "worktree",
@@ -119,9 +119,8 @@ describe("EnforcementGate plugin opaque strategy", () => {
 
     const result = gate.classify("plugin__my_plugin__do_export", {})
 
-    const pluginCap = result.capabilities.find((c: any) => c.class === "plugin_invoke")!
+    const pluginCap = result.capabilities.find((c: any) => c.class === "protected_op")!
     expect(pluginCap).toBeDefined()
-    // Plugin invoke is an externalIO operation — always nonBypassable
     expect(pluginCap.nonBypassable).toBe(true)
   })
 
@@ -133,7 +132,7 @@ describe("EnforcementGate plugin opaque strategy", () => {
 
     const result = gate.classify("plugin__no_such_plugin__run_task", {})
 
-    const pluginCap = result.capabilities.find((c: any) => c.class === "plugin_invoke")!
+    const pluginCap = result.capabilities.find((c: any) => c.class === "protected_op")!
     expect(pluginCap).toBeDefined()
     expect(pluginCap.opaque).toBe(true)
   })
@@ -161,7 +160,7 @@ describe("EnforcementGate plugin opaque strategy", () => {
       workspaceType: "worktree",
       pluginToolCapabilities: {
         plugin__data_export__publish: {
-          capabilities: ["plugin_invoke", "filesystem:read", "filesystem:write", "network", "shell"],
+          capabilities: ["filesystem:read", "filesystem:write", "network", "shell"],
           risk: "high",
         },
       },
@@ -170,12 +169,11 @@ describe("EnforcementGate plugin opaque strategy", () => {
     const result = gate.classify("plugin__data_export__publish", {})
     const classes = result.capabilities.map((cap: any) => cap.class)
 
-    expect(classes).toContain("plugin_invoke")
     expect(classes).toContain("plugin_file_read")
     expect(classes).toContain("plugin_file_write")
     expect(classes).toContain("plugin_network")
     expect(classes).toContain("plugin_shell")
-    expect(result.capabilities.find((cap: any) => cap.class === "plugin_invoke")?.opaque).toBe(false)
+    expect(new Set(classes)).toEqual(new Set(["plugin_file_read", "plugin_file_write", "plugin_network", "plugin_shell"]))
   })
 
   test("plugin approval records are keyed by canonical plugin id and mark unapproved sub-capabilities", async () => {
@@ -184,7 +182,7 @@ describe("EnforcementGate plugin opaque strategy", () => {
       workspaceType: "worktree",
       pluginToolCapabilities: {
         plugin__data_export__publish: {
-          capabilities: ["plugin_invoke", "filesystem:read", "filesystem:write", "network"],
+          capabilities: ["filesystem:read", "filesystem:write", "network"],
           risk: "high",
         },
       },
@@ -198,7 +196,7 @@ describe("EnforcementGate plugin opaque strategy", () => {
           approvedAt: 1700000000000,
           approvedBy: "user",
           trustTier: "sandbox",
-          approvedCapabilities: ["plugin_invoke", "filesystem:read"],
+          approvedCapabilities: ["filesystem:read"],
           approvedNetworkDomains: [],
           approvedUISurfaces: [],
           risk: "high",
@@ -212,6 +210,58 @@ describe("EnforcementGate plugin opaque strategy", () => {
     expect(result.capabilities.find((cap: any) => cap.class === "plugin_file_write")?.approved).toBe(false)
     expect(result.capabilities.find((cap: any) => cap.class === "plugin_file_write")?.reason).toBe("unapproved")
     expect(result.capabilities.find((cap: any) => cap.class === "plugin_network")?.approved).toBe(false)
+  })
+
+  test("autonomous denies unapproved plugin sub-capabilities and allows approved ones", async () => {
+    const unapprovedGate = await EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+      profileId: "autonomous",
+      pluginToolCapabilities: {
+        plugin__meme__generate_meme: {
+          capabilities: ["filesystem:read", "task"],
+          risk: "medium",
+        },
+      },
+      pluginApprovals: {},
+    })
+
+    const unapprovedEnvelope = unapprovedGate.evaluate("plugin__meme__generate_meme", {})
+    expect(unapprovedEnvelope.decision).toBe("deny")
+    expect(unapprovedEnvelope.opaque).toBe(true)
+    expect(unapprovedEnvelope.refusal?.matchedPermission).toBe("plugin_file_read")
+
+    const approvedGate = await EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+      profileId: "autonomous",
+      pluginToolCapabilities: {
+        plugin__meme__generate_meme: {
+          capabilities: ["filesystem:read", "task"],
+          risk: "medium",
+        },
+      },
+      pluginApprovals: {
+        meme: {
+          pluginId: "meme",
+          source: "official",
+          version: "1.0.0",
+          manifestHash: "manifest",
+          permissionsHash: "permissions",
+          approvedAt: 1700000000000,
+          approvedBy: "user",
+          trustTier: "sandbox",
+          approvedCapabilities: ["filesystem:read", "task"],
+          approvedNetworkDomains: [],
+          approvedUISurfaces: [],
+          risk: "medium",
+        },
+      },
+    })
+
+    const approvedEnvelope = approvedGate.evaluate("plugin__meme__generate_meme", {})
+    expect(approvedEnvelope.decision).toBe("allow")
+    expect(approvedEnvelope.opaque).toBe(false)
   })
 })
 
@@ -284,7 +334,7 @@ describe("EnforcementGate externalIO capability classification", () => {
 
     for (const toolName of tools) {
       const result = gate.classify(toolName, {})
-      const externalIO = result.capabilities.some((c: any) => c.class === "mcp_invoke" || c.class === "plugin_invoke")
+      const externalIO = result.capabilities.some((c: any) => c.class === "mcp_invoke" || c.class === "protected_op")
       expect(externalIO).toBe(true)
     }
   })
@@ -298,7 +348,7 @@ describe("EnforcementGate externalIO capability classification", () => {
     const result = gate.classify("mcp__any_service__any_tool", {})
 
     for (const cap of result.capabilities) {
-      if (cap.class === "mcp_invoke" || cap.class === "plugin_invoke") {
+      if (cap.class === "mcp_invoke" || cap.class === "protected_op") {
         expect(cap.nonBypassable).toBe(true)
       }
     }

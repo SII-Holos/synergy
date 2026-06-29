@@ -8,6 +8,7 @@ import {
   runPluginTask,
   type PluginHostRuntimeContext,
 } from "../plugin/host-services.js"
+import { analyzeDestructiveCommand } from "../enforcement/gate.js"
 
 // ---------------------------------------------------------------------------
 // Types
@@ -47,6 +48,7 @@ export async function executeBridgeMethod(input: BridgeHandlerInput): Promise<un
   switch (method) {
     // ── config ───────────────────────────────────────────────
     case "config.get": {
+      await authorizeBridgeRequest(bridgeContext, "plugin_config_read", "config.get")
       try {
         const accessor = createConfigAccessor(pluginId)
         const full = await accessor.get()
@@ -59,6 +61,7 @@ export async function executeBridgeMethod(input: BridgeHandlerInput): Promise<un
       }
     }
     case "config.set": {
+      await authorizeBridgeRequest(bridgeContext, "plugin_config_write", "config.set")
       try {
         const accessor = createConfigAccessor(pluginId)
         const { key, value } = params as any
@@ -71,17 +74,20 @@ export async function executeBridgeMethod(input: BridgeHandlerInput): Promise<un
 
     // ── secrets ──────────────────────────────────────────────
     case "secret.get": {
+      await authorizeBridgeRequest(bridgeContext, "plugin_secret_read", "secret.get")
       const store = createAuthStore(pluginId)
       const key = (params as any)?.key
       return typeof key === "string" ? store.get(key) : undefined
     }
     case "secret.set": {
+      await authorizeBridgeRequest(bridgeContext, "plugin_secret_read", "secret.set")
       const store = createAuthStore(pluginId)
       const { key, value } = params as any
       await store.set(key, String(value))
       return undefined
     }
     case "secret.delete": {
+      await authorizeBridgeRequest(bridgeContext, "plugin_secret_read", "secret.delete")
       const store = createAuthStore(pluginId)
       const key = (params as any)?.key
       if (typeof key === "string") await store.delete(key)
@@ -114,6 +120,7 @@ export async function executeBridgeMethod(input: BridgeHandlerInput): Promise<un
       if (typeof requestedPath !== "string" || requestedPath.trim() === "") {
         throw new Error("file.read requires 'path' as a non-empty string")
       }
+      await authorizeBridgeRequest(bridgeContext, "plugin_file_read", requestedPath)
       const resolved = resolveContainedPath(pluginDir, requestedPath)
       return Bun.file(resolved).text()
     }
@@ -126,6 +133,7 @@ export async function executeBridgeMethod(input: BridgeHandlerInput): Promise<un
       if (typeof data !== "string") {
         throw new Error("file.write requires 'data' as a string")
       }
+      await authorizeBridgeRequest(bridgeContext, "plugin_file_write", requestedPath)
       const resolved = resolveContainedPath(pluginDir, requestedPath)
       await fs.mkdir(path.dirname(resolved), { recursive: true })
       await Bun.write(resolved, data)
@@ -147,6 +155,7 @@ export async function executeBridgeMethod(input: BridgeHandlerInput): Promise<un
       if (url.protocol !== "http:" && url.protocol !== "https:") {
         throw new Error(`Only http/https URLs are allowed, got: ${url.protocol}`)
       }
+      await authorizeBridgeRequest(bridgeContext, "plugin_network", url.origin)
 
       // Build safe headers — strip Authorization
       const options = (params as any)?.options as Record<string, unknown> | undefined
@@ -177,6 +186,13 @@ export async function executeBridgeMethod(input: BridgeHandlerInput): Promise<un
       if (typeof cmd !== "string" || cmd.trim() === "") {
         throw new Error("shell.run requires 'cmd' as a non-empty string")
       }
+      const destructive = analyzeDestructiveCommand(cmd)
+      await authorizeBridgeRequest(
+        bridgeContext,
+        destructive.matched ? "shell_destructive" : "plugin_shell",
+        cmd,
+        destructive.reason ? { reason: destructive.reason } : undefined,
+      )
 
       const requestedTimeout: number = typeof (params as any)?.timeout === "number" ? (params as any).timeout : 30_000
       const shellTimeout = Math.min(Math.max(requestedTimeout, 1), 60_000)
@@ -208,6 +224,7 @@ export async function executeBridgeMethod(input: BridgeHandlerInput): Promise<un
 
     // ── metadata ─────────────────────────────────────────────
     case "workspace.getMetadata":
+      await authorizeBridgeRequest(bridgeContext, "plugin_workspace_read", "workspace.getMetadata")
       return {
         pluginId,
         pluginDir,
@@ -215,6 +232,7 @@ export async function executeBridgeMethod(input: BridgeHandlerInput): Promise<un
       }
 
     case "session.getMetadata":
+      await authorizeBridgeRequest(bridgeContext, "plugin_session_read", "session.getMetadata")
       return bridgeContext
         ? {
             sessionID: bridgeContext.sessionID,
@@ -225,6 +243,7 @@ export async function executeBridgeMethod(input: BridgeHandlerInput): Promise<un
 
     // ── not available ────────────────────────────────────────
     case "session.read":
+      await authorizeBridgeRequest(bridgeContext, "plugin_session_read", "session.read")
       throw new Error("session.read is not available in isolated runtime")
 
     case "tool.invoke":
@@ -247,6 +266,50 @@ export async function executeBridgeMethod(input: BridgeHandlerInput): Promise<un
         context: bridgeContext,
         request: stripBridgeContext(params) as any,
       })
+  }
+}
+
+async function authorizeBridgeRequest(
+  context: PluginHostRuntimeContext | undefined,
+  capability: string,
+  pattern: string,
+  metadata?: Record<string, unknown>,
+) {
+  if (!context) return
+  await requestPluginPermission(context, {
+    permission: permissionForBridgeCapability(capability),
+    patterns: [pattern || "*"],
+    metadata: {
+      capability,
+      source: "plugin_bridge",
+      ...metadata,
+    },
+  })
+}
+
+function permissionForBridgeCapability(capability: string): string {
+  switch (capability) {
+    case "plugin_file_read":
+      return "read"
+    case "plugin_file_write":
+      return "write"
+    case "plugin_shell":
+    case "shell_destructive":
+      return "bash"
+    case "plugin_network":
+      return "network_request"
+    case "plugin_session_read":
+      return "session_data"
+    case "plugin_workspace_read":
+      return "workspace_data"
+    case "plugin_config_read":
+      return "plugin_config_read"
+    case "plugin_config_write":
+      return "plugin_config_write"
+    case "plugin_secret_read":
+      return "plugin_secret_read"
+    default:
+      return capability
   }
 }
 

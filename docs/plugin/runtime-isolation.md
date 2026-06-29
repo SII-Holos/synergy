@@ -36,7 +36,7 @@ Worker/process plugins access host services through a bridge. Every bridge metho
 
 | Bridge area       | Manifest capability                   |
 | ----------------- | ------------------------------------- |
-| cache             | `plugin_invoke`                       |
+| cache             | none; scoped plugin cache only        |
 | config read/write | `config:read`, `config:write`         |
 | secrets           | `secrets`                             |
 | file read/write   | `filesystem:read`, `filesystem:write` |
@@ -44,6 +44,8 @@ Worker/process plugins access host services through a bridge. Every bridge metho
 | network           | `network`                             |
 | session data      | `session_data`                        |
 | workspace data    | `workspace_data`                      |
+| tool invocation   | target tool capabilities              |
+| permission request | requested Synergy permission          |
 
 Approval records store manifest capability names under the canonical plugin id. The bridge accepts those manifest names and does not require callers to know gate-internal names such as `plugin_file_read`.
 

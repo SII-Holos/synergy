@@ -2,10 +2,9 @@
  * Compute risk level from a set of capability strings.
  *
  * Rules:
- * - High: any of plugin_shell, plugin_file_write, plugin_secret_read,
- *         plugin_network with undeclared domains, hooks.promptTransform
- * - Medium: plugin_file_read, plugin_network with declared domains,
- *           plugin_session_read, plugin_config_write, task delegation
+ * - High: shell, filesystem writes, secrets, hooks.promptTransform
+ * - Medium: filesystem reads, network with declared domains,
+ *           session data, config writes, task delegation
  * - Low: all others
  * - No capabilities: "low"
  */
@@ -16,10 +15,9 @@ import type { PluginManifest } from "@ericsanchezok/synergy-plugin"
  * manifest context to resolve network domain declarations.
  *
  * Rules:
- * - High: any of plugin_shell, plugin_file_write, plugin_secret_read,
- *         plugin_network with undeclared domains, hooks.promptTransform
- * - Medium: plugin_file_read, plugin_network with declared domains,
- *           plugin_session_read, plugin_config_write, task delegation
+ * - High: shell, filesystem writes, secrets, hooks.promptTransform
+ * - Medium: filesystem reads, network with declared domains,
+ *           session data, config writes, task delegation
  * - Low: all others
  * - No capabilities: "low"
  */
@@ -59,7 +57,6 @@ export function computeRisk(capabilities: string[], manifest?: PluginManifest): 
       case "mcp:spawn":
       case "workspace_data":
       case "config:read":
-      case "plugin_invoke":
       default:
         // Low-risk or unknown — don't change current risk
         break

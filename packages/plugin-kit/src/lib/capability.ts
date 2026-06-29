@@ -6,7 +6,7 @@ function buildCapabilitySet(
   permissions: PluginManifest["permissions"],
   toolOverrides?: ManifestTool["capabilities"],
 ): string[] {
-  const caps = new Set<string>(["plugin_invoke"])
+  const caps = new Set<string>()
   const pt = permissions?.tools
   const pd = permissions?.data
   const tc = toolOverrides

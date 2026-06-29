@@ -163,7 +163,7 @@ export namespace SessionProcessor {
             status: "completed",
             input: SessionToolInput.normalize(outcome.input),
             output: outcome.result.output,
-            metadata: ToolTimeout.preserveMetadata(
+            metadata: ToolTimeout.mergeMetadata(
               part.state.status === "running" ? part.state.metadata : undefined,
               outcome.result.metadata,
             )!,
@@ -179,7 +179,7 @@ export namespace SessionProcessor {
             status: "error",
             input: SessionToolInput.normalize(outcome.input),
             error: outcome.error,
-            metadata: ToolTimeout.preserveMetadata(
+            metadata: ToolTimeout.mergeMetadata(
               part.state.status === "running" ? part.state.metadata : undefined,
               outcome.metadata,
             ),

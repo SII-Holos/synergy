@@ -59,7 +59,6 @@ At execution time Synergy registers plugin tools as `plugin__<pluginId>__<toolNa
 
 | Manifest capability | Gate capability         |
 | ------------------- | ----------------------- |
-| `plugin_invoke`     | `plugin_invoke`         |
 | `filesystem:read`   | `plugin_file_read`      |
 | `filesystem:write`  | `plugin_file_write`     |
 | `shell`             | `plugin_shell`          |
@@ -71,7 +70,7 @@ At execution time Synergy registers plugin tools as `plugin__<pluginId>__<toolNa
 | `secrets`           | `plugin_secret_read`    |
 | `task`              | `task`                  |
 
-Unknown or undeclared plugin tools remain opaque and require user approval.
+Synergy does not add a coarse “plugin invoke” permission. Plugin tools are approved and profiled by the real Synergy capabilities they declare. Unknown plugin tools are treated as protected opaque operations and require user approval.
 
 `permissions.tools.task` gates plugin calls to `context.task.run()`. Use an explicit `agents` allowlist and
 `maxRuntimeMs` for marketplace plugins. Hidden delegated tasks use Synergy's Cortex/session audit path and stay
