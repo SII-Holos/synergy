@@ -70,12 +70,13 @@ export namespace ConfigDomain {
     ]),
     def("library", "30-library.jsonc", "Library", ["library"]),
     def("mcp", "40-mcp.jsonc", "MCP", ["mcp", "mcpDefaults"]),
-    def(
-      "plugins",
-      "50-plugins.jsonc",
-      "Plugins",
-      ["plugin", "pluginConfig", "pluginApprovalPolicy", "pluginRuntimePolicy", "pluginMarketplace"],
-    ),
+    def("plugins", "50-plugins.jsonc", "Plugins", [
+      "plugin",
+      "pluginConfig",
+      "pluginApprovalPolicy",
+      "pluginRuntimePolicy",
+      "pluginMarketplace",
+    ]),
     def("agents", "60-agents.jsonc", "Agents", [
       "default_agent",
       "agent",

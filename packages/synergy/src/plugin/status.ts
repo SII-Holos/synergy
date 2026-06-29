@@ -273,8 +273,9 @@ export async function getStatus(pluginId: string): Promise<PluginStatus | null> 
   }
 
   // ── Stores ──
+  const hasConfigStore = capabilityResult.base.includes("config:read") || capabilityResult.base.includes("config:write")
   const stores = {
-    config: true, // plugin config is always available
+    config: hasConfigStore,
     secrets: await resolveSecretsStore(pluginId),
     cacheBytes: await resolveCacheBytes(pluginId),
   }

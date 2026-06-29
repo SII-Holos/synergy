@@ -138,3 +138,29 @@ describe("Status: update_failed_rolled_back warning", () => {
     expect(rollbackWarnings.length).toBe(2)
   })
 })
+
+describe("Status: plugin stores", () => {
+  test("does not report config store when plugin has no config access", async () => {
+    mockManifest = {
+      name: pluginId,
+      version: "1.0.0",
+      permissions: { data: { config: "none" } },
+      contributes: {},
+    }
+
+    const status = await getStatus(pluginId)
+    expect(status?.stores.config).toBe(false)
+  })
+
+  test("reports config store when plugin declares plugin config access", async () => {
+    mockManifest = {
+      name: pluginId,
+      version: "1.0.0",
+      permissions: { data: { config: "plugin" } },
+      contributes: {},
+    }
+
+    const status = await getStatus(pluginId)
+    expect(status?.stores.config).toBe(true)
+  })
+})

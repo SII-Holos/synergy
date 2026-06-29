@@ -1,5 +1,9 @@
 import { PluginManifest, type PluginManifest as PluginManifestType } from "@ericsanchezok/synergy-plugin"
-import { CAPABILITY_DETAILS, permissionCategoryForKey, pluginInstallRisk } from "@ericsanchezok/synergy-plugin/permissions"
+import {
+  CAPABILITY_DETAILS,
+  permissionCategoryForKey,
+  pluginInstallRisk,
+} from "@ericsanchezok/synergy-plugin/permissions"
 import fs from "fs/promises"
 import fsSync from "fs"
 import os from "os"

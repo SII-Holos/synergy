@@ -104,7 +104,7 @@ function copyArtifact(tarballPath: string, id: string, version: string): string 
 
 export const PluginPublishCommand = cmd({
   command: "publish <tarball>",
-  describe: "submit a plugin tarball to the registry",
+  describe: "publish a plugin tarball to the local development registry",
   builder: (yargs: Argv) =>
     yargs
       .positional("tarball", {
@@ -112,46 +112,9 @@ export const PluginPublishCommand = cmd({
         describe: "path to the plugin .synergy-plugin.tgz tarball",
         demandOption: true,
       })
-      .option("registry", {
-        type: "string",
-        choices: ["local", "github"] as const,
-        default: "local",
-        describe: "registry target: local publishes to the running local registry, github prints aggregator JSON",
-      })
-      .option("write-entry", {
-        type: "string",
-        describe: "write or update a synergy-plugins plugins/<id>.json entry when --registry github is used",
-      })
-      .option("download-url", {
-        type: "string",
-        describe: "release asset URL for the .synergy-plugin.tgz when --registry github is used",
-      })
-      .option("signature-url", {
-        type: "string",
-        describe: "release asset URL for the .sig file when --registry github is used",
-      })
-      .option("release-backend", {
-        type: "string",
-        choices: ["github", "manual"] as const,
-        default: "github",
-        describe: "release asset URL backend when --registry github is used",
-      })
-      .option("release-url-template", {
-        type: "string",
-        describe: "release asset URL template using {repo}, {version}, {tag}, and {filename}",
-      })
-      .option("repo", {
-        type: "string",
-        describe: "plugin repository URL for the GitHub aggregator entry",
-      })
-      .option("changelog", {
-        type: "string",
-        describe: "version changelog for the generated GitHub aggregator entry",
-      })
       .options(attachOption),
   async handler(args) {
     const tarballPath = path.resolve(args.tarball as string)
-    const registry = (args.registry as "local" | "github" | undefined) ?? "local"
 
     if (!fs.existsSync(tarballPath)) {
       UI.error(`Tarball not found: ${tarballPath}`)
@@ -179,32 +142,6 @@ export const PluginPublishCommand = cmd({
       })
       const detailedPermissions = permissionItems(manifest, capabilities)
       const registryPermissions = registryPermissionSummary(manifest, capabilities)
-
-      if (registry === "github") {
-        const { githubEntry, writeGithubEntry } = await import("@ericsanchezok/synergy-plugin-kit/market-entry")
-        const entry = githubEntry({
-          tarballPath,
-          downloadUrl: args.downloadUrl as string | undefined,
-          signatureUrl: args.signatureUrl as string | undefined,
-          repo: args.repo as string | undefined,
-          releaseBackend: args["release-backend"] as "github" | "manual" | undefined,
-          releaseUrlTemplate: args["release-url-template"] as string | undefined,
-          changelog: args.changelog as string | undefined,
-        })
-        const rendered = JSON.stringify(entry, null, 2)
-        const writeEntry = args.writeEntry as string | undefined
-        if (writeEntry) {
-          const outputPath = path.resolve(writeEntry)
-          writeGithubEntry(outputPath, entry)
-          UI.println(`${UI.Style.TEXT_SUCCESS}✔${UI.Style.TEXT_NORMAL} Wrote GitHub registry entry ${outputPath}`)
-          UI.println(
-            `  ${UI.Style.TEXT_DIM}Run in synergy-plugins:${UI.Style.TEXT_NORMAL} bun run validate && bun run build-registry`,
-          )
-        } else {
-          UI.println(rendered)
-        }
-        return
-      }
 
       const artifactPath = copyArtifact(tarballPath, manifest.name, manifest.version)
       const artifactIntegrity = `sha256-${sha256File(artifactPath)}`
