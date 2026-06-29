@@ -221,6 +221,7 @@ export const state = ScopedState.create(async (): Promise<LoaderState> => {
         devMode: Installation.CHANNEL === "local",
         userTrusted: resolved.source === "local" || resolved.source === "builtin",
         risk,
+        policy: config.pluginRuntimePolicy,
       })
 
       const input: PluginInput = {

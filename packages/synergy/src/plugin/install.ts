@@ -149,6 +149,7 @@ export async function add(
     let manifestHash: string | undefined
     let risk: "low" | "medium" | "high" = "low"
     let approvalRecord: PluginApprovalRecord | undefined
+    const config = await Config.current()
 
     // Derive plugin source from spec (does not depend on manifest)
     const source: PluginSource = resolved.source
@@ -175,7 +176,6 @@ export async function add(
       }
 
       const trust = decideTrust({ source, userTrusted: false, verifiedIntegrity: sigMeta != null, devMode })
-      const config = await Config.current()
       const policy: PluginApprovalPolicy = config.pluginApprovalPolicy ?? PLUGIN_APPROVAL_POLICY_DEFAULTS
 
       // Compute runtime mode for policy evaluation
@@ -185,6 +185,7 @@ export async function add(
         devMode,
         userTrusted: false,
         risk,
+        policy: config.pluginRuntimePolicy,
       })
 
       // Evaluate policy — may deny or auto-approve before consent
@@ -261,6 +262,7 @@ export async function add(
       devMode,
       userTrusted: false,
       risk,
+      policy: config.pluginRuntimePolicy,
     })
     const lockEntry = {
       spec,

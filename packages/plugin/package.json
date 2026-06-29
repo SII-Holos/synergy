@@ -42,6 +42,11 @@
       "types": "./src/permissions.ts",
       "import": "./dist/permissions.js"
     },
+    "./policy": {
+      "bun": "./src/policy.ts",
+      "types": "./src/policy.ts",
+      "import": "./dist/policy.js"
+    },
     "./shell": {
       "bun": "./src/shell.ts",
       "types": "./src/shell.ts",

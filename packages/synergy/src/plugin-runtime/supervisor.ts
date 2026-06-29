@@ -286,6 +286,7 @@ export class PluginRuntimeSupervisor {
     } catch {
       // Manifest may be missing or invalid; fall through with defaults
     }
+    const config = await Config.current().catch(() => undefined)
 
     // Resolve runtime mode: caller wins, then resolveRuntimeMode, then default
     let runtimeDecision: string
@@ -300,6 +301,7 @@ export class PluginRuntimeSupervisor {
         devMode: false,
         userTrusted: false,
         risk: "low",
+        policy: config?.pluginRuntimePolicy,
       })
       runtimeDecision = `policy:${resolvedMode}`
     }
@@ -308,7 +310,6 @@ export class PluginRuntimeSupervisor {
     resolvedMode = launchMode.mode
     runtimeDecision = launchMode.runtimeDecision
 
-    const config = await Config.current().catch(() => undefined)
     const manifestResources = manifest?.runtime?.resources
     const limits = resolveRuntimeLimits(config?.pluginRuntimePolicy?.limits, manifestResources)
 

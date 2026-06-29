@@ -12,9 +12,9 @@ function makeManifest(overrides: Partial<PluginManifest> = {}): PluginManifest {
 }
 
 describe("validateRuntimePolicy", () => {
-  // ── Rule 1: third-party requests in-process → error ──
+  // ── Runtime resolver consistency ──
 
-  test("third-party npm plugin requesting in-process mode returns error", () => {
+  test("third-party npm plugin requesting in-process warns that runtime resolves to process", () => {
     const manifest = makeManifest({
       runtime: { mode: "in-process" },
     })
@@ -25,12 +25,14 @@ describe("validateRuntimePolicy", () => {
       risk: "low",
     })
     const errors = results.filter((r) => r.type === "error")
-    expect(errors.length).toBeGreaterThan(0)
-    expect(errors[0].message.toLowerCase()).toContain("in-process")
-    expect(errors[0].message.toLowerCase()).toContain("third-party")
+    const warnings = results.filter((r) => r.type === "warn")
+    expect(errors.length).toBe(0)
+    expect(warnings.some((warning) => warning.message.includes('"in-process"') && warning.message.includes('"process"'))).toBe(
+      true,
+    )
   })
 
-  test("third-party git plugin defaults to in-process returns error", () => {
+  test("third-party git plugin defaulting to process does not fail validation", () => {
     const manifest = makeManifest({})
     const results = validateRuntimePolicy({
       manifest,
@@ -39,11 +41,10 @@ describe("validateRuntimePolicy", () => {
       risk: "low",
     })
     const errors = results.filter((r) => r.type === "error")
-    expect(errors.length).toBeGreaterThan(0)
-    expect(errors[0].message.toLowerCase()).toContain("in-process")
+    expect(errors.length).toBe(0)
   })
 
-  test("third-party url plugin requesting in-process returns error", () => {
+  test("third-party url plugin requesting in-process warns that runtime resolves to process", () => {
     const manifest = makeManifest({
       runtime: { mode: "in-process" },
     })
@@ -54,8 +55,11 @@ describe("validateRuntimePolicy", () => {
       risk: "low",
     })
     const errors = results.filter((r) => r.type === "error")
-    expect(errors.length).toBeGreaterThan(0)
-    expect(errors[0].message.toLowerCase()).toContain("in-process")
+    const warnings = results.filter((r) => r.type === "warn")
+    expect(errors.length).toBe(0)
+    expect(warnings.some((warning) => warning.message.includes('"in-process"') && warning.message.includes('"process"'))).toBe(
+      true,
+    )
   })
 
   test("local plugin requesting in-process is allowed (no error)", () => {
@@ -88,9 +92,9 @@ describe("validateRuntimePolicy", () => {
     expect(thirdPartyErrors.length).toBe(0)
   })
 
-  // ── Rule 2: high-risk requests in-process → error ──
+  // ── High risk resolves through the same policy ──
 
-  test("high-risk plugin in-process mode returns error", () => {
+  test("high-risk plugin in-process mode warns that runtime resolves to process", () => {
     const manifest = makeManifest({
       runtime: { mode: "in-process" },
     })
@@ -101,8 +105,11 @@ describe("validateRuntimePolicy", () => {
       risk: "high",
     })
     const errors = results.filter((r) => r.type === "error")
-    expect(errors.length).toBeGreaterThan(0)
-    expect(errors[0].message.toLowerCase()).toContain("high-risk")
+    const warnings = results.filter((r) => r.type === "warn")
+    expect(errors.length).toBe(0)
+    expect(warnings.some((warning) => warning.message.includes('"in-process"') && warning.message.includes('"process"'))).toBe(
+      true,
+    )
   })
 
   test("high-risk plugin in worker mode is allowed (no in-process error)", () => {
@@ -153,7 +160,7 @@ describe("validateRuntimePolicy", () => {
     })
     const warnings = results.filter((r) => r.type === "warn")
     expect(warnings.length).toBeGreaterThan(0)
-    expect(warnings[0].message.toLowerCase()).toContain("sandbox")
+    expect(warnings.some((warning) => warning.message.toLowerCase().includes("sandbox"))).toBe(true)
   })
 
   test("sandbox trust tier with process mode request produces warning", () => {
@@ -263,6 +270,7 @@ describe("validateRuntimePolicy", () => {
       source: "local",
       trustTier: "trusted-import",
       risk: "medium",
+      userTrusted: true,
     })
     const warnings = results.filter((r) => r.type === "warn")
     const workerWarnings = warnings.filter((w) => w.message.toLowerCase().includes("worker"))
