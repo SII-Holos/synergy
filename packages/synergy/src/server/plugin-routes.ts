@@ -5,7 +5,12 @@ import path from "path"
 import * as fs from "fs"
 import { pathToFileURL } from "url"
 import { errors } from "./error"
-import { defaultPluginTrustDecision, derivePluginSource, type PluginTrustDecision } from "../plugin/trust"
+import {
+  approvedPluginTrustDecision,
+  defaultPluginTrustDecision,
+  derivePluginSource,
+  type PluginTrustDecision,
+} from "../plugin/trust"
 import { Installation } from "../global/installation"
 import { Plugin } from "../plugin/index"
 import { Config } from "../config/config"
@@ -740,7 +745,7 @@ export const ApiPluginRoute = new Hono()
         permissionsHash: computePermissionsHash(m, capabilities),
         approvedAt: Date.now(),
         approvedBy: "user",
-        trustTier: "trusted-import",
+        trustTier: approvedPluginTrustDecision({ source, devMode: Installation.isLocal() }).tier,
         approvedCapabilities: capabilities,
         approvedNetworkDomains: m.permissions?.network?.connectDomains ?? [],
         approvedUISurfaces: [],
@@ -833,7 +838,7 @@ export const ApiPluginRoute = new Hono()
         permissionsHash: computePermissionsHash(m, capabilities),
         approvedAt: Date.now(),
         approvedBy: "user",
-        trustTier: "trusted-import",
+        trustTier: approvedPluginTrustDecision({ source, devMode: Installation.isLocal() }).tier,
         approvedCapabilities: capabilities,
         approvedNetworkDomains: m.permissions?.network?.connectDomains ?? [],
         approvedUISurfaces: [],

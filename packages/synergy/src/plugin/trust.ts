@@ -1,5 +1,6 @@
 import path from "path"
 import fs from "fs"
+import { defaultPluginTrustDecision } from "@ericsanchezok/synergy-plugin/policy"
 import type { PluginSource } from "@ericsanchezok/synergy-plugin/policy"
 import { Global } from "../global"
 import { PluginSpec } from "../util/plugin-spec"
@@ -53,4 +54,17 @@ export function derivePluginSource(pluginDir: string): PluginSource {
   }
   if (relative.startsWith("plugin-archives")) return "local"
   return "npm"
+}
+
+export function approvedPluginTrustDecision(input: {
+  source: PluginSource
+  verifiedIntegrity?: boolean
+  devMode?: boolean
+}) {
+  return defaultPluginTrustDecision({
+    source: input.source,
+    userTrusted: true,
+    verifiedIntegrity: input.verifiedIntegrity ?? input.source === "official",
+    devMode: input.devMode ?? false,
+  })
 }

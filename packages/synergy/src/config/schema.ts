@@ -1,6 +1,6 @@
 import { Log } from "../util/log"
 import z from "zod"
-import { OFFICIAL_PLUGIN_REGISTRY_URL } from "@ericsanchezok/synergy-plugin/market"
+import { DEFAULT_PLUGIN_MARKETPLACE_CONFIG } from "@ericsanchezok/synergy-plugin/market"
 import { DEFAULT_PLUGIN_RUNTIME_POLICY } from "@ericsanchezok/synergy-plugin/policy"
 import { ModelsDev } from "../provider/models"
 import { LSPServer } from "../lsp/server"
@@ -1109,7 +1109,7 @@ export const PluginMarketplace = z
       .string()
       .url()
       .optional()
-      .default(OFFICIAL_PLUGIN_REGISTRY_URL)
+      .default(DEFAULT_PLUGIN_MARKETPLACE_CONFIG.registryUrl)
       .describe("URL of the official plugin registry.json index"),
     includeLocalRegistry: z
       .boolean()
@@ -1121,7 +1121,7 @@ export const PluginMarketplace = z
       .int()
       .positive()
       .optional()
-      .default(300000)
+      .default(DEFAULT_PLUGIN_MARKETPLACE_CONFIG.cacheTtlMs)
       .describe("Remote marketplace cache TTL in milliseconds"),
     offlineCache: z
       .boolean()
@@ -1133,37 +1133,28 @@ export const PluginMarketplace = z
       .int()
       .positive()
       .optional()
-      .default(10000)
+      .default(DEFAULT_PLUGIN_MARKETPLACE_CONFIG.requestTimeoutMs)
       .describe("Timeout in milliseconds for registry and entry metadata requests"),
     artifactDownloadTimeoutMs: z
       .number()
       .int()
       .positive()
       .optional()
-      .default(60000)
+      .default(DEFAULT_PLUGIN_MARKETPLACE_CONFIG.artifactDownloadTimeoutMs)
       .describe("Timeout in milliseconds for plugin artifact and signature downloads"),
     cliRequestTimeoutMs: z
       .number()
       .int()
       .positive()
       .optional()
-      .default(120000)
+      .default(DEFAULT_PLUGIN_MARKETPLACE_CONFIG.cliRequestTimeoutMs)
       .describe("Timeout in milliseconds for Synergy CLI plugin commands waiting on the local server"),
   })
   .strict()
   .meta({ ref: "PluginMarketplaceConfig" })
 export type PluginMarketplace = z.infer<typeof PluginMarketplace>
 
-export const PLUGIN_MARKETPLACE_DEFAULTS = {
-  enabled: true,
-  registryUrl: OFFICIAL_PLUGIN_REGISTRY_URL,
-  includeLocalRegistry: true,
-  cacheTtlMs: 300000,
-  offlineCache: true,
-  requestTimeoutMs: 10000,
-  artifactDownloadTimeoutMs: 60000,
-  cliRequestTimeoutMs: 120000,
-} as const satisfies Required<PluginMarketplace>
+export const PLUGIN_MARKETPLACE_DEFAULTS = DEFAULT_PLUGIN_MARKETPLACE_CONFIG as Required<PluginMarketplace>
 export const Info = z
   .object({
     $schema: z.string().optional().describe("JSON schema reference for configuration validation"),

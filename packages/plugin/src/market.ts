@@ -66,3 +66,14 @@ export function githubMarketplaceRegistryUrl(
 }
 
 export const OFFICIAL_PLUGIN_REGISTRY_URL = githubMarketplaceRegistryUrl()
+
+export const DEFAULT_PLUGIN_MARKETPLACE_CONFIG = {
+  enabled: true,
+  registryUrl: OFFICIAL_PLUGIN_REGISTRY_URL,
+  includeLocalRegistry: true,
+  cacheTtlMs: 300_000,
+  offlineCache: true,
+  requestTimeoutMs: 10_000,
+  artifactDownloadTimeoutMs: 60_000,
+  cliRequestTimeoutMs: 120_000,
+} as const
