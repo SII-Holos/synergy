@@ -66,12 +66,9 @@ export async function doctor(options: { fix?: boolean } = {}): Promise<PluginDoc
     const specs = domain.plugin ?? []
     const pluginIdsBySpec = new Map<string, string>()
     const specsByPluginId = new Map<string, string[]>()
-    const unresolvedSpecs: string[] = []
-
     for (const spec of specs) {
       const pluginId = await resolvePluginIdForSpec(spec, lockBySpec)
       if (!pluginId) {
-        unresolvedSpecs.push(spec)
         issues.push({
           type: "unresolved_config_spec",
           spec,
@@ -129,13 +126,15 @@ export async function doctor(options: { fix?: boolean } = {}): Promise<PluginDoc
         continue
       }
       if (!fixedSpecSet.has(entry.spec)) {
+        const keptSpec = keptByPluginId.get(pluginId)
         issues.push({
           type: "lock_config_drift",
           pluginId,
           spec: entry.spec,
-          message: `Lockfile spec for ${pluginId} does not match the kept configured spec.`,
-          fixed: false,
+          message: `Lockfile spec for ${pluginId} does not match the kept configured spec${keptSpec ? `: ${keptSpec}` : ""}.`,
+          fixed: options.fix === true,
         })
+        if (options.fix) nextLockfile = Lockfile.removeEntry(nextLockfile, pluginId)
       }
     }
 

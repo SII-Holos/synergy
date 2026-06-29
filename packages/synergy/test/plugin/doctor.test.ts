@@ -12,19 +12,23 @@ describe("plugin doctor", () => {
     const fixtureRoot = path.join(Global.Path.state, "doctor-fixtures")
     const oldDir = path.join(fixtureRoot, "demo-plugin-1.0.0")
     const newDir = path.join(fixtureRoot, "demo-plugin-1.1.0")
+    const driftDir = path.join(fixtureRoot, "drift-plugin-1.1.0")
     fs.mkdirSync(oldDir, { recursive: true })
     fs.mkdirSync(newDir, { recursive: true })
+    fs.mkdirSync(driftDir, { recursive: true })
     fs.writeFileSync(path.join(oldDir, "plugin.json"), JSON.stringify({ name: "demo-plugin", version: "1.0.0" }))
     fs.writeFileSync(path.join(newDir, "plugin.json"), JSON.stringify({ name: "demo-plugin", version: "1.1.0" }))
+    fs.writeFileSync(path.join(driftDir, "plugin.json"), JSON.stringify({ name: "drift-plugin", version: "1.1.0" }))
     const oldSpec = pathToFileURL(oldDir).href
     const newSpec = pathToFileURL(newDir).href
+    const driftSpec = pathToFileURL(driftDir).href
     const orphanDir = path.join(Global.Path.cache, "plugin-archives", "orphan-plugin-0.1.0.synergy-plugin")
     fs.mkdirSync(orphanDir, { recursive: true })
 
     await Config.domainUpdate(
       "plugins",
       {
-        plugin: [oldSpec, newSpec],
+        plugin: [oldSpec, newSpec, driftSpec],
         pluginMarketplace: { enabled: false },
       } as any,
       { mode: "replace-domain" },
@@ -36,6 +40,12 @@ describe("plugin doctor", () => {
           spec: newSpec,
           version: "1.1.0",
           resolved: path.join(newDir, "runtime/index.js"),
+          runtimeMode: "process",
+        },
+        "drift-plugin": {
+          spec: "file:///tmp/drift-plugin-1.0.0.synergy-plugin.tgz",
+          version: "1.0.0",
+          resolved: "/tmp/drift/runtime/index.js",
           runtimeMode: "process",
         },
         "stale-plugin": {
@@ -51,10 +61,12 @@ describe("plugin doctor", () => {
 
     expect(result.issues.some((issue) => issue.type === "duplicate_config_spec" && issue.fixed)).toBe(true)
     expect(result.issues.some((issue) => issue.type === "stale_lock_entry" && issue.fixed)).toBe(true)
+    expect(result.issues.some((issue) => issue.type === "lock_config_drift" && issue.fixed)).toBe(true)
     expect(result.issues.some((issue) => issue.type === "orphan_archive_cache" && issue.fixed)).toBe(true)
-    expect((await Config.domainGet("plugins")).plugin).toEqual([newSpec])
+    expect((await Config.domainGet("plugins")).plugin).toEqual([newSpec, driftSpec])
     expect((await Config.domainGet("plugins")).pluginMarketplace?.enabled).toBe(false)
     expect((await Lockfile.read()).plugins["stale-plugin"]).toBeUndefined()
+    expect((await Lockfile.read()).plugins["drift-plugin"]).toBeUndefined()
     expect(fs.existsSync(orphanDir)).toBe(false)
   })
 })
