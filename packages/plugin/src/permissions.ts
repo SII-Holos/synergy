@@ -1,7 +1,20 @@
 import type { PluginManifest } from "./manifest"
 
 export type PluginRisk = "low" | "medium" | "high"
-export type PluginPermissionCategory = "tools" | "files" | "network" | "data" | "ui" | "runtime" | "hooks"
+export type PluginPermissionCategory =
+  | "tools"
+  | "files"
+  | "network"
+  | "data"
+  | "ui"
+  | "runtime"
+  | "hooks"
+  | "session"
+  | "browser"
+  | "identity"
+  | "communication"
+  | "platform"
+  | "local"
 export type PluginPermissionSeverity = PluginRisk
 
 export interface PluginPermissionItem {
@@ -21,16 +34,40 @@ export interface RegistryPermissionItem {
 
 type ManifestTool = NonNullable<NonNullable<PluginManifest["contributes"]>["tools"]>[number]
 
-const CAPABILITY_DETAILS: Record<string, Omit<PluginPermissionItem, "key">> = {
+export interface SynergyCapabilityDefinition extends Omit<PluginPermissionItem, "key"> {
+  nonBypassable?: boolean
+}
+
+export const CAPABILITY_DETAILS: Record<string, SynergyCapabilityDefinition> = {
+  shell_read: {
+    category: "runtime",
+    severity: "low",
+    title: "Run read-only shell commands",
+    description: "Can run shell commands classified as read-only.",
+  },
   shell: {
     category: "runtime",
-    severity: "high",
+    severity: "medium",
     title: "Run shell commands",
-    description: "Can execute arbitrary shell commands on your system, including spawning child processes.",
+    description: "Can execute non-destructive shell commands in the current workspace.",
+  },
+  shell_destructive: {
+    category: "runtime",
+    severity: "high",
+    title: "Run destructive shell commands",
+    description: "Can run commands that may delete, overwrite, or rewrite important local state.",
+    nonBypassable: true,
+  },
+  shell_hardline: {
+    category: "runtime",
+    severity: "high",
+    title: "Run forbidden shell commands",
+    description: "Matches shell commands that Synergy treats as a hard safety boundary.",
+    nonBypassable: true,
   },
   file_write: {
     category: "files",
-    severity: "high",
+    severity: "medium",
     title: "Write workspace files",
     description: "Can create, modify, or delete files in your workspace.",
   },
@@ -39,6 +76,26 @@ const CAPABILITY_DETAILS: Record<string, Omit<PluginPermissionItem, "key">> = {
     severity: "medium",
     title: "Read workspace files",
     description: "Can read files and directories in your workspace.",
+  },
+  file_external_read: {
+    category: "files",
+    severity: "high",
+    title: "Read external files",
+    description: "Can read files outside the active workspace.",
+    nonBypassable: true,
+  },
+  file_external_write: {
+    category: "files",
+    severity: "high",
+    title: "Write external files",
+    description: "Can create, modify, or delete files outside the active workspace.",
+    nonBypassable: true,
+  },
+  network_read: {
+    category: "network",
+    severity: "low",
+    title: "Read from network",
+    description: "Can fetch or search public network resources without mutating remote state.",
   },
   network_request: {
     category: "network",
@@ -51,12 +108,14 @@ const CAPABILITY_DETAILS: Record<string, Omit<PluginPermissionItem, "key">> = {
     severity: "medium",
     title: "Spawn MCP servers",
     description: "Can start and manage MCP server processes.",
+    nonBypassable: true,
   },
   mcp_invoke: {
     category: "tools",
     severity: "medium",
     title: "Invoke MCP tools",
     description: "Can call tools exposed by MCP servers.",
+    nonBypassable: true,
   },
   session_data: {
     category: "data",
@@ -124,12 +183,177 @@ const CAPABILITY_DETAILS: Record<string, Omit<PluginPermissionItem, "key">> = {
     title: "Subscribe to Synergy events",
     description: "Can receive approved Synergy runtime events.",
   },
+  local_tool_invoke: {
+    category: "local",
+    severity: "low",
+    title: "Invoke local tools",
+    description: "Can call local tools explicitly provided to the current Synergy runtime.",
+  },
+  session_state: {
+    category: "session",
+    severity: "low",
+    title: "Update session state",
+    description: "Can update local session coordination state.",
+  },
+  browser_interact: {
+    category: "browser",
+    severity: "medium",
+    title: "Interact with browser",
+    description: "Can click, type, scroll, or otherwise interact with the browser workspace.",
+  },
+  browser_inspect: {
+    category: "browser",
+    severity: "low",
+    title: "Inspect browser",
+    description: "Can inspect browser page state, screenshots, console, or network metadata.",
+  },
+  browser_eval_readonly: {
+    category: "browser",
+    severity: "medium",
+    title: "Evaluate read-only browser code",
+    description: "Can run read-only JavaScript inspection in the browser workspace.",
+  },
+  browser_eval_trusted: {
+    category: "browser",
+    severity: "high",
+    title: "Evaluate trusted browser code",
+    description: "Can run privileged JavaScript in the browser workspace.",
+    nonBypassable: true,
+  },
+  browser_clipboard: {
+    category: "browser",
+    severity: "medium",
+    title: "Use browser clipboard",
+    description: "Can read from or write to browser clipboard state.",
+  },
+  browser_download: {
+    category: "browser",
+    severity: "medium",
+    title: "Download browser files",
+    description: "Can download files through the browser workspace.",
+  },
+  browser_viewport: {
+    category: "browser",
+    severity: "low",
+    title: "Resize browser viewport",
+    description: "Can change the browser workspace viewport.",
+  },
+  identity_act: {
+    category: "identity",
+    severity: "high",
+    title: "Act as an identity",
+    description: "Can perform actions under a user or agent identity.",
+    nonBypassable: true,
+  },
+  communication_email: {
+    category: "communication",
+    severity: "high",
+    title: "Use email",
+    description: "Can read or send email through configured accounts.",
+    nonBypassable: true,
+  },
+  channel_outbound: {
+    category: "communication",
+    severity: "high",
+    title: "Send outbound channel messages",
+    description: "Can send messages through configured external channels.",
+    nonBypassable: true,
+  },
+  platform_control: {
+    category: "platform",
+    severity: "high",
+    title: "Control platform integrations",
+    description: "Can modify or control platform-level integrations.",
+    nonBypassable: true,
+  },
+  protected_op: {
+    category: "platform",
+    severity: "high",
+    title: "Protected operation",
+    description: "Touches a protected Synergy safety boundary.",
+    nonBypassable: true,
+  },
 }
 
-const NON_BYPASSABLE_CAPABILITIES = new Set(["mcp_invoke", "mcp_spawn", "secrets", "permission_hook"])
+export const PROFILE_CAPABILITIES = [
+  "file_read",
+  "file_write",
+  "shell_read",
+  "shell",
+  "shell_destructive",
+  "shell_hardline",
+  "file_external_read",
+  "file_external_write",
+  "network_read",
+  "network_request",
+  "mcp_invoke",
+  "mcp_spawn",
+  "session_data",
+  "workspace_data",
+  "config:read",
+  "config:write",
+  "secrets",
+  "task",
+  "prompt_transform",
+  "compaction_transform",
+  "tool_execution_hook",
+  "permission_hook",
+  "event_hook",
+  "identity_act",
+  "communication_email",
+  "channel_outbound",
+  "platform_control",
+  "protected_op",
+  "session_state",
+  "browser_interact",
+  "browser_inspect",
+  "browser_eval_readonly",
+  "browser_eval_trusted",
+  "browser_clipboard",
+  "browser_download",
+  "browser_viewport",
+] as const
+
+export const PERMISSION_CAPABILITY: Record<string, string> = {
+  read: "file_read",
+  view_file: "file_read",
+  scan_files: "file_read",
+  parse_code: "file_read",
+  grep: "file_read",
+  file_search: "file_read",
+  glob: "file_read",
+  list: "file_read",
+  edit: "file_write",
+  write: "file_write",
+  revise_file: "file_write",
+  save_file: "file_write",
+  bash: "shell",
+  external_directory: "file_external_read",
+  webfetch: "network_read",
+  websearch: "network_read",
+  arxiv_search: "network_read",
+  arxiv_download: "network_read",
+  network_request: "network_request",
+  session_data: "session_data",
+  workspace_data: "workspace_data",
+  "config:read": "config:read",
+  "config:write": "config:write",
+  secrets: "secrets",
+  email_read: "communication_email",
+  email_send: "communication_email",
+  communication_email: "communication_email",
+  session_send: "channel_outbound",
+  channel_outbound: "channel_outbound",
+  identity_act: "identity_act",
+  platform_control: "platform_control",
+}
+
+export function permissionCapability(permission: string): string {
+  return PERMISSION_CAPABILITY[permission] ?? permission
+}
 
 export function capabilityNonBypassable(capability: string): boolean {
-  return NON_BYPASSABLE_CAPABILITIES.has(capability)
+  return CAPABILITY_DETAILS[capability]?.nonBypassable === true
 }
 
 export function capabilityRisk(capability: string): PluginRisk {

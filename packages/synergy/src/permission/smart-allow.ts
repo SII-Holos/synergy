@@ -5,6 +5,7 @@ import { LLM } from "@/session/llm"
 import type { MessageV2 } from "@/session/message-v2"
 import type { Capability } from "@/enforcement/gate"
 import { Log } from "@/util/log"
+import { capabilityNonBypassable } from "@ericsanchezok/synergy-plugin/permissions"
 
 export namespace SmartAllow {
   const log = Log.create({ service: "permission.smart-allow" })
@@ -35,20 +36,6 @@ export namespace SmartAllow {
   const GLOBAL_SCOPE = "__global__"
   const states = new Map<string, SessionState>()
 
-  const hardCapabilities = new Set([
-    "shell_hardline",
-    "shell_destructive",
-    "file_external_write",
-    "protected_op",
-    "mcp_invoke",
-    "secrets",
-    "identity_act",
-    "communication_email",
-    "channel_outbound",
-    "platform_control",
-    "browser_eval_trusted",
-  ])
-
   function state(sessionID?: string): SessionState {
     const key = sessionID ?? GLOBAL_SCOPE
     let existing = states.get(key)
@@ -68,7 +55,7 @@ export namespace SmartAllow {
   }
 
   export function hasHardBoundary(capabilities: Capability[]): boolean {
-    return capabilities.some((cap) => cap.nonBypassable || cap.opaque || hardCapabilities.has(cap.class))
+    return capabilities.some((cap) => cap.nonBypassable || cap.opaque || capabilityNonBypassable(cap.class))
   }
 
   export function isEligible(action: "ask" | "deny", capabilities: Capability[]): boolean {

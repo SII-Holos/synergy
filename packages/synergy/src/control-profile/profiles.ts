@@ -1,5 +1,10 @@
 import { Config } from "../config/config"
 import { Log } from "../util/log"
+import {
+  capabilityNonBypassable,
+  capabilityRisk,
+  PROFILE_CAPABILITIES,
+} from "@ericsanchezok/synergy-plugin/permissions"
 import type { ProfileSandbox } from "./types"
 import type {
   ControlProfile,
@@ -12,66 +17,6 @@ import type {
 
 export const PROFILE_IDS: readonly ProfileId[] = ["guarded", "autonomous", "full_access"]
 
-const CAPABILITY_PERMISSIONS = [
-  "file_read",
-  "file_write",
-  "shell_read",
-  "shell",
-  "shell_destructive",
-  "shell_hardline",
-  "file_external_read",
-  "file_external_write",
-  "network_read",
-  "network_request",
-  "mcp_invoke",
-  "mcp_spawn",
-  "session_data",
-  "workspace_data",
-  "config:read",
-  "config:write",
-  "secrets",
-  "task",
-  "prompt_transform",
-  "compaction_transform",
-  "tool_execution_hook",
-  "permission_hook",
-  "event_hook",
-  "identity_act",
-  "communication_email",
-  "channel_outbound",
-  "platform_control",
-  "protected_op",
-
-  "session_state",
-
-  "browser_interact",
-  "browser_inspect",
-  "browser_eval_readonly",
-  "browser_eval_trusted",
-  "browser_clipboard",
-  "browser_download",
-  "browser_viewport",
-]
-
-const HIGH_RISK_PERMISSIONS = [
-  "shell_hardline",
-  "shell_destructive",
-
-  "file_external_read",
-  "file_external_write",
-
-  "mcp_invoke",
-  "secrets",
-  "prompt_transform",
-  "compaction_transform",
-  "permission_hook",
-  "identity_act",
-  "communication_email",
-  "channel_outbound",
-  "platform_control",
-  "protected_op",
-]
-
 function rule(permission: string, action: "allow" | "deny" | "ask", nonBypassable = false) {
   return { permission, pattern: "*", action, ...(nonBypassable ? { nonBypassable: true } : {}) }
 }
@@ -81,20 +26,21 @@ function rulesFor(actions: {
   medium: "allow" | "deny" | "ask"
   high: "allow" | "deny" | "ask"
 }) {
-  return CAPABILITY_PERMISSIONS.map((permission) => {
+  return PROFILE_CAPABILITIES.map((permission) => {
     if (permission === "shell_hardline") return rule(permission, "deny", true)
     if (permission === "protected_op") return rule(permission, "ask", true)
-    if (HIGH_RISK_PERMISSIONS.includes(permission)) return rule(permission, actions.high, true)
-    if (permission === "file_read" || permission === "shell_read") return rule(permission, actions.low)
+    const risk = capabilityRisk(permission)
+    if (risk === "high") return rule(permission, actions.high, capabilityNonBypassable(permission))
+    if (risk === "low") return rule(permission, actions.low, capabilityNonBypassable(permission))
     return rule(permission, actions.medium)
   })
 }
 
 function guardedRules() {
-  return CAPABILITY_PERMISSIONS.map((permission) => {
+  return PROFILE_CAPABILITIES.map((permission) => {
     if (permission === "shell_hardline") return rule(permission, "deny", true)
     if (permission === "protected_op") return rule(permission, "ask", true)
-    if (HIGH_RISK_PERMISSIONS.includes(permission)) return rule(permission, "ask", true)
+    if (capabilityRisk(permission) === "high") return rule(permission, "ask", capabilityNonBypassable(permission))
     if (permission === "file_read" || permission === "shell_read") return rule(permission, "allow")
     if (
       permission === "file_write" ||
@@ -110,7 +56,7 @@ function guardedRules() {
 }
 
 function autonomousRules() {
-  return CAPABILITY_PERMISSIONS.map((permission) => {
+  return PROFILE_CAPABILITIES.map((permission) => {
     if (permission === "shell_hardline") return rule(permission, "deny", true)
     if (permission === "file_read" || permission === "shell_read") return rule(permission, "allow")
     if (permission === "file_write") return rule(permission, "allow")

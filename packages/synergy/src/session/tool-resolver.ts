@@ -98,57 +98,45 @@ export namespace ToolResolver {
     return ControlProfileCompiler.normalize(sessionProfile ?? agent.controlProfile ?? topLevelProfile)
   }
 
-  /** Cached config lookup to avoid repeated Config.current() inside tool execute. */
-  let _cachedConfig: { controlProfile?: string } | null = null
-  async function cachedTopLevelProfile(): Promise<string | undefined> {
-    if (_cachedConfig === null) {
-      try {
-        _cachedConfig = { controlProfile: (await Config.current()).controlProfile }
-      } catch {
-        _cachedConfig = {}
-      }
+  async function currentTopLevelProfile(): Promise<string | undefined> {
+    try {
+      return (await Config.current()).controlProfile
+    } catch {
+      return undefined
     }
-    return _cachedConfig.controlProfile
   }
 
-  /** Cached plugin tool IDs (prefixed) for enforcement gate registration. */
-  let _cachedPluginToolIds: Set<string> | null = null
-  let _cachedPluginGateData: {
+  interface PluginGateData {
     toolCapabilities: Record<string, { capabilities: string[]; risk: "low" | "medium" | "high" }>
     approvals: Record<string, PluginApprovalRecord>
-  } | null = null
-  async function cachedPluginToolIds(): Promise<Set<string>> {
-    if (_cachedPluginToolIds === null) {
-      const ids = new Set<string>()
-      for (const plugin of await Plugin.perPluginHooks()) {
-        for (const toolId of Object.keys(plugin.hooks.tool ?? {})) {
-          ids.add(PluginToolId.format(plugin.id, toolId))
-        }
-      }
-      _cachedPluginToolIds = ids
-    }
-    return _cachedPluginToolIds
   }
 
-  async function cachedPluginGateData() {
-    if (_cachedPluginGateData === null) {
-      const caps: Record<string, { capabilities: string[]; risk: "low" | "medium" | "high" }> = {}
-      const approvals: Record<string, PluginApprovalRecord> = {}
-      for (const plugin of await Plugin.getLoaded()) {
-        const manifest = await Plugin.manifest(plugin.id).catch(() => null)
-        const risk = manifest ? computeRisk(toolCapabilities(manifest, ""), manifest) : "low"
-        for (const toolId of Object.keys(plugin.hooks.tool ?? {})) {
-          caps[PluginToolId.format(plugin.id, toolId)] = {
-            capabilities: toolCapabilities(manifest, toolId),
-            risk,
-          }
-        }
-        const approval = await getApproval(plugin.id)
-        if (approval) approvals[plugin.id] = approval
+  async function currentPluginToolIds(): Promise<Set<string>> {
+    const ids = new Set<string>()
+    for (const plugin of await Plugin.perPluginHooks()) {
+      for (const toolId of Object.keys(plugin.hooks.tool ?? {})) {
+        ids.add(PluginToolId.format(plugin.id, toolId))
       }
-      _cachedPluginGateData = { toolCapabilities: caps, approvals }
     }
-    return _cachedPluginGateData
+    return ids
+  }
+
+  async function currentPluginGateData(): Promise<PluginGateData> {
+    const caps: Record<string, { capabilities: string[]; risk: "low" | "medium" | "high" }> = {}
+    const approvals: Record<string, PluginApprovalRecord> = {}
+    for (const plugin of await Plugin.getLoaded()) {
+      const manifest = await Plugin.manifest(plugin.id).catch(() => null)
+      for (const toolId of Object.keys(plugin.hooks.tool ?? {})) {
+        const capabilities = toolCapabilities(manifest, toolId)
+        caps[PluginToolId.format(plugin.id, toolId)] = {
+          capabilities,
+          risk: manifest ? computeRisk(capabilities, manifest) : "low",
+        }
+      }
+      const approval = await getApproval(plugin.id)
+      if (approval) approvals[plugin.id] = approval
+    }
+    return { toolCapabilities: caps, approvals }
   }
 
   /**
@@ -675,7 +663,7 @@ export namespace ToolResolver {
       const resolvedProfile = async (): Promise<ResolvedProfile> => {
         if (!profilePromise) {
           profilePromise = (async () => {
-            const topLevelProfile = await cachedTopLevelProfile()
+            const topLevelProfile = await currentTopLevelProfile()
             const sessionProfile = input.session?.id ? await Session.resolveControlProfile(input.session.id) : undefined
             const profileId = resolveEffectiveProfile(input.agent, topLevelProfile, sessionProfile)
             const workspaceInfo = ScopeContext.current.workspace
@@ -1022,14 +1010,14 @@ export namespace ToolResolver {
                 const workspaceInfo = ScopeContext.current.workspace
                 const interaction = runtimeInput.session?.interaction
                 const interactionMode = interaction?.mode === "unattended" ? "unattended" : "attended"
-                const topLevelProfile = await cachedTopLevelProfile()
+                const topLevelProfile = await currentTopLevelProfile()
                 const sessionProfile = runtimeInput.session?.id
                   ? await Session.resolveControlProfile(runtimeInput.session.id)
                   : undefined
                 const profileId = resolveEffectiveProfile(runtimeInput.agent, topLevelProfile, sessionProfile)
                 const synergyRoot = Global.Path.root
-                const pluginToolIds = await cachedPluginToolIds()
-                const pluginGateData = await cachedPluginGateData()
+                const pluginToolIds = await currentPluginToolIds()
+                const pluginGateData = await currentPluginGateData()
                 const gate = await EnforcementGate.create({
                   activeWorkspace: workspace,
                   workspaceType: workspaceInfo?.type === "git_worktree" ? "worktree" : "main",
@@ -1251,13 +1239,13 @@ export namespace ToolResolver {
                   const workspaceInfo = ScopeContext.current.workspace
                   const interaction = runtimeInput.session?.interaction
                   const interactionMode = interaction?.mode === "unattended" ? "unattended" : "attended"
-                  const topLevelProfile = await cachedTopLevelProfile()
+                  const topLevelProfile = await currentTopLevelProfile()
                   const sessionProfile = runtimeInput.session?.id
                     ? await Session.resolveControlProfile(runtimeInput.session.id)
                     : undefined
                   const profileId = resolveEffectiveProfile(runtimeInput.agent, topLevelProfile, sessionProfile)
-                  const pluginToolIds = await cachedPluginToolIds()
-                  const pluginGateData = await cachedPluginGateData()
+                  const pluginToolIds = await currentPluginToolIds()
+                  const pluginGateData = await currentPluginGateData()
                   const gate = await EnforcementGate.create({
                     activeWorkspace: workspace,
                     workspaceType: workspaceInfo?.type === "git_worktree" ? "worktree" : "main",

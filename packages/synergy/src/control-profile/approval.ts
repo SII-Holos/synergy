@@ -1,5 +1,6 @@
 import type { Capability } from "@/enforcement/gate"
 import type { ProfileApproval, RiskLevel } from "./types"
+import { capabilityRisk, permissionCapability } from "@ericsanchezok/synergy-plugin/permissions"
 
 export interface ApprovalDecision {
   action: "allow" | "ask" | "deny"
@@ -34,75 +35,8 @@ export interface ApprovalMetadata {
   }
 }
 
-const HIGH_RISK = new Set([
-  "shell_hardline",
-  "shell_destructive",
-  "file_external_read",
-  "file_external_write",
-
-  "mcp_invoke",
-  "secrets",
-  "prompt_transform",
-  "compaction_transform",
-  "permission_hook",
-  "identity_act",
-  "communication_email",
-  "channel_outbound",
-  "platform_control",
-  "protected_op",
-])
-
-const MEDIUM_RISK = new Set([
-  "file_write",
-  "shell",
-  "network_request",
-  "mcp_spawn",
-  "session_data",
-  "workspace_data",
-  "config:write",
-  "task",
-  "tool_execution_hook",
-  "event_hook",
-])
-
-const PERMISSION_CAPABILITY: Record<string, string> = {
-  read: "file_read",
-  view_file: "file_read",
-  scan_files: "file_read",
-  parse_code: "file_read",
-  grep: "file_read",
-  file_search: "file_read",
-  glob: "file_read",
-  list: "file_read",
-  edit: "file_write",
-  write: "file_write",
-  revise_file: "file_write",
-  save_file: "file_write",
-  bash: "shell",
-  external_directory: "file_external_read",
-  webfetch: "network_read",
-  websearch: "network_read",
-  arxiv_search: "network_read",
-  arxiv_download: "network_read",
-  network_request: "network_request",
-  session_data: "session_data",
-  workspace_data: "workspace_data",
-  "config:read": "config:read",
-  "config:write": "config:write",
-  secrets: "secrets",
-  email_read: "communication_email",
-  email_send: "communication_email",
-  communication_email: "communication_email",
-  session_send: "channel_outbound",
-  channel_outbound: "channel_outbound",
-  identity_act: "identity_act",
-  platform_control: "platform_control",
-}
-
 function riskForCapability(capability: string): RiskLevel {
-  if (HIGH_RISK.has(capability)) return "high"
-  if (MEDIUM_RISK.has(capability)) return "medium"
-  return "low"
+  return capabilityRisk(capability)
 }
 
 function maxRisk(risks: RiskLevel[]): RiskLevel {
@@ -130,7 +64,7 @@ function reasonFor(approval: ProfileApproval, risk: RiskLevel, capabilities: str
 
 export namespace ApprovalPolicy {
   export function riskForPermissions(permissions: string[]): RiskLevel {
-    return maxRisk(permissions.map((permission) => riskForCapability(PERMISSION_CAPABILITY[permission] ?? permission)))
+    return maxRisk(permissions.map((permission) => riskForCapability(permissionCapability(permission))))
   }
 
   export function decideCapabilities(approval: ProfileApproval, capabilities: Capability[]): ApprovalDecision {
@@ -154,7 +88,7 @@ export namespace ApprovalPolicy {
     permission: string,
     metadata: Record<string, unknown> | undefined,
   ): ApprovalDecision {
-    const capability = String(metadata?.capability ?? PERMISSION_CAPABILITY[permission] ?? permission)
+    const capability = String(metadata?.capability ?? permissionCapability(permission))
     const risk = metadata?.nonBypassable || metadata?.opaque ? "high" : riskForCapability(capability)
     return {
       action: actionForRisk(approval, risk),

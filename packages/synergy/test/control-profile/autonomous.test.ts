@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test"
+import { ApprovalPolicy } from "../../src/control-profile/approval"
 import { buildProfile } from "../../src/control-profile/profiles"
 import { ScopeContext } from "../../src/scope/context"
 import { tmpdir } from "../fixture/fixture"
@@ -178,6 +179,21 @@ describe("autonomous profile summary", () => {
       fn: async () => {
         const profile = await autonomousProfile()
         expect(profile.summary?.deniedCapabilities).toEqual(["shell_hardline", "shell_destructive"])
+      },
+    })
+  })
+})
+
+describe("autonomous profile approval risk", () => {
+  test("delegated task and MCP invocation are medium-risk Synergy capabilities", async () => {
+    await using tmp = await tmpdir()
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const profile = await autonomousProfile()
+        expect(ApprovalPolicy.decidePermission(profile.approval, "task", {}).action).toBe("allow")
+        expect(ApprovalPolicy.decidePermission(profile.approval, "mcp_invoke", {}).action).toBe("allow")
+        expect(ApprovalPolicy.decidePermission(profile.approval, "secrets", {}).action).toBe("deny")
       },
     })
   })
