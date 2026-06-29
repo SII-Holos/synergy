@@ -144,6 +144,7 @@ async function installOfficialRegistryPlugin(id: string, version: string) {
         manifest: artifact.manifest,
         capabilities: artifact.capabilities,
         risk: artifact.risk,
+        trustTier: approvedPluginTrustDecision({ source: "official", devMode: Installation.isLocal() }).tier,
         diff,
         artifactCacheKey: artifact.cacheKey,
       },

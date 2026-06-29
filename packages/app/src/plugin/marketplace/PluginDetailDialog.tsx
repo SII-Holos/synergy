@@ -37,6 +37,7 @@ interface ApprovalRequiredError {
   capabilities: string[]
   diff: PluginPermissionDiff
   risk: PermissionSeverity
+  trustTier?: TrustTier
   artifactCacheKey?: string
   message?: string
 }
@@ -323,7 +324,7 @@ export function PluginDetailDialog(props: {
       <InstallConsentDialog
         manifest={approval.manifest}
         diff={approval.diff}
-        trustTier={"trusted-import" as TrustTier}
+        trustTier={approval.trustTier ?? "sandbox"}
         onApprove={async () => {
           await globalSDK.client.api.plugins.approveInstall({
             pluginId: approval.pluginId,
