@@ -19,12 +19,16 @@ function luminance(value: string): number {
   return 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2]
 }
 
-function expectDarker(theme: ResolvedTheme, inner: string, outer: string) {
-  expect(luminance(theme[inner])).toBeLessThan(luminance(theme[outer]))
-}
-
 function expectBrighter(theme: ResolvedTheme, inner: string, outer: string) {
   expect(luminance(theme[inner])).toBeGreaterThan(luminance(theme[outer]))
+}
+
+function expectAtLeastAsBright(theme: ResolvedTheme, inner: string, outer: string) {
+  expect(luminance(theme[inner])).toBeGreaterThanOrEqual(luminance(theme[outer]))
+}
+
+function expectAtMostAsBright(theme: ResolvedTheme, inner: string, outer: string) {
+  expect(luminance(theme[inner])).toBeLessThanOrEqual(luminance(theme[outer]))
 }
 
 /**
@@ -152,20 +156,28 @@ describe("resolveTheme (synergy)", () => {
     expect(diffs.length).toBeGreaterThan(3)
   })
 
-  test("surface polarity follows the Synergy product rule", () => {
+  test("surface polarity follows the neutral workbench product rule", () => {
     const resolved = resolveTheme(synergyTheme)
 
-    expectDarker(resolved.light, "surface-raised-base", "background-stronger")
-    expectDarker(resolved.light, "surface-raised-strong", "surface-raised-base")
-    expectDarker(resolved.light, "surface-raised-stronger", "surface-raised-base")
-    expectDarker(resolved.light, "surface-raised-stronger-hover", "surface-raised-stronger")
-    expectDarker(resolved.light, "surface-raised-stronger-non-alpha", "surface-raised-base")
-    expectDarker(resolved.light, "surface-raised-base-active", "surface-raised-base")
-    expectDarker(resolved.light, "surface-inset-base", "surface-raised-base")
-    expectDarker(resolved.light, "surface-interactive-selected", "surface-raised-base")
-    expectDarker(resolved.light, "surface-float-base", "background-stronger")
-    expectDarker(resolved.light, "input-base", "surface-raised-base")
-    expectDarker(resolved.light, "button-secondary-base", "surface-raised-base")
+    expect(resolved.light["background-stronger"]).toBe("#FAFAFA")
+    expect(resolved.light["surface-raised-base"]).toBe("#FFFFFF")
+    expect(resolved.light["surface-raised-stronger-non-alpha"]).toBe("#FFFFFF")
+    expect(resolved.light["surface-float-base"]).toBe("#FFFFFF")
+    expect(resolved.light["surface-inset-base"]).toBe("#F4F4F5")
+    expect(resolved.light["surface-interactive-selected"]).toBe("#F1F2F4")
+
+    expectAtLeastAsBright(resolved.light, "surface-raised-base", "background-stronger")
+    expectAtLeastAsBright(resolved.light, "surface-raised-strong", "surface-raised-base")
+    expectAtLeastAsBright(resolved.light, "surface-raised-stronger", "surface-raised-base")
+    expectAtLeastAsBright(resolved.light, "surface-raised-stronger-non-alpha", "surface-raised-base")
+    expectAtLeastAsBright(resolved.light, "surface-float-base", "background-stronger")
+    expectAtMostAsBright(resolved.light, "surface-raised-base-hover", "surface-raised-base")
+    expectAtMostAsBright(resolved.light, "surface-float-base-hover", "surface-float-base")
+    expectAtMostAsBright(resolved.light, "surface-raised-base-active", "surface-raised-base")
+    expectAtMostAsBright(resolved.light, "surface-inset-base", "surface-raised-base")
+    expectAtMostAsBright(resolved.light, "surface-interactive-selected", "surface-raised-base")
+    expectAtMostAsBright(resolved.light, "input-base", "surface-raised-base")
+    expectAtMostAsBright(resolved.light, "button-secondary-base", "surface-raised-base")
 
     expectBrighter(resolved.dark, "surface-raised-base", "background-stronger")
     expectBrighter(resolved.dark, "surface-raised-strong", "surface-raised-base")

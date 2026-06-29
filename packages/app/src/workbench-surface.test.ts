@@ -3,46 +3,20 @@ import { readdirSync, readFileSync, statSync } from "node:fs"
 import { join } from "node:path"
 import { fileURLToPath } from "node:url"
 
-type Rgb = [number, number, number]
-
 const css = await Bun.file(new URL("./index.css", import.meta.url)).text()
 const settingsCss = await Bun.file(new URL("./components/settings/settings-panel.css", import.meta.url)).text()
 const agendaCss = await Bun.file(new URL("./components/agenda/agenda-dialog.css", import.meta.url)).text()
 const agendaCalendar = await Bun.file(new URL("./components/agenda/calendar.tsx", import.meta.url)).text()
 const agendaPanel = await Bun.file(new URL("./components/agenda/panel.tsx", import.meta.url)).text()
+const marketplaceCss = await Bun.file(new URL("./plugin/marketplace/marketplace.css", import.meta.url)).text()
 const libraryCss = await Bun.file(new URL("./components/library/library-panel.css", import.meta.url)).text()
 const libraryPanel = await Bun.file(new URL("./components/library/library-panel.tsx", import.meta.url)).text()
 const libraryShared = await Bun.file(new URL("./components/library/shared.tsx", import.meta.url)).text()
 const questionPromptCss = await Bun.file(new URL("./components/session/question-prompt.css", import.meta.url)).text()
 const questionPrompt = await Bun.file(new URL("./components/session/question-prompt.tsx", import.meta.url)).text()
+const sidebarCss = await Bun.file(new URL("./components/sidebar/sidebar.css", import.meta.url)).text()
 const appSrc = fileURLToPath(new URL(".", import.meta.url))
 const uiSrc = fileURLToPath(new URL("../../ui/src", import.meta.url))
-
-function parseLightDarkToken(source: string, name: string, mode: "light" | "dark"): Rgb {
-  const pattern = new RegExp(
-    `--${name}:\\s*light-dark\\(rgb\\((\\d+) (\\d+) (\\d+)\\), rgb\\((\\d+) (\\d+) (\\d+)\\)\\);`,
-  )
-  const match = source.match(pattern)
-  if (!match) throw new Error(`Missing token: ${name}`)
-  const offset = mode === "light" ? 1 : 4
-  return [Number(match[offset]), Number(match[offset + 1]), Number(match[offset + 2])]
-}
-
-function parseWorkbenchToken(name: string, mode: "light" | "dark"): Rgb {
-  return parseLightDarkToken(css, name, mode)
-}
-
-function parseSettingsToken(name: string, mode: "light" | "dark"): Rgb {
-  return parseLightDarkToken(settingsCss, name, mode)
-}
-
-function luminance([r, g, b]: Rgb) {
-  const channels = [r, g, b].map((value) => {
-    const channel = value / 255
-    return channel <= 0.03928 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4
-  })
-  return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2]
-}
 
 function walkSourceFiles(dir: string): string[] {
   return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
@@ -62,28 +36,16 @@ function escapeClassName(className: string) {
 }
 
 describe("workbench surface polarity", () => {
-  const tokenOrder = [
-    "workbench-canvas-bg",
-    "workbench-panel-bg",
-    "workbench-card-bg",
-    "workbench-card-secondary-bg",
-    "workbench-control-bg",
-    "workbench-input-bg",
-    "workbench-selected-bg",
-  ]
-
-  test("light mode steps inward by getting darker", () => {
-    const values = tokenOrder.map((name) => luminance(parseWorkbenchToken(name, "light")))
-    for (let i = 0; i < values.length - 1; i++) {
-      expect(values[i + 1]).toBeLessThan(values[i])
-    }
-  })
-
-  test("dark mode steps inward by getting brighter", () => {
-    const values = tokenOrder.map((name) => luminance(parseWorkbenchToken(name, "dark")))
-    for (let i = 0; i < values.length - 1; i++) {
-      expect(values[i + 1]).toBeGreaterThan(values[i])
-    }
+  test("workbench surfaces derive from the shared theme instead of a local blue-gray ramp", () => {
+    expect(css).toContain("--workbench-canvas-bg: var(--background-stronger);")
+    expect(css).toContain("--workbench-card-bg: var(--surface-raised-base);")
+    expect(css).toContain("--workbench-control-bg: var(--surface-inset-base);")
+    expect(css).toContain("--workbench-input-bg: var(--input-base);")
+    expect(css).toContain("--workbench-border: var(--border-weaker-base);")
+    expect(css).toContain("--workbench-row-bg: color-mix(in srgb, var(--surface-raised-base) 84%, transparent);")
+    expect(css).not.toContain("light-dark(rgb(240 241 244)")
+    expect(css).not.toContain("--background-stronger: var(--workbench-canvas-bg);")
+    expect(css).not.toContain("--surface-raised-base: var(--workbench-card-bg);")
   })
 
   test("opaque workbench mappings include common translucent surface utilities", () => {
@@ -98,54 +60,33 @@ describe("workbench surface polarity", () => {
     }
   })
 
-  test("settings uses the same secondary and popover direction instead of flattening them", () => {
-    expect(settingsCss).toContain("--settings-card-secondary-bg: light-dark(rgb(224 228 233), rgb(44 44 47));")
-    expect(settingsCss).toContain("--settings-popover-bg: light-dark(rgb(226 230 235), rgb(46 46 49));")
+  test("workbench exposes a row primitive for list-like product surfaces", () => {
+    expect(css).toContain(".workbench-row-surface")
+    expect(css).toContain("background-color: var(--workbench-row-bg);")
+    expect(css).toContain("box-shadow: inset 0 0 0 1px var(--workbench-border);")
+  })
+
+  test("settings consumes shared surface tokens instead of owning a local ramp", () => {
+    expect(settingsCss).toContain("--settings-card-secondary-bg: var(--surface-base);")
+    expect(settingsCss).toContain("--settings-popover-bg: var(--surface-raised-stronger-non-alpha);")
     expect(settingsCss).toContain("--workbench-card-secondary-bg: var(--settings-card-secondary-bg);")
     expect(settingsCss).toContain("--workbench-popover-bg: var(--settings-popover-bg);")
-    expect(settingsCss).not.toContain("--workbench-card-secondary-bg: var(--settings-card-bg);")
-    expect(settingsCss).not.toContain("--workbench-popover-bg: var(--settings-panel-bg);")
+    expect(settingsCss).not.toContain("light-dark(rgb(")
+    expect(settingsCss).not.toContain("--surface-raised-base: var(--settings-card-bg);")
+    expect(settingsCss).not.toContain("--background-stronger: var(--settings-canvas-bg);")
   })
 
-  test("secondary, popover, hover, and selected layers preserve mode-aware direction", () => {
-    const relationships = [
-      ["workbench-panel-bg", "workbench-canvas-bg"],
-      ["workbench-card-bg", "workbench-panel-bg"],
-      ["workbench-card-secondary-bg", "workbench-card-bg"],
-      ["workbench-card-bg-hover", "workbench-card-bg"],
-      ["workbench-control-bg", "workbench-card-bg"],
-      ["workbench-control-bg-hover", "workbench-control-bg"],
-      ["workbench-input-bg", "workbench-card-bg"],
-      ["workbench-input-bg-hover", "workbench-input-bg"],
-      ["workbench-selected-bg", "workbench-control-bg"],
-      ["workbench-selected-bg-hover", "workbench-selected-bg"],
-      ["workbench-popover-bg", "workbench-card-bg"],
-    ] as const
+  test("feature workbenches consume shared primitives instead of page-local blue-gray ramps", () => {
+    expect(marketplaceCss).toContain("--plugin-card-bg: var(--workbench-row-bg);")
+    expect(marketplaceCss).toContain("--plugin-control-bg: var(--workbench-control-bg);")
+    expect(libraryCss).toContain("--library-content-bg: var(--workbench-row-bg);")
+    expect(libraryCss).toContain("--library-control-bg: var(--workbench-control-bg);")
+    expect(agendaCss).toContain("--agenda-content-bg: var(--workbench-row-bg, var(--surface-raised-base));")
+    expect(questionPromptCss).toContain("--question-content-bg: var(--workbench-row-bg, var(--surface-base));")
+    expect(sidebarCss).toContain("--sb-bg: var(--background-base);")
 
-    for (const [inner, outer] of relationships) {
-      expect(luminance(parseWorkbenchToken(inner, "light"))).toBeLessThan(
-        luminance(parseWorkbenchToken(outer, "light")),
-      )
-      expect(luminance(parseWorkbenchToken(inner, "dark"))).toBeGreaterThan(
-        luminance(parseWorkbenchToken(outer, "dark")),
-      )
-    }
-  })
-
-  test("settings scoped tokens preserve the same inward direction", () => {
-    const relationships = [
-      ["settings-panel-bg", "settings-canvas-bg"],
-      ["settings-card-bg", "settings-panel-bg"],
-      ["settings-card-secondary-bg", "settings-card-bg"],
-      ["settings-popover-bg", "settings-card-bg"],
-      ["settings-control-bg", "settings-card-bg"],
-      ["settings-input-bg", "settings-card-bg"],
-      ["settings-selected-bg", "settings-control-bg"],
-    ] as const
-
-    for (const [inner, outer] of relationships) {
-      expect(luminance(parseSettingsToken(inner, "light"))).toBeLessThan(luminance(parseSettingsToken(outer, "light")))
-      expect(luminance(parseSettingsToken(inner, "dark"))).toBeGreaterThan(luminance(parseSettingsToken(outer, "dark")))
+    for (const source of [marketplaceCss, libraryCss, agendaCss, questionPromptCss, sidebarCss]) {
+      expect(source).not.toContain("light-dark(rgb(")
     }
   })
 
@@ -183,7 +124,7 @@ describe("workbench surface polarity", () => {
   })
 
   test("library uses top-level tabs instead of a secondary icon sidebar", () => {
-    expect(libraryPanel).toContain("library-tabbar")
+    expect(libraryPanel).toContain("<AppPanel.SegmentedNav")
     expect(libraryPanel).toContain("Overview")
     expect(libraryPanel).toContain("Memories")
     expect(libraryPanel).toContain("Experiences")
@@ -195,7 +136,7 @@ describe("workbench surface polarity", () => {
     expect(libraryPanel).not.toContain('icon="zap"')
     expect(libraryPanel).not.toContain('icon="sparkles"')
 
-    expect(libraryCss).toContain(".library-tabbar")
+    expect(libraryCss).toContain(".library-header-controls")
     expect(libraryCss).toContain("--library-panel-bg")
     expect(libraryShared).toContain('export const libraryCardBaseClass =\n  "library-card-surface')
     expect(libraryShared).not.toContain("uppercase tracking-[0.16em]")

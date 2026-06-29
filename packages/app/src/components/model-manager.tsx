@@ -1,0 +1,341 @@
+import { createMemo, Show, type Accessor, type Component } from "solid-js"
+import { createStore } from "solid-js/store"
+import { List } from "@ericsanchezok/synergy-ui/list"
+import { Switch } from "@ericsanchezok/synergy-ui/switch"
+import { Tag } from "@ericsanchezok/synergy-ui/tag"
+import { compareProviderIDs, type ProviderRecommendationMap } from "@/components/provider/provider-recommendation"
+import { useGlobalSync } from "@/context/global-sync"
+import { useLocal, type LocalModel, type ModelKey } from "@/context/local"
+import { useProviders } from "@/hooks/use-providers"
+import { Persist, persisted } from "@/utils/persist"
+
+export function sortModelGroups(profiles: ProviderRecommendationMap) {
+  return (a: { category: string; items: LocalModel[] }, b: { category: string; items: LocalModel[] }) => {
+    if (a.category === "Recent" && b.category !== "Recent") return -1
+    if (b.category === "Recent" && a.category !== "Recent") return 1
+
+    const aProvider = a.items[0]?.provider
+    const bProvider = b.items[0]?.provider
+    if (!aProvider || !bProvider) return a.category.localeCompare(b.category)
+    return compareProviderIDs(
+      profiles,
+      { id: aProvider.id, name: aProvider.name },
+      { id: bProvider.id, name: bProvider.name },
+    )
+  }
+}
+
+export function ModelManagerRow(props: { model: LocalModel; compact?: boolean }) {
+  const showFree =
+    (props.model.cost?.input ?? 0) === 0 &&
+    (props.model.cost?.output ?? 0) === 0 &&
+    !props.model.name.toLowerCase().includes("free")
+
+  return (
+    <div class="model-manager-name w-full min-w-0 flex items-center gap-x-2 text-left text-13-regular">
+      <span class="model-manager-model-name min-w-0 truncate flex-1">{props.model.name}</span>
+      <Show when={showFree}>
+        <Tag>Free</Tag>
+      </Show>
+      <Show when={!props.compact && props.model.latest}>
+        <Tag>Latest</Tag>
+      </Show>
+    </div>
+  )
+}
+
+type QuickSwitcherEntry = LocalModel & {
+  group: string
+  listKey: string
+}
+
+export const QuickSwitcherList: Component<{
+  provider?: string
+  class?: string
+  onSelect: () => void
+}> = (props) => {
+  const local = useLocal()
+  const globalSync = useGlobalSync()
+
+  const models = createMemo<QuickSwitcherEntry[]>(() => {
+    const filtered = local.model
+      .quickSwitcher()
+      .filter((model) => (props.provider ? model.provider.id === props.provider : true))
+      .sort((a, b) => a.name.localeCompare(b.name))
+
+    const entries = filtered.map((model) => ({
+      ...model,
+      group: model.provider.name,
+      listKey: `${model.provider.id}:${model.id}`,
+    }))
+
+    const recentEntries = local.model
+      .recent()
+      .filter((model) => (props.provider ? model.provider.id === props.provider : true))
+      .filter((model) => filtered.some((item) => item.provider.id === model.provider.id && item.id === model.id))
+      .map((model) => ({
+        ...model,
+        group: "Recent",
+        listKey: `recent:${model.provider.id}:${model.id}`,
+      }))
+
+    return [...recentEntries, ...entries]
+  })
+
+  const current = createMemo<QuickSwitcherEntry | undefined>(() => {
+    const selected = local.model.current()
+    if (!selected) return undefined
+    return models().find((model) => model.provider.id === selected.provider.id && model.id === selected.id)
+  })
+
+  return (
+    <List<QuickSwitcherEntry>
+      class={`flex-1 min-h-0 [&_[data-slot=list-scroll]]:flex-1 [&_[data-slot=list-scroll]]:min-h-0 ${props.class ?? ""}`}
+      search={{ placeholder: "Search models", autofocus: true }}
+      emptyMessage="No quick-switch models"
+      key={(x) => x.listKey}
+      items={models}
+      current={current()}
+      filterKeys={["provider.name", "name", "id"]}
+      groupBy={(x) => x.group}
+      sortGroupsBy={sortModelGroups(globalSync.data.provider.profiles)}
+      onSelect={(x) => {
+        if (!x) return
+        local.model.set({ modelID: x.id, providerID: x.provider.id }, { recent: true })
+        props.onSelect?.()
+      }}
+    >
+      {(model) => <ModelManagerRow model={model} compact />}
+    </List>
+  )
+}
+
+function optionalLocal() {
+  try {
+    return useLocal()
+  } catch {
+    return undefined
+  }
+}
+
+function modelKey(model: ModelKey) {
+  return `${model.providerID}:${model.modelID}`
+}
+
+function uniqueModelKeys(models: ModelKey[]) {
+  const seen = new Set<string>()
+  return models.filter((model) => {
+    const key = modelKey(model)
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
+}
+
+function newest(models: LocalModel[]) {
+  return [...models].sort((a, b) => String(b.release_date ?? "").localeCompare(String(a.release_date ?? "")))[0]
+}
+
+function createStandaloneModelPreferences(
+  models: Accessor<LocalModel[]>,
+  defaults: Accessor<Record<string, string>>,
+) {
+  function migrateModelStore(value: unknown) {
+    if (!value || typeof value !== "object") return value
+
+    const record = value as Record<string, unknown>
+    if (Array.isArray(record.quickSwitcher)) return record
+
+    const recent = Array.isArray(record.recent) ? (record.recent as ModelKey[]) : []
+    const variant = record.variant && typeof record.variant === "object" ? record.variant : {}
+    const quickSwitcher = Array.isArray(record.user)
+      ? record.user.flatMap((item) => {
+          if (!item || typeof item !== "object") return []
+          const entry = item as Record<string, unknown>
+          if (typeof entry.providerID !== "string" || typeof entry.modelID !== "string") return []
+          const state = entry.visibility === "hide" ? "remove" : "add"
+          return [{ providerID: entry.providerID, modelID: entry.modelID, state: state as "add" | "remove" }]
+        })
+      : []
+
+    return {
+      quickSwitcher,
+      recent,
+      variant,
+    }
+  }
+
+  const [store, setStore] = persisted(
+    {
+      ...Persist.global("model", ["model.v1"]),
+      migrate: migrateModelStore,
+    },
+    createStore<{
+      quickSwitcher: (ModelKey & { state: "add" | "remove" })[]
+      recent: ModelKey[]
+      variant?: Record<string, string | undefined>
+    }>({
+      quickSwitcher: [],
+      recent: [],
+      variant: {},
+    }),
+  )
+
+  const recommended = createMemo(() => {
+    const result: ModelKey[] = []
+    const push = (model: LocalModel | undefined) => {
+      if (!model) return
+      result.push({ providerID: model.provider.id, modelID: model.id })
+    }
+
+    const providerIDs = [...new Set(models().map((model) => model.provider.id))]
+    for (const providerID of providerIDs) {
+      const providerModels = models().filter((model) => model.provider.id === providerID)
+      if (providerModels.length === 0) continue
+
+      const defaultModelID = defaults()[providerID]
+      push(providerModels.find((model) => model.id === defaultModelID))
+      push(newest(providerModels.filter((model) => model.reasoning)))
+      push(newest(providerModels.filter((model) => (model.cost?.input ?? 0) === 0 && (model.cost?.output ?? 0) === 0)))
+      push(
+        newest(
+          providerModels.filter(
+            (model) =>
+              model.modalities?.input?.includes("image") ||
+              model.modalities?.input?.includes("pdf") ||
+              model.modalities?.input?.includes("video"),
+          ),
+        ),
+      )
+    }
+
+    return uniqueModelKeys(result)
+  })
+
+  const recommendedSet = createMemo(() => new Set(recommended().map(modelKey)))
+  const quickSwitcherPreferenceMap = createMemo(() => {
+    const map = new Map<string, "add" | "remove">()
+    for (const item of store.quickSwitcher) {
+      map.set(modelKey(item), item.state)
+    }
+    return map
+  })
+
+  function inQuickSwitcher(model: ModelKey) {
+    const key = modelKey(model)
+    const preference = quickSwitcherPreferenceMap().get(key)
+    if (preference === "remove") return false
+    if (preference === "add") return true
+    return recommendedSet().has(key)
+  }
+
+  function setQuickSwitcher(model: ModelKey, included: boolean) {
+    const recommendedByDefault = recommendedSet().has(modelKey(model))
+    const nextState = included === recommendedByDefault ? undefined : included ? "add" : "remove"
+    const index = store.quickSwitcher.findIndex(
+      (item) => item.providerID === model.providerID && item.modelID === model.modelID,
+    )
+
+    if (!nextState) {
+      if (index >= 0) {
+        setStore("quickSwitcher", (items) => items.filter((_, itemIndex) => itemIndex !== index))
+      }
+      return
+    }
+
+    if (index >= 0) {
+      setStore("quickSwitcher", index, { ...store.quickSwitcher[index], state: nextState })
+      return
+    }
+
+    setStore("quickSwitcher", store.quickSwitcher.length, { ...model, state: nextState })
+  }
+
+  return {
+    current: () => undefined,
+    inQuickSwitcher,
+    setQuickSwitcher,
+    set(model: ModelKey | undefined) {
+      if (model) setQuickSwitcher(model, true)
+    },
+  }
+}
+
+export const ConnectedModelManager: Component<{
+  provider?: string
+  class?: string
+  searchAutofocus?: boolean
+  selectable?: boolean
+  onSelect?: () => void
+}> = (props) => {
+  const globalSync = useGlobalSync()
+  const providers = useProviders()
+
+  const models = createMemo(() =>
+    providers
+      .all()
+      .flatMap((p) =>
+        Object.values(p.models).map((m) => ({
+          ...m,
+          provider: p,
+          name: m.name.replace("(latest)", "").trim(),
+          latest: m.name.includes("(latest)"),
+        })),
+      )
+      .filter((model) =>
+        providers
+          .connected()
+          .map((p) => p.id)
+          .includes(model.provider.id),
+      )
+      .filter((model) => (props.provider ? model.provider.id === props.provider : true))
+      .sort((a, b) => a.name.localeCompare(b.name)),
+  )
+
+  const local = optionalLocal()
+  const standalone = local ? undefined : createStandaloneModelPreferences(models, providers.default)
+  const modelState = () => local?.model ?? standalone
+  const currentModel = () => (props.selectable === false ? undefined : modelState()?.current())
+  const selectModel = (model: ModelKey) => {
+    if (local) {
+      local.model.set(model, { recent: true })
+      return
+    }
+    standalone?.set(model)
+  }
+
+  return (
+    <List
+      class={props.class}
+      search={{ placeholder: "Search models", autofocus: props.searchAutofocus }}
+      emptyMessage="No connected model results"
+      key={(x) => `${x.provider.id}:${x.id}`}
+      items={models}
+      current={currentModel()}
+      filterKeys={["provider.name", "name", "id"]}
+      groupBy={(x) => x.provider.name}
+      sortGroupsBy={sortModelGroups(globalSync.data.provider.profiles)}
+      onSelect={(x) => {
+        if (!x) return
+        if (props.selectable === false) return
+        selectModel({ modelID: x.id, providerID: x.provider.id })
+        props.onSelect?.()
+      }}
+    >
+      {(model) => (
+        <div class="model-manager-row w-full min-w-0 flex items-center justify-between gap-x-3">
+          <ModelManagerRow model={model} />
+          <div class="model-manager-actions flex items-center gap-x-3 shrink-0" onClick={(e) => e.stopPropagation()}>
+            <span class="model-manager-quick-label text-12-regular text-text-weak">Quick</span>
+            <Switch
+              checked={modelState()?.inQuickSwitcher({ modelID: model.id, providerID: model.provider.id }) ?? false}
+              onChange={(checked) => {
+                modelState()?.setQuickSwitcher({ modelID: model.id, providerID: model.provider.id }, checked)
+              }}
+            />
+          </div>
+        </div>
+      )}
+    </List>
+  )
+}

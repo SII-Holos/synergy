@@ -1,10 +1,10 @@
 .question-prompt-shell {
-  --question-shell-bg: var(--workbench-card-bg, light-dark(rgb(232 235 240), rgb(35 35 38)));
-  --question-content-bg: var(--workbench-card-secondary-bg, light-dark(rgb(224 229 236), rgb(46 46 50)));
-  --question-control-bg: var(--workbench-control-bg, light-dark(rgb(216 223 232), rgb(56 56 61)));
-  --question-control-hover-bg: var(--workbench-control-bg-hover, light-dark(rgb(207 216 227), rgb(65 65 70)));
-  --question-selected-bg: var(--workbench-selected-bg, light-dark(rgb(203 213 226), rgb(72 72 78)));
-  --question-input-bg: var(--workbench-input-bg, light-dark(rgb(214 221 230), rgb(58 58 62)));
+  --question-shell-bg: var(--workbench-card-bg, var(--surface-raised-base));
+  --question-content-bg: var(--workbench-row-bg, var(--surface-base));
+  --question-control-bg: var(--workbench-control-bg, var(--surface-inset-base));
+  --question-control-hover-bg: var(--workbench-control-bg-hover, var(--surface-inset-base-hover));
+  --question-selected-bg: var(--workbench-selected-bg, var(--surface-interactive-selected));
+  --question-input-bg: var(--workbench-input-bg, var(--input-base));
   --question-border: color-mix(in srgb, var(--text-strong) 12%, transparent);
   --question-border-strong: color-mix(in srgb, var(--text-strong) 20%, transparent);
   --question-border-soft: color-mix(in srgb, var(--text-strong) 7%, transparent);

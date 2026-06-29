@@ -597,6 +597,45 @@ export const ApiPluginRoute = new Hono()
     },
   )
 
+  // DELETE /:pluginId — Uninstall and deactivate a plugin
+  .delete(
+    "/:pluginId",
+    describeRoute({
+      summary: "Remove plugin",
+      description: "Uninstall and deactivate a plugin, then reload the plugin runtime.",
+      operationId: "api.plugins.remove",
+      responses: {
+        200: {
+          description: "Plugin removed",
+          content: {
+            "application/json": {
+              schema: resolver(
+                z.object({
+                  pluginId: z.string(),
+                  removed: z.literal(true),
+                }),
+              ),
+            },
+          },
+        },
+        ...errors(404, 500),
+      },
+    }),
+    async (c) => {
+      const pluginId = c.req.param("pluginId")
+      const plugin = await Plugin.get(pluginId)
+      if (!plugin) return c.json({ message: `Plugin not found: ${pluginId}` }, 404)
+
+      try {
+        await Plugin.remove(pluginId, { autoReload: true })
+        return c.json({ pluginId, removed: true as const })
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err)
+        return c.json({ message: `Remove failed: ${message}` }, 500)
+      }
+    },
+  )
+
   // GET /:pluginId/status — Comprehensive plugin status
   .get(
     "/:pluginId/status",

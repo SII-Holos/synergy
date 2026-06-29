@@ -54,6 +54,8 @@ import type {
   ApiPluginsPreviewInstallResponses,
   ApiPluginsPreviewUpdateErrors,
   ApiPluginsPreviewUpdateResponses,
+  ApiPluginsRemoveErrors,
+  ApiPluginsRemoveResponses,
   ApiPluginsStatusErrors,
   ApiPluginsStatusResponses,
   ApiPluginsUpdateFromRegistryErrors,
@@ -7180,6 +7182,38 @@ export class Plugins extends HeyApiClient {
     )
     return (options?.client ?? this.client).get<ApiPluginsListResponses, unknown, ThrowOnError>({
       url: "/api/plugins",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Remove plugin
+   *
+   * Uninstall and deactivate a plugin, then reload the plugin runtime.
+   */
+  public remove<ThrowOnError extends boolean = false>(
+    parameters: {
+      pluginId: string
+      directory?: string
+      scopeID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "pluginId" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).delete<ApiPluginsRemoveResponses, ApiPluginsRemoveErrors, ThrowOnError>({
+      url: "/api/plugins/{pluginId}",
       ...options,
       ...params,
     })
