@@ -5,6 +5,28 @@ export type RuntimeMode = "in-process" | "worker" | "process"
 export type TrustTier = "declarative" | "trusted-import" | "sandbox"
 export type PolicyRisk = "low" | "medium" | "high"
 
+export interface PluginTrustDecision {
+  tier: TrustTier
+  source: PluginSource
+  userTrusted: boolean
+  verifiedIntegrity: boolean
+  reason: string
+}
+
+export interface RuntimeLimits {
+  startupTimeoutMs: number
+  requestTimeoutMs: number
+  shutdownGraceMs: number
+  maxConcurrentRequests: number
+  maxLogBytesPerMinute: number
+  memoryMb: number
+  memoryPollIntervalMs: number
+  heartbeatIntervalMs: number
+  heartbeatMissesBeforeKill: number
+}
+
+export type RuntimeLimitOverrides = Partial<RuntimeLimits>
+
 export interface PluginRuntimePolicyInput {
   thirdPartyDefaultMode?: "process" | "worker"
   highRiskRequiresProcess?: boolean
@@ -19,6 +41,18 @@ export const DEFAULT_PLUGIN_RUNTIME_POLICY: Required<PluginRuntimePolicyInput> =
   allowThirdPartyInProcess: false,
   allowWorkerMode: true,
   allowLocalInProcess: true,
+}
+
+export const DEFAULT_PLUGIN_RUNTIME_LIMITS: RuntimeLimits = {
+  startupTimeoutMs: 5_000,
+  requestTimeoutMs: 120_000,
+  shutdownGraceMs: 1_500,
+  maxConcurrentRequests: 8,
+  maxLogBytesPerMinute: 128_000,
+  memoryMb: 256,
+  memoryPollIntervalMs: 10_000,
+  heartbeatIntervalMs: 5_000,
+  heartbeatMissesBeforeKill: 3,
 }
 
 const TRUSTED_SOURCES: ReadonlySet<PluginSource> = new Set(["builtin", "official", "local"])
@@ -70,6 +104,94 @@ export function resolveRuntimeMode(input: ResolveRuntimeModeInput): RuntimeMode 
   }
 
   return defaultTrustedMode(source, policy)
+}
+
+export function resolveRuntimeLimits(...overrides: Array<RuntimeLimitOverrides | undefined>): RuntimeLimits {
+  const resolved = { ...DEFAULT_PLUGIN_RUNTIME_LIMITS }
+  for (const override of overrides) {
+    if (!override) continue
+    for (const [key, value] of Object.entries(override) as Array<[keyof RuntimeLimits, unknown]>) {
+      if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) continue
+      resolved[key] = Math.round(value)
+    }
+  }
+  return resolved
+}
+
+export function decideTrust(input: {
+  source: PluginSource
+  userTrusted: boolean
+  verifiedIntegrity: boolean
+  devMode: boolean
+}): PluginTrustDecision {
+  const { source, userTrusted, verifiedIntegrity, devMode } = input
+
+  let tier: TrustTier
+  let reason: string
+
+  switch (source) {
+    case "builtin":
+      tier = "trusted-import"
+      reason = "builtin plugin is always trusted"
+      break
+    case "official":
+      tier = "trusted-import"
+      reason = "official registry plugin is trusted"
+      break
+    case "local":
+      tier = "trusted-import"
+      reason = devMode ? "local plugin in dev mode" : "local plugin"
+      break
+    case "npm":
+      if (userTrusted && verifiedIntegrity) {
+        tier = "trusted-import"
+        reason = "user-trusted npm plugin with verified integrity"
+      } else {
+        tier = "sandbox"
+        reason = "npm plugin requires explicit user trust and verified integrity"
+      }
+      break
+    case "git":
+      if (userTrusted) {
+        tier = "trusted-import"
+        reason = "user-trusted git plugin"
+      } else {
+        tier = "sandbox"
+        reason = "git plugin requires explicit user trust"
+      }
+      break
+    case "url":
+      tier = "sandbox"
+      reason = "URL-sourced plugins always run in sandbox"
+      break
+  }
+
+  return {
+    tier,
+    source,
+    userTrusted,
+    verifiedIntegrity,
+    reason,
+  }
+}
+
+export function trustReason(decision: PluginTrustDecision): string {
+  const factors: string[] = []
+
+  if (decision.userTrusted) factors.push("user-trusted")
+  if (decision.verifiedIntegrity) factors.push("integrity verified")
+
+  const factorText = factors.length > 0 ? ` (${factors.join(", ")})` : ""
+  return `${decision.reason} → ${decision.tier}${factorText}`
+}
+
+export function trustSummary(decision: PluginTrustDecision): string {
+  const metadata: string[] = []
+  if (decision.userTrusted) metadata.push("trusted")
+  if (decision.verifiedIntegrity) metadata.push("verified")
+
+  const meta = metadata.length > 0 ? ` [${metadata.join(", ")}]` : ""
+  return `${decision.source} → ${decision.tier}${meta}`
 }
 
 function defaultTrustedMode(source: PluginSource, policy: Required<PluginRuntimePolicyInput>): RuntimeMode {
