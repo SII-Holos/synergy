@@ -4,9 +4,9 @@ import z from "zod"
 import path from "path"
 import fs from "fs"
 import { errors } from "./error"
-import { Global } from "../global"
 import { checkPathContainment } from "../util/path-contain"
 import { PluginMarketplaceRegistry } from "../plugin/marketplace-registry"
+import { localRegistryPath, localRegistryStoreDir } from "../plugin/local-registry-store"
 
 // ── Types ──
 
@@ -150,7 +150,7 @@ const PublishInput = RegistryPluginEntry.omit({ createdAt: true, updatedAt: true
 // ── Helpers ──
 
 function registryPath(): string {
-  return path.join(Global.Path.data, "registry", "plugins.json")
+  return localRegistryPath()
 }
 
 function missingFileError(err: unknown): boolean {
@@ -528,7 +528,7 @@ export const RegistryRoute = new Hono()
           return c.json({ message: "Invalid download URL" }, 400)
         }
 
-        const registryStore = path.join(Global.Path.data, "registry")
+        const registryStore = localRegistryStoreDir()
         const resolved = checkPathContainment(registryStore, filePath)
         if (!resolved) {
           return c.json({ message: "Path traversal denied" }, 403)

@@ -2,12 +2,12 @@ import { cmd } from "./cmd"
 import { UI } from "../ui"
 import { PluginManifest, type PluginManifest as PluginManifestType } from "@ericsanchezok/synergy-plugin"
 import { permissionItems, publicToolNames, registryPermissionSummary } from "@ericsanchezok/synergy-plugin/permissions"
-import { Global } from "../../global"
 import { baseCapabilities } from "../../plugin/capability"
 import { computeRisk } from "../../plugin/consent/risk"
 import { computeManifestHash, computePermissionsHash } from "../../plugin/consent/approval-store"
 import { resolveRuntimeMode } from "../../plugin-runtime/mode-resolver"
 import { sha256File } from "../../util/crypto"
+import { localRegistryArtifactDir } from "../../plugin/local-registry-store"
 import path from "path"
 import os from "os"
 import fs from "fs"
@@ -91,7 +91,7 @@ function uiSurfaces(manifest: PluginManifestType): string[] {
 }
 
 function copyArtifact(tarballPath: string, id: string, version: string): string {
-  const store = path.join(Global.Path.data, "registry", "artifacts", id, version)
+  const store = localRegistryArtifactDir(id, version)
   fs.mkdirSync(store, { recursive: true })
   const dest = path.join(store, path.basename(tarballPath))
   fs.copyFileSync(tarballPath, dest)

@@ -10,7 +10,7 @@ import { PluginToolId } from "./ids"
 import { read as readLockfile, checkIntegrity } from "./lockfile"
 import { Installation } from "../global/installation"
 import { getRuntime } from "../plugin-runtime/supervisor"
-import { DEFAULT_LIMITS } from "../plugin-runtime/health"
+import type { RuntimeLimits } from "../plugin-runtime/health"
 import { computePermissionsHash, computeManifestHash } from "./consent/approval-store"
 import { baseCapabilities } from "./capability"
 import { getEvents } from "./audit.js"
@@ -59,7 +59,7 @@ export interface PluginStatus {
     restarts: number
     lastHeartbeatAt?: number
     memoryMb?: number
-    limits: typeof DEFAULT_LIMITS
+    limits: RuntimeLimits
     lastError?: string
     runtimeDecision?: string
   }
@@ -292,7 +292,7 @@ export async function getStatus(pluginId: string): Promise<PluginStatus | null> 
         restarts: runtimeEntry.restarts,
         lastHeartbeatAt: runtimeEntry.lastHeartbeatAt,
         memoryMb: runtimeEntry.memoryMb,
-        limits: DEFAULT_LIMITS,
+        limits: runtimeEntry.limits,
         lastError: runtimeEntry.lastError,
         runtimeDecision: runtimeEntry.runtimeDecision,
       }

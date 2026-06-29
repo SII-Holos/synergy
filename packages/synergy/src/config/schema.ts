@@ -1,5 +1,6 @@
 import { Log } from "../util/log"
 import z from "zod"
+import { OFFICIAL_PLUGIN_REGISTRY_URL } from "@ericsanchezok/synergy-plugin/market"
 import { ModelsDev } from "../provider/models"
 import { LSPServer } from "../lsp/server"
 import { ModelRole } from "../provider/model-role"
@@ -1103,7 +1104,7 @@ export const PluginMarketplace = z
       .string()
       .url()
       .optional()
-      .default("https://raw.githubusercontent.com/SII-Holos/synergy-plugins/main/registry.json")
+      .default(OFFICIAL_PLUGIN_REGISTRY_URL)
       .describe("URL of the official plugin registry.json index"),
     includeLocalRegistry: z
       .boolean()
@@ -1150,7 +1151,7 @@ export type PluginMarketplace = z.infer<typeof PluginMarketplace>
 
 export const PLUGIN_MARKETPLACE_DEFAULTS = {
   enabled: true,
-  registryUrl: "https://raw.githubusercontent.com/SII-Holos/synergy-plugins/main/registry.json",
+  registryUrl: OFFICIAL_PLUGIN_REGISTRY_URL,
   includeLocalRegistry: true,
   cacheTtlMs: 300000,
   offlineCache: true,

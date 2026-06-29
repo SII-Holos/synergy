@@ -3,6 +3,7 @@ import fs from "fs"
 import { EOL } from "os"
 import type { Argv } from "yargs"
 import { PluginManifest, type PluginManifest as PluginManifestType } from "@ericsanchezok/synergy-plugin"
+import { baseCapabilities, registryPermissionSummary } from "@ericsanchezok/synergy-plugin/permissions"
 import { cmd } from "../cmd"
 import { UI } from "../ui"
 import { sha256File, sha256JSON } from "../lib/crypto"
@@ -34,28 +35,6 @@ function findUiSource(pluginDir: string): string | undefined {
 
 function packagedManifest(manifest: PluginManifestType): PluginManifestType {
   return rewritePackagedManifestPaths(manifest) as PluginManifestType
-}
-
-function permissionSummary(manifest: PluginManifestType): Record<string, unknown> {
-  const perms = manifest.permissions ?? {}
-  const result: Record<string, unknown> = {}
-
-  if (perms.tools) result.tools = perms.tools
-  if (perms.data) result.data = perms.data
-  if (perms.network) result.network = perms.network
-  if (perms.ui) result.ui = perms.ui
-  if (perms.hooks) result.hooks = perms.hooks
-
-  const tools = manifest.contributes?.tools ?? []
-  if (tools.length > 0) {
-    const toolPerms: Record<string, unknown> = {}
-    for (const tool of tools) {
-      if (tool.capabilities) toolPerms[tool.name] = tool.capabilities
-    }
-    if (Object.keys(toolPerms).length > 0) result.contributedTools = toolPerms
-  }
-
-  return result
 }
 
 export async function buildPluginProject(pluginDir: string): Promise<boolean> {
@@ -159,7 +138,7 @@ export async function buildPluginProject(pluginDir: string): Promise<boolean> {
   }
 
   spinner("Generating permission summary")
-  const summary = permissionSummary(manifest)
+  const summary = registryPermissionSummary(distManifest, baseCapabilities(distManifest))
   fs.writeFileSync(path.join(distDir, "permissions.summary.json"), JSON.stringify(summary, null, 2))
 
   const publicAssetsPath = path.join(pluginDir, "public", "assets")

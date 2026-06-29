@@ -9,7 +9,6 @@ import { decideTrust, derivePluginSource, type PluginTrustDecision } from "../pl
 import { Installation } from "../global/installation"
 import { Plugin } from "../plugin/index"
 import { Config } from "../config/config"
-import { Global } from "../global"
 import type { PluginManifest as PluginManifestType } from "@ericsanchezok/synergy-plugin"
 
 import { diffPermissions } from "../plugin/consent/diff"
@@ -25,6 +24,7 @@ import type { PluginApprovalRecord } from "../plugin/consent/approval-store"
 import { baseCapabilities } from "../plugin/capability"
 import { checkPathContainment } from "../util/path-contain"
 import { PluginMarketplaceRegistry } from "../plugin/marketplace-registry"
+import { localRegistryPath } from "../plugin/local-registry-store"
 
 import { PluginStatusSchema } from "../plugin/status.js"
 
@@ -955,7 +955,7 @@ export const ApiPluginRoute = new Hono()
       }
 
       // Load registry to find the plugin entry
-      const registryPath = path.join(Global.Path.data, "registry", "plugins.json")
+      const registryPath = localRegistryPath()
       let plugins: any[]
       try {
         const file = Bun.file(registryPath)
@@ -1045,7 +1045,7 @@ export const ApiPluginRoute = new Hono()
       }
 
       // 4. Load registry
-      const registryPath = path.join(Global.Path.data, "registry", "plugins.json")
+      const registryPath = localRegistryPath()
       let plugins: any[]
       try {
         const file = Bun.file(registryPath)

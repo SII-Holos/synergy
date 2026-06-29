@@ -18,6 +18,14 @@ export interface GitHubReleaseAssetUrlInput {
   filename: string
 }
 
+function encodeGitHubPath(value: string): string {
+  return value
+    .split("/")
+    .filter((segment) => segment.length > 0)
+    .map(encodeURIComponent)
+    .join("/")
+}
+
 export function githubReleaseAssetUrl(input: GitHubReleaseAssetUrlInput): string | undefined {
   const normalized = normalizeGitHubRepoUrl(input.repo)
   if (!normalized) return undefined
@@ -38,3 +46,23 @@ export function githubRepoSlug(input?: string): string | undefined {
   const match = normalized?.match(/^https:\/\/github\.com\/([^/]+\/[^/]+?)(?:\/.*)?$/)
   return match?.[1]?.replace(/\.git$/, "")
 }
+
+export function githubRawFileUrl(input: { repo?: string; branch: string; filepath: string }): string | undefined {
+  const slug = githubRepoSlug(input.repo)
+  if (!slug) return undefined
+  return `https://raw.githubusercontent.com/${slug}/${encodeGitHubPath(input.branch)}/${encodeGitHubPath(input.filepath)}`
+}
+
+export function githubMarketplaceRegistryUrl(
+  input: GitHubPluginMarketplaceDefaults = OFFICIAL_GITHUB_PLUGIN_MARKETPLACE,
+): string {
+  const url = githubRawFileUrl({
+    repo: input.registryRepo,
+    branch: input.registryBaseBranch,
+    filepath: "registry.json",
+  })
+  if (!url) throw new Error(`Invalid GitHub plugin marketplace repo: ${input.registryRepo}`)
+  return url
+}
+
+export const OFFICIAL_PLUGIN_REGISTRY_URL = githubMarketplaceRegistryUrl()
