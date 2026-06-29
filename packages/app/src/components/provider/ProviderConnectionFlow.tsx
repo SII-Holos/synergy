@@ -1,7 +1,4 @@
-import type {
-  ProviderAuthAuthorization,
-  ProviderAuthMethod,
-} from "@ericsanchezok/synergy-sdk/client"
+import type { ProviderAuthAuthorization, ProviderAuthMethod } from "@ericsanchezok/synergy-sdk/client"
 import { Button } from "@ericsanchezok/synergy-ui/button"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { ProviderIcon } from "@ericsanchezok/synergy-ui/provider-icon"

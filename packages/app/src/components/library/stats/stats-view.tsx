@@ -32,10 +32,7 @@ function SectionHeader(props: { label: string; meta?: string }) {
   )
 }
 
-export function StatsView(props: {
-  registerSync?: (handle: LibraryStatsSyncHandle) => void
-  storageLabel?: string
-}) {
+export function StatsView(props: { registerSync?: (handle: LibraryStatsSyncHandle) => void; storageLabel?: string }) {
   const { data, error, loading, recompute } = useLibraryStats()
   const [syncing, setSyncing] = createSignal(false)
   const [syncError, setSyncError] = createSignal<string | null>(null)
@@ -79,7 +76,9 @@ export function StatsView(props: {
           </div>
         }
       >
-        {(snapshot) => <LibraryStatsContent snapshot={snapshot() ?? EMPTY_SNAPSHOT} storageLabel={props.storageLabel} />}
+        {(snapshot) => (
+          <LibraryStatsContent snapshot={snapshot() ?? EMPTY_SNAPSHOT} storageLabel={props.storageLabel} />
+        )}
       </Show>
     </>
   )

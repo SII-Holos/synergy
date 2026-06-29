@@ -31,6 +31,6 @@ describe("Models panel UI contract", () => {
     expect(modelsPanel).not.toContain("onManageModels")
     expect(modelsPanel).not.toContain(">Manage models<")
     expect(modelManager).toContain("setQuickSwitcher")
-    expect(modelManager).toContain("Persist.global(\"model\"")
+    expect(modelManager).toContain('Persist.global("model"')
   })
 })

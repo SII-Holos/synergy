@@ -67,7 +67,9 @@ export const BrowserDownloadsTool = Tool.define<typeof parameters, BrowserDownlo
         case "wait": {
           // schema.refine already ensures id is present for wait action
           const id = params.id!
-          const result = await BrowserDownloads.waitForDownload(id, params.timeoutMs)
+          const result = activityTab?.page
+            ? await BrowserDownloads.waitForPageDownload(activityTab.page, id, params.timeoutMs)
+            : await BrowserDownloads.waitForDownload(id, params.timeoutMs)
           return {
             title: `Download ${result.id} (${result.state})`,
             output: JSON.stringify(result, null, 2),

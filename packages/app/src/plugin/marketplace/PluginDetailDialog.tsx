@@ -277,7 +277,9 @@ export function PluginDetailDialog(props: {
     },
   )
 
-  const plugin = createMemo(() => summary() ?? fallbackPluginSummary({ installed: installedInfo(), detail: installedDetail() }))
+  const plugin = createMemo(
+    () => summary() ?? fallbackPluginSummary({ installed: installedInfo(), detail: installedDetail() }),
+  )
   const latestVersion = createMemo(() => {
     const list = versions()
     if (!list?.length) return null
@@ -384,7 +386,12 @@ export function PluginDetailDialog(props: {
     <Dialog
       title={<span class="sr-only">{plugin()?.name ?? props.pluginId}</span>}
       action={
-        <button type="button" class="plugin-detail-close" aria-label="Close plugin details" onClick={() => dialog.close()}>
+        <button
+          type="button"
+          class="plugin-detail-close"
+          aria-label="Close plugin details"
+          onClick={() => dialog.close()}
+        >
           <Icon name="x" size="small" />
         </button>
       }
@@ -425,7 +432,9 @@ export function PluginDetailDialog(props: {
                     <div class="plugin-detail-badges">
                       <VerifiedBadge verified={current().verified} official={current().official} />
                       <PermissionRiskBadge risk={current().risk as PermissionSeverity} />
-                      <span class="plugin-detail-chip">{props.source === "official" ? "Official source" : "Local source"}</span>
+                      <span class="plugin-detail-chip">
+                        {props.source === "official" ? "Official source" : "Local source"}
+                      </span>
                     </div>
                   </div>
                 </section>
@@ -438,7 +447,13 @@ export function PluginDetailDialog(props: {
                     onClick={() => void performInstall(installedVersion() ? "update" : "install")}
                   >
                     <Icon
-                      name={busy() && action() !== "uninstall" ? "loader-circle" : installedVersion() ? "refresh-ccw" : "download"}
+                      name={
+                        busy() && action() !== "uninstall"
+                          ? "loader-circle"
+                          : installedVersion()
+                            ? "refresh-ccw"
+                            : "download"
+                      }
                       size="small"
                       class={busy() && action() !== "uninstall" ? "animate-spin" : ""}
                     />
@@ -510,10 +525,15 @@ export function PluginDetailDialog(props: {
                     </span>
                   </div>
                   <div class="plugin-detail-chip-cloud">
-                    <Show when={current().tools.length > 0} fallback={<span class="plugin-detail-muted">No tools declared</span>}>
+                    <Show
+                      when={current().tools.length > 0}
+                      fallback={<span class="plugin-detail-muted">No tools declared</span>}
+                    >
                       <For each={current().tools}>{(tool) => <span class="plugin-detail-chip">{tool}</span>}</For>
                     </Show>
-                    <For each={current().uiSurfaces}>{(surface) => <span class="plugin-detail-chip">{surface}</span>}</For>
+                    <For each={current().uiSurfaces}>
+                      {(surface) => <span class="plugin-detail-chip">{surface}</span>}
+                    </For>
                   </div>
                 </section>
 
@@ -551,7 +571,10 @@ export function PluginDetailDialog(props: {
                     <Show
                       when={(versions()?.length ?? 0) > 0}
                       fallback={
-                        <Show when={installedVersion()} fallback={<span class="plugin-detail-muted">No registry versions available.</span>}>
+                        <Show
+                          when={installedVersion()}
+                          fallback={<span class="plugin-detail-muted">No registry versions available.</span>}
+                        >
                           {(version) => (
                             <div class="plugin-detail-version-row">
                               <div>
@@ -564,7 +587,11 @@ export function PluginDetailDialog(props: {
                         </Show>
                       }
                     >
-                      <For each={[...(versions() ?? [])].toSorted((a, b) => toTimestamp(b.publishedAt) - toTimestamp(a.publishedAt)).slice(0, 4)}>
+                      <For
+                        each={[...(versions() ?? [])]
+                          .toSorted((a, b) => toTimestamp(b.publishedAt) - toTimestamp(a.publishedAt))
+                          .slice(0, 4)}
+                      >
                         {(version) => (
                           <div class="plugin-detail-version-row">
                             <div>
