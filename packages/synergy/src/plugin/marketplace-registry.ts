@@ -1,4 +1,5 @@
 import { PluginManifest, type PluginManifest as PluginManifestType } from "@ericsanchezok/synergy-plugin"
+import { CAPABILITY_DETAILS } from "@ericsanchezok/synergy-plugin/permissions"
 import fs from "fs/promises"
 import fsSync from "fs"
 import os from "os"
@@ -214,6 +215,8 @@ export namespace PluginMarketplaceRegistry {
   }
 
   function permissionCategory(key: string): string {
+    const details = CAPABILITY_DETAILS[key]
+    if (details) return details.category
     if (key.includes("network") || key.includes("http") || key.includes("fetch")) return "network"
     if (key.includes("file") || key.includes("filesystem") || key.includes("read") || key.includes("write"))
       return "files"

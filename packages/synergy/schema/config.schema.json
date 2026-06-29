@@ -209,6 +209,68 @@
           "description": "Allow local plugins to run in-process",
           "default": true,
           "type": "boolean"
+        },
+        "limits": {
+          "description": "Default plugin runtime resource and request limits",
+          "ref": "PluginRuntimeLimitsConfig",
+          "type": "object",
+          "properties": {
+            "startupTimeoutMs": {
+              "description": "Maximum milliseconds for plugin runtime startup",
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
+            },
+            "requestTimeoutMs": {
+              "description": "Maximum milliseconds for one plugin runtime request",
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
+            },
+            "shutdownGraceMs": {
+              "description": "Graceful shutdown window before force kill",
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
+            },
+            "maxConcurrentRequests": {
+              "description": "Maximum concurrent bridge requests",
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
+            },
+            "maxLogBytesPerMinute": {
+              "description": "Maximum plugin log bytes per minute",
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
+            },
+            "memoryMb": {
+              "description": "Maximum process runtime RSS in MB",
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
+            },
+            "memoryPollIntervalMs": {
+              "description": "Memory polling interval in milliseconds",
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
+            },
+            "heartbeatIntervalMs": {
+              "description": "Heartbeat interval in milliseconds",
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
+            },
+            "heartbeatMissesBeforeKill": {
+              "description": "Missed heartbeats before process kill",
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
+            }
+          },
+          "additionalProperties": false
         }
       },
       "required": [
@@ -252,9 +314,31 @@
           "description": "Use stale marketplace cache for browsing when the remote registry cannot be reached",
           "default": true,
           "type": "boolean"
+        },
+        "requestTimeoutMs": {
+          "description": "Timeout in milliseconds for registry and entry metadata requests",
+          "default": 10000,
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
+        },
+        "artifactDownloadTimeoutMs": {
+          "description": "Timeout in milliseconds for plugin artifact and signature downloads",
+          "default": 60000,
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
         }
       },
-      "required": ["enabled", "registryUrl", "includeLocalRegistry", "cacheTtlMs", "offlineCache"],
+      "required": [
+        "enabled",
+        "registryUrl",
+        "includeLocalRegistry",
+        "cacheTtlMs",
+        "offlineCache",
+        "requestTimeoutMs",
+        "artifactDownloadTimeoutMs"
+      ],
       "additionalProperties": false
     },
     "snapshot": {
@@ -285,6 +369,37 @@
       "items": {
         "type": "string"
       }
+    },
+    "providerCatalog": {
+      "description": "Signed remote provider catalog configuration",
+      "ref": "ProviderCatalogConfig",
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "description": "Enable signed remote provider catalog updates",
+          "type": "boolean"
+        },
+        "registryUrl": {
+          "description": "Signed provider catalog URL. The signature is fetched from the same URL plus .sig.",
+          "type": "string",
+          "format": "uri"
+        },
+        "publicKey": {
+          "description": "Base64 Ed25519 public key used to verify provider catalog signatures",
+          "type": "string"
+        },
+        "cacheTtlMs": {
+          "description": "Provider catalog cache TTL in milliseconds",
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
+        },
+        "offlineCache": {
+          "description": "Use the last verified provider catalog when offline",
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
     },
     "model": {
       "description": "Default model in the format of provider/model, eg anthropic/claude-sonnet-4-5",
@@ -404,6 +519,54 @@
           },
           "name": {
             "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "signupUrl": {
+            "type": "string"
+          },
+          "recommendation": {
+            "type": "object",
+            "properties": {
+              "level": {
+                "type": "string",
+                "enum": ["featured", "recommended", "standard"]
+              },
+              "rank": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "headline": {
+                "type": "string"
+              },
+              "reason": {
+                "type": "string"
+              },
+              "cta": {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "external"
+                  },
+                  "label": {
+                    "type": "string"
+                  },
+                  "url": {
+                    "type": "string"
+                  }
+                },
+                "required": ["kind", "label", "url"],
+                "additionalProperties": false
+              },
+              "defaultModel": {
+                "type": "string"
+              }
+            },
+            "required": ["level"],
+            "additionalProperties": false
           },
           "env": {
             "type": "array",

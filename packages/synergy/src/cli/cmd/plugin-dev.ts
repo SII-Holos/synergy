@@ -1,6 +1,7 @@
 import { cmd } from "./cmd"
 import { UI } from "../ui"
 import { PluginManifest, type PluginManifest as PluginManifestType } from "@ericsanchezok/synergy-plugin"
+import { permissionItems } from "@ericsanchezok/synergy-plugin/permissions"
 import { Plugin } from "@/plugin"
 import { computeRisk } from "@/plugin/consent/risk"
 import { baseCapabilities } from "@/plugin/capability"
@@ -8,10 +9,6 @@ import path from "path"
 import fs from "fs"
 import type { Argv } from "yargs"
 import { Server } from "@/server/server"
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
 
 function timestamp(): string {
   return new Date().toLocaleTimeString("en-US", { hour12: false })
@@ -25,11 +22,6 @@ function debounce(ms: number) {
   }
 }
 
-let overallRisk: (m: PluginManifestType) => "low" | "medium" | "high"
-overallRisk = (m) => {
-  return computeRisk(baseCapabilities(m), m)
-}
-
 function riskLabel(risk: "low" | "medium" | "high"): string {
   if (risk === "high") return UI.Style.TEXT_DANGER + "high" + UI.Style.TEXT_NORMAL
   if (risk === "medium") return UI.Style.TEXT_WARNING + "medium" + UI.Style.TEXT_NORMAL
@@ -37,40 +29,14 @@ function riskLabel(risk: "low" | "medium" | "high"): string {
 }
 
 function printPermissionPreview(manifest: PluginManifestType) {
-  const pt = manifest.permissions?.tools
-  const pd = manifest.permissions?.data
-  const risk = overallRisk(manifest)
-  const caps: string[] = []
-
-  if (pt?.shell) caps.push(`shell (${UI.Style.TEXT_DANGER}high${UI.Style.TEXT_NORMAL})`)
-  if (pt?.filesystem === "write") caps.push(`filesystem: write (${UI.Style.TEXT_DANGER}high${UI.Style.TEXT_NORMAL})`)
-  else if (pt?.filesystem === "read")
-    caps.push(`filesystem: read (${UI.Style.TEXT_WARNING}medium${UI.Style.TEXT_NORMAL})`)
+  const capabilities = baseCapabilities(manifest)
+  const risk = computeRisk(capabilities, manifest)
+  const items = permissionItems(manifest, capabilities)
 
   UI.println(`✓ permissions: ${riskLabel(risk)} risk`)
 
-  if (caps.length > 0) {
-    UI.println(`  → tools: ${caps.join(", ")}`)
-  }
-
-  if (pt?.network) {
-    const net =
-      pt.network === true
-        ? "all hosts"
-        : typeof pt.network === "object" && "hosts" in pt.network
-          ? (pt.network as { hosts: string[] }).hosts.join(", ")
-          : String(pt.network)
-    UI.println(`  → network: ${net}`)
-  }
-
-  if (pd?.session === "read") {
-    UI.println(`  → data: session read`)
-  }
-  if (pd?.workspace === "read") {
-    UI.println(`  → data: workspace read`)
-  }
-  if (pd?.secrets === "own") {
-    UI.println(`  → data: secrets`)
+  if (items.length > 0) {
+    UI.println(`  → ${items.map((item) => `${item.title} (${riskLabel(item.severity)})`).join(", ")}`)
   }
 
   const ui = manifest.contributes?.ui

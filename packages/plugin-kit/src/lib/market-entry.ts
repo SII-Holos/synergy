@@ -2,7 +2,7 @@ import fs from "fs"
 import os from "os"
 import path from "path"
 import { PluginManifest, type PluginManifest as PluginManifestType } from "@ericsanchezok/synergy-plugin"
-import { baseCapabilities, registryPermissionSummary } from "@ericsanchezok/synergy-plugin/permissions"
+import { baseCapabilities, publicToolNames, registryPermissionSummary } from "@ericsanchezok/synergy-plugin/permissions"
 import { computeManifestHash, computePermissionsHash } from "./hash"
 import { computeRisk } from "./risk"
 import { resolveRuntimeMode } from "./runtime-mode"
@@ -160,8 +160,8 @@ export function githubEntry(input: {
   }
 
   const capabilities = baseCapabilities(manifest)
-  const hasAgentCallableTools = (manifest.contributes?.tools ?? []).length > 0
-  const risk = computeRisk(hasAgentCallableTools ? capabilities : [], manifest)
+  const tools = publicToolNames(manifest)
+  const risk = computeRisk(tools.length > 0 ? capabilities : [], manifest)
   const runtimeMode = resolveRuntimeMode({
     source: "local",
     manifestMode: manifest.runtime?.mode,
@@ -212,7 +212,7 @@ export function githubEntry(input: {
         risk,
         runtimeMode,
         permissionsSummary: registryPermissionSummary(manifest, capabilities),
-        tools: (manifest.contributes?.tools ?? []).map((tool) => tool.name),
+        tools,
         uiSurfaces: uiSurfaces(manifest),
         publishedAt: input.publishedAt ?? new Date().toISOString(),
         ...(input.changelog ? { changelog: input.changelog } : {}),

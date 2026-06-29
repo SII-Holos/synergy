@@ -42,6 +42,11 @@
       "types": "./src/permissions.ts",
       "import": "./dist/permissions.js"
     },
+    "./ids": {
+      "bun": "./src/ids.ts",
+      "types": "./src/ids.ts",
+      "import": "./dist/ids.js"
+    },
     "./policy": {
       "bun": "./src/policy.ts",
       "types": "./src/policy.ts",

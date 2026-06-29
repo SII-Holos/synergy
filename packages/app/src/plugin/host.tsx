@@ -11,6 +11,7 @@ import {
 import { fetchUIContributions } from "./api"
 import type { PluginContribution } from "./api"
 import type { PluginLifecycleState } from "./lifecycle"
+import { PluginToolId } from "@ericsanchezok/synergy-plugin/ids"
 import { useServer } from "@/context/server"
 import { toolRendererRegistry, type ToolRenderer } from "./registries/tool-registry"
 import { registerPartRenderer } from "./registries/part-registry"
@@ -65,7 +66,7 @@ export function PluginHostProvider(props: ParentProps) {
     const assetUrl = (contrib: PluginContribution, filePath: string) =>
       `/plugin/assets/${contrib.pluginId}/${contrib.version}/${filePath.replace(/^\.\//, "")}`
     const pluginToolId = (pluginId: string, toolId: string) =>
-      toolId.startsWith("plugin__") ? toolId : `plugin__${pluginId}__${toolId}`
+      PluginToolId.is(toolId) ? toolId : PluginToolId.format(pluginId, toolId)
 
     for (const contrib of contributions) {
       const ui = contrib.ui

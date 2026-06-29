@@ -2,6 +2,7 @@ import { cmd } from "./cmd"
 import { UI } from "../ui"
 import { EOL } from "os"
 import type { Argv } from "yargs"
+import { CAPABILITY_DETAILS } from "@ericsanchezok/synergy-plugin/permissions"
 import { attachOption, ensureServer, fetchPluginApi } from "./plugin-server"
 
 // ---------------------------------------------------------------------------
@@ -36,40 +37,11 @@ function severityBadge(risk: string): string {
   return `[${UI.Style.TEXT_SUCCESS}!${UI.Style.TEXT_NORMAL}]`
 }
 
-// ---------------------------------------------------------------------------
-// User-language descriptions for permission categories
-// ---------------------------------------------------------------------------
-
-const CATEGORY_LABELS: Record<string, { label: string; risk: string; description: string }> = {
-  shell: { label: "Shell Execution", risk: "high", description: "Can run shell commands on your system" },
-  file_write: { label: "File Write", risk: "high", description: "Can write and modify files" },
-  file_read: { label: "File Read", risk: "medium", description: "Can read files" },
-  network_request: { label: "Network Access", risk: "medium", description: "Can make network requests" },
-  mcp_invoke: { label: "MCP Invoke", risk: "medium", description: "Can call MCP tool endpoints" },
-  mcp_spawn: { label: "MCP Spawn", risk: "medium", description: "Can launch MCP server processes" },
-  session_data: { label: "Session Data Read", risk: "low", description: "Can read session data" },
-  workspace_data: { label: "Workspace Data Read", risk: "low", description: "Can read workspace files and data" },
-  secrets: { label: "Secrets Access", risk: "high", description: "Can read plugin-scoped secrets" },
-  "config:write": { label: "Config Write", risk: "medium", description: "Can modify global configuration" },
-  "config:read": { label: "Config Read", risk: "low", description: "Can read global configuration" },
-  task: { label: "Task Delegation", risk: "medium", description: "Can launch approved Synergy subagents" },
-  prompt_transform: {
-    label: "Prompt Transform",
-    risk: "high",
-    description: "Can modify prompt context sent to the LLM",
-  },
-  compaction_transform: {
-    label: "Compaction Transform",
-    risk: "high",
-    description: "Can modify session compaction context",
-  },
-  tool_execution_hook: { label: "Tool Execution Hook", risk: "medium", description: "Can intercept tool calls" },
-  permission_hook: { label: "Permission Hook", risk: "high", description: "Can influence permission decisions" },
-  event_hook: { label: "Event Hook", risk: "medium", description: "Can receive approved runtime events" },
-}
-
 function describeCapability(cap: string): { label: string; risk: string; description: string } {
-  return CATEGORY_LABELS[cap] ?? { label: cap, risk: "low", description: cap }
+  const details = CAPABILITY_DETAILS[cap]
+  return details
+    ? { label: details.title, risk: details.severity, description: details.description }
+    : { label: cap, risk: "low", description: cap }
 }
 
 function classifyCapabilities(caps: string[]): Record<string, string[]> {

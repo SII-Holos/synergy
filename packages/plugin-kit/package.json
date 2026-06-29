@@ -30,6 +30,11 @@
       "bun": "./src/commands/index.ts",
       "types": "./src/commands/index.ts",
       "import": "./dist/commands/index.js"
+    },
+    "./market-entry": {
+      "bun": "./src/lib/market-entry.ts",
+      "types": "./src/lib/market-entry.ts",
+      "import": "./dist/lib/market-entry.js"
     }
   },
   "files": [

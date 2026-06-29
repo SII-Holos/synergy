@@ -38,6 +38,16 @@ export interface SynergyCapabilityDefinition extends Omit<PluginPermissionItem, 
   nonBypassable?: boolean
 }
 
+export function publicToolNames(manifest: PluginManifest): string[] {
+  return (manifest.contributes?.tools ?? [])
+    .filter((tool) => tool.exposure?.mode !== "internal")
+    .map((tool) => tool.name)
+}
+
+export function hasPublicTools(manifest: PluginManifest): boolean {
+  return publicToolNames(manifest).length > 0
+}
+
 export const CAPABILITY_DETAILS: Record<string, SynergyCapabilityDefinition> = {
   shell_read: {
     category: "runtime",
