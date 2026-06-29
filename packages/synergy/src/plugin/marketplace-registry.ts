@@ -1,5 +1,5 @@
 import { PluginManifest, type PluginManifest as PluginManifestType } from "@ericsanchezok/synergy-plugin"
-import { CAPABILITY_DETAILS } from "@ericsanchezok/synergy-plugin/permissions"
+import { CAPABILITY_DETAILS, permissionCategoryForKey } from "@ericsanchezok/synergy-plugin/permissions"
 import fs from "fs/promises"
 import fsSync from "fs"
 import os from "os"
@@ -13,6 +13,7 @@ import { baseCapabilities } from "./capability"
 import { computeManifestHash, computePermissionsHash } from "./consent/approval-store"
 import { computeRisk } from "./consent/risk"
 import { readSignatureFile, verifySignatureWithPublicKey, type SignatureMetadata } from "./signature"
+import { defaultPluginTrustDecision } from "./trust"
 
 export namespace PluginMarketplaceRegistry {
   export const Source = z.enum(["official", "local"])
@@ -210,27 +211,16 @@ export namespace PluginMarketplaceRegistry {
     return Number.isFinite(value) ? value : 0
   }
 
-  function trustTier(input: { official: boolean; verified: boolean }): "trusted-import" | "sandbox" {
-    return input.official || input.verified ? "trusted-import" : "sandbox"
-  }
-
-  function permissionCategory(key: string): string {
-    const details = CAPABILITY_DETAILS[key]
-    if (details) return details.category
-    if (key.includes("network") || key.includes("http") || key.includes("fetch")) return "network"
-    if (key.includes("file") || key.includes("filesystem") || key.includes("read") || key.includes("write"))
-      return "files"
-    if (key.includes("ui") || key.includes("panel") || key.includes("view")) return "ui"
-    if (key.includes("hook") || key.includes("runtime") || key.includes("process")) return "runtime"
-    return "tools"
+  function trustTier(source: Source): "trusted-import" | "sandbox" {
+    return defaultPluginTrustDecision({ source }).tier === "trusted-import" ? "trusted-import" : "sandbox"
   }
 
   function normalizePermissionSummary(items: NormalizedVersion["permissionsSummary"]) {
     return items.map((item) => ({
       key: item.key,
-      category: permissionCategory(item.key),
+      category: permissionCategoryForKey(item.key),
       severity: item.risk,
-      title: item.key,
+      title: CAPABILITY_DETAILS[item.key]?.title ?? item.key,
       description: item.description,
     }))
   }
@@ -287,7 +277,7 @@ export namespace PluginMarketplaceRegistry {
       createdAt: versions.length ? Math.min(...versions.map((version) => version.publishedAt)) : 0,
       updatedAt: latest?.publishedAt ?? 0,
       risk: latest?.risk ?? "low",
-      trustTier: trustTier(entry),
+      trustTier: trustTier(source),
       runtimeMode: latest?.runtimeMode ?? "process",
       permissionsSummary: normalizePermissionSummary(latest?.permissionsSummary ?? []),
       uiSurfaces: latest?.uiSurfaces ?? [],
@@ -314,7 +304,7 @@ export namespace PluginMarketplaceRegistry {
       latestVersion: summary.latestVersion,
       updatedAt: timestamp(summary.updatedAt),
       risk: summary.risk,
-      trustTier: trustTier(summary),
+      trustTier: trustTier("official"),
       runtimeMode: summary.runtimeMode,
       uiSurfaces: summary.uiSurfaces,
       tools: summary.tools,

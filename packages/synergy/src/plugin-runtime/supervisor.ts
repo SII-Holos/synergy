@@ -32,7 +32,7 @@ import {
   type PersistedRuntimeEntry,
 } from "./registry.js"
 
-import type { PluginSource } from "../plugin/trust.js"
+import { isTrustedPluginSource, type PluginSource } from "../plugin/trust.js"
 
 const log = Log.create({ service: "plugin-runtime.supervisor" })
 
@@ -319,7 +319,7 @@ export class PluginRuntimeSupervisor {
     const config = await Config.current().catch(() => undefined)
     const source = options.source ?? "npm"
     const risk = manifest ? computeRisk(baseCapabilities(manifest), manifest) : "low"
-    const userTrusted = source === "builtin" || source === "official" || source === "local"
+    const userTrusted = isTrustedPluginSource(source)
 
     // Resolve runtime mode: caller wins, then resolveRuntimeMode, then default
     let runtimeDecision: string

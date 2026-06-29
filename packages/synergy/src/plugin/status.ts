@@ -5,7 +5,7 @@ import type { PluginManifest } from "@ericsanchezok/synergy-plugin"
 import { getPlugin, getLoadedPlugins } from "./loader"
 import * as ManifestReader from "./manifest-reader"
 import * as Capability from "./capability"
-import { decideTrust, derivePluginSource, type PluginTrustDecision, type PluginSource } from "./trust"
+import { defaultPluginTrustDecision, derivePluginSource, type PluginTrustDecision, type PluginSource } from "./trust"
 import { PluginToolId } from "./ids"
 import { read as readLockfile, checkIntegrity } from "./lockfile"
 import { Installation } from "../global/installation"
@@ -249,11 +249,8 @@ export async function getStatus(pluginId: string): Promise<PluginStatus | null> 
 
   // ── Trust ──
   const integrity = await resolveIntegrity(plugin.pluginDir)
-  // local/builtin plugins are implicitly trusted; npm/git/url require explicit trust
-  const userTrusted = source === "local" || source === "builtin"
-  const trust = decideTrust({
+  const trust = defaultPluginTrustDecision({
     source,
-    userTrusted,
     verifiedIntegrity: integrity === "verified",
     devMode: isDevMode(),
   })

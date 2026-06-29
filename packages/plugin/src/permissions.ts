@@ -705,6 +705,19 @@ export function registryPermissionSummary(manifest: PluginManifest, capabilities
   }))
 }
 
+export function permissionCategoryForKey(key: string): PluginPermissionCategory {
+  const details = CAPABILITY_DETAILS[key]
+  if (details) return details.category
+  if (key.startsWith("ui.")) return "ui"
+  if (key.startsWith("hooks.")) return "hooks"
+  if (key.startsWith("data.")) return "data"
+  if (key.startsWith("runtime.")) return "runtime"
+  if (key.startsWith("session.")) return "session"
+  if (key.startsWith("browser.")) return "browser"
+  if (key.startsWith("local.")) return "local"
+  return "tools"
+}
+
 export function permissionsHashPayload(manifest: PluginManifest, capabilities: string[]) {
   return {
     capabilities: [...capabilities].sort(),

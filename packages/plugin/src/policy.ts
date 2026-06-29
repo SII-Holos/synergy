@@ -58,6 +58,10 @@ export const DEFAULT_PLUGIN_RUNTIME_LIMITS: RuntimeLimits = {
 const TRUSTED_SOURCES: ReadonlySet<PluginSource> = new Set(["builtin", "official", "local"])
 const THIRD_PARTY_SOURCES: ReadonlySet<PluginSource> = new Set(["npm", "git", "url"])
 
+export function isTrustedPluginSource(source: PluginSource): boolean {
+  return TRUSTED_SOURCES.has(source)
+}
+
 export interface ResolveRuntimeModeInput {
   source: PluginSource
   manifestMode?: RuntimeMode
@@ -173,6 +177,20 @@ export function decideTrust(input: {
     verifiedIntegrity,
     reason,
   }
+}
+
+export function defaultPluginTrustDecision(input: {
+  source: PluginSource
+  userTrusted?: boolean
+  verifiedIntegrity?: boolean
+  devMode?: boolean
+}): PluginTrustDecision {
+  return decideTrust({
+    source: input.source,
+    userTrusted: input.userTrusted ?? isTrustedPluginSource(input.source),
+    verifiedIntegrity: input.verifiedIntegrity ?? false,
+    devMode: input.devMode ?? false,
+  })
 }
 
 export function trustReason(decision: PluginTrustDecision): string {

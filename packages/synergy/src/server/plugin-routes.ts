@@ -5,7 +5,7 @@ import path from "path"
 import * as fs from "fs"
 import { pathToFileURL } from "url"
 import { errors } from "./error"
-import { decideTrust, derivePluginSource, type PluginTrustDecision } from "../plugin/trust"
+import { defaultPluginTrustDecision, derivePluginSource, type PluginTrustDecision } from "../plugin/trust"
 import { Installation } from "../global/installation"
 import { Plugin } from "../plugin/index"
 import { Config } from "../config/config"
@@ -30,10 +30,8 @@ import { PluginStatusSchema } from "../plugin/status.js"
 
 function getPluginTrust(pluginDir: string): PluginTrustDecision {
   const source = derivePluginSource(pluginDir)
-  const userTrusted = source === "local" || source === "builtin"
-  return decideTrust({
+  return defaultPluginTrustDecision({
     source,
-    userTrusted,
     verifiedIntegrity: false, // routes don't have integrity context
     devMode: Installation.isLocal(),
   })
@@ -733,7 +731,7 @@ export const ApiPluginRoute = new Hono()
         )
       }
       const source = approvedSource ?? (plugin ? derivePluginSource(plugin.pluginDir) : "local")
-      const risk = computeRisk(capabilities)
+      const risk = computeRisk(capabilities, m)
       const record: PluginApprovalRecord = {
         pluginId,
         source,
@@ -826,7 +824,7 @@ export const ApiPluginRoute = new Hono()
         )
       }
       const source = approvedSource ?? (plugin ? derivePluginSource(plugin.pluginDir) : "local")
-      const risk = computeRisk(capabilities)
+      const risk = computeRisk(capabilities, m)
       const record: PluginApprovalRecord = {
         pluginId,
         source,

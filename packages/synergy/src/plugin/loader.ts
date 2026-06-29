@@ -23,7 +23,7 @@ import { baseCapabilities } from "./capability"
 import { computeRisk } from "./consent/risk"
 import { resolveRuntimeMode } from "../plugin-runtime/mode-resolver"
 import type { RuntimeMode } from "../plugin-runtime/registry"
-import type { PluginSource } from "./trust"
+import { isTrustedPluginSource, type PluginSource } from "./trust"
 import { assertCanonicalPluginIdentity, findPackageRoot, importUrlForEntry, resolvePluginSpec } from "./spec-resolver"
 import * as Lockfile from "./lockfile"
 
@@ -219,7 +219,7 @@ export const state = ScopedState.create(async (): Promise<LoaderState> => {
         source: resolved.source,
         manifestMode: resolved.manifest?.runtime?.mode,
         devMode: Installation.CHANNEL === "local",
-        userTrusted: resolved.source === "local" || resolved.source === "builtin",
+        userTrusted: isTrustedPluginSource(resolved.source),
         risk,
         policy: config.pluginRuntimePolicy,
       })

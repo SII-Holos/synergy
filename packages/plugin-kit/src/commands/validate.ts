@@ -9,7 +9,7 @@ import { UI } from "../ui"
 import { PluginId } from "../lib/ids"
 import { baseCapabilities } from "../lib/capability"
 import { computeRisk } from "../lib/risk"
-import { validateRuntimePolicy, type CheckResult } from "../lib/runtime-policy"
+import { defaultPluginTrustDecision, validateRuntimePolicy, type CheckResult } from "../lib/runtime-policy"
 import { validateRuntimeDiscovery } from "../lib/runtime-discovery"
 import { assertCanonicalPluginIdentity, importUrlForEntry, resolveEntryFromPluginDir } from "../lib/spec"
 import { collectPackagedAssets, resolveUnder } from "../lib/artifact-assets"
@@ -234,7 +234,16 @@ export async function validatePluginProject(pluginPath: string, options: { runti
   }
 
   const pluginRisk = computeRisk(baseCapabilities(m), m)
-  results.push(...validateRuntimePolicy({ manifest: m, source: "local", trustTier: "declarative", risk: pluginRisk }))
+  const trust = defaultPluginTrustDecision({ source: "local", devMode: true })
+  results.push(
+    ...validateRuntimePolicy({
+      manifest: m,
+      source: trust.source,
+      trustTier: trust.tier,
+      risk: pluginRisk,
+      userTrusted: trust.userTrusted,
+    }),
+  )
 
   if (options.runtimeDiscovery) {
     const manifestToolNames = (m.contributes?.tools ?? []).map((tool) => tool.name)

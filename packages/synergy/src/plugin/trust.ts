@@ -4,7 +4,13 @@ import type { PluginSource } from "@ericsanchezok/synergy-plugin/policy"
 import { Global } from "../global"
 import { PluginSpec } from "../util/plugin-spec"
 
-export { decideTrust, trustReason, trustSummary } from "@ericsanchezok/synergy-plugin/policy"
+export {
+  decideTrust,
+  defaultPluginTrustDecision,
+  isTrustedPluginSource,
+  trustReason,
+  trustSummary,
+} from "@ericsanchezok/synergy-plugin/policy"
 export type { PluginSource, PluginTrustDecision, TrustTier } from "@ericsanchezok/synergy-plugin/policy"
 
 function sourceFromSpec(spec: string): PluginSource {
