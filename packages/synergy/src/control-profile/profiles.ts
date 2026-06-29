@@ -5,6 +5,7 @@ import {
   capabilityRisk,
   PROFILE_CAPABILITIES,
 } from "@ericsanchezok/synergy-plugin/permissions"
+import { PROFILE_IDS } from "./ids"
 import type { ProfileSandbox } from "./types"
 import type {
   ControlProfile,
@@ -14,8 +15,6 @@ import type {
   ResolutionContext,
   ResolvedProfile,
 } from "./types"
-
-export const PROFILE_IDS: readonly ProfileId[] = ["guarded", "autonomous", "full_access"]
 
 function rule(permission: string, action: "allow" | "deny" | "ask", nonBypassable = false) {
   return { permission, pattern: "*", action, ...(nonBypassable ? { nonBypassable: true } : {}) }

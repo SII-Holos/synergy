@@ -9,6 +9,7 @@ import { PluginLogBuffer } from "../../src/plugin-runtime/logs.js"
 import { DEFAULT_LIMITS } from "../../src/plugin-runtime/health.js"
 import type { RuntimeEntry } from "../../src/plugin-runtime/registry.js"
 import type { RuntimeStatePersistence } from "../../src/plugin-runtime/supervisor.js"
+import { DEFAULT_SERVER_URL } from "../../src/server/defaults.js"
 
 // === Helpers ===
 
@@ -100,6 +101,7 @@ describe("PluginRuntimeSupervisor", () => {
       expect(entry.mode).toBe("in-process")
       expect(entry.state).toBe("ready")
       expect(entry.restarts).toBe(0)
+      expect(entry.serverUrl).toBe(DEFAULT_SERVER_URL)
       expect(entry.warnings).toEqual([])
       expect(registry.get(pluginId)?.state).toBe("ready")
     })
@@ -113,6 +115,19 @@ describe("PluginRuntimeSupervisor", () => {
 
       // Should be the same entry reference
       expect(second).toBe(first)
+    })
+
+    test("restarts a running plugin when the launch spec changes", async () => {
+      const { supervisor } = createSupervisor()
+      const pluginId = uniquePluginId()
+
+      const first = await startInProcess(supervisor, pluginId, { entryPath: "/tmp/plugin-a/index.js" })
+      const second = await startInProcess(supervisor, pluginId, { entryPath: "/tmp/plugin-b/index.js" })
+
+      expect(second).not.toBe(first)
+      expect(second.entryPath).toBe("/tmp/plugin-b/index.js")
+      expect(second.restarts).toBe(1)
+      expect(second.state).toBe("ready")
     })
 
     test("increments restarts when re-starting a stopped plugin", async () => {

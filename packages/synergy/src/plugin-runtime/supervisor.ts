@@ -1,4 +1,5 @@
 import { Log } from "@/util/log"
+import path from "path"
 import { recordEvent } from "../plugin/audit.js"
 import type { HostToPlugin, IsolatedPluginInputData, HostBridgeHandler, RuntimeToolContextData } from "./protocol.js"
 import { resolveRuntimeMode } from "./mode-resolver.js"
@@ -21,6 +22,7 @@ import { computeRisk } from "../plugin/consent/risk.js"
 import { PluginLogBuffer } from "./logs.js"
 import { Global } from "../global/index.js"
 import { Config } from "../config/config.js"
+import { DEFAULT_SERVER_URL } from "../server/defaults.js"
 import {
   RuntimeRegistry,
   defaultRuntimeRegistry,
@@ -49,6 +51,45 @@ export function resolveRuntimeLaunchMode(
     }
   }
   return { mode, runtimeDecision }
+}
+
+function normalizeRuntimePath(input: string | undefined): string {
+  return input ? path.resolve(input) : ""
+}
+
+function sameRuntimeLimits(left: RuntimeLimits, right: RuntimeLimits): boolean {
+  return (
+    left.startupTimeoutMs === right.startupTimeoutMs &&
+    left.requestTimeoutMs === right.requestTimeoutMs &&
+    left.shutdownGraceMs === right.shutdownGraceMs &&
+    left.maxConcurrentRequests === right.maxConcurrentRequests &&
+    left.maxLogBytesPerMinute === right.maxLogBytesPerMinute &&
+    left.memoryMb === right.memoryMb &&
+    left.memoryPollIntervalMs === right.memoryPollIntervalMs &&
+    left.heartbeatIntervalMs === right.heartbeatIntervalMs &&
+    left.heartbeatMissesBeforeKill === right.heartbeatMissesBeforeKill
+  )
+}
+
+function runtimeMatchesRequest(
+  entry: RuntimeEntry,
+  request: {
+    mode: RuntimeMode
+    entryPath: string
+    pluginDir: string
+    source?: PluginSource
+    serverUrl: string
+    limits: RuntimeLimits
+  },
+): boolean {
+  return (
+    entry.mode === request.mode &&
+    normalizeRuntimePath(entry.entryPath) === normalizeRuntimePath(request.entryPath) &&
+    normalizeRuntimePath(entry.pluginDir) === normalizeRuntimePath(request.pluginDir) &&
+    (entry.source ?? "npm") === (request.source ?? "npm") &&
+    (entry.serverUrl ?? DEFAULT_SERVER_URL) === request.serverUrl &&
+    sameRuntimeLimits(entry.limits, request.limits)
+  )
 }
 
 // === Persistence interface ===
@@ -268,19 +309,6 @@ export class PluginRuntimeSupervisor {
 
   async start(pluginId: string, options: StartRuntimeOptions): Promise<RuntimeEntry> {
     const existing = this.#registry.get(pluginId)
-    if (existing && existing.state !== "stopped" && existing.state !== "crashed") {
-      log.warn("plugin already running", { pluginId, state: existing.state })
-      return existing
-    }
-
-    // Reset or increment restart counter when restarting
-    const restarts =
-      existing && (existing.state === "crashed" || existing.state === "stopped")
-        ? existing.restarts + 1
-        : existing
-          ? existing.restarts
-          : 0
-
     // Read manifest for runtime preferences (mode, resources)
     let manifest: PluginManifestType | null = null
     try {
@@ -317,6 +345,40 @@ export class PluginRuntimeSupervisor {
 
     const manifestResources = manifest?.runtime?.resources
     const limits = resolveRuntimeLimits(config?.pluginRuntimePolicy?.limits, manifestResources)
+    const serverUrl = options.serverUrl ?? DEFAULT_SERVER_URL
+
+    if (existing && existing.state !== "stopped" && existing.state !== "crashed") {
+      if (
+        runtimeMatchesRequest(existing, {
+          mode: resolvedMode,
+          entryPath: options.entryPath,
+          pluginDir: options.pluginDir,
+          source: options.source,
+          serverUrl,
+          limits,
+        })
+      ) {
+        log.warn("plugin already running", { pluginId, state: existing.state })
+        return existing
+      }
+      log.info("plugin runtime launch spec changed; restarting", {
+        pluginId,
+        state: existing.state,
+        previousMode: existing.mode,
+        nextMode: resolvedMode,
+        previousEntryPath: existing.entryPath,
+        nextEntryPath: options.entryPath,
+      })
+      await this.stop(pluginId, true)
+    }
+
+    const latestExisting = this.#registry.get(pluginId)
+    const restarts =
+      latestExisting && (latestExisting.state === "crashed" || latestExisting.state === "stopped")
+        ? latestExisting.restarts + 1
+        : latestExisting
+          ? latestExisting.restarts
+          : 0
 
     const entry: RuntimeEntry = {
       pluginId,
@@ -325,7 +387,7 @@ export class PluginRuntimeSupervisor {
       entryPath: options.entryPath,
       pluginDir: options.pluginDir,
       source: options.source,
-      serverUrl: options.serverUrl,
+      serverUrl,
       state: "starting",
       restarts,
       startedAt: Date.now(),
@@ -368,7 +430,7 @@ export class PluginRuntimeSupervisor {
           time: { created: 0, updated: 0 },
           sandboxes: [],
         } as IsolatedPluginInputData["scope"])
-      const serverUrl = options.serverUrl ?? "http://localhost:3000"
+      const serverUrl = entry.serverUrl ?? DEFAULT_SERVER_URL
 
       const input: IsolatedPluginInputData = {
         pluginId,
@@ -495,7 +557,7 @@ export class PluginRuntimeSupervisor {
           time: { created: 0, updated: 0 },
           sandboxes: [],
         } as IsolatedPluginInputData["scope"])
-      const serverUrl = options.serverUrl ?? "http://localhost:3000"
+      const serverUrl = entry.serverUrl ?? DEFAULT_SERVER_URL
 
       const input: IsolatedPluginInputData = {
         pluginId,
