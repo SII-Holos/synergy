@@ -18,12 +18,15 @@ export interface ResolvedPluginSpec {
   pluginDir: string
   manifest: PluginManifestType | null
   cached?: boolean
+  stagingDir?: string
+  finalPluginDir?: string
 }
 
 export interface ResolvePluginSpecOptions {
   cwd?: string
   install?: boolean
   refresh?: boolean
+  stageLocalArchive?: boolean
 }
 
 const ARCHIVE_RE = /\.(?:synergy-plugin\.)?t(?:ar\.)?gz$|\.tgz$/i
@@ -36,15 +39,19 @@ function pathFromFileSpec(spec: string): string {
   }
 }
 
-function isArchive(filePath: string): boolean {
+export function isArchivePath(filePath: string): boolean {
   return ARCHIVE_RE.test(filePath)
 }
 
-function safeArchiveName(filePath: string): string {
+export function safeArchiveName(filePath: string): string {
   return path
     .basename(filePath)
     .replace(/[^a-zA-Z0-9_.-]/g, "-")
     .replace(/^-+/, "")
+}
+
+export function archiveCacheDir(archivePath: string): string {
+  return path.join(Global.Path.cache, "plugin-archives", safeArchiveName(archivePath).replace(/\.tgz$/i, ""))
 }
 
 /** Walk up from a file path to find the nearest directory containing package.json or plugin.json. */
@@ -96,8 +103,15 @@ export function resolveEntryFromPluginDir(pluginDir: string, manifest: PluginMan
   return candidates.find((candidate) => fs.existsSync(candidate)) ?? candidates[0]
 }
 
-async function extractArchive(archivePath: string): Promise<string> {
-  const targetDir = path.join(Global.Path.cache, "plugin-archives", safeArchiveName(archivePath).replace(/\.tgz$/i, ""))
+async function extractArchive(archivePath: string, options: { stage?: boolean } = {}): Promise<string> {
+  const targetDir = options.stage
+    ? path.join(
+        Global.Path.state,
+        "plugin-install",
+        "staging",
+        `${safeArchiveName(archivePath).replace(/\.tgz$/i, "")}-${process.pid}-${Date.now()}`,
+      )
+    : archiveCacheDir(archivePath)
   fs.rmSync(targetDir, { recursive: true, force: true })
   fs.mkdirSync(targetDir, { recursive: true })
   const result = Bun.spawnSync(["tar", "-xzf", archivePath, "-C", targetDir], {
@@ -114,10 +128,13 @@ async function extractArchive(archivePath: string): Promise<string> {
 async function resolveLocalSpec(spec: string, options: ResolvePluginSpecOptions): Promise<ResolvedPluginSpec> {
   const rawPath = pathFromFileSpec(spec)
   const absolute = path.isAbsolute(rawPath) ? rawPath : path.resolve(options.cwd ?? process.cwd(), rawPath)
-  const pluginDir = isArchive(absolute) ? await extractArchive(absolute) : findPackageRoot(absolute)
+  const archive = isArchivePath(absolute)
+  const pluginDir = archive
+    ? await extractArchive(absolute, { stage: options.stageLocalArchive })
+    : findPackageRoot(absolute)
   const manifest = await readPluginManifest(pluginDir)
   const entryPath =
-    fs.existsSync(absolute) && fs.statSync(absolute).isFile() && !isArchive(absolute)
+    fs.existsSync(absolute) && fs.statSync(absolute).isFile() && !archive
       ? absolute
       : resolveEntryFromPluginDir(pluginDir, manifest)
   const pkg = manifest?.name ?? path.basename(pluginDir)
@@ -129,6 +146,9 @@ async function resolveLocalSpec(spec: string, options: ResolvePluginSpecOptions)
     entryPath,
     pluginDir,
     manifest,
+    ...(archive && options.stageLocalArchive
+      ? { stagingDir: pluginDir, finalPluginDir: archiveCacheDir(absolute) }
+      : {}),
   }
 }
 

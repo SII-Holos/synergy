@@ -25,6 +25,7 @@ import { resolveRuntimeMode } from "../plugin-runtime/mode-resolver"
 import type { RuntimeMode } from "../plugin-runtime/registry"
 import type { PluginSource } from "./trust"
 import { assertCanonicalPluginIdentity, findPackageRoot, importUrlForEntry, resolvePluginSpec } from "./spec-resolver"
+import * as Lockfile from "./lockfile"
 
 const log = Log.create({ service: "plugin.loader" })
 // ---------------------------------------------------------------------------
@@ -82,6 +83,52 @@ export interface LoaderState {
   loaded: LoadedPlugin[]
 }
 
+export interface ResolvedLoadCandidate {
+  configPath: string
+  name: string
+  showInstallUI: boolean
+  resolved: Awaited<ReturnType<typeof resolvePluginSpec>>
+  pluginId?: string
+}
+
+export function selectLoadCandidates(
+  candidates: ResolvedLoadCandidate[],
+  lockfile: Awaited<ReturnType<typeof Lockfile.read>> | null,
+): ResolvedLoadCandidate[] {
+  const selected = new Set<ResolvedLoadCandidate>()
+  const byPluginId = new Map<string, ResolvedLoadCandidate>()
+
+  for (const candidate of candidates) {
+    const pluginId = candidate.pluginId
+    if (!pluginId) {
+      selected.add(candidate)
+      continue
+    }
+
+    const current = byPluginId.get(pluginId)
+    if (!current) {
+      byPluginId.set(pluginId, candidate)
+      selected.add(candidate)
+      continue
+    }
+
+    const lockSpec = lockfile?.plugins[pluginId]?.spec
+    const keep = lockSpec === current.configPath ? current : lockSpec === candidate.configPath ? candidate : candidate
+    const drop = keep === current ? candidate : current
+    selected.delete(drop)
+    selected.add(keep)
+    byPluginId.set(pluginId, keep)
+    log.warn("duplicate plugin config spec skipped", {
+      pluginId,
+      kept: keep.configPath,
+      skipped: drop.configPath,
+      reason: lockSpec ? "lockfile" : "last-config-spec",
+    })
+  }
+
+  return candidates.filter((candidate) => selected.has(candidate))
+}
+
 export const state = ScopedState.create(async (): Promise<LoaderState> => {
   const config = await Config.current()
   const loaded: LoadedPlugin[] = []
@@ -104,6 +151,7 @@ export const state = ScopedState.create(async (): Promise<LoaderState> => {
     $: Bun.$,
   }
 
+  const candidates: ResolvedLoadCandidate[] = []
   for (const configPath of pluginPaths) {
     log.info("loading plugin", { path: configPath })
     const name = PluginSpec.displayName(configPath)
@@ -133,6 +181,20 @@ export const state = ScopedState.create(async (): Promise<LoaderState> => {
       printedPluginPaths.add(configPath)
     }
 
+    candidates.push({
+      configPath,
+      name,
+      showInstallUI,
+      resolved,
+      pluginId: resolved.manifest?.name ?? resolved.pkg,
+    })
+  }
+
+  const lockfile = await Lockfile.read().catch(() => null)
+  const loadedPluginIds = new Set<string>()
+  for (const candidate of selectLoadCandidates(candidates, lockfile)) {
+    const { configPath, resolved } = candidate
+
     const isLocal = configPath.startsWith("file://")
     const importUrl = importUrlForEntry(resolved.entryPath, isLocal ? reloadVersion : undefined)
     const mod = await import(importUrl)
@@ -146,6 +208,11 @@ export const state = ScopedState.create(async (): Promise<LoaderState> => {
       assertCanonicalPluginIdentity({ spec: configPath, manifest: resolved.manifest, descriptor })
 
       const pluginId = descriptor.id
+      if (loadedPluginIds.has(pluginId)) {
+        log.warn("duplicate plugin descriptor skipped", { pluginId, path: configPath })
+        continue
+      }
+      loadedPluginIds.add(pluginId)
       const showLoadedUI = !printedPluginIds.has(pluginId)
       const risk = resolved.manifest ? computeRisk(baseCapabilities(resolved.manifest), resolved.manifest) : "low"
       const runtimeMode = resolveRuntimeMode({

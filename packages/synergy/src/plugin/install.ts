@@ -1,6 +1,7 @@
 import type { LoadedPlugin } from "./loader"
 import { recordEvent } from "./audit.js"
 import path from "path"
+import fs from "fs/promises"
 import z from "zod"
 import { PluginManifest } from "@ericsanchezok/synergy-plugin"
 import { Config } from "../config/config"
@@ -15,13 +16,13 @@ import { baseCapabilities } from "./capability"
 import { computeRisk } from "./consent/risk"
 import { resolveRuntimeMode } from "../plugin-runtime/mode-resolver.js"
 import { resolvePluginSpec } from "./spec-resolver"
+import { PluginInstallationTransaction } from "./installation-transaction"
 import {
   type PluginApprovalRecord,
   computePermissionsHash,
   computeManifestHash,
   getApproval,
   verifyApproval,
-  saveApproval,
 } from "./consent/approval-store"
 import { decideTrust, type PluginSource } from "./trust"
 import { evaluatePolicy } from "./consent/policy"
@@ -47,7 +48,7 @@ function satisfiesMinVersion(current: string, required: string): boolean {
 // Add / remove
 // ---------------------------------------------------------------------------
 
-async function resolveConfiguredPluginId(spec: string): Promise<string | null> {
+export async function resolveConfiguredPluginId(spec: string): Promise<string | null> {
   const mapped = specToPluginId.get(spec)
   if (mapped) return mapped
 
@@ -63,56 +64,13 @@ async function resolveConfiguredPluginId(spec: string): Promise<string | null> {
   }
 }
 
-export async function nextConfiguredPluginSpecsForInstall(
-  currentPlugins: string[],
-  input: {
-    spec: string
-    pluginId: string
-    resolvePluginId?: (spec: string) => Promise<string | null> | string | null
-  },
-): Promise<{ plugins: string[]; removed: string[]; changed: boolean }> {
-  const resolvePluginId = input.resolvePluginId ?? resolveConfiguredPluginId
-  const plugins: string[] = []
-  const removed: string[] = []
-  let hasTargetSpec = false
-
-  for (const currentSpec of currentPlugins) {
-    if (currentSpec === input.spec) {
-      if (hasTargetSpec) {
-        removed.push(currentSpec)
-        continue
-      }
-      hasTargetSpec = true
-      plugins.push(currentSpec)
-      continue
-    }
-
-    const currentPluginId = await resolvePluginId(currentSpec)
-    if (currentPluginId === input.pluginId) {
-      removed.push(currentSpec)
-      continue
-    }
-
-    plugins.push(currentSpec)
-  }
-
-  if (!hasTargetSpec) {
-    plugins.push(input.spec)
-  }
-
-  const changed =
-    removed.length > 0 ||
-    plugins.length !== currentPlugins.length ||
-    plugins.some((spec, index) => spec !== currentPlugins[index])
-  return { plugins, removed, changed }
-}
-
 export async function add(
   spec: string,
   opts: { autoReload?: boolean; skipConsent?: boolean } = {},
 ): Promise<LoadedPlugin> {
   const parsedSpec = spec.startsWith("file://") ? { pkg: spec, version: "latest" } : PluginSpec.parse(spec)
   const { pkg, version } = parsedSpec
+  let stagedDir: string | undefined
 
   // Audit: install requested
   void recordEvent({ pluginId: spec, type: "install_requested", details: { spec, version } })
@@ -122,7 +80,9 @@ export async function add(
       cwd: process.cwd(),
       install: !spec.startsWith("file://"),
       refresh: !spec.startsWith("file://"),
+      stageLocalArchive: spec.startsWith("file://"),
     })
+    stagedDir = resolved.stagingDir
     const pluginDir = resolved.pluginDir
     const manifestData: z.infer<typeof PluginManifest> | null = resolved.manifest
     const canonicalPluginId = manifestData?.name ?? resolved.pkg
@@ -157,6 +117,7 @@ export async function add(
     let permissionsHash: string | undefined
     let manifestHash: string | undefined
     let risk: "low" | "medium" | "high" = "low"
+    let approvalRecord: PluginApprovalRecord | undefined
 
     // Derive plugin source from spec (does not depend on manifest)
     const source: PluginSource = resolved.source
@@ -229,7 +190,6 @@ export async function add(
         }
       }
 
-      // Write approval record
       const approvedBy: PluginApprovalRecord["approvedBy"] =
         opts.skipConsent === true
           ? "policy"
@@ -238,7 +198,7 @@ export async function add(
             : trust.tier === "trusted-import"
               ? "builtin"
               : "user"
-      await saveApproval({
+      approvalRecord = {
         pluginId: canonicalPluginId,
         source,
         version: manifestData.version ?? version,
@@ -251,7 +211,7 @@ export async function add(
         approvedNetworkDomains: manifestData.permissions?.network?.connectDomains ?? [],
         approvedUISurfaces: [],
         risk,
-      })
+      }
       log.info("plugin consent: approval recorded", { plugin: spec, risk, approvedBy })
     }
 
@@ -263,8 +223,6 @@ export async function add(
       }
     }
 
-    // Update lockfile with installed plugin entry (including integrity + consent hashes)
-    const lockfile = await Lockfile.read()
     const integrity = await Lockfile.computeIntegrity(resolved.entryPath)
     const runtimeMode = resolveRuntimeMode({
       source,
@@ -273,7 +231,7 @@ export async function add(
       userTrusted: false,
       risk,
     })
-    const updatedLockfile = Lockfile.addEntry(lockfile, canonicalPluginId, {
+    const lockEntry = {
       spec,
       version: manifestData?.version ?? version,
       resolved: resolved.entryPath,
@@ -283,39 +241,20 @@ export async function add(
       ...(sigMeta ? { signature: Signature.toLockfileSignature(sigMeta) } : {}),
       runtimeMode,
       ...(manifestData ? { approvalId: canonicalPluginId } : {}),
+    } satisfies import("./lockfile-schema").PluginLockEntry
+
+    const plugin = await PluginInstallationTransaction.upsert({
+      spec,
+      pluginId: canonicalPluginId,
+      resolved,
+      lockEntry,
+      approval: approvalRecord,
+      autoReload: opts.autoReload,
+      reload,
+      getLoaded: async () => state().then((x) => x.loaded),
+      resolvePluginId: resolveConfiguredPluginId,
     })
-    await Lockfile.write(updatedLockfile)
-
-    // Add to config.plugin[] array, replacing older specs that resolve to
-    // the same plugin id so updates do not leave duplicate active installs.
-    const config = await Config.current()
-    const currentPlugins = config.plugin ?? []
-    const nextConfig = await nextConfiguredPluginSpecsForInstall(currentPlugins, { spec, pluginId: canonicalPluginId })
-    if (nextConfig.changed) {
-      await Config.domainUpdate("plugins", { plugin: nextConfig.plugins } as any, { mode: "replace-domain" })
-      for (const removedSpec of nextConfig.removed) {
-        specToPluginId.delete(removedSpec)
-      }
-      await Config.reload("global")
-    }
-
-    // Reload plugins to load the new one
-    if (opts.autoReload !== false) {
-      await reload()
-    }
-
-    // Find the newly loaded plugin
-    const { loaded } = await state()
-    const plugin = loaded.find((p) => {
-      // Match by checking if any plugin in the same pluginDir has a matching spec
-      // For non-registry specs, match by the actual entry path
-      return p.pluginDir === pluginDir
-    })
-
-    if (!plugin) {
-      throw new Error(`Plugin was installed but failed to load: ${spec}`)
-    }
-
+    stagedDir = undefined
     specToPluginId.set(spec, plugin.id)
 
     // Audit: install approved
@@ -327,8 +266,8 @@ export async function add(
       pluginId: plugin.id,
       mode: runtimeMode,
       source,
-      entryPath: resolved.entryPath,
-      pluginDir,
+      entryPath: plugin.entryPath ?? lockEntry.resolved,
+      pluginDir: plugin.pluginDir,
     }).catch((err) => {
       log.warn("autoStartRuntime promise rejection (should not happen)", {
         pluginId: plugin.id,
@@ -344,6 +283,10 @@ export async function add(
       details: { spec, version, error: err instanceof Error ? err.message : String(err) },
     })
     throw err
+  } finally {
+    if (stagedDir) {
+      await fs.rm(stagedDir, { recursive: true, force: true }).catch(() => {})
+    }
   }
 }
 
@@ -361,45 +304,18 @@ export async function remove(pluginId: string, opts: { autoReload?: boolean } = 
     })
   }
 
-  // Remove from config.plugin[] array
-  const config = await Config.current()
-  const currentPlugins = config.plugin ?? []
-  const kept = currentPlugins.filter((spec) => {
-    const entry = specToPluginId.get(spec)
-    if (entry != null) return entry !== pluginId
-    return resolveSpecPluginDir(spec) !== plugin.pluginDir
-  })
-
-  let configChanged = kept.length < currentPlugins.length
-  let pluginConfig = config.pluginConfig
-
-  if (config.pluginConfig?.[pluginId]) {
-    const { [pluginId]: _, ...rest } = config.pluginConfig ?? {}
-    pluginConfig = rest
-    configChanged = true
-  }
-
-  if (configChanged) {
-    await Config.domainUpdate("plugins", { plugin: kept, pluginConfig } as any, { mode: "replace-domain" })
-    await Config.reload("global")
-  }
-
-  // Clear the spec → pluginId mapping and remove from lockfile
-  let lockfile = await Lockfile.read()
   for (const [key, value] of specToPluginId) {
     if (value === pluginId) {
-      lockfile = Lockfile.removeEntry(lockfile, pluginId)
-      if (!key.startsWith("file://")) {
-        lockfile = Lockfile.removeEntry(lockfile, PluginSpec.parse(key).pkg)
-      }
       specToPluginId.delete(key)
     }
   }
-  await Lockfile.write(lockfile)
-
-  if (opts.autoReload !== false) {
-    await reload()
-  }
+  await PluginInstallationTransaction.remove({
+    pluginId,
+    pluginDir: plugin.pluginDir,
+    autoReload: opts.autoReload,
+    reload,
+    resolveSpecPluginDir,
+  })
 }
 
 // ---------------------------------------------------------------------------
