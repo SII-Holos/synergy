@@ -36,6 +36,10 @@ export const PluginEntryCommand = cmd({
         type: "string",
         describe: "release asset URL template using {repo}, {version}, {tag}, and {filename}",
       })
+      .option("release-tag-template", {
+        type: "string",
+        describe: "release tag template used by GitHub URLs; supports {version} and {tag}",
+      })
       .option("write-entry", {
         type: "string",
         describe: "write or update a marketplace plugins/<id>.json entry",
@@ -54,6 +58,7 @@ export const PluginEntryCommand = cmd({
         signatureUrl: args.signatureUrl as string | undefined,
         releaseBackend: args["release-backend"] as "github" | "manual" | undefined,
         releaseUrlTemplate: args["release-url-template"] as string | undefined,
+        releaseTagTemplate: args["release-tag-template"] as string | undefined,
         changelog: args.changelog as string | undefined,
       })
       const writeEntry = args.writeEntry as string | undefined

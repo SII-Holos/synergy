@@ -3,6 +3,7 @@ import os from "os"
 import path from "path"
 import { PluginManifest, type PluginManifest as PluginManifestType } from "@ericsanchezok/synergy-plugin"
 import {
+  githubReleaseTag,
   githubReleaseAssetUrl,
   githubRepoSlug as sharedGithubRepoSlug,
   normalizeGitHubRepoUrl,
@@ -84,9 +85,10 @@ export function renderReleaseUrlTemplate(input: {
   template: string
   repo: string
   version: string
+  tag?: string
   filename: string
 }): string {
-  const tag = `v${input.version}`
+  const tag = input.tag ?? githubReleaseTag(input.version)
   return input.template
     .replaceAll("{repo}", input.repo.replace(/\/+$/, ""))
     .replaceAll("{version}", input.version)
@@ -102,8 +104,10 @@ export function resolveReleaseAssetUrls(input: {
   downloadUrl?: string
   signatureUrl?: string
   releaseUrlTemplate?: string
+  releaseTagTemplate?: string
 }): { downloadUrl: string; signatureUrl: string } {
   const backend = input.backend ?? "github"
+  const tag = githubReleaseTag(input.version, input.releaseTagTemplate)
   const downloadUrl =
     input.downloadUrl ??
     (input.releaseUrlTemplate
@@ -111,10 +115,16 @@ export function resolveReleaseAssetUrls(input: {
           template: input.releaseUrlTemplate,
           repo: input.repo,
           version: input.version,
+          tag,
           filename: input.filename,
         })
       : backend === "github"
-        ? releaseAssetUrl(input.repo, input.version, input.filename)
+        ? githubReleaseAssetUrl({
+            repo: input.repo,
+            version: input.version,
+            filename: input.filename,
+            tagTemplate: input.releaseTagTemplate,
+          })
         : undefined)
   const signatureUrl = input.signatureUrl ?? (downloadUrl ? `${downloadUrl}.sig` : undefined)
   if (!downloadUrl || !signatureUrl) {
@@ -184,6 +194,7 @@ export function githubEntry(input: {
   signatureUrl?: string
   releaseBackend?: MarketplaceReleaseBackend
   releaseUrlTemplate?: string
+  releaseTagTemplate?: string
   changelog?: string
   publishedAt?: string
 }): GithubRegistryEntry {
@@ -205,6 +216,7 @@ export function githubEntry(input: {
     downloadUrl: input.downloadUrl,
     signatureUrl: input.signatureUrl,
     releaseUrlTemplate: input.releaseUrlTemplate,
+    releaseTagTemplate: input.releaseTagTemplate,
   })
 
   const capabilities = baseCapabilities(manifest)

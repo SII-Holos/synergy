@@ -2,7 +2,7 @@ import { $ } from "bun"
 import fs from "fs"
 import path from "path"
 import type { Argv } from "yargs"
-import { OFFICIAL_GITHUB_PLUGIN_MARKETPLACE } from "@ericsanchezok/synergy-plugin/market"
+import { OFFICIAL_GITHUB_PLUGIN_MARKETPLACE, githubReleaseTag } from "@ericsanchezok/synergy-plugin/market"
 import { cmd } from "../cmd"
 import { UI } from "../ui"
 import { SYNERGY_ROOT } from "../lib/paths"
@@ -40,9 +40,21 @@ function defaultRegistryBranchPrefix(): string {
   return process.env.SYNERGY_PLUGIN_MARKET_BRANCH_PREFIX ?? OFFICIAL_GITHUB_PLUGIN_MARKETPLACE.registryBranchPrefix
 }
 
+function defaultReleaseTagTemplate(): string {
+  return process.env.SYNERGY_PLUGIN_MARKET_RELEASE_TAG_TEMPLATE ?? "v{version}"
+}
+
 function defaultReleaseBackend(): "github" | "manual" {
   const raw = process.env.SYNERGY_PLUGIN_MARKET_RELEASE_BACKEND?.trim()
   return raw === "manual" ? "manual" : "github"
+}
+
+function renderTemplate(template: string, input: { pluginId: string; version: string; tag?: string }): string {
+  const tag = input.tag ?? githubReleaseTag(input.version)
+  return template
+    .replaceAll("{pluginId}", input.pluginId)
+    .replaceAll("{version}", input.version)
+    .replaceAll("{tag}", tag)
 }
 
 async function commandExists(name: string): Promise<boolean> {
@@ -115,6 +127,7 @@ async function ensureGitHubReleaseAssets(input: {
   tarballPath: string
   signaturePath: string
   skipUpload: boolean
+  releaseTagTemplate: string
 }) {
   if (input.skipUpload) return
   if (!(await ghReady())) {
@@ -131,7 +144,7 @@ async function ensureGitHubReleaseAssets(input: {
     return
   }
 
-  const tag = `v${input.version}`
+  const tag = githubReleaseTag(input.version, input.releaseTagTemplate)
   const view = await $`gh release view ${tag} --repo ${repoSlug}`.quiet().nothrow()
   if (view.exitCode === 0) {
     await $`gh release upload ${tag} ${input.tarballPath} ${input.signaturePath} --repo ${repoSlug} --clobber`
@@ -155,10 +168,11 @@ async function openRegistryPr(input: {
   noPr: boolean
   githubRepo: string
   baseBranch: string
-  branchPrefix: string
+  branch: string
+  title?: string
+  body?: string
 }) {
-  const prefix = input.branchPrefix.replace(/\/+$/, "")
-  const branch = `${prefix}/${input.pluginId}-${input.version}`
+  const branch = input.branch
   await $`git checkout -B ${branch}`.cwd(input.registryDir)
   await $`git add plugins/${input.pluginId}.json registry.json`.cwd(input.registryDir).nothrow()
   const iconPath = path.join(input.registryDir, "icons", `${input.pluginId}.svg`)
@@ -169,7 +183,9 @@ async function openRegistryPr(input: {
     return
   }
 
-  await $`git commit -m ${`Add ${input.pluginId} ${input.version}`}`.cwd(input.registryDir)
+  const title = input.title ?? `Add ${input.pluginId} ${input.version}`
+  const body = input.body ?? `Adds ${input.pluginId} ${input.version} to the Synergy Plugin Marketplace.`
+  await $`git commit -m ${title}`.cwd(input.registryDir)
 
   if (input.noPr || !(await ghReady())) {
     UI.println()
@@ -184,7 +200,7 @@ async function openRegistryPr(input: {
 
   try {
     await $`git push -u origin ${branch}`.cwd(input.registryDir)
-    await $`gh pr create --repo ${input.githubRepo} --base ${input.baseBranch} --head ${branch} --title ${`Add ${input.pluginId} ${input.version}`} --body ${`Adds ${input.pluginId} ${input.version} to the Synergy Plugin Marketplace.`}`.cwd(
+    await $`gh pr create --repo ${input.githubRepo} --base ${input.baseBranch} --head ${branch} --title ${title} --body ${body}`.cwd(
       input.registryDir,
     )
   } catch {
@@ -260,6 +276,27 @@ export const PluginPublishMarketCommand = cmd({
         type: "string",
         describe: "template for release asset URLs; supports {repo}, {version}, {tag}, and {filename}",
       })
+      .option("release-tag-template", {
+        type: "string",
+        default: defaultReleaseTagTemplate(),
+        describe: "release tag template; supports {version} and {tag}",
+      })
+      .option("registry-branch", {
+        type: "string",
+        describe: "exact registry branch name to use instead of the default generated branch",
+      })
+      .option("registry-branch-template", {
+        type: "string",
+        describe: "registry branch template; supports {pluginId}, {version}, and {tag}",
+      })
+      .option("registry-pr-title", {
+        type: "string",
+        describe: "registry PR title template; supports {pluginId}, {version}, and {tag}",
+      })
+      .option("registry-pr-body", {
+        type: "string",
+        describe: "registry PR body template; supports {pluginId}, {version}, and {tag}",
+      })
       .option("pr", {
         type: "boolean",
         default: true,
@@ -293,12 +330,14 @@ export const PluginPublishMarketCommand = cmd({
 
       const signaturePath = `${tarballPath}.sig`
       const releaseBackend = (args["release-backend"] as "github" | "manual" | undefined) ?? defaultReleaseBackend()
+      const releaseTagTemplate = (args["release-tag-template"] as string | undefined) ?? defaultReleaseTagTemplate()
       await ensureGitHubReleaseAssets({
         repo,
         version: manifest.version,
         tarballPath,
         signaturePath,
         skipUpload: releaseBackend !== "github" || Boolean(args["skip-release-upload"]),
+        releaseTagTemplate,
       })
 
       const { downloadUrl, signatureUrl } = resolveReleaseAssetUrls({
@@ -309,6 +348,7 @@ export const PluginPublishMarketCommand = cmd({
         downloadUrl: args.downloadUrl as string | undefined,
         signatureUrl: args.signatureUrl as string | undefined,
         releaseUrlTemplate: args["release-url-template"] as string | undefined,
+        releaseTagTemplate,
       })
       const entry = githubEntry({
         tarballPath,
@@ -317,6 +357,7 @@ export const PluginPublishMarketCommand = cmd({
         signatureUrl,
         releaseBackend,
         releaseUrlTemplate: args["release-url-template"] as string | undefined,
+        releaseTagTemplate,
         changelog: args.changelog as string | undefined,
       })
 
@@ -328,6 +369,20 @@ export const PluginPublishMarketCommand = cmd({
       copyGithubEntryIcon({ tarballPath, entryPath, entry })
 
       await runRegistryValidation(registryDir)
+      const tag = githubReleaseTag(manifest.version, releaseTagTemplate)
+      const branchPrefix = (
+        (args["registry-branch-prefix"] as string | undefined) ?? defaultRegistryBranchPrefix()
+      ).replace(/\/+$/, "")
+      const branch =
+        (args["registry-branch"] as string | undefined) ??
+        renderTemplate(
+          (args["registry-branch-template"] as string | undefined) ?? `${branchPrefix}/{pluginId}-{version}`,
+          {
+            pluginId: entry.id,
+            version: manifest.version,
+            tag,
+          },
+        )
       await openRegistryPr({
         registryDir,
         pluginId: entry.id,
@@ -335,7 +390,13 @@ export const PluginPublishMarketCommand = cmd({
         noPr: (args.pr as boolean | undefined) === false,
         githubRepo: (args["registry-github-repo"] as string | undefined) ?? defaultRegistryGithubRepo(registryRepo),
         baseBranch: (args["registry-base-branch"] as string | undefined) ?? defaultRegistryBaseBranch(),
-        branchPrefix: (args["registry-branch-prefix"] as string | undefined) ?? defaultRegistryBranchPrefix(),
+        branch,
+        title: (args["registry-pr-title"] as string | undefined)
+          ? renderTemplate(args["registry-pr-title"] as string, { pluginId: entry.id, version: manifest.version, tag })
+          : undefined,
+        body: (args["registry-pr-body"] as string | undefined)
+          ? renderTemplate(args["registry-pr-body"] as string, { pluginId: entry.id, version: manifest.version, tag })
+          : undefined,
       })
 
       UI.println(

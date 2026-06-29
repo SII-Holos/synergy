@@ -16,6 +16,7 @@ export interface GitHubReleaseAssetUrlInput {
   repo: string | undefined
   version: string
   filename: string
+  tagTemplate?: string
 }
 
 function encodeGitHubPath(value: string): string {
@@ -29,7 +30,11 @@ function encodeGitHubPath(value: string): string {
 export function githubReleaseAssetUrl(input: GitHubReleaseAssetUrlInput): string | undefined {
   const normalized = normalizeGitHubRepoUrl(input.repo)
   if (!normalized) return undefined
-  return `${normalized}/releases/download/v${input.version}/${encodeURIComponent(input.filename)}`
+  return `${normalized}/releases/download/${encodeURIComponent(githubReleaseTag(input.version, input.tagTemplate))}/${encodeURIComponent(input.filename)}`
+}
+
+export function githubReleaseTag(version: string, template = "v{version}"): string {
+  return template.replaceAll("{version}", version).replaceAll("{tag}", `v${version}`)
 }
 
 export function normalizeGitHubRepoUrl(input?: string): string | undefined {

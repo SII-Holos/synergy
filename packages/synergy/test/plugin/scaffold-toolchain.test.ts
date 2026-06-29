@@ -220,5 +220,12 @@ export default plugin
     const copiedIcon = copyGithubEntryIcon({ tarballPath: tarball, entryPath: registryEntryPath, entry })
     expect(copiedIcon).toBe(path.join(tmp.path, "registry", "icons", "asset-fixture.svg"))
     expect(await Bun.file(copiedIcon!).exists()).toBe(true)
+
+    const customTagEntry = githubEntry({
+      tarballPath: tarball,
+      repo: "https://github.com/example/asset-fixture",
+      releaseTagTemplate: "asset-fixture-{version}",
+    })
+    expect(customTagEntry.versions[0]?.downloadUrl).toContain("/releases/download/asset-fixture-0.1.0/")
   })
 })
