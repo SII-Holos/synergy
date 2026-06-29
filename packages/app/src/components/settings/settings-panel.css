@@ -1209,20 +1209,32 @@
 
 /* ===== Account ===== */
 
-.account-identity-card {
-  min-height: 76px;
+.account-profile-card {
+  width: min(100%, 780px);
   display: flex;
-  align-items: center;
-  gap: 14px;
-  padding: 14px;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
   border-radius: 12px;
   border: 1px solid var(--settings-border);
   background: var(--settings-card-bg);
 }
 
+.account-profile-card-editing {
+  background: color-mix(in srgb, var(--settings-card-bg) 92%, var(--settings-control-bg));
+}
+
+.account-profile-display,
+.account-profile-edit-head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+}
+
 .account-identity-avatar {
-  width: 42px;
-  height: 42px;
+  width: 48px;
+  height: 48px;
   border-radius: 999px;
   overflow: hidden;
   box-shadow: 0 0 0 1px color-mix(in oklch, var(--border-base) 58%, transparent);
@@ -1236,7 +1248,6 @@
 }
 
 .account-identity-name,
-.account-agent-name,
 .usage-provider-name,
 .providers-detail-title,
 .providers-row-name,
@@ -1247,8 +1258,16 @@
   line-height: 1.25;
 }
 
+.account-identity-description {
+  margin-top: 3px;
+  color: var(--text-weak);
+  font-size: 12px;
+  line-height: 1.45;
+  max-width: 62ch;
+}
+
 .account-identity-meta,
-.account-agent-meta {
+.account-detail-copy {
   display: flex;
   align-items: center;
   gap: 7px;
@@ -1259,7 +1278,7 @@
 }
 
 .account-profile-form {
-  width: min(100%, 720px);
+  width: 100%;
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -1325,7 +1344,7 @@
 .account-profile-warning {
   width: min(100%, 720px);
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: 8px;
   padding: 9px 10px;
   border-radius: 10px;
@@ -1335,51 +1354,78 @@
   line-height: 1.4;
 }
 
+.account-profile-warning-inline {
+  width: 100%;
+  justify-content: flex-start;
+}
+
+.account-profile-warning-inline span {
+  min-width: 0;
+  flex: 1;
+}
+
 .account-profile-warning svg {
   flex-shrink: 0;
-  margin-top: 1px;
   color: var(--icon-warning-base);
 }
 
 .account-profile-actions {
   display: flex;
-  justify-content: flex-start;
+  justify-content: flex-end;
+  gap: 8px;
   padding-top: 2px;
 }
 
-.account-agent-list,
+.account-detail-list {
+  width: min(100%, 780px);
+  display: flex;
+  flex-direction: column;
+}
+
+.account-detail-row {
+  min-height: 54px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--border-base) 38%, transparent);
+}
+
+.account-detail-row:first-child {
+  padding-top: 2px;
+}
+
+.account-detail-label {
+  color: var(--text-strong);
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 1.35;
+}
+
+.account-detail-value {
+  min-width: 0;
+  margin-top: 3px;
+  color: var(--text-weak);
+  font-size: 12px;
+  line-height: 1.4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.account-agent-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: min(100%, 780px);
+  padding-top: 2px;
+}
+
 .usage-panel-list {
   display: flex;
   flex-direction: column;
   gap: 8px;
-}
-
-.account-agent-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-height: 58px;
-  padding: 10px 12px;
-  border-radius: 10px;
-  border: 1px solid var(--settings-border);
-  background: var(--settings-card-bg);
-}
-
-.account-agent-row-active {
-  border-color: color-mix(in oklch, var(--border-base) 58%, transparent);
-  background: var(--settings-selected-bg);
-}
-
-.account-agent-icon {
-  color: var(--text-weaker);
-  flex-shrink: 0;
-}
-
-.account-agent-meta span {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 /* ===== Providers ===== */
@@ -1960,8 +2006,8 @@
 }
 
 @media (max-width: 840px) {
-  .account-identity-card,
-  .account-agent-row,
+  .account-profile-display,
+  .account-profile-edit-head,
   .providers-detail-summary,
   .usage-provider-panel-head {
     align-items: stretch;
@@ -1980,6 +2026,16 @@
 
   .account-profile-grid {
     grid-template-columns: 1fr;
+  }
+
+  .account-detail-row {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  .account-agent-actions {
+    align-items: stretch;
+    flex-direction: column;
   }
 
   .usage-window-value {

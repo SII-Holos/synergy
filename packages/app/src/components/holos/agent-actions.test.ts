@@ -17,4 +17,11 @@ describe("Holos agent actions", () => {
     expect(agentActions).not.toContain("agentIdError")
     expect(agentActions).not.toContain("{ agentId, agentSecret }")
   })
+
+  test("agent switching is presented as a focused dialog", () => {
+    expect(agentActions).toContain("DialogSwitchHolosAgent")
+    expect(agentActions).toContain("openAgentSwitcher")
+    expect(agentActions).toContain("Switch Agent")
+    expect(agentActions).toContain("Saved on this device")
+  })
 })

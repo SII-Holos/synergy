@@ -624,7 +624,7 @@
   align-items: center;
   gap: 10px;
   width: 100%;
-  min-height: 52px;
+  min-height: 56px;
   padding: 8px 10px;
   border-radius: 12px;
   color: var(--text-base);
@@ -687,15 +687,26 @@
 
 .sidebar-account-identity {
   display: flex;
+  flex-direction: column;
   flex: 1;
   min-width: 0;
   justify-content: center;
+  gap: 1px;
 }
 
 .sidebar-account-name {
   font-size: var(--font-size-small);
   font-weight: 600;
   color: var(--text-strong);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sidebar-account-subtitle {
+  color: var(--text-weak);
+  font-size: var(--font-size-x-small);
+  line-height: 1.2;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -780,6 +791,15 @@
   white-space: nowrap;
 }
 
+.sidebar-account-card-description {
+  color: var(--text-weak);
+  font-size: var(--font-size-x-small);
+  line-height: 1.25;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .sidebar-account-popover {
   position: absolute;
   left: calc(100% + 8px);
@@ -844,8 +864,34 @@
   color: var(--text-base);
 }
 
+.sidebar-account-menuItem--account {
+  min-height: 48px;
+}
+
 .sidebar-account-menuItem--active:hover {
   background: var(--sb-active-bg);
+}
+
+.sidebar-account-menuCopy {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.sidebar-account-menuCopy > span:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebar-account-menuCopy > span:last-child {
+  color: var(--text-weak);
+  font-size: var(--font-size-x-small);
+  font-weight: 450;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .sidebar-account-section-label {
@@ -888,6 +934,122 @@
   border-radius: 14px;
   background: var(--sb-popover-card-bg);
   border: 1px solid var(--sb-border);
+}
+
+.sidebar-agent-switch-dialog {
+  width: min(420px, calc(100vw - 48px));
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.sidebar-agent-switch-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.sidebar-agent-switch-row {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 62px;
+  padding: 9px 10px;
+  border-radius: 11px;
+  color: var(--text-base);
+  text-align: left;
+  transition:
+    background-color 120ms ease,
+    color 120ms ease;
+}
+
+.sidebar-agent-switch-row:hover:not(:disabled),
+.sidebar-agent-switch-row:focus-visible:not(:disabled) {
+  background: var(--sb-hover-bg);
+}
+
+.sidebar-agent-switch-row:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--text-strong) 28%, transparent);
+  outline-offset: 1px;
+}
+
+.sidebar-agent-switch-row-active {
+  background: var(--sb-active-bg);
+}
+
+.sidebar-agent-switch-avatar {
+  width: 34px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  color: var(--icon-weak);
+  background: var(--sb-popover-card-bg);
+  box-shadow: inset 0 0 0 1px var(--sb-border);
+  overflow: hidden;
+}
+
+.sidebar-agent-switch-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.sidebar-agent-switch-copy {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.sidebar-agent-switch-name {
+  color: var(--text-strong);
+  font-size: var(--font-size-small);
+  font-weight: 650;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebar-agent-switch-description,
+.sidebar-agent-switch-id {
+  color: var(--text-weak);
+  font-size: var(--font-size-x-small);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebar-agent-switch-id {
+  color: var(--text-subtle);
+}
+
+.sidebar-agent-switch-status {
+  color: var(--text-weak);
+  font-size: var(--font-size-x-small);
+  font-weight: 600;
+}
+
+.sidebar-agent-switch-empty {
+  min-height: 92px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: var(--text-weak);
+  border-radius: 12px;
+  background: var(--sb-popover-card-bg);
+}
+
+.sidebar-agent-switch-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding-top: 2px;
 }
 
 .sidebar-agent-import-icon {

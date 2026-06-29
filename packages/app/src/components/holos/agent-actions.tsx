@@ -1,11 +1,12 @@
 import { createStore } from "solid-js/store"
-import { onCleanup } from "solid-js"
+import { For, onCleanup, Show } from "solid-js"
 import { Button } from "@ericsanchezok/synergy-ui/button"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { Dialog } from "@ericsanchezok/synergy-ui/dialog"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { TextField } from "@ericsanchezok/synergy-ui/text-field"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
+import type { HolosAccountMeta, HolosAgentProfile } from "@ericsanchezok/synergy-sdk/client"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { useHolos } from "@/context/holos"
 
@@ -128,9 +129,33 @@ export function useHolosAgentActions(globalSDK: GlobalSDK) {
     dialog.show(() => <DialogImportHolosAgent globalSDK={globalSDK} onImported={() => holos.refresh()} />)
   }
 
+  function openAgentSwitcher() {
+    const activeAgentId = holos.state.identity.activeAccount?.agentId ?? holos.state.identity.agentId ?? undefined
+    dialog.show(() => (
+      <DialogSwitchHolosAgent
+        accounts={holos.state.identity.accounts}
+        activeAgentId={activeAgentId}
+        activeProfile={holos.state.social.profile ?? undefined}
+        onSwitch={async (agentId) => {
+          await switchAgent(agentId)
+          dialog.close()
+        }}
+        onCreate={() => {
+          dialog.close()
+          createAgent()
+        }}
+        onImport={() => {
+          dialog.close()
+          importAgent()
+        }}
+      />
+    ))
+  }
+
   return {
     createAgent,
     importAgent,
+    openAgentSwitcher,
     reconnect,
     switchAgent,
     logoutActiveAgent,
@@ -155,6 +180,88 @@ function validateUrl(value: string): string | undefined {
   } catch {
     return "Enter a valid URL"
   }
+}
+
+export function DialogSwitchHolosAgent(props: {
+  accounts: HolosAccountMeta[]
+  activeAgentId?: string
+  activeProfile?: HolosAgentProfile
+  onSwitch: (agentId: string) => Promise<void>
+  onCreate: () => void
+  onImport: () => void
+}) {
+  function shortID(agentId: string) {
+    return agentId.slice(0, 8)
+  }
+
+  function isActive(account: HolosAccountMeta) {
+    return account.agentId === props.activeAgentId
+  }
+
+  function label(account: HolosAccountMeta) {
+    if (!isActive(account)) return `Agent ${shortID(account.agentId)}`
+    return props.activeProfile?.name || `Agent ${shortID(account.agentId)}`
+  }
+
+  function description(account: HolosAccountMeta) {
+    if (!isActive(account)) return "Saved on this device"
+    return props.activeProfile?.description || "Current Holos agent"
+  }
+
+  function avatarUrl(account: HolosAccountMeta) {
+    if (!isActive(account)) return undefined
+    return props.activeProfile?.avatarUrl ?? undefined
+  }
+
+  return (
+    <Dialog title="Switch Agent">
+      <div class="sidebar-agent-switch-dialog">
+        <Show
+          when={props.accounts.length > 0}
+          fallback={
+            <div class="sidebar-agent-switch-empty">
+              <Icon name="user" size="normal" />
+              <span>No saved agents</span>
+            </div>
+          }
+        >
+          <div class="sidebar-agent-switch-list">
+            <For each={props.accounts}>
+              {(account) => (
+                <button
+                  type="button"
+                  class="sidebar-agent-switch-row"
+                  classList={{ "sidebar-agent-switch-row-active": isActive(account) }}
+                  disabled={isActive(account)}
+                  onClick={() => void props.onSwitch(account.agentId)}
+                >
+                  <span class="sidebar-agent-switch-avatar">
+                    <Show when={avatarUrl(account)} fallback={<Icon name="user" size="small" />}>
+                      {(src) => <img src={src()} alt="" />}
+                    </Show>
+                  </span>
+                  <span class="sidebar-agent-switch-copy">
+                    <span class="sidebar-agent-switch-name">{label(account)}</span>
+                    <span class="sidebar-agent-switch-description">{description(account)}</span>
+                    <span class="sidebar-agent-switch-id">{shortID(account.agentId)}</span>
+                  </span>
+                  <span class="sidebar-agent-switch-status">{isActive(account) ? "Active" : "Switch"}</span>
+                </button>
+              )}
+            </For>
+          </div>
+        </Show>
+        <div class="sidebar-agent-switch-actions">
+          <Button type="button" variant="secondary" size="small" onClick={props.onImport}>
+            Import Agent
+          </Button>
+          <Button type="button" variant="primary" size="small" onClick={props.onCreate}>
+            Create Agent
+          </Button>
+        </div>
+      </div>
+    </Dialog>
+  )
 }
 
 export function DialogCreateHolosAgent(props: { onCreate: (profile: HolosProfileInput) => Promise<boolean> }) {

@@ -18,9 +18,19 @@ describe("Account settings profile panel", () => {
     expect(accountPanel).not.toContain("account.label")
   })
 
-  test("keeps the profile editor as a scoped settings form", () => {
+  test("keeps profile editing behind an explicit edit state", () => {
+    expect(accountPanel).toContain("editingProfile")
+    expect(accountPanel).toContain("Edit profile")
+    expect(accountPanel).toContain("Save changes")
     expect(accountPanel).toContain("account-profile-form")
+    expect(accountPanel).toContain("account-profile-display")
     expect(settingsCss).toContain(".account-profile-form")
-    expect(settingsCss).toContain(".account-profile-grid")
+    expect(settingsCss).toContain(".account-profile-card")
+  })
+
+  test("moves saved-agent switching out of the main Account page", () => {
+    expect(accountPanel).toContain("actions.openAgentSwitcher")
+    expect(accountPanel).not.toContain("account-agent-row")
+    expect(accountPanel).not.toContain("<For each={holos.state.identity.accounts}>")
   })
 })
