@@ -2,6 +2,7 @@ import type { PluginConfigAccessor, PluginAuthStore, PluginCacheStore } from "@e
 import path from "path"
 import fs from "fs/promises"
 import { Config } from "../config/config"
+import { PluginPaths } from "./paths"
 
 // ---------------------------------------------------------------------------
 // Plugin config accessor — reads/writes pluginConfig.{id} in synergy.jsonc
@@ -26,13 +27,12 @@ export function createConfigAccessor(pluginId: string): PluginConfigAccessor {
 // Plugin auth store
 //
 // WARNING: Credentials are stored as unencrypted JSON on disk at
-// ~/.synergy/data/plugin/{id}/auth.json. Protect your filesystem.
+// Synergy data directory plugin/{id}/auth.json. Protect your filesystem.
 // Future versions will use system keychain encryption.
 // ---------------------------------------------------------------------------
 
 function resolveAuthPath(pluginId: string) {
-  const home = process.env.HOME || process.env.USERPROFILE || "~"
-  return path.join(home, ".synergy", "data", "plugin", pluginId, "auth.json")
+  return PluginPaths.authFile(pluginId)
 }
 
 async function readAuthFile(pluginId: string): Promise<Record<string, string>> {
@@ -53,7 +53,7 @@ async function writeAuthFile(pluginId: string, data: Record<string, string>) {
 
 export function createAuthStore(pluginId: string): PluginAuthStore {
   // TODO(v3): Migrate to PluginSecretStore using OS keychain.
-  // 1. On startup, detect old ~/.synergy/data/plugin/{id}/auth.json
+  // 1. On startup, detect old plaintext plugin auth.json
   // 2. Migrate credentials to system keychain
   // 3. Rename old file to auth.json.bak
   // 4. Expose secret backend via PluginStatus
@@ -80,12 +80,11 @@ export function createAuthStore(pluginId: string): PluginAuthStore {
 }
 
 // ---------------------------------------------------------------------------
-// Plugin cache store — ~/.synergy/cache/plugin/{id}/
+// Plugin cache store — Synergy cache directory plugin/{id}/
 // ---------------------------------------------------------------------------
 
 function resolveCacheDir(pluginId: string) {
-  const home = process.env.HOME || process.env.USERPROFILE || "~"
-  return path.join(home, ".synergy", "cache", "plugin", pluginId)
+  return PluginPaths.cacheDir(pluginId)
 }
 
 function cachePath(pluginId: string, key: string) {

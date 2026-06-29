@@ -14,6 +14,7 @@ import { DEFAULT_LIMITS } from "../plugin-runtime/health"
 import { computePermissionsHash, computeManifestHash } from "./consent/approval-store"
 import { baseCapabilities } from "./capability"
 import { getEvents } from "./audit.js"
+import { PluginPaths } from "./paths"
 
 // ---------------------------------------------------------------------------
 // Comprehensive status — returned by GET /plugin/:id/status
@@ -166,10 +167,8 @@ async function resolveIntegrity(pluginDir: string): Promise<"verified" | "unveri
 }
 /** Derive secrets store type from presence of auth.json. */
 async function resolveSecretsStore(pluginId: string): Promise<"none" | "plaintext" | "keychain"> {
-  const home = process.env.HOME || process.env.USERPROFILE || "~"
-  const authPath = path.join(home, ".synergy", "data", "plugin", pluginId, "auth.json")
   try {
-    await fs.access(authPath)
+    await fs.access(PluginPaths.authFile(pluginId))
     return "plaintext"
   } catch {
     return "none"
@@ -178,8 +177,7 @@ async function resolveSecretsStore(pluginId: string): Promise<"none" | "plaintex
 
 /** Compute cache directory size in bytes. */
 async function resolveCacheBytes(pluginId: string): Promise<number | undefined> {
-  const home = process.env.HOME || process.env.USERPROFILE || "~"
-  const cacheDir = path.join(home, ".synergy", "cache", "plugin", pluginId)
+  const cacheDir = PluginPaths.cacheDir(pluginId)
   try {
     let total = 0
     const entries = await fs.readdir(cacheDir, { withFileTypes: true }).catch(() => [])
