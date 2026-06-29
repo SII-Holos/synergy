@@ -1,46 +1,41 @@
-import { For, type JSX } from "solid-js"
+import type { JSX } from "solid-js"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { getSemanticIcon, type SemanticIconTokenName } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { Switch } from "@ericsanchezok/synergy-ui/switch"
+import { SettingsStepScale, type SettingsStepOption } from "../components/SettingsStepScale"
 import { SettingsPage } from "../components/SettingsPrimitives"
 import type { LibrarySettingsStore } from "../types"
 
-type StepOption = {
-  value: string
-  label: string
-  tone: string
-}
-
-const similarityOptions: StepOption[] = [
-  { value: "0.5", label: "Broad", tone: "Loose context match" },
-  { value: "0.6", label: "Soft", tone: "More context allowed" },
-  { value: "0.7", label: "Balanced", tone: "Default recall balance" },
-  { value: "0.8", label: "Focused", tone: "Close context only" },
-  { value: "0.9", label: "Strict", tone: "Very close matches" },
+const similarityOptions: SettingsStepOption[] = [
+  { value: "0.5", label: "Broad", tickLabel: "0.5", detail: "Loose context match" },
+  { value: "0.6", label: "Soft", tickLabel: "0.6", detail: "More context allowed" },
+  { value: "0.7", label: "Balanced", tickLabel: "0.7", detail: "Default recall balance" },
+  { value: "0.8", label: "Focused", tickLabel: "0.8", detail: "Close context only" },
+  { value: "0.9", label: "Strict", tickLabel: "0.9", detail: "Very close matches" },
 ]
 
-const memoryCountOptions: StepOption[] = [
-  { value: "1", label: "Quiet", tone: "Minimal recall" },
-  { value: "2", label: "Lean", tone: "Light recall" },
-  { value: "3", label: "Balanced", tone: "Default memory depth" },
-  { value: "5", label: "More", tone: "More context available" },
-  { value: "8", label: "Full", tone: "Maximum memory depth" },
+const memoryCountOptions: SettingsStepOption[] = [
+  { value: "1", label: "Quiet", tickLabel: "1", detail: "Minimal recall" },
+  { value: "2", label: "Lean", tickLabel: "2", detail: "Light recall" },
+  { value: "3", label: "Balanced", tickLabel: "3", detail: "Default memory depth" },
+  { value: "5", label: "More", tickLabel: "5", detail: "More context available" },
+  { value: "8", label: "Full", tickLabel: "8", detail: "Maximum memory depth" },
 ]
 
-const experienceCountOptions: StepOption[] = [
-  { value: "3", label: "Lean", tone: "Few past examples" },
-  { value: "5", label: "Steady", tone: "Moderate recall" },
-  { value: "8", label: "Balanced", tone: "Default experience depth" },
-  { value: "10", label: "Deep", tone: "More examples" },
-  { value: "15", label: "Full", tone: "Maximum experience depth" },
+const experienceCountOptions: SettingsStepOption[] = [
+  { value: "3", label: "Lean", tickLabel: "3", detail: "Few past examples" },
+  { value: "5", label: "Steady", tickLabel: "5", detail: "Moderate recall" },
+  { value: "8", label: "Balanced", tickLabel: "8", detail: "Default experience depth" },
+  { value: "10", label: "Deep", tickLabel: "10", detail: "More examples" },
+  { value: "15", label: "Full", tickLabel: "15", detail: "Maximum experience depth" },
 ]
 
-const explorationOptions: StepOption[] = [
-  { value: "0", label: "Stable", tone: "Always exploit known paths" },
-  { value: "0.05", label: "Careful", tone: "Rare exploration" },
-  { value: "0.1", label: "Balanced", tone: "Default exploration" },
-  { value: "0.2", label: "Curious", tone: "More alternatives" },
-  { value: "0.3", label: "Exploratory", tone: "Frequent alternatives" },
+const explorationOptions: SettingsStepOption[] = [
+  { value: "0", label: "Stable", tickLabel: "0", detail: "Always exploit known paths" },
+  { value: "0.05", label: "Careful", tickLabel: "0.05", detail: "Rare exploration" },
+  { value: "0.1", label: "Balanced", tickLabel: "0.1", detail: "Default exploration" },
+  { value: "0.2", label: "Curious", tickLabel: "0.2", detail: "More alternatives" },
+  { value: "0.3", label: "Exploratory", tickLabel: "0.3", detail: "Frequent alternatives" },
 ]
 
 export function LearningPanel(props: {
@@ -93,7 +88,6 @@ export function MemoryPanel(props: {
             title="Match strictness"
             description="Higher values keep recalled memories closer to the current context."
             value={props.library.memorySimThreshold}
-            defaultValue="0.7"
             options={similarityOptions}
             lowLabel="Broader"
             highLabel="Stricter"
@@ -104,7 +98,6 @@ export function MemoryPanel(props: {
             title="Memories per category"
             description="Limit how many memories each category can contribute."
             value={props.library.memoryTopK}
-            defaultValue="3"
             options={memoryCountOptions}
             lowLabel="Less context"
             highLabel="More context"
@@ -129,7 +122,6 @@ export function ExperiencePanel(props: {
             title="Match strictness"
             description="Higher values keep recalled experiences closer to the current task."
             value={props.library.experienceSimThreshold}
-            defaultValue="0.7"
             options={similarityOptions}
             lowLabel="Broader"
             highLabel="Stricter"
@@ -140,7 +132,6 @@ export function ExperiencePanel(props: {
             title="Experiences to recall"
             description="Set how many past examples can be considered at once."
             value={props.library.experienceTopK}
-            defaultValue="8"
             options={experienceCountOptions}
             lowLabel="Fewer"
             highLabel="More"
@@ -154,7 +145,6 @@ export function ExperiencePanel(props: {
             title="Exploration rate"
             description="Chance of exploring alternatives instead of using the best-known pattern."
             value={props.library.experienceEpsilon}
-            defaultValue="0.1"
             options={explorationOptions}
             lowLabel="Stable"
             highLabel="Exploratory"
@@ -213,16 +203,12 @@ function LibraryStepRow(props: {
   title: string
   description: string
   value: string
-  defaultValue: string
-  options: StepOption[]
+  options: SettingsStepOption[]
   lowLabel: string
   highLabel: string
   ariaLabel: string
   onChange: (value: string) => void
 }) {
-  const current = () => props.options.find((option) => option.value === props.value)
-  const isCustom = () => !current()
-
   return (
     <div class="settings-library-row">
       <div class="settings-library-copy settings-library-copy-plain">
@@ -230,42 +216,15 @@ function LibraryStepRow(props: {
         <div class="settings-library-row-description">{props.description}</div>
       </div>
       <div class="settings-library-step-control">
-        <div class="settings-library-step-summary">
-          <span class="settings-library-step-value">
-            {current() ? `${current()?.label} ${current()?.value}` : `Custom ${props.value}`}
-          </span>
-          <button
-            type="button"
-            class="settings-library-reset"
-            disabled={props.value === props.defaultValue}
-            onClick={() => props.onChange(props.defaultValue)}
-          >
-            Reset
-          </button>
-        </div>
-        <div class="settings-library-step-track" role="radiogroup" aria-label={props.ariaLabel}>
-          <For each={props.options}>
-            {(option) => (
-              <button
-                type="button"
-                role="radio"
-                aria-checked={props.value === option.value}
-                aria-label={`${props.ariaLabel}: ${option.label} ${option.value}`}
-                title={option.tone}
-                class="settings-library-step"
-                classList={{ "settings-library-step-active": props.value === option.value }}
-                onClick={() => props.onChange(option.value)}
-              >
-                {option.value}
-              </button>
-            )}
-          </For>
-        </div>
-        <div class="settings-library-step-range" classList={{ "settings-library-step-range-custom": isCustom() }}>
-          <span>{props.lowLabel}</span>
-          <span>{current()?.tone ?? "Choose a preset to return to the guided range"}</span>
-          <span>{props.highLabel}</span>
-        </div>
+        <SettingsStepScale
+          value={props.value}
+          options={props.options}
+          ariaLabel={props.ariaLabel}
+          summary={(option) => `${option.label} ${option.value}`}
+          lowLabel={props.lowLabel}
+          highLabel={props.highLabel}
+          onChange={props.onChange}
+        />
       </div>
     </div>
   )

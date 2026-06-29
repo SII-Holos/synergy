@@ -4,7 +4,7 @@ import { getSemanticIcon, type SemanticIconTokenName } from "@ericsanchezok/syne
 import { Switch } from "@ericsanchezok/synergy-ui/switch"
 import { useTheme, type ColorScheme } from "@ericsanchezok/synergy-ui/theme"
 import { SettingRow } from "../components/SettingRow"
-import { SegmentPill } from "../components/SegmentPill"
+import { SettingsStepScale } from "../components/SettingsStepScale"
 import { SettingsPage, SettingsSection } from "../components/SettingsPrimitives"
 import {
   DEFAULT_TOAST_DURATION_MS,
@@ -90,17 +90,15 @@ export function GeneralPanel(props: {
           title="Product updates"
           description="Choose how Synergy handles available updates"
           trailing={
-            <SegmentPill
+            <SettingsStepScale
               value={props.general.autoupdate}
+              ariaLabel="Product update handling"
               options={[
                 { value: "true", label: "On" },
                 { value: "false", label: "Off" },
                 { value: "notify", label: "Notify" },
               ]}
               onChange={(value) => props.onGeneralChange("autoupdate", value)}
-              showReset
-              defaultValue="notify"
-              onReset={() => props.onGeneralChange("autoupdate", "notify")}
             />
           }
         />
@@ -119,7 +117,6 @@ export function GeneralPanel(props: {
                 duration={props.general.toastDurations[type]}
                 onMutedChange={(value) => toggleMutedToast(type, value)}
                 onDurationChange={(value) => setToastDuration(type, value)}
-                onDurationReset={() => setToastDuration(type, "")}
               />
             )}
           </For>
@@ -135,7 +132,6 @@ function ToastPreferenceRow(props: {
   duration: string
   onMutedChange: (value: boolean) => void
   onDurationChange: (value: string) => void
-  onDurationReset: () => void
 }) {
   const copy = () => toastCopy[props.type]
   const duration = () => {
@@ -165,14 +161,6 @@ function ToastPreferenceRow(props: {
             <span>
               {hasOverride() ? `${formatSeconds(duration())}` : `Default ${formatSeconds(DEFAULT_TOAST_DURATION_MS)}`}
             </span>
-            <button
-              type="button"
-              class="settings-duration-reset"
-              disabled={!hasOverride()}
-              onClick={props.onDurationReset}
-            >
-              Reset
-            </button>
           </div>
           <input
             class="settings-duration-slider"
@@ -184,7 +172,8 @@ function ToastPreferenceRow(props: {
             aria-label={`${copy().label} toast duration`}
             onInput={(event) => {
               const index = Number(event.currentTarget.value)
-              props.onDurationChange(String(TOAST_DURATION_STOPS[index] ?? TOAST_DURATION_STOPS[0]))
+              const next = TOAST_DURATION_STOPS[index] ?? TOAST_DURATION_STOPS[0]
+              props.onDurationChange(next === DEFAULT_TOAST_DURATION_MS ? "" : String(next))
             }}
           />
           <div class="settings-duration-ticks" aria-hidden="true">

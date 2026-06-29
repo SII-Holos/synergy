@@ -40,7 +40,7 @@ Account settings should present the remote Holos profile as identity first and e
 
 Keep navigation surfaces mentally aligned with where they live. Sidebar destinations such as Agenda, Library, and Plugins open in the main session-side canvas. Settings may be modal, and it should dim the whole app because it interrupts the current task.
 
-Settings should be a human-facing preference surface, not a raw config editor. Keep common settings in a left-aligned readable measure, use direct controls for choices, toggles, and stepped values, and reserve raw domain-file syntax for import/export or advanced configuration views.
+Settings should be a human-facing preference surface, not a raw config editor. Keep common settings in a left-aligned readable measure, use switches for binary choices, guided scales for ordered multi-step values, and direct option controls for unordered choices. Do not expose inline restore-to-default options for ordinary preference controls; defaults should be reachable through the same control when needed. Reserve raw domain-file syntax for import/export or advanced configuration views.
 
 Library settings should explain learning, memory recall, and experience reuse as product preferences. Use switch controls for binary learning behavior and discrete guided scales for recall or exploration thresholds; do not present cosine similarity, top-k, or epsilon choices as raw debug parameters.
 

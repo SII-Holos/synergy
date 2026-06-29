@@ -1,13 +1,9 @@
-import { For, Show } from "solid-js"
+import { For } from "solid-js"
 
 export function SegmentPill(props: {
   value: string
   options: { value: string; label: string }[]
   onChange: (value: string) => void
-  /** When true and value differs from default, shows a reset link */
-  showReset?: boolean
-  defaultValue?: string
-  onReset?: () => void
 }) {
   return (
     <div class="ds-segment-wrapper">
@@ -27,15 +23,6 @@ export function SegmentPill(props: {
           )}
         </For>
       </div>
-      <Show
-        when={
-          props.showReset && props.defaultValue !== undefined && props.value !== props.defaultValue && props.onReset
-        }
-      >
-        <button type="button" class="ds-segment-reset" onClick={props.onReset}>
-          Reset
-        </button>
-      </Show>
     </div>
   )
 }
