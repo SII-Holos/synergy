@@ -8,8 +8,9 @@ import type { HostBridgeMethod } from "./protocol.js"
  * Maps each host bridge method to the enforcement gate capability class
  * that must be approved before the plugin can use that bridge method.
  *
- * Bridge preflight uses manifest capability names. Interactive/profile
- * approval happens in the host service that executes the request.
+ * Bridge preflight uses the same Synergy capability classes as the
+ * EnforcementGate. Interactive/profile approval happens in the host service
+ * that executes the request.
  */
 export const BRIDGE_METHOD_CAPABILITY: Partial<Record<HostBridgeMethod, string>> = {
   "config.get": "config:read",
@@ -17,9 +18,9 @@ export const BRIDGE_METHOD_CAPABILITY: Partial<Record<HostBridgeMethod, string>>
   "secret.get": "secrets",
   "secret.set": "secrets",
   "secret.delete": "secrets",
-  "file.read": "filesystem:read",
-  "file.write": "filesystem:write",
-  "network.fetch": "network",
+  "file.read": "file_read",
+  "file.write": "file_write",
+  "network.fetch": "network_request",
   "shell.run": "shell",
   "session.getMetadata": "session_data",
   "session.read": "session_data",
@@ -44,8 +45,8 @@ export interface BridgeEnforcementResult {
  * handler is invoked.
  *
  * @param pluginId    The plugin making the bridge request.
- * @param capabilities The set of manifest capability names this plugin has
- *                   been approved for (e.g. `["filesystem:read"]`).
+ * @param capabilities The set of Synergy capability classes this plugin has
+ *                   been approved for (e.g. `["file_read"]`).
  */
 export function createBridgeEnforcementHandler(
   pluginId: string,

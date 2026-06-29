@@ -42,6 +42,9 @@ const HIGH_RISK = new Set([
 
   "mcp_invoke",
   "secrets",
+  "prompt_transform",
+  "compaction_transform",
+  "permission_hook",
   "identity_act",
   "communication_email",
   "channel_outbound",
@@ -53,10 +56,13 @@ const MEDIUM_RISK = new Set([
   "file_write",
   "shell",
   "network_request",
+  "mcp_spawn",
   "session_data",
   "workspace_data",
   "config:write",
   "task",
+  "tool_execution_hook",
+  "event_hook",
 ])
 
 const PERMISSION_CAPABILITY: Record<string, string> = {

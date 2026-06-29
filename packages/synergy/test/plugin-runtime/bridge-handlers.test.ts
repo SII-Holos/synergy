@@ -239,26 +239,26 @@ describe("bridge-enforcement (denied methods still throw)", () => {
   })
 
   test("enforcer allows when capabilities match", () => {
-    const enforcer = createBridgeEnforcementHandler("plugin-x", ["filesystem:read"])
+    const enforcer = createBridgeEnforcementHandler("plugin-x", ["file_read"])
     const result = enforcer("file.read", {})
     expect(result.allowed).toBe(true)
   })
 
-  test("enforcer accepts manifest capability names as approval records", () => {
-    const enforcer = createBridgeEnforcementHandler("plugin-x", ["filesystem:read", "network"])
+  test("enforcer accepts Synergy capability classes as approval records", () => {
+    const enforcer = createBridgeEnforcementHandler("plugin-x", ["file_read", "network_request"])
     expect(enforcer("file.read", {}).allowed).toBe(true)
     expect(enforcer("network.fetch", {}).allowed).toBe(true)
   })
 
   test("enforcer denies unknown bridge method", () => {
-    const enforcer = createBridgeEnforcementHandler("plugin-x", ["filesystem:read"])
+    const enforcer = createBridgeEnforcementHandler("plugin-x", ["file_read"])
     const result = enforcer("nonexistent.bridge.method" as any, {})
     expect(result.allowed).toBe(false)
     expect(result.reason).toContain("Unknown bridge method")
   })
 
   test("enforcer denies capability-specific methods individually", () => {
-    const enforcer = createBridgeEnforcementHandler("plugin-x", ["filesystem:read"])
+    const enforcer = createBridgeEnforcementHandler("plugin-x", ["file_read"])
     // shell.run requires shell, not granted
     const result = enforcer("shell.run", {})
     expect(result.allowed).toBe(false)
@@ -266,7 +266,7 @@ describe("bridge-enforcement (denied methods still throw)", () => {
   })
 
   test("network.fetch denied when only file capabilities approved", () => {
-    const enforcer = createBridgeEnforcementHandler("plugin-x", ["filesystem:read", "filesystem:write"])
+    const enforcer = createBridgeEnforcementHandler("plugin-x", ["file_read", "file_write"])
     const result = enforcer("network.fetch", {})
     expect(result.allowed).toBe(false)
   })

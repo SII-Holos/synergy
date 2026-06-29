@@ -28,31 +28,31 @@ const CAPABILITY_DETAILS: Record<string, Omit<PluginPermissionItem, "key">> = {
     title: "Run shell commands",
     description: "Can execute arbitrary shell commands on your system, including spawning child processes.",
   },
-  "filesystem:write": {
+  file_write: {
     category: "files",
     severity: "high",
     title: "Write workspace files",
     description: "Can create, modify, or delete files in your workspace.",
   },
-  "filesystem:read": {
+  file_read: {
     category: "files",
     severity: "medium",
     title: "Read workspace files",
     description: "Can read files and directories in your workspace.",
   },
-  network: {
+  network_request: {
     category: "network",
     severity: "medium",
     title: "Access network",
     description: "Can make outbound network requests.",
   },
-  "mcp:spawn": {
+  mcp_spawn: {
     category: "runtime",
     severity: "medium",
     title: "Spawn MCP servers",
     description: "Can start and manage MCP server processes.",
   },
-  "mcp:invoke": {
+  mcp_invoke: {
     category: "tools",
     severity: "medium",
     title: "Invoke MCP tools",
@@ -94,6 +94,48 @@ const CAPABILITY_DETAILS: Record<string, Omit<PluginPermissionItem, "key">> = {
     title: "Delegate tasks to subagents",
     description: "Can launch approved Synergy subagents from plugin tools.",
   },
+  prompt_transform: {
+    category: "hooks",
+    severity: "high",
+    title: "Transform prompts",
+    description: "Can modify the system prompt and message context sent to the LLM.",
+  },
+  compaction_transform: {
+    category: "hooks",
+    severity: "high",
+    title: "Transform compaction",
+    description: "Can modify session compaction inputs and outputs.",
+  },
+  tool_execution_hook: {
+    category: "hooks",
+    severity: "medium",
+    title: "Intercept tool execution",
+    description: "Can rewrite tool arguments or outputs within its declared hook scope.",
+  },
+  permission_hook: {
+    category: "hooks",
+    severity: "high",
+    title: "Override permission decisions",
+    description: "Can allow or deny permission requests within its declared hook scope.",
+  },
+  event_hook: {
+    category: "hooks",
+    severity: "medium",
+    title: "Subscribe to Synergy events",
+    description: "Can receive approved Synergy runtime events.",
+  },
+}
+
+const NON_BYPASSABLE_CAPABILITIES = new Set(["mcp_invoke", "mcp_spawn", "secrets", "permission_hook"])
+
+export function capabilityNonBypassable(capability: string): boolean {
+  return NON_BYPASSABLE_CAPABILITIES.has(capability)
+}
+
+export function capabilityRisk(capability: string): PluginRisk {
+  const details = CAPABILITY_DETAILS[capability]
+  if (details) return details.severity
+  return "low"
 }
 
 function sortKeys(value: unknown): unknown {
@@ -119,19 +161,19 @@ function buildCapabilitySet(
   const tc = toolOverrides
 
   const fs = tc?.filesystem ?? pt?.filesystem ?? "none"
-  if (fs === "read") caps.add("filesystem:read")
+  if (fs === "read") caps.add("file_read")
   if (fs === "write") {
-    caps.add("filesystem:read")
-    caps.add("filesystem:write")
+    caps.add("file_read")
+    caps.add("file_write")
   }
 
   if (tc?.shell ?? pt?.shell ?? false) caps.add("shell")
-  if (tc?.network ?? pt?.network ?? false) caps.add("network")
+  if (tc?.network ?? pt?.network ?? false) caps.add("network_request")
 
-  if (pt?.mcp === "invoke") caps.add("mcp:invoke")
+  if (pt?.mcp === "invoke") caps.add("mcp_invoke")
   if (pt?.mcp === "spawn") {
-    caps.add("mcp:invoke")
-    caps.add("mcp:spawn")
+    caps.add("mcp_invoke")
+    caps.add("mcp_spawn")
   }
 
   if (pt?.task) caps.add("task")
@@ -150,6 +192,15 @@ function buildCapabilitySet(
   if (cfg === "plugin") caps.add("config:read")
 
   if (pd?.secrets === "own") caps.add("secrets")
+
+  const hooks = permissions?.hooks
+  if (hooks?.promptTransform) caps.add("prompt_transform")
+  if (hooks?.compactionTransform) caps.add("compaction_transform")
+  if (hooks?.toolExecute && hooks.toolExecute !== "none") caps.add("tool_execution_hook")
+  if (hooks?.permissionAsk && hooks.permissionAsk !== "none") caps.add("permission_hook")
+  if (hooks?.events === "all" || (hooks?.events === "selected" && (hooks.eventNames?.length ?? 0) > 0)) {
+    caps.add("event_hook")
+  }
 
   return [...caps].sort()
 }
@@ -170,18 +221,24 @@ export function computeRisk(capabilities: string[], manifest?: PluginManifest): 
   for (const cap of capabilities) {
     switch (cap) {
       case "shell":
-      case "filesystem:write":
+      case "file_write":
       case "secrets":
-      case "hooks.promptTransform":
+      case "prompt_transform":
+      case "compaction_transform":
+      case "permission_hook":
         risk = "high"
         break
-      case "filesystem:read":
+      case "file_read":
+      case "mcp_invoke":
+      case "mcp_spawn":
       case "session_data":
       case "config:write":
       case "task":
+      case "tool_execution_hook":
+      case "event_hook":
         if (risk !== "high") risk = "medium"
         break
-      case "network":
+      case "network_request":
         if (risk === "high") break
         risk = (manifest?.permissions?.network?.connectDomains ?? []).length > 0 ? "medium" : "high"
         break
@@ -196,7 +253,7 @@ export function computeRisk(capabilities: string[], manifest?: PluginManifest): 
 function networkPermissionItem(manifest: PluginManifest): PluginPermissionItem {
   const domains = manifest.permissions?.network?.connectDomains ?? []
   return {
-    key: "network",
+    key: "network_request",
     category: "network",
     severity: domains.length > 0 ? "medium" : "high",
     title: "Access network",
@@ -406,7 +463,7 @@ export function permissionItems(manifest: PluginManifest, capabilities: string[]
   }
 
   for (const capability of capabilities) {
-    if (capability === "network") {
+    if (capability === "network_request") {
       add(networkPermissionItem(manifest))
       continue
     }

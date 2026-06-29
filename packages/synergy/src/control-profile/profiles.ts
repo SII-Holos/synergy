@@ -24,12 +24,18 @@ const CAPABILITY_PERMISSIONS = [
   "network_read",
   "network_request",
   "mcp_invoke",
+  "mcp_spawn",
   "session_data",
   "workspace_data",
   "config:read",
   "config:write",
   "secrets",
   "task",
+  "prompt_transform",
+  "compaction_transform",
+  "tool_execution_hook",
+  "permission_hook",
+  "event_hook",
   "identity_act",
   "communication_email",
   "channel_outbound",
@@ -56,6 +62,9 @@ const HIGH_RISK_PERMISSIONS = [
 
   "mcp_invoke",
   "secrets",
+  "prompt_transform",
+  "compaction_transform",
+  "permission_hook",
   "identity_act",
   "communication_email",
   "channel_outbound",
@@ -112,7 +121,13 @@ function autonomousRules() {
     if (permission === "browser_inspect") return rule(permission, "allow")
     if (permission === "protected_op") return rule(permission, "ask", true)
     if (permission === "mcp_invoke") return rule(permission, "allow")
+    if (permission === "mcp_spawn") return rule(permission, "allow")
     if (permission === "secrets") return rule(permission, "deny", true)
+    if (permission === "prompt_transform") return rule(permission, "deny", true)
+    if (permission === "compaction_transform") return rule(permission, "deny", true)
+    if (permission === "permission_hook") return rule(permission, "deny", true)
+    if (permission === "tool_execution_hook") return rule(permission, "allow")
+    if (permission === "event_hook") return rule(permission, "allow")
     if (permission === "identity_act") return rule(permission, "allow")
     if (permission === "communication_email") return rule(permission, "allow")
     if (permission === "channel_outbound") return rule(permission, "allow")

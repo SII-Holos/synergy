@@ -23,16 +23,16 @@ describe("consent module", () => {
       expect(computeRisk(["shell"])).toBe("high")
     })
 
-    test("filesystem:write is high", () => {
-      expect(computeRisk(["filesystem:write"])).toBe("high")
+    test("file_write is high", () => {
+      expect(computeRisk(["file_write"])).toBe("high")
     })
 
-    test("filesystem:read is medium", () => {
-      expect(computeRisk(["filesystem:read"])).toBe("medium")
+    test("file_read is medium", () => {
+      expect(computeRisk(["file_read"])).toBe("medium")
     })
 
-    test("network is high (undeclared domains)", () => {
-      expect(computeRisk(["network"])).toBe("high")
+    test("network_request is high (undeclared domains)", () => {
+      expect(computeRisk(["network_request"])).toBe("high")
     })
 
     test("config:read is low", () => {
@@ -44,7 +44,7 @@ describe("consent module", () => {
     })
 
     test("high + medium = high", () => {
-      expect(computeRisk(["filesystem:read", "shell"])).toBe("high")
+      expect(computeRisk(["file_read", "shell"])).toBe("high")
     })
   })
 
@@ -63,7 +63,7 @@ describe("consent module", () => {
 
     test("same capabilities → requiresApproval=false", () => {
       const manifest = makeManifest()
-      const caps = ["filesystem:read"]
+      const caps = ["file_read"]
       const diff = diffPermissions("test-plugin", manifest, manifest, caps, caps)
       expect(diff.requiresApproval).toBe(false)
       expect(diff.added.length).toBe(0)
@@ -74,7 +74,7 @@ describe("consent module", () => {
 
     test("capability added → requiresApproval=true", () => {
       const manifest = makeManifest()
-      const diff = diffPermissions("test-plugin", manifest, manifest, [], ["filesystem:read"])
+      const diff = diffPermissions("test-plugin", manifest, manifest, [], ["file_read"])
       expect(diff.requiresApproval).toBe(true)
       expect(diff.added.length).toBe(1)
       expect(diff.unchanged.length).toBe(0)
@@ -99,9 +99,9 @@ describe("consent module", () => {
       expect(items[0].severity).toBe("high")
     })
 
-    test("maps filesystem:read to files item", () => {
+    test("maps file_read to files item", () => {
       const manifest = makeManifest()
-      const items = generatePermissionItems(manifest, ["filesystem:read"])
+      const items = generatePermissionItems(manifest, ["file_read"])
       expect(items[0].category).toBe("files")
       expect(items[0].severity).toBe("medium")
     })
@@ -116,14 +116,14 @@ describe("consent module", () => {
           },
         },
       })
-      const items = generatePermissionItems(manifest, ["network"])
+      const items = generatePermissionItems(manifest, ["network_request"])
       expect(items[0].severity).toBe("medium")
       expect(items[0].description).toContain("api.example.com")
     })
 
     test("network without domains is high", () => {
       const manifest = makeManifest()
-      const items = generatePermissionItems(manifest, ["network"])
+      const items = generatePermissionItems(manifest, ["network_request"])
       expect(items[0].severity).toBe("high")
     })
 

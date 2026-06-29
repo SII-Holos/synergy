@@ -112,7 +112,7 @@ describe("POST /api/plugins/:pluginId/approve-install", () => {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             manifest,
-            capabilities: ["filesystem:read"],
+            capabilities: ["file_read"],
           }),
         })
         expect(res.status).toBe(200)
@@ -120,7 +120,7 @@ describe("POST /api/plugins/:pluginId/approve-install", () => {
         expect(body.pluginId).toBe("installed-plugin")
         expect(body.approvedBy).toBe("user")
         expect(body.version).toBe("1.0.0")
-        expect(body.approvedCapabilities).toContain("filesystem:read")
+        expect(body.approvedCapabilities).toContain("file_read")
         expect(body.approvedAt).toBeGreaterThan(0)
         expect(body.manifestHash).toBeDefined()
         expect(body.permissionsHash).toBeDefined()
@@ -211,7 +211,7 @@ describe("POST /api/plugins/:pluginId/approve-update", () => {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             manifest,
-            capabilities: ["network"],
+            capabilities: ["network_request"],
           }),
         })
         expect(res.status).toBe(200)
@@ -306,7 +306,7 @@ describe("GET /api/plugins/:pluginId/permission-diff", () => {
         expect(res.status).toBe(200)
         const body = await res.json()
         expect(body.pluginId).toBe("diff-plugin")
-        expect(body.added.length).toBeGreaterThan(0) // filesystem:read added vs approved
+        expect(body.added.length).toBeGreaterThan(0) // file_read added vs approved
       },
     })
   })

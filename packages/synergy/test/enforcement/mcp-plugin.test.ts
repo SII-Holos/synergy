@@ -160,7 +160,7 @@ describe("EnforcementGate plugin opaque strategy", () => {
       workspaceType: "worktree",
       pluginToolCapabilities: {
         plugin__data_export__publish: {
-          capabilities: ["filesystem:read", "filesystem:write", "network", "shell"],
+          capabilities: ["file_read", "file_write", "network_request", "shell"],
           risk: "high",
         },
       },
@@ -182,7 +182,7 @@ describe("EnforcementGate plugin opaque strategy", () => {
       workspaceType: "worktree",
       pluginToolCapabilities: {
         plugin__data_export__publish: {
-          capabilities: ["filesystem:read", "filesystem:write", "network"],
+          capabilities: ["file_read", "file_write", "network_request"],
           risk: "high",
         },
       },
@@ -196,7 +196,7 @@ describe("EnforcementGate plugin opaque strategy", () => {
           approvedAt: 1700000000000,
           approvedBy: "user",
           trustTier: "sandbox",
-          approvedCapabilities: ["filesystem:read"],
+          approvedCapabilities: ["file_read"],
           approvedNetworkDomains: [],
           approvedUISurfaces: [],
           risk: "high",
@@ -219,7 +219,7 @@ describe("EnforcementGate plugin opaque strategy", () => {
       profileId: "autonomous",
       pluginToolCapabilities: {
         plugin__meme__generate_meme: {
-          capabilities: ["filesystem:read", "task"],
+          capabilities: ["file_read", "task"],
           risk: "medium",
         },
       },
@@ -237,7 +237,7 @@ describe("EnforcementGate plugin opaque strategy", () => {
       profileId: "autonomous",
       pluginToolCapabilities: {
         plugin__meme__generate_meme: {
-          capabilities: ["filesystem:read", "task"],
+          capabilities: ["file_read", "task"],
           risk: "medium",
         },
       },
@@ -251,7 +251,7 @@ describe("EnforcementGate plugin opaque strategy", () => {
           approvedAt: 1700000000000,
           approvedBy: "user",
           trustTier: "sandbox",
-          approvedCapabilities: ["filesystem:read", "task"],
+          approvedCapabilities: ["file_read", "task"],
           approvedNetworkDomains: [],
           approvedUISurfaces: [],
           risk: "medium",

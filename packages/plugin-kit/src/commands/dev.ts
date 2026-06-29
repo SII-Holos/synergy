@@ -5,6 +5,7 @@ import { PluginManifest, type PluginManifest as PluginManifestType } from "@eric
 import { cmd } from "../cmd"
 import { UI } from "../ui"
 import { computeRisk } from "../lib/risk"
+import { baseCapabilities } from "../lib/capability"
 
 function timestamp(): string {
   return new Date().toLocaleTimeString("en-US", { hour12: false })
@@ -19,21 +20,7 @@ function debounce(ms: number) {
 }
 
 function overallRisk(manifest: PluginManifestType): "low" | "medium" | "high" {
-  const caps: string[] = []
-  const pt = manifest.permissions?.tools
-  if (pt?.shell) caps.push("shell")
-  if (pt?.filesystem === "write") caps.push("filesystem:write")
-  else if (pt?.filesystem === "read") caps.push("filesystem:read")
-  if (pt?.network) caps.push("network")
-  if (pt?.mcp === "invoke") caps.push("mcp:invoke")
-  if (pt?.mcp === "spawn") caps.push("mcp:spawn")
-  const pd = manifest.permissions?.data
-  if (pd?.session === "read") caps.push("session_data")
-  if (pd?.workspace === "read") caps.push("workspace_data")
-  if (pd?.secrets === "own") caps.push("secrets")
-  if (pd?.config === "global") caps.push("config:write")
-  if (pd?.config === "plugin") caps.push("config:read")
-  return computeRisk(caps, manifest)
+  return computeRisk(baseCapabilities(manifest), manifest)
 }
 
 function riskLabel(risk: "low" | "medium" | "high"): string {

@@ -17,7 +17,7 @@ export interface CapabilityWarning {
 
 export interface ResolvedPluginCapability {
   pluginId: string
-  /** Capability strings matching gate.ts manifest-style format (e.g. "filesystem:read", "shell", "network") */
+  /** Synergy capability classes (e.g. "file_read", "shell", "network_request") */
   base: string[]
   /** Tool ID (short name) → per-tool capability strings */
   tools: Record<string, string[]>

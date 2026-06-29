@@ -42,6 +42,7 @@ import {
 import type { ProfileIdInput, ProfileRule, ProfileSandbox } from "../control-profile/types"
 import { PluginToolId } from "../plugin/ids.js"
 import type { PluginApprovalRecord } from "../plugin/consent/approval-store.js"
+import { capabilityNonBypassable } from "@ericsanchezok/synergy-plugin/permissions"
 
 export interface Capability {
   class: string
@@ -60,7 +61,7 @@ export interface ClassifyResult {
 }
 
 export interface PluginToolCapabilityMap {
-  /** Capability strings from the plugin manifest (e.g. "filesystem:read", "shell", "network") */
+  /** Synergy capability classes resolved from the plugin manifest (e.g. "file_read", "shell", "network_request") */
   capabilities: string[]
   /** Risk level from manifest */
   risk: "low" | "medium" | "high"
@@ -282,46 +283,9 @@ const AGENT_ORCHESTRATION_TOOLS = new Set([
   "agenda_trigger",
 ])
 
-/** Maps Synergy capability class names to plugin manifest capability strings. */
-const GATE_TO_MANIFEST_CAP: Record<string, string | string[]> = {
-  file_read: "filesystem:read",
-  file_write: "filesystem:write",
-  shell: "shell",
-  network_request: "network",
-  mcp_invoke: ["mcp:invoke", "mcp:spawn"],
-  session_data: "session_data",
-  workspace_data: "workspace_data",
-  "config:read": "config:read",
-  "config:write": "config:write",
-  secrets: "secrets",
-  task: "task",
-}
-
-const MANIFEST_CAPABILITY_TO_GATE: Record<string, Omit<Capability, "approved" | "reason">> = {
-  "filesystem:read": { class: "file_read", nonBypassable: false },
-  "filesystem:write": { class: "file_write", nonBypassable: false },
-  shell: { class: "shell", nonBypassable: false },
-  network: { class: "network_request", nonBypassable: false },
-  "mcp:invoke": { class: "mcp_invoke", nonBypassable: true },
-  "mcp:spawn": { class: "mcp_invoke", nonBypassable: true },
-  session_data: { class: "session_data", nonBypassable: false },
-  workspace_data: { class: "workspace_data", nonBypassable: false },
-  "config:read": { class: "config:read", nonBypassable: false },
-  "config:write": { class: "config:write", nonBypassable: false },
-  secrets: { class: "secrets", nonBypassable: true },
-  task: { class: "task", nonBypassable: false },
-}
-
 function pushUniqueCapability(caps: Capability[], cap: Omit<Capability, "approved" | "reason">) {
   if (caps.some((existing) => existing.class === cap.class)) return
   caps.push({ ...cap })
-}
-
-function approvedManifestCapability(capabilityClass: string, approvedSet: Set<string>): boolean {
-  const manifestCap = GATE_TO_MANIFEST_CAP[capabilityClass]
-  if (Array.isArray(manifestCap)) return manifestCap.some((cap) => approvedSet.has(cap))
-  if (manifestCap) return approvedSet.has(manifestCap)
-  return true
 }
 
 function isDestructive(command: string): string | null {
@@ -537,12 +501,13 @@ export namespace EnforcementGate {
           return { capabilities: caps }
         }
 
-        // If we have resolved capabilities from the plugin manifest, decompose them
+        // Plugin capabilities are already Synergy capability classes.
         if (entry) {
-          const manifestCaps = entry.capabilities
-          for (const manifestCap of manifestCaps) {
-            const gateCap = MANIFEST_CAPABILITY_TO_GATE[manifestCap]
-            if (gateCap) pushUniqueCapability(caps, gateCap)
+          for (const capabilityClass of entry.capabilities) {
+            pushUniqueCapability(caps, {
+              class: capabilityClass,
+              nonBypassable: capabilityNonBypassable(capabilityClass),
+            })
           }
         }
 
@@ -554,7 +519,7 @@ export namespace EnforcementGate {
             const approvedSet = new Set(approval?.approvedCapabilities ?? [])
             for (let i = 0; i < caps.length; i++) {
               const cap = caps[i]
-              if (!approvedManifestCapability(cap.class, approvedSet)) {
+              if (!approvedSet.has(cap.class)) {
                 cap.opaque = true
                 cap.approved = false
                 cap.reason = "unapproved"
