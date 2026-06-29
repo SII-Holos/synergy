@@ -53,8 +53,16 @@ const CATEGORY_LABELS: Record<string, { label: string; risk: string; description
   "config:write": { label: "Config Write", risk: "medium", description: "Can modify global configuration" },
   "config:read": { label: "Config Read", risk: "low", description: "Can read global configuration" },
   task: { label: "Task Delegation", risk: "medium", description: "Can launch approved Synergy subagents" },
-  prompt_transform: { label: "Prompt Transform", risk: "high", description: "Can modify prompt context sent to the LLM" },
-  compaction_transform: { label: "Compaction Transform", risk: "high", description: "Can modify session compaction context" },
+  prompt_transform: {
+    label: "Prompt Transform",
+    risk: "high",
+    description: "Can modify prompt context sent to the LLM",
+  },
+  compaction_transform: {
+    label: "Compaction Transform",
+    risk: "high",
+    description: "Can modify session compaction context",
+  },
   tool_execution_hook: { label: "Tool Execution Hook", risk: "medium", description: "Can intercept tool calls" },
   permission_hook: { label: "Permission Hook", risk: "high", description: "Can influence permission decisions" },
   event_hook: { label: "Event Hook", risk: "medium", description: "Can receive approved runtime events" },

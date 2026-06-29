@@ -357,8 +357,8 @@ export namespace PluginMarketplaceRegistry {
     }
   }
 
-  async function fetchJson<T>(url: string, schema: z.ZodType<T>): Promise<T> {
-    const response = await fetch(url, { signal: AbortSignal.timeout(10000) })
+  async function fetchJson<T>(url: string, schema: z.ZodType<T>, timeoutMs: number): Promise<T> {
+    const response = await fetch(url, { signal: AbortSignal.timeout(timeoutMs) })
     if (!response.ok) throw new Error(`Failed to fetch ${url}: HTTP ${response.status}`)
     return schema.parse(await response.json())
   }
@@ -377,7 +377,7 @@ export namespace PluginMarketplaceRegistry {
     }
 
     try {
-      const registry = await fetchJson(config.registryUrl, RemoteRegistry)
+      const registry = await fetchJson(config.registryUrl, RemoteRegistry, config.requestTimeoutMs)
       await writeJsonFile(cachedPath, registry)
       return registry
     } catch (err) {
@@ -431,7 +431,7 @@ export namespace PluginMarketplaceRegistry {
     }
 
     try {
-      const entry = await fetchJson(entryUrl, RemoteEntry)
+      const entry = await fetchJson(entryUrl, RemoteEntry, config.requestTimeoutMs)
       if (entry.id !== id || entry.name !== id) {
         throw new Error(`Official plugin entry identity mismatch for ${id}`)
       }
@@ -474,8 +474,8 @@ export namespace PluginMarketplaceRegistry {
     return dir
   }
 
-  async function downloadTo(url: string, filepath: string) {
-    const response = await fetch(url, { signal: AbortSignal.timeout(60000) })
+  async function downloadTo(url: string, filepath: string, timeoutMs: number) {
+    const response = await fetch(url, { signal: AbortSignal.timeout(timeoutMs) })
     if (!response.ok) throw new Error(`Failed to download ${url}: HTTP ${response.status}`)
     await fs.mkdir(path.dirname(filepath), { recursive: true })
     await Bun.write(filepath, new Uint8Array(await response.arrayBuffer()))
@@ -493,7 +493,7 @@ export namespace PluginMarketplaceRegistry {
     await fs.rm(`${tarballPath}.sig`, { force: true }).catch(() => {})
   }
 
-  async function ensureDownloaded(version: NormalizedVersion, id: string) {
+  async function ensureDownloaded(version: NormalizedVersion, id: string, timeoutMs: number) {
     if (!version.downloadUrl) throw new Error(`Official registry entry ${id}@${version.version} has no downloadUrl`)
     if (!version.signatureUrl) throw new Error(`Official registry entry ${id}@${version.version} has no signatureUrl`)
     const dir = artifactDir(id, version.version)
@@ -514,9 +514,9 @@ export namespace PluginMarketplaceRegistry {
     const stagedTarballPath = path.join(stagingDir, path.basename(tarballPath))
     const stagedSignaturePath = `${stagedTarballPath}.sig`
     try {
-      await downloadTo(version.downloadUrl, stagedTarballPath)
+      await downloadTo(version.downloadUrl, stagedTarballPath, timeoutMs)
       assertIntegrity(stagedTarballPath, version.integrity)
-      await downloadTo(version.signatureUrl, stagedSignaturePath)
+      await downloadTo(version.signatureUrl, stagedSignaturePath, timeoutMs)
       await fs.mkdir(dir, { recursive: true })
       await fs.rename(stagedTarballPath, tarballPath)
       await fs.rename(stagedSignaturePath, signaturePath)
@@ -530,6 +530,7 @@ export namespace PluginMarketplaceRegistry {
   }
 
   export async function verifyOfficialArtifact(id: string, version: string): Promise<VerifiedArtifact> {
+    const config = await currentConfig()
     const entry = await getOfficialEntry(id)
     if (!entry) throw new Error(`Official registry plugin not found: ${id}`)
     if (entry.yankedVersions?.includes(version))
@@ -537,7 +538,7 @@ export namespace PluginMarketplaceRegistry {
     const target = entry.versions.find((candidate) => candidate.version === version)
     if (!target) throw new Error(`Official registry version not found: ${id}@${version}`)
 
-    const { tarballPath, signaturePath } = await ensureDownloaded(target, id)
+    const { tarballPath, signaturePath } = await ensureDownloaded(target, id, config.artifactDownloadTimeoutMs)
     let extractedDir: string | null = null
     try {
       const tarballHash = assertIntegrity(tarballPath, target.integrity)

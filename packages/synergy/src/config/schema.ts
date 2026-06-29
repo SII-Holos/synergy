@@ -1038,8 +1038,18 @@ export const PLUGIN_APPROVAL_POLICY_DEFAULTS = {
 
 export const PluginRuntimeLimits = z
   .object({
-    startupTimeoutMs: z.number().int().positive().optional().describe("Maximum milliseconds for plugin runtime startup"),
-    requestTimeoutMs: z.number().int().positive().optional().describe("Maximum milliseconds for one plugin runtime request"),
+    startupTimeoutMs: z
+      .number()
+      .int()
+      .positive()
+      .optional()
+      .describe("Maximum milliseconds for plugin runtime startup"),
+    requestTimeoutMs: z
+      .number()
+      .int()
+      .positive()
+      .optional()
+      .describe("Maximum milliseconds for one plugin runtime request"),
     shutdownGraceMs: z.number().int().positive().optional().describe("Graceful shutdown window before force kill"),
     maxConcurrentRequests: z.number().int().positive().optional().describe("Maximum concurrent bridge requests"),
     maxLogBytesPerMinute: z.number().int().positive().optional().describe("Maximum plugin log bytes per minute"),
@@ -1112,6 +1122,20 @@ export const PluginMarketplace = z
       .optional()
       .default(true)
       .describe("Use stale marketplace cache for browsing when the remote registry cannot be reached"),
+    requestTimeoutMs: z
+      .number()
+      .int()
+      .positive()
+      .optional()
+      .default(10000)
+      .describe("Timeout in milliseconds for registry and entry metadata requests"),
+    artifactDownloadTimeoutMs: z
+      .number()
+      .int()
+      .positive()
+      .optional()
+      .default(60000)
+      .describe("Timeout in milliseconds for plugin artifact and signature downloads"),
   })
   .strict()
   .meta({ ref: "PluginMarketplaceConfig" })
@@ -1123,6 +1147,8 @@ export const PLUGIN_MARKETPLACE_DEFAULTS = {
   includeLocalRegistry: true,
   cacheTtlMs: 300000,
   offlineCache: true,
+  requestTimeoutMs: 10000,
+  artifactDownloadTimeoutMs: 60000,
 } as const satisfies Required<PluginMarketplace>
 export const Info = z
   .object({

@@ -57,20 +57,20 @@ Plugin-wide permissions provide defaults. `data.config` can be `none`, `plugin`,
 
 At execution time Synergy registers plugin tools as `plugin__<pluginId>__<toolName>`. The plugin resolver converts manifest fields into the same Synergy capability classes used by built-in tools:
 
-| Manifest field/value             | Synergy capability class |
-| -------------------------------- | ------------------------ |
-| `tools.filesystem: "read"`       | `file_read`              |
-| `tools.filesystem: "write"`      | `file_read`, `file_write` |
-| `tools.shell: true`              | `shell`                  |
-| `tools.network: true`            | `network_request`        |
-| `tools.mcp: "invoke"`            | `mcp_invoke`             |
-| `tools.mcp: "spawn"`             | `mcp_invoke`, `mcp_spawn` |
-| `tools.task`                     | `task`                   |
-| `data.session: "read"`           | `session_data`           |
-| `data.workspace: "read"`         | `workspace_data`         |
-| `data.config: "plugin"`          | `config:read`            |
-| `data.config: "global"`          | `config:read`, `config:write` |
-| `data.secrets: "own"`            | `secrets`                |
+| Manifest field/value        | Synergy capability class      |
+| --------------------------- | ----------------------------- |
+| `tools.filesystem: "read"`  | `file_read`                   |
+| `tools.filesystem: "write"` | `file_read`, `file_write`     |
+| `tools.shell: true`         | `shell`                       |
+| `tools.network: true`       | `network_request`             |
+| `tools.mcp: "invoke"`       | `mcp_invoke`                  |
+| `tools.mcp: "spawn"`        | `mcp_invoke`, `mcp_spawn`     |
+| `tools.task`                | `task`                        |
+| `data.session: "read"`      | `session_data`                |
+| `data.workspace: "read"`    | `workspace_data`              |
+| `data.config: "plugin"`     | `config:read`                 |
+| `data.config: "global"`     | `config:read`, `config:write` |
+| `data.secrets: "own"`       | `secrets`                     |
 
 Synergy does not add a coarse “plugin invoke” permission. Plugin tools are approved and profiled by the real Synergy capabilities they declare. Unknown plugin tools are treated as protected opaque operations and require user approval.
 

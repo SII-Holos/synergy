@@ -896,6 +896,48 @@ export type PluginApprovalPolicyConfig = {
 }
 
 /**
+ * Default plugin runtime resource and request limits
+ */
+export type PluginRuntimeLimitsConfig = {
+  /**
+   * Maximum milliseconds for plugin runtime startup
+   */
+  startupTimeoutMs?: number
+  /**
+   * Maximum milliseconds for one plugin runtime request
+   */
+  requestTimeoutMs?: number
+  /**
+   * Graceful shutdown window before force kill
+   */
+  shutdownGraceMs?: number
+  /**
+   * Maximum concurrent bridge requests
+   */
+  maxConcurrentRequests?: number
+  /**
+   * Maximum plugin log bytes per minute
+   */
+  maxLogBytesPerMinute?: number
+  /**
+   * Maximum process runtime RSS in MB
+   */
+  memoryMb?: number
+  /**
+   * Memory polling interval in milliseconds
+   */
+  memoryPollIntervalMs?: number
+  /**
+   * Heartbeat interval in milliseconds
+   */
+  heartbeatIntervalMs?: number
+  /**
+   * Missed heartbeats before process kill
+   */
+  heartbeatMissesBeforeKill?: number
+}
+
+/**
  * Plugin runtime isolation policy configuration
  */
 export type PluginRuntimePolicyConfig = {
@@ -919,6 +961,7 @@ export type PluginRuntimePolicyConfig = {
    * Allow local plugins to run in-process
    */
   allowLocalInProcess?: boolean
+  limits?: PluginRuntimeLimitsConfig
 }
 
 /**
@@ -945,6 +988,14 @@ export type PluginMarketplaceConfig = {
    * Use stale marketplace cache for browsing when the remote registry cannot be reached
    */
   offlineCache?: boolean
+  /**
+   * Timeout in milliseconds for registry and entry metadata requests
+   */
+  requestTimeoutMs?: number
+  /**
+   * Timeout in milliseconds for plugin artifact and signature downloads
+   */
+  artifactDownloadTimeoutMs?: number
 }
 
 /**
@@ -4431,14 +4482,15 @@ export type PluginRuntimeInfo = {
   lastHeartbeatAt?: number
   memoryMb?: number
   limits: {
-    STARTUP_TIMEOUT_MS: number
-    REQUEST_TIMEOUT_MS: number
-    SHUTDOWN_GRACE_MS: number
-    CONCURRENT_REQUESTS: number
-    MAX_LOG_BYTES_PER_MINUTE: number
-    MEMORY_MB: number
-    HEARTBEAT_INTERVAL_MS: number
-    HEARTBEAT_MISSES_BEFORE_KILL: number
+    startupTimeoutMs: number
+    requestTimeoutMs: number
+    shutdownGraceMs: number
+    maxConcurrentRequests: number
+    maxLogBytesPerMinute: number
+    memoryMb: number
+    memoryPollIntervalMs: number
+    heartbeatIntervalMs: number
+    heartbeatMissesBeforeKill: number
   }
   lastError?: string
 }

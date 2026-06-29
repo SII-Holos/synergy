@@ -54,7 +54,7 @@ export function createPluginToolContext(input: {
     agent: input.context.agent,
     abort: input.context.abort,
     directory: input.directory,
-    ask: (request) => input.context.ask({ ...request, metadata: request.metadata ?? {} }),
+    ask: (request) => requestPluginPermission(runtimeContext, request),
     task: {
       run: (request) =>
         runPluginTask({
@@ -62,8 +62,6 @@ export function createPluginToolContext(input: {
           pluginDir: input.pluginDir,
           context: runtimeContext,
           request,
-          ask: (permissionRequest) =>
-            input.context.ask({ ...permissionRequest, metadata: permissionRequest.metadata ?? {} }),
         }),
     },
     tools: {
@@ -82,7 +80,6 @@ export async function runPluginTask(input: {
   pluginDir: string
   context: RuntimeContext
   request: ToolTaskRunInput
-  ask?: (input: { permission: string; patterns: string[]; metadata?: Record<string, any> }) => Promise<void>
 }): Promise<ToolTaskRunResult> {
   const request = normalizeTaskRunInput(input.request)
   const taskPermission = await assertTaskPermission(input.pluginDir, request)
@@ -92,7 +89,7 @@ export async function runPluginTask(input: {
     throw new Error(`Agent "${request.subagent}" is not visible to "${input.context.agent}"`)
   }
 
-  await askForTask(input.context, request, input.ask)
+  await askForTask(input.context, request)
 
   const model = request.model ?? (await Agent.getAvailableModel(agent)) ?? (await parentModel(input.context))
   const task = await Cortex.launch({
@@ -189,19 +186,11 @@ async function assertTaskPermission(pluginDir: string, request: ToolTaskRunInput
   return task
 }
 
-async function askForTask(
-  context: RuntimeContext,
-  request: ToolTaskRunInput,
-  ask?: (input: { permission: string; patterns: string[]; metadata?: Record<string, any> }) => Promise<void>,
-) {
+async function askForTask(context: RuntimeContext, request: ToolTaskRunInput) {
   const metadata = {
     description: request.description,
     subagent_type: request.subagent,
     source: "plugin",
-  }
-  if (ask) {
-    await ask({ permission: "task", patterns: [request.subagent], metadata })
-    return
   }
   await requestPluginPermission(context, { permission: "task", patterns: [request.subagent], metadata })
 }

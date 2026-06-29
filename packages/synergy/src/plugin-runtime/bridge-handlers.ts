@@ -51,7 +51,11 @@ export async function executeBridgeMethod(input: BridgeHandlerInput): Promise<un
   switch (method) {
     // ── config ───────────────────────────────────────────────
     case "config.get": {
-      await authorizeBridgeRequest(bridgeContext, { permission: "config:read", capability: "config:read" }, "config.get")
+      await authorizeBridgeRequest(
+        bridgeContext,
+        { permission: "config:read", capability: "config:read" },
+        "config.get",
+      )
       try {
         const accessor = createConfigAccessor(pluginId)
         const full = await accessor.get()
@@ -64,7 +68,11 @@ export async function executeBridgeMethod(input: BridgeHandlerInput): Promise<un
       }
     }
     case "config.set": {
-      await authorizeBridgeRequest(bridgeContext, { permission: "config:write", capability: "config:write" }, "config.set")
+      await authorizeBridgeRequest(
+        bridgeContext,
+        { permission: "config:write", capability: "config:write" },
+        "config.set",
+      )
       try {
         const accessor = createConfigAccessor(pluginId)
         const { key, value } = params as any
@@ -164,7 +172,11 @@ export async function executeBridgeMethod(input: BridgeHandlerInput): Promise<un
       if (url.protocol !== "http:" && url.protocol !== "https:") {
         throw new Error(`Only http/https URLs are allowed, got: ${url.protocol}`)
       }
-      await authorizeBridgeRequest(bridgeContext, { permission: "network_request", capability: "network_request" }, url.origin)
+      await authorizeBridgeRequest(
+        bridgeContext,
+        { permission: "network_request", capability: "network_request" },
+        url.origin,
+      )
 
       // Build safe headers — strip Authorization
       const options = (params as any)?.options as Record<string, unknown> | undefined
@@ -262,7 +274,11 @@ export async function executeBridgeMethod(input: BridgeHandlerInput): Promise<un
 
     // ── not available ────────────────────────────────────────
     case "session.read":
-      await authorizeBridgeRequest(bridgeContext, { permission: "session_data", capability: "session_data" }, "session.read")
+      await authorizeBridgeRequest(
+        bridgeContext,
+        { permission: "session_data", capability: "session_data" },
+        "session.read",
+      )
       throw new Error("session.read is not available in isolated runtime")
 
     case "tool.invoke":

@@ -1,10 +1,10 @@
 import { $ } from "bun"
 import fs from "fs"
-import os from "os"
 import path from "path"
 import type { Argv } from "yargs"
 import { cmd } from "../cmd"
 import { UI } from "../ui"
+import { SYNERGY_ROOT } from "../lib/paths"
 import { buildPluginProject } from "./build"
 import { packPluginProject } from "./pack"
 import { signPluginTarball } from "./sign"
@@ -29,11 +29,7 @@ function defaultRegistryRepo(): string {
 }
 
 function defaultRegistryGithubRepo(registryRepo: string): string {
-  return (
-    process.env.SYNERGY_PLUGIN_MARKET_GITHUB_REPO ??
-    githubRepoSlug(registryRepo) ??
-    OFFICIAL_REGISTRY_GITHUB_REPO
-  )
+  return process.env.SYNERGY_PLUGIN_MARKET_GITHUB_REPO ?? githubRepoSlug(registryRepo) ?? OFFICIAL_REGISTRY_GITHUB_REPO
 }
 
 function defaultRegistryBaseBranch(): string {
@@ -61,11 +57,9 @@ async function currentRepoUrl(cwd: string): Promise<string | undefined> {
   return normalizeRepoUrl(result.text().trim())
 }
 
-function defaultRegistryDir(pluginDir: string): string {
+function defaultRegistryDir(): string {
   if (process.env.SYNERGY_PLUGIN_MARKET_REGISTRY_DIR) return process.env.SYNERGY_PLUGIN_MARKET_REGISTRY_DIR
-  const sibling = path.resolve(pluginDir, "..", "synergy-plugins")
-  if (fs.existsSync(sibling)) return sibling
-  return path.join(os.homedir(), ".synergy", "cache", "plugin-market", "registry-checkout")
+  return path.join(SYNERGY_ROOT, "cache", "plugin-market", "registry-checkout")
 }
 
 function safeArtifactName(name: string): string {
@@ -304,7 +298,7 @@ export const PluginPublishMarketCommand = cmd({
       })
 
       const registryRepo = (args["registry-repo"] as string | undefined) ?? defaultRegistryRepo()
-      const registryDir = path.resolve((args["registry-dir"] as string | undefined) ?? defaultRegistryDir(pluginDir))
+      const registryDir = path.resolve((args["registry-dir"] as string | undefined) ?? defaultRegistryDir())
       await ensureRegistryCheckout(registryDir, registryRepo)
       const entryPath = path.join(registryDir, "plugins", `${entry.id}.json`)
       writeGithubEntry(entryPath, entry)
@@ -316,9 +310,7 @@ export const PluginPublishMarketCommand = cmd({
         pluginId: entry.id,
         version: manifest.version,
         noPr: (args.pr as boolean | undefined) === false,
-        githubRepo:
-          (args["registry-github-repo"] as string | undefined) ??
-          defaultRegistryGithubRepo(registryRepo),
+        githubRepo: (args["registry-github-repo"] as string | undefined) ?? defaultRegistryGithubRepo(registryRepo),
         baseBranch: (args["registry-base-branch"] as string | undefined) ?? defaultRegistryBaseBranch(),
         branchPrefix: (args["registry-branch-prefix"] as string | undefined) ?? defaultRegistryBranchPrefix(),
       })

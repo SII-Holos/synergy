@@ -27,9 +27,9 @@ describe("validateRuntimePolicy", () => {
     const errors = results.filter((r) => r.type === "error")
     const warnings = results.filter((r) => r.type === "warn")
     expect(errors.length).toBe(0)
-    expect(warnings.some((warning) => warning.message.includes('"in-process"') && warning.message.includes('"process"'))).toBe(
-      true,
-    )
+    expect(
+      warnings.some((warning) => warning.message.includes('"in-process"') && warning.message.includes('"process"')),
+    ).toBe(true)
   })
 
   test("third-party git plugin defaulting to process does not fail validation", () => {
@@ -57,9 +57,9 @@ describe("validateRuntimePolicy", () => {
     const errors = results.filter((r) => r.type === "error")
     const warnings = results.filter((r) => r.type === "warn")
     expect(errors.length).toBe(0)
-    expect(warnings.some((warning) => warning.message.includes('"in-process"') && warning.message.includes('"process"'))).toBe(
-      true,
-    )
+    expect(
+      warnings.some((warning) => warning.message.includes('"in-process"') && warning.message.includes('"process"')),
+    ).toBe(true)
   })
 
   test("local plugin requesting in-process is allowed (no error)", () => {
@@ -107,9 +107,9 @@ describe("validateRuntimePolicy", () => {
     const errors = results.filter((r) => r.type === "error")
     const warnings = results.filter((r) => r.type === "warn")
     expect(errors.length).toBe(0)
-    expect(warnings.some((warning) => warning.message.includes('"in-process"') && warning.message.includes('"process"'))).toBe(
-      true,
-    )
+    expect(
+      warnings.some((warning) => warning.message.includes('"in-process"') && warning.message.includes('"process"')),
+    ).toBe(true)
   })
 
   test("high-risk plugin in worker mode is allowed (no in-process error)", () => {
