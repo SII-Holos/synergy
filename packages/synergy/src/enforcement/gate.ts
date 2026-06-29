@@ -282,18 +282,46 @@ const AGENT_ORCHESTRATION_TOOLS = new Set([
   "agenda_trigger",
 ])
 
-/** Maps gate.ts capability class names to plugin manifest capability strings. */
-const GATE_TO_MANIFEST_CAP: Record<string, string> = {
-  plugin_file_read: "filesystem:read",
-  plugin_file_write: "filesystem:write",
-  plugin_shell: "shell",
-  plugin_network: "network",
-  plugin_session_read: "session_data",
-  plugin_workspace_read: "workspace_data",
-  plugin_config_read: "config:read",
-  plugin_config_write: "config:write",
-  plugin_secret_read: "secrets",
+/** Maps Synergy capability class names to plugin manifest capability strings. */
+const GATE_TO_MANIFEST_CAP: Record<string, string | string[]> = {
+  file_read: "filesystem:read",
+  file_write: "filesystem:write",
+  shell: "shell",
+  network_request: "network",
+  mcp_invoke: ["mcp:invoke", "mcp:spawn"],
+  session_data: "session_data",
+  workspace_data: "workspace_data",
+  "config:read": "config:read",
+  "config:write": "config:write",
+  secrets: "secrets",
   task: "task",
+}
+
+const MANIFEST_CAPABILITY_TO_GATE: Record<string, Omit<Capability, "approved" | "reason">> = {
+  "filesystem:read": { class: "file_read", nonBypassable: false },
+  "filesystem:write": { class: "file_write", nonBypassable: false },
+  shell: { class: "shell", nonBypassable: false },
+  network: { class: "network_request", nonBypassable: false },
+  "mcp:invoke": { class: "mcp_invoke", nonBypassable: true },
+  "mcp:spawn": { class: "mcp_invoke", nonBypassable: true },
+  session_data: { class: "session_data", nonBypassable: false },
+  workspace_data: { class: "workspace_data", nonBypassable: false },
+  "config:read": { class: "config:read", nonBypassable: false },
+  "config:write": { class: "config:write", nonBypassable: false },
+  secrets: { class: "secrets", nonBypassable: true },
+  task: { class: "task", nonBypassable: false },
+}
+
+function pushUniqueCapability(caps: Capability[], cap: Omit<Capability, "approved" | "reason">) {
+  if (caps.some((existing) => existing.class === cap.class)) return
+  caps.push({ ...cap })
+}
+
+function approvedManifestCapability(capabilityClass: string, approvedSet: Set<string>): boolean {
+  const manifestCap = GATE_TO_MANIFEST_CAP[capabilityClass]
+  if (Array.isArray(manifestCap)) return manifestCap.some((cap) => approvedSet.has(cap))
+  if (manifestCap) return approvedSet.has(manifestCap)
+  return true
 }
 
 function isDestructive(command: string): string | null {
@@ -512,37 +540,9 @@ export namespace EnforcementGate {
         // If we have resolved capabilities from the plugin manifest, decompose them
         if (entry) {
           const manifestCaps = entry.capabilities
-          const hasCap = (c: string) => manifestCaps.includes(c)
-
-          if (hasCap("filesystem:read")) {
-            caps.push({ class: "plugin_file_read", nonBypassable: false })
-          }
-          if (hasCap("filesystem:write")) {
-            caps.push({ class: "plugin_file_write", nonBypassable: false })
-          }
-          if (hasCap("shell")) {
-            caps.push({ class: "plugin_shell", nonBypassable: false })
-          }
-          if (hasCap("network")) {
-            caps.push({ class: "plugin_network", nonBypassable: false })
-          }
-          if (hasCap("session_data")) {
-            caps.push({ class: "plugin_session_read", nonBypassable: false })
-          }
-          if (hasCap("workspace_data")) {
-            caps.push({ class: "plugin_workspace_read", nonBypassable: false })
-          }
-          if (hasCap("config:read")) {
-            caps.push({ class: "plugin_config_read", nonBypassable: false })
-          }
-          if (hasCap("config:write")) {
-            caps.push({ class: "plugin_config_write", nonBypassable: false })
-          }
-          if (hasCap("secrets")) {
-            caps.push({ class: "plugin_secret_read", nonBypassable: true })
-          }
-          if (hasCap("task")) {
-            caps.push({ class: "task", nonBypassable: false })
+          for (const manifestCap of manifestCaps) {
+            const gateCap = MANIFEST_CAPABILITY_TO_GATE[manifestCap]
+            if (gateCap) pushUniqueCapability(caps, gateCap)
           }
         }
 
@@ -554,8 +554,7 @@ export namespace EnforcementGate {
             const approvedSet = new Set(approval?.approvedCapabilities ?? [])
             for (let i = 0; i < caps.length; i++) {
               const cap = caps[i]
-              const manifestCap = GATE_TO_MANIFEST_CAP[cap.class]
-              if (manifestCap && !approvedSet.has(manifestCap)) {
+              if (!approvedManifestCapability(cap.class, approvedSet)) {
                 cap.opaque = true
                 cap.approved = false
                 cap.reason = "unapproved"

@@ -48,7 +48,7 @@ describe("SmartAllow eligibility", () => {
   test("rejects hard capability classes even when marked bypassable", () => {
     expect(SmartAllow.isEligible("deny", [{ class: "shell_destructive", nonBypassable: false }])).toBe(false)
     expect(SmartAllow.isEligible("deny", [{ class: "identity_act", nonBypassable: false }])).toBe(false)
-    expect(SmartAllow.isEligible("deny", [{ class: "plugin_secret_read", nonBypassable: false }])).toBe(false)
+    expect(SmartAllow.isEligible("deny", [{ class: "secrets", nonBypassable: false }])).toBe(false)
   })
 })
 

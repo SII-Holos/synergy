@@ -169,13 +169,11 @@ describe("EnforcementGate plugin opaque strategy", () => {
     const result = gate.classify("plugin__data_export__publish", {})
     const classes = result.capabilities.map((cap: any) => cap.class)
 
-    expect(classes).toContain("plugin_file_read")
-    expect(classes).toContain("plugin_file_write")
-    expect(classes).toContain("plugin_network")
-    expect(classes).toContain("plugin_shell")
-    expect(new Set(classes)).toEqual(
-      new Set(["plugin_file_read", "plugin_file_write", "plugin_network", "plugin_shell"]),
-    )
+    expect(classes).toContain("file_read")
+    expect(classes).toContain("file_write")
+    expect(classes).toContain("network_request")
+    expect(classes).toContain("shell")
+    expect(new Set(classes)).toEqual(new Set(["file_read", "file_write", "network_request", "shell"]))
   })
 
   test("plugin approval records are keyed by canonical plugin id and mark unapproved sub-capabilities", async () => {
@@ -208,10 +206,10 @@ describe("EnforcementGate plugin opaque strategy", () => {
 
     const result = gate.classify("plugin__data_export__publish", {})
 
-    expect(result.capabilities.find((cap: any) => cap.class === "plugin_file_read")?.approved).toBe(true)
-    expect(result.capabilities.find((cap: any) => cap.class === "plugin_file_write")?.approved).toBe(false)
-    expect(result.capabilities.find((cap: any) => cap.class === "plugin_file_write")?.reason).toBe("unapproved")
-    expect(result.capabilities.find((cap: any) => cap.class === "plugin_network")?.approved).toBe(false)
+    expect(result.capabilities.find((cap: any) => cap.class === "file_read")?.approved).toBe(true)
+    expect(result.capabilities.find((cap: any) => cap.class === "file_write")?.approved).toBe(false)
+    expect(result.capabilities.find((cap: any) => cap.class === "file_write")?.reason).toBe("unapproved")
+    expect(result.capabilities.find((cap: any) => cap.class === "network_request")?.approved).toBe(false)
   })
 
   test("autonomous denies unapproved plugin sub-capabilities and allows approved ones", async () => {
@@ -231,7 +229,7 @@ describe("EnforcementGate plugin opaque strategy", () => {
     const unapprovedEnvelope = unapprovedGate.evaluate("plugin__meme__generate_meme", {})
     expect(unapprovedEnvelope.decision).toBe("deny")
     expect(unapprovedEnvelope.opaque).toBe(true)
-    expect(unapprovedEnvelope.refusal?.matchedPermission).toBe("plugin_file_read")
+    expect(unapprovedEnvelope.refusal?.matchedPermission).toBe("file_read")
 
     const approvedGate = await EnforcementGate.create({
       activeWorkspace: "/Users/test/synergy-control-profile",

@@ -41,7 +41,7 @@ export namespace SmartAllow {
     "file_external_write",
     "protected_op",
     "mcp_invoke",
-    "plugin_secret_read",
+    "secrets",
     "identity_act",
     "communication_email",
     "channel_outbound",
