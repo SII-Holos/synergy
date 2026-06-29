@@ -87,17 +87,19 @@ describe("ToolTimeout", () => {
         media: { type: "image", pendingTitle: "Generating" },
       },
     }
-    expect(ToolTimeout.mergeMetadata(existing, { matches: 1, display: { primaryAttachmentIds: ["image-1"] } })).toEqual({
-      approval: existing.approval,
-      matches: 1,
-      toolTimeout: existing.toolTimeout,
-      display: {
-        kind: "media-generation",
-        presentation: "artifact-only",
-        primaryAttachmentIds: ["image-1"],
-        media: { type: "image", pendingTitle: "Generating" },
+    expect(ToolTimeout.mergeMetadata(existing, { matches: 1, display: { primaryAttachmentIds: ["image-1"] } })).toEqual(
+      {
+        approval: existing.approval,
+        matches: 1,
+        toolTimeout: existing.toolTimeout,
+        display: {
+          kind: "media-generation",
+          presentation: "artifact-only",
+          primaryAttachmentIds: ["image-1"],
+          media: { type: "image", pendingTitle: "Generating" },
+        },
       },
-    })
+    )
     expect(ToolTimeout.mergeMetadata(existing, undefined)).toBe(existing)
   })
 })

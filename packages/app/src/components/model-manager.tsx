@@ -136,10 +136,7 @@ function newest(models: LocalModel[]) {
   return [...models].sort((a, b) => String(b.release_date ?? "").localeCompare(String(a.release_date ?? "")))[0]
 }
 
-function createStandaloneModelPreferences(
-  models: Accessor<LocalModel[]>,
-  defaults: Accessor<Record<string, string>>,
-) {
+function createStandaloneModelPreferences(models: Accessor<LocalModel[]>, defaults: Accessor<Record<string, string>>) {
   function migrateModelStore(value: unknown) {
     if (!value || typeof value !== "object") return value
 

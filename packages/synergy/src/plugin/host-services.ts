@@ -220,7 +220,11 @@ export async function requestPluginPermission(
   }
   const decision = ApprovalPolicy.decidePermission(profile.approval, request.permission, metadata)
   if (decision.action === "deny") {
-    throw new EnforcementError.PolicyDenied(decision.reason, decision.capabilities, profile.summary?.profileId ?? profileId)
+    throw new EnforcementError.PolicyDenied(
+      decision.reason,
+      decision.capabilities,
+      profile.summary?.profileId ?? profileId,
+    )
   }
   if (decision.action === "allow") return
 

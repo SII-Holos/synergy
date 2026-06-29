@@ -34,9 +34,7 @@ export function AccountPanel() {
     () => profile()?.name || (shortAgentId() ? `Agent ${shortAgentId()}` : "No Holos agent"),
   )
   const description = createMemo(() => profile()?.description?.trim())
-  const avatarSrc = createMemo(
-    () => profile()?.avatarUrl || brandAssetPath(BRAND_ASSETS.synergy.productIcon),
-  )
+  const avatarSrc = createMemo(() => profile()?.avatarUrl || brandAssetPath(BRAND_ASSETS.synergy.productIcon))
   const profileErrorMessage = createMemo(() => {
     if (!holos.state.social.profileError) return undefined
     return "Holos could not load this profile. Retry, or import the agent again if this keeps failing."

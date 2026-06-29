@@ -12,10 +12,10 @@ describe("Usage panel UI contract", () => {
 
   test("uses human-facing quota window labels and values", () => {
     expect(usagePanel).toContain("formatUsageWindowLabel(window.label)")
-    expect(usagePanel).toContain("\"5-hour window\"")
+    expect(usagePanel).toContain('"5-hour window"')
     expect(usagePanel).toContain("formatPercent(window.remainingPercent)")
     expect(usagePanel).toContain("remaining")
-    expect(usagePanel).not.toContain("<div class=\"usage-window-label\">{window.label}</div>")
+    expect(usagePanel).not.toContain('<div class="usage-window-label">{window.label}</div>')
   })
 
   test("renders compact usage rows with a meter instead of distant label-value pairs", () => {
