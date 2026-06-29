@@ -22,6 +22,12 @@ export async function writeRuntimeState(entries: RuntimeEntry[]): Promise<void> 
     lastHeartbeatAt: e.lastHeartbeatAt,
     startedAt: e.startedAt,
     lastError: e.lastError,
+    entryPath: e.entryPath,
+    pluginDir: e.pluginDir,
+    source: e.source,
+    serverUrl: e.serverUrl,
+    limits: e.limits,
+    launchSignature: e.launchSignature,
   }))
   try {
     await fs.mkdir(Global.Path.data, { recursive: true })

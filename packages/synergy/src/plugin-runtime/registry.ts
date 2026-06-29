@@ -52,6 +52,7 @@ export interface RuntimeEntry {
   lastError?: string
   warnings: RuntimeWarning[]
   limits: RuntimeLimits
+  launchSignature?: string
   tools?: RuntimeToolDescriptor[]
   hooks?: string[]
   send?: (message: HostToPlugin) => void
@@ -91,6 +92,7 @@ export interface PersistedRuntimeEntry {
   startedAt?: number
   lastError?: string
   limits?: RuntimeLimits
+  launchSignature?: string
 }
 
 // === RuntimeRegistry ===
@@ -158,6 +160,7 @@ export class RuntimeRegistry {
         startedAt: entry.startedAt,
         lastError: entry.lastError,
         limits: entry.limits,
+        launchSignature: entry.launchSignature,
       })
     }
     return result
@@ -179,6 +182,7 @@ export class RuntimeRegistry {
         startedAt: persisted.startedAt,
         lastError: persisted.lastError,
         limits: persisted.limits ?? DEFAULT_LIMITS,
+        launchSignature: persisted.launchSignature,
         warnings: [],
         tools: [],
         hooks: [],

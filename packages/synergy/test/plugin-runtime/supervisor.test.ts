@@ -143,6 +143,35 @@ describe("PluginRuntimeSupervisor", () => {
 
       // Should be the same entry reference
       expect(second).toBe(first)
+      expect(second.launchSignature).toBe(first.launchSignature)
+    })
+
+    test("restarts when plugin manifest content changes even if paths stay the same", async () => {
+      const { supervisor } = createSupervisor()
+      const pluginId = uniquePluginId()
+      const pluginDir = await pluginDirFor(pluginId)
+
+      const first = await startInProcess(supervisor, pluginId, { pluginDir })
+      await Bun.write(
+        path.join(pluginDir, "plugin.json"),
+        JSON.stringify(
+          {
+            name: pluginId,
+            version: "1.0.1",
+            description: "Supervisor test plugin changed",
+            main: "./runtime/index.js",
+          },
+          null,
+          2,
+        ),
+      )
+
+      const second = await startInProcess(supervisor, pluginId, { pluginDir })
+
+      expect(second).not.toBe(first)
+      expect(second.state).toBe("ready")
+      expect(second.restarts).toBe(1)
+      expect(second.launchSignature).not.toBe(first.launchSignature)
     })
 
     test("restarts a running plugin when the launch spec changes", async () => {

@@ -1,4 +1,5 @@
 import { Log } from "@/util/log"
+import fs from "fs"
 import path from "path"
 import { recordEvent } from "../plugin/audit.js"
 import type {
@@ -27,6 +28,7 @@ import { PluginLogBuffer } from "./logs.js"
 import { Global } from "../global/index.js"
 import { Config } from "../config/config.js"
 import { DEFAULT_SERVER_URL } from "../server/defaults.js"
+import { sha256Content, sha256File } from "../util/crypto.js"
 import {
   RuntimeRegistry,
   defaultRuntimeRegistry,
@@ -84,6 +86,7 @@ function runtimeMatchesRequest(
     source: PluginSource
     serverUrl: string
     limits: RuntimeLimits
+    launchSignature?: string
   },
 ): boolean {
   return (
@@ -92,7 +95,35 @@ function runtimeMatchesRequest(
     normalizeRuntimePath(entry.pluginDir) === normalizeRuntimePath(request.pluginDir) &&
     entry.source === request.source &&
     (entry.serverUrl ?? DEFAULT_SERVER_URL) === request.serverUrl &&
-    sameRuntimeLimits(entry.limits, request.limits)
+    sameRuntimeLimits(entry.limits, request.limits) &&
+    entry.launchSignature === request.launchSignature
+  )
+}
+
+function runtimeHasLiveClient(entry: RuntimeEntry): boolean {
+  if (entry.mode === "in-process") return true
+  if (!entry.request || !entry.send) return false
+  if (entry.mode === "worker") return Boolean(entry.worker)
+  if (entry.mode === "process") return Boolean(entry.process)
+  return false
+}
+
+function fileHashOrMissing(filepath: string | undefined): string {
+  if (!filepath) return "missing:"
+  try {
+    return fs.existsSync(filepath) && fs.statSync(filepath).isFile() ? sha256File(filepath) : `missing:${path.resolve(filepath)}`
+  } catch {
+    return `missing:${path.resolve(filepath)}`
+  }
+}
+
+function runtimeLaunchSignature(input: { pluginDir: string; entryPath: string | undefined }): string {
+  const manifestPath = path.join(input.pluginDir, "plugin.json")
+  return sha256Content(
+    JSON.stringify({
+      manifest: fileHashOrMissing(manifestPath),
+      entry: fileHashOrMissing(input.entryPath),
+    }),
   )
 }
 
@@ -400,9 +431,14 @@ export class PluginRuntimeSupervisor {
     const manifestResources = manifest.runtime?.resources
     const limits = resolveRuntimeLimits(config?.pluginRuntimePolicy?.limits, manifestResources)
     const serverUrl = options.serverUrl ?? DEFAULT_SERVER_URL
+    const launchSignature = runtimeLaunchSignature({
+      pluginDir: options.pluginDir,
+      entryPath: options.entryPath,
+    })
 
     if (existing && existing.state !== "stopped" && existing.state !== "crashed") {
       if (
+        runtimeHasLiveClient(existing) &&
         runtimeMatchesRequest(existing, {
           mode: resolvedMode,
           entryPath: options.entryPath,
@@ -410,6 +446,7 @@ export class PluginRuntimeSupervisor {
           source: options.source,
           serverUrl,
           limits,
+          launchSignature,
         })
       ) {
         log.warn("plugin already running", { pluginId, state: existing.state })
@@ -422,6 +459,8 @@ export class PluginRuntimeSupervisor {
         nextMode: resolvedMode,
         previousEntryPath: existing.entryPath,
         nextEntryPath: options.entryPath,
+        previousLaunchSignature: existing.launchSignature,
+        nextLaunchSignature: launchSignature,
       })
       await this.stop(pluginId, true)
     }
@@ -446,6 +485,7 @@ export class PluginRuntimeSupervisor {
       restarts,
       startedAt: Date.now(),
       limits,
+      launchSignature,
       warnings: [],
     }
     this.#registry.set(entry)

@@ -335,6 +335,7 @@ describe("RuntimeRegistry", () => {
           startedAt: 100,
           lastHeartbeatAt: 200,
           lastError: "oops",
+          launchSignature: "manifest-entry-hash",
         }),
       )
       registryA.set(
@@ -362,6 +363,7 @@ describe("RuntimeRegistry", () => {
       expect(restoredA.startedAt).toBe(100)
       expect(restoredA.lastHeartbeatAt).toBe(200)
       expect(restoredA.lastError).toBe("oops")
+      expect(restoredA.launchSignature).toBe("manifest-entry-hash")
       expect(restoredA.warnings).toEqual([])
     })
   })
