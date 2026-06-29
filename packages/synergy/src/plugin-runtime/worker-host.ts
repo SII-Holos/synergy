@@ -1,5 +1,6 @@
 import { Worker } from "node:worker_threads"
 import { fileURLToPath } from "url"
+import fs from "fs"
 import type {
   PluginToHost,
   HostToPlugin,
@@ -24,6 +25,10 @@ let workerFactory = defaultWorkerFactory
 
 export function setWorkerFactoryForTest(factory?: WorkerFactory): void {
   workerFactory = factory ?? defaultWorkerFactory
+}
+
+export function canSpawnPluginWorker(runnerExists = fs.existsSync(RUNNER_PATH)): boolean {
+  return runnerExists
 }
 
 // ---------------------------------------------------------------------------

@@ -11,6 +11,7 @@ import type { RuntimeExit, PluginRuntimeError } from "./errors.js"
 import type { PluginLogEntry } from "./logs.js"
 import type { ConcurrencyLimiter } from "./resource-limits.js"
 import { fileURLToPath } from "url"
+import fs from "fs"
 
 const RUNNER_PATH = fileURLToPath(new URL("./runner.ts", import.meta.url))
 
@@ -28,6 +29,38 @@ interface PluginState {
 interface PendingRequest {
   resolve: (value: unknown) => void
   reject: (error: Error) => void
+}
+
+export function resolvePluginProcessRunnerCommand(
+  entryPath: string,
+  runnerExists = fs.existsSync(RUNNER_PATH),
+): string[] {
+  if (runnerExists) return ["bun", "run", RUNNER_PATH, entryPath]
+  return [process.execPath, "__plugin-runtime-runner", entryPath]
+}
+
+async function captureProcessLogs(
+  stream: ReadableStream<Uint8Array> | null,
+  level: string,
+  onLog?: (entry: PluginLogEntry) => void,
+) {
+  if (!stream || !onLog) return
+  const decoder = new TextDecoder()
+  let buffered = ""
+  const reader = stream.getReader()
+  while (true) {
+    const { value: chunk, done } = await reader.read()
+    if (done) break
+    if (!chunk) continue
+    buffered += decoder.decode(chunk, { stream: true })
+    const lines = buffered.split(/\r?\n/)
+    buffered = lines.pop() ?? ""
+    for (const line of lines) {
+      if (line.trim()) onLog({ timestamp: Date.now(), level, message: line })
+    }
+  }
+  buffered += decoder.decode()
+  if (buffered.trim()) onLog({ timestamp: Date.now(), level, message: buffered })
 }
 
 // ── Message handler type ─────────────────────────────────────────
@@ -174,7 +207,7 @@ export async function spawnPluginProcess(options: SpawnPluginProcessOptions): Pr
   // ── Spawn subprocess ─────────────────────────────────────────
 
   const proc = Bun.spawn({
-    cmd: ["bun", "run", RUNNER_PATH, entryPath],
+    cmd: resolvePluginProcessRunnerCommand(entryPath),
     cwd: pluginDir,
     ipc: (message: string) => {
       try {
@@ -196,6 +229,8 @@ export async function spawnPluginProcess(options: SpawnPluginProcessOptions): Pr
       })
     },
   })
+  void captureProcessLogs(proc.stdout, "info", onLog).catch(() => {})
+  void captureProcessLogs(proc.stderr, "error", onLog).catch(() => {})
 
   // ── Send init message ────────────────────────────────────────
 
