@@ -250,7 +250,6 @@ function manifestToolUI(name: string): object {
   return {
     permissions: {
       tools: {
-        invoke: true,
         shell: false,
         filesystem: "none",
         network: false,
@@ -299,7 +298,6 @@ function manifestApiConnector(_name: string): object {
   return {
     permissions: {
       tools: {
-        invoke: true,
         network: true,
         shell: false,
         filesystem: "none",

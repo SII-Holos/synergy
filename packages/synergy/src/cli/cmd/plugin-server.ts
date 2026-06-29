@@ -1,6 +1,8 @@
 import { UI } from "../ui"
 import { Server } from "../../server/server"
 import { isServerReachable } from "../network"
+import { Config } from "../../config/config"
+import { PLUGIN_MARKETPLACE_DEFAULTS } from "../../config/schema"
 
 export const attachOption = {
   attach: {
@@ -30,10 +32,11 @@ export async function fetchPluginApi<T = any>(
   body?: unknown,
 ): Promise<T> {
   const url = `${serverUrl.replace(/\/+$/, "")}/api/plugins${path}`
+  const timeoutMs = await pluginCliRequestTimeoutMs()
   const init: RequestInit = {
     method,
     headers: { accept: "application/json", "content-type": "application/json" },
-    signal: AbortSignal.timeout(30_000),
+    signal: AbortSignal.timeout(timeoutMs),
   }
   if (body !== undefined) {
     init.body = JSON.stringify(body)
@@ -53,10 +56,11 @@ export async function fetchRegistryApi<T = any>(
   body?: unknown,
 ): Promise<T> {
   const url = `${serverUrl.replace(/\/+$/, "")}/api/registry${path}`
+  const timeoutMs = await pluginCliRequestTimeoutMs()
   const init: RequestInit = {
     method,
     headers: { accept: "application/json", "content-type": "application/json" },
-    signal: AbortSignal.timeout(30_000),
+    signal: AbortSignal.timeout(timeoutMs),
   }
   if (body !== undefined) {
     init.body = JSON.stringify(body)
@@ -67,4 +71,9 @@ export async function fetchRegistryApi<T = any>(
     throw new Error(`Server responded with ${response.status}: ${text}`)
   }
   return response.json() as T
+}
+
+export async function pluginCliRequestTimeoutMs(): Promise<number> {
+  const config = await Config.current().catch(() => undefined)
+  return config?.pluginMarketplace?.cliRequestTimeoutMs ?? PLUGIN_MARKETPLACE_DEFAULTS.cliRequestTimeoutMs
 }

@@ -91,7 +91,6 @@ Each plugin has a root `plugin.json`:
   "main": "./src/index.ts",
   "permissions": {
     "tools": {
-      "invoke": true,
       "filesystem": "none",
       "network": false,
       "shell": false,

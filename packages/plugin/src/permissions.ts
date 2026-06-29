@@ -1,20 +1,22 @@
 import type { PluginManifest } from "./manifest"
 
 export type PluginRisk = "low" | "medium" | "high"
-export type PluginPermissionCategory =
-  | "tools"
-  | "files"
-  | "network"
-  | "data"
-  | "ui"
-  | "runtime"
-  | "hooks"
-  | "session"
-  | "browser"
-  | "identity"
-  | "communication"
-  | "platform"
-  | "local"
+export const PLUGIN_PERMISSION_CATEGORIES = [
+  "tools",
+  "files",
+  "network",
+  "data",
+  "ui",
+  "runtime",
+  "hooks",
+  "session",
+  "browser",
+  "identity",
+  "communication",
+  "platform",
+  "local",
+] as const
+export type PluginPermissionCategory = (typeof PLUGIN_PERMISSION_CATEGORIES)[number]
 export type PluginPermissionSeverity = PluginRisk
 
 export interface PluginPermissionItem {

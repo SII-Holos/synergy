@@ -40,7 +40,6 @@ During `synergy-plugin build`, the runtime entry is bundled to `dist/runtime/ind
 {
   "permissions": {
     "tools": {
-      "invoke": true,
       "filesystem": "none",
       "network": false,
       "shell": false,

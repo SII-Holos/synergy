@@ -1,6 +1,7 @@
 import z from "zod"
+import { PLUGIN_PERMISSION_CATEGORIES } from "@ericsanchezok/synergy-plugin/permissions"
 
-export const PermissionItemCategorySchema = z.enum(["tools", "files", "network", "data", "ui", "runtime", "hooks"])
+export const PermissionItemCategorySchema = z.enum(PLUGIN_PERMISSION_CATEGORIES)
 
 export const PermissionSeveritySchema = z.enum(["low", "medium", "high"])
 

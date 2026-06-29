@@ -18,7 +18,6 @@ Capabilities come from `plugin.json`:
 {
   "permissions": {
     "tools": {
-      "invoke": true,
       "filesystem": "read",
       "network": true,
       "shell": false,

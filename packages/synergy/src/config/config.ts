@@ -26,6 +26,7 @@ import { existsSync } from "fs"
 import { loadFragments } from "./fragment"
 import * as Schema from "./schema"
 import { ConfigDomain } from "./domain"
+import { PluginSpec } from "../util/plugin-spec"
 
 export namespace Config {
   const log = Log.create({ service: "config" })
@@ -161,7 +162,7 @@ export namespace Config {
   function mergeConfigConcatArrays(target: Info, source: Info): Info {
     const merged = mergeDeep(target, source)
     if (target.plugin && source.plugin) {
-      merged.plugin = Array.from(new Set([...target.plugin, ...source.plugin]))
+      merged.plugin = mergePluginSpecList(target.plugin, source.plugin)
     }
     if (target.instructions && source.instructions) {
       merged.instructions = Array.from(new Set([...target.instructions, ...source.instructions]))
@@ -1081,11 +1082,38 @@ export namespace Config {
     if (mode === "append") {
       const merged = mergeDeep(current, patch) as Info
       if (current.plugin || patch.plugin) {
-        merged.plugin = Array.from(new Set([...(current.plugin ?? []), ...(patch.plugin ?? [])]))
+        merged.plugin = mergePluginSpecList(current.plugin ?? [], patch.plugin ?? [])
       }
       return merged
     }
     return mergeDeep(current, patch) as Info
+  }
+
+  function mergePluginSpecList(current: string[], patch: string[]): string[] {
+    const result: string[] = []
+    const indexByKey = new Map<string, number>()
+
+    const push = (spec: string) => {
+      const key = pluginSpecMergeKey(spec)
+      const index = indexByKey.get(key)
+      if (index === undefined) {
+        indexByKey.set(key, result.length)
+        result.push(spec)
+        return
+      }
+      result[index] = spec
+    }
+
+    for (const spec of current) push(spec)
+    for (const spec of patch) push(spec)
+    return result
+  }
+
+  function pluginSpecMergeKey(spec: string): string {
+    const trimmed = spec.trim()
+    if (trimmed.startsWith("file://")) return `file:${path.resolve(trimmed.slice("file://".length))}`
+    const parsed = PluginSpec.parse(trimmed)
+    return parsed.nonRegistry ? `source:${parsed.pkg.replace(/#.*$/, "")}` : `npm:${parsed.pkg}`
   }
 
   export const DomainImportPlanInput = z

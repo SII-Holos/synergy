@@ -19,7 +19,6 @@ Prefer the narrowest manifest permissions:
 {
   "permissions": {
     "tools": {
-      "invoke": true,
       "filesystem": "none",
       "network": false,
       "shell": false,

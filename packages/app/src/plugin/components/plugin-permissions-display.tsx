@@ -201,9 +201,6 @@ export function PluginPermissionsDisplay(props: PluginPermissionsDisplayProps) {
         warning: true,
       })
     }
-    if (hasPermission(p, ["tools", "invoke"]) && !toolItems.length) {
-      // Only show general invoke if there are no specific tool perms
-    }
     if (toolItems.length > 0) {
       groups.push({ title: "Tools", items: toolItems })
     }

@@ -2,6 +2,7 @@ import { $ } from "bun"
 import fs from "fs"
 import path from "path"
 import type { Argv } from "yargs"
+import { OFFICIAL_GITHUB_PLUGIN_MARKETPLACE } from "@ericsanchezok/synergy-plugin/market"
 import { cmd } from "../cmd"
 import { UI } from "../ui"
 import { SYNERGY_ROOT } from "../lib/paths"
@@ -19,25 +20,24 @@ import {
   writeGithubEntry,
 } from "../lib/market-entry"
 
-const OFFICIAL_REGISTRY_REPO = "https://github.com/SII-Holos/synergy-plugins.git"
-const OFFICIAL_REGISTRY_GITHUB_REPO = "SII-Holos/synergy-plugins"
-const DEFAULT_REGISTRY_BASE_BRANCH = "main"
-const DEFAULT_REGISTRY_BRANCH_PREFIX = "publish"
-
 function defaultRegistryRepo(): string {
-  return process.env.SYNERGY_PLUGIN_MARKET_REGISTRY_REPO ?? OFFICIAL_REGISTRY_REPO
+  return process.env.SYNERGY_PLUGIN_MARKET_REGISTRY_REPO ?? OFFICIAL_GITHUB_PLUGIN_MARKETPLACE.registryRepo
 }
 
 function defaultRegistryGithubRepo(registryRepo: string): string {
-  return process.env.SYNERGY_PLUGIN_MARKET_GITHUB_REPO ?? githubRepoSlug(registryRepo) ?? OFFICIAL_REGISTRY_GITHUB_REPO
+  return (
+    process.env.SYNERGY_PLUGIN_MARKET_GITHUB_REPO ??
+    githubRepoSlug(registryRepo) ??
+    OFFICIAL_GITHUB_PLUGIN_MARKETPLACE.registryGithubRepo
+  )
 }
 
 function defaultRegistryBaseBranch(): string {
-  return process.env.SYNERGY_PLUGIN_MARKET_BASE_BRANCH ?? DEFAULT_REGISTRY_BASE_BRANCH
+  return process.env.SYNERGY_PLUGIN_MARKET_BASE_BRANCH ?? OFFICIAL_GITHUB_PLUGIN_MARKETPLACE.registryBaseBranch
 }
 
 function defaultRegistryBranchPrefix(): string {
-  return process.env.SYNERGY_PLUGIN_MARKET_BRANCH_PREFIX ?? DEFAULT_REGISTRY_BRANCH_PREFIX
+  return process.env.SYNERGY_PLUGIN_MARKET_BRANCH_PREFIX ?? OFFICIAL_GITHUB_PLUGIN_MARKETPLACE.registryBranchPrefix
 }
 
 async function commandExists(name: string): Promise<boolean> {

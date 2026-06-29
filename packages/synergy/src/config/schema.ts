@@ -1136,6 +1136,13 @@ export const PluginMarketplace = z
       .optional()
       .default(60000)
       .describe("Timeout in milliseconds for plugin artifact and signature downloads"),
+    cliRequestTimeoutMs: z
+      .number()
+      .int()
+      .positive()
+      .optional()
+      .default(120000)
+      .describe("Timeout in milliseconds for Synergy CLI plugin commands waiting on the local server"),
   })
   .strict()
   .meta({ ref: "PluginMarketplaceConfig" })
@@ -1149,6 +1156,7 @@ export const PLUGIN_MARKETPLACE_DEFAULTS = {
   offlineCache: true,
   requestTimeoutMs: 10000,
   artifactDownloadTimeoutMs: 60000,
+  cliRequestTimeoutMs: 120000,
 } as const satisfies Required<PluginMarketplace>
 export const Info = z
   .object({

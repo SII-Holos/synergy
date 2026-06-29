@@ -20,6 +20,7 @@ import { PluginValidateCommand } from "./plugin-validate"
 import { PluginSignCommand } from "./plugin-sign"
 import { PluginDevCommand } from "./plugin-dev"
 import { PluginCreateCommand } from "./plugin-create"
+import { pluginCliRequestTimeoutMs } from "./plugin-server"
 import { cmd } from "./cmd"
 import { UI } from "../ui"
 import { Plugin } from "@/plugin"
@@ -801,7 +802,7 @@ async function notifyServerPluginReload() {
       scope: "global",
       reason: "plugin update",
     }),
-    signal: AbortSignal.timeout(30_000),
+    signal: AbortSignal.timeout(await pluginCliRequestTimeoutMs()),
   }).catch((error) => ({ ok: false, status: 0, text: async () => String(error) }) as Response)
 
   if (!response.ok) {

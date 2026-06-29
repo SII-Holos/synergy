@@ -2,6 +2,11 @@ import fs from "fs"
 import os from "os"
 import path from "path"
 import { PluginManifest, type PluginManifest as PluginManifestType } from "@ericsanchezok/synergy-plugin"
+import {
+  githubReleaseAssetUrl,
+  githubRepoSlug as sharedGithubRepoSlug,
+  normalizeGitHubRepoUrl,
+} from "@ericsanchezok/synergy-plugin/market"
 import { baseCapabilities, publicToolNames, registryPermissionSummary } from "@ericsanchezok/synergy-plugin/permissions"
 import { computeManifestHash, computePermissionsHash } from "./hash"
 import { computeRisk } from "./risk"
@@ -59,26 +64,15 @@ export function parseAuthor(input?: string): GithubRegistryEntry["author"] {
 }
 
 export function normalizeRepoUrl(input?: string): string | undefined {
-  if (!input) return undefined
-  const trimmed = input.trim()
-  const gitSsh = trimmed.match(/^git@github\.com:([^/]+\/[^/]+?)(?:\.git)?$/)
-  if (gitSsh) return `https://github.com/${gitSsh[1]}`
-  if (/^https:\/\/github\.com\/[^/]+\/[^/]+/.test(trimmed)) return trimmed.replace(/\.git$/, "")
-  return trimmed
+  return normalizeGitHubRepoUrl(input) ?? input?.trim()
 }
 
 export function githubRepoSlug(input?: string): string | undefined {
-  const normalized = normalizeRepoUrl(input)
-  if (!normalized) return undefined
-  const match = normalized.match(/^https:\/\/github\.com\/([^/]+\/[^/]+?)(?:\/.*)?$/)
-  if (!match) return undefined
-  return match[1].replace(/\.git$/, "")
+  return sharedGithubRepoSlug(input)
 }
 
 export function releaseAssetUrl(repo: string | undefined, version: string, filename: string): string | undefined {
-  const normalized = normalizeRepoUrl(repo)
-  if (!normalized || !normalized.startsWith("https://github.com/")) return undefined
-  return `${normalized}/releases/download/v${version}/${encodeURIComponent(filename)}`
+  return githubReleaseAssetUrl({ repo, version, filename })
 }
 
 function extractArchive(tarballPath: string): string {

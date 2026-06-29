@@ -63,7 +63,6 @@ Do not change `plugin.id` without changing `plugin.json.name` to the same value.
   "main": "./src/index.ts",
   "permissions": {
     "tools": {
-      "invoke": true,
       "filesystem": "none",
       "network": false,
       "shell": false,
