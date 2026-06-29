@@ -3,7 +3,6 @@ import { describeRoute, resolver } from "hono-openapi"
 import z from "zod"
 import { Plugin } from "../plugin/index"
 import { getRuntime, getLogBuffer, startRuntime, stopRuntime, reloadRuntime } from "../plugin-runtime/supervisor"
-import { DEFAULT_LIMITS } from "../plugin-runtime/health"
 import { errors } from "./error"
 
 // ── Response schemas ──
@@ -17,14 +16,15 @@ const RuntimeInfo = z
     lastHeartbeatAt: z.number().optional(),
     memoryMb: z.number().optional(),
     limits: z.object({
-      STARTUP_TIMEOUT_MS: z.number(),
-      REQUEST_TIMEOUT_MS: z.number(),
-      SHUTDOWN_GRACE_MS: z.number(),
-      CONCURRENT_REQUESTS: z.number(),
-      MAX_LOG_BYTES_PER_MINUTE: z.number(),
-      MEMORY_MB: z.number(),
-      HEARTBEAT_INTERVAL_MS: z.number(),
-      HEARTBEAT_MISSES_BEFORE_KILL: z.number(),
+      startupTimeoutMs: z.number(),
+      requestTimeoutMs: z.number(),
+      shutdownGraceMs: z.number(),
+      maxConcurrentRequests: z.number(),
+      maxLogBytesPerMinute: z.number(),
+      memoryMb: z.number(),
+      memoryPollIntervalMs: z.number(),
+      heartbeatIntervalMs: z.number(),
+      heartbeatMissesBeforeKill: z.number(),
     }),
     lastError: z.string().optional(),
   })
@@ -50,7 +50,7 @@ function runtimeToResponse(pluginId: string) {
     restarts: entry.restarts,
     lastHeartbeatAt: entry.lastHeartbeatAt,
     memoryMb: entry.memoryMb,
-    limits: DEFAULT_LIMITS,
+    limits: entry.limits,
     lastError: entry.lastError,
   }
 }

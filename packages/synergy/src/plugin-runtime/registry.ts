@@ -1,4 +1,5 @@
-import { createRuntimeHealth } from "./health.js"
+import { createRuntimeHealth, DEFAULT_LIMITS } from "./health.js"
+import type { RuntimeLimits } from "./health.js"
 import type { Worker } from "node:worker_threads"
 import type { ConcurrencyLimiter, LogRateLimiter } from "./resource-limits.js"
 import type { HostToPlugin, RuntimeRequestMessage, RuntimeToolDescriptor } from "./protocol.js"
@@ -41,6 +42,7 @@ export interface RuntimeEntry {
   startedAt?: number
   lastError?: string
   warnings: RuntimeWarning[]
+  limits: RuntimeLimits
   tools?: RuntimeToolDescriptor[]
   hooks?: string[]
   send?: (message: HostToPlugin) => void
@@ -79,6 +81,7 @@ export interface PersistedRuntimeEntry {
   lastHeartbeatAt?: number
   startedAt?: number
   lastError?: string
+  limits?: RuntimeLimits
 }
 
 // === RuntimeRegistry ===
@@ -145,6 +148,7 @@ export class RuntimeRegistry {
         lastHeartbeatAt: entry.lastHeartbeatAt,
         startedAt: entry.startedAt,
         lastError: entry.lastError,
+        limits: entry.limits,
       })
     }
     return result
@@ -165,6 +169,7 @@ export class RuntimeRegistry {
         lastHeartbeatAt: persisted.lastHeartbeatAt,
         startedAt: persisted.startedAt,
         lastError: persisted.lastError,
+        limits: persisted.limits ?? DEFAULT_LIMITS,
         warnings: [],
         tools: [],
         hooks: [],

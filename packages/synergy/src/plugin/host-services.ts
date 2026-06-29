@@ -20,6 +20,7 @@ import { MessageV2 } from "@/session/message-v2"
 import type { SessionProcessor } from "@/session/processor"
 import type { Tool } from "@/tool/tool"
 import * as ManifestReader from "./manifest-reader"
+import { resolveRuntimeLimits } from "../plugin-runtime/health"
 
 type RuntimeContext = {
   sessionID: string
@@ -83,7 +84,7 @@ export async function runPluginTask(input: {
   ask?: (input: { permission: string; patterns: string[]; metadata?: Record<string, any> }) => Promise<void>
 }): Promise<ToolTaskRunResult> {
   const request = normalizeTaskRunInput(input.request)
-  await assertTaskPermission(input.pluginDir, request)
+  const taskPermission = await assertTaskPermission(input.pluginDir, request)
   const agent = await Agent.get(request.subagent)
   if (!agent) throw new Error(`Unknown delegated subagent: ${request.subagent}`)
   if (input.context.agent && agent.visibleTo && !agent.visibleTo.includes(input.context.agent)) {
@@ -114,7 +115,11 @@ export async function runPluginTask(input: {
   }
   abort?.addEventListener("abort", cancel, { once: true })
   try {
-    const completed = await Cortex.waitFor(task.id, Math.max(1, Math.ceil((request.timeoutMs ?? 30_000) / 1_000)))
+    const timeoutMs =
+      request.timeoutMs ??
+      (typeof taskPermission === "object" ? taskPermission.maxRuntimeMs : undefined) ??
+      (await defaultPluginRequestTimeoutMs())
+    const completed = await Cortex.waitFor(task.id, Math.max(1, Math.ceil(timeoutMs / 1_000)))
     if (!completed || completed.status === "queued" || completed.status === "running") {
       await Cortex.cancel(task.id)
       return taskResult(task, "timeout", undefined, "Delegated task timed out")
@@ -157,7 +162,7 @@ export async function invokePluginTool(input: {
   const resolved = tools[toolName] as any
   if (!resolved?.execute) throw new Error(`Tool "${toolName}" is not available to this plugin context`)
 
-  const timeoutMs = input.request.timeoutMs ?? 30_000
+  const timeoutMs = input.request.timeoutMs ?? (await defaultPluginRequestTimeoutMs())
   const signal = input.context.abort
     ? AbortSignal.any([input.context.abort, AbortSignal.timeout(timeoutMs)])
     : AbortSignal.timeout(timeoutMs)
@@ -179,6 +184,7 @@ async function assertTaskPermission(pluginDir: string, request: ToolTaskRunInput
   if (task.maxRuntimeMs && request.timeoutMs && request.timeoutMs > task.maxRuntimeMs) {
     throw new Error(`Delegated task timeout exceeds manifest maxRuntimeMs (${task.maxRuntimeMs}ms)`)
   }
+  return task
 }
 
 async function askForTask(
@@ -273,8 +279,12 @@ function normalizeTaskRunInput(input: ToolTaskRunInput): ToolTaskRunInput {
     description: input.description.trim(),
     prompt: input.prompt.trim(),
     visibility: input.visibility ?? "visible",
-    timeoutMs: input.timeoutMs ?? 30_000,
   }
+}
+
+async function defaultPluginRequestTimeoutMs(): Promise<number> {
+  const config = await Config.current().catch(() => undefined)
+  return resolveRuntimeLimits(config?.pluginRuntimePolicy?.limits).requestTimeoutMs
 }
 
 function taskResult(

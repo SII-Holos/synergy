@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import { RuntimeRegistry } from "../../src/plugin-runtime/registry.js"
 import type { RuntimeEntry } from "../../src/plugin-runtime/registry.js"
+import { DEFAULT_LIMITS } from "../../src/plugin-runtime/health.js"
 
 // === Test helpers ===
 
@@ -10,6 +11,7 @@ function createEntry(pluginId: string, overrides?: Partial<RuntimeEntry>): Runti
     mode: "in-process",
     state: "ready",
     restarts: 0,
+    limits: DEFAULT_LIMITS,
     warnings: [],
     ...overrides,
   }

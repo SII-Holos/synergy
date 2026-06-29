@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test"
 
 import { RuntimeRegistry, type RuntimeEntry, type RuntimeWarningType } from "../../src/plugin-runtime/registry.js"
-import { createRuntimeHealth } from "../../src/plugin-runtime/health.js"
+import { createRuntimeHealth, DEFAULT_LIMITS, resolveRuntimeLimits } from "../../src/plugin-runtime/health.js"
 
 // === Helpers ===
 
@@ -18,6 +18,7 @@ function createEntry(pluginId: string, overrides?: Partial<RuntimeEntry>): Runti
     state: "ready",
     startedAt: Date.now(),
     restarts: 0,
+    limits: DEFAULT_LIMITS,
     warnings: [],
     ...overrides,
   }
@@ -324,6 +325,19 @@ describe("RuntimeRegistry warnings persistence", () => {
   })
 })
 
+describe("resolveRuntimeLimits", () => {
+  test("merges overrides in order and ignores invalid numeric values", () => {
+    const limits = resolveRuntimeLimits(
+      { requestTimeoutMs: 45_000, memoryMb: 512 },
+      { requestTimeoutMs: 120_000, maxConcurrentRequests: 0 },
+    )
+
+    expect(limits.requestTimeoutMs).toBe(120_000)
+    expect(limits.memoryMb).toBe(512)
+    expect(limits.maxConcurrentRequests).toBe(DEFAULT_LIMITS.maxConcurrentRequests)
+  })
+})
+
 describe("createRuntimeHealth (pure function)", () => {
   test("returns health snapshot from a direct RuntimeEntry", () => {
     const pluginId = uniquePluginId()
@@ -338,6 +352,7 @@ describe("createRuntimeHealth (pure function)", () => {
       lastHeartbeatAt: 2000000,
       lastError: "something went wrong",
       runtimeDecision: "policy:process",
+      limits: DEFAULT_LIMITS,
       warnings: [{ type: "capability_denied", message: "test", at: 3000 }],
     }
 
@@ -362,6 +377,7 @@ describe("createRuntimeHealth (pure function)", () => {
       mode: "in-process",
       state: "ready",
       restarts: 0,
+      limits: DEFAULT_LIMITS,
       warnings: [],
     }
 

@@ -2,18 +2,45 @@ import type { RuntimeEntry, RuntimeHealth } from "./registry.js"
 
 export type { RuntimeHealth }
 
-// === Constants ===
+// === Runtime limits ===
 
-export const DEFAULT_LIMITS = {
-  STARTUP_TIMEOUT_MS: 5000,
-  REQUEST_TIMEOUT_MS: 30000,
-  SHUTDOWN_GRACE_MS: 1500,
-  CONCURRENT_REQUESTS: 8,
-  MAX_LOG_BYTES_PER_MINUTE: 128_000,
-  MEMORY_MB: 256,
-  HEARTBEAT_INTERVAL_MS: 5000,
-  HEARTBEAT_MISSES_BEFORE_KILL: 3,
-} as const
+export interface RuntimeLimits {
+  startupTimeoutMs: number
+  requestTimeoutMs: number
+  shutdownGraceMs: number
+  maxConcurrentRequests: number
+  maxLogBytesPerMinute: number
+  memoryMb: number
+  memoryPollIntervalMs: number
+  heartbeatIntervalMs: number
+  heartbeatMissesBeforeKill: number
+}
+
+export type RuntimeLimitOverrides = Partial<RuntimeLimits>
+
+export const DEFAULT_LIMITS: RuntimeLimits = {
+  startupTimeoutMs: 5_000,
+  requestTimeoutMs: 30_000,
+  shutdownGraceMs: 1_500,
+  maxConcurrentRequests: 8,
+  maxLogBytesPerMinute: 128_000,
+  memoryMb: 256,
+  memoryPollIntervalMs: 10_000,
+  heartbeatIntervalMs: 5_000,
+  heartbeatMissesBeforeKill: 3,
+}
+
+export function resolveRuntimeLimits(...overrides: Array<RuntimeLimitOverrides | undefined>): RuntimeLimits {
+  const resolved = { ...DEFAULT_LIMITS }
+  for (const override of overrides) {
+    if (!override) continue
+    for (const [key, value] of Object.entries(override) as Array<[keyof RuntimeLimits, unknown]>) {
+      if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) continue
+      resolved[key] = Math.round(value)
+    }
+  }
+  return resolved
+}
 
 // === Pure health snapshot ===
 

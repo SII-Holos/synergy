@@ -6,6 +6,7 @@ import {
 } from "../../src/plugin-runtime/supervisor.js"
 import { RuntimeRegistry } from "../../src/plugin-runtime/registry.js"
 import { PluginLogBuffer } from "../../src/plugin-runtime/logs.js"
+import { DEFAULT_LIMITS } from "../../src/plugin-runtime/health.js"
 import type { RuntimeEntry } from "../../src/plugin-runtime/registry.js"
 import type { RuntimeStatePersistence } from "../../src/plugin-runtime/supervisor.js"
 
@@ -135,6 +136,7 @@ describe("PluginRuntimeSupervisor", () => {
         mode: "process",
         state: "crashed",
         restarts: 0,
+        limits: DEFAULT_LIMITS,
         warnings: [],
       })
 

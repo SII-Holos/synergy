@@ -1,5 +1,6 @@
 import type { Info as ScopeInfo } from "../scope/types.js"
 import type { ToolDisplay } from "@ericsanchezok/synergy-plugin/tool"
+import type { RuntimeLimits } from "./health.js"
 
 // === Direction: Host → Plugin ===
 
@@ -56,6 +57,7 @@ export interface IsolatedPluginInputData {
   scope: ScopeInfo
   directory: string
   serverUrl: string
+  runtimeLimits: RuntimeLimits
 }
 
 export interface RuntimeToolDescriptor {

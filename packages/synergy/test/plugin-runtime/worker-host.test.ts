@@ -8,6 +8,7 @@ import type {
 } from "../../src/plugin-runtime/protocol"
 import { spawnPluginWorker, setWorkerFactoryForTest } from "../../src/plugin-runtime/worker-host"
 import type { SpawnedWorkerRuntime } from "../../src/plugin-runtime/worker-host"
+import { DEFAULT_LIMITS } from "../../src/plugin-runtime/health"
 
 // ---------------------------------------------------------------------------
 // Mock node:worker_threads Worker
@@ -53,6 +54,7 @@ function buildInput(overrides: Partial<IsolatedPluginInputData> = {}): IsolatedP
     },
     directory: "/tmp/test-plugin",
     serverUrl: "http://localhost:3000",
+    runtimeLimits: DEFAULT_LIMITS,
     ...overrides,
   }
 }

@@ -1035,6 +1035,23 @@ export const PLUGIN_APPROVAL_POLICY_DEFAULTS = {
   denyHighRiskThirdParty: true,
   requireSignatureForMarketplace: false,
 } as const satisfies Required<PluginApprovalPolicy>
+
+export const PluginRuntimeLimits = z
+  .object({
+    startupTimeoutMs: z.number().int().positive().optional().describe("Maximum milliseconds for plugin runtime startup"),
+    requestTimeoutMs: z.number().int().positive().optional().describe("Maximum milliseconds for one plugin runtime request"),
+    shutdownGraceMs: z.number().int().positive().optional().describe("Graceful shutdown window before force kill"),
+    maxConcurrentRequests: z.number().int().positive().optional().describe("Maximum concurrent bridge requests"),
+    maxLogBytesPerMinute: z.number().int().positive().optional().describe("Maximum plugin log bytes per minute"),
+    memoryMb: z.number().int().positive().optional().describe("Maximum process runtime RSS in MB"),
+    memoryPollIntervalMs: z.number().int().positive().optional().describe("Memory polling interval in milliseconds"),
+    heartbeatIntervalMs: z.number().int().positive().optional().describe("Heartbeat interval in milliseconds"),
+    heartbeatMissesBeforeKill: z.number().int().positive().optional().describe("Missed heartbeats before process kill"),
+  })
+  .strict()
+  .meta({ ref: "PluginRuntimeLimitsConfig" })
+export type PluginRuntimeLimits = z.infer<typeof PluginRuntimeLimits>
+
 export const PluginRuntimePolicy = z
   .object({
     thirdPartyDefaultMode: z
@@ -1054,6 +1071,7 @@ export const PluginRuntimePolicy = z
       .describe("Allow third-party plugins to request in-process mode (not recommended)"),
     allowWorkerMode: z.boolean().optional().default(true).describe("Allow plugins to request worker thread isolation"),
     allowLocalInProcess: z.boolean().optional().default(true).describe("Allow local plugins to run in-process"),
+    limits: PluginRuntimeLimits.optional().describe("Default plugin runtime resource and request limits"),
   })
   .strict()
   .meta({ ref: "PluginRuntimePolicyConfig" })
@@ -1065,6 +1083,7 @@ export const PLUGIN_RUNTIME_POLICY_DEFAULTS = {
   allowThirdPartyInProcess: false,
   allowWorkerMode: true,
   allowLocalInProcess: true,
+  limits: {},
 } as const satisfies Required<PluginRuntimePolicy>
 
 export const PluginMarketplace = z

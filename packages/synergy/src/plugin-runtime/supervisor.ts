@@ -6,7 +6,8 @@ import { spawnPluginProcess } from "./process-host.js"
 import { canSpawnPluginWorker, spawnPluginWorker } from "./worker-host.js"
 import type { Worker } from "node:worker_threads"
 import { PluginRuntimeError } from "./errors.js"
-import { DEFAULT_LIMITS } from "./health.js"
+import { resolveRuntimeLimits } from "./health.js"
+import type { RuntimeLimits } from "./health.js"
 import type { RuntimeHealth } from "./health.js"
 import { ConcurrencyLimiter, startMemoryMonitor, LogRateLimiter } from "./resource-limits.js"
 import { writeRuntimeState, readRuntimeState } from "./state-persist.js"
@@ -17,6 +18,7 @@ import type { PluginManifest as PluginManifestType } from "@ericsanchezok/synerg
 import * as ManifestReader from "../plugin/manifest-reader"
 import { PluginLogBuffer } from "./logs.js"
 import { Global } from "../global/index.js"
+import { Config } from "../config/config.js"
 import {
   RuntimeRegistry,
   defaultRuntimeRegistry,
@@ -96,6 +98,7 @@ export class PluginRuntimeSupervisor {
 
   #startHeartbeatMonitor(
     pluginId: string,
+    limits: RuntimeLimits,
     onMissedHeartbeat: (pluginId: string, missCount: number) => void,
   ): { stop: () => void } {
     let missCount = 0
@@ -110,16 +113,16 @@ export class PluginRuntimeSupervisor {
       const now = Date.now()
       const lastHeartbeatAt = entry.lastHeartbeatAt ?? 0
 
-      if (now - lastHeartbeatAt > DEFAULT_LIMITS.HEARTBEAT_INTERVAL_MS) {
+      if (now - lastHeartbeatAt > limits.heartbeatIntervalMs) {
         missCount++
-        if (missCount >= DEFAULT_LIMITS.HEARTBEAT_MISSES_BEFORE_KILL) {
+        if (missCount >= limits.heartbeatMissesBeforeKill) {
           clearInterval(interval)
           onMissedHeartbeat(pluginId, missCount)
         }
       } else {
         missCount = 0
       }
-    }, DEFAULT_LIMITS.HEARTBEAT_INTERVAL_MS)
+    }, limits.heartbeatIntervalMs)
 
     return { stop: () => clearInterval(interval) }
   }
@@ -184,7 +187,7 @@ export class PluginRuntimeSupervisor {
         const timeout = setTimeout(() => {
           pending.delete(message.requestId)
           reject(new Error(`Plugin runtime request timed out for "${pluginId}"`))
-        }, DEFAULT_LIMITS.REQUEST_TIMEOUT_MS)
+        }, entry.limits.requestTimeoutMs)
         pending.set(message.requestId, { resolve, reject, timeout })
         runtime.send(message as HostToPlugin)
       })
@@ -305,9 +308,9 @@ export class PluginRuntimeSupervisor {
     resolvedMode = launchMode.mode
     runtimeDecision = launchMode.runtimeDecision
 
-    // Resolve resource limits: manifest resources overlay DEFAULT_LIMITS
+    const config = await Config.current().catch(() => undefined)
     const manifestResources = manifest?.runtime?.resources
-    const resolvedStartupTimeoutMs = manifestResources?.startupTimeoutMs ?? DEFAULT_LIMITS.STARTUP_TIMEOUT_MS
+    const limits = resolveRuntimeLimits(config?.pluginRuntimePolicy?.limits, manifestResources)
 
     const entry: RuntimeEntry = {
       pluginId,
@@ -320,6 +323,7 @@ export class PluginRuntimeSupervisor {
       state: "starting",
       restarts,
       startedAt: Date.now(),
+      limits,
       warnings: [],
     }
     this.#registry.set(entry)
@@ -334,11 +338,11 @@ export class PluginRuntimeSupervisor {
     }
 
     if (resolvedMode === "worker") {
-      return this.#startWorker(pluginId, entry, options, resolvedMode, resolvedStartupTimeoutMs)
+      return this.#startWorker(pluginId, entry, options, resolvedMode)
     }
 
     // process mode
-    return this.#startProcess(pluginId, entry, options, resolvedMode, resolvedStartupTimeoutMs)
+    return this.#startProcess(pluginId, entry, options, resolvedMode)
   }
 
   async #startWorker(
@@ -346,7 +350,6 @@ export class PluginRuntimeSupervisor {
     entry: RuntimeEntry,
     options: StartRuntimeOptions,
     resolvedMode: RuntimeMode,
-    resolvedStartupTimeoutMs: number,
   ): Promise<RuntimeEntry> {
     try {
       const scope =
@@ -367,11 +370,12 @@ export class PluginRuntimeSupervisor {
         directory: scope.directory,
         scope,
         serverUrl,
+        runtimeLimits: entry.limits,
       }
       const enforcementHandler = await this.#createBridgeHandler(pluginId, options.pluginDir)
-      const concurrency = new ConcurrencyLimiter(DEFAULT_LIMITS.CONCURRENT_REQUESTS)
+      const concurrency = new ConcurrencyLimiter(entry.limits.maxConcurrentRequests)
       entry.concurrencyLimiter = concurrency
-      const logLimiter = new LogRateLimiter(DEFAULT_LIMITS.MAX_LOG_BYTES_PER_MINUTE)
+      const logLimiter = new LogRateLimiter(entry.limits.maxLogBytesPerMinute)
       entry.logRateLimiter = logLimiter
 
       const spawned = await spawnPluginWorker({
@@ -425,14 +429,14 @@ export class PluginRuntimeSupervisor {
       entry.pid = spawned.worker.threadId
       this.#attachRuntimeClient(pluginId, entry, spawned)
 
-      this.#enforceStartupTimeout(pluginId, entry.startedAt!, resolvedStartupTimeoutMs, (timedOutPluginId) => {
+      this.#enforceStartupTimeout(pluginId, entry.startedAt!, entry.limits.startupTimeoutMs, (timedOutPluginId) => {
         log.error("startup timeout", { pluginId: timedOutPluginId })
         const e = this.#registry.get(timedOutPluginId)
         if (e && e.state === "starting") {
           this.#registry.pushWarning(
             timedOutPluginId,
             "startup_timeout",
-            `Startup timed out after ${resolvedStartupTimeoutMs}ms`,
+            `Startup timed out after ${entry.limits.startupTimeoutMs}ms`,
           )
           e.state = "crashed"
           e.lastError = "Startup timeout"
@@ -473,7 +477,6 @@ export class PluginRuntimeSupervisor {
     entry: RuntimeEntry,
     options: StartRuntimeOptions,
     resolvedMode: RuntimeMode,
-    resolvedStartupTimeoutMs: number,
   ): Promise<RuntimeEntry> {
     try {
       const scope =
@@ -494,14 +497,15 @@ export class PluginRuntimeSupervisor {
         directory: scope.directory,
         scope,
         serverUrl,
+        runtimeLimits: entry.limits,
       }
 
       const enforcementHandler = await this.#createBridgeHandler(pluginId, options.pluginDir)
 
       // Create resource limiters BEFORE spawn so callbacks can reference them
-      const concurrency = new ConcurrencyLimiter(DEFAULT_LIMITS.CONCURRENT_REQUESTS)
+      const concurrency = new ConcurrencyLimiter(entry.limits.maxConcurrentRequests)
       entry.concurrencyLimiter = concurrency
-      const logLimiter = new LogRateLimiter(DEFAULT_LIMITS.MAX_LOG_BYTES_PER_MINUTE)
+      const logLimiter = new LogRateLimiter(entry.limits.maxLogBytesPerMinute)
       entry.logRateLimiter = logLimiter
 
       const spawned = await spawnPluginProcess({
@@ -545,7 +549,7 @@ export class PluginRuntimeSupervisor {
 
       // Start heartbeat monitor
       this.#stopHeartbeatMonitor(pluginId)
-      const monitor = this.#startHeartbeatMonitor(pluginId, (missedPluginId, missCount) => {
+      const monitor = this.#startHeartbeatMonitor(pluginId, entry.limits, (missedPluginId, missCount) => {
         log.warn("heartbeat missed, marking unhealthy", { pluginId: missedPluginId, missCount })
         const e = this.#registry.get(missedPluginId)
         if (e) {
@@ -553,11 +557,11 @@ export class PluginRuntimeSupervisor {
           e.state = "unhealthy"
           e.lastError = `Missed ${missCount} heartbeats`
           this.#saveState()
-          if (missCount >= DEFAULT_LIMITS.HEARTBEAT_MISSES_BEFORE_KILL) {
+          if (missCount >= entry.limits.heartbeatMissesBeforeKill) {
             log.error("killing plugin after heartbeat misses exceeded limit", {
               pluginId: missedPluginId,
               missCount,
-              limit: DEFAULT_LIMITS.HEARTBEAT_MISSES_BEFORE_KILL,
+              limit: entry.limits.heartbeatMissesBeforeKill,
             })
             this.kill(missedPluginId)
           }
@@ -565,14 +569,14 @@ export class PluginRuntimeSupervisor {
       })
       this.#heartbeatMonitors.set(pluginId, monitor)
 
-      this.#enforceStartupTimeout(pluginId, entry.startedAt!, resolvedStartupTimeoutMs, (timedOutPluginId) => {
+      this.#enforceStartupTimeout(pluginId, entry.startedAt!, entry.limits.startupTimeoutMs, (timedOutPluginId) => {
         log.error("startup timeout", { pluginId: timedOutPluginId })
         const e = this.#registry.get(timedOutPluginId)
         if (e && e.state === "starting") {
           this.#registry.pushWarning(
             timedOutPluginId,
             "startup_timeout",
-            `Startup timed out after ${resolvedStartupTimeoutMs}ms`,
+            `Startup timed out after ${entry.limits.startupTimeoutMs}ms`,
           )
           e.state = "crashed"
           e.lastError = "Startup timeout"
@@ -592,8 +596,8 @@ export class PluginRuntimeSupervisor {
       const memoryMonitor = startMemoryMonitor(
         pluginId,
         entry.pid!,
-        DEFAULT_LIMITS.MEMORY_MB,
-        10_000,
+        entry.limits.memoryMb,
+        entry.limits.memoryPollIntervalMs,
         (exceededPluginId, currentMb, maxMb) => {
           this.#registry.pushWarning(
             exceededPluginId,
@@ -654,7 +658,7 @@ export class PluginRuntimeSupervisor {
       const timeout = setTimeout(() => {
         log.warn("graceful shutdown timed out, force killing", { pluginId })
         this.#forceStop(entry)
-      }, DEFAULT_LIMITS.SHUTDOWN_GRACE_MS)
+      }, entry.limits.shutdownGraceMs)
 
       try {
         await entry.process.exited

@@ -9,6 +9,9 @@ import {
   type PluginHostRuntimeContext,
 } from "../plugin/host-services.js"
 import { analyzeDestructiveCommand } from "../enforcement/gate.js"
+import { Config } from "../config/config.js"
+import * as ManifestReader from "../plugin/manifest-reader.js"
+import { resolveRuntimeLimits } from "./health.js"
 
 // ---------------------------------------------------------------------------
 // Types
@@ -194,8 +197,10 @@ export async function executeBridgeMethod(input: BridgeHandlerInput): Promise<un
         destructive.reason ? { reason: destructive.reason } : undefined,
       )
 
-      const requestedTimeout: number = typeof (params as any)?.timeout === "number" ? (params as any).timeout : 30_000
-      const shellTimeout = Math.min(Math.max(requestedTimeout, 1), 60_000)
+      const limits = await runtimeLimitsForPlugin(pluginDir)
+      const requestedTimeout: number =
+        typeof (params as any)?.timeout === "number" ? (params as any).timeout : limits.requestTimeoutMs
+      const shellTimeout = Math.min(Math.max(requestedTimeout, 1), limits.requestTimeoutMs)
 
       const cwdParam = (params as any)?.cwd
       const cwd = typeof cwdParam === "string" && cwdParam ? resolveContainedPath(pluginDir, cwdParam) : pluginDir
@@ -333,4 +338,12 @@ function stripBridgeContext(params: unknown): unknown {
   if (!params || typeof params !== "object") return params
   const { context: _context, ...rest } = params as Record<string, unknown>
   return rest
+}
+
+async function runtimeLimitsForPlugin(pluginDir: string) {
+  const [config, manifest] = await Promise.all([
+    Config.current().catch(() => undefined),
+    ManifestReader.read(pluginDir).catch(() => undefined),
+  ])
+  return resolveRuntimeLimits(config?.pluginRuntimePolicy?.limits, manifest?.runtime?.resources)
 }

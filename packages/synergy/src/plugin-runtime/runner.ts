@@ -27,8 +27,12 @@ let entryPath = process.argv[2] ?? (workerData as RunnerWorkerData | undefined)?
 let inputData = (workerData as RunnerWorkerData | undefined)?.input
 let hooks: PluginHooks | undefined
 let pluginId = inputData?.pluginId ?? ""
-const pendingBridge = new Map<string, { resolve(value: unknown): void; reject(error: Error): void }>()
+const pendingBridge = new Map<
+  string,
+  { resolve(value: unknown): void; reject(error: Error): void; timeout: ReturnType<typeof setTimeout> }
+>()
 const activeToolAbort = new Map<string, AbortController>()
+let heartbeatTimer: ReturnType<typeof setInterval> | undefined
 
 function serializeError(error: unknown): SerializedError {
   if (error instanceof Error) {
@@ -68,9 +72,18 @@ function postResponse(requestId: string, run: () => Promise<unknown>) {
 
 function bridge(method: HostBridgeMethod, params: unknown): Promise<unknown> {
   const requestId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`
-  post({ type: "hostRequest", requestId, method, params })
   return new Promise((resolve, reject) => {
-    pendingBridge.set(requestId, { resolve, reject })
+    const timeoutMs = inputData?.runtimeLimits.requestTimeoutMs
+    if (!timeoutMs) {
+      reject(new Error(`Host bridge request attempted before plugin runtime initialization: ${method}`))
+      return
+    }
+    const timeout = setTimeout(() => {
+      pendingBridge.delete(requestId)
+      reject(new Error(`Host bridge request timed out: ${method}`))
+    }, timeoutMs)
+    pendingBridge.set(requestId, { resolve, reject, timeout })
+    post({ type: "hostRequest", requestId, method, params })
   })
 }
 
@@ -212,6 +225,7 @@ async function init(input: IsolatedPluginInputData) {
   if (!entryPath) throw new Error("Missing plugin entryPath")
   pluginId = input.pluginId
   inputData = input
+  startHeartbeat(input.runtimeLimits.heartbeatIntervalMs)
   const mod = await import(entryPath)
   const descriptor = findDescriptor(mod, input.pluginId)
   hooks = await descriptor.init(createInput(input))
@@ -297,6 +311,7 @@ function handle(message: HostToPlugin) {
       const pending = pendingBridge.get(message.requestId)
       if (!pending) return
       pendingBridge.delete(message.requestId)
+      clearTimeout(pending.timeout)
       if (message.ok) pending.resolve(message.value)
       else pending.reject(deserializeError(message.error))
       break
@@ -313,6 +328,12 @@ function handle(message: HostToPlugin) {
   }
 }
 
+function startHeartbeat(intervalMs: number) {
+  if (heartbeatTimer) return
+  heartbeatTimer = setInterval(() => post({ type: "heartbeat" }), intervalMs)
+  heartbeatTimer.unref?.()
+}
+
 parentPort?.on("message", (message) => handle(message as HostToPlugin))
 process.on("message", (raw) => {
   try {
@@ -324,7 +345,7 @@ process.on("message", (raw) => {
   }
 })
 
-setInterval(() => post({ type: "heartbeat" }), 5_000).unref?.()
+if (inputData) startHeartbeat(inputData.runtimeLimits.heartbeatIntervalMs)
 
 if (inputData) {
   init(inputData).catch((error) => {
