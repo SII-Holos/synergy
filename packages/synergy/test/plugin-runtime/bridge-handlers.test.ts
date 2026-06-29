@@ -271,9 +271,12 @@ describe("bridge-enforcement (denied methods still throw)", () => {
     expect(result.allowed).toBe(false)
   })
 
-  test("enforcer does not require a coarse plugin capability for cache or tool.invoke", () => {
+  test("enforcer allows cache methods without preflight and requires local tool capability for tool.invoke", () => {
     const enforcer = createBridgeEnforcementHandler("plugin-x", [])
     expect(enforcer("cache.get", {}).allowed).toBe(true)
-    expect(enforcer("tool.invoke", {}).allowed).toBe(true)
+    expect(enforcer("tool.invoke", {}).allowed).toBe(false)
+
+    const withLocalTool = createBridgeEnforcementHandler("plugin-x", ["local_tool_invoke"])
+    expect(withLocalTool("tool.invoke", {}).allowed).toBe(true)
   })
 })

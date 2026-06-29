@@ -59,6 +59,5 @@ const METHOD_WITHOUT_PREFLIGHT = {
   "cache.get": true,
   "cache.set": true,
   "cache.delete": true,
-  "tool.invoke": true,
   "permission.request": true,
 } satisfies Partial<Record<HostBridgeMethod, true>>

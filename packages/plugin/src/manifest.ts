@@ -186,7 +186,7 @@ const PluginPermissionsSchema = z
     tools: z
       .object({
         shell: z.boolean().default(false),
-        invoke: z.boolean().default(false),
+        localTools: z.boolean().optional(),
         filesystem: z.preprocess(
           (val) => {
             if (val === true) return "write"

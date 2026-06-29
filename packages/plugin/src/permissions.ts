@@ -414,7 +414,7 @@ function buildCapabilitySet(
     caps.add("file_write")
   }
 
-  if (pt?.invoke ?? false) caps.add("local_tool_invoke")
+  if (pt?.localTools ?? false) caps.add("local_tool_invoke")
   if (tc?.shell ?? pt?.shell ?? false) caps.add("shell")
   if (tc?.network ?? pt?.network ?? false) caps.add("network_request")
 
