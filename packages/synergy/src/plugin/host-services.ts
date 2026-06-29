@@ -231,9 +231,7 @@ export async function requestPluginPermission(
     patterns: request.patterns,
     metadata,
     tool: context.callID ? { messageID: context.messageID, callID: context.callID } : undefined,
-    ruleset: PermissionNext.merge(agent?.permission ?? [], PermissionNext.sessionRuleset(session), [
-      { permission: request.permission, pattern: "*", action: "ask" },
-    ]),
+    ruleset: PermissionNext.merge(agent?.permission ?? [], PermissionNext.sessionRuleset(session)),
     signal: context.abort,
   })
 }
