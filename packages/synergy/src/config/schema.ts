@@ -1,7 +1,7 @@
 import { Log } from "../util/log"
 import z from "zod"
 import { DEFAULT_PLUGIN_MARKETPLACE_CONFIG } from "@ericsanchezok/synergy-plugin/market"
-import { DEFAULT_PLUGIN_RUNTIME_POLICY } from "@ericsanchezok/synergy-plugin/policy"
+import { DEFAULT_PLUGIN_RUNTIME_LIMITS, DEFAULT_PLUGIN_RUNTIME_POLICY } from "@ericsanchezok/synergy-plugin/policy"
 import { ModelsDev } from "../provider/models"
 import { LSPServer } from "../lsp/server"
 import { ModelRole } from "../provider/model-role"
@@ -1091,7 +1091,9 @@ export const PluginRuntimePolicy = z
       .optional()
       .default(DEFAULT_PLUGIN_RUNTIME_POLICY.allowLocalInProcess)
       .describe("Allow local plugins to run in-process"),
-    limits: PluginRuntimeLimits.optional().describe("Default plugin runtime resource and request limits"),
+    limits: PluginRuntimeLimits.optional()
+      .default(DEFAULT_PLUGIN_RUNTIME_LIMITS)
+      .describe("Default plugin runtime resource and request limits"),
   })
   .strict()
   .meta({ ref: "PluginRuntimePolicyConfig" })
@@ -1099,7 +1101,7 @@ export type PluginRuntimePolicy = z.infer<typeof PluginRuntimePolicy>
 
 export const PLUGIN_RUNTIME_POLICY_DEFAULTS = {
   ...DEFAULT_PLUGIN_RUNTIME_POLICY,
-  limits: {},
+  limits: DEFAULT_PLUGIN_RUNTIME_LIMITS,
 } as const satisfies Required<PluginRuntimePolicy>
 
 export const PluginMarketplace = z

@@ -996,6 +996,10 @@ export type PluginMarketplaceConfig = {
    * Timeout in milliseconds for plugin artifact and signature downloads
    */
   artifactDownloadTimeoutMs?: number
+  /**
+   * Timeout in milliseconds for Synergy CLI plugin commands waiting on the local server
+   */
+  cliRequestTimeoutMs?: number
 }
 
 /**
