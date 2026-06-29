@@ -754,8 +754,7 @@ export function SessionTurn(
                       }
                     >
                       <div data-slot="session-turn-response-section">
-                        <For each={activeMediaGenerationParts()}>{(part) => <MediaGenerationCard part={part} />}</For>
-                        <Show when={response() && (!working() || (hasActiveMediaGenerationParts() && !hasSteps()))}>
+                        <Show when={response() && (!working() || hasActiveMediaGenerationParts())}>
                           <div data-slot="session-turn-response-body">
                             <Markdown
                               data-slot="session-turn-markdown"
@@ -764,6 +763,7 @@ export function SessionTurn(
                             />
                           </div>
                         </Show>
+                        <For each={activeMediaGenerationParts()}>{(part) => <MediaGenerationCard part={part} />}</For>
                         <Show when={!working() && hasPrimaryResultAttachments()}>
                           <ArtifactGallery
                             files={primaryResultAttachments()}
