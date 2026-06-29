@@ -355,7 +355,6 @@ export namespace SessionProcessor {
                     state: {
                       status: "running",
                       input: toolInput,
-                      title: display?.media?.pendingTitle,
                       metadata: runningToolMetadata(value.toolName, value.providerMetadata),
                       time: {
                         start: Date.now(),
