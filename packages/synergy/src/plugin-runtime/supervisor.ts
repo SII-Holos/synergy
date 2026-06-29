@@ -16,6 +16,8 @@ import { executeBridgeMethod } from "./bridge-handlers.js"
 import { getApproval } from "../plugin/consent/approval-store.js"
 import type { PluginManifest as PluginManifestType } from "@ericsanchezok/synergy-plugin"
 import * as ManifestReader from "../plugin/manifest-reader"
+import { baseCapabilities } from "../plugin/capability.js"
+import { computeRisk } from "../plugin/consent/risk.js"
 import { PluginLogBuffer } from "./logs.js"
 import { Global } from "../global/index.js"
 import { Config } from "../config/config.js"
@@ -287,6 +289,9 @@ export class PluginRuntimeSupervisor {
       // Manifest may be missing or invalid; fall through with defaults
     }
     const config = await Config.current().catch(() => undefined)
+    const source = options.source ?? "npm"
+    const risk = manifest ? computeRisk(baseCapabilities(manifest), manifest) : "low"
+    const userTrusted = source === "builtin" || source === "official" || source === "local"
 
     // Resolve runtime mode: caller wins, then resolveRuntimeMode, then default
     let runtimeDecision: string
@@ -296,11 +301,11 @@ export class PluginRuntimeSupervisor {
       runtimeDecision = `caller-override:${resolvedMode}`
     } else {
       resolvedMode = resolveRuntimeMode({
-        source: options.source ?? "npm",
+        source,
         manifestMode: manifest?.runtime?.mode,
         devMode: false,
-        userTrusted: false,
-        risk: "low",
+        userTrusted,
+        risk,
         policy: config?.pluginRuntimePolicy,
       })
       runtimeDecision = `policy:${resolvedMode}`

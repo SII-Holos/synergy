@@ -128,8 +128,8 @@ export function validateRuntimePolicy(input: {
     if (hasShell || toolShell || hasFileWrite || toolFileWrite || hasMcpSpawn) {
       const unsupported: string[] = []
       if (hasShell || toolShell) unsupported.push("shell")
-      if (hasFileWrite || toolFileWrite) unsupported.push("filesystem:write")
-      if (hasMcpSpawn) unsupported.push("mcp:spawn")
+      if (hasFileWrite || toolFileWrite) unsupported.push("file_write")
+      if (hasMcpSpawn) unsupported.push("mcp_spawn")
       results.push({
         type: "warn",
         message: `Worker mode does not fully support: ${unsupported.join(", ")}. Use process mode for these capabilities.`,

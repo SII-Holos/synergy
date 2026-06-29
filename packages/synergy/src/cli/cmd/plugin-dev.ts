@@ -3,6 +3,7 @@ import { UI } from "../ui"
 import { PluginManifest, type PluginManifest as PluginManifestType } from "@ericsanchezok/synergy-plugin"
 import { Plugin } from "@/plugin"
 import { computeRisk } from "@/plugin/consent/risk"
+import { baseCapabilities } from "@/plugin/capability"
 import path from "path"
 import fs from "fs"
 import type { Argv } from "yargs"
@@ -26,21 +27,7 @@ function debounce(ms: number) {
 
 let overallRisk: (m: PluginManifestType) => "low" | "medium" | "high"
 overallRisk = (m) => {
-  const caps: string[] = []
-  const pt = m.permissions?.tools
-  if (pt?.shell) caps.push("shell")
-  if (pt?.filesystem === "write") caps.push("filesystem:write")
-  else if (pt?.filesystem === "read") caps.push("filesystem:read")
-  if (pt?.network) caps.push("network")
-  if (pt?.mcp === "invoke") caps.push("mcp:invoke")
-  if (pt?.mcp === "spawn") caps.push("mcp:spawn")
-  const pd = m.permissions?.data
-  if (pd?.session === "read") caps.push("session_data")
-  if (pd?.workspace === "read") caps.push("workspace_data")
-  if (pd?.secrets === "own") caps.push("secrets")
-  if (pd?.config === "global") caps.push("config:write")
-  if (pd?.config === "plugin") caps.push("config:read")
-  return computeRisk(caps, m)
+  return computeRisk(baseCapabilities(m), m)
 }
 
 function riskLabel(risk: "low" | "medium" | "high"): string {

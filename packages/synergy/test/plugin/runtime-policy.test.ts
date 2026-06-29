@@ -240,7 +240,7 @@ describe("validateRuntimePolicy", () => {
     expect(warnings[0].message.toLowerCase()).toContain("worker")
   })
 
-  test("worker mode with filesystem:write capability produces warning", () => {
+  test("worker mode with file_write capability produces warning", () => {
     const manifest = makeManifest({
       runtime: { mode: "worker" },
       permissions: {

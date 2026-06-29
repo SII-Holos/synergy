@@ -6,7 +6,7 @@ import { copyGithubEntryIcon, githubEntry, writeGithubEntry } from "../lib/marke
 
 export const PluginEntryCommand = cmd({
   command: "entry <tarball>",
-  describe: "generate a SII-Holos/synergy-plugins registry entry JSON",
+  describe: "generate a marketplace registry entry JSON",
   builder: (yargs: Argv) =>
     yargs
       .positional("tarball", {
@@ -28,7 +28,7 @@ export const PluginEntryCommand = cmd({
       })
       .option("write-entry", {
         type: "string",
-        describe: "write or update a synergy-plugins plugins/<id>.json entry",
+        describe: "write or update a marketplace plugins/<id>.json entry",
       })
       .option("verified", {
         type: "boolean",
