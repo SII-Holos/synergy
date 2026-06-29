@@ -6,9 +6,10 @@ import { fileURLToPath } from "node:url"
 
 const runtimeTest = process.env.SYNERGY_DESKTOP_RUNTIME_TEST === "1" ? test : test.skip
 const DESKTOP_DIR = fileURLToPath(new URL("..", import.meta.url))
+const ELECTRON_ARGS = process.env.CI ? ["--no-sandbox"] : []
 const ELECTRON_COMMAND = process.env.SYNERGY_DESKTOP_ELECTRON_BIN
-  ? [process.env.SYNERGY_DESKTOP_ELECTRON_BIN]
-  : ["bunx", "electron"]
+  ? [process.env.SYNERGY_DESKTOP_ELECTRON_BIN, ...ELECTRON_ARGS]
+  : ["bunx", "electron", ...ELECTRON_ARGS]
 
 interface SmokeServerState {
   httpRequests: string[]
