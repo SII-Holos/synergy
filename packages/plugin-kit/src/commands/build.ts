@@ -13,6 +13,7 @@ import {
   hashPackagedFiles,
   rewritePackagedManifestPaths,
 } from "../lib/artifact-assets"
+import { resolveEntryFromPluginDir } from "../lib/spec"
 
 function ensureDir(dirPath: string) {
   fs.mkdirSync(dirPath, { recursive: true })
@@ -67,8 +68,7 @@ export async function buildPluginProject(pluginDir: string): Promise<boolean> {
   fs.rmSync(distDir, { recursive: true, force: true })
   ensureDir(distDir)
 
-  const entryFile = manifest.main ?? "./src/index.ts"
-  const entryPath = path.resolve(pluginDir, entryFile)
+  const entryPath = resolveEntryFromPluginDir(pluginDir, manifest)
   const runtimeOutdir = path.join(distDir, "runtime")
   spinner("Building backend")
   const backendResult = await Bun.build({

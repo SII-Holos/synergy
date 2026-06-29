@@ -28,6 +28,7 @@ export type { ToolDisplay, ToolMediaDisplay } from "./display"
 export type { ToolResult }
 export * from "./manifest"
 export * from "./policy"
+export * from "./spec"
 export type { BunShell, BunShellOutput, BunShellPromise, ShellExpression, ShellFunction } from "./shell"
 
 // ---------------------------------------------------------------------------

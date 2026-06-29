@@ -20,10 +20,10 @@ import { readSignatureFile } from "./signature"
 import { sha256File } from "./crypto"
 import { isManifestIconPath, packageRelativePath, resolveUnder } from "./artifact-assets"
 
-export type GithubRegistryIcon = { type: "lucide"; name: string } | { type: "registry-svg"; path: string }
+export type RegistryIcon = { type: "lucide"; name: string } | { type: "registry-svg"; path: string }
 export type MarketplaceReleaseBackend = "github" | "manual"
 
-export interface GithubRegistryEntry {
+export interface RegistryEntry {
   schemaVersion: 1
   id: string
   name: string
@@ -31,7 +31,7 @@ export interface GithubRegistryEntry {
   repo: string
   homepage?: string
   author: { name: string; email?: string; url?: string }
-  icon?: GithubRegistryIcon
+  icon?: RegistryIcon
   verified: boolean
   official: boolean
   keywords: string[]
@@ -57,7 +57,7 @@ export interface GithubRegistryEntry {
   yankedVersions: string[]
 }
 
-export function parseAuthor(input?: string): GithubRegistryEntry["author"] {
+export function parseAuthor(input?: string): RegistryEntry["author"] {
   if (!input) return { name: "unknown" }
   const email = input.match(/<([^>]+)>/)?.[1]
   const url = input.match(/\(([^)]+)\)/)?.[1]
@@ -75,10 +75,6 @@ export function normalizeRepoUrl(input?: string): string | undefined {
 
 export function githubRepoSlug(input?: string): string | undefined {
   return sharedGithubRepoSlug(input)
-}
-
-export function releaseAssetUrl(repo: string | undefined, version: string, filename: string): string | undefined {
-  return githubReleaseAssetUrl({ repo, version, filename })
 }
 
 export function renderReleaseUrlTemplate(input: {
@@ -158,7 +154,7 @@ function registryIconPath(pluginId: string): string {
   return `icons/${pluginId}.svg`
 }
 
-function iconForManifest(manifest: PluginManifestType, extractedDir: string): GithubRegistryIcon | undefined {
+function iconForManifest(manifest: PluginManifestType, extractedDir: string): RegistryIcon | undefined {
   if (!manifest.icon) return undefined
   if (!isManifestIconPath(manifest.icon)) return { type: "lucide", name: manifest.icon }
 
@@ -187,7 +183,7 @@ export function uiSurfaces(manifest: PluginManifestType): string[] {
   return surfaces
 }
 
-export function githubEntry(input: {
+export function registryEntry(input: {
   tarballPath: string
   repo?: string
   downloadUrl?: string
@@ -197,7 +193,7 @@ export function githubEntry(input: {
   releaseTagTemplate?: string
   changelog?: string
   publishedAt?: string
-}): GithubRegistryEntry {
+}): RegistryEntry {
   const extractedDir = extractArchive(input.tarballPath)
   const manifestPath = path.join(extractedDir, "plugin.json")
   if (!fs.existsSync(manifestPath)) {
@@ -205,7 +201,7 @@ export function githubEntry(input: {
   }
   const manifest = PluginManifest.parse(JSON.parse(fs.readFileSync(manifestPath, "utf-8"))) as PluginManifestType
   const repo = normalizeRepoUrl(input.repo ?? manifest.repository ?? manifest.homepage)
-  if (!repo) throw new Error("GitHub registry entry requires --repo or manifest.repository")
+  if (!repo) throw new Error("Marketplace registry entry requires --repo or manifest.repository")
 
   const filename = path.basename(input.tarballPath)
   const { downloadUrl, signatureUrl } = resolveReleaseAssetUrls({
@@ -223,7 +219,7 @@ export function githubEntry(input: {
   const tools = publicToolNames(manifest)
   const risk = pluginMarketplaceRisk(manifest)
   const runtimeMode = resolveRuntimeMode({
-    source: "local",
+    source: "official",
     manifestMode: manifest.runtime?.mode,
     userTrusted: true,
     risk,
@@ -287,10 +283,10 @@ function registryRootForEntryPath(entryPath: string): string {
   return path.basename(dir) === "plugins" ? path.dirname(dir) : dir
 }
 
-export function copyGithubEntryIcon(input: {
+export function copyRegistryEntryIcon(input: {
   tarballPath: string
   entryPath: string
-  entry: GithubRegistryEntry
+  entry: RegistryEntry
 }): string | undefined {
   if (input.entry.icon?.type !== "registry-svg") return undefined
   const manifest = readTarballManifest(input.tarballPath)
@@ -307,10 +303,10 @@ export function copyGithubEntryIcon(input: {
   return destination
 }
 
-export function writeGithubEntry(filepath: string, next: GithubRegistryEntry): GithubRegistryEntry {
+export function writeRegistryEntry(filepath: string, next: RegistryEntry): RegistryEntry {
   let merged = next
   if (fs.existsSync(filepath)) {
-    const existing = JSON.parse(fs.readFileSync(filepath, "utf-8")) as GithubRegistryEntry
+    const existing = JSON.parse(fs.readFileSync(filepath, "utf-8")) as RegistryEntry
     const versions = [
       ...existing.versions.filter((version) => version.version !== next.versions[0]?.version),
       ...next.versions,

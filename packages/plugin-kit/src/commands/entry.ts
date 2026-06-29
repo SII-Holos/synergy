@@ -2,7 +2,7 @@ import path from "path"
 import type { Argv } from "yargs"
 import { cmd } from "../cmd"
 import { UI } from "../ui"
-import { copyGithubEntryIcon, githubEntry, writeGithubEntry } from "../lib/market-entry"
+import { copyRegistryEntryIcon, registryEntry, writeRegistryEntry } from "../lib/market-entry"
 
 export const PluginEntryCommand = cmd({
   command: "entry <tarball>",
@@ -51,7 +51,7 @@ export const PluginEntryCommand = cmd({
   async handler(args) {
     try {
       const tarballPath = path.resolve(args.tarball as string)
-      const entry = githubEntry({
+      const entry = registryEntry({
         tarballPath,
         repo: args.repo as string | undefined,
         downloadUrl: args.downloadUrl as string | undefined,
@@ -64,9 +64,9 @@ export const PluginEntryCommand = cmd({
       const writeEntry = args.writeEntry as string | undefined
       if (writeEntry) {
         const outputPath = path.resolve(writeEntry)
-        writeGithubEntry(outputPath, entry)
-        copyGithubEntryIcon({ tarballPath, entryPath: outputPath, entry })
-        UI.println(`${UI.Style.TEXT_SUCCESS}✔${UI.Style.TEXT_NORMAL} Wrote GitHub registry entry ${outputPath}`)
+        writeRegistryEntry(outputPath, entry)
+        copyRegistryEntryIcon({ tarballPath, entryPath: outputPath, entry })
+        UI.println(`${UI.Style.TEXT_SUCCESS}✔${UI.Style.TEXT_NORMAL} Wrote marketplace registry entry ${outputPath}`)
       } else {
         UI.println(JSON.stringify(entry, null, 2))
       }

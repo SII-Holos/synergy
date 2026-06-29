@@ -6,6 +6,7 @@ import { BunProc } from "../util/bun"
 import { PluginSpec } from "../util/plugin-spec"
 import { PluginId } from "./ids"
 import { PluginManifest } from "@ericsanchezok/synergy-plugin"
+import { resolveEntryFromPluginDir } from "@ericsanchezok/synergy-plugin/spec"
 import type { PluginDescriptor, PluginManifest as PluginManifestType } from "@ericsanchezok/synergy-plugin"
 import type { PluginSource } from "./trust"
 
@@ -79,34 +80,6 @@ export async function readPluginManifest(pluginDir: string): Promise<PluginManif
   }
   const parsed = PluginManifest.parse(JSON.parse(text))
   return parsed as PluginManifestType
-}
-
-function resolvePackageEntry(pluginDir: string): string {
-  const pkgPath = path.join(pluginDir, "package.json")
-  if (!fs.existsSync(pkgPath)) return path.join(pluginDir, "index.ts")
-  try {
-    const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8"))
-    const exported =
-      typeof pkg.exports === "string" ? pkg.exports : (pkg.exports?.["."]?.bun ?? pkg.exports?.["."]?.import)
-    const entry = exported ?? pkg.main ?? "index.ts"
-    return path.resolve(pluginDir, entry)
-  } catch {
-    return path.join(pluginDir, "index.ts")
-  }
-}
-
-export function resolveEntryFromPluginDir(pluginDir: string, manifest: PluginManifestType): string {
-  const candidates = [
-    manifest.main ? path.resolve(pluginDir, manifest.main) : undefined,
-    path.join(pluginDir, "dist", "runtime", "index.js"),
-    path.join(pluginDir, "runtime", "index.js"),
-    resolvePackageEntry(pluginDir),
-    path.join(pluginDir, "src", "index.ts"),
-    path.join(pluginDir, "index.ts"),
-    path.join(pluginDir, "index.js"),
-  ].filter(Boolean) as string[]
-
-  return candidates.find((candidate) => fs.existsSync(candidate)) ?? candidates[0]
 }
 
 async function extractArchive(archivePath: string, options: { stage?: boolean } = {}): Promise<string> {

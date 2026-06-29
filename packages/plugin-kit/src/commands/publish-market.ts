@@ -11,13 +11,13 @@ import { packPluginProject } from "./pack"
 import { signPluginTarball } from "./sign"
 import { validatePluginProject } from "./validate"
 import {
-  copyGithubEntryIcon,
-  githubEntry,
+  copyRegistryEntryIcon,
   githubRepoSlug,
   normalizeRepoUrl,
+  registryEntry,
   resolveReleaseAssetUrls,
   readTarballManifest,
-  writeGithubEntry,
+  writeRegistryEntry,
 } from "../lib/market-entry"
 
 function defaultRegistryRepo(): string {
@@ -350,7 +350,7 @@ export const PluginPublishMarketCommand = cmd({
         releaseUrlTemplate: args["release-url-template"] as string | undefined,
         releaseTagTemplate,
       })
-      const entry = githubEntry({
+      const entry = registryEntry({
         tarballPath,
         repo,
         downloadUrl,
@@ -365,8 +365,8 @@ export const PluginPublishMarketCommand = cmd({
       const registryDir = path.resolve((args["registry-dir"] as string | undefined) ?? defaultRegistryDir())
       await ensureRegistryCheckout(registryDir, registryRepo)
       const entryPath = path.join(registryDir, "plugins", `${entry.id}.json`)
-      writeGithubEntry(entryPath, entry)
-      copyGithubEntryIcon({ tarballPath, entryPath, entry })
+      writeRegistryEntry(entryPath, entry)
+      copyRegistryEntryIcon({ tarballPath, entryPath, entry })
 
       await runRegistryValidation(registryDir)
       const tag = githubReleaseTag(manifest.version, releaseTagTemplate)

@@ -10,7 +10,7 @@ import { PluginManifest } from "@ericsanchezok/synergy-plugin"
 import { baseCapabilities } from "@ericsanchezok/synergy-plugin/permissions"
 import { sha256File } from "../../../plugin-kit/src/lib/crypto"
 import { computeManifestHash, computePermissionsHash } from "../../../plugin-kit/src/lib/hash"
-import { copyGithubEntryIcon, githubEntry, writeGithubEntry } from "../../../plugin-kit/src/lib/market-entry"
+import { copyRegistryEntryIcon, registryEntry, writeRegistryEntry } from "../../../plugin-kit/src/lib/market-entry"
 
 const repoRoot = path.resolve(import.meta.dir, "../../../..")
 const repoNodeModules = path.join(repoRoot, "node_modules")
@@ -207,7 +207,7 @@ export default plugin
       ),
     )
 
-    const entry = githubEntry({
+    const entry = registryEntry({
       tarballPath: tarball,
       repo: "https://github.com/example/asset-fixture",
       publishedAt: "2026-06-27T00:00:00.000Z",
@@ -216,12 +216,12 @@ export default plugin
     expect("compatibility" in entry).toBe(false)
 
     const registryEntryPath = path.join(tmp.path, "registry", "plugins", "asset-fixture.json")
-    writeGithubEntry(registryEntryPath, entry)
-    const copiedIcon = copyGithubEntryIcon({ tarballPath: tarball, entryPath: registryEntryPath, entry })
+    writeRegistryEntry(registryEntryPath, entry)
+    const copiedIcon = copyRegistryEntryIcon({ tarballPath: tarball, entryPath: registryEntryPath, entry })
     expect(copiedIcon).toBe(path.join(tmp.path, "registry", "icons", "asset-fixture.svg"))
     expect(await Bun.file(copiedIcon!).exists()).toBe(true)
 
-    const customTagEntry = githubEntry({
+    const customTagEntry = registryEntry({
       tarballPath: tarball,
       repo: "https://github.com/example/asset-fixture",
       releaseTagTemplate: "asset-fixture-{version}",

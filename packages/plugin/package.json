@@ -57,6 +57,11 @@
       "types": "./src/market.ts",
       "import": "./dist/market.js"
     },
+    "./spec": {
+      "bun": "./src/spec.ts",
+      "types": "./src/spec.ts",
+      "import": "./dist/spec.js"
+    },
     "./shell": {
       "bun": "./src/shell.ts",
       "types": "./src/shell.ts",

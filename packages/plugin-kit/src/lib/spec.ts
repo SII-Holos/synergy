@@ -1,11 +1,8 @@
-import path from "path"
 import { pathToFileURL } from "url"
 import type { PluginDescriptor, PluginManifest as PluginManifestType } from "@ericsanchezok/synergy-plugin"
+import { resolveEntryFromPluginDir } from "@ericsanchezok/synergy-plugin/spec"
 
-export function resolveEntryFromPluginDir(pluginDir: string, manifest: PluginManifestType): string {
-  const main = manifest.main ?? "./src/index.ts"
-  return path.resolve(pluginDir, main)
-}
+export { resolveEntryFromPluginDir }
 
 export function importUrlForEntry(entryPath: string, nonce?: number): string {
   const url = pathToFileURL(entryPath)
