@@ -7,9 +7,13 @@ import {
   githubRepoSlug as sharedGithubRepoSlug,
   normalizeGitHubRepoUrl,
 } from "@ericsanchezok/synergy-plugin/market"
-import { baseCapabilities, publicToolNames, registryPermissionSummary } from "@ericsanchezok/synergy-plugin/permissions"
+import {
+  baseCapabilities,
+  pluginMarketplaceRisk,
+  publicToolNames,
+  registryPermissionSummary,
+} from "@ericsanchezok/synergy-plugin/permissions"
 import { computeManifestHash, computePermissionsHash } from "./hash"
-import { computeRisk } from "./risk"
 import { resolveRuntimeMode } from "./runtime-mode"
 import { readSignatureFile } from "./signature"
 import { sha256File } from "./crypto"
@@ -155,7 +159,7 @@ export function githubEntry(input: {
 
   const capabilities = baseCapabilities(manifest)
   const tools = publicToolNames(manifest)
-  const risk = computeRisk(tools.length > 0 ? capabilities : [], manifest)
+  const risk = pluginMarketplaceRisk(manifest)
   const runtimeMode = resolveRuntimeMode({
     source: "local",
     manifestMode: manifest.runtime?.mode,

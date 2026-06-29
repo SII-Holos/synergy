@@ -1,9 +1,13 @@
 import { cmd } from "./cmd"
 import { UI } from "../ui"
 import { PluginManifest, type PluginManifest as PluginManifestType } from "@ericsanchezok/synergy-plugin"
-import { permissionItems, publicToolNames, registryPermissionSummary } from "@ericsanchezok/synergy-plugin/permissions"
-import { baseCapabilities } from "../../plugin/capability"
-import { computeRisk } from "../../plugin/consent/risk"
+import {
+  baseCapabilities,
+  computeRisk,
+  permissionItems,
+  publicToolNames,
+  registryPermissionSummary,
+} from "@ericsanchezok/synergy-plugin/permissions"
 import { computeManifestHash, computePermissionsHash } from "../../plugin/consent/approval-store"
 import { resolveRuntimeMode } from "../../plugin-runtime/mode-resolver"
 import { sha256File } from "../../util/crypto"

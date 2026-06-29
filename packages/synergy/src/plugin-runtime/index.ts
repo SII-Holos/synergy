@@ -50,7 +50,7 @@ export { DEFAULT_LIMITS } from "./health.js"
 export { ConcurrencyLimiter, getProcessMemoryMb, startMemoryMonitor, LogRateLimiter } from "./resource-limits.js"
 
 // Bridge enforcement (host-side)
-export { BRIDGE_METHOD_CAPABILITY, createBridgeEnforcementHandler } from "./bridge-enforcement.js"
+export { bridgeMethodCapability, createBridgeEnforcementHandler } from "./bridge-enforcement.js"
 export type { BridgeEnforcementResult } from "./bridge-enforcement.js"
 
 // Log buffer

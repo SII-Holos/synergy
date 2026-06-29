@@ -1,5 +1,5 @@
 import type { PluginManifest } from "@ericsanchezok/synergy-plugin"
-import { computeRisk } from "./risk"
+import { computeRisk } from "@ericsanchezok/synergy-plugin/permissions"
 import { generatePermissionItems } from "./summary"
 import type { PermissionChange, PermissionItem, PluginPermissionDiff } from "./schema"
 

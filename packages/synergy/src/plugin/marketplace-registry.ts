@@ -1,5 +1,5 @@
 import { PluginManifest, type PluginManifest as PluginManifestType } from "@ericsanchezok/synergy-plugin"
-import { CAPABILITY_DETAILS, permissionCategoryForKey } from "@ericsanchezok/synergy-plugin/permissions"
+import { CAPABILITY_DETAILS, permissionCategoryForKey, pluginInstallRisk } from "@ericsanchezok/synergy-plugin/permissions"
 import fs from "fs/promises"
 import fsSync from "fs"
 import os from "os"
@@ -11,7 +11,6 @@ import { Global } from "../global"
 import { sha256File } from "../util/crypto"
 import { baseCapabilities } from "./capability"
 import { computeManifestHash, computePermissionsHash } from "./consent/approval-store"
-import { computeRisk } from "./consent/risk"
 import { readSignatureFile, verifySignatureWithPublicKey, type SignatureMetadata } from "./signature"
 import { defaultPluginTrustDecision } from "./trust"
 
@@ -583,7 +582,7 @@ export namespace PluginMarketplaceRegistry {
         cacheKey: `official:${id}@${version}:${tarballHash}`,
         manifest,
         capabilities,
-        risk: computeRisk(capabilities, manifest),
+        risk: pluginInstallRisk(manifest),
         signature,
       }
     } catch (err) {

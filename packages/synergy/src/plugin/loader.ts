@@ -19,8 +19,7 @@ import { Global } from "../global"
 import { createConfigAccessor, createAuthStore, createCacheStore } from "./store"
 import { StartupReporter } from "../cli/startup-reporter"
 import { Installation } from "../global/installation"
-import { baseCapabilities } from "./capability"
-import { computeRisk } from "./consent/risk"
+import { pluginInstallRisk } from "@ericsanchezok/synergy-plugin/permissions"
 import { resolveRuntimeMode } from "../plugin-runtime/mode-resolver"
 import type { RuntimeMode } from "../plugin-runtime/registry"
 import { isTrustedPluginSource, type PluginSource } from "./trust"
@@ -214,7 +213,7 @@ export const state = ScopedState.create(async (): Promise<LoaderState> => {
       }
       loadedPluginIds.add(pluginId)
       const showLoadedUI = !printedPluginIds.has(pluginId)
-      const risk = resolved.manifest ? computeRisk(baseCapabilities(resolved.manifest), resolved.manifest) : "low"
+      const risk = resolved.manifest ? pluginInstallRisk(resolved.manifest) : "low"
       const runtimeMode = resolveRuntimeMode({
         source: resolved.source,
         manifestMode: resolved.manifest?.runtime?.mode,

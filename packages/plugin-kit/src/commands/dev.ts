@@ -2,11 +2,9 @@ import path from "path"
 import fs from "fs"
 import type { Argv } from "yargs"
 import { PluginManifest, type PluginManifest as PluginManifestType } from "@ericsanchezok/synergy-plugin"
-import { permissionItems } from "@ericsanchezok/synergy-plugin/permissions"
+import { baseCapabilities, computeRisk, permissionItems } from "@ericsanchezok/synergy-plugin/permissions"
 import { cmd } from "../cmd"
 import { UI } from "../ui"
-import { computeRisk } from "../lib/risk"
-import { baseCapabilities } from "../lib/capability"
 
 function timestamp(): string {
   return new Date().toLocaleTimeString("en-US", { hour12: false })

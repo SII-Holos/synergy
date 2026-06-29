@@ -23,8 +23,7 @@ import { executeBridgeMethod } from "./bridge-handlers.js"
 import { getApproval } from "../plugin/consent/approval-store.js"
 import type { PluginManifest as PluginManifestType } from "@ericsanchezok/synergy-plugin"
 import * as ManifestReader from "../plugin/manifest-reader"
-import { baseCapabilities } from "../plugin/capability.js"
-import { computeRisk } from "../plugin/consent/risk.js"
+import { pluginInstallRisk } from "@ericsanchezok/synergy-plugin/permissions"
 import { PluginLogBuffer } from "./logs.js"
 import { Global } from "../global/index.js"
 import { Config } from "../config/config.js"
@@ -379,7 +378,7 @@ export class PluginRuntimeSupervisor {
     }
     const config = await Config.current().catch(() => undefined)
     const source = options.source ?? "npm"
-    const risk = manifest ? computeRisk(baseCapabilities(manifest), manifest) : "low"
+    const risk = manifest ? pluginInstallRisk(manifest) : "low"
     const userTrusted = isTrustedPluginSource(source)
 
     // Resolve runtime mode: caller wins, then resolveRuntimeMode, then default

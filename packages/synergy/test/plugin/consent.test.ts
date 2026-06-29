@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import { diffPermissions } from "../../src/plugin/consent/diff"
-import { computeRisk } from "../../src/plugin/consent/risk"
+import { computeRisk } from "@ericsanchezok/synergy-plugin/permissions"
 import { generatePermissionItems } from "../../src/plugin/consent/summary"
 import type { PluginManifest } from "@ericsanchezok/synergy-plugin"
 

@@ -51,11 +51,7 @@ export async function executeBridgeMethod(input: BridgeHandlerInput): Promise<un
   switch (method) {
     // ── config ───────────────────────────────────────────────
     case "config.get": {
-      await authorizeBridgeRequest(
-        bridgeContext,
-        { permission: "config:read", capability: "config:read" },
-        "config.get",
-      )
+      await authorizeBridgeCapability(bridgeContext, "config:read", "config.get")
       try {
         const accessor = createConfigAccessor(pluginId)
         const full = await accessor.get()
@@ -68,11 +64,7 @@ export async function executeBridgeMethod(input: BridgeHandlerInput): Promise<un
       }
     }
     case "config.set": {
-      await authorizeBridgeRequest(
-        bridgeContext,
-        { permission: "config:write", capability: "config:write" },
-        "config.set",
-      )
+      await authorizeBridgeCapability(bridgeContext, "config:write", "config.set")
       try {
         const accessor = createConfigAccessor(pluginId)
         const { key, value } = params as any
@@ -85,7 +77,7 @@ export async function executeBridgeMethod(input: BridgeHandlerInput): Promise<un
 
     // ── secrets ──────────────────────────────────────────────
     case "secret.get": {
-      await authorizeBridgeRequest(bridgeContext, { permission: "secrets", capability: "secrets" }, "secret.get", {
+      await authorizeBridgeCapability(bridgeContext, "secrets", "secret.get", {
         nonBypassable: true,
       })
       const store = createAuthStore(pluginId)
@@ -93,7 +85,7 @@ export async function executeBridgeMethod(input: BridgeHandlerInput): Promise<un
       return typeof key === "string" ? store.get(key) : undefined
     }
     case "secret.set": {
-      await authorizeBridgeRequest(bridgeContext, { permission: "secrets", capability: "secrets" }, "secret.set", {
+      await authorizeBridgeCapability(bridgeContext, "secrets", "secret.set", {
         nonBypassable: true,
       })
       const store = createAuthStore(pluginId)
@@ -102,7 +94,7 @@ export async function executeBridgeMethod(input: BridgeHandlerInput): Promise<un
       return undefined
     }
     case "secret.delete": {
-      await authorizeBridgeRequest(bridgeContext, { permission: "secrets", capability: "secrets" }, "secret.delete", {
+      await authorizeBridgeCapability(bridgeContext, "secrets", "secret.delete", {
         nonBypassable: true,
       })
       const store = createAuthStore(pluginId)
@@ -137,7 +129,7 @@ export async function executeBridgeMethod(input: BridgeHandlerInput): Promise<un
       if (typeof requestedPath !== "string" || requestedPath.trim() === "") {
         throw new Error("file.read requires 'path' as a non-empty string")
       }
-      await authorizeBridgeRequest(bridgeContext, { permission: "read", capability: "file_read" }, requestedPath)
+      await authorizeBridgeCapability(bridgeContext, "file_read", requestedPath)
       const resolved = resolveContainedPath(pluginDir, requestedPath)
       return Bun.file(resolved).text()
     }
@@ -150,7 +142,7 @@ export async function executeBridgeMethod(input: BridgeHandlerInput): Promise<un
       if (typeof data !== "string") {
         throw new Error("file.write requires 'data' as a string")
       }
-      await authorizeBridgeRequest(bridgeContext, { permission: "write", capability: "file_write" }, requestedPath)
+      await authorizeBridgeCapability(bridgeContext, "file_write", requestedPath)
       const resolved = resolveContainedPath(pluginDir, requestedPath)
       await fs.mkdir(path.dirname(resolved), { recursive: true })
       await Bun.write(resolved, data)
@@ -172,11 +164,7 @@ export async function executeBridgeMethod(input: BridgeHandlerInput): Promise<un
       if (url.protocol !== "http:" && url.protocol !== "https:") {
         throw new Error(`Only http/https URLs are allowed, got: ${url.protocol}`)
       }
-      await authorizeBridgeRequest(
-        bridgeContext,
-        { permission: "network_request", capability: "network_request" },
-        url.origin,
-      )
+      await authorizeBridgeCapability(bridgeContext, "network_request", url.origin)
 
       // Build safe headers — strip Authorization
       const options = (params as any)?.options as Record<string, unknown> | undefined
@@ -208,9 +196,9 @@ export async function executeBridgeMethod(input: BridgeHandlerInput): Promise<un
         throw new Error("shell.run requires 'cmd' as a non-empty string")
       }
       const destructive = analyzeDestructiveCommand(cmd)
-      await authorizeBridgeRequest(
+      await authorizeBridgeCapability(
         bridgeContext,
-        { permission: "bash", capability: destructive.matched ? "shell_destructive" : "shell" },
+        destructive.matched ? "shell_destructive" : "shell",
         cmd,
         destructive.reason ? { reason: destructive.reason } : undefined,
       )
@@ -247,11 +235,7 @@ export async function executeBridgeMethod(input: BridgeHandlerInput): Promise<un
 
     // ── metadata ─────────────────────────────────────────────
     case "workspace.getMetadata":
-      await authorizeBridgeRequest(
-        bridgeContext,
-        { permission: "workspace_data", capability: "workspace_data" },
-        "workspace.getMetadata",
-      )
+      await authorizeBridgeCapability(bridgeContext, "workspace_data", "workspace.getMetadata")
       return {
         pluginId,
         pluginDir,
@@ -259,11 +243,7 @@ export async function executeBridgeMethod(input: BridgeHandlerInput): Promise<un
       }
 
     case "session.getMetadata":
-      await authorizeBridgeRequest(
-        bridgeContext,
-        { permission: "session_data", capability: "session_data" },
-        "session.getMetadata",
-      )
+      await authorizeBridgeCapability(bridgeContext, "session_data", "session.getMetadata")
       return bridgeContext
         ? {
             sessionID: bridgeContext.sessionID,
@@ -274,11 +254,7 @@ export async function executeBridgeMethod(input: BridgeHandlerInput): Promise<un
 
     // ── not available ────────────────────────────────────────
     case "session.read":
-      await authorizeBridgeRequest(
-        bridgeContext,
-        { permission: "session_data", capability: "session_data" },
-        "session.read",
-      )
+      await authorizeBridgeCapability(bridgeContext, "session_data", "session.read")
       throw new Error("session.read is not available in isolated runtime")
 
     case "tool.invoke":
@@ -305,18 +281,18 @@ export async function executeBridgeMethod(input: BridgeHandlerInput): Promise<un
   }
 }
 
-async function authorizeBridgeRequest(
+async function authorizeBridgeCapability(
   context: PluginHostRuntimeContext | undefined,
-  request: { permission: string; capability: string },
+  capability: string,
   pattern: string,
   metadata?: Record<string, unknown>,
 ) {
   if (!context) return
   await requestPluginPermission(context, {
-    permission: request.permission,
+    permission: capability,
     patterns: [pattern || "*"],
     metadata: {
-      capability: request.capability,
+      capability,
       source: "plugin_bridge",
       ...metadata,
     },

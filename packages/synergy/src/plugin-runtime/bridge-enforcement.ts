@@ -1,4 +1,5 @@
 import type { HostBridgeMethod } from "./protocol.js"
+import { pluginBridgeMethodCapability } from "@ericsanchezok/synergy-plugin/permissions"
 
 // ---------------------------------------------------------------------------
 // Bridge method → enforcement capability mapping
@@ -12,21 +13,7 @@ import type { HostBridgeMethod } from "./protocol.js"
  * EnforcementGate. Interactive/profile approval happens in the host service
  * that executes the request.
  */
-export const BRIDGE_METHOD_CAPABILITY: Partial<Record<HostBridgeMethod, string>> = {
-  "config.get": "config:read",
-  "config.set": "config:write",
-  "secret.get": "secrets",
-  "secret.set": "secrets",
-  "secret.delete": "secrets",
-  "file.read": "file_read",
-  "file.write": "file_write",
-  "network.fetch": "network_request",
-  "shell.run": "shell",
-  "session.getMetadata": "session_data",
-  "session.read": "session_data",
-  "workspace.getMetadata": "workspace_data",
-  "task.run": "task",
-}
+export const bridgeMethodCapability = pluginBridgeMethodCapability
 
 // ---------------------------------------------------------------------------
 // Enforcement handler factory
@@ -53,7 +40,7 @@ export function createBridgeEnforcementHandler(
   capabilities: string[],
 ): (method: HostBridgeMethod, _params: unknown) => BridgeEnforcementResult {
   return (method, _params) => {
-    const requiredCap = BRIDGE_METHOD_CAPABILITY[method]
+    const requiredCap = bridgeMethodCapability(method)
     if (requiredCap === undefined) {
       if (method in METHOD_WITHOUT_PREFLIGHT) return { allowed: true }
       return { allowed: false, reason: `Unknown bridge method: ${method}` }

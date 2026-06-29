@@ -12,8 +12,7 @@ import { Installation } from "../global/installation"
 import * as Lockfile from "./lockfile"
 import { resolveSpecPluginDir, state, specToPluginId } from "./loader"
 import { reload } from "./lifecycle"
-import { baseCapabilities } from "./capability"
-import { computeRisk } from "./consent/risk"
+import { baseCapabilities, pluginInstallRisk } from "@ericsanchezok/synergy-plugin/permissions"
 import { resolveRuntimeMode } from "../plugin-runtime/mode-resolver.js"
 import { resolvePluginSpec } from "./spec-resolver"
 import { PluginInstallationTransaction } from "./installation-transaction"
@@ -157,7 +156,7 @@ export async function add(
 
     if (manifestData) {
       const capabilities = baseCapabilities(manifestData)
-      risk = computeRisk(capabilities, manifestData)
+      risk = pluginInstallRisk(manifestData)
       permissionsHash = computePermissionsHash(manifestData, capabilities)
       manifestHash = computeManifestHash(manifestData)
 

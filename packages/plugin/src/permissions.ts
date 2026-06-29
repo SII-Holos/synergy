@@ -311,6 +311,7 @@ export const PROFILE_CAPABILITIES = [
   "tool_execution_hook",
   "permission_hook",
   "event_hook",
+  "local_tool_invoke",
   "identity_act",
   "communication_email",
   "channel_outbound",
@@ -351,6 +352,7 @@ export const PERMISSION_CAPABILITY: Record<string, string> = {
   "config:read": "config:read",
   "config:write": "config:write",
   secrets: "secrets",
+  local_tool_invoke: "local_tool_invoke",
   email_read: "communication_email",
   email_send: "communication_email",
   communication_email: "communication_email",
@@ -412,6 +414,7 @@ function buildCapabilitySet(
     caps.add("file_write")
   }
 
+  if (pt?.invoke ?? false) caps.add("local_tool_invoke")
   if (tc?.shell ?? pt?.shell ?? false) caps.add("shell")
   if (tc?.network ?? pt?.network ?? false) caps.add("network_request")
 
@@ -458,6 +461,15 @@ export function toolCapabilities(manifest: PluginManifest, tool: ManifestTool): 
   return buildCapabilitySet(manifest.permissions, tool.capabilities)
 }
 
+export function publicToolCapabilities(manifest: PluginManifest): string[] {
+  const caps = new Set<string>()
+  for (const tool of manifest.contributes?.tools ?? []) {
+    if (tool.exposure?.mode === "internal") continue
+    for (const capability of toolCapabilities(manifest, tool)) caps.add(capability)
+  }
+  return [...caps].sort()
+}
+
 export function computeRisk(capabilities: string[], manifest?: PluginManifest): PluginRisk {
   if (capabilities.length === 0) return "low"
 
@@ -467,6 +479,14 @@ export function computeRisk(capabilities: string[], manifest?: PluginManifest): 
   }
 
   return risk
+}
+
+export function pluginInstallRisk(manifest: PluginManifest): PluginRisk {
+  return computeRisk(baseCapabilities(manifest), manifest)
+}
+
+export function pluginMarketplaceRisk(manifest: PluginManifest): PluginRisk {
+  return computeRisk(publicToolCapabilities(manifest), manifest)
 }
 
 function networkPermissionItem(manifest: PluginManifest): PluginPermissionItem {
@@ -733,4 +753,25 @@ export function manifestHashPayload(manifest: PluginManifest): PluginManifest {
 
 export function stablePluginJson(value: unknown): string {
   return JSON.stringify(sortKeys(value))
+}
+
+export const PLUGIN_BRIDGE_METHOD_CAPABILITY = {
+  "config.get": "config:read",
+  "config.set": "config:write",
+  "secret.get": "secrets",
+  "secret.set": "secrets",
+  "secret.delete": "secrets",
+  "file.read": "file_read",
+  "file.write": "file_write",
+  "network.fetch": "network_request",
+  "shell.run": "shell",
+  "session.getMetadata": "session_data",
+  "session.read": "session_data",
+  "workspace.getMetadata": "workspace_data",
+  "task.run": "task",
+  "tool.invoke": "local_tool_invoke",
+} as const satisfies Record<string, string>
+
+export function pluginBridgeMethodCapability(method: string): string | undefined {
+  return PLUGIN_BRIDGE_METHOD_CAPABILITY[method as keyof typeof PLUGIN_BRIDGE_METHOD_CAPABILITY]
 }

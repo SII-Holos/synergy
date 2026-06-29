@@ -1,9 +1,9 @@
 import type { PluginManifest } from "@ericsanchezok/synergy-plugin"
 import {
   baseCapabilities as sharedBaseCapabilities,
+  computeRisk,
   toolCapabilities as sharedToolCapabilities,
 } from "@ericsanchezok/synergy-plugin/permissions"
-import { computeRisk } from "./consent/risk"
 
 // ---------------------------------------------------------------------------
 // Types

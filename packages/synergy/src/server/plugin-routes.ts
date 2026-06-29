@@ -10,9 +10,9 @@ import { Installation } from "../global/installation"
 import { Plugin } from "../plugin/index"
 import { Config } from "../config/config"
 import type { PluginManifest as PluginManifestType } from "@ericsanchezok/synergy-plugin"
+import { computeRisk } from "@ericsanchezok/synergy-plugin/permissions"
 
 import { diffPermissions } from "../plugin/consent/diff"
-import { computeRisk } from "../plugin/consent/risk"
 import {
   saveApproval,
   getApproval,

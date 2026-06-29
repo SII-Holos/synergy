@@ -186,6 +186,7 @@ const PluginPermissionsSchema = z
     tools: z
       .object({
         shell: z.boolean().default(false),
+        invoke: z.boolean().default(false),
         filesystem: z.preprocess(
           (val) => {
             if (val === true) return "write"
@@ -517,8 +518,12 @@ export const PluginManifest = z
             memoryMb: z.number().positive().optional(),
             startupTimeoutMs: z.number().positive().optional(),
             requestTimeoutMs: z.number().positive().optional(),
+            shutdownGraceMs: z.number().positive().optional(),
             maxConcurrentRequests: z.number().positive().optional(),
             maxLogBytesPerMinute: z.number().positive().optional(),
+            memoryPollIntervalMs: z.number().positive().optional(),
+            heartbeatIntervalMs: z.number().positive().optional(),
+            heartbeatMissesBeforeKill: z.number().positive().optional(),
           })
           .optional(),
       })

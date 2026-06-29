@@ -9,7 +9,7 @@ import { UI } from "../ui"
 import { SIGNING_KEYS_DIR, SIGNING_KEY_FILE } from "../lib/paths"
 import { sha256File } from "../lib/crypto"
 import type { SignatureMetadata } from "../lib/signature"
-import { baseCapabilities } from "../lib/capability"
+import { baseCapabilities } from "@ericsanchezok/synergy-plugin/permissions"
 import { computeManifestHash, computePermissionsHash } from "../lib/hash"
 
 interface KeyFile {
