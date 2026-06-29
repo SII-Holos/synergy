@@ -47,6 +47,66 @@ function satisfiesMinVersion(current: string, required: string): boolean {
 // Add / remove
 // ---------------------------------------------------------------------------
 
+async function resolveConfiguredPluginId(spec: string): Promise<string | null> {
+  const mapped = specToPluginId.get(spec)
+  if (mapped) return mapped
+
+  try {
+    const resolved = await resolvePluginSpec(spec, {
+      cwd: process.cwd(),
+      install: false,
+      refresh: false,
+    })
+    return resolved.manifest?.name ?? resolved.pkg
+  } catch {
+    return null
+  }
+}
+
+export async function nextConfiguredPluginSpecsForInstall(
+  currentPlugins: string[],
+  input: {
+    spec: string
+    pluginId: string
+    resolvePluginId?: (spec: string) => Promise<string | null> | string | null
+  },
+): Promise<{ plugins: string[]; removed: string[]; changed: boolean }> {
+  const resolvePluginId = input.resolvePluginId ?? resolveConfiguredPluginId
+  const plugins: string[] = []
+  const removed: string[] = []
+  let hasTargetSpec = false
+
+  for (const currentSpec of currentPlugins) {
+    if (currentSpec === input.spec) {
+      if (hasTargetSpec) {
+        removed.push(currentSpec)
+        continue
+      }
+      hasTargetSpec = true
+      plugins.push(currentSpec)
+      continue
+    }
+
+    const currentPluginId = await resolvePluginId(currentSpec)
+    if (currentPluginId === input.pluginId) {
+      removed.push(currentSpec)
+      continue
+    }
+
+    plugins.push(currentSpec)
+  }
+
+  if (!hasTargetSpec) {
+    plugins.push(input.spec)
+  }
+
+  const changed =
+    removed.length > 0 ||
+    plugins.length !== currentPlugins.length ||
+    plugins.some((spec, index) => spec !== currentPlugins[index])
+  return { plugins, removed, changed }
+}
+
 export async function add(
   spec: string,
   opts: { autoReload?: boolean; skipConsent?: boolean } = {},
@@ -226,11 +286,16 @@ export async function add(
     })
     await Lockfile.write(updatedLockfile)
 
-    // Add to config.plugin[] array
+    // Add to config.plugin[] array, replacing older specs that resolve to
+    // the same plugin id so updates do not leave duplicate active installs.
     const config = await Config.current()
     const currentPlugins = config.plugin ?? []
-    if (!currentPlugins.includes(spec)) {
-      await Config.domainUpdate("plugins", { plugin: [spec] } as any, { mode: "append" })
+    const nextConfig = await nextConfiguredPluginSpecsForInstall(currentPlugins, { spec, pluginId: canonicalPluginId })
+    if (nextConfig.changed) {
+      await Config.domainUpdate("plugins", { plugin: nextConfig.plugins } as any, { mode: "replace-domain" })
+      for (const removedSpec of nextConfig.removed) {
+        specToPluginId.delete(removedSpec)
+      }
       await Config.reload("global")
     }
 

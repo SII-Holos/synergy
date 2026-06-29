@@ -16,6 +16,7 @@ export function computeRisk(capabilities: string[], manifest?: PluginManifest): 
       case "filesystem:read":
       case "session_data":
       case "config:write":
+      case "task":
         if (risk !== "high") risk = "medium"
         break
       case "network":

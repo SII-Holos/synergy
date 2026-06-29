@@ -533,6 +533,11 @@
     0 1px 2px color-mix(in oklab, black 12%, transparent);
 }
 
+.plugin-detail-primary-action [data-component="icon"],
+.plugin-detail-primary-action [data-slot="icon-svg"] {
+  color: inherit;
+}
+
 .plugin-detail-primary-action:hover:not(:disabled) {
   background: var(--text-base);
 }
