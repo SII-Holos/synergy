@@ -20,7 +20,7 @@ export type RuntimeLimitOverrides = Partial<RuntimeLimits>
 
 export const DEFAULT_LIMITS: RuntimeLimits = {
   startupTimeoutMs: 5_000,
-  requestTimeoutMs: 30_000,
+  requestTimeoutMs: 120_000,
   shutdownGraceMs: 1_500,
   maxConcurrentRequests: 8,
   maxLogBytesPerMinute: 128_000,

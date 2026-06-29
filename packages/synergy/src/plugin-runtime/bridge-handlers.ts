@@ -269,6 +269,7 @@ export async function executeBridgeMethod(input: BridgeHandlerInput): Promise<un
       if (!bridgeContext) throw new Error("tool.invoke requires plugin tool context")
       return invokePluginTool({
         context: bridgeContext,
+        pluginDir,
         request: stripBridgeContext(params) as any,
       })
 
