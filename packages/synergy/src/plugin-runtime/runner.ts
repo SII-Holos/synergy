@@ -253,7 +253,7 @@ async function invokeTool(requestId: string, toolId: string, args: unknown, cont
   if (!inputData) throw new Error("Plugin runtime is not initialized")
   const abortController = new AbortController()
   activeToolAbort.set(requestId, abortController)
-  const contextData = { ...context, abort: undefined }
+  const contextData = { ...context, callID: context?.callID ?? requestId, abort: undefined }
   try {
     return def.execute(args as any, {
       sessionID: context?.sessionID ?? "",

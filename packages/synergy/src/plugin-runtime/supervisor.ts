@@ -1,7 +1,13 @@
 import { Log } from "@/util/log"
 import path from "path"
 import { recordEvent } from "../plugin/audit.js"
-import type { HostToPlugin, IsolatedPluginInputData, HostBridgeHandler, RuntimeToolContextData } from "./protocol.js"
+import type {
+  HostToPlugin,
+  IsolatedPluginInputData,
+  HostBridgeHandler,
+  RuntimeRequestMessage,
+  RuntimeToolContextData,
+} from "./protocol.js"
 import { resolveRuntimeMode } from "./mode-resolver.js"
 import { spawnPluginProcess } from "./process-host.js"
 import { canSpawnPluginWorker, spawnPluginWorker } from "./worker-host.js"
@@ -122,6 +128,7 @@ export class PluginRuntimeSupervisor {
   #logBuffer: PluginLogBuffer
   #persist: RuntimeStatePersistence
   #heartbeatMonitors = new Map<string, { stop: () => void }>()
+  #runtimeRequestAborts = new Map<string, AbortController>()
 
   constructor(deps: { registry: RuntimeRegistry; logs: PluginLogBuffer; persist?: RuntimeStatePersistence }) {
     this.#registry = deps.registry
@@ -194,6 +201,38 @@ export class PluginRuntimeSupervisor {
     void this.#persist.save(this.#registry.list())
   }
 
+  #runtimeRequestKey(pluginId: string, requestKey: string): string {
+    return `${pluginId}:${requestKey}`
+  }
+
+  #registerRuntimeRequestAbort(
+    pluginId: string,
+    message: RuntimeRequestMessage,
+    controller: AbortController,
+  ): string[] {
+    const requestKeys = new Set<string>([message.requestId])
+    if (message.type === "invokeTool" && message.context?.callID) requestKeys.add(message.context.callID)
+    const keys = [...requestKeys].map((key) => this.#runtimeRequestKey(pluginId, key))
+    for (const key of keys) this.#runtimeRequestAborts.set(key, controller)
+    return keys
+  }
+
+  #clearRuntimeRequestAbort(keys: string[]): void {
+    for (const key of keys) this.#runtimeRequestAborts.delete(key)
+  }
+
+  #abortRuntimeRequest(pluginId: string, requestId: string, reason: string): void {
+    this.#runtimeRequestAborts.get(this.#runtimeRequestKey(pluginId, requestId))?.abort(new Error(reason))
+  }
+
+  #bridgeSignal(pluginId: string, params: unknown): AbortSignal | undefined {
+    if (!params || typeof params !== "object") return undefined
+    const context = (params as { context?: { callID?: unknown } }).context
+    const callID = typeof context?.callID === "string" ? context.callID : undefined
+    if (!callID) return undefined
+    return this.#runtimeRequestAborts.get(this.#runtimeRequestKey(pluginId, callID))?.signal
+  }
+
   #attachRuntimeClient(
     pluginId: string,
     entry: RuntimeEntry,
@@ -201,8 +240,21 @@ export class PluginRuntimeSupervisor {
   ): void {
     const pending = new Map<
       string,
-      { resolve(value: unknown): void; reject(error: Error): void; timeout: ReturnType<typeof setTimeout> }
+      {
+        resolve(value: unknown): void
+        reject(error: Error): void
+        timeout: ReturnType<typeof setTimeout>
+        abortKeys: string[]
+      }
     >()
+    const cleanupRuntimeWaiter = (
+      requestId: string,
+      waiter: { timeout: ReturnType<typeof setTimeout>; abortKeys: string[] },
+    ) => {
+      pending.delete(requestId)
+      clearTimeout(waiter.timeout)
+      this.#clearRuntimeRequestAbort(waiter.abortKeys)
+    }
     runtime.onMessage((msg) => {
       if (msg.type === "ready") {
         entry.tools = msg.tools ?? []
@@ -213,8 +265,7 @@ export class PluginRuntimeSupervisor {
       if (msg.type !== "response") return
       const waiter = pending.get(msg.requestId)
       if (!waiter) return
-      pending.delete(msg.requestId)
-      clearTimeout(waiter.timeout)
+      cleanupRuntimeWaiter(msg.requestId, waiter)
       if (msg.ok) {
         waiter.resolve(msg.value)
       } else {
@@ -227,11 +278,21 @@ export class PluginRuntimeSupervisor {
     entry.send = runtime.send
     entry.request = (message) =>
       new Promise((resolve, reject) => {
+        const controller = new AbortController()
+        const abortKeys = this.#registerRuntimeRequestAbort(pluginId, message, controller)
+        const cleanup = () => {
+          const waiter = pending.get(message.requestId)
+          if (waiter) cleanupRuntimeWaiter(message.requestId, waiter)
+          else this.#clearRuntimeRequestAbort(abortKeys)
+        }
         const timeout = setTimeout(() => {
-          pending.delete(message.requestId)
-          reject(new Error(`Plugin runtime request timed out for "${pluginId}"`))
+          const reason = `Plugin runtime request timed out after ${entry.limits.requestTimeoutMs}ms for "${pluginId}"`
+          cleanup()
+          controller.abort(new Error(reason))
+          if (message.type === "invokeTool") runtime.send({ type: "abortTool", requestId: message.requestId, reason })
+          reject(new Error(reason))
         }, entry.limits.requestTimeoutMs)
-        pending.set(message.requestId, { resolve, reject, timeout })
+        pending.set(message.requestId, { resolve, reject, timeout, abortKeys })
         runtime.send(message as HostToPlugin)
       })
   }
@@ -250,7 +311,7 @@ export class PluginRuntimeSupervisor {
         void recordEvent({ pluginId, type: "capability_denied", details: { method, reason: result.reason } })
         throw new Error(result.reason ?? "Bridge request denied by enforcement")
       }
-      return executeBridgeMethod({ pluginId, pluginDir, method, params })
+      return executeBridgeMethod({ pluginId, pluginDir, method, params, signal: this.#bridgeSignal(pluginId, params) })
     }
   }
 
@@ -799,6 +860,7 @@ export class PluginRuntimeSupervisor {
     if (!entry?.request) throw new Error(`Plugin runtime is not running: ${pluginId}`)
     const requestId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`
     const cancel = () => {
+      this.#abortRuntimeRequest(pluginId, requestId, "Host tool call aborted")
       entry.send?.({ type: "abortTool", requestId, reason: "Host tool call aborted" })
     }
     abort?.addEventListener("abort", cancel, { once: true })
