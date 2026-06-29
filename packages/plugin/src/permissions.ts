@@ -1,6 +1,7 @@
 import type { PluginManifest } from "./manifest"
 
 export type PluginRisk = "low" | "medium" | "high"
+export type PluginRiskScope = "install" | "agent"
 export const PLUGIN_PERMISSION_CATEGORIES = [
   "tools",
   "files",
@@ -514,12 +515,12 @@ export function computeRisk(capabilities: string[], manifest?: PluginManifest): 
   return risk
 }
 
-export function pluginInstallRisk(manifest: PluginManifest): PluginRisk {
-  return computeRisk(baseCapabilities(manifest), manifest)
+export function capabilitiesForRiskScope(manifest: PluginManifest, scope: PluginRiskScope): string[] {
+  return scope === "agent" ? publicToolCapabilities(manifest) : baseCapabilities(manifest)
 }
 
-export function pluginMarketplaceRisk(manifest: PluginManifest): PluginRisk {
-  return computeRisk(publicToolCapabilities(manifest), manifest)
+export function pluginRisk(manifest: PluginManifest, input: { scope: PluginRiskScope }): PluginRisk {
+  return computeRisk(capabilitiesForRiskScope(manifest, input.scope), manifest)
 }
 
 function networkPermissionItem(manifest: PluginManifest): PluginPermissionItem {

@@ -3,13 +3,13 @@ import { UI } from "../ui"
 import { PluginManifest, type PluginManifest as PluginManifestType } from "@ericsanchezok/synergy-plugin"
 import {
   baseCapabilities,
-  computeRisk,
   permissionItems,
+  pluginRisk,
   publicToolNames,
   registryPermissionSummary,
 } from "@ericsanchezok/synergy-plugin/permissions"
+import { resolvePluginPolicyDecision } from "@ericsanchezok/synergy-plugin/policy"
 import { computeManifestHash, computePermissionsHash } from "../../plugin/consent/approval-store"
-import { resolveRuntimeMode } from "../../plugin-runtime/mode-resolver"
 import { sha256File } from "../../util/crypto"
 import { localRegistryArtifactDir } from "../../plugin/local-registry-store"
 import path from "path"
@@ -132,10 +132,10 @@ export const PluginPublishCommand = cmd({
       const extractedDir = extractArchive(tarballPath)
       const manifest = readManifest(extractedDir)
       const capabilities = baseCapabilities(manifest)
-      const risk = computeRisk(capabilities, manifest)
-      const runtimeMode = resolveRuntimeMode({
+      const risk = pluginRisk(manifest, { scope: "install" })
+      const policy = resolvePluginPolicyDecision({
+        manifest,
         source: "local",
-        manifestMode: manifest.runtime?.mode,
         devMode: true,
         userTrusted: true,
         risk,
@@ -154,8 +154,8 @@ export const PluginPublishCommand = cmd({
         official: false,
         keywords: [...new Set([...(manifest.keywords ?? []), "synergy-plugin"])],
         risk,
-        trustTier: manifest.trust?.requestedTier ?? "sandbox",
-        runtimeMode,
+        trustTier: policy.trust.tier,
+        runtimeMode: policy.runtimeMode,
         permissionsSummary: detailedPermissions,
         uiSurfaces: uiSurfaces(manifest),
         tools: publicToolNames(manifest),

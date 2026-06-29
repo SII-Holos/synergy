@@ -19,8 +19,7 @@ import { Global } from "../global"
 import { createConfigAccessor, createAuthStore, createCacheStore } from "./store"
 import { StartupReporter } from "../cli/startup-reporter"
 import { Installation } from "../global/installation"
-import { pluginInstallRisk } from "@ericsanchezok/synergy-plugin/permissions"
-import { resolveRuntimeMode } from "../plugin-runtime/mode-resolver"
+import { resolvePluginPolicyDecision } from "@ericsanchezok/synergy-plugin/policy"
 import type { RuntimeMode } from "../plugin-runtime/registry"
 import { isTrustedPluginSource, type PluginSource } from "./trust"
 import { assertCanonicalPluginIdentity, findPackageRoot, importUrlForEntry, resolvePluginSpec } from "./spec-resolver"
@@ -213,13 +212,11 @@ export const state = ScopedState.create(async (): Promise<LoaderState> => {
       }
       loadedPluginIds.add(pluginId)
       const showLoadedUI = !printedPluginIds.has(pluginId)
-      const risk = pluginInstallRisk(resolved.manifest)
-      const runtimeMode = resolveRuntimeMode({
+      const policy = resolvePluginPolicyDecision({
+        manifest: resolved.manifest,
         source: resolved.source,
-        manifestMode: resolved.manifest.runtime?.mode,
         devMode: Installation.CHANNEL === "local",
         userTrusted: isTrustedPluginSource(resolved.source),
-        risk,
         policy: config.pluginRuntimePolicy,
       })
 
@@ -238,7 +235,7 @@ export const state = ScopedState.create(async (): Promise<LoaderState> => {
         pluginDir: resolved.pluginDir,
         entryPath: resolved.entryPath,
         source: resolved.source,
-        runtimeMode,
+        runtimeMode: policy.runtimeMode,
         cli: hooks.cli,
         skills: hooks.skills,
         agents: hooks.agents,
@@ -253,7 +250,7 @@ export const state = ScopedState.create(async (): Promise<LoaderState> => {
         id: pluginId,
         name: descriptor.name,
         pluginDir: resolved.pluginDir,
-        runtimeMode,
+        runtimeMode: policy.runtimeMode,
       })
     }
   }

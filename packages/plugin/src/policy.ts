@@ -1,4 +1,5 @@
 import type { PluginManifest } from "./manifest"
+import { baseCapabilities, pluginRisk } from "./permissions"
 
 export type PluginSource = "local" | "official" | "npm" | "git" | "url" | "builtin"
 export type RuntimeMode = "in-process" | "worker" | "process"
@@ -33,6 +34,14 @@ export interface PluginRuntimePolicyInput {
   allowThirdPartyInProcess?: boolean
   allowWorkerMode?: boolean
   allowLocalInProcess?: boolean
+}
+
+export interface PluginPolicyDecision {
+  source: PluginSource
+  capabilities: string[]
+  risk: PolicyRisk
+  trust: PluginTrustDecision
+  runtimeMode: RuntimeMode
 }
 
 export const DEFAULT_PLUGIN_RUNTIME_POLICY: Required<PluginRuntimePolicyInput> = {
@@ -191,6 +200,44 @@ export function defaultPluginTrustDecision(input: {
     verifiedIntegrity: input.verifiedIntegrity ?? false,
     devMode: input.devMode ?? false,
   })
+}
+
+export function resolvePluginPolicyDecision(input: {
+  manifest: PluginManifest
+  source: PluginSource
+  userTrusted?: boolean
+  verifiedIntegrity?: boolean
+  devMode?: boolean
+  policy?: PluginRuntimePolicyInput
+  forceProcess?: boolean
+  risk?: PolicyRisk
+}): PluginPolicyDecision {
+  const userTrusted = input.userTrusted ?? isTrustedPluginSource(input.source)
+  const verifiedIntegrity = input.verifiedIntegrity ?? input.source === "official"
+  const capabilities = baseCapabilities(input.manifest)
+  const risk = input.risk ?? pluginRisk(input.manifest, { scope: "install" })
+  const trust = decideTrust({
+    source: input.source,
+    userTrusted,
+    verifiedIntegrity,
+    devMode: input.devMode ?? false,
+  })
+  const runtimeMode = resolveRuntimeMode({
+    source: input.source,
+    manifestMode: input.manifest.runtime?.mode,
+    devMode: input.devMode,
+    userTrusted,
+    risk,
+    forceProcess: input.forceProcess,
+    policy: input.policy,
+  })
+  return {
+    source: input.source,
+    capabilities,
+    risk,
+    trust,
+    runtimeMode,
+  }
 }
 
 export function trustReason(decision: PluginTrustDecision): string {

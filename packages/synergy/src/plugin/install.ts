@@ -12,8 +12,7 @@ import { Installation } from "../global/installation"
 import * as Lockfile from "./lockfile"
 import { resolveSpecPluginDir, state, specToPluginId } from "./loader"
 import { reload } from "./lifecycle"
-import { baseCapabilities, pluginInstallRisk } from "@ericsanchezok/synergy-plugin/permissions"
-import { resolveRuntimeMode } from "../plugin-runtime/mode-resolver.js"
+import { resolvePluginPolicyDecision } from "@ericsanchezok/synergy-plugin/policy"
 import { resolvePluginSpec } from "./spec-resolver"
 import { PluginInstallationTransaction } from "./installation-transaction"
 import {
@@ -23,7 +22,7 @@ import {
   getApproval,
   verifyApproval,
 } from "./consent/approval-store"
-import { decideTrust, type PluginSource } from "./trust"
+import type { PluginSource } from "./trust"
 import { evaluatePolicy } from "./consent/policy"
 import { type PluginApprovalPolicy, PLUGIN_APPROVAL_POLICY_DEFAULTS } from "../config/schema"
 import * as Signature from "./signature"
@@ -150,8 +149,16 @@ export async function add(
     const source: PluginSource = resolved.source
     const devMode = Installation.CHANNEL === "local"
 
-    const capabilities = baseCapabilities(manifestData)
-    risk = pluginInstallRisk(manifestData)
+    const preApprovalPolicy = resolvePluginPolicyDecision({
+      manifest: manifestData,
+      source,
+      userTrusted: false,
+      verifiedIntegrity: sigMeta != null,
+      devMode,
+      policy: config.pluginRuntimePolicy,
+    })
+    const capabilities = preApprovalPolicy.capabilities
+    risk = preApprovalPolicy.risk
     permissionsHash = computePermissionsHash(manifestData, capabilities)
     manifestHash = computeManifestHash(manifestData)
 
@@ -169,18 +176,10 @@ export async function add(
       }
     }
 
-    const trust = decideTrust({ source, userTrusted: false, verifiedIntegrity: sigMeta != null, devMode })
+    const trust = preApprovalPolicy.trust
     const policy: PluginApprovalPolicy = config.pluginApprovalPolicy ?? PLUGIN_APPROVAL_POLICY_DEFAULTS
 
-    // Compute runtime mode for policy evaluation
-    const runtimeModeForConsent = resolveRuntimeMode({
-      source,
-      manifestMode: manifestData.runtime?.mode,
-      devMode,
-      userTrusted: false,
-      risk,
-      policy: config.pluginRuntimePolicy,
-    })
+    const runtimeModeForConsent = preApprovalPolicy.runtimeMode
 
     // Evaluate policy — may deny or auto-approve before consent
     const decision = evaluatePolicy({
@@ -216,12 +215,21 @@ export async function add(
       }
     }
 
+    const approvedPolicy = resolvePluginPolicyDecision({
+      manifest: manifestData,
+      source,
+      userTrusted: true,
+      verifiedIntegrity: sigMeta != null || source === "official",
+      devMode,
+      policy: config.pluginRuntimePolicy,
+    })
+
     const approvedBy: PluginApprovalRecord["approvedBy"] =
       opts.skipConsent === true
         ? "policy"
         : devMode && source === "local"
           ? "policy"
-          : trust.tier === "trusted-import"
+          : approvedPolicy.trust.tier === "trusted-import"
             ? "builtin"
             : "user"
     approvalRecord = {
@@ -232,7 +240,7 @@ export async function add(
       permissionsHash,
       approvedAt: Date.now(),
       approvedBy,
-      trustTier: trust.tier,
+      trustTier: approvedPolicy.trust.tier,
       approvedCapabilities: capabilities,
       approvedNetworkDomains: manifestData.permissions?.network?.connectDomains ?? [],
       approvedUISurfaces: [],
@@ -249,14 +257,7 @@ export async function add(
     }
 
     const integrity = await Lockfile.computeIntegrity(resolved.entryPath)
-    const runtimeMode = resolveRuntimeMode({
-      source,
-      manifestMode: manifestData.runtime?.mode,
-      devMode,
-      userTrusted: false,
-      risk,
-      policy: config.pluginRuntimePolicy,
-    })
+    const runtimeMode = approvedPolicy.runtimeMode
     const lockEntry = {
       spec,
       version: manifestData.version ?? version,

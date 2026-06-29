@@ -2,7 +2,7 @@ import { PluginManifest, type PluginManifest as PluginManifestType } from "@eric
 import {
   CAPABILITY_DETAILS,
   permissionCategoryForKey,
-  pluginInstallRisk,
+  pluginRisk,
 } from "@ericsanchezok/synergy-plugin/permissions"
 import fs from "fs/promises"
 import fsSync from "fs"
@@ -586,7 +586,7 @@ export namespace PluginMarketplaceRegistry {
         cacheKey: `official:${id}@${version}:${tarballHash}`,
         manifest,
         capabilities,
-        risk: pluginInstallRisk(manifest),
+        risk: pluginRisk(manifest, { scope: "install" }),
         signature,
       }
     } catch (err) {

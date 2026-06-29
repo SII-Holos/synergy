@@ -10,12 +10,12 @@ import {
 } from "@ericsanchezok/synergy-plugin/market"
 import {
   baseCapabilities,
-  pluginMarketplaceRisk,
+  pluginRisk,
   publicToolNames,
   registryPermissionSummary,
 } from "@ericsanchezok/synergy-plugin/permissions"
+import { resolvePluginPolicyDecision } from "@ericsanchezok/synergy-plugin/policy"
 import { computeManifestHash, computePermissionsHash } from "./hash"
-import { resolveRuntimeMode } from "./runtime-mode"
 import { readSignatureFile } from "./signature"
 import { sha256File } from "./crypto"
 import { isManifestIconPath, packageRelativePath, resolveUnder } from "./artifact-assets"
@@ -217,11 +217,12 @@ export function registryEntry(input: {
 
   const capabilities = baseCapabilities(manifest)
   const tools = publicToolNames(manifest)
-  const risk = pluginMarketplaceRisk(manifest)
-  const runtimeMode = resolveRuntimeMode({
+  const risk = pluginRisk(manifest, { scope: "agent" })
+  const policy = resolvePluginPolicyDecision({
+    manifest,
     source: "official",
-    manifestMode: manifest.runtime?.mode,
     userTrusted: true,
+    verifiedIntegrity: true,
     risk,
   })
   const integrity = `sha256-${sha256File(input.tarballPath)}`
@@ -266,7 +267,7 @@ export function registryEntry(input: {
         manifestHash,
         permissionsHash,
         risk,
-        runtimeMode,
+        runtimeMode: policy.runtimeMode,
         permissionsSummary: registryPermissionSummary(manifest, capabilities),
         tools,
         uiSurfaces: uiSurfaces(manifest),

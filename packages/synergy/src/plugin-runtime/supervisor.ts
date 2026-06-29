@@ -9,7 +9,6 @@ import type {
   RuntimeRequestMessage,
   RuntimeToolContextData,
 } from "./protocol.js"
-import { resolveRuntimeMode } from "./mode-resolver.js"
 import { spawnPluginProcess } from "./process-host.js"
 import { canSpawnPluginWorker, spawnPluginWorker } from "./worker-host.js"
 import type { Worker } from "node:worker_threads"
@@ -23,7 +22,7 @@ import { createBridgeEnforcementHandler } from "./bridge-enforcement.js"
 import { executeBridgeMethod } from "./bridge-handlers.js"
 import { getApproval } from "../plugin/consent/approval-store.js"
 import * as ManifestReader from "../plugin/manifest-reader"
-import { pluginInstallRisk } from "@ericsanchezok/synergy-plugin/permissions"
+import { resolvePluginPolicyDecision } from "@ericsanchezok/synergy-plugin/policy"
 import { PluginLogBuffer } from "./logs.js"
 import { Global } from "../global/index.js"
 import { Config } from "../config/config.js"
@@ -403,24 +402,24 @@ export class PluginRuntimeSupervisor {
     const manifest = await ManifestReader.read(options.pluginDir)
     const config = await Config.current().catch(() => undefined)
     const source = options.source
-    const risk = pluginInstallRisk(manifest)
-    const userTrusted = isTrustedPluginSource(source)
+    const approval = await getApproval(pluginId)
+    const policy = resolvePluginPolicyDecision({
+      manifest,
+      source,
+      devMode: false,
+      userTrusted: approval ? true : isTrustedPluginSource(source),
+      verifiedIntegrity: approval?.source === "official" || approval?.trustTier === "trusted-import",
+      policy: config?.pluginRuntimePolicy,
+    })
 
-    // Resolve runtime mode: caller wins, then resolveRuntimeMode, then default
+    // Resolve runtime mode: caller wins, otherwise the shared plugin policy decides.
     let runtimeDecision: string
     let resolvedMode: RuntimeMode
     if (options.mode) {
       resolvedMode = options.mode
       runtimeDecision = `caller-override:${resolvedMode}`
     } else {
-      resolvedMode = resolveRuntimeMode({
-        source,
-        manifestMode: manifest.runtime?.mode,
-        devMode: false,
-        userTrusted,
-        risk,
-        policy: config?.pluginRuntimePolicy,
-      })
+      resolvedMode = policy.runtimeMode
       runtimeDecision = `policy:${resolvedMode}`
     }
 
