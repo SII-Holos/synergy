@@ -927,14 +927,8 @@ export const ApiPluginRoute = new Hono()
           return c.json(result.body)
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err)
-          const canFallbackLocal =
-            source === undefined &&
-            (message.includes("Official registry plugin not found") ||
-              message.includes("Official registry version not found") ||
-              message.includes("public plugin marketplace"))
-          if (!canFallbackLocal) {
-            return c.json({ message: `Install failed: ${message}` }, 500)
-          }
+          const status = message.includes("Official registry plugin not found") ? 404 : 500
+          return c.json({ message: `Install failed: ${message}` }, status)
         }
       }
 

@@ -21,7 +21,7 @@ import { Log } from "@/util/log"
 import { ExternalAgent } from "@/external-agent/bridge"
 import { ExternalAgentDiscovery } from "@/external-agent/discovery"
 import { Plugin } from "../plugin"
-import { MODEL_ROLE_IDS } from "../provider/model-role"
+import { MODEL_ROLE_IDS, ModelRole, type ModelRole as ModelRoleType } from "../provider/model-role"
 
 export namespace Agent {
   const log = Log.create({ service: "agent" })
@@ -62,7 +62,7 @@ export namespace Agent {
   export const ModelRoleSummary = z
     .object({
       id: ModelRoleSummaryID,
-      role: Provider.ModelRole.optional(),
+      role: ModelRole.optional(),
       field: ModelRoleField,
       label: z.string(),
       summary: z.string(),
@@ -78,7 +78,7 @@ export namespace Agent {
 
   const MODEL_ROLE_DEFINITIONS: Array<{
     id: z.infer<typeof ModelRoleSummaryID>
-    role?: Provider.ModelRole
+    role?: ModelRoleType
     field: z.infer<typeof ModelRoleField>
     label: string
     summary: string
@@ -163,7 +163,7 @@ export namespace Agent {
           providerID: z.string(),
         })
         .optional(),
-      modelRole: Provider.ModelRole.optional(),
+      modelRole: ModelRole.optional(),
       modelSource: z.enum(["role", "explicit"]).optional(),
       source: z.enum(["builtin", "config", "plugin", "external"]).optional(),
       prompt: z.string().optional(),
@@ -180,7 +180,7 @@ export namespace Agent {
     const cfg = await Config.current()
     const evolutionActive =
       ((cfg as any).library?.memory?.enabled ?? true) && (cfg as any).library?.experience?.encode !== false
-    const role = (r: Provider.ModelRole) => Provider.resolveRoleModelSync(cfg, r)
+    const role = (r: ModelRoleType) => Provider.resolveRoleModelSync(cfg, r)
 
     const defaults = PermissionNext.fromConfig({
       "*": "allow",
@@ -473,7 +473,7 @@ export namespace Agent {
 
   function resolveSummaryModel(
     cfg: Config.Info,
-    role: Provider.ModelRole | undefined,
+    role: ModelRoleType | undefined,
     fallbackChain: Array<z.infer<typeof ModelRoleField>>,
   ): ({ providerID: string; modelID: string } & { via: z.infer<typeof ModelRoleField> }) | undefined {
     for (const field of fallbackChain) {

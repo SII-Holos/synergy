@@ -10,6 +10,7 @@ import { Log } from "../../src/util/log"
 import { Global } from "../../src/global"
 
 Log.init({ print: false })
+const { PluginMarketplaceRegistry } = await import("../../src/plugin/marketplace-registry")
 
 // ---------------------------------------------------------------------------
 // Mock helpers
@@ -52,6 +53,10 @@ const _origConfig = {
   updateGlobal: Config.updateGlobal,
 }
 
+const _origMarketplaceRegistry = {
+  verifyOfficialArtifact: PluginMarketplaceRegistry.verifyOfficialArtifact,
+}
+
 afterEach(() => {
   ;(Plugin as any).get = _origPlugin.get
   ;(Plugin as any).manifest = _origPlugin.manifest
@@ -61,6 +66,7 @@ afterEach(() => {
   ;(Plugin as any).getStatus = _origPluginStatus.getStatus
   ;(Config as any).current = _origConfig.current
   ;(Config as any).updateGlobal = _origConfig.updateGlobal
+  ;(PluginMarketplaceRegistry as any).verifyOfficialArtifact = _origMarketplaceRegistry.verifyOfficialArtifact
 })
 
 async function withRegistryFile<T>(content: unknown, fn: () => Promise<T>): Promise<T> {
@@ -356,7 +362,7 @@ describe("POST /api/plugins/install-from-registry", () => {
             const res = await app.request("/api/plugins/install-from-registry", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ id: "registry-plugin", version: "1.0.0" }),
+              body: JSON.stringify({ id: "registry-plugin", version: "1.0.0", source: "local" }),
             })
 
             expect(res.status).toBe(409)
@@ -401,13 +407,52 @@ describe("POST /api/plugins/install-from-registry", () => {
             const res = await app.request("/api/plugins/install-from-registry", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ id: "registry-plugin", version: "1.0.0" }),
+              body: JSON.stringify({ id: "registry-plugin", version: "1.0.0", source: "local" }),
             })
 
             expect(res.status).toBe(200)
             expect(addMock).toHaveBeenCalledTimes(1)
             expect((addMock as any).mock.calls[0][0]).toBe("file:///tmp/registry-plugin-1.0.0.synergy-plugin.tgz")
             expect((addMock as any).mock.calls[0][1]).toEqual({ autoReload: true })
+          },
+        })
+      },
+    )
+  })
+
+  test("defaults to the official registry and does not fall back to local entries", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const addMock = mock(async () => buildLoadedPlugin({ id: "registry-plugin", pluginDir: tmp.path }))
+    const officialMock = mock(async () => {
+      throw new Error("Official registry plugin not found: registry-plugin")
+    })
+    ;(Plugin as any).add = addMock
+    ;(PluginMarketplaceRegistry as any).verifyOfficialArtifact = officialMock
+
+    await withRegistryFile(
+      {
+        plugins: [
+          {
+            id: "registry-plugin",
+            name: "registry-plugin-package",
+            versions: [{ version: "1.0.0" }],
+          },
+        ],
+      },
+      async () => {
+        await ScopeContext.provide({
+          scope: await tmp.scope(),
+          fn: async () => {
+            const app = Server.App()
+            const res = await app.request("/api/plugins/install-from-registry", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ id: "registry-plugin", version: "1.0.0" }),
+            })
+
+            expect(res.status).toBe(404)
+            expect(officialMock).toHaveBeenCalledTimes(1)
+            expect(addMock).not.toHaveBeenCalled()
           },
         })
       },
