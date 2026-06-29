@@ -9,6 +9,7 @@ const DESKTOP_DIR = fileURLToPath(new URL("..", import.meta.url))
 const ELECTRON_COMMAND = process.env.SYNERGY_DESKTOP_ELECTRON_BIN
   ? [process.env.SYNERGY_DESKTOP_ELECTRON_BIN]
   : ["bunx", "electron"]
+const ELECTRON_SMOKE_ARGS = process.platform === "linux" ? ["--no-sandbox"] : []
 
 interface SmokeServerState {
   httpRequests: string[]
@@ -78,7 +79,7 @@ waitForDesktopBridge().then((browserNative) => {
     serverUrl: ${JSON.stringify(serverUrl)},
     sessionID: "native-smoke-session",
     routeDirectory: "aG9tZQ",
-    tabId: "native-smoke-tab",
+    pageId: "native-smoke-page",
     bounds: { x: 0, y: 0, width: 800, height: 600 },
     url: "about:blank"
   })
@@ -189,15 +190,15 @@ async function withSmokeServer(
         if (ws.data.kind === "host-signaling") {
           hostSignal = ws
           state.signalingOpened = true
-          if (viewerSignal) sendSignal(viewerSignal, { type: "webrtc.host.ready", tabId: "webrtc-smoke-tab" })
+          if (viewerSignal) sendSignal(viewerSignal, { type: "webrtc.host.ready", pageId: "webrtc-smoke-page" })
           checkComplete()
           return
         }
         if (ws.data.kind === "viewer-signaling") {
           viewerSignal = ws
           state.viewerSignalingOpened = true
-          if (hostSignal) sendSignal(ws, { type: "webrtc.host.ready", tabId: "webrtc-smoke-tab" })
-          else sendSignal(ws, { type: "webrtc.host.pending", tabId: "webrtc-smoke-tab" })
+          if (hostSignal) sendSignal(ws, { type: "webrtc.host.ready", pageId: "webrtc-smoke-page" })
+          else sendSignal(ws, { type: "webrtc.host.pending", pageId: "webrtc-smoke-page" })
           checkComplete()
           return
         }
@@ -213,7 +214,7 @@ async function withSmokeServer(
         if (ws.data.kind === "viewer-signaling") {
           state.signalingMessages.push(`viewer:${signalType(raw)}`)
           if (hostSignal) sendRawSignal(hostSignal, String(raw))
-          else sendSignal(ws, { type: "webrtc.host.pending", tabId: "webrtc-smoke-tab" })
+          else sendSignal(ws, { type: "webrtc.host.pending", pageId: "webrtc-smoke-page" })
           return
         }
         if (ws.data.kind !== "control") return
@@ -229,7 +230,7 @@ async function withSmokeServer(
           state.ready = true
           navigateId = sendCommand(ws, {
             type: "navigate",
-            tabId: mode === "native" ? "native-smoke-tab" : "webrtc-smoke-tab",
+            pageId: mode === "native" ? "native-smoke-page" : "webrtc-smoke-page",
             url: smokeDocument(title),
           })
           return
@@ -244,7 +245,7 @@ async function withSmokeServer(
           state.navigated = true
           evaluateId = sendCommand(ws, {
             type: "evaluate",
-            tabId: mode === "native" ? "native-smoke-tab" : "webrtc-smoke-tab",
+            pageId: mode === "native" ? "native-smoke-page" : "webrtc-smoke-page",
             expression: "document.title",
           })
           return
@@ -254,7 +255,7 @@ async function withSmokeServer(
           state.evaluatedTitle = typeof result?.value === "string" ? result.value : null
           cdpEvaluateId = sendCommand(ws, {
             type: "cdp",
-            tabId: mode === "native" ? "native-smoke-tab" : "webrtc-smoke-tab",
+            pageId: mode === "native" ? "native-smoke-page" : "webrtc-smoke-page",
             method: "Runtime.evaluate",
             params: { expression: "40 + 2", returnByValue: true },
           })
@@ -333,7 +334,7 @@ async function withSmokeServer(
       return
     inputEvaluateId = sendCommand(controlSocket, {
       type: "evaluate",
-      tabId: mode === "native" ? "native-smoke-tab" : "webrtc-smoke-tab",
+      pageId: mode === "native" ? "native-smoke-page" : "webrtc-smoke-page",
       expression: "document.querySelector('#webrtc-input')?.value ?? ''",
     })
   }
@@ -370,12 +371,13 @@ async function readPipe(pipe: ReadableStream<Uint8Array> | null): Promise<string
 }
 
 async function runDesktop(env: Record<string, string | undefined>, done: Promise<void>, state: SmokeServerState) {
-  const proc = Bun.spawn([...ELECTRON_COMMAND, "dist/main.js"], {
+  const proc = Bun.spawn([...ELECTRON_COMMAND, ...ELECTRON_SMOKE_ARGS, "dist/main.js"], {
     cwd: DESKTOP_DIR,
     stdout: "pipe",
     stderr: "pipe",
     env: {
       ...process.env,
+      ELECTRON_DISABLE_SANDBOX: "1",
       ELECTRON_DISABLE_SECURITY_WARNINGS: "1",
       ELECTRON_ENABLE_LOGGING: "1",
       ...env,
@@ -477,13 +479,13 @@ async function negotiate() {
     }
   }
   pc.onicecandidate = (event) => {
-    if (event.candidate) send({ type: "webrtc.ice", tabId: "webrtc-smoke-tab", candidate: event.candidate.toJSON() })
+    if (event.candidate) send({ type: "webrtc.ice", pageId: "webrtc-smoke-page", candidate: event.candidate.toJSON() })
   }
   pc.onconnectionstatechange = () => reportLog("connection", pc.connectionState)
   pc.oniceconnectionstatechange = () => reportLog("ice", pc.iceConnectionState)
   const offer = await pc.createOffer()
   await pc.setLocalDescription(offer)
-  send({ type: "webrtc.offer", tabId: "webrtc-smoke-tab", sdp: offer.sdp || "" })
+  send({ type: "webrtc.offer", pageId: "webrtc-smoke-page", sdp: offer.sdp || "" })
 }
 
 async function handle(message) {
@@ -538,12 +540,13 @@ async function runViewer(
   const tmp = await mkdtemp(path.join(os.tmpdir(), "synergy-webrtc-viewer-"))
   const entry = path.join(tmp, "main.mjs")
   await Bun.write(entry, viewerScript(signalingUrl, mediaReadyUrl, mediaLogUrl, dataInputUrl))
-  const proc = Bun.spawn([...ELECTRON_COMMAND, entry], {
+  const proc = Bun.spawn([...ELECTRON_COMMAND, ...ELECTRON_SMOKE_ARGS, entry], {
     cwd: DESKTOP_DIR,
     stdout: "pipe",
     stderr: "pipe",
     env: {
       ...process.env,
+      ELECTRON_DISABLE_SANDBOX: "1",
       ELECTRON_DISABLE_SECURITY_WARNINGS: "1",
       ELECTRON_ENABLE_LOGGING: "1",
     },
@@ -606,7 +609,7 @@ describe("Electron browser runtime smoke", () => {
             SYNERGY_BROWSER_HOST_SHOW: "0",
             SYNERGY_BROWSER_HOST_SERVER_URL: serverUrl,
             SYNERGY_BROWSER_HOST_SESSION_ID: "webrtc-smoke-session",
-            SYNERGY_BROWSER_HOST_TAB_ID: "webrtc-smoke-tab",
+            SYNERGY_BROWSER_HOST_PAGE_ID: "webrtc-smoke-page",
             SYNERGY_BROWSER_HOST_ROUTE_DIRECTORY: "aG9tZQ",
             SYNERGY_BROWSER_HOST_URL: "about:blank",
           },
@@ -634,7 +637,7 @@ describe("Electron browser runtime smoke", () => {
         async ({ serverUrl, state, done }) => {
           const signalingUrl =
             serverUrl.replace(/^http/, "ws") +
-            "/aG9tZQ/browser/webrtc/connect?mode=session&sessionID=webrtc-smoke-session&presentation=webrtc&client=web&tabId=webrtc-smoke-tab"
+            "/aG9tZQ/browser/webrtc/connect?mode=session&sessionID=webrtc-smoke-session&presentation=webrtc&client=web&pageId=webrtc-smoke-page"
           await Promise.all([
             runDesktop(
               {
@@ -642,7 +645,7 @@ describe("Electron browser runtime smoke", () => {
                 SYNERGY_BROWSER_HOST_SHOW: process.env.SYNERGY_DESKTOP_RUNTIME_SHOW === "1" ? "1" : "0",
                 SYNERGY_BROWSER_HOST_SERVER_URL: serverUrl,
                 SYNERGY_BROWSER_HOST_SESSION_ID: "webrtc-smoke-session",
-                SYNERGY_BROWSER_HOST_TAB_ID: "webrtc-smoke-tab",
+                SYNERGY_BROWSER_HOST_PAGE_ID: "webrtc-smoke-page",
                 SYNERGY_BROWSER_HOST_ROUTE_DIRECTORY: "aG9tZQ",
                 SYNERGY_BROWSER_HOST_URL: "about:blank",
                 SYNERGY_BROWSER_HOST_WIDTH: "320",
