@@ -211,11 +211,11 @@ export namespace ToolRegistry {
             pluginId && pluginDir
               ? createPluginToolContext({
                   pluginId,
-                pluginDir,
-                toolId: id,
-                context: ctx,
-                directory: ScopeContext.current.directory,
-              })
+                  pluginDir,
+                  toolId: id,
+                  context: ctx,
+                  directory: ScopeContext.current.directory,
+                })
               : {
                   sessionID: ctx.sessionID,
                   messageID: ctx.messageID,

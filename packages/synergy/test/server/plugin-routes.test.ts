@@ -349,11 +349,47 @@ describe("DELETE /api/plugins/:pluginId", () => {
 // ---------------------------------------------------------------------------
 
 describe("POST /api/plugins/install-from-registry", () => {
-  test("does not pass skipConsent when installing from the registry", async () => {
+  test("does not pass skipConsent when installing an explicit local installSpec", async () => {
     await using tmp = await tmpdir({ git: true })
     const addMock = mock(async () => {
       throw new Error("Plugin registry-plugin requires approval before installation.")
     })
+    ;(Plugin as any).add = addMock
+
+    await withRegistryFile(
+      {
+        plugins: [
+          {
+            id: "registry-plugin",
+            name: "registry-plugin-package",
+            versions: [{ version: "1.0.0", installSpec: "registry-plugin-package" }],
+          },
+        ],
+      },
+      async () => {
+        await ScopeContext.provide({
+          scope: await tmp.scope(),
+          fn: async () => {
+            const app = Server.App()
+            const res = await app.request("/api/plugins/install-from-registry", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ id: "registry-plugin", version: "1.0.0", source: "local" }),
+            })
+
+            expect(res.status).toBe(409)
+            expect(addMock).toHaveBeenCalledTimes(1)
+            expect((addMock as any).mock.calls[0][0]).toBe("registry-plugin-package")
+            expect((addMock as any).mock.calls[0][1]).toEqual({ autoReload: true })
+          },
+        })
+      },
+    )
+  })
+
+  test("rejects local registry versions without an explicit artifact or install spec", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const addMock = mock(async () => buildLoadedPlugin({ id: "registry-plugin", pluginDir: tmp.path }))
     ;(Plugin as any).add = addMock
 
     await withRegistryFile(
@@ -377,10 +413,10 @@ describe("POST /api/plugins/install-from-registry", () => {
               body: JSON.stringify({ id: "registry-plugin", version: "1.0.0", source: "local" }),
             })
 
-            expect(res.status).toBe(409)
-            expect(addMock).toHaveBeenCalledTimes(1)
-            expect((addMock as any).mock.calls[0][0]).toBe("registry-plugin-package")
-            expect((addMock as any).mock.calls[0][1]).toEqual({ autoReload: true })
+            expect(res.status).toBe(400)
+            const body = await res.json()
+            expect(body.message).toContain("versions[].downloadUrl or versions[].installSpec")
+            expect(addMock).not.toHaveBeenCalled()
           },
         })
       },

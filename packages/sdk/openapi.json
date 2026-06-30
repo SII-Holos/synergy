@@ -13282,7 +13282,7 @@
           }
         ],
         "summary": "Update plugin config",
-        "description": "Merge values into the plugin's configuration namespace.",
+        "description": "Replace the plugin's configuration namespace.",
         "responses": {
           "200": {
             "description": "Updated plugin config",
@@ -27398,6 +27398,9 @@
           "downloadUrl": {
             "type": "string"
           },
+          "installSpec": {
+            "type": "string"
+          },
           "integrity": {
             "type": "string"
           },
@@ -27438,15 +27441,7 @@
             "enum": ["official", "local"]
           }
         },
-        "required": [
-          "version",
-          "manifestHash",
-          "permissionsHash",
-          "integrity",
-          "risk",
-          "permissionsSummary",
-          "publishedAt"
-        ],
+        "required": ["version", "manifestHash", "permissionsHash", "risk", "permissionsSummary", "publishedAt"],
         "additionalProperties": false
       },
       "RegistryPermissionSummary": {

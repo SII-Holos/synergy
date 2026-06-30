@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test"
-import { incrementReloadVersion, selectLoadCandidates, specToPluginId, type ResolvedLoadCandidate } from "../../src/plugin/loader"
+import {
+  incrementReloadVersion,
+  selectLoadCandidates,
+  specToPluginId,
+  type ResolvedLoadCandidate,
+} from "../../src/plugin/loader"
 import type { PluginLockfile } from "../../src/plugin/lockfile-schema"
 
 function candidate(configPath: string, pluginId: string): ResolvedLoadCandidate {

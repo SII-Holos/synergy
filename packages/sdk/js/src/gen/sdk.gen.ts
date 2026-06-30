@@ -7170,7 +7170,7 @@ export class Plugin extends HeyApiClient {
   /**
    * Update plugin config
    *
-   * Merge values into the plugin's configuration namespace.
+   * Replace the plugin's configuration namespace.
    */
   public updateConfig<ThrowOnError extends boolean = false>(
     parameters: {

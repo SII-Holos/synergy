@@ -4576,7 +4576,8 @@ export type RegistryPluginVersion = {
   signature?: RegistryPluginSignature
   signatureUrl?: string
   downloadUrl?: string
-  integrity: string
+  installSpec?: string
+  integrity?: string
   risk: "low" | "medium" | "high"
   runtimeMode?: "in-process" | "worker" | "process"
   permissionsSummary: Array<RegistryPermissionItem>

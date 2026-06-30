@@ -33,7 +33,7 @@ import type { PluginApprovalRecord } from "../plugin/consent/approval-store"
 import { baseCapabilities } from "../plugin/capability"
 import { checkPathContainment } from "../util/path-contain"
 import { PluginMarketplaceRegistry } from "../plugin/marketplace-registry"
-import { localRegistryPath } from "../plugin/local-registry-store"
+import { localRegistryPath, resolveLocalRegistryInstallSpec } from "../plugin/local-registry-store"
 import { getPluginConfig, PluginConfigValidationError, replacePluginConfig } from "../plugin/config-store"
 
 import { PluginStatusSchema } from "../plugin/status.js"
@@ -961,7 +961,13 @@ export const ApiPluginRoute = new Hono()
       const targetVersion = entry.versions?.find((v: any) => v.version === version)
       if (!targetVersion) return c.json({ message: `Version not found in registry: ${id}@${version}` }, 404)
 
-      const spec = targetVersion.downloadUrl ?? entry.name ?? id
+      let spec: string
+      try {
+        spec = resolveLocalRegistryInstallSpec(entry, targetVersion)
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err)
+        return c.json({ message }, 400)
+      }
       let loadedPlugin: Plugin.LoadedPlugin
       try {
         loadedPlugin = await Plugin.add(spec, { autoReload: true })
