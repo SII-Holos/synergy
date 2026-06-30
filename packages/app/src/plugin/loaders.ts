@@ -15,7 +15,7 @@ export function isCompatibleUIVersion(pluginVersion: string, hostVersion: string
  * before importing. Throws if the versions are incompatible.
  *
  * @param pluginId        - Unique plugin identifier
- * @param assetsBaseUrl   - Base URL for the plugin's UI assets (e.g. `/plugin/assets/my-plugin/1.0.0`)
+ * @param assetsBaseUrl   - Fully resolved URL for the plugin UI asset.
  * @param exportName      - Named export to pull from the bundle (use "default" for default export)
  * @param uiApiVersion    - Minimum UI API version the plugin requires (e.g. "2.0.0")
  */

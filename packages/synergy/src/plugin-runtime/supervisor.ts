@@ -23,6 +23,7 @@ import { executeBridgeMethod } from "./bridge-handlers.js"
 import { getApproval } from "../plugin/consent/approval-store.js"
 import * as ManifestReader from "../plugin/manifest-reader"
 import { PluginPaths } from "../plugin/paths.js"
+import { PluginArtifact } from "@ericsanchezok/synergy-plugin"
 import { resolvePluginPolicyDecision } from "@ericsanchezok/synergy-plugin/policy"
 import { PluginLogBuffer } from "./logs.js"
 import { Global } from "../global/index.js"
@@ -123,8 +124,8 @@ function fileHashOrMissing(filepath: string | undefined): string {
 }
 
 function runtimeLaunchSignature(input: { pluginDir: string; entryPath: string | undefined }): string {
-  const manifestPath = path.join(input.pluginDir, "plugin.json")
-  const integrityPath = path.join(input.pluginDir, "integrity.json")
+  const manifestPath = path.join(input.pluginDir, PluginArtifact.manifestFile)
+  const integrityPath = path.join(input.pluginDir, PluginArtifact.integrityFile)
   return sha256Content(
     JSON.stringify({
       manifest: fileHashOrMissing(manifestPath),

@@ -1,6 +1,6 @@
 import path from "path"
 import fs from "fs"
-import type { PluginManifest } from "@ericsanchezok/synergy-plugin"
+import { PluginArtifact, type PluginManifest } from "@ericsanchezok/synergy-plugin"
 import { sha256File } from "./crypto"
 
 export interface PackagedAsset {
@@ -112,7 +112,7 @@ export function collectPackagedAssets(manifest: PluginManifest): PackagedAsset[]
 
 export function rewritePackagedManifestPaths(manifest: PluginManifest): PluginManifest {
   const next = structuredClone(manifest) as PluginManifest
-  next.main = "./runtime/index.js"
+  next.main = `./${PluginArtifact.runtimeEntry}`
   if (isManifestIconPath(next.icon)) next.icon = packageManifestPath(next.icon)
   const ui = next.contributes?.ui
   if (!ui) return next
@@ -169,7 +169,7 @@ function walkFiles(root: string, dir: string, output: Record<string, string>) {
     }
     if (!entry.isFile()) continue
     const relative = path.relative(root, filepath).split(path.sep).join("/")
-    if (relative === "integrity.json") continue
+    if (relative === PluginArtifact.integrityFile) continue
     output[relative] = sha256File(filepath)
   }
 }

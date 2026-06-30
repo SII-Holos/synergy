@@ -11,6 +11,7 @@ import {
 import { fetchUIContributions } from "./api"
 import type { PluginContribution } from "./api"
 import type { PluginLifecycleState } from "./lifecycle"
+import { pluginAssetUrl } from "@ericsanchezok/synergy-plugin"
 import { PluginToolId } from "@ericsanchezok/synergy-plugin/ids"
 import { useServer } from "@/context/server"
 import { toolRendererRegistry, type ToolRenderer } from "./registries/tool-registry"
@@ -64,7 +65,7 @@ export function PluginHostProvider(props: ParentProps) {
    */
   function activateContributions(contributions: PluginContribution[]) {
     const assetUrl = (contrib: PluginContribution, filePath: string) =>
-      `/plugin/assets/${contrib.pluginId}/${contrib.version}/${filePath.replace(/^\.\//, "")}`
+      pluginAssetUrl(contrib.pluginId, contrib.version, filePath)
     const pluginToolId = (pluginId: string, toolId: string) =>
       PluginToolId.is(toolId) ? toolId : PluginToolId.format(pluginId, toolId)
 

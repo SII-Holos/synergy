@@ -1,9 +1,9 @@
-import { PluginManifest, type PluginManifest as PluginManifestType } from "@ericsanchezok/synergy-plugin"
 import {
-  CAPABILITY_DETAILS,
-  permissionCategoryForKey,
-  pluginRisk,
-} from "@ericsanchezok/synergy-plugin/permissions"
+  PluginArtifact,
+  PluginManifest,
+  type PluginManifest as PluginManifestType,
+} from "@ericsanchezok/synergy-plugin"
+import { CAPABILITY_DETAILS, permissionCategoryForKey, pluginRisk } from "@ericsanchezok/synergy-plugin/permissions"
 import fs from "fs/promises"
 import fsSync from "fs"
 import os from "os"
@@ -455,7 +455,7 @@ export namespace PluginMarketplaceRegistry {
         .map((line) => line.replace(/^\.\//, "").replace(/\/$/, ""))
         .filter(Boolean),
     )
-    for (const required of ["plugin.json", "runtime/index.js", "integrity.json", "permissions.summary.json"]) {
+    for (const required of PluginArtifact.requiredFiles) {
       if (!files.has(required)) throw new Error(`Remote plugin artifact is missing ${required}`)
     }
   }

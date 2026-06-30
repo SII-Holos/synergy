@@ -2,7 +2,11 @@ import path from "path"
 import fs from "fs"
 import { EOL } from "os"
 import type { Argv } from "yargs"
-import { PluginManifest, type PluginManifest as PluginManifestType } from "@ericsanchezok/synergy-plugin"
+import {
+  PluginArtifact,
+  PluginManifest,
+  type PluginManifest as PluginManifestType,
+} from "@ericsanchezok/synergy-plugin"
 import { baseCapabilities, registryPermissionSummary } from "@ericsanchezok/synergy-plugin/permissions"
 import { cmd } from "../cmd"
 import { UI } from "../ui"
@@ -69,7 +73,7 @@ export async function buildPluginProject(pluginDir: string): Promise<boolean> {
   ensureDir(distDir)
 
   const entryPath = resolveEntryFromPluginDir(pluginDir, manifest)
-  const runtimeOutdir = path.join(distDir, "runtime")
+  const runtimeOutdir = path.join(distDir, path.dirname(PluginArtifact.runtimeEntry))
   spinner("Building backend")
   const backendResult = await Bun.build({
     entrypoints: [entryPath],
@@ -124,22 +128,22 @@ export async function buildPluginProject(pluginDir: string): Promise<boolean> {
 
   spinner("Normalizing manifest")
   const distManifest = packagedManifest(manifest)
-  const distManifestPath = path.join(distDir, "plugin.json")
+  const distManifestPath = path.join(distDir, PluginArtifact.manifestFile)
   fs.writeFileSync(distManifestPath, JSON.stringify(distManifest, null, 2))
-  const normalizedPath = path.join(distDir, "plugin.normalized.json")
+  const normalizedPath = path.join(distDir, PluginArtifact.normalizedManifestFile)
   fs.writeFileSync(normalizedPath, JSON.stringify(distManifest, null, 2))
 
   const packageJsonPath = path.join(pluginDir, "package.json")
   if (fs.existsSync(packageJsonPath)) {
     const pkg = JSON.parse(fs.readFileSync(packageJsonPath, "utf-8"))
-    pkg.main = "./runtime/index.js"
-    pkg.exports = { ".": "./runtime/index.js" }
+    pkg.main = `./${PluginArtifact.runtimeEntry}`
+    pkg.exports = { ".": `./${PluginArtifact.runtimeEntry}` }
     fs.writeFileSync(path.join(distDir, "package.json"), JSON.stringify(pkg, null, 2))
   }
 
   spinner("Generating permission summary")
   const summary = registryPermissionSummary(distManifest, baseCapabilities(distManifest))
-  fs.writeFileSync(path.join(distDir, "permissions.summary.json"), JSON.stringify(summary, null, 2))
+  fs.writeFileSync(path.join(distDir, PluginArtifact.permissionsSummaryFile), JSON.stringify(summary, null, 2))
 
   const publicAssetsPath = path.join(pluginDir, "public", "assets")
   if (fs.existsSync(publicAssetsPath)) {
@@ -152,7 +156,7 @@ export async function buildPluginProject(pluginDir: string): Promise<boolean> {
     manifest: sha256File(distManifestPath),
     permissions: sha256JSON(summary),
   }
-  const runtimeIndex = path.join(runtimeOutdir, "index.js")
+  const runtimeIndex = path.join(distDir, PluginArtifact.runtimeEntry)
   if (fs.existsSync(runtimeIndex)) integrity.runtime = sha256File(runtimeIndex)
   if (uiEntry) {
     const uiIndex = path.resolve(pluginDir, uiEntry)
@@ -162,7 +166,7 @@ export async function buildPluginProject(pluginDir: string): Promise<boolean> {
     ...integrity,
     files: hashPackagedFiles(distDir),
   }
-  fs.writeFileSync(path.join(distDir, "integrity.json"), JSON.stringify(integrityPayload, null, 2))
+  fs.writeFileSync(path.join(distDir, PluginArtifact.integrityFile), JSON.stringify(integrityPayload, null, 2))
 
   UI.println(
     `${UI.Style.TEXT_SUCCESS}✔${UI.Style.TEXT_NORMAL} Built ${manifest.name} v${manifest.version} -> ${distDir}`,

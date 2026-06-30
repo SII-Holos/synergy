@@ -13,7 +13,12 @@ import {
 } from "../plugin/trust"
 import { Installation } from "../global/installation"
 import { Plugin } from "../plugin/index"
-import type { PluginManifest as PluginManifestType } from "@ericsanchezok/synergy-plugin"
+import {
+  isAllowedPluginAssetPath,
+  normalizePluginArtifactPath,
+  pluginAssetUrl,
+  type PluginManifest as PluginManifestType,
+} from "@ericsanchezok/synergy-plugin"
 import { computeRisk } from "@ericsanchezok/synergy-plugin/permissions"
 
 import { diffPermissions } from "../plugin/consent/diff"
@@ -60,15 +65,6 @@ const MIME_MAP: Record<string, string> = {
   ".woff2": "font/woff2",
   ".woff": "font/woff",
   ".ico": "image/x-icon",
-}
-
-/** Directories that plugins are allowed to serve static files from. */
-const ALLOWED_ASSET_DIRS = new Set(["dist", "public", "assets", "ui", "themes", "icons"])
-
-/** Check that the relative path starts within an allowed asset root. */
-function isAllowedAssetDir(relative: string): boolean {
-  const firstSegment = relative.split(path.sep)[0]
-  return firstSegment !== undefined && ALLOWED_ASSET_DIRS.has(firstSegment)
 }
 
 /** Derive a MIME type from a file path extension, with a safe fallback. */
@@ -212,8 +208,15 @@ export const PluginRoute = new Hono()
     async (c) => {
       const pluginId = c.req.param("pluginId")
       const versionHash = c.req.param("versionHash")
-      const filePath = c.req.param("*")
-      if (!filePath) return c.json({ message: "Missing asset path" }, 400)
+      const rawFilePath = c.req.param("*")
+      if (!rawFilePath) return c.json({ message: "Missing asset path" }, 400)
+
+      let filePath: string
+      try {
+        filePath = normalizePluginArtifactPath(rawFilePath)
+      } catch (error) {
+        return c.json({ message: error instanceof Error ? error.message : "Invalid asset path" }, 400)
+      }
 
       const plugin = await Plugin.get(pluginId)
       if (!plugin) return c.json({ message: `Plugin not found: ${pluginId}` }, 404)
@@ -238,7 +241,7 @@ export const PluginRoute = new Hono()
       }
 
       // 3. Allowed directories restriction
-      if (!isAllowedAssetDir(realRelative)) {
+      if (!isAllowedPluginAssetPath(realRelative)) {
         return c.json({ message: "Asset directory not allowed" }, 403)
       }
 
@@ -288,7 +291,9 @@ export const PluginRoute = new Hono()
       // Resolve entry: panel-level sandboxEntry > ui.entry > default
       const panels = [...(ui?.workspacePanels ?? []), ...(ui?.globalPanels ?? [])]
       const panel = panels.find((p) => p.id === panelId)
-      const entry = panel?.sandboxEntry ?? ui?.entry ?? "dist/ui.js"
+      const entry = panel?.sandboxEntry ?? ui?.entry
+      if (!entry) return c.json({ message: `Plugin panel has no sandbox entry: ${panelId}` }, 404)
+      const entryUrl = pluginAssetUrl(pluginId, version, entry)
 
       const html = `<!DOCTYPE html>
 <html>
@@ -299,7 +304,7 @@ export const PluginRoute = new Hono()
   </style>
 </head>
 <body>
-  <script src="/plugin/assets/${pluginId}/${version}/${entry}"></script>
+  <script src="${entryUrl}"></script>
 </body>
 </html>`
       return c.html(html)

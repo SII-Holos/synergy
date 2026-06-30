@@ -30,6 +30,7 @@ export * from "./manifest"
 export * from "./policy"
 export * from "./spec"
 export * from "./version"
+export * from "./artifact"
 export type { BunShell, BunShellOutput, BunShellPromise, ShellExpression, ShellFunction } from "./shell"
 
 // ---------------------------------------------------------------------------

@@ -1,7 +1,11 @@
 import path from "path"
 import fs from "fs"
 import type { Argv } from "yargs"
-import { PluginManifest, type PluginManifest as PluginManifestType } from "@ericsanchezok/synergy-plugin"
+import {
+  PluginArtifact,
+  PluginManifest,
+  type PluginManifest as PluginManifestType,
+} from "@ericsanchezok/synergy-plugin"
 import { cmd } from "../cmd"
 import { UI } from "../ui"
 import { sha256File } from "../lib/crypto"
@@ -33,17 +37,17 @@ export function packPluginProject(pluginDir: string): string {
   const distDir = path.join(pluginDir, "dist")
   if (!fs.existsSync(distDir))
     throw new Error(`dist/ directory not found at ${distDir}. Run "synergy-plugin build" first.`)
-  if (!fs.existsSync(path.join(distDir, "plugin.json"))) {
-    throw new Error(`dist/plugin.json not found at ${distDir}. Run "synergy-plugin build" first.`)
+  if (!fs.existsSync(path.join(distDir, PluginArtifact.manifestFile))) {
+    throw new Error(`dist/${PluginArtifact.manifestFile} not found at ${distDir}. Run "synergy-plugin build" first.`)
   }
-  for (const required of ["runtime/index.js", "integrity.json", "permissions.summary.json"]) {
+  for (const required of PluginArtifact.requiredFiles.filter((file) => file !== PluginArtifact.manifestFile)) {
     if (!fs.existsSync(path.join(distDir, required))) {
       throw new Error(`dist/${required} not found at ${distDir}. Run "synergy-plugin build" first.`)
     }
   }
 
   const distManifest = PluginManifest.parse(
-    JSON.parse(fs.readFileSync(path.join(distDir, "plugin.json"), "utf-8")),
+    JSON.parse(fs.readFileSync(path.join(distDir, PluginArtifact.manifestFile), "utf-8")),
   ) as PluginManifestType
   const missing = missingPackagedAssets(distDir, distManifest)
   if (missing.length > 0) {

@@ -3,7 +3,11 @@ import fs from "fs"
 import { EOL } from "os"
 import { subtle } from "node:crypto"
 import type { Argv } from "yargs"
-import { PluginManifest, type PluginManifest as PluginManifestType } from "@ericsanchezok/synergy-plugin"
+import {
+  PluginArtifact,
+  PluginManifest,
+  type PluginManifest as PluginManifestType,
+} from "@ericsanchezok/synergy-plugin"
 import { cmd } from "../cmd"
 import { UI } from "../ui"
 import { SIGNING_KEYS_DIR, SIGNING_KEY_FILE } from "../lib/paths"
@@ -56,18 +60,23 @@ export async function signPluginTarball(tarballPath: string, options: { stdout?:
   UI.println(`${UI.Style.TEXT_NORMAL_BOLD}Signing${UI.Style.TEXT_NORMAL} ${path.basename(tarballPath)}`)
 
   const tarballHash = sha256File(tarballPath)
-  const manifestRaw = extractFromTarball(tarballPath, "plugin.normalized.json")
-  if (!manifestRaw) throw new Error("Failed to extract plugin.normalized.json from tarball. Has the plugin been built?")
+  const manifestRaw = extractFromTarball(tarballPath, PluginArtifact.normalizedManifestFile)
+  if (!manifestRaw)
+    throw new Error(
+      `Failed to extract ${PluginArtifact.normalizedManifestFile} from tarball. Has the plugin been built?`,
+    )
 
   let manifest: PluginManifestType
   try {
     manifest = PluginManifest.parse(JSON.parse(manifestRaw)) as PluginManifestType
   } catch {
-    throw new Error("Failed to parse plugin.normalized.json from tarball")
+    throw new Error(`Failed to parse ${PluginArtifact.normalizedManifestFile} from tarball`)
   }
 
-  if (!extractFromTarball(tarballPath, "permissions.summary.json")) {
-    throw new Error("Failed to extract permissions.summary.json from tarball. Has the plugin been built?")
+  if (!extractFromTarball(tarballPath, PluginArtifact.permissionsSummaryFile)) {
+    throw new Error(
+      `Failed to extract ${PluginArtifact.permissionsSummaryFile} from tarball. Has the plugin been built?`,
+    )
   }
 
   let keyFile = readKeyFile()

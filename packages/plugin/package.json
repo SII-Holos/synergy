@@ -57,6 +57,11 @@
       "types": "./src/paths.ts",
       "import": "./dist/paths.js"
     },
+    "./artifact": {
+      "bun": "./src/artifact.ts",
+      "types": "./src/artifact.ts",
+      "import": "./dist/artifact.js"
+    },
     "./market": {
       "bun": "./src/market.ts",
       "types": "./src/market.ts",
