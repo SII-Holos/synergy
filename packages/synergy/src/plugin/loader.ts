@@ -19,9 +19,8 @@ import { Global } from "../global"
 import { createConfigAccessor, createAuthStore, createCacheStore } from "./store"
 import { StartupReporter } from "../cli/startup-reporter"
 import { Installation } from "../global/installation"
-import { resolvePluginPolicyDecision } from "@ericsanchezok/synergy-plugin/policy"
 import type { RuntimeMode } from "../plugin-runtime/registry"
-import { isTrustedPluginSource, type PluginSource } from "./trust"
+import { resolveInstalledPluginPolicy, type PluginSource } from "./trust"
 import { assertCanonicalPluginIdentity, findPackageRoot, importUrlForEntry, resolvePluginSpec } from "./spec-resolver"
 import * as Lockfile from "./lockfile"
 
@@ -212,11 +211,12 @@ export const state = ScopedState.create(async (): Promise<LoaderState> => {
       }
       loadedPluginIds.add(pluginId)
       const showLoadedUI = !printedPluginIds.has(pluginId)
-      const policy = resolvePluginPolicyDecision({
+      const policy = await resolveInstalledPluginPolicy({
+        pluginId,
+        pluginDir: resolved.pluginDir,
         manifest: resolved.manifest,
         source: resolved.source,
         devMode: Installation.CHANNEL === "local",
-        userTrusted: isTrustedPluginSource(resolved.source),
         policy: config.pluginRuntimePolicy,
       })
 

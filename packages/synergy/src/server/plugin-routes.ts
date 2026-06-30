@@ -5,12 +5,7 @@ import path from "path"
 import * as fs from "fs"
 import { pathToFileURL } from "url"
 import { errors } from "./error"
-import {
-  approvedPluginTrustDecision,
-  defaultPluginTrustDecision,
-  derivePluginSource,
-  type PluginTrustDecision,
-} from "../plugin/trust"
+import { approvedPluginTrustDecision, derivePluginSource, resolveInstalledPluginPolicy } from "../plugin/trust"
 import { Installation } from "../global/installation"
 import { Plugin } from "../plugin/index"
 import {
@@ -37,15 +32,6 @@ import { localRegistryPath, resolveLocalRegistryInstallSpec } from "../plugin/lo
 import { getPluginConfig, PluginConfigValidationError, replacePluginConfig } from "../plugin/config-store"
 
 import { PluginStatusSchema } from "../plugin/status.js"
-
-function getPluginTrust(pluginDir: string): PluginTrustDecision {
-  const source = derivePluginSource(pluginDir)
-  return defaultPluginTrustDecision({
-    source,
-    verifiedIntegrity: false, // routes don't have integrity context
-    devMode: Installation.isLocal(),
-  })
-}
 
 // ── Asset security ──
 
@@ -108,13 +94,20 @@ const ApiPluginPermissionItem = z
   })
   .meta({ ref: "ApiPluginPermissionItem" })
 
-function apiPluginDetail(loadedPlugin: Plugin.LoadedPlugin, manifest: PluginManifestType) {
+async function apiPluginDetail(loadedPlugin: Plugin.LoadedPlugin, manifest: PluginManifestType) {
   const capabilities = baseCapabilities(manifest)
+  const policy = await resolveInstalledPluginPolicy({
+    pluginId: loadedPlugin.id,
+    pluginDir: loadedPlugin.pluginDir,
+    manifest,
+    source: loadedPlugin.source,
+    devMode: Installation.isLocal(),
+  })
   return {
     pluginId: loadedPlugin.id,
     name: loadedPlugin.name ?? manifest.name,
     version: manifest.version,
-    trustTier: getPluginTrust(loadedPlugin.pluginDir).tier,
+    trustTier: policy.trust.tier,
     hasManifest: true,
     pluginDir: loadedPlugin.pluginDir,
     manifest,
@@ -162,7 +155,7 @@ async function installOfficialRegistryPlugin(id: string, version: string) {
   })
   const manifest = await manifestFor(loadedPlugin.id)
   if (!manifest) throw new Error(`Plugin manifest not found after install: ${loadedPlugin.id}`)
-  return { type: "installed" as const, body: apiPluginDetail(loadedPlugin, manifest) }
+  return { type: "installed" as const, body: await apiPluginDetail(loadedPlugin, manifest) }
 }
 
 // ── Route group ──
@@ -192,11 +185,18 @@ export const PluginRoute = new Hono()
         loaded.map(async (p) => {
           const manifest = await Plugin.manifest(p.id)
           if (!manifest) return null
+          const policy = await resolveInstalledPluginPolicy({
+            pluginId: p.id,
+            pluginDir: p.pluginDir,
+            manifest,
+            source: p.source,
+            devMode: Installation.isLocal(),
+          })
           return {
             pluginId: p.id,
             name: p.name ?? manifest.name,
             version: manifest.version,
-            trustTier: getPluginTrust(p.pluginDir).tier,
+            trustTier: policy.trust.tier,
             ui: manifest.contributes?.ui ?? null,
             permissions: manifest.permissions ?? null,
           }
@@ -553,11 +553,18 @@ export const ApiPluginRoute = new Hono()
           const manifest = await Plugin.manifest(p.id)
           if (!manifest) return null
           const capabilities = baseCapabilities(manifest)
+          const policy = await resolveInstalledPluginPolicy({
+            pluginId: p.id,
+            pluginDir: p.pluginDir,
+            manifest,
+            source: p.source,
+            devMode: Installation.isLocal(),
+          })
           return {
             pluginId: p.id,
             name: p.name ?? manifest.name,
             version: manifest.version,
-            trustTier: getPluginTrust(p.pluginDir).tier,
+            trustTier: policy.trust.tier,
             hasManifest: true,
             pluginDir: p.pluginDir,
             cliCommands: p.cli ? Object.keys(p.cli) : [],
@@ -598,18 +605,7 @@ export const ApiPluginRoute = new Hono()
       const manifest = await Plugin.manifest(pluginId)
       if (!manifest) return c.json({ message: `Plugin manifest not found: ${pluginId}` }, 404)
 
-      return c.json({
-        pluginId: plugin.id,
-        name: plugin.name ?? manifest.name,
-        version: manifest.version,
-        trustTier: getPluginTrust(plugin.pluginDir).tier,
-        hasManifest: true,
-        pluginDir: plugin.pluginDir,
-        manifest,
-        cliCommands: plugin.cli ? Object.keys(plugin.cli) : [],
-        skills: plugin.skills ? plugin.skills.map((s) => s.name) : [],
-        agents: plugin.agents ? Object.keys(plugin.agents) : [],
-      })
+      return c.json(await apiPluginDetail(plugin, manifest))
     },
   )
 
@@ -1009,7 +1005,7 @@ export const ApiPluginRoute = new Hono()
 
       const manifest = await manifestFor(loadedPlugin.id)
       if (!manifest) return c.json({ message: `Plugin manifest not found after install: ${loadedPlugin.id}` }, 500)
-      return c.json(apiPluginDetail(loadedPlugin, manifest))
+      return c.json(await apiPluginDetail(loadedPlugin, manifest))
     },
   )
 

@@ -24,7 +24,6 @@ import { getApproval } from "../plugin/consent/approval-store.js"
 import * as ManifestReader from "../plugin/manifest-reader"
 import { PluginPaths } from "../plugin/paths.js"
 import { PluginArtifact } from "@ericsanchezok/synergy-plugin"
-import { resolvePluginPolicyDecision } from "@ericsanchezok/synergy-plugin/policy"
 import { PluginLogBuffer } from "./logs.js"
 import { Global } from "../global/index.js"
 import { Config } from "../config/config.js"
@@ -39,7 +38,7 @@ import {
   type PersistedRuntimeEntry,
 } from "./registry.js"
 
-import { isTrustedPluginSource, type PluginSource } from "../plugin/trust.js"
+import { resolveInstalledPluginPolicy, type PluginSource } from "../plugin/trust.js"
 
 const log = Log.create({ service: "plugin-runtime.supervisor" })
 
@@ -413,13 +412,12 @@ export class PluginRuntimeSupervisor {
     const manifest = await ManifestReader.read(options.pluginDir)
     const config = await Config.current().catch(() => undefined)
     const source = options.source
-    const approval = await getApproval(pluginId)
-    const policy = resolvePluginPolicyDecision({
+    const policy = await resolveInstalledPluginPolicy({
+      pluginId,
+      pluginDir: options.pluginDir,
       manifest,
       source,
       devMode: false,
-      userTrusted: approval ? true : isTrustedPluginSource(source),
-      verifiedIntegrity: approval?.source === "official" || approval?.trustTier === "trusted-import",
       policy: config?.pluginRuntimePolicy,
     })
 

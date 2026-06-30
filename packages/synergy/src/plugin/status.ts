@@ -5,9 +5,8 @@ import type { PluginManifest } from "@ericsanchezok/synergy-plugin"
 import { getPlugin, getLoadedPlugins } from "./loader"
 import * as ManifestReader from "./manifest-reader"
 import * as Capability from "./capability"
-import { defaultPluginTrustDecision, derivePluginSource, type PluginTrustDecision, type PluginSource } from "./trust"
+import { findPluginLockEntry, resolveInstalledPluginPolicy, type PluginTrustDecision, type PluginSource } from "./trust"
 import { PluginToolId } from "./ids"
-import { read as readLockfile, checkIntegrity } from "./lockfile"
 import { Installation } from "../global/installation"
 import { getRuntime } from "../plugin-runtime/supervisor"
 import type { RuntimeLimits } from "../plugin-runtime/health"
@@ -140,31 +139,6 @@ export const PluginStatusSchema = z
 function isDevMode(): boolean {
   return Installation.CHANNEL === "local"
 }
-/** Find the lockfile entry whose resolved path is under pluginDir. */
-async function findLockfileEntry(pluginDir: string): Promise<import("./lockfile-schema").PluginLockEntry | null> {
-  try {
-    const lockfile = await readLockfile()
-    for (const entry of Object.values(lockfile.plugins)) {
-      const resolved = path.resolve(entry.resolved)
-      const relative = path.relative(pluginDir, resolved)
-      if (relative === "" || relative.startsWith("..") === false) {
-        return entry
-      }
-    }
-    return null
-  } catch {
-    return null
-  }
-}
-
-/** Resolve integrity status from the lockfile by finding the entry whose resolved path is under pluginDir. */
-async function resolveIntegrity(pluginDir: string): Promise<"verified" | "unverified" | "failed"> {
-  const entry = await findLockfileEntry(pluginDir)
-  if (!entry) return "unverified"
-  if (!entry.integrity) return "unverified"
-  const ok = await checkIntegrity(entry)
-  return ok ? "verified" : "failed"
-}
 /** Derive secrets store type from presence of auth.json. */
 async function resolveSecretsStore(pluginId: string): Promise<"none" | "plaintext" | "keychain"> {
   try {
@@ -219,7 +193,6 @@ export async function getStatus(pluginId: string): Promise<PluginStatus | null> 
   const plugin = await getPlugin(pluginId)
   if (!plugin) return null
 
-  const source = derivePluginSource(plugin.pluginDir)
   const warnings: PluginStatus["warnings"] = []
   const manifest = await ManifestReader.read(plugin.pluginDir)
   const manifestValid = true
@@ -236,12 +209,13 @@ export async function getStatus(pluginId: string): Promise<PluginStatus | null> 
   })
 
   // ── Trust ──
-  const integrity = await resolveIntegrity(plugin.pluginDir)
-  const trust = defaultPluginTrustDecision({
-    source,
-    verifiedIntegrity: integrity === "verified",
+  const policy = await resolveInstalledPluginPolicy({
+    pluginId,
+    pluginDir: plugin.pluginDir,
+    manifest,
     devMode: isDevMode(),
   })
+  const { source, trust, integrity } = policy
 
   // ── Routes ──
   const routes = manifest.contributes?.ui?.routes?.map((r) => r.path) ?? []
@@ -285,7 +259,7 @@ export async function getStatus(pluginId: string): Promise<PluginStatus | null> 
     : undefined
 
   // ── Hash consistency warnings ──
-  const lockfileEntry = await findLockfileEntry(plugin.pluginDir)
+  const lockfileEntry = await findPluginLockEntry(plugin.pluginDir)
   if (lockfileEntry) {
     const capabilities = baseCapabilities(manifest)
     const currentPermissionsHash = computePermissionsHash(manifest, capabilities)
