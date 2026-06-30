@@ -385,18 +385,6 @@
     "snapshot": {
       "type": "boolean"
     },
-    "autoupdate": {
-      "description": "Automatically update to the latest version. Set to true to auto-update, false to disable, or 'notify' to show update notifications",
-      "anyOf": [
-        {
-          "type": "boolean"
-        },
-        {
-          "type": "string",
-          "const": "notify"
-        }
-      ]
-    },
     "disabled_providers": {
       "description": "Disable providers that are loaded automatically",
       "type": "array",

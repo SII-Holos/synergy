@@ -160,6 +160,25 @@ export type StatsSnapshot = {
   watermark: number
 }
 
+export type ServerUpdateStatus = {
+  capability: "managed" | "not-managed" | "remote"
+  phase: "idle" | "checking" | "available" | "updating" | "restarting" | "error"
+  currentVersion: string
+  latestVersion: string | null
+  updateAvailable: boolean
+  progress: number | null
+  message: string
+  error: string | null
+}
+
+export type ServerUpdateForbiddenError = {
+  message: string
+}
+
+export type ServerUpdateStartInput = {
+  version?: string
+}
+
 export type DiagnosticsSummary = {
   [key: string]: unknown
 }
@@ -2061,10 +2080,6 @@ export type Config = {
   pluginRuntimePolicy?: PluginRuntimePolicyConfig
   pluginMarketplace?: PluginMarketplaceConfig
   snapshot?: boolean
-  /**
-   * Automatically update to the latest version. Set to true to auto-update, false to disable, or 'notify' to show update notifications
-   */
-  autoupdate?: boolean | "notify"
   /**
    * Disable providers that are loaded automatically
    */
@@ -5800,6 +5815,76 @@ export type GlobalStatsProgressResponses = {
 }
 
 export type GlobalStatsProgressResponse = GlobalStatsProgressResponses[keyof GlobalStatsProgressResponses]
+
+export type GlobalUpdateStatusData = {
+  body?: never
+  path?: never
+  query?: never
+  url: "/global/update/status"
+}
+
+export type GlobalUpdateStatusResponses = {
+  /**
+   * Server update status
+   */
+  200: ServerUpdateStatus
+}
+
+export type GlobalUpdateStatusResponse = GlobalUpdateStatusResponses[keyof GlobalUpdateStatusResponses]
+
+export type GlobalUpdateCheckData = {
+  body?: never
+  path?: never
+  query?: never
+  url: "/global/update/check"
+}
+
+export type GlobalUpdateCheckErrors = {
+  /**
+   * Forbidden
+   */
+  403: ServerUpdateForbiddenError
+}
+
+export type GlobalUpdateCheckError = GlobalUpdateCheckErrors[keyof GlobalUpdateCheckErrors]
+
+export type GlobalUpdateCheckResponses = {
+  /**
+   * Server update status
+   */
+  200: ServerUpdateStatus
+}
+
+export type GlobalUpdateCheckResponse = GlobalUpdateCheckResponses[keyof GlobalUpdateCheckResponses]
+
+export type GlobalUpdateStartData = {
+  body?: ServerUpdateStartInput
+  path?: never
+  query?: never
+  url: "/global/update/start"
+}
+
+export type GlobalUpdateStartErrors = {
+  /**
+   * Server update unavailable
+   */
+  400: ServerUpdateStatus
+  /**
+   * Forbidden
+   */
+  403: ServerUpdateForbiddenError
+}
+
+export type GlobalUpdateStartError = GlobalUpdateStartErrors[keyof GlobalUpdateStartErrors]
+
+export type GlobalUpdateStartResponses = {
+  /**
+   * Server update status
+   */
+  200: ServerUpdateStatus
+}
+
+export type GlobalUpdateStartResponse = GlobalUpdateStartResponses[keyof GlobalUpdateStartResponses]
 
 export type ObservabilityDiagnosticsSummaryData = {
   body?: never

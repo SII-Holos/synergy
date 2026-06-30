@@ -118,6 +118,9 @@ export namespace Installation {
       case "npm":
         cmd = $`npm install -g @ericsanchezok/synergy@${target} --registry=${NPM_REGISTRY}`
         break
+      case "yarn":
+        cmd = $`yarn global add @ericsanchezok/synergy@${target} --registry=${NPM_REGISTRY}`
+        break
       case "pnpm":
         cmd = $`pnpm install -g @ericsanchezok/synergy@${target} --registry=${NPM_REGISTRY}`
         break
@@ -168,7 +171,12 @@ export namespace Installation {
       }
     }
 
-    if (detectedMethod === "npm" || detectedMethod === "bun" || detectedMethod === "pnpm") {
+    if (
+      detectedMethod === "npm" ||
+      detectedMethod === "yarn" ||
+      detectedMethod === "bun" ||
+      detectedMethod === "pnpm"
+    ) {
       const channel = CHANNEL
       return fetch(`${NPM_REGISTRY}/@ericsanchezok/synergy/${channel}`)
         .then((res) => {

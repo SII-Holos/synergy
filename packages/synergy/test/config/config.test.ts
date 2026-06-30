@@ -1121,6 +1121,42 @@ test("migrates project permissions domain auto_classifier config to smartAllow",
   }
 })
 
+test("removes deprecated autoupdate from monolithic and domain configs", async () => {
+  const home = path.join(os.tmpdir(), `synergy-config-autoupdate-migration-${Math.random().toString(36).slice(2)}`)
+  const project = path.join(home, "project")
+  const origHome = process.env["SYNERGY_TEST_HOME"]
+  const origCwd = process.cwd()
+  try {
+    process.env["SYNERGY_TEST_HOME"] = home
+    await fs.mkdir(path.join(home, ".synergy", "config", "synergy.d"), { recursive: true })
+    await fs.mkdir(path.join(home, ".synergy", "config", "config-sets", "team", "synergy.d"), { recursive: true })
+    await fs.mkdir(path.join(project, ".synergy", "synergy.d"), { recursive: true })
+
+    const monolithic = path.join(home, ".synergy", "config", "synergy.jsonc")
+    const globalGeneral = path.join(home, ".synergy", "config", "synergy.d", "00-general.jsonc")
+    const setGeneral = path.join(home, ".synergy", "config", "config-sets", "team", "synergy.d", "00-general.jsonc")
+    const projectGeneral = path.join(project, ".synergy", "synergy.d", "00-general.jsonc")
+
+    await Bun.write(monolithic, `{"autoupdate": true, "username": "old"}`)
+    await Bun.write(globalGeneral, `{"autoupdate": "notify", "theme": "dark"}`)
+    await Bun.write(setGeneral, `{"autoupdate": false, "theme": "light"}`)
+    await Bun.write(projectGeneral, `{"autoupdate": true, "snapshot": false}`)
+
+    process.chdir(project)
+    resetMigrations()
+    await runMigrations({ targetDomain: "config" })
+
+    expect((parseJsonc(await Bun.file(monolithic).text()) as Record<string, unknown>).autoupdate).toBeUndefined()
+    expect((parseJsonc(await Bun.file(globalGeneral).text()) as Record<string, unknown>).autoupdate).toBeUndefined()
+    expect((parseJsonc(await Bun.file(setGeneral).text()) as Record<string, unknown>).autoupdate).toBeUndefined()
+    expect((parseJsonc(await Bun.file(projectGeneral).text()) as Record<string, unknown>).autoupdate).toBeUndefined()
+  } finally {
+    process.chdir(origCwd)
+    process.env["SYNERGY_TEST_HOME"] = origHome
+    await fs.rm(home, { recursive: true, force: true }).catch(() => {})
+  }
+})
+
 test("migrates legacy identity config to valid library config", async () => {
   const home = path.join(os.tmpdir(), `synergy-config-identity-migration-${Math.random().toString(36).slice(2)}`)
   const origHome = process.env["SYNERGY_TEST_HOME"]

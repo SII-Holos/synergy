@@ -789,6 +789,120 @@
         ]
       }
     },
+    "/global/update/status": {
+      "get": {
+        "operationId": "global.update.status",
+        "summary": "Get server update status",
+        "description": "Report whether this Synergy server can be updated from the Web client.",
+        "responses": {
+          "200": {
+            "description": "Server update status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServerUpdateStatus"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.global.update.status({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/global/update/check": {
+      "post": {
+        "operationId": "global.update.check",
+        "summary": "Check for server updates",
+        "description": "Check npm for the latest Synergy server package version. Localhost-only.",
+        "responses": {
+          "200": {
+            "description": "Server update status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServerUpdateStatus"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServerUpdateForbiddenError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.global.update.check({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/global/update/start": {
+      "post": {
+        "operationId": "global.update.start",
+        "summary": "Start server update",
+        "description": "Start a detached updater worker for a managed Synergy daemon. Localhost-only.",
+        "responses": {
+          "200": {
+            "description": "Server update status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServerUpdateStatus"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Server update unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServerUpdateStatus"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServerUpdateForbiddenError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ServerUpdateStartInput"
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.global.update.start({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/global/diagnostics": {
       "get": {
         "operationId": "observability.diagnostics.summary",
@@ -17148,6 +17262,87 @@
           "watermark"
         ]
       },
+      "ServerUpdateStatus": {
+        "type": "object",
+        "properties": {
+          "capability": {
+            "type": "string",
+            "enum": ["managed", "not-managed", "remote"]
+          },
+          "phase": {
+            "type": "string",
+            "enum": ["idle", "checking", "available", "updating", "restarting", "error"]
+          },
+          "currentVersion": {
+            "type": "string"
+          },
+          "latestVersion": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "updateAvailable": {
+            "type": "boolean"
+          },
+          "progress": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 100
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "message": {
+            "type": "string"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "capability",
+          "phase",
+          "currentVersion",
+          "latestVersion",
+          "updateAvailable",
+          "progress",
+          "message",
+          "error"
+        ]
+      },
+      "ServerUpdateForbiddenError": {
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": ["message"]
+      },
+      "ServerUpdateStartInput": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": "string"
+          }
+        }
+      },
       "DiagnosticsSummary": {
         "type": "object",
         "propertyNames": {
@@ -20225,18 +20420,6 @@
           },
           "snapshot": {
             "type": "boolean"
-          },
-          "autoupdate": {
-            "description": "Automatically update to the latest version. Set to true to auto-update, false to disable, or 'notify' to show update notifications",
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "string",
-                "const": "notify"
-              }
-            ]
           },
           "disabled_providers": {
             "description": "Disable providers that are loaded automatically",

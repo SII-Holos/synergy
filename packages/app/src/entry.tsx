@@ -7,7 +7,9 @@ import pkg from "../package.json"
 
 declare global {
   interface Window {
-    synergyDesktop?: Pick<Platform, "platform" | "browserNative">
+    synergyDesktop?: Pick<Platform, "platform" | "browserNative" | "desktopUpdate"> & {
+      update?: Platform["desktopUpdate"]
+    }
   }
 }
 
@@ -22,6 +24,7 @@ const platform: Platform = {
   platform: window.synergyDesktop?.platform === "desktop" ? "desktop" : "web",
   version: pkg.version,
   browserNative: window.synergyDesktop?.browserNative,
+  desktopUpdate: window.synergyDesktop?.update ?? window.synergyDesktop?.desktopUpdate,
   openLink(url: string) {
     window.open(url, "_blank")
   },

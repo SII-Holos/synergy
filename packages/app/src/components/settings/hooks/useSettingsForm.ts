@@ -32,7 +32,6 @@ export function ensureInit(params: EnsureInitParams): string | undefined {
 
   params.setSettings("general", {
     snapshot: cfg.snapshot ?? UI_DEFAULTS.snapshot,
-    autoupdate: String(cfg.autoupdate ?? UI_DEFAULTS.autoupdate),
     username: cfg.username ?? UI_DEFAULTS.username,
     theme: cfg.theme ?? UI_DEFAULTS.theme,
     mutedToasts: cfg.toast?.muted ?? [],

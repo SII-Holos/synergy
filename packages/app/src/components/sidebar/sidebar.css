@@ -610,6 +610,154 @@
   display: none;
 }
 
+/* ===== Product update notice ===== */
+
+.sb-update-notice {
+  flex-shrink: 0;
+  padding: 6px 8px 0;
+}
+
+.sb-update-button {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  min-height: 50px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: var(--sb-hover-bg);
+  color: var(--text-base);
+  text-align: left;
+  transition:
+    background-color 150ms,
+    color 150ms,
+    opacity 150ms;
+}
+
+.sb-update-button:not(:disabled):hover {
+  background: var(--sb-active-bg);
+}
+
+.sb-update-button:disabled {
+  cursor: default;
+}
+
+.sb-update-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+  border-radius: 7px;
+  color: var(--icon-base);
+  background: color-mix(in srgb, var(--text-base) 8%, transparent);
+}
+
+.sb-update-copy {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.sb-update-title {
+  font-size: var(--font-size-small);
+  font-weight: 600;
+  color: var(--text-strong);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sb-update-detail {
+  font-size: var(--font-size-x-small);
+  font-weight: 500;
+  color: var(--text-weak);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sb-update-action {
+  flex-shrink: 0;
+  font-size: var(--font-size-x-small);
+  font-weight: 650;
+  color: var(--text-base);
+}
+
+.sb-update-progress {
+  height: 3px;
+  margin: 5px 2px 0;
+  overflow: hidden;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--text-base) 12%, transparent);
+}
+
+.sb-update-progress span {
+  display: block;
+  width: var(--sb-update-progress);
+  height: 100%;
+  border-radius: inherit;
+  background: var(--text-base);
+  transition: width 220ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.sb-update-notice[data-tone="ready"] .sb-update-icon {
+  color: var(--icon-success-base);
+  background: color-mix(in srgb, var(--icon-success-base) 14%, transparent);
+}
+
+.sb-update-notice[data-tone="ready"] .sb-update-progress span {
+  background: var(--icon-success-base);
+}
+
+.sb-update-notice[data-tone="active"] .sb-update-icon {
+  color: var(--icon-base);
+  background: color-mix(in srgb, var(--icon-base) 14%, transparent);
+}
+
+.sb-update-notice[data-tone="active"] .sb-update-progress span {
+  background: var(--icon-base);
+}
+
+.sb-update-notice[data-tone="error"] .sb-update-icon {
+  color: var(--icon-critical-base);
+  background: color-mix(in srgb, var(--icon-critical-base) 14%, transparent);
+}
+
+.sb-update-notice[data-tone="error"] .sb-update-progress span {
+  background: var(--icon-critical-base);
+}
+
+.sb-update-notice--collapsed {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 8px 0;
+}
+
+.sb-update-notice--collapsed .sb-update-button {
+  width: 32px;
+  min-height: 32px;
+  justify-content: center;
+  padding: 0;
+  border-radius: 8px;
+}
+
+.sb-update-notice--collapsed .sb-update-progress {
+  width: 32px;
+  margin: 4px 0 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sb-update-progress span {
+    transition: none;
+  }
+}
+
 /* ===== Account hub ===== */
 
 .sidebar-account-hub {

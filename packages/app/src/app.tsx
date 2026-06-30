@@ -20,6 +20,7 @@ import { FileProvider } from "@/context/file"
 import { ResourceOpenProvider } from "@/context/resource-open"
 import { NotificationProvider } from "@/context/notification"
 import { CommandProvider } from "@/context/command"
+import { ProductUpdateProvider } from "@/context/product-update"
 
 import { AuthProvider } from "@/context/auth"
 import { HolosProvider } from "@/context/holos"
@@ -135,77 +136,79 @@ function ConnectedApp() {
 
   return (
     <GlobalSDKProvider>
-      <HolosProvider>
-        <InputProvider>
-          <Switch>
-            <Match when={startupView() === "loading"}>
-              <Loading />
-            </Match>
-            <Match when={startupView() === "connection-error"}>
-              <ServerConnectionErrorPage
-                serverUrl={server.url}
-                retrying={server.healthy() === undefined}
-                onRetry={retry}
-                onChangeServer={changeServer}
-              />
-            </Match>
-            <Match when={startupView() === "ready"}>
-              <Show when={showModelReadyWarning()}>
-                <div class="flex items-center justify-center gap-2 px-3 py-1.5 text-12-medium bg-surface-warning-soft text-text-warning">
-                  <span>⚠</span>
-                  <span>
-                    AI model not configured — run{" "}
-                    <code class="font-mono bg-surface-warning-base/20 px-1 rounded">synergy config</code> in your
-                    terminal to set one up
-                  </span>
-                </div>
-              </Show>
-              <PluginHostProvider>
-                <GlobalSyncProvider>
-                  <PluginToolBridge />
-                  <Router
-                    base={proxyPrefix()}
-                    root={(props) => (
-                      <LayoutProvider>
-                        <NotificationProvider>
-                          <CommandProvider>
-                            <Layout>{props.children}</Layout>
-                          </CommandProvider>
-                        </NotificationProvider>
-                      </LayoutProvider>
-                    )}
-                  >
-                    <Route path="/" component={() => <Navigate href={`/${base64Encode("home")}/session`} />} />
-                    <Route path="/agenda" component={AgendaPanel} />
-                    <Route path="/library" component={LibraryPanel} />
-                    <Route path="/plugins/marketplace" component={MarketplacePage} />
-                    <Route path="/plugins/:pluginId" component={PluginDetailPage} />
-                    <Route path="/:dir" component={DirectoryLayout}>
-                      <Route path="/" component={() => <Navigate href="session" />} />
-                      <Route
-                        path="/session/:id?"
-                        component={() => (
-                          <TerminalProvider>
-                            <FileProvider>
-                              <ResourceOpenProvider>
-                                <PromptProvider>
-                                  <Suspense fallback={<Loading />}>
-                                    <Session />
-                                  </Suspense>
-                                </PromptProvider>
-                              </ResourceOpenProvider>
-                            </FileProvider>
-                          </TerminalProvider>
-                        )}
-                      />
-                    </Route>
-                  </Router>
-                </GlobalSyncProvider>
-              </PluginHostProvider>
-            </Match>
-          </Switch>
-        </InputProvider>
-      </HolosProvider>
+      <ProductUpdateProvider>
+        <HolosProvider>
+          <InputProvider>
+            <Switch>
+              <Match when={startupView() === "loading"}>
+                <Loading />
+              </Match>
+              <Match when={startupView() === "connection-error"}>
+                <ServerConnectionErrorPage
+                  serverUrl={server.url}
+                  retrying={server.healthy() === undefined}
+                  onRetry={retry}
+                  onChangeServer={changeServer}
+                />
+              </Match>
+              <Match when={startupView() === "ready"}>
+                <Show when={showModelReadyWarning()}>
+                  <div class="flex items-center justify-center gap-2 px-3 py-1.5 text-12-medium bg-surface-warning-soft text-text-warning">
+                    <span>⚠</span>
+                    <span>
+                      AI model not configured — run{" "}
+                      <code class="font-mono bg-surface-warning-base/20 px-1 rounded">synergy config</code> in your
+                      terminal to set one up
+                    </span>
+                  </div>
+                </Show>
+                <PluginHostProvider>
+                  <GlobalSyncProvider>
+                    <PluginToolBridge />
+                    <Router
+                      base={proxyPrefix()}
+                      root={(props) => (
+                        <LayoutProvider>
+                          <NotificationProvider>
+                            <CommandProvider>
+                              <Layout>{props.children}</Layout>
+                            </CommandProvider>
+                          </NotificationProvider>
+                        </LayoutProvider>
+                      )}
+                    >
+                      <Route path="/" component={() => <Navigate href={`/${base64Encode("home")}/session`} />} />
+                      <Route path="/agenda" component={AgendaPanel} />
+                      <Route path="/library" component={LibraryPanel} />
+                      <Route path="/plugins/marketplace" component={MarketplacePage} />
+                      <Route path="/plugins/:pluginId" component={PluginDetailPage} />
+                      <Route path="/:dir" component={DirectoryLayout}>
+                        <Route path="/" component={() => <Navigate href="session" />} />
+                        <Route
+                          path="/session/:id?"
+                          component={() => (
+                            <TerminalProvider>
+                              <FileProvider>
+                                <ResourceOpenProvider>
+                                  <PromptProvider>
+                                    <Suspense fallback={<Loading />}>
+                                      <Session />
+                                    </Suspense>
+                                  </PromptProvider>
+                                </ResourceOpenProvider>
+                              </FileProvider>
+                            </TerminalProvider>
+                          )}
+                        />
+                      </Route>
+                    </Router>
+                  </GlobalSyncProvider>
+                </PluginHostProvider>
+              </Match>
+            </Switch>
+          </InputProvider>
+        </HolosProvider>
+      </ProductUpdateProvider>
     </GlobalSDKProvider>
   )
 }

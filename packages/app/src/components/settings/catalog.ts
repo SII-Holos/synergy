@@ -76,9 +76,9 @@ export const BUILTIN_SETTINGS_SECTIONS: SettingsCatalogSection[] = [
     10,
     "settings.general",
     "Appearance, behavior, and notification preferences.",
-    ["appearance", "color", "light", "dark", "auto", "snapshot", "auto update", "toast", "notification"],
+    ["appearance", "color", "light", "dark", "auto", "snapshot", "product update", "toast", "notification"],
     ["general"],
-    ["Color Scheme", "Snapshot", "Auto Update", "Notifications", "Toast Duration"],
+    ["Color Scheme", "Snapshot", "Product Updates", "Notifications", "Toast Duration"],
   ),
   section(
     "models",
@@ -332,7 +332,6 @@ function section(
 
 export const FIELD_SAVE_STRATEGY: Record<string, SettingsFieldStrategy> = {
   snapshot: "auto",
-  autoupdate: "auto",
   theme: "background",
   username: "background",
   toast: "background",

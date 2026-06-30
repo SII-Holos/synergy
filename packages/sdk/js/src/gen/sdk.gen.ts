@@ -155,6 +155,11 @@ import type {
   GlobalStatsGetErrors,
   GlobalStatsGetResponses,
   GlobalStatsProgressResponses,
+  GlobalUpdateCheckErrors,
+  GlobalUpdateCheckResponses,
+  GlobalUpdateStartErrors,
+  GlobalUpdateStartResponses,
+  GlobalUpdateStatusResponses,
   HolosAccountsListResponses,
   HolosAccountsRemoveErrors,
   HolosAccountsRemoveResponses,
@@ -347,6 +352,7 @@ import type {
   ScopeRuntimeDisposeResponses,
   ScopeUpdateErrors,
   ScopeUpdateResponses,
+  ServerUpdateStartInput,
   SessionAbortErrors,
   SessionAbortResponses,
   SessionAgendaErrors,
@@ -580,6 +586,56 @@ export class Stats extends HeyApiClient {
     return (options?.client ?? this.client).sse.get<GlobalStatsProgressResponses, unknown, ThrowOnError>({
       url: "/global/stats/progress",
       ...options,
+    })
+  }
+}
+
+export class Update extends HeyApiClient {
+  /**
+   * Get server update status
+   *
+   * Report whether this Synergy server can be updated from the Web client.
+   */
+  public status<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
+    return (options?.client ?? this.client).get<GlobalUpdateStatusResponses, unknown, ThrowOnError>({
+      url: "/global/update/status",
+      ...options,
+    })
+  }
+
+  /**
+   * Check for server updates
+   *
+   * Check npm for the latest Synergy server package version. Localhost-only.
+   */
+  public check<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
+    return (options?.client ?? this.client).post<GlobalUpdateCheckResponses, GlobalUpdateCheckErrors, ThrowOnError>({
+      url: "/global/update/check",
+      ...options,
+    })
+  }
+
+  /**
+   * Start server update
+   *
+   * Start a detached updater worker for a managed Synergy daemon. Localhost-only.
+   */
+  public start<ThrowOnError extends boolean = false>(
+    parameters?: {
+      serverUpdateStartInput?: ServerUpdateStartInput
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ key: "serverUpdateStartInput", map: "body" }] }])
+    return (options?.client ?? this.client).post<GlobalUpdateStartResponses, GlobalUpdateStartErrors, ThrowOnError>({
+      url: "/global/update/start",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
     })
   }
 }
@@ -2677,6 +2733,8 @@ export class Global extends HeyApiClient {
   git = new Git({ client: this.client })
 
   stats = new Stats({ client: this.client })
+
+  update = new Update({ client: this.client })
 
   agenda = new Agenda({ client: this.client })
 

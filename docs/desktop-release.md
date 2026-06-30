@@ -7,6 +7,8 @@
 - `stable`: packaged release channel, GitHub Releases update metadata enabled.
 - `dev`: development channel, automatic updates disabled.
 
+Stable desktop updates use `electron-updater` against the GitHub Release metadata files below. The app stores its desktop update preference under Electron `userData`; `auto` downloads in the background, `notify` reports availability, `manual` waits for an explicit check, and `none` disables checks. Settings and the bottom sidebar update prompt show availability, download progress, install readiness, and errors. Installing an already downloaded update stops the managed local server before calling Electron's installer restart path.
+
 Runtime environment:
 
 - `SYNERGY_DESKTOP_CHANNEL=dev|stable`
@@ -33,7 +35,7 @@ Primary artifact naming contract:
 - `Synergy-darwin-arm64-${version}.dmg`
 - `Synergy-win32-x64-${version}.exe`
 - `Synergy-win32-arm64-${version}.exe`
-- `Synergy-linux-x64-${version}.AppImage`
+- `Synergy-linux-x86_64-${version}.AppImage`
 - `Synergy-linux-arm64-${version}.AppImage`
 - `Synergy-${version}-checksums.txt`
 
@@ -72,7 +74,7 @@ Product release keeps the existing candidate/finalize model:
 2. `stable_desktop_package` runs a three-way desktop matrix for macOS, Windows, and Linux. Each platform job builds both `x64` and `arm64` artifacts in one `electron-builder` invocation and generates updater metadata per platform.
 3. Each desktop matrix job rewrites package versions to the candidate version, builds the matching Synergy runtimes via `SYNERGY_BUILD_TARGETS`, then packages the platform artifact set with `electron-builder`.
 4. `stable_desktop_publish` downloads all desktop artifacts, generates `Synergy-${version}-checksums.txt`, and uploads the desktop assets to the draft GitHub Release.
-5. `stable_finalize` verifies npm candidates, runtime assets, desktop artifacts, checksum, updater metadata, promotes npm tags, and publishes the GitHub Release.
+5. `stable_finalize` verifies npm candidates, runtime assets, desktop artifacts, checksum, and updater metadata by reading the draft GitHub Release assets, then promotes npm tags and publishes the GitHub Release.
 
 ## Failure Recovery
 

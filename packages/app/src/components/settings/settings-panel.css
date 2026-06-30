@@ -312,6 +312,66 @@
   color: var(--text-weaker);
 }
 
+.settings-update-block {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 0 8px;
+}
+
+.settings-update-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.settings-update-copy {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.settings-update-title {
+  font-size: 13px;
+  line-height: 1.35;
+  font-weight: 520;
+  color: var(--text-base);
+}
+
+.settings-update-description,
+.settings-update-status {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-weak);
+}
+
+.settings-update-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  min-height: 32px;
+  padding: 8px 10px;
+  border-radius: 9px;
+  background: var(--settings-control-bg);
+}
+
+.settings-update-lines {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.settings-update-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
 .settings-toast-list {
   display: flex;
   flex-direction: column;

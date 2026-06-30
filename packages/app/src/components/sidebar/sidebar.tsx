@@ -19,6 +19,7 @@ import { DialogScopeEdit } from "@/components/dialog/dialog-scope-edit"
 import { DialogConfirm } from "@/components/dialog/dialog-confirm"
 import type { LocalScope, NavEntry } from "@/context/layout"
 import { usePlatform } from "@/context/platform"
+import { useProductUpdate } from "@/context/product-update"
 import { useHolosAgentActions } from "@/components/holos/agent-actions"
 import { SettingsDialog } from "@/components/settings"
 import {
@@ -711,6 +712,8 @@ export function Sidebar(props: SidebarProps) {
         </div>
       </Show>
 
+      <SidebarUpdateNotice isExpanded={isExpanded()} />
+
       {/* Bottom: Agent Hub */}
       <SidebarAgentHub isExpanded={isExpanded()} globalSDK={globalSDK} />
 
@@ -757,6 +760,53 @@ export function Sidebar(props: SidebarProps) {
         </div>
       </Show>
     </div>
+  )
+}
+
+function SidebarUpdateNotice(props: { isExpanded: boolean }) {
+  const update = useProductUpdate()
+  const notice = update.notice
+  const icon = () =>
+    notice().action === "install" ? getSemanticIcon("product.update.install") : getSemanticIcon("product.update")
+
+  return (
+    <Show when={notice().visible}>
+      <div
+        classList={{
+          "sb-update-notice": true,
+          "sb-update-notice--collapsed": !props.isExpanded,
+        }}
+        data-tone={notice().tone}
+        aria-live="polite"
+      >
+        <Tooltip value={`${notice().title}${notice().detail ? ` — ${notice().detail}` : ""}`} placement="right">
+          <button
+            type="button"
+            class="sb-update-button"
+            disabled={!notice().action || notice().busy}
+            onClick={() => void update.runNoticeAction()}
+          >
+            <span class="sb-update-icon">
+              <Icon name={icon()} size="small" />
+            </span>
+            <Show when={props.isExpanded}>
+              <span class="sb-update-copy">
+                <span class="sb-update-title">{notice().title}</span>
+                <span class="sb-update-detail">{notice().detail}</span>
+              </span>
+              <Show when={notice().actionLabel}>
+                <span class="sb-update-action">{notice().busy ? "Working..." : notice().actionLabel}</span>
+              </Show>
+            </Show>
+          </button>
+        </Tooltip>
+        <Show when={notice().progress != null}>
+          <div class="sb-update-progress" aria-hidden="true">
+            <span style={{ "--sb-update-progress": `${notice().progress ?? 0}%` }} />
+          </div>
+        </Show>
+      </div>
+    </Show>
   )
 }
 

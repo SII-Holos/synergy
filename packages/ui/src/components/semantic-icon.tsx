@@ -75,6 +75,8 @@ export const SemanticIconToken = {
   "app.statusBar": "panel-bottom",
   "app.statusBar.toggle": "panel-bottom-open",
   "app.plugins": "package",
+  "product.update": "download",
+  "product.update.install": "rotate-cw",
   "navigation.back": "arrow-left",
   "navigation.expand": "chevron-right",
   "navigation.collapse": "chevron-down",

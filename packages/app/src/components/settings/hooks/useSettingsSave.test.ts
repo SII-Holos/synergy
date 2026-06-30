@@ -3,7 +3,7 @@ import type { ConfigDomainSummary } from "@ericsanchezok/synergy-sdk/client"
 import { buildFieldDomainMap, groupPatchByDomain, strategyForPatch } from "../domain-routing"
 
 const domains: ConfigDomainSummary[] = [
-  domain("general", ["snapshot", "autoupdate", "theme", "username"]),
+  domain("general", ["snapshot", "theme", "username"]),
   domain("models", ["model", "mini_model"]),
   domain("permissions", ["permission", "controlProfile", "sandbox", "smartAllow"]),
 ]
@@ -27,6 +27,11 @@ describe("settings save routing", () => {
 
   test("throws when a patch field has no save strategy", () => {
     expect(() => strategyForPatch({ unknownField: true })).toThrow("does not define a save strategy")
+  })
+
+  test("does not route product update mode into server config", () => {
+    expect(() => groupPatchByDomain({ autoupdate: true }, domains)).toThrow("not owned by a config domain")
+    expect(() => strategyForPatch({ autoupdate: true })).toThrow("does not define a save strategy")
   })
 })
 

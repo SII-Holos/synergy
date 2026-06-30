@@ -1,11 +1,21 @@
-import { For } from "solid-js"
+import { For, Show } from "solid-js"
+import { Button } from "@ericsanchezok/synergy-ui/button"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { getSemanticIcon, type SemanticIconTokenName } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { Switch } from "@ericsanchezok/synergy-ui/switch"
 import { useTheme, type ColorScheme } from "@ericsanchezok/synergy-ui/theme"
+import { useProductUpdate } from "@/context/product-update"
+import type { DesktopUpdateMode } from "@/context/platform"
 import { SettingRow } from "../components/SettingRow"
-import { SettingsStepScale } from "../components/SettingsStepScale"
+import { SegmentPill } from "../components/SegmentPill"
 import { SettingsPage, SettingsSection } from "../components/SettingsPrimitives"
+import {
+  desktopUpdateStatusCopy,
+  downloadLabel,
+  serverUpdateActionState,
+  serverUpdateStatusCopy,
+  webVersionStatus,
+} from "./product-update-logic"
 import {
   DEFAULT_TOAST_DURATION_MS,
   TOAST_DURATION_STOPS,
@@ -86,22 +96,7 @@ export function GeneralPanel(props: {
             <Switch checked={props.general.snapshot} onChange={(value) => props.onGeneralChange("snapshot", value)} />
           }
         />
-        <SettingRow
-          title="Product updates"
-          description="Choose how Synergy handles available updates"
-          trailing={
-            <SettingsStepScale
-              value={props.general.autoupdate}
-              ariaLabel="Product update handling"
-              options={[
-                { value: "true", label: "On" },
-                { value: "false", label: "Off" },
-                { value: "notify", label: "Notify" },
-              ]}
-              onChange={(value) => props.onGeneralChange("autoupdate", value)}
-            />
-          }
-        />
+        <ProductUpdates />
       </SettingsSection>
 
       <SettingsSection
@@ -123,6 +118,130 @@ export function GeneralPanel(props: {
         </div>
       </SettingsSection>
     </SettingsPage>
+  )
+}
+
+function ProductUpdates() {
+  const update = useProductUpdate()
+  const status = update.desktopStatus
+  const serverStatus = update.serverStatus
+  const isDesktop = () => update.surface === "desktop"
+  const mode = () => status()?.mode ?? "auto"
+  const phase = () => status()?.phase ?? "idle"
+  const serverActionState = () => serverUpdateActionState(serverStatus())
+  const busy = () => Boolean(update.busy())
+
+  return (
+    <div class="settings-update-block">
+      <div class="settings-update-header">
+        <div class="settings-update-copy">
+          <span class="settings-update-title">Product updates</span>
+          <span class="settings-update-description">
+            <Show when={isDesktop()} fallback="Refresh this browser when the server has newer Web assets.">
+              Keep the desktop app and bundled server runtime current.
+            </Show>
+          </span>
+        </div>
+        <Show
+          when={isDesktop()}
+          fallback={
+            <Button
+              type="button"
+              variant={update.webNeedsRefresh() ? "primary" : "secondary"}
+              size="small"
+              disabled={busy()}
+              onClick={() => (update.webNeedsRefresh() ? void update.refreshWebClient() : void update.checkNow())}
+            >
+              {update.webNeedsRefresh() ? "Refresh to Update" : busy() ? "Checking..." : "Check Version"}
+            </Button>
+          }
+        >
+          <SegmentPill
+            value={mode()}
+            options={[
+              { value: "auto", label: "Auto" },
+              { value: "notify", label: "Notify" },
+              { value: "manual", label: "Manual" },
+              { value: "none", label: "Off" },
+            ]}
+            onChange={(value) => void update.setDesktopMode(value as DesktopUpdateMode)}
+          />
+        </Show>
+      </div>
+
+      <Show
+        when={isDesktop()}
+        fallback={
+          <div class="settings-update-status">
+            <div class="settings-update-lines">
+              <span>{webVersionStatus(update.appVersion, update.serverVersion())}</span>
+              <span>{serverUpdateStatusCopy(serverStatus())}</span>
+            </div>
+            <Show when={serverStatus()?.capability === "managed"}>
+              <div class="settings-update-actions">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="small"
+                  disabled={busy() || serverActionState() === "reconnecting"}
+                  onClick={() => void update.checkNow()}
+                >
+                  {update.busy() === "check" ? "Checking..." : "Check Server"}
+                </Button>
+                <Show when={serverActionState() !== "hidden"}>
+                  <Button
+                    type="button"
+                    variant="primary"
+                    size="small"
+                    disabled={busy() || serverActionState() === "reconnecting"}
+                    onClick={() => void update.startServerUpdate()}
+                  >
+                    {serverActionState() === "reconnecting" ? "Reconnecting..." : "Update Synergy Service"}
+                  </Button>
+                </Show>
+              </div>
+            </Show>
+          </div>
+        }
+      >
+        <div class="settings-update-status">
+          <span>{desktopUpdateStatusCopy(status())}</span>
+          <div class="settings-update-actions">
+            <Button
+              type="button"
+              variant="secondary"
+              size="small"
+              disabled={busy() || phase() === "disabled" || phase() === "checking" || phase() === "installing"}
+              onClick={() => void update.checkNow()}
+            >
+              {phase() === "checking" ? "Checking..." : "Check now"}
+            </Button>
+            <Show when={phase() === "available"}>
+              <Button
+                type="button"
+                variant="secondary"
+                size="small"
+                disabled={busy()}
+                onClick={() => void update.downloadDesktopUpdate()}
+              >
+                Download
+              </Button>
+            </Show>
+            <Show when={phase() === "ready" || phase() === "downloading"}>
+              <Button
+                type="button"
+                variant="primary"
+                size="small"
+                disabled={busy() || phase() === "downloading"}
+                onClick={() => void update.installDesktopUpdate()}
+              >
+                {phase() === "downloading" ? downloadLabel(status()) : "Restart to Update"}
+              </Button>
+            </Show>
+          </div>
+        </div>
+      </Show>
+    </div>
   )
 }
 

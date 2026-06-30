@@ -30,13 +30,6 @@ function buildGeneralPatch(cfg: Config, state: SettingsState, patch: Record<stri
   const { general } = state
   if (general.snapshot !== (cfg.snapshot ?? UI_DEFAULTS.snapshot)) patch.snapshot = general.snapshot
 
-  const autoupdateOrig = cfg.autoupdate === undefined ? UI_DEFAULTS.autoupdate : String(cfg.autoupdate)
-  if (general.autoupdate !== autoupdateOrig) {
-    if (general.autoupdate === "true") patch.autoupdate = true
-    else if (general.autoupdate === "false") patch.autoupdate = false
-    else if (general.autoupdate === "notify") patch.autoupdate = "notify"
-  }
-
   const username = general.username.trim()
   if (username !== (cfg.username ?? UI_DEFAULTS.username)) patch.username = username || undefined
 
