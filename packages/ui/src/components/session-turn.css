@@ -99,9 +99,55 @@
     min-width: 0;
     display: flex;
     flex-direction: column;
-    gap: 24px;
     align-items: flex-start;
     align-self: stretch;
+  }
+
+  [data-slot="session-turn-timeline-item"] {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  [data-slot="session-turn-timeline-item"] + [data-slot="session-turn-timeline-item"] {
+    margin-top: 12px;
+  }
+
+  [data-slot="session-turn-timeline-item"][data-kind="tool"]
+    + [data-slot="session-turn-timeline-item"][data-kind="tool"],
+  [data-slot="session-turn-timeline-item"][data-kind="tool"]
+    + [data-slot="session-turn-timeline-item"][data-kind="tool-attachments"] {
+    margin-top: 8px;
+  }
+
+  [data-slot="session-turn-timeline-item"][data-kind="attachment"]
+    + [data-slot="session-turn-timeline-item"][data-kind="tool"],
+  [data-slot="session-turn-timeline-item"][data-kind="tool-attachments"]
+    + [data-slot="session-turn-timeline-item"][data-kind="tool"],
+  [data-slot="session-turn-timeline-item"][data-kind="tool"]
+    + [data-slot="session-turn-timeline-item"][data-kind="attachment"],
+  [data-slot="session-turn-timeline-item"][data-kind="tool"]
+    + [data-slot="session-turn-timeline-item"][data-kind="text"] {
+    margin-top: 10px;
+  }
+
+  [data-slot="session-turn-timeline-item"][data-kind="text"]
+    + [data-slot="session-turn-timeline-item"][data-kind="text"],
+  [data-slot="session-turn-timeline-item"][data-kind="reasoning"]
+    + [data-slot="session-turn-timeline-item"][data-kind="text"],
+  [data-slot="session-turn-timeline-item"][data-kind="reasoning"]
+    + [data-slot="session-turn-timeline-item"][data-kind="media-pending"] {
+    margin-top: 6px;
+  }
+
+  [data-slot="session-turn-timeline-item"] [data-component="attachment-gallery"] {
+    padding-top: 0;
+    padding-bottom: 0;
+  }
+
+  [data-slot="session-turn-timeline-item"] > [data-component="text-part"] [data-component="markdown"],
+  [data-slot="session-turn-timeline-item"] > [data-component="reasoning-part"] [data-component="markdown"] {
+    margin-top: 0;
   }
 
   [data-slot="session-turn-accordion"] {

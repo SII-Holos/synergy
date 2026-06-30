@@ -635,10 +635,6 @@
   overflow: visible;
   animation: tool-card-enter 0.25s ease-out both;
 
-  & + [data-component="tool-part-wrapper"] {
-    margin-top: -8px;
-  }
-
   > [data-component="tool-card-area"] > [data-component="card"][data-variant="error"] {
     border: 1px solid var(--border-critical-base);
     border-radius: var(--radius-lg);

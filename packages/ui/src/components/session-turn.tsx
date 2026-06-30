@@ -19,6 +19,7 @@ import { DiffChanges } from "./diff-changes"
 import { Typewriter } from "./typewriter"
 import { Message, Part } from "./message-part"
 import { AttachmentGallery } from "./attachment-card"
+import { resolveAttachmentPresentation } from "./attachment-card-utils"
 import { MediaGenerationCard } from "./media-generation-card"
 import { isActiveMediaGenerationToolPart, isToolCardHidden } from "./tool-result-presentation"
 import "./session-turn.css"
@@ -72,18 +73,36 @@ export type SessionTurnTimelineItem =
       files: AttachmentPart[]
     }
 
+export type SessionTurnTimelineVisualKind =
+  | "text"
+  | "reasoning"
+  | "tool"
+  | "attachment"
+  | "media-pending"
+  | "tool-attachments"
+
+function visibleAttachmentParts(files: AttachmentPart[] | undefined): AttachmentPart[] {
+  return (files ?? []).filter((file) => !resolveAttachmentPresentation(file).hidden)
+}
+
 export function timelineKindForPart(part: PartType, working: boolean): SessionTurnTimelineItem["kind"] | undefined {
-  if (part.type === "text") return "part"
-  if (part.type === "attachment") return "part"
-  if (part.type === "reasoning") return working ? "reasoning" : undefined
+  if (part.type === "text") return part.text.trim() ? "part" : undefined
+  if (part.type === "attachment") return resolveAttachmentPresentation(part).hidden ? undefined : "part"
+  if (part.type === "reasoning") return working && part.text.trim() ? "reasoning" : undefined
   if (part.type !== "tool") return undefined
   if (isActiveMediaGenerationToolPart(part)) return "media-pending"
   if (isToolCardHidden(part)) {
-    return part.state.status === "completed" && (part.state.attachments?.length ?? 0) > 0
-      ? "tool-attachments"
-      : undefined
+    if (part.state.status !== "completed") return undefined
+    return visibleAttachmentParts(part.state.attachments).length > 0 ? "tool-attachments" : undefined
   }
   return "part"
+}
+
+export function timelineVisualKind(item: SessionTurnTimelineItem): SessionTurnTimelineVisualKind {
+  if (item.kind !== "part") return item.kind
+  if (item.part.type === "tool") return "tool"
+  if (item.part.type === "attachment") return "attachment"
+  return "text"
 }
 
 export function collectSessionTurnTimelineItems(
@@ -106,7 +125,7 @@ export function collectSessionTurnTimelineItems(
 
       if (kind === "tool-attachments") {
         const toolPart = part as ToolPart
-        const files = toolPart.state.status === "completed" ? (toolPart.state.attachments ?? []) : []
+        const files = toolPart.state.status === "completed" ? visibleAttachmentParts(toolPart.state.attachments) : []
         if (files.length === 0) continue
         items.push({ kind, message, part: toolPart, files })
         continue
@@ -382,7 +401,11 @@ export function SessionTurn(
                     <Show when={hasTimelineItems() || (!working() && hasDiffs())}>
                       <div data-slot="session-turn-timeline">
                         <For each={timelineItems()}>
-                          {(item) => <TimelineItemDisplay item={item} serverUrl={data.serverUrl} />}
+                          {(item) => (
+                            <div data-slot="session-turn-timeline-item" data-kind={timelineVisualKind(item)}>
+                              <TimelineItemDisplay item={item} serverUrl={data.serverUrl} />
+                            </div>
+                          )}
                         </For>
                         <Show when={!working() && hasDiffs()}>
                           <Accordion
