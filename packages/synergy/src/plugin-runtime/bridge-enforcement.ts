@@ -1,5 +1,5 @@
 import type { HostBridgeMethod } from "./protocol.js"
-import { pluginBridgeMethodCapability } from "@ericsanchezok/synergy-plugin/permissions"
+import { pluginBridgeMethodCapability, pluginBridgeMethodPolicy } from "@ericsanchezok/synergy-plugin/permissions"
 
 // ---------------------------------------------------------------------------
 // Bridge method → enforcement capability mapping
@@ -14,6 +14,7 @@ import { pluginBridgeMethodCapability } from "@ericsanchezok/synergy-plugin/perm
  * that executes the request.
  */
 export const bridgeMethodCapability = pluginBridgeMethodCapability
+export const bridgeMethodPolicy = pluginBridgeMethodPolicy
 
 // ---------------------------------------------------------------------------
 // Enforcement handler factory
@@ -40,11 +41,13 @@ export function createBridgeEnforcementHandler(
   capabilities: string[],
 ): (method: HostBridgeMethod, _params: unknown) => BridgeEnforcementResult {
   return (method, _params) => {
-    const requiredCap = bridgeMethodCapability(method)
-    if (requiredCap === undefined) {
-      if (method in METHOD_WITHOUT_PREFLIGHT) return { allowed: true }
+    const policy = bridgeMethodPolicy(method)
+    if (policy.type === "unknown") {
       return { allowed: false, reason: `Unknown bridge method: ${method}` }
     }
+    if (policy.type === "unprivileged") return { allowed: true }
+
+    const requiredCap = policy.capability
     if (!capabilities.includes(requiredCap)) {
       return {
         allowed: false,
@@ -54,10 +57,3 @@ export function createBridgeEnforcementHandler(
     return { allowed: true }
   }
 }
-
-const METHOD_WITHOUT_PREFLIGHT = {
-  "cache.get": true,
-  "cache.set": true,
-  "cache.delete": true,
-  "permission.request": true,
-} satisfies Partial<Record<HostBridgeMethod, true>>

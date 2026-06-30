@@ -1,6 +1,6 @@
 import { describe, expect, test, beforeAll, afterAll } from "bun:test"
 import { executeBridgeMethod } from "../../src/plugin-runtime/bridge-handlers.js"
-import { createBridgeEnforcementHandler } from "../../src/plugin-runtime/bridge-enforcement.js"
+import { bridgeMethodPolicy, createBridgeEnforcementHandler } from "../../src/plugin-runtime/bridge-enforcement.js"
 import path from "path"
 import fs from "fs/promises"
 import os from "os"
@@ -287,10 +287,14 @@ describe("bridge-enforcement (denied methods still throw)", () => {
     expect(result.allowed).toBe(false)
   })
 
-  test("enforcer allows cache methods without preflight and requires local tool capability for tool.invoke", () => {
+  test("enforcer follows shared bridge policy for unprivileged and capability-gated methods", () => {
     const enforcer = createBridgeEnforcementHandler("plugin-x", [])
     expect(enforcer("cache.get", {}).allowed).toBe(true)
+    expect(enforcer("permission.request", {}).allowed).toBe(true)
+    expect(bridgeMethodPolicy("cache.get")).toEqual({ type: "unprivileged" })
+    expect(bridgeMethodPolicy("permission.request")).toEqual({ type: "unprivileged" })
     expect(enforcer("tool.invoke", {}).allowed).toBe(false)
+    expect(bridgeMethodPolicy("tool.invoke")).toEqual({ type: "capability", capability: "local_tool_invoke" })
 
     const withLocalTool = createBridgeEnforcementHandler("plugin-x", ["local_tool_invoke"])
     expect(withLocalTool("tool.invoke", {}).allowed).toBe(true)

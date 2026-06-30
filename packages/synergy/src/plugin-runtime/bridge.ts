@@ -1,6 +1,5 @@
 import { randomUUID } from "crypto"
 import type { HostBridgeMethod, HostToPlugin, PluginToHost } from "./protocol.js"
-import { DEFAULT_LIMITS } from "./health.js"
 
 // ---------------------------------------------------------------------------
 // Types
@@ -30,12 +29,14 @@ export interface HostBridge {
 // Pending request tracking
 // ---------------------------------------------------------------------------
 
-export const REQUEST_TIMEOUT_MS = DEFAULT_LIMITS.requestTimeoutMs
-
 type PendingEntry = {
   resolve: (value: unknown) => void
   reject: (reason: unknown) => void
   timer: ReturnType<typeof setTimeout>
+}
+
+export interface BridgeClientOptions {
+  requestTimeoutMs: number
 }
 
 // ---------------------------------------------------------------------------
@@ -44,7 +45,7 @@ type PendingEntry = {
 
 export function createBridgeClient(
   sendToHost: (msg: PluginToHost) => void,
-  options: { requestTimeoutMs?: number } = {},
+  options: BridgeClientOptions,
 ): {
   config: ConfigBridge
   secrets: SecretBridge
@@ -76,7 +77,7 @@ export function createBridgeClient(
       const timer = setTimeout(() => {
         pending.delete(requestId)
         reject(new Error(`host bridge request timed out: ${method}`))
-      }, options.requestTimeoutMs ?? REQUEST_TIMEOUT_MS)
+      }, options.requestTimeoutMs)
 
       pending.set(requestId, { resolve, reject, timer })
       sendToHost({ type: "hostRequest", requestId, method, params })

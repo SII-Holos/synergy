@@ -40,8 +40,8 @@ export type { SpawnedWorkerRuntime } from "./worker-host.js"
 export { spawnPluginWorker } from "./worker-host.js"
 
 // Bridge client (plugin-side)
-export type { ConfigBridge, SecretBridge, CacheBridge, HostBridge } from "./bridge.js"
-export { REQUEST_TIMEOUT_MS, createBridgeClient } from "./bridge.js"
+export type { BridgeClientOptions, ConfigBridge, SecretBridge, CacheBridge, HostBridge } from "./bridge.js"
+export { createBridgeClient } from "./bridge.js"
 
 // Health
 export { DEFAULT_LIMITS } from "./health.js"
@@ -50,7 +50,7 @@ export { DEFAULT_LIMITS } from "./health.js"
 export { ConcurrencyLimiter, getProcessMemoryMb, startMemoryMonitor, LogRateLimiter } from "./resource-limits.js"
 
 // Bridge enforcement (host-side)
-export { bridgeMethodCapability, createBridgeEnforcementHandler } from "./bridge-enforcement.js"
+export { bridgeMethodCapability, bridgeMethodPolicy, createBridgeEnforcementHandler } from "./bridge-enforcement.js"
 export type { BridgeEnforcementResult } from "./bridge-enforcement.js"
 
 // Log buffer

@@ -789,23 +789,37 @@ export function stablePluginJson(value: unknown): string {
   return JSON.stringify(sortKeys(value))
 }
 
-export const PLUGIN_BRIDGE_METHOD_CAPABILITY = {
-  "config.get": "config:read",
-  "config.set": "config:write",
-  "secret.get": "secrets",
-  "secret.set": "secrets",
-  "secret.delete": "secrets",
-  "file.read": "file_read",
-  "file.write": "file_write",
-  "network.fetch": "network_request",
-  "shell.run": "shell",
-  "session.getMetadata": "session_data",
-  "session.read": "session_data",
-  "workspace.getMetadata": "workspace_data",
-  "task.run": "task",
-  "tool.invoke": "local_tool_invoke",
-} as const satisfies Record<string, string>
+export type PluginBridgeMethodPolicy =
+  | { type: "capability"; capability: string }
+  | { type: "unprivileged" }
+  | { type: "unknown" }
+
+export const PLUGIN_BRIDGE_METHOD_POLICY = {
+  "config.get": { type: "capability", capability: "config:read" },
+  "config.set": { type: "capability", capability: "config:write" },
+  "secret.get": { type: "capability", capability: "secrets" },
+  "secret.set": { type: "capability", capability: "secrets" },
+  "secret.delete": { type: "capability", capability: "secrets" },
+  "cache.get": { type: "unprivileged" },
+  "cache.set": { type: "unprivileged" },
+  "cache.delete": { type: "unprivileged" },
+  "file.read": { type: "capability", capability: "file_read" },
+  "file.write": { type: "capability", capability: "file_write" },
+  "network.fetch": { type: "capability", capability: "network_request" },
+  "shell.run": { type: "capability", capability: "shell" },
+  "session.getMetadata": { type: "capability", capability: "session_data" },
+  "session.read": { type: "capability", capability: "session_data" },
+  "workspace.getMetadata": { type: "capability", capability: "workspace_data" },
+  "task.run": { type: "capability", capability: "task" },
+  "tool.invoke": { type: "capability", capability: "local_tool_invoke" },
+  "permission.request": { type: "unprivileged" },
+} as const satisfies Record<string, Exclude<PluginBridgeMethodPolicy, { type: "unknown" }>>
+
+export function pluginBridgeMethodPolicy(method: string): PluginBridgeMethodPolicy {
+  return PLUGIN_BRIDGE_METHOD_POLICY[method as keyof typeof PLUGIN_BRIDGE_METHOD_POLICY] ?? { type: "unknown" }
+}
 
 export function pluginBridgeMethodCapability(method: string): string | undefined {
-  return PLUGIN_BRIDGE_METHOD_CAPABILITY[method as keyof typeof PLUGIN_BRIDGE_METHOD_CAPABILITY]
+  const policy = pluginBridgeMethodPolicy(method)
+  return policy.type === "capability" ? policy.capability : undefined
 }
