@@ -137,7 +137,17 @@ function ProductUpdates() {
         <div class="settings-update-copy">
           <span class="settings-update-title">Product updates</span>
           <span class="settings-update-description">
-            <Show when={isDesktop()} fallback="Refresh this browser when the server has newer Web assets.">
+            <Show
+              when={isDesktop()}
+              fallback={
+                <Show
+                  when={update.webRefreshEnabled}
+                  fallback="Vite keeps this browser current during source development."
+                >
+                  Refresh this browser when the server has newer Web assets.
+                </Show>
+              }
+            >
               Keep the desktop app and bundled server runtime current.
             </Show>
           </span>

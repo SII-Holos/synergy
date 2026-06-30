@@ -33,6 +33,7 @@ export const { use: useProductUpdate, provider: ProductUpdateProvider } = create
     const [serverReconnecting, setServerReconnecting] = createSignal(false)
 
     let hadActiveServerUpdate = false
+    const webRefreshEnabled = !import.meta.env.DEV
 
     async function loadDesktopStatus() {
       const next = await platform.desktopUpdate?.status()
@@ -186,7 +187,9 @@ export const { use: useProductUpdate, provider: ProductUpdateProvider } = create
       onCleanup(() => clearInterval(timer))
     })
 
-    const webNeedsRefresh = createMemo(() => webUpdateNeedsRefresh(platform.version, serverVersion()))
+    const webNeedsRefresh = createMemo(
+      () => webRefreshEnabled && webUpdateNeedsRefresh(platform.version, serverVersion()),
+    )
 
     const notice = createMemo<ProductUpdateNotice>(() =>
       productUpdateNotice({
@@ -194,6 +197,7 @@ export const { use: useProductUpdate, provider: ProductUpdateProvider } = create
         serverStatus: serverStatus(),
         appVersion: platform.version,
         serverVersion: serverVersion(),
+        webRefreshEnabled,
         busy: busy(),
         serverReconnecting: serverReconnecting(),
       }),
@@ -205,6 +209,7 @@ export const { use: useProductUpdate, provider: ProductUpdateProvider } = create
       serverVersion,
       desktopStatus,
       serverStatus,
+      webRefreshEnabled,
       webNeedsRefresh,
       busy,
       notice,

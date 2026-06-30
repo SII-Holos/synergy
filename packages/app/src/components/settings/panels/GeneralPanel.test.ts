@@ -16,11 +16,14 @@ describe("General panel product update behavior", () => {
     expect(productUpdateSurface({})).toBe("web")
   })
 
-  test("prompts Web refresh when the server version differs", () => {
+  test("prompts Web refresh only when the server has a newer release version", () => {
     expect(webUpdateNeedsRefresh("1.2.3", "1.2.4")).toBe(true)
     expect(webUpdateNeedsRefresh("1.2.3", "1.2.3")).toBe(false)
+    expect(webUpdateNeedsRefresh("1.2.3", "1.2.2")).toBe(false)
+    expect(webUpdateNeedsRefresh("1.2.3", "local")).toBe(false)
     expect(webUpdateNeedsRefresh(undefined, "1.2.4")).toBe(false)
-    expect(webVersionStatus("1.2.3", "1.2.4")).toBe("Server 1.2.4 is newer than this Web client.")
+    expect(webVersionStatus("1.2.3", "1.2.4")).toBe("Server 1.2.4 has a newer Web client.")
+    expect(webVersionStatus("1.2.3", "local")).toBe("Connected to local development server.")
   })
 
   test("shows server update actions only for a managed daemon", () => {
@@ -86,6 +89,22 @@ describe("General panel product update behavior", () => {
       action: "refresh",
       progress: 100,
       tone: "ready",
+    })
+
+    expect(
+      productUpdateNotice({
+        desktopStatus: null,
+        serverStatus: null,
+        appVersion: "1.2.3",
+        serverVersion: "1.2.4",
+        webRefreshEnabled: false,
+        busy: null,
+        serverReconnecting: false,
+      }),
+    ).toMatchObject({
+      visible: false,
+      action: null,
+      tone: "neutral",
     })
 
     expect(

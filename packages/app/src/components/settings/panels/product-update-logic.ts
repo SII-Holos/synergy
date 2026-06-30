@@ -20,6 +20,7 @@ export type ProductUpdateNoticeInput = {
   serverStatus: ServerUpdateStatus | null
   appVersion: string | undefined
   serverVersion: string | undefined
+  webRefreshEnabled?: boolean
   busy: ProductUpdateBusyAction
   serverReconnecting: boolean
 }
@@ -29,7 +30,8 @@ export function productUpdateSurface(input: { desktopUpdate?: unknown }) {
 }
 
 export function webUpdateNeedsRefresh(appVersion: string | undefined, serverVersion: string | undefined) {
-  return Boolean(serverVersion && appVersion && serverVersion !== appVersion)
+  if (!appVersion || !serverVersion) return false
+  return semverGt(serverVersion, appVersion)
 }
 
 export function serverUpdateActionState(status: ServerUpdateStatus | null) {
@@ -56,7 +58,12 @@ export function desktopUpdateStatusCopy(status: DesktopUpdateStatus | null) {
 
 export function webVersionStatus(appVersion: string | undefined, serverVersion: string | undefined) {
   if (!serverVersion) return "Checking server version."
-  if (appVersion && appVersion !== serverVersion) return `Server ${serverVersion} is newer than this Web client.`
+  if (serverVersion === "local") return "Connected to local development server."
+  if (appVersion && webUpdateNeedsRefresh(appVersion, serverVersion)) {
+    return `Server ${serverVersion} has a newer Web client.`
+  }
+  if (appVersion && appVersion !== serverVersion)
+    return `Web client ${appVersion} is running with server ${serverVersion}.`
   return `Web client is current${appVersion ? ` at ${appVersion}` : ""}.`
 }
 
@@ -186,7 +193,7 @@ export function productUpdateNotice(input: ProductUpdateNoticeInput): ProductUpd
       busy: Boolean(input.busy),
     }
   }
-  if (webUpdateNeedsRefresh(input.appVersion, input.serverVersion)) {
+  if ((input.webRefreshEnabled ?? true) && webUpdateNeedsRefresh(input.appVersion, input.serverVersion)) {
     return {
       visible: true,
       title: "Web update ready",
@@ -199,6 +206,23 @@ export function productUpdateNotice(input: ProductUpdateNoticeInput): ProductUpd
     }
   }
   return hiddenProductUpdateNotice(input.busy)
+}
+
+function semverGt(candidate: string, current: string) {
+  const next = parseReleaseVersion(candidate)
+  const prev = parseReleaseVersion(current)
+  if (!next || !prev) return false
+  for (let i = 0; i < 3; i++) {
+    if (next[i] > prev[i]) return true
+    if (next[i] < prev[i]) return false
+  }
+  return false
+}
+
+function parseReleaseVersion(value: string) {
+  const match = value.trim().match(/^(\d+)\.(\d+)\.(\d+)(?:[-+].*)?$/)
+  if (!match) return null
+  return [Number(match[1]), Number(match[2]), Number(match[3])] as [number, number, number]
 }
 
 function hiddenProductUpdateNotice(busy: ProductUpdateBusyAction): ProductUpdateNotice {
