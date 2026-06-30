@@ -128,6 +128,84 @@ describe("computePermissionsHash", () => {
     expect(computePermissionsHash(a, [])).not.toBe(computePermissionsHash(b, []))
   })
 
+  test("does not differ when non-permission contribution metadata changes", () => {
+    const a = minimalManifest({
+      icon: "icons/market.svg",
+      contributes: {
+        tools: [
+          {
+            name: "greet",
+            description: "Greet a user",
+            icon: "message-circle",
+            capabilities: {
+              filesystem: "none" as const,
+              network: false,
+              shell: false,
+            },
+          },
+        ],
+        ui: {
+          routes: [{ path: "/hello", entry: "./ui/hello.js", label: "Hello" }],
+        },
+      },
+    })
+    const b = minimalManifest({
+      icon: "icons/new-market.svg",
+      contributes: {
+        tools: [
+          {
+            name: "greet",
+            description: "Greet a person with updated copy",
+            icon: "sparkles",
+            capabilities: {
+              filesystem: "none" as const,
+              network: false,
+              shell: false,
+            },
+          },
+        ],
+        ui: {
+          routes: [{ path: "/hello-renamed", entry: "./ui/hello-renamed.js", label: "Hello renamed" }],
+        },
+      },
+    })
+    expect(computePermissionsHash(a, [])).toBe(computePermissionsHash(b, []))
+  })
+
+  test("differs when tool capability declarations change", () => {
+    const a = minimalManifest({
+      contributes: {
+        tools: [
+          {
+            name: "greet",
+            description: "Greet a user",
+            capabilities: {
+              filesystem: "none" as const,
+              network: false,
+              shell: false,
+            },
+          },
+        ],
+      },
+    })
+    const b = minimalManifest({
+      contributes: {
+        tools: [
+          {
+            name: "greet",
+            description: "Greet a user",
+            capabilities: {
+              filesystem: "read" as const,
+              network: false,
+              shell: false,
+            },
+          },
+        ],
+      },
+    })
+    expect(computePermissionsHash(a, [])).not.toBe(computePermissionsHash(b, []))
+  })
+
   test("differs when capability-bearing contributions change", () => {
     const a = minimalManifest({
       contributes: {

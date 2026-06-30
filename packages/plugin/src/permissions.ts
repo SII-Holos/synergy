@@ -778,8 +778,57 @@ export function permissionsHashPayload(manifest: PluginManifest, capabilities: s
   return {
     capabilities: [...capabilities].sort(),
     permissions: manifest.permissions ?? {},
-    contributes: manifest.contributes ?? {},
+    contributes: permissionsRelevantContributes(manifest),
     lifecycle: manifest.lifecycle ?? {},
+  }
+}
+
+function permissionsRelevantContributes(manifest: PluginManifest) {
+  const contributes = manifest.contributes
+  if (!contributes) return undefined
+
+  return {
+    ...(contributes.permissions ? { permissions: contributes.permissions } : {}),
+    ...(contributes.tools
+      ? {
+          tools: contributes.tools.map((tool) => ({
+            id: tool.id,
+            name: tool.name,
+            exposure: tool.exposure,
+            capabilities: tool.capabilities,
+            risk: tool.risk,
+          })),
+        }
+      : {}),
+    ...(contributes.agents
+      ? {
+          agents: contributes.agents.map((agent) => ({
+            name: agent.name,
+            mode: agent.mode,
+            hidden: agent.hidden,
+            model: agent.model,
+            modelRole: agent.modelRole,
+            permission: agent.permission,
+          })),
+        }
+      : {}),
+    ...(contributes.mcp ? { mcp: contributes.mcp } : {}),
+    ...(contributes.ui
+      ? {
+          ui: {
+            toolRenderers: Boolean(contributes.ui.toolRenderers?.length),
+            partRenderers: Boolean(contributes.ui.partRenderers?.length),
+            workspacePanels: Boolean(contributes.ui.workspacePanels?.length),
+            globalPanels: Boolean(contributes.ui.globalPanels?.length),
+            settings: Boolean(contributes.ui.settings?.length),
+            chatComponents: Boolean(contributes.ui.chatComponents?.length),
+            themes: Boolean(contributes.ui.themes?.length),
+            icons: Boolean(contributes.ui.icons?.length),
+            routes: Boolean(contributes.ui.routes?.length),
+            commands: Boolean(contributes.ui.commands?.length),
+          },
+        }
+      : {}),
   }
 }
 
