@@ -3,6 +3,7 @@ import { describeRoute, resolver } from "hono-openapi"
 import z from "zod"
 import { Plugin } from "../plugin/index"
 import { getRuntime, getLogBuffer, startRuntime, stopRuntime, reloadRuntime } from "../plugin-runtime/supervisor"
+import { ScopeContext } from "../scope/context"
 import { errors } from "./error"
 
 // ── Response schemas ──
@@ -58,6 +59,16 @@ function runtimeToResponse(pluginId: string) {
   }
 }
 
+export function runtimeStartOptions(plugin: NonNullable<Awaited<ReturnType<typeof Plugin.get>>>) {
+  return {
+    mode: plugin.runtimeMode ?? "in-process",
+    source: plugin.source!,
+    entryPath: plugin.entryPath ?? plugin.pluginDir,
+    pluginDir: plugin.pluginDir,
+    scope: ScopeContext.current.scope,
+  }
+}
+
 // ── Route group ──
 
 export const PluginRuntimeRoute = new Hono()
@@ -90,12 +101,7 @@ export const PluginRuntimeRoute = new Hono()
         return c.json(runtimeToResponse(pluginId))
       } catch (err: any) {
         // If reloadRuntime threw because the plugin wasn't registered, start it fresh
-        await startRuntime(pluginId, {
-          mode: plugin.runtimeMode ?? "in-process",
-          source: plugin.source,
-          entryPath: plugin.entryPath ?? plugin.pluginDir,
-          pluginDir: plugin.pluginDir,
-        })
+        await startRuntime(pluginId, runtimeStartOptions(plugin))
         return c.json(runtimeToResponse(pluginId))
       }
     },
@@ -151,12 +157,7 @@ export const PluginRuntimeRoute = new Hono()
       if (!plugin) return c.json({ message: `Plugin not found: ${pluginId}` }, 404)
       if (!plugin.source) return c.json({ message: `Plugin source not recorded: ${pluginId}` }, 500)
 
-      await startRuntime(pluginId, {
-        mode: plugin.runtimeMode ?? "in-process",
-        source: plugin.source,
-        entryPath: plugin.entryPath ?? plugin.pluginDir,
-        pluginDir: plugin.pluginDir,
-      })
+      await startRuntime(pluginId, runtimeStartOptions(plugin))
       return c.json(runtimeToResponse(pluginId))
     },
   )

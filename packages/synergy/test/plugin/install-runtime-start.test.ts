@@ -1,4 +1,5 @@
 import { describe, expect, test, mock } from "bun:test"
+import { tmpdir } from "../fixture/fixture"
 
 // ---------------------------------------------------------------------------
 // Mock the plugin-runtime supervisor BEFORE any imports that use it.
@@ -50,6 +51,7 @@ mock.module("../../src/plugin-runtime/supervisor.js", () => {
 // ---------------------------------------------------------------------------
 
 const { autoStartRuntime } = await import("../../src/plugin/install.js")
+const { ScopeContext } = await import("../../src/scope/context.js")
 
 const log = await import("../../src/util/log.js")
 log.Log.init({ print: false })
@@ -84,6 +86,32 @@ describe("autoStartRuntime", () => {
     expect(mockStartRuntimeCalls[0].options.mode).toBe("process")
     expect(mockStartRuntimeCalls[0].options.entryPath).toBe("/tmp/test-plugin/index.js")
     expect(mockStartRuntimeCalls[0].options.pluginDir).toBe("/tmp/test-plugin")
+  })
+
+  test("process mode install starts runtime with the active scope", async () => {
+    resetMockState()
+    await using tmp = await tmpdir({ git: true })
+    const scope = await tmp.scope()
+
+    await ScopeContext.provide({
+      scope,
+      fn: async () => {
+        await autoStartRuntime({
+          pluginId: "scoped-plugin",
+          mode: "process",
+          entryPath: "/tmp/scoped-plugin/index.js",
+          pluginDir: "/tmp/scoped-plugin",
+          source: "local",
+        })
+      },
+    })
+
+    expect(mockStartRuntimeCalls).toHaveLength(1)
+    expect(mockStartRuntimeCalls[0].options.scope).toMatchObject({
+      id: scope.id,
+      directory: scope.directory,
+      worktree: scope.worktree,
+    })
   })
 
   test("worker mode install calls startRuntime with worker mode", async () => {

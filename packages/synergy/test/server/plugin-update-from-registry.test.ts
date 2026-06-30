@@ -220,6 +220,30 @@ describe("POST /api/plugins/:pluginId/update-from-registry — success responses
     })
   })
 
+  test("uses requested registry source when installed source is not a registry source", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const plugin = buildLoadedPlugin({ source: "npm" })
+    const manifest = buildManifest({ version: "2.0.0" })
+    ;(Plugin as any).get = mock(async () => plugin)
+    ;(Plugin as any).manifest = mock(async () => manifest)
+
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const app = Server.App()
+        const res = await app.request("/api/plugins/test-plugin/update-from-registry", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ source: "official", targetVersion: "2.0.0" }),
+        })
+        expect(res.status).toBe(200)
+        const body = await res.json()
+        expect(body.updateAvailable).toBe(false)
+        expect(body.source).toBe("official")
+      },
+    })
+  })
+
   test("returns permission diff and requiresConsent when update needs approval", async () => {
     await using tmp = await tmpdir({ git: true })
     const plugin = buildLoadedPlugin()

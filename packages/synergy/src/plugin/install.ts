@@ -369,12 +369,13 @@ export async function autoStartRuntime(input: AutoStartRuntimeInput): Promise<bo
 
   try {
     const { startRuntime } = await import("../plugin-runtime/supervisor.js")
+    const scope = ScopeContext.tryScope()
     await startRuntime(input.pluginId, {
       mode: input.mode as "worker" | "process",
       source: input.source,
       entryPath: input.entryPath,
       pluginDir: input.pluginDir,
-      scope: ScopeContext.current.scope,
+      ...(scope ? { scope } : {}),
     })
     log.info("plugin runtime auto-started", { pluginId: input.pluginId, mode: input.mode })
     return true
