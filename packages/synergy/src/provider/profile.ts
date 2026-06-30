@@ -84,6 +84,12 @@ export namespace ProviderProfile {
     body?: unknown
   }
 
+  export interface ModelCatalogEntry {
+    id: string
+    rank?: number
+    model?: Partial<ModelsDev.Model>
+  }
+
   export interface Profile {
     id: string
     name: string
@@ -122,6 +128,7 @@ export namespace ProviderProfile {
     }): ClassifiedError | undefined
     runtimeOptions?(input: RuntimeOptionsInput): Promise<Record<string, any>>
     getModel?(input: ModelFactoryInput): Promise<any>
+    fetchModelCatalog?(input: { auth?: Auth.Info; fetch?: FetchLike; baseURL?: string }): Promise<ModelCatalogEntry[]>
     fetchModels?(input: { auth?: Auth.Info; fetch?: FetchLike; baseURL?: string }): Promise<string[]>
     fetchUsage?(input?: { fetch?: FetchLike }): Promise<AccountUsage.Snapshot>
   }

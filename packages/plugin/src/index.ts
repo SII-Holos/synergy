@@ -376,6 +376,11 @@ export type ProviderProfileHook = {
     | undefined
   runtimeOptions?: (input: { providerID: string; auth?: Auth; provider?: Provider }) => Promise<Record<string, any>>
   getModel?: (input: { sdk: any; modelID: string; options?: Record<string, any> }) => Promise<any>
+  fetchModelCatalog?: (input: {
+    auth?: Auth
+    fetch?: typeof fetch
+    baseURL?: string
+  }) => Promise<Array<{ id: string; rank?: number; model?: Partial<Model> }>>
   fetchModels?: (input: { auth?: Auth; fetch?: typeof fetch; baseURL?: string }) => Promise<string[]>
 }
 

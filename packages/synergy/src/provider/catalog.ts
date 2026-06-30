@@ -5,6 +5,7 @@ import { mergeDeep } from "remeda"
 import z from "zod"
 import { Auth } from "./api-key"
 import { registerBuiltinProviderProfiles } from "./builtin"
+import { CodexProvider } from "./codex"
 import { ModelsDev } from "./models"
 import { ProviderProfile } from "./profile"
 
@@ -78,6 +79,47 @@ export namespace ProviderCatalog {
     }
   }
 
+  function modelFromSource(input: {
+    modelID: string
+    provider: ModelsDev.Provider
+    sourceModel?: ModelsDev.Model
+    profile?: ProviderProfile.Profile
+    npm: string
+    patch?: Partial<ModelsDev.Model>
+  }): ModelsDev.Model {
+    const base = input.sourceModel
+      ? {
+          ...input.sourceModel,
+          id: input.modelID,
+          options: { ...input.sourceModel.options },
+          headers: { ...input.sourceModel.headers },
+          provider: {
+            ...(input.sourceModel.provider ?? {}),
+            npm: input.profile?.aiSdkPackage ?? input.sourceModel.provider?.npm ?? input.provider.npm ?? input.npm,
+          },
+        }
+      : fallbackModel(input.provider, input.modelID)
+    const model = input.patch ? (mergeDeep(base, input.patch) as ModelsDev.Model) : base
+    model.id = input.modelID
+    model.provider = {
+      ...(model.provider ?? {}),
+      npm: input.profile?.aiSdkPackage ?? model.provider?.npm ?? input.provider.npm ?? input.npm,
+    }
+    return model
+  }
+
+  function withBuiltinSourceSurfaces(
+    modelsDev: Record<string, ModelsDev.Provider>,
+  ): Record<string, ModelsDev.Provider> {
+    return {
+      ...modelsDev,
+      [CodexProvider.PROVIDER_ID]: CodexProvider.modelsDevProvider(
+        CodexProvider.DEFAULT_MODEL_IDS,
+        modelsDev.openai?.models,
+      ),
+    }
+  }
+
   function profileProvider(
     profile: ProviderProfile.Profile,
     modelsDev: Record<string, ModelsDev.Provider>,
@@ -107,16 +149,13 @@ export namespace ProviderCatalog {
     const npm = profile.aiSdkPackage ?? source?.npm ?? provider.npm ?? "@ai-sdk/openai-compatible"
     for (const modelID of modelIDs) {
       const sourceModel = source?.models?.[modelID]
-      provider.models[modelID] = sourceModel
-        ? {
-            ...sourceModel,
-            id: modelID,
-            provider: {
-              ...(sourceModel.provider ?? {}),
-              npm: profile.aiSdkPackage ?? sourceModel.provider?.npm ?? source?.npm ?? npm,
-            },
-          }
-        : fallbackModel(provider, modelID)
+      provider.models[modelID] = modelFromSource({
+        modelID,
+        provider,
+        sourceModel,
+        profile,
+        npm,
+      })
     }
     return provider
   }
@@ -223,29 +262,33 @@ export namespace ProviderCatalog {
     profile: ProviderProfile.Profile,
     modelsDev: Record<string, ModelsDev.Provider>,
   ): Promise<ModelsDev.Provider> {
-    if (!profile.fetchModels) return provider
+    if (!profile.fetchModelCatalog && !profile.fetchModels) return provider
     const auth = await Auth.get(profile.id)
     if (!auth && profile.authKind !== "none") return provider
-    const live = await profile.fetchModels({ auth, fetch }).catch((error) => {
+    let live: ProviderProfile.ModelCatalogEntry[]
+    try {
+      live = profile.fetchModelCatalog
+        ? await profile.fetchModelCatalog({ auth, fetch, baseURL: profile.baseURL })
+        : (await profile.fetchModels!({ auth, fetch, baseURL: profile.baseURL })).map((id) => ({ id }))
+    } catch (error) {
       log.warn("failed to fetch live provider models", { providerID: profile.id, error })
-      return []
-    })
+      live = []
+    }
     if (!live.length) return provider
     const source = modelsDev[profile.modelsDevProviderID ?? profile.id]
     const npm = profile.aiSdkPackage ?? source?.npm ?? provider.npm ?? "@ai-sdk/openai-compatible"
     const next: ModelsDev.Provider = { ...provider, models: {} }
-    for (const modelID of live) {
+    for (const entry of live) {
+      const modelID = entry.id
       const sourceModel = source?.models?.[modelID] ?? provider.models[modelID]
-      next.models[modelID] = sourceModel
-        ? {
-            ...sourceModel,
-            id: modelID,
-            provider: {
-              ...(sourceModel.provider ?? {}),
-              npm: profile.aiSdkPackage ?? sourceModel.provider?.npm ?? provider.npm ?? npm,
-            },
-          }
-        : fallbackModel(provider, modelID)
+      next.models[modelID] = modelFromSource({
+        modelID,
+        provider,
+        sourceModel,
+        profile,
+        npm,
+        patch: entry.model,
+      })
     }
     return next
   }
@@ -272,7 +315,7 @@ export namespace ProviderCatalog {
     registerBuiltinProviderProfiles()
     await registerPluginProfiles()
     const config = Config.parse((input?.config as any)?.providerCatalog ?? {})
-    const modelsDev = { ...(await ModelsDev.get()) }
+    const modelsDev = withBuiltinSourceSurfaces(await ModelsDev.get())
     const result: Record<string, ModelsDev.Provider> = { ...modelsDev }
 
     for (const [providerID, provider] of Object.entries(bundledSnapshot(modelsDev))) {
@@ -296,7 +339,7 @@ export namespace ProviderCatalog {
               id: modelID,
               provider: {
                 ...(sourceModel.provider ?? {}),
-                npm: merged.npm ?? sourceModel.provider?.npm ?? source?.npm,
+                npm: merged.npm ?? sourceModel.provider?.npm ?? source?.npm ?? "@ai-sdk/openai-compatible",
               },
             }
             continue
@@ -308,7 +351,7 @@ export namespace ProviderCatalog {
                 id: modelID,
                 provider: {
                   ...(sourceModel.provider ?? {}),
-                  npm: merged.npm ?? sourceModel.provider?.npm ?? source?.npm,
+                  npm: merged.npm ?? sourceModel.provider?.npm ?? source?.npm ?? "@ai-sdk/openai-compatible",
                 },
               }
             : fallbackModel(merged, modelID)
@@ -364,6 +407,7 @@ export namespace ProviderCatalog {
           classifyError: profile.classifyError as ProviderProfile.Profile["classifyError"],
           runtimeOptions: profile.runtimeOptions as ProviderProfile.Profile["runtimeOptions"],
           getModel: profile.getModel as ProviderProfile.Profile["getModel"],
+          fetchModelCatalog: profile.fetchModelCatalog as ProviderProfile.Profile["fetchModelCatalog"],
           fetchModels: profile.fetchModels as ProviderProfile.Profile["fetchModels"],
         })
       }
@@ -372,9 +416,10 @@ export namespace ProviderCatalog {
 
   export function bundledSnapshot(modelsDev: Record<string, ModelsDev.Provider>): Record<string, ModelsDev.Provider> {
     registerBuiltinProviderProfiles()
+    const sourceModelsDev = withBuiltinSourceSurfaces(modelsDev)
     const result: Record<string, ModelsDev.Provider> = {}
     for (const profile of ProviderProfile.all()) {
-      result[profile.id] = profileProvider(profile, modelsDev)
+      result[profile.id] = profileProvider(profile, sourceModelsDev)
     }
     return result
   }

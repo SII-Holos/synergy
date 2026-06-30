@@ -267,7 +267,7 @@ test("fetchModelIDs sorts visible Codex models and sends Codex headers", async (
     return jsonResponse({
       models: [
         { slug: "gpt-5.5", priority: 20 },
-        { slug: "gpt-5.4-mini", priority: 10 },
+        { slug: "gpt-5.4-mini", priority: 10, supported_in_api: false },
         { slug: "hidden-model", visibility: "hidden", priority: 1 },
       ],
     })
@@ -276,14 +276,86 @@ test("fetchModelIDs sorts visible Codex models and sends Codex headers", async (
   expect(ids).toEqual(["gpt-5.4-mini", "gpt-5.5"])
 })
 
+test("fetchModelCatalog parses Codex context windows without filtering supported_in_api false", async () => {
+  const token = accessToken({ accountID: "acct_catalog" })
+  const catalog = await CodexProvider.fetchModelCatalog(token, async (input, init) => {
+    expect(String(input)).toBe("https://chatgpt.com/backend-api/codex/models?client_version=1.0.0")
+    const headers = new Headers(init?.headers)
+    expect(headers.get("authorization")).toBe(`Bearer ${token}`)
+    expect(headers.get("chatgpt-account-id")).toBe("acct_catalog")
+    return jsonResponse({
+      models: [
+        { slug: "gpt-5.5", priority: 20, context_window: 272_000, supported_in_api: false },
+        { slug: "gpt-5.3-codex-spark", priority: 10, context_window: 128_000 },
+        { slug: "hidden-model", visibility: "hidden", priority: 1, context_window: 64_000 },
+      ],
+    })
+  })
+
+  expect(catalog).toEqual([
+    {
+      id: "gpt-5.3-codex-spark",
+      rank: 10,
+      model: {
+        limit: { context: 128_000, input: 128_000, output: 32_000 },
+      },
+    },
+    {
+      id: "gpt-5.5",
+      rank: 20,
+      model: {
+        limit: { context: 272_000, input: 272_000, output: 128_000 },
+      },
+    },
+  ])
+})
+
 test("provider catalog includes OpenAI Codex before login", async () => {
-  const catalog = await ProviderCatalog.resolve({ forceRefresh: true })
+  const catalog = await ProviderCatalog.resolve({
+    forceRefresh: true,
+    config: { providerCatalog: { enabled: false, offlineCache: false } },
+  })
   const codex = catalog[CodexProvider.PROVIDER_ID]
 
   expect(codex).toBeDefined()
   expect(codex.name).toBe("OpenAI Codex")
   expect(codex.models["gpt-5.4-mini"]).toBeDefined()
   expect(codex.models["gpt-5.4-mini"].provider?.npm).toBe("@ai-sdk/openai")
+  expect(codex.models["gpt-5.5"].limit.context).toBe(272_000)
+  expect(codex.models["gpt-5.5"].limit.input).toBe(272_000)
+  expect(codex.models["gpt-5.3-codex-spark"].limit.context).toBe(128_000)
+  expect(catalog.openai.models["gpt-5.5"].limit.context).toBe(1_050_000)
+})
+
+test("logged-in Codex provider applies fallback context when live metadata omits context_window", async () => {
+  const token = accessToken({ exp: nowSeconds() + 60 * 60 })
+  await Auth.set(CodexProvider.PROVIDER_ID, {
+    type: "oauth",
+    access: token,
+    refresh: "refresh-provider",
+    expires: nowSeconds() + 60 * 60,
+  })
+  globalThis.fetch = asFetch(async () =>
+    jsonResponse({
+      models: [
+        { slug: "gpt-5.5", priority: 1 },
+        { slug: "gpt-5.3-codex-spark", priority: 2 },
+      ],
+    }),
+  )
+
+  const catalog = await ProviderCatalog.resolve({
+    forceRefresh: true,
+    includeLive: true,
+    config: { providerCatalog: { enabled: false, offlineCache: false } },
+  })
+  const codex = catalog[CodexProvider.PROVIDER_ID]
+
+  expect(Object.keys(codex.models)).toEqual(["gpt-5.5", "gpt-5.3-codex-spark"])
+  expect(codex.models["gpt-5.5"].limit.context).toBe(272_000)
+  expect(codex.models["gpt-5.5"].limit.input).toBe(272_000)
+  expect(codex.models["gpt-5.3-codex-spark"].limit.context).toBe(128_000)
+  expect(codex.models["gpt-5.3-codex-spark"].limit.input).toBe(128_000)
 })
 
 test("provider auth registry exposes built-in Codex OAuth method", async () => {
@@ -351,7 +423,7 @@ test("logged-in Codex provider loads account-visible models and respects provide
   })
   globalThis.fetch = asFetch(async () =>
     jsonResponse({
-      models: [{ slug: "gpt-5.4-mini", priority: 1 }],
+      models: [{ slug: "gpt-5.4-mini", priority: 1, context_window: 272_000 }],
     }),
   )
 
@@ -363,6 +435,8 @@ test("logged-in Codex provider loads account-visible models and respects provide
       const providers = await Provider.list()
       expect(providers[CodexProvider.PROVIDER_ID]).toBeDefined()
       expect(Object.keys(providers[CodexProvider.PROVIDER_ID].models)).toEqual(["gpt-5.4-mini"])
+      expect(providers[CodexProvider.PROVIDER_ID].models["gpt-5.4-mini"].limit.context).toBe(272_000)
+      expect(providers[CodexProvider.PROVIDER_ID].models["gpt-5.4-mini"].limit.input).toBe(272_000)
     },
   })
 
