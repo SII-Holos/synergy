@@ -969,7 +969,10 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       return
     }
 
-    if (store.popover && (event.key === "ArrowUp" || event.key === "ArrowDown" || event.key === "Enter")) {
+    if (
+      store.popover &&
+      (event.key === "ArrowUp" || event.key === "ArrowDown" || event.key === "Enter" || event.key === "Tab")
+    ) {
       if (store.popover === "at") {
         atOnKeyDown(event)
       } else {

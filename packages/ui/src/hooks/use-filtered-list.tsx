@@ -76,7 +76,7 @@ export function useFilteredList<T>(props: FilteredListProps<T>) {
   }
 
   const onKeyDown = (event: KeyboardEvent) => {
-    if (event.key === "Enter") {
+    if (event.key === "Enter" || event.key === "Tab") {
       event.preventDefault()
       const selectedIndex = flat().findIndex((x) => props.key(x) === list.active())
       const selected = flat()[selectedIndex]
