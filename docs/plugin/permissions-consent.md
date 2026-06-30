@@ -62,7 +62,6 @@ At execution time Synergy registers plugin tools as `plugin__<pluginId>__<toolNa
 | `tools.filesystem: "write"` | `file_read`, `file_write`     |
 | `tools.shell: true`         | `shell`                       |
 | `tools.network: true`       | `network_request`             |
-| `tools.invoke: true`        | `tool_invoke`                 |
 | `tools.mcp: "invoke"`       | `mcp_invoke`                  |
 | `tools.mcp: "spawn"`        | `mcp_invoke`, `mcp_spawn`     |
 | `tools.task`                | `task`                        |

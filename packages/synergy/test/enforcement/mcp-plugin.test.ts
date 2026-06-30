@@ -124,6 +124,21 @@ describe("EnforcementGate plugin opaque strategy", () => {
     expect(pluginCap.nonBypassable).toBe(true)
   })
 
+  test("local custom tools are protected opaque operations", async () => {
+    const gate = await EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+    })
+
+    const result = gate.classify("local__custom__run", {})
+
+    const cap = result.capabilities.find((item: any) => item.class === "protected_op")!
+    expect(cap).toBeDefined()
+    expect(cap.nonBypassable).toBe(true)
+    expect(cap.opaque).toBe(true)
+    expect(cap.reason).toBe("local custom tool")
+  })
+
   test("plugin tool with unknown plugin name is classified as opaque", async () => {
     const gate = await EnforcementGate.create({
       activeWorkspace: "/Users/test/synergy-control-profile",

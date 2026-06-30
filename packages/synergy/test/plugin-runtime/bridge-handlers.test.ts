@@ -321,13 +321,10 @@ describe("bridge-enforcement (denied methods still throw)", () => {
     const enforcer = createBridgeEnforcementHandler("plugin-x", [])
     expect(enforcer("cache.get", {}).allowed).toBe(true)
     expect(enforcer("permission.request", { permission: "file_read" }).allowed).toBe(false)
+    expect(enforcer("tool.invoke", {}).allowed).toBe(true)
     expect(bridgeMethodPolicy("cache.get")).toEqual({ type: "unprivileged" })
     expect(bridgeMethodPolicy("permission.request")).toEqual({ type: "unprivileged" })
-    expect(enforcer("tool.invoke", {}).allowed).toBe(false)
-    expect(bridgeMethodPolicy("tool.invoke")).toEqual({ type: "capability", capability: "tool_invoke" })
-
-    const withLocalTool = createBridgeEnforcementHandler("plugin-x", ["tool_invoke"])
-    expect(withLocalTool("tool.invoke", {}).allowed).toBe(true)
+    expect(bridgeMethodPolicy("tool.invoke")).toEqual({ type: "unprivileged" })
 
     const withFileRead = createBridgeEnforcementHandler("plugin-x", ["file_read"])
     expect(withFileRead("permission.request", { permission: "file_read" }).allowed).toBe(true)

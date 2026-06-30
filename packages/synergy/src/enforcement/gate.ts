@@ -483,7 +483,12 @@ export namespace EnforcementGate {
 
       // Local tools: local__fileName__exportName
       if (toolName.startsWith("local__")) {
-        caps.push({ class: "tool_invoke", nonBypassable: false })
+        caps.push({
+          class: "protected_op",
+          nonBypassable: true,
+          opaque: true,
+          reason: "local custom tool",
+        })
         return { capabilities: caps }
       }
 

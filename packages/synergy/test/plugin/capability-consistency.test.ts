@@ -5,6 +5,7 @@ import {
   capabilityRisk,
   computeRisk,
   permissionCapability,
+  PROFILE_CAPABILITIES,
 } from "@ericsanchezok/synergy-plugin/permissions"
 import {
   computePermissionsHash as runtimeComputePermissionsHash,
@@ -25,6 +26,18 @@ describe("plugin capability consistency", () => {
     })
 
     expect(baseCapabilities(manifest)).not.toContain("config:read")
+  })
+
+  test("does not grant a plugin-specific invoke capability", () => {
+    const manifest = PluginManifest.parse({
+      name: "minimal-plugin",
+      version: "1.0.0",
+      description: "Plugin without host-service capabilities",
+      permissions: {},
+    })
+
+    expect(baseCapabilities(manifest)).not.toContain("tool_invoke")
+    expect(PROFILE_CAPABILITIES).not.toContain("tool_invoke")
   })
 
   test("grants plugin config access when manifest declares it", () => {

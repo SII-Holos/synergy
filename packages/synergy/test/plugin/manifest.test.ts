@@ -184,6 +184,20 @@ describe("PluginManifest schema", () => {
     })
     expect(result.success).toBe(false)
   })
+
+  test("plugin-specific invoke permission is rejected", () => {
+    const result = PluginManifest.safeParse({
+      name: "invoke-permission-plugin",
+      version: "1.0.0",
+      description: "Uses removed plugin-specific invoke permission",
+      permissions: {
+        tools: {
+          invoke: true,
+        },
+      },
+    })
+    expect(result.success).toBe(false)
+  })
 })
 
 test('filesystem: true is migrated to "write" (backward compat)', () => {

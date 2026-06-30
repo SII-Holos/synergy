@@ -195,12 +195,6 @@ export const CAPABILITY_DETAILS: Record<string, SynergyCapabilityDefinition> = {
     title: "Subscribe to Synergy events",
     description: "Can receive approved Synergy runtime events.",
   },
-  tool_invoke: {
-    category: "tools",
-    severity: "low",
-    title: "Invoke Synergy tools",
-    description: "Can call tools explicitly provided to the current Synergy runtime.",
-  },
   session_state: {
     category: "session",
     severity: "low",
@@ -311,7 +305,6 @@ export const PROFILE_CAPABILITIES = [
   "tool_execution_hook",
   "permission_hook",
   "event_hook",
-  "tool_invoke",
   "identity_act",
   "communication_email",
   "channel_outbound",
@@ -385,7 +378,6 @@ export const PERMISSION_CAPABILITY: Record<string, string> = {
   "config:read": "config:read",
   "config:write": "config:write",
   secrets: "secrets",
-  tool_invoke: "tool_invoke",
   email_read: "communication_email",
   email_send: "communication_email",
   communication_email: "communication_email",
@@ -447,7 +439,6 @@ function buildCapabilitySet(
     caps.add("file_write")
   }
 
-  if (pt?.invoke ?? false) caps.add("tool_invoke")
   if (tc?.shell ?? pt?.shell ?? false) caps.add("shell")
   if (tc?.network ?? pt?.network ?? false) caps.add("network_request")
 
@@ -862,7 +853,7 @@ export const PLUGIN_BRIDGE_METHOD_POLICY = {
   "session.read": { type: "capability", capability: "session_data" },
   "workspace.getMetadata": { type: "capability", capability: "workspace_data" },
   "task.run": { type: "capability", capability: "task" },
-  "tool.invoke": { type: "capability", capability: "tool_invoke" },
+  "tool.invoke": { type: "unprivileged" },
   "permission.request": { type: "unprivileged" },
 } as const satisfies Record<string, Exclude<PluginBridgeMethodPolicy, { type: "unknown" }>>
 
