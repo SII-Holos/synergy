@@ -1323,16 +1323,6 @@
   min-height: 54px;
 }
 
-.sidebar-agent-import-note {
-  margin: 0;
-  padding-top: 12px;
-  border-top: 1px solid var(--agent-dialog-border);
-  color: var(--text-weak);
-  font-size: var(--font-size-x-small);
-  line-height: 1.45;
-  text-wrap: pretty;
-}
-
 .sidebar-agent-import-actions {
   display: flex;
   justify-content: flex-end;

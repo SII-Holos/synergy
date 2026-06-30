@@ -1167,7 +1167,6 @@ function SidebarAgentHub(props: { isExpanded: boolean; globalSDK: ReturnType<typ
                 >
                   <Icon name={getSemanticIcon("account.create")} size="small" />
                   <span>Create Agent</span>
-                  <span class="sidebar-account-menuStatus">{holosMenuRightLabel()}</span>
                 </button>
                 <button
                   type="button"
@@ -1177,6 +1176,29 @@ function SidebarAgentHub(props: { isExpanded: boolean; globalSDK: ReturnType<typ
                 >
                   <Icon name={getSemanticIcon("account.import")} size="small" />
                   <span>Import Agent</span>
+                </button>
+                <button
+                  type="button"
+                  class="sidebar-account-menuItem"
+                  role="menuitem"
+                  onClick={() => openSettings("general")}
+                >
+                  <Icon name={getSemanticIcon("settings.general")} size="small" />
+                  <span>Settings</span>
+                </button>
+                <button
+                  type="button"
+                  class="sidebar-account-menuItem"
+                  role="menuitem"
+                  onClick={() => openSettings("providers")}
+                >
+                  <Icon name={getSemanticIcon("settings.providers")} size="small" />
+                  <span>Providers</span>
+                </button>
+                <button type="button" class="sidebar-account-menuItem" role="menuitem" onClick={openRepository}>
+                  <Icon name={getSemanticIcon("account.repository")} size="small" />
+                  <span>Repository</span>
+                  <Icon name={getSemanticIcon("action.open")} size="small" class="sidebar-account-menuTrailingIcon" />
                 </button>
               </>
             }

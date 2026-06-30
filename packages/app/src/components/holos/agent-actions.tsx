@@ -317,7 +317,7 @@ export function DialogCreateHolosAgent(props: { onCreate: (profile: HolosProfile
   return (
     <Dialog
       title="Create Agent"
-      description="Set the initial Holos agent profile. Holos remains the source of truth after creation."
+      description="Choose how this agent should appear in Holos."
       class="sidebar-agent-import-dialog-shell"
     >
       <form onSubmit={handleSubmit} class="sidebar-agent-import-form">
@@ -338,14 +338,14 @@ export function DialogCreateHolosAgent(props: { onCreate: (profile: HolosProfile
           <TextField
             label="Description"
             multiline
-            placeholder="What this agent represents"
+            placeholder="Optional description"
             value={form.description}
             onChange={(value) => setForm("description", value)}
           />
           <TextField
             label="Avatar URL"
             type="url"
-            placeholder="https://..."
+            placeholder="Optional image URL"
             value={form.avatarUrl}
             onChange={(value) => {
               setForm("avatarUrl", value)
@@ -355,9 +355,6 @@ export function DialogCreateHolosAgent(props: { onCreate: (profile: HolosProfile
             error={form.avatarUrlError}
           />
         </div>
-        <p class="sidebar-agent-import-note">
-          The profile is sent to Holos during creation and is not stored in local Synergy settings.
-        </p>
         <div class="sidebar-agent-import-actions">
           <Button type="button" variant="ghost" size="large" onClick={() => dialog.close()}>
             Cancel
@@ -412,7 +409,7 @@ export function DialogImportHolosAgent(props: { globalSDK: GlobalSDK; onImported
   return (
     <Dialog
       title="Import Agent"
-      description="Connect an existing Holos agent with its secret. Synergy verifies the identity before saving."
+      description="Paste the secret for an existing Holos agent."
       class="sidebar-agent-import-dialog-shell"
     >
       <form onSubmit={handleSubmit} class="sidebar-agent-import-form">
@@ -421,7 +418,7 @@ export function DialogImportHolosAgent(props: { globalSDK: GlobalSDK; onImported
             autofocus
             label="Agent Secret"
             type="password"
-            placeholder="Secret"
+            placeholder="Paste agent secret"
             value={form.agentSecret}
             onChange={(value) => {
               setForm("agentSecret", value)
@@ -431,15 +428,12 @@ export function DialogImportHolosAgent(props: { globalSDK: GlobalSDK; onImported
             error={form.agentSecretError}
           />
         </div>
-        <p class="sidebar-agent-import-note">
-          Only the agent secret and canonical agent ID are stored locally. Profile stays in Holos.
-        </p>
         <div class="sidebar-agent-import-actions">
           <Button type="button" variant="ghost" size="large" onClick={() => dialog.close()}>
             Cancel
           </Button>
           <Button type="submit" variant="primary" size="large" disabled={form.submitting}>
-            {form.submitting ? "Importing..." : "Import Agent"}
+            {form.submitting ? "Importing..." : "Import"}
           </Button>
         </div>
       </form>
