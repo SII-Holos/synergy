@@ -21,7 +21,7 @@ import { Log } from "@/util/log"
 import { ExternalAgent } from "@/external-agent/bridge"
 import { ExternalAgentDiscovery } from "@/external-agent/discovery"
 import { Plugin } from "../plugin"
-import { MODEL_ROLE_IDS, type ModelRole } from "../provider/model-role"
+import { MODEL_ROLE_IDS, ModelRole as ModelRoleSchema, type ModelRole } from "../provider/model-role"
 
 export namespace Agent {
   const log = Log.create({ service: "agent" })
@@ -62,7 +62,7 @@ export namespace Agent {
   export const ModelRoleSummary = z
     .object({
       id: ModelRoleSummaryID,
-      role: Provider.ModelRole.optional(),
+      role: ModelRoleSchema.optional(),
       field: ModelRoleField,
       label: z.string(),
       summary: z.string(),
@@ -163,7 +163,7 @@ export namespace Agent {
           providerID: z.string(),
         })
         .optional(),
-      modelRole: Provider.ModelRole.optional(),
+      modelRole: ModelRoleSchema.optional(),
       modelSource: z.enum(["role", "explicit"]).optional(),
       source: z.enum(["builtin", "config", "plugin", "external"]).optional(),
       prompt: z.string().optional(),

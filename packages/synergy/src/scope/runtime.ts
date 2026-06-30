@@ -5,7 +5,6 @@ import { File } from "@/file"
 import { Format } from "@/file/format"
 import { FileWatcher } from "@/file/watcher"
 import { LSP } from "@/lsp"
-import { Plugin } from "@/plugin"
 import { Vcs } from "@/project/vcs"
 import { Scope } from "."
 import { ScopeContext } from "./context"
@@ -24,6 +23,7 @@ export namespace ScopeRuntime {
           scope,
           fn: async () => {
             log.info("starting", { scopeID: scope.id, type: scope.type, directory: scope.directory })
+            const { Plugin } = await import("@/plugin")
             await Plugin.init()
             Format.init()
             await LSP.init()
