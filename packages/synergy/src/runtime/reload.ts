@@ -510,12 +510,7 @@ export namespace RuntimeReload {
 
     // P3: Check global config directory roots (agent, command, skill, tool)
     const globalRoots = globalConfigRoots()
-    const allGlobalRoots = [
-      ...globalRoots.agent,
-      ...globalRoots.command,
-      ...globalRoots.skill,
-      ...globalRoots.tool,
-    ]
+    const allGlobalRoots = [...globalRoots.agent, ...globalRoots.command, ...globalRoots.skill, ...globalRoots.tool]
     if (isUnderRoots(normalized, allGlobalRoots)) return "global"
 
     // P3: Check project config directory roots

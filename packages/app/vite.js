@@ -48,9 +48,7 @@ const sdkAliases =
 
 const pluginAliases = pluginDistComplete
   ? []
-  : [
-      { find: /^@ericsanchezok\/synergy-plugin\/([^/]+)$/, replacement: path.join(pluginRoot, "src/$1.ts") },
-    ]
+  : [{ find: /^@ericsanchezok\/synergy-plugin\/([^/]+)$/, replacement: path.join(pluginRoot, "src/$1.ts") }]
 
 /**
  * @type {import("vite").PluginOption}

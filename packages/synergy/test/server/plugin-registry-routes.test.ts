@@ -82,9 +82,7 @@ function cleanRegistry(): void {
   } catch {}
 }
 
-async function writeOfficialRegistryCache(
-  registryUrl = PluginMarketplaceRegistry.DEFAULT_REGISTRY_URL,
-): Promise<void> {
+async function writeOfficialRegistryCache(registryUrl = PluginMarketplaceRegistry.DEFAULT_REGISTRY_URL): Promise<void> {
   const marketRoot = PluginMarketplaceRegistry.cachePaths(registryUrl)
   const entriesRoot = marketRoot.entries
   fs.mkdirSync(entriesRoot, { recursive: true })

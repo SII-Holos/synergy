@@ -3,7 +3,11 @@ import {
   PluginManifest,
   type PluginManifest as PluginManifestType,
 } from "@ericsanchezok/synergy-plugin"
-import { SYNERGY_CAPABILITY_DETAILS, permissionCategoryForKey, pluginRisk } from "@ericsanchezok/synergy-util/capability"
+import {
+  SYNERGY_CAPABILITY_DETAILS,
+  permissionCategoryForKey,
+  pluginRisk,
+} from "@ericsanchezok/synergy-util/capability"
 import fs from "fs/promises"
 import fsSync from "fs"
 import os from "os"
@@ -345,8 +349,7 @@ export namespace PluginMarketplaceRegistry {
       ...(current.pluginMarketplace ?? {}),
     })
     const hasExplicitEnabled =
-      current.pluginMarketplace &&
-      Object.prototype.hasOwnProperty.call(current.pluginMarketplace, "enabled")
+      current.pluginMarketplace && Object.prototype.hasOwnProperty.call(current.pluginMarketplace, "enabled")
     if (
       process.env.SYNERGY_TEST_HOME &&
       process.env.SYNERGY_ENABLE_REMOTE_PLUGIN_MARKET !== "1" &&

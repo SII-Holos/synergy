@@ -1,9 +1,5 @@
 import type { PluginManifest } from "@ericsanchezok/synergy-plugin"
-import {
-  manifestHashPayload,
-  permissionsHashPayload,
-  stablePluginJson,
-} from "@ericsanchezok/synergy-util/capability"
+import { manifestHashPayload, permissionsHashPayload, stablePluginJson } from "@ericsanchezok/synergy-util/capability"
 import type { PluginSource, TrustTier } from "../trust.js"
 import path from "path"
 import fs from "fs/promises"
