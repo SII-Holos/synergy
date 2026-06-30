@@ -589,6 +589,31 @@ test("deduplicates duplicate plugins from global and local configs", async () =>
   })
 })
 
+test("plugin domain updates replace stale specs by canonical source key", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-plugin-domain-"))
+  try {
+    await Config.domainUpdate(
+      "plugins",
+      {
+        plugin: ["github:example/plugin#old", "github:example/other#main"],
+      },
+      { root },
+    )
+    await Config.domainUpdate(
+      "plugins",
+      {
+        plugin: ["github:example/plugin#new"],
+      },
+      { root },
+    )
+
+    const stored = await Config.domainGet("plugins", root)
+    expect(stored.plugin).toEqual(["github:example/plugin#new", "github:example/other#main"])
+  } finally {
+    await fs.rm(root, { recursive: true, force: true })
+  }
+})
+
 // Legacy tools migration tests
 
 test("migrates legacy tools config to permissions - allow", async () => {

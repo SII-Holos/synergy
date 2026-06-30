@@ -1079,14 +1079,11 @@ export namespace Config {
 
   function mergeDomainConfig(current: Info, patch: Info, mode: ConfigDomain.MergeMode): Info {
     if (mode === "replace-domain") return patch
-    if (mode === "append") {
-      const merged = mergeDeep(current, patch) as Info
-      if (current.plugin || patch.plugin) {
-        merged.plugin = mergePluginSpecList(current.plugin ?? [], patch.plugin ?? [])
-      }
-      return merged
+    const merged = mergeDeep(current, patch) as Info
+    if (current.plugin || patch.plugin) {
+      merged.plugin = mergePluginSpecList(current.plugin ?? [], patch.plugin ?? [])
     }
-    return mergeDeep(current, patch) as Info
+    return merged
   }
 
   function mergePluginSpecList(current: string[], patch: string[]): string[] {
