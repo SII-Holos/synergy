@@ -1,11 +1,8 @@
 import {
   AssistantMessage,
-  FilePart,
   Message as MessageType,
   Part as PartType,
   type PermissionRequest,
-  ReasoningPart,
-  TextPart,
   ToolPart,
   type UserMessage,
 } from "@ericsanchezok/synergy-sdk/client"
@@ -20,16 +17,15 @@ import { DiffChanges } from "./diff-changes"
 import { Typewriter } from "./typewriter"
 import { Message, Part } from "./message-part"
 import { ArtifactGallery } from "./attachment-card"
-import {
-  isActiveMediaGenerationToolPart,
-  isPromotedToolResultPart,
-  primaryToolAttachments,
-  shouldHideToolPart,
-} from "./tool-result-presentation"
+import { shouldHideToolPart } from "./tool-result-presentation"
 import { MediaGenerationCard } from "./media-generation-card"
+import {
+  collectSessionTurnNarrativeItems,
+  isSessionTurnNarrativePart,
+  type SessionTurnNarrativeItem,
+} from "./session-turn-narrative"
 import "./session-turn.css"
 import "./tool-renders"
-import { Markdown } from "./markdown"
 import { Accordion } from "./accordion"
 import { StickyAccordionHeader } from "./sticky-accordion-header"
 import { FileIcon } from "./file-icon"
@@ -74,41 +70,22 @@ function same<T>(a: readonly T[] | undefined, b: readonly T[] | undefined) {
 
 const RETRY_PREVIEW_CHAR_LIMIT = 96
 
-function AssistantMessageItem(props: {
-  message: AssistantMessage
-  responsePartId: string | undefined
-  hideResponsePart: boolean
-  hideReasoning: boolean
-}) {
+function AssistantMessageItem(props: { message: AssistantMessage; working: boolean }) {
   const data = useData()
   const emptyParts: PartType[] = []
   const msgParts = createMemo(() => data.store.part[props.message.id] ?? emptyParts)
-  const lastTextPart = createMemo(() => {
-    const parts = msgParts()
-    for (let i = parts.length - 1; i >= 0; i--) {
-      const part = parts[i]
-      if (part?.type === "text") return part as TextPart
-    }
-    return undefined
-  })
 
-  const filteredParts = createMemo(() => {
-    let parts = msgParts()
-
-    if (props.hideReasoning) {
-      parts = parts.filter((part) => part?.type !== "reasoning")
-    }
-
-    if (!props.hideResponsePart) return parts
-
-    const responsePartId = props.responsePartId
-    if (!responsePartId) return parts
-    if (responsePartId !== lastTextPart()?.id) return parts
-
-    return parts.filter((part) => part?.id !== responsePartId)
-  })
+  const filteredParts = createMemo(() =>
+    msgParts().filter((part) => part?.type === "tool" && !isSessionTurnNarrativePart(part, props.working)),
+  )
 
   return <Message message={props.message} parts={filteredParts()} />
+}
+
+function NarrativeItemDisplay(props: { item: SessionTurnNarrativeItem; serverUrl: string }) {
+  if (props.item.kind === "part") return <Part part={props.item.part} message={props.item.message} />
+  if (props.item.kind === "media-pending") return <MediaGenerationCard part={props.item.part} />
+  return <ArtifactGallery files={props.item.files} serverUrl={props.serverUrl} variant="result" />
 }
 
 function MailboxSourceBadge(props: { message: UserMessage }) {
@@ -241,31 +218,6 @@ export function SessionTurn(
 
   const error = createMemo(() => assistantMessages().find((m) => m.error)?.error)
 
-  const lastTextPart = createMemo(() => {
-    const msgs = assistantMessages()
-    for (let mi = msgs.length - 1; mi >= 0; mi--) {
-      const msgParts = data.store.part[msgs[mi].id] ?? emptyParts
-      for (let pi = msgParts.length - 1; pi >= 0; pi--) {
-        const part = msgParts[pi]
-        if (part?.type === "text") return part as TextPart
-        if (part?.type === "tool" && !shouldHideToolPart(part)) return undefined
-      }
-    }
-    return undefined
-  })
-  const lastReasoningPart = createMemo(() => {
-    const msgs = assistantMessages()
-    for (let mi = msgs.length - 1; mi >= 0; mi--) {
-      const msgParts = data.store.part[msgs[mi].id] ?? emptyParts
-      for (let pi = msgParts.length - 1; pi >= 0; pi--) {
-        const part = msgParts[pi]
-        if (part?.type === "reasoning") return part as ReasoningPart
-        if (part?.type === "tool" && !shouldHideToolPart(part)) return undefined
-      }
-    }
-    return undefined
-  })
-
   const hasSteps = createMemo(() => {
     for (const m of assistantMessages()) {
       const msgParts = data.store.part[m.id]
@@ -379,10 +331,7 @@ export function SessionTurn(
     return s
   })
 
-  const response = createMemo(() => lastTextPart()?.text ?? lastReasoningPart()?.text)
-  const responsePartId = createMemo(() => lastTextPart()?.id)
   const hasDiffs = createMemo(() => message()?.summary?.diffs?.length)
-  const hideResponsePart = createMemo(() => !working() && !!responsePartId())
   const retryMessage = createMemo(() => retry()?.message ?? "")
   const retryMessageId = createMemo(() => `session-turn-retry-message-${props.messageID}`)
   const retryPreview = createMemo(() => {
@@ -397,42 +346,20 @@ export function SessionTurn(
     if (!msg || !msg.summary) return undefined
     return msg.metadata?.chroniclerSessionID as string | undefined
   })
-  const primaryResultAttachments = createMemo<FilePart[]>(() => {
-    const attachments: FilePart[] = []
-    for (const m of assistantMessages()) {
-      const msgParts = data.store.part[m.id]
-      if (!msgParts) continue
-      for (const p of msgParts) {
-        if (isPromotedToolResultPart(p)) attachments.push(...primaryToolAttachments(p))
-      }
-    }
-    return attachments
-  })
-  const activeMediaGenerationParts = createMemo<ToolPart[]>(() => {
-    const parts: ToolPart[] = []
-    for (const m of assistantMessages()) {
-      const msgParts = data.store.part[m.id]
-      if (!msgParts) continue
-      for (const p of msgParts) {
-        if (isActiveMediaGenerationToolPart(p)) parts.push(p as ToolPart)
-      }
-    }
-    return parts
-  })
-  const hasActiveMediaGenerationParts = createMemo(() => activeMediaGenerationParts().length > 0)
-  const hasPrimaryResultAttachments = createMemo(() => primaryResultAttachments().length > 0)
-  const onlyPrimaryResult = createMemo(
-    () => hasPrimaryResultAttachments() && !response() && !hasDiffs() && !hasSteps() && !chroniclerSessionID(),
+  const narrativeItems = createMemo(() =>
+    collectSessionTurnNarrativeItems(assistantMessages(), data.store.part, working()),
   )
-  const onlyActiveMediaGeneration = createMemo(
-    () => hasActiveMediaGenerationParts() && !hasSteps() && !chroniclerSessionID(),
-  )
+  const hasNarrativeItems = createMemo(() => narrativeItems().length > 0)
+  const onlyMediaNarrative = createMemo(() => {
+    const items = narrativeItems()
+    return items.length > 0 && items.every((item) => item.kind === "media-pending" || item.kind === "media-result")
+  })
   const showStepsRow = createMemo(
     () =>
       hasSteps() ||
       chroniclerSessionID() ||
-      (working() && !onlyActiveMediaGeneration()) ||
-      (assistantMessages().length > 0 && !onlyPrimaryResult() && !hasActiveMediaGenerationParts()),
+      (working() && !onlyMediaNarrative()) ||
+      (!working() && assistantMessages().length > 0 && !onlyMediaNarrative()),
   )
 
   const injectedContext = createMemo(() => getInjectedContext(message() as UserMessage | undefined))
@@ -733,12 +660,7 @@ export function SessionTurn(
                       <div data-slot="session-turn-collapsible-content-inner">
                         <For each={assistantMessages()}>
                           {(assistantMessage) => (
-                            <AssistantMessageItem
-                              message={assistantMessage}
-                              responsePartId={responsePartId()}
-                              hideResponsePart={hideResponsePart()}
-                              hideReasoning={!working()}
-                            />
+                            <AssistantMessageItem message={assistantMessage} working={working()} />
                           )}
                         </For>
                         <Show when={error()}>
@@ -747,30 +669,11 @@ export function SessionTurn(
                       </div>
                     </Show>
                     {/* Response — no label, just content */}
-                    <Show
-                      when={
-                        hasActiveMediaGenerationParts() ||
-                        (!working() && (response() || hasDiffs() || hasPrimaryResultAttachments()))
-                      }
-                    >
+                    <Show when={hasNarrativeItems() || (!working() && hasDiffs())}>
                       <div data-slot="session-turn-response-section">
-                        <Show when={response() && (!working() || hasActiveMediaGenerationParts())}>
-                          <div data-slot="session-turn-response-body">
-                            <Markdown
-                              data-slot="session-turn-markdown"
-                              text={response() ?? ""}
-                              cacheKey={responsePartId()}
-                            />
-                          </div>
-                        </Show>
-                        <For each={activeMediaGenerationParts()}>{(part) => <MediaGenerationCard part={part} />}</For>
-                        <Show when={!working() && hasPrimaryResultAttachments()}>
-                          <ArtifactGallery
-                            files={primaryResultAttachments()}
-                            serverUrl={data.serverUrl}
-                            variant="result"
-                          />
-                        </Show>
+                        <For each={narrativeItems()}>
+                          {(item) => <NarrativeItemDisplay item={item} serverUrl={data.serverUrl} />}
+                        </For>
                         <Show when={!working() && hasDiffs()}>
                           <Accordion
                             data-slot="session-turn-accordion"

@@ -1,4 +1,4 @@
-import Ajv from "ajv"
+import Ajv2020 from "ajv/dist/2020"
 import type { JSONSchema7 } from "ai"
 import { Session } from "@/session"
 import type { MessageV2 } from "@/session/message-v2"
@@ -149,8 +149,14 @@ export namespace CortexOutput {
   }
 
   function validate(schema: Record<string, any>, value: unknown): ValidationResult {
-    const ajv = new Ajv({ allErrors: true, strict: false })
-    const validate = ajv.compile(schema)
+    const ajv = new Ajv2020({ allErrors: true, strict: false })
+    let validate: ReturnType<typeof ajv.compile>
+    try {
+      validate = ajv.compile(schema)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      return { valid: false, errors: [`schema: ${message}`] }
+    }
     if (validate(value)) {
       return { valid: true, data: value }
     }

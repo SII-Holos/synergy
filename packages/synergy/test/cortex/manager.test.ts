@@ -694,6 +694,81 @@ describe.serial("Cortex", () => {
       })
     })
 
+    test("structured resolver accepts draft 2020-12 schemas", async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const session = await Session.create({})
+          await writeStructuredToolResult(session.id, {
+            template: "kombucha",
+            lines: ["first", "second"],
+          })
+
+          const result = await CortexOutput.resolve(
+            session.id,
+            {
+              mode: "structured",
+              schema: {
+                $schema: "https://json-schema.org/draft/2020-12/schema",
+                type: "object",
+                additionalProperties: false,
+                required: ["template", "lines"],
+                properties: {
+                  template: { type: "string", minLength: 1 },
+                  lines: {
+                    type: "array",
+                    minItems: 1,
+                    items: { type: "string", minLength: 1 },
+                  },
+                },
+              },
+            },
+            0,
+          )
+
+          expect(result).toMatchObject({
+            mode: "structured",
+            status: "valid",
+            source: "structured_tool",
+            data: {
+              template: "kombucha",
+              lines: ["first", "second"],
+            },
+          })
+        },
+      })
+    })
+
+    test("structured resolver reports schema compile errors without throwing", async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const session = await Session.create({})
+          await writeStructuredToolResult(session.id, { choice: "drake" })
+
+          const result = await CortexOutput.resolve(
+            session.id,
+            {
+              mode: "structured",
+              schema: {
+                $schema: "https://json-schema.org/draft/2020-12/schema",
+                type: "not-a-json-schema-type",
+              },
+            },
+            0,
+          )
+
+          expect(result).toMatchObject({
+            mode: "structured",
+            status: "invalid",
+          })
+          expect((result as any).validationErrors[0]).toContain("schema:")
+        },
+      })
+    })
+
     test("structured mode falls back to final response JSON", async () => {
       await using tmp = await tmpdir({ git: true })
       await ScopeContext.provide({
