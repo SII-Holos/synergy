@@ -1,6 +1,6 @@
 export namespace ToolTimeout {
   export type Source =
-    | "execution_budget"
+    | "tool_timeout"
     | "search"
     | "fetch"
     | "download"
@@ -12,7 +12,7 @@ export namespace ToolTimeout {
     | "document_extract"
 
   export interface Metadata {
-    executionBudgetMs: number
+    toolTimeoutMs: number
     operationTimeoutMs?: number
     displayMs: number
     source: Source
@@ -44,13 +44,13 @@ export namespace ToolTimeout {
     bashHardCeilingMs: 3_600_000,
   } as const
 
-  export function create(input: { executionBudgetMs: number; operationTimeoutMs?: number; source?: Source }): Metadata {
+  export function create(input: { toolTimeoutMs: number; operationTimeoutMs?: number; source?: Source }): Metadata {
     const operationTimeoutMs = normalizeMs(input.operationTimeoutMs)
     return {
-      executionBudgetMs: input.executionBudgetMs,
+      toolTimeoutMs: input.toolTimeoutMs,
       ...(operationTimeoutMs !== undefined ? { operationTimeoutMs } : {}),
-      displayMs: operationTimeoutMs ?? input.executionBudgetMs,
-      source: operationTimeoutMs !== undefined ? (input.source ?? "wait") : "execution_budget",
+      displayMs: operationTimeoutMs ?? input.toolTimeoutMs,
+      source: operationTimeoutMs !== undefined ? (input.source ?? "wait") : "tool_timeout",
     }
   }
 
@@ -61,7 +61,7 @@ export namespace ToolTimeout {
   ): Metadata | undefined {
     if (!base) return undefined
     return create({
-      executionBudgetMs: base.executionBudgetMs,
+      toolTimeoutMs: base.toolTimeoutMs,
       operationTimeoutMs,
       source,
     })
@@ -107,12 +107,12 @@ export namespace ToolTimeout {
   export function metadataForTool(input: {
     tool: string
     args: Record<string, any>
-    executionBudgetMs: number
+    toolTimeoutMs: number
     mcpCallTimeoutMs?: number
   }): Metadata {
     const operation = operationForTool(input.tool, input.args, input.mcpCallTimeoutMs)
     return create({
-      executionBudgetMs: input.executionBudgetMs,
+      toolTimeoutMs: input.toolTimeoutMs,
       operationTimeoutMs: operation?.timeoutMs,
       source: operation?.source,
     })

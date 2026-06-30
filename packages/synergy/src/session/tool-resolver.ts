@@ -33,7 +33,6 @@ import { EnforcementError } from "@/enforcement/errors"
 import { Config } from "@/config/config"
 import { ControlProfileCompiler } from "@/control-profile/compiler"
 import { ApprovalPolicy, type ApprovalMetadata } from "@/control-profile/approval"
-import { ExecutionBudget } from "@/util/execution-budget"
 import { Observability } from "@/observability"
 import { SessionModePolicy } from "./tool-mode-policy"
 import { ToolDiagnostic, ToolDiagnosticError, type ToolDiagnostic as ToolDiagnosticInfo } from "@/tool/diagnostic"
@@ -209,7 +208,7 @@ export namespace ToolResolver {
     approvalWaitMs: number
     activeApprovalStartedAt?: number
     executionStartedAt?: number
-    executionBudget?: ExecutionBudget.Info
+    toolTimeoutCleanup?: () => void
     sessionAbort: AbortSignal
   }
 
@@ -432,27 +431,20 @@ export namespace ToolResolver {
     })
   }
 
-  function startExecutionBudget(ctx: Tool.Context, timeoutMs: number) {
+  function startToolTimeout(ctx: Tool.Context, timeoutMs: number) {
     const timing = toolTiming(ctx)
-    const budget = ExecutionBudget.create(timeoutMs)
-    timing.executionBudget = budget
-    return AbortSignal.any([timing.sessionAbort, budget.signal])
-  }
-
-  function disposeExecutionBudget(ctx: Tool.Context) {
-    const timing = toolTiming(ctx)
-    timing.executionBudget?.dispose()
-    timing.executionBudget = undefined
-  }
-
-  async function pauseExecutionBudgetForApproval<T>(ctx: Tool.Context, fn: () => Promise<T>): Promise<T> {
-    const budget = toolTiming(ctx).executionBudget
-    budget?.pause()
-    try {
-      return await fn()
-    } finally {
-      budget?.resume()
+    const timeout = new AbortController()
+    const timer = setTimeout(() => timeout.abort(), timeoutMs)
+    if (typeof timer === "object" && "unref" in timer) timer.unref()
+    timing.toolTimeoutCleanup = () => {
+      clearTimeout(timer)
+      timing.toolTimeoutCleanup = undefined
     }
+    return AbortSignal.any([timing.sessionAbort, timeout.signal])
+  }
+
+  function disposeToolTimeout(ctx: Tool.Context) {
+    toolTiming(ctx).toolTimeoutCleanup?.()
   }
 
   async function applyGateApproval(
@@ -725,20 +717,18 @@ export namespace ToolResolver {
           await setApprovalMetadata(ctx, ApprovalPolicy.metadata(profile.approval, decision, "pending_user"))
           const forcedAsk = [{ permission: req.permission, pattern: "*", action: "ask" as const }]
           try {
-            await pauseExecutionBudgetForApproval(ctx, () =>
-              PermissionNext.ask({
-                ...req,
-                sessionID: input.sessionID,
-                tool: { messageID: input.processor.message.id, callID: options.toolCallId },
-                metadata: requestMetadata,
-                ruleset: PermissionNext.merge(
-                  input.agent.permission,
-                  PermissionNext.sessionRuleset(input.session),
-                  forcedAsk,
-                ),
-                signal: toolTiming(ctx).sessionAbort,
-              }),
-            )
+            await PermissionNext.ask({
+              ...req,
+              sessionID: input.sessionID,
+              tool: { messageID: input.processor.message.id, callID: options.toolCallId },
+              metadata: requestMetadata,
+              ruleset: PermissionNext.merge(
+                input.agent.permission,
+                PermissionNext.sessionRuleset(input.session),
+                forcedAsk,
+              ),
+              signal: toolTiming(ctx).sessionAbort,
+            })
             if (
               (requestMetadata as Record<string, unknown>).workspaceBoundary ||
               (requestMetadata as Record<string, unknown>).outsideWorkspace
@@ -1054,9 +1044,9 @@ export namespace ToolResolver {
                 const toolTimeout = ToolTimeout.metadataForTool({
                   tool: item.id,
                   args: args as Record<string, any>,
-                  executionBudgetMs: toolTimeoutMs,
+                  toolTimeoutMs,
                 })
-                const combinedAbort = startExecutionBudget(ctx, toolTimeoutMs)
+                const combinedAbort = startToolTimeout(ctx, toolTimeoutMs)
                 ctx.abort = combinedAbort
                 await markExecutionStarted(runtimeInput, ctx, args as Record<string, any>, toolTimeout)
                 await toolTrace.phase("tool.execution.started", "execution started", {
@@ -1185,7 +1175,7 @@ export namespace ToolResolver {
                 throw error
               } finally {
                 toolTrace?.dispose()
-                disposeExecutionBudget(ctx)
+                disposeToolTimeout(ctx)
               }
             },
             toModelOutput(result) {
@@ -1281,10 +1271,10 @@ export namespace ToolResolver {
                   const toolTimeout = ToolTimeout.metadataForTool({
                     tool: key,
                     args: args as Record<string, any>,
-                    executionBudgetMs: toolTimeoutMs,
+                    toolTimeoutMs,
                     mcpCallTimeoutMs: MCP.toolCallTimeout(key),
                   })
-                  const combinedAbort = startExecutionBudget(ctx, toolTimeoutMs)
+                  const combinedAbort = startToolTimeout(ctx, toolTimeoutMs)
                   ctx.abort = combinedAbort
                   await markExecutionStarted(runtimeInput, ctx, args as Record<string, any>, toolTimeout)
                   await toolTrace.phase("tool.execution.started", "execution started", {
@@ -1393,7 +1383,7 @@ export namespace ToolResolver {
                   throw error
                 } finally {
                   toolTrace?.dispose()
-                  disposeExecutionBudget(ctx)
+                  disposeToolTimeout(ctx)
                 }
               },
               toModelOutput(result) {

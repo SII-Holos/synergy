@@ -1,13 +1,13 @@
 import { describe, expect, test } from "bun:test"
 import { ToolTimeout } from "../../src/tool/timeout"
 
-const executionBudgetMs = 300_000
+const toolTimeoutMs = 300_000
 
 function metadata(tool: string, args: Record<string, any> = {}, mcpCallTimeoutMs?: number) {
   return ToolTimeout.metadataForTool({
     tool,
     args,
-    executionBudgetMs,
+    toolTimeoutMs,
     mcpCallTimeoutMs,
   })
 }
@@ -15,7 +15,7 @@ function metadata(tool: string, args: Record<string, any> = {}, mcpCallTimeoutMs
 describe("ToolTimeout", () => {
   test("uses operation timeout for search tools", () => {
     expect(metadata("glob")).toMatchObject({
-      executionBudgetMs,
+      toolTimeoutMs,
       operationTimeoutMs: 15_000,
       displayMs: 15_000,
       source: "search",
@@ -51,9 +51,9 @@ describe("ToolTimeout", () => {
 
   test("does not invent bash timeout when yieldSeconds is absent", () => {
     expect(metadata("bash")).toMatchObject({
-      executionBudgetMs,
-      displayMs: executionBudgetMs,
-      source: "execution_budget",
+      toolTimeoutMs,
+      displayMs: toolTimeoutMs,
+      source: "tool_timeout",
     })
     expect(metadata("bash").operationTimeoutMs).toBeUndefined()
     expect(metadata("bash", { yieldSeconds: 5 })).toMatchObject({
