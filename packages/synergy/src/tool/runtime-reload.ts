@@ -6,9 +6,9 @@ import { RuntimeSchema } from "../runtime/schema"
 
 const parameters = z.object({
   target: z
-    .union([RuntimeReload.Target, z.array(RuntimeReload.Target).min(1)])
+    .union([RuntimeSchema.ReloadTarget, z.array(RuntimeSchema.ReloadTarget).min(1)])
     .describe("One target or an array of targets to reload"),
-  scope: RuntimeReload.Scope.optional().describe("Config reload scope. Defaults to auto"),
+  scope: RuntimeSchema.ReloadScope.optional().describe("Config reload scope. Defaults to auto"),
   force: z.boolean().optional().describe("Reserved for future expansion"),
   reason: z.string().optional().describe("Optional short note about why the reload is happening"),
 })

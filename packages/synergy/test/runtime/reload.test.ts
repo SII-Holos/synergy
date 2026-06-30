@@ -37,13 +37,16 @@ describe("runtime.reload", () => {
     })
   })
 
-  test("detects plugin targets by file path", async () => {
+  test("ignores retired plugin source directories", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const pluginTarget = RuntimeReload.detectTargetsForFile(path.join(tmp.path, ".synergy", "plugin", "demo.ts"))
-        expect(pluginTarget).toEqual(["config", "plugin", "tool_registry"])
+        const pluginScope = RuntimeReload.detectScopeForFile(path.join(tmp.path, ".synergy", "plugin", "demo.ts"))
+
+        expect(pluginTarget).toEqual([])
+        expect(pluginScope).toBeUndefined()
       },
     })
   })

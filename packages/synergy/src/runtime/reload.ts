@@ -457,10 +457,6 @@ export namespace RuntimeReload {
         (root) => !root.startsWith(path.resolve(ScopeContext.current.directory)),
       ),
       tool: [path.resolve(path.join(Global.Path.config, "tool"))],
-      plugin: [
-        path.resolve(path.join(Global.Path.config, "plugin")),
-        path.resolve(path.join(Global.Path.config, "plugins")),
-      ],
     }
   }
 
@@ -478,10 +474,6 @@ export namespace RuntimeReload {
         root.startsWith(path.resolve(ScopeContext.current.directory)),
       ),
       tool: [path.resolve(path.join(ScopeContext.current.directory, ".synergy", "tool"))],
-      plugin: [
-        path.resolve(path.join(ScopeContext.current.directory, ".synergy", "plugin")),
-        path.resolve(path.join(ScopeContext.current.directory, ".synergy", "plugins")),
-      ],
     }
   }
 
@@ -516,14 +508,13 @@ export namespace RuntimeReload {
     const projectDomainDir = path.resolve(path.join(ScopeContext.current.directory, ".synergy", "synergy.d"))
     if (normalized.startsWith(projectDomainDir + path.sep) && ConfigDomain.domainForFile(normalized)) return "project"
 
-    // P3: Check global config directory roots (agent, command, skill, tool, plugin)
+    // P3: Check global config directory roots (agent, command, skill, tool)
     const globalRoots = globalConfigRoots()
     const allGlobalRoots = [
       ...globalRoots.agent,
       ...globalRoots.command,
       ...globalRoots.skill,
       ...globalRoots.tool,
-      ...globalRoots.plugin,
     ]
     if (isUnderRoots(normalized, allGlobalRoots)) return "global"
 
@@ -534,7 +525,6 @@ export namespace RuntimeReload {
       ...projectRoots.command,
       ...projectRoots.skill,
       ...projectRoots.tool,
-      ...projectRoots.plugin,
     ]
     if (isUnderRoots(normalized, allProjectRoots)) return "project"
 
@@ -587,12 +577,6 @@ export namespace RuntimeReload {
     const toolRoots = [...gRoots.tool, ...pRoots.tool]
     if ([".ts", ".js"].includes(path.extname(normalized)) && isUnderRoots(normalized, toolRoots)) {
       targets.push("tool_registry")
-    }
-
-    // P4: Plugin files
-    const pluginRoots = [...gRoots.plugin, ...pRoots.plugin]
-    if ([".ts", ".js"].includes(path.extname(normalized)) && isUnderRoots(normalized, pluginRoots)) {
-      targets.push("config", "plugin", "tool_registry")
     }
 
     return unique(targets)
