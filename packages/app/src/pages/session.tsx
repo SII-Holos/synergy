@@ -767,7 +767,6 @@ function SessionPageContent() {
       .current()
       .map((part) => {
         if (part.type === "file") return `[file:${part.path}]`
-        if (part.type === "image") return `[image:${part.filename}]`
         if (part.type === "attachment") return `[file:${part.filename}]`
         if (part.type === "note") return `[note:${part.title || "Untitled"}]`
         if (part.type === "session") return `[session:${part.title || "Untitled"}]`

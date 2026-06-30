@@ -14,7 +14,6 @@ import { usePlatform } from "@/context/platform"
 import { usePrompt } from "@/context/prompt"
 import type {
   FileAttachmentPart,
-  ImageAttachmentPart,
   NoteAttachmentPart,
   Prompt,
   SessionAttachmentPart,
@@ -32,11 +31,11 @@ import {
   SESSION_PREVIEW_MAX_MESSAGES,
 } from "./content"
 import { setCursorPosition } from "./editor-dom"
+import { createUploadedAttachmentInputPart } from "./attachment-submit"
 import type { BlueprintSlot, PromptInputMode, PromptInputProps, PromptInputStore } from "./types"
 
 type PromptSubmitInput = {
   props: Pick<PromptInputProps, "newSessionWorktree" | "onNewSessionWorktreeReset">
-  imageAttachments: Accessor<ImageAttachmentPart[]>
   uploadedAttachments: Accessor<UploadedAttachmentPart[]>
   noteAttachments: Accessor<NoteAttachmentPart[]>
   sessionAttachments: Accessor<SessionAttachmentPart[]>
@@ -79,7 +78,6 @@ export function usePromptSubmit(input: PromptSubmitInput) {
 
     const currentPrompt = prompt.current()
     const text = currentPrompt.map((part) => ("content" in part && part.type === "text" ? part.content : "")).join("")
-    const images = input.imageAttachments().slice()
     const attachments = input.uploadedAttachments().slice()
     const notes = input.noteAttachments().slice()
     const sessions = input.sessionAttachments().slice()
@@ -89,7 +87,6 @@ export function usePromptSubmit(input: PromptSubmitInput) {
     if (
       !blueprintSlot &&
       text.trim().length === 0 &&
-      images.length === 0 &&
       attachments.length === 0 &&
       notes.length === 0 &&
       sessions.length === 0
@@ -339,24 +336,7 @@ export function usePromptSubmit(input: PromptSubmitInput) {
             model: `${model.providerID}/${model.modelID}`,
             variant,
             parts: [
-              ...images.map((attachment) => ({
-                id: Identifier.ascending("part"),
-                type: "attachment" as const,
-                mime: attachment.mime,
-                url: attachment.dataUrl,
-                filename: attachment.filename,
-                model: { mode: "provider-file" as const, summary: `${attachment.filename} (${attachment.mime})` },
-              })),
-              ...attachments.map((attachment) => ({
-                id: Identifier.ascending("part"),
-                type: "attachment" as const,
-                mime: attachment.mime,
-                url: attachment.url,
-                filename: attachment.filename,
-                model: attachment.mime.startsWith("image/")
-                  ? { mode: "provider-file" as const, summary: `${attachment.filename} (${attachment.mime})` }
-                  : { mode: "summary" as const, summary: `${attachment.filename} (${attachment.mime})` },
-              })),
+              ...attachments.map(createUploadedAttachmentInputPart),
               ...notes.map((attachment) => ({
                 id: Identifier.ascending("part"),
                 type: "attachment" as const,
@@ -526,25 +506,7 @@ export function usePromptSubmit(input: PromptSubmitInput) {
       addContextFile(item.path, item.selection)
     }
 
-    const imageAttachmentParts = images.map((attachment) => ({
-      id: Identifier.ascending("part"),
-      type: "attachment" as const,
-      mime: attachment.mime,
-      url: attachment.dataUrl,
-      filename: attachment.filename,
-      model: { mode: "provider-file" as const, summary: `${attachment.filename} (${attachment.mime})` },
-    }))
-
-    const uploadedAttachmentParts = attachments.map((attachment) => ({
-      id: Identifier.ascending("part"),
-      type: "attachment" as const,
-      mime: attachment.mime,
-      url: attachment.url,
-      filename: attachment.filename,
-      model: attachment.mime.startsWith("image/")
-        ? { mode: "provider-file" as const, summary: `${attachment.filename} (${attachment.mime})` }
-        : { mode: "summary" as const, summary: `${attachment.filename} (${attachment.mime})` },
-    }))
+    const uploadedAttachmentParts = attachments.map(createUploadedAttachmentInputPart)
 
     const noteAttachmentParts = notes.map((attachment) => ({
       id: Identifier.ascending("part"),
@@ -570,7 +532,6 @@ export function usePromptSubmit(input: PromptSubmitInput) {
       textPart,
       ...fileAttachmentParts,
       ...contextFileParts,
-      ...imageAttachmentParts,
       ...uploadedAttachmentParts,
       ...noteAttachmentParts,
       ...sessionAttachmentParts,

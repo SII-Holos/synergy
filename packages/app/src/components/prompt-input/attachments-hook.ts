@@ -6,11 +6,10 @@ import { useParams } from "@solidjs/router"
 import { useSDK } from "@/context/sdk"
 import { usePrompt } from "@/context/prompt"
 import type { ContentPart, NoteAttachmentPart, SessionAttachmentPart } from "@/context/prompt"
-import { preparePromptAttachment, PromptAttachmentError, uploadPromptAttachment } from "@/utils/prompt-attachment"
+import { PromptAttachmentError, uploadPromptAttachment } from "@/utils/prompt-attachment"
 import {
   formatUnsupportedAttachmentToast,
   isPromptAttachmentFileAccepted,
-  isPromptAttachmentTextFile,
   partitionPromptAttachmentFiles,
 } from "./files"
 import { createPromptPartID } from "./content"
@@ -51,42 +50,7 @@ export function usePromptAttachments(input: PromptAttachmentsInput) {
 
     try {
       const cursorPosition = prompt.cursor() ?? getCursorPosition(input.editor())
-      if (isPromptAttachmentTextFile(file)) {
-        const uploaded = await uploadPromptAttachment(sdk.client, sdk.url, file)
-        prompt.set(
-          [
-            ...prompt.current(),
-            {
-              type: "attachment",
-              id: createPromptPartID(),
-              filename: file.name,
-              mime: uploaded.mime,
-              url: uploaded.url,
-            },
-          ],
-          cursorPosition,
-        )
-        return
-      }
-
-      const prepared = await preparePromptAttachment(file)
-      if (prepared.mime.startsWith("image/")) {
-        prompt.set(
-          [
-            ...prompt.current(),
-            {
-              type: "image",
-              id: createPromptPartID(),
-              filename: file.name,
-              mime: prepared.mime,
-              dataUrl: prepared.dataUrl,
-            },
-          ],
-          cursorPosition,
-        )
-        return
-      }
-
+      const uploaded = await uploadPromptAttachment(sdk.client, file)
       prompt.set(
         [
           ...prompt.current(),
@@ -94,8 +58,11 @@ export function usePromptAttachments(input: PromptAttachmentsInput) {
             type: "attachment",
             id: createPromptPartID(),
             filename: file.name,
-            mime: prepared.mime,
-            url: prepared.dataUrl,
+            mime: uploaded.mime,
+            url: uploaded.url,
+            size: uploaded.size,
+            metadata: uploaded.metadata,
+            presentation: uploaded.presentation,
           },
         ],
         cursorPosition,

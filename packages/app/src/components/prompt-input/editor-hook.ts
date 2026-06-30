@@ -4,7 +4,6 @@ import type { SetStoreFunction } from "solid-js/store"
 import {
   type ContentPart,
   DEFAULT_PROMPT,
-  type ImageAttachmentPart,
   type NoteAttachmentPart,
   type Prompt,
   type SessionAttachmentPart,
@@ -18,7 +17,6 @@ import type { PromptInputStore } from "./types"
 
 type PromptEditorInput = {
   editor: () => HTMLDivElement
-  imageAttachments: Accessor<ImageAttachmentPart[]>
   uploadedAttachments: Accessor<UploadedAttachmentPart[]>
   noteAttachments: Accessor<NoteAttachmentPart[]>
   sessionAttachments: Accessor<SessionAttachmentPart[]>
@@ -157,7 +155,6 @@ export function usePromptEditor(input: PromptEditorInput) {
   const handleInput = () => {
     const editor = input.editor()
     const rawParts = parseFromDOM()
-    const images = input.imageAttachments()
     const attachments = input.uploadedAttachments()
     const cursorPosition = getCursorPosition(editor)
     const rawText = inlineText(rawParts)
@@ -166,7 +163,6 @@ export function usePromptEditor(input: PromptEditorInput) {
     const shouldReset =
       trimmed.length === 0 &&
       !hasNonText &&
-      images.length === 0 &&
       attachments.length === 0 &&
       input.noteAttachments().length === 0 &&
       input.sessionAttachments().length === 0
@@ -208,10 +204,7 @@ export function usePromptEditor(input: PromptEditorInput) {
       input.setStore("savedPrompt", null)
     }
 
-    prompt.set(
-      [...rawParts, ...images, ...attachments, ...input.noteAttachments(), ...input.sessionAttachments()],
-      cursorPosition,
-    )
+    prompt.set([...rawParts, ...attachments, ...input.noteAttachments(), ...input.sessionAttachments()], cursorPosition)
     input.queueScroll()
   }
 
