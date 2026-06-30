@@ -243,7 +243,7 @@ export async function buildProfile(idInput: ProfileIdInput | string, ctx: Resolu
         valid: true,
         label: "Guarded",
         description:
-          "Auto-allow safe local edits and network lookups. Ask before shell, external, identity, platform, or extension actions.",
+          "Auto-allow safe local edits and network lookups. Ask before shell, external, identity, or platform actions.",
         ruleset: guardedRules(),
         ...policy,
         sandbox: effectiveSandbox,
@@ -258,7 +258,7 @@ export async function buildProfile(idInput: ProfileIdInput | string, ctx: Resolu
         valid: true,
         label: "Autonomous",
         description:
-          "Unattended development with full tool access. Network, external reads, and extensions are available. Only destructive shell commands are blocked with recovery guidance.",
+          "Unattended development with full tool access. Network and external reads are available. Only destructive shell commands are blocked with recovery guidance.",
         ruleset: autonomousRules(),
         ...policy,
         sandbox: effectiveSandbox,

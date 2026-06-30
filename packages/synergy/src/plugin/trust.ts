@@ -6,7 +6,11 @@ import {
   isTrustedPluginSource as sharedIsTrustedPluginSource,
   resolvePluginPolicyDecision,
 } from "@ericsanchezok/synergy-util/plugin-policy"
-import type { PluginPolicyDecision, PluginRuntimePolicyInput, PluginSource } from "@ericsanchezok/synergy-util/plugin-policy"
+import type {
+  PluginPolicyDecision,
+  PluginRuntimePolicyInput,
+  PluginSource,
+} from "@ericsanchezok/synergy-util/plugin-policy"
 import { Global } from "../global"
 import { Installation } from "../global/installation"
 import * as Lockfile from "./lockfile"
@@ -61,7 +65,7 @@ export function derivePluginSource(pluginDir: string): PluginSource {
     return "local"
   }
   if (relative.startsWith("plugin-archives")) return "local"
-  return "npm"
+  return "url"
 }
 
 export function approvedPluginTrustDecision(input: {

@@ -1,5 +1,7 @@
+import path from "path"
 import { describe, expect, test } from "bun:test"
-import { approvedPluginTrustDecision } from "../../src/plugin/trust"
+import { approvedPluginTrustDecision, derivePluginSource } from "../../src/plugin/trust"
+import { Global } from "../../src/global"
 import { Log } from "../../src/util/log"
 
 Log.init({ print: false })
@@ -25,5 +27,23 @@ describe("approvedPluginTrustDecision", () => {
     expect(trust.userTrusted).toBe(true)
     expect(trust.verifiedIntegrity).toBe(true)
     expect(trust.tier).toBe("sandbox")
+  })
+})
+
+describe("derivePluginSource", () => {
+  test("treats paths outside the Synergy cache as local", () => {
+    expect(derivePluginSource("/tmp/workspace/plugin")).toBe("local")
+  })
+
+  test("treats local plugin archive cache entries as local", () => {
+    const pluginDir = path.join(Global.Path.cache, "plugin-archives", "demo-plugin-0.1.0.synergy-plugin")
+
+    expect(derivePluginSource(pluginDir)).toBe("local")
+  })
+
+  test("does not guess npm when cached plugin source is unknown", () => {
+    const pluginDir = path.join(Global.Path.cache, "node_modules", "demo-plugin")
+
+    expect(derivePluginSource(pluginDir)).toBe("url")
   })
 })

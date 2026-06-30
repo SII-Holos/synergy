@@ -53,7 +53,7 @@ function actionForRisk(approval: ProfileApproval, risk: RiskLevel) {
 
 function reasonFor(approval: ProfileApproval, risk: RiskLevel, capabilities: string[]) {
   if (approval.mode === "guarded" && risk !== "low") {
-    return "Guarded mode applies capability-specific approval rules before shell, external, identity, platform, or extension actions."
+    return "Guarded mode applies capability-specific approval rules before shell, external, identity, or platform actions."
   }
   if (approval.mode === "autonomous" && risk === "high") {
     return "Autonomous mode blocks high-risk capabilities instead of prompting while the user is away."
