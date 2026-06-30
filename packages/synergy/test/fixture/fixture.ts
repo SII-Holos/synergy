@@ -34,8 +34,7 @@ export async function tmpdir<T>(options?: TmpDirOptions<T>) {
     }
   }
   const extra = await options?.init?.(dirpath)
-  // Pre-create node_modules in .synergy so Config.installDependencies skips the await
-  await fs.mkdir(path.join(dirpath, ".synergy", "node_modules"), { recursive: true }).catch(() => {})
+  await fs.mkdir(path.join(dirpath, ".synergy"), { recursive: true }).catch(() => {})
   const realpath = Filesystem.sanitizePath(await fs.realpath(dirpath))
   const result = {
     [Symbol.asyncDispose]: async () => {

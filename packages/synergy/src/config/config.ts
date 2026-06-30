@@ -1,6 +1,5 @@
 import { Log } from "../util/log"
 import path from "path"
-import { pathToFileURL } from "url"
 import os from "os"
 import z from "zod"
 import { Filesystem } from "../util/filesystem"
@@ -19,8 +18,6 @@ import { ScopeRuntime } from "../scope/runtime"
 import { Scope } from "../scope"
 import { BusEvent } from "../bus/bus-event"
 import { LSPServer } from "../lsp/server"
-import { BunProc } from "@/util/bun"
-import { Installation } from "@/global/installation"
 import { ConfigMarkdown } from "./markdown"
 import { existsSync } from "fs"
 import { loadFragments } from "./fragment"
@@ -292,12 +289,8 @@ export namespace Config {
         result.plugin ??= []
       }
 
-      const exists = existsSync(path.join(dir, "node_modules"))
-      const installing = installDependencies(dir)
-      if (!exists) await installing
       result.command = mergeDeep(result.command ?? {}, await loadCommand(dir))
       result.agent = mergeDeep(result.agent, await loadAgent(dir))
-      result.plugin.push(...(await loadPlugin(dir)))
     }
 
     result.agent ??= {}
@@ -371,35 +364,6 @@ export namespace Config {
       directories,
     }
   })
-
-  export async function installDependencies(dir: string) {
-    const pkgPath = path.join(dir, "package.json")
-
-    if (!(await Bun.file(pkgPath).exists())) {
-      await Bun.write(pkgPath, "{}")
-    }
-
-    const gitignore = path.join(dir, ".gitignore")
-    const hasGitIgnore = await Bun.file(gitignore).exists()
-    if (!hasGitIgnore) await Bun.write(gitignore, ["node_modules", "package.json", "bun.lock", ".gitignore"].join("\n"))
-
-    const pluginPkg = "@ericsanchezok/synergy-plugin"
-    const pluginVersion = Installation.isLocal() ? "latest" : Installation.VERSION
-    const pluginInstalled = existsSync(path.join(dir, "node_modules", pluginPkg))
-
-    // Only run bun add if the plugin is not already installed to avoid
-    // repeatedly modifying bun.lock, which triggers the file watcher and
-    // causes an auto-reload loop.
-    if (!pluginInstalled) {
-      await BunProc.run(["add", `${pluginPkg}@${pluginVersion}`, "--exact"], { cwd: dir }).catch(() => {})
-    }
-
-    // Install any additional dependencies defined in the package.json
-    // This allows local plugins and custom tools to use external packages
-    if (!existsSync(path.join(dir, "node_modules"))) {
-      await BunProc.run(["install"], { cwd: dir }).catch(() => {})
-    }
-  }
 
   const COMMAND_GLOB = new Bun.Glob("{command,commands}/**/*.md")
   async function loadCommand(dir: string) {
@@ -483,21 +447,6 @@ export namespace Config {
       log.warn("skipping invalid agent definition", { path: item, issues: parsed.error.issues })
     }
     return result
-  }
-
-  const PLUGIN_GLOB = new Bun.Glob("{plugin,plugins}/*.{ts,js}")
-  async function loadPlugin(dir: string) {
-    const plugins: string[] = []
-
-    for await (const item of PLUGIN_GLOB.scan({
-      absolute: true,
-      followSymlinks: true,
-      dot: true,
-      cwd: dir,
-    })) {
-      plugins.push(pathToFileURL(item).href)
-    }
-    return plugins
   }
 
   export const global = lazy(async () => {

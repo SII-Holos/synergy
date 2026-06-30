@@ -589,6 +589,30 @@ test("deduplicates duplicate plugins from global and local configs", async () =>
   })
 })
 
+test("does not auto-discover legacy plugin files or mutate config directories", async () => {
+  await using tmp = await tmpdir({
+    git: true,
+    init: async (dir) => {
+      const legacyPluginDir = path.join(dir, ".synergy", "plugins")
+      await fs.mkdir(legacyPluginDir, { recursive: true })
+      await Bun.write(path.join(legacyPluginDir, "legacy.ts"), "export const plugin = {}")
+    },
+  })
+
+  await ScopeContext.provide({
+    scope: await tmp.scope(),
+    fn: async () => {
+      await Config.state.reset()
+      const config = await Config.current()
+      const plugins = config.plugin ?? []
+
+      expect(plugins.some((plugin) => plugin.includes("legacy.ts"))).toBe(false)
+      await expect(Bun.file(path.join(tmp.path, ".synergy", "package.json")).exists()).resolves.toBe(false)
+      await expect(Bun.file(path.join(tmp.path, ".synergy", "node_modules")).exists()).resolves.toBe(false)
+    },
+  })
+})
+
 test("plugin domain updates replace stale specs by canonical source key", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-plugin-domain-"))
   try {
