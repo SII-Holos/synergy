@@ -68,6 +68,7 @@ const RegistryPluginVersion = z
     changelog: z.string().optional(),
     source: PluginMarketplaceRegistry.Source.optional(),
   })
+  .strict()
   .meta({ ref: "RegistryPluginVersion" })
 
 const RegistryPluginEntry = z
@@ -86,7 +87,6 @@ const RegistryPluginEntry = z
     verified: z.boolean(),
     official: z.boolean(),
     keywords: z.array(z.string()),
-    compatibility: z.object({ synergy: z.string() }),
     versions: z.array(RegistryPluginVersion),
     createdAt: z.number(),
     updatedAt: z.number(),
@@ -105,6 +105,7 @@ const RegistryPluginEntry = z
     entryUrl: z.string().optional(),
     yankedVersions: z.array(z.string()).optional(),
   })
+  .strict()
   .meta({ ref: "RegistryPluginEntry" })
 
 type RegistryPluginEntry = z.infer<typeof RegistryPluginEntry>
@@ -168,8 +169,8 @@ async function loadRegistry(): Promise<RegistryPluginEntry[]> {
   }
   const text = await file.text()
   const parsed = JSON.parse(text)
-  if (Array.isArray(parsed)) return parsed
-  if (parsed && Array.isArray(parsed.plugins)) return parsed.plugins
+  if (Array.isArray(parsed)) return z.array(RegistryPluginEntry).parse(parsed)
+  if (parsed && Array.isArray(parsed.plugins)) return z.array(RegistryPluginEntry).parse(parsed.plugins)
   return []
 }
 

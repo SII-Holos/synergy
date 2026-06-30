@@ -4539,9 +4539,6 @@ export type RegistryPluginEntry = {
   verified: boolean
   official: boolean
   keywords: Array<string>
-  compatibility: {
-    synergy: string
-  }
   versions: Array<RegistryPluginVersion>
   createdAt: number
   updatedAt: number
@@ -4575,9 +4572,6 @@ export type RegistryPublishInput = {
   verified: boolean
   official: boolean
   keywords: Array<string>
-  compatibility: {
-    synergy: string
-  }
   versions: Array<RegistryPluginVersion>
   risk: "low" | "medium" | "high"
   trustTier: "declarative" | "trusted-import" | "sandbox"

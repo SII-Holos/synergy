@@ -1,16 +1,15 @@
 import type { PluginManifest } from "@ericsanchezok/synergy-plugin"
-import { sha256Content, sortKeys } from "./crypto"
+import {
+  manifestHashPayload,
+  permissionsHashPayload,
+  stablePluginJson,
+} from "@ericsanchezok/synergy-plugin/permissions"
+import { sha256Content } from "./crypto"
 
 export function computePermissionsHash(manifest: PluginManifest, capabilities: string[]): string {
-  const normalized = {
-    capabilities: [...capabilities].sort(),
-    permissions: manifest.permissions ?? {},
-    contributes: manifest.contributes ?? {},
-    lifecycle: manifest.lifecycle ?? {},
-  }
-  return sha256Content(JSON.stringify(sortKeys(normalized)))
+  return sha256Content(stablePluginJson(permissionsHashPayload(manifest, capabilities)))
 }
 
 export function computeManifestHash(manifest: PluginManifest): string {
-  return sha256Content(JSON.stringify(sortKeys(manifest)))
+  return sha256Content(stablePluginJson(manifestHashPayload(manifest)))
 }

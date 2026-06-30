@@ -33,7 +33,6 @@ interface PublishInput {
   verified: boolean
   official: boolean
   keywords: string[]
-  compatibility: { synergy: string }
   versions: RegistryPluginVersion[]
   risk: "low" | "medium" | "high"
   trustTier: "declarative" | "trusted-import" | "sandbox"
@@ -55,7 +54,6 @@ interface GithubRegistryEntry {
   verified: boolean
   official: boolean
   keywords: string[]
-  compatibility: { synergy: string }
   versions: Array<{
     version: string
     downloadUrl: string
@@ -210,7 +208,6 @@ function githubEntry(input: {
     verified: input.verified,
     official: input.official,
     keywords: [...new Set([...(input.manifest.keywords ?? []), "synergy-plugin"])].sort(),
-    compatibility: { synergy: input.manifest.engines?.synergy ?? input.manifest.minSynergyVersion ?? ">=1.0.0" },
     versions: [
       {
         version: input.manifest.version,
@@ -376,7 +373,6 @@ export const PluginPublishCommand = cmd({
         verified: false,
         official: false,
         keywords: [...new Set([...(manifest.keywords ?? []), "synergy-plugin"])],
-        compatibility: { synergy: manifest.engines?.synergy ?? manifest.minSynergyVersion ?? ">=1.0.0" },
         risk,
         trustTier: manifest.trust?.requestedTier ?? "sandbox",
         runtimeMode,

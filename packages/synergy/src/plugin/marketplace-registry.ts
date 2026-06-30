@@ -40,38 +40,41 @@ export namespace PluginMarketplaceRegistry {
     z.object({ type: z.literal("lucide"), name: z.string().min(1) }),
     z.object({ type: z.literal("registry-svg"), path: z.string().min(1) }),
   ])
-  const RemoteVersion = z.object({
-    version: z.string(),
-    downloadUrl: z.string().url(),
-    signatureUrl: z.string().url(),
-    signature: RemoteSignature,
-    integrity: z.string().regex(/^sha256-[a-f0-9]{64}$/),
-    manifestHash: z.string(),
-    permissionsHash: z.string(),
-    risk: Risk,
-    runtimeMode: RuntimeMode,
-    permissionsSummary: z.array(RemotePermission),
-    tools: z.array(z.string()),
-    uiSurfaces: z.array(z.string()),
-    publishedAt: z.string(),
-    changelog: z.string().optional(),
-  })
-  const RemoteEntry = z.object({
-    schemaVersion: z.literal(1),
-    id: z.string(),
-    name: z.string(),
-    description: z.string(),
-    repo: z.string().url(),
-    homepage: z.string().url().optional(),
-    author: Author,
-    icon: RemoteIcon.optional(),
-    verified: z.boolean(),
-    official: z.boolean(),
-    keywords: z.array(z.string()),
-    compatibility: z.object({ synergy: z.string() }),
-    versions: z.array(RemoteVersion),
-    yankedVersions: z.array(z.string()).optional().default([]),
-  })
+  const RemoteVersion = z
+    .object({
+      version: z.string(),
+      downloadUrl: z.string().url(),
+      signatureUrl: z.string().url(),
+      signature: RemoteSignature,
+      integrity: z.string().regex(/^sha256-[a-f0-9]{64}$/),
+      manifestHash: z.string(),
+      permissionsHash: z.string(),
+      risk: Risk,
+      runtimeMode: RuntimeMode,
+      permissionsSummary: z.array(RemotePermission),
+      tools: z.array(z.string()),
+      uiSurfaces: z.array(z.string()),
+      publishedAt: z.string(),
+      changelog: z.string().optional(),
+    })
+    .strict()
+  const RemoteEntry = z
+    .object({
+      schemaVersion: z.literal(1),
+      id: z.string(),
+      name: z.string(),
+      description: z.string(),
+      repo: z.string().url(),
+      homepage: z.string().url().optional(),
+      author: Author,
+      icon: RemoteIcon.optional(),
+      verified: z.boolean(),
+      official: z.boolean(),
+      keywords: z.array(z.string()),
+      versions: z.array(RemoteVersion),
+      yankedVersions: z.array(z.string()).optional().default([]),
+    })
+    .strict()
   const RemoteSummary = z.object({
     id: z.string(),
     name: z.string(),
@@ -131,7 +134,6 @@ export namespace PluginMarketplaceRegistry {
     verified: boolean
     official: boolean
     keywords: string[]
-    compatibility: { synergy: string }
     versions: NormalizedVersion[]
     createdAt: number
     updatedAt: number
@@ -278,7 +280,6 @@ export namespace PluginMarketplaceRegistry {
       verified: entry.verified,
       official: entry.official,
       keywords: entry.keywords,
-      compatibility: entry.compatibility,
       versions,
       createdAt: versions.length ? Math.min(...versions.map((version) => version.publishedAt)) : 0,
       updatedAt: latest?.publishedAt ?? 0,
@@ -487,6 +488,11 @@ export namespace PluginMarketplaceRegistry {
     return actual
   }
 
+  async function removeArtifactCache(tarballPath: string) {
+    await fs.rm(tarballPath, { force: true }).catch(() => {})
+    await fs.rm(`${tarballPath}.sig`, { force: true }).catch(() => {})
+  }
+
   async function ensureDownloaded(version: NormalizedVersion, id: string) {
     if (!version.downloadUrl) throw new Error(`Official registry entry ${id}@${version.version} has no downloadUrl`)
     if (!version.signatureUrl) throw new Error(`Official registry entry ${id}@${version.version} has no signatureUrl`)
@@ -494,13 +500,33 @@ export namespace PluginMarketplaceRegistry {
     const tarballPath = path.join(dir, `${id}-${version.version}.synergy-plugin.tgz`)
     const signaturePath = `${tarballPath}.sig`
     if (fsSync.existsSync(tarballPath) && fsSync.existsSync(signaturePath)) {
-      assertIntegrity(tarballPath, version.integrity)
-      return { tarballPath, signaturePath }
+      try {
+        assertIntegrity(tarballPath, version.integrity)
+        return { tarballPath, signaturePath }
+      } catch {
+        await removeArtifactCache(tarballPath)
+      }
     }
-    await downloadTo(version.downloadUrl, tarballPath)
-    assertIntegrity(tarballPath, version.integrity)
-    await downloadTo(version.signatureUrl, signaturePath)
-    return { tarballPath, signaturePath }
+
+    const stagingRoot = path.join(Global.Path.state, "plugin-install", "staging")
+    await fs.mkdir(stagingRoot, { recursive: true })
+    const stagingDir = await fs.mkdtemp(path.join(stagingRoot, `${id}-${version.version}-`))
+    const stagedTarballPath = path.join(stagingDir, path.basename(tarballPath))
+    const stagedSignaturePath = `${stagedTarballPath}.sig`
+    try {
+      await downloadTo(version.downloadUrl, stagedTarballPath)
+      assertIntegrity(stagedTarballPath, version.integrity)
+      await downloadTo(version.signatureUrl, stagedSignaturePath)
+      await fs.mkdir(dir, { recursive: true })
+      await fs.rename(stagedTarballPath, tarballPath)
+      await fs.rename(stagedSignaturePath, signaturePath)
+      return { tarballPath, signaturePath }
+    } catch (err) {
+      await removeArtifactCache(tarballPath)
+      throw err
+    } finally {
+      await fs.rm(stagingDir, { recursive: true, force: true }).catch(() => {})
+    }
   }
 
   export async function verifyOfficialArtifact(id: string, version: string): Promise<VerifiedArtifact> {
@@ -512,56 +538,65 @@ export namespace PluginMarketplaceRegistry {
     if (!target) throw new Error(`Official registry version not found: ${id}@${version}`)
 
     const { tarballPath, signaturePath } = await ensureDownloaded(target, id)
-    const tarballHash = assertIntegrity(tarballPath, target.integrity)
-    checkRequiredTarballFiles(tarballPath)
+    let extractedDir: string | null = null
+    try {
+      const tarballHash = assertIntegrity(tarballPath, target.integrity)
+      checkRequiredTarballFiles(tarballPath)
 
-    const signature = readSignatureFile(tarballPath)
-    if (!signature) throw new Error(`Remote plugin artifact signature is missing or invalid`)
-    const trustedSignature = target.signature
-    if (!trustedSignature) throw new Error(`Official registry version is missing reviewed signature metadata`)
-    if (trustedSignature.algorithm !== signature.algorithm) {
-      throw new Error(`Remote plugin artifact signature algorithm mismatch`)
-    }
-    if (trustedSignature.signer !== signature.signer) {
-      throw new Error(`Remote plugin artifact signature signer mismatch`)
-    }
-    if (signature.pluginId !== id) throw new Error(`Remote plugin artifact signature plugin id mismatch`)
-    if (signature.version !== version) throw new Error(`Remote plugin artifact signature version mismatch`)
-    if (signature.payload.tarballHash !== tarballHash) {
-      throw new Error(`Remote plugin artifact signature tarball hash mismatch`)
-    }
-    if (signature.payload.manifestHash !== target.manifestHash) {
-      throw new Error(`Remote plugin artifact signature manifest hash mismatch`)
-    }
-    if (signature.payload.permissionsHash !== target.permissionsHash) {
-      throw new Error(`Remote plugin artifact signature permissions hash mismatch`)
-    }
+      const signature = readSignatureFile(tarballPath)
+      if (!signature) throw new Error(`Remote plugin artifact signature is missing or invalid`)
+      const trustedSignature = target.signature
+      if (!trustedSignature) throw new Error(`Official registry version is missing reviewed signature metadata`)
+      if (trustedSignature.algorithm !== signature.algorithm) {
+        throw new Error(`Remote plugin artifact signature algorithm mismatch`)
+      }
+      if (trustedSignature.signer !== signature.signer) {
+        throw new Error(`Remote plugin artifact signature signer mismatch`)
+      }
+      if (signature.pluginId !== id) throw new Error(`Remote plugin artifact signature plugin id mismatch`)
+      if (signature.version !== version) throw new Error(`Remote plugin artifact signature version mismatch`)
+      if (signature.payload.tarballHash !== tarballHash) {
+        throw new Error(`Remote plugin artifact signature tarball hash mismatch`)
+      }
+      if (signature.payload.manifestHash !== target.manifestHash) {
+        throw new Error(`Remote plugin artifact signature manifest hash mismatch`)
+      }
+      if (signature.payload.permissionsHash !== target.permissionsHash) {
+        throw new Error(`Remote plugin artifact signature permissions hash mismatch`)
+      }
 
-    const extractedDir = await extractArchive(tarballPath)
-    const manifestPath = path.join(extractedDir, "plugin.json")
-    const manifest = PluginManifest.parse(JSON.parse(await Bun.file(manifestPath).text())) as PluginManifestType
-    if (manifest.name !== id) throw new Error(`Remote plugin artifact manifest name mismatch`)
-    if (manifest.version !== version) throw new Error(`Remote plugin artifact manifest version mismatch`)
+      extractedDir = await extractArchive(tarballPath)
+      const manifestPath = path.join(extractedDir, "plugin.json")
+      const manifest = PluginManifest.parse(JSON.parse(await Bun.file(manifestPath).text())) as PluginManifestType
+      if (manifest.name !== id) throw new Error(`Remote plugin artifact manifest name mismatch`)
+      if (manifest.version !== version) throw new Error(`Remote plugin artifact manifest version mismatch`)
 
-    const capabilities = baseCapabilities(manifest)
-    const manifestHash = computeManifestHash(manifest)
-    const permissionsHash = computePermissionsHash(manifest, capabilities)
-    if (manifestHash !== target.manifestHash) throw new Error(`Remote plugin artifact manifest hash mismatch`)
-    if (permissionsHash !== target.permissionsHash) throw new Error(`Remote plugin artifact permissions hash mismatch`)
+      const capabilities = baseCapabilities(manifest)
+      const manifestHash = computeManifestHash(manifest)
+      const permissionsHash = computePermissionsHash(manifest, capabilities)
+      if (manifestHash !== target.manifestHash) throw new Error(`Remote plugin artifact manifest hash mismatch`)
+      if (permissionsHash !== target.permissionsHash)
+        throw new Error(`Remote plugin artifact permissions hash mismatch`)
 
-    const signatureValid = await verifySignatureWithPublicKey(tarballPath, signature, trustedSignature.signer)
-    if (!signatureValid) throw new Error(`Remote plugin artifact signature verification failed`)
+      const signatureValid = await verifySignatureWithPublicKey(tarballPath, signature, trustedSignature.signer)
+      if (!signatureValid) throw new Error(`Remote plugin artifact signature verification failed`)
 
-    return {
-      entry,
-      version: target,
-      tarballPath,
-      signaturePath,
-      cacheKey: `official:${id}@${version}:${tarballHash}`,
-      manifest,
-      capabilities,
-      risk: computeRisk(capabilities, manifest),
-      signature,
+      return {
+        entry,
+        version: target,
+        tarballPath,
+        signaturePath,
+        cacheKey: `official:${id}@${version}:${tarballHash}`,
+        manifest,
+        capabilities,
+        risk: computeRisk(capabilities, manifest),
+        signature,
+      }
+    } catch (err) {
+      await removeArtifactCache(tarballPath)
+      throw err
+    } finally {
+      if (extractedDir) await fs.rm(extractedDir, { recursive: true, force: true }).catch(() => {})
     }
   }
 }

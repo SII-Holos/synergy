@@ -34,20 +34,13 @@ import path from "path"
 import fs from "fs"
 import * as prompts from "@clack/prompts"
 import { read as readManifestFile } from "../../plugin/manifest-reader"
-import { BunProc } from "../../util/bun"
-import { findPackageRoot } from "../../plugin/loader"
 import { resolveSpecPluginDir } from "../../plugin/loader"
 import { diffPermissions } from "../../plugin/consent/diff"
 import { baseCapabilities } from "../../plugin/capability"
-import { computeRisk } from "../../plugin/consent/risk"
-import { saveApproval, computeManifestHash, computePermissionsHash } from "../../plugin/consent/approval-store"
-import * as Lockfile from "../../plugin/lockfile"
-import { derivePluginSource } from "../../plugin/trust"
-import { recordEvent } from "../../plugin/audit"
 import { Server } from "../../server/server"
 import { isServerReachable } from "../network"
-import { resolveRuntimeMode } from "../../plugin-runtime/mode-resolver"
-import { Installation } from "../../global/installation"
+import { resolvePluginSpec } from "../../plugin/spec-resolver"
+import { doctor as runPluginDoctor } from "../../plugin/doctor"
 import type { PluginPermissionDiff } from "../../plugin/consent/schema"
 
 // ---------------------------------------------------------------------------
@@ -394,44 +387,12 @@ export const PluginUpdateCommand = cmd({
           const spinner = prompts.spinner()
           spinner.start(`Updating ${SpecToDisplay(spec)}`)
 
-          // Save backup of current lockfile entry for rollback
-          let backupEntry: import("../../plugin/lockfile-schema").PluginLockEntry | null = null
-          try {
-            const { pkg } = PluginSpec.parse(spec)
-            const currentLockfile = await Lockfile.read()
-            backupEntry = currentLockfile.plugins[current.id] ?? currentLockfile.plugins[pkg] ?? null
-          } catch {
-            // No existing lockfile entry
-          }
-
           let oldVersion: string | undefined
           let newVersion: string | undefined
           try {
             oldVersion = current.installedVersion
             newVersion = resolved.manifest?.version ?? readPkgVersion(resolved.pluginDir)
-            await writeUpdatedPackageLock(current, resolved)
-
-            // Write new approval record
-            const updatedManifest = resolved.manifest
-            if (updatedManifest) {
-              const caps = baseCapabilities(updatedManifest)
-              const source = derivePluginSource(resolved.pluginDir)
-              const risk = computeRisk(caps, updatedManifest)
-              await saveApproval({
-                pluginId: id,
-                source,
-                version: updatedManifest.version ?? "0.0.0",
-                manifestHash: computeManifestHash(updatedManifest),
-                permissionsHash: computePermissionsHash(updatedManifest, caps),
-                approvedAt: Date.now(),
-                approvedBy: "user",
-                trustTier: "trusted-import",
-                approvedCapabilities: caps,
-                approvedNetworkDomains: updatedManifest.permissions?.network?.connectDomains ?? [],
-                approvedUISurfaces: [],
-                risk,
-              })
-            }
+            await Plugin.add(spec, { skipConsent: true })
 
             const versionInfo =
               oldVersion && newVersion
@@ -444,36 +405,6 @@ export const PluginUpdateCommand = cmd({
             const message = e instanceof Error ? e.message : String(e)
             spinner.stop(`${UI.Style.TEXT_DANGER}✘${UI.Style.TEXT_NORMAL} ${SpecToDisplay(spec)}`)
             UI.println(`${UI.Style.TEXT_DIM}  ${message}${UI.Style.TEXT_NORMAL}`)
-
-            // Rollback: restore old lockfile entry and re-install old version
-            if (backupEntry) {
-              try {
-                const { pkg } = PluginSpec.parse(spec)
-                const currentLockfile = await Lockfile.read()
-                const restoredLockfile = Lockfile.addEntry(currentLockfile, id, backupEntry)
-                await Lockfile.write(restoredLockfile)
-                UI.println(
-                  `  ${UI.Style.TEXT_WARNING}↩${UI.Style.TEXT_NORMAL} Rolled back lockfile for ${SpecToDisplay(spec)}`,
-                )
-              } catch {
-                UI.println(
-                  `  ${UI.Style.TEXT_WARNING}⚠${UI.Style.TEXT_NORMAL} Could not roll back lockfile for ${SpecToDisplay(spec)}`,
-                )
-              }
-            }
-
-            // Record audit event for rollback
-            void recordEvent({
-              pluginId: id,
-              type: "update_failed_rolled_back",
-              details: {
-                spec,
-                oldVersion: oldVersion ?? "unknown",
-                newVersion: newVersion ?? "unknown",
-                error: message,
-                rolledBack: backupEntry != null,
-              },
-            })
             failed++
           }
         }
@@ -656,6 +587,64 @@ export const PluginSearchCommand = cmd({
 })
 
 // ---------------------------------------------------------------------------
+// doctor [--fix]
+// ---------------------------------------------------------------------------
+
+export const PluginDoctorCommand = cmd({
+  command: "doctor",
+  describe: "diagnose plugin config, lockfile, and cache drift",
+  builder: (yargs: Argv) =>
+    yargs
+      .option("fix", {
+        type: "boolean",
+        describe: "repair duplicate config specs, stale lock entries, and orphan archive caches",
+        default: false,
+      })
+      .option("json", {
+        type: "boolean",
+        describe: "output machine-readable JSON",
+        default: false,
+      }),
+  async handler(args) {
+    await ScopeContext.provide({
+      scope: Scope.home(),
+      async fn() {
+        const result = await runPluginDoctor({ fix: args.fix as boolean })
+        if (args.json) {
+          process.stdout.write(JSON.stringify(result, null, 2) + EOL)
+          return
+        }
+
+        if (result.issues.length === 0) {
+          UI.println(`${UI.Style.TEXT_SUCCESS}✔${UI.Style.TEXT_NORMAL} Plugin installation state is clean.`)
+          return
+        }
+
+        for (const issue of result.issues) {
+          const marker =
+            issue.fixed === true
+              ? `${UI.Style.TEXT_SUCCESS}fixed${UI.Style.TEXT_NORMAL}`
+              : issue.fixed === false
+                ? `${UI.Style.TEXT_WARNING}manual${UI.Style.TEXT_NORMAL}`
+                : `${UI.Style.TEXT_DIM}found${UI.Style.TEXT_NORMAL}`
+          UI.println(`  ${marker} ${issue.message}`)
+        }
+
+        if (!args.fix) {
+          UI.println(
+            `${UI.Style.TEXT_DIM}Run ${UI.Style.TEXT_NORMAL}synergy plugin doctor --fix${UI.Style.TEXT_DIM} to repair safe drift automatically.${UI.Style.TEXT_NORMAL}`,
+          )
+        } else if (result.changed) {
+          UI.println(`${UI.Style.TEXT_SUCCESS}✔${UI.Style.TEXT_NORMAL} Plugin installation state repaired.`)
+        } else {
+          UI.println(`${UI.Style.TEXT_DIM}No automatic repairs were needed.${UI.Style.TEXT_NORMAL}`)
+        }
+      },
+    })
+  },
+})
+
+// ---------------------------------------------------------------------------
 // Helpers (dependency)
 // ---------------------------------------------------------------------------
 
@@ -749,13 +738,16 @@ interface ResolvedPluginPackage {
 }
 
 async function readConfiguredPluginPackage(spec: string): Promise<ConfiguredPluginPackage> {
-  const { pkg, version } = PluginSpec.parse(spec)
-  const pluginDir = resolveSpecPluginDir(spec)
-  const manifest = await readManifest(pluginDir)
+  const resolved = await resolvePluginSpec(spec, {
+    install: false,
+    refresh: false,
+  })
+  const pluginDir = resolved.pluginDir
+  const manifest = resolved.manifest ?? (await readManifest(pluginDir))
   return {
     spec,
-    pkg,
-    version,
+    pkg: resolved.pkg,
+    version: resolved.version,
     pluginDir,
     manifest,
     id: manifest?.name ?? PluginSpec.displayName(spec),
@@ -776,47 +768,21 @@ async function resolveNewManifest(
   spec: string,
   options: { refresh?: boolean } = {},
 ): Promise<ResolvedPluginPackage | null> {
-  const { pkg, version } = PluginSpec.parse(spec)
   try {
-    if (options.refresh) {
-      await BunProc.invalidateCache(pkg)
+    const resolved = await resolvePluginSpec(spec, {
+      install: !spec.startsWith("file://"),
+      refresh: options.refresh && !spec.startsWith("file://"),
+    })
+    return {
+      manifest: resolved.manifest,
+      pluginDir: resolved.pluginDir,
+      pkg: resolved.pkg,
+      version: resolved.version,
+      entryPath: resolved.entryPath,
     }
-    const result = await BunProc.install(pkg, version)
-    const pluginDir = findPackageRoot(result.entryPath)
-    const manifest = await readManifest(pluginDir)
-    return { manifest, pluginDir, pkg, version, entryPath: result.entryPath }
   } catch {
     return null
   }
-}
-
-async function writeUpdatedPackageLock(current: ConfiguredPluginPackage, resolved: ResolvedPluginPackage) {
-  const manifest = resolved.manifest
-  const capabilities = manifest ? baseCapabilities(manifest) : []
-  const manifestHash = manifest ? computeManifestHash(manifest) : undefined
-  const permissionsHash = manifest ? computePermissionsHash(manifest, capabilities) : undefined
-  const source = derivePluginSource(resolved.pluginDir)
-  const risk = manifest ? computeRisk(capabilities, manifest) : "low"
-  const runtimeMode = resolveRuntimeMode({
-    source,
-    manifestMode: manifest?.runtime?.mode,
-    devMode: Installation.CHANNEL === "local",
-    userTrusted: false,
-    risk,
-  })
-  const lockfile = await Lockfile.read()
-  const integrity = await Lockfile.computeIntegrity(resolved.entryPath)
-  const updatedLockfile = Lockfile.addEntry(lockfile, current.id, {
-    spec: current.spec,
-    version: manifest?.version ?? resolved.version,
-    resolved: resolved.entryPath,
-    ...(integrity ? { integrity } : {}),
-    ...(permissionsHash ? { permissionsHash } : {}),
-    ...(manifestHash ? { manifestHash } : {}),
-    runtimeMode,
-    ...(manifest ? { approvalId: current.id } : {}),
-  })
-  await Lockfile.write(updatedLockfile)
 }
 
 async function notifyServerPluginReload() {
@@ -878,6 +844,7 @@ export const PluginCommand = cmd({
       .command(PluginPackCommand)
       .command(PluginListCommand)
       .command(PluginSearchCommand)
+      .command(PluginDoctorCommand)
       .command(PluginValidateCommand)
       .command(PluginDevCommand)
       .command(PluginRuntimeCommand)

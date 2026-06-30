@@ -200,6 +200,7 @@ const PluginPermissionsSchema = z
         mcp: z.enum(["none", "invoke", "spawn"]).default("none"),
         task: TaskPermissionDef.optional(),
       })
+      .strict()
       .optional(),
 
     /** Data access */
@@ -210,6 +211,7 @@ const PluginPermissionsSchema = z
         config: z.enum(["none", "plugin", "global"]).default("plugin"),
         secrets: z.enum(["none", "own"]).default("none"),
       })
+      .strict()
       .optional(),
 
     /** Network access */
@@ -219,6 +221,7 @@ const PluginPermissionsSchema = z
         resourceDomains: z.array(z.string()).default([]),
         frameDomains: z.array(z.string()).default([]),
       })
+      .strict()
       .optional(),
 
     /** UI surface permissions */
@@ -235,6 +238,7 @@ const PluginPermissionsSchema = z
         trustedImport: z.boolean().default(false),
         sandboxIframe: z.boolean().default(false),
       })
+      .strict()
       .optional(),
 
     /** Hook permission declarations */
@@ -247,8 +251,10 @@ const PluginPermissionsSchema = z
         promptTransform: z.boolean().default(false),
         compactionTransform: z.boolean().default(false),
       })
+      .strict()
       .optional(),
   })
+  .strict()
   .optional()
 // PluginManifest: the declarative plugin descriptor (plugin.json)
 export const PluginManifest = z
@@ -264,16 +270,12 @@ export const PluginManifest = z
     icon: z.string().optional(),
     keywords: z.array(z.string()).optional(),
 
-    // Compatibility
-    minSynergyVersion: z
-      .string()
-      .regex(/^\d+\.\d+\.\d+$/)
-      .optional(),
     engines: z
       .object({
         synergy: z.string().optional(),
         bun: z.string().optional(),
       })
+      .strict()
       .optional(),
 
     // Dependencies on other plugins
@@ -312,6 +314,7 @@ export const PluginManifest = z
                   workspace: z.enum(["none", "metadata", "read"]).optional(),
                   config: z.enum(["none", "plugin", "global"]).optional(),
                 })
+                .strict()
                 .optional(),
               risk: z.enum(["low", "medium", "high"]).optional(),
             }),

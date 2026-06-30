@@ -64,7 +64,6 @@ describe("PluginManifest schema", () => {
       license: "MIT",
       icon: "https://example.com/icon.png",
       keywords: ["test", "plugin", "synergy"],
-      minSynergyVersion: "1.0.0",
       engines: { synergy: ">=1.0.0", bun: ">=1.0.0" },
       dependencies: { "other-plugin": "~2.0.0" },
       contributes: {
@@ -156,6 +155,30 @@ describe("PluginManifest schema", () => {
       version: "1.0.0",
       description: "A test plugin",
       unknownField: "should be rejected",
+    })
+    expect(result.success).toBe(false)
+  })
+
+  test("minSynergyVersion is rejected", () => {
+    const result = PluginManifest.safeParse({
+      name: "old-version-field-plugin",
+      version: "1.0.0",
+      description: "Uses the removed version contract field",
+      minSynergyVersion: "1.0.0",
+    })
+    expect(result.success).toBe(false)
+  })
+
+  test("unknown tool permissions are rejected", () => {
+    const result = PluginManifest.safeParse({
+      name: "future-permission-plugin",
+      version: "1.0.0",
+      description: "Uses an unknown permission",
+      permissions: {
+        tools: {
+          browser: true,
+        },
+      },
     })
     expect(result.success).toBe(false)
   })

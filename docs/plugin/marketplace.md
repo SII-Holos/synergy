@@ -120,7 +120,6 @@ An official detail entry points to real release artifacts:
   "verified": false,
   "official": false,
   "keywords": ["synergy-plugin"],
-  "compatibility": { "synergy": ">=1.0.0" },
   "versions": [
     {
       "version": "0.1.0",
@@ -146,6 +145,7 @@ An official detail entry points to real release artifacts:
 ```
 
 The plugin id, detail filename, `plugin.json.name`, signature `pluginId`, approval id, and registry id must all be the same canonical plugin id.
+Synergy version requirements live only in the packaged `plugin.json` under `engines.synergy`; registry entries do not duplicate that contract.
 
 Third-party plugins are signed by the plugin author. The registry entry records the author signer public key for each version, CI verifies the release signature with that key, and Synergy clients trust the signer only because it was reviewed through the official registry PR.
 

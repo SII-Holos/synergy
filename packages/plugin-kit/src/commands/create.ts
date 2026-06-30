@@ -19,6 +19,9 @@ function pluginJson(name: string, extra: (name: string) => object): string {
     name,
     version: "0.1.0",
     description: `${name} plugin`,
+    engines: {
+      synergy: ">=1.1.26",
+    },
     permissions: {},
     contributes: {},
   }

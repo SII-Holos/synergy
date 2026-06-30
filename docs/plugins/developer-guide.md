@@ -57,6 +57,9 @@ Do not change `plugin.id` without changing `plugin.json.name` to the same value.
   "name": "my-plugin",
   "version": "0.1.0",
   "description": "Example plugin",
+  "engines": {
+    "synergy": ">=1.1.26",
+  },
   "main": "./src/index.ts",
   "permissions": {
     "tools": {

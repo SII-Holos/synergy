@@ -37,6 +37,11 @@
       "types": "./src/hooks.ts",
       "import": "./dist/hooks.js"
     },
+    "./permissions": {
+      "bun": "./src/permissions.ts",
+      "types": "./src/permissions.ts",
+      "import": "./dist/permissions.js"
+    },
     "./shell": {
       "bun": "./src/shell.ts",
       "types": "./src/shell.ts",
