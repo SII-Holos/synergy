@@ -10,10 +10,16 @@ const virtuaPackagePath = require.resolve("virtua/package.json")
 const virtuaSolidEntry = path.join(path.dirname(virtuaPackagePath), "lib/solid/index.mjs")
 
 const sdkRoot = path.resolve(fileURLToPath(new URL("../sdk/js", import.meta.url)))
+const pluginRoot = path.resolve(fileURLToPath(new URL("../plugin", import.meta.url)))
 const sdkDistComplete =
   fs.existsSync(path.join(sdkRoot, "dist/index.js")) &&
   fs.existsSync(path.join(sdkRoot, "dist/client.js")) &&
   fs.existsSync(path.join(sdkRoot, "dist/server.js"))
+const pluginDistComplete =
+  fs.existsSync(path.join(pluginRoot, "dist/index.js")) &&
+  fs.existsSync(path.join(pluginRoot, "dist/artifact.js")) &&
+  fs.existsSync(path.join(pluginRoot, "dist/ids.js")) &&
+  fs.existsSync(path.join(pluginRoot, "dist/permissions.js"))
 
 // Check that all generated source files exist — partial/interrupted SDK
 // generation (e.g. missing types.gen.ts or client.gen.ts) can break the
@@ -40,6 +46,12 @@ const sdkAliases =
         { find: /^@ericsanchezok\/synergy-sdk$/, replacement: path.join(sdkRoot, "src/index.ts") },
       ]
 
+const pluginAliases = pluginDistComplete
+  ? []
+  : [
+      { find: /^@ericsanchezok\/synergy-plugin\/([^/]+)$/, replacement: path.join(pluginRoot, "src/$1.ts") },
+    ]
+
 /**
  * @type {import("vite").PluginOption}
  */
@@ -59,6 +71,7 @@ export default [
               replacement: fileURLToPath(new URL("./src", import.meta.url)),
             },
             ...sdkAliases,
+            ...pluginAliases,
           ],
         },
         worker: {

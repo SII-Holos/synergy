@@ -11,7 +11,7 @@ import {
 import { fetchUIContributions } from "./api"
 import type { PluginContribution } from "./api"
 import type { PluginLifecycleState } from "./lifecycle"
-import { pluginAssetUrl } from "@ericsanchezok/synergy-plugin"
+import { pluginAssetUrl } from "@ericsanchezok/synergy-plugin/artifact"
 import { PluginToolId } from "@ericsanchezok/synergy-plugin/ids"
 import { useServer } from "@/context/server"
 import { toolRendererRegistry, type ToolRenderer } from "./registries/tool-registry"
