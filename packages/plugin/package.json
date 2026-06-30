@@ -91,7 +91,9 @@
   "files": [
     "dist"
   ],
-  "dependencies": {},
+  "dependencies": {
+    "@ericsanchezok/synergy-util": "workspace:*"
+  },
   "peerDependencies": {
     "zod": ">=4.0.0"
   },

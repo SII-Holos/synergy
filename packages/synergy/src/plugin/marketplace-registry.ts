@@ -3,7 +3,7 @@ import {
   PluginManifest,
   type PluginManifest as PluginManifestType,
 } from "@ericsanchezok/synergy-plugin"
-import { CAPABILITY_DETAILS, permissionCategoryForKey, pluginRisk } from "@ericsanchezok/synergy-plugin/permissions"
+import { SYNERGY_CAPABILITY_DETAILS, permissionCategoryForKey, pluginRisk } from "@ericsanchezok/synergy-util/capability"
 import fs from "fs/promises"
 import fsSync from "fs"
 import os from "os"
@@ -223,7 +223,7 @@ export namespace PluginMarketplaceRegistry {
       key: item.key,
       category: permissionCategoryForKey(item.key),
       severity: item.risk,
-      title: CAPABILITY_DETAILS[item.key]?.title ?? item.key,
+      title: SYNERGY_CAPABILITY_DETAILS[item.key]?.title ?? item.key,
       description: item.description,
     }))
   }

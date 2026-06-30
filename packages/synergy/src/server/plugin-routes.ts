@@ -14,7 +14,7 @@ import {
   pluginAssetUrl,
   type PluginManifest as PluginManifestType,
 } from "@ericsanchezok/synergy-plugin"
-import { computeRisk, pluginRisk, registryPermissionSummary } from "@ericsanchezok/synergy-plugin/permissions"
+import { computeRisk, pluginRisk, registryPermissionSummary } from "@ericsanchezok/synergy-util/capability"
 
 import { diffPermissions } from "../plugin/consent/diff"
 import {

@@ -1,9 +1,9 @@
 import type { HostBridgeMethod } from "./protocol.js"
 import {
+  bridgeCapability,
+  bridgeMethodPolicy as sharedBridgeMethodPolicy,
   permissionCapability,
-  pluginBridgeMethodCapability,
-  pluginBridgeMethodPolicy,
-} from "@ericsanchezok/synergy-plugin/permissions"
+} from "@ericsanchezok/synergy-util/capability"
 
 // ---------------------------------------------------------------------------
 // Bridge method → enforcement capability mapping
@@ -17,8 +17,8 @@ import {
  * EnforcementGate. Interactive/profile approval happens in the host service
  * that executes the request.
  */
-export const bridgeMethodCapability = pluginBridgeMethodCapability
-export const bridgeMethodPolicy = pluginBridgeMethodPolicy
+export const bridgeMethodCapability = bridgeCapability
+export const bridgeMethodPolicy = sharedBridgeMethodPolicy
 
 // ---------------------------------------------------------------------------
 // Enforcement handler factory

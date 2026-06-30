@@ -42,7 +42,7 @@ import {
 import type { ProfileIdInput, ProfileRule, ProfileSandbox } from "../control-profile/types"
 import { PluginToolId } from "../plugin/ids.js"
 import type { PluginApprovalRecord } from "../plugin/consent/approval-store.js"
-import { capabilityNonBypassable } from "@ericsanchezok/synergy-plugin/permissions"
+import { capabilityNonBypassable } from "@ericsanchezok/synergy-util/capability"
 
 export interface Capability {
   class: string

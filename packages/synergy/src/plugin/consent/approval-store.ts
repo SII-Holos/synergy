@@ -3,7 +3,7 @@ import {
   manifestHashPayload,
   permissionsHashPayload,
   stablePluginJson,
-} from "@ericsanchezok/synergy-plugin/permissions"
+} from "@ericsanchezok/synergy-util/capability"
 import type { PluginSource, TrustTier } from "../trust.js"
 import path from "path"
 import fs from "fs/promises"

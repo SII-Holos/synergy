@@ -1,7 +1,7 @@
 import { cmd } from "./cmd"
 import { UI } from "../ui"
 import { PluginManifest, type PluginManifest as PluginManifestType } from "@ericsanchezok/synergy-plugin"
-import { baseCapabilities, permissionItems, pluginRisk } from "@ericsanchezok/synergy-plugin/permissions"
+import { baseCapabilities, permissionItems, pluginRisk } from "@ericsanchezok/synergy-util/capability"
 import { Plugin } from "@/plugin"
 import path from "path"
 import fs from "fs"

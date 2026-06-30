@@ -7,7 +7,7 @@ import {
   pluginRisk,
   publicToolNames,
   registryPermissionSummary,
-} from "@ericsanchezok/synergy-plugin/permissions"
+} from "@ericsanchezok/synergy-util/capability"
 import { resolvePluginPolicyDecision } from "@ericsanchezok/synergy-plugin/policy"
 import { computeManifestHash, computePermissionsHash } from "../../plugin/consent/approval-store"
 import { sha256File } from "../../util/crypto"

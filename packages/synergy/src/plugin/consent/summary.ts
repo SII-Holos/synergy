@@ -1,4 +1,4 @@
-import { permissionItems } from "@ericsanchezok/synergy-plugin/permissions"
+import { permissionItems } from "@ericsanchezok/synergy-util/capability"
 import type { PluginManifest } from "@ericsanchezok/synergy-plugin"
 import type { PermissionItem } from "./schema"
 

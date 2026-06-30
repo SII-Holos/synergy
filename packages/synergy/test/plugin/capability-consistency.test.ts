@@ -1,12 +1,17 @@
 import { describe, expect, test } from "bun:test"
 import { PluginManifest } from "@ericsanchezok/synergy-plugin"
 import {
-  baseCapabilities,
   capabilityRisk,
   computeRisk,
   permissionCapability,
   PROFILE_CAPABILITIES,
 } from "@ericsanchezok/synergy-plugin/permissions"
+import { baseCapabilities } from "../../src/plugin/capability"
+import {
+  SYNERGY_PROFILE_CAPABILITIES,
+  baseCapabilities as sharedBaseCapabilities,
+  computeRisk as sharedComputeRisk,
+} from "@ericsanchezok/synergy-util/capability"
 import {
   computePermissionsHash as runtimeComputePermissionsHash,
   computeManifestHash as runtimeComputeManifestHash,
@@ -37,7 +42,8 @@ describe("plugin capability consistency", () => {
     })
 
     expect(baseCapabilities(manifest)).not.toContain("tool_invoke")
-    expect(PROFILE_CAPABILITIES).not.toContain("tool_invoke")
+    expect(PROFILE_CAPABILITIES).toEqual(SYNERGY_PROFILE_CAPABILITIES)
+    expect(SYNERGY_PROFILE_CAPABILITIES).not.toContain("tool_invoke")
   })
 
   test("grants plugin config access when manifest declares it", () => {
@@ -81,11 +87,11 @@ describe("plugin capability consistency", () => {
     })
 
     const runtimeCapabilities = baseCapabilities(manifest)
-    const kitCapabilities = baseCapabilities(manifest)
+    const kitCapabilities = sharedBaseCapabilities(manifest)
 
     expect(runtimeCapabilities).toContain("task")
     expect(kitCapabilities).toEqual(runtimeCapabilities)
-    expect(computeRisk(kitCapabilities, manifest)).toBe(computeRisk(runtimeCapabilities, manifest))
+    expect(sharedComputeRisk(kitCapabilities, manifest)).toBe(computeRisk(runtimeCapabilities, manifest))
     expect(kitComputeManifestHash(manifest)).toBe(runtimeComputeManifestHash(manifest))
     expect(kitComputePermissionsHash(manifest, kitCapabilities)).toBe(
       runtimeComputePermissionsHash(manifest, runtimeCapabilities),

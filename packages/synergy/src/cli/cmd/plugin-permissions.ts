@@ -2,7 +2,7 @@ import { cmd } from "./cmd"
 import { UI } from "../ui"
 import { EOL } from "os"
 import type { Argv } from "yargs"
-import { CAPABILITY_DETAILS } from "@ericsanchezok/synergy-plugin/permissions"
+import { SYNERGY_CAPABILITY_DETAILS } from "@ericsanchezok/synergy-util/capability"
 import { attachOption, ensureServer, fetchPluginApi } from "./plugin-server"
 
 // ---------------------------------------------------------------------------
@@ -38,7 +38,7 @@ function severityBadge(risk: string): string {
 }
 
 function describeCapability(cap: string): { label: string; risk: string; description: string } {
-  const details = CAPABILITY_DETAILS[cap]
+  const details = SYNERGY_CAPABILITY_DETAILS[cap]
   return details
     ? { label: details.title, risk: details.severity, description: details.description }
     : { label: cap, risk: "low", description: cap }

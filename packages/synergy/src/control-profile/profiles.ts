@@ -1,10 +1,10 @@
 import { Config } from "../config/config"
 import { Log } from "../util/log"
 import {
+  SYNERGY_PROFILE_CAPABILITIES,
   capabilityNonBypassable,
   capabilityRisk,
-  PROFILE_CAPABILITIES,
-} from "@ericsanchezok/synergy-plugin/permissions"
+} from "@ericsanchezok/synergy-util/capability"
 import { PROFILE_IDS } from "./ids"
 import type { ProfileSandbox } from "./types"
 import type {
@@ -25,7 +25,7 @@ function rulesFor(actions: {
   medium: "allow" | "deny" | "ask"
   high: "allow" | "deny" | "ask"
 }) {
-  return PROFILE_CAPABILITIES.map((permission) => {
+  return SYNERGY_PROFILE_CAPABILITIES.map((permission) => {
     if (permission === "shell_hardline") return rule(permission, "deny", true)
     if (permission === "protected_op") return rule(permission, "ask", true)
     const risk = capabilityRisk(permission)
@@ -36,7 +36,7 @@ function rulesFor(actions: {
 }
 
 function guardedRules() {
-  return PROFILE_CAPABILITIES.map((permission) => {
+  return SYNERGY_PROFILE_CAPABILITIES.map((permission) => {
     if (permission === "shell_hardline") return rule(permission, "deny", true)
     if (permission === "protected_op") return rule(permission, "ask", true)
     if (capabilityRisk(permission) === "high") return rule(permission, "ask", capabilityNonBypassable(permission))
@@ -55,7 +55,7 @@ function guardedRules() {
 }
 
 function autonomousRules() {
-  return PROFILE_CAPABILITIES.map((permission) => {
+  return SYNERGY_PROFILE_CAPABILITIES.map((permission) => {
     if (permission === "shell_hardline") return rule(permission, "deny", true)
     if (permission === "file_read" || permission === "shell_read") return rule(permission, "allow")
     if (permission === "file_write") return rule(permission, "allow")

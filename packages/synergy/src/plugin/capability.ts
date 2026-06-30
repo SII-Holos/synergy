@@ -5,7 +5,7 @@ import {
   pluginRisk,
   toolCapabilities as sharedToolCapabilities,
   toolRisk as sharedToolRisk,
-} from "@ericsanchezok/synergy-plugin/permissions"
+} from "@ericsanchezok/synergy-util/capability"
 
 // ---------------------------------------------------------------------------
 // Types

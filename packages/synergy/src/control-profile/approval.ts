@@ -1,6 +1,6 @@
 import type { Capability } from "@/enforcement/gate"
 import type { ProfileApproval, RiskLevel } from "./types"
-import { capabilityRisk, permissionCapability } from "@ericsanchezok/synergy-plugin/permissions"
+import { capabilityRisk, permissionCapability } from "@ericsanchezok/synergy-util/capability"
 
 export interface ApprovalDecision {
   action: "allow" | "ask" | "deny"

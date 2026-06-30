@@ -5,7 +5,7 @@ import { LLM } from "@/session/llm"
 import type { MessageV2 } from "@/session/message-v2"
 import type { Capability } from "@/enforcement/gate"
 import { Log } from "@/util/log"
-import { capabilityNonBypassable } from "@ericsanchezok/synergy-plugin/permissions"
+import { capabilityNonBypassable } from "@ericsanchezok/synergy-util/capability"
 
 export namespace SmartAllow {
   const log = Log.create({ service: "permission.smart-allow" })
