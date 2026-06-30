@@ -1,5 +1,5 @@
-import { createMemo, createSignal, Show, type JSX } from "solid-js"
-import { useParams } from "@solidjs/router"
+import { createMemo, createSignal, For, Show, type JSX } from "solid-js"
+import { useNavigate, useParams } from "@solidjs/router"
 import { useHolos } from "@/context/holos"
 import { useServer } from "@/context/server"
 import { useGlobalSync } from "@/context/global-sync"
@@ -12,9 +12,11 @@ import { Popover } from "@ericsanchezok/synergy-ui/popover"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import { base64Decode } from "@ericsanchezok/synergy-util/encode"
 import { getScopeLabel } from "@/utils/scope"
+import { relativeTime } from "@/utils/time"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import type { Session, SessionStatus } from "@ericsanchezok/synergy-sdk/client"
 import { resolveRuntimeIconState, runtimeLabel } from "./status-bar-runtime"
+import { sessionActivityTime, sortChildSessionsByActivity } from "./status-bar-subsession"
 
 function statusDotClass(status: "success" | "danger" | "muted" | "active") {
   return {
@@ -159,6 +161,96 @@ function RuntimeIconButton(props: { status: SessionStatus | undefined; waiting: 
   )
 }
 
+// ─── Subsessions button ───────────────────────────────────────────
+
+function SubsessionsButton(props: {
+  sessions: Session[]
+  statusFor: (sessionID: string) => { label: string; icon: IconName; tone: "base" | "active" | "danger" }
+  onSelect: (session: Session) => void
+}) {
+  const [open, setOpen] = createSignal(false)
+  const count = () => props.sessions.length
+
+  function preview(session: Session): string | undefined {
+    return session.lastExchange?.assistant ?? session.lastExchange?.user
+  }
+
+  function rowIconClass(tone: "base" | "active" | "danger") {
+    if (tone === "active") return "text-text-interactive-base animate-pulse"
+    if (tone === "danger") return "text-icon-critical-base"
+    return "text-icon-weak"
+  }
+
+  return (
+    <Show when={count() > 0}>
+      <Popover
+        open={open()}
+        onOpenChange={setOpen}
+        placement="top"
+        gutter={8}
+        trigger={
+          <Tooltip placement="top" value={`${count()} subsession${count() !== 1 ? "s" : ""}`}>
+            <button
+              type="button"
+              class="flex h-7 items-center gap-1.5 rounded-full px-2 text-text-weak transition-colors hover:bg-surface-raised-base-hover hover:text-text-base"
+              aria-label={`${count()} subsession${count() !== 1 ? "s" : ""}`}
+            >
+              <Icon name={getSemanticIcon("session.child")} size="small" />
+              <span class="statusbar-indicator-value text-text-weak">{count()}</span>
+            </button>
+          </Tooltip>
+        }
+      >
+        <div class="w-80">
+          <div class="mb-2 flex items-center justify-between gap-3 border-b border-border-weaker-base/50 pb-2">
+            <span class="text-12-medium text-text-base">Subsessions</span>
+            <span class="text-11-regular text-text-subtle">{count()} total</span>
+          </div>
+          <div class="max-h-80 overflow-y-auto pr-1 [scrollbar-width:thin]">
+            <For each={props.sessions}>
+              {(session) => {
+                const status = createMemo(() => props.statusFor(session.id))
+                return (
+                  <button
+                    type="button"
+                    class="flex w-full items-start gap-2 rounded-lg px-2 py-2 text-left transition-colors hover:bg-surface-raised-base-hover"
+                    onClick={() => {
+                      setOpen(false)
+                      props.onSelect(session)
+                    }}
+                  >
+                    <Icon name={status().icon} size="small" class={rowIconClass(status().tone)} />
+                    <span class="min-w-0 flex-1">
+                      <span class="block truncate text-12-medium text-text-base">{session.title || "New session"}</span>
+                      <Show when={preview(session)}>
+                        {(text) => <span class="mt-0.5 block truncate text-11-regular text-text-weak">{text()}</span>}
+                      </Show>
+                    </span>
+                    <span class="flex shrink-0 flex-col items-end gap-0.5">
+                      <Show when={status().tone !== "base"}>
+                        <span
+                          classList={{
+                            "text-10-medium": true,
+                            "text-text-interactive-base": status().tone === "active",
+                            "text-text-critical-base": status().tone === "danger",
+                          }}
+                        >
+                          {status().label}
+                        </span>
+                      </Show>
+                      <span class="text-10-regular text-text-subtle">{relativeTime(sessionActivityTime(session))}</span>
+                    </span>
+                  </button>
+                )
+              }}
+            </For>
+          </div>
+        </div>
+      </Popover>
+    </Show>
+  )
+}
+
 // ─── Panel components ─────────────────────────────────────────────
 
 function PanelSection(props: { title: string; children: JSX.Element }) {
@@ -191,6 +283,7 @@ function PanelIconRow(props: { icon: IconName; label: string; tone?: "base" | "d
 
 export function StatusBar() {
   const params = useParams()
+  const navigate = useNavigate()
   const globalSync = useGlobalSync()
   const holos = useHolos()
   const server = useServer()
@@ -213,6 +306,12 @@ export function StatusBar() {
     const current = store()
     if (!id || !current) return undefined
     return current.session.find((item) => item.id === id)
+  })
+  const childSessions = createMemo(() => {
+    const id = params.id
+    const current = store()
+    if (!id || !current) return []
+    return sortChildSessionsByActivity(current.session.filter((item) => item.parentID === id))
   })
   const status = createMemo(() => (params.id ? store()?.session_status[params.id] : undefined))
   const waiting = createMemo(() => {
@@ -255,6 +354,15 @@ export function StatusBar() {
           (t) => t.parentSessionID === params.id && (t.status === "completed" || t.status === "error"),
         ).length
       : 0
+  const childSessionStatus = (sessionID: string) => {
+    const current = store()
+    const status = current?.session_status[sessionID]
+    const waiting = !!current?.permission[sessionID]?.length || !!current?.question[sessionID]?.length
+    if (waiting) return { label: "waiting", icon: getSemanticIcon("session.waiting"), tone: "danger" as const }
+    if (status?.type === "busy" || status?.type === "retry" || status?.type === "recovering")
+      return { label: "running", icon: getSemanticIcon("session.running"), tone: "active" as const }
+    return { label: "idle", icon: getSemanticIcon("session.child"), tone: "base" as const }
+  }
 
   const openPanel = () => setExpanded(true)
 
@@ -335,6 +443,11 @@ export function StatusBar() {
           <SessionMcpIndicator />
           <Show when={params.id}>
             <SessionCortexIndicator sessionID={params.id!} />
+            <SubsessionsButton
+              sessions={childSessions()}
+              statusFor={childSessionStatus}
+              onSelect={(child) => navigate(`/${params.dir}/session/${child.id}`)}
+            />
             <ContextBar />
           </Show>
 
