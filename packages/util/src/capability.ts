@@ -233,6 +233,7 @@ export const SYNERGY_CAPABILITY_DETAILS: Record<string, SynergyCapabilityDefinit
     severity: "high",
     title: "Access stored credentials",
     description: "Can read stored API keys, tokens, and other credentials.",
+    nonBypassable: true,
   },
   task: {
     category: "tools",

@@ -216,6 +216,8 @@ export namespace Skill {
     const seen = new Set<string>()
 
     for (const root of roots) {
+      if (!existsSync(root)) continue
+
       try {
         for await (const match of scanWithGlobs(root, globs)) {
           const normalized = path.resolve(match)
