@@ -44,6 +44,9 @@ describe("plugin scaffold toolchain", () => {
         expect(manifest.name).toBe(name)
         expect(manifest.engines?.synergy).toBe(PLUGIN_PROTOCOL_MIN_SYNERGY_RANGE)
         expect(manifest.main).toBe("./runtime/index.js")
+        if (template === "api-connector") {
+          expect(manifest.permissions?.network?.connectDomains).toEqual(["api.example.com"])
+        }
         if (manifest.contributes?.ui?.entry) {
           expect(manifest.contributes.ui.entry).toMatch(/^\.\/ui\/index\.js$/)
           expect(await Bun.file(path.join(pluginDir, "dist", "ui", "index.js")).exists()).toBe(true)

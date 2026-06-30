@@ -195,13 +195,26 @@ export const greet = tool({
 function toolsApiConnector(_name: string): string {
   return `import { tool } from "@ericsanchezok/synergy-plugin/tool"
 
+const ALLOWED_API_HOST = "api.example.com"
+
+function allowedApiUrl(input: string) {
+  const url = new URL(input)
+  if (url.protocol !== "https:") {
+    throw new Error("Only https API endpoints are allowed by this template")
+  }
+  if (url.hostname !== ALLOWED_API_HOST) {
+    throw new Error(\`This template only allows \${ALLOWED_API_HOST}. Update plugin.json permissions.network.connectDomains before using another API host.\`)
+  }
+  return url.toString()
+}
+
 export const getJSON = tool({
   description: "Fetch and parse JSON from an API endpoint",
   args: {
     url: tool.schema.string().describe("The API endpoint URL"),
   },
   async execute(args) {
-    const res = await fetch(args.url)
+    const res = await fetch(allowedApiUrl(args.url))
     const json = await res.json()
     return { output: JSON.stringify(json, null, 2) }
   },
@@ -214,7 +227,7 @@ export const postJSON = tool({
     body: tool.schema.string().describe("The JSON request body"),
   },
   async execute(args) {
-    const res = await fetch(args.url, {
+    const res = await fetch(allowedApiUrl(args.url), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: args.body,
@@ -312,7 +325,7 @@ function manifestApiConnector(_name: string): object {
         mcp: "none",
       },
       network: {
-        connectDomains: ["*"],
+        connectDomains: ["api.example.com"],
       },
     },
     contributes: {
