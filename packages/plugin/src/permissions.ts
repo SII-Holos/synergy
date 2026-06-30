@@ -839,6 +839,7 @@ export type PluginBridgeMethodPolicy =
 export const PLUGIN_BRIDGE_METHOD_POLICY = {
   "config.get": { type: "capability", capability: "config:read" },
   "config.set": { type: "capability", capability: "config:write" },
+  "config.replace": { type: "capability", capability: "config:write" },
   "secret.get": { type: "capability", capability: "secrets" },
   "secret.set": { type: "capability", capability: "secrets" },
   "secret.delete": { type: "capability", capability: "secrets" },

@@ -13,7 +13,6 @@ import {
 } from "../plugin/trust"
 import { Installation } from "../global/installation"
 import { Plugin } from "../plugin/index"
-import { Config } from "../config/config"
 import type { PluginManifest as PluginManifestType } from "@ericsanchezok/synergy-plugin"
 import { computeRisk } from "@ericsanchezok/synergy-plugin/permissions"
 
@@ -30,6 +29,7 @@ import { baseCapabilities } from "../plugin/capability"
 import { checkPathContainment } from "../util/path-contain"
 import { PluginMarketplaceRegistry } from "../plugin/marketplace-registry"
 import { localRegistryPath } from "../plugin/local-registry-store"
+import { getPluginConfig, PluginConfigValidationError, replacePluginConfig } from "../plugin/config-store"
 
 import { PluginStatusSchema } from "../plugin/status.js"
 
@@ -398,17 +398,16 @@ export const PluginRoute = new Hono()
       const plugin = await Plugin.get(pluginId)
       if (!plugin) return c.json({ message: `Plugin not found: ${pluginId}` }, 404)
 
-      const config = await Config.current()
-      const values = (config.pluginConfig?.[pluginId] as Record<string, any>) ?? {}
+      const values = await getPluginConfig(pluginId)
       return c.json(values)
     },
   )
-  // 6. PATCH /:pluginId/config — Update plugin config
+  // 6. PATCH /:pluginId/config — Replace plugin config namespace
   .patch(
     "/:pluginId/config",
     describeRoute({
       summary: "Update plugin config",
-      description: "Merge values into the plugin's configuration namespace.",
+      description: "Replace the plugin's configuration namespace.",
       operationId: "plugin.updateConfig",
       responses: {
         200: {
@@ -422,7 +421,6 @@ export const PluginRoute = new Hono()
         ...errors(400, 404),
       },
     }),
-    // TODO: Future — enforce against manifest.contributes.config.schema per-plugin
     validator(
       "json",
       z
@@ -435,11 +433,17 @@ export const PluginRoute = new Hono()
       if (!plugin) return c.json({ message: `Plugin not found: ${pluginId}` }, 404)
 
       const values = c.req.valid("json")
-      const config = await Config.current()
-      const current = (config.pluginConfig?.[pluginId] as Record<string, any>) ?? {}
-      const merged = { ...current, ...values }
-      await Config.domainUpdate("plugins", { pluginConfig: { [pluginId]: merged } } as any)
-      return c.json(merged)
+      const manifest = await Plugin.manifest(pluginId)
+      if (!manifest) return c.json({ message: `Plugin manifest not found: ${pluginId}` }, 404)
+      try {
+        const updated = await replacePluginConfig(pluginId, values, { manifest: manifest as PluginManifestType })
+        return c.json(updated)
+      } catch (error) {
+        if (error instanceof PluginConfigValidationError) {
+          return c.json({ message: error.message, issues: error.issues }, 400)
+        }
+        throw error
+      }
     },
   )
 

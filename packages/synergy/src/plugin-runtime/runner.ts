@@ -161,9 +161,7 @@ function createConfigStore(): PluginConfigAccessor {
   return {
     get: async () => (await bridge("config.get", {})) as Record<string, any>,
     set: async (values) => {
-      for (const [key, value] of Object.entries(values)) {
-        await bridge("config.set", { key, value })
-      }
+      await bridge("config.replace", { values })
     },
   }
 }

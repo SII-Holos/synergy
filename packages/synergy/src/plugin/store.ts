@@ -1,24 +1,20 @@
 import type { PluginConfigAccessor, PluginAuthStore, PluginCacheStore } from "@ericsanchezok/synergy-plugin"
 import path from "path"
 import fs from "fs/promises"
-import { Config } from "../config/config"
+import { getPluginConfig, replacePluginConfig } from "./config-store"
 import { PluginPaths } from "./paths"
 
 // ---------------------------------------------------------------------------
-// Plugin config accessor — reads/writes pluginConfig.{id} in synergy.jsonc
+// Plugin config accessor — reads/replaces pluginConfig.{id} in synergy.jsonc
 // ---------------------------------------------------------------------------
 
 export function createConfigAccessor(pluginId: string): PluginConfigAccessor {
   return {
     async get() {
-      const config = await Config.current()
-      return (config.pluginConfig?.[pluginId] as Record<string, any>) ?? {}
+      return await getPluginConfig(pluginId)
     },
     async set(values: Record<string, any>) {
-      const config = await Config.current()
-      const current = (config.pluginConfig?.[pluginId] as Record<string, any>) ?? {}
-      const merged = { ...current, ...values }
-      await Config.domainUpdate("plugins", { pluginConfig: { [pluginId]: merged } } as any)
+      await replacePluginConfig(pluginId, values)
     },
   }
 }

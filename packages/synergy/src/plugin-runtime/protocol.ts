@@ -32,6 +32,7 @@ export type PluginToHost =
 export type HostBridgeMethod =
   | "config.get"
   | "config.set"
+  | "config.replace"
   | "secret.get"
   | "secret.set"
   | "secret.delete"

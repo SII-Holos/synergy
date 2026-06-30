@@ -1,7 +1,8 @@
 import path from "path"
 import fs from "fs/promises"
 import type { HostBridgeMethod } from "./protocol.js"
-import { createConfigAccessor, createAuthStore, createCacheStore } from "../plugin/store.js"
+import { createAuthStore, createCacheStore } from "../plugin/store.js"
+import { getPluginConfig, replacePluginConfig, setPluginConfigKey } from "../plugin/config-store.js"
 import {
   invokePluginTool,
   requestPluginPermission,
@@ -52,17 +53,24 @@ export async function executeBridgeMethod(input: BridgeHandlerInput): Promise<un
     // ── config ───────────────────────────────────────────────
     case "config.get": {
       await authorizeBridgeCapability(bridgeContext, "config:read", "config.get")
-      const accessor = createConfigAccessor(pluginId)
-      const full = await accessor.get()
+      const full = await getPluginConfig(pluginId)
       const key = (params as any)?.key
       return key !== undefined ? full[key] : full
     }
     case "config.set": {
       await authorizeBridgeCapability(bridgeContext, "config:write", "config.set")
-      const accessor = createConfigAccessor(pluginId)
       const { key, value } = params as any
-      await accessor.set({ [key]: value })
-      return undefined
+      if (typeof key !== "string" || key.trim() === "") {
+        throw new Error("config.set requires 'key' as a non-empty string")
+      }
+      const manifest = await ManifestReader.read(pluginDir)
+      return await setPluginConfigKey(pluginId, key, value, { manifest })
+    }
+    case "config.replace": {
+      await authorizeBridgeCapability(bridgeContext, "config:write", "config.replace")
+      const values = (params as any)?.values
+      const manifest = await ManifestReader.read(pluginDir)
+      return await replacePluginConfig(pluginId, values, { manifest })
     }
 
     // ── secrets ──────────────────────────────────────────────

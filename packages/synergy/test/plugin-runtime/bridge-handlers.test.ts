@@ -1,10 +1,11 @@
-import { describe, expect, test, beforeAll, afterAll } from "bun:test"
+import { describe, expect, test, beforeAll, afterAll, afterEach, mock } from "bun:test"
 import { executeBridgeMethod } from "../../src/plugin-runtime/bridge-handlers.js"
 import { bridgeMethodPolicy, createBridgeEnforcementHandler } from "../../src/plugin-runtime/bridge-enforcement.js"
 import path from "path"
 import fs from "fs/promises"
 import os from "os"
 import type { HostBridgeMethod } from "../../src/plugin-runtime/protocol.js"
+import { Config } from "../../src/config/config.js"
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -12,6 +13,11 @@ import type { HostBridgeMethod } from "../../src/plugin-runtime/protocol.js"
 
 let tmpDir: string
 let pluginDir: string
+
+const originalConfig = {
+  domainGet: Config.domainGet,
+  domainUpdate: Config.domainUpdate,
+}
 
 async function writeTestFile(relativePath: string, content: string): Promise<string> {
   const fullPath = path.join(pluginDir, relativePath)
@@ -71,6 +77,11 @@ describe("bridge-handlers", () => {
 
   afterAll(async () => {
     await fs.rm(tmpDir, { recursive: true, force: true })
+  })
+
+  afterEach(() => {
+    ;(Config as any).domainGet = originalConfig.domainGet
+    ;(Config as any).domainUpdate = originalConfig.domainUpdate
   })
 
   // ── file.read ─────────────────────────────────────────────────
@@ -212,12 +223,87 @@ describe("bridge-handlers", () => {
 
   // ── config.get / config.set ───────────────────────────────────
   describe("config", () => {
-    test("config.get surfaces missing scope context", async () => {
-      await expect(call("config.get")).rejects.toThrow("No context found for scope")
+    test("config.get returns the plugin namespace", async () => {
+      ;(Config as any).domainGet = mock(async () => ({
+        pluginConfig: {
+          "test-plugin": { theme: "dark", refreshInterval: 30 },
+        },
+      }))
+
+      await expect(call("config.get")).resolves.toEqual({ theme: "dark", refreshInterval: 30 })
     })
 
-    test("config.get with key surfaces missing scope context", async () => {
-      await expect(call("config.get", { key: "nonexistent" })).rejects.toThrow("No context found for scope")
+    test("config.get with key returns a single value", async () => {
+      ;(Config as any).domainGet = mock(async () => ({
+        pluginConfig: {
+          "test-plugin": { theme: "dark" },
+        },
+      }))
+
+      await expect(call("config.get", { key: "theme" })).resolves.toBe("dark")
+    })
+
+    test("config.replace replaces the namespace and validates the manifest schema", async () => {
+      const domainUpdateSpy = mock(async () => {})
+      ;(Config as any).domainGet = mock(async () => ({
+        plugin: ["file:///plugin"],
+        pluginConfig: {
+          "test-plugin": { theme: "dark", oldKey: true },
+        },
+      }))
+      ;(Config as any).domainUpdate = domainUpdateSpy
+
+      const result = await call("config.replace", { values: { theme: "light" } })
+
+      expect(result).toEqual({ theme: "light" })
+      expect(domainUpdateSpy).toHaveBeenCalledTimes(1)
+      expect((domainUpdateSpy as any).mock.calls[0]).toEqual([
+        "plugins",
+        {
+          plugin: ["file:///plugin"],
+          pluginConfig: {
+            "test-plugin": { theme: "light" },
+          },
+        },
+        { mode: "replace-domain" },
+      ])
+    })
+
+    test("config.replace rejects values outside contributes.config.schema", async () => {
+      await Bun.write(
+        path.join(pluginDir, "plugin.json"),
+        JSON.stringify(
+          {
+            name: "test-plugin",
+            version: "1.0.0",
+            description: "Bridge config schema plugin",
+            main: "./runtime/index.js",
+            contributes: {
+              config: {
+                schema: {
+                  type: "object",
+                  properties: { theme: { type: "string" } },
+                  additionalProperties: false,
+                },
+              },
+            },
+          },
+          null,
+          2,
+        ),
+      )
+      const domainUpdateSpy = mock(async () => {})
+      ;(Config as any).domainGet = mock(async () => ({
+        pluginConfig: {
+          "test-plugin": { theme: "dark" },
+        },
+      }))
+      ;(Config as any).domainUpdate = domainUpdateSpy
+
+      await expect(call("config.replace", { values: { theme: "light", oldKey: true } })).rejects.toThrow(
+        "contributes.config.schema",
+      )
+      expect(domainUpdateSpy).not.toHaveBeenCalled()
     })
   })
 

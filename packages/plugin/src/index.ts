@@ -39,7 +39,7 @@ export type { BunShell, BunShellOutput, BunShellPromise, ShellExpression, ShellF
 export interface PluginConfigAccessor {
   /** Get the plugin's full config object */
   get(): Promise<Record<string, any>>
-  /** Set one or more config values (deep-merged into the plugin's namespace) */
+  /** Replace the plugin's config namespace with these values */
   set(values: Record<string, any>): Promise<void>
 }
 

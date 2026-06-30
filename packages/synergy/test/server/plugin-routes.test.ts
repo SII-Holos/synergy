@@ -29,10 +29,18 @@ function buildLoadedPlugin(overrides: Partial<Plugin.LoadedPlugin> = {}): Plugin
 
 function buildManifest(overrides: Record<string, any> = {}): Record<string, any> {
   return {
-    name: "Test Plugin",
+    name: "test-plugin",
     version: "1.0.0",
     contributes: {
-      config: { schema: { apiKey: { type: "string", description: "API Key" } } },
+      config: {
+        schema: {
+          type: "object",
+          properties: {
+            apiKey: { type: "string", description: "API Key" },
+          },
+          additionalProperties: true,
+        },
+      },
       ui: { entry: "dist/ui.js" },
     },
     permissions: { webfetch: "allow" },
@@ -50,6 +58,8 @@ const _origPlugin = {
 
 const _origConfig = {
   current: Config.current,
+  domainGet: Config.domainGet,
+  domainUpdate: Config.domainUpdate,
   updateGlobal: Config.updateGlobal,
 }
 
@@ -65,6 +75,8 @@ afterEach(() => {
   ;(Plugin as any).remove = _origPlugin.remove
   ;(Plugin as any).getStatus = _origPluginStatus.getStatus
   ;(Config as any).current = _origConfig.current
+  ;(Config as any).domainGet = _origConfig.domainGet
+  ;(Config as any).domainUpdate = _origConfig.domainUpdate
   ;(Config as any).updateGlobal = _origConfig.updateGlobal
   ;(PluginMarketplaceRegistry as any).verifyOfficialArtifact = _origMarketplaceRegistry.verifyOfficialArtifact
 })
@@ -468,7 +480,18 @@ describe("GET /plugin/:pluginId/config-schema", () => {
   test("returns manifest-contributed config schema", async () => {
     await using tmp = await tmpdir({ git: true })
     const manifest = buildManifest({
-      contributes: { config: { schema: { apiKey: { type: "string" }, port: { type: "number", default: 3000 } } } },
+      contributes: {
+        config: {
+          schema: {
+            type: "object",
+            properties: {
+              apiKey: { type: "string" },
+              port: { type: "number", default: 3000 },
+            },
+            additionalProperties: false,
+          },
+        },
+      },
     })
     const plugin = buildLoadedPlugin()
     ;(Plugin as any).get = mock(async () => plugin)
@@ -481,7 +504,14 @@ describe("GET /plugin/:pluginId/config-schema", () => {
         const res = await app.request("/plugin/test-plugin/config-schema", { method: "GET" })
         expect(res.status).toBe(200)
         const body = await res.json()
-        expect(body).toEqual({ apiKey: { type: "string" }, port: { type: "number", default: 3000 } })
+        expect(body).toEqual({
+          type: "object",
+          properties: {
+            apiKey: { type: "string" },
+            port: { type: "number", default: 3000 },
+          },
+          additionalProperties: false,
+        })
       },
     })
   })
@@ -525,16 +555,31 @@ describe("GET /plugin/:pluginId/config-schema", () => {
 })
 
 // ---------------------------------------------------------------------------
-// 5. Config PATCH — merge and size limit
+// 5. Config PATCH — replacement, schema validation, and size limit
 // ---------------------------------------------------------------------------
 
 describe("PATCH /plugin/:pluginId/config", () => {
-  test("merges new values into existing config", async () => {
+  test("replaces the plugin config namespace", async () => {
     await using tmp = await tmpdir({ git: true })
     const plugin = buildLoadedPlugin()
     const currentConfig = { theme: "dark", refreshInterval: 30 }
     ;(Plugin as any).get = mock(async () => plugin)
-    ;(Config as any).current = mock(async () => ({
+    ;(Plugin as any).manifest = mock(async () =>
+      buildManifest({
+        contributes: {
+          config: {
+            schema: {
+              type: "object",
+              properties: { theme: { type: "string" } },
+              additionalProperties: false,
+            },
+          },
+        },
+      }),
+    )
+    ;(Config as any).domainGet = mock(async () => ({
+      plugin: ["existing-spec"],
+      pluginMarketplace: { enabled: true },
       pluginConfig: { "test-plugin": currentConfig },
     }))
     const domainUpdateSpy = mock(async () => {})
@@ -551,13 +596,16 @@ describe("PATCH /plugin/:pluginId/config", () => {
         })
         expect(res.status).toBe(200)
         const body = await res.json()
-        expect(body).toEqual({ theme: "light", refreshInterval: 30 })
+        expect(body).toEqual({ theme: "light" })
         expect(domainUpdateSpy).toHaveBeenCalledTimes(1)
         expect((domainUpdateSpy as any).mock.calls[0][0]).toBe("plugins")
         const updateArg = (domainUpdateSpy as any).mock.calls[0][1]
         expect(updateArg).toEqual({
-          pluginConfig: { "test-plugin": { theme: "light", refreshInterval: 30 } },
+          plugin: ["existing-spec"],
+          pluginMarketplace: { enabled: true },
+          pluginConfig: { "test-plugin": { theme: "light" } },
         })
+        expect((domainUpdateSpy as any).mock.calls[0][2]).toEqual({ mode: "replace-domain" })
       },
     })
   })
@@ -566,7 +614,8 @@ describe("PATCH /plugin/:pluginId/config", () => {
     await using tmp = await tmpdir({ git: true })
     const plugin = buildLoadedPlugin()
     ;(Plugin as any).get = mock(async () => plugin)
-    ;(Config as any).current = mock(async () => ({}))
+    ;(Plugin as any).manifest = mock(async () => buildManifest())
+    ;(Config as any).domainGet = mock(async () => ({}))
     const domainUpdateSpy = mock(async () => {})
     ;(Config as any).domainUpdate = domainUpdateSpy
 
@@ -582,6 +631,45 @@ describe("PATCH /plugin/:pluginId/config", () => {
         expect(res.status).toBe(200)
         const body = await res.json()
         expect(body).toEqual({})
+        expect(domainUpdateSpy).toHaveBeenCalledTimes(1)
+      },
+    })
+  })
+
+  test("rejects values that do not match contributes.config.schema", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const plugin = buildLoadedPlugin()
+    ;(Plugin as any).get = mock(async () => plugin)
+    ;(Plugin as any).manifest = mock(async () =>
+      buildManifest({
+        contributes: {
+          config: {
+            schema: {
+              type: "object",
+              properties: { refreshInterval: { type: "number" } },
+              additionalProperties: false,
+            },
+          },
+        },
+      }),
+    )
+    ;(Config as any).domainGet = mock(async () => ({ pluginConfig: { "test-plugin": { refreshInterval: 30 } } }))
+    const domainUpdateSpy = mock(async () => {})
+    ;(Config as any).domainUpdate = domainUpdateSpy
+
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const app = Server.App()
+        const res = await app.request("/plugin/test-plugin/config", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ refreshInterval: "fast" }),
+        })
+        expect(res.status).toBe(400)
+        const body = await res.json()
+        expect(body.message).toContain("contributes.config.schema")
+        expect(domainUpdateSpy).not.toHaveBeenCalled()
       },
     })
   })
@@ -619,7 +707,8 @@ describe("PATCH /plugin/:pluginId/config", () => {
     await using tmp = await tmpdir({ git: true })
     const plugin = buildLoadedPlugin()
     ;(Plugin as any).get = mock(async () => plugin)
-    ;(Config as any).current = mock(async () => ({}))
+    ;(Plugin as any).manifest = mock(async () => buildManifest())
+    ;(Config as any).domainGet = mock(async () => ({}))
     const domainUpdateSpy = mock(async () => {})
     ;(Config as any).domainUpdate = domainUpdateSpy
 
