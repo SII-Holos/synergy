@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { selectLoadCandidates, type ResolvedLoadCandidate } from "../../src/plugin/loader"
+import { incrementReloadVersion, selectLoadCandidates, specToPluginId, type ResolvedLoadCandidate } from "../../src/plugin/loader"
 import type { PluginLockfile } from "../../src/plugin/lockfile-schema"
 
 function candidate(configPath: string, pluginId: string): ResolvedLoadCandidate {
@@ -54,5 +54,13 @@ describe("selectLoadCandidates", () => {
       { version: 1, plugins: {} },
     )
     expect(selected.map((entry) => entry.configPath)).toEqual(["file:///tmp/demo-new"])
+  })
+})
+
+describe("loader reload state", () => {
+  test("clears spec id cache when plugin reload version changes", () => {
+    specToPluginId.set("file:///tmp/demo-old", "demo-plugin")
+    incrementReloadVersion()
+    expect(specToPluginId.size).toBe(0)
   })
 })

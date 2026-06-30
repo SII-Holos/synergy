@@ -35,6 +35,7 @@ let reloadVersion = 0
 /** Increment the reload version. Called by lifecycle.reload() before resetting state. */
 export function incrementReloadVersion(): void {
   reloadVersion++
+  specToPluginId.clear()
 }
 
 // ---------------------------------------------------------------------------
@@ -193,8 +194,7 @@ export const state = ScopedState.create(async (): Promise<LoaderState> => {
   for (const candidate of selectLoadCandidates(candidates, lockfile)) {
     const { configPath, resolved } = candidate
 
-    const isLocal = configPath.startsWith("file://")
-    const importUrl = importUrlForEntry(resolved.entryPath, isLocal ? reloadVersion : undefined)
+    const importUrl = importUrlForEntry(resolved.entryPath, reloadVersion)
     const mod = await import(importUrl)
 
     const seen = new Set<PluginDescriptor>()
