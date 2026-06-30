@@ -212,6 +212,20 @@
         },
         "limits": {
           "description": "Default plugin runtime resource and request limits",
+          "default": {
+            "startupTimeoutMs": 5000,
+            "toolInvocationTimeoutMs": 120000,
+            "hookInvocationTimeoutMs": 120000,
+            "bridgeRequestTimeoutMs": 120000,
+            "taskRunTimeoutMs": 120000,
+            "shutdownGraceMs": 1500,
+            "maxConcurrentRequests": 8,
+            "maxLogBytesPerMinute": 128000,
+            "memoryMb": 256,
+            "memoryPollIntervalMs": 10000,
+            "heartbeatIntervalMs": 5000,
+            "heartbeatMissesBeforeKill": 3
+          },
           "ref": "PluginRuntimeLimitsConfig",
           "type": "object",
           "properties": {
@@ -221,8 +235,26 @@
               "exclusiveMinimum": 0,
               "maximum": 9007199254740991
             },
-            "requestTimeoutMs": {
-              "description": "Maximum milliseconds for one plugin runtime request",
+            "toolInvocationTimeoutMs": {
+              "description": "Maximum milliseconds for a plugin tool invocation",
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
+            },
+            "hookInvocationTimeoutMs": {
+              "description": "Maximum milliseconds for a plugin hook invocation",
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
+            },
+            "bridgeRequestTimeoutMs": {
+              "description": "Maximum milliseconds for one plugin-to-host bridge request",
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
+            },
+            "taskRunTimeoutMs": {
+              "description": "Default maximum milliseconds for plugin delegated task runs",
               "type": "integer",
               "exclusiveMinimum": 0,
               "maximum": 9007199254740991
@@ -278,7 +310,8 @@
         "highRiskRequiresProcess",
         "allowThirdPartyInProcess",
         "allowWorkerMode",
-        "allowLocalInProcess"
+        "allowLocalInProcess",
+        "limits"
       ],
       "additionalProperties": false
     },
@@ -328,6 +361,13 @@
           "type": "integer",
           "exclusiveMinimum": 0,
           "maximum": 9007199254740991
+        },
+        "cliRequestTimeoutMs": {
+          "description": "Timeout in milliseconds for Synergy CLI plugin commands waiting on the local server",
+          "default": 120000,
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
         }
       },
       "required": [
@@ -337,7 +377,8 @@
         "cacheTtlMs",
         "offlineCache",
         "requestTimeoutMs",
-        "artifactDownloadTimeoutMs"
+        "artifactDownloadTimeoutMs",
+        "cliRequestTimeoutMs"
       ],
       "additionalProperties": false
     },

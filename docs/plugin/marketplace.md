@@ -35,9 +35,11 @@ Marketplace configuration belongs in the `50-plugins.jsonc` domain:
 Synergy caches the official index under:
 
 ```text
-~/.synergy/cache/plugin-market/registry.json
-~/.synergy/cache/plugin-market/entries/<pluginId>.json
+~/.synergy/cache/plugin-market/registries/<registry-hash>/registry.json
+~/.synergy/cache/plugin-market/registries/<registry-hash>/entries/<pluginId>.json
 ```
+
+The cache namespace is derived from `pluginMarketplace.registryUrl`, so custom registries do not overwrite the official cache.
 
 Stale cache may be used for browsing when `offlineCache` is enabled. Installation still requires a downloadable artifact unless it was already cached during the approval flow.
 
@@ -53,6 +55,18 @@ synergy-plugin publish-market \
 `publish-market` validates, builds, packs, signs, uploads or checks GitHub Release assets, updates the local `SII-Holos/synergy-plugins` checkout, regenerates `registry.json`, runs registry validation, and opens a PR when `gh` is available. If GitHub upload, push, or PR creation cannot be automated, it leaves exact manual commands.
 
 `official` and `verified` are maintainer review labels. The CLI does not grant them automatically for third-party submissions.
+
+Advanced publish workflows can point the kit at another registry checkout or fork:
+
+```bash
+synergy-plugin publish-market \
+  --registry-dir ../synergy-plugins \
+  --registry-repo git@github.com:SII-Holos/synergy-plugins.git \
+  --registry-github-repo SII-Holos/synergy-plugins \
+  --registry-base-branch main
+```
+
+The same values can be supplied through `SYNERGY_PLUGIN_MARKET_REGISTRY_DIR`, `SYNERGY_PLUGIN_MARKET_REGISTRY_REPO`, `SYNERGY_PLUGIN_MARKET_GITHUB_REPO`, and `SYNERGY_PLUGIN_MARKET_BASE_BRANCH`.
 
 For manual entry generation:
 
