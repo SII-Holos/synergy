@@ -124,12 +124,28 @@ export const HolosRoute = new Hono()
 
       const callbackOrigin = new URL(c.req.url).origin
       if (!code || !state) {
-        return c.html(resultPage("Login Failed", "Missing code or state parameter.", false, callbackOrigin))
+        return c.html(
+          resultPage({
+            title: "Could not connect agent",
+            message: "The sign-in link was incomplete. Return to Synergy and try again.",
+            success: false,
+            targetOrigin: callbackOrigin,
+            error: "Missing code or state parameter.",
+          }),
+        )
       }
 
       const pending = pendingStates.get(state)
       if (!pending) {
-        return c.html(resultPage("Login Failed", "Invalid or expired state. Please try again.", false, callbackOrigin))
+        return c.html(
+          resultPage({
+            title: "Could not connect agent",
+            message: "This sign-in window expired. Start a new connection from Synergy.",
+            success: false,
+            targetOrigin: callbackOrigin,
+            error: "Invalid or expired state.",
+          }),
+        )
       }
       pendingStates.delete(state)
 
@@ -137,11 +153,25 @@ export const HolosRoute = new Hono()
         const { agentId, agentSecret } = await HolosLoginFlow.exchange({ code, state, profile: pending.profile })
         await HolosLoginFlow.saveAndReload({ agentId, agentSecret })
         return c.html(
-          resultPage("Login Successful", "You can close this window.", true, pending.callbackOrigin, { agentId }),
+          resultPage({
+            title: "Agent connected",
+            message: "Synergy has received your Holos agent and is getting your workspace ready.",
+            success: true,
+            targetOrigin: pending.callbackOrigin,
+            agentId,
+          }),
         )
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err)
-        return c.html(resultPage("Login Failed", message, false, pending.callbackOrigin))
+        return c.html(
+          resultPage({
+            title: "Could not connect agent",
+            message: "Holos could not finish connecting this agent. Return to Synergy and try again.",
+            success: false,
+            targetOrigin: pending.callbackOrigin,
+            error: message,
+          }),
+        )
       }
     },
   )
@@ -1022,37 +1052,269 @@ export const HolosDataRoute = new Hono()
     },
   )
 
-function resultPage(
-  title: string,
-  message: string,
-  success: boolean,
-  targetOrigin: string,
-  data?: { agentId: string },
-): string {
-  const postMessageScript =
-    success && data
-      ? `<script>
-        if (window.opener) {
-          window.opener.postMessage({
-            type: 'holos-login-success',
-            agentId: ${JSON.stringify(data.agentId)}
-          }, ${JSON.stringify(targetOrigin)});
-        }
-      </script>`
-      : success
-        ? ""
-        : `<script>
-        if (window.opener) {
-          window.opener.postMessage({
-            type: 'holos-login-failed',
-            error: ${JSON.stringify(message)}
-          }, ${JSON.stringify(targetOrigin)});
-        }
-      </script>`
+function escapeHtml(value: string): string {
+  return value.replace(/[&<>"']/g, (char) => {
+    switch (char) {
+      case "&":
+        return "&amp;"
+      case "<":
+        return "&lt;"
+      case ">":
+        return "&gt;"
+      case '"':
+        return "&quot;"
+      case "'":
+        return "&#39;"
+      default:
+        return char
+    }
+  })
+}
 
-  return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${title}</title>
-<style>body{font-family:system-ui;display:flex;justify-content:center;align-items:center;min-height:100vh;margin:0;background:#0a0a0a;color:#e0e0e0}
-.card{text-align:center;padding:3rem;border-radius:1rem;background:#1a1a1a;border:1px solid #333;max-width:400px}
-h2{margin:0 0 1rem;color:${success ? "#4ade80" : "#f87171"}}p{margin:0;color:#999}</style>
-</head><body><div class="card"><h2>${title}</h2><p>${message}</p></div>${postMessageScript}</body></html>`
+function jsonForScript(value: unknown): string {
+  return JSON.stringify(value)
+    .replace(/</g, "\\u003c")
+    .replace(/>/g, "\\u003e")
+    .replace(/&/g, "\\u0026")
+    .replace(/\u2028/g, "\\u2028")
+    .replace(/\u2029/g, "\\u2029")
+}
+
+function shortAgentId(agentId: string): string {
+  return agentId.length > 8 ? agentId.slice(0, 8) : agentId
+}
+
+function resultPage(input: {
+  title: string
+  message: string
+  success: boolean
+  targetOrigin: string
+  agentId?: string
+  error?: string
+}): string {
+  const payload = input.success
+    ? { type: "holos-login-success", agentId: input.agentId }
+    : { type: "holos-login-failed", error: input.error ?? input.message }
+  const statusLabel = input.success ? "Connected" : "Needs attention"
+  const liveMessage = input.success ? "Returning to Synergy..." : "Return to Synergy and try again."
+  const detail = !input.success && input.error ? input.error : undefined
+  const agentMeta =
+    input.success && input.agentId ? `<p class="meta">Agent ${escapeHtml(shortAgentId(input.agentId))}</p>` : ""
+  const detailBlock = detail
+    ? `<details class="details"><summary>Connection details</summary><p>${escapeHtml(detail)}</p></details>`
+    : ""
+
+  return `<!DOCTYPE html>
+<html lang="en" data-result="${input.success ? "success" : "error"}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${escapeHtml(input.title)}</title>
+<style>
+:root {
+  color-scheme: light dark;
+  --bg: #f7f7f5;
+  --surface: #ffffff;
+  --text: #111827;
+  --muted: #5d6470;
+  --subtle: #8a919c;
+  --border: #e2e4e8;
+  --control: #f4f5f6;
+  --control-hover: #eaebee;
+  --success: #16a34a;
+  --danger: #dc2626;
+  --shadow: rgba(15, 23, 42, 0.08);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0f1011;
+    --surface: #18191b;
+    --text: #f5f6f7;
+    --muted: #c1c6ce;
+    --subtle: #878d96;
+    --border: #2b2d31;
+    --control: #222429;
+    --control-hover: #2a2d33;
+    --success: #4ade80;
+    --danger: #f87171;
+    --shadow: rgba(0, 0, 0, 0.28);
+  }
+}
+* {
+  box-sizing: border-box;
+}
+body {
+  min-height: 100vh;
+  min-height: 100dvh;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: var(--bg);
+  color: var(--text);
+  font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+.card {
+  width: min(100%, 440px);
+  padding: 28px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface);
+  box-shadow: 0 8px 12px var(--shadow);
+}
+.status {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 24px;
+  margin-bottom: 18px;
+  color: var(--muted);
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+.mark {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--success);
+}
+[data-result="error"] .mark {
+  background: var(--danger);
+}
+h1 {
+  margin: 0;
+  font-size: 1.375rem;
+  line-height: 1.2;
+  letter-spacing: 0;
+}
+.message {
+  margin: 12px 0 0;
+  color: var(--muted);
+  font-size: 0.96875rem;
+  line-height: 1.55;
+}
+.meta {
+  margin: 16px 0 0;
+  color: var(--subtle);
+  font-size: 0.875rem;
+  line-height: 1.4;
+}
+.live {
+  margin: 22px 0 0;
+  padding-top: 18px;
+  border-top: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 0.875rem;
+  line-height: 1.45;
+}
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 18px;
+}
+button,
+a.button {
+  min-height: 36px;
+  padding: 0 14px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--control);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.875rem;
+  font-weight: 500;
+  text-decoration: none;
+  cursor: pointer;
+}
+button:hover,
+a.button:hover {
+  background: var(--control-hover);
+}
+button:focus-visible,
+a.button:focus-visible,
+summary:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+}
+.details {
+  margin-top: 18px;
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+summary {
+  cursor: pointer;
+  color: var(--text);
+  font-weight: 500;
+}
+.details p {
+  margin: 10px 0 0;
+  color: var(--muted);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .card {
+    animation: enter 180ms ease-out;
+  }
+  @keyframes enter {
+    from {
+      opacity: 0;
+      transform: translateY(4px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+}
+</style>
+</head>
+<body>
+<main class="card" aria-labelledby="title">
+  <div class="status"><span class="mark" aria-hidden="true"></span><span>${escapeHtml(statusLabel)}</span></div>
+  <h1 id="title">${escapeHtml(input.title)}</h1>
+  <p class="message">${escapeHtml(input.message)}</p>
+  ${agentMeta}
+  <p class="live" data-live aria-live="polite">${escapeHtml(liveMessage)}</p>
+  <div class="actions">
+    <button type="button" data-close>Close window</button>
+    <a class="button" href="${escapeHtml(input.targetOrigin)}">Open Synergy</a>
+  </div>
+  ${detailBlock}
+</main>
+<script>
+(() => {
+  const payload = ${jsonForScript(payload)};
+  const targetOrigin = ${jsonForScript(input.targetOrigin)};
+  const shouldClose = ${input.success ? "true" : "false"};
+  const live = document.querySelector("[data-live]");
+  const closeButton = document.querySelector("[data-close]");
+  closeButton?.addEventListener("click", () => window.close());
+
+  let notified = false;
+  try {
+    if (window.opener && !window.opener.closed) {
+      window.opener.postMessage(payload, targetOrigin);
+      window.opener.focus?.();
+      notified = true;
+    }
+  } catch {
+    notified = false;
+  }
+
+  if (shouldClose && notified) {
+    if (live) live.textContent = "Synergy was notified. Closing this window...";
+    window.setTimeout(() => window.close(), 350);
+    window.setTimeout(() => {
+      if (live) live.textContent = "You can close this window and return to Synergy.";
+    }, 1400);
+  } else if (live) {
+    live.textContent = notified ? "Synergy was notified. Return to the app to continue." : "Return to Synergy to continue.";
+  }
+})();
+</script>
+</body>
+</html>`
 }

@@ -38,6 +38,8 @@ Holos agent profile is remote-owned identity data. Synergy may collect the initi
 
 Holos create and import agent dialogs should be compact identity forms: title, short prompt, fields, and actions. Do not use decorative icon blocks, alert-style cards, or local storage and verification details for ordinary explanatory text in these flows.
 
+The Holos login callback page should behave as a transient bridge, not a destination page. On success it should confirm the agent connection, notify the opener with a strict target origin, attempt to close itself, and leave a calm fallback with a close action and Synergy return link. Failure states may include a short expandable detail, but the primary copy should stay human-facing and recoverable rather than debug-style.
+
 Account settings should present the remote Holos profile as identity first and expose identifiers as supporting metadata. Profile fields should not sit permanently on the page as an empty edit form; use an explicit edit state for name, description, and avatar URL. Log out belongs with the identity card because it acts on the current identity. Switching saved agents belongs in a focused chooser, not as a debug-style table inside the Account page. The lower-left account menu should echo the same hierarchy: profile name, profile description or connection state, then a short agent ID only as secondary context; the selected agent needs a single selected affordance, not redundant status text.
 
 Saved Holos agent lists should display each account's remote profile name, description, and avatar when available, including non-active accounts. Short agent IDs are supporting fallback metadata, not the primary label for agents with a reachable profile.
