@@ -16,7 +16,6 @@ import { getDirectory, getFilename } from "@ericsanchezok/synergy-util/path"
 import { Binary } from "@ericsanchezok/synergy-util/binary"
 import { createEffect, createMemo, For, Match, on, ParentProps, Show, Switch } from "solid-js"
 import { DiffChanges } from "./diff-changes"
-import { Typewriter } from "./typewriter"
 import { Message, Part } from "./message-part"
 import { AttachmentGallery } from "./attachment-card"
 import { resolveAttachmentPresentation } from "./attachment-card-utils"
@@ -34,14 +33,6 @@ import { Button } from "./button"
 import { createStore } from "solid-js/store"
 import { createAutoScroll } from "../hooks"
 import { getSpecialUserMessageRenderer, hasSpecialUserMessageRenderer } from "./special-user-message"
-
-function formatTimestamp(timestamp: number): string {
-  const date = new Date(timestamp)
-  const hours = date.getHours().toString().padStart(2, "0")
-  const minutes = date.getMinutes().toString().padStart(2, "0")
-  const seconds = date.getSeconds().toString().padStart(2, "0")
-  return `${hours}:${minutes}:${seconds}`
-}
 
 function same<T>(a: readonly T[] | undefined, b: readonly T[] | undefined) {
   if (a === b) return true
@@ -369,22 +360,6 @@ export function SessionTurn(
                     <Part part={shellModePart()!} message={msg()} defaultOpen />
                   </Match>
                   <Match when={true}>
-                    {/* Title — small label */}
-                    <Show when={msg().summary?.title}>
-                      <div data-slot="session-turn-title">
-                        <Switch>
-                          <Match when={working()}>
-                            <Typewriter as="h1" text={msg().summary?.title} data-slot="session-turn-typewriter" />
-                          </Match>
-                          <Match when={true}>
-                            <h1>{msg().summary?.title}</h1>
-                          </Match>
-                        </Switch>
-                        <Show when={msg().time?.created}>
-                          <span data-slot="session-turn-title-timestamp">{formatTimestamp(msg().time.created)}</span>
-                        </Show>
-                      </div>
-                    </Show>
                     {/* Mailbox source annotation */}
                     <Show when={(msg() as UserMessage).metadata?.mailbox && !specialUserMessageRenderer()}>
                       <MailboxSourceBadge message={msg() as UserMessage} />

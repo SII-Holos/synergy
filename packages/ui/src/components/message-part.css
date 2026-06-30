@@ -167,7 +167,7 @@
   width: 100%;
   max-width: 100%;
   align-items: flex-end;
-  gap: 6px;
+  gap: 4px;
 
   [data-slot="user-message-attachments"] {
     width: min(42rem, 78%);
@@ -189,7 +189,7 @@
     max-width: min(42rem, 78%);
     min-width: 0;
     align-self: flex-end;
-    padding: 10px 36px 10px 12px;
+    padding: 10px 12px;
     border: 1px solid var(--workbench-border, var(--border-base));
     border-radius: var(--radius-md);
     background: var(--workbench-control-bg, var(--surface-base));
@@ -213,20 +213,43 @@
     }
   }
 
-  .user-message-copy-trigger {
-    position: absolute;
-    top: 6px;
-    right: 6px;
-    z-index: 1;
+  [data-slot="user-message-meta"] {
+    width: min(42rem, 78%);
+    max-width: 100%;
+    min-height: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 6px;
+    padding-right: 4px;
+    color: var(--text-weak);
+    font-family: var(--font-family-sans);
+    font-size: var(--font-size-small);
+    font-weight: var(--font-weight-regular);
+    line-height: 1.2;
     opacity: 0;
     pointer-events: none;
     transition: opacity var(--motion-duration-fast) var(--motion-ease-standard);
   }
 
-  [data-slot="user-message-text"]:hover .user-message-copy-trigger,
-  [data-slot="user-message-text"]:focus-within .user-message-copy-trigger {
+  &:hover [data-slot="user-message-meta"],
+  &:focus-within [data-slot="user-message-meta"],
+  [data-slot="user-message-text"]:hover + [data-slot="user-message-meta"],
+  [data-slot="user-message-text"]:focus-within + [data-slot="user-message-meta"],
+  [data-slot="user-message-meta"]:hover {
     opacity: 1;
     pointer-events: auto;
+  }
+
+  [data-slot="user-message-time"] {
+    color: var(--text-weak);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .user-message-copy-trigger {
+    display: inline-grid;
+    place-items: center;
+    flex-shrink: 0;
   }
 
   [data-slot="user-message-copy"] {
@@ -291,7 +314,8 @@
 @media (max-width: 720px) {
   [data-component="user-message"][data-variant="turn-bubble"] {
     [data-slot="user-message-attachments"],
-    [data-slot="user-message-text"] {
+    [data-slot="user-message-text"],
+    [data-slot="user-message-meta"] {
       max-width: min(100%, 34rem);
       width: fit-content;
     }

@@ -66,6 +66,8 @@ Session turns should render as one persisted message-part timeline. Text, reason
 
 User prompts inside a turn may render as a compact right-aligned bubble with matching prompt attachments, but the turn header, tool/result timeline, media results, and diffs must keep their workbench-width timeline structure and original part order.
 
+Turn titles are navigation metadata, not conversation content; keep them in the session timeline or session-level chrome, and place user-prompt timestamps and copy controls outside the prompt bubble as low-emphasis metadata.
+
 Conversation attachment display should be owned by each attachment's presentation policy. Tool metadata may hide or show the tool card, but must not choose primary attachments, promote media results, or override attachment sizing outside the persisted part order. Media such as memes should render as message content at a bounded conversational size, while screenshots and documents can opt into larger or file-style presentation through attachment-level fields.
 
 Child sessions are session-local context and should be reachable from the current session's StatusBar rather than the global sidebar. Show them as a compact recent-activity switcher ordered by each child session's latest update time, with running or waiting state visible in the row.

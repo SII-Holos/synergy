@@ -33,45 +33,6 @@
     overflow-anchor: none;
   }
 
-  [data-slot="session-turn-title"] {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    margin-bottom: 6px;
-    align-items: flex-start;
-  }
-
-  [data-slot="session-turn-title"] h1 {
-    font-size: var(--font-size-large);
-    font-weight: var(--font-weight-semibold, 600);
-    color: var(--text-strong);
-    background: transparent !important;
-    border: 0 !important;
-    box-shadow: none;
-    padding: 0 !important;
-    border-radius: 0 !important;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    min-width: 0;
-    display: inline-block;
-    letter-spacing: -0.01em;
-  }
-
-  [data-slot="session-turn-title-timestamp"] {
-    font-size: var(--font-size-small);
-    color: var(--text-subtle);
-    padding-left: 0;
-    font-weight: var(--font-weight-regular);
-  }
-
-  [data-slot="session-turn-typewriter"] {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    min-width: 0;
-    white-space: nowrap;
-  }
-
   [data-slot="session-turn-mailbox-source"] {
     display: flex;
     align-items: center;

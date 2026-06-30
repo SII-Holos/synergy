@@ -1480,6 +1480,13 @@ export function AssistantMessageDisplay(props: { message: AssistantMessage; part
 
 const userMessageCopyResetDelay = 1600
 
+function formatMessageTimestamp(timestamp: number): string {
+  const date = new Date(timestamp)
+  const hours = date.getHours().toString().padStart(2, "0")
+  const minutes = date.getMinutes().toString().padStart(2, "0")
+  return `${hours}:${minutes}`
+}
+
 async function copyTextToClipboard(text: string): Promise<boolean> {
   if (navigator.clipboard && window.isSecureContext) {
     await navigator.clipboard.writeText(text)
@@ -1512,6 +1519,10 @@ export function UserMessageDisplay(props: { message: UserMessage; parts: PartTyp
   const isTurnBubble = createMemo(() => props.variant === "turn-bubble")
   const canCollapse = createMemo(() => isTurnBubble() && shouldCollapseUserMessage(text()))
   const collapsed = createMemo(() => canCollapse() && !expanded())
+  const timestamp = createMemo(() => {
+    const created = props.message.time?.created
+    return typeof created === "number" ? formatMessageTimestamp(created) : undefined
+  })
 
   const files = createMemo(() => (props.parts?.filter((p) => p.type === "attachment") as AttachmentPart[]) ?? [])
 
@@ -1566,7 +1577,15 @@ export function UserMessageDisplay(props: { message: UserMessage; parts: PartTyp
           data-collapsible={canCollapse() ? "" : undefined}
         >
           <HighlightedText text={text()} references={inlineFiles()} />
-          <Show when={isTurnBubble()}>
+          <Show when={collapsed()}>
+            <div data-slot="user-message-fade" aria-hidden="true" />
+          </Show>
+        </div>
+      </Show>
+      <Show when={isTurnBubble() && (timestamp() || text())}>
+        <div data-slot="user-message-meta">
+          <Show when={timestamp()}>{(value) => <span data-slot="user-message-time">{value()}</span>}</Show>
+          <Show when={text()}>
             <Tooltip
               value={copied() ? "Copied" : "Copy message"}
               placement="top"
@@ -1585,9 +1604,6 @@ export function UserMessageDisplay(props: { message: UserMessage; parts: PartTyp
                 />
               </button>
             </Tooltip>
-          </Show>
-          <Show when={collapsed()}>
-            <div data-slot="user-message-fade" aria-hidden="true" />
           </Show>
         </div>
       </Show>

@@ -115,10 +115,6 @@ const KNOWN_STATIC_TOKENS = new Set([
 ])
 
 const KNOWN_LOCAL_TOKENS = new Set([
-  "session-turn-title-bg",
-  "session-turn-title-border",
-  "session-turn-title-highlight",
-  "session-turn-title-glow",
   "workbench-canvas-bg",
   "workbench-panel-bg",
   "workbench-panel-bg-hover",
