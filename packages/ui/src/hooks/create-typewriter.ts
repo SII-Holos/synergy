@@ -1,21 +1,11 @@
-import { createEffect, createSignal, onCleanup } from "solid-js"
+import { createRenderEffect, createSignal, onCleanup } from "solid-js"
 
-const MAX_RATE = 800
-const MIN_RATE = 18
-const DRAIN_RATE = 800
 const EMIT_INTERVAL_MS = 16
-const MAX_ELAPSED_MS = 100
-const INGRESS_SMOOTHING_MS = 260
-const INGRESS_DECAY_MS = 640
-const TARGET_LOOKAHEAD_MS = 240
-const MIN_TARGET_BUFFER = 16
-const MAX_TARGET_BUFFER = 160
-const GRACE_WINDOW_MS = 220
-const GRACE_RATE_FLOOR = 0.55
-const RATE_SMOOTHING_MS = 80
-const KP = 0.6
-const KI = 0.15
-const MAX_INTEGRAL = 400
+const MAX_ELAPSED_MS = 80
+const BASE_STREAM_RATE_CPS = 260
+const MAX_STREAM_RATE_CPS = 420
+const COMPLETION_DRAIN_RATE_CPS = 420
+const LOW_BUFFER_CHARS = 80
 
 export interface TypewriterOptions {
   source: () => string
@@ -23,37 +13,64 @@ export interface TypewriterOptions {
   completed?: () => boolean
 }
 
-function clamp(value: number, min: number, max: number) {
-  return Math.min(max, Math.max(min, value))
+export interface TypewriterFrameState {
+  revealedLength: number
+  fractional: number
 }
 
-function smoothingAlpha(elapsedMs: number, tauMs: number) {
-  return 1 - Math.exp(-elapsedMs / tauMs)
+export interface TypewriterFrameInput {
+  state: TypewriterFrameState
+  sourceLength: number
+  elapsedMs: number
+  streaming: boolean
+  completed: boolean
+}
+
+function displayRate(buffer: number, streaming: boolean, completed: boolean) {
+  if (completed || !streaming) return COMPLETION_DRAIN_RATE_CPS
+  if (buffer <= LOW_BUFFER_CHARS) return BASE_STREAM_RATE_CPS
+
+  const overflow = buffer - LOW_BUFFER_CHARS
+  const ramp = Math.min(overflow / LOW_BUFFER_CHARS, 1)
+  return BASE_STREAM_RATE_CPS + (MAX_STREAM_RATE_CPS - BASE_STREAM_RATE_CPS) * ramp
+}
+
+export function advanceTypewriterFrame(input: TypewriterFrameInput): TypewriterFrameState {
+  if (input.sourceLength < input.state.revealedLength) {
+    return { revealedLength: input.sourceLength, fractional: 0 }
+  }
+
+  const buffer = input.sourceLength - input.state.revealedLength
+  const rate = displayRate(buffer, input.streaming, input.completed)
+  const fractional = input.state.fractional + (rate * Math.min(input.elapsedMs, MAX_ELAPSED_MS)) / 1000
+  const chars = Math.floor(fractional)
+
+  if (chars <= 0) return { ...input.state, fractional }
+
+  return {
+    revealedLength: Math.min(input.state.revealedLength + chars, input.sourceLength),
+    fractional: fractional - chars,
+  }
 }
 
 /**
- * Creates an adaptive typewriter effect for streaming text.
- *
- * The controller combines:
- * - an exponentially smoothed ingress-rate estimate
- * - a target buffer sized from that ingress rate
- * - a PI controller that keeps the visible buffer near the target
- * - a short grace window that avoids chunk-to-chunk pulsing
- * - a smoothed output rate so visual speed changes stay gradual
+ * Creates a bounded backlog smoother for streaming text snapshots.
  */
 export function createTypewriter(options: TypewriterOptions) {
-  const [displayed, setDisplayed] = createSignal("")
+  const initialSource = options.source()
+  const initialStreaming = options.streaming()
+  const initialCompleted = options.completed?.() ?? false
+  const initialDisplayed = initialCompleted || !initialStreaming ? initialSource : ""
+  const [displayed, setDisplayed] = createSignal(initialDisplayed)
   let rafId: number | undefined
   let animating = false
-  let revealedLength = 0
+  let revealedLength = initialDisplayed.length
   let fractional = 0
   let lastTickTime = 0
   let lastEmitTime = 0
-  let ingressRate = 0
-  let displayRate = MIN_RATE
-  let integralError = 0
-  let lastObservedSourceLength = 0
-  let lastSourceUpdateTime = 0
+  let observedSourceLength = initialSource.length
+  let initialized = false
+  let live = false
 
   function stop() {
     if (rafId !== undefined) {
@@ -64,77 +81,15 @@ export function createTypewriter(options: TypewriterOptions) {
     fractional = 0
   }
 
-  function resetEstimator(now: number, sourceLength: number) {
-    ingressRate = 0
-    displayRate = MIN_RATE
-    integralError = 0
-    lastObservedSourceLength = sourceLength
-    lastSourceUpdateTime = now
+  function snapTo(source: string) {
+    stop()
+    revealedLength = source.length
+    fractional = 0
+    setDisplayed(source)
   }
 
-  function observeSourceGrowth(now: number, sourceLength: number) {
-    if (lastSourceUpdateTime === 0 || sourceLength <= lastObservedSourceLength) {
-      lastObservedSourceLength = sourceLength
-      lastSourceUpdateTime = now
-      return
-    }
-
-    const deltaChars = sourceLength - lastObservedSourceLength
-    const deltaMs = Math.max(1, now - lastSourceUpdateTime)
-    const measuredRate = (deltaChars * 1000) / deltaMs
-    const alpha = smoothingAlpha(deltaMs, INGRESS_SMOOTHING_MS)
-
-    ingressRate = ingressRate === 0 ? measuredRate : ingressRate + (measuredRate - ingressRate) * alpha
-    lastObservedSourceLength = sourceLength
-    lastSourceUpdateTime = now
-  }
-
-  function decayIngressRate(now: number, elapsedMs: number) {
-    const silenceMs = now - lastSourceUpdateTime
-    if (silenceMs <= GRACE_WINDOW_MS || ingressRate === 0) return
-
-    const alpha = smoothingAlpha(elapsedMs, INGRESS_DECAY_MS)
-    ingressRate += (0 - ingressRate) * alpha
-  }
-
-  function getTargetBuffer() {
-    return clamp((ingressRate * TARGET_LOOKAHEAD_MS) / 1000, MIN_TARGET_BUFFER, MAX_TARGET_BUFFER)
-  }
-
-  function getTargetDisplayRate(
-    now: number,
-    elapsedMs: number,
-    buffer: number,
-    streaming: boolean,
-    completed: boolean,
-  ) {
-    if (completed || !streaming) {
-      integralError = 0
-      return Math.max(DRAIN_RATE, buffer * 10)
-    }
-
-    decayIngressRate(now, elapsedMs)
-
-    const targetBuffer = getTargetBuffer()
-    const lookaheadSeconds = TARGET_LOOKAHEAD_MS / 1000
-    const inGraceWindow = now - lastSourceUpdateTime <= GRACE_WINDOW_MS
-    const bufferError = inGraceWindow ? Math.max(buffer - targetBuffer, 0) : buffer - targetBuffer
-    const errorRate = bufferError / lookaheadSeconds
-    const elapsedSeconds = elapsedMs / 1000
-
-    integralError = clamp(integralError + errorRate * elapsedSeconds, -MAX_INTEGRAL, MAX_INTEGRAL)
-
-    const floor = inGraceWindow ? Math.max(MIN_RATE, ingressRate * GRACE_RATE_FLOOR) : MIN_RATE
-    const correction = KP * errorRate + KI * integralError
-    return clamp(ingressRate + correction, floor, MAX_RATE)
-  }
-
-  function updateDisplayRate(now: number, elapsedMs: number, buffer: number, streaming: boolean, completed: boolean) {
-    const targetRate = getTargetDisplayRate(now, elapsedMs, buffer, streaming, completed)
-    const alpha = smoothingAlpha(elapsedMs, RATE_SMOOTHING_MS)
-    displayRate += (targetRate - displayRate) * alpha
-    displayRate = clamp(displayRate, MIN_RATE, MAX_RATE)
-    return displayRate
+  function isDone(streaming: boolean, completed: boolean) {
+    return completed || !streaming
   }
 
   function tick(now: number) {
@@ -148,22 +103,22 @@ export function createTypewriter(options: TypewriterOptions) {
       }
       animating = false
       fractional = 0
-      integralError = 0
+      if (isDone(options.streaming(), options.completed?.() ?? false)) live = false
       return
     }
 
     const elapsedMs = Math.min(now - lastTickTime, MAX_ELAPSED_MS)
     lastTickTime = now
 
-    const buffer = total - revealedLength
-    const rate = updateDisplayRate(now, elapsedMs, buffer, options.streaming(), options.completed?.() ?? false)
-
-    fractional += (rate * elapsedMs) / 1000
-    const chars = Math.floor(fractional)
-    if (chars > 0) {
-      fractional -= chars
-      revealedLength = Math.min(revealedLength + chars, total)
-    }
+    const next = advanceTypewriterFrame({
+      state: { revealedLength, fractional },
+      sourceLength: total,
+      elapsedMs,
+      streaming: options.streaming(),
+      completed: options.completed?.() ?? false,
+    })
+    revealedLength = next.revealedLength
+    fractional = next.fractional
 
     if (now - lastEmitTime >= EMIT_INTERVAL_MS || revealedLength >= total) {
       lastEmitTime = now
@@ -175,7 +130,7 @@ export function createTypewriter(options: TypewriterOptions) {
     } else {
       animating = false
       fractional = 0
-      integralError = 0
+      if (isDone(options.streaming(), options.completed?.() ?? false)) live = false
     }
   }
 
@@ -187,39 +142,47 @@ export function createTypewriter(options: TypewriterOptions) {
     rafId = requestAnimationFrame(tick)
   }
 
-  createEffect(() => {
+  createRenderEffect(() => {
     const source = options.source()
     const streaming = options.streaming()
     const completed = options.completed?.() ?? false
-    const now = performance.now()
 
-    if (lastSourceUpdateTime === 0) {
-      lastSourceUpdateTime = now
-      lastObservedSourceLength = source.length
-    }
+    if (!initialized) {
+      initialized = true
+      observedSourceLength = source.length
+      if (isDone(streaming, completed)) {
+        snapTo(source)
+        return
+      }
 
-    if (completed || (!streaming && !animating)) {
-      stop()
-      revealedLength = source.length
-      fractional = 0
-      resetEstimator(now, source.length)
-      setDisplayed(source)
+      live = true
+      if (source.length > revealedLength) start()
       return
     }
 
-    if (source.length > lastObservedSourceLength) {
-      observeSourceGrowth(now, source.length)
-    } else if (source.length < lastObservedSourceLength) {
-      resetEstimator(now, source.length)
+    if (source.length < observedSourceLength) {
+      observedSourceLength = source.length
+      live = streaming && !completed
+      snapTo(source)
+      return
     }
 
+    if (source.length > observedSourceLength) observedSourceLength = source.length
+
     if (source.length > revealedLength) {
+      if (streaming && !completed) live = true
+      if (!streaming && !completed && !live) {
+        snapTo(source)
+        return
+      }
       start()
-    } else if (source.length < revealedLength) {
-      stop()
-      revealedLength = source.length
-      resetEstimator(now, source.length)
-      setDisplayed(source)
+      return
+    }
+
+    if (!streaming && source.length === revealedLength) live = false
+
+    if (isDone(streaming, completed) && !animating && !live) {
+      snapTo(source)
     }
   })
 

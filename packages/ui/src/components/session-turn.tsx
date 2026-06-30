@@ -96,6 +96,10 @@ export function timelineVisualKind(item: SessionTurnTimelineItem): SessionTurnTi
   return "text"
 }
 
+export function timelineItemStableKey(item: SessionTurnTimelineItem): string {
+  return `${timelineVisualKind(item)}:${item.message.id}:${item.part.id}`
+}
+
 export function collectSessionTurnTimelineItems(
   messages: AssistantMessage[],
   partsByMessage: Record<string, PartType[] | undefined>,
@@ -304,6 +308,12 @@ export function SessionTurn(
   const timelineItems = createMemo(() =>
     collectSessionTurnTimelineItems(assistantMessages(), data.store.part, working()),
   )
+  const timelineItemMap = createMemo(() => {
+    const result = new Map<string, SessionTurnTimelineItem>()
+    for (const item of timelineItems()) result.set(timelineItemStableKey(item), item)
+    return result
+  })
+  const timelineItemKeys = createMemo(() => timelineItems().map(timelineItemStableKey))
   const hasTimelineItems = createMemo(() => timelineItems().length > 0)
 
   const autoScroll = createAutoScroll({
@@ -375,12 +385,22 @@ export function SessionTurn(
                     </Show>
                     <Show when={hasTimelineItems() || (!working() && hasDiffs())}>
                       <div data-slot="session-turn-timeline">
-                        <For each={timelineItems()}>
-                          {(item) => (
-                            <div data-slot="session-turn-timeline-item" data-kind={timelineVisualKind(item)}>
-                              <TimelineItemDisplay item={item} serverUrl={data.serverUrl} />
-                            </div>
-                          )}
+                        <For each={timelineItemKeys()}>
+                          {(key) => {
+                            const item = () => timelineItemMap().get(key)
+                            return (
+                              <Show when={item()}>
+                                {(current) => (
+                                  <div
+                                    data-slot="session-turn-timeline-item"
+                                    data-kind={timelineVisualKind(current())}
+                                  >
+                                    <TimelineItemDisplay item={current()} serverUrl={data.serverUrl} />
+                                  </div>
+                                )}
+                              </Show>
+                            )
+                          }}
                         </For>
                         <Show when={!working() && hasDiffs()}>
                           <Accordion

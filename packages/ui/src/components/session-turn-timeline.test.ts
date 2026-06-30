@@ -35,7 +35,7 @@ mock.module("./sticky-accordion-header", () => ({ StickyAccordionHeader: Empty }
 mock.module("./tool-renders", () => ({}))
 mock.module("./typewriter", () => ({ Typewriter: Empty }))
 
-const { collectSessionTurnTimelineItems } = await import("./session-turn")
+const { collectSessionTurnTimelineItems, timelineItemStableKey } = await import("./session-turn")
 
 function assistant(id: string): AssistantMessage {
   return {
@@ -106,6 +106,41 @@ function mediaTool(input: {
               raw: '{"prompt":"random meme"',
               charsReceived: input.status === "generating" ? 23 : undefined,
               metadata: { display: { kind: "media-generation", toolCard: "hidden" } },
+            },
+  } as PartType
+}
+
+function ordinaryTool(input: { id: string; messageID: string; status: "pending" | "generating" | "running" | "completed" }): PartType {
+  return {
+    id: input.id,
+    sessionID: "session",
+    messageID: input.messageID,
+    type: "tool",
+    callID: `call-${input.id}`,
+    tool: "read",
+    state:
+      input.status === "completed"
+        ? {
+            status: "completed",
+            input: { filePath: "report.md" },
+            output: "done",
+            title: "report.md",
+            metadata: {},
+            time: { start: 1, end: 2 },
+          }
+        : input.status === "running"
+          ? {
+              status: "running",
+              input: { filePath: "report.md" },
+              metadata: {},
+              time: { start: 1 },
+            }
+          : {
+              status: input.status,
+              input: {},
+              raw: '{"filePath":"report.md"}',
+              charsReceived: input.status === "generating" ? 24 : undefined,
+              metadata: {},
             },
   } as PartType
 }
@@ -264,5 +299,39 @@ describe("session turn timeline", () => {
 
     expect(items.map((item) => item.kind)).toEqual(["part"])
     expect(items[0]).toMatchObject({ kind: "part", part: { type: "text" } })
+  })
+
+  test("keeps ordinary tool timeline key stable across state updates", () => {
+    const message = assistant("assistant-a")
+    const keys = (["pending", "generating", "running", "completed"] as const).map((status) => {
+      const items = collectSessionTurnTimelineItems(
+        [message],
+        { [message.id]: [ordinaryTool({ id: "tool-a", messageID: message.id, status })] },
+        status !== "completed",
+      )
+
+      expect(items).toHaveLength(1)
+      return timelineItemStableKey(items[0])
+    })
+
+    expect(new Set(keys).size).toBe(1)
+    expect(keys[0]).toBe("tool:assistant-a:tool-a")
+  })
+
+  test("changes timeline key when a media tool changes render shape", () => {
+    const message = assistant("assistant-a")
+    const pending = collectSessionTurnTimelineItems(
+      [message],
+      { [message.id]: [mediaTool({ id: "tool-a", messageID: message.id, status: "pending" })] },
+      true,
+    )
+    const completed = collectSessionTurnTimelineItems(
+      [message],
+      { [message.id]: [mediaTool({ id: "tool-a", messageID: message.id, status: "completed" })] },
+      false,
+    )
+
+    expect(timelineItemStableKey(pending[0])).toBe("media-pending:assistant-a:tool-a")
+    expect(timelineItemStableKey(completed[0])).toBe("tool-attachments:assistant-a:tool-a")
   })
 })
