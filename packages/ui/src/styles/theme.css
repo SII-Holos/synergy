@@ -17,6 +17,18 @@
   --line-height-normal: 1.5;
   --line-height-x-large: 180%;
   --line-height-2x-large: 200%;
+  --type-ui-page-title-size: 1.5rem;
+  --type-ui-page-title-line-height: 1.875rem;
+  --type-ui-section-title-size: 1rem;
+  --type-ui-section-title-line-height: 1.375rem;
+  --type-ui-row-title-size: 0.875rem;
+  --type-ui-row-title-line-height: 1.25rem;
+  --type-ui-body-size: 0.875rem;
+  --type-ui-body-line-height: 1.375rem;
+  --type-ui-control-size: 0.8125rem;
+  --type-ui-control-line-height: 1.125rem;
+  --type-ui-caption-size: 0.75rem;
+  --type-ui-caption-line-height: 1rem;
   --letter-spacing-normal: 0;
   --letter-spacing-tight: -0.1599999964237213;
   --letter-spacing-tightest: -0.3199999928474426;

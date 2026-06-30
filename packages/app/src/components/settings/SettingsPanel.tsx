@@ -337,17 +337,13 @@ export function SettingsPanel(props: SettingsPanelProps) {
           <AppPanel.Nav>
             <div class="px-3 pt-4 pb-2 flex flex-col gap-2">
               <div>
-                <div class="text-14-medium text-text-strong truncate">Global Config</div>
+                <div class="settings-nav-title truncate">Global Config</div>
                 <div class="flex items-center gap-1.5 flex-wrap">
                   <Show when={save.explicitDirty()}>
-                    <span class="px-1.5 py-px rounded-full text-12-medium text-text-strong bg-icon-warning-base/18">
-                      Unsaved
-                    </span>
+                    <span class="settings-nav-badge settings-nav-badge-dirty">Unsaved</span>
                   </Show>
                   <Show when={save.autoStatus() === "saved"}>
-                    <span class="px-1.5 py-px rounded-full text-12-regular text-text-weak bg-icon-success-base/14">
-                      Saved
-                    </span>
+                    <span class="settings-nav-badge settings-nav-badge-saved">Saved</span>
                   </Show>
                 </div>
               </div>
@@ -379,7 +375,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
                 )}
               </For>
               <Show when={navGroups().length === 0}>
-                <div class="px-3 py-6 text-12-regular text-text-weaker">No settings found</div>
+                <div class="settings-empty-text px-3 py-6 text-text-weaker">No settings found</div>
               </Show>
             </div>
           </AppPanel.Nav>
@@ -390,16 +386,16 @@ export function SettingsPanel(props: SettingsPanelProps) {
             <AppPanel.Footer>
               <div class="flex-1 flex items-center gap-2">
                 <Show when={save.bgStatus() === "saving"}>
-                  <span class="text-12-medium text-text-weak">Saving...</span>
+                  <span class="settings-footer-status">Saving...</span>
                 </Show>
                 <Show when={save.bgStatus() === "saved"}>
-                  <span class="flex items-center gap-1 text-12-medium text-text-weak">
+                  <span class="settings-footer-status flex items-center gap-1">
                     <Icon name={getSemanticIcon("state.success")} size="small" />
                     Saved
                   </span>
                 </Show>
                 <Show when={save.autoStatus() === "error" || save.bgStatus() === "error"}>
-                  <span class="text-12-medium text-icon-critical-base">Save failed</span>
+                  <span class="settings-footer-status settings-footer-status-error">Save failed</span>
                 </Show>
               </div>
               <Button type="button" variant="ghost" size="large" onClick={save.closeWithGuard}>
@@ -690,7 +686,7 @@ function PluginSettingsContent(props: { section: RegisteredSettingsSection }) {
       <Show when={isSandbox()}>
         <ErrorBoundary
           fallback={(error) => (
-            <div class="flex items-center justify-center py-8 text-13-regular text-icon-critical-base">
+            <div class="settings-availability-message flex items-center justify-center py-8 text-icon-critical-base">
               {error.message}
             </div>
           )}
@@ -702,7 +698,7 @@ function PluginSettingsContent(props: { section: RegisteredSettingsSection }) {
         <Show
           when={comp()}
           fallback={
-            <div class="flex items-center justify-center py-8 text-13-regular text-text-weak">
+            <div class="settings-availability-message flex items-center justify-center py-8">
               {section().label} is not available
             </div>
           }

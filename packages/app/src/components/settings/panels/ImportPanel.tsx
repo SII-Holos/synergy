@@ -150,8 +150,8 @@ export function ImportPanel(props: { domains: ConfigDomainSummary[]; onImported:
         <div class="ds-setting-section">
           <div class="ds-import-plan-header">
             <div>
-              <div class="text-14-medium text-text-strong">{sourceLabel()}</div>
-              <div class="text-12-regular text-text-weak">{plan()!.domains.length} detected domain(s)</div>
+              <div class="settings-import-source-title">{sourceLabel()}</div>
+              <div class="settings-import-source-meta">{plan()!.domains.length} detected domain(s)</div>
             </div>
             <Button
               type="button"
@@ -188,8 +188,8 @@ export function ImportPanel(props: { domains: ConfigDomainSummary[]; onImported:
               {(domain) => (
                 <div class="ds-import-domain-card">
                   <div class="ds-import-domain-card-header">
-                    <div class="text-13-medium text-text-strong">{domain.filename}</div>
-                    <div class="text-12-regular text-text-weak">{domain.mode}</div>
+                    <div class="settings-import-domain-title">{domain.filename}</div>
+                    <div class="settings-import-domain-meta">{domain.mode}</div>
                   </div>
                   <For each={domain.changes}>
                     {(change) => (

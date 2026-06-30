@@ -19,7 +19,7 @@ export function McpCard(props: {
       <div class="ds-mcp-card-header" onClick={() => setExpanded((value) => !value)}>
         <div class="flex items-center gap-2 min-w-0">
           <div class="ds-mcp-dot" classList={{ "ds-mcp-dot-active": props.entry.enabled }} />
-          <span class="text-13-medium text-text-base truncate">{props.entry.key || "New Server"}</span>
+          <span class="settings-mcp-title truncate">{props.entry.key || "New Server"}</span>
           <span class="ds-mcp-badge">{props.entry.type === "local" ? "stdio" : "http"}</span>
         </div>
         <div class="flex items-center gap-1">

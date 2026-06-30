@@ -88,13 +88,13 @@ export function SettingsPathRow(props: {
     <div class="ds-path-row">
       <div class="min-w-0 flex-1">
         <div class="flex items-center gap-2 min-w-0">
-          <span class="text-13-medium text-text-base truncate">{props.label}</span>
+          <span class="settings-path-label truncate">{props.label}</span>
           <Show when={props.status}>
             <span class="ds-inline-badge ds-inline-badge-muted">{props.status}</span>
           </Show>
         </div>
         <Show when={props.description}>
-          <div class="text-12-regular text-text-weak mt-0.5">{props.description}</div>
+          <div class="settings-path-description mt-0.5">{props.description}</div>
         </Show>
         <div class="ds-path-text" title={props.path}>
           {props.path}
@@ -105,7 +105,7 @@ export function SettingsPathRow(props: {
           </div>
         </Show>
         <Show when={props.mergePolicy}>
-          <div class="text-11-regular text-text-weaker mt-1">Merge policy: {props.mergePolicy}</div>
+          <div class="settings-path-meta mt-1">Merge policy: {props.mergePolicy}</div>
         </Show>
       </div>
       <div class="ds-path-actions">

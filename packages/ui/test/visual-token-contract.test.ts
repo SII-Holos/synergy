@@ -70,6 +70,21 @@ const P0_REQUIRED_TOKENS = [
   "motion-ease-emphasized",
 ]
 
+const SEMANTIC_UI_TYPE_TOKENS = [
+  ["type-ui-page-title-size", "1.5rem"],
+  ["type-ui-page-title-line-height", "1.875rem"],
+  ["type-ui-section-title-size", "1rem"],
+  ["type-ui-section-title-line-height", "1.375rem"],
+  ["type-ui-row-title-size", "0.875rem"],
+  ["type-ui-row-title-line-height", "1.25rem"],
+  ["type-ui-body-size", "0.875rem"],
+  ["type-ui-body-line-height", "1.375rem"],
+  ["type-ui-control-size", "0.8125rem"],
+  ["type-ui-control-line-height", "1.125rem"],
+  ["type-ui-caption-size", "0.75rem"],
+  ["type-ui-caption-line-height", "1rem"],
+] as const
+
 /** Tokens that MUST NOT appear in P0 CSS files (forbidden / deprecated) */
 const P0_FORBIDDEN_TOKENS = ["font-size-xs", "font-size-2xs", "font-size-3xs", "font-size-medium", "radius-12"]
 
@@ -98,6 +113,7 @@ function buildP0ValidTokenSet(): Set<string> {
 
   // All P0 required tokens (to be added in this phase)
   for (const t of P0_REQUIRED_TOKENS) valid.add(t)
+  for (const [t] of SEMANTIC_UI_TYPE_TOKENS) valid.add(t)
 
   // Existing design tokens already in theme.css
   const existingDesigns = [
@@ -253,6 +269,17 @@ describe("Visual Token Contract", () => {
       const css = await readThemeCss()
       expect(css).toMatch(/--motion-ease-emphasized\s*:\s*cubic-bezier\(0\.16,\s*1,\s*0\.3,\s*1\)/)
     })
+  })
+
+  describe("1a. Semantic UI typography tokens declared in theme.css", () => {
+    for (const [token, value] of SEMANTIC_UI_TYPE_TOKENS) {
+      test(`--${token}`, async () => {
+        const css = await readThemeCss()
+        const props = extractCustomProps(css)
+        expect(props.has(token), `theme.css 中未定义 --${token}`).toBe(true)
+        expectCustomPropValue(css, token, value)
+      })
+    }
   })
 
   describe("1b. Modal material stays grounded", () => {
