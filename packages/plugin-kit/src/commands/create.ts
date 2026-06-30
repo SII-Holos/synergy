@@ -9,6 +9,12 @@ type TemplateName = "tool-ui" | "workspace-panel" | "api-connector" | "theme-ico
 
 const TEMPLATES: TemplateName[] = ["tool-ui", "workspace-panel", "api-connector", "theme-icon"]
 
+function currentPackageRange(): string {
+  const pkgPath = path.resolve(import.meta.dir, "..", "..", "package.json")
+  const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8")) as { version?: string }
+  return pkg.version ? `^${pkg.version}` : "latest"
+}
+
 interface FileTemplate {
   relativePath: string
   content(name: string): string
@@ -30,6 +36,7 @@ function pluginJson(name: string, extra: (name: string) => object): string {
 
 function packageJson(name: string, templateName: TemplateName): string {
   const needsSolid = templateName !== "theme-icon"
+  const toolkitRange = currentPackageRange()
   const pkg = {
     name,
     version: "0.1.0",
@@ -44,12 +51,12 @@ function packageJson(name: string, templateName: TemplateName): string {
       test: "synergy-plugin test",
     },
     dependencies: {
-      "@ericsanchezok/synergy-plugin": "latest",
+      "@ericsanchezok/synergy-plugin": toolkitRange,
       zod: "^4.0.0",
       ...(needsSolid ? { "solid-js": "^1.9.0" } : {}),
     },
     devDependencies: {
-      "@ericsanchezok/synergy-plugin-kit": "latest",
+      "@ericsanchezok/synergy-plugin-kit": toolkitRange,
       typescript: "^5.8.0",
     },
   }
