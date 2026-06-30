@@ -1,6 +1,11 @@
 import type { Capability } from "@/enforcement/gate"
-import type { ProfileApproval, RiskLevel } from "./types"
+import type { ProfileApproval, ProfileRule, RiskLevel } from "./types"
 import { capabilityRisk, permissionCapability } from "@ericsanchezok/synergy-util/capability"
+
+interface ApprovalProfile {
+  approval: ProfileApproval
+  ruleset: ProfileRule[]
+}
 
 export interface ApprovalDecision {
   action: "allow" | "ask" | "deny"
@@ -26,6 +31,9 @@ export interface ApprovalMetadata {
   risk?: RiskLevel
   reason?: string
   capabilities?: string[]
+  audit?: {
+    visible: boolean
+  }
   time?: {
     requestedAt?: number
     approvalStartedAt?: number
@@ -53,7 +61,7 @@ function actionForRisk(approval: ProfileApproval, risk: RiskLevel) {
 
 function reasonFor(approval: ProfileApproval, risk: RiskLevel, capabilities: string[]) {
   if (approval.mode === "guarded" && risk !== "low") {
-    return "Guarded mode applies capability-specific approval rules before shell, external, identity, or platform actions."
+    return "Guarded mode applies capability-specific approval rules before shell, external writes, identity, or platform actions."
   }
   if (approval.mode === "autonomous" && risk === "high") {
     return "Autonomous mode blocks high-risk capabilities instead of prompting while the user is away."
@@ -62,39 +70,80 @@ function reasonFor(approval: ProfileApproval, risk: RiskLevel, capabilities: str
   return `Profile allows ${risk}-risk capabilities: ${capabilities.join(", ")}.`
 }
 
+function ruleAction(profile: ApprovalProfile, capability: string): "allow" | "ask" | "deny" {
+  const rule = profile.ruleset.find((item) => item.permission === capability)
+  return rule?.action ?? actionForRisk(profile.approval, riskForCapability(capability))
+}
+
+function actionForProfile(profile: ApprovalProfile, risk: RiskLevel, capabilities: string[]) {
+  if (capabilities.length === 0) return actionForRisk(profile.approval, risk)
+
+  let asks = false
+  for (const capability of capabilities) {
+    const action = ruleAction(profile, capability)
+    if (action === "deny") return "deny"
+    if (action === "ask") asks = true
+  }
+
+  if (!asks) return "allow"
+  if (profile.approval.mode === "autonomous" && risk === "high") return "deny"
+  return "ask"
+}
+
+const ALWAYS_VISIBLE_AUDIT_STATUSES = new Set([
+  "pending_user",
+  "user_allowed",
+  "user_denied",
+  "auto_denied",
+  "policy_denied",
+  "sandbox_blocked",
+])
+
+function auditVisible(metadata: ApprovalMetadata): boolean {
+  const status = metadata.status
+  if (!status || status === "not_required") return false
+  if (ALWAYS_VISIBLE_AUDIT_STATUSES.has(status)) return true
+
+  const risk = metadata.risk
+  const mode = metadata.mode
+  if (status === "pre_authorized") return risk !== "low" && mode !== "full_access"
+  if (status !== "auto_allowed") return false
+  if (risk === "low" || mode === "full_access") return false
+  if (metadata.source === "smart_allow" || metadata.source === "user" || metadata.source === "provenance") return true
+  return mode === "autonomous"
+}
+
 export namespace ApprovalPolicy {
   export function riskForPermissions(permissions: string[]): RiskLevel {
     return maxRisk(permissions.map((permission) => riskForCapability(permissionCapability(permission))))
   }
 
-  export function decideCapabilities(approval: ProfileApproval, capabilities: Capability[]): ApprovalDecision {
-    const names = capabilities.length ? capabilities.map((cap) => cap.class) : ["tool_request"]
+  export function decideCapabilities(profile: ApprovalProfile, capabilities: Capability[]): ApprovalDecision {
+    const names = capabilities.map((cap) => cap.class)
     const risk = maxRisk(
-      capabilities.length
-        ? capabilities.map((cap) => (cap.opaque ? "high" : riskForCapability(cap.class)))
-        : ["medium"],
+      capabilities.length ? capabilities.map((cap) => (cap.opaque ? "high" : riskForCapability(cap.class))) : ["low"],
     )
     return {
-      action: actionForRisk(approval, risk),
+      action: actionForProfile(profile, risk, names),
       source: "profile",
       risk,
-      reason: reasonFor(approval, risk, names),
-      capabilities: names,
+      reason: reasonFor(profile.approval, risk, names.length ? names : ["tool_request"]),
+      capabilities: names.length ? names : ["tool_request"],
     }
   }
 
   export function decidePermission(
-    approval: ProfileApproval,
+    profile: ApprovalProfile,
     permission: string,
     metadata: Record<string, unknown> | undefined,
   ): ApprovalDecision {
     const capability = String(metadata?.capability ?? permissionCapability(permission))
     const risk = metadata?.nonBypassable || metadata?.opaque ? "high" : riskForCapability(capability)
     return {
-      action: actionForRisk(approval, risk),
+      action: actionForProfile(profile, risk, [capability]),
       source: "profile",
       risk,
-      reason: reasonFor(approval, risk, [capability]),
+      reason: reasonFor(profile.approval, risk, [capability]),
       capabilities: [capability],
     }
   }
@@ -113,6 +162,16 @@ export namespace ApprovalPolicy {
       risk: decision.risk,
       reason: decision.reason,
       capabilities: decision.capabilities,
+      audit: { visible: false },
+    }
+  }
+
+  export function withAudit(metadata: ApprovalMetadata): ApprovalMetadata {
+    return {
+      ...metadata,
+      audit: {
+        visible: auditVisible(metadata),
+      },
     }
   }
 }

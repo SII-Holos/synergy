@@ -11,12 +11,13 @@ const fallbackProfiles: ControlProfileSummary[] = [
     id: "guarded",
     label: "Guarded",
     description:
-      "Auto-allow safe local edits and network lookups. Ask before shell, external, identity, platform, or extension actions.",
+      "Auto-allow reads, safe local edits, and network lookups. Ask before shell, external writes, identity, platform, or extension actions.",
   },
   {
     id: "autonomous",
     label: "Autonomous",
-    description: "Keep working unattended. High-risk actions are denied instead of prompting.",
+    description:
+      "Keep working unattended. Medium-risk work is allowed; high-risk asks are denied instead of prompting.",
   },
   {
     id: "full_access",

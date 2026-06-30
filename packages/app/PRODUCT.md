@@ -64,6 +64,8 @@ Session, Agenda, Library, and Plugins should feel like one continuous workbench 
 
 Session turns should render as one persisted message-part timeline. Text, reasoning while running, tool calls, media results, attachments, and render previews must stay anchored to their original part order rather than being regrouped into separate steps or response summaries.
 
+Tool audit icons are a quiet exception rail, not a status badge on every tool card. Show them for pending user approval, user decisions, denials, sandbox blocks, and notable autonomous or smart auto-approvals. Hide ordinary low-risk and Guarded baseline auto-approvals so read/search/tool plumbing does not compete with the work itself. The server approval metadata is the source of truth for audit visibility; the UI should not infer visibility from risk or mode.
+
 User prompts inside a turn may render as a compact right-aligned bubble with matching prompt attachments, but the turn header, tool/result timeline, media results, and diffs must keep their workbench-width timeline structure and original part order.
 
 Conversation attachment display should be owned by each attachment's presentation policy. Tool metadata may hide or show the tool card, but must not choose primary attachments, promote media results, or override attachment sizing outside the persisted part order. Media such as memes should render as message content at a bounded conversational size, while screenshots and documents can opt into larger or file-style presentation through attachment-level fields.

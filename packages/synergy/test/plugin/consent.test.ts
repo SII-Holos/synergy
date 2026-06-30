@@ -27,8 +27,8 @@ describe("consent module", () => {
       expect(computeRisk(["file_write"])).toBe("medium")
     })
 
-    test("file_read is medium", () => {
-      expect(computeRisk(["file_read"])).toBe("medium")
+    test("file_read is low", () => {
+      expect(computeRisk(["file_read"])).toBe("low")
     })
 
     test("network_request uses catalog risk without manifest context", () => {
@@ -137,7 +137,7 @@ describe("consent module", () => {
       const manifest = makeManifest()
       const items = generatePermissionItems(manifest, ["file_read"])
       expect(items[0].category).toBe("files")
-      expect(items[0].severity).toBe("medium")
+      expect(items[0].severity).toBe("low")
     })
 
     test("network with declared domains is medium", () => {

@@ -160,16 +160,15 @@ export const SYNERGY_CAPABILITY_DETAILS: Record<string, SynergyCapabilityDefinit
   },
   file_read: {
     category: "files",
-    severity: "medium",
+    severity: "low",
     title: "Read workspace files",
     description: "Can read files and directories in your workspace.",
   },
   file_external_read: {
     category: "files",
-    severity: "high",
+    severity: "low",
     title: "Read external files",
     description: "Can read files outside the active workspace.",
-    nonBypassable: true,
   },
   file_external_write: {
     category: "files",
@@ -206,7 +205,7 @@ export const SYNERGY_CAPABILITY_DETAILS: Record<string, SynergyCapabilityDefinit
   },
   session_data: {
     category: "data",
-    severity: "medium",
+    severity: "low",
     title: "Read session data",
     description: "Can access session metadata and message history.",
   },

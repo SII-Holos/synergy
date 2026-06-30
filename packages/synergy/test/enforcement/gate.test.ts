@@ -32,7 +32,7 @@ describe("EnforcementGate path classification", () => {
     expect(primary.nonBypassable).toBe(false)
   })
 
-  test("read of original checkout in worktree is classified as file_external + nonBypassable", async () => {
+  test("read of original checkout in worktree is classified as bypassable file_external_read", async () => {
     const gate = await EnforcementGate.create({
       activeWorkspace: "/Users/test/synergy-control-profile",
       workspaceType: "worktree",
@@ -46,10 +46,10 @@ describe("EnforcementGate path classification", () => {
 
     const external = result.capabilities.find((c: any) => c.class === "file_external_read")!
     expect(external).toBeDefined()
-    expect(external.nonBypassable).toBe(true)
+    expect(external.nonBypassable).toBe(false)
   })
 
-  test("read of home directory is classified as file_external + nonBypassable", async () => {
+  test("protected home credential read carries protected_op separately from file_external_read", async () => {
     const gate = await EnforcementGate.create({
       activeWorkspace: "/Users/test/synergy-control-profile",
       workspaceType: "worktree",
@@ -61,7 +61,10 @@ describe("EnforcementGate path classification", () => {
 
     const external = result.capabilities.find((c: any) => c.class === "file_external_read")!
     expect(external).toBeDefined()
-    expect(external.nonBypassable).toBe(true)
+    expect(external.nonBypassable).toBe(false)
+    const protectedOp = result.capabilities.find((c: any) => c.class === "protected_op")!
+    expect(protectedOp).toBeDefined()
+    expect(protectedOp.nonBypassable).toBe(true)
   })
 
   test("write within active worktree is classified as file_write (inside)", async () => {
@@ -225,7 +228,7 @@ describe("EnforcementGate shell classification", () => {
     const external = result.capabilities.find((c: any) => c.class === "file_external_write")!
   })
 
-  test("command targeting external path produces file_external capability", async () => {
+  test("read-only command targeting external path produces bypassable file_external_read capability", async () => {
     const gate = await EnforcementGate.create({
       activeWorkspace: "/Users/test/synergy-control-profile",
       workspaceType: "worktree",
@@ -237,7 +240,7 @@ describe("EnforcementGate shell classification", () => {
 
     const external = result.capabilities.find((c: any) => c.class === "file_external_read")!
     expect(external).toBeDefined()
-    expect(external.nonBypassable).toBe(true)
+    expect(external.nonBypassable).toBe(false)
     expect(external.paths).toContain("/etc/passwd")
   })
 })
@@ -2090,7 +2093,7 @@ describe("EnforcementGate new tool classification", () => {
     })
     const cap = result.capabilities.find((c: any) => c.class === "file_external_read")!
     expect(cap).toBeDefined()
-    expect(cap.nonBypassable).toBe(true)
+    expect(cap.nonBypassable).toBe(false)
   })
 
   test("lsp classifies as file_read with path classification", async () => {

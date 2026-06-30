@@ -457,7 +457,7 @@ export namespace ToolResolver {
   ) {
     const profile = gate.getProfileInfo()
     const approval = profile.approval
-    const policyDecision = ApprovalPolicy.decideCapabilities(approval, envelope.capabilities)
+    const policyDecision = ApprovalPolicy.decideCapabilities(profile, envelope.capabilities)
     // envelope.decision is authoritative — the gate already merged profile rules,
     // exec-policy, and approval cache. policyDecision provides risk/capabilities
     // metadata only; its .action is discarded.
@@ -640,7 +640,7 @@ export namespace ToolResolver {
   }
 
   async function setApprovalMetadata(ctx: Tool.Context, approval: ApprovalMetadata) {
-    const stamped = stampApprovalTiming(ctx, approval)
+    const stamped = ApprovalPolicy.withAudit(stampApprovalTiming(ctx, approval))
     ;(ctx.extra as any).approval = stamped
     await ctx.metadata({ metadata: { approval: stamped } })
   }
@@ -699,7 +699,7 @@ export namespace ToolResolver {
             ...req.metadata,
             ...PermissionNext.requestMetadata(input.session),
           }
-          const decision = ApprovalPolicy.decidePermission(profile.approval, req.permission, requestMetadata)
+          const decision = ApprovalPolicy.decidePermission(profile, req.permission, requestMetadata)
           if (decision.action === "deny") {
             const approval = ApprovalPolicy.metadata(profile.approval, decision, "auto_denied")
             await setApprovalMetadata(ctx, approval)

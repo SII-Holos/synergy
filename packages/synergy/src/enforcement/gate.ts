@@ -369,7 +369,7 @@ function classifyPathCapability(
   } else {
     uniqueCapability(caps, {
       class: options.write ? "file_external_write" : "file_external_read",
-      nonBypassable: true,
+      nonBypassable: options.write === true,
       paths: [pathInput],
     })
   }
@@ -663,7 +663,7 @@ export namespace EnforcementGate {
           if (result.boundary === "outside") {
             uniqueCapability(caps, {
               class: writeCapable ? "file_external_write" : "file_external_read",
-              nonBypassable: true,
+              nonBypassable: writeCapable,
               paths: [candidate],
             })
           }
