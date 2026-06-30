@@ -8,6 +8,7 @@ const allowedDuplicateIcons: Record<string, string[]> = {
   circle: ["session.idle", "state.empty"],
   globe: ["settings.channels", "browser.main"],
   "help-circle": ["action.info", "session.waiting", "settings.questions"],
+  "octagon-alert": ["session.retry", "state.warning"],
   "refresh-ccw": ["action.refresh", "browser.refresh"],
   satellite: ["connection.holos", "settings.holos"],
   sun: ["settings.appearance", "settings.colorLight"],

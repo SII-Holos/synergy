@@ -9,10 +9,12 @@ import { SessionLspIndicator, SessionMcpIndicator, SessionCortexIndicator } from
 import { Icon, type IconName } from "@ericsanchezok/synergy-ui/icon"
 import { Tooltip } from "@ericsanchezok/synergy-ui/tooltip"
 import { Popover } from "@ericsanchezok/synergy-ui/popover"
+import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import { base64Decode } from "@ericsanchezok/synergy-util/encode"
 import { getScopeLabel } from "@/utils/scope"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import type { Session, SessionStatus } from "@ericsanchezok/synergy-sdk/client"
+import { resolveRuntimeIconState, runtimeLabel } from "./status-bar-runtime"
 
 function statusDotClass(status: "success" | "danger" | "muted" | "active") {
   return {
@@ -58,14 +60,6 @@ function decodeDirectory(value: string | undefined) {
 function workspaceField(session: Session | undefined, key: string) {
   const value = session?.workspace?.[key]
   return typeof value === "string" ? value : undefined
-}
-
-function runtimeLabel(status: SessionStatus | undefined, waiting: boolean) {
-  if (waiting) return "waiting"
-  if (!status || status.type === "idle") return "idle"
-  if (status.type === "busy") return status.description || "running"
-  if (status.type === "retry") return `retry ${status.attempt}`
-  return "idle"
 }
 
 function serverStatusLabel(healthy: boolean | undefined) {
@@ -135,20 +129,30 @@ function BranchIconButton(props: { branch: string }) {
 // ─── Runtime icon button ──────────────────────────────────────────
 
 function RuntimeIconButton(props: { status: SessionStatus | undefined; waiting: boolean }) {
-  const icon = () => {
-    if (props.waiting) return getSemanticIcon("session.waiting")
-    if (props.status?.type === "busy") return getSemanticIcon("session.running")
-    return getSemanticIcon("session.idle")
+  const runtimeState = createMemo(() => resolveRuntimeIconState(props.status, props.waiting))
+
+  async function copyRetryError() {
+    const copyText = runtimeState().copyText
+    if (!copyText) return
+
+    try {
+      await navigator.clipboard.writeText(copyText)
+      showToast({ type: "success", title: "Retry error copied" })
+    } catch {
+      showToast({ type: "error", title: "Copy failed", description: "Unable to copy the retry error." })
+    }
   }
-  const tooltip = () => `Runtime: ${runtimeLabel(props.status, props.waiting)}`
-  const tone = () => (props.waiting ? ("danger" as const) : ("base" as const))
-  const pulse = () => icon() === getSemanticIcon("session.running") || icon() === getSemanticIcon("session.waiting")
 
   return (
-    <Tooltip placement="top" value={tooltip()}>
-      <button type="button" classList={iconButtonClass(tone())}>
-        <span classList={{ "sb-session-icon-pulse": pulse() }}>
-          <Icon name={icon()} size="small" class="translate-y-0.5" />
+    <Tooltip placement="top" value={runtimeState().tooltip}>
+      <button
+        type="button"
+        classList={iconButtonClass(runtimeState().tone)}
+        onClick={() => void copyRetryError()}
+        aria-label={runtimeState().copyText ? "Copy retry error" : runtimeState().tooltip}
+      >
+        <span classList={{ "sb-session-icon-pulse": runtimeState().pulse }}>
+          <Icon name={runtimeState().icon} size="small" class="translate-y-0.5" />
         </span>
       </button>
     </Tooltip>
@@ -223,6 +227,10 @@ export function StatusBar() {
   const branch = createMemo(() => workspaceField(session(), "branch") || store()?.vcs?.branch)
   const scopeLabel = createMemo(() => getScopeLabel(scope(), directory()))
   const runtime = createMemo(() => runtimeLabel(status(), waiting()))
+  const retryMessage = createMemo(() => {
+    const current = status()
+    return current?.type === "retry" ? current.message.trim() : undefined
+  })
 
   // Inline accessors for panel connection stats
   const lspConnected = () => {
@@ -274,6 +282,13 @@ export function StatusBar() {
             {(desc) => <span class="text-text-weaker"> · {desc()}</span>}
           </Show>
         </PanelRow>
+        <Show when={retryMessage()}>
+          {(message) => (
+            <PanelRow>
+              <span class="text-text-critical-base break-words">{message()}</span>
+            </PanelRow>
+          )}
+        </Show>
       </PanelSection>
 
       <PanelSection title="Connections">

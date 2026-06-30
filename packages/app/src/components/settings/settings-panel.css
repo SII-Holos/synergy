@@ -2145,6 +2145,10 @@
   gap: 22px;
 }
 
+.usage-overview-actions {
+  margin-left: auto;
+}
+
 .usage-overview-metric {
   min-width: 0;
   display: flex;
@@ -2280,6 +2284,10 @@
   .usage-overview-metrics {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .usage-overview-actions {
+    margin-left: 0;
   }
 
   .account-profile-card-actions {

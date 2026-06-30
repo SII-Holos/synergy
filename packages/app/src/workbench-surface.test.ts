@@ -138,7 +138,7 @@ describe("workbench surface polarity", () => {
 
     expect(libraryCss).toContain(".library-header-controls")
     expect(libraryCss).toContain("--library-panel-bg")
-    expect(libraryShared).toContain('export const libraryCardBaseClass =\n  "library-card-surface')
+    expect(libraryShared).toMatch(/export const libraryCardBaseClass\s*=\s*"library-card-surface/)
     expect(libraryShared).not.toContain("uppercase tracking-[0.16em]")
   })
 
