@@ -1,4 +1,6 @@
 import { Button } from "@ericsanchezok/synergy-ui/button"
+import { Icon } from "@ericsanchezok/synergy-ui/icon"
+import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { createEffect, createMemo, Show } from "solid-js"
 import { useParams } from "@solidjs/router"
 import { usePlatform } from "@/context/platform"
@@ -84,8 +86,11 @@ function BrowserPanelInner(props: {
     <Show
       when={browser.session.connectionStatus !== "failed"}
       fallback={
-        <div class="flex flex-col items-center justify-center h-full gap-3 p-4 text-text-weak">
-          <span class="text-14">Browser disconnected</span>
+        <div class="browser-workspace flex h-full flex-col items-center justify-center gap-3 p-4 text-text-weak">
+          <div class="browser-empty-mark">
+            <Icon name={getSemanticIcon("browser.main")} class="size-4" />
+          </div>
+          <span class="text-14-medium text-text-strong">Browser disconnected</span>
           <Button size="small" variant="primary" onClick={() => ws.connect()}>
             Retry
           </Button>
@@ -93,7 +98,7 @@ function BrowserPanelInner(props: {
       }
     >
       <BrowserStoreProvider store={browser}>
-        <div class="flex flex-col h-full bg-surface-inset-base">
+        <div class="browser-workspace flex h-full flex-col">
           <AddressBar
             activeUrl={() => page()?.url ?? ""}
             isLoading={() => page()?.isLoading ?? false}
@@ -103,15 +108,20 @@ function BrowserPanelInner(props: {
             onStop={() => sendPageCommand({ type: "stop" })}
             onNavigate={browser.navigate}
           />
-          <div class="flex-1 relative bg-background-stronger">
+          <div class="browser-content relative flex-1">
             <Show
               when={showDevPanel()}
               fallback={
                 <Show
                   when={page()}
                   fallback={
-                    <div class="flex items-center justify-center h-full text-text-weak text-14">
-                      Enter a URL to open a page
+                    <div class="browser-empty-state">
+                      <div class="browser-empty-mark">
+                        <Icon name={getSemanticIcon("browser.main")} class="size-4" />
+                      </div>
+                      <div class="browser-empty-title">No page open</div>
+                      <div class="browser-empty-text">The next navigation will appear here.</div>
+                      <div class="browser-status-pill">{browser.session.connectionStatus}</div>
                     </div>
                   }
                 >

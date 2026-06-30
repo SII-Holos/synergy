@@ -1,4 +1,5 @@
 import { For, Show, createEffect, createMemo, createSignal } from "solid-js"
+import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { IconButton } from "@ericsanchezok/synergy-ui/icon-button"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { useBrowser, type DevPanel } from "./browser-store"
@@ -20,12 +21,12 @@ const VIEWPORT_PRESETS = [
   { label: "Mobile", width: 375, height: 667 },
 ] as const
 
-const DEV_PANELS: { id: DevPanel; label: string }[] = [
-  { id: "console", label: "Console" },
-  { id: "network", label: "Network" },
-  { id: "elements", label: "Elements" },
-  { id: "assets", label: "Assets" },
-  { id: "downloads", label: "Downloads" },
+const DEV_PANELS: { id: DevPanel; label: string; description: string }[] = [
+  { id: "console", label: "Console", description: "Page logs" },
+  { id: "network", label: "Network", description: "Requests" },
+  { id: "elements", label: "Elements", description: "Snapshot" },
+  { id: "assets", label: "Assets", description: "Page files" },
+  { id: "downloads", label: "Downloads", description: "Saved files" },
 ]
 
 const DEV_SERVER_URLS = [
@@ -98,36 +99,45 @@ export function AddressBar(props: AddressBarProps) {
     if (panel === "assets") browser.send({ type: "requestAssets", pageId, maxEntries: 200 })
   }
 
+  function toggleFollowAgent() {
+    if (browser.followAgent()) browser.setFollowAgent(false)
+    else browser.followAgentNow()
+  }
+
   return (
-    <div class="flex h-10 shrink-0 items-center gap-1.5 border-b border-border-weak-base bg-surface-raised-base px-2">
-      <IconButton
-        icon={getSemanticIcon("browser.back")}
-        variant="ghost"
-        title="Back"
-        disabled={!props.hasPage()}
-        onClick={() => props.onHistory("back")}
-      />
-      <IconButton
-        icon={getSemanticIcon("browser.forward")}
-        variant="ghost"
-        title="Forward"
-        disabled={!props.hasPage()}
-        onClick={() => props.onHistory("forward")}
-      />
-      <IconButton
-        icon={props.isLoading() ? getSemanticIcon("browser.stop") : getSemanticIcon("browser.refresh")}
-        variant="ghost"
-        title={props.isLoading() ? "Stop" : "Reload"}
-        disabled={!props.hasPage()}
-        classList={{ "animate-spin": props.isLoading() }}
-        onClick={() => (props.isLoading() ? props.onStop() : props.onReload())}
-      />
+    <div class="browser-address-bar flex h-10 shrink-0 items-center gap-2 border-b px-2">
+      <div class="browser-nav-group flex shrink-0 items-center gap-0.5">
+        <IconButton
+          icon={getSemanticIcon("browser.back")}
+          variant="ghost"
+          title="Back"
+          class="browser-nav-button"
+          disabled={!props.hasPage()}
+          onClick={() => props.onHistory("back")}
+        />
+        <IconButton
+          icon={getSemanticIcon("browser.forward")}
+          variant="ghost"
+          title="Forward"
+          class="browser-nav-button"
+          disabled={!props.hasPage()}
+          onClick={() => props.onHistory("forward")}
+        />
+        <IconButton
+          icon={props.isLoading() ? getSemanticIcon("browser.stop") : getSemanticIcon("browser.refresh")}
+          variant="ghost"
+          title={props.isLoading() ? "Stop" : "Reload"}
+          class="browser-nav-button"
+          disabled={!props.hasPage()}
+          onClick={() => (props.isLoading() ? props.onStop() : props.onReload())}
+        />
+      </div>
 
       <div class="min-w-0 flex-1">
         <input
           ref={inputEl}
           type="text"
-          class="h-7 w-full rounded-md border border-border-weak-base/60 bg-surface-inset-base px-2.5 text-12 text-text-base outline-none transition-colors placeholder:text-text-weak focus:border-border-strong-base"
+          class="browser-address-input h-7 w-full rounded-md px-2.5 text-12 text-text-base outline-none transition-colors placeholder:text-text-weak"
           value={draft()}
           placeholder="Enter URL or search"
           onFocus={() => setEditing(true)}
@@ -148,7 +158,7 @@ export function AddressBar(props: AddressBarProps) {
       </Show>
 
       <span
-        class="size-2 shrink-0 rounded-full"
+        class="browser-connection-dot size-2 shrink-0 rounded-full"
         classList={{
           "bg-green-500": browser.session.connectionStatus === "connected",
           "bg-amber-500": browser.session.connectionStatus === "connecting",
@@ -163,44 +173,48 @@ export function AddressBar(props: AddressBarProps) {
           icon={getSemanticIcon("action.more")}
           variant="ghost"
           title="Browser options"
+          class="browser-nav-button"
           onClick={() => setMenuOpen((v) => !v)}
         />
         <Show when={menuOpen()}>
           <div
-            class="absolute right-0 top-full z-50 mt-1 w-[240px] rounded-lg border border-border-weak-base bg-surface-raised-stronger-non-alpha py-1 text-12 shadow-lg"
+            class="browser-options-menu absolute right-0 top-full z-50 mt-1 w-[280px] max-w-[calc(100vw-16px)] rounded-lg border text-12"
+            aria-label="Browser controls"
             onClick={() => setMenuOpen(false)}
           >
-            <div class="border-b border-border-weak-base/60 px-3 py-2">
-              <div class="flex items-center justify-between gap-3">
-                <span class="text-text-weak">Follow agent</span>
-                <button
-                  type="button"
-                  class="h-6 rounded px-2 text-11 transition-colors"
-                  classList={{
-                    "workbench-selected-surface text-text-strong": browser.followAgent(),
-                    "text-text-weak hover:bg-surface-raised-base-hover hover:text-text-base": !browser.followAgent(),
-                  }}
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    if (browser.followAgent()) browser.setFollowAgent(false)
-                    else browser.followAgentNow()
-                  }}
-                >
-                  {browser.followAgent() ? "On" : "Off"}
-                </button>
-              </div>
+            <div class="browser-menu-section">
+              <button
+                type="button"
+                role="switch"
+                aria-checked={browser.followAgent()}
+                class="browser-menu-row browser-switch-row"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  toggleFollowAgent()
+                }}
+              >
+                <span class="browser-menu-row-copy">
+                  <span class="browser-menu-row-title">Follow agent</span>
+                  <span class="browser-menu-row-description">Agent navigation</span>
+                </span>
+                <span class="browser-toggle" data-checked={browser.followAgent()}>
+                  <span class="browser-toggle-thumb" />
+                </span>
+              </button>
             </div>
 
-            <div class="border-b border-border-weak-base/60 px-2 py-1">
-              <div class="px-1 py-1 text-11 text-text-weakest">Viewport · {selectedViewport()}</div>
-              <div class="flex gap-1 px-1 pb-1">
+            <div class="browser-menu-section">
+              <div class="browser-menu-heading">
+                <span>Viewport</span>
+                <span>{selectedViewport()}</span>
+              </div>
+              <div class="browser-segment" aria-label="Viewport size">
                 <button
                   type="button"
-                  class="h-6 rounded px-2 text-11 transition-colors"
+                  class="browser-segment-button"
                   classList={{
-                    "workbench-selected-surface text-text-strong": browser.viewportMode() === "fit",
-                    "text-text-weak hover:bg-surface-raised-base-hover hover:text-text-base":
-                      browser.viewportMode() !== "fit",
+                    "is-active text-text-strong": browser.viewportMode() === "fit",
+                    "text-text-weak": browser.viewportMode() !== "fit",
                   }}
                   onClick={(e) => {
                     e.stopPropagation()
@@ -213,11 +227,10 @@ export function AddressBar(props: AddressBarProps) {
                   {(preset) => (
                     <button
                       type="button"
-                      class="h-6 rounded px-2 text-11 transition-colors"
+                      class="browser-segment-button"
                       classList={{
-                        "workbench-selected-surface text-text-strong": selectedViewport() === preset.label,
-                        "text-text-weak hover:bg-surface-raised-base-hover hover:text-text-base":
-                          selectedViewport() !== preset.label,
+                        "is-active text-text-strong": selectedViewport() === preset.label,
+                        "text-text-weak": selectedViewport() !== preset.label,
                       }}
                       onClick={(e) => {
                         e.stopPropagation()
@@ -231,39 +244,55 @@ export function AddressBar(props: AddressBarProps) {
               </div>
             </div>
 
-            <div class="border-b border-border-weak-base/60 py-1">
+            <div class="browser-menu-section">
+              <div class="browser-menu-heading">
+                <span>Panels</span>
+              </div>
               <For each={DEV_PANELS}>
                 {(panel) => (
                   <button
                     type="button"
-                    class="w-full px-3 py-1.5 text-left text-text-weak transition-colors hover:bg-surface-raised-base-hover hover:text-text-base"
+                    class="browser-menu-row browser-panel-row"
                     classList={{
-                      "bg-surface-raised-base-hover text-text-strong": browser.devPanel() === panel.id,
+                      "is-active text-text-strong": browser.devPanel() === panel.id,
                     }}
                     onClick={() => requestPanel(panel.id)}
                   >
-                    {panel.label}
+                    <span class="browser-menu-row-copy">
+                      <span class="browser-menu-row-title">{panel.label}</span>
+                      <span class="browser-menu-row-description">{panel.description}</span>
+                    </span>
+                    <Show when={browser.devPanel() === panel.id}>
+                      <Icon name={getSemanticIcon("state.success")} size="small" class="browser-menu-check" />
+                    </Show>
                   </button>
                 )}
               </For>
               <button
                 type="button"
-                class="w-full px-3 py-1.5 text-left text-text-weak transition-colors hover:bg-surface-raised-base-hover hover:text-text-base"
+                class="browser-menu-row"
                 onClick={() => browser.send({ type: "clearLogs", pageId: browser.pageId() })}
               >
-                Clear diagnostics
+                <span class="browser-menu-row-copy">
+                  <span class="browser-menu-row-title">Clear diagnostics</span>
+                  <span class="browser-menu-row-description">Captured logs</span>
+                </span>
               </button>
             </div>
 
-            <div class="py-1">
+            <div class="browser-menu-section">
+              <div class="browser-menu-heading">
+                <span>Open local</span>
+              </div>
               <For each={DEV_SERVER_URLS}>
                 {(entry) => (
                   <button
                     type="button"
-                    class="w-full px-3 py-1.5 text-left text-text-weak transition-colors hover:bg-surface-raised-base-hover hover:text-text-base"
+                    class="browser-menu-row browser-local-row"
                     onClick={() => props.onNavigate(entry.url)}
                   >
-                    {entry.label}
+                    <span class="browser-menu-row-title">{entry.label}</span>
+                    <span class="browser-menu-row-description">Open</span>
                   </button>
                 )}
               </For>
