@@ -4,53 +4,6 @@ const TARGET_IMAGE_BYTES = 4.5 * 1024 * 1024
 const IMAGE_SCALE_STEPS = [1, 0.85, 0.7, 0.6, 0.5, 0.4]
 const IMAGE_QUALITY_STEPS = [0.9, 0.82, 0.74, 0.66, 0.58, 0.5]
 
-const TEXT_FILE_EXTENSIONS = new Set([
-  "c",
-  "cc",
-  "cpp",
-  "cs",
-  "css",
-  "csv",
-  "go",
-  "graphql",
-  "h",
-  "hpp",
-  "html",
-  "ini",
-  "java",
-  "js",
-  "json",
-  "jsx",
-  "kt",
-  "less",
-  "log",
-  "lua",
-  "m",
-  "md",
-  "mjs",
-  "patch",
-  "php",
-  "pl",
-  "py",
-  "rb",
-  "rs",
-  "scss",
-  "sh",
-  "sql",
-  "svg",
-  "svelte",
-  "swift",
-  "tex",
-  "toml",
-  "ts",
-  "tsx",
-  "txt",
-  "vue",
-  "xml",
-  "yaml",
-  "yml",
-])
-
 export class PromptAttachmentError extends Error {
   constructor(
     readonly title: string,
@@ -64,26 +17,6 @@ export class PromptAttachmentError extends Error {
 export interface PreparedPromptAttachment {
   mime: string
   dataUrl: string
-}
-
-export function isTextAttachmentFile(file: File): boolean {
-  if (file.type.startsWith("text/")) return true
-  if (["application/json", "application/xml", "application/yaml", "application/x-yaml"].includes(file.type)) {
-    return true
-  }
-  const normalizedMime = file.type.toLowerCase()
-  if (
-    normalizedMime.endsWith("+json") ||
-    normalizedMime.endsWith("+xml") ||
-    normalizedMime.endsWith("+yaml") ||
-    normalizedMime.endsWith("+yml")
-  ) {
-    return true
-  }
-  if (normalizedMime && normalizedMime !== "application/octet-stream") return false
-  const extension = file.name.split(".").pop()?.toLowerCase()
-  if (!extension) return false
-  return TEXT_FILE_EXTENSIONS.has(extension)
 }
 
 export async function uploadPromptAttachment(

@@ -6,13 +6,13 @@ import { useParams } from "@solidjs/router"
 import { useSDK } from "@/context/sdk"
 import { usePrompt } from "@/context/prompt"
 import type { ContentPart, NoteAttachmentPart, SessionAttachmentPart } from "@/context/prompt"
+import { preparePromptAttachment, PromptAttachmentError, uploadPromptAttachment } from "@/utils/prompt-attachment"
 import {
-  isTextAttachmentFile,
-  preparePromptAttachment,
-  PromptAttachmentError,
-  uploadPromptAttachment,
-} from "@/utils/prompt-attachment"
-import { ACCEPTED_FILE_TYPES } from "./files"
+  formatUnsupportedAttachmentToast,
+  isPromptAttachmentFileAccepted,
+  isPromptAttachmentTextFile,
+  partitionPromptAttachmentFiles,
+} from "./files"
 import { createPromptPartID } from "./content"
 import { getCursorPosition } from "./editor-dom"
 import type { BlueprintSlot, DroppedBlueprintData, DroppedSessionData, PromptInputStore } from "./types"
@@ -43,11 +43,15 @@ export function usePromptAttachments(input: PromptAttachmentsInput) {
   const dialog = useDialog()
 
   const addAttachment = async (file: File) => {
-    if (!ACCEPTED_FILE_TYPES.includes(file.type) && !isTextAttachmentFile(file)) return
+    if (!isPromptAttachmentFileAccepted(file)) {
+      const toast = formatUnsupportedAttachmentToast([file], 0)
+      if (toast) showToast(toast)
+      return
+    }
 
     try {
       const cursorPosition = prompt.cursor() ?? getCursorPosition(input.editor())
-      if (isTextAttachmentFile(file)) {
+      if (isPromptAttachmentTextFile(file)) {
         const uploaded = await uploadPromptAttachment(sdk.client, sdk.url, file)
         prompt.set(
           [
@@ -112,6 +116,15 @@ export function usePromptAttachments(input: PromptAttachmentsInput) {
     }
   }
 
+  const addAttachments = async (files: Iterable<File>) => {
+    const { accepted, rejected } = partitionPromptAttachmentFiles(files)
+    const toast = formatUnsupportedAttachmentToast(rejected, accepted.length)
+    if (toast) showToast(toast)
+    for (const file of accepted) {
+      await addAttachment(file)
+    }
+  }
+
   const removeAttachment = (id: string) => {
     const current = prompt.current()
     const next = current.filter((part) => !("id" in part) || part.id !== id)
@@ -127,13 +140,13 @@ export function usePromptAttachments(input: PromptAttachmentsInput) {
     event.stopPropagation()
 
     const items = Array.from(clipboardData.items)
-    const imageItems = items.filter((item) => ACCEPTED_FILE_TYPES.includes(item.type))
+    const files = items
+      .filter((item) => item.kind === "file")
+      .map((item) => item.getAsFile())
+      .filter((file): file is File => !!file)
 
-    if (imageItems.length > 0) {
-      for (const item of imageItems) {
-        const file = item.getAsFile()
-        if (file) await addAttachment(file)
-      }
+    if (files.length > 0) {
+      await addAttachments(files)
       return
     }
 
@@ -252,15 +265,12 @@ export function usePromptAttachments(input: PromptAttachmentsInput) {
     const dropped = event.dataTransfer?.files
     if (!dropped) return
 
-    for (const file of Array.from(dropped)) {
-      if (ACCEPTED_FILE_TYPES.includes(file.type) || isTextAttachmentFile(file)) {
-        await addAttachment(file)
-      }
-    }
+    await addAttachments(Array.from(dropped))
   }
 
   return {
     addAttachment,
+    addAttachments,
     removeAttachment,
     handlePaste,
     handleDragOver,

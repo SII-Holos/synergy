@@ -795,7 +795,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     queueScroll,
   })
 
-  const { addAttachment, removeAttachment, handlePaste, handleDragOver, handleDragLeave, handleDrop } =
+  const { addAttachments, removeAttachment, handlePaste, handleDragOver, handleDragLeave, handleDrop } =
     usePromptAttachments({
       editor: () => editorRef,
       isFocused,
@@ -1129,7 +1129,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
           <div class="absolute inset-0 z-10 flex items-center justify-center bg-surface-raised-stronger-non-alpha/90 pointer-events-none">
             <div class="flex flex-col items-center gap-2 text-text-weak">
               <Icon name="paperclip" class="size-8" />
-              <span class="text-14-regular">Drop files, notes, or sessions here</span>
+              <span class="text-14-regular">Drop supported files, notes, or sessions here</span>
             </div>
           </div>
         </Show>
@@ -1336,12 +1336,13 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
             <input
               ref={fileInputRef}
               type="file"
+              multiple
               accept={FILE_INPUT_ACCEPT}
               class="hidden"
               onChange={(e) => {
-                const file = e.currentTarget.files?.[0]
-                if (file) addAttachment(file)
+                const files = e.currentTarget.files ? Array.from(e.currentTarget.files) : []
                 e.currentTarget.value = ""
+                if (files.length > 0) void addAttachments(files)
               }}
             />
             <Show when={!sdk.connected()}>
