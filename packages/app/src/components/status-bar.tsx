@@ -16,7 +16,7 @@ import { relativeTime } from "@/utils/time"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import type { Session, SessionStatus } from "@ericsanchezok/synergy-sdk/client"
 import { resolveRuntimeIconState, runtimeLabel } from "./status-bar-runtime"
-import { sessionActivityTime, sortChildSessionsByActivity } from "./status-bar-subsession"
+import { childSessionsForParent, sessionActivityTime } from "./status-bar-subsession"
 
 function statusDotClass(status: "success" | "danger" | "muted" | "active") {
   return {
@@ -291,39 +291,26 @@ export function StatusBar() {
   const [expanded, setExpanded] = createSignal(false)
 
   const directory = createMemo(() => decodeDirectory(params.dir))
-  const store = createMemo(() => {
-    const dir = directory()
-    if (!dir || dir === "home") return undefined
-    return globalSync.peekScopeState(dir)?.[0]
-  })
   const scope = createMemo(() => {
-    const current = store()
-    if (!current?.scopeID) return undefined
-    return globalSync.data.scope.find((item) => item.id === current.scopeID)
+    if (!sync.data.scopeID) return undefined
+    return globalSync.data.scope.find((item) => item.id === sync.data.scopeID)
   })
   const session = createMemo(() => {
     const id = params.id
-    const current = store()
-    if (!id || !current) return undefined
-    return current.session.find((item) => item.id === id)
+    if (!id) return undefined
+    return sync.data.session.find((item) => item.id === id)
   })
-  const childSessions = createMemo(() => {
-    const id = params.id
-    const current = store()
-    if (!id || !current) return []
-    return sortChildSessionsByActivity(current.session.filter((item) => item.parentID === id))
-  })
-  const status = createMemo(() => (params.id ? store()?.session_status[params.id] : undefined))
+  const childSessions = createMemo(() => childSessionsForParent(sync.data.session, params.id))
+  const status = createMemo(() => (params.id ? sync.data.session_status[params.id] : undefined))
   const waiting = createMemo(() => {
     const id = params.id
-    const current = store()
-    if (!id || !current) return false
-    return !!current.permission[id]?.length || !!current.question[id]?.length
+    if (!id) return false
+    return !!sync.data.permission[id]?.length || !!sync.data.question[id]?.length
   })
   const workspaceType = createMemo(() => session()?.workspace?.type ?? "main")
   const isWorktree = () => workspaceType() === "git_worktree"
   const workspaceName = createMemo(() => workspaceField(session(), "name") || (isWorktree() ? "worktree" : "main"))
-  const branch = createMemo(() => workspaceField(session(), "branch") || store()?.vcs?.branch)
+  const branch = createMemo(() => workspaceField(session(), "branch") || sync.data.vcs?.branch)
   const scopeLabel = createMemo(() => getScopeLabel(scope(), directory()))
   const runtime = createMemo(() => runtimeLabel(status(), waiting()))
   const retryMessage = createMemo(() => {
@@ -355,9 +342,8 @@ export function StatusBar() {
         ).length
       : 0
   const childSessionStatus = (sessionID: string) => {
-    const current = store()
-    const status = current?.session_status[sessionID]
-    const waiting = !!current?.permission[sessionID]?.length || !!current?.question[sessionID]?.length
+    const status = sync.data.session_status[sessionID]
+    const waiting = !!sync.data.permission[sessionID]?.length || !!sync.data.question[sessionID]?.length
     if (waiting) return { label: "waiting", icon: getSemanticIcon("session.waiting"), tone: "danger" as const }
     if (status?.type === "busy" || status?.type === "retry" || status?.type === "recovering")
       return { label: "running", icon: getSemanticIcon("session.running"), tone: "active" as const }
