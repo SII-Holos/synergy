@@ -26585,6 +26585,19 @@
           },
           "updatedAt": {
             "type": "number"
+          },
+          "profile": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/HolosAgentProfile"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "profileError": {
+            "type": "string"
           }
         },
         "required": ["agentId", "createdAt", "updatedAt"]

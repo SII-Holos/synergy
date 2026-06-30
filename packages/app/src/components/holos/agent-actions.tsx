@@ -199,19 +199,23 @@ export function DialogSwitchHolosAgent(props: {
     return account.agentId === props.activeAgentId
   }
 
+  function profile(account: HolosAccountMeta) {
+    return account.profile ?? (isActive(account) ? props.activeProfile : undefined)
+  }
+
   function label(account: HolosAccountMeta) {
-    if (!isActive(account)) return `Agent ${shortID(account.agentId)}`
-    return props.activeProfile?.name || `Agent ${shortID(account.agentId)}`
+    return profile(account)?.name || `Agent ${shortID(account.agentId)}`
   }
 
   function description(account: HolosAccountMeta) {
-    if (!isActive(account)) return "Saved on this device"
-    return props.activeProfile?.description || "Current Holos agent"
+    const description = profile(account)?.description?.trim()
+    if (description) return description
+    if (account.profileError) return "Profile unavailable"
+    return isActive(account) ? "Current Holos agent" : "Saved on this device"
   }
 
   function avatarUrl(account: HolosAccountMeta) {
-    if (!isActive(account)) return undefined
-    return props.activeProfile?.avatarUrl ?? undefined
+    return profile(account)?.avatarUrl ?? undefined
   }
 
   return (

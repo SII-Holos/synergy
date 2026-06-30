@@ -27,6 +27,14 @@ function mockFetch(handler: (url: string, init?: RequestInit) => Response | Prom
   }) as typeof fetch
 }
 
+function authHeader(init?: RequestInit): string | undefined {
+  const headers = init?.headers
+  if (!headers) return undefined
+  if (headers instanceof Headers) return headers.get("Authorization") ?? undefined
+  if (Array.isArray(headers)) return headers.find(([key]) => key.toLowerCase() === "authorization")?.[1]
+  return (headers as Record<string, string | undefined>).Authorization
+}
+
 class TestWebSocket {
   static CONNECTING = 0
   static OPEN = 1
@@ -236,6 +244,70 @@ describe("Holos profile routes", () => {
 })
 
 describe("Holos state and migration", () => {
+  test("state includes remote profile for each saved account", async () => {
+    await HolosAccounts.saveAndActivateAccount("agent_alpha", "secret_alpha")
+    await HolosAccounts.saveAndActivateAccount("agent_beta", "secret_beta")
+    await HolosAccounts.saveAndActivateAccount("agent_gamma", "secret_gamma")
+    await HolosAccounts.setActiveAccount("agent_beta")
+
+    mockFetch((url, init) => {
+      if (!url.endsWith("/api/v1/holos/agent_tunnel/me")) {
+        throw new Error(`Unexpected fetch ${url}`)
+      }
+
+      switch (authHeader(init)) {
+        case "Bearer secret_alpha":
+          return json({
+            code: 0,
+            data: {
+              agent_id: "agent_alpha",
+              profile: { name: "Alpha", description: "First saved agent", avatar_url: "" },
+            },
+          })
+        case "Bearer secret_beta":
+          return json({
+            code: 0,
+            data: {
+              agent_id: "agent_beta",
+              profile: { name: "Beta", description: "Active saved agent", avatar_url: "https://example.com/b.png" },
+            },
+          })
+        case "Bearer secret_gamma":
+          return json({
+            code: 0,
+            data: {
+              agent_id: "agent_gamma",
+              profile: { name: "大大怪将军", description: "统治宇宙", avatar_url: "" },
+            },
+          })
+        default:
+          throw new Error(`Unexpected auth header ${authHeader(init)}`)
+      }
+    })
+
+    const state = await HolosState.get()
+    const profiles = Object.fromEntries(
+      state.identity.accounts.map((account) => [account.agentId, account.profile ?? null]),
+    )
+
+    expect(profiles.agent_alpha).toEqual({
+      name: "Alpha",
+      description: "First saved agent",
+      avatarUrl: null,
+    })
+    expect(profiles.agent_beta).toEqual({
+      name: "Beta",
+      description: "Active saved agent",
+      avatarUrl: "https://example.com/b.png",
+    })
+    expect(profiles.agent_gamma).toEqual({
+      name: "大大怪将军",
+      description: "统治宇宙",
+      avatarUrl: null,
+    })
+    expect(state.social.profile).toEqual(profiles.agent_beta)
+  })
+
   test("state returns null profile and profileError when remote profile fetch fails", async () => {
     await HolosAccounts.saveAndActivateAccount("agent_state", "secret_state")
     mockFetch(() => json({ message: "unavailable" }, { status: 503 }))

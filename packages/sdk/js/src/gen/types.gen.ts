@@ -4282,6 +4282,8 @@ export type HolosAccountMeta = {
   agentId: string
   createdAt: number
   updatedAt: number
+  profile?: HolosAgentProfile | null
+  profileError?: string
 }
 
 export type HolosIdentityState = {

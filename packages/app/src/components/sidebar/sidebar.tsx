@@ -18,6 +18,7 @@ import { DialogSelectDirectory } from "@/components/dialog/dialog-select-directo
 import { DialogScopeEdit } from "@/components/dialog/dialog-scope-edit"
 import { DialogConfirm } from "@/components/dialog/dialog-confirm"
 import type { LocalScope, NavEntry } from "@/context/layout"
+import type { HolosAccountMeta } from "@ericsanchezok/synergy-sdk/client"
 import { usePlatform } from "@/context/platform"
 import { useProductUpdate } from "@/context/product-update"
 import { useHolosAgentActions } from "@/components/holos/agent-actions"
@@ -1001,10 +1002,20 @@ function SidebarAgentHub(props: { isExpanded: boolean; globalSDK: ReturnType<typ
     return false
   }
 
-  const accountLabel = (a: { agentId: string }) =>
-    isActiveAccount(a.agentId) ? displayName() : `Agent ${a.agentId.slice(0, 8)}`
-
   const isActiveAccount = (agentId: string) => activeAgentId() === agentId
+
+  const accountProfile = (account: HolosAccountMeta) =>
+    account.profile ?? (isActiveAccount(account.agentId) ? holos.state.social.profile : undefined)
+
+  const accountLabel = (account: HolosAccountMeta) =>
+    accountProfile(account)?.name || `Agent ${account.agentId.slice(0, 8)}`
+
+  const accountDescription = (account: HolosAccountMeta) => {
+    const description = accountProfile(account)?.description?.trim()
+    if (description) return description
+    if (account.profileError) return "Profile unavailable"
+    return isActiveAccount(account.agentId) ? displayDescription() : "Saved on this device"
+  }
 
   const handleSwitchAccount = async (agentId: string) => {
     await agentActions.switchAgent(agentId)
@@ -1125,7 +1136,7 @@ function SidebarAgentHub(props: { isExpanded: boolean; globalSDK: ReturnType<typ
                     />
                     <span class="sidebar-account-menuCopy">
                       <span>{accountLabel(account)}</span>
-                      <span>{isActiveAccount(account.agentId) ? displayDescription() : "Saved on this device"}</span>
+                      <span>{accountDescription(account)}</span>
                     </span>
                   </button>
                 )}

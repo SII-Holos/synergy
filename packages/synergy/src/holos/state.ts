@@ -14,6 +14,8 @@ export namespace HolosState {
       agentId: z.string(),
       createdAt: z.number(),
       updatedAt: z.number(),
+      profile: HolosProfile.Info.nullable().optional(),
+      profileError: z.string().optional(),
     })
     .meta({ ref: "HolosAccountMeta" })
   export type AccountMeta = z.infer<typeof AccountMeta>
@@ -62,25 +64,43 @@ export namespace HolosState {
     .meta({ ref: "HolosState" })
   export type Info = z.infer<typeof Info>
 
-  function toAccountMeta(a: { agentId: string; createdAt: number; updatedAt: number }): AccountMeta {
+  type AccountProfileState = {
+    profile: HolosProfile.Info | null
+    profileError?: string
+  }
+
+  function toAccountMeta(
+    a: { agentId: string; createdAt: number; updatedAt: number },
+    profileState?: AccountProfileState,
+  ): AccountMeta {
     return {
       agentId: a.agentId,
       createdAt: a.createdAt,
       updatedAt: a.updatedAt,
+      ...(profileState
+        ? {
+            profile: profileState.profile,
+            ...(profileState.profileError ? { profileError: profileState.profileError } : {}),
+          }
+        : {}),
     }
   }
 
-  async function fetchProfile(input: {
-    credential: HolosReadiness.Snapshot["credential"]
-  }): Promise<{ profile: HolosProfile.Info | null; profileError?: string }> {
-    if (!input.credential) return { profile: null }
+  async function currentHolosApiUrl(): Promise<string | undefined> {
+    const { Config } = await import("@/config/config")
+    const config = await Config.current().catch(() => undefined)
+    return config?.holos?.apiUrl
+  }
+
+  async function fetchAccountProfile(input: {
+    account: HolosAccounts.AccountInfo
+    apiUrl?: string
+  }): Promise<AccountProfileState> {
     try {
-      const { Config } = await import("@/config/config")
-      const config = await Config.current().catch(() => undefined)
       const me = await HolosProfile.getCurrent({
-        agentId: input.credential.agentId,
-        agentSecret: input.credential.agentSecret,
-        apiUrl: config?.holos?.apiUrl,
+        agentId: input.account.agentId,
+        agentSecret: input.account.agentSecret,
+        apiUrl: input.apiUrl,
       })
       return { profile: me.profile }
     } catch (err) {
@@ -91,15 +111,28 @@ export namespace HolosState {
     }
   }
 
+  async function fetchAccountProfiles(
+    accounts: HolosAccounts.AccountInfo[],
+  ): Promise<Map<string, AccountProfileState>> {
+    if (!accounts.length) return new Map()
+
+    const apiUrl = await currentHolosApiUrl()
+    const entries = await Promise.all(
+      accounts.map(async (account) => [account.agentId, await fetchAccountProfile({ account, apiUrl })] as const),
+    )
+    return new Map(entries)
+  }
+
   export async function get(): Promise<Info> {
     const [{ credential, status, readiness }, contacts, accounts] = await Promise.all([
       HolosReadiness.snapshot(),
       Contact.list(),
       HolosAccounts.listAccounts(),
     ])
-    const profileState = await fetchProfile({ credential })
+    const profileStates = await fetchAccountProfiles(accounts)
 
     const activeAccount = accounts.find((a) => a.agentId === credential?.agentId) ?? null
+    const activeProfileState = activeAccount ? profileStates.get(activeAccount.agentId) : undefined
 
     const presenceEntries = Presence.all()
     const presence: Record<string, Presence.Status> = {}
@@ -111,8 +144,8 @@ export namespace HolosState {
       identity: {
         loggedIn: !!credential,
         agentId: credential?.agentId ?? null,
-        activeAccount: activeAccount ? toAccountMeta(activeAccount) : null,
-        accounts: accounts.map(toAccountMeta),
+        activeAccount: activeAccount ? toAccountMeta(activeAccount, activeProfileState) : null,
+        accounts: accounts.map((account) => toAccountMeta(account, profileStates.get(account.agentId))),
       },
       connection: {
         status: status.status,
@@ -120,8 +153,8 @@ export namespace HolosState {
       },
       readiness,
       social: {
-        profile: profileState.profile,
-        ...(profileState.profileError ? { profileError: profileState.profileError } : {}),
+        profile: activeProfileState?.profile ?? null,
+        ...(activeProfileState?.profileError ? { profileError: activeProfileState.profileError } : {}),
         contacts,
         presence,
       },
