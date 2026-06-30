@@ -8,17 +8,20 @@ import type { DependencyVersionMap } from "./shared/publish-generic"
 import { bunInstall } from "./nodes/bun-install"
 import { generateSdk } from "./nodes/generate-sdk"
 import { buildMetaProtocol } from "./nodes/build-meta-protocol"
+import { buildUtil } from "./nodes/build-util"
 import { buildPlugin } from "./nodes/build-plugin"
 import { buildPluginKit } from "./nodes/build-plugin-kit"
 import { publishSdkCandidate } from "./nodes/publish-sdk-candidate"
 import { publishMetaProtocolCandidate } from "./nodes/publish-meta-protocol-candidate"
+import { publishUtilCandidate } from "./nodes/publish-util-candidate"
 import { publishPluginCandidate } from "./nodes/publish-plugin-candidate"
 import { publishPluginKitCandidate } from "./nodes/publish-plugin-kit-candidate"
 
-type PackageAlias = "sdk" | "meta-protocol" | "plugin" | "plugin-kit"
+type PackageAlias = "sdk" | "util" | "meta-protocol" | "plugin" | "plugin-kit"
 
 const PACKAGE_BY_ALIAS: Record<PackageAlias, string> = {
   sdk: "@ericsanchezok/synergy-sdk",
+  util: "@ericsanchezok/synergy-util",
   "meta-protocol": "@ericsanchezok/meta-protocol",
   plugin: "@ericsanchezok/synergy-plugin",
   "plugin-kit": "@ericsanchezok/synergy-plugin-kit",
@@ -26,6 +29,7 @@ const PACKAGE_BY_ALIAS: Record<PackageAlias, string> = {
 
 const TAG_PREFIX_BY_ALIAS: Record<PackageAlias, string> = {
   sdk: "synergy-sdk",
+  util: "synergy-util",
   "meta-protocol": "meta-protocol",
   plugin: "synergy-plugin",
   "plugin-kit": "synergy-plugin-kit",
@@ -52,6 +56,16 @@ function parsePackages(input: string | undefined): PackageAlias[] {
     result.push(alias as PackageAlias)
   }
   return [...new Set(result)]
+}
+
+function expandPackageDependencies(aliases: PackageAlias[]): PackageAlias[] {
+  const result: PackageAlias[] = []
+  const add = (alias: PackageAlias) => {
+    if (!result.includes(alias)) result.push(alias)
+  }
+  if (aliases.some((alias) => alias === "plugin" || alias === "plugin-kit")) add("util")
+  for (const alias of aliases) add(alias)
+  return result
 }
 
 async function latestVersion(packageName: string): Promise<string | null> {
@@ -93,6 +107,7 @@ async function rewriteSelectedVersions(versionByPackage: Record<string, string>)
 
 async function buildPackage(alias: PackageAlias) {
   if (alias === "sdk") await generateSdk()
+  if (alias === "util") await buildUtil()
   if (alias === "meta-protocol") await buildMetaProtocol()
   if (alias === "plugin") await buildPlugin()
   if (alias === "plugin-kit") await buildPluginKit()
@@ -105,6 +120,7 @@ async function publishPackage(
   dependencyVersions: DependencyVersionMap,
 ) {
   if (alias === "sdk") await publishSdkCandidate(version, channel)
+  if (alias === "util") await publishUtilCandidate(version, channel)
   if (alias === "meta-protocol") await publishMetaProtocolCandidate(version, channel)
   if (alias === "plugin") await publishPluginCandidate(version, channel)
   if (alias === "plugin-kit") await publishPluginKitCandidate(version, channel, dependencyVersions)
@@ -123,7 +139,7 @@ if (!["patch", "minor", "major"].includes(bump)) {
   throw new Error("package-only release requires SYNERGY_BUMP=patch|minor|major")
 }
 const channel = process.env.SYNERGY_NPM_TAG?.trim() || "latest"
-const aliases = parsePackages(process.env.SYNERGY_RELEASE_PACKAGES)
+const aliases = expandPackageDependencies(parsePackages(process.env.SYNERGY_RELEASE_PACKAGES))
 
 const selectedVersionByPackage: Record<string, string> = {}
 for (const alias of aliases) {

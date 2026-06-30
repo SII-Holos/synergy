@@ -7,6 +7,7 @@ export const RELEASE_TAG_PREFIX = "v"
 export const VERSION_MANAGED_PACKAGE_PATHS = [
   path.join(REPO_ROOT, "packages/synergy/package.json"),
   path.join(REPO_ROOT, "packages/sdk/js/package.json"),
+  path.join(REPO_ROOT, "packages/util/package.json"),
   path.join(REPO_ROOT, "packages/plugin/package.json"),
   path.join(REPO_ROOT, "packages/plugin-kit/package.json"),
   path.join(REPO_ROOT, "packages/meta-protocol/package.json"),
@@ -18,6 +19,7 @@ export const VERSION_MANAGED_PACKAGE_PATHS = [
 
 export type RegistryPackageName =
   | "@ericsanchezok/synergy-sdk"
+  | "@ericsanchezok/synergy-util"
   | "@ericsanchezok/meta-protocol"
   | "@ericsanchezok/synergy-plugin"
   | "@ericsanchezok/synergy-plugin-kit"
@@ -27,6 +29,7 @@ export type RegistryPackageName =
 
 export const FIXED_REGISTRY_PACKAGES = [
   "@ericsanchezok/synergy-sdk",
+  "@ericsanchezok/synergy-util",
   "@ericsanchezok/meta-protocol",
   "@ericsanchezok/synergy-plugin",
   "@ericsanchezok/synergy-plugin-kit",
@@ -36,6 +39,7 @@ export const FIXED_REGISTRY_PACKAGES = [
 ] as const satisfies readonly RegistryPackageName[]
 
 export const SDK_DIR = path.join(REPO_ROOT, "packages/sdk/js")
+export const UTIL_DIR = path.join(REPO_ROOT, "packages/util")
 export const META_PROTOCOL_DIR = path.join(REPO_ROOT, "packages/meta-protocol")
 export const PLUGIN_DIR = path.join(REPO_ROOT, "packages/plugin")
 export const PLUGIN_KIT_DIR = path.join(REPO_ROOT, "packages/plugin-kit")

@@ -14,7 +14,7 @@
   },
   "scripts": {
     "typecheck": "tsgo --noEmit",
-    "build": "tsc"
+    "build": "bun run --cwd ../util build && rm -rf dist && tsc -p tsconfig.build.json"
   },
   "exports": {
     ".": {

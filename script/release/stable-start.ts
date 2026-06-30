@@ -11,6 +11,7 @@ import { buildDesktop } from "./nodes/build-desktop"
 import { generateSchema } from "./nodes/generate-schema"
 import { generateSdk } from "./nodes/generate-sdk"
 import { buildMetaProtocol } from "./nodes/build-meta-protocol"
+import { buildUtil } from "./nodes/build-util"
 import { buildPlugin } from "./nodes/build-plugin"
 import { buildPluginKit } from "./nodes/build-plugin-kit"
 import { buildSynergyBinaries } from "./nodes/build-synergy-binaries"
@@ -20,6 +21,7 @@ import { validateLocalArtifacts } from "./nodes/validate-local-artifacts"
 import { validateMetaSynergyArtifacts } from "./nodes/validate-meta-synergy-artifacts"
 import { publishSdkCandidate } from "./nodes/publish-sdk-candidate"
 import { publishMetaProtocolCandidate } from "./nodes/publish-meta-protocol-candidate"
+import { publishUtilCandidate } from "./nodes/publish-util-candidate"
 import { publishPluginCandidate } from "./nodes/publish-plugin-candidate"
 import { publishPluginKitCandidate } from "./nodes/publish-plugin-kit-candidate"
 import { publishSynergyCandidate } from "./nodes/publish-synergy-candidate"
@@ -51,7 +53,7 @@ try {
   await rewriteVersions(version)
   await configureNpmAuth()
   await bunInstall()
-  await Promise.all([generateSchema(), generateSdk(), buildMetaProtocol()])
+  await Promise.all([generateSchema(), generateSdk(), buildMetaProtocol(), buildUtil()])
   await buildPlugin()
   await buildPluginKit()
   await buildApp()
@@ -64,6 +66,7 @@ try {
 
   await publishSdkCandidate(version, state.channel)
   await publishMetaProtocolCandidate(version, state.channel)
+  await publishUtilCandidate(version, state.channel)
   await publishPluginCandidate(version, state.channel)
   await publishPluginKitCandidate(version, state.channel)
   const synergy = await publishSynergyCandidate(version, state.channel)

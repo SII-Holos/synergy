@@ -4,11 +4,19 @@
   "type": "module",
   "license": "MIT",
   "exports": {
-    "./*": "./src/*.ts"
+    "./*": {
+      "bun": "./src/*.ts",
+      "types": "./src/*.ts",
+      "import": "./src/*.ts"
+    }
   },
   "scripts": {
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "build": "rm -rf dist && tsc -p tsconfig.build.json"
   },
+  "files": [
+    "dist"
+  ],
   "dependencies": {
     "zod": "catalog:"
   },
