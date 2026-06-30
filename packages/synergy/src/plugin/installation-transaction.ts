@@ -5,8 +5,11 @@ import fs from "fs/promises"
 import fsSync from "fs"
 import path from "path"
 import { Global } from "../global"
-import { Config } from "../config/config"
 import * as Lockfile from "./lockfile"
+
+function cfg() {
+  return import("../config/config").then((m) => m.Config)
+}
 import { addEntry, removeEntry } from "./lockfile"
 import { readApprovals, saveApproval, writeApprovals } from "./consent/approval-store"
 import type { ResolvedPluginSpec } from "./spec-resolver"
@@ -249,7 +252,7 @@ function assertSingleLoadedPlugin(pluginId: string, loaded: LoadedPlugin[]) {
 export namespace PluginInstallationTransaction {
   export async function upsert(input: PluginInstallCommitInput): Promise<LoadedPlugin> {
     return withPluginInstallationLock(async () => {
-      const previousDomain = await Config.domainGet("plugins")
+      const previousDomain = await (await cfg()).domainGet("plugins")
       const previousLockfile = await Lockfile.read()
       const previousApprovals = await readApprovals()
       const currentPlugins = previousDomain.plugin ?? []
@@ -275,7 +278,9 @@ export namespace PluginInstallationTransaction {
 
       try {
         await Lockfile.write(addEntry(previousLockfile, input.pluginId, lockEntry))
-        await Config.domainUpdate("plugins", { ...previousDomain, plugin: nextConfig.plugins } as any, {
+        await (
+          await cfg()
+        ).domainUpdate("plugins", { ...previousDomain, plugin: nextConfig.plugins } as any, {
           mode: "replace-domain",
         })
         if (input.approval) await saveApproval(input.approval)
@@ -292,7 +297,7 @@ export namespace PluginInstallationTransaction {
           error: err instanceof Error ? err.message : String(err),
         })
         await Lockfile.write(previousLockfile).catch(() => {})
-        await Config.domainUpdate("plugins", previousDomain as any, { mode: "replace-domain" }).catch(() => {})
+        await (await cfg()).domainUpdate("plugins", previousDomain as any, { mode: "replace-domain" }).catch(() => {})
         await writeApprovals(previousApprovals).catch(() => {})
         await promoted.restore().catch(() => {})
         if (input.autoReload !== false) await input.reload().catch(() => {})
@@ -320,7 +325,7 @@ export namespace PluginInstallationTransaction {
 
   export async function remove(input: PluginRemoveCommitInput): Promise<void> {
     await withPluginInstallationLock(async () => {
-      const previousDomain = await Config.domainGet("plugins")
+      const previousDomain = await (await cfg()).domainGet("plugins")
       const previousLockfile = await Lockfile.read()
       const currentPlugins = previousDomain.plugin ?? []
       const kept = currentPlugins.filter((spec) => input.resolveSpecPluginDir(spec) !== input.pluginDir)
@@ -331,11 +336,11 @@ export namespace PluginInstallationTransaction {
       }
 
       try {
-        await Config.domainUpdate("plugins", nextDomain, { mode: "replace-domain" })
+        await (await cfg()).domainUpdate("plugins", nextDomain, { mode: "replace-domain" })
         await Lockfile.write(removeEntry(previousLockfile, input.pluginId))
         if (input.autoReload !== false) await input.reload()
       } catch (err) {
-        await Config.domainUpdate("plugins", previousDomain as any, { mode: "replace-domain" }).catch(() => {})
+        await (await cfg()).domainUpdate("plugins", previousDomain as any, { mode: "replace-domain" }).catch(() => {})
         await Lockfile.write(previousLockfile).catch(() => {})
         if (input.autoReload !== false) await input.reload().catch(() => {})
         throw err

@@ -1,6 +1,5 @@
 import { describe, expect, test } from "bun:test"
 import { Log } from "../../src/util/log"
-import { Config } from "../../src/config/config"
 
 Log.init({ print: false })
 import * as Lockfile from "../../src/plugin/lockfile"
@@ -8,6 +7,8 @@ import { PluginInstallationTransaction } from "../../src/plugin/installation-tra
 import type { ResolvedPluginSpec } from "../../src/plugin/spec-resolver"
 import type { LoadedPlugin } from "../../src/plugin/loader"
 import { getEvents } from "../../src/plugin/audit"
+
+let Config: any
 
 function resolved(spec: string, version: string): ResolvedPluginSpec {
   return {
@@ -33,8 +34,17 @@ function loaded(version: string): LoadedPlugin {
   }
 }
 
+async function resolveConfig() {
+  if (!Config) {
+    const m = await import("../../src/config/config")
+    Config = m.Config
+  }
+  return Config
+}
+
 async function resetPluginState() {
-  await Config.domainUpdate(
+  const C = await resolveConfig()
+  await C.domainUpdate(
     "plugins",
     {
       plugin: [],
@@ -47,11 +57,12 @@ async function resetPluginState() {
 
 describe("PluginInstallationTransaction.upsert", () => {
   test("commits config and lockfile together while preserving plugin domain settings", async () => {
+    const C = await resolveConfig()
     await resetPluginState()
-    await Config.domainUpdate(
+    await C.domainUpdate(
       "plugins",
       {
-        ...(await Config.domainGet("plugins")),
+        ...(await C.domainGet("plugins")),
         plugin: ["file:///tmp/demo-plugin-1.0.0.synergy-plugin.tgz"],
       } as any,
       { mode: "replace-domain" },
@@ -73,7 +84,7 @@ describe("PluginInstallationTransaction.upsert", () => {
     })
 
     expect(plugin.id).toBe("demo-plugin")
-    const domain = await Config.domainGet("plugins")
+    const domain = await C.domainGet("plugins")
     expect(domain.plugin).toEqual(["file:///tmp/demo-plugin-1.1.0.synergy-plugin.tgz"])
     expect(domain.pluginMarketplace?.enabled).toBe(false)
     const lockfile = await Lockfile.read()
@@ -81,11 +92,12 @@ describe("PluginInstallationTransaction.upsert", () => {
   })
 
   test("replaces stale specs using lockfile identity when the old path no longer resolves", async () => {
+    const C = await resolveConfig()
     await resetPluginState()
-    await Config.domainUpdate(
+    await C.domainUpdate(
       "plugins",
       {
-        ...(await Config.domainGet("plugins")),
+        ...(await C.domainGet("plugins")),
         plugin: ["file:///tmp/demo-plugin-0.1.0.synergy-plugin.tgz"],
       } as any,
       { mode: "replace-domain" },
@@ -117,18 +129,19 @@ describe("PluginInstallationTransaction.upsert", () => {
       resolvePluginId: () => null,
     })
 
-    const domain = await Config.domainGet("plugins")
+    const domain = await C.domainGet("plugins")
     expect(domain.plugin).toEqual(["file:///tmp/demo-plugin-0.2.0.synergy-plugin.tgz"])
     const lockfile = await Lockfile.read()
     expect(lockfile.plugins["demo-plugin"]?.version).toBe("0.2.0")
   })
 
   test("rolls back config and lockfile when reload verification fails", async () => {
+    const C = await resolveConfig()
     await resetPluginState()
-    await Config.domainUpdate(
+    await C.domainUpdate(
       "plugins",
       {
-        ...(await Config.domainGet("plugins")),
+        ...(await C.domainGet("plugins")),
         plugin: ["file:///tmp/demo-plugin-1.0.0.synergy-plugin.tgz"],
       } as any,
       { mode: "replace-domain" },
@@ -162,7 +175,7 @@ describe("PluginInstallationTransaction.upsert", () => {
       }),
     ).rejects.toThrow("failed to load")
 
-    const domain = await Config.domainGet("plugins")
+    const domain = await C.domainGet("plugins")
     expect(domain.plugin).toEqual(["file:///tmp/demo-plugin-1.0.0.synergy-plugin.tgz"])
     const lockfile = await Lockfile.read()
     expect(lockfile.plugins["demo-plugin"]?.version).toBe("1.0.0")
