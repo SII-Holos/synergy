@@ -7,6 +7,9 @@ import path from "path"
 import fs from "fs"
 import { Global } from "../../src/global"
 import { PluginMarketplaceRegistry } from "../../src/plugin/marketplace-registry"
+import { Config } from "../../src/config/config"
+import { PLUGIN_MARKETPLACE_DEFAULTS } from "../../src/config/schema"
+import { Scope } from "../../src/scope"
 
 Log.init({ print: false })
 
@@ -377,49 +380,69 @@ describe("plugin registry routes v2", () => {
   })
 
   test("search supports official and local source filters", async () => {
-    await using tmp = await tmpdir({ git: true })
+    const registryUrl = "https://registry.test/synergy/plugins/registry.json"
+    const previousDomain = await Config.domainGet("plugins")
     cleanRegistry()
-    await writeOfficialRegistryCache()
-    const previous = process.env["SYNERGY_ENABLE_REMOTE_PLUGIN_MARKET"]
-    process.env["SYNERGY_ENABLE_REMOTE_PLUGIN_MARKET"] = "1"
+    await writeOfficialRegistryCache(registryUrl)
 
     const entry = buildEntry({ name: "LocalSearchablePlugin", description: "Local source plugin" })
 
     try {
+      await Config.domainUpdate(
+        "plugins",
+        {
+          ...previousDomain,
+          pluginMarketplace: {
+            ...PLUGIN_MARKETPLACE_DEFAULTS,
+            enabled: true,
+            registryUrl,
+          },
+        },
+        { mode: "replace-domain" },
+      )
+      await Config.reload("global")
+
       await ScopeContext.provide({
-        scope: await tmp.scope(),
+        scope: Scope.home(),
         fn: async () => {
-          const app = Server.App()
-          await app.request("/api/registry/publish", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(entry),
-          })
-
-          const officialRes = await app.request("/api/registry/search?source=official")
-          expect(officialRes.status).toBe(200)
-          const official = await officialRes.json()
-          expect(official.total).toBe(1)
-          expect(official.plugins[0].id).toBe("official-test-plugin")
-          expect(official.plugins[0].source).toBe("official")
-
-          const localRes = await app.request("/api/registry/search?source=local")
-          expect(localRes.status).toBe(200)
-          const local = await localRes.json()
-          expect(local.total).toBe(1)
-          expect(local.plugins[0].id).toBe("test-plugin")
-          expect(local.plugins[0].source).toBe("local")
-
-          const aggregateRes = await app.request("/api/registry/search")
-          expect(aggregateRes.status).toBe(200)
-          const aggregate = await aggregateRes.json()
-          expect(aggregate.total).toBe(2)
-          expect(new Set(aggregate.plugins.map((plugin: any) => plugin.source))).toEqual(new Set(["official", "local"]))
+          const config = await PluginMarketplaceRegistry.currentConfig()
+          expect(config.enabled).toBe(true)
+          expect(config.registryUrl).toBe(registryUrl)
+          expect(fs.existsSync(PluginMarketplaceRegistry.cachePaths(config.registryUrl).registry)).toBe(true)
+          const directOfficial = await PluginMarketplaceRegistry.searchOfficial()
+          expect(directOfficial.total).toBe(1)
         },
       })
+
+      const app = Server.App()
+      await app.request("/api/registry/publish", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(entry),
+      })
+
+      const officialRes = await app.request("/api/registry/search?source=official")
+      expect(officialRes.status).toBe(200)
+      const official = await officialRes.json()
+      expect(official.total).toBe(1)
+      expect(official.plugins[0].id).toBe("official-test-plugin")
+      expect(official.plugins[0].source).toBe("official")
+
+      const localRes = await app.request("/api/registry/search?source=local")
+      expect(localRes.status).toBe(200)
+      const local = await localRes.json()
+      expect(local.total).toBe(1)
+      expect(local.plugins[0].id).toBe("test-plugin")
+      expect(local.plugins[0].source).toBe("local")
+
+      const aggregateRes = await app.request("/api/registry/search")
+      expect(aggregateRes.status).toBe(200)
+      const aggregate = await aggregateRes.json()
+      expect(aggregate.total).toBe(2)
+      expect(new Set(aggregate.plugins.map((plugin: any) => plugin.source))).toEqual(new Set(["official", "local"]))
     } finally {
-      if (previous === undefined) delete process.env["SYNERGY_ENABLE_REMOTE_PLUGIN_MARKET"]
-      else process.env["SYNERGY_ENABLE_REMOTE_PLUGIN_MARKET"] = previous
+      await Config.domainUpdate("plugins", previousDomain, { mode: "replace-domain" })
+      await Config.reload("global")
     }
   })
 

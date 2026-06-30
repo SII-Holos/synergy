@@ -344,7 +344,14 @@ export namespace PluginMarketplaceRegistry {
       ...PLUGIN_MARKETPLACE_DEFAULTS,
       ...(current.pluginMarketplace ?? {}),
     })
-    if (process.env.SYNERGY_TEST_HOME && process.env.SYNERGY_ENABLE_REMOTE_PLUGIN_MARKET !== "1") {
+    const hasExplicitEnabled =
+      current.pluginMarketplace &&
+      Object.prototype.hasOwnProperty.call(current.pluginMarketplace, "enabled")
+    if (
+      process.env.SYNERGY_TEST_HOME &&
+      process.env.SYNERGY_ENABLE_REMOTE_PLUGIN_MARKET !== "1" &&
+      !hasExplicitEnabled
+    ) {
       return { ...config, enabled: false }
     }
     return config
