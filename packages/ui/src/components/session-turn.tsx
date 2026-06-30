@@ -20,12 +20,7 @@ import { Typewriter } from "./typewriter"
 import { Message, Part } from "./message-part"
 import { AttachmentGallery } from "./attachment-card"
 import { MediaGenerationCard } from "./media-generation-card"
-import {
-  isActiveMediaGenerationToolPart,
-  isPromotedToolResultPart,
-  isToolCardHidden,
-  primaryToolAttachments,
-} from "./tool-result-presentation"
+import { isActiveMediaGenerationToolPart, isToolCardHidden } from "./tool-result-presentation"
 import "./session-turn.css"
 import "./tool-renders"
 import { Accordion } from "./accordion"
@@ -71,7 +66,7 @@ export type SessionTurnTimelineItem =
       part: ToolPart
     }
   | {
-      kind: "media-result"
+      kind: "tool-attachments"
       message: AssistantMessage
       part: ToolPart
       files: AttachmentPart[]
@@ -83,8 +78,11 @@ export function timelineKindForPart(part: PartType, working: boolean): SessionTu
   if (part.type === "reasoning") return working ? "reasoning" : undefined
   if (part.type !== "tool") return undefined
   if (isActiveMediaGenerationToolPart(part)) return "media-pending"
-  if (isPromotedToolResultPart(part)) return "media-result"
-  if (isToolCardHidden(part)) return undefined
+  if (isToolCardHidden(part)) {
+    return part.state.status === "completed" && (part.state.attachments?.length ?? 0) > 0
+      ? "tool-attachments"
+      : undefined
+  }
   return "part"
 }
 
@@ -106,10 +104,11 @@ export function collectSessionTurnTimelineItems(
         continue
       }
 
-      if (kind === "media-result") {
-        const files = primaryToolAttachments(part)
+      if (kind === "tool-attachments") {
+        const toolPart = part as ToolPart
+        const files = toolPart.state.status === "completed" ? (toolPart.state.attachments ?? []) : []
         if (files.length === 0) continue
-        items.push({ kind, message, part: part as ToolPart, files })
+        items.push({ kind, message, part: toolPart, files })
         continue
       }
 
@@ -130,7 +129,7 @@ function TimelineItemDisplay(props: { item: SessionTurnTimelineItem; serverUrl: 
     return <Part part={props.item.part} message={props.item.message} />
   }
   if (props.item.kind === "media-pending") return <MediaGenerationCard part={props.item.part} />
-  return <AttachmentGallery files={props.item.files} serverUrl={props.serverUrl} variant="result" />
+  return <AttachmentGallery files={props.item.files} serverUrl={props.serverUrl} />
 }
 
 function MailboxSourceBadge(props: { message: UserMessage }) {

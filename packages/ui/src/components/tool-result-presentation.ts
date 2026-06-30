@@ -11,7 +11,6 @@ type MaybeToolPart = {
   }
 }
 
-export type ToolResultPresentation = "default" | "attachment-only"
 export type ToolDisplayKind = "default" | "media-generation"
 export type ToolCardDisplay = "visible" | "hidden"
 export type ToolMediaType = "image" | "video" | "audio"
@@ -26,10 +25,8 @@ export interface ToolMediaDisplay {
 
 export interface ToolDisplayMetadata {
   kind?: ToolDisplayKind
-  presentation?: ToolResultPresentation
   toolCard?: ToolCardDisplay
   media?: ToolMediaDisplay
-  primaryAttachmentIds?: string[]
 }
 
 export function toolDisplayMetadata(part: unknown): ToolDisplayMetadata | undefined {
@@ -39,12 +36,6 @@ export function toolDisplayMetadata(part: unknown): ToolDisplayMetadata | undefi
   return display && typeof display === "object" && !Array.isArray(display)
     ? (display as ToolDisplayMetadata)
     : undefined
-}
-
-export function toolResultPresentation(part: unknown): ToolResultPresentation {
-  const candidate = part as MaybeToolPart
-  if (candidate?.type !== "tool") return "default"
-  return toolDisplayMetadata(candidate)?.presentation === "attachment-only" ? "attachment-only" : "default"
 }
 
 export function isMediaGenerationToolPart(part: unknown): boolean {
@@ -60,23 +51,6 @@ export function isToolCardHidden(part: unknown): boolean {
   return toolDisplayMetadata(candidate)?.toolCard === "hidden"
 }
 
-export function isAttachmentOnlyToolPart(part: unknown): boolean {
-  const candidate = part as MaybeToolPart
-  if (candidate?.type !== "tool") return false
-  if (candidate.state?.status !== "completed") return false
-  if (toolResultPresentation(candidate) !== "attachment-only") return false
-  return (candidate.state.attachments?.length ?? 0) > 0
-}
-
-export function isPromotedToolResultPart(part: unknown): boolean {
-  const candidate = part as MaybeToolPart
-  if (candidate?.type !== "tool") return false
-  if (candidate.state?.status !== "completed") return false
-  if ((candidate.state.attachments?.length ?? 0) === 0) return false
-  if (toolResultPresentation(candidate) === "attachment-only") return true
-  return isMediaGenerationToolPart(candidate)
-}
-
 export function isActiveMediaGenerationToolPart(part: unknown): boolean {
   const candidate = part as MaybeToolPart
   if (candidate?.type !== "tool") return false
@@ -86,23 +60,4 @@ export function isActiveMediaGenerationToolPart(part: unknown): boolean {
     candidate.state?.status === "generating" ||
     candidate.state?.status === "running"
   )
-}
-
-export function primaryToolAttachments(part: unknown): AttachmentPart[] {
-  const candidate = part as MaybeToolPart
-  if (candidate?.type !== "tool" || candidate.state?.status !== "completed") return []
-
-  const attachments = candidate.state.attachments ?? []
-  if (attachments.length === 0) return []
-
-  const metadata = candidate.state.metadata ?? {}
-  const display = toolDisplayMetadata(candidate)
-  const rawIds = display?.primaryAttachmentIds ?? metadata.primaryAttachmentIds
-  if (!Array.isArray(rawIds) || rawIds.length === 0) return attachments
-
-  const ids = new Set(rawIds.filter((id): id is string => typeof id === "string" && id.length > 0))
-  if (ids.size === 0) return attachments
-
-  const selected = attachments.filter((attachment) => ids.has(attachment.id))
-  return selected.length > 0 ? selected : attachments
 }

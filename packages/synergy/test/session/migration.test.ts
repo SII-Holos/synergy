@@ -128,6 +128,15 @@ describe("session migrations", () => {
                 url: "asset://tool.png",
                 metadata: { kind: "artifact", artifact: { originTool: "plugin_test", size: 12 } },
               },
+              {
+                id: "secondary_file",
+                sessionID: session.id,
+                messageID: assistant.id,
+                type: "file",
+                mime: "text/plain",
+                filename: "notes.txt",
+                url: "asset://notes.txt",
+              },
             ],
           },
         })
@@ -140,7 +149,7 @@ describe("session migrations", () => {
           StoragePath.messagePart(scope, sid, userMessage, Identifier.asPartID("part_file")),
         )
         expect(userPart.type).toBe("attachment")
-        expect(userPart.presentation).toEqual({ mode: "card" })
+        expect(userPart.presentation).toBeUndefined()
         expect(userPart.model).toEqual({ mode: "provider-file", summary: "old.png (image/png)" })
         expect(userPart.metadata).toEqual({
           kind: "attachment",
@@ -150,11 +159,12 @@ describe("session migrations", () => {
         const toolPart = await Storage.read<any>(
           StoragePath.messagePart(scope, sid, assistantMessage, Identifier.asPartID("part_tool")),
         )
-        expect(toolPart.state.metadata.display.presentation).toBe("attachment-only")
-        expect(toolPart.state.metadata.display.kind).toBe("media-generation")
-        expect(toolPart.state.metadata.display.toolCard).toBe("hidden")
-        expect(toolPart.state.metadata.display.visibility).toBeUndefined()
+        expect(toolPart.state.metadata.display).toEqual({
+          kind: "media-generation",
+          toolCard: "hidden",
+        })
         expect(toolPart.state.attachments[0].type).toBe("attachment")
+        expect(toolPart.state.attachments[0].presentation).toBeUndefined()
         expect(toolPart.state.attachments[0].model).toEqual({
           mode: "summary",
           summary: "tool.png (image/png)",
@@ -163,6 +173,8 @@ describe("session migrations", () => {
           kind: "attachment",
           attachment: { originTool: "plugin_test", size: 12 },
         })
+        expect(toolPart.state.attachments[1].type).toBe("attachment")
+        expect(toolPart.state.attachments[1].presentation).toEqual({ hidden: true })
       },
     })
   })
@@ -207,9 +219,78 @@ describe("session migrations", () => {
         )
         expect(toolPart.state.metadata.display).toEqual({
           kind: "media-generation",
-          presentation: "attachment-only",
           toolCard: "hidden",
         })
+      },
+    })
+  })
+
+  test("normalizes legacy attachment presentation fields after earlier migrations have run", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const tmpScope = await tmp.scope()
+    await ScopeContext.provide({
+      scope: tmpScope,
+      fn: async () => {
+        const session = await Session.create({})
+        const user = await addUserMessage(session.id)
+        const assistant = await addTerminalAssistantMessage(session.id, user.id)
+        const scope = Identifier.asScopeID(tmpScope.id)
+        const sid = Identifier.asSessionID(session.id)
+        const assistantMessage = Identifier.asMessageID(assistant.id)
+
+        await Storage.write(StoragePath.messagePart(scope, sid, assistantMessage, Identifier.asPartID("part_tool")), {
+          id: "part_tool",
+          sessionID: session.id,
+          messageID: assistant.id,
+          type: "tool",
+          callID: "call_1",
+          tool: "plugin_test",
+          state: {
+            status: "completed",
+            input: {},
+            output: "",
+            title: "Plugin",
+            metadata: {
+              display: { presentation: "attachment-only", primaryAttachmentIds: ["primary"] },
+              primaryAttachmentIds: ["primary"],
+            },
+            time: { start: 1, end: 2 },
+            attachments: [
+              {
+                id: "primary",
+                sessionID: session.id,
+                messageID: assistant.id,
+                type: "attachment",
+                mime: "image/png",
+                filename: "primary.png",
+                url: "asset://primary.png",
+                presentation: { mode: "inline", primary: true },
+              },
+              {
+                id: "secondary",
+                sessionID: session.id,
+                messageID: assistant.id,
+                type: "attachment",
+                mime: "image/png",
+                filename: "secondary.png",
+                url: "asset://secondary.png",
+                presentation: { mode: "card" },
+              },
+            ],
+          },
+        })
+
+        const migration = migrations.find((entry) => entry.id === "20260701-attachment-presentation-v2")
+        expect(migration).toBeDefined()
+        await migration!.up(() => {})
+
+        const toolPart = await Storage.read<any>(
+          StoragePath.messagePart(scope, sid, assistantMessage, Identifier.asPartID("part_tool")),
+        )
+
+        expect(toolPart.state.metadata).toEqual({ display: { toolCard: "hidden" } })
+        expect(toolPart.state.attachments[0].presentation).toBeUndefined()
+        expect(toolPart.state.attachments[1].presentation).toEqual({ hidden: true })
       },
     })
   })

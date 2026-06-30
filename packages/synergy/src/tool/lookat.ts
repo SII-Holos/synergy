@@ -60,7 +60,6 @@ async function toVisibleAttachment(
     filename: file.filename,
     url: `asset://${assetId}`,
     localPath: file.filepath,
-    presentation: { mode: "card" },
     model: {
       mode: "summary",
       summary: `${file.filename} (${file.mimeType}) analyzed by look_at`,
@@ -218,7 +217,6 @@ If the requested information is not found, clearly state what is missing.`
               url: pathToFileURL(file.filepath).href,
               filename: file.filename,
               localPath: file.filepath,
-              presentation: { mode: "card" as const },
               model: {
                 mode: "provider-file" as const,
                 summary: `${file.filename} (${file.mimeType})`,

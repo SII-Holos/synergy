@@ -141,7 +141,7 @@ async function finishResult(
         mime,
         filename,
         url: `asset://${assetId}`,
-        presentation: { mode: "card" as const },
+        presentation: { renderer: "image" as const, size: "large" as const, crop: false },
         model: {
           mode: "summary" as const,
           summary: `${filename} (${mime}) browser screenshot ${width}x${height}`,

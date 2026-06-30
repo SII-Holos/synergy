@@ -122,7 +122,6 @@ subagent or another host-controlled flow.
   "description": "Generate an image",
   "display": {
     "kind": "media-generation",
-    "presentation": "attachment-only",
     "toolCard": "hidden",
     "media": {
       "type": "image",
@@ -135,8 +134,8 @@ subagent or another host-controlled flow.
 - `kind: "media-generation"` uses Synergy's built-in image/video/audio generation placeholder while the tool is running.
 - `toolCard: "hidden"` keeps the tool card itself out of the transcript when another surface owns the experience.
 - `media.actionLabel` and `media.pendingTitle` are optional accessibility/status labels. The host does not display tool arguments as user-visible transcript text.
-- `presentation: "attachment-only"` renders returned `attachments` at the original tool-call position instead of showing a completed tool card.
-- `primaryAttachmentIds` may be returned from `metadata.display` at runtime to choose which attachment ids are shown as the primary result.
+- Returned `attachments` render at their original tool-call position when `toolCard` is hidden; each attachment controls its own display through `presentation`.
+- Attachment `presentation` supports `hidden`, `renderer`, `size`, and `crop`. Omit `renderer` to let Synergy choose from the MIME type.
 - Error states are hidden when `toolCard` is `hidden`; otherwise they render as normal tool cards.
 
 ### Delegated Task Permission

@@ -65,15 +65,14 @@ export default plugin
 
 Tools can return user-facing files through `attachments`. Use the generated SDK `asset.upload()` route or the public `/asset` endpoint to upload binary data, then return the resulting `asset://...` URL. Do not import Synergy internal asset modules from a plugin.
 
-For visual tools whose output belongs in the main answer area, set `metadata.display.presentation` to `attachment-only` and list the primary attachment ids:
+For visual tools whose output belongs in the main answer area, hide the tool card and set presentation on the returned attachment:
 
 ```ts
 return {
   output: "",
   metadata: {
     display: {
-      presentation: "attachment-only",
-      primaryAttachmentIds: [partId],
+      toolCard: "hidden",
     },
   },
   attachments: [
@@ -85,21 +84,20 @@ return {
       mime: "image/svg+xml",
       filename: "result.svg",
       url: uploaded.url,
-      presentation: { mode: "inline", primary: true },
+      presentation: { renderer: "image", size: "medium", crop: false },
       model: { mode: "summary", summary: "Generated SVG result." },
     },
   ],
 }
 ```
 
-Running and failed tool states still render normally, so progress, approvals, and errors remain visible.
+Each attachment controls its own display with `presentation.hidden`, `presentation.renderer`, `presentation.size`, and `presentation.crop`. Omit `renderer` to let Synergy choose from the MIME type.
 
 For image, video, or audio generation tools, declare the display protocol on the tool definition as well. This lets Synergy show its built-in media generation placeholder as soon as the tool starts, then replace it with the completed attachment in the original message order:
 
 ```ts
 const mediaDisplay = {
   kind: "media-generation",
-  presentation: "attachment-only",
   toolCard: "hidden",
   media: {
     type: "image",
@@ -114,7 +112,7 @@ tool({
     prompt: tool.schema.string(),
   },
   async execute(args, context) {
-    // Upload the generated image, then return metadata.display with primaryAttachmentIds.
+    // Upload the generated image, then return it with attachment-level presentation.
   },
 })
 ```

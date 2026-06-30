@@ -87,9 +87,7 @@ function mediaTool(input: {
             metadata: {
               display: {
                 kind: "media-generation",
-                presentation: "attachment-only",
                 toolCard: "hidden",
-                primaryAttachmentIds: [image.id],
               },
             },
             attachments: input.attachments ?? [image],
@@ -176,8 +174,8 @@ describe("session turn timeline", () => {
 
     const items = collectSessionTurnTimelineItems([message], { [message.id]: parts }, false)
 
-    expect(items.map((item) => item.kind)).toEqual(["media-result", "part"])
-    expect(items[0]).toMatchObject({ kind: "media-result", files: [image] })
+    expect(items.map((item) => item.kind)).toEqual(["tool-attachments", "part"])
+    expect(items[0]).toMatchObject({ kind: "tool-attachments", files: [image] })
     expect(items[1]).toMatchObject({ kind: "part", part: { type: "text" } })
   })
 
@@ -217,8 +215,8 @@ describe("session turn timeline", () => {
 
     const items = collectSessionTurnTimelineItems([first, second, third], partsByMessage, false)
 
-    expect(items.map((item) => item.kind)).toEqual(["media-result", "part", "part"])
-    expect(items[0]).toMatchObject({ kind: "media-result", files: [image] })
+    expect(items.map((item) => item.kind)).toEqual(["tool-attachments", "part", "part"])
+    expect(items[0]).toMatchObject({ kind: "tool-attachments", files: [image] })
     expect(items[1]).toMatchObject({ kind: "part", part: { type: "text" } })
     expect(items[2]).toMatchObject({ kind: "part", part: { type: "tool", tool: "render" } })
   })

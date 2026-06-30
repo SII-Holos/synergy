@@ -51,13 +51,12 @@ Tools that generate a primary visual attachment can return standard `attachments
 ```ts
 metadata: {
   display: {
-    presentation: "attachment-only",
-    primaryAttachmentIds: [partId],
+    toolCard: "hidden",
   },
 }
 ```
 
-The Web client hides the completed tool card and renders those attachments at the original tool-call position in the message. Running and failed states still render as normal tool cards. Use `input.client.asset.upload()` or the public `/asset` route to create `asset://...` URLs; plugins should not import Synergy internal asset modules.
+The Web client hides the tool card and renders returned attachments at the original tool-call position in the message. Each attachment controls its own display with `presentation.hidden`, `presentation.renderer`, `presentation.size`, and `presentation.crop`. Use `input.client.asset.upload()` or the public `/asset` route to create `asset://...` URLs; plugins should not import Synergy internal asset modules.
 
 For generated media, also declare display metadata on the tool definition and in `plugin.json`:
 
@@ -66,7 +65,6 @@ tool({
   description: "Generate an image",
   display: {
     kind: "media-generation",
-    presentation: "attachment-only",
     toolCard: "hidden",
     media: {
       type: "image",
@@ -77,12 +75,12 @@ tool({
     prompt: tool.schema.string(),
   },
   async execute(args, context) {
-    // Upload the attachment and return metadata.display.primaryAttachmentIds.
+    // Upload the attachment and return it with attachment-level presentation.
   },
 })
 ```
 
-`media-generation` tools use Synergy's built-in placeholder while running. `toolCard: "hidden"` keeps the tool card itself out of the transcript when the media surface owns the experience; completed success states render returned primary attachments in place. Optional `media.actionLabel` and `media.pendingTitle` are accessibility labels, not transcript copy. Do not rely on tool input fields such as `prompt` being displayed by the host.
+`media-generation` tools use Synergy's built-in placeholder while running. `toolCard: "hidden"` keeps the tool card itself out of the transcript when the media surface owns the experience; completed success states render returned non-hidden attachments in place. Optional `media.actionLabel` and `media.pendingTitle` are accessibility labels, not transcript copy. Do not rely on tool input fields such as `prompt` being displayed by the host.
 
 ## Internal Helpers And Planners
 

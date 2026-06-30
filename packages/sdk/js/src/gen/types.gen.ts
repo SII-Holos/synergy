@@ -3032,8 +3032,10 @@ export type ResourceSource = {
 export type AttachmentSource = FileSource | SymbolSource | ResourceSource
 
 export type AttachmentPresentation = {
-  mode?: "inline" | "card" | "hidden"
-  primary?: boolean
+  hidden?: boolean
+  renderer?: "image" | "video" | "audio" | "thumbnail" | "file"
+  size?: "original" | "small" | "medium" | "large"
+  crop?: boolean
 }
 
 export type AttachmentModelPolicy =

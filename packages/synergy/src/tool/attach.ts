@@ -57,7 +57,6 @@ export const AttachTool = Tool.define("attach", {
         mime,
         filename,
         url: `asset://${assetId}`,
-        presentation: { mode: "card" },
         model: {
           mode: "summary",
           summary: `${filename} (${mime}, ${formatSize(buffer.length)}) delivered to the user`,

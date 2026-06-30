@@ -22827,12 +22827,18 @@
       "AttachmentPresentation": {
         "type": "object",
         "properties": {
-          "mode": {
-            "default": "card",
-            "type": "string",
-            "enum": ["inline", "card", "hidden"]
+          "hidden": {
+            "type": "boolean"
           },
-          "primary": {
+          "renderer": {
+            "type": "string",
+            "enum": ["image", "video", "audio", "thumbnail", "file"]
+          },
+          "size": {
+            "type": "string",
+            "enum": ["original", "small", "medium", "large"]
+          },
+          "crop": {
             "type": "boolean"
           }
         }

@@ -48,7 +48,7 @@ import { parsePartialJson } from "@ericsanchezok/synergy-util/json"
 import { createAutoScroll, createTypewriter, createAnimatedNumber } from "../hooks"
 import { getApprovalAudit } from "../utils/approval-audit"
 import { getSemanticIcon } from "./semantic-icon"
-import { isPromotedToolResultPart, isToolCardHidden } from "./tool-result-presentation"
+import { isToolCardHidden } from "./tool-result-presentation"
 import { shouldCollapseUserMessage, visibleUserMessageText } from "./user-message-utils"
 
 export type UserMessageVariant = "default" | "turn-bubble"
@@ -1554,11 +1554,7 @@ export function UserMessageDisplay(props: { message: UserMessage; parts: PartTyp
     <div data-component="user-message" data-variant={props.variant ?? "default"}>
       <Show when={attachments().length > 0 || noteAttachments().length > 0 || sessionAttachments().length > 0}>
         <div data-slot="user-message-attachments">
-          <AttachmentGallery
-            files={attachments()}
-            serverUrl={data.serverUrl}
-            variant={isTurnBubble() ? "prompt" : "default"}
-          />
+          <AttachmentGallery files={attachments()} serverUrl={data.serverUrl} />
           <For each={noteAttachments()}>{(file) => <SpecialFileAttachment file={file} kind="note" />}</For>
           <For each={sessionAttachments()}>{(file) => <SpecialFileAttachment file={file} kind="session" />}</For>
         </div>
@@ -1766,6 +1762,7 @@ function ToolAttachments(props: { attachments: AttachmentPart[] }) {
         filename: f.filename,
         url: f.url,
         localPath: f.localPath,
+        presentation: f.presentation,
         metadata: f.metadata,
         source: f.source,
       }),
@@ -1919,7 +1916,6 @@ PART_MAPPING["tool"] = function ToolPartDisplay(props) {
           when={
             part().tool !== "attach" &&
             part().state.status === "completed" &&
-            !isPromotedToolResultPart(part()) &&
             (part().state as ToolStateCompleted).attachments?.length
           }
         >

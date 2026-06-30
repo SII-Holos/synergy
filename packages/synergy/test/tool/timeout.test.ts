@@ -83,23 +83,20 @@ describe("ToolTimeout", () => {
       toolTimeout: metadata("glob"),
       display: {
         kind: "media-generation",
-        presentation: "attachment-only",
+        toolCard: "hidden",
         media: { type: "image", pendingTitle: "Generating" },
       },
     }
-    expect(ToolTimeout.mergeMetadata(existing, { matches: 1, display: { primaryAttachmentIds: ["image-1"] } })).toEqual(
-      {
-        approval: existing.approval,
-        matches: 1,
-        toolTimeout: existing.toolTimeout,
-        display: {
-          kind: "media-generation",
-          presentation: "attachment-only",
-          primaryAttachmentIds: ["image-1"],
-          media: { type: "image", pendingTitle: "Generating" },
-        },
+    expect(ToolTimeout.mergeMetadata(existing, { matches: 1, display: { media: { aspectRatio: "1:1" } } })).toEqual({
+      approval: existing.approval,
+      matches: 1,
+      toolTimeout: existing.toolTimeout,
+      display: {
+        kind: "media-generation",
+        toolCard: "hidden",
+        media: { type: "image", pendingTitle: "Generating", aspectRatio: "1:1" },
       },
-    )
+    })
     expect(ToolTimeout.mergeMetadata(existing, undefined)).toBe(existing)
   })
 })

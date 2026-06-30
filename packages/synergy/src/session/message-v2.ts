@@ -201,8 +201,10 @@ export namespace MessageV2 {
 
   export const AttachmentPresentation = z
     .object({
-      mode: z.enum(["inline", "card", "hidden"]).default("card"),
-      primary: z.boolean().optional(),
+      hidden: z.boolean().optional(),
+      renderer: z.enum(["image", "video", "audio", "thumbnail", "file"]).optional(),
+      size: z.enum(["original", "small", "medium", "large"]).optional(),
+      crop: z.boolean().optional(),
     })
     .meta({
       ref: "AttachmentPresentation",

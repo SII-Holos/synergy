@@ -79,7 +79,6 @@ export interface ToolInvokeService {
 
 export type ToolResultMetadata = Record<string, any> & {
   display?: ToolDisplay
-  primaryAttachmentIds?: string[]
 }
 
 export interface ToolResult {
@@ -96,8 +95,10 @@ export interface ToolResult {
     url: string
     localPath?: string
     presentation?: {
-      mode: "inline" | "card" | "hidden"
-      primary?: boolean
+      hidden?: boolean
+      renderer?: "image" | "video" | "audio" | "thumbnail" | "file"
+      size?: "original" | "small" | "medium" | "large"
+      crop?: boolean
     }
     model?:
       | {

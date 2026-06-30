@@ -139,7 +139,6 @@ const TaskPermissionDef = z.union([
 const ToolDisplayDef = z
   .object({
     kind: z.enum(["default", "media-generation"]).optional(),
-    presentation: z.enum(["default", "attachment-only"]).optional(),
     toolCard: z.enum(["visible", "hidden"]).optional(),
     media: z
       .object({
@@ -151,7 +150,6 @@ const ToolDisplayDef = z
       })
       .strict()
       .optional(),
-    primaryAttachmentIds: z.array(z.string().min(1)).optional(),
   })
   .strict()
 

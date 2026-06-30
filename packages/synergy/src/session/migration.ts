@@ -104,12 +104,51 @@ function defaultAttachmentModel(part: Record<string, unknown>, owner: "user" | "
   return { mode: "summary", summary: attachmentSummary(part) }
 }
 
-function migrateDisplayMetadata(display: unknown): { value: Record<string, unknown> | undefined; changed: boolean } {
+function stringArray(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) return undefined
+  const items = value.filter((item): item is string => typeof item === "string" && item.length > 0)
+  return items.length > 0 ? items : undefined
+}
+
+function migrateAttachmentPresentation(presentation: unknown): {
+  value: MessageV2.AttachmentPresentation | undefined
+  changed: boolean
+} {
+  const record = asRecord(presentation)
+  if (!record) return { value: undefined, changed: presentation !== undefined }
+
+  const next: MessageV2.AttachmentPresentation = {}
+
+  if (record.hidden === true || record.mode === "hidden") next.hidden = true
+  if (
+    record.renderer === "image" ||
+    record.renderer === "video" ||
+    record.renderer === "audio" ||
+    record.renderer === "thumbnail" ||
+    record.renderer === "file"
+  ) {
+    next.renderer = record.renderer
+  }
+  if (record.size === "original" || record.size === "small" || record.size === "medium" || record.size === "large") {
+    next.size = record.size
+  }
+  if (typeof record.crop === "boolean") next.crop = record.crop
+
+  const value = compact(next)
+  return { value, changed: JSON.stringify(value) !== JSON.stringify(record) }
+}
+
+function migrateDisplayMetadata(display: unknown): {
+  value: Record<string, unknown> | undefined
+  changed: boolean
+  primaryAttachmentIds?: string[]
+} {
   const record = asRecord(display)
   if (!record) return { value: undefined, changed: display !== undefined }
 
   const original = JSON.stringify(record)
   const next: Record<string, unknown> = { ...record }
+  const primaryAttachmentIds = stringArray(next.primaryAttachmentIds)
 
   if (next.visibility === "media") {
     if (next.kind === undefined || next.kind === "default") next.kind = "media-generation"
@@ -117,10 +156,14 @@ function migrateDisplayMetadata(display: unknown): { value: Record<string, unkno
     delete next.visibility
   }
 
-  if (next.presentation === "artifact-only") next.presentation = "attachment-only"
+  if (next.presentation === "artifact-only" || next.presentation === "attachment-only") {
+    if (next.toolCard === undefined) next.toolCard = "hidden"
+  }
+  delete next.presentation
+  delete next.primaryAttachmentIds
 
   const value = compact(next)
-  return { value, changed: JSON.stringify(value) !== original }
+  return { value, changed: JSON.stringify(value) !== original, primaryAttachmentIds }
 }
 
 function migrateAttachmentMetadata(metadata: unknown): Record<string, unknown> | undefined {
@@ -150,8 +193,9 @@ function migrateAttachmentPart(input: unknown, owner: "user" | "tool"): { value:
 
   if (next.type !== "attachment") return { value: input, changed }
 
-  if (!asRecord(next.presentation)) {
-    next.presentation = { mode: "card" }
+  const presentation = migrateAttachmentPresentation(next.presentation)
+  if (presentation.changed) {
+    next.presentation = presentation.value
     changed = true
   }
   if (!asRecord(next.model)) {
@@ -168,29 +212,97 @@ function migrateAttachmentPart(input: unknown, owner: "user" | "tool"): { value:
   return { value: next, changed }
 }
 
-function migrateToolDisplayMetadata(metadata: unknown): { value: unknown; changed: boolean } {
+function migrateToolDisplayMetadata(metadata: unknown): {
+  value: unknown
+  changed: boolean
+  primaryAttachmentIds?: string[]
+} {
   const record = asRecord(metadata)
   if (!record) return { value: metadata, changed: false }
-  const migrated = migrateAttachmentMetadata(record)
+  const original = JSON.stringify(record)
+  const next: Record<string, unknown> = { ...record }
+  const primaryFromMetadata = stringArray(next.primaryAttachmentIds)
+  delete next.primaryAttachmentIds
+
+  if (next.kind === "artifact") next.kind = "attachment"
+  if (asRecord(next.artifact) && !asRecord(next.attachment)) next.attachment = next.artifact
+  delete next.artifact
+
+  let primaryAttachmentIds = primaryFromMetadata
+  const display = migrateDisplayMetadata(next.display)
+  if (display.primaryAttachmentIds) primaryAttachmentIds = display.primaryAttachmentIds
+  if (display.value) next.display = display.value
+  else delete next.display
+
+  const migrated = compact(next)
   return {
     value: migrated,
-    changed: JSON.stringify(migrated) !== JSON.stringify(metadata),
+    changed: JSON.stringify(migrated) !== original,
+    primaryAttachmentIds,
   }
 }
 
-const legacyAttachmentPattern = String.raw`"type"\s*:\s*"file"|"artifact-only"|"kind"\s*:\s*"artifact"|"artifact"\s*:`
-const legacyToolDisplayPattern = String.raw`"visibility"\s*:\s*"media"`
+function applyPrimaryAttachmentVisibility(
+  attachments: unknown[],
+  primaryAttachmentIds: string[] | undefined,
+): { value: unknown[]; changed: boolean } {
+  if (!primaryAttachmentIds?.length) return { value: attachments, changed: false }
+  const ids = new Set(primaryAttachmentIds)
+  const matched = attachments.some((attachment) => {
+    const record = asRecord(attachment)
+    return typeof record?.id === "string" && ids.has(record.id)
+  })
+  if (!matched) return { value: attachments, changed: false }
+
+  let changed = false
+  const value = attachments.map((attachment) => {
+    const record = asRecord(attachment)
+    if (!record || typeof record.id !== "string" || ids.has(record.id)) return attachment
+
+    const presentation = migrateAttachmentPresentation(record.presentation).value ?? {}
+    const next = {
+      ...record,
+      presentation: {
+        ...presentation,
+        hidden: true,
+      },
+    }
+    changed = true
+    return next
+  })
+
+  return { value, changed }
+}
+
+const legacyAttachmentPattern = String.raw`"type"\s*:\s*"file"|"artifact-only"|"attachment-only"|"primaryAttachmentIds"|"kind"\s*:\s*"artifact"|"artifact"\s*:|"mode"\s*:\s*"(inline|card|hidden)"|"primary"\s*:\s*true`
+const legacyToolDisplayPattern = String.raw`"visibility"\s*:\s*"media"|"attachment-only"|"primaryAttachmentIds"`
 const attachmentPartGlob = new Bun.Glob("sessions/**/parts/*.json")
 const legacyAttachmentMarkers = [
   '"type":"file"',
   '"type": "file"',
   '"artifact-only"',
+  '"attachment-only"',
+  '"primaryAttachmentIds"',
   '"kind":"artifact"',
   '"kind": "artifact"',
   '"artifact":',
   '"artifact" :',
+  '"mode":"inline"',
+  '"mode": "inline"',
+  '"mode":"card"',
+  '"mode": "card"',
+  '"mode":"hidden"',
+  '"mode": "hidden"',
+  '"primary":true',
+  '"primary": true',
 ]
-const legacyToolDisplayMarkers = ['"visibility":"media"', '"visibility": "media"', '"visibility" : "media"']
+const legacyToolDisplayMarkers = [
+  '"visibility":"media"',
+  '"visibility": "media"',
+  '"visibility" : "media"',
+  '"attachment-only"',
+  '"primaryAttachmentIds"',
+]
 
 type AttachmentPartCandidate = {
   key: string[]
@@ -400,14 +512,16 @@ async function migrateSessionAttachmentParts(progress: (current: number, total: 
         if (state?.status === "completed") {
           const migratedState: Record<string, unknown> = { ...state }
           const attachments = Array.isArray(state.attachments) ? state.attachments : undefined
+          const metadata = migrateToolDisplayMetadata(state.metadata)
           if (attachments) {
             const migratedAttachments = attachments.map((attachment) => migrateAttachmentPart(attachment, "tool"))
-            if (migratedAttachments.some((item) => item.changed)) {
-              migratedState.attachments = migratedAttachments.map((item) => item.value)
+            const nextAttachments = migratedAttachments.map((item) => item.value)
+            const visibility = applyPrimaryAttachmentVisibility(nextAttachments, metadata.primaryAttachmentIds)
+            if (migratedAttachments.some((item) => item.changed) || visibility.changed) {
+              migratedState.attachments = visibility.value
               changed = true
             }
           }
-          const metadata = migrateToolDisplayMetadata(state.metadata)
           if (metadata.changed) {
             migratedState.metadata = metadata.value
             changed = true
@@ -446,6 +560,14 @@ function migrateToolPartDisplayMetadata(part: Record<string, unknown>): {
   if (state) {
     const migratedState = { ...state }
     const metadata = migrateToolDisplayMetadata(state.metadata)
+    const attachments = Array.isArray(state.attachments) ? state.attachments : undefined
+    if (attachments) {
+      const visibility = applyPrimaryAttachmentVisibility(attachments, metadata.primaryAttachmentIds)
+      if (visibility.changed) {
+        migratedState.attachments = visibility.value
+        changed = true
+      }
+    }
     if (metadata.changed) {
       migratedState.metadata = metadata.value
       changed = true
@@ -1028,6 +1150,13 @@ export const migrations: Migration[] = [
     description: "Migrate media tool display visibility into explicit tool card display policy",
     async up(progress) {
       await migrateSessionToolDisplayMetadata(progress)
+    },
+  },
+  {
+    id: "20260701-attachment-presentation-v2",
+    description: "Normalize attachment presentation controls and remove tool-level attachment promotion fields",
+    async up(progress) {
+      await migrateSessionAttachmentParts(progress)
     },
   },
 ]

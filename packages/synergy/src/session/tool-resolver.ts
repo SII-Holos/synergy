@@ -1329,7 +1329,7 @@ export namespace ToolResolver {
                         type: "attachment",
                         mime: contentItem.mimeType,
                         url: `data:${contentItem.mimeType};base64,${contentItem.data}`,
-                        presentation: { mode: "card" },
+                        presentation: { renderer: "image", size: "medium", crop: false },
                         model: {
                           mode: "provider-file",
                           summary: `${contentItem.mimeType} image returned by ${key}`,
