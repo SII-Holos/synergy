@@ -24,6 +24,7 @@ describe("dev orchestrator planner", () => {
     expect(plan.processes[0]?.env).toMatchObject({
       SYNERGY_CWD: "/workspace",
     })
+    expect(plan.processes[0]?.waitTimeoutMs).toBeNull()
     expect(plan.processes[1]?.env).toMatchObject({
       VITE_SYNERGY_SERVER_URL: "http://127.0.0.1:4096",
       VITE_SYNERGY_CALLBACK_URL: "http://127.0.0.1:4096/holos/callback",

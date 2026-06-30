@@ -15,6 +15,7 @@ export interface DevProcessSpec {
   cwd: string
   env?: Record<string, string | undefined>
   waitUrl?: string
+  waitTimeoutMs?: number | null
 }
 
 export interface DevPlan {
@@ -184,6 +185,7 @@ function serverProcess(input: {
     cwd: dirs.synergy,
     env: { SYNERGY_CWD: process.env.SYNERGY_CWD ?? input.launchCwd },
     waitUrl: `${url}/global/health`,
+    waitTimeoutMs: null,
   }
 }
 
@@ -436,16 +438,30 @@ async function isPortAvailable(port: number, host: string): Promise<boolean> {
   })
 }
 
-async function waitForUrl(url: string, timeoutMs = 30_000): Promise<void> {
+async function waitForUrl(
+  url: string,
+  options: {
+    timeoutMs?: number | null
+    child?: ReturnType<typeof spawnDevProcess>
+    label?: string
+  } = {},
+): Promise<void> {
+  const timeoutMs = options.timeoutMs === undefined ? 30_000 : options.timeoutMs
   const start = Date.now()
   let lastError = ""
-  while (Date.now() - start < timeoutMs) {
+  while (timeoutMs === null || Date.now() - start < timeoutMs) {
     try {
       const response = await fetch(url, { signal: AbortSignal.timeout(1000) })
       if (response.ok) return
       lastError = `HTTP ${response.status}`
     } catch (error) {
       lastError = error instanceof Error ? error.message : String(error)
+    }
+    const child = options.child
+    if (child && child.exitCode !== null) {
+      throw new Error(
+        `${options.label ?? "process"} exited with code ${child.exitCode} before ${url} became ready${lastError ? ` (${lastError})` : ""}`,
+      )
     }
     await Bun.sleep(250)
   }
@@ -461,7 +477,7 @@ async function assertPreflight(plan: DevPlan): Promise<void> {
     }
   }
   for (const url of plan.requiredServers) {
-    await waitForUrl(`${normalizeUrl(url)}/global/health`, 5_000)
+    await waitForUrl(`${normalizeUrl(url)}/global/health`, { timeoutMs: 5_000 })
   }
 }
 
@@ -531,7 +547,7 @@ async function runParallel(plan: DevPlan): Promise<number> {
     for (const spec of plan.processes) {
       const child = spawnDevProcess(spec)
       children.push(child)
-      if (spec.waitUrl) await waitForUrl(spec.waitUrl)
+      if (spec.waitUrl) await waitForUrl(spec.waitUrl, { timeoutMs: spec.waitTimeoutMs, child, label: spec.label })
     }
     if (plan.openUrl) openExternal(plan.openUrl)
     if (children.length === 0) return 0

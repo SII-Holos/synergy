@@ -4,6 +4,7 @@ import fs from "fs/promises"
 import { Identifier } from "@/id/id"
 import { Storage } from "@/storage/storage"
 import { StoragePath } from "@/storage/path"
+import { Global } from "@/global"
 import type { Migration } from "@/migration"
 import { SessionEndpoint } from "./endpoint"
 import { Info } from "./types"
@@ -163,38 +164,146 @@ function migrateToolDisplayMetadata(metadata: unknown): { value: unknown; change
   }
 }
 
-async function migrateSessionAttachmentParts(progress: (current: number, total: number) => void) {
-  const scopeIDs = await Storage.scan(["sessions"]).catch(() => [])
-  const tasks: Array<{ scopeID: string; sessionID: string; messageID: string; partID: string }> = []
+const legacyAttachmentPattern = String.raw`"type"\s*:\s*"file"|"artifact-only"|"kind"\s*:\s*"artifact"|"artifact"\s*:`
+const attachmentPartGlob = new Bun.Glob("sessions/**/parts/*.json")
+const legacyAttachmentMarkers = [
+  '"type":"file"',
+  '"type": "file"',
+  '"artifact-only"',
+  '"kind":"artifact"',
+  '"kind": "artifact"',
+  '"artifact":',
+  '"artifact" :',
+]
 
-  for (const scopeID of scopeIDs) {
-    const scope = Identifier.asScopeID(scopeID)
-    const sessionIDs = await Storage.scan(StoragePath.sessionsRoot(scope)).catch(() => [])
-    for (const sessionID of sessionIDs) {
-      const sid = Identifier.asSessionID(sessionID)
-      const messageIDs = await Storage.scan(StoragePath.sessionMessagesRoot(scope, sid)).catch(() => [])
-      for (const messageID of messageIDs) {
-        const mid = Identifier.asMessageID(messageID)
-        const partIDs = await Storage.scan(StoragePath.messageParts(scope, sid, mid)).catch(() => [])
-        for (const partID of partIDs) tasks.push({ scopeID, sessionID, messageID, partID })
-      }
+type AttachmentPartCandidate = {
+  key: string[]
+  scopeID: string
+  sessionID: string
+  messageID: string
+  text: string
+}
+
+function needsAttachmentMigration(text: string) {
+  return legacyAttachmentMarkers.some((marker) => text.includes(marker))
+}
+
+function candidateFromRelativePath(relativePath: string, text: string): AttachmentPartCandidate | undefined {
+  const parts = relativePath.replace(/\.json$/i, "").split(/[\\/]/)
+  if (parts.length !== 7) return undefined
+  const [root, scopeID, sessionID, messages, messageID, partRoot, partID] = parts
+  if (root !== "sessions" || messages !== "messages" || partRoot !== "parts") return undefined
+  return {
+    key: parts,
+    scopeID,
+    sessionID,
+    messageID,
+    text,
+  }
+}
+
+async function existingRipgrepPath() {
+  const system = Bun.which("rg")
+  if (system) return system
+  const bundled = path.join(Global.Path.bin, process.platform === "win32" ? "rg.exe" : "rg")
+  return (await Bun.file(bundled)
+    .exists()
+    .catch(() => false))
+    ? bundled
+    : undefined
+}
+
+async function findLegacyAttachmentPartPaths() {
+  const sessionsRoot = path.join(Global.Path.data, "sessions")
+  if (!(await fs.stat(sessionsRoot).catch(() => undefined))?.isDirectory()) return []
+  const rg = await existingRipgrepPath()
+  if (!rg) return undefined
+
+  const proc = Bun.spawn(
+    [
+      rg,
+      "--files-with-matches",
+      "--hidden",
+      "--follow",
+      "--glob=**/parts/*.json",
+      "--",
+      legacyAttachmentPattern,
+      sessionsRoot,
+    ],
+    {
+      stdout: "pipe",
+      stderr: "ignore",
+      maxBuffer: 1024 * 1024 * 50,
+    },
+  )
+  const [text, exitCode] = await Promise.all([Bun.readableStreamToText(proc.stdout), proc.exited])
+  if (exitCode !== 0 && exitCode !== 1) {
+    log.warn("legacy attachment part candidate search failed", { exitCode })
+    return []
+  }
+  return text.split(/\r?\n/).filter(Boolean)
+}
+
+async function collectLegacyAttachmentPartCandidates(): Promise<AttachmentPartCandidate[]> {
+  const candidates: AttachmentPartCandidate[] = []
+  const pending: Promise<void>[] = []
+  const flush = async () => {
+    if (pending.length === 0) return
+    await Promise.all(pending.splice(0))
+  }
+
+  const paths = await findLegacyAttachmentPartPaths()
+  const scan = async function* () {
+    if (paths) {
+      for (const filepath of paths) yield filepath
+      return
+    }
+    for await (const relativePath of attachmentPartGlob.scan({ cwd: Global.Path.data, onlyFiles: true })) {
+      yield path.join(Global.Path.data, relativePath)
     }
   }
 
+  for await (const filepath of scan()) {
+    pending.push(
+      Bun.file(filepath)
+        .text()
+        .then((text) => {
+          if (!needsAttachmentMigration(text)) return
+          const candidate = candidateFromRelativePath(path.relative(Global.Path.data, filepath), text)
+          if (candidate) candidates.push(candidate)
+        })
+        .catch(() => undefined),
+    )
+    if (pending.length >= 64) await flush()
+  }
+  await flush()
+  return candidates.sort((a, b) => a.key.join("/").localeCompare(b.key.join("/")))
+}
+
+async function migrateSessionAttachmentParts(progress: (current: number, total: number) => void) {
+  const tasks = await collectLegacyAttachmentPartCandidates()
   if (tasks.length === 0) return
 
   let done = 0
   let changedCount = 0
-  for (const { scopeID, sessionID, messageID, partID } of tasks) {
+  for (const { scopeID, sessionID, messageID, key, text } of tasks) {
     const scope = Identifier.asScopeID(scopeID)
     const sid = Identifier.asSessionID(sessionID)
     const mid = Identifier.asMessageID(messageID)
-    const pid = Identifier.asPartID(partID)
-    const key = StoragePath.messagePart(scope, sid, mid, pid)
-    const part = await Storage.read<any>(key).catch(() => undefined)
+    let part: any
+    try {
+      part = JSON.parse(text)
+    } catch {
+      part = await Storage.read<any>(key).catch(() => undefined)
+    }
     if (part) {
-      const info = await Storage.read<MessageV2.Info>(StoragePath.messageInfo(scope, sid, mid)).catch(() => undefined)
-      const owner = info?.role === "user" ? "user" : "tool"
+      const owner =
+        part.type === "file"
+          ? (await Storage.read<MessageV2.Info>(StoragePath.messageInfo(scope, sid, mid)).catch(() => undefined))
+              ?.role === "user"
+            ? "user"
+            : "tool"
+          : "tool"
       const migratedPart = migrateAttachmentPart(part, owner)
       let next = migratedPart.value as Record<string, unknown>
       let changed = migratedPart.changed

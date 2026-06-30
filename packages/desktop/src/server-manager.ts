@@ -30,7 +30,6 @@ export interface DesktopServerManagerOptions {
 
 const dirname = path.dirname(fileURLToPath(import.meta.url))
 const HEALTH_PATH = "/global/health"
-const HEALTH_TIMEOUT_MS = 30_000
 const SHUTDOWN_TIMEOUT_MS = 5_000
 
 export class DesktopServerManager {
@@ -143,7 +142,7 @@ export class DesktopServerManager {
     })
 
     try {
-      await waitForHealth(`${this.url}${HEALTH_PATH}`, HEALTH_TIMEOUT_MS)
+      await waitForHealth(`${this.url}${HEALTH_PATH}`, child)
       this.state = "running"
       return this.url
     } catch (error) {
@@ -192,10 +191,9 @@ export async function findAvailablePort(): Promise<number> {
   })
 }
 
-async function waitForHealth(url: string, timeoutMs: number): Promise<void> {
-  const startedAt = Date.now()
+async function waitForHealth(url: string, child: ChildProcess): Promise<void> {
   let lastError: unknown
-  while (Date.now() - startedAt < timeoutMs) {
+  while (child.exitCode === null && child.signalCode === null) {
     try {
       const response = await fetch(url)
       if (response.ok) return
@@ -206,7 +204,9 @@ async function waitForHealth(url: string, timeoutMs: number): Promise<void> {
     await new Promise((resolve) => setTimeout(resolve, 250))
   }
   throw new Error(
-    `Timed out waiting for Synergy server health: ${lastError instanceof Error ? lastError.message : String(lastError)}`,
+    `Synergy server exited before health became ready (code=${child.exitCode ?? "null"} signal=${child.signalCode ?? "null"}): ${
+      lastError instanceof Error ? lastError.message : String(lastError)
+    }`,
   )
 }
 
