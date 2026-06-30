@@ -15,7 +15,7 @@ import { Dynamic } from "solid-js/web"
 import { createStore, reconcile } from "solid-js/store"
 import {
   AssistantMessage,
-  FilePart,
+  AttachmentPart,
   Message as MessageType,
   Part as PartType,
   ReasoningPart,
@@ -40,7 +40,7 @@ import { Checkbox } from "./checkbox"
 import { DagGraph } from "./dag-graph"
 import { DiffChanges } from "./diff-changes"
 import { Markdown } from "./markdown"
-import { ArtifactGallery, type ArtifactFile } from "./attachment-card"
+import { AttachmentGallery, type AttachmentFile } from "./attachment-card"
 import { ErrorCard } from "./error-card"
 import { getDirectory as _getDirectory, getFilename } from "@ericsanchezok/synergy-util/path"
 import { checksum } from "@ericsanchezok/synergy-util/encode"
@@ -1484,10 +1484,10 @@ export function UserMessageDisplay(props: { message: UserMessage; parts: PartTyp
 
   const text = createMemo(() => textPart()?.text || "")
 
-  const files = createMemo(() => (props.parts?.filter((p) => p.type === "file") as FilePart[]) ?? [])
+  const files = createMemo(() => (props.parts?.filter((p) => p.type === "attachment") as AttachmentPart[]) ?? [])
 
-  const isNoteAttachment = (file: FilePart) => file.metadata?.kind === "note"
-  const isSessionAttachment = (file: FilePart) => file.metadata?.kind === "session"
+  const isNoteAttachment = (file: AttachmentPart) => file.metadata?.kind === "note"
+  const isSessionAttachment = (file: AttachmentPart) => file.metadata?.kind === "session"
 
   const noteAttachments = createMemo(() => files().filter(isNoteAttachment))
   const sessionAttachments = createMemo(() => files().filter(isSessionAttachment))
@@ -1511,7 +1511,7 @@ export function UserMessageDisplay(props: { message: UserMessage; parts: PartTyp
     <div data-component="user-message">
       <Show when={attachments().length > 0 || noteAttachments().length > 0 || sessionAttachments().length > 0}>
         <div data-slot="user-message-attachments">
-          <ArtifactGallery files={attachments()} serverUrl={data.serverUrl} />
+          <AttachmentGallery files={attachments()} serverUrl={data.serverUrl} />
           <For each={noteAttachments()}>{(file) => <SpecialFileAttachment file={file} kind="note" />}</For>
           <For each={sessionAttachments()}>{(file) => <SpecialFileAttachment file={file} kind="session" />}</For>
         </div>
@@ -1525,7 +1525,7 @@ export function UserMessageDisplay(props: { message: UserMessage; parts: PartTyp
   )
 }
 
-function SpecialFileAttachment(props: { file: FilePart; kind: "note" | "session" }) {
+function SpecialFileAttachment(props: { file: AttachmentPart; kind: "note" | "session" }) {
   const title = createMemo(
     () => (props.file.metadata?.title as string | undefined) || props.file.filename || "Untitled",
   )
@@ -1542,19 +1542,19 @@ function SpecialFileAttachment(props: { file: FilePart; kind: "note" | "session"
   )
 }
 
-type HighlightSegment = { text: string; type?: "file"; file?: FilePart }
+type HighlightSegment = { text: string; type?: "file"; file?: AttachmentPart }
 
-function fileReferencePath(file: FilePart) {
+function fileReferencePath(file: AttachmentPart) {
   const source = file.source as { path?: unknown } | undefined
   return typeof source?.path === "string" && source.path ? source.path : file.url
 }
 
-function HighlightedText(props: { text: string; references: FilePart[] }) {
+function HighlightedText(props: { text: string; references: AttachmentPart[] }) {
   const resourceOpen = useResourceOpen()
   const segments = createMemo(() => {
     const text = props.text
 
-    const allRefs: { start: number; end: number; type: "file"; file: FilePart }[] = [
+    const allRefs: { start: number; end: number; type: "file"; file: AttachmentPart }[] = [
       ...props.references
         .filter((r) => r.source?.text?.start !== undefined && r.source?.text?.end !== undefined)
         .map((r) => ({
@@ -1678,11 +1678,11 @@ export {
   resolveToolRenderer,
 }
 
-function ToolAttachments(props: { attachments: FilePart[] }) {
+function ToolAttachments(props: { attachments: AttachmentPart[] }) {
   const data = useData()
   const files = createMemo(() =>
     props.attachments.map(
-      (f): ArtifactFile => ({
+      (f): AttachmentFile => ({
         mime: f.mime,
         filename: f.filename,
         url: f.url,
@@ -1692,19 +1692,19 @@ function ToolAttachments(props: { attachments: FilePart[] }) {
       }),
     ),
   )
-  return <ArtifactGallery files={files()} serverUrl={data.serverUrl} />
+  return <AttachmentGallery files={files()} serverUrl={data.serverUrl} />
 }
 
-PART_MAPPING["file"] = function FilePartDisplay(props) {
+PART_MAPPING["attachment"] = function AttachmentPartDisplay(props) {
   const data = useData()
-  const file = createMemo(() => props.part as FilePart)
+  const file = createMemo(() => props.part as AttachmentPart)
   const isInlineReference = createMemo(() => file().source?.text?.start !== undefined)
   const isNoteAttachment = createMemo(() => file().metadata?.kind === "note")
   const isSessionAttachment = createMemo(() => file().metadata?.kind === "session")
 
   return (
     <Show when={!isInlineReference()}>
-      <div data-component="file-part">
+      <div data-component="attachment-part">
         <Switch>
           <Match when={isNoteAttachment()}>
             <div data-component="user-message">
@@ -1721,7 +1721,7 @@ PART_MAPPING["file"] = function FilePartDisplay(props) {
             </div>
           </Match>
           <Match when={true}>
-            <ArtifactGallery files={[file()]} serverUrl={data.serverUrl} />
+            <AttachmentGallery files={[file()]} serverUrl={data.serverUrl} />
           </Match>
         </Switch>
       </div>

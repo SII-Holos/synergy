@@ -27,7 +27,7 @@
     gap: 8px;
   }
 
-  [data-component="artifact-gallery"] {
+  [data-component="attachment-gallery"] {
     min-width: min(520px, 100%);
     padding: 0;
   }

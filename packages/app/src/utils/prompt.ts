@@ -1,4 +1,4 @@
-import type { FilePart, Part, TextPart } from "@ericsanchezok/synergy-sdk"
+import type { AttachmentPart, Part, TextPart } from "@ericsanchezok/synergy-sdk"
 import type { FileAttachmentPart, ImageAttachmentPart, Prompt, UploadedAttachmentPart } from "@/context/prompt"
 
 type Inline = {
@@ -70,8 +70,8 @@ export function extractPromptFromParts(parts: Part[], opts?: { directory?: strin
   const attachments: UploadedAttachmentPart[] = []
 
   for (const part of parts) {
-    if (part.type === "file") {
-      const filePart = part as FilePart
+    if (part.type === "attachment") {
+      const filePart = part as AttachmentPart
       const sourceText = filePart.source?.text
       if (sourceText) {
         const value = sourceText.value

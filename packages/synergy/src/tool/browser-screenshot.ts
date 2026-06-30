@@ -137,10 +137,15 @@ async function finishResult(
         id: Identifier.ascending("part"),
         sessionID: ctx.sessionID,
         messageID: ctx.messageID,
-        type: "file" as const,
+        type: "attachment" as const,
         mime,
         filename,
         url: `asset://${assetId}`,
+        presentation: { mode: "card" as const },
+        model: {
+          mode: "summary" as const,
+          summary: `${filename} (${mime}) browser screenshot ${width}x${height}`,
+        },
       },
     ],
   }

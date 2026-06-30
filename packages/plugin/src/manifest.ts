@@ -140,7 +140,7 @@ const ToolDisplayDef = z
   .object({
     kind: z.enum(["default", "media-generation"]).optional(),
     visibility: z.enum(["default", "media", "hidden-unless-error"]).optional(),
-    presentation: z.enum(["default", "artifact-only"]).optional(),
+    presentation: z.enum(["default", "attachment-only"]).optional(),
     media: z
       .object({
         type: z.enum(["image", "video", "audio"]),

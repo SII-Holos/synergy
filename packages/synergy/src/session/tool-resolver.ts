@@ -1119,6 +1119,7 @@ export namespace ToolResolver {
                 await toolTrace.phase("plugin.runtime.before.end", "plugin before end")
                 await toolTrace.phase("tool.execute.start", "tool execute start")
                 const result = await item.execute(args, toolCtx)
+                Tool.validateAttachmentResult(item.id, result)
                 await toolTrace.phase("tool.execute.end", "tool execute end", {
                   outputChars: result.output.length,
                   attachmentCount: result.attachments?.length ?? 0,
@@ -1315,7 +1316,7 @@ export namespace ToolResolver {
                   await toolTrace.phase("plugin.runtime.after.end", "plugin after end")
 
                   const textParts: string[] = []
-                  const attachments: MessageV2.FilePart[] = []
+                  const attachments: MessageV2.AttachmentPart[] = []
 
                   for (const contentItem of result.content) {
                     if (contentItem.type === "text") {
@@ -1325,9 +1326,14 @@ export namespace ToolResolver {
                         id: Identifier.ascending("part"),
                         sessionID: runtimeInput.sessionID,
                         messageID: runtimeInput.processor.message.id,
-                        type: "file",
+                        type: "attachment",
                         mime: contentItem.mimeType,
                         url: `data:${contentItem.mimeType};base64,${contentItem.data}`,
+                        presentation: { mode: "card" },
+                        model: {
+                          mode: "provider-file",
+                          summary: `${contentItem.mimeType} image returned by ${key}`,
+                        },
                       })
                     }
                   }
@@ -1339,6 +1345,7 @@ export namespace ToolResolver {
                     attachments,
                     content: result.content,
                   }
+                  Tool.validateAttachmentResult(key, output)
 
                   resolveExecution({
                     status: "completed",

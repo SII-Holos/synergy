@@ -65,7 +65,7 @@ export const InvokeInput = z.object({
         .meta({
           ref: "TextPartInput",
         }),
-      MessageV2.FilePart.omit({
+      MessageV2.AttachmentPart.omit({
         messageID: true,
         sessionID: true,
       })
@@ -73,7 +73,7 @@ export const InvokeInput = z.object({
           id: true,
         })
         .meta({
-          ref: "FilePartInput",
+          ref: "AttachmentPartInput",
         }),
     ]),
   ),
@@ -105,19 +105,21 @@ export async function resolveInputParts(template: string): Promise<InvokeInput["
 
       if (stats.isDirectory()) {
         parts.push({
-          type: "file",
+          type: "attachment",
           url: pathToFileURL(filepath).href,
           filename: name,
           mime: "application/x-directory",
+          model: { mode: "summary", summary: `${name} (directory)` },
         })
         return
       }
 
       parts.push({
-        type: "file",
+        type: "attachment",
         url: pathToFileURL(filepath).href,
         filename: name,
         mime: "text/plain",
+        model: { mode: "content" },
       })
     }),
   )
@@ -182,7 +184,7 @@ export async function createUserMessage(input: InvokeInput) {
 
   const parts = await Promise.all(
     input.parts.map(async (part): Promise<MessageV2.Part[]> => {
-      if (part.type === "file") {
+      if (part.type === "attachment") {
         // before checking the protocol we check if this is an mcp resource because it needs special handling
         if (part.source?.type === "resource") {
           const { clientName, uri } = part.source
@@ -532,7 +534,7 @@ export async function createUserMessage(input: InvokeInput) {
               ]
               if (filePolicy.keepBinary) {
                 pieces.push(
-                  await Attachment.toFilePart({
+                  await Attachment.toPart({
                     filepath,
                     mime: part.mime,
                     filename: part.filename,
@@ -556,7 +558,7 @@ export async function createUserMessage(input: InvokeInput) {
                 text: `Called the Read tool with the following input: {\"filePath\":\"${filepath}\"}`,
                 synthetic: true,
               },
-              await Attachment.toFilePart({
+              await Attachment.toPart({
                 filepath,
                 mime: part.mime,
                 filename: part.filename,

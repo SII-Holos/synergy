@@ -23,7 +23,7 @@ const image = {
   id: "file-image",
   sessionID: "session",
   messageID: "assistant-a",
-  type: "file" as const,
+  type: "attachment" as const,
   mime: "image/svg+xml",
   filename: "meme.svg",
   url: "asset://meme",
@@ -83,7 +83,7 @@ describe("session turn narrative", () => {
               display: {
                 kind: "media-generation",
                 visibility: "media",
-                presentation: "artifact-only",
+                presentation: "attachment-only",
                 primaryAttachmentIds: [image.id],
               },
             },

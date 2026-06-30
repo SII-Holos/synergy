@@ -3,7 +3,7 @@ import { Shell } from "../../util/shell"
 import { encodeKeySequence } from "../../util/pty-keys"
 import type { ProcessParams, ProcessResult } from "./shared"
 import { ScopeContext } from "@/scope/context"
-import { ArtifactPromotion } from "../artifact-promotion"
+import { AttachmentDiscovery } from "../attachment-discovery"
 import type { Tool } from "../tool"
 import type { MessageV2 } from "@/session/message-v2"
 import { ToolTimeout } from "../timeout"
@@ -11,19 +11,19 @@ import { ToolTimeout } from "../timeout"
 export namespace LocalProcessBackend {
   export async function execute(params: ProcessParams, ctx?: Tool.Context): Promise<ProcessResult> {
     const { action, processId } = params
-    const withArtifacts = async (
+    const withAttachments = async (
       result: ProcessResult,
       output: string,
       cwd = ScopeContext.current.directory,
     ): Promise<ProcessResult> => {
       if (!ctx || (action !== "poll" && action !== "log")) return result
-      const attachments = await ArtifactPromotion.promote({
+      const attachments = await AttachmentDiscovery.discover({
         output,
         cwd,
         sessionID: ctx.sessionID,
         messageID: ctx.messageID,
         tool: "process",
-      }).catch((): MessageV2.FilePart[] => [])
+      }).catch((): MessageV2.AttachmentPart[] => [])
       if (attachments.length === 0) return result
       return {
         ...result,
@@ -107,7 +107,7 @@ export namespace LocalProcessBackend {
           const output =
             (currentFinished.tail || "(no output recorded)") +
             `\n\nProcess exited with ${currentFinished.exitSignal ? `signal ${currentFinished.exitSignal}` : `code ${currentFinished.exitCode ?? 0}`}.`
-          return withArtifacts(
+          return withAttachments(
             {
               title: `Process ${processId}`,
               metadata: {
@@ -167,7 +167,7 @@ export namespace LocalProcessBackend {
           output: slice || "(no output)",
         }
         if (status === "running") return result
-        return withArtifacts(result, slice || output, target.cwd)
+        return withAttachments(result, slice || output, target.cwd)
       }
 
       case "write": {

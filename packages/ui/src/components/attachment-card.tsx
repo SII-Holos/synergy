@@ -5,37 +5,37 @@ import { FileIcon } from "./file-icon"
 import { Icon } from "./icon"
 import { ImagePreview } from "./image-preview"
 import {
-  artifactColumns,
-  artifactMeta,
-  isHtmlArtifact,
-  isImageArtifact,
-  isPdfArtifact,
-  resolveArtifactUrl,
-  type ArtifactFile,
-} from "./artifact-card-utils"
-export type { ArtifactFile, AttachmentFile } from "./artifact-card-utils"
+  attachmentColumns,
+  attachmentMeta,
+  isHtmlAttachment,
+  isImageAttachment,
+  isPdfAttachment,
+  resolveAttachmentUrl,
+  type AttachmentFile,
+} from "./attachment-card-utils"
+export type { AttachmentFile } from "./attachment-card-utils"
 export {
-  artifactColumnCount,
-  artifactColumns,
-  artifactKind,
-  formatArtifactSize,
-  isImageArtifact,
+  attachmentColumnCount,
+  attachmentColumns,
+  attachmentKind,
+  formatAttachmentSize,
+  isImageAttachment,
   joinServerUrl,
-  resolveArtifactUrl,
-} from "./artifact-card-utils"
+  resolveAttachmentUrl,
+} from "./attachment-card-utils"
 
-export function ArtifactCard(props: { file: ArtifactFile; serverUrl: string }) {
+export function AttachmentCard(props: { file: AttachmentFile; serverUrl: string }) {
   const dialog = useDialog()
   const resourceOpen = useResourceOpen()
   const [imageFailed, setImageFailed] = createSignal(false)
-  const url = createMemo(() => resolveArtifactUrl(props.serverUrl, props.file))
-  const filename = createMemo(() => props.file.filename ?? (isPdfArtifact(props.file) ? "file.pdf" : "file"))
-  const meta = createMemo(() => artifactMeta(props.file))
-  const openArtifact = () => {
-    if (resourceOpen?.openArtifact(props.file, { serverUrl: props.serverUrl })) return
+  const url = createMemo(() => resolveAttachmentUrl(props.serverUrl, props.file))
+  const filename = createMemo(() => props.file.filename ?? (isPdfAttachment(props.file) ? "file.pdf" : "file"))
+  const meta = createMemo(() => attachmentMeta(props.file))
+  const openAttachment = () => {
+    if (resourceOpen?.openAttachment(props.file, { serverUrl: props.serverUrl })) return
     const href = url()
     if (!href) return
-    if (isImageArtifact(props.file)) {
+    if (isImageAttachment(props.file)) {
       dialog.show(() => <ImagePreview src={href} alt={filename()} />)
       return
     }
@@ -44,14 +44,14 @@ export function ArtifactCard(props: { file: ArtifactFile; serverUrl: string }) {
 
   return (
     <Show
-      when={isImageArtifact(props.file) && url() && !imageFailed()}
+      when={isImageAttachment(props.file) && url() && !imageFailed()}
       fallback={
-        <DynamicArtifactLink
+        <DynamicAttachmentLink
           url={url()}
           filename={filename()}
-          type={isPdfArtifact(props.file) ? "pdf" : "file"}
-          downloadable={!isPdfArtifact(props.file) && !isHtmlArtifact(props.file)}
-          onOpen={resourceOpen ? openArtifact : undefined}
+          type={isPdfAttachment(props.file) ? "pdf" : "file"}
+          downloadable={!isPdfAttachment(props.file) && !isHtmlAttachment(props.file)}
+          onOpen={resourceOpen ? openAttachment : undefined}
         >
           <span data-slot="attachment-card-preview">
             <FileIcon node={{ path: filename(), type: "file" }} />
@@ -62,11 +62,11 @@ export function ArtifactCard(props: { file: ArtifactFile; serverUrl: string }) {
           </span>
           <Show when={url()}>
             <Icon
-              name={isPdfArtifact(props.file) || isHtmlArtifact(props.file) ? "scan-eye" : "download"}
+              name={isPdfAttachment(props.file) || isHtmlAttachment(props.file) ? "scan-eye" : "download"}
               size="small"
             />
           </Show>
-        </DynamicArtifactLink>
+        </DynamicAttachmentLink>
       }
     >
       <button
@@ -75,7 +75,7 @@ export function ArtifactCard(props: { file: ArtifactFile; serverUrl: string }) {
         data-type="image"
         aria-label={`Preview ${filename()}`}
         title={filename()}
-        onClick={openArtifact}
+        onClick={openAttachment}
       >
         <img src={url()!} alt={filename()} loading="lazy" onError={() => setImageFailed(true)} />
       </button>
@@ -83,7 +83,7 @@ export function ArtifactCard(props: { file: ArtifactFile; serverUrl: string }) {
   )
 }
 
-function DynamicArtifactLink(props: {
+function DynamicAttachmentLink(props: {
   url: string | undefined
   filename: string
   type: "pdf" | "file"
@@ -127,17 +127,25 @@ function DynamicArtifactLink(props: {
   )
 }
 
-export function ArtifactGallery(props: { files: ArtifactFile[]; serverUrl: string; variant?: "default" | "result" }) {
-  const columns = createMemo(() => artifactColumns(props.files))
+export function AttachmentGallery(props: {
+  files: AttachmentFile[]
+  serverUrl: string
+  variant?: "default" | "result"
+}) {
+  const columns = createMemo(() => attachmentColumns(props.files))
 
   return (
     <Show when={columns().length > 0}>
-      <div data-component="artifact-gallery" data-columns={columns().length} data-variant={props.variant ?? "default"}>
+      <div
+        data-component="attachment-gallery"
+        data-columns={columns().length}
+        data-variant={props.variant ?? "default"}
+      >
         <div data-slot="attachment-column-layout">
           <For each={columns()}>
             {(column) => (
               <div data-slot="attachment-column">
-                <For each={column}>{(file) => <ArtifactCard file={file} serverUrl={props.serverUrl} />}</For>
+                <For each={column}>{(file) => <AttachmentCard file={file} serverUrl={props.serverUrl} />}</For>
               </div>
             )}
           </For>
@@ -146,6 +154,3 @@ export function ArtifactGallery(props: { files: ArtifactFile[]; serverUrl: strin
     </Show>
   )
 }
-
-export const AttachmentCard = ArtifactCard
-export const AttachmentList = ArtifactGallery

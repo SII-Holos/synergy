@@ -15,5 +15,5 @@ export interface ProcessParams {
 
 export type ProcessMetadata = MetaProtocolProcess.ResultMetadata
 export type ProcessResult = MetaProtocolProcess.Result & {
-  attachments?: MessageV2.FilePart[]
+  attachments?: MessageV2.AttachmentPart[]
 }

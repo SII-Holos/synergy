@@ -140,7 +140,7 @@ export function SessionContextTab(props: SessionContextTabProps) {
           if (msg.role === "user") {
             for (const part of parts) {
               if (part.type === "text") out.user += part.text?.length ?? 0
-              if (part.type === "file") out.user += part.source?.text?.value?.length ?? 0
+              if (part.type === "attachment") out.user += part.source?.text?.value?.length ?? 0
             }
             continue
           }

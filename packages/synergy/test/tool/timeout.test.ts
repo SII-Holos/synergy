@@ -83,7 +83,7 @@ describe("ToolTimeout", () => {
       toolTimeout: metadata("glob"),
       display: {
         kind: "media-generation",
-        presentation: "artifact-only",
+        presentation: "attachment-only",
         media: { type: "image", pendingTitle: "Generating" },
       },
     }
@@ -94,7 +94,7 @@ describe("ToolTimeout", () => {
         toolTimeout: existing.toolTimeout,
         display: {
           kind: "media-generation",
-          presentation: "artifact-only",
+          presentation: "attachment-only",
           primaryAttachmentIds: ["image-1"],
           media: { type: "image", pendingTitle: "Generating" },
         },

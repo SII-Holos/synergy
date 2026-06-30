@@ -1,4 +1,4 @@
-import type { FilePart } from "@ericsanchezok/synergy-sdk/client"
+import type { AttachmentPart } from "@ericsanchezok/synergy-sdk/client"
 
 type MaybeToolPart = {
   tool?: string
@@ -7,11 +7,11 @@ type MaybeToolPart = {
     status?: string
     input?: Record<string, unknown>
     metadata?: Record<string, any>
-    attachments?: FilePart[]
+    attachments?: AttachmentPart[]
   }
 }
 
-export type ToolResultPresentation = "default" | "artifact-only"
+export type ToolResultPresentation = "default" | "attachment-only"
 export type ToolDisplayKind = "default" | "media-generation"
 export type ToolVisibility = "default" | "media" | "hidden-unless-error"
 export type ToolMediaType = "image" | "video" | "audio"
@@ -44,7 +44,7 @@ export function toolDisplayMetadata(part: unknown): ToolDisplayMetadata | undefi
 export function toolResultPresentation(part: unknown): ToolResultPresentation {
   const candidate = part as MaybeToolPart
   if (candidate?.type !== "tool") return "default"
-  return toolDisplayMetadata(candidate)?.presentation === "artifact-only" ? "artifact-only" : "default"
+  return toolDisplayMetadata(candidate)?.presentation === "attachment-only" ? "attachment-only" : "default"
 }
 
 export function isMediaGenerationToolPart(part: unknown): boolean {
@@ -54,11 +54,11 @@ export function isMediaGenerationToolPart(part: unknown): boolean {
   return display?.kind === "media-generation" || display?.visibility === "media"
 }
 
-export function isArtifactOnlyToolPart(part: unknown): boolean {
+export function isAttachmentOnlyToolPart(part: unknown): boolean {
   const candidate = part as MaybeToolPart
   if (candidate?.type !== "tool") return false
   if (candidate.state?.status !== "completed") return false
-  if (toolResultPresentation(candidate) !== "artifact-only") return false
+  if (toolResultPresentation(candidate) !== "attachment-only") return false
   return (candidate.state.attachments?.length ?? 0) > 0
 }
 
@@ -67,7 +67,7 @@ export function isPromotedToolResultPart(part: unknown): boolean {
   if (candidate?.type !== "tool") return false
   if (candidate.state?.status !== "completed") return false
   if ((candidate.state.attachments?.length ?? 0) === 0) return false
-  if (toolResultPresentation(candidate) === "artifact-only") return true
+  if (toolResultPresentation(candidate) === "attachment-only") return true
   return isMediaGenerationToolPart(candidate)
 }
 
@@ -89,7 +89,7 @@ export function shouldHideToolPart(part: unknown): boolean {
   return isPromotedToolResultPart(candidate)
 }
 
-export function primaryToolAttachments(part: unknown): FilePart[] {
+export function primaryToolAttachments(part: unknown): AttachmentPart[] {
   const candidate = part as MaybeToolPart
   if (candidate?.type !== "tool" || candidate.state?.status !== "completed") return []
 

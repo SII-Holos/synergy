@@ -39,7 +39,7 @@ export namespace Tool {
         title: string
         metadata: M
         output: string
-        attachments?: MessageV2.FilePart[]
+        attachments?: MessageV2.AttachmentPart[]
       }>
       formatValidationError?(error: z.ZodError): string
     }>
@@ -47,6 +47,31 @@ export namespace Tool {
 
   export type InferParameters<T extends Info> = T extends Info<infer P> ? z.infer<P> : never
   export type InferMetadata<T extends Info> = T extends Info<any, infer M> ? M : never
+
+  export function validateAttachmentResult(
+    tool: string,
+    result: { output: string; attachments?: MessageV2.AttachmentPart[] },
+  ): void {
+    if (!result.attachments?.length) return
+    for (const attachment of result.attachments) {
+      if (attachment.type !== "attachment") {
+        const type = (attachment as { type?: string }).type ?? "unknown"
+        throw new Error(`The ${tool} tool returned an invalid attachment with type "${type}".`)
+      }
+    }
+    if (result.output.trim()) return
+    const allSummarized = result.attachments.every((attachment) => {
+      const model = attachment.model
+      if (!model) return false
+      if (model.mode === "summary" || model.mode === "provider-file") return Boolean(model.summary?.trim())
+      if (model.mode === "content") return Boolean(model.text?.trim())
+      return false
+    })
+    if (allSummarized) return
+    throw new Error(
+      `The ${tool} tool returned attachments without model-facing output. Provide a non-empty output or a model summary on every attachment.`,
+    )
+  }
 
   export function define<Parameters extends z.ZodType, Result extends Metadata>(
     id: string,
@@ -89,6 +114,7 @@ export namespace Tool {
             )
           }
           const result = await execute(parsed, ctx)
+          validateAttachmentResult(id, result)
           if (result.metadata.truncated !== undefined) {
             return result
           }

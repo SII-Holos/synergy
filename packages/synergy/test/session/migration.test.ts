@@ -6,6 +6,8 @@ import { Session } from "../../src/session"
 import { SessionManager } from "../../src/session/manager"
 import { Identifier } from "../../src/id/id"
 import { migrations } from "../../src/session/migration"
+import { Storage } from "../../src/storage/storage"
+import { StoragePath } from "../../src/storage/path"
 
 const projectRoot = path.join(__dirname, "../..")
 
@@ -66,6 +68,92 @@ describe("session migrations", () => {
 
         expect(completedAfter?.pendingReply).toBeUndefined()
         expect(pendingAfter?.pendingReply).toBe(true)
+      },
+    })
+  })
+
+  test("migrates legacy file parts and artifact-only tool metadata to attachments", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const tmpScope = await tmp.scope()
+    await ScopeContext.provide({
+      scope: tmpScope,
+      fn: async () => {
+        const session = await Session.create({})
+        const user = await addUserMessage(session.id)
+        const assistant = await addTerminalAssistantMessage(session.id, user.id)
+        const scope = Identifier.asScopeID(tmpScope.id)
+        const sid = Identifier.asSessionID(session.id)
+        const userMessage = Identifier.asMessageID(user.id)
+        const assistantMessage = Identifier.asMessageID(assistant.id)
+
+        await Storage.write(StoragePath.messagePart(scope, sid, userMessage, Identifier.asPartID("part_file")), {
+          id: "part_file",
+          sessionID: session.id,
+          messageID: user.id,
+          type: "file",
+          mime: "image/png",
+          filename: "old.png",
+          url: "data:image/png;base64,AAAA",
+          metadata: { kind: "artifact", artifact: { sourcePath: "/tmp/old.png", size: 4 } },
+        })
+
+        await Storage.write(StoragePath.messagePart(scope, sid, assistantMessage, Identifier.asPartID("part_tool")), {
+          id: "part_tool",
+          sessionID: session.id,
+          messageID: assistant.id,
+          type: "tool",
+          callID: "call_1",
+          tool: "plugin_test",
+          state: {
+            status: "completed",
+            input: {},
+            output: "",
+            title: "Plugin",
+            metadata: { display: { presentation: "artifact-only", primaryAttachmentIds: ["tool_file"] } },
+            time: { start: 1, end: 2 },
+            attachments: [
+              {
+                id: "tool_file",
+                sessionID: session.id,
+                messageID: assistant.id,
+                type: "file",
+                mime: "image/png",
+                filename: "tool.png",
+                url: "asset://tool.png",
+                metadata: { kind: "artifact", artifact: { originTool: "plugin_test", size: 12 } },
+              },
+            ],
+          },
+        })
+
+        const migration = migrations.find((entry) => entry.id === "20260630-session-attachment-parts")
+        expect(migration).toBeDefined()
+        await migration!.up(() => {})
+
+        const userPart = await Storage.read<any>(
+          StoragePath.messagePart(scope, sid, userMessage, Identifier.asPartID("part_file")),
+        )
+        expect(userPart.type).toBe("attachment")
+        expect(userPart.presentation).toEqual({ mode: "card" })
+        expect(userPart.model).toEqual({ mode: "provider-file", summary: "old.png (image/png)" })
+        expect(userPart.metadata).toEqual({
+          kind: "attachment",
+          attachment: { sourcePath: "/tmp/old.png", size: 4 },
+        })
+
+        const toolPart = await Storage.read<any>(
+          StoragePath.messagePart(scope, sid, assistantMessage, Identifier.asPartID("part_tool")),
+        )
+        expect(toolPart.state.metadata.display.presentation).toBe("attachment-only")
+        expect(toolPart.state.attachments[0].type).toBe("attachment")
+        expect(toolPart.state.attachments[0].model).toEqual({
+          mode: "summary",
+          summary: "tool.png (image/png)",
+        })
+        expect(toolPart.state.attachments[0].metadata).toEqual({
+          kind: "attachment",
+          attachment: { originTool: "plugin_test", size: 12 },
+        })
       },
     })
   })

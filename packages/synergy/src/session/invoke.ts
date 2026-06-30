@@ -1332,7 +1332,7 @@ export namespace SessionInvoke {
     parts: z
       .array(
         z.discriminatedUnion("type", [
-          MessageV2.FilePart.omit({
+          MessageV2.AttachmentPart.omit({
             messageID: true,
             sessionID: true,
           }).partial({
@@ -1630,7 +1630,7 @@ export namespace SessionInvoke {
               deltaChars += JSON.stringify(part.state.input).length
             }
             break
-          case "file":
+          case "attachment":
             deltaChars += 200
             break
         }

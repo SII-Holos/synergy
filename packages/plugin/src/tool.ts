@@ -87,7 +87,7 @@ export interface ToolResult {
   output: string
   metadata?: ToolResultMetadata
   attachments?: Array<{
-    type: "file"
+    type: "attachment"
     id: string
     sessionID: string
     messageID: string
@@ -95,6 +95,27 @@ export interface ToolResult {
     filename?: string
     url: string
     localPath?: string
+    presentation?: {
+      mode: "inline" | "card" | "hidden"
+      primary?: boolean
+    }
+    model?:
+      | {
+          mode: "summary"
+          summary?: string
+        }
+      | {
+          mode: "content"
+          text?: string
+        }
+      | {
+          mode: "provider-file"
+          summary?: string
+        }
+      | {
+          mode: "none"
+        }
+    metadata?: Record<string, any>
   }>
 }
 

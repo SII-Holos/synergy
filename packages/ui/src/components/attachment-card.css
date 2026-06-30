@@ -1,11 +1,11 @@
-[data-component="artifact-gallery"],
+[data-component="attachment-gallery"],
 [data-component="tool-attachments"] {
   width: 100%;
   max-width: 100%;
   padding: 4px 12px 8px;
 }
 
-[data-component="artifact-gallery"][data-variant="result"] {
+[data-component="attachment-gallery"][data-variant="result"] {
   padding: 0;
   margin-top: 8px;
 }
@@ -25,7 +25,7 @@
   min-width: 0;
 }
 
-[data-component="artifact-gallery"][data-columns="1"] [data-slot="attachment-column-layout"],
+[data-component="attachment-gallery"][data-columns="1"] [data-slot="attachment-column-layout"],
 [data-component="tool-attachments"][data-columns="1"] [data-slot="attachment-column-layout"] {
   max-width: 100%;
 }
@@ -139,11 +139,11 @@
   }
 }
 
-[data-component="artifact-gallery"][data-variant="result"] [data-slot="attachment-column-layout"] {
+[data-component="attachment-gallery"][data-variant="result"] [data-slot="attachment-column-layout"] {
   max-width: 720px;
 }
 
-[data-component="artifact-gallery"][data-variant="result"] [data-component="attachment-card"][data-type="image"] {
+[data-component="attachment-gallery"][data-variant="result"] [data-component="attachment-card"][data-type="image"] {
   display: inline-flex;
   width: auto;
   min-height: 0;

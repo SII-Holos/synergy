@@ -158,7 +158,7 @@ export namespace MessageV2 {
   })
   export type ReasoningPart = z.infer<typeof ReasoningPart>
 
-  const FilePartSourceBase = z.object({
+  const AttachmentSourceBase = z.object({
     text: z
       .object({
         value: z.string(),
@@ -166,18 +166,18 @@ export namespace MessageV2 {
         end: z.number().int(),
       })
       .meta({
-        ref: "FilePartSourceText",
+        ref: "AttachmentSourceText",
       }),
   })
 
-  export const FileSource = FilePartSourceBase.extend({
+  export const FileSource = AttachmentSourceBase.extend({
     type: z.literal("file"),
     path: z.string(),
   }).meta({
     ref: "FileSource",
   })
 
-  export const SymbolSource = FilePartSourceBase.extend({
+  export const SymbolSource = AttachmentSourceBase.extend({
     type: z.literal("symbol"),
     path: z.string(),
     range: LSPSchema.Range,
@@ -187,7 +187,7 @@ export namespace MessageV2 {
     ref: "SymbolSource",
   })
 
-  export const ResourceSource = FilePartSourceBase.extend({
+  export const ResourceSource = AttachmentSourceBase.extend({
     type: z.literal("resource"),
     clientName: z.string(),
     uri: z.string(),
@@ -195,22 +195,57 @@ export namespace MessageV2 {
     ref: "ResourceSource",
   })
 
-  export const FilePartSource = z.discriminatedUnion("type", [FileSource, SymbolSource, ResourceSource]).meta({
-    ref: "FilePartSource",
+  export const AttachmentSource = z.discriminatedUnion("type", [FileSource, SymbolSource, ResourceSource]).meta({
+    ref: "AttachmentSource",
   })
 
-  export const FilePart = PartBase.extend({
-    type: z.literal("file"),
+  export const AttachmentPresentation = z
+    .object({
+      mode: z.enum(["inline", "card", "hidden"]).default("card"),
+      primary: z.boolean().optional(),
+    })
+    .meta({
+      ref: "AttachmentPresentation",
+    })
+  export type AttachmentPresentation = z.infer<typeof AttachmentPresentation>
+
+  export const AttachmentModelPolicy = z
+    .discriminatedUnion("mode", [
+      z.object({
+        mode: z.literal("summary"),
+        summary: z.string().optional(),
+      }),
+      z.object({
+        mode: z.literal("content"),
+        text: z.string().optional(),
+      }),
+      z.object({
+        mode: z.literal("provider-file"),
+        summary: z.string().optional(),
+      }),
+      z.object({
+        mode: z.literal("none"),
+      }),
+    ])
+    .meta({
+      ref: "AttachmentModelPolicy",
+    })
+  export type AttachmentModelPolicy = z.infer<typeof AttachmentModelPolicy>
+
+  export const AttachmentPart = PartBase.extend({
+    type: z.literal("attachment"),
     mime: z.string(),
     filename: z.string().optional(),
     url: z.string(),
     localPath: z.string().optional(),
-    source: FilePartSource.optional(),
+    source: AttachmentSource.optional(),
+    presentation: AttachmentPresentation.optional(),
+    model: AttachmentModelPolicy.optional(),
     metadata: z.record(z.string(), z.any()).optional(),
   }).meta({
-    ref: "FilePart",
+    ref: "AttachmentPart",
   })
-  export type FilePart = z.infer<typeof FilePart>
+  export type AttachmentPart = z.infer<typeof AttachmentPart>
 
   export const CompactionPart = PartBase.extend({
     type: z.literal("compaction"),
@@ -314,7 +349,7 @@ export namespace MessageV2 {
         end: z.number(),
         compacted: z.number().optional(),
       }),
-      attachments: FilePart.array().optional(),
+      attachments: AttachmentPart.array().optional(),
     })
     .meta({
       ref: "ToolStateCompleted",
@@ -395,7 +430,7 @@ export namespace MessageV2 {
     .discriminatedUnion("type", [
       TextPart,
       ReasoningPart,
-      FilePart,
+      AttachmentPart,
       ToolPart,
       StepStartPart,
       StepFinishPart,
@@ -520,6 +555,87 @@ export namespace MessageV2 {
     return true
   }
 
+  function attachmentName(part: AttachmentPart): string {
+    if (part.filename) return part.filename
+    if (part.localPath) return path.basename(part.localPath)
+    return "unnamed attachment"
+  }
+
+  function attachmentSummary(part: AttachmentPart): string {
+    const model = part.model
+    if (model?.mode === "summary" || model?.mode === "provider-file") {
+      if (model.summary?.trim()) return model.summary.trim()
+    }
+    if (part.localPath) return `${attachmentName(part)} (${part.mime}) at ${part.localPath}`
+    return `${attachmentName(part)} (${part.mime})`
+  }
+
+  function attachmentModelMode(part: AttachmentPart): AttachmentModelPolicy["mode"] {
+    return part.model?.mode ?? "summary"
+  }
+
+  function shouldSendAttachmentFile(part: AttachmentPart): boolean {
+    if (attachmentModelMode(part) !== "provider-file") return false
+    if (part.url.startsWith("asset://")) return false
+    return part.mime !== "application/x-directory"
+  }
+
+  function attachmentHash(part: AttachmentPart): string {
+    return new Bun.CryptoHasher("sha256").update(part.url).digest("hex").slice(0, 16)
+  }
+
+  function appendAttachmentModelParts(
+    parts: UIMessage["parts"],
+    part: AttachmentPart,
+    options: { keptHashes?: Set<string>; includeLocalPath?: boolean } = {},
+  ) {
+    const mode = attachmentModelMode(part)
+    if (mode === "none") return
+
+    if (mode === "content") {
+      const text = part.model?.mode === "content" ? part.model.text : undefined
+      parts.push({
+        type: "text",
+        text: text?.trim() ? text : `[Attachment content: ${attachmentSummary(part)}]`,
+      })
+      return
+    }
+
+    if (!shouldSendAttachmentFile(part)) {
+      parts.push({
+        type: "text",
+        text: `[Attachment: ${attachmentSummary(part)}]`,
+      })
+      return
+    }
+
+    if (options.includeLocalPath && part.localPath) {
+      parts.push({
+        type: "text",
+        text: `[The user attached a file: ${attachmentName(part)} (${part.mime}). Local path: ${part.localPath}]`,
+      })
+    }
+
+    const keptHashes = options.keptHashes
+    if (keptHashes && !Attachment.isText(part.mime)) {
+      const hash = attachmentHash(part)
+      if (!keptHashes.has(hash)) {
+        parts.push({
+          type: "text",
+          text: `[Image: ${attachmentName(part)} — previously shared]`,
+        })
+        return
+      }
+    }
+
+    parts.push({
+      type: "file",
+      url: part.url,
+      mediaType: part.mime,
+      filename: part.filename,
+    })
+  }
+
   export function toModelMessage(input: WithParts[], opts?: { maxHistoryImages?: number }): ModelMessage[] {
     // Pass 1: collect unique image hashes in order of first appearance
     const imageHashSet = new Set<string>()
@@ -527,9 +643,10 @@ export namespace MessageV2 {
     for (const msg of input) {
       if (msg.info.role !== "user" || !isPromptVisible(msg)) continue
       for (const part of msg.parts) {
-        if (part.type !== "file") continue
+        if (part.type !== "attachment") continue
+        if (!shouldSendAttachmentFile(part)) continue
         if (Attachment.isText(part.mime) || part.mime === "application/x-directory") continue
-        const hash = new Bun.CryptoHasher("sha256").update(part.url).digest("hex").slice(0, 16)
+        const hash = attachmentHash(part)
         if (!imageHashSet.has(hash)) {
           imageHashSet.add(hash)
           orderedHashes.push(hash)
@@ -568,36 +685,8 @@ export namespace MessageV2 {
               type: "text",
               text: part.text,
             })
-          if (part.type === "file" && Attachment.isText(part.mime) && !part.url.startsWith("data:")) {
-            userMessage.parts.push({
-              type: "file",
-              url: part.url,
-              mediaType: part.mime,
-              filename: part.filename,
-            })
-          }
-          if (part.type === "file" && !Attachment.isText(part.mime) && part.mime !== "application/x-directory") {
-            if (part.localPath) {
-              userMessage.parts.push({
-                type: "text",
-                text: `[The user attached a file: ${part.filename || path.basename(part.localPath)} (${part.mime}). Local path: ${part.localPath}]`,
-              })
-            }
-            const hash = new Bun.CryptoHasher("sha256").update(part.url).digest("hex").slice(0, 16)
-            if (keptHashes.has(hash)) {
-              userMessage.parts.push({
-                type: "file",
-                url: part.url,
-                mediaType: part.mime,
-                filename: part.filename,
-              })
-            } else {
-              const displayName = part.filename || "unnamed"
-              userMessage.parts.push({
-                type: "text",
-                text: `[Image: ${displayName} — previously shared]`,
-              })
-            }
+          if (part.type === "attachment") {
+            appendAttachmentModelParts(userMessage.parts, part, { keptHashes, includeLocalPath: true })
           }
         }
       }
@@ -631,25 +720,21 @@ export namespace MessageV2 {
           if (part.type === "tool") {
             if (part.state.status === "completed") {
               if (part.state.attachments?.length) {
-                const modelAttachments = part.state.attachments.filter((a) => !a.url.startsWith("asset://"))
-                if (modelAttachments.length) {
+                const attachmentParts: UIMessage["parts"] = [
+                  {
+                    type: "text",
+                    text: `Tool ${part.tool} returned attachment results:`,
+                  },
+                ]
+                for (const attachment of part.state.attachments) {
+                  appendAttachmentModelParts(attachmentParts, attachment)
+                }
+                if (attachmentParts.length > 1)
                   result.push({
                     id: Identifier.ascending("message"),
                     role: "user",
-                    parts: [
-                      {
-                        type: "text",
-                        text: `Tool ${part.tool} returned an attachment:`,
-                      },
-                      ...modelAttachments.map((attachment) => ({
-                        type: "file" as const,
-                        url: attachment.url,
-                        mediaType: attachment.mime,
-                        filename: attachment.filename,
-                      })),
-                    ],
+                    parts: attachmentParts,
                   })
-                }
               }
               assistantMessage.parts.push({
                 type: ("tool-" + part.tool) as `tool-${string}`,

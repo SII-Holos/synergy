@@ -4832,7 +4832,7 @@
                           "$ref": "#/components/schemas/TextPartInput"
                         },
                         {
-                          "$ref": "#/components/schemas/FilePartInput"
+                          "$ref": "#/components/schemas/AttachmentPartInput"
                         }
                       ]
                     }
@@ -5332,7 +5332,7 @@
                           "$ref": "#/components/schemas/TextPartInput"
                         },
                         {
-                          "$ref": "#/components/schemas/FilePartInput"
+                          "$ref": "#/components/schemas/AttachmentPartInput"
                         }
                       ]
                     }
@@ -5818,7 +5818,7 @@
                           "$ref": "#/components/schemas/TextPartInput"
                         },
                         {
-                          "$ref": "#/components/schemas/FilePartInput"
+                          "$ref": "#/components/schemas/AttachmentPartInput"
                         }
                       ]
                     }
@@ -5929,7 +5929,7 @@
                             },
                             "type": {
                               "type": "string",
-                              "const": "file"
+                              "const": "attachment"
                             },
                             "mime": {
                               "type": "string"
@@ -5944,7 +5944,13 @@
                               "type": "string"
                             },
                             "source": {
-                              "$ref": "#/components/schemas/FilePartSource"
+                              "$ref": "#/components/schemas/AttachmentSource"
+                            },
+                            "presentation": {
+                              "$ref": "#/components/schemas/AttachmentPresentation"
+                            },
+                            "model": {
+                              "$ref": "#/components/schemas/AttachmentModelPolicy"
                             },
                             "metadata": {
                               "type": "object",
@@ -14347,7 +14353,7 @@
           }
         ],
         "summary": "Check for plugin update from registry",
-        "description": "Check if an update is available for a plugin from the local registry. Optionally target a specific version. Returns version comparison and permission diff.",
+        "description": "Check if an update is available for a plugin from the official or local registry. Optionally target a specific version. Returns version comparison and permission diff.",
         "responses": {
           "200": {
             "description": "Update check result",
@@ -14393,6 +14399,10 @@
                   "targetVersion": {
                     "type": "string",
                     "minLength": 1
+                  },
+                  "source": {
+                    "type": "string",
+                    "enum": ["official", "local"]
                   }
                 }
               }
@@ -22690,7 +22700,7 @@
         },
         "required": ["type", "text"]
       },
-      "FilePartSourceText": {
+      "AttachmentSourceText": {
         "type": "object",
         "properties": {
           "value": {
@@ -22713,7 +22723,7 @@
         "type": "object",
         "properties": {
           "text": {
-            "$ref": "#/components/schemas/FilePartSourceText"
+            "$ref": "#/components/schemas/AttachmentSourceText"
           },
           "type": {
             "type": "string",
@@ -22759,7 +22769,7 @@
         "type": "object",
         "properties": {
           "text": {
-            "$ref": "#/components/schemas/FilePartSourceText"
+            "$ref": "#/components/schemas/AttachmentSourceText"
           },
           "type": {
             "type": "string",
@@ -22786,7 +22796,7 @@
         "type": "object",
         "properties": {
           "text": {
-            "$ref": "#/components/schemas/FilePartSourceText"
+            "$ref": "#/components/schemas/AttachmentSourceText"
           },
           "type": {
             "type": "string",
@@ -22801,7 +22811,7 @@
         },
         "required": ["text", "type", "clientName", "uri"]
       },
-      "FilePartSource": {
+      "AttachmentSource": {
         "anyOf": [
           {
             "$ref": "#/components/schemas/FileSource"
@@ -22814,7 +22824,73 @@
           }
         ]
       },
-      "FilePartInput": {
+      "AttachmentPresentation": {
+        "type": "object",
+        "properties": {
+          "mode": {
+            "default": "card",
+            "type": "string",
+            "enum": ["inline", "card", "hidden"]
+          },
+          "primary": {
+            "type": "boolean"
+          }
+        }
+      },
+      "AttachmentModelPolicy": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "mode": {
+                "type": "string",
+                "const": "summary"
+              },
+              "summary": {
+                "type": "string"
+              }
+            },
+            "required": ["mode"]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "mode": {
+                "type": "string",
+                "const": "content"
+              },
+              "text": {
+                "type": "string"
+              }
+            },
+            "required": ["mode"]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "mode": {
+                "type": "string",
+                "const": "provider-file"
+              },
+              "summary": {
+                "type": "string"
+              }
+            },
+            "required": ["mode"]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "mode": {
+                "type": "string",
+                "const": "none"
+              }
+            },
+            "required": ["mode"]
+          }
+        ]
+      },
+      "AttachmentPartInput": {
         "type": "object",
         "properties": {
           "id": {
@@ -22822,7 +22898,7 @@
           },
           "type": {
             "type": "string",
-            "const": "file"
+            "const": "attachment"
           },
           "mime": {
             "type": "string"
@@ -22837,7 +22913,13 @@
             "type": "string"
           },
           "source": {
-            "$ref": "#/components/schemas/FilePartSource"
+            "$ref": "#/components/schemas/AttachmentSource"
+          },
+          "presentation": {
+            "$ref": "#/components/schemas/AttachmentPresentation"
+          },
+          "model": {
+            "$ref": "#/components/schemas/AttachmentModelPolicy"
           },
           "metadata": {
             "type": "object",
@@ -23277,7 +23359,7 @@
         },
         "required": ["id", "sessionID", "messageID", "type", "text", "time"]
       },
-      "FilePart": {
+      "AttachmentPart": {
         "type": "object",
         "properties": {
           "id": {
@@ -23291,7 +23373,7 @@
           },
           "type": {
             "type": "string",
-            "const": "file"
+            "const": "attachment"
           },
           "mime": {
             "type": "string"
@@ -23306,7 +23388,13 @@
             "type": "string"
           },
           "source": {
-            "$ref": "#/components/schemas/FilePartSource"
+            "$ref": "#/components/schemas/AttachmentSource"
+          },
+          "presentation": {
+            "$ref": "#/components/schemas/AttachmentPresentation"
+          },
+          "model": {
+            "$ref": "#/components/schemas/AttachmentModelPolicy"
           },
           "metadata": {
             "type": "object",
@@ -23442,7 +23530,7 @@
           "attachments": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/FilePart"
+              "$ref": "#/components/schemas/AttachmentPart"
             }
           }
         },
@@ -23733,7 +23821,7 @@
             "$ref": "#/components/schemas/ReasoningPart"
           },
           {
-            "$ref": "#/components/schemas/FilePart"
+            "$ref": "#/components/schemas/AttachmentPart"
           },
           {
             "$ref": "#/components/schemas/ToolPart"

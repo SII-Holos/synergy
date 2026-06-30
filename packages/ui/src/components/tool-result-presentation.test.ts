@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import {
   isActiveMediaGenerationToolPart,
-  isArtifactOnlyToolPart,
+  isAttachmentOnlyToolPart,
   isPromotedToolResultPart,
   primaryToolAttachments,
   shouldHideToolPart,
@@ -12,7 +12,7 @@ const image = {
   id: "part-image",
   sessionID: "session",
   messageID: "message",
-  type: "file" as const,
+  type: "attachment" as const,
   mime: "image/svg+xml",
   filename: "meme.svg",
   url: "asset://meme",
@@ -22,45 +22,45 @@ const text = {
   id: "part-text",
   sessionID: "session",
   messageID: "message",
-  type: "file" as const,
+  type: "attachment" as const,
   mime: "text/plain",
   filename: "notes.txt",
   url: "asset://notes",
 }
 
 describe("tool result presentation", () => {
-  test("detects completed artifact-only tools with attachments", () => {
+  test("detects completed attachment-only tools with attachments", () => {
     const part = {
       type: "tool",
       state: {
         status: "completed",
-        metadata: { display: { presentation: "artifact-only" } },
+        metadata: { display: { presentation: "attachment-only" } },
         attachments: [image],
       },
     }
 
-    expect(toolResultPresentation(part)).toBe("artifact-only")
-    expect(isArtifactOnlyToolPart(part)).toBe(true)
+    expect(toolResultPresentation(part)).toBe("attachment-only")
+    expect(isAttachmentOnlyToolPart(part)).toBe(true)
   })
 
-  test("does not hide running or empty artifact-only tools", () => {
+  test("does not hide running or empty attachment-only tools", () => {
     expect(
-      isArtifactOnlyToolPart({
+      isAttachmentOnlyToolPart({
         type: "tool",
         state: {
           status: "running",
-          metadata: { display: { presentation: "artifact-only" } },
+          metadata: { display: { presentation: "attachment-only" } },
           attachments: [image],
         },
       }),
     ).toBe(false)
 
     expect(
-      isArtifactOnlyToolPart({
+      isAttachmentOnlyToolPart({
         type: "tool",
         state: {
           status: "completed",
-          metadata: { display: { presentation: "artifact-only" } },
+          metadata: { display: { presentation: "attachment-only" } },
           attachments: [],
         },
       }),
@@ -72,7 +72,7 @@ describe("tool result presentation", () => {
       type: "tool",
       state: {
         status: "completed",
-        metadata: { display: { presentation: "artifact-only", primaryAttachmentIds: ["part-image"] } },
+        metadata: { display: { presentation: "attachment-only", primaryAttachmentIds: ["part-image"] } },
         attachments: [text, image],
       },
     }
@@ -85,7 +85,7 @@ describe("tool result presentation", () => {
       type: "tool",
       state: {
         status: "completed",
-        metadata: { display: { presentation: "artifact-only", primaryAttachmentIds: ["missing"] } },
+        metadata: { display: { presentation: "attachment-only", primaryAttachmentIds: ["missing"] } },
         attachments: [text, image],
       },
     }
@@ -122,7 +122,7 @@ describe("tool result presentation", () => {
           display: {
             kind: "media-generation",
             visibility: "media",
-            presentation: "artifact-only",
+            presentation: "attachment-only",
           },
         },
         attachments: [image],

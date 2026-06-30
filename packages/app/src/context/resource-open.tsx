@@ -6,7 +6,7 @@ import {
   type ResourceOpenOptions,
 } from "@ericsanchezok/synergy-ui/context/resource-open"
 import { ImagePreview } from "@ericsanchezok/synergy-ui/image-preview"
-import { isImageArtifact, resolveArtifactUrl, type ArtifactFile } from "@ericsanchezok/synergy-ui/attachment-card"
+import { isImageAttachment, resolveAttachmentUrl, type AttachmentFile } from "@ericsanchezok/synergy-ui/attachment-card"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { useFile } from "@/context/file"
 import { useLayout } from "@/context/layout"
@@ -31,12 +31,12 @@ function fileUrlPath(input: string | undefined) {
   }
 }
 
-function artifactPath(file: ArtifactFile) {
+function attachmentPath(file: AttachmentFile) {
   if (file.localPath) return file.localPath
   const source = file.source as { path?: unknown } | undefined
   if (typeof source?.path === "string" && source.path) return source.path
-  const artifact = file.metadata?.artifact as Record<string, unknown> | undefined
-  if (typeof artifact?.sourcePath === "string" && artifact.sourcePath) return artifact.sourcePath
+  const attachment = file.metadata?.attachment as Record<string, unknown> | undefined
+  if (typeof attachment?.sourcePath === "string" && attachment.sourcePath) return attachment.sourcePath
   return fileUrlPath(file.url)
 }
 
@@ -74,24 +74,24 @@ export function ResourceOpenProvider(props: ParentProps) {
     return true
   }
 
-  const openArtifact = (artifact: ArtifactFile, options?: ResourceOpenOptions & { serverUrl?: string }) => {
-    const path = artifactPath(artifact)
+  const openAttachment = (attachment: AttachmentFile, options?: ResourceOpenOptions & { serverUrl?: string }) => {
+    const path = attachmentPath(attachment)
     if (options?.prefer === "workspace" && path) return openWorkspaceFile(path)
 
-    const url = resolveArtifactUrl(options?.serverUrl ?? sdk.url, artifact)
-    if (isImageArtifact(artifact) && url && options?.prefer !== "workspace") {
-      dialog.show(() => <ImagePreview src={url} alt={filenameFor({ filename: artifact.filename, url })} />)
+    const url = resolveAttachmentUrl(options?.serverUrl ?? sdk.url, attachment)
+    if (isImageAttachment(attachment) && url && options?.prefer !== "workspace") {
+      dialog.show(() => <ImagePreview src={url} alt={filenameFor({ filename: attachment.filename, url })} />)
       return true
     }
 
     if (path) return openWorkspaceFile(path)
-    if (url) return openUrl({ url, mime: artifact.mime, filename: artifact.filename })
+    if (url) return openUrl({ url, mime: attachment.mime, filename: attachment.filename })
     return false
   }
 
   const open = (resource: OpenableResource, options?: ResourceOpenOptions) => {
-    if (resource.kind === "artifact") {
-      return openArtifact(resource.file, { ...options, serverUrl: resource.serverUrl })
+    if (resource.kind === "attachment") {
+      return openAttachment(resource.file, { ...options, serverUrl: resource.serverUrl })
     }
     if (resource.kind === "workspace-file") {
       return openWorkspaceFile(resource.path)
@@ -104,5 +104,5 @@ export function ResourceOpenProvider(props: ParentProps) {
     return false
   }
 
-  return <BaseResourceOpenProvider value={{ open, openArtifact }}>{props.children}</BaseResourceOpenProvider>
+  return <BaseResourceOpenProvider value={{ open, openAttachment }}>{props.children}</BaseResourceOpenProvider>
 }

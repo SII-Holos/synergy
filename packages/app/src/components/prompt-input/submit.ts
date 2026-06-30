@@ -341,24 +341,29 @@ export function usePromptSubmit(input: PromptSubmitInput) {
             parts: [
               ...images.map((attachment) => ({
                 id: Identifier.ascending("part"),
-                type: "file" as const,
+                type: "attachment" as const,
                 mime: attachment.mime,
                 url: attachment.dataUrl,
                 filename: attachment.filename,
+                model: { mode: "provider-file" as const, summary: `${attachment.filename} (${attachment.mime})` },
               })),
               ...attachments.map((attachment) => ({
                 id: Identifier.ascending("part"),
-                type: "file" as const,
+                type: "attachment" as const,
                 mime: attachment.mime,
                 url: attachment.url,
                 filename: attachment.filename,
+                model: attachment.mime.startsWith("image/")
+                  ? { mode: "provider-file" as const, summary: `${attachment.filename} (${attachment.mime})` }
+                  : { mode: "summary" as const, summary: `${attachment.filename} (${attachment.mime})` },
               })),
               ...notes.map((attachment) => ({
                 id: Identifier.ascending("part"),
-                type: "file" as const,
+                type: "attachment" as const,
                 mime: "text/plain",
                 url: `data:text/plain;base64,${base64Encode(formatNoteContent(attachment))}`,
                 filename: `${attachment.title || "Untitled"}.md`,
+                model: { mode: "content" as const, text: formatNoteContent(attachment) },
                 metadata: {
                   kind: "note",
                   noteId: attachment.noteId,
@@ -367,10 +372,11 @@ export function usePromptSubmit(input: PromptSubmitInput) {
               })),
               ...sessions.map((attachment) => ({
                 id: Identifier.ascending("part"),
-                type: "file" as const,
+                type: "attachment" as const,
                 mime: "text/plain",
                 url: `data:text/plain;base64,${base64Encode(formatSessionReference(attachment))}`,
                 filename: `${attachment.title || "session"}.session.txt`,
+                model: { mode: "content" as const, text: formatSessionReference(attachment) },
                 metadata: {
                   kind: "session",
                   sessionId: attachment.sessionId,
@@ -440,10 +446,11 @@ export function usePromptSubmit(input: PromptSubmitInput) {
 
       return {
         id: Identifier.ascending("part"),
-        type: "file" as const,
+        type: "attachment" as const,
         mime: "text/plain",
         url: `data:text/plain;base64,${base64Encode(content)}`,
         filename: `${attachment.title || "session"}.session.txt`,
+        model: { mode: "content" as const, text: content },
         metadata: {
           kind: "session",
           sessionId: attachment.sessionId,
@@ -465,10 +472,11 @@ export function usePromptSubmit(input: PromptSubmitInput) {
         : ""
       return {
         id: Identifier.ascending("part"),
-        type: "file" as const,
+        type: "attachment" as const,
         mime: "text/plain",
         url: `file://${absolute}${query}`,
         filename: getFilename(attachment.path),
+        model: { mode: "content" as const },
         source: {
           type: "file" as const,
           text: {
@@ -485,10 +493,11 @@ export function usePromptSubmit(input: PromptSubmitInput) {
 
     const contextFileParts: Array<{
       id: string
-      type: "file"
+      type: "attachment"
       mime: string
       url: string
       filename?: string
+      model: { mode: "content" }
     }> = []
 
     const addContextFile = (path: string, selection?: FileSelection) => {
@@ -499,10 +508,11 @@ export function usePromptSubmit(input: PromptSubmitInput) {
       usedUrls.add(url)
       contextFileParts.push({
         id: Identifier.ascending("part"),
-        type: "file",
+        type: "attachment",
         mime: "text/plain",
         url,
         filename: getFilename(path),
+        model: { mode: "content" },
       })
     }
 
@@ -518,26 +528,31 @@ export function usePromptSubmit(input: PromptSubmitInput) {
 
     const imageAttachmentParts = images.map((attachment) => ({
       id: Identifier.ascending("part"),
-      type: "file" as const,
+      type: "attachment" as const,
       mime: attachment.mime,
       url: attachment.dataUrl,
       filename: attachment.filename,
+      model: { mode: "provider-file" as const, summary: `${attachment.filename} (${attachment.mime})` },
     }))
 
     const uploadedAttachmentParts = attachments.map((attachment) => ({
       id: Identifier.ascending("part"),
-      type: "file" as const,
+      type: "attachment" as const,
       mime: attachment.mime,
       url: attachment.url,
       filename: attachment.filename,
+      model: attachment.mime.startsWith("image/")
+        ? { mode: "provider-file" as const, summary: `${attachment.filename} (${attachment.mime})` }
+        : { mode: "summary" as const, summary: `${attachment.filename} (${attachment.mime})` },
     }))
 
     const noteAttachmentParts = notes.map((attachment) => ({
       id: Identifier.ascending("part"),
-      type: "file" as const,
+      type: "attachment" as const,
       mime: "text/plain",
       url: `data:text/plain;base64,${base64Encode(formatNoteContent(attachment))}`,
       filename: `${attachment.title || "Untitled"}.md`,
+      model: { mode: "content" as const, text: formatNoteContent(attachment) },
       metadata: {
         kind: "note",
         noteId: attachment.noteId,

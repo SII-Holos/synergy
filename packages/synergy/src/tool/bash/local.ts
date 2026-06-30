@@ -12,7 +12,7 @@ import { truncateMetadataOutput } from "./shared"
 import { SandboxBackend } from "@/sandbox/backend"
 import { EnforcementError } from "@/enforcement/errors"
 import { ShellSafety } from "@/enforcement/shell-safety"
-import { ArtifactPromotion } from "../artifact-promotion"
+import { AttachmentDiscovery } from "../attachment-discovery"
 import type { MessageV2 } from "@/session/message-v2"
 import type { BashResult } from "./shared"
 import { Observability } from "@/observability"
@@ -154,11 +154,11 @@ export const LocalBashBackend: BashBackend = {
     const sandboxFallback = (ctx.extra as any)?.sandboxFallback as "deny" | "warn" | "allow" | undefined
     const sandboxWarning = (ctx.extra as any)?.sandboxWarning as string | undefined
     const warnOutput = (base: string) => (sandboxWarning ? `[Sandbox unavailable: ${sandboxWarning}]\n\n${base}` : base)
-    const withArtifacts = async (result: BashResult): Promise<BashResult> => {
-      await trace("artifact.promotion.start", {
+    const withAttachments = async (result: BashResult): Promise<BashResult> => {
+      await trace("attachment.discovery.start", {
         outputChars: result.output.length,
       })
-      const attachments = await ArtifactPromotion.promote({
+      const attachments = await AttachmentDiscovery.discover({
         output: result.output,
         cwd,
         sessionID: ctx.sessionID,
@@ -166,20 +166,24 @@ export const LocalBashBackend: BashBackend = {
         tool: "bash",
       })
         .then(async (items) => {
-          await trace("artifact.promotion.end", {
+          await trace("attachment.discovery.end", {
             attachmentCount: items.length,
             attachments: items.map((item) => ({
               filename: item.filename,
               mime: item.mime,
-              size: (item.metadata as Record<string, unknown> | undefined)?.size,
+              size: (
+                (item.metadata as Record<string, unknown> | undefined)?.attachment as
+                  | Record<string, unknown>
+                  | undefined
+              )?.size,
               url: item.url,
             })),
           })
           return items
         })
-        .catch(async (error): Promise<MessageV2.FilePart[]> => {
+        .catch(async (error): Promise<MessageV2.AttachmentPart[]> => {
           await trace(
-            "artifact.promotion.error",
+            "attachment.discovery.error",
             {
               error:
                 error instanceof Error
@@ -303,7 +307,7 @@ export const LocalBashBackend: BashBackend = {
         }
 
         ProcessRegistry.remove(regProc.id)
-        return withArtifacts({
+        return withAttachments({
           title: params.description,
           metadata: {
             output: truncateMetadataOutput(regProc.output),
@@ -549,7 +553,7 @@ export const LocalBashBackend: BashBackend = {
       }
     }
 
-    return withArtifacts({
+    return withAttachments({
       title: params.description,
       metadata: {
         output: truncateMetadataOutput(output),

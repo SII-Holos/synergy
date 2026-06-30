@@ -46,18 +46,18 @@ export default plugin
 
 ## Tool Result Presentation
 
-Tools that generate a primary visual artifact can return standard `attachments` and set:
+Tools that generate a primary visual attachment can return standard `attachments` and set:
 
 ```ts
 metadata: {
   display: {
-    presentation: "artifact-only",
+    presentation: "attachment-only",
     primaryAttachmentIds: [partId],
   },
 }
 ```
 
-The Web client hides the completed tool card and promotes those attachments into the final turn response area. Running and failed states still render as normal tool cards. Use `input.client.asset.upload()` or the public `/asset` route to create `asset://...` URLs; plugins should not import Synergy internal asset modules.
+The Web client hides the completed tool card and renders those attachments at the original tool-call position in the message. Running and failed states still render as normal tool cards. Use `input.client.asset.upload()` or the public `/asset` route to create `asset://...` URLs; plugins should not import Synergy internal asset modules.
 
 For generated media, also declare display metadata on the tool definition and in `plugin.json`:
 
@@ -67,7 +67,7 @@ tool({
   display: {
     kind: "media-generation",
     visibility: "media",
-    presentation: "artifact-only",
+    presentation: "attachment-only",
     media: {
       type: "image",
       aspectRatio: "1:1",
@@ -77,12 +77,12 @@ tool({
     prompt: tool.schema.string(),
   },
   async execute(args, context) {
-    // Upload the artifact and return metadata.display.primaryAttachmentIds.
+    // Upload the attachment and return metadata.display.primaryAttachmentIds.
   },
 })
 ```
 
-`media-generation` tools use Synergy's built-in placeholder while running. Completed success states are hidden from the normal step list when they return promoted attachments; error states still render as normal tool cards. Optional `media.actionLabel` and `media.pendingTitle` are accessibility labels, not transcript copy. Do not rely on tool input fields such as `prompt` being displayed by the host.
+`media-generation` tools use Synergy's built-in placeholder while running. Completed success states are hidden from the normal step list when they return primary attachments; error states still render as normal tool cards. Optional `media.actionLabel` and `media.pendingTitle` are accessibility labels, not transcript copy. Do not rely on tool input fields such as `prompt` being displayed by the host.
 
 ## Internal Helpers And Planners
 

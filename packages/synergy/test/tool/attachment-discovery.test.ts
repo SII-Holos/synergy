@@ -1,13 +1,13 @@
 import { describe, expect, test } from "bun:test"
 import path from "path"
 import { pathToFileURL } from "url"
-import { ArtifactPromotion } from "../../src/tool/artifact-promotion"
+import { AttachmentDiscovery } from "../../src/tool/attachment-discovery"
 import { ScopeContext } from "../../src/scope/context"
 import { tmpdir } from "../fixture/fixture"
 
-describe("tool.artifact-promotion", () => {
+describe("tool.attachment-discovery", () => {
   test("extracts paths from markdown, file URLs, whole lines, and inline output", () => {
-    const candidates = ArtifactPromotion.extractCandidates(
+    const candidates = AttachmentDiscovery.extractCandidates(
       [
         "![sheet](./contact-sheet.png)",
         "[report](file:///tmp/report.pdf)",
@@ -24,7 +24,7 @@ describe("tool.artifact-promotion", () => {
     ])
   })
 
-  test("promotes scope-contained artifacts to asset file parts", async () => {
+  test("discovers scope-contained attachments as asset attachment parts", async () => {
     await using tmp = await tmpdir({ git: true })
     const filepath = path.join(tmp.path, "contact-sheet.png")
     await Bun.write(filepath, "fake image")
@@ -32,7 +32,7 @@ describe("tool.artifact-promotion", () => {
     await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
-        const attachments = await ArtifactPromotion.promote({
+        const attachments = await AttachmentDiscovery.discover({
           output: filepath,
           cwd: tmp.path,
           sessionID: "session_test",
@@ -45,12 +45,12 @@ describe("tool.artifact-promotion", () => {
         expect(attachments[0].filename).toBe("contact-sheet.png")
         expect(attachments[0].url.startsWith("asset://")).toBe(true)
         expect(attachments[0].localPath).toBe(filepath)
-        expect(attachments[0].metadata?.kind).toBe("artifact")
+        expect(attachments[0].metadata?.kind).toBe("attachment")
       },
     })
   })
 
-  test("rejects artifacts outside the current scope", async () => {
+  test("rejects attachments outside the current scope", async () => {
     await using tmp = await tmpdir({ git: true })
     await using outside = await tmpdir()
     const filepath = path.join(outside.path, "leak.pdf")
@@ -59,7 +59,7 @@ describe("tool.artifact-promotion", () => {
     await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
-        const attachments = await ArtifactPromotion.promote({
+        const attachments = await AttachmentDiscovery.discover({
           output: pathToFileURL(filepath).href,
           cwd: tmp.path,
           sessionID: "session_test",
@@ -72,11 +72,11 @@ describe("tool.artifact-promotion", () => {
     })
   })
 
-  test("dedupes and caps artifact count", async () => {
+  test("dedupes and caps attachment count", async () => {
     await using tmp = await tmpdir({ git: true })
     const paths: string[] = []
     for (let i = 0; i < 10; i++) {
-      const filepath = path.join(tmp.path, `artifact-${i}.pdf`)
+      const filepath = path.join(tmp.path, `attachment-${i}.pdf`)
       await Bun.write(filepath, `pdf ${i}`)
       paths.push(filepath)
     }
@@ -84,7 +84,7 @@ describe("tool.artifact-promotion", () => {
     await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
-        const attachments = await ArtifactPromotion.promote({
+        const attachments = await AttachmentDiscovery.discover({
           output: [paths[0], paths[0], ...paths].join("\n"),
           cwd: tmp.path,
           sessionID: "session_test",
@@ -108,7 +108,7 @@ describe("tool.artifact-promotion", () => {
     await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
-        const attachments = await ArtifactPromotion.promote({
+        const attachments = await AttachmentDiscovery.discover({
           output: [script, pdf].join("\n"),
           cwd: tmp.path,
           sessionID: "session_test",

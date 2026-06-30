@@ -16,7 +16,7 @@ import { createEffect, createMemo, createSignal, For, Match, on, onCleanup, Pare
 import { DiffChanges } from "./diff-changes"
 import { Typewriter } from "./typewriter"
 import { Message, Part } from "./message-part"
-import { ArtifactGallery } from "./attachment-card"
+import { AttachmentGallery } from "./attachment-card"
 import { shouldHideToolPart } from "./tool-result-presentation"
 import { MediaGenerationCard } from "./media-generation-card"
 import {
@@ -85,7 +85,7 @@ function AssistantMessageItem(props: { message: AssistantMessage; working: boole
 function NarrativeItemDisplay(props: { item: SessionTurnNarrativeItem; serverUrl: string }) {
   if (props.item.kind === "part") return <Part part={props.item.part} message={props.item.message} />
   if (props.item.kind === "media-pending") return <MediaGenerationCard part={props.item.part} />
-  return <ArtifactGallery files={props.item.files} serverUrl={props.serverUrl} variant="result" />
+  return <AttachmentGallery files={props.item.files} serverUrl={props.serverUrl} variant="result" />
 }
 
 function MailboxSourceBadge(props: { message: UserMessage }) {

@@ -4,6 +4,7 @@ import { Tool } from "./tool"
 import { Asset } from "../asset/asset"
 import { ScopeContext } from "../scope/context"
 import { Identifier } from "../id/id"
+import type { MessageV2 } from "@/session/message-v2"
 
 const DESCRIPTION = `Deliver files to the user by making them available as conversation attachments. Use this after generating or obtaining user-facing artifacts such as PDFs, images, documents, archives, exports, plots, rendered figures, screenshots, or compiled paper outputs.
 
@@ -29,15 +30,7 @@ export const AttachTool = Tool.define("attach", {
     const filenames = params.filename ? (Array.isArray(params.filename) ? params.filename : [params.filename]) : []
 
     const files: { assetId: string; filename: string; mime: string; size: number }[] = []
-    const attachments: {
-      id: string
-      sessionID: string
-      messageID: string
-      type: "file"
-      mime: string
-      filename: string
-      url: string
-    }[] = []
+    const attachments: MessageV2.AttachmentPart[] = []
 
     for (let i = 0; i < paths.length; i++) {
       let filePath = paths[i]
@@ -60,10 +53,15 @@ export const AttachTool = Tool.define("attach", {
         id: Identifier.ascending("part"),
         sessionID: ctx.sessionID,
         messageID: ctx.messageID,
-        type: "file",
+        type: "attachment",
         mime,
         filename,
         url: `asset://${assetId}`,
+        presentation: { mode: "card" },
+        model: {
+          mode: "summary",
+          summary: `${filename} (${mime}, ${formatSize(buffer.length)}) delivered to the user`,
+        },
       })
     }
 

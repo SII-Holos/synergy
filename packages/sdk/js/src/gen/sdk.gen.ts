@@ -68,6 +68,10 @@ import type {
   AssetGetResponses,
   AssetUploadErrors,
   AssetUploadResponses,
+  AttachmentModelPolicy,
+  AttachmentPartInput,
+  AttachmentPresentation,
+  AttachmentSource,
   Auth as Auth2,
   AuthSetErrors,
   AuthSetResponses,
@@ -137,8 +141,6 @@ import type {
   ExperienceListFilter,
   ExperienceListSort,
   ExperimentalResourceListResponses,
-  FilePartInput,
-  FilePartSource,
   FormatterStatusResponses,
   GlobalAgendaListErrors,
   GlobalAgendaListResponses,
@@ -2030,7 +2032,7 @@ export class Session extends HeyApiClient {
       }
       system?: string
       variant?: string
-      parts?: Array<TextPartInput | FilePartInput>
+      parts?: Array<TextPartInput | AttachmentPartInput>
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -2245,7 +2247,7 @@ export class Session extends HeyApiClient {
       }
       system?: string
       variant?: string
-      parts?: Array<TextPartInput | FilePartInput>
+      parts?: Array<TextPartInput | AttachmentPartInput>
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -2377,7 +2379,7 @@ export class Session extends HeyApiClient {
       }
       system?: string
       variant?: string
-      parts?: Array<TextPartInput | FilePartInput>
+      parts?: Array<TextPartInput | AttachmentPartInput>
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -2433,12 +2435,14 @@ export class Session extends HeyApiClient {
       variant?: string
       parts?: Array<{
         id?: string
-        type: "file"
+        type: "attachment"
         mime: string
         filename?: string
         url: string
         localPath?: string
-        source?: FilePartSource
+        source?: AttachmentSource
+        presentation?: AttachmentPresentation
+        model?: AttachmentModelPolicy
         metadata?: {
           [key: string]: unknown
         }
@@ -7734,7 +7738,7 @@ export class Plugins extends HeyApiClient {
   /**
    * Check for plugin update from registry
    *
-   * Check if an update is available for a plugin from the local registry. Optionally target a specific version. Returns version comparison and permission diff.
+   * Check if an update is available for a plugin from the official or local registry. Optionally target a specific version. Returns version comparison and permission diff.
    */
   public updateFromRegistry<ThrowOnError extends boolean = false>(
     parameters: {
@@ -7742,6 +7746,7 @@ export class Plugins extends HeyApiClient {
       directory?: string
       scopeID?: string
       targetVersion?: string
+      source?: "official" | "local"
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -7754,6 +7759,7 @@ export class Plugins extends HeyApiClient {
             { in: "query", key: "directory" },
             { in: "query", key: "scopeID" },
             { in: "body", key: "targetVersion" },
+            { in: "body", key: "source" },
           ],
         },
       ],

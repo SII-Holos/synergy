@@ -122,10 +122,13 @@ export const SendCommand = cmd({
         const mime = stat.isDirectory() ? "application/x-directory" : "text/plain"
 
         fileParts.push({
-          type: "file",
+          type: "attachment",
           url: pathToFileURL(resolvedPath).href,
           filename: path.basename(resolvedPath),
           mime,
+          model: stat.isDirectory()
+            ? { mode: "summary", summary: `${path.basename(resolvedPath)} (directory)` }
+            : { mode: "content" },
         })
       }
     }

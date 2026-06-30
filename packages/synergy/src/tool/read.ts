@@ -68,7 +68,7 @@ export const ReadTool = Tool.define("read", {
           limit: undefined as number | undefined,
         },
         attachments: [
-          await Attachment.toFilePart({
+          await Attachment.toPart({
             filepath,
             mime,
             sessionID: ctx.sessionID,
@@ -121,7 +121,7 @@ export const ReadTool = Tool.define("read", {
 
       const attachments = filePolicy.keepBinary
         ? [
-            await Attachment.toFilePart({
+            await Attachment.toPart({
               filepath,
               mime: "application/pdf",
               sessionID: ctx.sessionID,

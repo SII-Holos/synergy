@@ -12,7 +12,7 @@ export interface BashResult {
   title: string
   metadata: BashMetadata
   output: string
-  attachments?: MessageV2.FilePart[]
+  attachments?: MessageV2.AttachmentPart[]
 }
 
 export type BashContext = Tool.Context<BashMetadata>

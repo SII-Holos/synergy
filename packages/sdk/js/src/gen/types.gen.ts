@@ -2990,14 +2990,14 @@ export type TextPartInput = {
   }
 }
 
-export type FilePartSourceText = {
+export type AttachmentSourceText = {
   value: string
   start: number
   end: number
 }
 
 export type FileSource = {
-  text: FilePartSourceText
+  text: AttachmentSourceText
   type: "file"
   path: string
 }
@@ -3014,7 +3014,7 @@ export type Range = {
 }
 
 export type SymbolSource = {
-  text: FilePartSourceText
+  text: AttachmentSourceText
   type: "symbol"
   path: string
   range: Range
@@ -3023,22 +3023,46 @@ export type SymbolSource = {
 }
 
 export type ResourceSource = {
-  text: FilePartSourceText
+  text: AttachmentSourceText
   type: "resource"
   clientName: string
   uri: string
 }
 
-export type FilePartSource = FileSource | SymbolSource | ResourceSource
+export type AttachmentSource = FileSource | SymbolSource | ResourceSource
 
-export type FilePartInput = {
+export type AttachmentPresentation = {
+  mode?: "inline" | "card" | "hidden"
+  primary?: boolean
+}
+
+export type AttachmentModelPolicy =
+  | {
+      mode: "summary"
+      summary?: string
+    }
+  | {
+      mode: "content"
+      text?: string
+    }
+  | {
+      mode: "provider-file"
+      summary?: string
+    }
+  | {
+      mode: "none"
+    }
+
+export type AttachmentPartInput = {
   id?: string
-  type: "file"
+  type: "attachment"
   mime: string
   filename?: string
   url: string
   localPath?: string
-  source?: FilePartSource
+  source?: AttachmentSource
+  presentation?: AttachmentPresentation
+  model?: AttachmentModelPolicy
   metadata?: {
     [key: string]: unknown
   }
@@ -3185,16 +3209,18 @@ export type ReasoningPart = {
   }
 }
 
-export type FilePart = {
+export type AttachmentPart = {
   id: string
   sessionID: string
   messageID: string
-  type: "file"
+  type: "attachment"
   mime: string
   filename?: string
   url: string
   localPath?: string
-  source?: FilePartSource
+  source?: AttachmentSource
+  presentation?: AttachmentPresentation
+  model?: AttachmentModelPolicy
   metadata?: {
     [key: string]: unknown
   }
@@ -3246,7 +3272,7 @@ export type ToolStateCompleted = {
     end: number
     compacted?: number
   }
-  attachments?: Array<FilePart>
+  attachments?: Array<AttachmentPart>
 }
 
 export type ToolStateError = {
@@ -3346,7 +3372,7 @@ export type CompactionPart = {
 export type Part =
   | TextPart
   | ReasoningPart
-  | FilePart
+  | AttachmentPart
   | ToolPart
   | StepStartPart
   | StepFinishPart
@@ -7687,7 +7713,7 @@ export type SessionInputData = {
     }
     system?: string
     variant?: string
-    parts: Array<TextPartInput | FilePartInput>
+    parts: Array<TextPartInput | AttachmentPartInput>
   }
   path: {
     /**
@@ -7912,7 +7938,7 @@ export type SessionPromptData = {
     }
     system?: string
     variant?: string
-    parts: Array<TextPartInput | FilePartInput>
+    parts: Array<TextPartInput | AttachmentPartInput>
   }
   path: {
     /**
@@ -8146,7 +8172,7 @@ export type SessionPromptAsyncData = {
     }
     system?: string
     variant?: string
-    parts: Array<TextPartInput | FilePartInput>
+    parts: Array<TextPartInput | AttachmentPartInput>
   }
   path: {
     /**
@@ -8193,12 +8219,14 @@ export type SessionCommandData = {
     variant?: string
     parts?: Array<{
       id?: string
-      type: "file"
+      type: "attachment"
       mime: string
       filename?: string
       url: string
       localPath?: string
-      source?: FilePartSource
+      source?: AttachmentSource
+      presentation?: AttachmentPresentation
+      model?: AttachmentModelPolicy
       metadata?: {
         [key: string]: unknown
       }
@@ -12163,6 +12191,7 @@ export type ApiPluginsInstallFromRegistryResponse =
 export type ApiPluginsUpdateFromRegistryData = {
   body?: {
     targetVersion?: string
+    source?: "official" | "local"
   }
   path: {
     pluginId: string

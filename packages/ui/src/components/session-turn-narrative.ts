@@ -1,6 +1,6 @@
 import type {
   AssistantMessage,
-  FilePart,
+  AttachmentPart,
   Part as PartType,
   ReasoningPart,
   TextPart,
@@ -27,7 +27,7 @@ export type SessionTurnNarrativeItem =
       kind: "media-result"
       message: AssistantMessage
       part: ToolPart
-      files: FilePart[]
+      files: AttachmentPart[]
     }
 
 export function narrativeKindForPart(part: PartType, working: boolean): SessionTurnNarrativeItem["kind"] | undefined {

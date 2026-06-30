@@ -31,7 +31,12 @@ export namespace SessionProcessor {
     | {
         status: "completed"
         input: any
-        result: { output: string; title: string; metadata: Record<string, any>; attachments?: MessageV2.FilePart[] }
+        result: {
+          output: string
+          title: string
+          metadata: Record<string, any>
+          attachments?: MessageV2.AttachmentPart[]
+        }
       }
     | { status: "error"; input: any; error: string; metadata?: Record<string, any> }
 

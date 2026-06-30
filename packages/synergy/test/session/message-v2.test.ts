@@ -134,7 +134,7 @@ describe("session.message-v2.toModelMessage", () => {
     ])
   })
 
-  test("converts user text/file parts and filters ignored/special parts", () => {
+  test("converts user text/attachment parts and filters ignored/special parts", () => {
     const messageID = "m-user"
 
     const input: MessageV2.WithParts[] = [
@@ -154,24 +154,27 @@ describe("session.message-v2.toModelMessage", () => {
           },
           {
             ...basePart(messageID, "p3"),
-            type: "file",
+            type: "attachment",
             mime: "image/png",
             filename: "img.png",
             url: "https://example.com/img.png",
+            model: { mode: "provider-file", summary: "img.png (image/png)" },
           },
           {
             ...basePart(messageID, "p4"),
-            type: "file",
+            type: "attachment",
             mime: "text/plain",
             filename: "note.txt",
             url: "https://example.com/note.txt",
+            model: { mode: "provider-file", summary: "note.txt (text/plain)" },
           },
           {
             ...basePart(messageID, "p5"),
-            type: "file",
+            type: "attachment",
             mime: "application/x-directory",
             filename: "dir",
             url: "https://example.com/dir",
+            model: { mode: "summary", summary: "dir (application/x-directory)" },
           },
           {
             ...basePart(messageID, "p6"),
@@ -199,11 +202,15 @@ describe("session.message-v2.toModelMessage", () => {
             filename: "note.txt",
             data: "https://example.com/note.txt",
           },
+          {
+            type: "text",
+            text: "[Attachment: dir (application/x-directory)]",
+          },
         ],
       },
     ])
   })
-  test("skips text-mime FileParts with data: URLs", () => {
+  test("uses explicit content instead of sending data text attachments", () => {
     const messageID = "m-user"
     const input: MessageV2.WithParts[] = [
       {
@@ -217,10 +224,11 @@ describe("session.message-v2.toModelMessage", () => {
           },
           {
             ...basePart(messageID, "p2"),
-            type: "file",
+            type: "attachment",
             mime: "text/plain",
             filename: "note.xml",
             url: "data:text/plain;base64,PHhtbD5ub3RlIGNvbnRlbnQ8L3htbD4=",
+            model: { mode: "none" },
           },
         ] as MessageV2.Part[],
       },
@@ -234,7 +242,7 @@ describe("session.message-v2.toModelMessage", () => {
     ])
   })
 
-  test("passes through text-mime FileParts with https: URLs", () => {
+  test("passes through provider-file text attachments with https URLs", () => {
     const messageID = "m-user"
     const input: MessageV2.WithParts[] = [
       {
@@ -242,10 +250,11 @@ describe("session.message-v2.toModelMessage", () => {
         parts: [
           {
             ...basePart(messageID, "p1"),
-            type: "file",
+            type: "attachment",
             mime: "text/plain",
             filename: "doc.txt",
             url: "https://example.com/doc.txt",
+            model: { mode: "provider-file", summary: "doc.txt (text/plain)" },
           },
         ] as MessageV2.Part[],
       },
@@ -266,7 +275,7 @@ describe("session.message-v2.toModelMessage", () => {
     ])
   })
 
-  test("passes through text-mime FileParts with asset: URLs", () => {
+  test("summarizes asset attachments instead of passing asset URLs to the provider", () => {
     const messageID = "m-user"
     const input: MessageV2.WithParts[] = [
       {
@@ -274,10 +283,11 @@ describe("session.message-v2.toModelMessage", () => {
         parts: [
           {
             ...basePart(messageID, "p1"),
-            type: "file",
+            type: "attachment",
             mime: "text/plain",
             filename: "file.ts",
             url: "asset://abc123/file.ts",
+            model: { mode: "provider-file", summary: "file.ts (text/plain)" },
           },
         ] as MessageV2.Part[],
       },
@@ -286,19 +296,12 @@ describe("session.message-v2.toModelMessage", () => {
     expect(MessageV2.toModelMessage(input)).toStrictEqual([
       {
         role: "user",
-        content: [
-          {
-            type: "file",
-            mediaType: "text/plain",
-            filename: "file.ts",
-            data: "asset://abc123/file.ts",
-          },
-        ],
+        content: [{ type: "text", text: "[Attachment: file.ts (text/plain)]" }],
       },
     ])
   })
 
-  test("skips data: text FileParts but keeps https: text, image, and other FileParts", () => {
+  test("uses attachment model policy for data text, https text, and images", () => {
     const messageID = "m-user"
     const input: MessageV2.WithParts[] = [
       {
@@ -311,24 +314,27 @@ describe("session.message-v2.toModelMessage", () => {
           },
           {
             ...basePart(messageID, "p2"),
-            type: "file",
+            type: "attachment",
             mime: "text/plain",
             filename: "note.xml",
             url: "data:text/plain;base64,PHhtbD5ub3RlIGNvbnRlbnQ8L3htbD4=",
+            model: { mode: "none" },
           },
           {
             ...basePart(messageID, "p3"),
-            type: "file",
+            type: "attachment",
             mime: "text/plain",
             filename: "doc.txt",
             url: "https://example.com/doc.txt",
+            model: { mode: "provider-file", summary: "doc.txt (text/plain)" },
           },
           {
             ...basePart(messageID, "p4"),
-            type: "file",
+            type: "attachment",
             mime: "image/png",
             filename: "photo.png",
             url: "data:image/png;base64,ZmFrZS1pbWFnZQ==",
+            model: { mode: "provider-file", summary: "photo.png (image/png)" },
           },
         ] as MessageV2.Part[],
       },
@@ -395,10 +401,11 @@ describe("session.message-v2.toModelMessage", () => {
               attachments: [
                 {
                   ...basePart(assistantID, "file-1"),
-                  type: "file",
+                  type: "attachment",
                   mime: "image/png",
                   filename: "attachment.png",
                   url: "https://example.com/attachment.png",
+                  model: { mode: "summary", summary: "attachment.png (image/png)" },
                 },
               ],
             },
@@ -416,13 +423,8 @@ describe("session.message-v2.toModelMessage", () => {
       {
         role: "user",
         content: [
-          { type: "text", text: "Tool bash returned an attachment:" },
-          {
-            type: "file",
-            mediaType: "image/png",
-            filename: "attachment.png",
-            data: "https://example.com/attachment.png",
-          },
+          { type: "text", text: "Tool bash returned attachment results:" },
+          { type: "text", text: "[Attachment: attachment.png (image/png)]" },
         ],
       },
       {

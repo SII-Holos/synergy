@@ -89,6 +89,156 @@ function normalizeLegacyHolosMetadata(metadata: Record<string, unknown>): {
   return { metadata: normalized, changed: JSON.stringify(normalized) !== original }
 }
 
+function attachmentSummary(part: Record<string, unknown>): string {
+  const filename = typeof part.filename === "string" && part.filename ? part.filename : "attachment"
+  const mime = typeof part.mime === "string" && part.mime ? part.mime : "application/octet-stream"
+  return `${filename} (${mime})`
+}
+
+function defaultAttachmentModel(part: Record<string, unknown>, owner: "user" | "tool") {
+  const mime = typeof part.mime === "string" ? part.mime : ""
+  if (owner === "user" && mime.startsWith("image/")) {
+    return { mode: "provider-file", summary: attachmentSummary(part) }
+  }
+  return { mode: "summary", summary: attachmentSummary(part) }
+}
+
+function migrateAttachmentMetadata(metadata: unknown): Record<string, unknown> | undefined {
+  const record = asRecord(metadata)
+  if (!record) return undefined
+  const next: Record<string, unknown> = { ...record }
+  if (next.kind === "artifact") next.kind = "attachment"
+  if (asRecord(next.artifact) && !asRecord(next.attachment)) next.attachment = next.artifact
+  delete next.artifact
+
+  const display = asRecord(next.display)
+  if (display?.presentation === "artifact-only") {
+    next.display = {
+      ...display,
+      presentation: "attachment-only",
+    }
+  }
+
+  return compact(next)
+}
+
+function migrateAttachmentPart(input: unknown, owner: "user" | "tool"): { value: unknown; changed: boolean } {
+  const part = asRecord(input)
+  if (!part) return { value: input, changed: false }
+  const next: Record<string, unknown> = { ...part }
+  let changed = false
+
+  if (next.type === "file") {
+    next.type = "attachment"
+    changed = true
+  }
+
+  if (next.type !== "attachment") return { value: input, changed }
+
+  if (!asRecord(next.presentation)) {
+    next.presentation = { mode: "card" }
+    changed = true
+  }
+  if (!asRecord(next.model)) {
+    next.model = defaultAttachmentModel(next, owner)
+    changed = true
+  }
+
+  const migratedMetadata = migrateAttachmentMetadata(next.metadata)
+  if (JSON.stringify(migratedMetadata) !== JSON.stringify(next.metadata)) {
+    next.metadata = migratedMetadata
+    changed = true
+  }
+
+  return { value: next, changed }
+}
+
+function migrateToolDisplayMetadata(metadata: unknown): { value: unknown; changed: boolean } {
+  const record = asRecord(metadata)
+  if (!record) return { value: metadata, changed: false }
+  const migrated = migrateAttachmentMetadata(record)
+  return {
+    value: migrated,
+    changed: JSON.stringify(migrated) !== JSON.stringify(metadata),
+  }
+}
+
+async function migrateSessionAttachmentParts(progress: (current: number, total: number) => void) {
+  const scopeIDs = await Storage.scan(["sessions"]).catch(() => [])
+  const tasks: Array<{ scopeID: string; sessionID: string; messageID: string; partID: string }> = []
+
+  for (const scopeID of scopeIDs) {
+    const scope = Identifier.asScopeID(scopeID)
+    const sessionIDs = await Storage.scan(StoragePath.sessionsRoot(scope)).catch(() => [])
+    for (const sessionID of sessionIDs) {
+      const sid = Identifier.asSessionID(sessionID)
+      const messageIDs = await Storage.scan(StoragePath.sessionMessagesRoot(scope, sid)).catch(() => [])
+      for (const messageID of messageIDs) {
+        const mid = Identifier.asMessageID(messageID)
+        const partIDs = await Storage.scan(StoragePath.messageParts(scope, sid, mid)).catch(() => [])
+        for (const partID of partIDs) tasks.push({ scopeID, sessionID, messageID, partID })
+      }
+    }
+  }
+
+  if (tasks.length === 0) return
+
+  let done = 0
+  let changedCount = 0
+  for (const { scopeID, sessionID, messageID, partID } of tasks) {
+    const scope = Identifier.asScopeID(scopeID)
+    const sid = Identifier.asSessionID(sessionID)
+    const mid = Identifier.asMessageID(messageID)
+    const pid = Identifier.asPartID(partID)
+    const key = StoragePath.messagePart(scope, sid, mid, pid)
+    const part = await Storage.read<any>(key).catch(() => undefined)
+    if (part) {
+      const info = await Storage.read<MessageV2.Info>(StoragePath.messageInfo(scope, sid, mid)).catch(() => undefined)
+      const owner = info?.role === "user" ? "user" : "tool"
+      const migratedPart = migrateAttachmentPart(part, owner)
+      let next = migratedPart.value as Record<string, unknown>
+      let changed = migratedPart.changed
+
+      if (next?.type === "tool") {
+        const state = asRecord(next.state)
+        if (state?.status === "completed") {
+          const migratedState: Record<string, unknown> = { ...state }
+          const attachments = Array.isArray(state.attachments) ? state.attachments : undefined
+          if (attachments) {
+            const migratedAttachments = attachments.map((attachment) => migrateAttachmentPart(attachment, "tool"))
+            if (migratedAttachments.some((item) => item.changed)) {
+              migratedState.attachments = migratedAttachments.map((item) => item.value)
+              changed = true
+            }
+          }
+          const metadata = migrateToolDisplayMetadata(state.metadata)
+          if (metadata.changed) {
+            migratedState.metadata = metadata.value
+            changed = true
+          }
+          if (changed) next = { ...next, state: migratedState }
+        }
+      }
+
+      const metadata = migrateToolDisplayMetadata(next.metadata)
+      if (metadata.changed) {
+        next = { ...next, metadata: metadata.value }
+        changed = true
+      }
+
+      if (changed) {
+        await Storage.write(key, next)
+        changedCount++
+      }
+    }
+
+    done++
+    progress(done, tasks.length)
+  }
+
+  log.info("session attachment part migration complete", { total: tasks.length, changed: changedCount })
+}
+
 async function repairPendingReplyFlags(progress: (current: number, total: number) => void) {
   const scopeIDs = await Storage.scan(["sessions"])
   const tasks: Array<{ scopeID: string; sessionID: string; info: Info }> = []
@@ -612,6 +762,13 @@ export const migrations: Migration[] = [
     description: "Migrate active session revert state into history-only rollback events",
     async up(progress) {
       await migrateActiveRevertState(progress)
+    },
+  },
+  {
+    id: "20260630-session-attachment-parts",
+    description: "Migrate session file parts and artifact-only media metadata to attachment parts",
+    async up(progress) {
+      await migrateSessionAttachmentParts(progress)
     },
   },
 ]

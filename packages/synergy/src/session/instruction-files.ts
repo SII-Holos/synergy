@@ -65,7 +65,7 @@ export namespace InstructionFiles {
       .catch(() => false)
   }
 
-  async function readFilePart(filepath: string, maxBytes?: number) {
+  async function readInstructionFilePart(filepath: string, maxBytes?: number) {
     if (maxBytes !== undefined && maxBytes <= 0) return undefined
 
     const data = await fs.readFile(filepath).catch(() => undefined)
@@ -148,7 +148,7 @@ export namespace InstructionFiles {
       })
     }
 
-    const foundFiles = Array.from(paths).map((filepath) => readFilePart(filepath))
+    const foundFiles = Array.from(paths).map((filepath) => readInstructionFilePart(filepath))
     const foundUrls = urls.map((url) =>
       fetch(url, { signal: AbortSignal.timeout(5000) })
         .then((res) => (res.ok ? res.text() : ""))
@@ -165,7 +165,9 @@ export namespace InstructionFiles {
     const globalPath = maxBytes <= 0 ? undefined : await discoverGlobalPath()
     const automaticPaths = globalPath ? [...projectPaths, globalPath] : projectPaths
 
-    const automaticParts = await Promise.all(automaticPaths.map((filepath) => readFilePart(filepath, maxBytes)))
+    const automaticParts = await Promise.all(
+      automaticPaths.map((filepath) => readInstructionFilePart(filepath, maxBytes)),
+    )
     const explicitParts = await loadExplicitInstructions(config.instructions, new Set(automaticPaths))
     return [...automaticParts.filter((part): part is string => !!part), ...explicitParts]
   }

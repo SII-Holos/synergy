@@ -560,10 +560,19 @@ export namespace Channel {
     if (ctx.attachments && ctx.attachments.length > 0) {
       for (const attachment of ctx.attachments) {
         parts.push({
-          type: "file",
+          type: "attachment",
           url: pathToFileURL(attachment.path).href,
           filename: attachment.filename ?? path.basename(attachment.path) ?? "attachment",
           mime: attachment.contentType,
+          model: attachment.contentType.startsWith("image/")
+            ? {
+                mode: "provider-file",
+                summary: `${attachment.filename ?? path.basename(attachment.path) ?? "attachment"} (${attachment.contentType})`,
+              }
+            : {
+                mode: "summary",
+                summary: `${attachment.filename ?? path.basename(attachment.path) ?? "attachment"} (${attachment.contentType})`,
+              },
         })
       }
     }

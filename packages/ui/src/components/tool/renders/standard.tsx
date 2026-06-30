@@ -6,7 +6,7 @@ import { BasicTool } from "../../basic-tool"
 import { Icon } from "../../icon"
 import { Checkbox } from "../../checkbox"
 import { RenderHtml } from "../../render-html"
-import { AttachmentList } from "../../attachment-card"
+import { AttachmentGallery } from "../../attachment-card"
 import { ToolTextOutput } from "../../tool-output-text"
 import { ToolRegistry, getToolInfo, getDirectory } from "../../message-part"
 import { getSemanticIcon } from "../../semantic-icon"
@@ -1429,7 +1429,7 @@ ToolRegistry.register({
         }}
       >
         <Show when={props.status === "completed" && files().length}>
-          <AttachmentList files={files()} serverUrl={data.serverUrl} />
+          <AttachmentGallery files={files()} serverUrl={data.serverUrl} />
         </Show>
       </BasicTool>
     )

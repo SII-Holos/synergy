@@ -22,7 +22,7 @@ export namespace Attachment {
     filename?: string
   }
 
-  export interface FilePartInput {
+  export interface PartInput {
     filepath: string
     mime: string
     sessionID: string
@@ -30,8 +30,10 @@ export namespace Attachment {
     filename?: string
     id?: string
     localPath?: string
-    source?: MessageV2.FilePart["source"]
-    metadata?: MessageV2.FilePart["metadata"]
+    source?: MessageV2.AttachmentPart["source"]
+    presentation?: MessageV2.AttachmentPart["presentation"]
+    model?: MessageV2.AttachmentPart["model"]
+    metadata?: MessageV2.AttachmentPart["metadata"]
   }
 
   export interface Policy {
@@ -39,6 +41,8 @@ export namespace Attachment {
     keepBinary: boolean
     saveLocal: boolean
     kind: "image" | "pdf" | "document" | "media" | "other"
+    presentation: MessageV2.AttachmentPresentation
+    model: MessageV2.AttachmentModelPolicy
   }
 
   export function policy(target: Target): Policy {
@@ -51,6 +55,8 @@ export namespace Attachment {
         extractText: false,
         keepBinary: true,
         saveLocal: true,
+        presentation: { mode: "card" },
+        model: { mode: "provider-file", summary: attachmentSummary(target, mime) },
       }
     }
 
@@ -60,6 +66,8 @@ export namespace Attachment {
         extractText: true,
         keepBinary: true,
         saveLocal: false,
+        presentation: { mode: "card" },
+        model: { mode: "summary", summary: attachmentSummary(target, mime) },
       }
     }
 
@@ -69,6 +77,8 @@ export namespace Attachment {
         extractText: true,
         keepBinary: false,
         saveLocal: false,
+        presentation: { mode: "card" },
+        model: { mode: "summary", summary: attachmentSummary(target, mime) },
       }
     }
 
@@ -78,6 +88,8 @@ export namespace Attachment {
         extractText: false,
         keepBinary: true,
         saveLocal: true,
+        presentation: { mode: "card" },
+        model: { mode: "summary", summary: attachmentSummary(target, mime) },
       }
     }
 
@@ -86,6 +98,8 @@ export namespace Attachment {
       extractText: false,
       keepBinary: false,
       saveLocal: false,
+      presentation: { mode: "card" },
+      model: { mode: "summary", summary: attachmentSummary(target, mime) },
     }
   }
 
@@ -159,18 +173,21 @@ export namespace Attachment {
     return localPath
   }
 
-  export async function toFilePart(input: FilePartInput): Promise<MessageV2.FilePart> {
+  export async function toPart(input: PartInput): Promise<MessageV2.AttachmentPart> {
     const file = Bun.file(input.filepath)
+    const fallbackPolicy = policy({ filepath: input.filepath, filename: input.filename, mime: input.mime })
     return {
       id: input.id ?? Identifier.ascending("part"),
       sessionID: input.sessionID,
       messageID: input.messageID,
-      type: "file",
+      type: "attachment",
       url: dataUrl(input.mime, await file.bytes()),
       mime: input.mime,
       filename: input.filename,
       localPath: input.localPath,
       source: input.source,
+      presentation: input.presentation ?? fallbackPolicy.presentation,
+      model: input.model ?? fallbackPolicy.model,
       metadata: input.metadata,
     }
   }
@@ -195,5 +212,10 @@ export namespace Attachment {
 
   function fileExtensionFromMime(mime: string) {
     return mime.split("/")[1]?.replace("jpeg", "jpg").replace("svg+xml", "svg").split("+")[0] || "bin"
+  }
+
+  function attachmentSummary(target: Target, mime: string) {
+    const name = target.filename ?? (target.filepath ? path.basename(target.filepath) : undefined)
+    return name ? `${name} (${mime})` : mime
   }
 }
