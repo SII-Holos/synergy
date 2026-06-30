@@ -188,6 +188,31 @@ Example:
 
 Supported specs include local directories, local entry files, `.synergy-plugin.tgz` archives, npm packages, git specs, and URLs. All specs use the shared plugin resolver.
 
+Runtime isolation and resource defaults are configured in the same domain:
+
+```jsonc
+{
+  "pluginRuntimePolicy": {
+    "limits": {
+      "startupTimeoutMs": 15000,
+      "toolInvocationTimeoutMs": 120000,
+      "hookInvocationTimeoutMs": 120000,
+      "bridgeRequestTimeoutMs": 120000,
+      "taskRunTimeoutMs": 120000,
+      "shutdownGraceMs": 1500,
+      "maxConcurrentRequests": 8,
+      "maxLogBytesPerMinute": 128000,
+      "memoryMb": 256,
+      "memoryPollIntervalMs": 10000,
+      "heartbeatIntervalMs": 5000,
+      "heartbeatMissesBeforeKill": 3
+    }
+  }
+}
+```
+
+Synergy resolves runtime limits from config plus `plugin.json.runtime.resources` and passes the same result to process/worker runtimes, bridge calls, delegated tasks, and runtime restart matching.
+
 ### Plugin API
 
 Plugins use the `@ericsanchezok/synergy-plugin` SDK. A runtime entry exports an object descriptor. `PluginDescriptor.id` must match `plugin.json.name`.

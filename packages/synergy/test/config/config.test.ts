@@ -613,6 +613,40 @@ test("does not auto-discover legacy plugin files or mutate config directories", 
   })
 })
 
+test("loads plugin runtime limits from plugin config domain", async () => {
+  await using tmp = await tmpdir({
+    git: true,
+    init: async (dir) => {
+      const domainDir = path.join(dir, ".synergy", "synergy.d")
+      await fs.mkdir(domainDir, { recursive: true })
+      await Bun.write(
+        path.join(domainDir, "50-plugins.jsonc"),
+        JSON.stringify({
+          pluginRuntimePolicy: {
+            limits: {
+              toolInvocationTimeoutMs: 135000,
+              taskRunTimeoutMs: 135000,
+              memoryMb: 384,
+            },
+          },
+        }),
+      )
+    },
+  })
+
+  await ScopeContext.provide({
+    scope: await tmp.scope(),
+    fn: async () => {
+      await Config.state.reset()
+      const limits = (await Config.current()).pluginRuntimePolicy?.limits
+
+      expect(limits?.toolInvocationTimeoutMs).toBe(135000)
+      expect(limits?.taskRunTimeoutMs).toBe(135000)
+      expect(limits?.memoryMb).toBe(384)
+    },
+  })
+})
+
 test("plugin domain updates replace stale specs by canonical source key", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-plugin-domain-"))
   try {

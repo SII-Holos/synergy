@@ -111,6 +111,35 @@ await context.task?.run({
 
 Declare `permissions.tools.task` in `plugin.json` before using this service. `output.mode: "structured"` is a Cortex-native output contract: Cortex validates the child result and stores it on `task.outputResult`, while `task.result` remains the normal trajectory summary.
 
+## Runtime Limits
+
+Plugin runtime limits are configured through the plugin config domain, then optionally narrowed or raised by each plugin manifest:
+
+```jsonc
+// ~/.synergy/config/synergy.d/50-plugins.jsonc
+// <project>/.synergy/synergy.d/50-plugins.jsonc
+{
+  "pluginRuntimePolicy": {
+    "limits": {
+      "startupTimeoutMs": 15000,
+      "toolInvocationTimeoutMs": 120000,
+      "hookInvocationTimeoutMs": 120000,
+      "bridgeRequestTimeoutMs": 120000,
+      "taskRunTimeoutMs": 120000,
+      "shutdownGraceMs": 1500,
+      "maxConcurrentRequests": 8,
+      "maxLogBytesPerMinute": 128000,
+      "memoryMb": 256,
+      "memoryPollIntervalMs": 10000,
+      "heartbeatIntervalMs": 5000,
+      "heartbeatMissesBeforeKill": 3,
+    },
+  },
+}
+```
+
+The host resolves limits in one place: Synergy config first, `plugin.json.runtime.resources` second. Worker and process runtimes, bridge calls, delegated tasks, and runtime restart matching all consume that resolved limit object.
+
 ## create
 
 ```bash
@@ -182,7 +211,7 @@ Creates `<name>-<version>.synergy-plugin.tgz` from `dist/`. The archive must con
 synergy-plugin sign <tarball>
 ```
 
-Signs the plugin archive metadata with the local Ed25519 signing key under `~/.synergy/keys/signing-key.json` and writes `<tarball>.sig`.
+Signs the plugin archive metadata with the local Ed25519 signing key under the configured Synergy home keys directory and writes `<tarball>.sig`.
 
 ## publish-market
 
