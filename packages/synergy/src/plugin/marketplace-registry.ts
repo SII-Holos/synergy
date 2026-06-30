@@ -214,8 +214,8 @@ export namespace PluginMarketplaceRegistry {
     return Number.isFinite(value) ? value : 0
   }
 
-  function trustTier(source: Source): "trusted-import" | "sandbox" {
-    return defaultPluginTrustDecision({ source }).tier === "trusted-import" ? "trusted-import" : "sandbox"
+  function trustTier(source: Source): NormalizedEntry["trustTier"] {
+    return defaultPluginTrustDecision({ source }).tier
   }
 
   function normalizePermissionSummary(items: NormalizedVersion["permissionsSummary"]) {

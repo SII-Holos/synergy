@@ -294,9 +294,9 @@ describe("bridge-enforcement (denied methods still throw)", () => {
     expect(bridgeMethodPolicy("cache.get")).toEqual({ type: "unprivileged" })
     expect(bridgeMethodPolicy("permission.request")).toEqual({ type: "unprivileged" })
     expect(enforcer("tool.invoke", {}).allowed).toBe(false)
-    expect(bridgeMethodPolicy("tool.invoke")).toEqual({ type: "capability", capability: "local_tool_invoke" })
+    expect(bridgeMethodPolicy("tool.invoke")).toEqual({ type: "capability", capability: "tool_invoke" })
 
-    const withLocalTool = createBridgeEnforcementHandler("plugin-x", ["local_tool_invoke"])
+    const withLocalTool = createBridgeEnforcementHandler("plugin-x", ["tool_invoke"])
     expect(withLocalTool("tool.invoke", {}).allowed).toBe(true)
   })
 })

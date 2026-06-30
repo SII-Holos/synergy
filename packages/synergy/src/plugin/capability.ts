@@ -2,7 +2,9 @@ import type { PluginManifest } from "@ericsanchezok/synergy-plugin"
 import {
   baseCapabilities as sharedBaseCapabilities,
   computeRisk,
+  pluginRisk,
   toolCapabilities as sharedToolCapabilities,
+  toolRisk as sharedToolRisk,
 } from "@ericsanchezok/synergy-plugin/permissions"
 
 // ---------------------------------------------------------------------------
@@ -43,7 +45,7 @@ function mergedToolCapabilities(manifest: PluginManifest, tool: ManifestTool): s
 }
 /** Derive overall risk by delegating to the canonical consent/risk calculator. */
 function overallRisk(manifest: PluginManifest, _manifestTools: ManifestTool[]): "low" | "medium" | "high" {
-  return computeRisk(baseCapabilities(manifest), manifest)
+  return pluginRisk(manifest, { scope: "install" })
 }
 
 // ---------------------------------------------------------------------------
@@ -105,4 +107,10 @@ export function toolCapabilities(manifest: PluginManifest, toolId: string): stri
   if (!manifestTool) return baseCapabilities(manifest)
 
   return mergedToolCapabilities(manifest, manifestTool)
+}
+
+export function toolRisk(manifest: PluginManifest, toolId: string): "low" | "medium" | "high" {
+  const manifestTool = manifest.contributes?.tools?.find((t) => t.name === toolId || t.id === toolId)
+  if (!manifestTool) return computeRisk(baseCapabilities(manifest), manifest)
+  return sharedToolRisk(manifest, manifestTool)
 }

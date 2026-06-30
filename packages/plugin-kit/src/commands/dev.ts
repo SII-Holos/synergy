@@ -2,7 +2,7 @@ import path from "path"
 import fs from "fs"
 import type { Argv } from "yargs"
 import { PluginManifest, type PluginManifest as PluginManifestType } from "@ericsanchezok/synergy-plugin"
-import { baseCapabilities, computeRisk, permissionItems } from "@ericsanchezok/synergy-plugin/permissions"
+import { baseCapabilities, permissionItems, pluginRisk } from "@ericsanchezok/synergy-plugin/permissions"
 import { cmd } from "../cmd"
 import { UI } from "../ui"
 
@@ -26,7 +26,7 @@ function riskLabel(risk: "low" | "medium" | "high"): string {
 
 function printPermissionPreview(manifest: PluginManifestType) {
   const capabilities = baseCapabilities(manifest)
-  const risk = computeRisk(capabilities, manifest)
+  const risk = pluginRisk(manifest, { scope: "install" })
   const items = permissionItems(manifest, capabilities)
 
   UI.println(`✓ permissions: ${riskLabel(risk)} risk`)

@@ -9,7 +9,11 @@ import { PermissionRiskBadge } from "../consent/PermissionRiskBadge"
 import { InstallConsentDialog } from "../consent/InstallConsentDialog"
 import { getInstalledVersion, checkUpdateAvailable } from "./install-utils"
 import { MarketplacePluginIcon } from "./MarketplacePluginIcon"
-import { baseCapabilities, computeRisk, registryPermissionSummary } from "@ericsanchezok/synergy-plugin/permissions"
+import {
+  capabilitiesForRiskScope,
+  pluginRisk,
+  registryPermissionSummary,
+} from "@ericsanchezok/synergy-plugin/permissions"
 import type { PluginManifest } from "@ericsanchezok/synergy-plugin"
 import type {
   ApiPluginDetail,
@@ -67,7 +71,7 @@ function runtimeModeFromManifest(manifest: Record<string, unknown> | null | unde
 function riskFromManifest(manifest: Record<string, unknown> | null | undefined): Risk {
   if (!manifest) return "low"
   const pluginManifest = manifest as unknown as PluginManifest
-  return computeRisk(baseCapabilities(pluginManifest), pluginManifest)
+  return pluginRisk(pluginManifest, { scope: "install" })
 }
 
 function toolsFromManifest(manifest: Record<string, unknown> | null | undefined): string[] {
@@ -97,7 +101,7 @@ function uiSurfacesFromManifest(manifest: Record<string, unknown> | null | undef
 function permissionsFromManifest(manifest: Record<string, unknown> | null | undefined): RegistryPermissionItem[] {
   if (!manifest) return []
   const pluginManifest = manifest as unknown as PluginManifest
-  return registryPermissionSummary(pluginManifest, baseCapabilities(pluginManifest))
+  return registryPermissionSummary(pluginManifest, capabilitiesForRiskScope(pluginManifest, "install"))
 }
 
 function fallbackPluginSummary(input: {

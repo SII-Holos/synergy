@@ -4,7 +4,7 @@ import { EOL } from "os"
 import type { Argv } from "yargs"
 import { PluginManifest } from "@ericsanchezok/synergy-plugin"
 import type { PluginDescriptor, PluginHooks, PluginInput } from "@ericsanchezok/synergy-plugin"
-import { baseCapabilities, computeRisk } from "@ericsanchezok/synergy-plugin/permissions"
+import { pluginRisk } from "@ericsanchezok/synergy-plugin/permissions"
 import { cmd } from "../cmd"
 import { UI } from "../ui"
 import { PluginId } from "../lib/ids"
@@ -232,14 +232,14 @@ export async function validatePluginProject(pluginPath: string, options: { runti
       })
   }
 
-  const pluginRisk = computeRisk(baseCapabilities(m), m)
+  const risk = pluginRisk(m, { scope: "install" })
   const trust = defaultPluginTrustDecision({ source: "local", devMode: true })
   results.push(
     ...validateRuntimePolicy({
       manifest: m,
       source: trust.source,
       trustTier: trust.tier,
-      risk: pluginRisk,
+      risk,
       userTrusted: trust.userTrusted,
     }),
   )

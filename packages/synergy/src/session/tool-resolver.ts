@@ -9,8 +9,7 @@ import { PermissionRules } from "@/permission/rules"
 import { SmartAllow } from "@/permission/smart-allow"
 import { Plugin } from "@/plugin"
 import { PluginToolId } from "../plugin/ids.js"
-import { toolCapabilities } from "../plugin/capability"
-import { computeRisk } from "@ericsanchezok/synergy-plugin/permissions"
+import { toolCapabilities, toolRisk } from "../plugin/capability"
 import { getApproval, type PluginApprovalRecord } from "../plugin/consent/approval-store"
 import { ProviderTransform } from "@/provider/transform"
 import type { Provider } from "@/provider/provider"
@@ -131,7 +130,7 @@ export namespace ToolResolver {
         const capabilities = toolCapabilities(manifest, toolId)
         caps[PluginToolId.format(plugin.id, toolId)] = {
           capabilities,
-          risk: computeRisk(capabilities, manifest),
+          risk: toolRisk(manifest, toolId),
         }
       }
       const approval = await getApproval(plugin.id)

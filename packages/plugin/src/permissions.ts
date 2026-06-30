@@ -15,7 +15,6 @@ export const PLUGIN_PERMISSION_CATEGORIES = [
   "identity",
   "communication",
   "platform",
-  "local",
 ] as const
 export type PluginPermissionCategory = (typeof PLUGIN_PERMISSION_CATEGORIES)[number]
 export type PluginPermissionSeverity = PluginRisk
@@ -35,7 +34,7 @@ export interface RegistryPermissionItem {
   risk: PluginRisk
 }
 
-type ManifestTool = NonNullable<NonNullable<PluginManifest["contributes"]>["tools"]>[number]
+export type ManifestTool = NonNullable<NonNullable<PluginManifest["contributes"]>["tools"]>[number]
 
 export interface SynergyCapabilityDefinition extends Omit<PluginPermissionItem, "key"> {
   nonBypassable?: boolean
@@ -196,8 +195,8 @@ export const CAPABILITY_DETAILS: Record<string, SynergyCapabilityDefinition> = {
     title: "Subscribe to Synergy events",
     description: "Can receive approved Synergy runtime events.",
   },
-  local_tool_invoke: {
-    category: "local",
+  tool_invoke: {
+    category: "tools",
     severity: "low",
     title: "Invoke local tools",
     description: "Can call local tools explicitly provided to the current Synergy runtime.",
@@ -312,7 +311,7 @@ export const PROFILE_CAPABILITIES = [
   "tool_execution_hook",
   "permission_hook",
   "event_hook",
-  "local_tool_invoke",
+  "tool_invoke",
   "identity_act",
   "communication_email",
   "channel_outbound",
@@ -386,7 +385,7 @@ export const PERMISSION_CAPABILITY: Record<string, string> = {
   "config:read": "config:read",
   "config:write": "config:write",
   secrets: "secrets",
-  local_tool_invoke: "local_tool_invoke",
+  tool_invoke: "tool_invoke",
   email_read: "communication_email",
   email_send: "communication_email",
   communication_email: "communication_email",
@@ -448,7 +447,7 @@ function buildCapabilitySet(
     caps.add("file_write")
   }
 
-  if (pt?.localTools ?? false) caps.add("local_tool_invoke")
+  if (pt?.localTools ?? false) caps.add("tool_invoke")
   if (tc?.shell ?? pt?.shell ?? false) caps.add("shell")
   if (tc?.network ?? pt?.network ?? false) caps.add("network_request")
 
@@ -521,6 +520,10 @@ export function capabilitiesForRiskScope(manifest: PluginManifest, scope: Plugin
 
 export function pluginRisk(manifest: PluginManifest, input: { scope: PluginRiskScope }): PluginRisk {
   return computeRisk(capabilitiesForRiskScope(manifest, input.scope), manifest)
+}
+
+export function toolRisk(manifest: PluginManifest, tool: ManifestTool): PluginRisk {
+  return computeRisk(toolCapabilities(manifest, tool), manifest)
 }
 
 function networkPermissionItem(manifest: PluginManifest): PluginPermissionItem {
@@ -768,7 +771,6 @@ export function permissionCategoryForKey(key: string): PluginPermissionCategory 
   if (key.startsWith("runtime.")) return "runtime"
   if (key.startsWith("session.")) return "session"
   if (key.startsWith("browser.")) return "browser"
-  if (key.startsWith("local.")) return "local"
   return "tools"
 }
 
@@ -811,7 +813,7 @@ export const PLUGIN_BRIDGE_METHOD_POLICY = {
   "session.read": { type: "capability", capability: "session_data" },
   "workspace.getMetadata": { type: "capability", capability: "workspace_data" },
   "task.run": { type: "capability", capability: "task" },
-  "tool.invoke": { type: "capability", capability: "local_tool_invoke" },
+  "tool.invoke": { type: "capability", capability: "tool_invoke" },
   "permission.request": { type: "unprivileged" },
 } as const satisfies Record<string, Exclude<PluginBridgeMethodPolicy, { type: "unknown" }>>
 
