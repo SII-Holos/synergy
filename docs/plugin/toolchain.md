@@ -66,8 +66,8 @@ tool({
   description: "Generate an image",
   display: {
     kind: "media-generation",
-    visibility: "media",
     presentation: "attachment-only",
+    toolCard: "hidden",
     media: {
       type: "image",
       aspectRatio: "1:1",
@@ -82,7 +82,7 @@ tool({
 })
 ```
 
-`media-generation` tools use Synergy's built-in placeholder while running. Completed success states are hidden from the normal step list when they return primary attachments; error states still render as normal tool cards. Optional `media.actionLabel` and `media.pendingTitle` are accessibility labels, not transcript copy. Do not rely on tool input fields such as `prompt` being displayed by the host.
+`media-generation` tools use Synergy's built-in placeholder while running. `toolCard: "hidden"` keeps the tool card itself out of the transcript when the media surface owns the experience; completed success states render returned primary attachments in place. Optional `media.actionLabel` and `media.pendingTitle` are accessibility labels, not transcript copy. Do not rely on tool input fields such as `prompt` being displayed by the host.
 
 ## Internal Helpers And Planners
 

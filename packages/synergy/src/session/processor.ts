@@ -150,6 +150,13 @@ export namespace SessionProcessor {
       }
     }
 
+    function streamingToolMetadata(part: MessageV2.ToolPart): Record<string, any> | undefined {
+      const state = part.state
+      return state.status === "pending" || state.status === "generating" || state.status === "running"
+        ? (state.metadata as Record<string, any> | undefined)
+        : undefined
+    }
+
     async function settleToolPart(part: MessageV2.ToolPart, outcome: ToolOutcome) {
       const startTime = toolStartTime(part)
       await Observability.emit("tool.settle.start", {
@@ -296,6 +303,10 @@ export namespace SessionProcessor {
                       status: "pending",
                       input: {},
                       raw: "",
+                      metadata: runningToolMetadata(
+                        value.toolName,
+                        "providerMetadata" in value ? value.providerMetadata : undefined,
+                      ),
                     },
                   })
                   toolcalls[value.id] = part as MessageV2.ToolPart
@@ -319,6 +330,7 @@ export namespace SessionProcessor {
                       input: {},
                       raw,
                       charsReceived: raw.length,
+                      metadata: streamingToolMetadata(match),
                     },
                   })
                   toolcalls[value.id] = part as MessageV2.ToolPart
@@ -338,6 +350,7 @@ export namespace SessionProcessor {
                       input: {},
                       raw,
                       charsReceived: raw.length,
+                      metadata: streamingToolMetadata(match),
                     },
                   })
                   toolcalls[value.id] = part as MessageV2.ToolPart

@@ -3232,6 +3232,9 @@ export type ToolStatePending = {
     [key: string]: unknown
   }
   raw: string
+  metadata?: {
+    [key: string]: unknown
+  }
 }
 
 export type ToolStateGenerating = {
@@ -3241,6 +3244,9 @@ export type ToolStateGenerating = {
   }
   raw: string
   charsReceived: number
+  metadata?: {
+    [key: string]: unknown
+  }
 }
 
 export type ToolStateRunning = {

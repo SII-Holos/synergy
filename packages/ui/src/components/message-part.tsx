@@ -48,7 +48,7 @@ import { parsePartialJson } from "@ericsanchezok/synergy-util/json"
 import { createAutoScroll, createTypewriter, createAnimatedNumber } from "../hooks"
 import { getApprovalAudit } from "../utils/approval-audit"
 import { getSemanticIcon } from "./semantic-icon"
-import { isPromotedToolResultPart } from "./tool-result-presentation"
+import { isPromotedToolResultPart, isToolCardHidden } from "./tool-result-presentation"
 
 interface Diagnostic {
   range: {
@@ -1729,6 +1729,7 @@ PART_MAPPING["attachment"] = function AttachmentPartDisplay(props) {
 PART_MAPPING["tool"] = function ToolPartDisplay(props) {
   const data = useData()
   const part = () => props.part as ToolPart
+  if (isToolCardHidden(part())) return null
 
   const permission = createMemo(() => {
     const next = data.store.permission?.[props.message.sessionID]?.[0]
@@ -1754,7 +1755,6 @@ PART_MAPPING["tool"] = function ToolPartDisplay(props) {
     if (raw) return streamInput
     return part().state?.input ?? {}
   }
-  // @ts-expect-error — ToolState is a discriminated union; metadata exists on running/completed/error
   const metadata = () => part().state?.metadata ?? {}
   const approval = createMemo(() => metadata().approval as Record<string, any> | undefined)
   const audit = createMemo(() => getApprovalAudit(approval()))

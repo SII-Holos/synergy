@@ -13,7 +13,7 @@ type MaybeToolPart = {
 
 export type ToolResultPresentation = "default" | "attachment-only"
 export type ToolDisplayKind = "default" | "media-generation"
-export type ToolVisibility = "default" | "media"
+export type ToolCardDisplay = "visible" | "hidden"
 export type ToolMediaType = "image" | "video" | "audio"
 
 export interface ToolMediaDisplay {
@@ -26,8 +26,8 @@ export interface ToolMediaDisplay {
 
 export interface ToolDisplayMetadata {
   kind?: ToolDisplayKind
-  visibility?: ToolVisibility
   presentation?: ToolResultPresentation
+  toolCard?: ToolCardDisplay
   media?: ToolMediaDisplay
   primaryAttachmentIds?: string[]
 }
@@ -51,7 +51,13 @@ export function isMediaGenerationToolPart(part: unknown): boolean {
   const candidate = part as MaybeToolPart
   if (candidate?.type !== "tool") return false
   const display = toolDisplayMetadata(candidate)
-  return display?.kind === "media-generation" || display?.visibility === "media"
+  return display?.kind === "media-generation"
+}
+
+export function isToolCardHidden(part: unknown): boolean {
+  const candidate = part as MaybeToolPart
+  if (candidate?.type !== "tool") return false
+  return toolDisplayMetadata(candidate)?.toolCard === "hidden"
 }
 
 export function isAttachmentOnlyToolPart(part: unknown): boolean {
@@ -75,7 +81,11 @@ export function isActiveMediaGenerationToolPart(part: unknown): boolean {
   const candidate = part as MaybeToolPart
   if (candidate?.type !== "tool") return false
   if (!isMediaGenerationToolPart(candidate)) return false
-  return candidate.state?.status === "running"
+  return (
+    candidate.state?.status === "pending" ||
+    candidate.state?.status === "generating" ||
+    candidate.state?.status === "running"
+  )
 }
 
 export function primaryToolAttachments(part: unknown): AttachmentPart[] {

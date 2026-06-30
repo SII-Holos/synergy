@@ -99,8 +99,8 @@ For image, video, or audio generation tools, declare the display protocol on the
 ```ts
 const mediaDisplay = {
   kind: "media-generation",
-  visibility: "media",
   presentation: "attachment-only",
+  toolCard: "hidden",
   media: {
     type: "image",
     aspectRatio: "1:1",
@@ -119,7 +119,7 @@ tool({
 })
 ```
 
-Use `visibility: "media"` for tools whose running and completed success states belong on the media surface. Error states still fall back to normal tool cards. Optional media labels are for accessibility and host-specific status surfaces; Synergy does not show tool input parameters as transcript copy.
+Use `toolCard: "hidden"` for tools whose running and completed states belong on a dedicated surface instead of a tool card. Optional media labels are for accessibility and host-specific status surfaces; Synergy does not show tool input parameters as transcript copy.
 
 ## Internal Tools And Delegated Tasks
 

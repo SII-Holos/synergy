@@ -67,7 +67,7 @@ const image = {
 function mediaTool(input: {
   id: string
   messageID: string
-  status: "running" | "completed"
+  status: "pending" | "generating" | "running" | "completed"
   attachments?: (typeof image)[]
 }): PartType {
   return {
@@ -78,14 +78,8 @@ function mediaTool(input: {
     callID: `call-${input.id}`,
     tool: "plugin__synergy-meme-plugin__generate_meme",
     state:
-      input.status === "running"
+      input.status === "completed"
         ? {
-            status: "running",
-            input: { prompt: "random meme" },
-            metadata: { display: { kind: "media-generation", visibility: "media" } },
-            time: { start: 1 },
-          }
-        : {
             status: "completed",
             input: { prompt: "random meme" },
             output: "",
@@ -93,14 +87,28 @@ function mediaTool(input: {
             metadata: {
               display: {
                 kind: "media-generation",
-                visibility: "media",
                 presentation: "attachment-only",
+                toolCard: "hidden",
                 primaryAttachmentIds: [image.id],
               },
             },
             attachments: input.attachments ?? [image],
             time: { start: 1, end: 2 },
-          },
+          }
+        : input.status === "running"
+          ? {
+              status: "running",
+              input: { prompt: "random meme" },
+              metadata: { display: { kind: "media-generation", toolCard: "hidden" } },
+              time: { start: 1 },
+            }
+          : {
+              status: input.status,
+              input: {},
+              raw: '{"prompt":"random meme"',
+              charsReceived: input.status === "generating" ? 23 : undefined,
+              metadata: { display: { kind: "media-generation", toolCard: "hidden" } },
+            },
   } as PartType
 }
 
@@ -130,6 +138,20 @@ describe("session turn timeline", () => {
     expect(items.map((item) => item.kind)).toEqual(["reasoning", "media-pending", "part"])
     expect(items[0]).toMatchObject({ kind: "reasoning", part: { type: "reasoning" } })
     expect(items[2]).toMatchObject({ kind: "part", part: { type: "text" } })
+  })
+
+  test("shows a media placeholder from pending and generating tool input states", () => {
+    const message = assistant("assistant-a")
+
+    for (const status of ["pending", "generating"] as const) {
+      const items = collectSessionTurnTimelineItems(
+        [message],
+        { [message.id]: [mediaTool({ id: `tool-${status}`, messageID: message.id, status })] },
+        true,
+      )
+
+      expect(items.map((item) => item.kind)).toEqual(["media-pending"])
+    }
   })
 
   test("hides completed-turn reasoning without moving later parts", () => {
@@ -225,5 +247,24 @@ describe("session turn timeline", () => {
 
     expect(items).toHaveLength(1)
     expect(items[0]).toMatchObject({ kind: "part", part: { type: "tool", tool: "read" } })
+  })
+
+  test("hides completed media tools without attachments when their tool card is hidden", () => {
+    const message = assistant("assistant-a")
+    const parts: PartType[] = [
+      mediaTool({ id: "tool-a", messageID: message.id, status: "completed", attachments: [] }),
+      {
+        id: "text-a",
+        sessionID: "session",
+        messageID: message.id,
+        type: "text",
+        text: "继续",
+      } as PartType,
+    ]
+
+    const items = collectSessionTurnTimelineItems([message], { [message.id]: parts }, false)
+
+    expect(items.map((item) => item.kind)).toEqual(["part"])
+    expect(items[0]).toMatchObject({ kind: "part", part: { type: "text" } })
   })
 })

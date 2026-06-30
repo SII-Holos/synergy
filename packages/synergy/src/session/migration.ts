@@ -104,6 +104,25 @@ function defaultAttachmentModel(part: Record<string, unknown>, owner: "user" | "
   return { mode: "summary", summary: attachmentSummary(part) }
 }
 
+function migrateDisplayMetadata(display: unknown): { value: Record<string, unknown> | undefined; changed: boolean } {
+  const record = asRecord(display)
+  if (!record) return { value: undefined, changed: display !== undefined }
+
+  const original = JSON.stringify(record)
+  const next: Record<string, unknown> = { ...record }
+
+  if (next.visibility === "media") {
+    if (next.kind === undefined || next.kind === "default") next.kind = "media-generation"
+    if (next.toolCard === undefined) next.toolCard = "hidden"
+    delete next.visibility
+  }
+
+  if (next.presentation === "artifact-only") next.presentation = "attachment-only"
+
+  const value = compact(next)
+  return { value, changed: JSON.stringify(value) !== original }
+}
+
 function migrateAttachmentMetadata(metadata: unknown): Record<string, unknown> | undefined {
   const record = asRecord(metadata)
   if (!record) return undefined
@@ -113,12 +132,7 @@ function migrateAttachmentMetadata(metadata: unknown): Record<string, unknown> |
   delete next.artifact
 
   const display = asRecord(next.display)
-  if (display?.presentation === "artifact-only") {
-    next.display = {
-      ...display,
-      presentation: "attachment-only",
-    }
-  }
+  if (display) next.display = migrateDisplayMetadata(display).value
 
   return compact(next)
 }
@@ -165,6 +179,7 @@ function migrateToolDisplayMetadata(metadata: unknown): { value: unknown; change
 }
 
 const legacyAttachmentPattern = String.raw`"type"\s*:\s*"file"|"artifact-only"|"kind"\s*:\s*"artifact"|"artifact"\s*:`
+const legacyToolDisplayPattern = String.raw`"visibility"\s*:\s*"media"`
 const attachmentPartGlob = new Bun.Glob("sessions/**/parts/*.json")
 const legacyAttachmentMarkers = [
   '"type":"file"',
@@ -175,6 +190,7 @@ const legacyAttachmentMarkers = [
   '"artifact":',
   '"artifact" :',
 ]
+const legacyToolDisplayMarkers = ['"visibility":"media"', '"visibility": "media"', '"visibility" : "media"']
 
 type AttachmentPartCandidate = {
   key: string[]
@@ -186,6 +202,10 @@ type AttachmentPartCandidate = {
 
 function needsAttachmentMigration(text: string) {
   return legacyAttachmentMarkers.some((marker) => text.includes(marker))
+}
+
+function needsToolDisplayMigration(text: string) {
+  return legacyToolDisplayMarkers.some((marker) => text.includes(marker))
 }
 
 function candidateFromRelativePath(relativePath: string, text: string): AttachmentPartCandidate | undefined {
@@ -244,6 +264,37 @@ async function findLegacyAttachmentPartPaths() {
   return text.split(/\r?\n/).filter(Boolean)
 }
 
+async function findLegacyToolDisplayPartPaths() {
+  const sessionsRoot = path.join(Global.Path.data, "sessions")
+  if (!(await fs.stat(sessionsRoot).catch(() => undefined))?.isDirectory()) return []
+  const rg = await existingRipgrepPath()
+  if (!rg) return undefined
+
+  const proc = Bun.spawn(
+    [
+      rg,
+      "--files-with-matches",
+      "--hidden",
+      "--follow",
+      "--glob=**/parts/*.json",
+      "--",
+      legacyToolDisplayPattern,
+      sessionsRoot,
+    ],
+    {
+      stdout: "pipe",
+      stderr: "ignore",
+      maxBuffer: 1024 * 1024 * 50,
+    },
+  )
+  const [text, exitCode] = await Promise.all([Bun.readableStreamToText(proc.stdout), proc.exited])
+  if (exitCode !== 0 && exitCode !== 1) {
+    log.warn("legacy tool display part candidate search failed", { exitCode })
+    return []
+  }
+  return text.split(/\r?\n/).filter(Boolean)
+}
+
 async function collectLegacyAttachmentPartCandidates(): Promise<AttachmentPartCandidate[]> {
   const candidates: AttachmentPartCandidate[] = []
   const pending: Promise<void>[] = []
@@ -269,6 +320,42 @@ async function collectLegacyAttachmentPartCandidates(): Promise<AttachmentPartCa
         .text()
         .then((text) => {
           if (!needsAttachmentMigration(text)) return
+          const candidate = candidateFromRelativePath(path.relative(Global.Path.data, filepath), text)
+          if (candidate) candidates.push(candidate)
+        })
+        .catch(() => undefined),
+    )
+    if (pending.length >= 64) await flush()
+  }
+  await flush()
+  return candidates.sort((a, b) => a.key.join("/").localeCompare(b.key.join("/")))
+}
+
+async function collectLegacyToolDisplayPartCandidates(): Promise<AttachmentPartCandidate[]> {
+  const candidates: AttachmentPartCandidate[] = []
+  const pending: Promise<void>[] = []
+  const flush = async () => {
+    if (pending.length === 0) return
+    await Promise.all(pending.splice(0))
+  }
+
+  const paths = await findLegacyToolDisplayPartPaths()
+  const scan = async function* () {
+    if (paths) {
+      for (const filepath of paths) yield filepath
+      return
+    }
+    for await (const relativePath of attachmentPartGlob.scan({ cwd: Global.Path.data, onlyFiles: true })) {
+      yield path.join(Global.Path.data, relativePath)
+    }
+  }
+
+  for await (const filepath of scan()) {
+    pending.push(
+      Bun.file(filepath)
+        .text()
+        .then((text) => {
+          if (!needsToolDisplayMigration(text)) return
           const candidate = candidateFromRelativePath(path.relative(Global.Path.data, filepath), text)
           if (candidate) candidates.push(candidate)
         })
@@ -346,6 +433,62 @@ async function migrateSessionAttachmentParts(progress: (current: number, total: 
   }
 
   log.info("session attachment part migration complete", { total: tasks.length, changed: changedCount })
+}
+
+function migrateToolPartDisplayMetadata(part: Record<string, unknown>): {
+  value: Record<string, unknown>
+  changed: boolean
+} {
+  let next = { ...part }
+  let changed = false
+
+  const state = asRecord(next.state)
+  if (state) {
+    const migratedState = { ...state }
+    const metadata = migrateToolDisplayMetadata(state.metadata)
+    if (metadata.changed) {
+      migratedState.metadata = metadata.value
+      changed = true
+    }
+    if (changed) next = { ...next, state: migratedState }
+  }
+
+  const metadata = migrateToolDisplayMetadata(next.metadata)
+  if (metadata.changed) {
+    next = { ...next, metadata: metadata.value }
+    changed = true
+  }
+
+  return { value: next, changed }
+}
+
+async function migrateSessionToolDisplayMetadata(progress: (current: number, total: number) => void) {
+  const tasks = await collectLegacyToolDisplayPartCandidates()
+  if (tasks.length === 0) return
+
+  let done = 0
+  let changedCount = 0
+  for (const { key, text } of tasks) {
+    let part: any
+    try {
+      part = JSON.parse(text)
+    } catch {
+      part = await Storage.read<any>(key).catch(() => undefined)
+    }
+
+    if (part?.type === "tool") {
+      const migrated = migrateToolPartDisplayMetadata(part)
+      if (migrated.changed) {
+        await Storage.write(key, migrated.value)
+        changedCount++
+      }
+    }
+
+    done++
+    progress(done, tasks.length)
+  }
+
+  log.info("session tool display metadata migration complete", { total: tasks.length, changed: changedCount })
 }
 
 async function repairPendingReplyFlags(progress: (current: number, total: number) => void) {
@@ -878,6 +1021,13 @@ export const migrations: Migration[] = [
     description: "Migrate session file parts and artifact-only media metadata to attachment parts",
     async up(progress) {
       await migrateSessionAttachmentParts(progress)
+    },
+  },
+  {
+    id: "20260630-session-tool-card-display",
+    description: "Migrate media tool display visibility into explicit tool card display policy",
+    async up(progress) {
+      await migrateSessionToolDisplayMetadata(progress)
     },
   },
 ]

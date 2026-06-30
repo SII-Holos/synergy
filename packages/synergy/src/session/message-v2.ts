@@ -299,6 +299,7 @@ export namespace MessageV2 {
       status: z.literal("pending"),
       input: z.record(z.string(), z.any()),
       raw: z.string(),
+      metadata: z.record(z.string(), z.any()).optional(),
     })
     .meta({
       ref: "ToolStatePending",
@@ -315,6 +316,7 @@ export namespace MessageV2 {
       input: z.record(z.string(), z.any()),
       raw: z.string(),
       charsReceived: z.number(),
+      metadata: z.record(z.string(), z.any()).optional(),
     })
     .meta({
       ref: "ToolStateGenerating",

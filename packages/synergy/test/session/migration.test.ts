@@ -109,7 +109,13 @@ describe("session migrations", () => {
             input: {},
             output: "",
             title: "Plugin",
-            metadata: { display: { presentation: "artifact-only", primaryAttachmentIds: ["tool_file"] } },
+            metadata: {
+              display: {
+                visibility: "media",
+                presentation: "artifact-only",
+                primaryAttachmentIds: ["tool_file"],
+              },
+            },
             time: { start: 1, end: 2 },
             attachments: [
               {
@@ -145,6 +151,9 @@ describe("session migrations", () => {
           StoragePath.messagePart(scope, sid, assistantMessage, Identifier.asPartID("part_tool")),
         )
         expect(toolPart.state.metadata.display.presentation).toBe("attachment-only")
+        expect(toolPart.state.metadata.display.kind).toBe("media-generation")
+        expect(toolPart.state.metadata.display.toolCard).toBe("hidden")
+        expect(toolPart.state.metadata.display.visibility).toBeUndefined()
         expect(toolPart.state.attachments[0].type).toBe("attachment")
         expect(toolPart.state.attachments[0].model).toEqual({
           mode: "summary",
@@ -153,6 +162,53 @@ describe("session migrations", () => {
         expect(toolPart.state.attachments[0].metadata).toEqual({
           kind: "attachment",
           attachment: { originTool: "plugin_test", size: 12 },
+        })
+      },
+    })
+  })
+
+  test("migrates media display visibility into explicit hidden tool card policy", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const tmpScope = await tmp.scope()
+    await ScopeContext.provide({
+      scope: tmpScope,
+      fn: async () => {
+        const session = await Session.create({})
+        const user = await addUserMessage(session.id)
+        const assistant = await addTerminalAssistantMessage(session.id, user.id)
+        const scope = Identifier.asScopeID(tmpScope.id)
+        const sid = Identifier.asSessionID(session.id)
+        const assistantMessage = Identifier.asMessageID(assistant.id)
+
+        await Storage.write(StoragePath.messagePart(scope, sid, assistantMessage, Identifier.asPartID("part_tool")), {
+          id: "part_tool",
+          sessionID: session.id,
+          messageID: assistant.id,
+          type: "tool",
+          callID: "call_1",
+          tool: "plugin_test",
+          state: {
+            status: "completed",
+            input: {},
+            output: "",
+            title: "Plugin",
+            metadata: { display: { visibility: "media", presentation: "attachment-only" } },
+            time: { start: 1, end: 2 },
+            attachments: [],
+          },
+        })
+
+        const migration = migrations.find((entry) => entry.id === "20260630-session-tool-card-display")
+        expect(migration).toBeDefined()
+        await migration!.up(() => {})
+
+        const toolPart = await Storage.read<any>(
+          StoragePath.messagePart(scope, sid, assistantMessage, Identifier.asPartID("part_tool")),
+        )
+        expect(toolPart.state.metadata.display).toEqual({
+          kind: "media-generation",
+          presentation: "attachment-only",
+          toolCard: "hidden",
         })
       },
     })

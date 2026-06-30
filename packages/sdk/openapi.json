@@ -23422,6 +23422,13 @@
           },
           "raw": {
             "type": "string"
+          },
+          "metadata": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {}
           }
         },
         "required": ["status", "input", "raw"]
@@ -23445,6 +23452,13 @@
           },
           "charsReceived": {
             "type": "number"
+          },
+          "metadata": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {}
           }
         },
         "required": ["status", "input", "raw", "charsReceived"]

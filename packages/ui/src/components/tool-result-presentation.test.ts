@@ -3,6 +3,7 @@ import {
   isActiveMediaGenerationToolPart,
   isAttachmentOnlyToolPart,
   isPromotedToolResultPart,
+  isToolCardHidden,
   primaryToolAttachments,
   toolResultPresentation,
 } from "./tool-result-presentation"
@@ -93,22 +94,23 @@ describe("tool result presentation", () => {
   })
 
   test("detects active media-generation tools for the timeline placeholder", () => {
-    const part = {
-      type: "tool",
-      state: {
-        status: "running",
-        input: { prompt: "make a meme" },
-        metadata: {
-          display: {
-            kind: "media-generation",
-            visibility: "media",
-            media: { type: "image" },
+    for (const status of ["pending", "generating", "running"]) {
+      const part = {
+        type: "tool",
+        state: {
+          status,
+          input: { prompt: "make a meme" },
+          metadata: {
+            display: {
+              kind: "media-generation",
+              media: { type: "image" },
+            },
           },
         },
-      },
-    }
+      }
 
-    expect(isActiveMediaGenerationToolPart(part)).toBe(true)
+      expect(isActiveMediaGenerationToolPart(part)).toBe(true)
+    }
   })
 
   test("promotes completed media-generation attachments", () => {
@@ -119,7 +121,6 @@ describe("tool result presentation", () => {
         metadata: {
           display: {
             kind: "media-generation",
-            visibility: "media",
             presentation: "attachment-only",
           },
         },
@@ -137,7 +138,7 @@ describe("tool result presentation", () => {
         type: "tool",
         state: {
           status: "error",
-          metadata: { display: { kind: "media-generation", visibility: "media" } },
+          metadata: { display: { kind: "media-generation" } },
           error: "failed",
         },
       }),
@@ -148,8 +149,30 @@ describe("tool result presentation", () => {
         type: "tool",
         state: {
           status: "completed",
-          metadata: { display: { kind: "media-generation", visibility: "media" } },
+          metadata: { display: { kind: "media-generation" } },
           attachments: [],
+        },
+      }),
+    ).toBe(false)
+  })
+
+  test("detects explicit hidden tool cards", () => {
+    expect(
+      isToolCardHidden({
+        type: "tool",
+        state: {
+          status: "completed",
+          metadata: { display: { kind: "media-generation", toolCard: "hidden" } },
+        },
+      }),
+    ).toBe(true)
+
+    expect(
+      isToolCardHidden({
+        type: "tool",
+        state: {
+          status: "completed",
+          metadata: { display: { kind: "media-generation" } },
         },
       }),
     ).toBe(false)

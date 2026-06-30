@@ -23,6 +23,7 @@ import { MediaGenerationCard } from "./media-generation-card"
 import {
   isActiveMediaGenerationToolPart,
   isPromotedToolResultPart,
+  isToolCardHidden,
   primaryToolAttachments,
 } from "./tool-result-presentation"
 import "./session-turn.css"
@@ -83,6 +84,7 @@ export function timelineKindForPart(part: PartType, working: boolean): SessionTu
   if (part.type !== "tool") return undefined
   if (isActiveMediaGenerationToolPart(part)) return "media-pending"
   if (isPromotedToolResultPart(part)) return "media-result"
+  if (isToolCardHidden(part)) return undefined
   return "part"
 }
 
