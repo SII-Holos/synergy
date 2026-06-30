@@ -25,6 +25,8 @@ import { PluginToolId } from "./ids"
 import { baseCapabilities, toolCapabilities } from "./capability"
 import { resolveRuntimeLimits } from "../plugin-runtime/health"
 
+const PLUGIN_TASK_TIMEOUT_HEADROOM_MS = 5_000
+
 type RuntimeContext = {
   pluginId?: string
   pluginDir?: string
@@ -123,10 +125,14 @@ export async function runPluginTask(input: {
   }
   abort?.addEventListener("abort", cancel, { once: true })
   try {
-    const timeoutMs =
-      request.timeoutMs ??
-      (typeof taskPermission === "object" ? taskPermission.maxRuntimeMs : undefined) ??
-      (await defaultPluginTaskRunTimeoutMs(input.pluginDir))
+    const limits = await defaultPluginRuntimeLimits(input.pluginDir)
+    const timeoutMs = resolvePluginTaskWaitTimeoutMs({
+      requestedTimeoutMs:
+        request.timeoutMs ??
+        (typeof taskPermission === "object" ? taskPermission.maxRuntimeMs : undefined) ??
+        limits.taskRunTimeoutMs,
+      toolInvocationTimeoutMs: limits.toolInvocationTimeoutMs,
+    })
     const completed = await Cortex.waitFor(task.id, Math.max(1, Math.ceil(timeoutMs / 1_000)))
     if (!completed || completed.status === "queued" || completed.status === "running") {
       await Cortex.cancel(task.id)
@@ -311,15 +317,20 @@ function normalizeTaskRunInput(input: ToolTaskRunInput): ToolTaskRunInput {
 }
 
 async function defaultPluginToolInvocationTimeoutMs(pluginDir?: string): Promise<number> {
-  const config = await Config.current().catch(() => undefined)
-  const manifest = pluginDir ? await ManifestReader.read(pluginDir) : undefined
-  return resolveRuntimeLimits(config?.pluginRuntimePolicy?.limits, manifest?.runtime?.resources).toolInvocationTimeoutMs
+  return (await defaultPluginRuntimeLimits(pluginDir)).toolInvocationTimeoutMs
 }
 
-async function defaultPluginTaskRunTimeoutMs(pluginDir?: string): Promise<number> {
+async function defaultPluginRuntimeLimits(pluginDir?: string) {
   const config = await Config.current().catch(() => undefined)
   const manifest = pluginDir ? await ManifestReader.read(pluginDir) : undefined
-  return resolveRuntimeLimits(config?.pluginRuntimePolicy?.limits, manifest?.runtime?.resources).taskRunTimeoutMs
+  return resolveRuntimeLimits(config?.pluginRuntimePolicy?.limits, manifest?.runtime?.resources)
+}
+
+export function resolvePluginTaskWaitTimeoutMs(input: { requestedTimeoutMs: number; toolInvocationTimeoutMs: number }) {
+  const requested = Math.max(1, Math.round(input.requestedTimeoutMs))
+  const outer = Math.max(1, Math.round(input.toolInvocationTimeoutMs))
+  const headroom = Math.min(PLUGIN_TASK_TIMEOUT_HEADROOM_MS, Math.max(250, Math.ceil(outer * 0.05)))
+  return Math.max(1, Math.min(requested, outer - headroom))
 }
 
 function taskResult(
