@@ -199,14 +199,17 @@ export function Sidebar(props: SidebarProps) {
 
   const handleProjectDelete = (e: MouseEvent, scope: LocalScope) => {
     e.stopPropagation()
+    const scopeID = scope.id
+    const worktree = scope.worktree
+    if (!scopeID) return
     dialog.show(() => (
       <DialogConfirm
-        title="Delete project"
-        description={`Delete "${getScopeLabel(scope)}"? This archives the project on the server.`}
-        confirmLabel="Delete"
+        title="Archive project"
+        description={`Archive "${getScopeLabel(scope)}"? The project will be hidden from the sidebar and its data preserved.`}
+        confirmLabel="Archive"
         onConfirm={async () => {
-          if (scope.id) await globalSDK.client.scope.remove({ path_scopeID: scope.id })
-          else await globalSDK.client.scope.remove({ path_scopeID: scope.worktree })
+          await globalSDK.client.scope.remove({ path_scopeID: scopeID })
+          layout.scopes.close(worktree)
         }}
       />
     ))
@@ -659,7 +662,7 @@ export function Sidebar(props: SidebarProps) {
                                       onClick={(e) => handleProjectDelete(e, scope)}
                                     >
                                       <Icon name="trash-2" size="small" />
-                                      <span>Delete</span>
+                                      <span>Archive</span>
                                     </button>
                                   </div>
                                 </>

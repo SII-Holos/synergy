@@ -287,6 +287,9 @@ export namespace SessionNav {
       if (sid !== "home") {
         scopeInfo = await Storage.read<any>(StoragePath.scope(Identifier.asScopeID(sid))).catch(() => undefined)
       }
+      // Skip archived scopes — they've been "deleted" and should not appear in the sidebar
+      const rawScope = scopeInfo as { time?: { archived?: number } } | undefined
+      if (rawScope?.time?.archived) continue
       const latestActivityAt = activeEntries.length > 0 ? Math.max(...activeEntries.map((e) => e.lastActivityAt)) : 0
       results.push({
         scopeID: sid,

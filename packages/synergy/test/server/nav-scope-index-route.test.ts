@@ -152,6 +152,51 @@ describe("GET /scope/index", () => {
     })
   })
 
+  test("excludes archived scopes from the index", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const scope = await tmp.scope()
+
+    // Create a session so this scope shows up
+    await ScopeContext.provide({
+      scope,
+      fn: async () => {
+        const s = await Session.create({ title: "Will Be Deleted" })
+
+        await ScopeContext.provide({
+          scope: Scope.home(),
+          fn: async () => {
+            const app = Server.App()
+            const before = await app.request("/scope/index")
+            const beforeBody = await before.json()
+            expect(beforeBody.find((e: any) => e.scopeID === scope.id)).toBeDefined()
+          },
+        })
+
+        // Archive the scope (the "delete" action)
+        await Scope.remove(scope.id)
+
+        await ScopeContext.provide({
+          scope: Scope.home(),
+          fn: async () => {
+            const app = Server.App()
+            const after = await app.request("/scope/index")
+            const afterBody = await after.json()
+            expect(afterBody.find((e: any) => e.scopeID === scope.id)).toBeUndefined()
+          },
+        })
+
+        // The archived scope still has session nav entries — buildScopeIndex
+        // must skip it based on the archived flag in scope metadata.
+        // Verify the nav entries exist but the scope entry doesn't.
+        const navIndex = await SessionNav.readNavIndex(scope.id)
+        const archivedEntries = navIndex.entries.filter((e) => !e.archived)
+        expect(archivedEntries.length).toBeGreaterThanOrEqual(1)
+
+        await Session.remove(s.id)
+      },
+    })
+  })
+
   test("latestActivityAt reflects most recent session in scope", async () => {
     await using tmp = await tmpdir({ git: true })
     const scope = await tmp.scope()
