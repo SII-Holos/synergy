@@ -2,7 +2,7 @@ import z from "zod"
 import path from "path"
 import fs from "fs/promises"
 import type { PluginManifest } from "@ericsanchezok/synergy-plugin"
-import { getPlugin, getLoadedPlugins } from "./loader"
+import { getPlugin, getLoadedPlugins, type LoadedPlugin } from "./loader"
 import * as ManifestReader from "./manifest-reader"
 import * as Capability from "./capability"
 import { findPluginLockEntry, resolveInstalledPluginPolicy, type PluginTrustDecision, type PluginSource } from "./trust"
@@ -189,12 +189,13 @@ function countUIContributions(manifest: PluginManifest): number {
   return count
 }
 
-export async function getStatus(pluginId: string): Promise<PluginStatus | null> {
-  const plugin = await getPlugin(pluginId)
-  if (!plugin) return null
-
+export async function getStatusForLoadedPlugin(
+  plugin: LoadedPlugin,
+  manifestOverride?: PluginManifest,
+): Promise<PluginStatus> {
+  const pluginId = plugin.id
   const warnings: PluginStatus["warnings"] = []
-  const manifest = await ManifestReader.read(plugin.pluginDir)
+  const manifest = manifestOverride ?? (await ManifestReader.read(plugin.pluginDir))
   const manifestValid = true
 
   // ── Capabilities ──
@@ -336,6 +337,12 @@ export async function getStatus(pluginId: string): Promise<PluginStatus | null> 
     runtime,
     warnings,
   }
+}
+
+export async function getStatus(pluginId: string): Promise<PluginStatus | null> {
+  const plugin = await getPlugin(pluginId)
+  if (!plugin) return null
+  return getStatusForLoadedPlugin(plugin)
 }
 
 export async function getAllStatus(): Promise<PluginStatus[]> {

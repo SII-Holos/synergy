@@ -1,53 +1,41 @@
-import { describe, expect, test, mock, beforeEach } from "bun:test"
+import { describe, expect, test, beforeEach } from "bun:test"
+import type { PluginManifest } from "@ericsanchezok/synergy-plugin"
 import * as Audit from "../../src/plugin/audit"
+import type { LoadedPlugin } from "../../src/plugin/loader"
+import { getStatusForLoadedPlugin } from "../../src/plugin/status"
 import { Log } from "../../src/util/log"
 
 Log.init({ print: false })
 
-// Mock the plugin loader so getStatus can find a plugin
-let mockPlugin: any | null = null
-let mockManifest: any | null = null
+let plugin: LoadedPlugin
+let manifest: PluginManifest
 let pluginId = ""
-const mockLoaderState = Object.assign(
-  mock(async () => ({ loaded: [] })),
-  {
-    resetAll: mock(async () => {}),
-  },
-)
 
-mock.module("../../src/plugin/loader.js", () => ({
-  state: mockLoaderState,
-  specToPluginId: new Map(),
-  resolveSpecPluginDir: mock(() => "/tmp/rollback-test"),
-  getPlugin: mock(async (id: string) => {
-    if (mockPlugin && mockPlugin.id === id) return mockPlugin
-    return null
-  }),
-  getLoadedPlugins: mock(async () => []),
-  incrementReloadVersion: mock(() => {}),
-}))
+function baseManifest(overrides: Partial<PluginManifest> = {}): PluginManifest {
+  return {
+    name: pluginId,
+    version: "1.0.0",
+    description: "Rollback status test plugin",
+    main: "./runtime/index.js",
+    permissions: {},
+    contributes: {},
+    ...overrides,
+  }
+}
 
-mock.module("../../src/plugin/manifest-reader.js", () => ({
-  read: mock(async () => mockManifest),
-}))
-
-// Import status AFTER all mocks are in place
-const { getStatus } = await import("../../src/plugin/status.js")
+function getStatus() {
+  return getStatusForLoadedPlugin(plugin, manifest)
+}
 
 beforeEach(() => {
   pluginId = `rollback-test-plugin-${crypto.randomUUID()}`
-  mockPlugin = {
+  plugin = {
     id: pluginId,
     name: "Rollback Test",
     hooks: {},
-    pluginDir: "/tmp/rollback-test",
+    pluginDir: `/tmp/${pluginId}`,
   }
-  mockManifest = {
-    name: pluginId,
-    version: "1.0.0",
-    permissions: {},
-    contributes: {},
-  }
+  manifest = baseManifest()
 })
 
 async function recordRollback(details: Record<string, unknown>) {
@@ -71,7 +59,7 @@ describe("Status: update_failed_rolled_back warning", () => {
       rolledBack: true,
     })
 
-    const status = await getStatus(pluginId)
+    const status = await getStatus()
     expect(status).toBeDefined()
 
     const rollbackWarnings = status!.warnings.filter((w) => w.type === "update_failed_rolled_back")
@@ -88,7 +76,7 @@ describe("Status: update_failed_rolled_back warning", () => {
       details: {},
     })
 
-    const status = await getStatus(pluginId)
+    const status = await getStatus()
     expect(status).toBeDefined()
 
     const rollbackWarnings = status!.warnings.filter((w) => w.type === "update_failed_rolled_back")
@@ -103,7 +91,7 @@ describe("Status: update_failed_rolled_back warning", () => {
       rolledBack: true,
     })
 
-    const status = await getStatus(pluginId)
+    const status = await getStatus()
     expect(status).toBeDefined()
 
     const rollbackWarnings = status!.warnings.filter((w) => w.type === "update_failed_rolled_back")
@@ -120,7 +108,7 @@ describe("Status: update_failed_rolled_back warning", () => {
       rolledBack: true,
     })
 
-    const status = await getStatus(pluginId)
+    const status = await getStatus()
     expect(status).toBeDefined()
 
     const rollbackWarnings = status!.warnings.filter((w) => w.type === "update_failed_rolled_back")
@@ -131,7 +119,7 @@ describe("Status: update_failed_rolled_back warning", () => {
     await recordRollback({ oldVersion: "1.0.0", newVersion: "1.1.0", error: "first fail" })
     await recordRollback({ oldVersion: "1.0.0", newVersion: "1.2.0", error: "second fail" })
 
-    const status = await getStatus(pluginId)
+    const status = await getStatus()
     expect(status).toBeDefined()
 
     const rollbackWarnings = status!.warnings.filter((w) => w.type === "update_failed_rolled_back")
@@ -141,26 +129,20 @@ describe("Status: update_failed_rolled_back warning", () => {
 
 describe("Status: plugin stores", () => {
   test("does not report config store when plugin has no config access", async () => {
-    mockManifest = {
-      name: pluginId,
-      version: "1.0.0",
-      permissions: { data: { config: "none" } },
-      contributes: {},
-    }
+    manifest = baseManifest({
+      permissions: { data: { config: "none", secrets: "none", session: "none", workspace: "none" } },
+    })
 
-    const status = await getStatus(pluginId)
+    const status = await getStatus()
     expect(status?.stores.config).toBe(false)
   })
 
   test("reports config store when plugin declares plugin config access", async () => {
-    mockManifest = {
-      name: pluginId,
-      version: "1.0.0",
-      permissions: { data: { config: "plugin" } },
-      contributes: {},
-    }
+    manifest = baseManifest({
+      permissions: { data: { config: "plugin", secrets: "none", session: "none", workspace: "none" } },
+    })
 
-    const status = await getStatus(pluginId)
+    const status = await getStatus()
     expect(status?.stores.config).toBe(true)
   })
 })
