@@ -23,6 +23,7 @@
       "version": "1.1.26",
       "dependencies": {
         "@aarkue/tiptap-math-extension": "1.4.0",
+        "@ericsanchezok/synergy-plugin": "workspace:*",
         "@ericsanchezok/synergy-sdk": "workspace:*",
         "@ericsanchezok/synergy-ui": "workspace:*",
         "@ericsanchezok/synergy-util": "workspace:*",
@@ -139,6 +140,9 @@
     "packages/plugin": {
       "name": "@ericsanchezok/synergy-plugin",
       "version": "1.1.26",
+      "dependencies": {
+        "@ericsanchezok/synergy-util": "workspace:*",
+      },
       "devDependencies": {
         "@ericsanchezok/synergy-sdk": "workspace:*",
         "@tsconfig/node22": "catalog:",
@@ -161,6 +165,7 @@
       },
       "dependencies": {
         "@ericsanchezok/synergy-plugin": "workspace:*",
+        "@ericsanchezok/synergy-util": "workspace:*",
         "yargs": "18.0.0",
       },
       "devDependencies": {

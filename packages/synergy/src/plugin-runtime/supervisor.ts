@@ -39,6 +39,7 @@ import {
 } from "./registry.js"
 
 import { resolveInstalledPluginPolicy, type PluginSource } from "../plugin/trust.js"
+import type { Scope } from "../scope/index.js"
 
 const log = Log.create({ service: "plugin-runtime.supervisor" })
 
@@ -140,13 +141,20 @@ function fallbackRuntimeScope(): IsolatedPluginInputData["scope"] {
     type: "home",
     directory: Global.Path.home,
     worktree: Global.Path.home,
-    time: { created: 0, updated: 0 },
     sandboxes: [],
+    time: { created: 0, updated: 0 },
   }
 }
 
 function runtimeScope(options: StartRuntimeOptions): IsolatedPluginInputData["scope"] {
-  return options.scope ?? fallbackRuntimeScope()
+  const scope = options.scope
+  if (!scope) return fallbackRuntimeScope()
+  if (scope.type === "project") return scope
+  return {
+    ...scope,
+    sandboxes: [],
+    time: { created: 0, updated: 0 },
+  }
 }
 
 // === Persistence interface ===
@@ -168,7 +176,7 @@ export interface StartRuntimeOptions {
   source: PluginSource
   entryPath: string
   pluginDir: string
-  scope?: import("../scope/types.js").Info
+  scope?: Scope
   serverUrl?: string
 }
 

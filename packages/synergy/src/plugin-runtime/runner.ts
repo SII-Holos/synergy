@@ -257,18 +257,25 @@ async function invokeTool(requestId: string, toolId: string, args: unknown, cont
   if (!inputData) throw new Error("Plugin runtime is not initialized")
   const abortController = new AbortController()
   activeToolAbort.set(requestId, abortController)
-  const contextData = { ...context, toolId, callID: context?.callID ?? requestId, abort: undefined }
+  const contextData: RuntimeToolContextData = {
+    sessionID: context?.sessionID ?? "",
+    messageID: context?.messageID ?? "",
+    agent: context?.agent ?? "",
+    directory: context?.directory ?? inputData.directory,
+    callID: context?.callID ?? requestId,
+    toolId,
+  }
   try {
     return def.execute(args as any, {
-      sessionID: context?.sessionID ?? "",
-      messageID: context?.messageID ?? "",
-      agent: context?.agent ?? "",
+      sessionID: contextData.sessionID,
+      messageID: contextData.messageID,
+      agent: contextData.agent,
       abort: abortController.signal,
-      directory: context?.directory ?? inputData.directory,
+      directory: contextData.directory ?? inputData.directory,
       ask: async (request) => {
         await bridge("permission.request", { ...request, context: contextData })
       },
-      $: createShell({ cwd: context?.directory ?? inputData.directory, context: contextData }),
+      $: createShell({ cwd: contextData.directory ?? inputData.directory, context: contextData }),
       task: {
         run: (request) => bridge("task.run", { ...request, context: contextData }) as any,
       },

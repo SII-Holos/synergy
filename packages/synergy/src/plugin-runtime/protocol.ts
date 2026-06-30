@@ -1,4 +1,3 @@
-import type { Info as ScopeInfo } from "../scope/types.js"
 import type { ToolDisplay } from "@ericsanchezok/synergy-plugin/tool"
 import type { RuntimeLimits } from "./health.js"
 
@@ -55,10 +54,22 @@ export interface IsolatedPluginInputData {
   pluginId: string
   pluginDir: string
   cacheDir: string
-  scope: ScopeInfo
+  scope: RuntimeScopeData
   directory: string
   serverUrl: string
   runtimeLimits: RuntimeLimits
+}
+
+export interface RuntimeScopeData {
+  type: "home" | "project"
+  id: string
+  directory: string
+  worktree: string
+  vcs?: "git"
+  name?: string
+  icon?: { url?: string; color?: string }
+  sandboxes?: string[]
+  time?: { created: number; updated: number; initialized?: number; archived?: number }
 }
 
 export interface RuntimeToolDescriptor {
