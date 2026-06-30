@@ -12,7 +12,7 @@ import { Installation } from "../global/installation"
 import * as Lockfile from "./lockfile"
 import { resolveSpecPluginDir, state, specToPluginId } from "./loader"
 import { reload } from "./lifecycle"
-import { resolvePluginPolicyDecision } from "@ericsanchezok/synergy-plugin/policy"
+import { resolvePluginPolicyDecision } from "@ericsanchezok/synergy-util/plugin-policy"
 import { resolvePluginSpec } from "./spec-resolver"
 import { PluginInstallationTransaction } from "./installation-transaction"
 import {

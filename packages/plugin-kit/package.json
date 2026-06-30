@@ -42,6 +42,7 @@
   ],
   "dependencies": {
     "@ericsanchezok/synergy-plugin": "workspace:*",
+    "@ericsanchezok/synergy-util": "workspace:*",
     "yargs": "18.0.0"
   },
   "peerDependencies": {

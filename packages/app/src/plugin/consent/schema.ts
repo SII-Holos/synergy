@@ -1,5 +1,5 @@
 import type { PluginPermissionItem, PluginPermissionSeverity } from "@ericsanchezok/synergy-plugin/permissions"
-import type { TrustTier as PluginTrustTier } from "@ericsanchezok/synergy-plugin/policy"
+import type { TrustTier as PluginTrustTier } from "@ericsanchezok/synergy-util/plugin-policy"
 
 export type PermissionSeverity = PluginPermissionSeverity
 export type PermissionItem = PluginPermissionItem

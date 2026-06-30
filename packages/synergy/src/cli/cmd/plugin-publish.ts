@@ -8,7 +8,7 @@ import {
   publicToolNames,
   registryPermissionSummary,
 } from "@ericsanchezok/synergy-util/capability"
-import { resolvePluginPolicyDecision } from "@ericsanchezok/synergy-plugin/policy"
+import { resolvePluginPolicyDecision } from "@ericsanchezok/synergy-util/plugin-policy"
 import { computeManifestHash, computePermissionsHash } from "../../plugin/consent/approval-store"
 import { sha256File } from "../../util/crypto"
 import { localRegistryArtifactDir } from "../../plugin/local-registry-store"

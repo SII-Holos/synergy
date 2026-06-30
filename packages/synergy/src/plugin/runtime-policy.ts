@@ -2,4 +2,4 @@ export {
   validateRuntimePolicy,
   type PolicyCheckResult as CheckResult,
   type TrustTier,
-} from "@ericsanchezok/synergy-plugin/policy"
+} from "@ericsanchezok/synergy-util/plugin-policy"

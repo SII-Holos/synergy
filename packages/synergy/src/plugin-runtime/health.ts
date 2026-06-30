@@ -4,7 +4,7 @@ import {
   resolveRuntimeLimits,
   type RuntimeLimitOverrides,
   type RuntimeLimits,
-} from "@ericsanchezok/synergy-plugin/policy"
+} from "@ericsanchezok/synergy-util/plugin-policy"
 
 export type { RuntimeHealth }
 export type { RuntimeLimitOverrides, RuntimeLimits }

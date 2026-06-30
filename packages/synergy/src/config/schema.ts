@@ -1,7 +1,7 @@
 import { Log } from "../util/log"
 import z from "zod"
 import { DEFAULT_PLUGIN_MARKETPLACE_CONFIG } from "@ericsanchezok/synergy-plugin/market"
-import { DEFAULT_PLUGIN_RUNTIME_LIMITS, DEFAULT_PLUGIN_RUNTIME_POLICY } from "@ericsanchezok/synergy-plugin/policy"
+import { DEFAULT_PLUGIN_RUNTIME_LIMITS, DEFAULT_PLUGIN_RUNTIME_POLICY } from "@ericsanchezok/synergy-util/plugin-policy"
 import { ModelsDev } from "../provider/models"
 import { LSPServer } from "../lsp/server"
 import { ModelRole } from "../provider/model-role"

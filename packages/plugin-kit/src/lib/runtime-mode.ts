@@ -5,4 +5,4 @@ export {
   type PluginSource,
   type ResolveRuntimeModeInput,
   type RuntimeMode,
-} from "@ericsanchezok/synergy-plugin/policy"
+} from "@ericsanchezok/synergy-util/plugin-policy"

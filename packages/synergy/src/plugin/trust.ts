@@ -5,8 +5,8 @@ import {
   defaultPluginTrustDecision,
   isTrustedPluginSource as sharedIsTrustedPluginSource,
   resolvePluginPolicyDecision,
-} from "@ericsanchezok/synergy-plugin/policy"
-import type { PluginPolicyDecision, PluginRuntimePolicyInput, PluginSource } from "@ericsanchezok/synergy-plugin/policy"
+} from "@ericsanchezok/synergy-util/plugin-policy"
+import type { PluginPolicyDecision, PluginRuntimePolicyInput, PluginSource } from "@ericsanchezok/synergy-util/plugin-policy"
 import { Global } from "../global"
 import { Installation } from "../global/installation"
 import { PluginSpec } from "../util/plugin-spec"
@@ -21,8 +21,8 @@ export {
   isTrustedPluginSource,
   trustReason,
   trustSummary,
-} from "@ericsanchezok/synergy-plugin/policy"
-export type { PluginSource, PluginTrustDecision, TrustTier } from "@ericsanchezok/synergy-plugin/policy"
+} from "@ericsanchezok/synergy-util/plugin-policy"
+export type { PluginSource, PluginTrustDecision, TrustTier } from "@ericsanchezok/synergy-util/plugin-policy"
 
 function sourceFromSpec(spec: string): PluginSource {
   if (spec.startsWith("file://")) return "local"
