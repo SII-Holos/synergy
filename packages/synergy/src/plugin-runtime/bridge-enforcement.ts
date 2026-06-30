@@ -1,5 +1,9 @@
 import type { HostBridgeMethod } from "./protocol.js"
-import { pluginBridgeMethodCapability, pluginBridgeMethodPolicy } from "@ericsanchezok/synergy-plugin/permissions"
+import {
+  permissionCapability,
+  pluginBridgeMethodCapability,
+  pluginBridgeMethodPolicy,
+} from "@ericsanchezok/synergy-plugin/permissions"
 
 // ---------------------------------------------------------------------------
 // Bridge method → enforcement capability mapping
@@ -39,11 +43,25 @@ export interface BridgeEnforcementResult {
 export function createBridgeEnforcementHandler(
   pluginId: string,
   capabilities: string[],
-): (method: HostBridgeMethod, _params: unknown) => BridgeEnforcementResult {
-  return (method, _params) => {
+): (method: HostBridgeMethod, params: unknown) => BridgeEnforcementResult {
+  return (method, params) => {
     const policy = bridgeMethodPolicy(method)
     if (policy.type === "unknown") {
       return { allowed: false, reason: `Unknown bridge method: ${method}` }
+    }
+    if (method === "permission.request") {
+      const permission = (params as any)?.permission
+      if (typeof permission !== "string" || permission.trim() === "") {
+        return { allowed: false, reason: "permission.request requires a permission" }
+      }
+      const requestedCap = permissionCapability(permission)
+      if (!capabilities.includes(requestedCap)) {
+        return {
+          allowed: false,
+          reason: `Capability "${requestedCap}" not approved for plugin "${pluginId}"`,
+        }
+      }
+      return { allowed: true }
     }
     if (policy.type === "unprivileged") return { allowed: true }
 

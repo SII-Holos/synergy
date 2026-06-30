@@ -44,6 +44,7 @@ function buildInput(overrides: Partial<IsolatedPluginInputData> = {}): IsolatedP
   return {
     pluginId: "test-plugin",
     pluginDir: "/tmp/test-plugin",
+    cacheDir: "/tmp/synergy-cache/plugin/test-plugin",
     scope: {
       id: "test-scope",
       type: "project",

@@ -60,8 +60,6 @@ export function resolve(input: {
   manifest: PluginManifest
   /** Tool IDs (short names) registered by the plugin at runtime via hooks.tool */
   declaredTools: string[]
-  /** Full plugin__x__y IDs for all runtime tools (reserved for future cross-validation) */
-  runtimeToolIds: string[]
 }): ResolvedPluginCapability {
   const { pluginId, manifest, declaredTools } = input
   const warnings: CapabilityWarning[] = []

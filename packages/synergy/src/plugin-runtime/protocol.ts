@@ -54,6 +54,7 @@ export type HostBridgeMethod =
 export interface IsolatedPluginInputData {
   pluginId: string
   pluginDir: string
+  cacheDir: string
   scope: ScopeInfo
   directory: string
   serverUrl: string
@@ -74,6 +75,7 @@ export interface RuntimeToolContextData {
   agent: string
   directory?: string
   callID?: string
+  toolId?: string
 }
 
 export interface SerializedError {

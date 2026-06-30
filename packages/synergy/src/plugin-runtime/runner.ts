@@ -183,7 +183,7 @@ function createAuthStore(): PluginAuthStore {
 
 function createCacheStore(input: IsolatedPluginInputData): PluginCacheStore {
   return {
-    directory: `${input.pluginDir}/.cache`,
+    directory: input.cacheDir,
     get: async (key) => (await bridge("cache.get", { key })) as any,
     set: async (key, value, ttl) => {
       await bridge("cache.set", { key, value, ttl })
@@ -253,7 +253,7 @@ async function invokeTool(requestId: string, toolId: string, args: unknown, cont
   if (!inputData) throw new Error("Plugin runtime is not initialized")
   const abortController = new AbortController()
   activeToolAbort.set(requestId, abortController)
-  const contextData = { ...context, callID: context?.callID ?? requestId, abort: undefined }
+  const contextData = { ...context, toolId, callID: context?.callID ?? requestId, abort: undefined }
   try {
     return def.execute(args as any, {
       sessionID: context?.sessionID ?? "",

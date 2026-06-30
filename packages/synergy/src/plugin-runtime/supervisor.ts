@@ -22,6 +22,7 @@ import { createBridgeEnforcementHandler } from "./bridge-enforcement.js"
 import { executeBridgeMethod } from "./bridge-handlers.js"
 import { getApproval } from "../plugin/consent/approval-store.js"
 import * as ManifestReader from "../plugin/manifest-reader"
+import { PluginPaths } from "../plugin/paths.js"
 import { resolvePluginPolicyDecision } from "@ericsanchezok/synergy-plugin/policy"
 import { PluginLogBuffer } from "./logs.js"
 import { Global } from "../global/index.js"
@@ -537,6 +538,7 @@ export class PluginRuntimeSupervisor {
       const input: IsolatedPluginInputData = {
         pluginId,
         pluginDir: options.pluginDir,
+        cacheDir: PluginPaths.cacheDir(pluginId),
         directory: scope.directory,
         scope,
         serverUrl,
@@ -664,6 +666,7 @@ export class PluginRuntimeSupervisor {
       const input: IsolatedPluginInputData = {
         pluginId,
         pluginDir: options.pluginDir,
+        cacheDir: PluginPaths.cacheDir(pluginId),
         directory: scope.directory,
         scope,
         serverUrl,
@@ -915,7 +918,7 @@ export class PluginRuntimeSupervisor {
         requestId,
         toolId,
         args,
-        context,
+        context: context ? { ...context, toolId: context.toolId ?? toolId } : undefined,
       })
     } finally {
       abort?.removeEventListener("abort", cancel)

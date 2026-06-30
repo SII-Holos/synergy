@@ -19,10 +19,16 @@ import { Session } from "@/session"
 import { MessageV2 } from "@/session/message-v2"
 import type { SessionProcessor } from "@/session/processor"
 import type { Tool } from "@/tool/tool"
+import { permissionCapability } from "@ericsanchezok/synergy-plugin/permissions"
 import * as ManifestReader from "./manifest-reader"
+import { PluginToolId } from "./ids"
+import { baseCapabilities, toolCapabilities } from "./capability"
 import { resolveRuntimeLimits } from "../plugin-runtime/health"
 
 type RuntimeContext = {
+  pluginId?: string
+  pluginDir?: string
+  toolId?: string
   sessionID: string
   messageID: string
   agent: string
@@ -36,10 +42,14 @@ export type PluginHostRuntimeContext = RuntimeContext
 export function createPluginToolContext(input: {
   pluginId: string
   pluginDir: string
+  toolId: string
   context: Tool.Context
   directory: string
 }): PluginToolContext {
   const runtimeContext: RuntimeContext = {
+    pluginId: input.pluginId,
+    pluginDir: input.pluginDir,
+    toolId: input.toolId,
     sessionID: input.context.sessionID,
     messageID: input.context.messageID,
     agent: input.context.agent,
@@ -171,6 +181,29 @@ export async function invokePluginTool(input: {
   }) as Promise<ToolResult>
 }
 
+function normalizePluginToolId(toolId: string | undefined): string | undefined {
+  if (!toolId) return undefined
+  if (!PluginToolId.is(toolId)) return toolId
+  return PluginToolId.parse(toolId)?.toolId ?? toolId
+}
+
+export async function assertPluginManifestCapability(input: {
+  pluginDir?: string
+  toolId?: string
+  permission: string
+}) {
+  if (!input.pluginDir) return
+  const manifest = await ManifestReader.read(input.pluginDir)
+  const capability = permissionCapability(input.permission)
+  const shortToolId = normalizePluginToolId(input.toolId)
+  const declaredCapabilities = shortToolId ? toolCapabilities(manifest, shortToolId) : baseCapabilities(manifest)
+
+  if (declaredCapabilities.includes(capability)) return
+
+  const scope = shortToolId ? `tool "${shortToolId}"` : "plugin"
+  throw new Error(`Plugin manifest does not allow capability "${capability}" for ${scope}`)
+}
+
 async function assertTaskPermission(pluginDir: string, request: ToolTaskRunInput) {
   const manifest = await ManifestReader.read(pluginDir)
   const task = manifest.permissions?.tools?.task
@@ -199,6 +232,12 @@ export async function requestPluginPermission(
   context: RuntimeContext,
   request: { permission: string; patterns: string[]; metadata?: Record<string, any> },
 ) {
+  await assertPluginManifestCapability({
+    pluginDir: context.pluginDir,
+    toolId: context.toolId,
+    permission: request.permission,
+  })
+
   const agent = await Agent.get(context.agent)
   const session = await Session.get(context.sessionID)
   const topLevelProfile = await topLevelControlProfile()

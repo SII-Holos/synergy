@@ -227,14 +227,12 @@ export async function getStatus(pluginId: string): Promise<PluginStatus | null> 
   // ── Capabilities ──
   const manifestTools = manifest.contributes?.tools?.map((t) => t.name) ?? []
   const runtimeToolNames = plugin.hooks.tool ? Object.keys(plugin.hooks.tool) : []
-  const runtimeFullIds = runtimeToolNames.map((t) => PluginToolId.format(pluginId, t))
   const allDeclared = [...new Set([...manifestTools, ...runtimeToolNames])]
 
   const capabilityResult = Capability.resolve({
     pluginId,
     manifest,
     declaredTools: allDeclared,
-    runtimeToolIds: runtimeFullIds,
   })
 
   // ── Trust ──

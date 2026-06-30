@@ -46,7 +46,7 @@ function resolveContainedPath(pluginDir: string, requestedPath: string): string 
 
 export async function executeBridgeMethod(input: BridgeHandlerInput): Promise<unknown> {
   const { pluginId, pluginDir, method, params } = input
-  const bridgeContext = normalizeBridgeContext(params, input.signal)
+  const bridgeContext = normalizeBridgeContext(params, input.signal, { pluginId, pluginDir })
 
   switch (method) {
     // ── config ───────────────────────────────────────────────
@@ -154,6 +154,7 @@ export async function executeBridgeMethod(input: BridgeHandlerInput): Promise<un
       if (url.protocol !== "http:" && url.protocol !== "https:") {
         throw new Error(`Only http/https URLs are allowed, got: ${url.protocol}`)
       }
+      await assertNetworkDomainAllowed(pluginDir, url)
       await authorizeBridgeCapability(bridgeContext, "network_request", url.origin)
 
       // Build safe headers — strip Authorization
@@ -289,13 +290,20 @@ async function authorizeBridgeCapability(
   })
 }
 
-function normalizeBridgeContext(params: unknown, signal?: AbortSignal): PluginHostRuntimeContext | undefined {
+function normalizeBridgeContext(
+  params: unknown,
+  signal: AbortSignal | undefined,
+  plugin: { pluginId: string; pluginDir: string },
+): PluginHostRuntimeContext | undefined {
   const raw = (params as any)?.context
   if (!raw || typeof raw !== "object") return undefined
   if (typeof raw.sessionID !== "string" || typeof raw.messageID !== "string" || typeof raw.agent !== "string") {
     return undefined
   }
   return {
+    pluginId: plugin.pluginId,
+    pluginDir: plugin.pluginDir,
+    toolId: typeof raw.toolId === "string" ? raw.toolId : undefined,
     sessionID: raw.sessionID,
     messageID: raw.messageID,
     agent: raw.agent,
@@ -303,6 +311,37 @@ function normalizeBridgeContext(params: unknown, signal?: AbortSignal): PluginHo
     callID: typeof raw.callID === "string" ? raw.callID : undefined,
     abort: signal,
   }
+}
+
+async function assertNetworkDomainAllowed(pluginDir: string, url: URL) {
+  const manifest = await ManifestReader.read(pluginDir)
+  const domains = manifest.permissions?.network?.connectDomains ?? []
+  if (domains.length === 0 || domains.includes("*")) return
+  if (domains.some((domain) => domainMatchesUrl(domain, url))) return
+  throw new Error(`network.fetch URL "${url.origin}" is not allowed by permissions.network.connectDomains`)
+}
+
+function domainMatchesUrl(pattern: string, url: URL): boolean {
+  const normalized = pattern.trim().toLowerCase()
+  if (!normalized) return false
+  if (normalized === "*") return true
+
+  if (normalized.startsWith("http://") || normalized.startsWith("https://")) {
+    try {
+      return new URL(normalized).origin === url.origin.toLowerCase()
+    } catch {
+      return false
+    }
+  }
+
+  const hostPattern = normalized.replace(/\/.*$/, "")
+  const targetHost = url.hostname.toLowerCase()
+  const targetHostPort = url.host.toLowerCase()
+  if (hostPattern.startsWith("*.")) {
+    const suffix = hostPattern.slice(1)
+    return targetHost.endsWith(suffix) && targetHost !== suffix.slice(1)
+  }
+  return hostPattern === targetHost || hostPattern === targetHostPort
 }
 
 function stripBridgeContext(params: unknown): unknown {

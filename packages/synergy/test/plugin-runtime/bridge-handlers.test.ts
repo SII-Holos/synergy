@@ -29,6 +29,17 @@ function call(method: HostBridgeMethod, params: unknown = {}) {
   })
 }
 
+async function callWithManifest(manifest: Record<string, unknown>, method: HostBridgeMethod, params: unknown = {}) {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-bridge-plugin-"))
+  await Bun.write(path.join(dir, "plugin.json"), JSON.stringify(manifest, null, 2))
+  return executeBridgeMethod({
+    pluginId: String(manifest.name ?? "test-plugin"),
+    pluginDir: dir,
+    method,
+    params,
+  })
+}
+
 // ---------------------------------------------------------------------------
 // Suite
 // ---------------------------------------------------------------------------
@@ -142,6 +153,25 @@ describe("bridge-handlers", () => {
       await expect(call("network.fetch", { url: "file:///etc/passwd" })).rejects.toThrow(
         "Only http/https URLs are allowed",
       )
+    })
+
+    test("throws when URL is outside manifest connectDomains", async () => {
+      await expect(
+        callWithManifest(
+          {
+            name: "network-plugin",
+            version: "1.0.0",
+            description: "Network plugin",
+            main: "./runtime/index.js",
+            permissions: {
+              tools: { network: true },
+              network: { connectDomains: ["api.example.com"] },
+            },
+          },
+          "network.fetch",
+          { url: "https://other.example.com/data" },
+        ),
+      ).rejects.toThrow("permissions.network.connectDomains")
     })
   })
 
@@ -290,7 +320,7 @@ describe("bridge-enforcement (denied methods still throw)", () => {
   test("enforcer follows shared bridge policy for unprivileged and capability-gated methods", () => {
     const enforcer = createBridgeEnforcementHandler("plugin-x", [])
     expect(enforcer("cache.get", {}).allowed).toBe(true)
-    expect(enforcer("permission.request", {}).allowed).toBe(true)
+    expect(enforcer("permission.request", { permission: "file_read" }).allowed).toBe(false)
     expect(bridgeMethodPolicy("cache.get")).toEqual({ type: "unprivileged" })
     expect(bridgeMethodPolicy("permission.request")).toEqual({ type: "unprivileged" })
     expect(enforcer("tool.invoke", {}).allowed).toBe(false)
@@ -298,5 +328,8 @@ describe("bridge-enforcement (denied methods still throw)", () => {
 
     const withLocalTool = createBridgeEnforcementHandler("plugin-x", ["tool_invoke"])
     expect(withLocalTool("tool.invoke", {}).allowed).toBe(true)
+
+    const withFileRead = createBridgeEnforcementHandler("plugin-x", ["file_read"])
+    expect(withFileRead("permission.request", { permission: "file_read" }).allowed).toBe(true)
   })
 })

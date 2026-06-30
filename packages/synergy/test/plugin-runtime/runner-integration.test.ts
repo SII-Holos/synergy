@@ -23,6 +23,7 @@ async function writeRuntimePlugin(dir: string, pluginId: string) {
       {
         name: pluginId,
         version: "0.1.0",
+        description: "Runtime integration test plugin",
         main: "./src/index.ts",
         runtime: {
           resources: {
