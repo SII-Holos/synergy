@@ -152,6 +152,48 @@ describe("GET /scope/index", () => {
     })
   })
 
+  test("excludes archived scopes from the index", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const scope = await tmp.scope()
+
+    let sessionID: string | undefined
+
+    await ScopeContext.provide({
+      scope,
+      fn: async () => {
+        const session = await Session.create({ title: "Archived Scope Session" })
+        sessionID = session.id
+      },
+    })
+
+    await ScopeContext.provide({
+      scope: Scope.home(),
+      fn: async () => {
+        const app = Server.App()
+        const before = await app.request("/scope/index")
+        const beforeBody = await before.json()
+        expect(beforeBody.find((entry: ScopeNavEntry) => entry.scopeID === scope.id)).toBeDefined()
+      },
+    })
+
+    await Scope.remove(scope.id)
+
+    await ScopeContext.provide({
+      scope: Scope.home(),
+      fn: async () => {
+        const app = Server.App()
+        const after = await app.request("/scope/index")
+        const afterBody = await after.json()
+        expect(afterBody.find((entry: ScopeNavEntry) => entry.scopeID === scope.id)).toBeUndefined()
+      },
+    })
+
+    const navIndex = await SessionNav.readNavIndex(scope.id)
+    expect(navIndex.entries.some((entry) => entry.id === sessionID)).toBe(true)
+
+    if (sessionID) await Session.remove(sessionID)
+  })
+
   test("latestActivityAt reflects most recent session in scope", async () => {
     await using tmp = await tmpdir({ git: true })
     const scope = await tmp.scope()

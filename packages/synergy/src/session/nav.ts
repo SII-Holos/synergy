@@ -282,11 +282,18 @@ export namespace SessionNav {
       const index = await readNavIndex(sid)
       const activeEntries = index.entries.filter((e) => !e.archived)
       let scopeInfo:
-        | { name?: string; icon?: { url?: string; color?: string }; directory?: string; worktree?: string }
+        | {
+            name?: string
+            icon?: { url?: string; color?: string }
+            directory?: string
+            worktree?: string
+            time?: { archived?: number }
+          }
         | undefined
       if (sid !== "home") {
         scopeInfo = await Storage.read<any>(StoragePath.scope(Identifier.asScopeID(sid))).catch(() => undefined)
       }
+      if (scopeInfo?.time?.archived) continue
       const latestActivityAt = activeEntries.length > 0 ? Math.max(...activeEntries.map((e) => e.lastActivityAt)) : 0
       results.push({
         scopeID: sid,
