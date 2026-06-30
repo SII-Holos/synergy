@@ -116,6 +116,17 @@ a:active,
   z-index: 1;
 }
 
+.statusbar-subsession-popover[data-component="popover-content"] {
+  width: min(19rem, calc(100vw - 24px));
+  max-width: min(19rem, calc(100vw - 24px));
+  border-radius: var(--radius-lg);
+  background-color: var(--workbench-popover-bg, var(--surface-raised-stronger-non-alpha));
+}
+
+.statusbar-subsession-popover[data-component="popover-content"] [data-slot="popover-body"] {
+  padding: 8px;
+}
+
 .synergy-workbench-canvas {
   --workbench-canvas-bg: var(--background-stronger);
   --workbench-panel-bg: var(--background-base);

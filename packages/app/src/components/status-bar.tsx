@@ -186,8 +186,9 @@ function SubsessionsButton(props: {
       <Popover
         open={open()}
         onOpenChange={setOpen}
-        placement="top"
-        gutter={8}
+        placement="top-end"
+        gutter={10}
+        class="statusbar-subsession-popover"
         trigger={
           <Tooltip placement="top" value={`${count()} subsession${count() !== 1 ? "s" : ""}`}>
             <button
@@ -201,36 +202,36 @@ function SubsessionsButton(props: {
           </Tooltip>
         }
       >
-        <div class="w-80">
-          <div class="mb-2 flex items-center justify-between gap-3 border-b border-border-weaker-base/50 pb-2">
-            <span class="text-12-medium text-text-base">Subsessions</span>
-            <span class="text-11-regular text-text-subtle">{count()} total</span>
+        <div class="min-w-0">
+          <div class="flex items-center justify-between gap-3 border-b border-border-weaker-base/60 px-1 pb-2">
+            <span class="truncate text-12-medium text-text-base">Subsessions</span>
+            <span class="shrink-0 text-11-regular text-text-subtle">{count()} total</span>
           </div>
-          <div class="max-h-80 overflow-y-auto pr-1 [scrollbar-width:thin]">
+          <div class="mt-1 max-h-64 overflow-y-auto [scrollbar-width:thin]">
             <For each={props.sessions}>
               {(session) => {
                 const status = createMemo(() => props.statusFor(session.id))
                 return (
                   <button
                     type="button"
-                    class="flex w-full items-start gap-2 rounded-lg px-2 py-2 text-left transition-colors hover:bg-surface-raised-base-hover"
+                    class="grid w-full min-w-0 grid-cols-[1rem_minmax(0,1fr)_3.25rem] items-start gap-2 rounded-md px-1.5 py-1.5 text-left transition-colors hover:bg-surface-raised-base-hover focus:outline-none focus-visible:bg-surface-raised-base-hover focus-visible:ring-1 focus-visible:ring-border-strong"
                     onClick={() => {
                       setOpen(false)
                       props.onSelect(session)
                     }}
                   >
-                    <Icon name={status().icon} size="small" class={rowIconClass(status().tone)} />
-                    <span class="min-w-0 flex-1">
+                    <Icon name={status().icon} size="small" class={`mt-0.5 ${rowIconClass(status().tone)}`} />
+                    <span class="min-w-0">
                       <span class="block truncate text-12-medium text-text-base">{session.title || "New session"}</span>
                       <Show when={preview(session)}>
                         {(text) => <span class="mt-0.5 block truncate text-11-regular text-text-weak">{text()}</span>}
                       </Show>
                     </span>
-                    <span class="flex shrink-0 flex-col items-end gap-0.5">
+                    <span class="min-w-0 justify-self-end text-right">
                       <Show when={status().tone !== "base"}>
                         <span
                           classList={{
-                            "text-10-medium": true,
+                            "block truncate text-10-medium": true,
                             "text-text-interactive-base": status().tone === "active",
                             "text-text-critical-base": status().tone === "danger",
                           }}
@@ -238,7 +239,9 @@ function SubsessionsButton(props: {
                           {status().label}
                         </span>
                       </Show>
-                      <span class="text-10-regular text-text-subtle">{relativeTime(sessionActivityTime(session))}</span>
+                      <span class="block truncate text-10-regular text-text-subtle">
+                        {relativeTime(sessionActivityTime(session))}
+                      </span>
                     </span>
                   </button>
                 )
