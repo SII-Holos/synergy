@@ -1,21 +1,31 @@
-import { describe, expect, test, mock, afterEach } from "bun:test"
+import { describe, expect, test, mock, afterEach, beforeEach } from "bun:test"
 import path from "path"
 import fs from "fs"
 import { tmpdir } from "../fixture/fixture"
 import { ScopeContext } from "../../src/scope/context"
 import { Server } from "../../src/server/server"
-import { Plugin } from "../../src/plugin"
-import { Config } from "../../src/config/config"
 import { Log } from "../../src/util/log"
 import { Global } from "../../src/global"
+import type { LoadedPlugin } from "../../src/plugin/loader"
 
 Log.init({ print: false })
+
+// Lazy namespace refs — avoids circular ESM chain from Server → Provider → Plugin → Config → ...
+let Plugin: any
+let Config: any
+
+const _pluginP = import("../../src/plugin").then((m) => {
+  Plugin = m.Plugin
+})
+const _configP = import("../../src/config/config").then((m) => {
+  Config = m.Config
+})
 
 // ---------------------------------------------------------------------------
 // Mock helpers
 // ---------------------------------------------------------------------------
 
-function buildLoadedPlugin(overrides: Partial<Plugin.LoadedPlugin> = {}): Plugin.LoadedPlugin {
+function buildLoadedPlugin(overrides: Partial<LoadedPlugin> = {}): LoadedPlugin {
   return {
     id: "test-plugin",
     name: "Test Plugin",
@@ -39,28 +49,37 @@ function buildManifest(overrides: Record<string, any> = {}): Record<string, any>
   }
 }
 
-const _origPlugin = {
-  get: Plugin.get,
-  manifest: Plugin.manifest,
-  loaded: Plugin.getLoaded,
-  add: Plugin.add,
-  remove: Plugin.remove,
-}
+let _origPlugin: Record<string, any> = {}
+let _origConfig: Record<string, any> = {}
+let _origPluginStatus: Record<string, any> = {}
 
-const _origConfig = {
-  current: Config.current,
-  updateGlobal: Config.updateGlobal,
-}
+beforeEach(async () => {
+  // Resolve lazily to avoid circular ESM chain from Server → Provider → Plugin → Config → ...
+  if (!Plugin) Plugin = await import("../../src/plugin").then((m) => m.Plugin)
+  if (!Config) Config = await import("../../src/config/config").then((m) => m.Config)
+  _origPlugin = {
+    get: Plugin.get,
+    manifest: Plugin.manifest,
+    loaded: Plugin.getLoaded,
+    add: Plugin.add,
+    remove: Plugin.remove,
+    getStatus: Plugin.getStatus,
+  }
+  _origConfig = {
+    current: Config.current,
+    updateGlobal: Config.updateGlobal,
+  }
+})
 
-afterEach(() => {
-  ;(Plugin as any).get = _origPlugin.get
-  ;(Plugin as any).manifest = _origPlugin.manifest
-  ;(Plugin as any).loaded = _origPlugin.loaded
-  ;(Plugin as any).add = _origPlugin.add
-  ;(Plugin as any).remove = _origPlugin.remove
-  ;(Plugin as any).getStatus = _origPluginStatus.getStatus
-  ;(Config as any).current = _origConfig.current
-  ;(Config as any).updateGlobal = _origConfig.updateGlobal
+afterEach(async () => {
+  if (!Plugin) Plugin = await import("../../src/plugin").then((m) => m.Plugin)
+  if (!Config) Config = await import("../../src/config/config").then((m) => m.Config)
+  for (const [k, v] of Object.entries(_origPlugin)) {
+    Plugin[k] = v
+  }
+  for (const [k, v] of Object.entries(_origConfig)) {
+    Config[k] = v
+  }
 })
 
 async function withRegistryFile<T>(content: unknown, fn: () => Promise<T>): Promise<T> {
@@ -160,9 +179,6 @@ describe("GET /plugin/assets/:pluginId/:versionHash/* — asset edge cases", () 
 // ---------------------------------------------------------------------------
 // 3. Plugin status — enriched comprehensive status
 // ---------------------------------------------------------------------------
-const _origPluginStatus = {
-  getStatus: Plugin.getStatus,
-}
 function buildStatusResponse(overrides: Partial<Record<string, any>> = {}): any {
   return {
     id: "test-plugin",

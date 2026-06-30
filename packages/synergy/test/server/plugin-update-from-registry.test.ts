@@ -1,16 +1,11 @@
-import { describe, expect, test, mock, afterEach } from "bun:test"
+import { describe, expect, test, mock, afterEach, beforeEach } from "bun:test"
 import { tmpdir } from "../fixture/fixture"
 import { ScopeContext } from "../../src/scope/context"
 import { Server } from "../../src/server/server"
-import { Plugin } from "../../src/plugin"
-import { Config } from "../../src/config/config"
 import { Log } from "../../src/util/log"
+import type { LoadedPlugin } from "../../src/plugin/loader"
 
 Log.init({ print: false })
-
-// ---------------------------------------------------------------------------
-// Mock helpers
-// ---------------------------------------------------------------------------
 
 function buildManifest(overrides: Record<string, any> = {}): Record<string, any> {
   return {
@@ -22,7 +17,7 @@ function buildManifest(overrides: Record<string, any> = {}): Record<string, any>
   }
 }
 
-function buildLoadedPlugin(overrides: Partial<Plugin.LoadedPlugin> = {}): Plugin.LoadedPlugin {
+function buildLoadedPlugin(overrides: Partial<LoadedPlugin> = {}): LoadedPlugin {
   return {
     id: "test-plugin",
     name: "Test Plugin",
@@ -33,21 +28,25 @@ function buildLoadedPlugin(overrides: Partial<Plugin.LoadedPlugin> = {}): Plugin
   }
 }
 
-const _origPlugin = {
-  get: Plugin.get,
-  manifest: Plugin.manifest,
-  getStatus: Plugin.getStatus,
-}
+let Plugin: any
+let Config: any
+let _origPlugin: Record<string, any> = {}
+let _origConfig: Record<string, any> = {}
 
-const _origConfig = {
-  current: Config.current,
-}
+beforeEach(async () => {
+  Plugin = await import("../../src/plugin").then((m) => m.Plugin)
+  Config = await import("../../src/config/config").then((m) => m.Config)
+  _origPlugin = { get: Plugin.get, manifest: Plugin.manifest, getStatus: Plugin.getStatus }
+  _origConfig = { current: Config.current }
+})
 
-afterEach(() => {
-  ;(Plugin as any).get = _origPlugin.get
-  ;(Plugin as any).manifest = _origPlugin.manifest
-  ;(Plugin as any).getStatus = _origPlugin.getStatus
-  ;(Config as any).current = _origConfig.current
+afterEach(async () => {
+  for (const [k, v] of Object.entries(_origPlugin)) {
+    Plugin[k] = v
+  }
+  for (const [k, v] of Object.entries(_origConfig)) {
+    Config[k] = v
+  }
 })
 
 // ---------------------------------------------------------------------------
