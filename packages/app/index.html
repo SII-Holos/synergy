@@ -4,15 +4,38 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <title>Synergy</title>
-    <link rel="icon" type="image/png" href="/favicon-96x96.png" sizes="96x96" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <link rel="shortcut icon" href="/favicon.ico" />
-    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
-    <link rel="manifest" href="/site.webmanifest" />
+    <script id="synergy-head-assets-script">
+      ;(function () {
+        var route = window.__SYNERGY_ROUTE__
+        var prefix = ""
+        if (route != null) {
+          var fullPath = window.location.pathname
+          if (fullPath !== route && fullPath.endsWith(route)) {
+            prefix = fullPath.slice(0, fullPath.length - route.length).replace(/\/+$/, "")
+          }
+        }
+        function asset(path) {
+          return prefix + path
+        }
+        function attr(value) {
+          return String(value).replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;")
+        }
+        function write(tag, attrs) {
+          var html = "<" + tag
+          for (var name in attrs) html += " " + name + '="' + attr(attrs[name]) + '"'
+          document.write(html + ">")
+        }
+        write("link", { rel: "icon", type: "image/png", href: asset("/favicon-96x96.png"), sizes: "96x96" })
+        write("link", { rel: "icon", type: "image/svg+xml", href: asset("/favicon.svg") })
+        write("link", { rel: "shortcut icon", href: asset("/favicon.ico") })
+        write("link", { rel: "apple-touch-icon", sizes: "180x180", href: asset("/apple-touch-icon.png") })
+        write("link", { rel: "manifest", href: asset("/site.webmanifest") })
+        write("meta", { property: "og:image", content: asset("/social-share.png") })
+        write("meta", { property: "twitter:image", content: asset("/social-share.png") })
+      })()
+    </script>
     <meta name="theme-color" content="#F8F7F7" />
     <meta name="theme-color" content="#131010" media="(prefers-color-scheme: dark)" />
-    <meta property="og:image" content="/social-share.png" />
-    <meta property="twitter:image" content="/social-share.png" />
     <script id="synergy-theme-preload-script">
       ;(function () {
         var scheme = localStorage.getItem("synergy-color-scheme") || "system"

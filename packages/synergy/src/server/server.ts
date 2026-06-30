@@ -1220,7 +1220,11 @@ export namespace Server {
           const reqPath = new URL(c.req.url).pathname
           const routeTag = `<script>window.__SYNERGY_ROUTE__=${JSON.stringify(reqPath)}</script>`
           c.header("Content-Security-Policy", spaCsp())
-          const rendered = html.includes("</head>") ? html.replace("</head>", `${routeTag}\n</head>`) : routeTag + html
+          const rendered = html.includes("<head>")
+            ? html.replace("<head>", `<head>\n${routeTag}`)
+            : html.includes("</head>")
+              ? html.replace("</head>", `${routeTag}\n</head>`)
+              : routeTag + html
           return c.body(rendered, { headers: { "Content-Type": "text/html; charset=utf-8" } })
         }
         return c.notFound()
