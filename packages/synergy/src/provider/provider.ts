@@ -5,7 +5,6 @@ import { mapValues, mergeDeep, omit, pickBy, sortBy } from "remeda"
 import { NoSuchModelError, type Provider as SDK } from "ai"
 import { Log } from "../util/log"
 import { BunProc } from "../util/bun"
-import { Plugin } from "../plugin"
 import { ModelsDev } from "./models"
 import { NamedError } from "@ericsanchezok/synergy-util/error"
 import { Auth } from "./api-key"
@@ -377,7 +376,7 @@ export namespace Provider {
       }
     }
 
-    for (const plugin of await Plugin.allHooks()) {
+    for (const plugin of await (await import("../plugin")).Plugin.allHooks()) {
       if (!plugin.auth) continue
       const providerID = plugin.auth.provider
       if (disabled.has(providerID)) continue
