@@ -1046,12 +1046,30 @@ export const PluginRuntimeLimits = z
       .positive()
       .optional()
       .describe("Maximum milliseconds for plugin runtime startup"),
-    requestTimeoutMs: z
+    toolInvocationTimeoutMs: z
       .number()
       .int()
       .positive()
       .optional()
-      .describe("Maximum milliseconds for one plugin runtime request"),
+      .describe("Maximum milliseconds for a plugin tool invocation"),
+    hookInvocationTimeoutMs: z
+      .number()
+      .int()
+      .positive()
+      .optional()
+      .describe("Maximum milliseconds for a plugin hook invocation"),
+    bridgeRequestTimeoutMs: z
+      .number()
+      .int()
+      .positive()
+      .optional()
+      .describe("Maximum milliseconds for one plugin-to-host bridge request"),
+    taskRunTimeoutMs: z
+      .number()
+      .int()
+      .positive()
+      .optional()
+      .describe("Default maximum milliseconds for plugin delegated task runs"),
     shutdownGraceMs: z.number().int().positive().optional().describe("Graceful shutdown window before force kill"),
     maxConcurrentRequests: z.number().int().positive().optional().describe("Maximum concurrent bridge requests"),
     maxLogBytesPerMinute: z.number().int().positive().optional().describe("Maximum plugin log bytes per minute"),

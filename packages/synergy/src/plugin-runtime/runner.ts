@@ -73,7 +73,7 @@ function postResponse(requestId: string, run: () => Promise<unknown>) {
 function bridge(method: HostBridgeMethod, params: unknown): Promise<unknown> {
   const requestId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`
   return new Promise((resolve, reject) => {
-    const timeoutMs = inputData?.runtimeLimits.requestTimeoutMs
+    const timeoutMs = inputData?.runtimeLimits.bridgeRequestTimeoutMs
     if (!timeoutMs) {
       reject(new Error(`Host bridge request attempted before plugin runtime initialization: ${method}`))
       return

@@ -113,7 +113,9 @@ describe("PluginManifest schema", () => {
         resources: {
           memoryMb: 512,
           startupTimeoutMs: 10000,
-          requestTimeoutMs: 60000,
+          toolInvocationTimeoutMs: 60000,
+          bridgeRequestTimeoutMs: 60000,
+          taskRunTimeoutMs: 60000,
           maxConcurrentRequests: 16,
           maxLogBytesPerMinute: 256000,
         },

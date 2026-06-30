@@ -195,8 +195,8 @@ export async function executeBridgeMethod(input: BridgeHandlerInput): Promise<un
 
       const limits = await runtimeLimitsForPlugin(pluginDir)
       const requestedTimeout: number =
-        typeof (params as any)?.timeout === "number" ? (params as any).timeout : limits.requestTimeoutMs
-      const shellTimeout = Math.min(Math.max(requestedTimeout, 1), limits.requestTimeoutMs)
+        typeof (params as any)?.timeout === "number" ? (params as any).timeout : limits.bridgeRequestTimeoutMs
+      const shellTimeout = Math.min(Math.max(requestedTimeout, 1), limits.bridgeRequestTimeoutMs)
 
       const cwdParam = (params as any)?.cwd
       const cwd = typeof cwdParam === "string" && cwdParam ? resolveContainedPath(pluginDir, cwdParam) : pluginDir

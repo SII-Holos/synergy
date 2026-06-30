@@ -48,7 +48,7 @@ describe("bridge-handlers", () => {
           main: "./runtime/index.js",
           runtime: {
             resources: {
-              requestTimeoutMs: 120_000,
+              bridgeRequestTimeoutMs: 120_000,
             },
           },
         },

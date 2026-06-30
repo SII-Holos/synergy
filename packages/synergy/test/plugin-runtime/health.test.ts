@@ -328,11 +328,11 @@ describe("RuntimeRegistry warnings persistence", () => {
 describe("resolveRuntimeLimits", () => {
   test("merges overrides in order and ignores invalid numeric values", () => {
     const limits = resolveRuntimeLimits(
-      { requestTimeoutMs: 45_000, memoryMb: 512 },
-      { requestTimeoutMs: 120_000, maxConcurrentRequests: 0 },
+      { toolInvocationTimeoutMs: 45_000, memoryMb: 512 },
+      { toolInvocationTimeoutMs: 120_000, maxConcurrentRequests: 0 },
     )
 
-    expect(limits.requestTimeoutMs).toBe(120_000)
+    expect(limits.toolInvocationTimeoutMs).toBe(120_000)
     expect(limits.memoryMb).toBe(512)
     expect(limits.maxConcurrentRequests).toBe(DEFAULT_LIMITS.maxConcurrentRequests)
   })

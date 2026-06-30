@@ -517,7 +517,10 @@ export const PluginManifest = z
           .object({
             memoryMb: z.number().positive().optional(),
             startupTimeoutMs: z.number().positive().optional(),
-            requestTimeoutMs: z.number().positive().optional(),
+            toolInvocationTimeoutMs: z.number().positive().optional(),
+            hookInvocationTimeoutMs: z.number().positive().optional(),
+            bridgeRequestTimeoutMs: z.number().positive().optional(),
+            taskRunTimeoutMs: z.number().positive().optional(),
             shutdownGraceMs: z.number().positive().optional(),
             maxConcurrentRequests: z.number().positive().optional(),
             maxLogBytesPerMinute: z.number().positive().optional(),

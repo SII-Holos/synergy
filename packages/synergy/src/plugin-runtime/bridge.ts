@@ -36,7 +36,7 @@ type PendingEntry = {
 }
 
 export interface BridgeClientOptions {
-  requestTimeoutMs: number
+  bridgeRequestTimeoutMs: number
 }
 
 // ---------------------------------------------------------------------------
@@ -77,7 +77,7 @@ export function createBridgeClient(
       const timer = setTimeout(() => {
         pending.delete(requestId)
         reject(new Error(`host bridge request timed out: ${method}`))
-      }, options.requestTimeoutMs)
+      }, options.bridgeRequestTimeoutMs)
 
       pending.set(requestId, { resolve, reject, timer })
       sendToHost({ type: "hostRequest", requestId, method, params })

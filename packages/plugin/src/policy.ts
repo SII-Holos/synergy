@@ -16,7 +16,10 @@ export interface PluginTrustDecision {
 
 export interface RuntimeLimits {
   startupTimeoutMs: number
-  requestTimeoutMs: number
+  toolInvocationTimeoutMs: number
+  hookInvocationTimeoutMs: number
+  bridgeRequestTimeoutMs: number
+  taskRunTimeoutMs: number
   shutdownGraceMs: number
   maxConcurrentRequests: number
   maxLogBytesPerMinute: number
@@ -54,7 +57,10 @@ export const DEFAULT_PLUGIN_RUNTIME_POLICY: Required<PluginRuntimePolicyInput> =
 
 export const DEFAULT_PLUGIN_RUNTIME_LIMITS: RuntimeLimits = {
   startupTimeoutMs: 5_000,
-  requestTimeoutMs: 120_000,
+  toolInvocationTimeoutMs: 120_000,
+  hookInvocationTimeoutMs: 120_000,
+  bridgeRequestTimeoutMs: 120_000,
+  taskRunTimeoutMs: 120_000,
   shutdownGraceMs: 1_500,
   maxConcurrentRequests: 8,
   maxLogBytesPerMinute: 128_000,

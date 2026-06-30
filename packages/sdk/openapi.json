@@ -18376,7 +18376,10 @@
         "description": "Default plugin runtime resource and request limits",
         "default": {
           "startupTimeoutMs": 5000,
-          "requestTimeoutMs": 120000,
+          "toolInvocationTimeoutMs": 120000,
+          "hookInvocationTimeoutMs": 120000,
+          "bridgeRequestTimeoutMs": 120000,
+          "taskRunTimeoutMs": 120000,
           "shutdownGraceMs": 1500,
           "maxConcurrentRequests": 8,
           "maxLogBytesPerMinute": 128000,
@@ -18393,8 +18396,26 @@
             "exclusiveMinimum": 0,
             "maximum": 9007199254740991
           },
-          "requestTimeoutMs": {
-            "description": "Maximum milliseconds for one plugin runtime request",
+          "toolInvocationTimeoutMs": {
+            "description": "Maximum milliseconds for a plugin tool invocation",
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "hookInvocationTimeoutMs": {
+            "description": "Maximum milliseconds for a plugin hook invocation",
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "bridgeRequestTimeoutMs": {
+            "description": "Maximum milliseconds for one plugin-to-host bridge request",
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "taskRunTimeoutMs": {
+            "description": "Default maximum milliseconds for plugin delegated task runs",
             "type": "integer",
             "exclusiveMinimum": 0,
             "maximum": 9007199254740991
@@ -27114,7 +27135,16 @@
               "startupTimeoutMs": {
                 "type": "number"
               },
-              "requestTimeoutMs": {
+              "toolInvocationTimeoutMs": {
+                "type": "number"
+              },
+              "hookInvocationTimeoutMs": {
+                "type": "number"
+              },
+              "bridgeRequestTimeoutMs": {
+                "type": "number"
+              },
+              "taskRunTimeoutMs": {
                 "type": "number"
               },
               "shutdownGraceMs": {
@@ -27141,7 +27171,10 @@
             },
             "required": [
               "startupTimeoutMs",
-              "requestTimeoutMs",
+              "toolInvocationTimeoutMs",
+              "hookInvocationTimeoutMs",
+              "bridgeRequestTimeoutMs",
+              "taskRunTimeoutMs",
               "shutdownGraceMs",
               "maxConcurrentRequests",
               "maxLogBytesPerMinute",

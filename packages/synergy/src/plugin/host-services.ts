@@ -116,7 +116,7 @@ export async function runPluginTask(input: {
     const timeoutMs =
       request.timeoutMs ??
       (typeof taskPermission === "object" ? taskPermission.maxRuntimeMs : undefined) ??
-      (await defaultPluginRequestTimeoutMs(input.pluginDir))
+      (await defaultPluginTaskRunTimeoutMs(input.pluginDir))
     const completed = await Cortex.waitFor(task.id, Math.max(1, Math.ceil(timeoutMs / 1_000)))
     if (!completed || completed.status === "queued" || completed.status === "running") {
       await Cortex.cancel(task.id)
@@ -161,7 +161,7 @@ export async function invokePluginTool(input: {
   const resolved = tools[toolName] as any
   if (!resolved?.execute) throw new Error(`Tool "${toolName}" is not available to this plugin context`)
 
-  const timeoutMs = input.request.timeoutMs ?? (await defaultPluginRequestTimeoutMs(input.pluginDir))
+  const timeoutMs = input.request.timeoutMs ?? (await defaultPluginToolInvocationTimeoutMs(input.pluginDir))
   const signal = input.context.abort
     ? AbortSignal.any([input.context.abort, AbortSignal.timeout(timeoutMs)])
     : AbortSignal.timeout(timeoutMs)
@@ -271,10 +271,16 @@ function normalizeTaskRunInput(input: ToolTaskRunInput): ToolTaskRunInput {
   }
 }
 
-async function defaultPluginRequestTimeoutMs(pluginDir?: string): Promise<number> {
+async function defaultPluginToolInvocationTimeoutMs(pluginDir?: string): Promise<number> {
   const config = await Config.current().catch(() => undefined)
   const manifest = pluginDir ? await ManifestReader.read(pluginDir) : undefined
-  return resolveRuntimeLimits(config?.pluginRuntimePolicy?.limits, manifest?.runtime?.resources).requestTimeoutMs
+  return resolveRuntimeLimits(config?.pluginRuntimePolicy?.limits, manifest?.runtime?.resources).toolInvocationTimeoutMs
+}
+
+async function defaultPluginTaskRunTimeoutMs(pluginDir?: string): Promise<number> {
+  const config = await Config.current().catch(() => undefined)
+  const manifest = pluginDir ? await ManifestReader.read(pluginDir) : undefined
+  return resolveRuntimeLimits(config?.pluginRuntimePolicy?.limits, manifest?.runtime?.resources).taskRunTimeoutMs
 }
 
 function taskResult(

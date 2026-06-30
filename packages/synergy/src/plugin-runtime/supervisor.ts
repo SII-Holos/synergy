@@ -65,7 +65,10 @@ function normalizeRuntimePath(input: string | undefined): string {
 function sameRuntimeLimits(left: RuntimeLimits, right: RuntimeLimits): boolean {
   return (
     left.startupTimeoutMs === right.startupTimeoutMs &&
-    left.requestTimeoutMs === right.requestTimeoutMs &&
+    left.toolInvocationTimeoutMs === right.toolInvocationTimeoutMs &&
+    left.hookInvocationTimeoutMs === right.hookInvocationTimeoutMs &&
+    left.bridgeRequestTimeoutMs === right.bridgeRequestTimeoutMs &&
+    left.taskRunTimeoutMs === right.taskRunTimeoutMs &&
     left.shutdownGraceMs === right.shutdownGraceMs &&
     left.maxConcurrentRequests === right.maxConcurrentRequests &&
     left.maxLogBytesPerMinute === right.maxLogBytesPerMinute &&
@@ -110,7 +113,9 @@ function runtimeHasLiveClient(entry: RuntimeEntry): boolean {
 function fileHashOrMissing(filepath: string | undefined): string {
   if (!filepath) return "missing:"
   try {
-    return fs.existsSync(filepath) && fs.statSync(filepath).isFile() ? sha256File(filepath) : `missing:${path.resolve(filepath)}`
+    return fs.existsSync(filepath) && fs.statSync(filepath).isFile()
+      ? sha256File(filepath)
+      : `missing:${path.resolve(filepath)}`
   } catch {
     return `missing:${path.resolve(filepath)}`
   }
@@ -310,18 +315,20 @@ export class PluginRuntimeSupervisor {
       new Promise((resolve, reject) => {
         const controller = new AbortController()
         const abortKeys = this.#registerRuntimeRequestAbort(pluginId, message, controller)
+        const timeoutMs =
+          message.type === "triggerHook" ? entry.limits.hookInvocationTimeoutMs : entry.limits.toolInvocationTimeoutMs
         const cleanup = () => {
           const waiter = pending.get(message.requestId)
           if (waiter) cleanupRuntimeWaiter(message.requestId, waiter)
           else this.#clearRuntimeRequestAbort(abortKeys)
         }
         const timeout = setTimeout(() => {
-          const reason = `Plugin runtime request timed out after ${entry.limits.requestTimeoutMs}ms for "${pluginId}"`
+          const reason = `Plugin runtime ${message.type === "triggerHook" ? "hook" : "tool"} timed out after ${timeoutMs}ms for "${pluginId}"`
           cleanup()
           controller.abort(new Error(reason))
           if (message.type === "invokeTool") runtime.send({ type: "abortTool", requestId: message.requestId, reason })
           reject(new Error(reason))
-        }, entry.limits.requestTimeoutMs)
+        }, timeoutMs)
         pending.set(message.requestId, { resolve, reject, timeout, abortKeys })
         runtime.send(message as HostToPlugin)
       })

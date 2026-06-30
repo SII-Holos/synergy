@@ -17,7 +17,10 @@ const RuntimeInfo = z
     memoryMb: z.number().optional(),
     limits: z.object({
       startupTimeoutMs: z.number(),
-      requestTimeoutMs: z.number(),
+      toolInvocationTimeoutMs: z.number(),
+      hookInvocationTimeoutMs: z.number(),
+      bridgeRequestTimeoutMs: z.number(),
+      taskRunTimeoutMs: z.number(),
       shutdownGraceMs: z.number(),
       maxConcurrentRequests: z.number(),
       maxLogBytesPerMinute: z.number(),

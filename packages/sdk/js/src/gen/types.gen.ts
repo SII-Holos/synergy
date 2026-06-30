@@ -904,9 +904,21 @@ export type PluginRuntimeLimitsConfig = {
    */
   startupTimeoutMs?: number
   /**
-   * Maximum milliseconds for one plugin runtime request
+   * Maximum milliseconds for a plugin tool invocation
    */
-  requestTimeoutMs?: number
+  toolInvocationTimeoutMs?: number
+  /**
+   * Maximum milliseconds for a plugin hook invocation
+   */
+  hookInvocationTimeoutMs?: number
+  /**
+   * Maximum milliseconds for one plugin-to-host bridge request
+   */
+  bridgeRequestTimeoutMs?: number
+  /**
+   * Default maximum milliseconds for plugin delegated task runs
+   */
+  taskRunTimeoutMs?: number
   /**
    * Graceful shutdown window before force kill
    */
@@ -4487,7 +4499,10 @@ export type PluginRuntimeInfo = {
   memoryMb?: number
   limits: {
     startupTimeoutMs: number
-    requestTimeoutMs: number
+    toolInvocationTimeoutMs: number
+    hookInvocationTimeoutMs: number
+    bridgeRequestTimeoutMs: number
+    taskRunTimeoutMs: number
     shutdownGraceMs: number
     maxConcurrentRequests: number
     maxLogBytesPerMinute: number
