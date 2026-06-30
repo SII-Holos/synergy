@@ -52,6 +52,11 @@
       "types": "./src/policy.ts",
       "import": "./dist/policy.js"
     },
+    "./paths": {
+      "bun": "./src/paths.ts",
+      "types": "./src/paths.ts",
+      "import": "./dist/paths.js"
+    },
     "./market": {
       "bun": "./src/market.ts",
       "types": "./src/market.ts",
