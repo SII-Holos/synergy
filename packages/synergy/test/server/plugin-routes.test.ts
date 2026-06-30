@@ -8,6 +8,13 @@ import { Plugin } from "../../src/plugin"
 import { Config } from "../../src/config/config"
 import { Log } from "../../src/util/log"
 import { Global } from "../../src/global"
+import { baseCapabilities } from "../../src/plugin/capability"
+import {
+  computeManifestHash,
+  computePermissionsHash,
+  removeApproval,
+  saveApproval,
+} from "../../src/plugin/consent/approval-store"
 
 Log.init({ print: false })
 const { PluginMarketplaceRegistry } = await import("../../src/plugin/marketplace-registry")
@@ -505,6 +512,68 @@ describe("POST /api/plugins/install-from-registry", () => {
         })
       },
     )
+  })
+
+  test("preserves official source when installing a verified official artifact", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const manifest = { name: "registry-plugin", version: "1.0.0" }
+    const capabilities = baseCapabilities(manifest as any)
+    const addMock = mock(async () =>
+      buildLoadedPlugin({ id: "registry-plugin", name: "Registry Plugin", pluginDir: tmp.path, source: "official" }),
+    )
+    const officialMock = mock(async () => ({
+      manifest,
+      capabilities,
+      risk: "low",
+      tarballPath: path.join(tmp.path, "registry-plugin-1.0.0.synergy-plugin.tgz"),
+      cacheKey: "official:registry-plugin@1.0.0:test",
+    }))
+    ;(Plugin as any).add = addMock
+    ;(Plugin as any).manifest = mock(async () => manifest)
+    ;(PluginMarketplaceRegistry as any).verifyOfficialArtifact = officialMock
+
+    await saveApproval({
+      pluginId: "registry-plugin",
+      source: "official",
+      version: "1.0.0",
+      manifestHash: computeManifestHash(manifest as any),
+      permissionsHash: computePermissionsHash(manifest as any, capabilities),
+      approvedAt: Date.now(),
+      approvedBy: "user",
+      trustTier: "trusted-import",
+      approvedCapabilities: capabilities,
+      approvedNetworkDomains: [],
+      approvedUISurfaces: [],
+      risk: "low",
+    })
+
+    try {
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const app = Server.App()
+          const res = await app.request("/api/plugins/install-from-registry", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ id: "registry-plugin", version: "1.0.0" }),
+          })
+
+          expect(res.status).toBe(200)
+          expect(officialMock).toHaveBeenCalledTimes(1)
+          expect(addMock).toHaveBeenCalledTimes(1)
+          expect((addMock as any).mock.calls[0][0]).toBe(
+            `file://${path.join(tmp.path, "registry-plugin-1.0.0.synergy-plugin.tgz")}`,
+          )
+          expect((addMock as any).mock.calls[0][1]).toEqual({
+            autoReload: true,
+            skipConsent: true,
+            source: "official",
+          })
+        },
+      })
+    } finally {
+      await removeApproval("registry-plugin")
+    }
   })
 })
 

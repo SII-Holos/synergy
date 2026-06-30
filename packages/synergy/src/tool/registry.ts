@@ -151,6 +151,7 @@ export namespace ToolRegistry {
 
   export async function reload() {
     log.info("reloading tool registry state")
+    findCache.clear()
     await state.resetAll()
     log.info("tool registry state reloaded")
   }

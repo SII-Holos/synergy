@@ -152,6 +152,7 @@ async function installOfficialRegistryPlugin(id: string, version: string) {
   const loadedPlugin = await Plugin.add(pathToFileURL(artifact.tarballPath).href, {
     autoReload: true,
     skipConsent: true,
+    source: "official",
   })
   const manifest = await manifestFor(loadedPlugin.id)
   if (!manifest) throw new Error(`Plugin manifest not found after install: ${loadedPlugin.id}`)

@@ -192,6 +192,9 @@ export const state = ScopedState.create(async (): Promise<LoaderState> => {
   const loadedPluginIds = new Set<string>()
   for (const candidate of selectLoadCandidates(candidates, lockfile)) {
     const { configPath, resolved } = candidate
+    const pluginIdFromManifest = resolved.manifest.name
+    const lockEntry = lockfile?.plugins[pluginIdFromManifest]
+    const source = lockEntry?.source ?? resolved.source
 
     const importUrl = importUrlForEntry(resolved.entryPath, reloadVersion)
     const mod = await import(importUrl)
@@ -215,7 +218,7 @@ export const state = ScopedState.create(async (): Promise<LoaderState> => {
         pluginId,
         pluginDir: resolved.pluginDir,
         manifest: resolved.manifest,
-        source: resolved.source,
+        source,
         devMode: Installation.CHANNEL === "local",
         policy: config.pluginRuntimePolicy,
       })
@@ -234,7 +237,7 @@ export const state = ScopedState.create(async (): Promise<LoaderState> => {
         hooks,
         pluginDir: resolved.pluginDir,
         entryPath: resolved.entryPath,
-        source: resolved.source,
+        source,
         runtimeMode: policy.runtimeMode,
         cli: hooks.cli,
         skills: hooks.skills,

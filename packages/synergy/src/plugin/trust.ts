@@ -35,7 +35,11 @@ function sourceFromLockfile(pluginDir: string): PluginSource | undefined {
   try {
     const lockfilePath = path.join(Global.Path.root, "plugin.lock")
     const parsed = JSON.parse(fs.readFileSync(lockfilePath, "utf-8"))
-    const entries = Object.values(parsed?.plugins ?? {}) as Array<{ spec?: string; resolved?: string }>
+    const entries = Object.values(parsed?.plugins ?? {}) as Array<{
+      spec?: string
+      source?: PluginSource
+      resolved?: string
+    }>
     const normalizedPluginDir = path.resolve(pluginDir)
     for (const entry of entries) {
       if (!entry.spec || !entry.resolved) continue
@@ -43,8 +47,9 @@ function sourceFromLockfile(pluginDir: string): PluginSource | undefined {
       const relative = path.relative(path.dirname(resolved), normalizedPluginDir)
       const reverse = path.relative(normalizedPluginDir, resolved)
       if (relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative)))
-        return sourceFromSpec(entry.spec)
-      if (reverse === "" || (!reverse.startsWith("..") && !path.isAbsolute(reverse))) return sourceFromSpec(entry.spec)
+        return entry.source ?? sourceFromSpec(entry.spec)
+      if (reverse === "" || (!reverse.startsWith("..") && !path.isAbsolute(reverse)))
+        return entry.source ?? sourceFromSpec(entry.spec)
     }
   } catch {}
 }

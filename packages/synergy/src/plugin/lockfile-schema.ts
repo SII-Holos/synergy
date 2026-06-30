@@ -3,6 +3,7 @@ import z from "zod"
 export const PluginLockEntry = z
   .object({
     spec: z.string(),
+    source: z.enum(["local", "official", "npm", "git", "url", "builtin"]).optional(),
     version: z.string(),
     resolved: z.string(),
     integrity: z.string().optional(),

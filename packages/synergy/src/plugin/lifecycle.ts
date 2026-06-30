@@ -108,6 +108,8 @@ export async function reload() {
     }
   }
   await state.resetAll()
+  const { ToolRegistry } = await import("../tool/registry")
+  await ToolRegistry.reload()
   log.info("plugin state reloaded")
 }
 

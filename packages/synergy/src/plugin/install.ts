@@ -95,7 +95,7 @@ export async function resolveConfiguredPluginId(spec: string): Promise<string | 
 
 export async function add(
   spec: string,
-  opts: { autoReload?: boolean; skipConsent?: boolean } = {},
+  opts: { autoReload?: boolean; skipConsent?: boolean; source?: PluginSource } = {},
 ): Promise<LoadedPlugin> {
   const parsedSpec = spec.startsWith("file://") ? { pkg: spec, version: "latest" } : PluginSpec.parse(spec)
   const { pkg, version } = parsedSpec
@@ -146,7 +146,7 @@ export async function add(
     const config = await Config.current()
 
     // Derive plugin source from spec (does not depend on manifest)
-    const source: PluginSource = resolved.source
+    const source: PluginSource = opts.source ?? resolved.source
     const devMode = Installation.CHANNEL === "local"
 
     const preApprovalPolicy = resolvePluginPolicyDecision({
@@ -260,6 +260,7 @@ export async function add(
     const runtimeMode = approvedPolicy.runtimeMode
     const lockEntry = {
       spec,
+      source,
       version: manifestData.version ?? version,
       resolved: resolved.entryPath,
       ...(integrity ? { integrity } : {}),
