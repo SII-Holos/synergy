@@ -14,13 +14,6 @@ Log.init({ print: false })
 let Plugin: any
 let Config: any
 
-const _pluginP = import("../../src/plugin").then((m) => {
-  Plugin = m.Plugin
-})
-const _configP = import("../../src/config/config").then((m) => {
-  Config = m.Config
-})
-
 // ---------------------------------------------------------------------------
 // Mock helpers
 // ---------------------------------------------------------------------------
