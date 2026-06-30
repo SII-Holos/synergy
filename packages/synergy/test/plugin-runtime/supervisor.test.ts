@@ -174,6 +174,23 @@ describe("PluginRuntimeSupervisor", () => {
       expect(second.launchSignature).not.toBe(first.launchSignature)
     })
 
+    test("restarts when packaged integrity changes even if manifest and entry stay the same", async () => {
+      const { supervisor } = createSupervisor()
+      const pluginId = uniquePluginId()
+      const pluginDir = await pluginDirFor(pluginId)
+
+      await Bun.write(path.join(pluginDir, "integrity.json"), JSON.stringify({ files: { "assets/a.txt": "old" } }))
+      const first = await startInProcess(supervisor, pluginId, { pluginDir })
+
+      await Bun.write(path.join(pluginDir, "integrity.json"), JSON.stringify({ files: { "assets/a.txt": "new" } }))
+      const second = await startInProcess(supervisor, pluginId, { pluginDir })
+
+      expect(second).not.toBe(first)
+      expect(second.state).toBe("ready")
+      expect(second.restarts).toBe(1)
+      expect(second.launchSignature).not.toBe(first.launchSignature)
+    })
+
     test("restarts a running plugin when the launch spec changes", async () => {
       const { supervisor } = createSupervisor()
       const pluginId = uniquePluginId()

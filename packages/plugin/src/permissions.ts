@@ -198,8 +198,8 @@ export const CAPABILITY_DETAILS: Record<string, SynergyCapabilityDefinition> = {
   tool_invoke: {
     category: "tools",
     severity: "low",
-    title: "Invoke local tools",
-    description: "Can call local tools explicitly provided to the current Synergy runtime.",
+    title: "Invoke Synergy tools",
+    description: "Can call tools explicitly provided to the current Synergy runtime.",
   },
   session_state: {
     category: "session",
@@ -447,7 +447,7 @@ function buildCapabilitySet(
     caps.add("file_write")
   }
 
-  if (pt?.localTools ?? false) caps.add("tool_invoke")
+  if (pt?.invoke ?? false) caps.add("tool_invoke")
   if (tc?.shell ?? pt?.shell ?? false) caps.add("shell")
   if (tc?.network ?? pt?.network ?? false) caps.add("network_request")
 

@@ -118,10 +118,12 @@ function fileHashOrMissing(filepath: string | undefined): string {
 
 function runtimeLaunchSignature(input: { pluginDir: string; entryPath: string | undefined }): string {
   const manifestPath = path.join(input.pluginDir, "plugin.json")
+  const integrityPath = path.join(input.pluginDir, "integrity.json")
   return sha256Content(
     JSON.stringify({
       manifest: fileHashOrMissing(manifestPath),
       entry: fileHashOrMissing(input.entryPath),
+      integrity: fileHashOrMissing(integrityPath),
     }),
   )
 }
