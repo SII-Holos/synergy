@@ -6,7 +6,7 @@ import { PluginBuildCommand } from "../../src/cli/cmd/plugin-build"
 import { PluginCreateCommand } from "../../src/cli/cmd/plugin-create"
 import { PluginPackCommand } from "../../src/cli/cmd/plugin-pack"
 import { PluginValidateCommand } from "../../src/cli/cmd/plugin-validate"
-import { PluginManifest } from "@ericsanchezok/synergy-plugin"
+import { PLUGIN_PROTOCOL_MIN_SYNERGY_RANGE, PluginManifest } from "@ericsanchezok/synergy-plugin"
 import { baseCapabilities } from "@ericsanchezok/synergy-plugin/permissions"
 import { sha256File } from "../../../plugin-kit/src/lib/crypto"
 import { computeManifestHash, computePermissionsHash } from "../../../plugin-kit/src/lib/hash"
@@ -42,7 +42,7 @@ describe("plugin scaffold toolchain", () => {
 
         const manifest = await Bun.file(path.join(pluginDir, "dist", "plugin.json")).json()
         expect(manifest.name).toBe(name)
-        expect(manifest.engines?.synergy).toBe(">=1.1.26")
+        expect(manifest.engines?.synergy).toBe(PLUGIN_PROTOCOL_MIN_SYNERGY_RANGE)
         expect(manifest.main).toBe("./runtime/index.js")
         if (manifest.contributes?.ui?.entry) {
           expect(manifest.contributes.ui.entry).toMatch(/^\.\/ui\/index\.js$/)

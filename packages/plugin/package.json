@@ -67,6 +67,11 @@
       "types": "./src/spec.ts",
       "import": "./dist/spec.js"
     },
+    "./version": {
+      "bun": "./src/version.ts",
+      "types": "./src/version.ts",
+      "import": "./dist/version.js"
+    },
     "./shell": {
       "bun": "./src/shell.ts",
       "types": "./src/shell.ts",

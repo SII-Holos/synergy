@@ -2,6 +2,7 @@ import path from "path"
 import fs from "fs"
 import { EOL } from "os"
 import type { Argv } from "yargs"
+import { PLUGIN_PROTOCOL_MIN_SYNERGY_RANGE } from "@ericsanchezok/synergy-plugin"
 import { cmd } from "../cmd"
 import { UI } from "../ui"
 
@@ -26,7 +27,7 @@ function pluginJson(name: string, extra: (name: string) => object): string {
     version: "0.1.0",
     description: `${name} plugin`,
     engines: {
-      synergy: ">=1.1.26",
+      synergy: PLUGIN_PROTOCOL_MIN_SYNERGY_RANGE,
     },
     permissions: {},
     contributes: {},

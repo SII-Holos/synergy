@@ -86,7 +86,7 @@ Each plugin has a root `plugin.json`:
   "version": "0.1.0",
   "description": "Example plugin",
   "engines": {
-    "synergy": ">=1.1.26",
+    "synergy": ">=2.4.3",
   },
   "main": "./src/index.ts",
   "permissions": {

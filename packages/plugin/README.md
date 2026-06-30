@@ -197,7 +197,7 @@ Each distributable plugin has a root `plugin.json`:
   "description": "Example Synergy plugin",
   "main": "./src/index.ts",
   "engines": {
-    "synergy": ">=1.1.26",
+    "synergy": ">=2.4.3",
   },
   "permissions": {
     "tools": {

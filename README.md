@@ -89,7 +89,7 @@ curl -fsSL https://raw.githubusercontent.com/SII-Holos/synergy/main/install | ba
 Install a specific version:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/SII-Holos/synergy/main/install | bash -s -- --version 1.2.2
+curl -fsSL https://raw.githubusercontent.com/SII-Holos/synergy/main/install | bash -s -- --version 2.4.3
 ```
 
 The installer places the runtime binary together with the bundled Web UI and schema assets under `~/.synergy/`, so `synergy web` works without requiring a local source checkout.
@@ -574,7 +574,7 @@ curl -fsSL https://raw.githubusercontent.com/SII-Holos/synergy/main/packages/met
 Install a specific version:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/SII-Holos/synergy/main/packages/meta-synergy/install | bash -s -- --version 1.1.26
+curl -fsSL https://raw.githubusercontent.com/SII-Holos/synergy/main/packages/meta-synergy/install | bash -s -- --version 2.4.3
 ```
 
 The installer places the binary under `~/.meta-synergy/bin/` and optionally adds it to your `PATH`.

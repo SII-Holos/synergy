@@ -10,13 +10,14 @@
   "version": "0.1.0",
   "description": "What this plugin does",
   "engines": {
-    "synergy": ">=1.1.26",
+    "synergy": ">=2.4.3",
   },
 }
 ```
 
 `name` is the canonical plugin id and must match `PluginDescriptor.id`.
 `engines.synergy` is the only Synergy version contract. Synergy rejects installation when the current runtime does not satisfy the declared range.
+The plugin kit scaffold uses `PLUGIN_PROTOCOL_MIN_SYNERGY_RANGE` from `@ericsanchezok/synergy-plugin` for this field.
 
 ## Runtime Entry
 
