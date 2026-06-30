@@ -27012,6 +27012,25 @@
           "warnings"
         ]
       },
+      "ApiPluginPermissionItem": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "risk": {
+            "type": "string",
+            "enum": ["low", "medium", "high"]
+          },
+          "granted": {
+            "type": "boolean"
+          }
+        },
+        "required": ["key", "description", "risk"]
+      },
       "ApiPluginInfo": {
         "type": "object",
         "properties": {
@@ -27045,9 +27064,36 @@
           },
           "agentCount": {
             "type": "number"
+          },
+          "capabilities": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "risk": {
+            "type": "string",
+            "enum": ["low", "medium", "high"]
+          },
+          "permissionsSummary": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ApiPluginPermissionItem"
+            }
           }
         },
-        "required": ["pluginId", "trustTier", "hasManifest", "pluginDir", "cliCommands", "skillCount", "agentCount"]
+        "required": [
+          "pluginId",
+          "trustTier",
+          "hasManifest",
+          "pluginDir",
+          "cliCommands",
+          "skillCount",
+          "agentCount",
+          "capabilities",
+          "risk",
+          "permissionsSummary"
+        ]
       },
       "ApiPluginDetail": {
         "type": "object",
@@ -27102,9 +27148,36 @@
             "items": {
               "type": "string"
             }
+          },
+          "capabilities": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "risk": {
+            "type": "string",
+            "enum": ["low", "medium", "high"]
+          },
+          "permissionsSummary": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ApiPluginPermissionItem"
+            }
           }
         },
-        "required": ["pluginId", "trustTier", "hasManifest", "pluginDir", "cliCommands", "skills", "agents"]
+        "required": [
+          "pluginId",
+          "trustTier",
+          "hasManifest",
+          "pluginDir",
+          "cliCommands",
+          "skills",
+          "agents",
+          "capabilities",
+          "risk",
+          "permissionsSummary"
+        ]
       },
       "PluginRuntimeInfo": {
         "type": "object",

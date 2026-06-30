@@ -19,7 +19,7 @@ import {
   pluginAssetUrl,
   type PluginManifest as PluginManifestType,
 } from "@ericsanchezok/synergy-plugin"
-import { computeRisk } from "@ericsanchezok/synergy-plugin/permissions"
+import { computeRisk, pluginRisk, registryPermissionSummary } from "@ericsanchezok/synergy-plugin/permissions"
 
 import { diffPermissions } from "../plugin/consent/diff"
 import {
@@ -99,7 +99,17 @@ const UIContribution = z
 
 const PluginStatus = PluginStatusSchema
 
+const ApiPluginPermissionItem = z
+  .object({
+    key: z.string(),
+    description: z.string(),
+    risk: z.enum(["low", "medium", "high"]),
+    granted: z.boolean().optional(),
+  })
+  .meta({ ref: "ApiPluginPermissionItem" })
+
 function apiPluginDetail(loadedPlugin: Plugin.LoadedPlugin, manifest: PluginManifestType) {
+  const capabilities = baseCapabilities(manifest)
   return {
     pluginId: loadedPlugin.id,
     name: loadedPlugin.name ?? manifest.name,
@@ -111,6 +121,9 @@ function apiPluginDetail(loadedPlugin: Plugin.LoadedPlugin, manifest: PluginMani
     cliCommands: loadedPlugin.cli ? Object.keys(loadedPlugin.cli) : [],
     skills: loadedPlugin.skills ? loadedPlugin.skills.map((s: any) => s.name) : [],
     agents: loadedPlugin.agents ? Object.keys(loadedPlugin.agents) : [],
+    capabilities,
+    risk: pluginRisk(manifest, { scope: "install" }),
+    permissionsSummary: registryPermissionSummary(manifest, capabilities),
   }
 }
 
@@ -491,6 +504,9 @@ const ApiPluginInfo = z
     cliCommands: z.array(z.string()),
     skillCount: z.number(),
     agentCount: z.number(),
+    capabilities: z.array(z.string()),
+    risk: z.enum(["low", "medium", "high"]),
+    permissionsSummary: z.array(ApiPluginPermissionItem),
   })
   .meta({ ref: "ApiPluginInfo" })
 
@@ -506,6 +522,9 @@ const ApiPluginDetail = z
     cliCommands: z.array(z.string()),
     skills: z.array(z.string()),
     agents: z.array(z.string()),
+    capabilities: z.array(z.string()),
+    risk: z.enum(["low", "medium", "high"]),
+    permissionsSummary: z.array(ApiPluginPermissionItem),
   })
   .meta({ ref: "ApiPluginDetail" })
 
@@ -533,6 +552,7 @@ export const ApiPluginRoute = new Hono()
         loaded.map(async (p) => {
           const manifest = await Plugin.manifest(p.id)
           if (!manifest) return null
+          const capabilities = baseCapabilities(manifest)
           return {
             pluginId: p.id,
             name: p.name ?? manifest.name,
@@ -543,6 +563,9 @@ export const ApiPluginRoute = new Hono()
             cliCommands: p.cli ? Object.keys(p.cli) : [],
             skillCount: p.skills?.length ?? 0,
             agentCount: p.agents ? Object.keys(p.agents).length : 0,
+            capabilities,
+            risk: pluginRisk(manifest, { scope: "install" }),
+            permissionsSummary: registryPermissionSummary(manifest, capabilities),
           }
         }),
       )

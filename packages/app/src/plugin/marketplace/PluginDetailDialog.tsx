@@ -9,12 +9,6 @@ import { PermissionRiskBadge } from "../consent/PermissionRiskBadge"
 import { InstallConsentDialog } from "../consent/InstallConsentDialog"
 import { getInstalledVersion, checkUpdateAvailable } from "./install-utils"
 import { MarketplacePluginIcon } from "./MarketplacePluginIcon"
-import {
-  capabilitiesForRiskScope,
-  pluginRisk,
-  registryPermissionSummary,
-} from "@ericsanchezok/synergy-plugin/permissions"
-import type { PluginManifest } from "@ericsanchezok/synergy-plugin"
 import type {
   ApiPluginDetail,
   ApiPluginInfo,
@@ -68,12 +62,6 @@ function runtimeModeFromManifest(manifest: Record<string, unknown> | null | unde
   return mode === "in-process" || mode === "worker" || mode === "process" ? mode : "process"
 }
 
-function riskFromManifest(manifest: Record<string, unknown> | null | undefined): Risk {
-  if (!manifest) return "low"
-  const pluginManifest = manifest as unknown as PluginManifest
-  return pluginRisk(pluginManifest, { scope: "install" })
-}
-
 function toolsFromManifest(manifest: Record<string, unknown> | null | undefined): string[] {
   const contributes = asRecord(manifest?.contributes)
   return arrayField(contributes, "tools")
@@ -98,12 +86,6 @@ function uiSurfacesFromManifest(manifest: Record<string, unknown> | null | undef
   ].filter((key) => arrayField(ui, key).length > 0)
 }
 
-function permissionsFromManifest(manifest: Record<string, unknown> | null | undefined): RegistryPermissionItem[] {
-  if (!manifest) return []
-  const pluginManifest = manifest as unknown as PluginManifest
-  return registryPermissionSummary(pluginManifest, capabilitiesForRiskScope(pluginManifest, "install"))
-}
-
 function fallbackPluginSummary(input: {
   installed?: ApiPluginInfo | null
   detail?: ApiPluginDetail | null
@@ -123,7 +105,7 @@ function fallbackPluginSummary(input: {
     keywords: ["plugin"],
     latestVersion: input.installed.version,
     updatedAt: Date.now(),
-    risk: riskFromManifest(manifest),
+    risk: input.detail?.risk ?? input.installed.risk,
     trustTier: input.installed.trustTier,
     runtimeMode: runtimeModeFromManifest(manifest),
     uiSurfaces: uiSurfacesFromManifest(manifest),
@@ -246,9 +228,7 @@ export function PluginDetailDialog(props: {
   )
 
   const installedInfo = createMemo(
-    () =>
-      props.installedPlugin ??
-      (installedPlugins() ?? []).find((plugin) => plugin.pluginId === props.pluginId || plugin.name === props.pluginId),
+    () => props.installedPlugin ?? (installedPlugins() ?? []).find((plugin) => plugin.pluginId === props.pluginId),
   )
 
   const [installedDetail] = createResource(
@@ -281,7 +261,7 @@ export function PluginDetailDialog(props: {
   const permissions = createMemo(() => {
     const registryPermissions = collectAllPermissions(versions() ?? [])
     if (registryPermissions.length > 0) return registryPermissions
-    return permissionsFromManifest(asRecord(installedDetail()?.manifest))
+    return installedDetail()?.permissionsSummary ?? installedInfo()?.permissionsSummary ?? []
   })
   const busy = createMemo(() => action() !== null)
   const repoUrl = createMemo(() => plugin()?.repo ?? plugin()?.homepage)

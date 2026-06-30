@@ -82,7 +82,6 @@ export function MarketplacePage(props: MarketplacePageProps) {
     for (const plugin of installedPlugins() ?? []) {
       if (plugin.version && plugin.version !== "0.0.0") {
         map.set(plugin.pluginId, plugin.version)
-        if (plugin.name) map.set(plugin.name, plugin.version)
       }
     }
     return map

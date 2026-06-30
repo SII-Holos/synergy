@@ -4463,6 +4463,13 @@ export type PluginStatus = {
   }>
 }
 
+export type ApiPluginPermissionItem = {
+  key: string
+  description: string
+  risk: "low" | "medium" | "high"
+  granted?: boolean
+}
+
 export type ApiPluginInfo = {
   pluginId: string
   name?: string
@@ -4473,6 +4480,9 @@ export type ApiPluginInfo = {
   cliCommands: Array<string>
   skillCount: number
   agentCount: number
+  capabilities: Array<string>
+  risk: "low" | "medium" | "high"
+  permissionsSummary: Array<ApiPluginPermissionItem>
 }
 
 export type ApiPluginDetail = {
@@ -4488,6 +4498,9 @@ export type ApiPluginDetail = {
   cliCommands: Array<string>
   skills: Array<string>
   agents: Array<string>
+  capabilities: Array<string>
+  risk: "low" | "medium" | "high"
+  permissionsSummary: Array<ApiPluginPermissionItem>
 }
 
 export type PluginRuntimeInfo = {

@@ -87,6 +87,9 @@ describe("getInstalledVersion", () => {
       cliCommands: [],
       skillCount: 0,
       agentCount: 0,
+      capabilities: [],
+      risk: "low",
+      permissionsSummary: [],
       ...rest,
     }
   }
@@ -99,9 +102,9 @@ describe("getInstalledVersion", () => {
     expect(getInstalledVersion(plugins, "test-plugin")).toBe("2.3.1")
   })
 
-  test("finds plugin by name match when no pluginId match", () => {
+  test("does not match display name when canonical plugin id differs", () => {
     const plugins = [makePlugin({ pluginId: "npm--@scope--test-plugin", name: "test-plugin", version: "2.3.1" })]
-    expect(getInstalledVersion(plugins, "test-plugin")).toBe("2.3.1")
+    expect(getInstalledVersion(plugins, "test-plugin")).toBeNull()
   })
 
   test("returns null when no match", () => {
