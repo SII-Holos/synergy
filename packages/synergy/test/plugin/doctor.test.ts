@@ -2,7 +2,10 @@ import { describe, expect, test } from "bun:test"
 import fs from "fs"
 import path from "path"
 import { pathToFileURL } from "url"
+import { Log } from "../../src/util/log"
 import { Config } from "../../src/config/config"
+
+Log.init({ print: false })
 import { Global } from "../../src/global"
 import * as Lockfile from "../../src/plugin/lockfile"
 import { doctor } from "../../src/plugin/doctor"

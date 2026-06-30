@@ -1,5 +1,8 @@
 import { describe, expect, test } from "bun:test"
+import { Log } from "../../src/util/log"
 import { Config } from "../../src/config/config"
+
+Log.init({ print: false })
 import * as Lockfile from "../../src/plugin/lockfile"
 import { PluginInstallationTransaction } from "../../src/plugin/installation-transaction"
 import type { ResolvedPluginSpec } from "../../src/plugin/spec-resolver"

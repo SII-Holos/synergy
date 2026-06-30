@@ -15,7 +15,7 @@ import { Auth } from "../provider/api-key"
 import { type ParseError as JsoncParseError, parse as parseJsonc, printParseErrorCode } from "jsonc-parser"
 import { ScopeContext } from "../scope/context"
 import { ScopedState } from "../scope/scoped-state"
-import { ScopeRuntime } from "../scope/runtime"
+import type { ScopeRuntime } from "../scope/runtime"
 import { Scope } from "../scope"
 import { BusEvent } from "../bus/bus-event"
 import { LSPServer } from "../lsp/server"
@@ -1002,6 +1002,7 @@ export namespace Config {
     for (const [id, fragment] of ConfigDomain.split(config)) {
       await writeDomainFile(id, fragment, synergyDir)
     }
+    const { ScopeRuntime } = await import("../scope/runtime")
     await ScopeRuntime.dispose()
   }
 

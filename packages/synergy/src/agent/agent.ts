@@ -21,7 +21,7 @@ import { Log } from "@/util/log"
 import { ExternalAgent } from "@/external-agent/bridge"
 import { ExternalAgentDiscovery } from "@/external-agent/discovery"
 import { Plugin } from "../plugin"
-import { MODEL_ROLE_IDS } from "../provider/model-role"
+import { MODEL_ROLE_IDS, type ModelRole } from "../provider/model-role"
 
 export namespace Agent {
   const log = Log.create({ service: "agent" })
@@ -473,7 +473,7 @@ export namespace Agent {
 
   function resolveSummaryModel(
     cfg: Config.Info,
-    role: Provider.ModelRole | undefined,
+    role: ModelRole | undefined,
     fallbackChain: Array<z.infer<typeof ModelRoleField>>,
   ): ({ providerID: string; modelID: string } & { via: z.infer<typeof ModelRoleField> }) | undefined {
     for (const field of fallbackChain) {
