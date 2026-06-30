@@ -382,11 +382,9 @@ describe("Visual Token Contract", () => {
   })
 
   describe("5. Pill / chip elements use --radius-full", () => {
-    test("session-turn.css pill 元素使用 --radius-full", async () => {
+    test("session-turn.css 不硬编码 pill 圆角", async () => {
       const css = await readFileSafe("src/components/session-turn.css")
-      // chronicler-button, steps-trigger, retry-toggle all use 9999px
-      const radiusFullRefs = (css.match(/var\(--radius-full\)/g) || []).length
-      expect(radiusFullRefs, "session-turn.css 应将硬编码 9999px 替换为 var(--radius-full)").toBeGreaterThan(0)
+      expect(css, "session-turn.css 不应硬编码 9999px 圆角").not.toContain("9999px")
     })
 
     test("quick-actions.css pill 元素使用 --radius-full", async () => {

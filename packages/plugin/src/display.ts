@@ -8,7 +8,7 @@ export interface ToolMediaDisplay {
 
 export interface ToolDisplay {
   kind?: "default" | "media-generation"
-  visibility?: "default" | "media" | "hidden-unless-error"
+  visibility?: "default" | "media"
   presentation?: "default" | "attachment-only"
   media?: ToolMediaDisplay
   primaryAttachmentIds?: string[]

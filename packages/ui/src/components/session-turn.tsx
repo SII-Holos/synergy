@@ -1,29 +1,30 @@
-import {
+import type {
   AssistantMessage,
+  AttachmentPart,
   Message as MessageType,
   Part as PartType,
-  type PermissionRequest,
+  PermissionRequest,
+  ReasoningPart,
+  TextPart,
   ToolPart,
-  type UserMessage,
+  UserMessage,
 } from "@ericsanchezok/synergy-sdk/client"
 import { useData } from "../context"
 import { useDiffComponent } from "../context/diff"
 import { getDirectory, getFilename } from "@ericsanchezok/synergy-util/path"
 
-import { ResonancePopover, type InjectedContext } from "./session-resonance-popover"
 import { Binary } from "@ericsanchezok/synergy-util/binary"
-import { createEffect, createMemo, createSignal, For, Match, on, onCleanup, ParentProps, Show, Switch } from "solid-js"
+import { createEffect, createMemo, For, Match, on, ParentProps, Show, Switch } from "solid-js"
 import { DiffChanges } from "./diff-changes"
 import { Typewriter } from "./typewriter"
 import { Message, Part } from "./message-part"
 import { AttachmentGallery } from "./attachment-card"
-import { shouldHideToolPart } from "./tool-result-presentation"
 import { MediaGenerationCard } from "./media-generation-card"
 import {
-  collectSessionTurnNarrativeItems,
-  isSessionTurnNarrativePart,
-  type SessionTurnNarrativeItem,
-} from "./session-turn-narrative"
+  isActiveMediaGenerationToolPart,
+  isPromotedToolResultPart,
+  primaryToolAttachments,
+} from "./tool-result-presentation"
 import "./session-turn.css"
 import "./tool-renders"
 import { Accordion } from "./accordion"
@@ -33,25 +34,9 @@ import { Icon } from "./icon"
 import { ErrorCard } from "./error-card"
 import { Dynamic } from "solid-js/web"
 import { Button } from "./button"
-import { Spinner } from "./spinner"
 import { createStore } from "solid-js/store"
-import { DateTime, DurationUnit, Interval } from "luxon"
 import { createAutoScroll } from "../hooks"
-import {
-  computeStatusFromPart,
-  computeWorkingPhrase,
-  extractRunningTaskSessionID,
-  titlecaseStatusLabel,
-} from "./session-status"
 import { getSpecialUserMessageRenderer, hasSpecialUserMessageRenderer } from "./special-user-message"
-
-function getInjectedContext(message: UserMessage | undefined): InjectedContext | undefined {
-  if (!message?.metadata) return undefined
-  const ctx = message.metadata.injectedContext as InjectedContext | undefined
-  if (!ctx) return undefined
-  if (!ctx.memory && !ctx.experience) return undefined
-  return ctx
-}
 
 function formatTimestamp(timestamp: number): string {
   const date = new Date(timestamp)
@@ -68,22 +53,80 @@ function same<T>(a: readonly T[] | undefined, b: readonly T[] | undefined) {
   return a.every((x, i) => x === b[i])
 }
 
-const RETRY_PREVIEW_CHAR_LIMIT = 96
+export type SessionTurnTimelineItem =
+  | {
+      kind: "part"
+      message: AssistantMessage
+      part: TextPart | ToolPart | AttachmentPart
+    }
+  | {
+      kind: "reasoning"
+      message: AssistantMessage
+      part: ReasoningPart
+    }
+  | {
+      kind: "media-pending"
+      message: AssistantMessage
+      part: ToolPart
+    }
+  | {
+      kind: "media-result"
+      message: AssistantMessage
+      part: ToolPart
+      files: AttachmentPart[]
+    }
 
-function AssistantMessageItem(props: { message: AssistantMessage; working: boolean }) {
-  const data = useData()
-  const emptyParts: PartType[] = []
-  const msgParts = createMemo(() => data.store.part[props.message.id] ?? emptyParts)
-
-  const filteredParts = createMemo(() =>
-    msgParts().filter((part) => part?.type === "tool" && !isSessionTurnNarrativePart(part, props.working)),
-  )
-
-  return <Message message={props.message} parts={filteredParts()} />
+export function timelineKindForPart(part: PartType, working: boolean): SessionTurnTimelineItem["kind"] | undefined {
+  if (part.type === "text") return "part"
+  if (part.type === "attachment") return "part"
+  if (part.type === "reasoning") return working ? "reasoning" : undefined
+  if (part.type !== "tool") return undefined
+  if (isActiveMediaGenerationToolPart(part)) return "media-pending"
+  if (isPromotedToolResultPart(part)) return "media-result"
+  return "part"
 }
 
-function NarrativeItemDisplay(props: { item: SessionTurnNarrativeItem; serverUrl: string }) {
-  if (props.item.kind === "part") return <Part part={props.item.part} message={props.item.message} />
+export function collectSessionTurnTimelineItems(
+  messages: AssistantMessage[],
+  partsByMessage: Record<string, PartType[] | undefined>,
+  working: boolean,
+): SessionTurnTimelineItem[] {
+  const items: SessionTurnTimelineItem[] = []
+
+  for (const message of messages) {
+    const parts = partsByMessage[message.id] ?? []
+    for (const part of parts) {
+      const kind = timelineKindForPart(part, working)
+      if (!kind) continue
+
+      if (kind === "media-pending") {
+        items.push({ kind, message, part: part as ToolPart })
+        continue
+      }
+
+      if (kind === "media-result") {
+        const files = primaryToolAttachments(part)
+        if (files.length === 0) continue
+        items.push({ kind, message, part: part as ToolPart, files })
+        continue
+      }
+
+      if (kind === "reasoning") {
+        items.push({ kind, message, part: part as ReasoningPart })
+        continue
+      }
+
+      items.push({ kind, message, part: part as TextPart | ToolPart | AttachmentPart })
+    }
+  }
+
+  return items
+}
+
+function TimelineItemDisplay(props: { item: SessionTurnTimelineItem; serverUrl: string }) {
+  if (props.item.kind === "part" || props.item.kind === "reasoning") {
+    return <Part part={props.item.part} message={props.item.message} />
+  }
   if (props.item.kind === "media-pending") return <MediaGenerationCard part={props.item.part} />
   return <AttachmentGallery files={props.item.files} serverUrl={props.serverUrl} variant="result" />
 }
@@ -114,10 +157,7 @@ export function SessionTurn(
     sessionID: string
     messageID: string
     lastUserMessageID?: string
-    stepsExpanded?: boolean
-    onStepsExpandedToggle?: () => void
     onUserInteracted?: () => void
-    cortexRunning?: number
     classes?: {
       root?: string
       content?: string
@@ -132,7 +172,6 @@ export function SessionTurn(
   const emptyParts: PartType[] = []
   const emptyAssistant: AssistantMessage[] = []
   const emptyPermissions: PermissionRequest[] = []
-  const idle = { type: "idle" as const }
 
   const allMessages = createMemo(() => data.store.message[props.sessionID] ?? emptyMessages)
 
@@ -218,29 +257,6 @@ export function SessionTurn(
 
   const error = createMemo(() => assistantMessages().find((m) => m.error)?.error)
 
-  const hasSteps = createMemo(() => {
-    for (const m of assistantMessages()) {
-      const msgParts = data.store.part[m.id]
-      if (!msgParts) continue
-      for (const p of msgParts) {
-        if (p?.type === "tool" && !shouldHideToolPart(p)) return true
-      }
-    }
-    return false
-  })
-
-  const stepCount = createMemo(() => {
-    let count = 0
-    for (const m of assistantMessages()) {
-      const msgParts = data.store.part[m.id]
-      if (!msgParts) continue
-      for (const p of msgParts) {
-        if (p?.type === "tool" && !shouldHideToolPart(p)) count++
-      }
-    }
-    return count
-  })
-
   const permissions = createMemo(() => data.store.permission?.[props.sessionID] ?? emptyPermissions)
   const permissionCount = createMemo(() => permissions().length)
 
@@ -260,53 +276,6 @@ export function SessionTurn(
 
   const isShellMode = createMemo(() => !!shellModePart())
 
-  const rawStatus = createMemo(() => {
-    const msgs = assistantMessages()
-    let last: PartType | undefined
-    let currentTask: ToolPart | undefined
-
-    for (let mi = msgs.length - 1; mi >= 0; mi--) {
-      const msgParts = data.store.part[msgs[mi].id] ?? emptyParts
-      for (let pi = msgParts.length - 1; pi >= 0; pi--) {
-        const part = msgParts[pi]
-        if (!part) continue
-        if (!last) last = part
-
-        if (
-          part.type === "tool" &&
-          part.tool === "task" &&
-          part.state &&
-          "metadata" in part.state &&
-          part.state.metadata?.sessionId &&
-          part.state.status === "running"
-        ) {
-          currentTask = part as ToolPart
-          break
-        }
-      }
-      if (currentTask) break
-    }
-
-    const taskSessionId = extractRunningTaskSessionID(currentTask)
-
-    if (taskSessionId) {
-      const taskMessages = data.store.message[taskSessionId] ?? emptyMessages
-      for (let mi = taskMessages.length - 1; mi >= 0; mi--) {
-        const msg = taskMessages[mi]
-        if (!msg || msg.role !== "assistant") continue
-
-        const msgParts = data.store.part[msg.id] ?? emptyParts
-        for (let pi = msgParts.length - 1; pi >= 0; pi--) {
-          const part = msgParts[pi]
-          if (part) return computeStatusFromPart(part)
-        }
-      }
-    }
-
-    return computeStatusFromPart(last)
-  })
-
-  const status = createMemo(() => data.store.session_status[props.sessionID] ?? idle)
   const working = createMemo(() => {
     if (!isLastUserMessage()) return false
     const last = lastAssistantMessage()
@@ -319,109 +288,25 @@ export function SessionTurn(
     if (s && s.type !== "idle") return true
     return false
   })
-  const statusDescription = createMemo(() => {
-    const s = status()
-    if (s.type === "busy") return s.description
-    return undefined
-  })
-
-  const retry = createMemo(() => {
-    const s = status()
-    if (s.type !== "retry") return
-    return s
-  })
 
   const hasDiffs = createMemo(() => message()?.summary?.diffs?.length)
-  const retryMessage = createMemo(() => retry()?.message ?? "")
-  const retryMessageId = createMemo(() => `session-turn-retry-message-${props.messageID}`)
-  const retryPreview = createMemo(() => {
-    const message = retryMessage()
-    if (message.length <= RETRY_PREVIEW_CHAR_LIMIT) return message
-    return message.slice(0, RETRY_PREVIEW_CHAR_LIMIT).trimEnd() + "…"
-  })
-  const retryExpandable = createMemo(() => retryMessage().length > RETRY_PREVIEW_CHAR_LIMIT)
-
-  const chroniclerSessionID = createMemo(() => {
-    const msg = lastAssistantMessage()
-    if (!msg || !msg.summary) return undefined
-    return msg.metadata?.chroniclerSessionID as string | undefined
-  })
-  const narrativeItems = createMemo(() =>
-    collectSessionTurnNarrativeItems(assistantMessages(), data.store.part, working()),
+  const timelineItems = createMemo(() =>
+    collectSessionTurnTimelineItems(assistantMessages(), data.store.part, working()),
   )
-  const hasNarrativeItems = createMemo(() => narrativeItems().length > 0)
-  const onlyMediaNarrative = createMemo(() => {
-    const items = narrativeItems()
-    return items.length > 0 && items.every((item) => item.kind === "media-pending" || item.kind === "media-result")
-  })
-  const showStepsRow = createMemo(
-    () =>
-      hasSteps() ||
-      chroniclerSessionID() ||
-      (working() && !onlyMediaNarrative()) ||
-      (!working() && assistantMessages().length > 0 && !onlyMediaNarrative()),
-  )
-
-  const injectedContext = createMemo(() => getInjectedContext(message() as UserMessage | undefined))
+  const hasTimelineItems = createMemo(() => timelineItems().length > 0)
 
   const autoScroll = createAutoScroll({
     working,
     onUserInteracted: props.onUserInteracted,
   })
 
-  const agentName = createMemo(() => {
-    const msg = lastAssistantMessage()
-    return titlecaseStatusLabel(msg?.agent ?? "Synergy")
-  })
-  const workingPhrase = createMemo(() =>
-    computeWorkingPhrase({
-      agentName: agentName(),
-      cortexRunning: props.cortexRunning ?? 0,
-      seed: props.messageID,
-    }),
-  )
-
   const diffInit = 20
   const diffBatch = 20
 
   const [store, setStore] = createStore({
-    retrySeconds: 0,
-    retryExpanded: false,
     diffsOpen: [] as string[],
     diffLimit: diffInit,
-    status: rawStatus(),
-    duration: duration(),
   })
-
-  function computeDuration(fromMs: number, toMs?: number): string {
-    const from = DateTime.fromMillis(fromMs)
-    const to = toMs != null ? DateTime.fromMillis(toMs) : DateTime.now()
-    const interval = Interval.fromDateTimes(from, to)
-    const unit: DurationUnit[] = interval.length("seconds") > 60 ? ["minutes", "seconds"] : ["seconds"]
-    return interval
-      .toDuration(unit)
-      .normalize()
-      .mapUnits((x) => Math.round(x))
-      .toHuman({
-        notation: "compact",
-        unitDisplay: "narrow",
-        compactDisplay: "short",
-        showZeros: false,
-      })
-  }
-
-  function duration() {
-    const msg = message()
-    if (!msg) return ""
-    if (working()) {
-      return computeDuration(msg.time.created)
-    }
-    const completed = lastAssistantMessage()?.time.completed
-    if (completed != null) {
-      return computeDuration(msg.time.created, completed)
-    }
-    return ""
-  }
 
   createEffect(
     on(
@@ -434,52 +319,6 @@ export function SessionTurn(
     ),
   )
 
-  createEffect(() => {
-    const r = retry()
-    if (!r) {
-      setStore("retrySeconds", 0)
-      return
-    }
-    const updateSeconds = () => {
-      const next = r.next
-      if (next) setStore("retrySeconds", Math.max(0, Math.round((next - Date.now()) / 1000)))
-    }
-    updateSeconds()
-    const timer = setInterval(updateSeconds, 1000)
-    onCleanup(() => clearInterval(timer))
-  })
-
-  createEffect(
-    on(
-      retryMessage,
-      () => {
-        setStore("retryExpanded", false)
-      },
-      { defer: true },
-    ),
-  )
-
-  createEffect(() => {
-    if (!working()) return
-    const timer = setInterval(() => {
-      setStore("duration", duration())
-    }, 1000)
-    onCleanup(() => clearInterval(timer))
-  })
-
-  createEffect(
-    on(
-      () => {
-        const completed = lastAssistantMessage()?.time.completed
-        return completed != null && !working()
-      },
-      () => {
-        setStore("duration", duration())
-      },
-      { defer: true },
-    ),
-  )
-
   createEffect(
     on(permissionCount, (count, prev) => {
       if (!count) return
@@ -487,30 +326,6 @@ export function SessionTurn(
       autoScroll.forceScrollToBottom()
     }),
   )
-
-  let lastStatusChange = Date.now()
-  let statusTimeout: number | undefined
-  createEffect(() => {
-    const newStatus = rawStatus()
-    if (newStatus === store.status || !newStatus) return
-
-    const timeSinceLastChange = Date.now() - lastStatusChange
-    if (timeSinceLastChange >= 2500) {
-      setStore("status", newStatus)
-      lastStatusChange = Date.now()
-      if (statusTimeout) {
-        clearTimeout(statusTimeout)
-        statusTimeout = undefined
-      }
-    } else {
-      if (statusTimeout) clearTimeout(statusTimeout)
-      statusTimeout = setTimeout(() => {
-        setStore("status", rawStatus())
-        lastStatusChange = Date.now()
-        statusTimeout = undefined
-      }, 2500 - timeSinceLastChange) as unknown as number
-    }
-  })
 
   return (
     <div data-component="session-turn" class={props.classes?.root}>
@@ -560,119 +375,10 @@ export function SessionTurn(
                         <Dynamic component={SpecialUserMessage()} message={msg()} parts={parts()} />
                       )}
                     </Show>
-                    {/* Steps trigger */}
-                    <Show when={showStepsRow()}>
-                      <div data-slot="session-turn-steps-row">
-                        <div
-                          data-slot="session-turn-steps-trigger"
-                          data-expandable={!working() && hasSteps() && assistantMessages().length > 0}
-                          data-expanded={hasSteps() && props.stepsExpanded}
-                          onClick={!working() && hasSteps() ? (props.onStepsExpandedToggle ?? (() => {})) : () => {}}
-                        >
-                          <Show when={working()}>
-                            <Spinner />
-                          </Show>
-                          <Switch>
-                            <Match when={retry()}>
-                              <span data-slot="session-turn-retry-group">
-                                <span
-                                  id={retryMessageId()}
-                                  data-slot="session-turn-retry-message"
-                                  data-expanded={store.retryExpanded || !retryExpandable()}
-                                  title={retryExpandable() && !store.retryExpanded ? retryMessage() : undefined}
-                                >
-                                  {store.retryExpanded || !retryExpandable() ? retryMessage() : retryPreview()}
-                                </span>
-                                <Show when={retryExpandable()}>
-                                  <button
-                                    type="button"
-                                    data-slot="session-turn-retry-toggle"
-                                    aria-controls={retryMessageId()}
-                                    aria-expanded={store.retryExpanded}
-                                    aria-label={
-                                      store.retryExpanded ? "Hide full retry message" : "Show full retry message"
-                                    }
-                                    onClick={(event) => {
-                                      event.stopPropagation()
-                                      setStore("retryExpanded", (value) => !value)
-                                    }}
-                                  >
-                                    {store.retryExpanded ? "less" : "more"}
-                                  </button>
-                                </Show>
-                              </span>
-                              <span data-slot="session-turn-retry-seconds">
-                                · retrying {store.retrySeconds > 0 ? `in ${store.retrySeconds}s ` : ""}
-                              </span>
-                              <span data-slot="session-turn-retry-attempt">(#{retry()?.attempt})</span>
-                            </Match>
-                            <Match when={working()}>
-                              <span>{store.status ?? statusDescription() ?? workingPhrase()}</span>
-                              <Show when={store.duration}>
-                                <span data-slot="session-turn-separator">·</span>
-                                <span data-slot="session-turn-duration">{store.duration}</span>
-                              </Show>
-                            </Match>
-                            <Match when={true}>
-                              <Show when={stepCount() > 0}>
-                                <span data-slot="session-turn-step-count">{stepCount()} steps</span>
-                                <span data-slot="session-turn-separator">·</span>
-                              </Show>
-                              <span data-slot="session-turn-duration">{store.duration}</span>
-                            </Match>
-                          </Switch>
-                          <Show when={!working() && hasSteps() && assistantMessages().length > 0}>
-                            <svg data-slot="session-turn-expand-icon" viewBox="0 0 16 16" fill="none">
-                              <path
-                                d="M6 4l4 4-4 4"
-                                stroke="currentColor"
-                                stroke-width="1.5"
-                                stroke-linecap="round"
-                                stroke-linejoin="round"
-                              />
-                            </svg>
-                          </Show>
-                        </div>
-                        <Show when={chroniclerSessionID()}>
-                          {(sessionID) => (
-                            <button
-                              data-slot="session-turn-chronicler-button"
-                              title="View chronicler session"
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                data.navigateToSession?.(sessionID())
-                              }}
-                            >
-                              <Icon name="pen-line" size="small" />
-                            </button>
-                          )}
-                        </Show>
-                        <ResonancePopover context={injectedContext()} />
-                      </div>
-                    </Show>
-                    {/* Steps content (expanded) */}
-                    <Show
-                      when={
-                        ((working() && hasSteps()) || (props.stepsExpanded && hasSteps())) &&
-                        assistantMessages().length > 0
-                      }
-                    >
-                      <div data-slot="session-turn-collapsible-content-inner">
-                        <For each={assistantMessages()}>
-                          {(assistantMessage) => (
-                            <AssistantMessageItem message={assistantMessage} working={working()} />
-                          )}
-                        </For>
-                        <Show when={error()}>
-                          <ErrorCard error={(error()?.data?.message as string) ?? ""} compact />
-                        </Show>
-                      </div>
-                    </Show>
-                    {/* Response — no label, just content */}
-                    <Show when={hasNarrativeItems() || (!working() && hasDiffs())}>
-                      <div data-slot="session-turn-response-section">
-                        <For each={narrativeItems()}>
-                          {(item) => <NarrativeItemDisplay item={item} serverUrl={data.serverUrl} />}
+                    <Show when={hasTimelineItems() || (!working() && hasDiffs())}>
+                      <div data-slot="session-turn-timeline">
+                        <For each={timelineItems()}>
+                          {(item) => <TimelineItemDisplay item={item} serverUrl={data.serverUrl} />}
                         </For>
                         <Show when={!working() && hasDiffs()}>
                           <Accordion
@@ -750,8 +456,7 @@ export function SessionTurn(
                         </Show>
                       </div>
                     </Show>
-                    {/* Error (when expanded steps section is not showing it) */}
-                    <Show when={error() && !(working() || (props.stepsExpanded && hasSteps()))}>
+                    <Show when={error()}>
                       <ErrorCard error={(error()?.data?.message as string) ?? ""} compact />
                     </Show>
                   </Match>

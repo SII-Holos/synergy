@@ -48,7 +48,7 @@ import { parsePartialJson } from "@ericsanchezok/synergy-util/json"
 import { createAutoScroll, createTypewriter, createAnimatedNumber } from "../hooks"
 import { getApprovalAudit } from "../utils/approval-audit"
 import { getSemanticIcon } from "./semantic-icon"
-import { shouldHideToolPart } from "./tool-result-presentation"
+import { isPromotedToolResultPart } from "./tool-result-presentation"
 
 interface Diagnostic {
   range: {
@@ -1464,10 +1464,7 @@ export function AssistantMessageDisplay(props: { message: AssistantMessage; part
   const filteredParts = createMemo(
     () =>
       props.parts.filter((x) => {
-        return (
-          x.type !== "tool" ||
-          ((x as ToolPart).tool !== "todoread" && (x as ToolPart).tool !== "dagread" && !shouldHideToolPart(x))
-        )
+        return x.type !== "tool" || ((x as ToolPart).tool !== "todoread" && (x as ToolPart).tool !== "dagread")
       }),
     emptyParts,
     { equals: same },
@@ -1840,6 +1837,7 @@ PART_MAPPING["tool"] = function ToolPartDisplay(props) {
           when={
             part().tool !== "attach" &&
             part().state.status === "completed" &&
+            !isPromotedToolResultPart(part()) &&
             (part().state as ToolStateCompleted).attachments?.length
           }
         >

@@ -13,7 +13,7 @@ type MaybeToolPart = {
 
 export type ToolResultPresentation = "default" | "attachment-only"
 export type ToolDisplayKind = "default" | "media-generation"
-export type ToolVisibility = "default" | "media" | "hidden-unless-error"
+export type ToolVisibility = "default" | "media"
 export type ToolMediaType = "image" | "video" | "audio"
 
 export interface ToolMediaDisplay {
@@ -76,17 +76,6 @@ export function isActiveMediaGenerationToolPart(part: unknown): boolean {
   if (candidate?.type !== "tool") return false
   if (!isMediaGenerationToolPart(candidate)) return false
   return candidate.state?.status === "running"
-}
-
-export function shouldHideToolPart(part: unknown): boolean {
-  const candidate = part as MaybeToolPart
-  if (candidate?.type !== "tool") return false
-  if (candidate.state?.status === "error") return false
-
-  const display = toolDisplayMetadata(candidate)
-  if (display?.visibility === "hidden-unless-error") return true
-  if (isActiveMediaGenerationToolPart(candidate)) return true
-  return isPromotedToolResultPart(candidate)
 }
 
 export function primaryToolAttachments(part: unknown): AttachmentPart[] {

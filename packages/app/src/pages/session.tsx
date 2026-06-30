@@ -174,7 +174,6 @@ function SessionPageContent() {
   const [store, setStore] = createStore({
     activeDraggable: undefined as string | undefined,
     activeTerminalDraggable: undefined as string | undefined,
-    expanded: {} as Record<string, boolean>,
     messageId: undefined as string | undefined,
     turnStart: 0,
     mobileTab: "session" as "session" | "review",
@@ -230,12 +229,6 @@ function SessionPageContent() {
   )
   const lastUserMessage = createMemo(() => visibleUserMessages().at(-1))
   const lastRenderableUserMessage = createMemo(() => renderableUserMessages().at(-1))
-  const cortexRunning = createMemo(() => {
-    const id = params.id
-    if (!id) return 0
-    return sync.data.cortex.filter((t) => t.parentSessionID === id && t.status === "running").length
-  })
-
   createEffect(
     on(
       () => lastUserMessage()?.id,
@@ -449,17 +442,10 @@ function SessionPageContent() {
       () => params.id,
       () => {
         setStore("messageId", undefined)
-        setStore("expanded", {})
       },
       { defer: true },
     ),
   )
-
-  const isStepsExpanded = (id: string) => store.expanded[id] ?? true
-
-  const toggleStepsExpanded = (id: string) => {
-    setStore("expanded", id, !isStepsExpanded(id))
-  }
 
   useSessionCommands({
     command,
@@ -478,8 +464,6 @@ function SessionPageContent() {
     visibleUserMessages,
     userMessages,
     setActiveMessage,
-    isExpanded: isStepsExpanded,
-    setExpanded: (id, open) => setStore("expanded", id, open),
     navigateMessageByOffset,
     isWorking: () => status().type !== "idle",
   })
@@ -923,9 +907,6 @@ function SessionPageContent() {
                           visibleUserMessages={visibleUserMessages}
                           lastUserMessage={lastRenderableUserMessage}
                           activeMessage={activeMessage}
-                          cortexRunning={cortexRunning}
-                          expanded={store.expanded}
-                          onToggleExpanded={toggleStepsExpanded}
                           showTabs={showTabs}
                           isWorking={isWorking}
                           turnStart={store.turnStart}

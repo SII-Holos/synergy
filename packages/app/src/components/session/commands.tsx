@@ -30,8 +30,6 @@ export function useSessionCommands(params: {
   visibleUserMessages: () => UserMessage[]
   userMessages: () => UserMessage[]
   setActiveMessage: (msg: UserMessage | undefined) => void
-  isExpanded: (id: string) => boolean
-  setExpanded: (id: string, open: boolean) => void
   navigateMessageByOffset: (offset: number) => void
   isWorking: () => boolean
 }) {
@@ -52,8 +50,6 @@ export function useSessionCommands(params: {
     visibleUserMessages,
     userMessages,
     setActiveMessage,
-    isExpanded,
-    setExpanded,
     navigateMessageByOffset,
   } = params
 
@@ -119,20 +115,6 @@ export function useSessionCommands(params: {
       category: "Terminal",
       keybind: "ctrl+shift+`",
       onSelect: () => terminal.new(),
-    },
-    {
-      id: "steps.toggle",
-      title: "Toggle steps",
-      description: "Show or hide steps for the current message",
-      category: "View",
-      keybind: "mod+e",
-      slash: "steps",
-      disabled: !routeParams.id,
-      onSelect: () => {
-        const msg = activeMessage()
-        if (!msg) return
-        setExpanded(msg.id, !isExpanded(msg.id))
-      },
     },
     {
       id: "message.previous",

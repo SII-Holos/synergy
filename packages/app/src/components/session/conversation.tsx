@@ -18,9 +18,6 @@ export function SessionConversation(props: {
   visibleUserMessages: Accessor<UserMessage[]>
   lastUserMessage: Accessor<UserMessage | undefined>
   activeMessage: Accessor<UserMessage | undefined>
-  cortexRunning: Accessor<number>
-  expanded: Record<string, boolean>
-  onToggleExpanded: (id: string) => void
   showTabs: Accessor<boolean>
   workspaceOpen?: Accessor<boolean>
   isWorking: Accessor<boolean>
@@ -146,9 +143,6 @@ export function SessionConversation(props: {
                 sessionID={props.sessionID}
                 messageID={msg.id}
                 lastUserMessageID={props.lastUserMessage()?.id}
-                cortexRunning={props.cortexRunning()}
-                stepsExpanded={props.expanded[msg.id] ?? true}
-                onStepsExpandedToggle={() => props.onToggleExpanded(msg.id)}
                 classes={{
                   root: "min-w-0 w-full relative",
                   content: "flex flex-col justify-between !overflow-visible",

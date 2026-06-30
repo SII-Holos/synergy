@@ -4,7 +4,6 @@ import {
   isAttachmentOnlyToolPart,
   isPromotedToolResultPart,
   primaryToolAttachments,
-  shouldHideToolPart,
   toolResultPresentation,
 } from "./tool-result-presentation"
 
@@ -93,7 +92,7 @@ describe("tool result presentation", () => {
     expect(primaryToolAttachments(part)).toEqual([text, image])
   })
 
-  test("hides active media-generation tools for the dedicated media surface", () => {
+  test("detects active media-generation tools for the timeline placeholder", () => {
     const part = {
       type: "tool",
       state: {
@@ -110,7 +109,6 @@ describe("tool result presentation", () => {
     }
 
     expect(isActiveMediaGenerationToolPart(part)).toBe(true)
-    expect(shouldHideToolPart(part)).toBe(true)
   })
 
   test("promotes completed media-generation attachments", () => {
@@ -130,13 +128,12 @@ describe("tool result presentation", () => {
     }
 
     expect(isPromotedToolResultPart(part)).toBe(true)
-    expect(shouldHideToolPart(part)).toBe(true)
     expect(primaryToolAttachments(part)).toEqual([image])
   })
 
-  test("does not hide media-generation errors or completed media without attachments", () => {
+  test("does not promote media-generation errors or completed media without attachments", () => {
     expect(
-      shouldHideToolPart({
+      isPromotedToolResultPart({
         type: "tool",
         state: {
           status: "error",
@@ -147,7 +144,7 @@ describe("tool result presentation", () => {
     ).toBe(false)
 
     expect(
-      shouldHideToolPart({
+      isPromotedToolResultPart({
         type: "tool",
         state: {
           status: "completed",
