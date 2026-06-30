@@ -69,9 +69,7 @@ export const SUPPORTED_ATTACHMENT_DESCRIPTION = "Supported: images, PDF/Office d
 
 const ACCEPTED_FILE_TYPE_SET = new Set<string>(ACCEPTED_FILE_TYPES)
 const ACCEPTED_TEXT_EXTENSION_SET = new Set(ACCEPTED_TEXT_EXTENSIONS)
-const ACCEPTED_TEXT_MIME_TYPES = new Set(
-  ACCEPTED_TEXT_MIME_PATTERNS.filter((pattern) => !pattern.endsWith("/*")),
-)
+const ACCEPTED_TEXT_MIME_TYPES = new Set(ACCEPTED_TEXT_MIME_PATTERNS.filter((pattern) => !pattern.endsWith("/*")))
 
 function fileExtension(file: File) {
   const filename = file.name.split(/[\\/]/).pop() ?? file.name
