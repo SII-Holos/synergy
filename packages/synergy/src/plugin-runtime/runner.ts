@@ -100,7 +100,12 @@ function shellCommand(strings: TemplateStringsArray, expressions: ShellExpressio
 }
 
 function createShell(
-  options: { cwd?: string; env?: Record<string, string | undefined>; throws?: boolean } = {},
+  options: {
+    cwd?: string
+    env?: Record<string, string | undefined>
+    throws?: boolean
+    context?: RuntimeToolContextData
+  } = {},
 ): BunShell {
   const shell = ((strings: TemplateStringsArray, ...expressions: ShellExpression[]) => {
     const command = shellCommand(strings, expressions)
@@ -109,6 +114,7 @@ function createShell(
       cwd: options.cwd,
       env: options.env,
       throws: options.throws,
+      ...(options.context ? { context: options.context } : {}),
     }).then((result: any): BunShellOutput => {
       const stdout = Buffer.from(String(result?.stdout ?? ""))
       const stderr = Buffer.from(String(result?.stderr ?? ""))
@@ -262,6 +268,7 @@ async function invokeTool(requestId: string, toolId: string, args: unknown, cont
       ask: async (request) => {
         await bridge("permission.request", { ...request, context: contextData })
       },
+      $: createShell({ cwd: context?.directory ?? inputData.directory, context: contextData }),
       task: {
         run: (request) => bridge("task.run", { ...request, context: contextData }) as any,
       },

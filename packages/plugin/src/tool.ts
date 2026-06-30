@@ -1,5 +1,6 @@
 import { z } from "zod"
 import type { ToolDisplay } from "./display"
+import type { BunShell } from "./shell"
 
 export type { ToolDisplay, ToolMediaDisplay } from "./display"
 
@@ -11,6 +12,8 @@ export type ToolContext = {
   directory?: string
   /** Request permission from the user before proceeding */
   ask?(input: { permission: string; patterns: string[]; metadata?: Record<string, any> }): Promise<void>
+  /** Run shell commands through Synergy's current workspace shell boundary. */
+  $?: BunShell
   /** Run a Synergy delegated subagent task from inside this tool. */
   task?: ToolTaskService
   /** Invoke another visible/explicitly-allowed Synergy tool from inside this tool. */

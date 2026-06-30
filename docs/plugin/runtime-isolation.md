@@ -39,8 +39,8 @@ Worker/process plugins access host services through a bridge. Every bridge metho
 | cache              | none; scoped plugin cache only           |
 | config read/write  | `config:read`, `config:write`            |
 | secrets            | `secrets`                                |
-| file read/write    | `file_read`, `file_write`                |
-| shell              | `shell`                                  |
+| workspace file read/write | `file_read`, `file_write`                |
+| workspace shell    | `shell`                                  |
 | network            | `network_request`                        |
 | session data       | `session_data`                           |
 | workspace data     | `workspace_data`                         |
@@ -49,6 +49,8 @@ Worker/process plugins access host services through a bridge. Every bridge metho
 | permission request | requested Synergy permission/capability  |
 
 Approval records store Synergy capability classes under the canonical plugin id. The bridge uses the same approved classes as in-process plugin tools.
+
+Workspace file and shell bridge calls require an active plugin tool context. Plugin package assets should be read from `input.pluginDir` directly; they are not workspace permissions.
 
 ## Development Commands
 

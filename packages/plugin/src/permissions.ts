@@ -851,7 +851,6 @@ export const PLUGIN_BRIDGE_METHOD_POLICY = {
   "network.fetch": { type: "capability", capability: "network_request" },
   "shell.run": { type: "capability", capability: "shell" },
   "session.getMetadata": { type: "capability", capability: "session_data" },
-  "session.read": { type: "capability", capability: "session_data" },
   "workspace.getMetadata": { type: "capability", capability: "workspace_data" },
   "task.run": { type: "capability", capability: "task" },
   "tool.invoke": { type: "unprivileged" },

@@ -184,7 +184,7 @@ type PluginInput = {
 }
 ```
 
-For isolated worker/process plugins, these services are proxied through the host bridge and checked against the plugin approval record.
+For isolated worker/process plugins, these services are proxied through the host bridge and checked against the plugin approval record. Workspace file and shell bridge calls require an active plugin tool context; read plugin package assets directly from `input.pluginDir`.
 
 ## Manifest
 

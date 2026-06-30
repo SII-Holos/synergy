@@ -30,12 +30,19 @@ export interface BridgeHandlerInput {
 // Path containment guard
 // ---------------------------------------------------------------------------
 
-function resolveContainedPath(pluginDir: string, requestedPath: string): string {
-  const normalizedPluginDir = path.resolve(pluginDir)
-  const resolved = path.resolve(normalizedPluginDir, requestedPath)
+function requireToolContext(context: PluginHostRuntimeContext | undefined, method: string): PluginHostRuntimeContext {
+  if (!context) throw new Error(`${method} requires plugin tool context`)
+  return context
+}
 
-  if (resolved !== normalizedPluginDir && !resolved.startsWith(normalizedPluginDir + path.sep)) {
-    throw new Error(`Path traversal detected: "${requestedPath}" escapes plugin directory`)
+function resolveWorkspacePath(context: PluginHostRuntimeContext, requestedPath: string): string {
+  const workspace = context.directory
+  if (!workspace) throw new Error("Plugin tool context is missing a workspace directory")
+  const normalizedWorkspace = path.resolve(workspace)
+  const resolved = path.resolve(normalizedWorkspace, requestedPath)
+
+  if (resolved !== normalizedWorkspace && !resolved.startsWith(normalizedWorkspace + path.sep)) {
+    throw new Error(`Path traversal detected: "${requestedPath}" escapes workspace directory`)
   }
 
   return resolved
@@ -127,8 +134,9 @@ export async function executeBridgeMethod(input: BridgeHandlerInput): Promise<un
       if (typeof requestedPath !== "string" || requestedPath.trim() === "") {
         throw new Error("file.read requires 'path' as a non-empty string")
       }
-      await authorizeBridgeCapability(bridgeContext, "file_read", requestedPath)
-      const resolved = resolveContainedPath(pluginDir, requestedPath)
+      const context = requireToolContext(bridgeContext, "file.read")
+      const resolved = resolveWorkspacePath(context, requestedPath)
+      await authorizeBridgeCapability(context, "file_read", requestedPath)
       return Bun.file(resolved).text()
     }
     case "file.write": {
@@ -140,8 +148,9 @@ export async function executeBridgeMethod(input: BridgeHandlerInput): Promise<un
       if (typeof data !== "string") {
         throw new Error("file.write requires 'data' as a string")
       }
-      await authorizeBridgeCapability(bridgeContext, "file_write", requestedPath)
-      const resolved = resolveContainedPath(pluginDir, requestedPath)
+      const context = requireToolContext(bridgeContext, "file.write")
+      const resolved = resolveWorkspacePath(context, requestedPath)
+      await authorizeBridgeCapability(context, "file_write", requestedPath)
       await fs.mkdir(path.dirname(resolved), { recursive: true })
       await Bun.write(resolved, data)
       return undefined
@@ -194,9 +203,12 @@ export async function executeBridgeMethod(input: BridgeHandlerInput): Promise<un
       if (typeof cmd !== "string" || cmd.trim() === "") {
         throw new Error("shell.run requires 'cmd' as a non-empty string")
       }
+      const context = requireToolContext(bridgeContext, "shell.run")
+      const cwdParam = (params as any)?.cwd
+      const cwd = typeof cwdParam === "string" && cwdParam ? resolveWorkspacePath(context, cwdParam) : context.directory
       const destructive = analyzeDestructiveCommand(cmd)
       await authorizeBridgeCapability(
-        bridgeContext,
+        context,
         destructive.matched ? "shell_destructive" : "shell",
         cmd,
         destructive.reason ? { reason: destructive.reason } : undefined,
@@ -207,8 +219,6 @@ export async function executeBridgeMethod(input: BridgeHandlerInput): Promise<un
         typeof (params as any)?.timeout === "number" ? (params as any).timeout : limits.bridgeRequestTimeoutMs
       const shellTimeout = Math.min(Math.max(requestedTimeout, 1), limits.bridgeRequestTimeoutMs)
 
-      const cwdParam = (params as any)?.cwd
-      const cwd = typeof cwdParam === "string" && cwdParam ? resolveContainedPath(pluginDir, cwdParam) : pluginDir
       const proc = Bun.spawn({
         cmd: ["bash", "-c", cmd],
         cwd,
@@ -250,11 +260,6 @@ export async function executeBridgeMethod(input: BridgeHandlerInput): Promise<un
             agent: bridgeContext.agent,
           }
         : null
-
-    // ── not available ────────────────────────────────────────
-    case "session.read":
-      await authorizeBridgeCapability(bridgeContext, "session_data", "session.read")
-      throw new Error("session.read is not available in isolated runtime")
 
     case "tool.invoke":
       if (!bridgeContext) throw new Error("tool.invoke requires plugin tool context")

@@ -6,6 +6,9 @@ import fs from "fs/promises"
 import os from "os"
 import type { HostBridgeMethod } from "../../src/plugin-runtime/protocol.js"
 import { Config } from "../../src/config/config.js"
+import { ScopeContext } from "../../src/scope/context.js"
+import type { Scope } from "../../src/scope/index.js"
+import { Session } from "../../src/session/index.js"
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -13,26 +16,97 @@ import { Config } from "../../src/config/config.js"
 
 let tmpDir: string
 let pluginDir: string
+let workspaceDir: string
+let testScope: Scope
+let sessionID: string
 
 const originalConfig = {
   domainGet: Config.domainGet,
   domainUpdate: Config.domainUpdate,
 }
 
+async function writeBaseManifest() {
+  await Bun.write(
+    path.join(pluginDir, "plugin.json"),
+    JSON.stringify(
+      {
+        name: "test-plugin",
+        version: "1.0.0",
+        description: "Bridge test plugin",
+        main: "./runtime/index.js",
+        contributes: {
+          tools: [
+            {
+              id: "tool-test",
+              name: "tool-test",
+              description: "Bridge test tool",
+              capabilities: {
+                filesystem: "write",
+                shell: true,
+              },
+            },
+          ],
+        },
+        permissions: {
+          tools: {
+            filesystem: "write",
+            shell: true,
+          },
+          data: {
+            config: "plugin",
+            secrets: "own",
+            session: "metadata",
+            workspace: "metadata",
+          },
+        },
+        runtime: {
+          resources: {
+            bridgeRequestTimeoutMs: 120_000,
+          },
+        },
+      },
+      null,
+      2,
+    ),
+  )
+}
+
 async function writeTestFile(relativePath: string, content: string): Promise<string> {
-  const fullPath = path.join(pluginDir, relativePath)
+  const fullPath = path.join(workspaceDir, relativePath)
   await fs.mkdir(path.dirname(fullPath), { recursive: true })
   await Bun.write(fullPath, content)
   return fullPath
 }
 
 function call(method: HostBridgeMethod, params: unknown = {}) {
-  return executeBridgeMethod({
-    pluginId: "test-plugin",
-    pluginDir,
-    method,
-    params,
+  return ScopeContext.provide({
+    scope: testScope,
+    fn: () =>
+      executeBridgeMethod({
+        pluginId: "test-plugin",
+        pluginDir,
+        method,
+        params,
+      }),
   })
+}
+
+function contextParams(params: Record<string, unknown> = {}) {
+  return {
+    ...params,
+    context: {
+      sessionID,
+      messageID: "message-test",
+      agent: "synergy",
+      directory: workspaceDir,
+      callID: "call-test",
+      toolId: "tool-test",
+    },
+  }
+}
+
+function callInTool(method: HostBridgeMethod, params: Record<string, unknown> = {}) {
+  return call(method, contextParams(params))
 }
 
 async function callWithManifest(manifest: Record<string, unknown>, method: HostBridgeMethod, params: unknown = {}) {
@@ -54,85 +128,93 @@ describe("bridge-handlers", () => {
   beforeAll(async () => {
     tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-bridge-test-"))
     pluginDir = path.join(tmpDir, "plugin")
+    workspaceDir = path.join(tmpDir, "workspace")
+    testScope = {
+      id: "home",
+      type: "home",
+      directory: workspaceDir,
+      worktree: workspaceDir,
+    }
     await fs.mkdir(pluginDir, { recursive: true })
-    await Bun.write(
-      path.join(pluginDir, "plugin.json"),
-      JSON.stringify(
-        {
-          name: "test-plugin",
-          version: "1.0.0",
-          description: "Bridge test plugin",
-          main: "./runtime/index.js",
-          runtime: {
-            resources: {
-              bridgeRequestTimeoutMs: 120_000,
-            },
-          },
-        },
-        null,
-        2,
-      ),
-    )
+    await fs.mkdir(workspaceDir, { recursive: true })
+    await writeBaseManifest()
+    await ScopeContext.provide({
+      scope: testScope,
+      fn: async () => {
+        const session = await Session.create({
+          id: "ses_bridge_test",
+          permission: [{ permission: "*", pattern: "*", action: "allow" }],
+        })
+        sessionID = session.id
+      },
+    })
   })
 
   afterAll(async () => {
     await fs.rm(tmpDir, { recursive: true, force: true })
   })
 
-  afterEach(() => {
+  afterEach(async () => {
     ;(Config as any).domainGet = originalConfig.domainGet
     ;(Config as any).domainUpdate = originalConfig.domainUpdate
+    await writeBaseManifest()
   })
 
   // ── file.read ─────────────────────────────────────────────────
   describe("file.read", () => {
-    test("returns text for a file under pluginDir", async () => {
+    test("returns text for a file under the tool workspace", async () => {
       await writeTestFile("hello.txt", "hello world")
-      const result = await call("file.read", { path: "hello.txt" })
+      const result = await callInTool("file.read", { path: "hello.txt" })
       expect(result).toBe("hello world")
     })
 
-    test("returns text for a nested file under pluginDir", async () => {
+    test("returns text for a nested file under the tool workspace", async () => {
       await writeTestFile("sub/deep/data.txt", "nested content")
-      const result = await call("file.read", { path: "sub/deep/data.txt" })
+      const result = await callInTool("file.read", { path: "sub/deep/data.txt" })
       expect(result).toBe("nested content")
     })
 
     test("throws when path is empty", async () => {
-      await expect(call("file.read", { path: "" })).rejects.toThrow("file.read requires 'path' as a non-empty string")
+      await expect(callInTool("file.read", { path: "" })).rejects.toThrow(
+        "file.read requires 'path' as a non-empty string",
+      )
     })
 
     test("throws when path is missing", async () => {
-      await expect(call("file.read", {})).rejects.toThrow("file.read requires 'path' as a non-empty string")
+      await expect(callInTool("file.read", {})).rejects.toThrow("file.read requires 'path' as a non-empty string")
     })
 
     test("throws on path traversal via ..", async () => {
-      await expect(call("file.read", { path: "../outside.txt" })).rejects.toThrow("Path traversal")
+      await expect(callInTool("file.read", { path: "../outside.txt" })).rejects.toThrow("Path traversal")
     })
 
-    test("throws on absolute path outside pluginDir", async () => {
-      await expect(call("file.read", { path: "/etc/passwd" })).rejects.toThrow("Path traversal")
+    test("throws on absolute path outside workspace", async () => {
+      await expect(callInTool("file.read", { path: "/etc/passwd" })).rejects.toThrow("Path traversal")
     })
 
     test("throws on double-encoded traversal", async () => {
-      await expect(call("file.read", { path: "sub/../../outside.txt" })).rejects.toThrow("Path traversal")
+      await expect(callInTool("file.read", { path: "sub/../../outside.txt" })).rejects.toThrow("Path traversal")
+    })
+
+    test("requires a tool context", async () => {
+      await expect(call("file.read", { path: "hello.txt" })).rejects.toThrow("file.read requires plugin tool context")
     })
   })
 
   // ── file.write ────────────────────────────────────────────────
   describe("file.write", () => {
-    test("writes text to a file under pluginDir", async () => {
-      await call("file.write", { path: "output.txt", data: "written content" })
-      const text = await Bun.file(path.join(pluginDir, "output.txt")).text()
+    test("writes text to a file under the tool workspace", async () => {
+      await callInTool("file.write", { path: "output.txt", data: "written content" })
+      const text = await Bun.file(path.join(workspaceDir, "output.txt")).text()
       expect(text).toBe("written content")
     })
 
     test("throws on path traversal for write", async () => {
-      await expect(call("file.write", { path: "../escape.txt", data: "bad" })).rejects.toThrow("Path traversal")
+      await expect(callInTool("file.write", { path: "../escape.txt", data: "bad" })).rejects.toThrow("Path traversal")
     })
 
     test("throws when data is not a string", async () => {
-      await expect(call("file.write", { path: "output.txt", data: 123 })).rejects.toThrow(
+      await expect(callInTool("file.write", { path: "output.txt", data: 123 })).rejects.toThrow(
         "file.write requires 'data' as a string",
       )
     })
@@ -190,7 +272,7 @@ describe("bridge-handlers", () => {
   describe("workspace.getMetadata", () => {
     test("returns basic pluginId and pluginDir", async () => {
       const result = await call("workspace.getMetadata")
-      expect(result).toEqual({ pluginId: "test-plugin", pluginDir })
+      expect(result).toEqual({ pluginId: "test-plugin", pluginDir, directory: undefined })
     })
   })
 
@@ -203,11 +285,7 @@ describe("bridge-handlers", () => {
   })
 
   // ── context-required methods ──────────────────────────────────
-  describe("not-available methods", () => {
-    test("session.read throws", async () => {
-      await expect(call("session.read")).rejects.toThrow("session.read is not available in isolated runtime")
-    })
-
+  describe("context-required methods", () => {
     test("tool.invoke requires plugin tool context", async () => {
       await expect(call("tool.invoke")).rejects.toThrow("tool.invoke requires plugin tool context")
     })
@@ -345,15 +423,19 @@ describe("bridge-handlers", () => {
   // ── shell.run ─────────────────────────────────────────────────
   describe("shell.run", () => {
     test("runs a simple echo command and captures stdout", async () => {
-      const result = (await call("shell.run", { cmd: "echo hello" })) as any
+      const result = (await callInTool("shell.run", { cmd: "echo hello" })) as any
       expect(result.exitCode).toBe(0)
       expect(result.stdout).toContain("hello")
     })
 
     test("captures stderr on failure", async () => {
-      const result = (await call("shell.run", { cmd: "echo 'error message' >&2; exit 1" })) as any
+      const result = (await callInTool("shell.run", { cmd: "echo 'error message' >&2; exit 1" })) as any
       expect(result.exitCode).toBe(1)
       expect(result.stderr).toContain("error message")
+    })
+
+    test("requires a tool context", async () => {
+      await expect(call("shell.run", { cmd: "echo hello" })).rejects.toThrow("shell.run requires plugin tool context")
     })
   })
 })

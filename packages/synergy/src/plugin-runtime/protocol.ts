@@ -44,7 +44,6 @@ export type HostBridgeMethod =
   | "network.fetch"
   | "shell.run"
   | "session.getMetadata"
-  | "session.read"
   | "workspace.getMetadata"
   | "tool.invoke"
   | "permission.request"

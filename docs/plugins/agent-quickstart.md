@@ -152,7 +152,7 @@ Open a PR against `SII-Holos/synergy-plugins`; merging to `main` makes the plugi
 - Trusted local plugins may run `in-process`.
 - Isolated plugins run through the plugin runner in `worker` or `process` mode.
 - Worker/process tools are registered as host proxy tools and execute through the runtime protocol.
-- Bridge access for config, secrets, cache, file, shell, network, session, and workspace is checked against manifest-derived approval capabilities.
+- Bridge access for config, secrets, cache, workspace file/shell, network, session metadata, and workspace metadata is checked against manifest-derived approval capabilities.
 
 ## UI Contributions
 

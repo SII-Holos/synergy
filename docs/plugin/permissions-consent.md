@@ -100,4 +100,4 @@ Registry installs follow the same path and never pass a hidden consent bypass fl
 
 ## Runtime Bridge Consent
 
-Worker/process plugins use a host bridge for config, secrets, cache, file, shell, network, session, workspace, delegated task, and tool invocation access. The bridge authorizes the corresponding Synergy capability class from the approved manifest. This keeps in-process and isolated plugins on the same permission path.
+Worker/process plugins use a host bridge for config, secrets, cache, workspace-scoped file and shell access, network requests, session metadata, workspace metadata, delegated task, and tool invocation access. The bridge authorizes the corresponding Synergy capability class from the approved manifest. File and shell bridge calls require an active plugin tool context so they inherit the same workspace and profile boundary as normal Synergy tools.
