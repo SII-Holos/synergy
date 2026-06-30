@@ -130,7 +130,7 @@ function DynamicAttachmentLink(props: {
 export function AttachmentGallery(props: {
   files: AttachmentFile[]
   serverUrl: string
-  variant?: "default" | "result"
+  variant?: "default" | "result" | "prompt"
 }) {
   const columns = createMemo(() => attachmentColumns(props.files))
 

@@ -49,6 +49,9 @@ import { createAutoScroll, createTypewriter, createAnimatedNumber } from "../hoo
 import { getApprovalAudit } from "../utils/approval-audit"
 import { getSemanticIcon } from "./semantic-icon"
 import { isPromotedToolResultPart, isToolCardHidden } from "./tool-result-presentation"
+import { shouldCollapseUserMessage, visibleUserMessageText } from "./user-message-utils"
+
+export type UserMessageVariant = "default" | "turn-bubble"
 
 interface Diagnostic {
   range: {
@@ -91,6 +94,7 @@ export function DiagnosticsDisplay(props: { diagnostics: Diagnostic[] }): JSX.El
 export interface MessageProps {
   message: MessageType
   parts: PartType[]
+  userVariant?: UserMessageVariant
 }
 
 export interface MessagePartProps {
@@ -1448,7 +1452,9 @@ export function Message(props: MessageProps) {
   return (
     <Switch>
       <Match when={props.message.role === "user" && props.message}>
-        {(userMessage) => <UserMessageDisplay message={userMessage() as UserMessage} parts={props.parts} />}
+        {(userMessage) => (
+          <UserMessageDisplay message={userMessage() as UserMessage} parts={props.parts} variant={props.userVariant} />
+        )}
       </Match>
       <Match when={props.message.role === "assistant" && props.message}>
         {(assistantMessage) => (
@@ -1472,14 +1478,40 @@ export function AssistantMessageDisplay(props: { message: AssistantMessage; part
   return <For each={filteredParts()}>{(part) => <Part part={part} message={props.message} />}</For>
 }
 
-export function UserMessageDisplay(props: { message: UserMessage; parts: PartType[] }) {
+const userMessageCopyResetDelay = 1600
+
+async function copyTextToClipboard(text: string): Promise<boolean> {
+  if (navigator.clipboard && window.isSecureContext) {
+    await navigator.clipboard.writeText(text)
+    return true
+  }
+  try {
+    const ta = document.createElement("textarea")
+    ta.value = text
+    ta.style.position = "fixed"
+    ta.style.opacity = "0"
+    ta.style.pointerEvents = "none"
+    document.body.appendChild(ta)
+    ta.focus()
+    ta.select()
+    const ok = document.execCommand("copy")
+    document.body.removeChild(ta)
+    return ok
+  } catch {
+    return false
+  }
+}
+
+export function UserMessageDisplay(props: { message: UserMessage; parts: PartType[]; variant?: UserMessageVariant }) {
   const data = useData()
+  const [expanded, setExpanded] = createSignal(false)
+  const [copied, setCopied] = createSignal(false)
+  let copyReset: ReturnType<typeof setTimeout> | undefined
 
-  const textPart = createMemo(
-    () => props.parts?.find((p) => p.type === "text" && !(p as TextPart).synthetic) as TextPart | undefined,
-  )
-
-  const text = createMemo(() => textPart()?.text || "")
+  const text = createMemo(() => visibleUserMessageText(props.parts))
+  const isTurnBubble = createMemo(() => props.variant === "turn-bubble")
+  const canCollapse = createMemo(() => isTurnBubble() && shouldCollapseUserMessage(text()))
+  const collapsed = createMemo(() => canCollapse() && !expanded())
 
   const files = createMemo(() => (props.parts?.filter((p) => p.type === "attachment") as AttachmentPart[]) ?? [])
 
@@ -1504,19 +1536,69 @@ export function UserMessageDisplay(props: { message: UserMessage; parts: PartTyp
     }),
   )
 
+  async function copyMessageText() {
+    const value = text()
+    if (!value) return
+    const ok = await copyTextToClipboard(value)
+    if (!ok) return
+    setCopied(true)
+    if (copyReset) clearTimeout(copyReset)
+    copyReset = setTimeout(() => setCopied(false), userMessageCopyResetDelay)
+  }
+
+  onCleanup(() => {
+    if (copyReset) clearTimeout(copyReset)
+  })
+
   return (
-    <div data-component="user-message">
+    <div data-component="user-message" data-variant={props.variant ?? "default"}>
       <Show when={attachments().length > 0 || noteAttachments().length > 0 || sessionAttachments().length > 0}>
         <div data-slot="user-message-attachments">
-          <AttachmentGallery files={attachments()} serverUrl={data.serverUrl} />
+          <AttachmentGallery
+            files={attachments()}
+            serverUrl={data.serverUrl}
+            variant={isTurnBubble() ? "prompt" : "default"}
+          />
           <For each={noteAttachments()}>{(file) => <SpecialFileAttachment file={file} kind="note" />}</For>
           <For each={sessionAttachments()}>{(file) => <SpecialFileAttachment file={file} kind="session" />}</For>
         </div>
       </Show>
       <Show when={text()}>
-        <div data-slot="user-message-text">
+        <div
+          data-slot="user-message-text"
+          data-collapsed={collapsed() ? "" : undefined}
+          data-collapsible={canCollapse() ? "" : undefined}
+        >
           <HighlightedText text={text()} references={inlineFiles()} />
+          <Show when={isTurnBubble()}>
+            <Tooltip
+              value={copied() ? "Copied" : "Copy message"}
+              placement="top"
+              gutter={4}
+              class="user-message-copy-trigger"
+            >
+              <button
+                type="button"
+                data-slot="user-message-copy"
+                aria-label={copied() ? "Message copied" : "Copy message"}
+                onClick={() => void copyMessageText()}
+              >
+                <Icon
+                  name={copied() ? getSemanticIcon("state.success") : getSemanticIcon("action.copy")}
+                  size="small"
+                />
+              </button>
+            </Tooltip>
+          </Show>
+          <Show when={collapsed()}>
+            <div data-slot="user-message-fade" aria-hidden="true" />
+          </Show>
         </div>
+      </Show>
+      <Show when={canCollapse()}>
+        <button type="button" data-slot="user-message-expand" onClick={() => setExpanded((value) => !value)}>
+          {expanded() ? "Show less" : "Show more"}
+        </button>
       </Show>
     </div>
   )
