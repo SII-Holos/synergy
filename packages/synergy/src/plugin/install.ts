@@ -15,6 +15,7 @@ import { reload } from "./lifecycle"
 import { resolvePluginPolicyDecision } from "@ericsanchezok/synergy-util/plugin-policy"
 import { resolvePluginSpec } from "./spec-resolver"
 import { PluginInstallationTransaction } from "./installation-transaction"
+import { ScopeContext } from "../scope/context"
 import {
   type PluginApprovalRecord,
   computePermissionsHash,
@@ -373,6 +374,7 @@ export async function autoStartRuntime(input: AutoStartRuntimeInput): Promise<bo
       source: input.source,
       entryPath: input.entryPath,
       pluginDir: input.pluginDir,
+      scope: ScopeContext.current.scope,
     })
     log.info("plugin runtime auto-started", { pluginId: input.pluginId, mode: input.mode })
     return true

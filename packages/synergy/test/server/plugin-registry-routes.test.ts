@@ -6,6 +6,7 @@ import { Log } from "../../src/util/log"
 import path from "path"
 import fs from "fs"
 import { Global } from "../../src/global"
+import { PluginMarketplaceRegistry } from "../../src/plugin/marketplace-registry"
 
 Log.init({ print: false })
 
@@ -78,13 +79,15 @@ function cleanRegistry(): void {
   } catch {}
 }
 
-async function writeOfficialRegistryCache(): Promise<void> {
-  const marketRoot = path.join(Global.Path.cache, "plugin-market")
-  const entriesRoot = path.join(marketRoot, "entries")
+async function writeOfficialRegistryCache(
+  registryUrl = PluginMarketplaceRegistry.DEFAULT_REGISTRY_URL,
+): Promise<void> {
+  const marketRoot = PluginMarketplaceRegistry.cachePaths(registryUrl)
+  const entriesRoot = marketRoot.entries
   fs.mkdirSync(entriesRoot, { recursive: true })
   const publishedAt = new Date("2026-06-25T00:00:00.000Z").toISOString()
   await Bun.write(
-    path.join(marketRoot, "registry.json"),
+    marketRoot.registry,
     JSON.stringify(
       {
         schemaVersion: 1,
@@ -161,6 +164,15 @@ async function writeOfficialRegistryCache(): Promise<void> {
 // ---------------------------------------------------------------------------
 
 describe("plugin registry routes v2", () => {
+  test("official registry cache is namespaced by registry URL", () => {
+    const first = PluginMarketplaceRegistry.cachePaths("https://registry.example/one/registry.json")
+    const second = PluginMarketplaceRegistry.cachePaths("https://registry.example/two/registry.json")
+    expect(first.registry).not.toBe(second.registry)
+    expect(first.entries).not.toBe(second.entries)
+    expect(first.artifacts).not.toBe(second.artifacts)
+    expect(first.registry).toContain(path.join("plugin-market", "registries"))
+  })
+
   test("publish creates a new entry with v2 metadata", async () => {
     await using tmp = await tmpdir({ git: true })
     cleanRegistry()

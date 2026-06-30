@@ -134,6 +134,21 @@ function runtimeLaunchSignature(input: { pluginDir: string; entryPath: string | 
   )
 }
 
+function fallbackRuntimeScope(): IsolatedPluginInputData["scope"] {
+  return {
+    id: "home",
+    type: "home",
+    directory: Global.Path.home,
+    worktree: Global.Path.home,
+    time: { created: 0, updated: 0 },
+    sandboxes: [],
+  }
+}
+
+function runtimeScope(options: StartRuntimeOptions): IsolatedPluginInputData["scope"] {
+  return options.scope ?? fallbackRuntimeScope()
+}
+
 // === Persistence interface ===
 
 export interface RuntimeStatePersistence {
@@ -522,16 +537,7 @@ export class PluginRuntimeSupervisor {
     resolvedMode: RuntimeMode,
   ): Promise<RuntimeEntry> {
     try {
-      const scope =
-        options.scope ??
-        ({
-          id: "home",
-          type: "home" as const,
-          directory: Global.Path.home,
-          worktree: Global.Path.home,
-          time: { created: 0, updated: 0 },
-          sandboxes: [],
-        } as IsolatedPluginInputData["scope"])
+      const scope = runtimeScope(options)
       const serverUrl = entry.serverUrl ?? DEFAULT_SERVER_URL
 
       const input: IsolatedPluginInputData = {
@@ -650,16 +656,7 @@ export class PluginRuntimeSupervisor {
     resolvedMode: RuntimeMode,
   ): Promise<RuntimeEntry> {
     try {
-      const scope =
-        options.scope ??
-        ({
-          id: "home",
-          type: "home" as const,
-          directory: Global.Path.home,
-          worktree: Global.Path.home,
-          time: { created: 0, updated: 0 },
-          sandboxes: [],
-        } as IsolatedPluginInputData["scope"])
+      const scope = runtimeScope(options)
       const serverUrl = entry.serverUrl ?? DEFAULT_SERVER_URL
 
       const input: IsolatedPluginInputData = {

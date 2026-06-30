@@ -314,7 +314,6 @@ export const PluginManifest = z
                 })
                 .strict()
                 .optional(),
-              risk: z.enum(["low", "medium", "high"]).optional(),
             }),
           )
           .optional(),

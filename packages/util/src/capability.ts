@@ -46,7 +46,6 @@ export interface SynergyCapabilityManifestTool {
     workspace?: "none" | "metadata" | "read"
     config?: "none" | "plugin" | "global"
   }
-  risk?: SynergyCapabilityRisk
 }
 
 export interface SynergyCapabilityManifest {
@@ -875,7 +874,6 @@ function permissionsRelevantContributes(manifest: SynergyCapabilityManifest) {
             name: tool.name,
             exposure: tool.exposure,
             capabilities: tool.capabilities,
-            risk: tool.risk,
           })),
         }
       : {}),

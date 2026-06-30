@@ -159,6 +159,79 @@ async function installOfficialRegistryPlugin(id: string, version: string) {
   return { type: "installed" as const, body: await apiPluginDetail(loadedPlugin, manifest) }
 }
 
+function compareRegistryVersions(a: string, b: string): number {
+  return a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" })
+}
+
+function latestRegistryVersion<T extends { version: string }>(versions: T[] | undefined): T | undefined {
+  return [...(versions ?? [])].sort((a, b) => compareRegistryVersions(a.version, b.version)).at(-1)
+}
+
+async function checkOfficialRegistryUpdate(input: {
+  pluginId: string
+  fromVersion: string
+  targetVersion?: string
+  installedManifest: PluginManifestType | null
+}) {
+  const entry = await PluginMarketplaceRegistry.getOfficialEntry(input.pluginId)
+  if (!entry) {
+    return {
+      pluginId: input.pluginId,
+      source: "official" as const,
+      fromVersion: input.fromVersion,
+      toVersion: input.fromVersion,
+      updateAvailable: false,
+      requiresConsent: false,
+    }
+  }
+
+  const registryVersion = input.targetVersion
+    ? entry.versions.find((version) => version.version === input.targetVersion)
+    : latestRegistryVersion(entry.versions)
+  if (!registryVersion) {
+    if (input.targetVersion) throw new Error(`Version not found in official registry: ${input.pluginId}@${input.targetVersion}`)
+    return {
+      pluginId: input.pluginId,
+      source: "official" as const,
+      fromVersion: input.fromVersion,
+      toVersion: input.fromVersion,
+      updateAvailable: false,
+      requiresConsent: false,
+    }
+  }
+
+  const toVersion = registryVersion.version
+  if (input.fromVersion === toVersion) {
+    return {
+      pluginId: input.pluginId,
+      source: "official" as const,
+      fromVersion: input.fromVersion,
+      toVersion,
+      updateAvailable: false,
+      requiresConsent: false,
+      registryVersion,
+    }
+  }
+
+  const artifact = await PluginMarketplaceRegistry.verifyOfficialArtifact(input.pluginId, toVersion)
+  const approval = await getApproval(input.pluginId)
+  const oldCapabilities = input.installedManifest ? baseCapabilities(input.installedManifest) : []
+  const diff = diffPermissions(input.pluginId, input.installedManifest, artifact.manifest, oldCapabilities, artifact.capabilities)
+  return {
+    pluginId: input.pluginId,
+    source: "official" as const,
+    fromVersion: input.fromVersion,
+    toVersion,
+    updateAvailable: true,
+    requiresConsent: !approval || !verifyApproval(approval, artifact.manifest, artifact.capabilities),
+    registryVersion,
+    capabilities: artifact.capabilities,
+    risk: artifact.risk,
+    diff,
+    artifactCacheKey: artifact.cacheKey,
+  }
+}
+
 // ── Route group ──
 
 export const PluginRoute = new Hono()
@@ -1016,7 +1089,7 @@ export const ApiPluginRoute = new Hono()
     describeRoute({
       summary: "Check for plugin update from registry",
       description:
-        "Check if an update is available for a plugin from the local registry. " +
+        "Check if an update is available for a plugin from the official or local registry. " +
         "Optionally target a specific version. Returns version comparison and permission diff.",
       operationId: "api.plugins.updateFromRegistry",
       responses: {
@@ -1033,11 +1106,12 @@ export const ApiPluginRoute = new Hono()
       "json",
       z.object({
         targetVersion: z.string().min(1).optional(),
+        source: PluginMarketplaceRegistry.Source.optional(),
       }),
     ),
     async (c) => {
       const pluginId = c.req.param("pluginId")
-      const { targetVersion } = c.req.valid("json")
+      const { targetVersion, source } = c.req.valid("json")
 
       // 1. Look up installed plugin
       const plugin = await Plugin.get(pluginId)
@@ -1051,6 +1125,7 @@ export const ApiPluginRoute = new Hono()
       if (targetVersion && targetVersion === fromVersion) {
         return c.json({
           pluginId,
+          source: source ?? plugin.source ?? "official",
           fromVersion,
           toVersion: fromVersion,
           updateAvailable: false,
@@ -1058,7 +1133,27 @@ export const ApiPluginRoute = new Hono()
         })
       }
 
-      // 4. Load registry
+      const requestedSource: PluginMarketplaceRegistry.Source =
+        source ?? (plugin.source === "local" ? "local" : "official")
+
+      if (requestedSource === "official") {
+        try {
+          return c.json(
+            await checkOfficialRegistryUpdate({
+              pluginId,
+              fromVersion,
+              targetVersion,
+              installedManifest,
+            }),
+          )
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err)
+          const status = message.includes("not found in official registry") ? 404 : 500
+          return c.json({ message }, status)
+        }
+      }
+
+      // 4. Load local registry
       const registryPath = localRegistryPath()
       let plugins: any[]
       try {
@@ -1068,6 +1163,7 @@ export const ApiPluginRoute = new Hono()
           // No registry — return structured response indicating no update check possible
           return c.json({
             pluginId,
+            source: "local",
             fromVersion,
             toVersion: fromVersion,
             updateAvailable: false,
@@ -1087,6 +1183,7 @@ export const ApiPluginRoute = new Hono()
         // Plugin not in registry — no update check possible
         return c.json({
           pluginId,
+          source: "local",
           fromVersion,
           toVersion: fromVersion,
           updateAvailable: false,
@@ -1109,6 +1206,7 @@ export const ApiPluginRoute = new Hono()
         if (sorted.length === 0) {
           return c.json({
             pluginId,
+            source: "local",
             fromVersion,
             toVersion: fromVersion,
             updateAvailable: false,
@@ -1123,6 +1221,7 @@ export const ApiPluginRoute = new Hono()
       if (fromVersion === toVersion) {
         return c.json({
           pluginId,
+          source: "local",
           fromVersion,
           toVersion,
           updateAvailable: false,
@@ -1135,9 +1234,10 @@ export const ApiPluginRoute = new Hono()
       // Full permission diff requires the new manifest, which isn't stored in the registry.
       // Return structured response with registry version info and requiresConsent flag.
       const result: Record<string, any> = {
-        pluginId,
-        fromVersion,
-        toVersion,
+          pluginId,
+          source: "local",
+          fromVersion,
+          toVersion,
         updateAvailable: true,
         requiresConsent: true,
         registryVersion,

@@ -12,7 +12,7 @@ import z from "zod"
 import { Config } from "../config/config"
 import { PLUGIN_MARKETPLACE_DEFAULTS, PluginMarketplace as PluginMarketplaceConfig } from "../config/schema"
 import { Global } from "../global"
-import { sha256File } from "../util/crypto"
+import { sha256Content, sha256File } from "../util/crypto"
 import { baseCapabilities } from "./capability"
 import { computeManifestHash, computePermissionsHash } from "./consent/approval-store"
 import { readSignatureFile, verifySignatureWithPublicKey, type SignatureMetadata } from "./signature"
@@ -191,20 +191,42 @@ export namespace PluginMarketplaceRegistry {
     signature: SignatureMetadata
   }
 
+  export interface RegistryCachePaths {
+    root: string
+    registry: string
+    entries: string
+    artifacts: string
+  }
+
+  export function cacheNamespace(registryUrl: string): string {
+    return sha256Content(registryUrl).slice(0, 16)
+  }
+
+  export function cachePaths(registryUrl: string): RegistryCachePaths {
+    const root = path.join(cacheRoot(), "registries", cacheNamespace(registryUrl))
+    return {
+      root,
+      registry: path.join(root, "registry.json"),
+      entries: path.join(root, "entries"),
+      artifacts: path.join(root, "artifacts"),
+    }
+  }
+
   function cacheRoot() {
     return path.join(Global.Path.cache, "plugin-market")
   }
 
-  function registryCachePath() {
-    return path.join(cacheRoot(), "registry.json")
+  function registryCachePath(registryUrl: string) {
+    return cachePaths(registryUrl).registry
   }
 
-  function entryCachePath(id: string) {
-    return path.join(cacheRoot(), "entries", `${id}.json`)
+  function entryCachePath(registryUrl: string, id: string) {
+    return path.join(cachePaths(registryUrl).entries, `${id}.json`)
   }
 
-  function artifactDir(id: string, version: string) {
-    return path.join(cacheRoot(), "artifacts", id, version)
+  function artifactDir(registryUrl: string, id: string, version: string, integrity: string) {
+    const integrityKey = integrity.replace(/^sha256-/, "").slice(0, 16)
+    return path.join(cachePaths(registryUrl).artifacts, id, version, integrityKey)
   }
 
   function timestamp(input: string | number | undefined): number {
@@ -366,7 +388,7 @@ export namespace PluginMarketplaceRegistry {
   async function remoteRegistry(inputConfig?: Awaited<ReturnType<typeof currentConfig>>) {
     const config = inputConfig ?? (await currentConfig())
     if (!config.enabled) return { schemaVersion: 1 as const, updatedAt: new Date(0).toISOString(), plugins: [] }
-    const cachedPath = registryCachePath()
+    const cachedPath = registryCachePath(config.registryUrl)
     if (await isFresh(cachedPath, config.cacheTtlMs)) {
       const cached = await readJsonFile(cachedPath, RemoteRegistry)
       if (cached) return cached
@@ -416,11 +438,11 @@ export namespace PluginMarketplaceRegistry {
       entryUrl = resolveEntryUrl(config.registryUrl, summary.entry)
     } catch (err) {
       if (!config.offlineCache) throw err
-      const cached = await readJsonFile(entryCachePath(id), RemoteEntry)
+      const cached = await readJsonFile(entryCachePath(config.registryUrl, id), RemoteEntry)
       return cached ? normalizeEntry(cached, "official", undefined, config.registryUrl) : null
     }
 
-    const cachedPath = entryCachePath(id)
+    const cachedPath = entryCachePath(config.registryUrl, id)
     if (await isFresh(cachedPath, config.cacheTtlMs)) {
       const cached = await readJsonFile(cachedPath, RemoteEntry)
       if (cached) return normalizeEntry(cached, "official", entryUrl, config.registryUrl)
@@ -489,10 +511,10 @@ export namespace PluginMarketplaceRegistry {
     await fs.rm(`${tarballPath}.sig`, { force: true }).catch(() => {})
   }
 
-  async function ensureDownloaded(version: NormalizedVersion, id: string, timeoutMs: number) {
+  async function ensureDownloaded(version: NormalizedVersion, id: string, registryUrl: string, timeoutMs: number) {
     if (!version.downloadUrl) throw new Error(`Official registry entry ${id}@${version.version} has no downloadUrl`)
     if (!version.signatureUrl) throw new Error(`Official registry entry ${id}@${version.version} has no signatureUrl`)
-    const dir = artifactDir(id, version.version)
+    const dir = artifactDir(registryUrl, id, version.version, version.integrity)
     const tarballPath = path.join(dir, `${id}-${version.version}.synergy-plugin.tgz`)
     const signaturePath = `${tarballPath}.sig`
     if (fsSync.existsSync(tarballPath) && fsSync.existsSync(signaturePath)) {
@@ -534,7 +556,12 @@ export namespace PluginMarketplaceRegistry {
     const target = entry.versions.find((candidate) => candidate.version === version)
     if (!target) throw new Error(`Official registry version not found: ${id}@${version}`)
 
-    const { tarballPath, signaturePath } = await ensureDownloaded(target, id, config.artifactDownloadTimeoutMs)
+    const { tarballPath, signaturePath } = await ensureDownloaded(
+      target,
+      id,
+      config.registryUrl,
+      config.artifactDownloadTimeoutMs,
+    )
     let extractedDir: string | null = null
     try {
       const tarballHash = assertIntegrity(tarballPath, target.integrity)

@@ -127,6 +127,7 @@ export async function init() {
         source,
         entryPath,
         pluginDir,
+        scope: ScopeContext.current.scope,
         serverUrl: Server.url().toString(),
       }).catch((err) => log.error("plugin runtime start error", { id, err }))
     }

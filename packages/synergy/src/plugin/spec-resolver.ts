@@ -9,6 +9,7 @@ import { PluginManifest } from "@ericsanchezok/synergy-plugin"
 import { resolveEntryFromPluginDir } from "@ericsanchezok/synergy-plugin/spec"
 import type { PluginDescriptor, PluginManifest as PluginManifestType } from "@ericsanchezok/synergy-plugin"
 import type { PluginSource } from "./trust"
+import { sourceFromSpec } from "./source"
 
 export interface ResolvedPluginSpec {
   spec: string
@@ -140,7 +141,7 @@ export async function resolvePluginSpec(
   }
 
   const { pkg, version } = PluginSpec.parse(spec)
-  const source: PluginSource = PluginSpec.isNonRegistry(spec) ? (spec.startsWith("http") ? "url" : "git") : "npm"
+  const source: PluginSource = sourceFromSpec(spec)
 
   if (!options.install) {
     const resolvedDir = path.join(

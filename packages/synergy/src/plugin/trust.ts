@@ -9,11 +9,11 @@ import {
 import type { PluginPolicyDecision, PluginRuntimePolicyInput, PluginSource } from "@ericsanchezok/synergy-util/plugin-policy"
 import { Global } from "../global"
 import { Installation } from "../global/installation"
-import { PluginSpec } from "../util/plugin-spec"
 import * as Lockfile from "./lockfile"
 import type { PluginLockEntry } from "./lockfile-schema"
 import { getApproval } from "./consent/approval-store"
 import type { PluginApprovalRecord } from "./consent/approval-store"
+import { sourceFromSpec } from "./source"
 
 export {
   decideTrust,
@@ -23,13 +23,6 @@ export {
   trustSummary,
 } from "@ericsanchezok/synergy-util/plugin-policy"
 export type { PluginSource, PluginTrustDecision, TrustTier } from "@ericsanchezok/synergy-util/plugin-policy"
-
-function sourceFromSpec(spec: string): PluginSource {
-  if (spec.startsWith("file://")) return "local"
-  if (/^https?:\/\//.test(spec)) return "url"
-  if (PluginSpec.isNonRegistry(spec)) return "git"
-  return "npm"
-}
 
 function sourceFromLockfile(pluginDir: string): PluginSource | undefined {
   try {
