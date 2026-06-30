@@ -315,17 +315,12 @@ export function DialogCreateHolosAgent(props: { onCreate: (profile: HolosProfile
   }
 
   return (
-    <Dialog title="Create Agent">
+    <Dialog
+      title="Create Agent"
+      description="Set the initial Holos agent profile. Holos remains the source of truth after creation."
+      class="sidebar-agent-import-dialog-shell"
+    >
       <form onSubmit={handleSubmit} class="sidebar-agent-import-form">
-        <div class="sidebar-agent-import-hero">
-          <span class="sidebar-agent-import-icon">
-            <Icon name="sparkles" size="normal" />
-          </span>
-          <div class="sidebar-agent-import-heading">
-            <span class="sidebar-agent-import-kicker">Agent profile</span>
-            <p>Set the initial Holos profile. Holos remains the source of truth after the agent is created.</p>
-          </div>
-        </div>
         <div class="sidebar-agent-import-fields">
           <TextField
             autofocus
@@ -360,10 +355,9 @@ export function DialogCreateHolosAgent(props: { onCreate: (profile: HolosProfile
             error={form.avatarUrlError}
           />
         </div>
-        <div class="sidebar-agent-import-note">
-          <Icon name="shield-check" size="small" />
-          <span>The profile is sent to Holos during creation and is not stored in local Synergy settings.</span>
-        </div>
+        <p class="sidebar-agent-import-note">
+          The profile is sent to Holos during creation and is not stored in local Synergy settings.
+        </p>
         <div class="sidebar-agent-import-actions">
           <Button type="button" variant="ghost" size="large" onClick={() => dialog.close()}>
             Cancel
@@ -416,17 +410,12 @@ export function DialogImportHolosAgent(props: { globalSDK: GlobalSDK; onImported
   }
 
   return (
-    <Dialog title="Import Agent">
+    <Dialog
+      title="Import Agent"
+      description="Connect an existing Holos agent with its secret. Synergy verifies the identity before saving."
+      class="sidebar-agent-import-dialog-shell"
+    >
       <form onSubmit={handleSubmit} class="sidebar-agent-import-form">
-        <div class="sidebar-agent-import-hero">
-          <span class="sidebar-agent-import-icon">
-            <Icon name="key-round" size="normal" />
-          </span>
-          <div class="sidebar-agent-import-heading">
-            <span class="sidebar-agent-import-kicker">Holos Agent</span>
-            <p>Connect an existing agent with its secret. Synergy verifies the identity from Holos before saving.</p>
-          </div>
-        </div>
         <div class="sidebar-agent-import-fields">
           <TextField
             autofocus
@@ -442,10 +431,9 @@ export function DialogImportHolosAgent(props: { globalSDK: GlobalSDK; onImported
             error={form.agentSecretError}
           />
         </div>
-        <div class="sidebar-agent-import-note">
-          <Icon name="shield-check" size="small" />
-          <span>Only the agent secret and canonical agent ID are stored locally. Profile stays in Holos.</span>
-        </div>
+        <p class="sidebar-agent-import-note">
+          Only the agent secret and canonical agent ID are stored locally. Profile stays in Holos.
+        </p>
         <div class="sidebar-agent-import-actions">
           <Button type="button" variant="ghost" size="large" onClick={() => dialog.close()}>
             Cancel

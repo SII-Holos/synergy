@@ -36,6 +36,8 @@ Treat the Holos agent as the Synergy account identity. Model subscriptions, API 
 
 Holos agent profile is remote-owned identity data. Synergy may collect the initial name, description, and avatar URL when creating an agent, and may edit those fields from Account settings, but local storage should only retain the agent ID, agent secret, and timestamps. Importing an existing agent must fetch the remote profile instead of asking users to recreate or overwrite it.
 
+Holos create and import agent dialogs should be compact identity forms: title, short explanation, fields, storage note, and actions. Do not use decorative icon blocks or alert-style cards for ordinary explanatory text in these flows.
+
 Account settings should present the remote Holos profile as identity first and expose identifiers as supporting metadata. Profile fields should not sit permanently on the page as an empty edit form; use an explicit edit state for name, description, and avatar URL. Log out belongs with the identity card because it acts on the current identity. Switching saved agents belongs in a focused chooser, not as a debug-style table inside the Account page. The lower-left account menu should echo the same hierarchy: profile name, profile description or connection state, then a short agent ID only as secondary context; the selected agent needs a single selected affordance, not redundant status text.
 
 Keep navigation surfaces mentally aligned with where they live. Sidebar destinations such as Agenda, Library, and Plugins open in the main session-side canvas. Settings may be modal, and it should dim the whole app because it interrupts the current task.
