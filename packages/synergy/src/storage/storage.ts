@@ -56,7 +56,7 @@ export namespace Storage {
       using _ = await Lock.write(target)
       const content = await Bun.file(target).json()
       fn(content)
-      await Bun.write(target, JSON.stringify(content, null, 2))
+      await atomicWriteJSON(target, content)
       return content as T
     })
   }
@@ -66,7 +66,7 @@ export namespace Storage {
     const target = path.join(dir, ...key) + ".json"
     return withErrorHandling(async () => {
       using _ = await Lock.write(target)
-      await Bun.write(target, JSON.stringify(content, null, 2))
+      await atomicWriteJSON(target, content)
     })
   }
 
@@ -75,7 +75,10 @@ export namespace Storage {
     const target = path.join(dir, ...prefix)
     try {
       const entries = await fs.readdir(target)
-      return entries.map((e) => (e.endsWith(".json") ? e.slice(0, -5) : e)).sort()
+      return entries
+        .filter((e) => e.endsWith(".json") && !e.endsWith(".tmp.json"))
+        .map((e) => e.slice(0, -5))
+        .sort()
     } catch {
       return []
     }
@@ -112,6 +115,12 @@ export namespace Storage {
     })
   }
 
+  async function atomicWriteJSON<T>(target: string, content: T) {
+    const tmp = target + ".tmp"
+    await Bun.write(tmp, JSON.stringify(content, null, 2))
+    await fs.rename(tmp, target)
+  }
+
   const glob = new Bun.Glob("**/*")
   export async function list(prefix: string[]) {
     const dir = resolveDir()
@@ -121,7 +130,11 @@ export namespace Storage {
           cwd: path.join(dir, ...prefix),
           onlyFiles: true,
         }),
-      ).then((results) => results.map((x) => [...prefix, ...x.slice(0, -5).split(path.sep)]))
+      ).then((results) =>
+        results
+          .filter((x) => !x.endsWith(".tmp"))
+          .map((x) => [...prefix, ...x.slice(0, -5).split(path.sep)]),
+      )
       result.sort()
       return result
     } catch {

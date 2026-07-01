@@ -787,11 +787,15 @@ export namespace MessageV2 {
       const sessionID = input.sessionID as Identifier.SessionID
       const messageIDs = await Storage.scan(StoragePath.sessionMessagesRoot(scopeID, sessionID))
       for (let i = messageIDs.length - 1; i >= 0; i--) {
-        yield await get({
-          scopeID: scopeID,
-          sessionID: input.sessionID,
-          messageID: messageIDs[i],
-        })
+        try {
+          yield await get({
+            scopeID: scopeID,
+            sessionID: input.sessionID,
+            messageID: messageIDs[i],
+          })
+        } catch (e) {
+          console.warn(`[MessageV2.stream] skipping corrupt message ${messageIDs[i]}:`, e)
+        }
       }
     },
   )
