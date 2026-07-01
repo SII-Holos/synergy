@@ -76,10 +76,10 @@ export function PluginPermissionsDisplay(props: PluginPermissionsDisplayProps) {
         label: "Part renderers in chat",
       })
     }
-    if (hasPermission(p, ["ui", "workspacePanels"])) {
+    if (hasPermission(p, ["ui", "workbenchPanels"])) {
       addItem({
         icon: "panel-left",
-        label: "Custom workspace panels",
+        label: "Custom workbench panels",
       })
     }
     if (hasPermission(p, ["ui", "globalPanels"])) {

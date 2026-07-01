@@ -60,7 +60,7 @@ During `synergy-plugin build`, the runtime entry is bundled to `dist/runtime/ind
     "ui": {
       "toolRenderers": false,
       "partRenderers": false,
-      "workspacePanels": false,
+      "workbenchPanels": false,
       "globalPanels": false,
       "settings": false,
       "themes": false,
@@ -171,7 +171,16 @@ result into `task.outputResult` without changing the normal trajectory-summary `
       "minUIApiVersion": "2.0.0",
       "toolRenderers": [{ "tool": "greet", "exportName": "default" }],
       "partRenderers": [{ "type": "custom-part", "exportName": "CustomPart" }],
-      "workspacePanels": [{ "id": "panel", "label": "Panel", "icon": "layout-panel-left" }],
+      "workbenchPanels": [
+        {
+          "id": "panel",
+          "label": "Panel",
+          "icon": "layout-panel-left",
+          "surface": "side",
+          "cardinality": "singleton",
+          "requiresSession": true,
+        },
+      ],
       "globalPanels": [{ "id": "global", "label": "Global", "icon": "globe" }],
       "settings": [{ "id": "settings", "label": "Settings", "icon": "settings", "group": "plugins" }],
       "chatComponents": [{ "id": "chat", "slot": "after-tools", "exportName": "ChatComponent" }],

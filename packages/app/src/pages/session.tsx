@@ -13,7 +13,7 @@ import { createAutoScroll } from "@ericsanchezok/synergy-ui/hooks"
 
 import type { DragEvent } from "@thisbeyond/solid-dnd"
 import { useSync } from "@/context/sync"
-import { useTerminal, type LocalPTY } from "@/context/terminal"
+import { useTerminal } from "@/context/terminal"
 import { useLayout } from "@/context/layout"
 import { getFilename } from "@ericsanchezok/synergy-util/path"
 import { DateTime } from "luxon"
@@ -36,13 +36,11 @@ import { useSessionMeta } from "@/composables/use-session-meta"
 import { SessionConversation } from "@/components/session/conversation"
 import { PromptDock } from "@/components/session/prompt-dock"
 import { TabsPanel } from "@/components/session/tabs-panel"
-import { WorkspacePanelMobile } from "@/components/session/workspace-panel"
-import { WorkspaceRail } from "@/components/session/workspace-rail"
-import { WorkspaceDrawer } from "@/components/session/workspace-drawer"
-import { WorkspaceProvider, useWorkspace } from "@/context/workspace"
+import { WorkbenchPanelsProvider } from "@/context/workbench-panels"
 import { WorkspaceNotesTool } from "@/components/workspace/tool-notes"
 import { WorkspaceBrowserTool } from "@/components/workspace/tool-browser"
-import { TerminalPanel } from "@/components/session/terminal-panel"
+import { WorkspaceTerminalTool } from "@/components/workspace/tool-terminal"
+import { WorkbenchSurface } from "@/components/session/workbench-surface"
 import { SessionTopBar } from "@/components/top-bar/session-top-bar"
 
 const handoff = {
@@ -53,9 +51,9 @@ const handoff = {
 
 export default function Page() {
   return (
-    <WorkspaceProvider>
+    <WorkbenchPanelsProvider>
       <SessionPageContent />
-    </WorkspaceProvider>
+    </WorkbenchPanelsProvider>
   )
 }
 
@@ -74,8 +72,9 @@ function SessionPageContent() {
   const prompt = usePrompt()
   const sessionKey = createMemo(() => `${params.dir}${params.id ? "/" + params.id : ""}`)
   const tabs = createMemo(() => layout.tabs(sessionKey()))
-  const workspace = createMemo(() => layout.workspace(sessionKey()))
-  const workspaceOpen = createMemo(() => workspace().opened())
+  const sideSurface = createMemo(() => layout.surface(sessionKey(), "side"))
+  const bottomSurface = createMemo(() => layout.surface(sessionKey(), "bottom"))
+  const sideOpen = createMemo(() => sideSurface().opened())
   const view = createMemo(() => layout.view(sessionKey()))
 
   if (import.meta.env.DEV) {
@@ -173,7 +172,6 @@ function SessionPageContent() {
 
   const [store, setStore] = createStore({
     activeDraggable: undefined as string | undefined,
-    activeTerminalDraggable: undefined as string | undefined,
     messageId: undefined as string | undefined,
     turnStart: 0,
     mobileTab: "session" as "session" | "review",
@@ -377,13 +375,6 @@ function SessionPageContent() {
     if (id) sync.session.sync(id)
   })
 
-  createEffect(() => {
-    if (!layout.terminal.opened()) return
-    if (!terminal.ready()) return
-    if (terminal.all().length !== 0) return
-    terminal.new()
-  })
-
   createEffect(
     on(
       () => visibleUserMessages().at(-1)?.id,
@@ -508,28 +499,6 @@ function SessionPageContent() {
 
   const handleDragEnd = () => {
     setStore("activeDraggable", undefined)
-  }
-
-  const handleTerminalDragStart = (event: unknown) => {
-    const id = getDraggableId(event)
-    if (!id) return
-    setStore("activeTerminalDraggable", id)
-  }
-
-  const handleTerminalDragOver = (event: DragEvent) => {
-    const { draggable, droppable } = event
-    if (draggable && droppable) {
-      const terminals = terminal.all()
-      const fromIndex = terminals.findIndex((t: LocalPTY) => t.id === draggable.id.toString())
-      const toIndex = terminals.findIndex((t: LocalPTY) => t.id === droppable.id.toString())
-      if (fromIndex !== -1 && toIndex !== -1 && fromIndex !== toIndex) {
-        terminal.move(draggable.id.toString(), toIndex)
-      }
-    }
-  }
-
-  const handleTerminalDragEnd = () => {
-    setStore("activeTerminalDraggable", undefined)
   }
 
   const contextOpen = createMemo(() => tabs().active() === "context" || tabs().all().includes("context"))
@@ -812,6 +781,7 @@ function SessionPageContent() {
         <WorkspaceBrowserTool />
       </Show>
       <WorkspaceNotesTool />
+      <WorkspaceTerminalTool />
       <div class="synergy-workbench-canvas relative bg-background-stronger size-full overflow-hidden flex flex-col">
         <div class="flex-1 min-h-0 flex flex-col md:flex-row">
           {/* Mobile tab bar */}
@@ -845,7 +815,7 @@ function SessionPageContent() {
             }}
             style={{
               width: isDesktop() && showTabs() ? `${layout.session.width()}px` : undefined,
-              "min-width": isDesktop() && workspaceOpen() ? `${WORKSPACE_SESSION_MIN_WIDTH}px` : undefined,
+              "min-width": isDesktop() && sideOpen() ? `${WORKSPACE_SESSION_MIN_WIDTH}px` : undefined,
               "--prompt-height": store.promptHeight ? `${store.promptHeight}px` : undefined,
             }}
           >
@@ -928,8 +898,8 @@ function SessionPageContent() {
                           isDesktop={isDesktop}
                           scrollToMessage={scrollToMessage}
                           anchor={anchor}
-                          terminalHeight={layout.terminal.opened() ? layout.terminal.height : () => 0}
-                          workspaceOpen={workspaceOpen}
+                          terminalHeight={bottomSurface().opened() ? bottomSurface().size : () => 0}
+                          workspaceOpen={sideOpen}
                         />
                       </Show>
                     </Show>
@@ -963,9 +933,9 @@ function SessionPageContent() {
               scopeName={scopeName}
               branch={branch}
               lastModified={lastModified}
-              workspaceOpen={workspaceOpen}
+              workspaceOpen={sideOpen}
             />
-            <Show when={isDesktop() && showTabs() && !workspaceOpen()}>
+            <Show when={isDesktop() && showTabs() && !sideOpen()}>
               <ResizeHandle
                 direction="horizontal"
                 size={layout.session.width()}
@@ -1004,29 +974,14 @@ function SessionPageContent() {
             />
           </Show>
           <Show when={isDesktop()}>
-            <WorkspaceDrawer />
-          </Show>
-          <Show when={isDesktop()}>
-            <WorkspaceRail />
+            <WorkbenchSurface surface="side" />
           </Show>
         </div>
 
-        <Show when={isDesktop() && layout.terminal.opened()}>
-          <TerminalPanel
-            layout={layout}
-            terminal={terminal}
-            command={command}
-            handoffTerminals={handoff.terminals}
-            handleTerminalDragStart={handleTerminalDragStart}
-            handleTerminalDragOver={handleTerminalDragOver}
-            handleTerminalDragEnd={handleTerminalDragEnd}
-            activeTerminalDraggable={store.activeTerminalDraggable}
-          />
+        <Show when={isDesktop()}>
+          <WorkbenchSurface surface="bottom" />
         </Show>
       </div>
-      <Show when={!isDesktop()}>
-        <WorkspacePanelMobile />
-      </Show>
     </>
   )
 }

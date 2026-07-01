@@ -141,7 +141,7 @@ The host resolves limits in one place: Synergy config first, `plugin.json.runtim
 ## create
 
 ```bash
-synergy-plugin create <name> [--template tool-ui|workspace-panel|api-connector|theme-icon]
+synergy-plugin create <name> [--template tool-ui|workbench-panel|api-connector|theme-icon]
 ```
 
 Generated projects include `plugin.json`, `package.json`, `tsconfig.json`, runtime source, and any template UI/assets.
@@ -151,7 +151,7 @@ Templates:
 | Template          | Output                                                       |
 | ----------------- | ------------------------------------------------------------ |
 | `tool-ui`         | Runtime tool plus Solid tool renderer source at `src/ui.tsx` |
-| `workspace-panel` | Workspace panel UI source at `src/ui.tsx`                    |
+| `workbench-panel` | Workbench panel UI source at `src/ui.tsx`                    |
 | `api-connector`   | Network-enabled runtime tools plus tool renderers            |
 | `theme-icon`      | Theme CSS and SVG icon assets with no UI JS entry            |
 

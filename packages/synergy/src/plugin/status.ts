@@ -178,7 +178,7 @@ function countUIContributions(manifest: PluginManifest): number {
   let count = 0
   if (ui.toolRenderers?.length) count += ui.toolRenderers.length
   if (ui.partRenderers?.length) count += ui.partRenderers.length
-  if (ui.workspacePanels?.length) count += ui.workspacePanels.length
+  if (ui.workbenchPanels?.length) count += ui.workbenchPanels.length
   if (ui.globalPanels?.length) count += ui.globalPanels.length
   if (ui.settings?.length) count += ui.settings.length
   if (ui.chatComponents?.length) count += ui.chatComponents.length

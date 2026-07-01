@@ -8,14 +8,15 @@ import {
 function controller() {
   const calls: string[] = []
   const workspace: BrowserWorkspaceController = {
-    setActive(id) {
-      calls.push(`active:${id}`)
+    openPanel(panelId, options) {
+      calls.push(`open:${panelId}:${options?.reuseExisting === true}`)
     },
-    openPanel() {
-      calls.push("open")
-    },
-    closePanel() {
-      calls.push("close")
+    surface(surface) {
+      return {
+        close() {
+          calls.push(`close:${surface}`)
+        },
+      }
     },
   }
   return { calls, workspace }
@@ -25,17 +26,17 @@ describe("applyBrowserViewCommand", () => {
   test("show and focus activate the Browser workspace", () => {
     const show = controller()
     expect(applyBrowserViewCommand({ workspaceCommand: "show" }, show.workspace)).toBe(true)
-    expect(show.calls).toEqual(["active:browser", "open"])
+    expect(show.calls).toEqual(["open:browser:true"])
 
     const focus = controller()
     expect(applyBrowserViewCommand({ action: "focus" }, focus.workspace)).toBe(true)
-    expect(focus.calls).toEqual(["active:browser", "open"])
+    expect(focus.calls).toEqual(["open:browser:true"])
   })
 
   test("hide closes the workspace", () => {
     const hide = controller()
     expect(applyBrowserViewCommand({ workspaceCommand: "hide" }, hide.workspace)).toBe(true)
-    expect(hide.calls).toEqual(["close"])
+    expect(hide.calls).toEqual(["close:side"])
   })
 
   test("status has no frontend side effect", () => {

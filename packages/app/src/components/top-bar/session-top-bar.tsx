@@ -8,9 +8,11 @@ import { ModelSelectorPopover } from "@/components/dialog"
 import { useLocal } from "@/context/local"
 import { useCommand } from "@/context/command"
 import { useSync } from "@/context/sync"
+import { useWorkbenchPanels } from "@/context/workbench-panels"
 import { base64Decode } from "@ericsanchezok/synergy-util/encode"
 import { isHomeScope } from "@/utils/scope"
 import { useSessionMeta } from "@/composables/use-session-meta"
+import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import "./session-top-bar.css"
 
 export function SessionTopBar() {
@@ -19,6 +21,9 @@ export function SessionTopBar() {
   const local = useLocal()
   const command = useCommand()
   const sync = useSync()
+  const workbench = useWorkbenchPanels()
+  const sideSurface = createMemo(() => workbench.surface("side"))
+  const bottomSurface = createMemo(() => workbench.surface("bottom"))
 
   const isGlobal = () => (params.dir ? isHomeScope(base64Decode(params.dir)) : false)
 
@@ -83,6 +88,30 @@ export function SessionTopBar() {
         </Show>
       </div>
       <div class="stb-right">
+        <Tooltip value={bottomSurface().opened() ? "Hide BottomSpace" : "Open BottomSpace"} placement="bottom">
+          <button
+            type="button"
+            class="stb-icon-btn"
+            classList={{ "stb-icon-btn--active": bottomSurface().opened() }}
+            aria-label={bottomSurface().opened() ? "Hide BottomSpace" : "Open BottomSpace"}
+            aria-pressed={bottomSurface().opened()}
+            onClick={() => bottomSurface().toggle()}
+          >
+            <Icon name={getSemanticIcon("app.bottomSpace")} size="normal" />
+          </button>
+        </Tooltip>
+        <Tooltip value={sideSurface().opened() ? "Hide side workspace" : "Open side workspace"} placement="bottom">
+          <button
+            type="button"
+            class="stb-icon-btn"
+            classList={{ "stb-icon-btn--active": sideSurface().opened() }}
+            aria-label={sideSurface().opened() ? "Hide side workspace" : "Open side workspace"}
+            aria-pressed={sideSurface().opened()}
+            onClick={() => sideSurface().toggle()}
+          >
+            <Icon name={getSemanticIcon("app.sideWorkspace")} size="normal" />
+          </button>
+        </Tooltip>
         <Show when={!!params.id && !isGlobal()}>
           <Tooltip value="Export session data" placement="bottom">
             <button type="button" class="stb-icon-btn" onClick={() => dialog.show(() => <DialogSessionExport />)}>

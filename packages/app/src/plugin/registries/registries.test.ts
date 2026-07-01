@@ -30,13 +30,13 @@ import {
 // ── Part Registry ──────────────────────────────────────────────────
 import { registerPartRenderer, getPartRenderer, hasPartRenderer } from "./part-registry"
 
-// ── Workspace Registry ─────────────────────────────────────────────
+// ── Workbench Panel Registry ───────────────────────────────────────
 import {
-  registerWorkspacePanel,
-  listWorkspacePanels,
-  getWorkspacePanel,
-  clearWorkspacePanels,
-} from "./workspace-registry"
+  registerWorkbenchPanel,
+  listWorkbenchPanels,
+  getWorkbenchPanel,
+  clearWorkbenchPanels,
+} from "./workbench-panel-registry"
 
 // ── Panel Registry ─────────────────────────────────────────────────
 import { registerGlobalPanel, listGlobalPanels, getGlobalPanel, clearGlobalPanels } from "./panel-registry"
@@ -278,78 +278,150 @@ describe("PartRegistry", () => {
 })
 
 // ═══════════════════════════════════════════════════════════════════
-// Workspace Registry
+// Workbench Panel Registry
 // ═══════════════════════════════════════════════════════════════════
 
-describe("WorkspaceRegistry", () => {
+describe("WorkbenchPanelRegistry", () => {
   beforeEach(() => {
-    clearWorkspacePanels()
+    clearWorkbenchPanels()
   })
 
-  test("registerWorkspacePanel adds entry and returns disposer", () => {
-    const disposer = registerWorkspacePanel({
+  test("registerWorkbenchPanel adds entry and returns disposer", () => {
+    const disposer = registerWorkbenchPanel({
       id: "ws-panel-1",
       label: "Test Panel",
       icon: "package",
+      surface: "side",
+      cardinality: "singleton",
+      requiresSession: true,
       pluginId: "test-plugin",
     })
     expect(typeof disposer).toBe("function")
-    const entry = getWorkspacePanel("ws-panel-1")
+    const entry = getWorkbenchPanel("ws-panel-1")
     expect(entry).toBeDefined()
     expect(entry!.label).toBe("Test Panel")
+    expect(entry!.surface).toBe("side")
+    expect(entry!.cardinality).toBe("singleton")
+    expect(entry!.requiresSession).toBe(true)
     expect(entry!.pluginId).toBe("test-plugin")
     disposer()
   })
 
   test("disposer removes the entry", () => {
-    const disposer = registerWorkspacePanel({
+    const disposer = registerWorkbenchPanel({
       id: "ws-panel-2",
       label: "Removable",
       icon: "trash-2",
+      surface: "bottom",
+      cardinality: "multi",
       pluginId: "test-plugin",
     })
-    expect(getWorkspacePanel("ws-panel-2")).toBeDefined()
+    expect(getWorkbenchPanel("ws-panel-2")).toBeDefined()
     disposer()
-    expect(getWorkspacePanel("ws-panel-2")).toBeUndefined()
+    expect(getWorkbenchPanel("ws-panel-2")).toBeUndefined()
   })
 
-  test("listWorkspacePanels returns all entries", () => {
-    registerWorkspacePanel({ id: "ws-a", label: "A", icon: "a", pluginId: "p1" })
-    registerWorkspacePanel({ id: "ws-b", label: "B", icon: "b", pluginId: "p1" })
-    const list = listWorkspacePanels()
-    expect(list.length).toBe(2)
+  test("listWorkbenchPanels filters by surface", () => {
+    registerWorkbenchPanel({
+      id: "ws-a",
+      label: "A",
+      icon: "a",
+      surface: "side",
+      cardinality: "exclusive",
+      pluginId: "p1",
+    })
+    registerWorkbenchPanel({
+      id: "ws-b",
+      label: "B",
+      icon: "b",
+      surface: "bottom",
+      cardinality: "multi",
+      pluginId: "p1",
+    })
+    expect(listWorkbenchPanels().length).toBe(2)
+    const list = listWorkbenchPanels("side")
+    expect(list.length).toBe(1)
     const ids = list.map((e) => e.id)
     expect(ids).toContain("ws-a")
-    expect(ids).toContain("ws-b")
   })
 
-  test("getWorkspacePanel returns undefined for unknown id", () => {
-    expect(getWorkspacePanel("nonexistent")).toBeUndefined()
+  test("getWorkbenchPanel returns undefined for unknown id", () => {
+    expect(getWorkbenchPanel("nonexistent")).toBeUndefined()
   })
 
-  test("clearWorkspacePanels removes all entries when no pluginId", () => {
-    registerWorkspacePanel({ id: "ws-a", label: "A", icon: "a", pluginId: "p1" })
-    registerWorkspacePanel({ id: "ws-b", label: "B", icon: "b", pluginId: "p2" })
-    clearWorkspacePanels()
-    expect(listWorkspacePanels().length).toBe(0)
+  test("clearWorkbenchPanels removes all entries when no pluginId", () => {
+    registerWorkbenchPanel({
+      id: "ws-a",
+      label: "A",
+      icon: "a",
+      surface: "side",
+      cardinality: "exclusive",
+      pluginId: "p1",
+    })
+    registerWorkbenchPanel({
+      id: "ws-b",
+      label: "B",
+      icon: "b",
+      surface: "bottom",
+      cardinality: "multi",
+      pluginId: "p2",
+    })
+    clearWorkbenchPanels()
+    expect(listWorkbenchPanels().length).toBe(0)
   })
 
-  test("clearWorkspacePanels with pluginId removes only matching entries", () => {
-    registerWorkspacePanel({ id: "ws-a", label: "A", icon: "a", pluginId: "p1" })
-    registerWorkspacePanel({ id: "ws-b", label: "B", icon: "b", pluginId: "p2" })
-    registerWorkspacePanel({ id: "ws-c", label: "C", icon: "c", pluginId: "p1" })
-    clearWorkspacePanels("p1")
-    const list = listWorkspacePanels()
+  test("clearWorkbenchPanels with pluginId removes only matching entries", () => {
+    registerWorkbenchPanel({
+      id: "ws-a",
+      label: "A",
+      icon: "a",
+      surface: "side",
+      cardinality: "exclusive",
+      pluginId: "p1",
+    })
+    registerWorkbenchPanel({
+      id: "ws-b",
+      label: "B",
+      icon: "b",
+      surface: "bottom",
+      cardinality: "multi",
+      pluginId: "p2",
+    })
+    registerWorkbenchPanel({
+      id: "ws-c",
+      label: "C",
+      icon: "c",
+      surface: "side",
+      cardinality: "singleton",
+      pluginId: "p1",
+    })
+    clearWorkbenchPanels("p1")
+    const list = listWorkbenchPanels()
     expect(list.length).toBe(1)
     expect(list[0].id).toBe("ws-b")
   })
 
   test("duplicate registration replaces previous without crashing (Map semantics)", () => {
-    registerWorkspacePanel({ id: "ws-dup", label: "First", icon: "a", pluginId: "p1" })
-    registerWorkspacePanel({ id: "ws-dup", label: "Second", icon: "b", pluginId: "p1" })
-    const entry = getWorkspacePanel("ws-dup")
+    registerWorkbenchPanel({
+      id: "ws-dup",
+      label: "First",
+      icon: "a",
+      surface: "side",
+      cardinality: "exclusive",
+      pluginId: "p1",
+    })
+    registerWorkbenchPanel({
+      id: "ws-dup",
+      label: "Second",
+      icon: "b",
+      surface: "bottom",
+      cardinality: "multi",
+      pluginId: "p1",
+    })
+    const entry = getWorkbenchPanel("ws-dup")
     expect(entry!.label).toBe("Second")
-    expect(listWorkspacePanels().length).toBe(1)
+    expect(entry!.surface).toBe("bottom")
+    expect(listWorkbenchPanels().length).toBe(1)
   })
 })
 

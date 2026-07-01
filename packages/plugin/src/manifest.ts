@@ -38,6 +38,12 @@ const PanelDef = z
   })
   .strict()
 
+const WorkbenchPanelDef = PanelDef.extend({
+  surface: z.enum(["side", "bottom"]),
+  cardinality: z.enum(["exclusive", "singleton", "multi"]),
+  requiresSession: z.boolean().optional(),
+}).strict()
+
 const SettingsDef = z
   .object({
     id: z.string().min(1).max(64),
@@ -166,7 +172,10 @@ const UIContribution = z
       .optional(),
     toolRenderers: z.array(ToolRendererDef).optional(),
     partRenderers: z.array(PartRendererDef).optional(),
-    workspacePanels: z.array(PanelDef).optional(),
+    workspacePanels: z
+      .never({ error: "contributes.ui.workspacePanels was removed; use contributes.ui.workbenchPanels." })
+      .optional(),
+    workbenchPanels: z.array(WorkbenchPanelDef).optional(),
     globalPanels: z.array(PanelDef).optional(),
     settings: z.array(SettingsDef).optional(),
     chatComponents: z.array(ChatComponentDef).optional(),
@@ -225,7 +234,10 @@ const PluginPermissionsSchema = z
       .object({
         toolRenderers: z.boolean().default(false),
         partRenderers: z.boolean().default(false),
-        workspacePanels: z.boolean().default(false),
+        workspacePanels: z
+          .never({ error: "permissions.ui.workspacePanels was removed; use permissions.ui.workbenchPanels." })
+          .optional(),
+        workbenchPanels: z.boolean().default(false),
         globalPanels: z.boolean().default(false),
         settings: z.boolean().default(false),
         themes: z.boolean().default(false),

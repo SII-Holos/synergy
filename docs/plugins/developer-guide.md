@@ -11,7 +11,7 @@ bun install
 Available templates:
 
 - `tool-ui`
-- `workspace-panel`
+- `workbench-panel`
 - `api-connector`
 - `theme-icon`
 
@@ -150,9 +150,13 @@ All local, npm, git, URL, directory, file, and tarball specs use the shared reso
 Use `@ericsanchezok/synergy-plugin/ui` for UI prop types:
 
 ```ts
-import type { PluginToolRendererProps, PluginPanelProps } from "@ericsanchezok/synergy-plugin/ui"
+import type {
+  PluginToolRendererProps,
+  PluginWorkbenchPanelProps,
+  PluginPanelProps,
+} from "@ericsanchezok/synergy-plugin/ui"
 ```
 
-The Web client registers tool renderers, part renderers, workspace panels, global panels, settings, chat components, themes, icons, routes, and commands from `contributes.ui`.
+The Web client registers tool renderers, part renderers, workbench panels, global panels, settings, chat components, themes, icons, routes, and commands from `contributes.ui`.
 
 The internal API call is generated SDK method `plugin.listUiContributions()`. Plugin bundles and assets load from `/plugin/assets/:pluginId/:version/*`.

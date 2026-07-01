@@ -60,18 +60,26 @@ describe("resolveSandboxSurfaces", () => {
     expect(resolveSandboxSurfaces(m)).toEqual([])
   })
 
-  test("returns sandbox workspace panels", () => {
+  test("returns sandbox workbench panels", () => {
     const m: PluginManifest = {
       ...manifestBase,
       contributes: {
         ui: {
-          workspacePanels: [
-            { id: "chat-widget", label: "Chat", icon: "message-square", exportName: "default", sandbox: true },
+          workbenchPanels: [
+            {
+              id: "chat-widget",
+              label: "Chat",
+              icon: "message-square",
+              exportName: "default",
+              sandbox: true,
+              surface: "side",
+              cardinality: "singleton",
+            },
           ],
         },
       },
     }
-    expect(resolveSandboxSurfaces(m)).toEqual([{ id: "chat-widget", label: "Chat", kind: "workspacePanel" }])
+    expect(resolveSandboxSurfaces(m)).toEqual([{ id: "chat-widget", label: "Chat", kind: "workbenchPanel" }])
   })
 
   test("returns sandbox global panels", () => {
@@ -91,10 +99,34 @@ describe("resolveSandboxSurfaces", () => {
       ...manifestBase,
       contributes: {
         ui: {
-          workspacePanels: [
-            { id: "trusted-panel", label: "Trusted", icon: "shield", exportName: "default", sandbox: false },
-            { id: "sandbox-panel", label: "Sandboxed", icon: "box", exportName: "default", sandbox: true },
-            { id: "default-panel", label: "Default", icon: "square", exportName: "default", sandbox: false },
+          workbenchPanels: [
+            {
+              id: "trusted-panel",
+              label: "Trusted",
+              icon: "shield",
+              exportName: "default",
+              sandbox: false,
+              surface: "side",
+              cardinality: "singleton",
+            },
+            {
+              id: "sandbox-panel",
+              label: "Sandboxed",
+              icon: "box",
+              exportName: "default",
+              sandbox: true,
+              surface: "side",
+              cardinality: "singleton",
+            },
+            {
+              id: "default-panel",
+              label: "Default",
+              icon: "square",
+              exportName: "default",
+              sandbox: false,
+              surface: "bottom",
+              cardinality: "multi",
+            },
           ],
         },
       },
@@ -104,13 +136,21 @@ describe("resolveSandboxSurfaces", () => {
     expect(surfaces[0]!.id).toBe("sandbox-panel")
   })
 
-  test("returns both workspace and global sandbox panels together", () => {
+  test("returns both workbench and global sandbox panels together", () => {
     const m: PluginManifest = {
       ...manifestBase,
       contributes: {
         ui: {
-          workspacePanels: [
-            { id: "ws-sandbox", label: "WS Sandbox", icon: "box", exportName: "default", sandbox: true },
+          workbenchPanels: [
+            {
+              id: "ws-sandbox",
+              label: "WS Sandbox",
+              icon: "box",
+              exportName: "default",
+              sandbox: true,
+              surface: "side",
+              cardinality: "exclusive",
+            },
           ],
           globalPanels: [
             { id: "global-sandbox", label: "Global Sandbox", icon: "globe", exportName: "default", sandbox: true },

@@ -12,6 +12,9 @@ import { createScrollPersistence, type SessionScroll } from "./layout-scroll"
 import { Binary } from "@ericsanchezok/synergy-util/binary"
 import { retry } from "@ericsanchezok/synergy-util/retry"
 import { computeDefaultWorkspaceWidth } from "./workspace-layout"
+import type { WorkbenchPanelSurface, WorkbenchPanelTab } from "@/plugin/registries/workbench-panel-registry"
+import type { WorkbenchSurfaceState } from "./workbench-panels-model"
+import { migrateWorkbenchLayout } from "./workbench-layout-migration"
 import { reconcile } from "solid-js/store"
 import { HOME_SCOPE_KEY } from "@/utils/scope"
 
@@ -41,11 +44,19 @@ type SessionView = {
   reviewOpen?: string[]
 }
 
+type WorkbenchSurfaceLayoutState = WorkbenchSurfaceState
+
+type WorkbenchSurfacesLayoutState = {
+  side?: WorkbenchSurfaceLayoutState
+  bottom?: WorkbenchSurfaceLayoutState
+}
+
 export type LocalScope = Partial<Scope> & { worktree: string; expanded: boolean }
 
 export type ReviewDiffStyle = "unified" | "split"
 
 export const SESSION_PAGE_SIZE = 20
+const BOTTOM_SPACE_DEFAULT_HEIGHT = 280
 
 // --- Nav v2 types (matches backend SessionNavEntry / ScopeNavEntry) ---
 
@@ -87,6 +98,10 @@ function emptyNavList(): NavListState {
 const NAV_FIRST_PAGE_LIMIT = 10
 const RECENT_LIMIT = 10
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+}
+
 export const { use: useLayout, provider: LayoutProvider } = createSimpleContext({
   name: "Layout",
   init: () => {
@@ -94,15 +109,11 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
     const globalSync = useGlobalSync()
     const server = useServer()
     const [store, setStore, _, ready] = persisted(
-      Persist.global("layout", ["layout.v8", "layout.v9"]),
+      { ...Persist.global("layout", ["layout.v8", "layout.v9"]), migrate: migrateWorkbenchLayout },
       createStore({
         sidebar: {
           opened: false,
           width: 280,
-        },
-        terminal: {
-          opened: false,
-          height: 280,
         },
         review: {
           opened: true,
@@ -116,10 +127,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         },
         sessionTabs: {} as Record<string, SessionTabs>,
         sessionView: {} as Record<string, SessionView>,
-        workspaceSessions: {} as Record<
-          string,
-          { opened: boolean; active: string | null; width?: number; resized?: boolean }
-        >,
+        workbenchSurfaces: {} as Record<string, WorkbenchSurfacesLayoutState>,
       }),
     )
 
@@ -156,7 +164,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       const keys = new Set<string>()
       for (const key of Object.keys(store.sessionView)) keys.add(key)
       for (const key of Object.keys(store.sessionTabs)) keys.add(key)
-      for (const key of Object.keys(store.workspaceSessions)) keys.add(key)
+      for (const key of Object.keys(store.workbenchSurfaces)) keys.add(key)
       if (keys.size <= MAX_SESSION_KEYS) return
 
       const score = (key: string) => {
@@ -173,7 +181,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
           for (const key of drop) {
             delete draft.sessionView[key]
             delete draft.sessionTabs[key]
-            delete draft.workspaceSessions[key]
+            delete draft.workbenchSurfaces[key]
           }
         }),
       )
@@ -965,22 +973,6 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
           setStore("sidebar", "width", width)
         },
       },
-      terminal: {
-        opened: createMemo(() => store.terminal.opened),
-        open() {
-          setStore("terminal", "opened", true)
-        },
-        close() {
-          setStore("terminal", "opened", false)
-        },
-        toggle() {
-          setStore("terminal", "opened", (x) => !x)
-        },
-        height: createMemo(() => store.terminal.height),
-        resize(height: number) {
-          setStore("terminal", "height", height)
-        },
-      },
       review: {
         opened: createMemo(() => false),
         diffStyle: createMemo(() => (store.review?.diffStyle ?? "split") as ReviewDiffStyle),
@@ -1005,48 +997,59 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
           setStore("session", "width", width)
         },
       },
-      workspace(sessionKey: string) {
+      surface(sessionKey: string, surface: WorkbenchPanelSurface) {
         touch(sessionKey)
-        const ws = createMemo(() => store.workspaceSessions[sessionKey] ?? { opened: false, active: null })
+        const current = createMemo(() => store.workbenchSurfaces[sessionKey]?.[surface] ?? {})
+        const sizeDefault = () =>
+          surface === "side" ? computeDefaultWorkspaceWidth(window.innerWidth) : BOTTOM_SPACE_DEFAULT_HEIGHT
+
+        function ensureSurface() {
+          const session = store.workbenchSurfaces[sessionKey]
+          if (!session) {
+            setStore("workbenchSurfaces", sessionKey, {})
+          }
+          if (!store.workbenchSurfaces[sessionKey]?.[surface]) {
+            setStore("workbenchSurfaces", sessionKey, surface, {
+              opened: false,
+              tabs: [],
+              active: undefined,
+            })
+          }
+        }
+
         return {
-          opened: createMemo(() => ws().opened),
-          active: createMemo(() => ws().active),
-          width: createMemo(() => {
-            const current = ws()
-            return current.resized && typeof current.width === "number"
-              ? current.width
-              : computeDefaultWorkspaceWidth(window.innerWidth)
+          opened: createMemo(() => current().opened === true),
+          active: createMemo(() => current().active),
+          tabs: createMemo(() => current().tabs ?? []),
+          activeTab: createMemo(() => (current().tabs ?? []).find((tab) => tab.id === current().active)),
+          size: createMemo(() => {
+            const state = current()
+            return state.resized && typeof state.size === "number" ? state.size : sizeDefault()
           }),
           open() {
-            setStore("workspaceSessions", sessionKey, {
-              ...ws(),
-              opened: true,
-              active: ws().active ?? null,
-            })
+            ensureSurface()
+            setStore("workbenchSurfaces", sessionKey, surface, "opened", true)
           },
           close() {
-            setStore("workspaceSessions", sessionKey, "opened", false)
+            ensureSurface()
+            setStore("workbenchSurfaces", sessionKey, surface, "opened", false)
           },
           toggle() {
-            setStore("workspaceSessions", sessionKey, "opened", (x) => !(x ?? false))
+            ensureSurface()
+            setStore("workbenchSurfaces", sessionKey, surface, "opened", (x) => !(x ?? false))
           },
-          setActive(tool: string | null) {
-            if (!store.workspaceSessions[sessionKey]) {
-              setStore("workspaceSessions", sessionKey, {
-                opened: false,
-                active: tool,
-              })
-            } else {
-              setStore("workspaceSessions", sessionKey, "active", tool)
-            }
+          setActive(tab: string | undefined) {
+            ensureSurface()
+            setStore("workbenchSurfaces", sessionKey, surface, "active", tab)
           },
-          setWidth(width: number) {
-            if (!store.workspaceSessions[sessionKey]) {
-              setStore("workspaceSessions", sessionKey, { opened: false, active: null, width, resized: true })
-            } else {
-              setStore("workspaceSessions", sessionKey, "width", width)
-              setStore("workspaceSessions", sessionKey, "resized", true)
-            }
+          setTabs(tabs: WorkbenchPanelTab[]) {
+            ensureSurface()
+            setStore("workbenchSurfaces", sessionKey, surface, "tabs", tabs)
+          },
+          setSize(size: number) {
+            ensureSurface()
+            setStore("workbenchSurfaces", sessionKey, surface, "size", size)
+            setStore("workbenchSurfaces", sessionKey, surface, "resized", true)
           },
         }
       },

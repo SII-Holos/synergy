@@ -41,7 +41,7 @@ function countUiContributions(manifest: PluginManifestType): number {
   return (
     (ui.toolRenderers?.length ?? 0) +
     (ui.partRenderers?.length ?? 0) +
-    (ui.workspacePanels?.length ?? 0) +
+    (ui.workbenchPanels?.length ?? 0) +
     (ui.globalPanels?.length ?? 0) +
     (ui.settings?.length ?? 0) +
     (ui.chatComponents?.length ?? 0) +
@@ -108,7 +108,7 @@ export const PluginDevCommand = cmd({
     }
 
     if (args["sandbox-preview"]) {
-      for (const panel of manifest.contributes?.ui?.workspacePanels ?? []) {
+      for (const panel of manifest.contributes?.ui?.workbenchPanels ?? []) {
         if (panel.sandbox) {
           UI.println(
             `  ${panel.label}: http://localhost:${args.port}/plugin/${encodeURIComponent(manifest.name)}/sandbox/${encodeURIComponent(panel.id)}`,

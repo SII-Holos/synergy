@@ -178,7 +178,7 @@ export async function validatePluginProject(pluginPath: string, options: { runti
             }
           }
         }
-        checkExport("workspacePanel", ui.workspacePanels)
+        checkExport("workbenchPanel", ui.workbenchPanels)
         checkExport("globalPanel", ui.globalPanels)
         checkExport("settings", ui.settings)
         checkExport("toolRenderer", ui.toolRenderers)

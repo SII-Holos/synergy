@@ -10,7 +10,7 @@ Start here:
 - [02-manifest-reference.md](02-manifest-reference.md)
 - [03-trust-tiers.md](03-trust-tiers.md)
 - [04-tool-renderer-guide.md](04-tool-renderer-guide.md)
-- [05-workspace-panels.md](05-workspace-panels.md)
+- [05-workbench-panels.md](05-workbench-panels.md)
 - [06-settings-themes-icons.md](06-settings-themes-icons.md)
 - [07-sandbox-guide.md](07-sandbox-guide.md)
 - [09-security-best-practices.md](09-security-best-practices.md)

@@ -233,15 +233,45 @@ Each distributable plugin has a root `plugin.json`:
 
 `contributes.ui.entry` is a runtime-loadable JavaScript asset. Source files such as `src/ui.tsx` are only build inputs. `synergy-plugin build` uses the conventional UI source path and writes the compiled bundle to the declared entry.
 
+Session workbench UI uses `contributes.ui.workbenchPanels`. A workbench panel declares which surface it belongs to and how its tabs behave:
+
+```jsonc
+{
+  "contributes": {
+    "ui": {
+      "entry": "./dist/ui/index.js",
+      "workbenchPanels": [
+        {
+          "id": "build-log",
+          "label": "Build Log",
+          "icon": "terminal",
+          "exportName": "BuildLogPanel",
+          "surface": "bottom",
+          "cardinality": "multi",
+          "requiresSession": true,
+        },
+      ],
+    },
+  },
+  "permissions": {
+    "ui": {
+      "workbenchPanels": true,
+    },
+  },
+}
+```
+
+`surface` is `"side"` or `"bottom"`. `cardinality` is `"exclusive"` for one active panel on that surface, `"singleton"` for one tab per panel id, or `"multi"` for a new tab each time. `requiresSession` hides the panel until the user is in a concrete session. Global panels remain separate under `contributes.ui.globalPanels`.
+
 ## UI Types
 
 UI contribution types are exported separately:
 
 ```ts
-import type { PluginToolRendererProps, PluginPanelProps } from "@ericsanchezok/synergy-plugin/ui"
+import type { PluginToolRendererProps, PluginWorkbenchPanel, PluginPanelProps } from "@ericsanchezok/synergy-plugin/ui"
 ```
 
-Supported UI surfaces are tool renderers, part renderers, workspace panels, global panels, settings sections, chat components, themes, icons, routes, and commands. The Web client loads aggregated UI metadata with the generated SDK method `plugin.listUiContributions()`, which maps to `/plugin/ui/contributions`; plugin JS and assets are still loaded through browser-native asset URLs.
+Supported UI surfaces are tool renderers, part renderers, workbench panels, global panels, settings sections, chat components, themes, icons, routes, and commands. The Web client loads aggregated UI metadata with the generated SDK method `plugin.listUiContributions()`, which maps to `/plugin/ui/contributions`; plugin JS and assets are still loaded through browser-native asset URLs.
 
 ## Runtime Modes
 

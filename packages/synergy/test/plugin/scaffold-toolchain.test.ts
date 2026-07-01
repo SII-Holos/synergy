@@ -14,7 +14,7 @@ import { copyRegistryEntryIcon, registryEntry, writeRegistryEntry } from "../../
 
 const repoRoot = path.resolve(import.meta.dir, "../../../..")
 const repoNodeModules = path.join(repoRoot, "node_modules")
-const templates = ["tool-ui", "workspace-panel", "api-connector", "theme-icon"] as const
+const templates = ["tool-ui", "workbench-panel", "api-connector", "theme-icon"] as const
 
 async function runCommand(command: { handler: (args: any) => Promise<void> | void }, args: Record<string, unknown>) {
   process.exitCode = undefined
@@ -82,11 +82,13 @@ describe("plugin scaffold toolchain", () => {
             ui: {
               entry: "./dist/ui/index.js",
               routes: [{ path: "/asset-fixture", entry: "./src/route.js", label: "Fixture" }],
-              workspacePanels: [
+              workbenchPanels: [
                 {
                   id: "asset-panel",
                   label: "Fixture",
                   icon: "panel-left",
+                  surface: "side",
+                  cardinality: "singleton",
                   sandbox: true,
                   sandboxEntry: "./src/panel-sandbox.js",
                 },

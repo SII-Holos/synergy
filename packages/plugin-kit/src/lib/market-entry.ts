@@ -172,7 +172,7 @@ export function uiSurfaces(manifest: PluginManifestType): string[] {
   const surfaces: string[] = []
   if (ui.toolRenderers?.length) surfaces.push("toolRenderers")
   if (ui.partRenderers?.length) surfaces.push("partRenderers")
-  if (ui.workspacePanels?.length) surfaces.push("workspacePanels")
+  if (ui.workbenchPanels?.length) surfaces.push("workbenchPanels")
   if (ui.globalPanels?.length) surfaces.push("globalPanels")
   if (ui.settings?.length) surfaces.push("settings")
   if (ui.chatComponents?.length) surfaces.push("chatComponents")

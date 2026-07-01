@@ -19,7 +19,7 @@ The Synergy Plugin Development Kit is the supported toolset for building plugins
 - `@ericsanchezok/synergy-plugin/ui` UI contribution types.
 - Built-in plugin templates:
   - `tool-ui`
-  - `workspace-panel`
+  - `workbench-panel`
   - `api-connector`
   - `theme-icon`
 - Manifest validation and runtime discovery.

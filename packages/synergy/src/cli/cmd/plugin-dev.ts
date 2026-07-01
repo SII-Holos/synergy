@@ -44,8 +44,8 @@ function printPermissionPreview(manifest: PluginManifestType) {
       uiParts.push(`${ui.toolRenderers.length} tool renderer${ui.toolRenderers.length !== 1 ? "s" : ""}`)
     if (ui.partRenderers?.length)
       uiParts.push(`${ui.partRenderers.length} part renderer${ui.partRenderers.length !== 1 ? "s" : ""}`)
-    if (ui.workspacePanels?.length)
-      uiParts.push(`${ui.workspacePanels.length} workspace panel${ui.workspacePanels.length !== 1 ? "s" : ""}`)
+    if (ui.workbenchPanels?.length)
+      uiParts.push(`${ui.workbenchPanels.length} workbench panel${ui.workbenchPanels.length !== 1 ? "s" : ""}`)
     if (ui.globalPanels?.length)
       uiParts.push(`${ui.globalPanels.length} global panel${ui.globalPanels.length !== 1 ? "s" : ""}`)
     if (ui.routes?.length) uiParts.push(`${ui.routes.length} route${ui.routes.length !== 1 ? "s" : ""}`)
@@ -65,7 +65,7 @@ function countUiContributions(manifest: PluginManifestType): number {
   return (
     (ui.toolRenderers?.length ?? 0) +
     (ui.partRenderers?.length ?? 0) +
-    (ui.workspacePanels?.length ?? 0) +
+    (ui.workbenchPanels?.length ?? 0) +
     (ui.globalPanels?.length ?? 0) +
     (ui.settings?.length ?? 0) +
     (ui.chatComponents?.length ?? 0) +
@@ -83,7 +83,7 @@ function countUiContributions(manifest: PluginManifestType): number {
 export interface SandboxSurface {
   id: string
   label: string
-  kind: "workspacePanel" | "globalPanel"
+  kind: "workbenchPanel" | "globalPanel"
 }
 
 /** Build the sandbox preview URL for a plugin panel. */
@@ -102,9 +102,9 @@ export function resolveSandboxSurfaces(manifest: PluginManifestType): SandboxSur
 
   const surfaces: SandboxSurface[] = []
 
-  for (const panel of ui.workspacePanels ?? []) {
+  for (const panel of ui.workbenchPanels ?? []) {
     if (panel.sandbox) {
-      surfaces.push({ id: panel.id, label: panel.label, kind: "workspacePanel" })
+      surfaces.push({ id: panel.id, label: panel.label, kind: "workbenchPanel" })
     }
   }
 
@@ -285,8 +285,8 @@ export const PluginDevCommand = cmd({
       const uiParts: string[] = []
       if (ui.toolRenderers?.length)
         uiParts.push(`${ui.toolRenderers.length} tool renderer${ui.toolRenderers.length !== 1 ? "s" : ""}`)
-      if (ui.workspacePanels?.length)
-        uiParts.push(`${ui.workspacePanels.length} workspace panel${ui.workspacePanels.length !== 1 ? "s" : ""}`)
+      if (ui.workbenchPanels?.length)
+        uiParts.push(`${ui.workbenchPanels.length} workbench panel${ui.workbenchPanels.length !== 1 ? "s" : ""}`)
       UI.println(`UI: ${uiParts.join(", ")}`)
     }
     // Sandbox preview

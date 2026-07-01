@@ -1,25 +1,30 @@
 import { onMount, onCleanup } from "solid-js"
-import { useWorkspace } from "@/context/workspace"
+import { registerWorkbenchPanel } from "@/plugin/registries/workbench-panel-registry"
 import { BrowserPanel } from "./browser/browser-panel"
 
 /**
- * Registers the Browser workspace tool in the right-side workspace panel.
+ * Registers the Browser tool in the right-side workbench surface.
  * Pattern matches WorkspaceNotesTool.
  */
 export function WorkspaceBrowserTool() {
-  const workspace = useWorkspace()
+  let unregister: VoidFunction | undefined
 
   onMount(() => {
-    workspace.register({
+    unregister = registerWorkbenchPanel({
       id: "browser",
       label: "Browser",
       icon: "globe",
+      surface: "side",
+      cardinality: "exclusive",
+      requiresSession: true,
+      pluginId: "builtin",
+      order: 20,
       component: () => <BrowserPanel />,
     })
   })
 
   onCleanup(() => {
-    workspace.unregister("browser")
+    unregister?.()
   })
 
   return null

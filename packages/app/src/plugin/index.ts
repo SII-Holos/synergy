@@ -1,10 +1,14 @@
 export {
-  type WorkspacePanelEntry,
-  registerWorkspacePanel,
-  listWorkspacePanels,
-  getWorkspacePanel,
-  clearWorkspacePanels,
-} from "./registries/workspace-registry"
+  type WorkbenchPanelEntry,
+  type WorkbenchPanelSurface,
+  type WorkbenchPanelCardinality,
+  type WorkbenchPanelTab,
+  registerWorkbenchPanel,
+  listWorkbenchPanels,
+  getWorkbenchPanel,
+  clearWorkbenchPanels,
+  subscribeWorkbenchPanels,
+} from "./registries/workbench-panel-registry"
 
 export {
   type GlobalPanelEntry,

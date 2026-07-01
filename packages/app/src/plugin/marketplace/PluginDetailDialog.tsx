@@ -75,7 +75,7 @@ function uiSurfacesFromManifest(manifest: Record<string, unknown> | null | undef
   return [
     "toolRenderers",
     "partRenderers",
-    "workspacePanels",
+    "workbenchPanels",
     "globalPanels",
     "settings",
     "chatComponents",

@@ -40,7 +40,7 @@ Web contributions:
 
 - tool renderers
 - part renderers
-- workspace panels
+- workbench panels
 - global panels
 - settings sections
 - chat components

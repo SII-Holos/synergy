@@ -73,6 +73,8 @@ export const SemanticIconToken = {
 
   // App shell and navigation
   "app.sidebar": "panel-left",
+  "app.sideWorkspace": "panel-right",
+  "app.bottomSpace": "panel-bottom",
   "app.statusBar": "panel-bottom",
   "app.statusBar.toggle": "panel-bottom-open",
   "app.plugins": "package",

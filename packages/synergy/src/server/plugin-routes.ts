@@ -383,7 +383,7 @@ export const PluginRoute = new Hono()
       const version = manifest.version
 
       // Resolve entry: panel-level sandboxEntry > ui.entry > default
-      const panels = [...(ui?.workspacePanels ?? []), ...(ui?.globalPanels ?? [])]
+      const panels = [...(ui?.workbenchPanels ?? []), ...(ui?.globalPanels ?? [])]
       const panel = panels.find((p) => p.id === panelId)
       const entry = panel?.sandboxEntry ?? ui?.entry
       if (!entry) return c.json({ message: `Plugin panel has no sandbox entry: ${panelId}` }, 404)

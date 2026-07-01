@@ -29,7 +29,20 @@ export interface PluginPanelProps {
   scopeId?: string
 }
 
-export type PluginWorkspacePanel = Component<PluginPanelProps>
+export interface PluginWorkbenchPanelTab {
+  id: string
+  panelId: string
+  resourceId?: string
+  title?: string
+  source?: string
+}
+
+export interface PluginWorkbenchPanelProps extends PluginPanelProps {
+  tab: PluginWorkbenchPanelTab
+  onRequestClose?: () => void
+}
+
+export type PluginWorkbenchPanel = Component<PluginWorkbenchPanelProps>
 export type PluginGlobalPanel = Component<PluginPanelProps>
 
 export interface PluginSettingsProps {

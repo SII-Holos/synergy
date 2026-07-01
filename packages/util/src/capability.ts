@@ -66,7 +66,7 @@ export interface SynergyCapabilityManifest {
     ui?: {
       toolRenderers?: boolean
       partRenderers?: boolean
-      workspacePanels?: boolean
+      workbenchPanels?: boolean
       globalPanels?: boolean
       settings?: boolean
       themes?: boolean
@@ -98,7 +98,7 @@ export interface SynergyCapabilityManifest {
     ui?: {
       toolRenderers?: unknown[]
       partRenderers?: unknown[]
-      workspacePanels?: unknown[]
+      workbenchPanels?: unknown[]
       globalPanels?: unknown[]
       settings?: unknown[]
       chatComponents?: unknown[]
@@ -638,13 +638,13 @@ function contributionPermissionItems(manifest: SynergyCapabilityManifest): Syner
       description: "Overrides how message parts appear in the chat UI.",
     })
   }
-  if (ui?.workspacePanels || perms?.workspacePanels) {
+  if (ui?.workbenchPanels || perms?.workbenchPanels) {
     items.push({
-      key: "ui.workspacePanels",
+      key: "ui.workbenchPanels",
       category: "ui",
       severity: "low",
-      title: "Workspace panels",
-      description: "Adds custom panels to the workspace view.",
+      title: "Workbench panels",
+      description: "Adds custom panels to the side workspace or BottomSpace.",
     })
   }
   if (ui?.globalPanels || perms?.globalPanels) {
@@ -896,7 +896,7 @@ function permissionsRelevantContributes(manifest: SynergyCapabilityManifest) {
           ui: {
             toolRenderers: Boolean(contributes.ui.toolRenderers?.length),
             partRenderers: Boolean(contributes.ui.partRenderers?.length),
-            workspacePanels: Boolean(contributes.ui.workspacePanels?.length),
+            workbenchPanels: Boolean(contributes.ui.workbenchPanels?.length),
             globalPanels: Boolean(contributes.ui.globalPanels?.length),
             settings: Boolean(contributes.ui.settings?.length),
             chatComponents: Boolean(contributes.ui.chatComponents?.length),

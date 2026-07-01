@@ -16,7 +16,7 @@ import { PluginToolId } from "@ericsanchezok/synergy-plugin/ids"
 import { useServer } from "@/context/server"
 import { toolRendererRegistry, type ToolRenderer } from "./registries/tool-registry"
 import { registerPartRenderer } from "./registries/part-registry"
-import { registerWorkspacePanel } from "./registries/workspace-registry"
+import { registerWorkbenchPanel } from "./registries/workbench-panel-registry"
 import { registerGlobalPanel } from "./registries/panel-registry"
 import { registerSettingsSection } from "./registries/settings-registry"
 import { registerChatComponent } from "./registries/chat-registry"
@@ -121,14 +121,17 @@ export function PluginHostProvider(props: ParentProps) {
         }
       }
 
-      // ── Workspace panels ──
-      if (ui.workspacePanels) {
-        for (const wp of ui.workspacePanels) {
+      // ── Workbench panels ──
+      if (ui.workbenchPanels) {
+        for (const wp of ui.workbenchPanels) {
           disposers.push(
-            registerWorkspacePanel({
+            registerWorkbenchPanel({
               id: `${contrib.pluginId}:${wp.id}`,
               label: wp.label,
               icon: wp.icon,
+              surface: wp.surface,
+              cardinality: wp.cardinality,
+              requiresSession: wp.requiresSession,
               loader:
                 isTrusted && ui.entry
                   ? () => {
