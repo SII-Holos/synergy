@@ -19,10 +19,19 @@ import { Log } from "../util/log"
 import { errors } from "./error"
 
 const log = Log.create({ service: "server.holos" })
+const DESKTOP_RETURN_URL = "synergy://open"
+const ClientSurface = z.enum(["web", "desktop"])
+type ClientSurface = z.infer<typeof ClientSurface>
 
 const pendingStates = new Map<
   string,
-  { state: string; createdAt: number; callbackOrigin: string; profile: HolosProfile.Input }
+  {
+    state: string
+    createdAt: number
+    callbackOrigin: string
+    clientSurface: ClientSurface
+    profile: HolosProfile.Input
+  }
 >()
 
 const STATE_TTL_MS = 5 * 60_000
@@ -49,6 +58,10 @@ function resolveCallbackUrl(input: { requested?: string; serverOrigin: string })
   } catch {
     return undefined
   }
+}
+
+function returnUrlForClient(input: { callbackOrigin: string; clientSurface: ClientSurface }): string {
+  return input.clientSurface === "desktop" ? DESKTOP_RETURN_URL : input.callbackOrigin
 }
 
 async function currentHolosApiUrl(): Promise<string | undefined> {
@@ -84,6 +97,7 @@ export const HolosRoute = new Hono()
       "json",
       z.object({
         callbackUrl: z.string().url().optional(),
+        clientSurface: ClientSurface.optional(),
         profile: HolosProfile.Input,
       }),
     ),
@@ -99,6 +113,7 @@ export const HolosRoute = new Hono()
         state,
         createdAt: Date.now(),
         callbackOrigin: new URL(callbackUrl).origin,
+        clientSurface: body.clientSurface ?? "web",
         profile: body.profile,
       })
 
@@ -158,6 +173,7 @@ export const HolosRoute = new Hono()
             message: "Synergy has received your Holos agent and is getting your workspace ready.",
             success: true,
             targetOrigin: pending.callbackOrigin,
+            returnUrl: returnUrlForClient(pending),
             agentId,
           }),
         )
@@ -169,6 +185,7 @@ export const HolosRoute = new Hono()
             message: "Holos could not finish connecting this agent. Return to Synergy and try again.",
             success: false,
             targetOrigin: pending.callbackOrigin,
+            returnUrl: returnUrlForClient(pending),
             error: message,
           }),
         )
@@ -1089,9 +1106,11 @@ function resultPage(input: {
   message: string
   success: boolean
   targetOrigin: string
+  returnUrl?: string
   agentId?: string
   error?: string
 }): string {
+  const returnUrl = input.returnUrl ?? input.targetOrigin
   const payload = input.success
     ? { type: "holos-login-success", agentId: input.agentId }
     : { type: "holos-login-failed", error: input.error ?? input.message }
@@ -1113,31 +1132,39 @@ function resultPage(input: {
 <style>
 :root {
   color-scheme: light dark;
-  --bg: #f7f7f5;
-  --surface: #ffffff;
-  --text: #111827;
-  --muted: #5d6470;
-  --subtle: #8a919c;
-  --border: #e2e4e8;
-  --control: #f4f5f6;
-  --control-hover: #eaebee;
-  --success: #16a34a;
-  --danger: #dc2626;
-  --shadow: rgba(15, 23, 42, 0.08);
+  --bg: oklch(96.8% 0.004 260);
+  --surface: oklch(99.8% 0.002 260);
+  --text: oklch(18% 0.016 260);
+  --muted: oklch(46% 0.02 260);
+  --subtle: oklch(59% 0.018 260);
+  --border: oklch(89% 0.008 260);
+  --control: oklch(96.5% 0.005 260);
+  --control-hover: oklch(94% 0.007 260);
+  --primary: oklch(22% 0.018 260);
+  --primary-hover: oklch(29% 0.018 260);
+  --primary-text: oklch(99% 0.002 260);
+  --success: oklch(62% 0.16 150);
+  --danger: oklch(58% 0.2 28);
+  --focus: oklch(58% 0.18 255);
+  --shadow: oklch(20% 0.035 260 / 0.08);
 }
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #0f1011;
-    --surface: #18191b;
-    --text: #f5f6f7;
-    --muted: #c1c6ce;
-    --subtle: #878d96;
-    --border: #2b2d31;
-    --control: #222429;
-    --control-hover: #2a2d33;
-    --success: #4ade80;
-    --danger: #f87171;
-    --shadow: rgba(0, 0, 0, 0.28);
+    --bg: oklch(15.5% 0.006 260);
+    --surface: oklch(20.5% 0.007 260);
+    --text: oklch(94% 0.005 260);
+    --muted: oklch(74% 0.012 260);
+    --subtle: oklch(62% 0.012 260);
+    --border: oklch(31% 0.01 260);
+    --control: oklch(25.5% 0.009 260);
+    --control-hover: oklch(29.5% 0.01 260);
+    --primary: oklch(90% 0.006 260);
+    --primary-hover: oklch(82% 0.008 260);
+    --primary-text: oklch(16% 0.006 260);
+    --success: oklch(72% 0.16 150);
+    --danger: oklch(72% 0.17 28);
+    --focus: oklch(70% 0.16 255);
+    --shadow: oklch(0% 0 0 / 0.32);
   }
 }
 * {
@@ -1153,29 +1180,34 @@ body {
   padding: 24px;
   background: var(--bg);
   color: var(--text);
-  font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-family: Inter, "Segoe UI Variable", "Segoe UI", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  font-feature-settings: "ss03" 1;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
 }
 .card {
-  width: min(100%, 440px);
-  padding: 28px;
+  width: min(100%, 392px);
+  padding: 24px;
   border: 1px solid var(--border);
-  border-radius: 14px;
+  border-radius: 8px;
   background: var(--surface);
-  box-shadow: 0 8px 12px var(--shadow);
+  box-shadow: 0 18px 48px var(--shadow);
 }
 .status {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  min-height: 24px;
-  margin-bottom: 18px;
+  gap: 7px;
+  min-height: 20px;
+  margin-bottom: 16px;
   color: var(--muted);
-  font-size: 0.875rem;
+  font-size: 0.8125rem;
   font-weight: 500;
+  line-height: 1.3;
 }
 .mark {
-  width: 8px;
-  height: 8px;
+  width: 7px;
+  height: 7px;
+  flex: 0 0 auto;
   border-radius: 999px;
   background: var(--success);
 }
@@ -1184,64 +1216,84 @@ body {
 }
 h1 {
   margin: 0;
-  font-size: 1.375rem;
-  line-height: 1.2;
+  font-size: 1.25rem;
+  line-height: 1.25;
   letter-spacing: 0;
+  font-weight: 650;
+  text-wrap: balance;
 }
 .message {
-  margin: 12px 0 0;
+  max-width: 34ch;
+  margin: 10px 0 0;
   color: var(--muted);
-  font-size: 0.96875rem;
-  line-height: 1.55;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  text-wrap: pretty;
 }
 .meta {
-  margin: 16px 0 0;
+  margin: 14px 0 0;
   color: var(--subtle);
-  font-size: 0.875rem;
+  font-family: "IBM Plex Mono", "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
+  font-size: 0.8125rem;
   line-height: 1.4;
 }
 .live {
-  margin: 22px 0 0;
-  padding-top: 18px;
+  margin: 20px 0 0;
+  padding-top: 16px;
   border-top: 1px solid var(--border);
   color: var(--muted);
-  font-size: 0.875rem;
+  font-size: 0.8125rem;
   line-height: 1.45;
 }
 .actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 10px;
-  margin-top: 18px;
+  align-items: center;
+  gap: 8px;
+  margin-top: 14px;
 }
 button,
 a.button {
-  min-height: 36px;
-  padding: 0 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 112px;
+  height: 34px;
+  padding: 0 13px;
   border-radius: 8px;
   border: 1px solid var(--border);
   background: var(--control);
   color: var(--text);
   font: inherit;
-  font-size: 0.875rem;
+  font-size: 0.8125rem;
   font-weight: 500;
+  line-height: 1;
   text-decoration: none;
   cursor: pointer;
+  appearance: none;
 }
 button:hover,
-a.button:hover {
+.button-secondary:hover {
   background: var(--control-hover);
+}
+a.button-primary {
+  border-color: transparent;
+  background: var(--primary);
+  color: var(--primary-text);
+}
+a.button-primary:hover {
+  background: var(--primary-hover);
 }
 button:focus-visible,
 a.button:focus-visible,
 summary:focus-visible {
-  outline: 2px solid #2563eb;
+  outline: 2px solid var(--focus);
   outline-offset: 2px;
 }
 .details {
   margin-top: 18px;
   color: var(--muted);
-  font-size: 0.875rem;
+  font-size: 0.8125rem;
 }
 summary {
   cursor: pointer;
@@ -1254,9 +1306,25 @@ summary {
   line-height: 1.5;
   overflow-wrap: anywhere;
 }
+@media (max-width: 420px) {
+  body {
+    padding: 16px;
+  }
+  .card {
+    padding: 20px;
+  }
+  .actions {
+    align-items: stretch;
+    flex-direction: column-reverse;
+  }
+  button,
+  a.button {
+    width: 100%;
+  }
+}
 @media (prefers-reduced-motion: no-preference) {
   .card {
-    animation: enter 180ms ease-out;
+    animation: enter 180ms cubic-bezier(0.16, 1, 0.3, 1);
   }
   @keyframes enter {
     from {
@@ -1279,8 +1347,8 @@ summary {
   ${agentMeta}
   <p class="live" data-live aria-live="polite">${escapeHtml(liveMessage)}</p>
   <div class="actions">
-    <button type="button" data-close>Close window</button>
-    <a class="button" href="${escapeHtml(input.targetOrigin)}">Open Synergy</a>
+    <button type="button" class="button-secondary" data-close>Close window</button>
+    <a class="button button-primary" href="${escapeHtml(returnUrl)}">Open Synergy</a>
   </div>
   ${detailBlock}
 </main>

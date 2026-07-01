@@ -3405,6 +3405,7 @@ export class Holos extends HeyApiClient {
   public login<ThrowOnError extends boolean = false>(
     parameters?: {
       callbackUrl?: string
+      clientSurface?: "web" | "desktop"
       profile?: HolosAgentProfileInput
     },
     options?: Options<never, ThrowOnError>,
@@ -3415,6 +3416,7 @@ export class Holos extends HeyApiClient {
         {
           args: [
             { in: "body", key: "callbackUrl" },
+            { in: "body", key: "clientSurface" },
             { in: "body", key: "profile" },
           ],
         },

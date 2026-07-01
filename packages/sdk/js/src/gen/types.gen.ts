@@ -5963,6 +5963,7 @@ export type GlobalDisposeResponse = GlobalDisposeResponses[keyof GlobalDisposeRe
 export type HolosLoginData = {
   body?: {
     callbackUrl?: string
+    clientSurface?: "web" | "desktop"
     profile: HolosAgentProfileInput
   }
   path?: never

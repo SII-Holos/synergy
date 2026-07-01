@@ -9,6 +9,9 @@ declare global {
   interface Window {
     synergyDesktop?: Pick<Platform, "platform" | "browserNative" | "desktopUpdate"> & {
       update?: Platform["desktopUpdate"]
+      shell?: {
+        openExternal(url: string): Promise<void>
+      }
       window?: Platform["desktopWindow"]
     }
   }
@@ -28,6 +31,10 @@ const platform: Platform = {
   desktopUpdate: window.synergyDesktop?.update ?? window.synergyDesktop?.desktopUpdate,
   desktopWindow: window.synergyDesktop?.window,
   openLink(url: string) {
+    if (window.synergyDesktop?.shell) {
+      void window.synergyDesktop.shell.openExternal(url)
+      return
+    }
     window.open(url, "_blank")
   },
   restart: async () => {

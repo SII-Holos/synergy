@@ -980,6 +980,10 @@
                     "type": "string",
                     "format": "uri"
                   },
+                  "clientSurface": {
+                    "type": "string",
+                    "enum": ["web", "desktop"]
+                  },
                   "profile": {
                     "$ref": "#/components/schemas/HolosAgentProfileInput"
                   }
