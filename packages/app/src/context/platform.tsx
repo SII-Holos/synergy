@@ -64,6 +64,21 @@ export type DesktopUpdateBridge = {
   onEvent?(listener: (event: { type: "status"; status: DesktopUpdateStatus }) => void): () => void
 }
 
+export type DesktopWindowState = {
+  maximized: boolean
+  fullscreen: boolean
+  focused: boolean
+}
+
+export type DesktopWindowBridge = {
+  chrome: "custom" | "native"
+  minimize(): Promise<void>
+  toggleMaximize(): Promise<DesktopWindowState | null>
+  close(): Promise<void>
+  state(): Promise<DesktopWindowState | null>
+  onEvent?(listener: (event: { type: "state"; state: DesktopWindowState }) => void): () => void
+}
+
 export type Platform = {
   /** Platform discriminator */
   platform: "web" | "desktop"
@@ -91,6 +106,9 @@ export type Platform = {
 
   /** Desktop product update bridge, provided by the desktop shell. */
   desktopUpdate?: DesktopUpdateBridge
+
+  /** Desktop window controls bridge, provided by the desktop shell. */
+  desktopWindow?: DesktopWindowBridge
 }
 
 export const { use: usePlatform, provider: PlatformProvider } = createSimpleContext({

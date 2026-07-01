@@ -23,6 +23,7 @@ import { DesktopServerManager } from "./server-manager.js"
 import { enforceProductionLoading, installSessionSecurity, installWindowSecurity } from "./security.js"
 import { DesktopUpdateMode, DesktopUpdater } from "./updater.js"
 import { loadWindowState, scheduleWindowStatePersistence } from "./window-state.js"
+import { desktopWindowChromeOptions, desktopWindowState } from "./window-chrome.js"
 
 const dirname = path.dirname(fileURLToPath(import.meta.url))
 const isBrowserHostMode = process.env.SYNERGY_DESKTOP_MODE === "browser-host"
@@ -90,6 +91,11 @@ async function createWindow() {
     height: windowState.height,
     title: desktopWindowTitle(channel),
     backgroundColor: "#111214",
+    ...desktopWindowChromeOptions({
+      platform: process.platform,
+      dirname,
+      isPackaged: app.isPackaged,
+    }),
     webPreferences: {
       preload: path.join(dirname, "preload.cjs"),
       contextIsolation: true,
@@ -103,10 +109,15 @@ async function createWindow() {
   }
 
   mainWindow = new BrowserWindow(windowOptions)
+  if (process.platform !== "darwin") {
+    mainWindow.setMenuBarVisibility(false)
+  }
   nativeViews = new BrowserNativeViewManager(mainWindow)
   installWindowSecurity(mainWindow, () => currentAppURL)
   enforceProductionLoading(mainWindow.webContents, currentAppURL)
   scheduleWindowStatePersistence(mainWindow, app.getPath("userData"))
+  installWindowInputShortcuts(mainWindow, isDebugEnabled(channel))
+  installDesktopWindowStateEvents(mainWindow)
 
   if (windowState.maximized) mainWindow.maximize()
   if (process.env.SYNERGY_DESKTOP_SHOW !== "0") {
@@ -210,6 +221,19 @@ function registerIpcHandlers() {
     const url = parseExternalUrl(input)
     await shell.openExternal(url)
   })
+  ipcMain.handle("desktop.window.minimize", () => {
+    mainWindow?.minimize()
+  })
+  ipcMain.handle("desktop.window.toggleMaximize", () => {
+    if (!mainWindow) return null
+    if (mainWindow.isMaximized()) mainWindow.unmaximize()
+    else mainWindow.maximize()
+    return desktopWindowState(mainWindow)
+  })
+  ipcMain.handle("desktop.window.close", () => {
+    mainWindow?.close()
+  })
+  ipcMain.handle("desktop.window.state", () => (mainWindow ? desktopWindowState(mainWindow) : null))
 }
 
 function registerNativeViewHandlers(channel: string, handler: (input: unknown) => void | Promise<void>) {
@@ -231,6 +255,38 @@ function focusMainWindow() {
   if (mainWindow.isMinimized()) mainWindow.restore()
   mainWindow.show()
   mainWindow.focus()
+}
+
+function installWindowInputShortcuts(window: BrowserWindow, debug: boolean): void {
+  if (!debug) return
+  window.webContents.on("before-input-event", (event, input) => {
+    const key = input.key.toLowerCase()
+    const command = input.control || input.meta
+    if (command && key === "r") {
+      event.preventDefault()
+      window.webContents.reload()
+      return
+    }
+    const devtoolsShortcut =
+      (command && input.shift && key === "i") ||
+      (process.platform === "darwin" && input.meta && input.alt && key === "i")
+    if (!devtoolsShortcut) return
+    event.preventDefault()
+    window.webContents.toggleDevTools()
+  })
+}
+
+function installDesktopWindowStateEvents(window: BrowserWindow): void {
+  const emit = () => {
+    if (window.isDestroyed()) return
+    window.webContents.send("desktop-window:event", { type: "state", state: desktopWindowState(window) })
+  }
+  window.on("maximize", emit)
+  window.on("unmaximize", emit)
+  window.on("enter-full-screen", emit)
+  window.on("leave-full-screen", emit)
+  window.on("focus", emit)
+  window.on("blur", emit)
 }
 
 function configureBrowserHostVisibility() {

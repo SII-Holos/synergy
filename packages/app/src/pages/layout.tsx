@@ -21,6 +21,7 @@ import { Sidebar } from "@/components/sidebar/sidebar"
 import { GlobalSearchModal } from "@/components/search/global-search-modal"
 import { MobileDrawer } from "@/components/mobile-drawer"
 import { ConnectionBanner } from "@/components/connection-banner"
+import { DesktopWindowChrome } from "@/components/desktop-window-chrome"
 
 export default function Layout(props: ParentProps) {
   const [store, setStore] = createStore({
@@ -451,6 +452,7 @@ function LayoutContent(
   return (
     <div class="relative flex-1 min-h-0 flex flex-col select-none [&_input]:select-text [&_textarea]:select-text [&_[contenteditable]]:select-text">
       <MobileDrawer />
+      <DesktopWindowChrome />
       <ConnectionBanner />
       <div class="flex-1 min-h-0 min-w-0 flex overflow-hidden">
         <Show when={layout.isDesktop()}>

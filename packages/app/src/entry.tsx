@@ -9,6 +9,7 @@ declare global {
   interface Window {
     synergyDesktop?: Pick<Platform, "platform" | "browserNative" | "desktopUpdate"> & {
       update?: Platform["desktopUpdate"]
+      window?: Platform["desktopWindow"]
     }
   }
 }
@@ -25,6 +26,7 @@ const platform: Platform = {
   version: pkg.version,
   browserNative: window.synergyDesktop?.browserNative,
   desktopUpdate: window.synergyDesktop?.update ?? window.synergyDesktop?.desktopUpdate,
+  desktopWindow: window.synergyDesktop?.window,
   openLink(url: string) {
     window.open(url, "_blank")
   },
