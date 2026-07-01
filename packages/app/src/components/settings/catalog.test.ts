@@ -6,6 +6,7 @@ import {
   SETTINGS_GROUP_ORDER,
   settingsGroupOrder,
 } from "./catalog"
+import { MODEL_ROLES } from "./types"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 
 const canonicalDomains = [
@@ -70,6 +71,9 @@ describe("settings catalog", () => {
     expect(FIELD_SAVE_STRATEGY.snapshot).toBe("auto")
     expect(FIELD_SAVE_STRATEGY.controlProfile).toBe("explicit")
     expect(FIELD_SAVE_STRATEGY.email).toBe("explicit")
+    for (const role of MODEL_ROLES) {
+      expect(FIELD_SAVE_STRATEGY[role.key]).toBe("explicit")
+    }
   })
 
   test("unknown groups sort after built-ins for plugin compatibility", () => {

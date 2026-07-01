@@ -8,8 +8,10 @@ import type { ModelKey, ModelsStore, ProviderModel } from "../types"
 
 export function ModelsPanel(props: {
   models: ModelsStore
+  savedModels: ModelsStore
   providerModels: () => ProviderModel[]
   modelRoleSummaries: () => ModelRoleSummary[]
+  popoverLayer?: HTMLElement
   onModelChange: (key: ModelKey, value: string) => void
   onConnectProvider: () => void
 }) {
@@ -50,7 +52,10 @@ export function ModelsPanel(props: {
                 <ModelRoleRow
                   summary={summary}
                   value={props.models[summary.field as ModelKey]}
+                  draftModels={props.models}
+                  savedModels={props.savedModels}
                   providers={providerGroups()}
+                  popoverLayer={props.popoverLayer}
                   onChange={props.onModelChange}
                 />
               )}

@@ -33,7 +33,7 @@ import { getSettingsSections, type SettingsSection as RegisteredSettingsSection 
 import { SandboxIframe } from "@/plugin/sandbox"
 import { AppPanel } from "@/components/app-panel"
 import "./settings-panel.css"
-import type { DialogSettingsProps, McpEntry, ProviderModel, SettingsState } from "./types"
+import type { DialogSettingsProps, McpEntry, ModelsStore, ProviderModel, SettingsState } from "./types"
 import { defaultSettingsState, emptyMcp } from "./types"
 import { BUILTIN_SETTINGS_IDS, isBuiltinSettingsId, settingsGroupOrder } from "./catalog"
 import { ensureInit } from "./hooks/useSettingsForm"
@@ -89,6 +89,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
   const [saving, setSaving] = createSignal(false)
   const [refreshing, setRefreshing] = createSignal(false)
   const [openingDomain, setOpeningDomain] = createSignal<string | undefined>()
+  const [settingsPopoverLayer, setSettingsPopoverLayer] = createSignal<HTMLElement>()
 
   const [settings, setSettings] = createStore<SettingsState>(defaultSettingsState(input.sendShortcut()))
 
@@ -122,6 +123,20 @@ export function SettingsPanel(props: SettingsPanelProps) {
       }
     }
     return list
+  })
+
+  const savedModels = createMemo<ModelsStore>(() => {
+    const cfg = config()
+    return {
+      model: cfg?.model ?? "",
+      nano_model: cfg?.nano_model ?? "",
+      mini_model: cfg?.mini_model ?? "",
+      mid_model: cfg?.mid_model ?? "",
+      vision_model: cfg?.vision_model ?? "",
+      thinking_model: cfg?.thinking_model ?? "",
+      long_context_model: cfg?.long_context_model ?? "",
+      creative_model: cfg?.creative_model ?? "",
+    }
   })
 
   const providerSummaries = createMemo(() => {
@@ -418,6 +433,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
       ) : (
         <div class="settings-panel-loading">Loading...</div>
       )}
+      <div class="settings-popover-layer" ref={setSettingsPopoverLayer} />
     </div>
   )
 
@@ -437,8 +453,10 @@ export function SettingsPanel(props: SettingsPanelProps) {
         return (
           <ModelsPanel
             models={settings.models}
+            savedModels={savedModels()}
             providerModels={providerModels}
             modelRoleSummaries={() => modelRoleSummaries() ?? []}
+            popoverLayer={settingsPopoverLayer()}
             onModelChange={(key, value) => setSettings("models", key, value)}
             onConnectProvider={() => setActiveTab("providers")}
           />

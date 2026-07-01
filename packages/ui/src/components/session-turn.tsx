@@ -391,10 +391,7 @@ export function SessionTurn(
                             return (
                               <Show when={item()}>
                                 {(current) => (
-                                  <div
-                                    data-slot="session-turn-timeline-item"
-                                    data-kind={timelineVisualKind(current())}
-                                  >
+                                  <div data-slot="session-turn-timeline-item" data-kind={timelineVisualKind(current())}>
                                     <TimelineItemDisplay item={current()} serverUrl={data.serverUrl} />
                                   </div>
                                 )}

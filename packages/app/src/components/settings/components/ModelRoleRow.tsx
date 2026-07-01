@@ -5,7 +5,9 @@ import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { Tooltip } from "@ericsanchezok/synergy-ui/tooltip"
 import type { ModelRoleSummary } from "@ericsanchezok/synergy-sdk/client"
 import { createMemo, createSignal, For, Show } from "solid-js"
-import type { ModelKey, ProviderGroup } from "../types"
+import { Portal } from "solid-js/web"
+import type { ModelKey, ModelsStore, ProviderGroup } from "../types"
+import { createProviderModelIndex, fieldLabel, resolveModelRoleDraftDisplay } from "../model-role-draft"
 
 type ModelRef = {
   providerID: string
@@ -34,23 +36,25 @@ type ModelPickerOption =
 export function ModelRoleRow(props: {
   summary: ModelRoleSummary
   value: string
+  draftModels: ModelsStore
+  savedModels: ModelsStore
   providers: ProviderGroup[]
+  popoverLayer?: HTMLElement
   onChange: (key: ModelKey, value: string) => void
 }) {
   const [pickerOpen, setPickerOpen] = createSignal(false)
 
-  const providerIndex = createMemo(() => {
-    const models = new Map<string, { providerName: string; modelName: string }>()
-    for (const provider of props.providers) {
-      for (const model of provider.models) {
-        models.set(`${provider.providerId}/${model.id}`, {
-          providerName: provider.providerName,
-          modelName: model.name,
-        })
-      }
-    }
-    return models
-  })
+  const providerIndex = createMemo(() => createProviderModelIndex(props.providers))
+
+  const display = createMemo(() =>
+    resolveModelRoleDraftDisplay({
+      summary: props.summary,
+      value: props.value,
+      draftModels: props.draftModels,
+      savedModels: props.savedModels,
+      providerIndex: providerIndex(),
+    }),
+  )
 
   const options = createMemo<ModelPickerOption[]>(() => [
     {
@@ -58,7 +62,7 @@ export function ModelRoleRow(props: {
       key: "fallback",
       group: "Default",
       label: "Use fallback",
-      description: fallbackDescription(props.summary, providerIndex()),
+      description: display().fallbackDescription,
       value: "",
     },
     ...props.providers.flatMap((provider) =>
@@ -79,21 +83,11 @@ export function ModelRoleRow(props: {
     return options().find((option) => option.value === props.value)
   })
 
-  const selectedLabel = createMemo(() => {
-    const current = currentOption()
-    if (current?.kind === "model") return current.label
-    if (props.value) return props.value
-    if (props.summary.id === "vision" && !props.summary.resolvedModel) return "Not configured"
-    return "Use fallback"
-  })
-
-  const selectedDetail = createMemo(() => {
-    const current = currentOption()
-    if (current?.kind === "model") return current.description
-    if (props.value) return "Custom value"
-    if (props.summary.id === "vision" && !props.summary.resolvedModel) return "Image analysis disabled"
-    return fallbackDescription(props.summary, providerIndex())
-  })
+  function selectModelRoleOption(option: ModelPickerOption | undefined) {
+    if (!option) return
+    props.onChange(props.summary.field as ModelKey, option.value)
+    setPickerOpen(false)
+  }
 
   return (
     <div class="settings-model-row">
@@ -142,7 +136,7 @@ export function ModelRoleRow(props: {
                 </div>
                 <div class="settings-model-detail-block">
                   <div class="settings-model-detail-label">Resolution</div>
-                  <div class="settings-model-detail-muted">{resolutionDescription(props.summary, providerIndex())}</div>
+                  <div class="settings-model-detail-muted">{display().resolutionDescription}</div>
                 </div>
               </div>
             }
@@ -156,41 +150,45 @@ export function ModelRoleRow(props: {
       </div>
 
       <KobaltePopover open={pickerOpen()} onOpenChange={setPickerOpen} placement="bottom-end" gutter={8}>
-        <KobaltePopover.Trigger class="settings-model-trigger" aria-label={`Select ${props.summary.label} model`}>
+        <KobaltePopover.Trigger
+          type="button"
+          class="settings-model-trigger"
+          aria-label={`Select ${props.summary.label} model`}
+        >
           <span class="settings-model-trigger-text">
-            <span class="settings-model-trigger-title">{selectedLabel()}</span>
-            <span class="settings-model-trigger-detail">{selectedDetail()}</span>
+            <span class="settings-model-trigger-title">{display().triggerLabel}</span>
+            <span class="settings-model-trigger-detail">{display().triggerDetail}</span>
           </span>
           <Icon name="chevron-down" size="small" class="settings-model-trigger-icon" />
         </KobaltePopover.Trigger>
-        <KobaltePopover.Portal>
-          <KobaltePopover.Content class="settings-model-picker-popover flex flex-col border border-border-base bg-surface-raised-stronger-non-alpha shadow-lg z-50 outline-none overflow-hidden">
-            <KobaltePopover.Title class="sr-only">Select {props.summary.label} model</KobaltePopover.Title>
-            <List<ModelPickerOption>
-              class="settings-model-picker-list"
-              search={{ placeholder: "Search models", autofocus: true }}
-              emptyMessage="No model results"
-              key={(option) => option.key}
-              items={options}
-              current={currentOption()}
-              filterKeys={["label", "description", "value"]}
-              groupBy={(option) => option.group}
-              sortGroupsBy={sortModelGroups}
-              onSelect={(option) => {
-                if (!option) return
-                props.onChange(props.summary.field as ModelKey, option.value)
-                setPickerOpen(false)
-              }}
-            >
-              {(option) => (
-                <div class="settings-model-option">
-                  <span class="settings-model-option-title">{option.label}</span>
-                  <span class="settings-model-option-detail">{option.description}</span>
-                </div>
-              )}
-            </List>
-          </KobaltePopover.Content>
-        </KobaltePopover.Portal>
+        <Show when={props.popoverLayer}>
+          {(layer) => (
+            <Portal mount={layer()}>
+              <KobaltePopover.Content class="settings-model-picker-popover flex flex-col border border-border-base bg-surface-raised-stronger-non-alpha shadow-lg outline-none overflow-hidden">
+                <KobaltePopover.Title class="sr-only">Select {props.summary.label} model</KobaltePopover.Title>
+                <List<ModelPickerOption>
+                  class="settings-model-picker-list"
+                  search={{ placeholder: "Search models", autofocus: true }}
+                  emptyMessage="No model results"
+                  key={(option) => option.key}
+                  items={options}
+                  current={currentOption()}
+                  filterKeys={["label", "description", "value"]}
+                  groupBy={(option) => option.group}
+                  sortGroupsBy={sortModelGroups}
+                  onSelect={selectModelRoleOption}
+                >
+                  {(option) => (
+                    <div class="settings-model-option">
+                      <span class="settings-model-option-title">{option.label}</span>
+                      <span class="settings-model-option-detail">{option.description}</span>
+                    </div>
+                  )}
+                </List>
+              </KobaltePopover.Content>
+            </Portal>
+          )}
+        </Show>
       </KobaltePopover>
     </div>
   )
@@ -203,43 +201,4 @@ function sortModelGroups(
   if (a.category === "Default") return -1
   if (b.category === "Default") return 1
   return a.category.localeCompare(b.category)
-}
-
-function fieldLabel(field: string) {
-  const labels: Record<string, string> = {
-    model: "Default",
-    nano_model: "Nano",
-    mini_model: "Mini",
-    mid_model: "Mid",
-    thinking_model: "Thinking",
-    long_context_model: "Long context",
-    creative_model: "Creative",
-    vision_model: "Vision",
-  }
-  return labels[field] ?? field
-}
-
-function fallbackDescription(
-  summary: ModelRoleSummary,
-  models: Map<string, { providerName: string; modelName: string }>,
-) {
-  if (summary.id === "vision" && !summary.resolvedModel) return "Image analysis disabled"
-  if (!summary.resolvedModel) return "Runtime default"
-  const model = modelDisplay(summary.resolvedModel, models)
-  return `Resolves to ${model.label}`
-}
-
-function resolutionDescription(
-  summary: ModelRoleSummary,
-  models: Map<string, { providerName: string; modelName: string }>,
-) {
-  if (!summary.resolvedModel) return summary.disabledReason ?? "No model is configured for this role."
-  const model = modelDisplay(summary.resolvedModel, models)
-  return `${model.label} via ${fieldLabel(summary.resolvedModel.via)}`
-}
-
-function modelDisplay(ref: ModelRef, models: Map<string, { providerName: string; modelName: string }>) {
-  const found = models.get(`${ref.providerID}/${ref.modelID}`)
-  if (found) return { label: found.modelName, detail: found.providerName }
-  return { label: `${ref.providerID}/${ref.modelID}`, detail: ref.providerID }
 }

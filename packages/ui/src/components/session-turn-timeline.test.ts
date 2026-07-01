@@ -110,7 +110,11 @@ function mediaTool(input: {
   } as PartType
 }
 
-function ordinaryTool(input: { id: string; messageID: string; status: "pending" | "generating" | "running" | "completed" }): PartType {
+function ordinaryTool(input: {
+  id: string
+  messageID: string
+  status: "pending" | "generating" | "running" | "completed"
+}): PartType {
   return {
     id: input.id,
     sessionID: "session",

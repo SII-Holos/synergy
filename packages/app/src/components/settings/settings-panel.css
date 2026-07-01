@@ -117,6 +117,17 @@
   background: var(--settings-canvas-bg);
 }
 
+.settings-popover-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 70;
+  pointer-events: none;
+}
+
+.settings-popover-layer .settings-model-picker-popover {
+  pointer-events: auto;
+}
+
 .settings-panel-loading {
   height: 100%;
   min-height: 240px;
@@ -845,6 +856,7 @@
   width: min(360px, calc(100vw - 32px));
   height: 360px;
   border-radius: 12px !important;
+  z-index: 70;
 }
 
 .settings-model-picker-list {
