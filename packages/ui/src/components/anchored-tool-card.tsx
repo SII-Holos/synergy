@@ -3,18 +3,18 @@ import { Dynamic } from "solid-js/web"
 import { checksum } from "@ericsanchezok/synergy-util/encode"
 import { getFilename } from "@ericsanchezok/synergy-util/path"
 import { useCodeComponent } from "../context/code"
-import { useDiffComponent } from "../context/diff"
 import { BasicTool } from "./basic-tool"
 import { ToolTextOutput } from "./tool-output-text"
 import { DiagnosticsDisplay, getDiagnostics, getDirectory, type ToolProps } from "./message-part"
 
 type FileDiff = {
   file?: string
-  path?: string
-  before?: string
-  after?: string
   additions?: number
   deletions?: number
+  preview?: string
+  beforeBytes?: number
+  afterBytes?: number
+  truncated?: boolean
 }
 
 type RangeInfo = {
@@ -271,7 +271,6 @@ export function AnchoredParseCodeTool(props: ToolProps) {
 }
 
 export function AnchoredReviseTool(props: ToolProps) {
-  const diffComponent = useDiffComponent()
   const filePath = () => pathFromProps(props)
   const filediff = () => props.metadata?.filediff as FileDiff | undefined
   const operations = () => (props.metadata?.operationSummary ?? []) as string[]
@@ -303,15 +302,7 @@ export function AnchoredReviseTool(props: ToolProps) {
       />
       <DiagnosticsPanel diagnostics={props.metadata?.diagnostics} path={props.metadata?.filepath || filePath()} />
       <Show when={filediff()} fallback={<RawOutput output={props.output} />}>
-        {(diff) => (
-          <div data-component="edit-content">
-            <Dynamic
-              component={diffComponent}
-              before={{ name: diff().file || filePath() || "file", contents: diff().before ?? "" }}
-              after={{ name: diff().file || filePath() || "file", contents: diff().after ?? "" }}
-            />
-          </div>
-        )}
+        {(diff) => <LightweightDiffPreview diff={diff()} />}
       </Show>
     </BasicTool>
   )
@@ -319,10 +310,9 @@ export function AnchoredReviseTool(props: ToolProps) {
 
 export function AnchoredSaveTool(props: ToolProps) {
   const codeComponent = useCodeComponent()
-  const diffComponent = useDiffComponent()
   const filePath = () => pathFromProps(props)
   const filediff = () => props.metadata?.filediff as FileDiff | undefined
-  const content = () => (props.input.content ?? filediff()?.after ?? "") as string
+  const content = () => (props.input.content ?? "") as string
   const isOverwrite = () => props.metadata?.exists === true
   const diagnostics = () => diagnosticCount(props.metadata)
   const chips = () => [
@@ -359,17 +349,30 @@ export function AnchoredSaveTool(props: ToolProps) {
           </Show>
         }
       >
-        {(diff) => (
-          <div data-component="edit-content">
-            <Dynamic
-              component={diffComponent}
-              before={{ name: diff().file || filePath() || "file", contents: diff().before ?? "" }}
-              after={{ name: diff().file || filePath() || "file", contents: diff().after ?? content() }}
-            />
-          </div>
-        )}
+        {(diff) => <LightweightDiffPreview diff={diff()} />}
       </Show>
     </BasicTool>
+  )
+}
+
+function LightweightDiffPreview(props: { diff: FileDiff }) {
+  return (
+    <div data-component="edit-content">
+      <div class="text-12-regular text-text-weak">
+        {props.diff.beforeBytes ?? 0} bytes to {props.diff.afterBytes ?? 0} bytes
+        <Show when={props.diff.truncated}> - preview truncated</Show>
+      </div>
+      <Show
+        when={props.diff.preview}
+        fallback={<div class="text-12-regular text-text-weaker">No text preview available.</div>}
+      >
+        {(preview) => (
+          <pre class="mt-2 max-h-96 overflow-auto whitespace-pre-wrap rounded-md bg-surface-subtle p-3 text-12-regular text-text-base">
+            {preview()}
+          </pre>
+        )}
+      </Show>
+    </div>
   )
 }
 export { SummaryGrid, WarningPanel, DiagnosticsPanel, RawOutput, SearchFiles } from "./tool/body-primitives"

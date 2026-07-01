@@ -151,8 +151,7 @@ export namespace Session {
 
   export async function withRuntimeInfo(session: Info): Promise<Info & { working?: WorkingInfoType }> {
     const working = await SessionWorking.resolve(session.id)
-    const history = await SessionHistory.liveInfo(session.id).catch(() => session.history)
-    const result = { ...withoutRuntimeInfo(session), history }
+    const result = { ...withoutRuntimeInfo(session) }
     if (!working) return result
     return { ...result, working }
   }
@@ -584,13 +583,17 @@ export namespace Session {
   }
 
   export const updateMessage = fn(MessageV2.Info, async (msg) => {
+    const canonical = MessageV2.canonicalMessage(msg)
     const session = await SessionManager.requireSession(msg.sessionID)
     const scopeID = asScopeID((session.scope as Scope).id)
-    await Storage.write(StoragePath.messageInfo(scopeID, asSessionID(msg.sessionID), asMessageID(msg.id)), msg)
+    await Storage.write(
+      StoragePath.messageInfo(scopeID, asSessionID(canonical.sessionID), asMessageID(canonical.id)),
+      canonical,
+    )
     Bus.publish(MessageV2.Event.Updated, {
-      info: msg,
+      info: canonical,
     })
-    return msg
+    return canonical
   })
 
   export const mergeMessageMetadata = fn(
@@ -674,7 +677,7 @@ export namespace Session {
   ])
 
   export const updatePart = fn(UpdatePartInput, async (input) => {
-    const part = "delta" in input ? input.part : input
+    const part = MessageV2.canonicalPart("delta" in input ? input.part : input)
     const delta = "delta" in input ? input.delta : undefined
     const session = await SessionManager.requireSession(part.sessionID)
     const scopeID = asScopeID((session.scope as Scope).id)

@@ -13,7 +13,7 @@ import { Snapshot } from "./snapshot"
 import type { Info } from "./types"
 
 export namespace SessionHistory {
-  const { asScopeID, asSessionID, asHistoryID } = Identifier
+  const { asScopeID, asSessionID, asHistoryID, asMessageID } = Identifier
 
   export const RollbackEvent = z
     .object({
@@ -265,6 +265,15 @@ export namespace SessionHistory {
   export function info(sessionID: string, raw: MessageV2.WithParts[], events: Event[]): Info["history"] | undefined {
     const rollback = latest(events)
     if (!rollback) return undefined
+    return infoFromMessageInfo(
+      raw.map((msg) => msg.info),
+      events,
+    )
+  }
+
+  export function infoFromMessageInfo(messages: MessageV2.Info[], events: Event[]): Info["history"] | undefined {
+    const rollback = latest(events)
+    if (!rollback) return undefined
     return {
       rollback: {
         id: rollback.id,
@@ -275,14 +284,14 @@ export namespace SessionHistory {
         droppedUserMessageIDs: rollback.droppedUserMessageIDs,
         files: rollback.files,
         patchPartIDs: rollback.patchPartIDs,
-        canUnrollback: canUnrollback(raw, rollback),
+        canUnrollback: canUnrollbackInfo(messages, rollback),
       },
     }
   }
 
-  export async function liveInfo(sessionID: string): Promise<Info["history"] | undefined> {
-    const [raw, events] = await Promise.all([rawMessages({ sessionID }), readEvents(sessionID)])
-    return info(sessionID, raw, events)
+  export async function storedInfo(sessionID: string): Promise<Info["history"] | undefined> {
+    const [messages, events] = await Promise.all([readMessageInfo(sessionID), readEvents(sessionID)])
+    return infoFromMessageInfo(messages, events)
   }
 
   async function latestInfo(sessionID: string, raw: MessageV2.WithParts[], events: Event[]) {
@@ -324,7 +333,24 @@ export namespace SessionHistory {
   }
 
   function canUnrollback(messages: MessageV2.WithParts[], event: RollbackEvent) {
-    return !messages.some((msg) => msg.info.time.created > event.time.created)
+    return canUnrollbackInfo(
+      messages.map((msg) => msg.info),
+      event,
+    )
+  }
+
+  async function readMessageInfo(sessionID: string) {
+    const session = await SessionManager.requireSession(sessionID)
+    const scopeID = asScopeID((session.scope as Scope).id)
+    const ids = await Storage.scan(StoragePath.sessionMessagesRoot(scopeID, asSessionID(sessionID)))
+    const messages = await Storage.readMany<MessageV2.Info>(
+      ids.map((id) => StoragePath.messageInfo(scopeID, asSessionID(sessionID), asMessageID(id))),
+    )
+    return messages.filter((msg): msg is MessageV2.Info => !!msg).sort((a, b) => a.id.localeCompare(b.id))
+  }
+
+  function canUnrollbackInfo(messages: MessageV2.Info[], event: RollbackEvent) {
+    return !messages.some((msg) => msg.time.created > event.time.created)
   }
 
   function summarizePatches(messages: MessageV2.WithParts[]) {

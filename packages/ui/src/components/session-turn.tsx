@@ -10,7 +10,6 @@ import type {
   UserMessage,
 } from "@ericsanchezok/synergy-sdk/client"
 import { useData } from "../context"
-import { useDiffComponent } from "../context/diff"
 import { getDirectory, getFilename } from "@ericsanchezok/synergy-util/path"
 
 import { Binary } from "@ericsanchezok/synergy-util/binary"
@@ -181,7 +180,6 @@ export function SessionTurn(
   }>,
 ) {
   const data = useData()
-  const diffComponent = useDiffComponent()
 
   const emptyMessages: MessageType[] = []
   const emptyParts: PartType[] = []
@@ -438,17 +436,26 @@ export function SessionTurn(
                                   </StickyAccordionHeader>
                                   <Accordion.Content data-slot="session-turn-accordion-content">
                                     <Show when={store.diffsOpen.includes(diff.file!)}>
-                                      <Dynamic
-                                        component={diffComponent}
-                                        before={{
-                                          name: diff.file!,
-                                          contents: diff.before!,
-                                        }}
-                                        after={{
-                                          name: diff.file!,
-                                          contents: diff.after!,
-                                        }}
-                                      />
+                                      <div data-component="session-turn-diff-preview">
+                                        <div class="text-12-regular text-text-weak">
+                                          {diff.beforeBytes ?? 0} bytes to {diff.afterBytes ?? 0} bytes
+                                          <Show when={diff.truncated}> - preview truncated</Show>
+                                        </div>
+                                        <Show
+                                          when={diff.preview}
+                                          fallback={
+                                            <div class="text-12-regular text-text-weaker">
+                                              No text preview available.
+                                            </div>
+                                          }
+                                        >
+                                          {(preview) => (
+                                            <pre class="mt-2 max-h-96 overflow-auto whitespace-pre-wrap rounded-md bg-surface-subtle p-3 text-12-regular text-text-base">
+                                              {preview()}
+                                            </pre>
+                                          )}
+                                        </Show>
+                                      </div>
                                     </Show>
                                   </Accordion.Content>
                                 </Accordion.Item>

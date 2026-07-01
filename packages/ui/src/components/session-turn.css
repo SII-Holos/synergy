@@ -90,7 +90,11 @@
       [data-kind="tool"],
       [data-kind="tool-attachments"]
     )
-    + [data-slot="session-turn-timeline-item"]:is([data-kind="attachment"], [data-kind="media-pending"], [data-kind="text"]),
+    + [data-slot="session-turn-timeline-item"]:is(
+      [data-kind="attachment"],
+      [data-kind="media-pending"],
+      [data-kind="text"]
+    ),
   [data-slot="session-turn-timeline-item"]:is([data-kind="reasoning"], [data-kind="text"])
     + [data-slot="session-turn-timeline-item"]:is(
       [data-kind="attachment"],

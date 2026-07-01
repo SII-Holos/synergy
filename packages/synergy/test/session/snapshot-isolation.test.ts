@@ -199,7 +199,7 @@ describe("Snapshot per-session isolation", () => {
     })
   })
 
-  test("diffFull() with hashes from different sessions returns empty array", async () => {
+  test("diffSummary() with hashes from different sessions returns empty array", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({
       scope: await tmp.scope(),
@@ -212,7 +212,7 @@ describe("Snapshot per-session isolation", () => {
         await Bun.write(path.join(tmp.path, "full_a.txt"), "A v2")
         const toA = await Snapshot.track(sessionA)
 
-        const diffs = await Snapshot.diffFull(fromA!, toA!, sessionB)
+        const diffs = await Snapshot.diffSummary(fromA!, toA!, sessionB)
         expect(diffs).toEqual([])
       },
     })

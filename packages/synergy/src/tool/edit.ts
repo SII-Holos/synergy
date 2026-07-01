@@ -105,11 +105,14 @@ export const EditTool = Tool.define("edit", {
     )
 
     const filediff: SnapshotSchema.FileDiff = {
-      file: filePath,
-      before: contentOld,
-      after: contentNew,
-      additions: 0,
-      deletions: 0,
+      ...SnapshotSchema.fromContents({
+        file: filePath,
+        before: contentOld,
+        after: contentNew,
+        additions: 0,
+        deletions: 0,
+        preview: diff,
+      }),
     }
     for (const change of diffLines(contentOld, contentNew)) {
       if (change.added) filediff.additions += change.count || 0

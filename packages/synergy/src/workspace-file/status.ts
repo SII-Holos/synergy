@@ -11,6 +11,8 @@ type StatusEntry = {
 }
 
 const STATUS_TTL_MS = 5_000
+const MAX_UNTRACKED_LINE_COUNT_FILES = 200
+const MAX_UNTRACKED_LINE_COUNT_BYTES = 256 * 1024
 
 function root() {
   return ScopeContext.current.directory
@@ -29,9 +31,14 @@ function parseStatus(input: string): WorkspaceFile.GitStatus {
 }
 
 async function lineCount(filepath: string) {
+  const stat = await Bun.file(filepath)
+    .stat()
+    .catch(() => undefined)
+  if (!stat || stat.size > MAX_UNTRACKED_LINE_COUNT_BYTES) return undefined
   const content = await Bun.file(filepath)
     .text()
-    .catch(() => "")
+    .catch(() => undefined)
+  if (content === undefined) return undefined
   if (!content) return 0
   return content.split(/\r?\n/).length
 }
@@ -67,14 +74,16 @@ async function build(): Promise<WorkspaceFile.StatusSummary> {
   }
 
   const untracked = await $`git ls-files --others --exclude-standard`.cwd(cwd).quiet().nothrow().text()
-  for (const filepath of untracked.trim().split(/\r?\n/).filter(Boolean)) {
+  const untrackedFiles = untracked.trim().split(/\r?\n/).filter(Boolean)
+  const shouldCountUntrackedLines = untrackedFiles.length <= MAX_UNTRACKED_LINE_COUNT_FILES
+  for (const filepath of untrackedFiles) {
     const relative = cleanRelative(filepath)
     const absolute = path.join(cwd, relative)
+    const added = shouldCountUntrackedLines ? await lineCount(absolute) : undefined
     files.set(relative, {
       path: relative,
       status: "untracked",
-      added: await lineCount(absolute),
-      removed: 0,
+      ...(added === undefined ? {} : { added, removed: 0 }),
     })
   }
 

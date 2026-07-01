@@ -372,7 +372,7 @@ b
       })
     })
 
-    test("returned filediff.after matches final on-disk content after formatting", async () => {
+    test("returned filediff summary matches final on-disk content after formatting", async () => {
       await using tmp = await tmpdir({
         git: true,
         config: {
@@ -401,8 +401,8 @@ b
           const result = await tool.execute({ filePath: path.join(tmp.path, "fmt2.ts"), content: unformatted }, ctx)
 
           const onDisk = await Bun.file(path.join(tmp.path, "fmt2.ts")).text()
-          // filediff.after should reflect what is actually on disk after formatting
-          expect(result.metadata.filediff.after).toBe(onDisk)
+          expect(result.metadata.filediff.afterBytes).toBe(Buffer.byteLength(onDisk, "utf8"))
+          expect(result.metadata.filediff.preview).toContain(onDisk.trim())
         },
       })
     })

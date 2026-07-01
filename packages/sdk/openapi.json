@@ -21862,20 +21862,34 @@
           "file": {
             "type": "string"
           },
-          "before": {
-            "type": "string"
-          },
-          "after": {
-            "type": "string"
-          },
           "additions": {
             "type": "number"
           },
           "deletions": {
             "type": "number"
+          },
+          "binary": {
+            "type": "boolean"
+          },
+          "preview": {
+            "type": "string"
+          },
+          "beforeBytes": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "afterBytes": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "truncated": {
+            "type": "boolean"
           }
         },
-        "required": ["file", "before", "after", "additions", "deletions"]
+        "required": ["file", "additions", "deletions"],
+        "additionalProperties": false
       },
       "PermissionAction": {
         "type": "string",
@@ -23521,6 +23535,14 @@
           },
           "output": {
             "type": "string"
+          },
+          "outputBytes": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "outputTruncated": {
+            "type": "boolean"
           },
           "title": {
             "type": "string"

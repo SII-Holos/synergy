@@ -119,7 +119,7 @@ describe.serial("snapshot", () => {
     })
   })
 
-  test("binary file handling", async () => {
+  test("binary file handling respects snapshot exclude policy", async () => {
     await using tmp = await bootstrap()
     await ScopeContext.provide({
       scope: await tmp.scope(),
@@ -130,10 +130,10 @@ describe.serial("snapshot", () => {
         await Bun.write(`${tmp.path}/image.png`, new Uint8Array([0x89, 0x50, 0x4e, 0x47]))
 
         const patch = await Snapshot.patch(before!, tmp.extra.sessionID)
-        expect(patch.files).toContain(`${tmp.path}/image.png`)
+        expect(patch.files).not.toContain(`${tmp.path}/image.png`)
 
         await Snapshot.revert([patch], tmp.extra.sessionID)
-        expect(await Bun.file(`${tmp.path}/image.png`).exists()).toBe(false)
+        expect(await Bun.file(`${tmp.path}/image.png`).exists()).toBe(true)
       },
     })
   })
@@ -149,6 +149,37 @@ describe.serial("snapshot", () => {
         await Bun.write(`${tmp.path}/large.txt`, "x".repeat(1024 * 1024))
 
         expect((await Snapshot.patch(before!, tmp.extra.sessionID)).files).toContain(`${tmp.path}/large.txt`)
+      },
+    })
+  })
+
+  test("snapshot policy excludes private, dependency, archive, binary, and oversized files", async () => {
+    await using tmp = await bootstrap()
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const before = await Snapshot.track(tmp.extra.sessionID)
+        expect(before).toBeTruthy()
+
+        await $`mkdir -p ${tmp.path}/.synergy ${tmp.path}/node_modules/pkg`.quiet()
+        await Bun.write(`${tmp.path}/.synergy/private.json`, "{}")
+        await Bun.write(`${tmp.path}/node_modules/pkg/index.js`, "module.exports = 1")
+        await Bun.write(`${tmp.path}/archive.zip`, new Uint8Array([0x50, 0x4b, 0x03, 0x04]))
+        await Bun.write(`${tmp.path}/data.db`, new Uint8Array([0x00, 0x01]))
+        await Bun.write(`${tmp.path}/document.pdf`, "%PDF-1.7")
+        await Bun.write(`${tmp.path}/image.png`, new Uint8Array([0x89, 0x50, 0x4e, 0x47]))
+        await Bun.write(`${tmp.path}/too-large.txt`, "x".repeat(2 * 1024 * 1024 + 1))
+        await Bun.write(`${tmp.path}/included.txt`, "small text")
+
+        const patch = await Snapshot.patch(before!, tmp.extra.sessionID)
+        expect(patch.files).toContain(`${tmp.path}/included.txt`)
+        expect(patch.files).not.toContain(`${tmp.path}/.synergy/private.json`)
+        expect(patch.files).not.toContain(`${tmp.path}/node_modules/pkg/index.js`)
+        expect(patch.files).not.toContain(`${tmp.path}/archive.zip`)
+        expect(patch.files).not.toContain(`${tmp.path}/data.db`)
+        expect(patch.files).not.toContain(`${tmp.path}/document.pdf`)
+        expect(patch.files).not.toContain(`${tmp.path}/image.png`)
+        expect(patch.files).not.toContain(`${tmp.path}/too-large.txt`)
       },
     })
   })
@@ -666,7 +697,7 @@ describe.serial("snapshot", () => {
     })
   })
 
-  test("diffFull with new file additions", async () => {
+  test("diffSummary with new file additions", async () => {
     await using tmp = await bootstrap()
     await ScopeContext.provide({
       scope: await tmp.scope(),
@@ -679,20 +710,21 @@ describe.serial("snapshot", () => {
         const after = await Snapshot.track(tmp.extra.sessionID)
         expect(after).toBeTruthy()
 
-        const diffs = await Snapshot.diffFull(before!, after!, tmp.extra.sessionID)
+        const diffs = await Snapshot.diffSummary(before!, after!, tmp.extra.sessionID)
         expect(diffs.length).toBe(1)
 
         const newFileDiff = diffs[0]
         expect(newFileDiff.file).toBe("new.txt")
-        expect(newFileDiff.before).toBe("")
-        expect(newFileDiff.after).toBe("new content")
+        expect(newFileDiff.beforeBytes).toBeUndefined()
+        expect(newFileDiff.afterBytes).toBe("new content".length)
+        expect(newFileDiff.preview).toContain("new content")
         expect(newFileDiff.additions).toBe(1)
         expect(newFileDiff.deletions).toBe(0)
       },
     })
   })
 
-  test("diffFull with file modifications", async () => {
+  test("diffSummary with file modifications", async () => {
     await using tmp = await bootstrap()
     await ScopeContext.provide({
       scope: await tmp.scope(),
@@ -705,20 +737,21 @@ describe.serial("snapshot", () => {
         const after = await Snapshot.track(tmp.extra.sessionID)
         expect(after).toBeTruthy()
 
-        const diffs = await Snapshot.diffFull(before!, after!, tmp.extra.sessionID)
+        const diffs = await Snapshot.diffSummary(before!, after!, tmp.extra.sessionID)
         expect(diffs.length).toBe(1)
 
         const modifiedFileDiff = diffs[0]
         expect(modifiedFileDiff.file).toBe("b.txt")
-        expect(modifiedFileDiff.before).toBe(tmp.extra.bContent)
-        expect(modifiedFileDiff.after).toBe("modified content")
+        expect(modifiedFileDiff.beforeBytes).toBe(tmp.extra.bContent.length)
+        expect(modifiedFileDiff.afterBytes).toBe("modified content".length)
+        expect(modifiedFileDiff.preview).toContain("modified content")
         expect(modifiedFileDiff.additions).toBeGreaterThan(0)
         expect(modifiedFileDiff.deletions).toBeGreaterThan(0)
       },
     })
   })
 
-  test("diffFull with file deletions", async () => {
+  test("diffSummary with file deletions", async () => {
     await using tmp = await bootstrap()
     await ScopeContext.provide({
       scope: await tmp.scope(),
@@ -731,20 +764,21 @@ describe.serial("snapshot", () => {
         const after = await Snapshot.track(tmp.extra.sessionID)
         expect(after).toBeTruthy()
 
-        const diffs = await Snapshot.diffFull(before!, after!, tmp.extra.sessionID)
+        const diffs = await Snapshot.diffSummary(before!, after!, tmp.extra.sessionID)
         expect(diffs.length).toBe(1)
 
         const removedFileDiff = diffs[0]
         expect(removedFileDiff.file).toBe("a.txt")
-        expect(removedFileDiff.before).toBe(tmp.extra.aContent)
-        expect(removedFileDiff.after).toBe("")
+        expect(removedFileDiff.beforeBytes).toBe(tmp.extra.aContent.length)
+        expect(removedFileDiff.afterBytes).toBeUndefined()
+        expect(removedFileDiff.preview).toContain("a.txt")
         expect(removedFileDiff.additions).toBe(0)
         expect(removedFileDiff.deletions).toBe(1)
       },
     })
   })
 
-  test("diffFull with multiple line additions", async () => {
+  test("diffSummary with multiple line additions", async () => {
     await using tmp = await bootstrap()
     await ScopeContext.provide({
       scope: await tmp.scope(),
@@ -757,20 +791,21 @@ describe.serial("snapshot", () => {
         const after = await Snapshot.track(tmp.extra.sessionID)
         expect(after).toBeTruthy()
 
-        const diffs = await Snapshot.diffFull(before!, after!, tmp.extra.sessionID)
+        const diffs = await Snapshot.diffSummary(before!, after!, tmp.extra.sessionID)
         expect(diffs.length).toBe(1)
 
         const multiDiff = diffs[0]
         expect(multiDiff.file).toBe("multi.txt")
-        expect(multiDiff.before).toBe("")
-        expect(multiDiff.after).toBe("line1\nline2\nline3")
+        expect(multiDiff.beforeBytes).toBeUndefined()
+        expect(multiDiff.afterBytes).toBe("line1\nline2\nline3".length)
+        expect(multiDiff.preview).toContain("line1")
         expect(multiDiff.additions).toBe(3)
         expect(multiDiff.deletions).toBe(0)
       },
     })
   })
 
-  test("diffFull with addition and deletion", async () => {
+  test("diffSummary with addition and deletion", async () => {
     await using tmp = await bootstrap()
     await ScopeContext.provide({
       scope: await tmp.scope(),
@@ -784,27 +819,29 @@ describe.serial("snapshot", () => {
         const after = await Snapshot.track(tmp.extra.sessionID)
         expect(after).toBeTruthy()
 
-        const diffs = await Snapshot.diffFull(before!, after!, tmp.extra.sessionID)
+        const diffs = await Snapshot.diffSummary(before!, after!, tmp.extra.sessionID)
         expect(diffs.length).toBe(2)
 
         const addedFileDiff = diffs.find((d) => d.file === "added.txt")
         expect(addedFileDiff).toBeDefined()
-        expect(addedFileDiff!.before).toBe("")
-        expect(addedFileDiff!.after).toBe("added content")
+        expect(addedFileDiff!.beforeBytes).toBeUndefined()
+        expect(addedFileDiff!.afterBytes).toBe("added content".length)
+        expect(addedFileDiff!.preview).toContain("added content")
         expect(addedFileDiff!.additions).toBe(1)
         expect(addedFileDiff!.deletions).toBe(0)
 
         const removedFileDiff = diffs.find((d) => d.file === "a.txt")
         expect(removedFileDiff).toBeDefined()
-        expect(removedFileDiff!.before).toBe(tmp.extra.aContent)
-        expect(removedFileDiff!.after).toBe("")
+        expect(removedFileDiff!.beforeBytes).toBe(tmp.extra.aContent.length)
+        expect(removedFileDiff!.afterBytes).toBeUndefined()
+        expect(removedFileDiff!.preview).toContain("a.txt")
         expect(removedFileDiff!.additions).toBe(0)
         expect(removedFileDiff!.deletions).toBe(1)
       },
     })
   })
 
-  test("diffFull with multiple additions and deletions", async () => {
+  test("diffSummary with multiple additions and deletions", async () => {
     await using tmp = await bootstrap()
     await ScopeContext.provide({
       scope: await tmp.scope(),
@@ -820,7 +857,7 @@ describe.serial("snapshot", () => {
         const after = await Snapshot.track(tmp.extra.sessionID)
         expect(after).toBeTruthy()
 
-        const diffs = await Snapshot.diffFull(before!, after!, tmp.extra.sessionID)
+        const diffs = await Snapshot.diffSummary(before!, after!, tmp.extra.sessionID)
         expect(diffs.length).toBe(4)
 
         const multi1Diff = diffs.find((d) => d.file === "multi1.txt")
@@ -846,7 +883,7 @@ describe.serial("snapshot", () => {
     })
   })
 
-  test("diffFull with no changes", async () => {
+  test("diffSummary with no changes", async () => {
     await using tmp = await bootstrap()
     await ScopeContext.provide({
       scope: await tmp.scope(),
@@ -857,13 +894,13 @@ describe.serial("snapshot", () => {
         const after = await Snapshot.track(tmp.extra.sessionID)
         expect(after).toBeTruthy()
 
-        const diffs = await Snapshot.diffFull(before!, after!, tmp.extra.sessionID)
+        const diffs = await Snapshot.diffSummary(before!, after!, tmp.extra.sessionID)
         expect(diffs.length).toBe(0)
       },
     })
   })
 
-  test("diffFull with binary file changes", async () => {
+  test("diffSummary with binary file changes", async () => {
     await using tmp = await bootstrap()
     await ScopeContext.provide({
       scope: await tmp.scope(),
@@ -876,17 +913,13 @@ describe.serial("snapshot", () => {
         const after = await Snapshot.track(tmp.extra.sessionID)
         expect(after).toBeTruthy()
 
-        const diffs = await Snapshot.diffFull(before!, after!, tmp.extra.sessionID)
-        expect(diffs.length).toBe(1)
-
-        const binaryDiff = diffs[0]
-        expect(binaryDiff.file).toBe("binary.bin")
-        expect(binaryDiff.before).toBe("")
+        const diffs = await Snapshot.diffSummary(before!, after!, tmp.extra.sessionID)
+        expect(diffs.length).toBe(0)
       },
     })
   })
 
-  test("diffFull with whitespace changes", async () => {
+  test("diffSummary with whitespace changes", async () => {
     await using tmp = await bootstrap()
     await ScopeContext.provide({
       scope: await tmp.scope(),
@@ -900,7 +933,7 @@ describe.serial("snapshot", () => {
         const after = await Snapshot.track(tmp.extra.sessionID)
         expect(after).toBeTruthy()
 
-        const diffs = await Snapshot.diffFull(before!, after!, tmp.extra.sessionID)
+        const diffs = await Snapshot.diffSummary(before!, after!, tmp.extra.sessionID)
         expect(diffs.length).toBe(1)
 
         const whitespaceDiff = diffs[0]

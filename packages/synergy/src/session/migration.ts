@@ -12,6 +12,7 @@ import { Log } from "@/util/log"
 import { MessageV2 } from "./message-v2"
 import { SessionNav } from "./nav"
 import { SessionProgress } from "./progress"
+import { SnapshotSchema } from "./snapshot-schema"
 
 import { MigrationRegistry } from "@/migration/registry"
 const log = Log.create({ service: "session.migration" })
@@ -613,6 +614,176 @@ async function migrateSessionToolDisplayMetadata(progress: (current: number, tot
   log.info("session tool display metadata migration complete", { total: tasks.length, changed: changedCount })
 }
 
+async function migrateBoundedSessionData(progress: (current: number, total: number) => void) {
+  const scopeIDs = await Storage.scan(["sessions"])
+  const sessions: Array<{ scopeID: string; sessionID: string }> = []
+  for (const scopeID of scopeIDs) {
+    const scope = Identifier.asScopeID(scopeID)
+    for (const sessionID of await Storage.scan(StoragePath.sessionsRoot(scope))) {
+      sessions.push({ scopeID, sessionID })
+    }
+  }
+  if (sessions.length === 0) return
+
+  let done = 0
+  let changed = 0
+  for (const { scopeID, sessionID } of sessions) {
+    const scope = Identifier.asScopeID(scopeID)
+    const sid = Identifier.asSessionID(sessionID)
+    try {
+      changed += await migrateOneBoundedSession(scope, sid)
+    } catch (error) {
+      log.warn("failed to migrate bounded session data", { scopeID, sessionID, error: String(error) })
+    }
+    done++
+    progress(done, sessions.length)
+  }
+  log.info("bounded session data migration complete", { sessions: sessions.length, changed })
+}
+
+async function migrateOneBoundedSession(scope: Identifier.ScopeID, sid: Identifier.SessionID): Promise<number> {
+  let changed = 0
+  const messageInfos: MessageV2.Info[] = []
+  const infoKey = StoragePath.sessionInfo(scope, sid)
+  const sessionInfo = await Storage.read<any>(infoKey).catch((error) => {
+    log.warn("skipping unreadable session info during bounded migration", {
+      scopeID: scope,
+      sessionID: sid,
+      error: String(error),
+    })
+    return undefined
+  })
+
+  if (sessionInfo) {
+    const next = normalizeSessionInfo(sessionInfo)
+    if (JSON.stringify(next) !== JSON.stringify(sessionInfo)) {
+      await Storage.write(infoKey, next)
+      changed++
+    }
+  }
+
+  const messageIDs = await Storage.scan(StoragePath.sessionMessagesRoot(scope, sid)).catch(() => [])
+  for (const messageID of messageIDs) {
+    const mid = Identifier.asMessageID(messageID)
+    const msgKey = StoragePath.messageInfo(scope, sid, mid)
+    const message = await Storage.read<any>(msgKey).catch((error) => {
+      log.warn("skipping unreadable message info during bounded migration", {
+        scopeID: scope,
+        sessionID: sid,
+        messageID,
+        error: String(error),
+      })
+      return undefined
+    })
+    if (message) {
+      const next = normalizeMessageInfo(message)
+      if (next) messageInfos.push(next)
+      if (JSON.stringify(next) !== JSON.stringify(message)) {
+        await Storage.write(msgKey, next)
+        changed++
+      }
+    }
+
+    const partIDs = await Storage.scan(StoragePath.messageParts(scope, sid, mid)).catch(() => [])
+    for (const partID of partIDs) {
+      const partKey = StoragePath.messagePart(scope, sid, mid, Identifier.asPartID(partID))
+      const part = await Storage.read<any>(partKey).catch((error) => {
+        log.warn("skipping unreadable message part during bounded migration", {
+          scopeID: scope,
+          sessionID: sid,
+          messageID,
+          partID,
+          error: String(error),
+        })
+        return undefined
+      })
+      if (!part) continue
+      const next = normalizePart(part)
+      if (JSON.stringify(next) !== JSON.stringify(part)) {
+        await Storage.write(partKey, next)
+        changed++
+      }
+    }
+  }
+
+  const summaryKey = StoragePath.sessionSummary(scope, sid)
+  const summary = await Storage.read<any>(summaryKey).catch(() => undefined)
+  const nextSummary = SnapshotSchema.normalizeArray(summary)
+  if (nextSummary && JSON.stringify(nextSummary) !== JSON.stringify(summary)) {
+    await Storage.write(summaryKey, nextSummary)
+    changed++
+  }
+
+  if (sessionInfo) {
+    const events = await readHistoryEventsForMigration(scope, sid)
+    const history = deriveHistoryForMigration(messageInfos, events)
+    const current = await Storage.read<any>(infoKey).catch(() => sessionInfo)
+    const next = { ...current, history }
+    if (history === undefined) delete next.history
+    if (JSON.stringify(next) !== JSON.stringify(current)) {
+      await Storage.write(infoKey, next)
+      changed++
+    }
+  }
+
+  return changed
+}
+
+function normalizeSessionInfo(info: Record<string, unknown>) {
+  const next: Record<string, unknown> = { ...info }
+  const summary = asRecord(next.summary)
+  const diffs = SnapshotSchema.normalizeArray(summary?.diffs)
+  if (summary && diffs) next.summary = { ...summary, diffs }
+  return next
+}
+
+function normalizeMessageInfo(info: Record<string, unknown>): MessageV2.Info | undefined {
+  const next: Record<string, unknown> = { ...info }
+  const summary = asRecord(next.summary)
+  const diffs = SnapshotSchema.normalizeArray(summary?.diffs)
+  if (summary && diffs) next.summary = { ...summary, diffs }
+  return next as MessageV2.Info
+}
+
+function normalizePart(part: Record<string, unknown>) {
+  if (part.type !== "tool") return part
+  return MessageV2.canonicalPart(part as MessageV2.Part) as Record<string, unknown>
+}
+
+async function readHistoryEventsForMigration(scope: Identifier.ScopeID, sid: Identifier.SessionID) {
+  const ids = await Storage.scan(StoragePath.sessionHistoryRoot(scope, sid)).catch(() => [])
+  const events = await Storage.readMany<any>(
+    ids.map((id) => StoragePath.sessionHistoryEvent(scope, sid, Identifier.asHistoryID(id))),
+  )
+  return events.filter(Boolean).sort((a, b) => String(a.id).localeCompare(String(b.id)))
+}
+
+function deriveHistoryForMigration(messages: MessageV2.Info[], events: any[]): Info["history"] | undefined {
+  const active = new Map<string, any>()
+  for (const event of events) {
+    if (event?.type === "rollback" && typeof event.id === "string") active.set(event.id, event)
+    if (event?.type === "unrollback" && typeof event.rollbackID === "string") active.delete(event.rollbackID)
+  }
+  const rollback = Array.from(active.values())
+    .sort((a, b) => String(a.id).localeCompare(String(b.id)))
+    .at(-1)
+  if (!rollback) return undefined
+  const created = Number(rollback.time?.created ?? 0)
+  return {
+    rollback: {
+      id: rollback.id,
+      numTurns: Number(rollback.numTurns ?? 0),
+      created,
+      messageID: Array.isArray(rollback.droppedUserMessageIDs) ? rollback.droppedUserMessageIDs[0] : undefined,
+      droppedMessageIDs: Array.isArray(rollback.droppedMessageIDs) ? rollback.droppedMessageIDs : [],
+      droppedUserMessageIDs: Array.isArray(rollback.droppedUserMessageIDs) ? rollback.droppedUserMessageIDs : [],
+      files: Array.isArray(rollback.files) ? rollback.files : [],
+      patchPartIDs: Array.isArray(rollback.patchPartIDs) ? rollback.patchPartIDs : [],
+      canUnrollback: !messages.some((msg) => msg.time.created > created),
+    },
+  }
+}
+
 async function repairPendingReplyFlags(progress: (current: number, total: number) => void) {
   const scopeIDs = await Storage.scan(["sessions"])
   const tasks: Array<{ scopeID: string; sessionID: string; info: Info }> = []
@@ -1157,6 +1328,13 @@ export const migrations: Migration[] = [
     description: "Normalize attachment presentation controls and remove tool-level attachment promotion fields",
     async up(progress) {
       await migrateSessionAttachmentParts(progress)
+    },
+  },
+  {
+    id: "20260701-bounded-session-data",
+    description: "Canonicalize session history, tool output, and diffs into bounded persistent shapes",
+    async up(progress) {
+      await migrateBoundedSessionData(progress)
     },
   },
 ]

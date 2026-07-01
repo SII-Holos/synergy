@@ -2659,10 +2659,13 @@ export type SessionScope = {
 
 export type FileDiff = {
   file: string
-  before: string
-  after: string
   additions: number
   deletions: number
+  binary?: boolean
+  preview?: string
+  beforeBytes?: number
+  afterBytes?: number
+  truncated?: boolean
 }
 
 export type PermissionAction = "allow" | "deny" | "ask"
@@ -3271,6 +3274,8 @@ export type ToolStateCompleted = {
     [key: string]: unknown
   }
   output: string
+  outputBytes?: number
+  outputTruncated?: boolean
   title: string
   metadata: {
     [key: string]: unknown
