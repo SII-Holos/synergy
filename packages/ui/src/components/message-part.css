@@ -343,14 +343,13 @@
   width: 100%;
   min-width: 0;
   max-width: 100%;
-  opacity: 0.72;
   color: var(--text-weak);
 
   [data-component="markdown"] {
     margin-top: 16px;
     font-size: var(--font-size-small);
     line-height: 1.55;
-    font-style: italic !important;
+    font-style: italic;
   }
 }
 
