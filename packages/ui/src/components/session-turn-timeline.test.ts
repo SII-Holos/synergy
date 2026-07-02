@@ -27,10 +27,6 @@ mock.module("./icon", () => ({ Icon: Empty }))
 mock.module("./media-generation-card", () => ({ MediaGenerationCard: Empty }))
 mock.module("./message-part", () => ({ Message: Empty, Part: Empty }))
 mock.module("./session-turn.css", () => ({}))
-mock.module("./special-user-message", () => ({
-  getSpecialUserMessageRenderer: () => undefined,
-  hasSpecialUserMessageRenderer: () => false,
-}))
 mock.module("./sticky-accordion-header", () => ({ StickyAccordionHeader: Empty }))
 mock.module("./tool-renders", () => ({}))
 mock.module("./typewriter", () => ({ Typewriter: Empty }))
