@@ -1,5 +1,6 @@
 import { Show, Match, Switch, createMemo, createEffect, createSignal, on, onCleanup } from "solid-js"
 import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
+import { isGuidedContextUserMessage } from "@ericsanchezok/synergy-ui/session-turn"
 import { createResizeObserver } from "@solid-primitives/resize-observer"
 import { useLocal } from "@/context/local"
 import { useFile, type SelectedLineRange } from "@/context/file"
@@ -220,7 +221,12 @@ function SessionPageContent() {
   })
   const emptyUserMessages: UserMessage[] = []
   const userMessages = createMemo(
-    () => messages().filter((m) => m.role === "user" && !(m as UserMessage).metadata?.synthetic) as UserMessage[],
+    () =>
+      messages().filter((m) => {
+        if (m.role !== "user") return false
+        const user = m as UserMessage
+        return !user.metadata?.synthetic && !isGuidedContextUserMessage(user)
+      }) as UserMessage[],
     emptyUserMessages,
   )
   const visibleUserMessages = createMemo(() => userMessages(), emptyUserMessages)
@@ -229,6 +235,7 @@ function SessionPageContent() {
       messages().filter((m) => {
         if (m.role !== "user") return false
         const user = m as UserMessage
+        if (isGuidedContextUserMessage(user)) return false
         return !user.metadata?.synthetic || hasSpecialUserMessageRenderer(user)
       }) as UserMessage[],
     emptyUserMessages,
