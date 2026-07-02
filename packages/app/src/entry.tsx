@@ -26,6 +26,8 @@ if (import.meta.env.DEV && !(root instanceof HTMLElement)) {
   )
 }
 
+const APP_SURFACE_READY_EVENT = "synergy:app-surface-ready"
+
 function scheduleBootShellRemoval() {
   const remove = () => document.getElementById("synergy-app-boot")?.remove()
   if (typeof window.requestAnimationFrame === "function") {
@@ -84,6 +86,8 @@ const platform: Platform = {
   },
 }
 
+window.addEventListener(APP_SURFACE_READY_EVENT, scheduleBootShellRemoval, { once: true })
+
 configureClipboard({
   writer: platform.clipboard?.writeText,
   onFailure: (failure) => {
@@ -105,4 +109,3 @@ render(
   ),
   root!,
 )
-scheduleBootShellRemoval()

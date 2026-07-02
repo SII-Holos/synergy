@@ -9,14 +9,18 @@ export interface DesktopStartupStatus {
 }
 
 export function desktopStartupPage(options: DesktopStartupPageOptions): string {
-  const icon = options.iconUrl
+  const icon = (className: string) =>
+    options.iconUrl
+      ? `<img class="${className}" src="${escapeAttribute(options.iconUrl)}" alt="" draggable="false">`
+      : `<span class="${className} startup-shell__icon--fallback"></span>`
+  const windowIcon = options.iconUrl
     ? `<img class="startup-shell__icon" src="${escapeAttribute(options.iconUrl)}" alt="" draggable="false">`
     : ""
   const customChrome =
     options.chrome === "custom"
       ? `<header class="startup-chrome">
   <div class="startup-chrome__brand">
-    ${icon}
+    ${windowIcon}
     <span>Synergy</span>
   </div>
   <div class="startup-chrome__drag"></div>
@@ -48,14 +52,18 @@ export function desktopStartupPage(options: DesktopStartupPageOptions): string {
     :root {
       color-scheme: dark;
       --startup-background: #111214;
-      --startup-shell: #14161a;
-      --startup-content: #17191f;
-      --startup-border: #2c3038;
+      --startup-sidebar: #101112;
+      --startup-workbench: #111214;
+      --startup-content: #24262a;
+      --startup-border: #25272b;
       --startup-text: #f5f6f7;
       --startup-muted: #b8bdc7;
-      --startup-faint: #818895;
-      --startup-fill: #242832;
+      --startup-faint: #8a8f99;
+      --startup-fill: #303238;
+      --startup-line: #24262a;
+      --startup-line-strong: #4b4f59;
       --startup-progress: #d7dbe3;
+      --startup-shadow: rgba(0, 0, 0, 0.28);
       --startup-danger: oklch(0.58 0.22 28);
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     }
@@ -64,14 +72,18 @@ export function desktopStartupPage(options: DesktopStartupPageOptions): string {
       :root {
         color-scheme: light;
         --startup-background: #f7f7f5;
-        --startup-shell: #ffffff;
+        --startup-sidebar: #f7f7f5;
+        --startup-workbench: #fafaf9;
         --startup-content: #ffffff;
         --startup-border: #deded8;
         --startup-text: #1c1d20;
         --startup-muted: #5f636b;
         --startup-faint: #858992;
         --startup-fill: #ededeb;
+        --startup-line: #deded8;
+        --startup-line-strong: #d8d8d3;
         --startup-progress: #303238;
+        --startup-shadow: rgba(20, 20, 20, 0.06);
       }
     }
 
@@ -241,54 +253,245 @@ export function desktopStartupPage(options: DesktopStartupPageOptions): string {
       min-width: 0;
     }
 
-    .startup-main {
-      display: grid;
+    .startup-shell {
+      display: flex;
       flex: 1;
-      place-items: center;
-      padding: 48px 32px 64px;
+      min-height: 0;
+      overflow: hidden;
+      background: var(--startup-workbench);
     }
 
-    .startup-panel {
-      width: min(420px, calc(100vw - 48px));
+    .startup-sidebar {
+      display: flex;
+      flex: 0 0 240px;
+      flex-direction: column;
+      min-width: 0;
+      padding: 18px 16px 16px;
+      background: var(--startup-sidebar);
+      border-right: 1px solid var(--startup-border);
     }
 
-    .startup-wordmark {
+    .startup-org {
       display: flex;
       align-items: center;
-      gap: 10px;
+      gap: 9px;
       margin-bottom: 28px;
-      color: var(--startup-muted);
-      font-size: 12px;
+      color: var(--startup-text);
+      font-size: 14px;
       font-weight: 600;
       letter-spacing: 0;
     }
 
-    .startup-wordmark__rule {
+    .startup-org__mark {
+      width: 28px;
+      height: 28px;
+      border-radius: 999px;
+      background: var(--startup-text);
+    }
+
+    .startup-rail {
+      display: grid;
+      gap: 10px;
+    }
+
+    .startup-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      height: 28px;
+    }
+
+    .startup-row__icon {
+      width: 14px;
+      height: 14px;
+      border: 1px solid var(--startup-faint);
+      border-radius: 4px;
+    }
+
+    .startup-line {
+      display: block;
+      height: 8px;
+      background: var(--startup-line);
+      border-radius: 999px;
+    }
+
+    .startup-line--xl {
+      width: 132px;
+    }
+
+    .startup-line--lg {
+      width: 104px;
+    }
+
+    .startup-line--md {
+      width: 76px;
+    }
+
+    .startup-line--sm {
+      width: 48px;
+    }
+
+    .startup-sidebar__spacer {
       flex: 1;
-      height: 1px;
-      background: var(--startup-border);
+      min-height: 24px;
+    }
+
+    .startup-account {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .startup-shell__icon--account {
+      width: 22px;
+      height: 22px;
+    }
+
+    .startup-shell__icon--fallback {
+      display: inline-block;
+      background: var(--startup-line-strong);
+    }
+
+    .startup-workbench {
+      display: flex;
+      flex: 1;
+      flex-direction: column;
+      min-width: 0;
+      background: var(--startup-workbench);
+    }
+
+    .startup-topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex: 0 0 52px;
+      min-height: 52px;
+      padding: 0 28px;
+      border-bottom: 1px solid color-mix(in srgb, var(--startup-border) 70%, transparent);
+    }
+
+    .startup-topbar__title {
+      width: 142px;
+      height: 10px;
+      background: var(--startup-line);
+      border-radius: 999px;
+    }
+
+    .startup-topbar__tools {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .startup-tool {
+      width: 18px;
+      height: 18px;
+      border: 1px solid var(--startup-line-strong);
+      border-radius: 5px;
+    }
+
+    .startup-canvas {
+      display: flex;
+      flex: 1;
+      align-items: center;
+      min-height: 0;
+      padding: 64px 8vw;
+    }
+
+    .startup-stage {
+      width: min(720px, 100%);
+    }
+
+    .startup-logo-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 14px;
+    }
+
+    .startup-shell__icon--stage {
+      width: 26px;
+      height: 26px;
+    }
+
+    .startup-kicker {
+      color: var(--startup-muted);
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: 0;
     }
 
     h1 {
-      margin: 0 0 10px;
+      max-width: 560px;
+      margin: 0;
       color: var(--startup-text);
-      font-size: 24px;
+      font-size: 32px;
       font-weight: 650;
       letter-spacing: 0;
-      line-height: 1.2;
+      line-height: 1.12;
     }
 
     p {
-      margin: 0;
+      max-width: 520px;
+      margin: 12px 0 0;
       color: var(--startup-muted);
-      font-size: 13px;
-      line-height: 1.55;
+      font-size: 14px;
+      line-height: 1.5;
+    }
+
+    .startup-composer {
+      margin-top: 28px;
+      padding: 16px 18px 14px;
+      background: var(--startup-content);
+      border: 1px solid color-mix(in srgb, var(--startup-line-strong) 70%, transparent);
+      border-radius: 8px;
+      box-shadow: 0 20px 56px var(--startup-shadow);
+    }
+
+    .startup-prompt-line {
+      width: min(360px, 80%);
+      height: 12px;
+      background: var(--startup-line-strong);
+      border-radius: 999px;
+    }
+
+    .startup-composer__footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      margin-top: 22px;
+    }
+
+    .startup-chip-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-width: 0;
+    }
+
+    .startup-chip {
+      width: 62px;
+      height: 18px;
+      background: var(--startup-fill);
+      border-radius: 999px;
+    }
+
+    .startup-chip--short {
+      width: 42px;
+    }
+
+    .startup-submit {
+      width: 30px;
+      height: 30px;
+      background: var(--startup-faint);
+      border-radius: 999px;
     }
 
     .startup-progress {
       position: relative;
       height: 2px;
-      margin-top: 28px;
+      margin-top: 18px;
       overflow: hidden;
       background: var(--startup-fill);
     }
@@ -298,14 +501,14 @@ export function desktopStartupPage(options: DesktopStartupPageOptions): string {
       top: 0;
       bottom: 0;
       left: 0;
-      width: 36%;
+      width: 38%;
       background: var(--startup-progress);
       content: "";
       animation: startup-progress 1200ms cubic-bezier(0.65, 0, 0.35, 1) infinite;
     }
 
     .startup-step {
-      margin-top: 14px;
+      margin-top: 12px;
       color: var(--startup-faint);
       font-size: 12px;
       line-height: 1.45;
@@ -336,9 +539,26 @@ export function desktopStartupPage(options: DesktopStartupPageOptions): string {
         display: none;
       }
 
-      .startup-main {
+      .startup-sidebar,
+      .startup-topbar__tools {
+        display: none;
+      }
+
+      .startup-topbar {
+        padding: 0 20px;
+      }
+
+      .startup-canvas {
         align-items: center;
         padding: 40px 24px 56px;
+      }
+
+      h1 {
+        font-size: 28px;
+      }
+
+      .startup-composer {
+        padding: 15px 16px 13px;
       }
     }
   </style>
@@ -346,16 +566,66 @@ export function desktopStartupPage(options: DesktopStartupPageOptions): string {
 <body>
   <div class="startup-page">
     ${customChrome}
-    <main class="startup-main">
-      <section class="startup-panel" aria-live="polite" aria-busy="true">
-        <div class="startup-wordmark">
-          <span>Synergy</span>
-          <span class="startup-wordmark__rule"></span>
+    <main class="startup-shell">
+      <aside class="startup-sidebar" aria-hidden="true">
+        <div class="startup-org">
+          <span class="startup-org__mark"></span>
+          <span>HOLOS</span>
         </div>
-        <h1 data-startup-title>Starting local workspace</h1>
-        <p data-startup-detail>Preparing the desktop shell.</p>
-        <div class="startup-progress" role="progressbar" aria-label="Starting Synergy"></div>
-        <div class="startup-step" data-startup-step>Starting</div>
+        <div class="startup-rail">
+          <div class="startup-row">
+            <span class="startup-row__icon"></span>
+            <span class="startup-line startup-line--md"></span>
+          </div>
+          <div class="startup-row">
+            <span class="startup-row__icon"></span>
+            <span class="startup-line startup-line--lg"></span>
+          </div>
+          <div class="startup-row">
+            <span class="startup-row__icon"></span>
+            <span class="startup-line startup-line--md"></span>
+          </div>
+          <div class="startup-row">
+            <span class="startup-row__icon"></span>
+            <span class="startup-line startup-line--sm"></span>
+          </div>
+        </div>
+        <div class="startup-sidebar__spacer"></div>
+        <div class="startup-account">
+          ${icon("startup-shell__icon startup-shell__icon--account")}
+          <span class="startup-line startup-line--lg"></span>
+        </div>
+      </aside>
+      <section class="startup-workbench">
+        <div class="startup-topbar" aria-hidden="true">
+          <span class="startup-topbar__title"></span>
+          <div class="startup-topbar__tools">
+            <span class="startup-tool"></span>
+            <span class="startup-tool"></span>
+          </div>
+        </div>
+        <div class="startup-canvas">
+          <section class="startup-stage" aria-live="polite" aria-busy="true">
+            <div class="startup-logo-row">
+              ${icon("startup-shell__icon startup-shell__icon--stage")}
+              <span class="startup-kicker">Synergy</span>
+            </div>
+            <h1 data-startup-title>Opening Synergy</h1>
+            <p data-startup-detail>Preparing the desktop shell.</p>
+            <div class="startup-composer">
+              <div class="startup-prompt-line"></div>
+              <div class="startup-composer__footer">
+                <div class="startup-chip-row">
+                  <span class="startup-chip"></span>
+                  <span class="startup-chip startup-chip--short"></span>
+                </div>
+                <span class="startup-submit"></span>
+              </div>
+              <div class="startup-progress" role="progressbar" aria-label="Starting Synergy"></div>
+            </div>
+            <div class="startup-step" data-startup-step>Starting</div>
+          </section>
+        </div>
       </section>
     </main>
   </div>

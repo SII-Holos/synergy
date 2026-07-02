@@ -1,5 +1,5 @@
 import "@/index.css"
-import { ErrorBoundary, Show, Switch, Match, lazy, createMemo, type ParentProps } from "solid-js"
+import { ErrorBoundary, Show, Switch, Match, lazy, createEffect, createMemo, type ParentProps } from "solid-js"
 import { Router, Route, Navigate } from "@solidjs/router"
 import { MetaProvider } from "@solidjs/meta"
 import { Font } from "@ericsanchezok/synergy-ui/font"
@@ -47,7 +47,25 @@ import { Suspense } from "solid-js"
 import { DialogSelectServer } from "@/components/dialog"
 import { ServerConnectionErrorPage } from "@/pages/server-connection-error"
 
-const Session = lazy(() => import("@/pages/session"))
+const APP_SURFACE_READY_EVENT = "synergy:app-surface-ready"
+
+function signalAppSurfaceReady() {
+  window.dispatchEvent(new Event(APP_SURFACE_READY_EVENT))
+}
+
+function initialRouteWaitsForSessionSurface() {
+  const pathname = window.location.pathname
+  if (pathname.includes("/agenda")) return false
+  if (pathname.includes("/library")) return false
+  if (pathname.includes("/plugins")) return false
+  return true
+}
+
+const Session = lazy(async () => {
+  const session = await import("@/pages/session")
+  signalAppSurfaceReady()
+  return session
+})
 const Loading = () => <div class="size-full flex items-center justify-center text-text-weak">Loading...</div>
 
 import { proxyPrefix } from "@/utils/proxy"
@@ -131,6 +149,12 @@ function ConnectedApp() {
     if (healthy === undefined) return "loading"
     if (healthy === false) return "connection-error"
     return "ready"
+  })
+
+  createEffect(() => {
+    const view = startupView()
+    if (view === "loading") return
+    if (view === "connection-error" || !initialRouteWaitsForSessionSurface()) signalAppSurfaceReady()
   })
 
   function retry() {
