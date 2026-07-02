@@ -69,46 +69,27 @@
       body {
         margin: 0;
         min-height: 100%;
-        background: #f7f7f5;
-      }
-
-      html[data-synergy-color-scheme="dark"],
-      html[data-synergy-color-scheme="dark"] body {
-        background: #101112;
-      }
-
-      @media (prefers-color-scheme: dark) {
-        html:not([data-synergy-color-scheme]),
-        html:not([data-synergy-color-scheme]) body {
-          background: #101112;
-        }
+        background: #111214;
       }
 
       #synergy-app-boot {
         position: fixed;
         inset: 0;
         z-index: 2147483647;
-        display: flex;
-        flex-direction: column;
+        display: grid;
+        place-items: center;
         overflow: hidden;
-        background: #f7f7f5;
-        color: #1c1d20;
+        background: #111214;
+        color: #f5f6f7;
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       }
 
-      html[data-synergy-color-scheme="dark"] #synergy-app-boot {
-        background: #101112;
-        color: #f5f6f7;
-      }
-
-      @media (prefers-color-scheme: dark) {
-        html:not([data-synergy-color-scheme]) #synergy-app-boot {
-          background: #101112;
-          color: #f5f6f7;
-        }
-      }
-
       .synergy-app-boot-chrome {
+        position: absolute;
+        top: 0;
+        right: 0;
+        left: 0;
+        z-index: 2;
         display: none;
         user-select: none;
         -webkit-app-region: drag;
@@ -123,47 +104,22 @@
       }
 
       .synergy-app-boot-chrome--custom {
-        align-items: center;
-        flex: 0 0 36px;
+        align-items: stretch;
         height: 36px;
-        min-height: 36px;
-        border-bottom: 1px solid #deded8;
-        background: #f7f7f5;
       }
 
-      html[data-synergy-color-scheme="dark"] .synergy-app-boot-chrome--custom {
-        border-bottom-color: #25272b;
-        background: #101112;
-      }
-
-      .synergy-app-boot-brand {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        min-width: 168px;
-        height: 100%;
-        padding: 0 12px;
-        color: #1c1d20;
-        font-size: 12px;
-        font-weight: 500;
-        -webkit-app-region: no-drag;
-      }
-
-      html[data-synergy-color-scheme="dark"] .synergy-app-boot-brand {
-        color: #f5f6f7;
-      }
-
-      .synergy-app-boot-icon {
-        width: 20px;
-        height: 20px;
-        flex: 0 0 auto;
-        border-radius: 5px;
+      .synergy-app-boot-chrome--native {
+        height: 28px;
       }
 
       .synergy-app-boot-drag {
         flex: 1;
-        align-self: stretch;
         min-width: 0;
+      }
+
+      .synergy-app-boot-traffic-space {
+        flex: 0 0 90px;
+        height: 100%;
       }
 
       .synergy-app-boot-controls {
@@ -184,7 +140,7 @@
         border: 0;
         border-radius: 0;
         background: transparent;
-        color: #858992;
+        color: #b8bdc7;
         font: inherit;
         transition:
           background-color 140ms cubic-bezier(0.16, 1, 0.3, 1),
@@ -193,26 +149,12 @@
 
       .synergy-app-boot-control:hover,
       .synergy-app-boot-control:focus-visible {
-        background: #ededeb;
-        color: #1c1d20;
+        background: #24262a;
+        color: #f5f6f7;
         outline: none;
       }
 
       .synergy-app-boot-control:focus-visible {
-        box-shadow: inset 0 0 0 2px rgba(28, 29, 32, 0.18);
-      }
-
-      html[data-synergy-color-scheme="dark"] .synergy-app-boot-control {
-        color: #8a8f99;
-      }
-
-      html[data-synergy-color-scheme="dark"] .synergy-app-boot-control:hover,
-      html[data-synergy-color-scheme="dark"] .synergy-app-boot-control:focus-visible {
-        background: #202226;
-        color: #f5f6f7;
-      }
-
-      html[data-synergy-color-scheme="dark"] .synergy-app-boot-control:focus-visible {
         box-shadow: inset 0 0 0 2px rgba(245, 246, 247, 0.18);
       }
 
@@ -265,407 +207,52 @@
         transform: rotate(-45deg);
       }
 
-      .synergy-app-boot-chrome--native {
-        flex: 0 0 18px;
-        height: 18px;
-        min-height: 18px;
-      }
-
-      .synergy-app-boot-traffic-space {
-        flex: 0 0 90px;
-        height: 100%;
-      }
-
-      .synergy-app-boot-shell {
-        display: flex;
-        flex: 1;
-        min-height: 0;
-        overflow: hidden;
-        background: #fafaf9;
-      }
-
-      html[data-synergy-color-scheme="dark"] .synergy-app-boot-shell {
-        background: #111214;
-      }
-
-      .synergy-app-boot-sidebar {
-        display: flex;
-        flex: 0 0 240px;
-        flex-direction: column;
-        min-width: 0;
-        padding: 18px 16px 16px;
-        border-right: 1px solid #e2e2dd;
-        background: #f7f7f5;
-      }
-
-      html[data-synergy-color-scheme="dark"] .synergy-app-boot-sidebar {
-        border-right-color: #25272b;
-        background: #101112;
-      }
-
-      .synergy-app-boot-org {
-        display: flex;
-        align-items: center;
-        gap: 9px;
-        margin-bottom: 28px;
-        color: #2b2d31;
-        font-size: 14px;
-        font-weight: 600;
-        letter-spacing: 0;
-      }
-
-      html[data-synergy-color-scheme="dark"] .synergy-app-boot-org {
-        color: #f5f6f7;
-      }
-
-      .synergy-app-boot-org-mark {
-        width: 28px;
-        height: 28px;
-        border-radius: 999px;
-        background: #1d1f24;
-      }
-
-      html[data-synergy-color-scheme="dark"] .synergy-app-boot-org-mark {
-        background: #f5f6f7;
-      }
-
-      .synergy-app-boot-rail {
-        display: grid;
-        gap: 10px;
-      }
-
-      .synergy-app-boot-row {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        height: 28px;
-      }
-
-      .synergy-app-boot-row-icon {
-        width: 14px;
-        height: 14px;
-        border: 1px solid #b9babd;
-        border-radius: 4px;
-      }
-
-      .synergy-app-boot-line {
-        display: block;
-        height: 8px;
-        border-radius: 999px;
-        background: #deded8;
-      }
-
-      .synergy-app-boot-line--xl {
-        width: 132px;
-      }
-
-      .synergy-app-boot-line--lg {
-        width: 104px;
-      }
-
-      .synergy-app-boot-line--md {
-        width: 76px;
-      }
-
-      .synergy-app-boot-line--sm {
-        width: 48px;
-      }
-
-      html[data-synergy-color-scheme="dark"] .synergy-app-boot-row-icon {
-        border-color: #6e727b;
-      }
-
-      html[data-synergy-color-scheme="dark"] .synergy-app-boot-line {
-        background: #24262a;
-      }
-
-      .synergy-app-boot-sidebar-spacer {
-        flex: 1;
-        min-height: 24px;
-      }
-
-      .synergy-app-boot-account {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-      }
-
-      .synergy-app-boot-account .synergy-app-boot-icon {
-        width: 22px;
-        height: 22px;
-      }
-
-      .synergy-app-boot-workbench {
-        display: flex;
-        flex: 1;
-        flex-direction: column;
-        min-width: 0;
-        background: #fafaf9;
-      }
-
-      html[data-synergy-color-scheme="dark"] .synergy-app-boot-workbench {
-        background: #111214;
-      }
-
-      .synergy-app-boot-topbar {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        flex: 0 0 52px;
-        min-height: 52px;
-        padding: 0 28px;
-        border-bottom: 1px solid #ededeb;
-      }
-
-      html[data-synergy-color-scheme="dark"] .synergy-app-boot-topbar {
-        border-bottom-color: #1e2024;
-      }
-
-      .synergy-app-boot-topbar-title {
-        width: 142px;
-        height: 10px;
-        border-radius: 999px;
-        background: #d5d5d0;
-      }
-
-      html[data-synergy-color-scheme="dark"] .synergy-app-boot-topbar-title {
-        background: #2a2c31;
-      }
-
-      .synergy-app-boot-topbar-tools {
-        display: flex;
-        align-items: center;
-        gap: 12px;
-      }
-
-      .synergy-app-boot-tool {
-        width: 18px;
-        height: 18px;
-        border: 1px solid #c5c6c8;
-        border-radius: 5px;
-      }
-
-      html[data-synergy-color-scheme="dark"] .synergy-app-boot-tool {
-        border-color: #4b4f59;
-      }
-
-      .synergy-app-boot-canvas {
-        display: flex;
-        flex: 1;
-        align-items: center;
-        justify-content: center;
-        min-height: 0;
-        padding: 64px 8vw;
-      }
-
       .synergy-app-boot-stage {
-        transform: translateY(clamp(24px, 5vh, 64px));
-        width: min(54rem, 100%);
+        display: grid;
+        place-items: center;
       }
 
-      .synergy-app-boot-logo-row {
-        display: flex;
-        align-items: center;
-        gap: 12px;
-        margin-bottom: 14px;
-      }
-
-      .synergy-app-boot-logo-row .synergy-app-boot-icon {
-        width: 26px;
-        height: 26px;
-      }
-
-      .synergy-app-boot-kicker {
-        color: #5f636b;
-        font-size: 13px;
-        font-weight: 600;
-        letter-spacing: 0;
-      }
-
-      html[data-synergy-color-scheme="dark"] .synergy-app-boot-kicker {
-        color: #b8bdc7;
-      }
-
-      .synergy-app-boot-title {
-        max-width: 560px;
-        margin: 0;
-        color: #1c1d20;
-        font-size: 32px;
-        font-weight: 650;
-        letter-spacing: 0;
-        line-height: 1.12;
-      }
-
-      html[data-synergy-color-scheme="dark"] .synergy-app-boot-title {
-        color: #f5f6f7;
-      }
-
-      .synergy-app-boot-detail {
-        max-width: 520px;
-        margin: 12px 0 0;
-        color: #5f636b;
-        font-size: 14px;
-        line-height: 1.5;
-      }
-
-      html[data-synergy-color-scheme="dark"] .synergy-app-boot-detail {
-        color: #b8bdc7;
-      }
-
-      .synergy-app-boot-composer {
-        margin-top: 28px;
-        padding: 16px 18px 14px;
-        border: 1px solid #d9d9d4;
-        border-radius: 8px;
-        background: #ffffff;
-        box-shadow: 0 18px 48px rgba(20, 20, 20, 0.06);
-      }
-
-      html[data-synergy-color-scheme="dark"] .synergy-app-boot-composer {
-        border-color: #3a3d44;
-        background: #24262a;
-        box-shadow: 0 20px 56px rgba(0, 0, 0, 0.28);
-      }
-
-      .synergy-app-boot-prompt-line {
-        width: min(360px, 80%);
-        height: 12px;
-        border-radius: 999px;
-        background: #d8d8d3;
-      }
-
-      html[data-synergy-color-scheme="dark"] .synergy-app-boot-prompt-line {
-        background: #4b4f59;
-      }
-
-      .synergy-app-boot-composer-footer {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 16px;
-        margin-top: 22px;
-      }
-
-      .synergy-app-boot-chip-row {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        min-width: 0;
-      }
-
-      .synergy-app-boot-chip {
-        width: 62px;
-        height: 18px;
-        border-radius: 999px;
-        background: #eeeeeb;
-      }
-
-      .synergy-app-boot-chip--short {
-        width: 42px;
-      }
-
-      html[data-synergy-color-scheme="dark"] .synergy-app-boot-chip {
-        background: #303238;
-      }
-
-      .synergy-app-boot-submit {
-        width: 30px;
-        height: 30px;
-        border-radius: 999px;
-        background: #303238;
-      }
-
-      html[data-synergy-color-scheme="dark"] .synergy-app-boot-submit {
-        background: #7f8289;
-      }
-
-      .synergy-app-boot-progress {
+      .synergy-app-boot-mark {
         position: relative;
-        height: 2px;
-        margin-top: 18px;
-        overflow: hidden;
-        background: #eeeeeb;
+        display: grid;
+        width: 64px;
+        height: 64px;
+        place-items: center;
+        animation: synergy-app-boot-breathe 1600ms cubic-bezier(0.4, 0, 0.2, 1) infinite;
       }
 
-      .synergy-app-boot-progress::before {
+      .synergy-app-boot-icon {
+        position: relative;
+        width: 40px;
+        height: 40px;
+        border-radius: 9px;
+      }
+
+      .synergy-app-boot-status {
         position: absolute;
-        top: 0;
-        bottom: 0;
-        left: 0;
-        width: 38%;
-        background: #303238;
-        content: "";
-        animation: synergy-app-boot-progress 1200ms cubic-bezier(0.65, 0, 0.35, 1) infinite;
+        width: 1px;
+        height: 1px;
+        margin: -1px;
+        overflow: hidden;
+        clip: rect(0 0 0 0);
+        white-space: nowrap;
       }
 
-      html[data-synergy-color-scheme="dark"] .synergy-app-boot-progress {
-        background: #303238;
-      }
-
-      html[data-synergy-color-scheme="dark"] .synergy-app-boot-progress::before {
-        background: #d7dbe3;
-      }
-
-      .synergy-app-boot-step {
-        margin-top: 12px;
-        color: #858992;
-        font-size: 12px;
-        line-height: 1.45;
-      }
-
-      html[data-synergy-color-scheme="dark"] .synergy-app-boot-step {
-        color: #8a8f99;
-      }
-
-      @keyframes synergy-app-boot-progress {
-        0% {
-          transform: translateX(-100%);
-        }
+      @keyframes synergy-app-boot-breathe {
+        0%,
         100% {
-          transform: translateX(280%);
+          opacity: 0.72;
+          transform: scale(0.96);
+        }
+        50% {
+          opacity: 1;
+          transform: scale(1);
         }
       }
 
       @media (prefers-reduced-motion: reduce) {
-        .synergy-app-boot-progress::before {
-          width: 42%;
+        .synergy-app-boot-mark {
           animation: none;
-        }
-      }
-
-      @media (max-width: 720px) {
-        .synergy-app-boot-brand {
-          min-width: 72px;
-        }
-
-        .synergy-app-boot-brand span {
-          display: none;
-        }
-
-        .synergy-app-boot-sidebar,
-        .synergy-app-boot-topbar-tools {
-          display: none;
-        }
-
-        .synergy-app-boot-topbar {
-          padding: 0 20px;
-        }
-
-        .synergy-app-boot-canvas {
-          align-items: center;
-          padding: 40px 24px 56px;
-        }
-
-        .synergy-app-boot-stage {
-          transform: none;
-        }
-
-        .synergy-app-boot-title {
-          font-size: 28px;
-        }
-
-        .synergy-app-boot-composer {
-          padding: 15px 16px 13px;
         }
       }
     </style>
@@ -674,10 +261,6 @@
     <noscript>You need to enable JavaScript to run this app.</noscript>
     <div id="synergy-app-boot" aria-live="polite" aria-busy="true">
       <header class="synergy-app-boot-chrome synergy-app-boot-chrome--custom">
-        <div class="synergy-app-boot-brand">
-          <img class="synergy-app-boot-icon" data-synergy-app-boot-icon alt="" draggable="false" />
-          <span>Synergy</span>
-        </div>
         <div class="synergy-app-boot-drag"></div>
         <div class="synergy-app-boot-controls">
           <button
@@ -713,67 +296,17 @@
         <div class="synergy-app-boot-traffic-space"></div>
         <div class="synergy-app-boot-drag"></div>
       </header>
-      <main class="synergy-app-boot-shell">
-        <aside class="synergy-app-boot-sidebar" aria-hidden="true">
-          <div class="synergy-app-boot-org">
-            <span class="synergy-app-boot-org-mark"></span>
-            <span>HOLOS</span>
-          </div>
-          <div class="synergy-app-boot-rail">
-            <div class="synergy-app-boot-row">
-              <span class="synergy-app-boot-row-icon"></span>
-              <span class="synergy-app-boot-line synergy-app-boot-line--md"></span>
-            </div>
-            <div class="synergy-app-boot-row">
-              <span class="synergy-app-boot-row-icon"></span>
-              <span class="synergy-app-boot-line synergy-app-boot-line--lg"></span>
-            </div>
-            <div class="synergy-app-boot-row">
-              <span class="synergy-app-boot-row-icon"></span>
-              <span class="synergy-app-boot-line synergy-app-boot-line--md"></span>
-            </div>
-            <div class="synergy-app-boot-row">
-              <span class="synergy-app-boot-row-icon"></span>
-              <span class="synergy-app-boot-line synergy-app-boot-line--sm"></span>
-            </div>
-          </div>
-          <div class="synergy-app-boot-sidebar-spacer"></div>
-          <div class="synergy-app-boot-account">
-            <img class="synergy-app-boot-icon" data-synergy-app-boot-icon alt="" draggable="false" />
-            <span class="synergy-app-boot-line synergy-app-boot-line--lg"></span>
-          </div>
-        </aside>
-        <section class="synergy-app-boot-workbench">
-          <div class="synergy-app-boot-topbar" aria-hidden="true">
-            <span class="synergy-app-boot-topbar-title"></span>
-            <div class="synergy-app-boot-topbar-tools">
-              <span class="synergy-app-boot-tool"></span>
-              <span class="synergy-app-boot-tool"></span>
-            </div>
-          </div>
-          <div class="synergy-app-boot-canvas">
-            <section class="synergy-app-boot-stage">
-              <div class="synergy-app-boot-logo-row">
-                <img class="synergy-app-boot-icon" data-synergy-app-boot-icon alt="" draggable="false" />
-                <span class="synergy-app-boot-kicker">Synergy</span>
-              </div>
-              <h1 class="synergy-app-boot-title">Opening Synergy</h1>
-              <p class="synergy-app-boot-detail">Preparing your workbench.</p>
-              <div class="synergy-app-boot-composer">
-                <div class="synergy-app-boot-prompt-line"></div>
-                <div class="synergy-app-boot-composer-footer">
-                  <div class="synergy-app-boot-chip-row">
-                    <span class="synergy-app-boot-chip"></span>
-                    <span class="synergy-app-boot-chip synergy-app-boot-chip--short"></span>
-                  </div>
-                  <span class="synergy-app-boot-submit"></span>
-                </div>
-                <div class="synergy-app-boot-progress" role="progressbar" aria-label="Loading Synergy"></div>
-              </div>
-              <div class="synergy-app-boot-step">Loading app surface</div>
-            </section>
-          </div>
-        </section>
+      <main class="synergy-app-boot-stage">
+        <div class="synergy-app-boot-mark" aria-hidden="true">
+          <img
+            class="synergy-app-boot-icon"
+            data-synergy-app-boot-icon
+            src="/favicon-96x96.png"
+            alt=""
+            draggable="false"
+          />
+        </div>
+        <div class="synergy-app-boot-status">Opening Synergy</div>
       </main>
     </div>
     <div id="root" class="flex flex-col h-dvh"></div>

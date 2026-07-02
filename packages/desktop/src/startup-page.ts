@@ -9,20 +9,12 @@ export interface DesktopStartupStatus {
 }
 
 export function desktopStartupPage(options: DesktopStartupPageOptions): string {
-  const icon = (className: string) =>
-    options.iconUrl
-      ? `<img class="${className}" src="${escapeAttribute(options.iconUrl)}" alt="" draggable="false">`
-      : `<span class="${className} startup-shell__icon--fallback"></span>`
-  const windowIcon = options.iconUrl
-    ? `<img class="startup-shell__icon" src="${escapeAttribute(options.iconUrl)}" alt="" draggable="false">`
-    : ""
+  const icon = options.iconUrl
+    ? `<img class="startup-mark__icon" src="${escapeAttribute(options.iconUrl)}" alt="" draggable="false">`
+    : `<span class="startup-mark__fallback" aria-hidden="true">S</span>`
   const customChrome =
     options.chrome === "custom"
       ? `<header class="startup-chrome">
-  <div class="startup-chrome__brand">
-    ${windowIcon}
-    <span>Synergy</span>
-  </div>
   <div class="startup-chrome__drag"></div>
   <div class="startup-chrome__controls">
     <button type="button" class="startup-chrome__control" data-window-action="minimize" aria-label="Minimize" title="Minimize">
@@ -51,20 +43,6 @@ export function desktopStartupPage(options: DesktopStartupPageOptions): string {
   <style>
     :root {
       color-scheme: dark;
-      --startup-background: #111214;
-      --startup-sidebar: #101112;
-      --startup-workbench: #111214;
-      --startup-content: #24262a;
-      --startup-border: #25272b;
-      --startup-text: #f5f6f7;
-      --startup-muted: #b8bdc7;
-      --startup-faint: #8a8f99;
-      --startup-fill: #303238;
-      --startup-line: #24262a;
-      --startup-line-strong: #4b4f59;
-      --startup-progress: #d7dbe3;
-      --startup-shadow: rgba(0, 0, 0, 0.28);
-      --startup-danger: oklch(0.58 0.22 28);
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     }
 
@@ -76,8 +54,8 @@ export function desktopStartupPage(options: DesktopStartupPageOptions): string {
       margin: 0;
       min-height: 100vh;
       overflow: hidden;
-      background: var(--startup-background);
-      color: var(--startup-text);
+      background: #111214;
+      color: #f5f6f7;
     }
 
     button {
@@ -85,47 +63,29 @@ export function desktopStartupPage(options: DesktopStartupPageOptions): string {
     }
 
     .startup-page {
-      display: flex;
-      flex-direction: column;
+      position: relative;
+      display: grid;
       min-height: 100vh;
-      background: var(--startup-background);
+      place-items: center;
+      background: #111214;
     }
 
     .startup-chrome {
+      position: fixed;
+      top: 0;
+      right: 0;
+      left: 0;
+      z-index: 2;
       display: flex;
-      align-items: center;
-      flex: 0 0 36px;
+      align-items: stretch;
       height: 36px;
-      min-height: 36px;
-      color: var(--startup-text);
-      background: var(--startup-background);
-      border-bottom: 1px solid var(--startup-border);
       user-select: none;
       -webkit-app-region: drag;
     }
 
-    .startup-chrome__brand {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      min-width: 168px;
-      height: 100%;
-      padding: 0 12px;
-      font-size: 12px;
-      font-weight: 500;
-      -webkit-app-region: no-drag;
-    }
-
-    .startup-shell__icon {
-      width: 20px;
-      height: 20px;
-      flex: 0 0 auto;
-      border-radius: 5px;
-    }
-
     .startup-chrome__drag {
       flex: 1;
-      align-self: stretch;
+      min-width: 0;
     }
 
     .startup-chrome__controls {
@@ -143,7 +103,7 @@ export function desktopStartupPage(options: DesktopStartupPageOptions): string {
       width: 46px;
       height: 100%;
       padding: 0;
-      color: var(--startup-faint);
+      color: #b8bdc7;
       background: transparent;
       border: 0;
       border-radius: 0;
@@ -154,19 +114,19 @@ export function desktopStartupPage(options: DesktopStartupPageOptions): string {
 
     .startup-chrome__control:hover,
     .startup-chrome__control:focus-visible {
-      color: var(--startup-text);
-      background: var(--startup-fill);
+      color: #f5f6f7;
+      background: #24262a;
       outline: none;
     }
 
     .startup-chrome__control:focus-visible {
-      box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--startup-text) 18%, transparent);
+      box-shadow: inset 0 0 0 2px rgba(245, 246, 247, 0.18);
     }
 
     .startup-chrome__control--close:hover,
     .startup-chrome__control--close:focus-visible {
-      color: white;
-      background: var(--startup-danger);
+      color: #ffffff;
+      background: #c7392f;
     }
 
     .startup-chrome__glyph {
@@ -213,12 +173,13 @@ export function desktopStartupPage(options: DesktopStartupPageOptions): string {
     }
 
     .startup-native-titlebar {
-      position: relative;
-      z-index: 1;
+      position: fixed;
+      top: 0;
+      right: 0;
+      left: 0;
+      z-index: 2;
       display: flex;
-      flex: 0 0 18px;
-      height: 18px;
-      min-height: 18px;
+      height: 28px;
       user-select: none;
       -webkit-app-region: drag;
     }
@@ -230,322 +191,65 @@ export function desktopStartupPage(options: DesktopStartupPageOptions): string {
 
     .startup-native-titlebar__drag {
       flex: 1;
-      align-self: stretch;
       min-width: 0;
     }
 
-    .startup-shell {
-      display: flex;
-      flex: 1;
-      min-height: 0;
-      overflow: hidden;
-      background: var(--startup-workbench);
-    }
-
-    .startup-sidebar {
-      display: flex;
-      flex: 0 0 240px;
-      flex-direction: column;
-      min-width: 0;
-      padding: 18px 16px 16px;
-      background: var(--startup-sidebar);
-      border-right: 1px solid var(--startup-border);
-    }
-
-    .startup-org {
-      display: flex;
-      align-items: center;
-      gap: 9px;
-      margin-bottom: 28px;
-      color: var(--startup-text);
-      font-size: 14px;
-      font-weight: 600;
-      letter-spacing: 0;
-    }
-
-    .startup-org__mark {
-      width: 28px;
-      height: 28px;
-      border-radius: 999px;
-      background: var(--startup-text);
-    }
-
-    .startup-rail {
+    .startup-center {
       display: grid;
-      gap: 10px;
+      place-items: center;
     }
 
-    .startup-row {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      height: 28px;
-    }
-
-    .startup-row__icon {
-      width: 14px;
-      height: 14px;
-      border: 1px solid var(--startup-faint);
-      border-radius: 4px;
-    }
-
-    .startup-line {
-      display: block;
-      height: 8px;
-      background: var(--startup-line);
-      border-radius: 999px;
-    }
-
-    .startup-line--xl {
-      width: 132px;
-    }
-
-    .startup-line--lg {
-      width: 104px;
-    }
-
-    .startup-line--md {
-      width: 76px;
-    }
-
-    .startup-line--sm {
-      width: 48px;
-    }
-
-    .startup-sidebar__spacer {
-      flex: 1;
-      min-height: 24px;
-    }
-
-    .startup-account {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-    }
-
-    .startup-shell__icon--account {
-      width: 22px;
-      height: 22px;
-    }
-
-    .startup-shell__icon--fallback {
-      display: inline-block;
-      background: var(--startup-line-strong);
-    }
-
-    .startup-workbench {
-      display: flex;
-      flex: 1;
-      flex-direction: column;
-      min-width: 0;
-      background: var(--startup-workbench);
-    }
-
-    .startup-topbar {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      flex: 0 0 52px;
-      min-height: 52px;
-      padding: 0 28px;
-      border-bottom: 1px solid color-mix(in srgb, var(--startup-border) 70%, transparent);
-    }
-
-    .startup-topbar__title {
-      width: 142px;
-      height: 10px;
-      background: var(--startup-line);
-      border-radius: 999px;
-    }
-
-    .startup-topbar__tools {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-    }
-
-    .startup-tool {
-      width: 18px;
-      height: 18px;
-      border: 1px solid var(--startup-line-strong);
-      border-radius: 5px;
-    }
-
-    .startup-canvas {
-      display: flex;
-      flex: 1;
-      align-items: center;
-      justify-content: center;
-      min-height: 0;
-      padding: 64px 8vw;
-    }
-
-    .startup-stage {
-      transform: translateY(clamp(24px, 5vh, 64px));
-      width: min(54rem, 100%);
-    }
-
-    .startup-logo-row {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      margin-bottom: 14px;
-    }
-
-    .startup-shell__icon--stage {
-      width: 26px;
-      height: 26px;
-    }
-
-    .startup-kicker {
-      color: var(--startup-muted);
-      font-size: 13px;
-      font-weight: 600;
-      letter-spacing: 0;
-    }
-
-    h1 {
-      max-width: 560px;
-      margin: 0;
-      color: var(--startup-text);
-      font-size: 32px;
-      font-weight: 650;
-      letter-spacing: 0;
-      line-height: 1.12;
-    }
-
-    p {
-      max-width: 520px;
-      margin: 12px 0 0;
-      color: var(--startup-muted);
-      font-size: 14px;
-      line-height: 1.5;
-    }
-
-    .startup-composer {
-      margin-top: 28px;
-      padding: 16px 18px 14px;
-      background: var(--startup-content);
-      border: 1px solid color-mix(in srgb, var(--startup-line-strong) 70%, transparent);
-      border-radius: 8px;
-      box-shadow: 0 20px 56px var(--startup-shadow);
-    }
-
-    .startup-prompt-line {
-      width: min(360px, 80%);
-      height: 12px;
-      background: var(--startup-line-strong);
-      border-radius: 999px;
-    }
-
-    .startup-composer__footer {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 16px;
-      margin-top: 22px;
-    }
-
-    .startup-chip-row {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      min-width: 0;
-    }
-
-    .startup-chip {
-      width: 62px;
-      height: 18px;
-      background: var(--startup-fill);
-      border-radius: 999px;
-    }
-
-    .startup-chip--short {
-      width: 42px;
-    }
-
-    .startup-submit {
-      width: 30px;
-      height: 30px;
-      background: var(--startup-faint);
-      border-radius: 999px;
-    }
-
-    .startup-progress {
+    .startup-mark {
       position: relative;
-      height: 2px;
-      margin-top: 18px;
-      overflow: hidden;
-      background: var(--startup-fill);
+      display: grid;
+      width: 64px;
+      height: 64px;
+      place-items: center;
+      animation: startup-breathe 1600ms cubic-bezier(0.4, 0, 0.2, 1) infinite;
     }
 
-    .startup-progress::before {
+    .startup-mark__icon,
+    .startup-mark__fallback {
+      position: relative;
+      width: 40px;
+      height: 40px;
+      border-radius: 9px;
+    }
+
+    .startup-mark__fallback {
+      display: grid;
+      place-items: center;
+      color: #111214;
+      background: #f5f6f7;
+      font-size: 20px;
+      font-weight: 650;
+    }
+
+    .startup-status {
       position: absolute;
-      top: 0;
-      bottom: 0;
-      left: 0;
-      width: 38%;
-      background: var(--startup-progress);
-      content: "";
-      animation: startup-progress 1200ms cubic-bezier(0.65, 0, 0.35, 1) infinite;
+      width: 1px;
+      height: 1px;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0 0 0 0);
+      white-space: nowrap;
     }
 
-    .startup-step {
-      margin-top: 12px;
-      color: var(--startup-faint);
-      font-size: 12px;
-      line-height: 1.45;
-    }
-
-    @keyframes startup-progress {
-      0% {
-        transform: translateX(-100%);
-      }
+    @keyframes startup-breathe {
+      0%,
       100% {
-        transform: translateX(280%);
+        opacity: 0.72;
+        transform: scale(0.96);
+      }
+      50% {
+        opacity: 1;
+        transform: scale(1);
       }
     }
 
     @media (prefers-reduced-motion: reduce) {
-      .startup-progress::before {
-        width: 42%;
+      .startup-mark {
         animation: none;
-      }
-    }
-
-    @media (max-width: 720px) {
-      .startup-chrome__brand {
-        min-width: 72px;
-      }
-
-      .startup-chrome__brand span {
-        display: none;
-      }
-
-      .startup-sidebar,
-      .startup-topbar__tools {
-        display: none;
-      }
-
-      .startup-topbar {
-        padding: 0 20px;
-      }
-
-      .startup-canvas {
-        align-items: center;
-        padding: 40px 24px 56px;
-      }
-
-      .startup-stage {
-        transform: none;
-      }
-
-      h1 {
-        font-size: 28px;
-      }
-
-      .startup-composer {
-        padding: 15px 16px 13px;
       }
     }
   </style>
@@ -553,81 +257,20 @@ export function desktopStartupPage(options: DesktopStartupPageOptions): string {
 <body>
   <div class="startup-page">
     ${customChrome}
-    <main class="startup-shell">
-      <aside class="startup-sidebar" aria-hidden="true">
-        <div class="startup-org">
-          <span class="startup-org__mark"></span>
-          <span>HOLOS</span>
-        </div>
-        <div class="startup-rail">
-          <div class="startup-row">
-            <span class="startup-row__icon"></span>
-            <span class="startup-line startup-line--md"></span>
-          </div>
-          <div class="startup-row">
-            <span class="startup-row__icon"></span>
-            <span class="startup-line startup-line--lg"></span>
-          </div>
-          <div class="startup-row">
-            <span class="startup-row__icon"></span>
-            <span class="startup-line startup-line--md"></span>
-          </div>
-          <div class="startup-row">
-            <span class="startup-row__icon"></span>
-            <span class="startup-line startup-line--sm"></span>
-          </div>
-        </div>
-        <div class="startup-sidebar__spacer"></div>
-        <div class="startup-account">
-          ${icon("startup-shell__icon startup-shell__icon--account")}
-          <span class="startup-line startup-line--lg"></span>
-        </div>
-      </aside>
-      <section class="startup-workbench">
-        <div class="startup-topbar" aria-hidden="true">
-          <span class="startup-topbar__title"></span>
-          <div class="startup-topbar__tools">
-            <span class="startup-tool"></span>
-            <span class="startup-tool"></span>
-          </div>
-        </div>
-        <div class="startup-canvas">
-          <section class="startup-stage" aria-live="polite" aria-busy="true">
-            <div class="startup-logo-row">
-              ${icon("startup-shell__icon startup-shell__icon--stage")}
-              <span class="startup-kicker">Synergy</span>
-            </div>
-            <h1 data-startup-title>Opening Synergy</h1>
-            <p data-startup-detail>Preparing the desktop shell.</p>
-            <div class="startup-composer">
-              <div class="startup-prompt-line"></div>
-              <div class="startup-composer__footer">
-                <div class="startup-chip-row">
-                  <span class="startup-chip"></span>
-                  <span class="startup-chip startup-chip--short"></span>
-                </div>
-                <span class="startup-submit"></span>
-              </div>
-              <div class="startup-progress" role="progressbar" aria-label="Starting Synergy"></div>
-            </div>
-            <div class="startup-step" data-startup-step>Starting</div>
-          </section>
-        </div>
-      </section>
+    <main class="startup-center" aria-live="polite" aria-busy="true">
+      <div class="startup-mark" aria-hidden="true">${icon}</div>
+      <div class="startup-status" data-startup-status>Opening Synergy</div>
     </main>
   </div>
   <script>
     const desktopWindow = window.synergyDesktop?.window
-    const title = document.querySelector("[data-startup-title]")
-    const detail = document.querySelector("[data-startup-detail]")
-    const step = document.querySelector("[data-startup-step]")
+    const status = document.querySelector("[data-startup-status]")
     const maximize = document.querySelector('[data-window-action="maximize"]')
 
     function setStatus(next) {
       if (!next) return
-      if (typeof next.title === "string") title.textContent = next.title
-      if (typeof next.detail === "string") detail.textContent = next.detail
-      if (typeof next.title === "string") step.textContent = next.title
+      if (typeof next.title === "string") status.textContent = next.title
+      if (typeof next.detail === "string") status.setAttribute("data-detail", next.detail)
     }
 
     window.synergySetStartupStatus = setStatus
@@ -653,14 +296,6 @@ export function desktopStartupPage(options: DesktopStartupPageOptions): string {
     desktopWindow?.onEvent?.((event) => {
       if (event?.type === "state") updateMaximizeLabel(event.state)
     })
-
-    window.setTimeout(() => {
-      if (detail.textContent !== "Preparing the desktop shell.") return
-      setStatus({
-        title: "Starting local runtime",
-        detail: "Synergy is opening the local server and workspace."
-      })
-    }, 3000)
   </script>
 </body>
 </html>`

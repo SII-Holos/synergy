@@ -29,11 +29,9 @@ describe("app boot shell", () => {
   test("uses literal fallback surfaces before app CSS loads", () => {
     const style = blockBetween(html, '<style id="synergy-app-boot-style">', "</style>")
 
-    expect(style).toContain("#f7f7f5")
-    expect(style).toContain("#101112")
+    expect(style).toContain("#111214")
     expect(style).toContain("#24262a")
     expect(style).toContain("#synergy-app-boot")
-    expect(style).toContain('html[data-synergy-color-scheme="dark"] #synergy-app-boot')
     expect(style).not.toContain("--background-base")
     expect(style).not.toContain("var(")
   })
@@ -41,9 +39,23 @@ describe("app boot shell", () => {
   test("hydrates the static boot theme from the saved app color scheme", () => {
     expect(html).toContain('localStorage.getItem("synergy-color-scheme")')
     expect(html).toContain('document.documentElement.setAttribute("data-synergy-color-scheme", mode)')
-    expect(html).toContain('html[data-synergy-color-scheme="dark"]')
-    expect(html).toContain("html:not([data-synergy-color-scheme])")
+    expect(html).toContain('var isDark = scheme === "dark" || (scheme === "system" && systemDark)')
     expect(html).toContain('var fallbackScheme = desktopWindow ? "dark" : "system"')
+  })
+
+  test("renders a minimal animated icon splash instead of an app skeleton", () => {
+    const style = blockBetween(html, '<style id="synergy-app-boot-style">', "</style>")
+
+    expect(html).toContain('class="synergy-app-boot-mark"')
+    expect(html).toContain("data-synergy-app-boot-icon")
+    expect(style).toContain("place-items: center;")
+    expect(style).toContain("animation: synergy-app-boot-breathe")
+    expect(style).toContain("@media (prefers-reduced-motion: reduce)")
+    expect(style).not.toContain("synergy-app-boot-orbit")
+    expect(html).not.toContain("synergy-app-boot-sidebar")
+    expect(html).not.toContain("synergy-app-boot-workbench")
+    expect(html).not.toContain("synergy-app-boot-composer")
+    expect(html).not.toContain("Loading app surface")
   })
 
   test("gates temporary desktop chrome on the desktop bridge", () => {
@@ -53,14 +65,6 @@ describe("app boot shell", () => {
     expect(html).toContain('data-synergy-app-boot-window-action="minimize"')
     expect(html).toContain('data-synergy-app-boot-window-action="maximize"')
     expect(html).toContain('data-synergy-app-boot-window-action="close"')
-  })
-
-  test("aligns the boot prompt with the new-session prompt dock measure", () => {
-    const style = blockBetween(html, '<style id="synergy-app-boot-style">', "</style>")
-
-    expect(style).toContain("justify-content: center;")
-    expect(style).toContain("transform: translateY(clamp(24px, 5vh, 64px));")
-    expect(style).toContain("width: min(54rem, 100%);")
   })
 
   test("initializes the app theme from the saved color scheme before mount", () => {

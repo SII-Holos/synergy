@@ -17,31 +17,35 @@ describe("desktop startup page", () => {
 
     expect(html).toContain("<title>Starting Synergy</title>")
     expect(html).toContain('class="startup-chrome"')
-    expect(html).toContain('class="startup-shell"')
-    expect(html).toContain('class="startup-sidebar"')
+    expect(html).toContain('class="startup-center"')
+    expect(html).toContain('class="startup-mark"')
     expect(html).toContain('data-window-action="minimize"')
     expect(html).toContain('data-window-action="maximize"')
     expect(html).toContain('data-window-action="close"')
     expect(html).toContain("Opening Synergy")
-    expect(html).toContain("Preparing the desktop shell.")
     expect(html).toContain("file:///app/icon.png")
+    expect(html).not.toContain('class="startup-sidebar"')
+    expect(html).not.toContain('class="startup-composer"')
+    expect(html).not.toContain('class="startup-topbar"')
   })
 
   test("uses the dark startup base before the saved Web theme is available", () => {
     const html = decodeDesktopHtml(desktopStartupPage({ chrome: "custom" }))
 
     expect(html).toContain("color-scheme: dark;")
-    expect(html).toContain("--startup-background: #111214;")
+    expect(html).toContain("background: #111214;")
     expect(mainSource).toContain('backgroundColor: "#111214"')
     expect(html).not.toContain("prefers-color-scheme: light")
   })
 
-  test("centers the startup prompt on the same workbench measure as the app", () => {
+  test("centers an animated icon splash instead of mirroring app layout", () => {
     const html = decodeDesktopHtml(desktopStartupPage({ chrome: "custom" }))
 
-    expect(html).toContain("justify-content: center;")
-    expect(html).toContain("transform: translateY(clamp(24px, 5vh, 64px));")
-    expect(html).toContain("width: min(54rem, 100%);")
+    expect(html).toContain("place-items: center;")
+    expect(html).toContain("animation: startup-breathe")
+    expect(html).toContain("@media (prefers-reduced-motion: reduce)")
+    expect(html).not.toContain("startup-orbit")
+    expect(html).not.toContain("startup-prompt-line")
   })
 
   test("renders the native titlebar spacer for macOS windows", () => {
