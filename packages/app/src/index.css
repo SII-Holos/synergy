@@ -11,6 +11,14 @@ a:active,
   transition-duration: 80ms;
 }
 
+.app-shell--desktop-native-chrome {
+  --desktop-native-titlebar-height: 44px;
+}
+
+.app-shell--desktop-native-chrome .session-workbench-pane {
+  padding-top: 0;
+}
+
 [data-slot="dialog-container"]:has(.dialog-session-export) {
   width: min(calc(100vw - 16px), 520px);
 }

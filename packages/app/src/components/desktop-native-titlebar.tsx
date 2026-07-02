@@ -20,22 +20,22 @@ export function DesktopNativeTitlebar(props: { onSearchOpen: () => void }) {
           <Tooltip value={expanded() ? "Collapse sidebar" : "Expand sidebar"} placement="bottom">
             <button
               type="button"
-              class="desktop-native-titlebar__button"
+              class="desktop-native-titlebar__button desktop-native-titlebar__button--sidebar"
               aria-label={expanded() ? "Collapse sidebar" : "Expand sidebar"}
               aria-pressed={expanded()}
               onClick={() => layout.sidebar.toggle()}
             >
-              <Icon name={getSemanticIcon("app.sidebar")} size="small" />
+              <Icon name={getSemanticIcon("app.sidebar")} size="normal" />
             </button>
           </Tooltip>
           <Tooltip value="Search sessions" placement="bottom">
             <button
               type="button"
-              class="desktop-native-titlebar__button"
+              class="desktop-native-titlebar__button desktop-native-titlebar__button--search"
               aria-label="Search sessions"
               onClick={props.onSearchOpen}
             >
-              <Icon name={getSemanticIcon("action.search")} size="small" />
+              <Icon name={getSemanticIcon("action.search")} size="normal" />
             </button>
           </Tooltip>
         </div>

@@ -14,6 +14,22 @@
   pointer-events: none;
 }
 
+.app-shell--desktop-native-chrome .stb-root {
+  height: var(--desktop-native-titlebar-height, 44px);
+  padding: 0 18px;
+  -webkit-app-region: drag;
+  pointer-events: auto;
+}
+
+.app-shell--desktop-native-chrome.app-shell--sidebar-collapsed .stb-root {
+  padding-left: 146px;
+}
+
+.app-shell--desktop-native-chrome .stb-left,
+.app-shell--desktop-native-chrome .stb-right {
+  -webkit-app-region: no-drag;
+}
+
 .stb-folder {
   flex-shrink: 0;
   color: var(--icon-base);

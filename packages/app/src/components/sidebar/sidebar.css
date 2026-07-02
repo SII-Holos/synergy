@@ -140,6 +140,10 @@
   flex-shrink: 0;
 }
 
+.app-shell--desktop-native-chrome .sb-actions {
+  padding-top: 48px;
+}
+
 .sb-action-btn {
   display: flex;
   align-items: center;
@@ -1367,6 +1371,10 @@
 .sb-collapsed .sb-globals {
   padding: 4px 8px;
   gap: 4px;
+}
+
+.app-shell--desktop-native-chrome .sb-collapsed .sb-globals {
+  padding-top: 48px;
 }
 
 .sb-collapsed .sb-global-btn {
