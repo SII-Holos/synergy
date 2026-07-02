@@ -495,12 +495,6 @@ export function SettingsPanel(props: SettingsPanelProps) {
             onLibraryChange={(key, value) => setSettings("library", key, value)}
           />
         )
-      case "agents":
-        return referencePanel("Agents", "Default agent and configured agent definitions.", ["agents"])
-      case "commands":
-        return referencePanel("Commands", "Configured slash and prompt commands.", ["commands"])
-      case "instructions":
-        return referencePanel("Instructions", "Instruction files and prompt additions.", ["agents"])
       case "mcp":
         return (
           <McpPanel

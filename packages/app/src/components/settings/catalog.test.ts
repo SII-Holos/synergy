@@ -15,8 +15,6 @@ const canonicalDomains = [
   "providers",
   "library",
   "mcp",
-  "agents",
-  "commands",
   "permissions",
   "channels",
   "holos",
@@ -27,16 +25,7 @@ const canonicalDomains = [
 describe("settings catalog", () => {
   test("defines the built-in sections in the requested order", () => {
     expect(BUILTIN_SETTINGS_SECTIONS.map((section) => section.id)).toEqual([...BUILTIN_SETTINGS_IDS])
-    expect(SETTINGS_GROUP_ORDER).toEqual([
-      "Personal",
-      "Core",
-      "Library",
-      "Agents",
-      "Integrations",
-      "Safety",
-      "Runtime",
-      "System",
-    ])
+    expect(SETTINGS_GROUP_ORDER).toEqual(["Personal", "Core", "Library", "Integrations", "Safety", "Runtime", "System"])
   })
 
   test("visible built-in labels do not use ampersand pairing", () => {
@@ -51,6 +40,14 @@ describe("settings catalog", () => {
     for (const domain of canonicalDomains) {
       expect(discovered.has(domain)).toBe(true)
     }
+  })
+
+  test("agent and command config domains are intentionally not first-class settings pages", () => {
+    expect(BUILTIN_SETTINGS_IDS).not.toContain("agents")
+    expect(BUILTIN_SETTINGS_IDS).not.toContain("commands")
+    expect(BUILTIN_SETTINGS_IDS).not.toContain("instructions")
+    expect(BUILTIN_SETTINGS_SECTIONS.some((section) => section.domainIds.includes("agents"))).toBe(false)
+    expect(BUILTIN_SETTINGS_SECTIONS.some((section) => section.domainIds.includes("commands"))).toBe(false)
   })
 
   test("search metadata covers keywords and row labels", () => {
