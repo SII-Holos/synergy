@@ -16,6 +16,10 @@ export function desktopWindowTitle(channel: DesktopChannel): string {
   return channel === "dev" ? `${DESKTOP_PRODUCT_NAME} Dev` : DESKTOP_PRODUCT_NAME
 }
 
+export function desktopAppUserModelId(channel: DesktopChannel): string {
+  return channel === "dev" ? `${DESKTOP_APP_ID}.dev` : DESKTOP_APP_ID
+}
+
 export function desktopServerMode(channel: DesktopChannel): DesktopServerMode {
   const mode = process.env.SYNERGY_DESKTOP_SERVER_MODE
   if (mode === "managed" || mode === "external") return mode

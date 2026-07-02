@@ -1,12 +1,23 @@
-import { app, BrowserWindow, clipboard, ipcMain, shell, type BrowserWindowConstructorOptions } from "electron"
+import {
+  app,
+  BrowserWindow,
+  clipboard,
+  ipcMain,
+  Menu,
+  nativeImage,
+  shell,
+  Tray,
+  type BrowserWindowConstructorOptions,
+} from "electron"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
 import { BrowserNativeViewManager } from "./browser-native-view.js"
 import { BrowserWebRTCHost } from "./browser-webrtc-host.js"
 import { desktopErrorPage } from "./error-page.js"
 import {
-  DESKTOP_APP_ID,
   DESKTOP_PROTOCOL,
+  type DesktopChannel,
+  desktopAppUserModelId,
   desktopChannel,
   desktopServerMode,
   desktopWindowTitle,
@@ -24,7 +35,14 @@ import { DesktopServerManager } from "./server-manager.js"
 import { enforceProductionLoading, installSessionSecurity, installWindowSecurity } from "./security.js"
 import { DesktopUpdateMode, DesktopUpdater } from "./updater.js"
 import { loadWindowState, scheduleWindowStatePersistence } from "./window-state.js"
-import { desktopDevDockIconPath, desktopWindowChromeOptions, desktopWindowState } from "./window-chrome.js"
+import {
+  desktopDevDockIconPath,
+  desktopIconPath,
+  desktopShouldHideToTray,
+  desktopUsesSystemTray,
+  desktopWindowChromeOptions,
+  desktopWindowState,
+} from "./window-chrome.js"
 
 const dirname = path.dirname(fileURLToPath(import.meta.url))
 const isBrowserHostMode = process.env.SYNERGY_DESKTOP_MODE === "browser-host"
@@ -34,17 +52,19 @@ let nativeViews: BrowserNativeViewManager | null = null
 let browserHost: BrowserWebRTCHost | null = null
 let serverManager: DesktopServerManager | null = null
 let updater: DesktopUpdater | null = null
+let desktopTray: Tray | null = null
 let currentAppURL: string | null = null
 let shouldStart = true
 let isQuitting = false
 let isUpdateQuit = false
+let pendingCreateWindow: Promise<void> | null = null
 
 const updateQuitApp = app as typeof app & {
   on(event: "before-quit-for-update", listener: () => void): typeof app
 }
 
 try {
-  app.setAppUserModelId(DESKTOP_APP_ID)
+  app.setAppUserModelId(desktopAppUserModelId(desktopChannel(app.isPackaged)))
 } catch {
   // AppUserModelId is only meaningful on Windows.
 }
@@ -96,6 +116,7 @@ async function createWindow() {
       platform: process.platform,
       dirname,
       isPackaged: app.isPackaged,
+      resourcesPath: process.resourcesPath,
     }),
     webPreferences: {
       preload: path.join(dirname, "preload.cjs"),
@@ -119,6 +140,7 @@ async function createWindow() {
   scheduleWindowStatePersistence(mainWindow, app.getPath("userData"))
   installWindowInputShortcuts(mainWindow, isDebugEnabled(channel))
   installDesktopWindowStateEvents(mainWindow)
+  installWindowCloseBehavior(mainWindow)
 
   if (windowState.maximized) mainWindow.maximize()
   if (process.env.SYNERGY_DESKTOP_SHOW !== "0") {
@@ -133,6 +155,14 @@ async function createWindow() {
 
   await mainWindow.loadURL(targetURL)
   runtimeLog("windowLoaded", { url: mainWindow.webContents.getURL() })
+}
+
+async function ensureMainWindow() {
+  if (mainWindow) return
+  pendingCreateWindow ??= createWindow().finally(() => {
+    pendingCreateWindow = null
+  })
+  await pendingCreateWindow
 }
 
 async function resolveAppURL(): Promise<string> {
@@ -263,6 +293,64 @@ function focusMainWindow() {
   mainWindow.focus()
 }
 
+function showMainWindow() {
+  void (async () => {
+    await ensureMainWindow()
+    focusMainWindow()
+  })().catch((error) => {
+    console.error(error)
+  })
+}
+
+function installDesktopTray(channel: DesktopChannel): void {
+  if (!desktopUsesSystemTray(process.platform)) return
+  if (desktopTray) return
+
+  const iconPath = desktopIconPath({
+    platform: process.platform,
+    dirname,
+    isPackaged: app.isPackaged,
+    resourcesPath: process.resourcesPath,
+  })
+  if (!iconPath) return
+
+  const icon = nativeImage.createFromPath(iconPath)
+  if (icon.isEmpty()) {
+    runtimeLog("trayIconUnavailable", { iconPath })
+    return
+  }
+
+  desktopTray = new Tray(icon)
+  desktopTray.setToolTip(desktopWindowTitle(channel))
+  desktopTray.setContextMenu(
+    Menu.buildFromTemplate([
+      { label: "Open Synergy", click: showMainWindow },
+      { type: "separator" },
+      { label: "Quit Synergy", click: () => app.quit() },
+    ]),
+  )
+  desktopTray.on("click", showMainWindow)
+  desktopTray.on("double-click", showMainWindow)
+}
+
+function installWindowCloseBehavior(window: BrowserWindow): void {
+  window.on("close", (event) => {
+    if (
+      !desktopShouldHideToTray({
+        platform: process.platform,
+        trayAvailable: desktopTray !== null,
+        isQuitting,
+        isUpdateQuit,
+      })
+    ) {
+      return
+    }
+
+    event.preventDefault()
+    window.hide()
+  })
+}
+
 function installWindowInputShortcuts(window: BrowserWindow, debug: boolean): void {
   if (!debug) return
   window.webContents.on("before-input-event", (event, input) => {
@@ -326,6 +414,7 @@ app.on("open-url", (event, url) => {
 })
 
 app.on("window-all-closed", () => {
+  if (desktopUsesSystemTray(process.platform) && desktopTray) return
   if (process.platform !== "darwin") app.quit()
 })
 
@@ -364,6 +453,7 @@ async function start() {
     platform: process.platform,
     dirname,
     isPackaged: app.isPackaged,
+    resourcesPath: process.resourcesPath,
   })
   if (dockIconPath) app.dock?.setIcon(dockIconPath)
 
@@ -374,9 +464,10 @@ async function start() {
     debug: isDebugEnabled(channel),
     getMainWindow: () => mainWindow,
   })
+  installDesktopTray(channel)
   registerProtocolHandler()
   registerIpcHandlers()
-  await createWindow()
+  await ensureMainWindow()
 }
 
 void start().catch((error) => {

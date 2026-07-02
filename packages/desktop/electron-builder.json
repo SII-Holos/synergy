@@ -10,6 +10,16 @@
     "buildResources": "build",
     "output": "release"
   },
+  "extraResources": [
+    {
+      "from": "build/icon.ico",
+      "to": "icons/icon.ico"
+    },
+    {
+      "from": "build/icon.png",
+      "to": "icons/icon.png"
+    }
+  ],
   "files": ["dist/**", "package.json"],
   "protocols": [
     {

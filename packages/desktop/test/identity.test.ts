@@ -3,6 +3,7 @@ import {
   DESKTOP_APP_ID,
   DESKTOP_EXECUTABLE_NAME,
   DESKTOP_PROTOCOL,
+  desktopAppUserModelId,
   desktopChannel,
   desktopServerMode,
   desktopWindowTitle,
@@ -40,6 +41,11 @@ describe("desktop identity", () => {
   test("marks dev windows explicitly", () => {
     expect(desktopWindowTitle("dev")).toBe("Synergy Dev")
     expect(desktopWindowTitle("stable")).toBe("Synergy")
+  })
+
+  test("keeps Windows taskbar identity separate for development", () => {
+    expect(desktopAppUserModelId("stable")).toBe("io.holosai.synergy")
+    expect(desktopAppUserModelId("dev")).toBe("io.holosai.synergy.dev")
   })
 })
 

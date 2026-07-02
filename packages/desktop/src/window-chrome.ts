@@ -11,6 +11,14 @@ export interface DesktopWindowChromeOptions {
   platform: NodeJS.Platform
   dirname: string
   isPackaged: boolean
+  resourcesPath: string
+}
+
+export interface DesktopCloseBehaviorOptions {
+  platform: NodeJS.Platform
+  trayAvailable: boolean
+  isQuitting: boolean
+  isUpdateQuit: boolean
 }
 
 export function desktopWindowChromeOptions(
@@ -29,7 +37,7 @@ export function desktopWindowChromeOptions(
   return {
     autoHideMenuBar: true,
     frame: false,
-    icon: options.isPackaged ? undefined : desktopDevIconPath(options.platform, options.dirname),
+    icon: desktopIconPath(options),
   }
 }
 
@@ -37,6 +45,24 @@ export function desktopDevIconPath(platform: NodeJS.Platform, dirname: string): 
   if (platform === "win32") return path.win32.resolve(dirname, "..", "build", "icon.ico")
   if (platform === "linux") return path.posix.resolve(dirname, "..", "build", "icon.png")
   return undefined
+}
+
+export function desktopIconPath(options: DesktopWindowChromeOptions): string | undefined {
+  if (!options.isPackaged) return desktopDevIconPath(options.platform, options.dirname)
+  if (options.platform === "win32") return path.win32.resolve(options.resourcesPath, "icons", "icon.ico")
+  if (options.platform === "linux") return path.posix.resolve(options.resourcesPath, "icons", "icon.png")
+  return undefined
+}
+
+export function desktopUsesSystemTray(platform: NodeJS.Platform): boolean {
+  return platform === "win32" || platform === "linux"
+}
+
+export function desktopShouldHideToTray(options: DesktopCloseBehaviorOptions): boolean {
+  if (!desktopUsesSystemTray(options.platform)) return false
+  if (!options.trayAvailable) return false
+  if (options.isQuitting || options.isUpdateQuit) return false
+  return true
 }
 
 export function desktopDevDockIconPath(options: DesktopWindowChromeOptions): string | undefined {
