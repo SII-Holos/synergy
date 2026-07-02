@@ -16,6 +16,10 @@ const repoRoot = path.resolve(import.meta.dir, "../../../..")
 const repoNodeModules = path.join(repoRoot, "node_modules")
 const templates = ["tool-ui", "workbench-panel", "api-connector", "theme-icon"] as const
 
+async function linkDirectory(target: string, linkPath: string) {
+  await fs.symlink(target, linkPath, process.platform === "win32" ? "junction" : "dir")
+}
+
 async function runCommand(command: { handler: (args: any) => Promise<void> | void }, args: Record<string, unknown>) {
   process.exitCode = undefined
   await command.handler(args as any)
@@ -34,7 +38,7 @@ describe("plugin scaffold toolchain", () => {
         await runCommand(PluginCreateCommand, { name, template })
 
         const pluginDir = path.join(tmp.path, name)
-        await fs.symlink(repoNodeModules, path.join(pluginDir, "node_modules"), "dir")
+        await linkDirectory(repoNodeModules, path.join(pluginDir, "node_modules"))
 
         await runCommand(PluginValidateCommand, { path: pluginDir, "runtime-discovery": true })
         await runCommand(PluginBuildCommand, { path: pluginDir })
@@ -179,7 +183,7 @@ export default plugin
       new TextDecoder()
         .decode(list.stdout)
         .split("\n")
-        .map((line) => line.replace(/^\.\//, "").replace(/\/$/, ""))
+        .map((line) => line.trim().replace(/\\/g, "/").replace(/^\.\//, "").replace(/\/$/, ""))
         .filter(Boolean),
     )
     expect(files.has("skills/frontend/SKILL.md")).toBe(true)

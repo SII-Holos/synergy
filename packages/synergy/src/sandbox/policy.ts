@@ -9,13 +9,21 @@ import * as path from "path"
 
 export const DEFAULT_SYSTEM_RUNTIME_READ_ROOTS = ["/usr/lib", "/System/Library", "/bin", "/usr/bin"]
 
+export function pathFlavor(root: string): typeof path.posix | typeof path.win32 {
+  return /^[A-Za-z]:[\\/]/.test(root) || root.startsWith("\\\\") ? path.win32 : path.posix
+}
+
+export function joinPathLike(root: string, ...parts: string[]): string {
+  return pathFlavor(root).join(root, ...parts)
+}
+
 export const DEFAULT_USER_RUNTIME_READ_ROOTS = (homedir: string): string[] => [
-  path.join(homedir, ".gitconfig"),
-  path.join(homedir, ".config", "git"),
-  path.join(homedir, ".bun"),
-  path.join(homedir, ".synergy", "cache"),
-  path.join(homedir, "Library", "Caches", "bun"),
-  path.join(homedir, "Library", "Caches", "com.oven-sh.bun"),
+  joinPathLike(homedir, ".gitconfig"),
+  joinPathLike(homedir, ".config", "git"),
+  joinPathLike(homedir, ".bun"),
+  joinPathLike(homedir, ".synergy", "cache"),
+  joinPathLike(homedir, "Library", "Caches", "bun"),
+  joinPathLike(homedir, "Library", "Caches", "com.oven-sh.bun"),
 ]
 
 export function defaultRuntimeReadRoots(homedir: string): string[] {
@@ -27,14 +35,15 @@ export function uniqueRoots(roots: string[]): string[] {
 }
 
 export function ancestorLiterals(root: string): string[] {
-  const resolved = path.resolve(root)
+  const flavor = pathFlavor(root)
+  const resolved = flavor.resolve(root)
   const result: string[] = []
   let current = resolved
-  while (current && current !== path.dirname(current)) {
+  while (current && current !== flavor.dirname(current)) {
     result.push(current)
-    current = path.dirname(current)
+    current = flavor.dirname(current)
   }
-  result.push(current || path.parse(resolved).root)
+  result.push(current || flavor.parse(resolved).root)
   return result.reverse()
 }
 
@@ -53,33 +62,33 @@ export function traversalLiterals(roots: string[]): string[] {
 export const CREDENTIAL_PATHS = (homedir: string): string[] => [
   // ── Synergy internal ───────────────────────────────────────────
   // Protects against: CBSE config/prompt leak, credential exfiltration
-  path.join(homedir, ".synergy", "config"),
-  path.join(homedir, ".synergy", "data", "auth"),
-  path.join(homedir, ".synergy", "data", "library"),
-  path.join(homedir, ".synergy", "data", "notes"),
+  joinPathLike(homedir, ".synergy", "config"),
+  joinPathLike(homedir, ".synergy", "data", "auth"),
+  joinPathLike(homedir, ".synergy", "data", "library"),
+  joinPathLike(homedir, ".synergy", "data", "notes"),
   // ── Network & cloud credentials ─────────────────────────────────
   // Protects against: SSH key theft, cloud credential exfiltration, GPG key compromise
-  path.join(homedir, ".netrc"),
-  path.join(homedir, ".ssh"),
-  path.join(homedir, ".gnupg"),
-  path.join(homedir, ".aws"),
-  path.join(homedir, ".config", "gcloud"),
-  path.join(homedir, ".docker", "config.json"),
-  path.join(homedir, ".npmrc"),
+  joinPathLike(homedir, ".netrc"),
+  joinPathLike(homedir, ".ssh"),
+  joinPathLike(homedir, ".gnupg"),
+  joinPathLike(homedir, ".aws"),
+  joinPathLike(homedir, ".config", "gcloud"),
+  joinPathLike(homedir, ".docker", "config.json"),
+  joinPathLike(homedir, ".npmrc"),
   // ── Shell configs (prevent command injection) ────────────────────
   // Protects against: shell injection via sandboxed process rewriting shell rc files
-  path.join(homedir, ".bashrc"),
-  path.join(homedir, ".zshrc"),
-  path.join(homedir, ".profile"),
-  path.join(homedir, ".bash_profile"),
-  path.join(homedir, ".zprofile"),
+  joinPathLike(homedir, ".bashrc"),
+  joinPathLike(homedir, ".zshrc"),
+  joinPathLike(homedir, ".profile"),
+  joinPathLike(homedir, ".bash_profile"),
+  joinPathLike(homedir, ".zprofile"),
   // ── Other agent configs ─────────────────────────────────────────
   // Protects against: CBSE — cross-agent sandbox bypass via reading/writing
   // another agent's configuration, credentials, or prompt data
-  path.join(homedir, ".cursor"),
-  path.join(homedir, ".claude"),
-  path.join(homedir, ".codex"),
-  path.join(homedir, ".gemini"),
+  joinPathLike(homedir, ".cursor"),
+  joinPathLike(homedir, ".claude"),
+  joinPathLike(homedir, ".codex"),
+  joinPathLike(homedir, ".gemini"),
 ]
 export const PROTECTED_METADATA_PATH_NAMES = [".git", ".agents", ".codex", ".synergy"]
 
@@ -101,7 +110,7 @@ export function isMetadataWriteDenied(
     const normalizedRoot = normalizeSlashes(root)
     if (!normalizedTarget.startsWith(normalizedRoot + "/") && normalizedTarget !== normalizedRoot) continue
     for (const name of names) {
-      const protectedFullPath = path.join(root, name)
+      const protectedFullPath = joinPathLike(root, name)
       const normalizedProtected = normalizeSlashes(protectedFullPath)
       if (normalizedTarget === normalizedProtected || normalizedTarget.startsWith(normalizedProtected + "/")) {
         return { denied: true, path: targetPath, metadataName: name }
@@ -112,8 +121,8 @@ export function isMetadataWriteDenied(
 }
 
 export const DEFAULT_PROTECTED_PATHS = (homedir: string, workspace: string): string[] => [
-  path.join(workspace, ".git"),
-  path.join(workspace, ".synergy"),
+  joinPathLike(workspace, ".git"),
+  joinPathLike(workspace, ".synergy"),
   ...CREDENTIAL_PATHS(homedir),
 ]
 /**
@@ -128,10 +137,10 @@ export function protectedMetadataUnderWritableRoot(
   workspace: string,
 ): string[] {
   return protectedPaths.filter((pp) => {
-    const resolved = path.resolve(pp)
+    const resolved = normalizeSlashes(pp).replace(/\/+$/, "")
     return writableRoots.some((root) => {
-      const resolvedRoot = path.resolve(root)
-      return resolved.startsWith(resolvedRoot + path.sep) || resolved === resolvedRoot
+      const resolvedRoot = normalizeSlashes(root).replace(/\/+$/, "")
+      return resolved.startsWith(resolvedRoot + "/") || resolved === resolvedRoot
     })
   })
 }

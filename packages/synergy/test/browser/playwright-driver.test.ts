@@ -1,4 +1,4 @@
-import { describe, expect, test, afterEach, vi } from "bun:test"
+import { describe, expect, test } from "bun:test"
 import { existsSync, readFileSync } from "fs"
 import path from "path"
 
@@ -10,6 +10,40 @@ import { BrowserOwner } from "../../src/browser/owner.js"
 const SRC_BROWSER = path.join(import.meta.dirname ?? __dirname, "../../src/browser")
 const DRIVER_PATH = path.join(SRC_BROWSER, "driver.ts")
 const PLAYWRIGHT_DRIVER_PATH = path.join(SRC_BROWSER, "playwright-driver.ts")
+
+function createFakePage() {
+  return {
+    goto: async () => null,
+    close: async () => {},
+    screenshot: async () => new Uint8Array(),
+    mouse: {
+      click: async () => {},
+    },
+    keyboard: {
+      type: async () => {},
+    },
+  }
+}
+
+function createFakeBrowser() {
+  return {
+    newContext: async () => ({
+      newPage: async () => createFakePage(),
+      close: async () => {},
+      storageState: async () => {},
+    }),
+    close: async () => {},
+  }
+}
+
+function createTestDriver(mod: Record<string, unknown>) {
+  const Driver = mod.PlaywrightBrowserDriver as {
+    new (options?: { launchBrowser?: () => Promise<unknown> }): any
+  }
+  return new Driver({
+    launchBrowser: async () => createFakeBrowser(),
+  })
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 //  Part A — File existence (RED: files do not exist yet)
@@ -120,8 +154,7 @@ describe("PlaywrightBrowserDriver context isolation (RED)", () => {
     // Keys must differ when sessionIDs differ
     expect(BrowserOwner.key(ownerA)).not.toBe(BrowserOwner.key(ownerB))
 
-    const Driver = mod!.PlaywrightBrowserDriver as { new (): any }
-    const driver = new Driver()
+    const driver = createTestDriver(mod!)
     const ctxA = await driver.contextFor(ownerA)
     const ctxB = await driver.contextFor(ownerB)
 
@@ -145,8 +178,7 @@ describe("PlaywrightBrowserDriver context isolation (RED)", () => {
       sessionID: "ses-shared",
     }
 
-    const Driver = mod!.PlaywrightBrowserDriver as { new (): any }
-    const driver = new Driver()
+    const driver = createTestDriver(mod!)
     const ctx1 = await driver.contextFor(owner)
     const ctx2 = await driver.contextFor(owner)
 
@@ -208,8 +240,7 @@ describe("PlaywrightBrowserDriver page lifecycle (RED)", () => {
       sessionID: "ses-page-test",
     }
 
-    const Driver = mod!.PlaywrightBrowserDriver as { new (): any }
-    const driver = new Driver()
+    const driver = createTestDriver(mod!)
     const page = await driver.newPage(owner, "https://example.com")
 
     // Page must be a real object with Playwright Page methods
@@ -236,8 +267,7 @@ describe("PlaywrightBrowserDriver page lifecycle (RED)", () => {
       sessionID: "ses-blank",
     }
 
-    const Driver = mod!.PlaywrightBrowserDriver as { new (): any }
-    const driver = new Driver()
+    const driver = createTestDriver(mod!)
     const page = await driver.newPage(owner)
 
     // The page has an internal tracking ID stored by the driver
@@ -262,8 +292,7 @@ describe("PlaywrightBrowserDriver page lifecycle (RED)", () => {
       sessionID: "ses-get-404",
     }
 
-    const Driver = mod!.PlaywrightBrowserDriver as { new (): any }
-    const driver = new Driver()
+    const driver = createTestDriver(mod!)
     const found = driver.getPage(owner, "nonexistent-page-id")
     expect(found).toBeUndefined()
   })
@@ -280,8 +309,7 @@ describe("PlaywrightBrowserDriver page lifecycle (RED)", () => {
       sessionID: "ses-get",
     }
 
-    const Driver = mod!.PlaywrightBrowserDriver as { new (): any }
-    const driver = new Driver()
+    const driver = createTestDriver(mod!)
     const created = await driver.newPage(owner, "https://example.com")
     const pageID = (created as any)._synergyPageID as string
     const found = driver.getPage(owner, pageID)
@@ -302,8 +330,7 @@ describe("PlaywrightBrowserDriver page lifecycle (RED)", () => {
       sessionID: "ses-close",
     }
 
-    const Driver = mod!.PlaywrightBrowserDriver as { new (): any }
-    const driver = new Driver()
+    const driver = createTestDriver(mod!)
     const created = await driver.newPage(owner, "https://example.com")
     const pageID = (created as any)._synergyPageID as string
 
@@ -328,8 +355,7 @@ describe("PlaywrightBrowserDriver page lifecycle (RED)", () => {
       sessionID: "ses-close2",
     }
 
-    const Driver = mod!.PlaywrightBrowserDriver as { new (): any }
-    const driver = new Driver()
+    const driver = createTestDriver(mod!)
     // Should not throw
     await driver.closePage(owner, "nonexistent-page-id")
   })
@@ -352,8 +378,7 @@ describe("PlaywrightBrowserDriver owner listing (RED)", () => {
       sessionID: "ses-list",
     }
 
-    const Driver = mod!.PlaywrightBrowserDriver as { new (): any }
-    const driver = new Driver()
+    const driver = createTestDriver(mod!)
 
     // Initially empty
     const empty = driver.listOwners() as BrowserOwner.Info[]
@@ -377,8 +402,7 @@ describe("PlaywrightBrowserDriver owner listing (RED)", () => {
       sessionID: "ses-dup",
     }
 
-    const Driver = mod!.PlaywrightBrowserDriver as { new (): any }
-    const driver = new Driver()
+    const driver = createTestDriver(mod!)
     await driver.contextFor(owner)
     await driver.contextFor(owner) // second call reuses context
     await driver.newPage(owner, "https://a.com")
@@ -401,8 +425,7 @@ describe("PlaywrightBrowserDriver ensure/stop lifecycle (RED)", () => {
     expect(mod).not.toBeNull()
     expect(mod!.PlaywrightBrowserDriver).toBeDefined()
 
-    const Driver = mod!.PlaywrightBrowserDriver as { new (): any }
-    const driver = new Driver()
+    const driver = createTestDriver(mod!)
     const state = await driver.ensure()
 
     expect(state).toHaveProperty("running")
@@ -417,8 +440,7 @@ describe("PlaywrightBrowserDriver ensure/stop lifecycle (RED)", () => {
     expect(mod).not.toBeNull()
     expect(mod!.PlaywrightBrowserDriver).toBeDefined()
 
-    const Driver = mod!.PlaywrightBrowserDriver as { new (): any }
-    const driver = new Driver()
+    const driver = createTestDriver(mod!)
     const state1 = await driver.ensure()
     const state2 = await driver.ensure()
 
@@ -432,8 +454,7 @@ describe("PlaywrightBrowserDriver ensure/stop lifecycle (RED)", () => {
     expect(mod).not.toBeNull()
     expect(mod!.PlaywrightBrowserDriver).toBeDefined()
 
-    const Driver = mod!.PlaywrightBrowserDriver as { new (): any }
-    const driver = new Driver()
+    const driver = createTestDriver(mod!)
     await driver.ensure()
     await driver.stop()
 
@@ -454,8 +475,7 @@ describe("PlaywrightBrowserDriver ensure/stop lifecycle (RED)", () => {
       sessionID: "ses-stop",
     }
 
-    const Driver = mod!.PlaywrightBrowserDriver as { new (): any }
-    const driver = new Driver()
+    const driver = createTestDriver(mod!)
     await driver.ensure()
     await driver.contextFor(owner)
 

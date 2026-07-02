@@ -95,34 +95,41 @@ describe("SessionInvoke.cancel", () => {
   test("delegates to signalAbort instead of leaving runtime idle via release", () => {
     Log.init({ print: false })
     const sessionID = "ses_cancel_test"
+    const originalRelease = (SessionManager as any).release
+    const originalSignalAbort = (SessionManager as any).signalAbort
+    const originalClearForSession = (PermissionNext as any).clearForSession
     const runtime = SessionManager.registerRuntime(sessionID)
+    try {
+      // Simulate a busy runtime that was previously acquired
+      runtime.abort = new AbortController()
+      runtime.status = { type: "busy", description: "processing..." }
 
-    // Simulate a busy runtime that was previously acquired
-    runtime.abort = new AbortController()
-    runtime.status = { type: "busy", description: "processing..." }
+      const releaseSpy = mock(async () => {})
+      ;(SessionManager as any).release = releaseSpy
 
-    const releaseSpy = mock(async () => {})
-    ;(SessionManager as any).release = releaseSpy
+      const signalAbortSpy = mock(() => {})
+      ;(SessionManager as any).signalAbort = signalAbortSpy
 
-    const signalAbortSpy = mock(() => {})
-    ;(SessionManager as any).signalAbort = signalAbortSpy
+      // Stub PermissionNext.clearForSession to avoid hitting storage
+      const cleanupSpy = mock(() => Promise.resolve())
+      ;(PermissionNext as any).clearForSession = cleanupSpy
 
-    // Stub PermissionNext.clearForSession to avoid hitting storage
-    const cleanupSpy = mock(() => Promise.resolve())
-    ;(PermissionNext as any).clearForSession = cleanupSpy
+      SessionInvoke.cancel(sessionID)
 
-    SessionInvoke.cancel(sessionID)
+      // signalAbort must be called: cancel() should signal the abort,
+      // not release the runtime. If cancel() calls release() instead,
+      // the runtime transitions to idle before time.completed is set.
+      expect(signalAbortSpy).toHaveBeenCalledTimes(1)
+      expect(signalAbortSpy).toHaveBeenCalledWith(sessionID)
 
-    // signalAbort must be called — cancel() should signal the abort,
-    // not release the runtime. If cancel() calls release() instead,
-    // the runtime transitions to idle before time.completed is set.
-    expect(signalAbortSpy).toHaveBeenCalledTimes(1)
-    expect(signalAbortSpy).toHaveBeenCalledWith(sessionID)
-
-    // release must NOT be called by cancel — only the defer in loop()
-    // should call release after the processor has exited.
-    expect(releaseSpy).not.toHaveBeenCalled()
-
-    SessionManager.unregisterRuntime(sessionID)
+      // release must NOT be called by cancel: only the defer in loop()
+      // should call release after the processor has exited.
+      expect(releaseSpy).not.toHaveBeenCalled()
+    } finally {
+      ;(SessionManager as any).release = originalRelease
+      ;(SessionManager as any).signalAbort = originalSignalAbort
+      ;(PermissionNext as any).clearForSession = originalClearForSession
+      SessionManager.unregisterRuntime(sessionID)
+    }
   })
 })

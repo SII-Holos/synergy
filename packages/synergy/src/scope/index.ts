@@ -216,7 +216,7 @@ export namespace Scope {
           .then((x) => {
             const dirname = path.dirname(x.trim())
             if (dirname === ".") return directory
-            return dirname
+            return path.resolve(directory, dirname)
           })
           .catch(() => undefined)
 

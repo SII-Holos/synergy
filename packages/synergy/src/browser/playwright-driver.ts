@@ -11,6 +11,11 @@ interface InternalContext {
   browserContext?: BrowserContext
 }
 
+export interface PlaywrightBrowserDriverOptions {
+  launchBrowser?: () => Promise<Browser>
+  browserType?: string
+}
+
 let seq = 0
 function nextContextId(): string {
   return `ctx-${++seq}`
@@ -23,8 +28,12 @@ export class PlaywrightBrowserDriver implements BrowserDriver.Driver {
   private contexts = new Map<string, InternalContext>()
   private pages = new Map<string, Map<string, Page>>()
   private _running = false
-  private _browserType = "chromium"
+  private _browserType: string
   private _browser: Browser | null = null
+
+  constructor(private options: PlaywrightBrowserDriverOptions = {}) {
+    this._browserType = options.browserType ?? "chromium"
+  }
 
   private launchArgs(): string[] {
     return [
@@ -44,19 +53,23 @@ export class PlaywrightBrowserDriver implements BrowserDriver.Driver {
   async ensure(): Promise<BrowserDriver.DriverState> {
     if (this._running) return { running: true, browserType: this._browserType, activeOwners: this.contexts.size }
 
-    const playwright = (await import("playwright")) as {
-      chromium?: { launch(options?: Record<string, unknown>): Promise<Browser> }
-    }
-    if (!playwright.chromium) throw new Error("Playwright chromium is unavailable")
-
     try {
-      const executablePath = await BrowserInstall.discoverChromium()
-      this._browser = await playwright.chromium.launch({
-        headless: true,
-        timeout: 10_000,
-        ...(executablePath ? { executablePath } : {}),
-        args: this.launchArgs(),
-      })
+      if (this.options.launchBrowser) {
+        this._browser = await this.options.launchBrowser()
+      } else {
+        const playwright = (await import("playwright")) as {
+          chromium?: { launch(options?: Record<string, unknown>): Promise<Browser> }
+        }
+        if (!playwright.chromium) throw new Error("Playwright chromium is unavailable")
+
+        const executablePath = await BrowserInstall.discoverChromium()
+        this._browser = await playwright.chromium.launch({
+          headless: true,
+          timeout: 10_000,
+          ...(executablePath ? { executablePath } : {}),
+          args: this.launchArgs(),
+        })
+      }
     } catch (error) {
       throw new Error(
         `Unable to launch Playwright Chromium. Run "bunx playwright install chromium" or set CHROMIUM_PATH to a usable Chromium executable. ${error instanceof Error ? error.message : String(error)}`,

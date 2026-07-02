@@ -33,6 +33,14 @@ function metadataTracker() {
 
 const projectRoot = path.join(__dirname, "../..")
 
+function bunEval(script: string) {
+  const executable = process.execPath.replace(/\\/g, "/")
+  const encoded = Buffer.from(script).toString("base64")
+  const evalScript = `eval(Buffer.from('${encoded}', 'base64').toString())`
+  if (process.platform === "win32") return `& "${executable}" -e "${evalScript}"`
+  return `"${executable}" -e ${JSON.stringify(evalScript)}`
+}
+
 describe("tool.bash", () => {
   test("basic", async () => {
     await ScopeContext.provide({
@@ -60,7 +68,11 @@ describe("tool.bash", () => {
         const bash = await BashTool.init()
         const result = await bash.execute(
           {
-            command: "printf 'fake image' > contact-sheet.png; printf '%s\\n' \"$PWD/contact-sheet.png\"",
+            command: bunEval(
+              `Bun.write("contact-sheet.png", "fake image").then(() => {
+  console.log(process.cwd().replace(/\\\\/g, "/") + "/contact-sheet.png")
+})`,
+            ),
             description: "Create contact sheet",
           },
           {
@@ -357,7 +369,7 @@ describe("tool.bash truncation", () => {
         const lineCount = Truncate.MAX_LINES + 500
         const result = await bash.execute(
           {
-            command: `seq 1 ${lineCount}`,
+            command: bunEval(`for (let i = 1; i <= ${lineCount}; i++) console.log(i)`),
             description: "Generate lines exceeding limit",
           },
           ctx,
@@ -377,7 +389,7 @@ describe("tool.bash truncation", () => {
         const byteCount = Truncate.MAX_BYTES + 10000
         const result = await bash.execute(
           {
-            command: `head -c ${byteCount} /dev/zero | tr '\\0' 'a'`,
+            command: bunEval(`process.stdout.write("a".repeat(${byteCount}))`),
             description: "Generate bytes exceeding limit",
           },
           ctx,
@@ -396,13 +408,13 @@ describe("tool.bash truncation", () => {
         const bash = await BashTool.init()
         const result = await bash.execute(
           {
-            command: "echo hello",
+            command: bunEval(`console.log("hello")`),
             description: "Echo hello",
           },
           ctx,
         )
         expect((result.metadata as any).truncated).toBe(false)
-        expect(result.output).toBe("hello\n")
+        expect(result.output.replace(/\r\n/g, "\n")).toBe("hello\n")
       },
     })
   })
@@ -415,7 +427,7 @@ describe("tool.bash truncation", () => {
         const lineCount = Truncate.MAX_LINES + 100
         const result = await bash.execute(
           {
-            command: `seq 1 ${lineCount}`,
+            command: bunEval(`for (let i = 1; i <= ${lineCount}; i++) console.log(i)`),
             description: "Generate lines for file check",
           },
           ctx,
@@ -426,7 +438,7 @@ describe("tool.bash truncation", () => {
         expect(filepath).toBeTruthy()
 
         const saved = await Bun.file(filepath).text()
-        const lines = saved.trim().split("\n")
+        const lines = saved.trim().split(/\r?\n/)
         expect(lines.length).toBe(lineCount)
         expect(lines[0]).toBe("1")
         expect(lines[lineCount - 1]).toBe(String(lineCount))
@@ -443,7 +455,7 @@ describe("tool.bash output cap", () => {
         const bash = await BashTool.init()
         const result = await bash.execute(
           {
-            command: `head -c 300000 /dev/zero | tr '\\0' 'x'`,
+            command: bunEval(`process.stdout.write("x".repeat(300000))`),
             description: "Generate 300KB output",
           },
           ctx,
@@ -462,7 +474,7 @@ describe("tool.bash output cap", () => {
         const bash = await BashTool.init()
         const result = await bash.execute(
           {
-            command: `head -c 300000 /dev/zero | tr '\\0' 'x'`,
+            command: bunEval(`process.stdout.write("x".repeat(300000))`),
             background: true,
             description: "Generate 300KB output in background",
           },

@@ -77,24 +77,26 @@ export namespace Patch {
   ): { filePath: string; movePath?: string; nextIdx: number } | null {
     const line = lines[startIdx]
 
+    const valueAfterPrefix = (prefix: string) => line.slice(prefix.length).trim()
+
     if (line.startsWith("*** Add File:")) {
-      const filePath = line.split(":", 2)[1]?.trim()
+      const filePath = valueAfterPrefix("*** Add File:")
       return filePath ? { filePath, nextIdx: startIdx + 1 } : null
     }
 
     if (line.startsWith("*** Delete File:")) {
-      const filePath = line.split(":", 2)[1]?.trim()
+      const filePath = valueAfterPrefix("*** Delete File:")
       return filePath ? { filePath, nextIdx: startIdx + 1 } : null
     }
 
     if (line.startsWith("*** Update File:")) {
-      const filePath = line.split(":", 2)[1]?.trim()
+      const filePath = valueAfterPrefix("*** Update File:")
       let movePath: string | undefined
       let nextIdx = startIdx + 1
 
       // Check for move directive
       if (nextIdx < lines.length && lines[nextIdx].startsWith("*** Move to:")) {
-        movePath = lines[nextIdx].split(":", 2)[1]?.trim()
+        movePath = lines[nextIdx].slice("*** Move to:".length).trim()
         nextIdx++
       }
 

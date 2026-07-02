@@ -346,6 +346,16 @@ async function existingRipgrepPath() {
     : undefined
 }
 
+async function readSpawnStdout(stdout: unknown) {
+  if (!stdout || typeof stdout === "string") return undefined
+  if (typeof (stdout as { text?: unknown }).text === "function") {
+    return (stdout as { text: () => Promise<string> }).text()
+  }
+  if (typeof (stdout as { getReader?: unknown }).getReader === "function")
+    return Bun.readableStreamToText(stdout as ReadableStream)
+  return undefined
+}
+
 async function findLegacyAttachmentPartPaths() {
   const sessionsRoot = path.join(Global.Path.data, "sessions")
   if (!(await fs.stat(sessionsRoot).catch(() => undefined))?.isDirectory()) return []
@@ -369,7 +379,8 @@ async function findLegacyAttachmentPartPaths() {
       maxBuffer: 1024 * 1024 * 50,
     },
   )
-  const [text, exitCode] = await Promise.all([Bun.readableStreamToText(proc.stdout), proc.exited])
+  const [text, exitCode] = await Promise.all([readSpawnStdout(proc.stdout), proc.exited])
+  if (text === undefined) return undefined
   if (exitCode !== 0 && exitCode !== 1) {
     log.warn("legacy attachment part candidate search failed", { exitCode })
     return []
@@ -400,7 +411,8 @@ async function findLegacyToolDisplayPartPaths() {
       maxBuffer: 1024 * 1024 * 50,
     },
   )
-  const [text, exitCode] = await Promise.all([Bun.readableStreamToText(proc.stdout), proc.exited])
+  const [text, exitCode] = await Promise.all([readSpawnStdout(proc.stdout), proc.exited])
+  if (text === undefined) return undefined
   if (exitCode !== 0 && exitCode !== 1) {
     log.warn("legacy tool display part candidate search failed", { exitCode })
     return []

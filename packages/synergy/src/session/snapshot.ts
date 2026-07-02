@@ -386,9 +386,9 @@ export namespace Snapshot {
       const rel = raw.trim()
       if (!rel || excludePath(rel)) continue
       const absolute = path.join(cwd, rel)
-      const stat = await fs.stat(absolute).catch(() => undefined)
-      if (!stat?.isFile()) continue
-      if (stat.size > SNAPSHOT_MAX_FILE_BYTES) continue
+      const stat = await fs.lstat(absolute).catch(() => undefined)
+      if (!stat?.isFile() && !stat?.isSymbolicLink()) continue
+      if (stat.isFile() && stat.size > SNAPSHOT_MAX_FILE_BYTES) continue
       files.push(rel.replaceAll("\\", "/"))
     }
     return files

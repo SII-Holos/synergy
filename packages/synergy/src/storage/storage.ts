@@ -146,7 +146,10 @@ export namespace Storage {
 
   async function writeJsonAtomic(target: string, content: unknown) {
     await fs.mkdir(path.dirname(target), { recursive: true })
-    const tmp = `${target}.tmp-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}`
+    const tmp = path.join(
+      path.dirname(target),
+      `.tmp-${process.pid}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`,
+    )
     await Bun.write(tmp, JSON.stringify(content, null, 2))
     await fs.rename(tmp, target)
   }

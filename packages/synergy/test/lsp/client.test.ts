@@ -1,4 +1,5 @@
 import { describe, expect, test, beforeEach } from "bun:test"
+import { spawn } from "child_process"
 import path from "path"
 import { LSPClient } from "../../src/lsp/client"
 import { LSPServer } from "../../src/lsp/server"
@@ -8,10 +9,10 @@ import { Log } from "../../src/util/log"
 
 // Minimal fake LSP server that speaks JSON-RPC over stdio
 function spawnFakeServer() {
-  const { spawn } = require("child_process")
-  const serverPath = path.join(__dirname, "../fixture/lsp/fake-lsp-server.js")
+  const serverPath = path.join(__dirname, "../fixture/lsp/fake-lsp-server.cjs")
+  const runtime = Bun.which("node") ?? process.execPath
   return {
-    process: spawn(process.execPath, [serverPath], {
+    process: spawn(runtime, [serverPath], {
       stdio: "pipe",
     }),
   }

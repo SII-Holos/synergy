@@ -25,6 +25,7 @@ import { describe, test, expect } from "bun:test"
 import { buildPermissionProfile } from "../../src/sandbox/policy-engine"
 import { DEFAULT_PROTECTED_PATHS, protectedMetadataUnderWritableRoot } from "../../src/sandbox/policy"
 import * as os from "os"
+import * as path from "path"
 
 // ==================================================================
 // 1. Profile structure has correct top-level shape
@@ -292,9 +293,9 @@ describe("Phase 2: fileSystem.readOnlySubpaths", () => {
     })
 
     // Key credential paths must be read-only when homedir is a writable root
-    expect(profile.fileSystem.readOnlySubpaths).toContain(`${homedir}/.ssh`)
-    expect(profile.fileSystem.readOnlySubpaths).toContain(`${homedir}/.aws`)
-    expect(profile.fileSystem.readOnlySubpaths).toContain(`${homedir}/.netrc`)
+    expect(profile.fileSystem.readOnlySubpaths).toContain(path.join(homedir, ".ssh"))
+    expect(profile.fileSystem.readOnlySubpaths).toContain(path.join(homedir, ".aws"))
+    expect(profile.fileSystem.readOnlySubpaths).toContain(path.join(homedir, ".netrc"))
   })
 })
 
@@ -337,8 +338,8 @@ describe("Phase 2: fileSystem.protectedPaths", () => {
     })
 
     const paths = profile.fileSystem.protectedPaths
-    expect(paths).toContain(`${homedir}/.synergy/config`)
-    expect(paths).toContain(`${homedir}/.synergy/data/auth`)
+    expect(paths).toContain(path.join(homedir, ".synergy", "config"))
+    expect(paths).toContain(path.join(homedir, ".synergy", "data", "auth"))
   })
 })
 

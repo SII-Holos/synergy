@@ -51,11 +51,12 @@ describe("git worktree integration", () => {
 
   test("creates a managed worktree under .synergy/worktrees and binds the session", async () => {
     await using tmp = await tmpdir({ git: true })
+    const setupCommand = process.platform === "win32" ? "<nul set /p dummy=setup>setup.txt" : "printf setup > setup.txt"
     await fs.writeFile(path.join(tmp.path, ".env.local"), "TOKEN=local")
     await fs.mkdir(path.join(tmp.path, ".synergy"), { recursive: true })
     await fs.writeFile(
       path.join(tmp.path, ".synergy", "worktree-setup.jsonc"),
-      JSON.stringify({ copyIgnored: [".env.local"], setup: ["printf setup > setup.txt"] }),
+      JSON.stringify({ copyIgnored: [".env.local"], setup: [setupCommand] }),
     )
     const scope = await tmp.scope()
 

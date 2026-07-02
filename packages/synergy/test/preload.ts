@@ -3,14 +3,28 @@
 import os from "os"
 import path from "path"
 import fs from "fs/promises"
-import fsSync from "fs"
 import { afterAll } from "bun:test"
 
 const dir = path.join(os.tmpdir(), "synergy-test-data-" + process.pid)
 await fs.mkdir(dir, { recursive: true })
-afterAll(() => {
-  fsSync.rmSync(dir, { recursive: true, force: true })
+afterAll(async () => {
+  try {
+    await fs.rm(dir, {
+      recursive: true,
+      force: true,
+      maxRetries: 20,
+      retryDelay: 100,
+    })
+  } catch (error) {
+    if (process.platform === "win32" && isTransientCleanupError(error)) return
+    throw error
+  }
 })
+
+function isTransientCleanupError(error: unknown) {
+  const code = (error as { code?: unknown })?.code
+  return code === "EBUSY" || code === "EPERM" || code === "ENOTEMPTY"
+}
 // Set test home directory to isolate tests from user's actual home directory
 // This makes Global.Path.root resolve to <dir>/home/.synergy
 // Clear SYNERGY_HOME first: homeDir() in global/index.ts checks SYNERGY_HOME

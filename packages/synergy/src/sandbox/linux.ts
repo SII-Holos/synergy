@@ -4,7 +4,7 @@ import * as fs from "fs"
 import * as crypto from "crypto"
 import type { PrepareLinuxWrapperOpts, SandboxExecutionWrapper } from "./types"
 import { detectPlatform } from "./detect"
-import { DEFAULT_PROTECTED_PATHS, defaultRuntimeReadRoots } from "./policy"
+import { DEFAULT_PROTECTED_PATHS, defaultRuntimeReadRoots, joinPathLike } from "./policy"
 import { Log } from "@/util/log"
 import { isWsl1 } from "./wsl"
 import { isTarballHelperUpToDate, verifyHelperHash } from "./utils"
@@ -22,15 +22,28 @@ const log = Log.create({ service: "sandbox-linux" })
  */
 export const LINUX_HELPER_SEARCH_PATHS = [
   // Bundled with Synergy installation
-  (homedir: string) => path.join(homedir, ".synergy", "sandbox-helper", "synergy-sandbox-linux"),
+  (homedir: string) => path.posix.join(homedir, ".synergy", "sandbox-helper", "synergy-sandbox-linux"),
   // Global Synergy binary directory
-  (homedir: string) => path.join(homedir, ".synergy", "bin", "synergy-sandbox-linux"),
+  (homedir: string) => path.posix.join(homedir, ".synergy", "bin", "synergy-sandbox-linux"),
   // Global npm install — node_modules in user home
   (homedir: string) =>
-    path.join(homedir, "node_modules", "@ericsanchezok", "synergy-sandbox-linux-x64", "bin", "synergy-sandbox-linux"),
+    path.posix.join(
+      homedir,
+      "node_modules",
+      "@ericsanchezok",
+      "synergy-sandbox-linux-x64",
+      "bin",
+      "synergy-sandbox-linux",
+    ),
   // System-wide npm install
   (_homedir: string) =>
-    path.join("/usr/lib/node_modules", "@ericsanchezok", "synergy-sandbox-linux-x64", "bin", "synergy-sandbox-linux"),
+    path.posix.join(
+      "/usr/lib/node_modules",
+      "@ericsanchezok",
+      "synergy-sandbox-linux-x64",
+      "bin",
+      "synergy-sandbox-linux",
+    ),
 ]
 
 /**
@@ -483,7 +496,7 @@ function prepareInlineBwrap(opts: PrepareLinuxWrapperOpts): SandboxExecutionWrap
   }
 
   // Controlled tmp
-  const tmpDir = path.join(workspace, ".synergy", "tmp")
+  const tmpDir = joinPathLike(workspace, ".synergy", "tmp")
   bwrapArgs.push("--bind", tmpDir, "/tmp")
 
   // Separator

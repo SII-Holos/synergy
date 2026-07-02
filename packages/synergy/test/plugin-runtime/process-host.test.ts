@@ -5,7 +5,7 @@ describe("resolvePluginProcessRunnerCommand", () => {
   test("uses the source runner file when it exists", () => {
     const command = resolvePluginProcessRunnerCommand("runtime/index.js", true)
 
-    expect(command[0]).toBe("bun")
+    expect(command[0]).toBe(process.execPath)
     expect(command[1]).toBe("run")
     expect(command.at(-1)).toBe("runtime/index.js")
   })

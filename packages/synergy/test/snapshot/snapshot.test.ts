@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import { $ } from "bun"
+import fs from "fs/promises"
+import path from "path"
 import { Snapshot } from "../../src/session/snapshot"
 import { ScopeContext } from "../../src/scope/context"
 import { Scope } from "../../src/scope"
@@ -24,6 +26,32 @@ async function bootstrap() {
       }
     },
   })
+}
+
+function longFilenameFor(root: string) {
+  const extension = ".txt"
+  const desiredLength = 200
+  if (process.platform !== "win32") return "a".repeat(desiredLength) + extension
+
+  const maxPathLength = 240
+  const prefixLength = path.join(root, "").length
+  const safeLength = Math.max(64, Math.min(desiredLength, maxPathLength - prefixLength - extension.length))
+  return "a".repeat(safeLength) + extension
+}
+
+async function trySymlink(target: string, link: string, type: "file" | "dir") {
+  try {
+    await fs.symlink(target, link, process.platform === "win32" && type === "dir" ? "junction" : type)
+    return true
+  } catch (error) {
+    if (process.platform === "win32" && isSymlinkPrivilegeError(error)) return false
+    throw error
+  }
+}
+
+function isSymlinkPrivilegeError(error: unknown) {
+  const code = (error as { code?: unknown })?.code
+  return code === "EPERM" || code === "EACCES" || code === "UNKNOWN"
 }
 
 describe.serial("snapshot", () => {
@@ -298,7 +326,7 @@ describe.serial("snapshot", () => {
         const before = await Snapshot.track(tmp.extra.sessionID)
         expect(before).toBeTruthy()
 
-        const longName = "a".repeat(200) + ".txt"
+        const longName = longFilenameFor(tmp.path)
         const longFile = `${tmp.path}/${longName}`
 
         await Bun.write(longFile, "long filename content")
@@ -340,14 +368,23 @@ describe.serial("snapshot", () => {
         const before = await Snapshot.track(tmp.extra.sessionID)
         expect(before).toBeTruthy()
 
-        await $`mkdir -p ${tmp.path}/sub/dir`.quiet()
-        await Bun.write(`${tmp.path}/sub/dir/target.txt`, "target content")
-        await $`ln -s ${tmp.path}/sub/dir/target.txt ${tmp.path}/sub/dir/link.txt`.quiet()
-        await $`ln -s ${tmp.path}/sub ${tmp.path}/sub-link`.quiet()
+        const subDir = path.join(tmp.path, "sub", "dir")
+        const targetFile = path.join(subDir, "target.txt")
+        const fileLink = path.join(subDir, "link.txt")
+        const dirLink = path.join(tmp.path, "sub-link")
+        await fs.mkdir(subDir, { recursive: true })
+        await Bun.write(targetFile, "target content")
+        const createdFileLink = await trySymlink(targetFile, fileLink, "file")
+        const createdDirLink = await trySymlink(path.join(tmp.path, "sub"), dirLink, "dir")
 
         const patch = await Snapshot.patch(before!, tmp.extra.sessionID)
-        expect(patch.files).toContain(`${tmp.path}/sub/dir/link.txt`)
-        expect(patch.files).toContain(`${tmp.path}/sub-link`)
+        if (createdFileLink) expect(patch.files).toContain(`${tmp.path}/sub/dir/link.txt`)
+        if (createdDirLink) {
+          const dirLinkPath = `${tmp.path}/sub-link`
+          if (process.platform === "win32") expect(patch.files.some((file) => file.startsWith(dirLinkPath))).toBe(true)
+          else expect(patch.files).toContain(dirLinkPath)
+        }
+        if (!createdFileLink && !createdDirLink) expect(patch.files).toContain(`${tmp.path}/sub/dir/target.txt`)
       },
     })
   })
@@ -361,9 +398,9 @@ describe.serial("snapshot", () => {
         expect(before).toBeTruthy()
 
         // Change permissions multiple times
-        await $`chmod 600 ${tmp.path}/a.txt`.quiet()
-        await $`chmod 755 ${tmp.path}/a.txt`.quiet()
-        await $`chmod 644 ${tmp.path}/a.txt`.quiet()
+        await fs.chmod(path.join(tmp.path, "a.txt"), 0o600)
+        await fs.chmod(path.join(tmp.path, "a.txt"), 0o755)
+        await fs.chmod(path.join(tmp.path, "a.txt"), 0o644)
 
         const patch = await Snapshot.patch(before!, tmp.extra.sessionID)
         // Note: git doesn't track permission changes on existing files by default

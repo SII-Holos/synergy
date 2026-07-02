@@ -150,8 +150,11 @@ export namespace Session {
   }
 
   export async function withRuntimeInfo(session: Info): Promise<Info & { working?: WorkingInfoType }> {
-    const working = await SessionWorking.resolve(session.id)
-    const result = { ...withoutRuntimeInfo(session) }
+    const [working, history] = await Promise.all([
+      SessionWorking.resolve(session.id),
+      session.history?.rollback ? SessionHistory.storedInfo(session.id).catch(() => session.history) : session.history,
+    ])
+    const result = { ...withoutRuntimeInfo(session), history }
     if (!working) return result
     return { ...result, working }
   }

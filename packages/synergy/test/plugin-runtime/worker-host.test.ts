@@ -112,7 +112,7 @@ describe("spawnPluginWorker", () => {
         input,
       })
       expect(currentMockWorker).not.toBeNull()
-      expect(currentMockWorker!.filename).toContain("plugin-runtime/runner.ts")
+      expect(currentMockWorker!.filename.replace(/\\/g, "/")).toContain("plugin-runtime/runner.ts")
     })
 
     test("passes plugin entryPath and input as workerData to the runner", async () => {
