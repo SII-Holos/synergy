@@ -373,13 +373,8 @@ function SessionPageContent() {
   createEffect(
     on(
       () => params.id,
-      (id, prevId) => {
-        if (prevId && prevId !== id) {
-          sync.evictSession(prevId)
-          hydratedSessions.delete(prevId)
-          initializedSessions.delete(prevId)
-        }
-        if (id) sync.session.sync(id)
+      (id) => {
+        if (id) sync.session.sync(id, { refreshVolatile: true })
       },
     ),
   )
@@ -387,7 +382,7 @@ function SessionPageContent() {
   createEffect(() => {
     if (!sdk.connected()) return
     const id = params.id
-    if (id) sync.session.sync(id)
+    if (id) sync.session.sync(id, { refreshVolatile: true })
   })
 
   createEffect(

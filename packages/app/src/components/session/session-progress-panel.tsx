@@ -6,7 +6,6 @@ import {
   computeDagSummary,
   computeProgressIslandSnapshot,
   computeTodoSummary,
-  type ProgressLifecycle,
   type ProgressMode,
 } from "./session-progress-summary"
 import { SessionProgressDag } from "./session-progress-dag"
@@ -23,7 +22,6 @@ interface SessionProgressPanelState {
   expanded: boolean
   visible: boolean
   exiting: boolean
-  lastHiddenFingerprint: string | undefined
 }
 
 export function SessionProgressPanel(props: SessionProgressPanelProps) {
@@ -34,7 +32,6 @@ export function SessionProgressPanel(props: SessionProgressPanelProps) {
     expanded: false,
     visible: false,
     exiting: false,
-    lastHiddenFingerprint: undefined,
   })
 
   let completionTimer: ReturnType<typeof setTimeout> | undefined
@@ -44,50 +41,25 @@ export function SessionProgressPanel(props: SessionProgressPanelProps) {
     completionTimer = undefined
   }
 
-  const dagNodes = createMemo(() => sync.data.dag[props.sessionID] ?? [])
-  const todos = createMemo(() => sync.data.todo[props.sessionID] ?? [])
+  const dagNodes = createMemo(() => sync.data.dag[props.sessionID])
+  const todos = createMemo(() => sync.data.todo[props.sessionID])
+  const dagList = createMemo(() => dagNodes() ?? [])
+  const todoList = createMemo(() => todos() ?? [])
 
-  const hasDag = createMemo(() => dagNodes().length > 0)
-  const hasTodo = createMemo(() => todos().length > 0)
+  const hasDag = createMemo(() => dagList().length > 0)
+  const hasTodo = createMemo(() => todoList().length > 0)
+  const isUnknown = createMemo(() => dagNodes() === undefined && todos() === undefined)
 
-  const mode = createMemo<ProgressMode>(() => computeProgressMode(hasDag(), hasTodo()))
-  const dagSummary = createMemo(() => (hasDag() ? computeDagSummary(dagNodes()) : undefined))
-  const todoSummary = createMemo(() => (hasTodo() ? computeTodoSummary(todos()) : undefined))
-  const dagLifecycle = createMemo<ProgressLifecycle>(() => {
-    const summary = dagSummary()
-    if (!summary) return "active"
-    if (summary.total === 0) return "settled"
-    if (summary.completed >= summary.total) return "settled"
-
-    // If the session is idle with no active background tasks, the DAG is no
-    // longer making progress — treat it as settled so the panel can dismiss
-    // even when the agent forgot to mark every node terminal.
-    const sessionStatus = sync.data.session_status[props.sessionID]?.type ?? "idle"
-    if (sessionStatus === "idle") {
-      const hasActiveTask = sync.data.cortex.some(
-        (task) => task.parentSessionID === props.sessionID && (task.status === "running" || task.status === "queued"),
-      )
-      if (!hasActiveTask) return "settled"
-    }
-
-    if (summary.failed > 0 || summary.blocked > 0) return "active"
-    if (summary.running > 0) return "active"
-    return "active"
-  })
-  const snapshot = createMemo(() => computeProgressIslandSnapshot(mode(), dagSummary(), todoSummary(), dagLifecycle()))
-
-  const dagFingerprint = createMemo(() =>
-    dagNodes()
-      .map((n) => `${n.id}:${n.status}`)
-      .sort()
-      .join("|"),
-  )
+  const mode = createMemo<ProgressMode>(() => (isUnknown() ? "none" : computeProgressMode(hasDag(), hasTodo())))
+  const dagSummary = createMemo(() => (hasDag() ? computeDagSummary(dagList()) : undefined))
+  const todoSummary = createMemo(() => (hasTodo() ? computeTodoSummary(todoList()) : undefined))
+  const snapshot = createMemo(() => computeProgressIslandSnapshot(mode(), dagSummary(), todoSummary()))
 
   const activeLabel = createMemo(() => {
-    const runningNode = dagNodes().find((node) => node.status === "running")
+    const runningNode = dagList().find((node) => node.status === "running")
     if (runningNode?.content) return runningNode.content
 
-    const activeTodo = todos().find((todo) => todo.status === "in_progress")
+    const activeTodo = todoList().find((todo) => todo.status === "in_progress")
     return activeTodo?.content
   })
 
@@ -106,13 +78,7 @@ export function SessionProgressPanel(props: SessionProgressPanelProps) {
     const current = snapshot()
     clearCompletionTimer()
 
-    // Case 1: snapshot says hidden — record fingerprint if it's an orphaned DAG
     if (current.status === "hidden") {
-      const fp = dagFingerprint()
-      if (fp && (dagLifecycle() === "settled" || dagLifecycle() === "paused")) {
-        setState("lastHiddenFingerprint", fp)
-      }
-      // If currently visible, play exit animation first
       if (state.visible && !state.exiting) {
         setState("exiting", true)
         completionTimer = setTimeout(() => {
@@ -123,25 +89,6 @@ export function SessionProgressPanel(props: SessionProgressPanelProps) {
       }
       return
     }
-
-    // Case 2: snapshot says non-hidden — check fingerprint
-    const fp = dagFingerprint()
-    if (state.lastHiddenFingerprint === fp && fp) {
-      // Stale DAG, no changes since last hidden → keep hidden
-      if (state.visible) {
-        setState("exiting", true)
-        completionTimer = setTimeout(() => {
-          setState({ expanded: false, visible: false, exiting: false })
-        }, 350)
-      }
-      return
-    }
-
-    // Fingerprint changed or never hidden → clear fingerprint, show normally
-    if (state.lastHiddenFingerprint !== undefined) {
-      setState("lastHiddenFingerprint", undefined)
-    }
-
     setState("visible", true)
 
     // Complete → fade out after delay
@@ -161,13 +108,6 @@ export function SessionProgressPanel(props: SessionProgressPanelProps) {
     const currentMode = mode()
     if (currentMode === "dag") setState("activeTab", "dag")
     else if (currentMode === "todo") setState("activeTab", "todo")
-  })
-
-  createEffect(() => {
-    if (props.sessionID) {
-      sync.session.dag(props.sessionID)
-      sync.session.todo(props.sessionID)
-    }
   })
 
   onCleanup(clearCompletionTimer)
