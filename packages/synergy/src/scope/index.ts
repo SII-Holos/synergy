@@ -64,7 +64,7 @@ export namespace Scope {
     return {
       type: "project" as const,
       id: data.id,
-      directory: data.directory ?? data.worktree,
+      directory: data.worktree,
       worktree: data.worktree,
       vcs: data.vcs,
       name: data.name,
@@ -309,7 +309,7 @@ export namespace Scope {
     const persisted: z.infer<typeof Info> = {
       ...existing,
       type: "project" as const,
-      directory: sandbox,
+      directory: worktree,
       worktree,
       vcs: vcs as Scope.Project["vcs"],
       time: { ...existing.time },
@@ -364,7 +364,7 @@ export namespace Scope {
     return valid.map((data) => ({
       type: "project" as const,
       id: data.id,
-      directory: data.directory ?? data.worktree,
+      directory: data.worktree,
       worktree: data.worktree,
       vcs: data.vcs,
       name: data.name,

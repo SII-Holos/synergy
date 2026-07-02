@@ -5,7 +5,7 @@ export type NewSessionWorkspaceSelection =
 
 export type WorkspaceChangeStatus = { type?: string } | undefined
 
-function normalizePathForCompare(input: string) {
+export function normalizePathForCompare(input: string) {
   const normalized = input.replace(/\\/g, "/").replace(/\/+$/, "")
   return normalized.toLowerCase()
 }

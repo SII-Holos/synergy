@@ -57,7 +57,8 @@ export namespace Session {
   }
 
   export function withoutRuntimeInfo(session: Info): Info {
-    return { ...session }
+    const { working: _working, ...rest } = session
+    return rest
   }
 
   export type PageIndex = {

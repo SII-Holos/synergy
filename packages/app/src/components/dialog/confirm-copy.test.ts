@@ -7,6 +7,7 @@ import {
   deleteNoteConfirm,
   deleteSkillConfirm,
   discardSettingsConfirm,
+  leaveWorktreeConfirm,
   overwriteImportConfirm,
   uninstallPluginConfirm,
 } from "./confirm-copy"
@@ -30,6 +31,17 @@ describe("confirm copy", () => {
     expect(copy.title).toBe("Discard unsaved changes?")
     expect(copy.cancelLabel).toBe("Keep Editing")
     expect(copy.confirmLabel).toBe("Discard")
+    expect(copy.tone).toBe("warning")
+  })
+
+  test("confirms leaving a worktree without implying deletion", () => {
+    const copy = leaveWorktreeConfirm("Worktree task")
+
+    expect(copy.title).toBe("Leave worktree?")
+    expect(copy.description).toContain("Worktree task")
+    expect(copy.description).toContain("will stay on disk")
+    expect(copy.confirmLabel).toBe("Leave worktree")
+    expect(copy.cancelLabel).toBe("Stay in worktree")
     expect(copy.tone).toBe("warning")
   })
 

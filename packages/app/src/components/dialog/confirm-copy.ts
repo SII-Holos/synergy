@@ -39,6 +39,16 @@ export function archiveProjectConfirm(scopeLabel: string | undefined): ConfirmCo
   }
 }
 
+export function leaveWorktreeConfirm(title: string | undefined): ConfirmCopy {
+  return {
+    title: "Leave worktree?",
+    description: `Return ${quoted(title, "this session")} to the main checkout? The worktree will stay on disk and can be re-entered later.`,
+    confirmLabel: "Leave worktree",
+    cancelLabel: "Stay in worktree",
+    tone: "warning",
+  }
+}
+
 export function discardSettingsConfirm(actionLabel: string): ConfirmCopy {
   return {
     title: "Discard unsaved changes?",

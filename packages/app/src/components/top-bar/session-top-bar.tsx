@@ -5,7 +5,7 @@ import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { Popover } from "@ericsanchezok/synergy-ui/popover"
 import { Tooltip, TooltipKeybind } from "@ericsanchezok/synergy-ui/tooltip"
 import { DialogSessionRename, ModelSelectorPopover, useConfirm } from "@/components/dialog"
-import { archiveSessionConfirm } from "@/components/dialog/confirm-copy"
+import { archiveSessionConfirm, leaveWorktreeConfirm } from "@/components/dialog/confirm-copy"
 import { DialogSessionExport } from "@/components/dialog/dialog-session-export"
 import { useLayout } from "@/context/layout"
 import { useLocal } from "@/context/local"
@@ -143,18 +143,34 @@ export function SessionTopBar() {
     dialog.show(() => <DialogSessionRename session={session} directory={dir} />)
   }
 
-  const toggleWorktree = () => {
-    const session = sessionInfo()
-    const dir = sessionDirectory()
-    if (!session || !dir || worktreeDisabled()) return
+  const showWorktreeTransition = (mode: "enter" | "leave", sessionID: string, dir: string) => {
     dialog.show(() => (
       <WorktreeTransitionDialog
-        mode={isWorktreeSession() ? "leave" : "enter"}
-        sessionID={session.id}
+        mode={mode}
+        sessionID={sessionID}
         directory={dir}
         onPendingChange={setWorktreePending}
       />
     ))
+  }
+
+  const toggleWorktree = () => {
+    const session = sessionInfo()
+    const dir = sessionDirectory()
+    if (!session || !dir || worktreeDisabled()) return
+    if (!isWorktreeSession()) {
+      showWorktreeTransition("enter", session.id, dir)
+      return
+    }
+    confirm.show({
+      ...leaveWorktreeConfirm(session.title),
+      onConfirm: () => {
+        setTimeout(() => {
+          if (worktreeDisabled()) return
+          showWorktreeTransition("leave", session.id, dir)
+        }, 0)
+      },
+    })
   }
 
   const archiveSession = () => {

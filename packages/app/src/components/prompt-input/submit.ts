@@ -94,11 +94,15 @@ export function usePromptSubmit(input: PromptSubmitInput) {
     selection: NewSessionWorkspaceSelection,
     active: "workspace" | "session" | "prompt",
   ): SessionStartProgress["steps"] => {
-    const steps: Array<{ id: "workspace" | "session" | "prompt"; label: string }> = []
-    if (selection.mode === "create") steps.push({ id: "workspace", label: "Creating worktree" })
-    if (selection.mode === "existing") steps.push({ id: "workspace", label: "Preparing worktree" })
-    steps.push({ id: "session", label: "Preparing session" })
-    steps.push({ id: "prompt", label: "Sending prompt" })
+    const steps: Array<{ id: "workspace" | "session" | "prompt"; label: string; detail?: string }> = []
+    if (selection.mode === "create") {
+      steps.push({ id: "workspace", label: "Create checkout", detail: "Preparing a new git worktree." })
+    }
+    if (selection.mode === "existing") {
+      steps.push({ id: "workspace", label: "Bind worktree", detail: "Using the selected checkout." })
+    }
+    steps.push({ id: "session", label: "Prepare session", detail: "Creating the conversation state." })
+    steps.push({ id: "prompt", label: "Send prompt", detail: "Dispatching your first message." })
     const activeIndex = Math.max(
       0,
       steps.findIndex((step) => step.id === active),
@@ -115,8 +119,8 @@ export function usePromptSubmit(input: PromptSubmitInput) {
       title: selection.mode === "current" ? "Starting session" : "Starting worktree session",
       description:
         selection.mode === "current"
-          ? "Preparing this session before sending your prompt."
-          : "Creating and binding the worktree before sending your prompt.",
+          ? "Preparing the session before sending your prompt."
+          : "Creating the checkout and preparing the session before sending your prompt.",
       steps: startProgressSteps(selection, active),
     })
   }
@@ -232,11 +236,7 @@ export function usePromptSubmit(input: PromptSubmitInput) {
         })
       if (session) {
         createdSessionForSubmit = true
-        const workspacePath =
-          session.workspace?.type === "git_worktree" && typeof session.workspace.path === "string"
-            ? session.workspace.path
-            : sessionCreateScopeKey
-        useSessionScopeClient(workspacePath)
+        useSessionScopeClient(sessionCreateScopeKey)
         input.props.onNewSessionWorkspaceSelectionReset?.()
         updateStartProgress(workspaceSelection, "session")
         navigate(`/${base64Encode(sessionScopeKey)}/session/${session.id}`)

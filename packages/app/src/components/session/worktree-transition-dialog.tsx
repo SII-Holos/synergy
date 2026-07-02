@@ -19,8 +19,10 @@ export type SessionStartProgressStepState = "pending" | "active" | "complete"
 export type SessionStartProgress = {
   title: string
   description: string
-  steps: Array<{ id: string; label: string; state: SessionStartProgressStepState }>
+  steps: Array<{ id: string; label: string; detail?: string; state: SessionStartProgressStepState }>
 }
+
+type WorktreeDialogOperation = "enter" | "leave"
 
 function errorDescription(error: unknown) {
   if (error && typeof error === "object" && "data" in error) {
@@ -49,6 +51,37 @@ function DialogCloseButton(props: { disabled?: boolean }) {
   )
 }
 
+function operationIcon(operation: WorktreeDialogOperation) {
+  return getSemanticIcon(operation === "leave" ? "workspace.leaveWorktree" : "workspace.enterWorktree")
+}
+
+function operationSuccessTitle(operation: WorktreeDialogOperation) {
+  return operation === "leave" ? "Left worktree" : "Moved to worktree"
+}
+
+function operationDefaultDescription(operation: WorktreeDialogOperation) {
+  if (operation === "leave") return "Return this session to the main checkout without deleting the worktree."
+  return "Create an isolated checkout, then bind this session to it."
+}
+
+function operationBannerDetail(operation: WorktreeDialogOperation, phase: WorkspaceTransitionProgressState["phase"]) {
+  if (phase === "error") return "The session workspace was not changed."
+  if (phase === "loading") {
+    return operation === "leave" ? "Updating the session workspace." : "Creating the checkout and binding the session."
+  }
+  return operation === "leave" ? "No worktree files will be removed." : "Name it now or use the generated branch name."
+}
+
+function operationResultTitle(operation: WorktreeDialogOperation) {
+  return operation === "leave" ? "Main checkout active" : "Worktree active"
+}
+
+function operationResultDescription(operation: WorktreeDialogOperation) {
+  return operation === "leave"
+    ? "The worktree remains available for later use."
+    : "Future commands use the isolated checkout."
+}
+
 function StepIcon(props: { state: SessionStartProgressStepState }) {
   return (
     <span class="wtd-step-icon" data-state={props.state}>
@@ -74,7 +107,17 @@ function StepList(props: { steps: SessionStartProgress["steps"] }) {
         {(step) => (
           <div class="wtd-step-row" data-state={step.state}>
             <StepIcon state={step.state} />
-            <span>{step.label}</span>
+            <div class="wtd-step-copy">
+              <span class="wtd-step-title">{step.label}</span>
+              <Show when={step.detail}>{(detail) => <span class="wtd-step-detail">{detail()}</span>}</Show>
+            </div>
+            <span class="wtd-step-status">
+              <Switch>
+                <Match when={step.state === "active"}>In progress</Match>
+                <Match when={step.state === "complete"}>Done</Match>
+                <Match when={true}>Pending</Match>
+              </Switch>
+            </span>
           </div>
         )}
       </For>
@@ -92,7 +135,9 @@ export function SessionStartProgressDialog(props: { progress: () => SessionStart
       dismissible={false}
       action={<span class="wtd-dialog-action-placeholder" aria-hidden="true" />}
     >
-      <StepList steps={progress().steps} />
+      <div class="wtd-progress-shell">
+        <StepList steps={progress().steps} />
+      </div>
     </Dialog>
   )
 }
@@ -110,27 +155,39 @@ export function WorktreeTransitionDialog(props: {
     props.mode === "enter" ? { phase: "form", operation: "enter" } : { phase: "idle" },
   )
   const loading = createMemo(() => state().phase === "loading")
+  const currentOperation = createMemo<WorktreeDialogOperation>(() => {
+    const current = state()
+    if (current.phase === "idle") return props.mode
+    return current.operation === "leave" ? "leave" : "enter"
+  })
   const title = createMemo(() => {
     const current = state()
-    if (current.phase === "success") return current.operation === "leave" ? "Left worktree" : "Moved to worktree"
-    if (current.phase === "error")
-      return current.operation === "leave" ? "Exit worktree failed" : "Enter worktree failed"
-    return props.mode === "leave" ? "Leaving worktree" : "Move session to worktree"
+    const operation = currentOperation()
+    if (current.phase === "success") return operationSuccessTitle(operation)
+    if (current.phase === "error") return operation === "leave" ? "Leave worktree failed" : "Move to worktree failed"
+    return operation === "leave" ? "Leave worktree" : "Move session to worktree"
   })
   const description = createMemo(() => {
     const current = state()
     if (current.phase === "success") return current.message
     if (current.phase === "error") return current.message
-    if (props.mode === "leave") return "Returning this session to the main checkout."
-    return "Create an isolated worktree for this session."
+    return operationDefaultDescription(currentOperation())
   })
   const steps = createMemo<SessionStartProgress["steps"]>(() => {
     const current = state()
     if (current.phase !== "loading") return []
-    if (current.operation === "leave") return [{ id: "leave", label: "Leaving worktree", state: "active" }]
+    if (current.operation === "leave")
+      return [
+        {
+          id: "leave",
+          label: "Return to main checkout",
+          detail: "Updating this session workspace.",
+          state: "active",
+        },
+      ]
     return [
-      { id: "create", label: "Creating worktree", state: "active" },
-      { id: "prepare", label: "Preparing session", state: "pending" },
+      { id: "create", label: "Create checkout", detail: "Preparing a new git worktree.", state: "active" },
+      { id: "prepare", label: "Bind session", detail: "Updating the session workspace.", state: "pending" },
     ]
   })
 
@@ -153,10 +210,10 @@ export function WorktreeTransitionDialog(props: {
         setState((prev) =>
           reduceWorkspaceTransitionProgress(prev, {
             type: "succeed",
-            message: "Session returned to the main checkout.",
+            message: "This session now runs from the main checkout.",
           }),
         )
-        showToast({ type: "info", title: "Exited worktree", description: "Session returned to the main checkout." })
+        showToast({ type: "info", title: "Left worktree", description: "Session returned to the main checkout." })
         return
       }
 
@@ -169,14 +226,16 @@ export function WorktreeTransitionDialog(props: {
           name: trimmed.length > 0 ? trimmed : undefined,
         },
       })
-      const description = result.data?.name ? `Session is now using ${result.data.name}.` : "Worktree created."
+      const description = result.data?.name
+        ? `This session now runs in ${result.data.name}.`
+        : "This session now runs in the new worktree."
       setState((prev) => reduceWorkspaceTransitionProgress(prev, { type: "succeed", message: description }))
       showToast({ type: "info", title: "Moved to worktree", description })
     } catch (error) {
       setState((prev) => reduceWorkspaceTransitionProgress(prev, { type: "fail", message: errorDescription(error) }))
       showToast({
         type: "error",
-        title: props.mode === "leave" ? "Exit worktree failed" : "Enter worktree failed",
+        title: props.mode === "leave" ? "Leave worktree failed" : "Move to worktree failed",
         description: errorDescription(error),
       })
     } finally {
@@ -196,6 +255,19 @@ export function WorktreeTransitionDialog(props: {
       dismissible={!loading()}
       action={<DialogCloseButton disabled={loading()} />}
     >
+      <Show when={state().phase !== "success"}>
+        <div class="wtd-operation-banner" data-operation={currentOperation()}>
+          <span class="wtd-operation-icon">
+            <Icon name={operationIcon(currentOperation())} size="normal" />
+          </span>
+          <div class="wtd-operation-copy">
+            <span class="wtd-operation-label">
+              {currentOperation() === "leave" ? "Main checkout" : "Session worktree"}
+            </span>
+            <span class="wtd-operation-detail">{operationBannerDetail(currentOperation(), state().phase)}</span>
+          </div>
+        </div>
+      </Show>
       <Switch>
         <Match when={state().phase === "form"}>
           <form
@@ -217,7 +289,9 @@ export function WorktreeTransitionDialog(props: {
           </form>
         </Match>
         <Match when={state().phase === "loading"}>
-          <StepList steps={steps()} />
+          <div class="wtd-progress-shell">
+            <StepList steps={steps()} />
+          </div>
         </Match>
         <Match when={state().phase === "success"}>
           <div class="wtd-result">
@@ -225,8 +299,8 @@ export function WorktreeTransitionDialog(props: {
               <Icon name={getSemanticIcon("state.success")} size="normal" />
             </span>
             <div class="wtd-result-copy">
-              <div class="wtd-result-title">{props.mode === "leave" ? "Left worktree" : "Moved to worktree"}</div>
-              <div class="wtd-result-description">{description()}</div>
+              <div class="wtd-result-title">{operationResultTitle(currentOperation())}</div>
+              <div class="wtd-result-description">{operationResultDescription(currentOperation())}</div>
             </div>
           </div>
           <div class="wtd-actions">

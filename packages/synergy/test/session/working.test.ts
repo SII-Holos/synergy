@@ -99,6 +99,25 @@ describe("SessionWorking", () => {
       })
     })
 
+    test("ignores stale stored working metadata without runtime work", async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const session = await Session.create({})
+          await Session.update(session.id, (draft) => {
+            draft.working = { status: "busy", description: "stale" }
+          })
+
+          const resolved = await SessionWorking.resolve(session.id)
+          expect(resolved).toBeUndefined()
+
+          const refreshed = await Session.get(session.id)
+          expect(refreshed.working).toBeUndefined()
+        },
+      })
+    })
+
     test("returns recovering when last assistant message lacks time.completed", async () => {
       await using tmp = await tmpdir({ git: true })
       await ScopeContext.provide({

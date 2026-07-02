@@ -29,7 +29,8 @@ import { SessionReviewTab } from "@/components/session"
 
 import { navMark, navParams } from "@/utils/perf"
 import { same } from "@/utils/same"
-import { isHomeScope } from "@/utils/scope"
+import { HOME_SCOPE_KEY, isHomeScope } from "@/utils/scope"
+import { base64Encode } from "@ericsanchezok/synergy-util/encode"
 
 import { useSessionCommands } from "@/components/session/commands"
 import { useSessionMeta } from "@/composables/use-session-meta"
@@ -44,6 +45,7 @@ import { WorkbenchSurface } from "@/components/session/workbench-surface"
 import { SessionTopBar } from "@/components/top-bar/session-top-bar"
 import {
   defaultNewSessionWorkspaceSelection,
+  normalizePathForCompare,
   type NewSessionWorkspaceSelection,
 } from "@/components/session/worktree-session"
 
@@ -401,6 +403,16 @@ function SessionPageContent() {
 
   const currentSession = createMemo(() => sync.data.session.find((s) => s.id === params.id))
   const sessionMeta = useSessionMeta(currentSession, sessionHasMessages)
+  createEffect(() => {
+    const session = currentSession()
+    const id = params.id
+    if (!session || !id) return
+    const routeScope = sdk.scopeKey
+    const sessionScope = session.scope.type === "home" ? HOME_SCOPE_KEY : session.scope.directory
+    if (!sessionScope) return
+    if (normalizePathForCompare(routeScope) === normalizePathForCompare(sessionScope)) return
+    navigate(`/${base64Encode(sessionScope)}/session/${id}`, { replace: true })
+  })
   const parentSession = createMemo(() => {
     const current = currentSession()
     if (!current?.parentID) return undefined
@@ -549,13 +561,7 @@ function SessionPageContent() {
     sync.session.diff(id)
   })
 
-  const isWorking = createMemo(() => {
-    // Canonical source: Session.Info.working field from the server
-    const session = currentSession()
-    if (session?.working) return true
-    // Fallback for pre-update sessions (before server returns working field)
-    return status().type !== "idle"
-  })
+  const isWorking = createMemo(() => status().type !== "idle")
   const autoScroll = createAutoScroll({
     working: isWorking,
   })
