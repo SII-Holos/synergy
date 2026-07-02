@@ -933,6 +933,55 @@ async function migrateActiveRevertState(progress: (current: number, total: numbe
   log.info("active revert state migrated to rollback history", { total: tasks.length })
 }
 
+async function migrateSessionChildIndex(progress: (current: number, total: number) => void) {
+  const scopeIDs = await Storage.scan(["sessions"]).catch(() => [])
+  if (scopeIDs.length === 0) return
+
+  let done = 0
+  for (const scopeID of scopeIDs) {
+    const scope = Identifier.asScopeID(scopeID)
+    await Storage.removeTree(StoragePath.sessionChildIndexRoot(scope)).catch(() => undefined)
+
+    const sessionIDs = await Storage.scan(StoragePath.sessionsRoot(scope)).catch(() => [])
+    const sessions = await Storage.readMany<Info>(
+      sessionIDs.map((sessionID) => StoragePath.sessionInfo(scope, Identifier.asSessionID(sessionID))),
+    )
+    const byParent = new Map<
+      string,
+      Array<{ id: string; title: string; updated: number; created: number; archived: boolean }>
+    >()
+
+    for (const session of sessions) {
+      if (!session?.parentID) continue
+      const entries = byParent.get(session.parentID) ?? []
+      entries.push({
+        id: session.id,
+        title: session.title,
+        updated: session.time.updated,
+        created: session.time.created,
+        archived: !!session.time.archived,
+      })
+      byParent.set(session.parentID, entries)
+    }
+
+    for (const [parentID, entries] of byParent) {
+      entries.sort((a, b) => b.updated - a.updated || b.id.localeCompare(a.id))
+      await Storage.write(StoragePath.sessionChildIndex(scope, Identifier.asSessionID(parentID)), {
+        version: 1,
+        scopeID,
+        parentID,
+        updatedAt: Date.now(),
+        entries,
+      })
+    }
+
+    done++
+    progress(done, scopeIDs.length)
+  }
+
+  log.info("session child index migration complete", { scopes: scopeIDs.length })
+}
+
 export const migrations: Migration[] = [
   {
     id: "20260411-session-endpoint-index",
@@ -1347,6 +1396,13 @@ export const migrations: Migration[] = [
     description: "Canonicalize session history, tool output, and diffs into bounded persistent shapes",
     async up(progress) {
       await migrateBoundedSessionData(progress)
+    },
+  },
+  {
+    id: "20260702-session-child-index",
+    description: "Build parent-to-child session indexes for paginated child session lookup",
+    async up(progress) {
+      await migrateSessionChildIndex(progress)
     },
   },
 ]

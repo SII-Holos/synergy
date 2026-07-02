@@ -87,6 +87,7 @@ export const SemanticIconToken = {
   "window.restore": "copy",
   "window.close": "x",
   "navigation.back": "arrow-left",
+  "navigation.forward": "arrow-right",
   "navigation.expand": "chevron-right",
   "navigation.collapse": "chevron-down",
 

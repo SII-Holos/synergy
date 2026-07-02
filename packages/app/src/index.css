@@ -122,8 +122,8 @@ a:active,
 }
 
 .statusbar-subsession-popover[data-component="popover-content"] {
-  width: min(19rem, calc(100vw - 24px));
-  max-width: min(19rem, calc(100vw - 24px));
+  width: min(24rem, calc(100vw - 24px));
+  max-width: min(24rem, calc(100vw - 24px));
   border-radius: var(--radius-lg);
   background-color: var(--workbench-popover-bg, var(--surface-raised-stronger-non-alpha));
 }
