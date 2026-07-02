@@ -70,6 +70,12 @@
     min-width: 0;
   }
 
+  [data-slot="session-turn-message-container"] > [data-component="user-message"][data-variant="turn-bubble"],
+  [data-slot="session-turn-timeline-item"]:is([data-kind="text"], [data-kind="reasoning"]) {
+    max-width: min(54rem, 100%);
+    margin-inline: auto;
+  }
+
   [data-slot="session-turn-timeline-item"] + [data-slot="session-turn-timeline-item"] {
     margin-top: 10px;
   }

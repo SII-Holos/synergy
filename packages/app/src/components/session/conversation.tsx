@@ -65,7 +65,7 @@ export function SessionConversation(props: {
       contentClass="mx-auto flex w-full min-w-0 flex-col items-start justify-start gap-5 px-4 pb-[calc(var(--prompt-height,8rem)+96px)] transition-[margin] md:px-5 md:pb-[calc(var(--prompt-height,10rem)+96px)]"
       contentClassList={{
         "max-w-full": true,
-        "md:max-w-[67.5rem]": !props.showTabs(),
+        "md:max-w-[60rem]": !props.showTabs(),
         "mt-0": props.showTabs(),
       }}
     >
@@ -148,7 +148,7 @@ export function SessionConversation(props: {
                   container:
                     "w-full min-w-0 max-w-full px-3 md:px-1 pb-1 " +
                     (!props.showTabs()
-                      ? "md:max-w-[62.5rem] md:mx-auto"
+                      ? "md:max-w-[60rem] md:mx-auto"
                       : hasTabs
                         ? workspaceOpen()
                           ? "md:pr-3 md:pl-10"

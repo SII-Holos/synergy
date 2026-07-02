@@ -58,7 +58,7 @@ export function PromptDock(props: {
       <div
         classList={{
           "w-full min-w-0 md:px-6 pointer-events-auto relative": true,
-          "md:max-w-[62.5rem]": !props.showTabs(),
+          "md:max-w-[54rem]": !props.showTabs(),
         }}
       >
         {/* Out-of-flow overlay anchored to the top of the content area:

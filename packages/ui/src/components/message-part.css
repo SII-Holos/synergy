@@ -347,9 +347,39 @@
 
   [data-component="markdown"] {
     margin-top: 16px;
+    color: var(--text-weak);
     font-size: var(--font-size-small);
     line-height: 1.55;
     font-style: italic;
+
+    &,
+    * {
+      color: var(--text-weak) !important;
+    }
+
+    li::marker {
+      color: var(--text-weaker);
+    }
+
+    h1,
+    h2,
+    h3,
+    h4,
+    h5,
+    h6,
+    blockquote {
+      border-left-color: var(--border-base);
+    }
+
+    [data-slot="markdown-code-block"],
+    table {
+      border-color: var(--border-weaker-base);
+    }
+
+    th,
+    td {
+      border-color: var(--border-weaker-base);
+    }
   }
 }
 
