@@ -759,26 +759,51 @@ export namespace SessionInvoke {
         const processTimer = log.time("processor.process")
         const timeoutCfg = await TimeoutConfig.resolve()
         const turnDeadline = new AbortController()
+        const deadlineError = new DOMException("Turn timed out after " + timeoutCfg.invokeMs + "ms", "AbortError")
+        let rejectDeadline: (error: Error) => void
+        const deadlinePromise = new Promise<never>((_, reject) => {
+          rejectDeadline = reject
+        })
+        deadlinePromise.catch(() => {})
         const turnTimer = setTimeout(() => {
-          turnDeadline.abort(new DOMException("Turn timed out after " + timeoutCfg.invokeMs + "ms", "AbortError"))
+          turnDeadline.abort(deadlineError)
+          rejectDeadline(deadlineError)
         }, timeoutCfg.invokeMs)
         abort.addEventListener("abort", () => clearTimeout(turnTimer), { once: true })
         const combinedAbort = AbortSignal.any([abort, turnDeadline.signal])
 
-        const result = await processor.process({
-          user: lastUser,
-          agent,
-          abort: combinedAbort,
-          sessionID,
-          system: promptPlan.system,
-          systemCacheBreakpoint: promptPlan.systemCacheBreakpoint,
-          messages: promptPlan.messages,
-          tools: resolvedTools.tools,
-          activeToolIDs: resolvedTools.activeToolIDs,
-          model,
-        })
-        clearTimeout(turnTimer)
-        processTimer.stop()
+        // Race against the deadline instead of relying on abort propagation:
+        // the processor can be stuck in an await that never observes signals
+        // (e.g. a wedged subprocess), and a signal alone cannot interrupt it.
+        let result: Awaited<ReturnType<typeof processor.process>>
+        try {
+          result = await Promise.race([
+            processor.process({
+              user: lastUser,
+              agent,
+              abort: combinedAbort,
+              sessionID,
+              system: promptPlan.system,
+              systemCacheBreakpoint: promptPlan.systemCacheBreakpoint,
+              messages: promptPlan.messages,
+              tools: resolvedTools.tools,
+              activeToolIDs: resolvedTools.activeToolIDs,
+              model,
+            }),
+            deadlinePromise,
+          ])
+        } catch (error) {
+          if (error !== deadlineError) throw error
+          log.error("turn deadline exceeded, abandoning turn", { sessionID, timeoutMs: timeoutCfg.invokeMs })
+          processor.message.error = MessageV2.fromError(deadlineError, { providerID: model.providerID })
+          processor.message.time.completed = Date.now()
+          await Session.updateMessage(processor.message)
+          Bus.publish(SessionEvent.Error, { sessionID, error: processor.message.error })
+          result = "stop"
+        } finally {
+          clearTimeout(turnTimer)
+          processTimer.stop()
+        }
 
         // post-LLM jobs
         const postParts = await MessageV2.parts({ scopeID, sessionID, messageID: processor.message.id })

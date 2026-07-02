@@ -13,7 +13,8 @@ import { useNotification } from "@/context/notification"
 
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { useTheme, type ColorScheme } from "@ericsanchezok/synergy-ui/theme"
-import { DialogSelectServer, DialogSelectDirectory } from "@/components/dialog"
+import { DialogSelectServer, DialogSelectDirectory, useConfirm } from "@/components/dialog"
+import { archiveSessionConfirm } from "@/components/dialog/confirm-copy"
 import { SettingsDialog } from "@/components/settings"
 import { useCommand, type CommandOption } from "@/context/command"
 import { navStart } from "@/utils/perf"
@@ -38,6 +39,7 @@ export default function Layout(props: ParentProps) {
   const notification = useNotification()
   const navigate = useNavigate()
   const dialog = useDialog()
+  const confirm = useConfirm()
   const command = useCommand()
   const theme = useTheme()
   const [searchOpen, setSearchOpen] = createSignal(false)
@@ -326,14 +328,7 @@ export default function Layout(props: ParentProps) {
         onSelect: async () => {
           const session = currentSessions().find((s) => s.id === params.id)
           if (!session) return
-          const nextSession = await layout.nav.archiveSession(session)
-          if (session.id === params.id) {
-            if (nextSession) {
-              navigate(`/${params.dir}/session/${nextSession.id}`)
-            } else {
-              navigate(`/${params.dir}/session`)
-            }
-          }
+          requestArchiveSession(session)
         },
       },
       {
@@ -380,6 +375,21 @@ export default function Layout(props: ParentProps) {
 
   function openServer() {
     dialog.show(() => <DialogSelectServer onSelected={() => navigate("/")} />)
+  }
+
+  function requestArchiveSession(session: Session) {
+    confirm.show({
+      ...archiveSessionConfirm(session.title),
+      onConfirm: async () => {
+        const nextSession = await layout.nav.archiveSession(session)
+        if (session.id !== params.id) return
+        if (nextSession) {
+          navigate(`/${params.dir}/session/${nextSession.id}`)
+        } else {
+          navigate(`/${params.dir}/session`)
+        }
+      },
+    })
   }
 
   function navigateToProject(directory: string | undefined) {

@@ -34,6 +34,8 @@ Treat that surface model as a hierarchy invariant, not a per-page decoration cho
 
 Treat the Holos agent as the Synergy account identity. Model subscriptions, API keys, quota windows, and provider logins belong to Providers and Usage, not Account.
 
+User-visible high-risk operations that archive, delete, cancel, overwrite, or uninstall product data must use the shared confirmation dialog. Browser page dialogs, permission review surfaces, and runtime controls with dedicated gesture semantics may keep specialized interfaces when the domain requires it.
+
 Holos agent profile is remote-owned identity data. Synergy may collect the initial name, description, and avatar URL when creating an agent, and may edit those fields from Account settings, but local storage should only retain the agent ID, agent secret, and timestamps. Importing an existing agent must fetch the remote profile instead of asking users to recreate or overwrite it.
 
 Holos create and import agent dialogs should be compact identity forms: title, short prompt, fields, and actions. Do not use decorative icon blocks, alert-style cards, or local storage and verification details for ordinary explanatory text in these flows.
@@ -86,7 +88,7 @@ Session timeline spacing should follow semantic rhythm: compact spacing for cons
 
 Conversation attachment display should be owned by each attachment's presentation policy. Tool metadata may hide or show the tool card, but must not choose primary attachments, promote media results, or override attachment sizing outside the persisted part order. Media such as memes should render as message content at a bounded conversational size, while screenshots and documents can opt into larger or file-style presentation through attachment-level fields.
 
-Child sessions are session-local context and should be reachable from the current session's StatusBar rather than the global sidebar. Show them as a compact recent-activity switcher ordered by each child session's latest update time, with running or waiting state visible in the row.
+Child sessions are session-local context and should be reachable from the current session's StatusBar rather than the global sidebar. Keep the child-session button persistent, but load children lazily only when the user opens its StatusBar panel. Show them as a compact paginated recent-activity switcher ordered by each child session's latest update time, with search, previous/next paging, and running or waiting state visible in the row.
 
 Opening a workbench panel should not force the session message stream or prompt composer into a separate narrow fixed measure. Keep the session column at its normal readable working measure and let it shrink only when the actual pane width requires it. The normal session measure should feel like a broad workbench column for coding and tool-rich conversations, not a narrow chat lane. In constrained panes, preserve a minimum horizontal gutter around the message stream and tool cards so they do not visually stick to the sidebar or workbench boundary. Auto-opened workbench panels should occupy about half the viewport; user-resized workbench widths can remain sticky.
 

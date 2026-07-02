@@ -43,6 +43,36 @@ async function addTerminalAssistantMessage(sessionID: string, parentID: string) 
 }
 
 describe("session migrations", () => {
+  test("builds child session indexes from existing session info files", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const tmpScope = await tmp.scope()
+
+    await ScopeContext.provide({
+      scope: tmpScope,
+      fn: async () => {
+        const parent = await Session.create({ title: "Parent" })
+        const childA = await Session.create({ title: "Child A", parentID: parent.id })
+        const childB = await Session.create({ title: "Child B", parentID: parent.id })
+        const scope = Identifier.asScopeID(tmpScope.id)
+
+        await Storage.removeTree(StoragePath.sessionChildIndexRoot(scope))
+        expect((await Session.readChildIndex(tmpScope.id, parent.id)).entries).toEqual([])
+
+        const migration = migrations.find((entry) => entry.id === "20260702-session-child-index")
+        expect(migration).toBeDefined()
+        await migration!.up(() => {})
+
+        const index = await Session.readChildIndex(tmpScope.id, parent.id)
+        expect(index.scopeID).toBe(tmpScope.id)
+        expect(index.parentID).toBe(parent.id)
+        expect(index.entries.map((entry) => entry.id).sort()).toEqual([childA.id, childB.id].sort())
+        expect(index.entries.find((entry) => entry.id === childA.id)?.title).toBe("Child A")
+
+        await Session.remove(parent.id)
+      },
+    })
+  })
+
   test("repairs stale pendingReply flags without clearing genuinely pending sessions", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({

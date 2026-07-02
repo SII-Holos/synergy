@@ -1,41 +1,34 @@
 import { describe, expect, test } from "bun:test"
-import type { Session } from "@ericsanchezok/synergy-sdk/client"
-import { childSessionsForParent, sortChildSessionsByActivity } from "./status-bar-subsession"
+import {
+  normalizeSubsessionSearch,
+  resolveSubsessionStatus,
+  subsessionCursorParams,
+  subsessionRangeLabel,
+} from "./status-bar-subsession"
 
-function session(id: string, created: number, updated?: number, parentID?: string): Session {
-  return {
-    id,
-    title: id,
-    parentID,
-    time: {
-      created,
-      updated,
-    },
-  } as Session
-}
-
-describe("sortChildSessionsByActivity", () => {
-  test("orders subsessions by latest activity first", () => {
-    const result = sortChildSessionsByActivity([
-      session("older-updated", 10, 20),
-      session("newer-created", 30),
-      session("newest-updated", 1, 40),
-    ])
-
-    expect(result.map((item) => item.id)).toEqual(["newest-updated", "newer-created", "older-updated"])
+describe("status bar subsession helpers", () => {
+  test("formats paginated ranges", () => {
+    expect(subsessionRangeLabel(0, 8, 8, 23)).toBe("1-8 of 23")
+    expect(subsessionRangeLabel(1, 8, 8, 23)).toBe("9-16 of 23")
+    expect(subsessionRangeLabel(2, 8, 7, 23)).toBe("17-23 of 23")
+    expect(subsessionRangeLabel(0, 8, 0, 0)).toBe("0 of 0")
   })
 
-  test("filters children for a parent before sorting", () => {
-    const result = childSessionsForParent(
-      [
-        session("parent", 1),
-        session("child-old", 2, 20, "parent"),
-        session("child-new", 3, 30, "parent"),
-        session("other-child", 4, 40, "other"),
-      ],
-      "parent",
-    )
+  test("serializes cursor query params only when a cursor exists", () => {
+    expect(subsessionCursorParams(null)).toEqual({})
+    expect(subsessionCursorParams({ lastActivityAt: 42, id: "ses_2" })).toEqual({
+      cursorLastActivityAt: 42,
+      cursorId: "ses_2",
+    })
+  })
 
-    expect(result.map((item) => item.id)).toEqual(["child-new", "child-old"])
+  test("normalizes search before sending a query", () => {
+    expect(normalizeSubsessionSearch("  build  ")).toBe("build")
+  })
+
+  test("uses waiting before running and falls back to idle", () => {
+    expect(resolveSubsessionStatus({ waiting: true, running: true })).toBe("waiting")
+    expect(resolveSubsessionStatus({ waiting: false, running: true })).toBe("running")
+    expect(resolveSubsessionStatus({ waiting: false, running: false })).toBe("idle")
   })
 })

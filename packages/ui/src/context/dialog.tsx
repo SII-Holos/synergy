@@ -24,19 +24,27 @@ type Active = {
 const Context = createContext<ReturnType<typeof init>>()
 
 function init() {
-  const [active, setActive] = createSignal<Active | undefined>()
+  const [stack, setStack] = createSignal<Active[]>([])
 
-  const close = () => {
-    const current = active()
+  const close = (id?: string) => {
+    const currentStack = stack()
+    const current = id ? currentStack.find((item) => item.id === id) : currentStack[currentStack.length - 1]
     if (!current) return
     current.onClose?.()
     current.dispose()
-    setActive(undefined)
+    setStack((prev) => prev.filter((item) => item.id !== current.id))
   }
 
-  const show = (element: DialogElement, owner: Owner, onClose?: () => void) => {
-    close()
+  const closeAll = () => {
+    const currentStack = stack()
+    for (const current of [...currentStack].reverse()) {
+      current.onClose?.()
+      current.dispose()
+    }
+    setStack([])
+  }
 
+  const mount = (element: DialogElement, owner: Owner, onClose?: () => void) => {
     const id = Math.random().toString(36).slice(2)
     let dispose: (() => void) | undefined
 
@@ -49,7 +57,7 @@ function init() {
             open={true}
             onOpenChange={(open) => {
               if (open) return
-              close()
+              close(id)
             }}
           >
             <Kobalte.Portal>
@@ -61,16 +69,28 @@ function init() {
       }),
     )
 
-    if (!dispose) return
+    const activeDispose = dispose
+    if (!activeDispose) return
 
-    setActive({ id, node, dispose, owner, onClose })
+    const active: Active = { id, node, dispose: activeDispose, owner, onClose }
+    setStack((prev) => [...prev, active])
+  }
+
+  const show = (element: DialogElement, owner: Owner, onClose?: () => void) => {
+    closeAll()
+    mount(element, owner, onClose)
   }
 
   return {
     get active() {
-      return active()
+      const currentStack = stack()
+      return currentStack[currentStack.length - 1]
+    },
+    get stack() {
+      return stack()
     },
     close,
+    push: mount,
     show,
   }
 }
@@ -80,7 +100,7 @@ export function DialogProvider(props: ParentProps) {
   return (
     <Context.Provider value={ctx}>
       {props.children}
-      <div data-component="dialog-stack">{ctx.active?.node}</div>
+      <div data-component="dialog-stack">{ctx.stack.map((active) => active.node)}</div>
     </Context.Provider>
   )
 }
@@ -103,6 +123,10 @@ export function useDialog() {
     show(element: DialogElement, onClose?: () => void) {
       const base = ctx.active?.owner ?? owner
       ctx.show(element, base, onClose)
+    },
+    push(element: DialogElement, onClose?: () => void) {
+      const base = ctx.active?.owner ?? owner
+      ctx.push(element, base, onClose)
     },
     close() {
       ctx.close()

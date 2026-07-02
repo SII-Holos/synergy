@@ -13,6 +13,8 @@ import { getScopeLabel, isHomeScope } from "@/utils/scope"
 import { ActiveZone } from "@/components/scopes/active-zone"
 import { SessionRow } from "@/components/scopes/session-row"
 import { PaginationBar } from "@/components/scopes/pagination-bar"
+import { useConfirm } from "@/components/dialog/confirm-dialog"
+import { archiveSessionConfirm } from "@/components/dialog/confirm-copy"
 import type { Session } from "@ericsanchezok/synergy-sdk/client"
 
 export function MobileDrawer() {
@@ -90,6 +92,7 @@ export function MobileDrawer() {
                     navigateAndClose(`/${base64Encode(scopeKey)}/session/${session.id}`)
                   }}
                   onNewSession={() => navigateAndClose(`/${base64Encode(scope().worktree)}/session`)}
+                  onClose={close}
                 />
               )}
             </Show>
@@ -228,9 +231,12 @@ function SessionListDrawerView(props: {
   onBack: () => void
   onSelectSession: (session: Session) => void
   onNewSession: () => void
+  onClose: () => void
 }) {
   const layout = useLayout()
   const globalSDK = useGlobalSDK()
+  const navigate = useNavigate()
+  const confirm = useConfirm()
   const [currentPage, setCurrentPage] = createSignal(1)
   const [loading, setLoading] = createSignal(false)
   const [pagedSessions, setPagedSessions] = createSignal<Session[]>([])
@@ -275,6 +281,28 @@ function SessionListDrawerView(props: {
     const hasError = unseen.some((n) => n.type === "error")
     const hasNotification = unseen.length > 0
     return { isWorking, hasPermission, hasError, hasNotification, notificationCount: unseen.length }
+  }
+
+  function archiveSession(session: Session) {
+    confirm.show({
+      ...archiveSessionConfirm(session.title),
+      onConfirm: async () => {
+        const nextSession = await layout.nav.archiveSession(session)
+        setPagedSessions((prev) => prev.filter((item) => item.id !== session.id))
+        setPagedTotal((prev) => Math.max(0, prev - 1))
+        fetchPage(currentPage())
+
+        if (session.id !== props.currentSessionID) return
+        if (nextSession) {
+          const nextScopeKey = nextSession.scope.type === "home" ? "home" : nextSession.scope.directory!
+          navigate(`/${base64Encode(nextScopeKey)}/session/${nextSession.id}`)
+        } else {
+          const scopeKey = session.scope.type === "home" ? "home" : session.scope.directory!
+          navigate(`/${base64Encode(scopeKey)}/session`)
+        }
+        props.onClose()
+      },
+    })
   }
 
   return (
@@ -331,7 +359,7 @@ function SessionListDrawerView(props: {
                 notificationCount={state.notificationCount}
                 onSelect={() => props.onSelectSession(session)}
                 onTogglePin={() => layout.nav.pinSession(session, !(session.pinned && session.pinned > 0))}
-                onArchive={() => layout.nav.archiveSession(session)}
+                onArchive={() => archiveSession(session)}
                 onRename={(title) =>
                   globalSDK.client.session.update({ directory: session.scope.directory, sessionID: session.id, title })
                 }
