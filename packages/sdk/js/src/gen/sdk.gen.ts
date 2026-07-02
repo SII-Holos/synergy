@@ -437,6 +437,8 @@ import type {
   WorktreeCreateErrors,
   WorktreeCreateInput,
   WorktreeCreateResponses,
+  WorktreeLeaveErrors,
+  WorktreeLeaveResponses,
   WorktreeListResponses,
 } from "./types.gen.js"
 
@@ -4959,6 +4961,38 @@ export class Worktree extends HeyApiClient {
         ...options?.headers,
         ...params.headers,
       },
+    })
+  }
+
+  /**
+   * Leave worktree
+   *
+   * Leave the current git worktree for a session and return it to the main checkout.
+   */
+  public leave<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      directory?: string
+      scopeID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<WorktreeLeaveResponses, WorktreeLeaveErrors, ThrowOnError>({
+      url: "/experimental/worktree/session/{sessionID}/leave",
+      ...options,
+      ...params,
     })
   }
 }

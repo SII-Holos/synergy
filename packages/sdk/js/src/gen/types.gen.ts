@@ -2634,10 +2634,6 @@ export type WorktreeCreateInput = {
   bind?: boolean
 }
 
-export type VcsInfo = {
-  branch: string
-}
-
 export type SessionScope = {
   id: string
   type?: string
@@ -2809,6 +2805,10 @@ export type Session = {
     loopRole?: "execution" | "audit"
     planMode?: boolean
   }
+}
+
+export type VcsInfo = {
+  branch: string
 }
 
 export type SessionStatus =
@@ -7128,6 +7128,40 @@ export type WorktreeCreateResponses = {
 }
 
 export type WorktreeCreateResponse = WorktreeCreateResponses[keyof WorktreeCreateResponses]
+
+export type WorktreeLeaveData = {
+  body?: never
+  path: {
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/experimental/worktree/session/{sessionID}/leave"
+}
+
+export type WorktreeLeaveErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type WorktreeLeaveError = WorktreeLeaveErrors[keyof WorktreeLeaveErrors]
+
+export type WorktreeLeaveResponses = {
+  /**
+   * Session returned to main checkout
+   */
+  200: Session
+}
+
+export type WorktreeLeaveResponse = WorktreeLeaveResponses[keyof WorktreeLeaveResponses]
 
 export type VcsGetData = {
   body?: never
