@@ -5,12 +5,13 @@ import {
   ipcMain,
   Menu,
   nativeImage,
+  nativeTheme,
   shell,
   Tray,
   type BrowserWindowConstructorOptions,
 } from "electron"
 import path from "node:path"
-import { fileURLToPath } from "node:url"
+import { fileURLToPath, pathToFileURL } from "node:url"
 import { BrowserNativeViewManager } from "./browser-native-view.js"
 import { BrowserWebRTCHost } from "./browser-webrtc-host.js"
 import { desktopErrorPage } from "./error-page.js"
@@ -33,6 +34,7 @@ import {
 import { installAppMenu } from "./menu.js"
 import { DesktopServerManager } from "./server-manager.js"
 import { enforceProductionLoading, installSessionSecurity, installWindowSecurity } from "./security.js"
+import { desktopStartupPage, startupStatusScript, type DesktopStartupStatus } from "./startup-page.js"
 import { DesktopUpdateMode, DesktopUpdater } from "./updater.js"
 import { loadWindowState, scheduleWindowStatePersistence } from "./window-state.js"
 import {
@@ -102,16 +104,19 @@ async function createWindow() {
     await updater.init()
   }
 
-  const targetURL = await resolveAppURL()
-  runtimeLog("createWindow", { targetURL, mode, show: process.env.SYNERGY_DESKTOP_SHOW !== "0" })
-
   const windowState = await loadWindowState(app.getPath("userData"))
+  const iconPath = desktopIconPath({
+    platform: process.platform,
+    dirname,
+    isPackaged: app.isPackaged,
+    resourcesPath: process.resourcesPath,
+  })
   const windowOptions: BrowserWindowConstructorOptions = {
     show: false,
     width: windowState.width,
     height: windowState.height,
     title: desktopWindowTitle(channel),
-    backgroundColor: "#111214",
+    backgroundColor: nativeTheme.shouldUseDarkColors ? "#111214" : "#f7f7f5",
     ...desktopWindowChromeOptions({
       platform: process.platform,
       dirname,
@@ -131,12 +136,13 @@ async function createWindow() {
   }
 
   mainWindow = new BrowserWindow(windowOptions)
+  runtimeLog("createWindow", { mode, show: process.env.SYNERGY_DESKTOP_SHOW !== "0" })
   if (process.platform !== "darwin") {
     mainWindow.setMenuBarVisibility(false)
   }
   nativeViews = new BrowserNativeViewManager(mainWindow)
   installWindowSecurity(mainWindow, () => currentAppURL)
-  enforceProductionLoading(mainWindow.webContents, currentAppURL)
+  enforceProductionLoading(mainWindow.webContents, () => currentAppURL)
   scheduleWindowStatePersistence(mainWindow, app.getPath("userData"))
   installWindowInputShortcuts(mainWindow, isDebugEnabled(channel))
   installDesktopWindowStateEvents(mainWindow)
@@ -153,8 +159,36 @@ async function createWindow() {
     mainWindow = null
   })
 
+  await mainWindow.loadURL(
+    desktopStartupPage({
+      chrome: process.platform === "darwin" ? "native" : "custom",
+      iconUrl: iconPath ? pathToFileURL(iconPath).toString() : undefined,
+    }),
+  )
+  await setStartupStatus({
+    title: mode === "external" ? "Connecting to Synergy" : "Starting local runtime",
+    detail:
+      mode === "external"
+        ? "Opening the configured desktop app surface."
+        : "Synergy is opening the local server and workspace.",
+  })
+
+  const targetURL = await resolveAppURL()
+  await setStartupStatus({
+    title: currentAppURL ? "Loading workspace" : "Startup needs attention",
+    detail: currentAppURL
+      ? "Connecting to the local app surface."
+      : "Synergy could not start the local runtime. Opening diagnostics.",
+  })
   await mainWindow.loadURL(targetURL)
   runtimeLog("windowLoaded", { url: mainWindow.webContents.getURL() })
+}
+
+async function setStartupStatus(status: DesktopStartupStatus): Promise<void> {
+  const window = mainWindow
+  if (!window || window.isDestroyed()) return
+  if (!window.webContents.getURL().startsWith("data:text/html,")) return
+  await window.webContents.executeJavaScript(startupStatusScript(status)).catch(() => {})
 }
 
 async function ensureMainWindow() {

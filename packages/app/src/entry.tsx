@@ -26,6 +26,15 @@ if (import.meta.env.DEV && !(root instanceof HTMLElement)) {
   )
 }
 
+function scheduleBootShellRemoval() {
+  const remove = () => document.getElementById("synergy-app-boot")?.remove()
+  if (typeof window.requestAnimationFrame === "function") {
+    window.requestAnimationFrame(remove)
+    return
+  }
+  window.setTimeout(remove, 0)
+}
+
 const platform: Platform = {
   platform: window.synergyDesktop?.platform === "desktop" ? "desktop" : "web",
   version: pkg.version,
@@ -96,3 +105,4 @@ render(
   ),
   root!,
 )
+scheduleBootShellRemoval()
