@@ -1,4 +1,3 @@
-import { $ } from "bun"
 import path from "path"
 import fs from "fs/promises"
 import { Log } from "../util/log"
@@ -7,10 +6,15 @@ import z from "zod"
 import { Config } from "../config/config"
 import { ScopeContext } from "../scope/context"
 import { SnapshotSchema } from "./snapshot-schema"
+import { withTimeout } from "../util/timeout"
 
 export namespace Snapshot {
   const log = Log.create({ service: "snapshot" })
   const SNAPSHOT_TIMEOUT_MS = 10_000
+  // Extra headroom past the abort timeout: the abort signal can only kill the
+  // child process — it cannot rescue a stdout/exit collection promise that
+  // never settles, so the whole collection is raced against this deadline.
+  const SNAPSHOT_HARD_TIMEOUT_MS = SNAPSHOT_TIMEOUT_MS + 5_000
   const SNAPSHOT_MAX_FILE_BYTES = 2 * 1024 * 1024
   const EXCLUDED_DIRS = new Set([
     ".git",
@@ -86,10 +90,11 @@ export namespace Snapshot {
     cwd: string,
     env?: Record<string, string>,
     signal?: AbortSignal,
-  ): Promise<{ exitCode: number; text: string }> {
+  ): Promise<{ exitCode: number; text: string; stderr: string }> {
     const childSignal = spawnSignal(SNAPSHOT_TIMEOUT_MS, signal)
+    let proc: Bun.Subprocess<"ignore", "pipe", "pipe"> | undefined
     try {
-      const proc = Bun.spawn(args, {
+      proc = Bun.spawn(args, {
         cwd,
         stdout: "pipe",
         stderr: "pipe",
@@ -98,12 +103,18 @@ export namespace Snapshot {
       })
       const stdout = new Response(proc.stdout).text()
       const stderr = new Response(proc.stderr).text().catch(() => "")
-      const [text, exitCode] = await Promise.all([stdout, proc.exited])
-      await stderr
-      return { exitCode, text }
+      const [text, stderrText, exitCode] = await withTimeout(
+        Promise.all([stdout, stderr, proc.exited]),
+        SNAPSHOT_HARD_TIMEOUT_MS,
+        { message: `git subprocess did not settle within ${SNAPSHOT_HARD_TIMEOUT_MS}ms` },
+      )
+      return { exitCode, text, stderr: stderrText }
     } catch (err) {
-      log.debug("git spawn failed", { args, cwd, error: String(err) })
-      return { exitCode: -1, text: "" }
+      log.warn("git spawn failed", { args, cwd, error: String(err) })
+      try {
+        proc?.kill()
+      } catch {}
+      return { exitCode: -1, text: "", stderr: "" }
     } finally {
       childSignal.cleanup()
     }
@@ -113,6 +124,8 @@ export namespace Snapshot {
     if (ScopeContext.current.scope.type !== "project" || ScopeContext.current.scope.vcs !== "git") return
     const cfg = await Config.current()
     if (cfg.snapshot === false) return
+    const started = Date.now()
+    log.debug("track start", { sessionID, cwd: ScopeContext.current.directory })
     const git = gitdir(sessionID)
     if (await fs.mkdir(git, { recursive: true })) {
       const initResult = await gitSpawn(
@@ -122,7 +135,7 @@ export namespace Snapshot {
         signal,
       )
       if (initResult.exitCode !== 0) {
-        log.warn("track init failed", { exitCode: initResult.exitCode })
+        log.warn("track init failed", { sessionID, exitCode: initResult.exitCode, duration: Date.now() - started })
         return undefined
       }
       await gitSpawn(
@@ -135,7 +148,7 @@ export namespace Snapshot {
     }
     const addResult = await refreshIndex(sessionID, signal)
     if (!addResult) {
-      log.warn("track add failed")
+      log.warn("track add failed", { sessionID, duration: Date.now() - started })
       return undefined
     }
     const writeResult = await gitSpawn(
@@ -145,11 +158,11 @@ export namespace Snapshot {
       signal,
     )
     if (writeResult.exitCode !== 0 || !writeResult.text.trim()) {
-      log.warn("track write-tree failed", { exitCode: writeResult.exitCode })
+      log.warn("track write-tree failed", { sessionID, exitCode: writeResult.exitCode, duration: Date.now() - started })
       return undefined
     }
     const hash = writeResult.text.trim()
-    log.info("tracking", { hash, cwd: ScopeContext.current.directory, git })
+    log.info("tracking", { hash, cwd: ScopeContext.current.directory, git, duration: Date.now() - started })
     return hash
   }
 
@@ -164,11 +177,13 @@ export namespace Snapshot {
     sessionID: string,
     opts?: { indexFresh?: boolean; signal?: AbortSignal },
   ): Promise<Patch> {
+    const started = Date.now()
+    log.debug("patch start", { sessionID, hash })
     const git = gitdir(sessionID)
     if (!opts?.indexFresh) {
       const addResult = await refreshIndex(sessionID, opts?.signal)
       if (!addResult) {
-        log.warn("patch add failed", { hash })
+        log.warn("patch add failed", { sessionID, hash, duration: Date.now() - started })
         return { hash, files: [] }
       }
     }
@@ -194,11 +209,18 @@ export namespace Snapshot {
     )
 
     if (diffResult.exitCode !== 0) {
-      log.warn("failed to get diff", { hash, exitCode: diffResult.exitCode })
+      log.warn("failed to get diff", {
+        sessionID,
+        hash,
+        exitCode: diffResult.exitCode,
+        stderr: diffResult.stderr,
+        duration: Date.now() - started,
+      })
       return { hash, files: [] }
     }
 
     const filesText = diffResult.text
+    log.debug("patch done", { sessionID, hash, duration: Date.now() - started })
     return {
       hash,
       files: filesText
@@ -229,16 +251,25 @@ export namespace Snapshot {
           if (seen.has(file)) continue
           seen.add(file)
           const relativePath = path.relative(ScopeContext.current.directory, file).replaceAll("\\", "/")
-          const result =
-            await $`git --git-dir ${git} --work-tree ${ScopeContext.current.directory} checkout ${snapshot} -- ${relativePath}`
-              .quiet()
-              .cwd(ScopeContext.current.directory)
-              .nothrow()
+          const result = await gitSpawn(
+            [
+              "git",
+              "--git-dir",
+              git,
+              "--work-tree",
+              ScopeContext.current.directory,
+              "checkout",
+              snapshot,
+              "--",
+              relativePath,
+            ],
+            ScopeContext.current.directory,
+          )
           if (result.exitCode !== 0) {
             log.warn("failed to restore file from snapshot", {
               file,
               snapshot,
-              stderr: result.stderr.toString(),
+              stderr: result.stderr,
             })
           }
         }
@@ -254,23 +285,41 @@ export namespace Snapshot {
         if (files.has(file)) continue
         log.info("reverting", { file, hash: item.hash })
         const relativePath = path.relative(ScopeContext.current.directory, file).replaceAll("\\", "/")
-        const checkTree =
-          await $`git --git-dir ${git} --work-tree ${ScopeContext.current.directory} ls-tree ${item.hash} -- ${relativePath}`
-            .quiet()
-            .cwd(ScopeContext.current.directory)
-            .nothrow()
+        const checkTree = await gitSpawn(
+          [
+            "git",
+            "--git-dir",
+            git,
+            "--work-tree",
+            ScopeContext.current.directory,
+            "ls-tree",
+            item.hash,
+            "--",
+            relativePath,
+          ],
+          ScopeContext.current.directory,
+        )
         if (checkTree.exitCode === 0) {
-          if (checkTree.text().trim()) {
+          if (checkTree.text.trim()) {
             // File existed in snapshot — restore it
-            const result =
-              await $`git --git-dir ${git} --work-tree ${ScopeContext.current.directory} checkout ${item.hash} -- ${relativePath}`
-                .quiet()
-                .cwd(ScopeContext.current.directory)
-                .nothrow()
+            const result = await gitSpawn(
+              [
+                "git",
+                "--git-dir",
+                git,
+                "--work-tree",
+                ScopeContext.current.directory,
+                "checkout",
+                item.hash,
+                "--",
+                relativePath,
+              ],
+              ScopeContext.current.directory,
+            )
             if (result.exitCode !== 0) {
               log.warn("file existed in snapshot but checkout failed", {
                 file,
-                stderr: result.stderr.toString(),
+                stderr: result.stderr,
               })
             }
           } else {
@@ -283,7 +332,7 @@ export namespace Snapshot {
           log.warn("ls-tree failed, skipping revert for file", {
             file,
             exitCode: checkTree.exitCode,
-            stderr: checkTree.stderr.toString(),
+            stderr: checkTree.stderr,
           })
         }
         files.add(file)
@@ -291,38 +340,79 @@ export namespace Snapshot {
     }
   }
 
-  export async function diff(hash: string, sessionID: string, opts?: { indexFresh?: boolean }) {
+  export async function diff(hash: string, sessionID: string, opts?: { indexFresh?: boolean; signal?: AbortSignal }) {
     const git = gitdir(sessionID)
-    if (!opts?.indexFresh) await refreshIndex(sessionID)
-    const result =
-      await $`git -c core.autocrlf=false --git-dir ${git} --work-tree ${ScopeContext.current.directory} diff --no-ext-diff ${hash} -- .`
-        .quiet()
-        .cwd(ScopeContext.current.directory)
-        .nothrow()
+    if (!opts?.indexFresh) await refreshIndex(sessionID, opts?.signal)
+    const result = await gitSpawn(
+      [
+        "git",
+        "-c",
+        "core.autocrlf=false",
+        "--git-dir",
+        git,
+        "--work-tree",
+        ScopeContext.current.directory,
+        "diff",
+        "--no-ext-diff",
+        hash,
+        "--",
+        ".",
+      ],
+      ScopeContext.current.directory,
+      undefined,
+      opts?.signal,
+    )
 
     if (result.exitCode !== 0) {
       log.warn("failed to get diff", {
         hash,
         exitCode: result.exitCode,
-        stderr: result.stderr.toString(),
-        stdout: result.stdout.toString(),
+        stderr: result.stderr,
+        stdout: result.text,
       })
       return ""
     }
 
-    return result.text().trim()
+    return result.text.trim()
   }
 
   export const FileDiff = SnapshotSchema.FileDiff
   export type FileDiff = SnapshotSchema.FileDiff
-  export async function diffSummary(from: string, to: string, sessionID: string): Promise<FileDiff[]> {
+  export async function diffSummary(
+    from: string,
+    to: string,
+    sessionID: string,
+    signal?: AbortSignal,
+  ): Promise<FileDiff[]> {
     const git = gitdir(sessionID)
     const result: FileDiff[] = []
-    for await (const line of $`git -c core.autocrlf=false --git-dir ${git} --work-tree ${ScopeContext.current.directory} diff --no-ext-diff --no-renames --numstat ${from} ${to} -- .`
-      .quiet()
-      .cwd(ScopeContext.current.directory)
-      .nothrow()
-      .lines()) {
+    const numstat = await gitSpawn(
+      [
+        "git",
+        "-c",
+        "core.autocrlf=false",
+        "--git-dir",
+        git,
+        "--work-tree",
+        ScopeContext.current.directory,
+        "diff",
+        "--no-ext-diff",
+        "--no-renames",
+        "--numstat",
+        from,
+        to,
+        "--",
+        ".",
+      ],
+      ScopeContext.current.directory,
+      undefined,
+      signal,
+    )
+    if (numstat.exitCode !== 0) {
+      log.warn("failed to get diff summary", { from, to, exitCode: numstat.exitCode, stderr: numstat.stderr })
+      return result
+    }
+    for (const line of numstat.text.split("\n")) {
       if (!line) continue
       const [additions, deletions, file] = line.split("\t")
       const isBinaryFile = additions === "-" && deletions === "-"
@@ -330,11 +420,29 @@ export namespace Snapshot {
       const deleted = isBinaryFile ? 0 : parseInt(deletions)
       const patch = isBinaryFile
         ? ""
-        : await $`git -c core.autocrlf=false --git-dir ${git} --work-tree ${ScopeContext.current.directory} diff --no-ext-diff --no-renames ${from} ${to} -- ${file}`
-            .quiet()
-            .cwd(ScopeContext.current.directory)
-            .nothrow()
-            .text()
+        : (
+            await gitSpawn(
+              [
+                "git",
+                "-c",
+                "core.autocrlf=false",
+                "--git-dir",
+                git,
+                "--work-tree",
+                ScopeContext.current.directory,
+                "diff",
+                "--no-ext-diff",
+                "--no-renames",
+                from,
+                to,
+                "--",
+                file,
+              ],
+              ScopeContext.current.directory,
+              undefined,
+              signal,
+            )
+          ).text
       result.push(
         SnapshotSchema.fromPatch({
           file,
@@ -342,8 +450,8 @@ export namespace Snapshot {
           deletions: Number.isFinite(deleted) ? deleted : 0,
           binary: isBinaryFile,
           patch,
-          beforeBytes: await objectSize(git, from, file),
-          afterBytes: await objectSize(git, to, file),
+          beforeBytes: await objectSize(git, from, file, signal),
+          afterBytes: await objectSize(git, to, file, signal),
         }),
       )
     }
@@ -361,7 +469,8 @@ export namespace Snapshot {
     )
     if (rm.exitCode !== 0) return false
 
-    const files = await includedFiles(cwd)
+    const files = await includedFiles(cwd, signal)
+    if (files === undefined) return false
     if (files.length === 0) return true
 
     const pathspec = path.join(git, "synergy-pathspec")
@@ -379,10 +488,14 @@ export namespace Snapshot {
     }
   }
 
-  async function includedFiles(cwd: string): Promise<string[]> {
-    const text = await $`git ls-files -co --exclude-standard -z`.cwd(cwd).quiet().nothrow().text()
+  async function includedFiles(cwd: string, signal?: AbortSignal): Promise<string[] | undefined> {
+    const listing = await gitSpawn(["git", "ls-files", "-co", "--exclude-standard", "-z"], cwd, undefined, signal)
+    if (listing.exitCode !== 0) {
+      log.warn("ls-files failed", { cwd, exitCode: listing.exitCode, stderr: listing.stderr })
+      return undefined
+    }
     const files: string[] = []
-    for (const raw of text.split("\0")) {
+    for (const raw of listing.text.split("\0")) {
       const rel = raw.trim()
       if (!rel || excludePath(rel)) continue
       const absolute = path.join(cwd, rel)
@@ -405,10 +518,20 @@ export namespace Snapshot {
     return `${ScopeContext.current.directory}/${rel.replaceAll("\\", "/")}`
   }
 
-  async function objectSize(git: string, tree: string, file: string): Promise<number | undefined> {
-    const result = await $`git --git-dir ${git} cat-file -s ${tree}:${file}`.quiet().nothrow()
+  async function objectSize(
+    git: string,
+    tree: string,
+    file: string,
+    signal?: AbortSignal,
+  ): Promise<number | undefined> {
+    const result = await gitSpawn(
+      ["git", "--git-dir", git, "cat-file", "-s", `${tree}:${file}`],
+      ScopeContext.current.directory,
+      undefined,
+      signal,
+    )
     if (result.exitCode !== 0) return undefined
-    const parsed = Number.parseInt(result.text().trim(), 10)
+    const parsed = Number.parseInt(result.text.trim(), 10)
     return Number.isFinite(parsed) ? parsed : undefined
   }
 
