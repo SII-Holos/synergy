@@ -325,7 +325,6 @@ function installDesktopTray(channel: DesktopChannel): void {
   desktopTray.setContextMenu(
     Menu.buildFromTemplate([
       { label: "Open Synergy", click: showMainWindow },
-      { type: "separator" },
       { label: "Quit Synergy", click: () => app.quit() },
     ]),
   )
