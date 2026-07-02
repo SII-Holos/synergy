@@ -247,7 +247,7 @@ export async function requestPluginPermission(
   const agent = await Agent.get(context.agent)
   const session = await Session.get(context.sessionID)
   const topLevelProfile = await topLevelControlProfile()
-  const sessionProfile = session?.id ? await Session.resolveControlProfile(session.id) : undefined
+  const sessionProfile = session?.id ? await Session.resolveSessionControlProfile(session.id) : undefined
   const profileId = ControlProfileCompiler.normalize(sessionProfile ?? agent?.controlProfile ?? topLevelProfile)
   const workspaceInfo = ScopeContext.current.workspace
   const interaction = session?.interaction

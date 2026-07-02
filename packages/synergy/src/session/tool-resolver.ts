@@ -656,7 +656,9 @@ export namespace ToolResolver {
         if (!profilePromise) {
           profilePromise = (async () => {
             const topLevelProfile = await currentTopLevelProfile()
-            const sessionProfile = input.session?.id ? await Session.resolveControlProfile(input.session.id) : undefined
+            const sessionProfile = input.session?.id
+              ? await Session.resolveSessionControlProfile(input.session.id)
+              : undefined
             const profileId = resolveEffectiveProfile(input.agent, topLevelProfile, sessionProfile)
             const workspaceInfo = ScopeContext.current.workspace
             const interaction = input.session?.interaction
@@ -1002,7 +1004,7 @@ export namespace ToolResolver {
                 const interactionMode = interaction?.mode === "unattended" ? "unattended" : "attended"
                 const topLevelProfile = await currentTopLevelProfile()
                 const sessionProfile = runtimeInput.session?.id
-                  ? await Session.resolveControlProfile(runtimeInput.session.id)
+                  ? await Session.resolveSessionControlProfile(runtimeInput.session.id)
                   : undefined
                 const profileId = resolveEffectiveProfile(runtimeInput.agent, topLevelProfile, sessionProfile)
                 const synergyRoot = Global.Path.root
@@ -1232,7 +1234,7 @@ export namespace ToolResolver {
                   const interactionMode = interaction?.mode === "unattended" ? "unattended" : "attended"
                   const topLevelProfile = await currentTopLevelProfile()
                   const sessionProfile = runtimeInput.session?.id
-                    ? await Session.resolveControlProfile(runtimeInput.session.id)
+                    ? await Session.resolveSessionControlProfile(runtimeInput.session.id)
                     : undefined
                   const profileId = resolveEffectiveProfile(runtimeInput.agent, topLevelProfile, sessionProfile)
                   const pluginToolIds = await currentPluginToolIds()

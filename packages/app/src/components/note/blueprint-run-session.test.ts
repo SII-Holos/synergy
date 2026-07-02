@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import {
   activeBlueprintLoop,
+  blueprintExecutionControlProfile,
   blueprintScopeIDForDirectory,
   blueprintSessionRouteDirectory,
   blueprintSessionWorkspaceSelection,
@@ -27,6 +28,13 @@ describe("Blueprint run session helpers", () => {
     expect(blueprintSessionWorkspaceSelection("current")).toEqual({ mode: "current" })
     expect(blueprintSessionWorkspaceSelection("new")).toEqual({ mode: "current" })
     expect(blueprintSessionWorkspaceSelection("worktree")).toEqual({ mode: "create" })
+  })
+
+  test("floors new Blueprint execution sessions at Autonomous", () => {
+    expect(blueprintExecutionControlProfile(undefined)).toBe("autonomous")
+    expect(blueprintExecutionControlProfile("guarded")).toBe("autonomous")
+    expect(blueprintExecutionControlProfile("autonomous")).toBe("autonomous")
+    expect(blueprintExecutionControlProfile("full_access")).toBe("full_access")
   })
 
   test("keeps navigation on the canonical session scope", () => {

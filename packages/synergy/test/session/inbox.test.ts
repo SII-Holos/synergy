@@ -97,4 +97,59 @@ describe("SessionInbox", () => {
       },
     })
   })
+
+  test("deliver can wake an idle session without waiting for processing to finish", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({})
+        const started = Promise.withResolvers<void>()
+        const release = Promise.withResolvers<void>()
+        let finished = false
+
+        const cleanup = SessionManager.onMailboxReady(async (sessionID) => {
+          started.resolve()
+          await release.promise
+          SessionManager.drainMails(sessionID, "user")
+          finished = true
+        })
+
+        try {
+          const result = await Promise.race([
+            SessionManager.deliver({
+              target: session.id,
+              waitForProcessing: false,
+              mail: {
+                type: "user",
+                agent: "synergy",
+                model: { providerID: "test", modelID: "test-model" },
+                parts: [
+                  {
+                    id: "prt_async_agent_update",
+                    sessionID: session.id,
+                    messageID: "msg_async_agent_update",
+                    type: "text",
+                    text: "continue in the background",
+                  },
+                ],
+              },
+            }).then(() => "delivered" as const),
+            new Promise<"timeout">((resolve) => setTimeout(() => resolve("timeout"), 50)),
+          ])
+
+          expect(result).toBe("delivered")
+          expect(finished).toBe(false)
+          await started.promise
+          release.resolve()
+          await new Promise((resolve) => setTimeout(resolve, 0))
+          expect(finished).toBe(true)
+        } finally {
+          release.resolve()
+          cleanup()
+          SessionManager.unregisterRuntime(session.id)
+        }
+      },
+    })
+  })
 })

@@ -16,6 +16,7 @@ import { fn } from "@/util/fn"
 import { Snapshot } from "@/session/snapshot"
 import { SnapshotSchema } from "@/session/snapshot-schema"
 import { SessionHistory } from "./history"
+import { Config } from "@/config/config"
 
 import type { Provider } from "@/provider/provider"
 import { PermissionNext } from "@/permission/next"
@@ -480,16 +481,23 @@ export namespace Session {
     return updated
   }
 
-  export async function resolveControlProfile(sessionID: string): Promise<NonNullable<Info["controlProfile"]>> {
+  export async function resolveSessionControlProfile(sessionID: string): Promise<Info["controlProfile"] | undefined> {
     let currentID = sessionID
     while (true) {
       const session = await SessionManager.requireSession(currentID)
       const scope = session.scope as Scope
       const info = await Storage.read<Info>(StoragePath.sessionInfo(asScopeID(scope.id), asSessionID(currentID)))
       if (info?.controlProfile) return info.controlProfile
-      if (!info?.parentID) return "guarded"
+      if (!info?.parentID) return undefined
       currentID = info.parentID
     }
+  }
+
+  export async function resolveControlProfile(sessionID: string): Promise<NonNullable<Info["controlProfile"]>> {
+    const sessionProfile = await resolveSessionControlProfile(sessionID)
+    if (sessionProfile) return sessionProfile
+    const cfg = await Config.current().catch(() => undefined)
+    return cfg?.controlProfile ?? "guarded"
   }
 
   export const get = fn(Identifier.schema("session"), async (id) => {
@@ -970,7 +978,11 @@ export namespace Session {
     return SessionManager.isRunning(sessionID)
   }
 
-  export async function deliver(input: { target: string | SessionEndpoint.Info; mail: SessionManager.SessionMail }) {
+  export async function deliver(input: {
+    target: string | SessionEndpoint.Info
+    mail: SessionManager.SessionMail
+    waitForProcessing?: boolean
+  }) {
     await SessionManager.deliver(input)
   }
 }

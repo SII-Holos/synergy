@@ -418,6 +418,8 @@ Control profiles are configured in the permissions domain (`80-permissions.jsonc
 
 **Precedence:** agent config `controlProfile` > top-level config `controlProfile` > default `guarded`.
 
+Blueprint runs started from the Notes side panel use the current session's control profile when running in the current session. New-session and worktree Blueprint runs create an execution session with at least `autonomous`; a top-level `full_access` profile remains `full_access`.
+
 `smartAllow` enables a hidden internal agent that can auto-allow safe asks and eligible soft denies. It never overrides hard safety boundaries such as protected paths, external writes, identity actions, plugin secrets, destructive shell commands, or hardline commands. Autonomous sessions deny failed Smart allow checks.
 
 Risk levels follow the operation's effect. Ordinary reads, including non-protected external reads, are low risk. Revertible local edits, non-destructive shell commands, and network calls are medium risk. Protected paths, external writes, secrets, destructive shell commands, identity-affecting actions, and outbound communication are high risk.

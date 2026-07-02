@@ -152,6 +152,21 @@ describe("session lifecycle events", () => {
     })
   })
 
+  test("resolveControlProfile falls back to top-level config for root session", async () => {
+    await using tmp = await tmpdir({ git: true, config: { controlProfile: "full_access" } })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({})
+
+        expect(await Session.resolveSessionControlProfile(session.id)).toBeUndefined()
+        expect(await Session.resolveControlProfile(session.id)).toBe("full_access")
+
+        await Session.remove(session.id)
+      },
+    })
+  })
+
   test("resolveControlProfile sees updated parent profile", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({

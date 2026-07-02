@@ -130,6 +130,7 @@ describe("BlueprintLoop tools", () => {
 
         expect(deliveries).toHaveLength(1)
         expect(deliveries[0].target).toBe(session.id)
+        expect(deliveries[0].waitForProcessing).toBe(false)
         const mail = deliveries[0].mail
         expect(mail.type).toBe("user")
         if (mail.type !== "user") throw new Error("expected user mail")

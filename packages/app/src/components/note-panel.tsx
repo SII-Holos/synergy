@@ -10,6 +10,7 @@ import { createSynergyClient } from "@ericsanchezok/synergy-sdk/client"
 import { usePlatform } from "@/context/platform"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { useGlobalSync } from "@/context/global-sync"
+import { useSync } from "@/context/sync"
 import { TIPTAP_STYLES, DocumentEditorCore } from "@/components/note/document-editor-core"
 import { useConfirm } from "@/components/dialog/confirm-dialog"
 import { deleteNoteConfirm } from "@/components/dialog/confirm-copy"
@@ -19,6 +20,7 @@ import { assetHttpUrl } from "@/utils/asset-url"
 import { relativeTime } from "@/utils/time"
 import {
   activeBlueprintLoop,
+  blueprintExecutionControlProfile,
   blueprintSessionRouteDirectory,
   blueprintSessionWorkspaceSelection,
   canCreateBlueprintWorktree,
@@ -864,6 +866,7 @@ type NoteConflictState =
 function NoteEditor(props: { id: string; directory: string; onBack: () => void; onDelete: () => void }) {
   const sdk = useGlobalSDK()
   const globalSync = useGlobalSync()
+  const sync = useSync()
   const platform = usePlatform()
   const params = useParams()
   const navigate = useNavigate()
@@ -1355,6 +1358,7 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
     const session = await client.session
       .create({
         workspace: blueprintSessionWorkspaceSelection(mode),
+        controlProfile: blueprintExecutionControlProfile(sync.data.config.controlProfile),
       })
       .then((result) => result.data)
     if (!session?.id) throw new Error("Failed to create session")

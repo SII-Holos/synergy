@@ -284,10 +284,18 @@ export namespace SessionManager {
   let mailboxHandler: MailboxHandler | undefined
 
   export function onMailboxReady(handler: MailboxHandler) {
+    const previous = mailboxHandler
     mailboxHandler = handler
+    return () => {
+      if (mailboxHandler === handler) mailboxHandler = previous
+    }
   }
 
-  export async function deliver(input: { target: string | SessionEndpoint.Info; mail: SessionMail }): Promise<void> {
+  export async function deliver(input: {
+    target: string | SessionEndpoint.Info
+    mail: SessionMail
+    waitForProcessing?: boolean
+  }): Promise<void> {
     const session = await getSession(input.target)
     if (!session) {
       log.warn("deliver: session not found, skipping", {
@@ -306,9 +314,18 @@ export namespace SessionManager {
       return
     }
 
-    log.info("mail queued (session idle), processing", { sessionID: session.id, mailboxSize: runtime.mailbox.length })
-
     if (mailboxHandler) {
+      if (input.waitForProcessing === false) {
+        log.info("mail queued (session idle), processing asynchronously", {
+          sessionID: session.id,
+          mailboxSize: runtime.mailbox.length,
+        })
+        void run(session.id, () => mailboxHandler!(session.id)).catch((error) => {
+          log.error("async mailbox processing failed", { sessionID: session.id, error })
+        })
+        return
+      }
+      log.info("mail queued (session idle), processing", { sessionID: session.id, mailboxSize: runtime.mailbox.length })
       await run(session.id, () => mailboxHandler!(session.id))
     }
   }

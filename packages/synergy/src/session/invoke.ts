@@ -401,7 +401,7 @@ export namespace SessionInvoke {
           const topLevelProfile = await Config.current()
             .then((c) => c.controlProfile)
             .catch(() => undefined)
-          const sessionProfile = session?.id ? await Session.resolveControlProfile(session.id) : undefined
+          const sessionProfile = session?.id ? await Session.resolveSessionControlProfile(session.id) : undefined
           const profileId = ControlProfileCompiler.normalize(sessionProfile ?? agent.controlProfile ?? topLevelProfile)
           const adapter = ExternalAgent.getAdapter(agent.external.adapter, sessionID)
           if (!adapter) {
@@ -584,7 +584,7 @@ export namespace SessionInvoke {
           const topLevelProfile = await Config.current()
             .then((c) => c.controlProfile)
             .catch(() => undefined)
-          const sessionProfile = session?.id ? await Session.resolveControlProfile(session.id) : undefined
+          const sessionProfile = session?.id ? await Session.resolveSessionControlProfile(session.id) : undefined
           const profileId = ControlProfileCompiler.normalize(sessionProfile ?? agent.controlProfile ?? topLevelProfile)
           const resolved = await ControlProfileCompiler.resolve(profileId, {
             workspace,

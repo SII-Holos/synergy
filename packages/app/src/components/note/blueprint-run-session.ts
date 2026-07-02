@@ -1,6 +1,7 @@
 import type { Session, SessionWorkspaceSelection } from "@ericsanchezok/synergy-sdk/client"
 
 export type BlueprintRunMode = "current" | "new" | "worktree"
+export type BlueprintExecutionControlProfile = "autonomous" | "full_access"
 
 export type BlueprintScopeSummary = {
   id: string
@@ -26,6 +27,10 @@ function normalizeDirectory(input?: string) {
 
 export function blueprintSessionWorkspaceSelection(mode: BlueprintRunMode): SessionWorkspaceSelection {
   return mode === "worktree" ? { mode: "create" } : { mode: "current" }
+}
+
+export function blueprintExecutionControlProfile(configured?: string | null): BlueprintExecutionControlProfile {
+  return configured === "full_access" ? "full_access" : "autonomous"
 }
 
 export function blueprintSessionRouteDirectory(session: Pick<Session, "scope">, fallback: string) {
