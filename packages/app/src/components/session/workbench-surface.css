@@ -201,25 +201,35 @@
 
 .workbench-surface-launcher {
   display: flex;
+  box-sizing: border-box;
   height: 100%;
+  width: min(320px, 100%);
   flex-direction: column;
-  justify-content: center;
-  gap: 7px;
-  padding: 24px;
+  align-items: stretch;
+  justify-content: flex-start;
+  gap: 4px;
+  margin-inline: auto;
+  padding: 58px 18px 18px;
+}
+
+.workbench-surface--side .workbench-surface-launcher {
+  padding-top: 64px;
 }
 
 .workbench-surface--bottom .workbench-surface-launcher {
-  margin-inline: auto;
-  width: min(560px, 100%);
+  width: min(360px, 100%);
+  padding-top: 14px;
+  padding-bottom: 14px;
 }
 
 .workbench-surface-launcher-row {
   display: flex;
   width: 100%;
+  min-height: 36px;
   align-items: center;
-  gap: 12px;
-  border-radius: 8px;
-  padding: 11px 12px;
+  gap: 9px;
+  border-radius: 7px;
+  padding: 6px 8px;
   color: var(--text-base);
   text-align: left;
   transition:
@@ -232,6 +242,11 @@
   color: var(--text-strong);
 }
 
+.workbench-surface-launcher-row:hover .workbench-surface-launcher-icon {
+  background: var(--workbench-control-bg, var(--surface-raised-base));
+  color: var(--icon-strong);
+}
+
 .workbench-surface-launcher-row:focus-visible,
 .workbench-surface-add-row:focus-visible,
 .workbench-surface-tab-main:focus-visible,
@@ -242,14 +257,17 @@
 
 .workbench-surface-launcher-icon {
   display: flex;
-  width: 28px;
-  height: 28px;
+  width: 24px;
+  height: 24px;
   flex-shrink: 0;
   align-items: center;
   justify-content: center;
-  border-radius: 7px;
-  background: var(--workbench-control-bg, var(--surface-raised-base));
+  border-radius: 6px;
+  background: transparent;
   color: var(--icon-base);
+  transition:
+    background-color var(--motion-duration-fast) var(--motion-ease-standard),
+    color var(--motion-duration-fast) var(--motion-ease-standard);
 }
 
 .workbench-surface-launcher-copy {
