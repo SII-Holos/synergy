@@ -218,7 +218,7 @@ describe("session turn timeline", () => {
     expect(items[1]).toMatchObject({ kind: "part", part: { type: "text" } })
   })
 
-  test("marks tool-call progress text as reasoning display", () => {
+  test("keeps tool-call prelude text as text display", () => {
     const message = {
       ...assistant("assistant-a"),
       finish: "tool-calls",
@@ -234,7 +234,7 @@ describe("session turn timeline", () => {
     const items = collectSessionTurnTimelineItems([message], { [message.id]: [part] }, false)
 
     expect(items).toHaveLength(1)
-    expect(timelineVisualKind(items[0])).toBe("reasoning")
+    expect(timelineVisualKind(items[0])).toBe("text")
   })
 
   test("keeps final assistant text as text display", () => {

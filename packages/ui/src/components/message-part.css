@@ -346,10 +346,7 @@
   color: var(--text-weak);
 }
 
-[data-component="reasoning-part"] [data-component="markdown"],
-[data-slot="session-turn-timeline-item"][data-kind="reasoning"]
-  [data-component="text-part"]
-  [data-component="markdown"] {
+[data-component="reasoning-part"] [data-component="markdown"] {
   margin-top: 16px;
   color: var(--text-weak);
   font-size: var(--font-size-small);
