@@ -29,8 +29,21 @@ export interface PluginPanelProps {
   scopeId?: string
 }
 
-export type PluginWorkspacePanel = Component<PluginPanelProps>
-export type PluginGlobalPanel = Component<PluginPanelProps>
+export interface PluginWorkbenchPanelTab {
+  id: string
+  panelId: string
+  resourceId?: string
+  title?: string
+  source?: string
+}
+
+export interface PluginWorkbenchPanelProps extends PluginPanelProps {
+  tab: PluginWorkbenchPanelTab
+  onRequestClose?: () => void
+}
+
+export type PluginWorkbenchPanel = Component<PluginWorkbenchPanelProps>
+export type PluginAppPanel = Component<PluginPanelProps>
 
 export interface PluginSettingsProps {
   pluginId: string
@@ -40,15 +53,15 @@ export interface PluginSettingsProps {
 
 export type PluginSettingsSection = Component<PluginSettingsProps>
 
-export type PluginChatSlot = "before-tools" | "after-tools" | "before-reasoning" | "after-reasoning"
+export type PluginMessageSlotName = "before-tools" | "after-tools" | "before-reasoning" | "after-reasoning"
 
-export interface PluginChatComponentProps {
-  slot: PluginChatSlot
+export interface PluginMessageSlotProps {
+  slot: PluginMessageSlotName
   sessionId?: string
   messageId?: string
 }
 
-export type PluginChatComponent = Component<PluginChatComponentProps>
+export type PluginMessageSlot = Component<PluginMessageSlotProps>
 
 export interface PluginCommandContext {
   pluginId: string

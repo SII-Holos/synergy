@@ -18,7 +18,7 @@ Use these when relevant:
 - [../plugin/runtime-isolation.md](../plugin/runtime-isolation.md)
 - [../plugin/permissions-consent.md](../plugin/permissions-consent.md)
 - [04-tool-renderer-guide.md](04-tool-renderer-guide.md)
-- [05-workspace-panels.md](05-workspace-panels.md)
+- [05-workbench-panels.md](05-workbench-panels.md)
 - [06-settings-themes-icons.md](06-settings-themes-icons.md)
 - [09-security-best-practices.md](09-security-best-practices.md)
 
@@ -162,13 +162,13 @@ Supported surfaces include:
 
 - tool renderers
 - part renderers
-- workspace panels
-- global panels
+- workbench panels
+- app panels
 - settings sections
-- chat components
+- message slots
 - themes
 - icons
-- routes
+- app routes
 - commands
 
 Plugin JS and assets load through browser asset URLs. Internal Synergy API calls in the Web app use the generated SDK.

@@ -116,7 +116,7 @@ describe("session rollback history", () => {
           rollbackID: rollback.id,
           files: [fileA],
         })
-        expect(restored.restoredFiles).toEqual([fileA])
+        expect(restored.restoredFiles.map((file) => path.normalize(file))).toEqual([path.normalize(fileA)])
         expect(await Bun.file(fileA).text()).toBe("before-a")
         expect(await Bun.file(fileB).text()).toBe("after-b")
 

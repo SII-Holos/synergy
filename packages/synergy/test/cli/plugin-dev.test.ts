@@ -10,29 +10,28 @@ import type { PluginManifest } from "@ericsanchezok/synergy-plugin"
 
 describe("buildSandboxPreviewUrl", () => {
   test("constructs a URL with the default port when no port is given", () => {
-    const url = buildSandboxPreviewUrl("my-plugin", "main-panel")
-    expect(url).toBe(`http://localhost:${Server.DEFAULT_PORT}/plugin/my-plugin/sandbox/main-panel`)
+    const url = buildSandboxPreviewUrl("my-plugin", "appPanels", "main-panel")
+    expect(url).toBe(`http://localhost:${Server.DEFAULT_PORT}/plugin/my-plugin/sandbox/appPanels/main-panel`)
   })
 
   test("uses an explicit port when provided", () => {
-    const url = buildSandboxPreviewUrl("other-plugin", "settings", 8080)
-    expect(url).toBe("http://localhost:8080/plugin/other-plugin/sandbox/settings")
+    const url = buildSandboxPreviewUrl("other-plugin", "settings", "main", 8080)
+    expect(url).toBe("http://localhost:8080/plugin/other-plugin/sandbox/settings/main")
   })
 
   test("encodes characters that are not safe in URL paths", () => {
-    const url = buildSandboxPreviewUrl("name with spaces", "panel/id")
-    // Spaces become %20; slashes are not encoded in path segments by default,
-    // but the contract is that the URL is a well-formed http URL with the host:port prefix.
+    const url = buildSandboxPreviewUrl("name with spaces", "workbenchPanels", "panel/id")
+    // Spaces and slashes are encoded inside plugin and surface id path segments.
     expect(url).toContain("http://localhost:4096/plugin/")
     expect(url).toContain("/sandbox/")
   })
 
   test("returns a valid URL that can be parsed", () => {
-    const url = buildSandboxPreviewUrl("abc", "xyz")
+    const url = buildSandboxPreviewUrl("abc", "appPanels", "xyz")
     const parsed = new URL(url)
     expect(parsed.protocol).toBe("http:")
     expect(parsed.hostname).toBe("localhost")
-    expect(parsed.pathname).toBe("/plugin/abc/sandbox/xyz")
+    expect(parsed.pathname).toBe("/plugin/abc/sandbox/appPanels/xyz")
   })
 })
 
@@ -60,30 +59,48 @@ describe("resolveSandboxSurfaces", () => {
     expect(resolveSandboxSurfaces(m)).toEqual([])
   })
 
-  test("returns sandbox workspace panels", () => {
+  test("returns sandbox workbench panels", () => {
     const m: PluginManifest = {
       ...manifestBase,
       contributes: {
         ui: {
-          workspacePanels: [
-            { id: "chat-widget", label: "Chat", icon: "message-square", exportName: "default", sandbox: true },
+          workbenchPanels: [
+            {
+              id: "chat-widget",
+              label: "Chat",
+              icon: "message-square",
+              exportName: "default",
+              order: 1000,
+              sandbox: true,
+              surface: "side",
+              cardinality: "singleton",
+            },
           ],
         },
       },
     }
-    expect(resolveSandboxSurfaces(m)).toEqual([{ id: "chat-widget", label: "Chat", kind: "workspacePanel" }])
+    expect(resolveSandboxSurfaces(m)).toEqual([{ id: "chat-widget", label: "Chat", surface: "workbenchPanels" }])
   })
 
-  test("returns sandbox global panels", () => {
+  test("returns sandbox app panels", () => {
     const m: PluginManifest = {
       ...manifestBase,
       contributes: {
         ui: {
-          globalPanels: [{ id: "status-bar", label: "Status", icon: "activity", exportName: "default", sandbox: true }],
+          appPanels: [
+            {
+              id: "status-bar",
+              label: "Status",
+              icon: "activity",
+              exportName: "default",
+              order: 1000,
+              sandbox: true,
+            },
+          ],
         },
       },
     }
-    expect(resolveSandboxSurfaces(m)).toEqual([{ id: "status-bar", label: "Status", kind: "globalPanel" }])
+    expect(resolveSandboxSurfaces(m)).toEqual([{ id: "status-bar", label: "Status", surface: "appPanels" }])
   })
 
   test("skips panels that are not sandboxed", () => {
@@ -91,10 +108,37 @@ describe("resolveSandboxSurfaces", () => {
       ...manifestBase,
       contributes: {
         ui: {
-          workspacePanels: [
-            { id: "trusted-panel", label: "Trusted", icon: "shield", exportName: "default", sandbox: false },
-            { id: "sandbox-panel", label: "Sandboxed", icon: "box", exportName: "default", sandbox: true },
-            { id: "default-panel", label: "Default", icon: "square", exportName: "default", sandbox: false },
+          workbenchPanels: [
+            {
+              id: "trusted-panel",
+              label: "Trusted",
+              icon: "shield",
+              exportName: "default",
+              order: 1000,
+              sandbox: false,
+              surface: "side",
+              cardinality: "singleton",
+            },
+            {
+              id: "sandbox-panel",
+              label: "Sandboxed",
+              icon: "box",
+              exportName: "default",
+              order: 1000,
+              sandbox: true,
+              surface: "side",
+              cardinality: "singleton",
+            },
+            {
+              id: "default-panel",
+              label: "Default",
+              icon: "square",
+              exportName: "default",
+              order: 1000,
+              sandbox: false,
+              surface: "bottom",
+              cardinality: "multi",
+            },
           ],
         },
       },
@@ -104,16 +148,32 @@ describe("resolveSandboxSurfaces", () => {
     expect(surfaces[0]!.id).toBe("sandbox-panel")
   })
 
-  test("returns both workspace and global sandbox panels together", () => {
+  test("returns workbench and app sandbox panels together", () => {
     const m: PluginManifest = {
       ...manifestBase,
       contributes: {
         ui: {
-          workspacePanels: [
-            { id: "ws-sandbox", label: "WS Sandbox", icon: "box", exportName: "default", sandbox: true },
+          workbenchPanels: [
+            {
+              id: "ws-sandbox",
+              label: "WS Sandbox",
+              icon: "box",
+              exportName: "default",
+              order: 1000,
+              sandbox: true,
+              surface: "side",
+              cardinality: "exclusive",
+            },
           ],
-          globalPanels: [
-            { id: "global-sandbox", label: "Global Sandbox", icon: "globe", exportName: "default", sandbox: true },
+          appPanels: [
+            {
+              id: "app-sandbox",
+              label: "App Sandbox",
+              icon: "globe",
+              exportName: "default",
+              order: 1000,
+              sandbox: true,
+            },
           ],
         },
       },
@@ -122,7 +182,7 @@ describe("resolveSandboxSurfaces", () => {
     expect(surfaces).toHaveLength(2)
     const ids = surfaces.map((s: { id: string }) => s.id)
     expect(ids).toContain("ws-sandbox")
-    expect(ids).toContain("global-sandbox")
+    expect(ids).toContain("app-sandbox")
   })
 })
 

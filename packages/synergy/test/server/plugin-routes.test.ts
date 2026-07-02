@@ -1,6 +1,7 @@
 import { describe, expect, test, mock, afterEach } from "bun:test"
 import path from "path"
 import fs from "fs"
+import { pathToFileURL } from "url"
 import { tmpdir } from "../fixture/fixture"
 import { ScopeContext } from "../../src/scope/context"
 import { Server } from "../../src/server/server"
@@ -15,6 +16,7 @@ import {
   removeApproval,
   saveApproval,
 } from "../../src/plugin/consent/approval-store"
+import { checkPathContainment } from "../../src/util/path-contain"
 
 Log.init({ print: false })
 const { PluginMarketplaceRegistry } = await import("../../src/plugin/marketplace-registry")
@@ -119,37 +121,26 @@ async function withRegistryFile<T>(content: unknown, fn: () => Promise<T>): Prom
 
 describe("checkPathContainment (path traversal guard)", () => {
   test("rejects .. traversal outside the base directory", () => {
-    const base = "/plugins/plugin-a"
-    expect(path.resolve(base, "../etc/passwd")).toBe("/plugins/etc/passwd")
-    const relative = path.relative(base, "/plugins/etc/passwd")
-    // The guard detects traversal when relative starts with ".." or is absolute
-    expect(relative.startsWith("..")).toBe(true)
+    const base = path.join(path.parse(process.cwd()).root, "plugins", "plugin-a")
+    expect(checkPathContainment(base, "../etc/passwd")).toBeNull()
   })
 
   test("rejects absolute-path filePath as traversal", () => {
-    const base = "/plugins/plugin-a"
-    const resolved = path.resolve(base, "/etc/passwd")
-    // path.resolve(base, absolutePath) returns the absolutePath itself
-    expect(resolved).toBe("/etc/passwd")
-    const relative = path.relative(base, resolved)
-    expect(relative.startsWith("..")).toBe(true)
+    const base = path.join(path.parse(process.cwd()).root, "plugins", "plugin-a")
+    const outside = path.join(path.parse(process.cwd()).root, "etc", "passwd")
+    expect(checkPathContainment(base, outside)).toBeNull()
   })
 
   test("allows contained relative paths within base", () => {
-    const base = "/plugins/plugin-a"
-    const resolved = path.resolve(base, "dist/ui.js")
-    expect(resolved).toBe("/plugins/plugin-a/dist/ui.js")
-    const relative = path.relative(base, resolved)
-    expect(relative.startsWith("..")).toBe(false)
-    expect(path.isAbsolute(relative)).toBe(false)
+    const base = path.join(path.parse(process.cwd()).root, "plugins", "plugin-a")
+    expect(checkPathContainment(base, "dist/ui.js")).toBe(path.join(base, "dist", "ui.js"))
   })
 
   test("allows nested subdirectories within base", () => {
-    const base = "/plugins/plugin-a"
-    const resolved = path.resolve(base, "dist/nested/deep/ui.js")
-    const relative = path.relative(base, resolved)
-    expect(relative).toBe("dist/nested/deep/ui.js")
-    expect(relative.startsWith("..")).toBe(false)
+    const base = path.join(path.parse(process.cwd()).root, "plugins", "plugin-a")
+    expect(checkPathContainment(base, "dist/nested/deep/ui.js")).toBe(
+      path.join(base, "dist", "nested", "deep", "ui.js"),
+    )
   })
 })
 
@@ -210,7 +201,7 @@ function buildStatusResponse(overrides: Partial<Record<string, any>> = {}): any 
       overallRisk: "low",
       warnings: [],
     },
-    routes: [],
+    appRoutes: [],
     tools: [],
     ui: { contributions: 0, errors: [] },
     stores: { config: true, secrets: "none" },
@@ -562,7 +553,7 @@ describe("POST /api/plugins/install-from-registry", () => {
           expect(officialMock).toHaveBeenCalledTimes(1)
           expect(addMock).toHaveBeenCalledTimes(1)
           expect((addMock as any).mock.calls[0][0]).toBe(
-            `file://${path.join(tmp.path, "registry-plugin-1.0.0.synergy-plugin.tgz")}`,
+            pathToFileURL(path.join(tmp.path, "registry-plugin-1.0.0.synergy-plugin.tgz")).toString(),
           )
           expect((addMock as any).mock.calls[0][1]).toEqual({
             autoReload: true,

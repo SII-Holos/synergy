@@ -1,7 +1,6 @@
 import { createMemo, Show } from "solid-js"
 import { Dynamic } from "solid-js/web"
 import { checksum } from "@ericsanchezok/synergy-util/encode"
-import { useDiffComponent } from "../../../context/diff"
 import { useCodeComponent } from "../../../context/code"
 import { BasicTool } from "../../basic-tool"
 import {
@@ -38,7 +37,6 @@ ToolRegistry.register({
 ToolRegistry.register({
   name: "edit",
   render(props) {
-    const diffComponent = useDiffComponent()
     const diagnostics = createMemo(() =>
       props.status === "completed" ? getDiagnostics(props.metadata.diagnostics, props.input.filePath) : [],
     )
@@ -52,20 +50,8 @@ ToolRegistry.register({
           changes: props.metadata.filediff as { additions: number; deletions: number } | undefined,
         }}
       >
-        <Show when={props.status !== "generating" && (props.metadata.filediff?.path || props.input.filePath)}>
-          <div data-component="edit-content">
-            <Dynamic
-              component={diffComponent}
-              before={{
-                name: props.metadata?.filediff?.file || props.input.filePath || "file",
-                contents: props.metadata?.filediff?.before || props.input.oldString,
-              }}
-              after={{
-                name: props.metadata?.filediff?.file || props.input.filePath || "file",
-                contents: props.metadata?.filediff?.after || props.input.newString,
-              }}
-            />
-          </div>
+        <Show when={props.status !== "generating" && (props.metadata.filediff || props.input.filePath)}>
+          <ToolDiffPreview diff={props.metadata.filediff} />
         </Show>
         <DiagnosticsDisplay diagnostics={diagnostics()} />
       </BasicTool>
@@ -111,7 +97,6 @@ ToolRegistry.register({
 ToolRegistry.register({
   name: "multiedit",
   render(props) {
-    const diffComponent = useDiffComponent()
     return (
       <BasicTool
         {...props}
@@ -128,28 +113,31 @@ ToolRegistry.register({
               if (!Array.isArray(r) || r.length === 0) return undefined
               return r[r.length - 1]
             }
-            return (
-              <Show when={lastResult()?.filediff}>
-                {(filediff) => (
-                  <div data-component="edit-content">
-                    <Dynamic
-                      component={diffComponent}
-                      before={{
-                        name: filediff().file || props.input.filePath || "file",
-                        contents: filediff().before,
-                      }}
-                      after={{
-                        name: filediff().file || props.input.filePath || "file",
-                        contents: filediff().after,
-                      }}
-                    />
-                  </div>
-                )}
-              </Show>
-            )
+            return <Show when={lastResult()?.filediff}>{(filediff) => <ToolDiffPreview diff={filediff()} />}</Show>
           }}
         </Show>
       </BasicTool>
     )
   },
 })
+
+function ToolDiffPreview(props: { diff: any }) {
+  return (
+    <div data-component="edit-content">
+      <div class="text-12-regular text-text-weak">
+        {props.diff?.beforeBytes ?? 0} bytes to {props.diff?.afterBytes ?? 0} bytes
+        <Show when={props.diff?.truncated}> - preview truncated</Show>
+      </div>
+      <Show
+        when={props.diff?.preview}
+        fallback={<div class="text-12-regular text-text-weaker">No text preview available.</div>}
+      >
+        {(preview) => (
+          <pre class="mt-2 max-h-96 overflow-auto whitespace-pre-wrap rounded-md bg-surface-subtle p-3 text-12-regular text-text-base">
+            {preview()}
+          </pre>
+        )}
+      </Show>
+    </div>
+  )
+}

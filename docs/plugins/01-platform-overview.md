@@ -40,13 +40,13 @@ Web contributions:
 
 - tool renderers
 - part renderers
-- workspace panels
-- global panels
+- workbench panels
+- app panels
 - settings sections
-- chat components
+- message slots
 - themes
 - icons
-- routes
+- app routes
 - commands
 
 ## Install Sources

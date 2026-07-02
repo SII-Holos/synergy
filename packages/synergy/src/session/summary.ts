@@ -233,7 +233,7 @@ export namespace SessionSummary {
       }
     }
 
-    if (from && to) return Snapshot.diffFull(from, to, input.sessionID)
+    if (from && to) return Snapshot.diffSummary(from, to, input.sessionID)
     return []
   }
 }

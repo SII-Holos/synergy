@@ -116,16 +116,18 @@ export function BrowserSurface(props: { sessionID: string; routeDirectory?: stri
     <div
       ref={wrapperRef}
       data-prevent-autofocus
-      class="relative w-full h-full overflow-hidden bg-background-strong flex items-center justify-center"
+      class="browser-surface relative flex h-full w-full items-center justify-center overflow-hidden"
     >
       <Show
         when={hasInteractiveSurface()}
         fallback={
-          <div class="flex flex-col items-center gap-3 text-text-weak text-13 select-none">
-            <Icon name={getSemanticIcon("browser.main")} class="size-14 text-icon-weaker" />
-            <span class="text-14-medium text-text-base">Start browsing</span>
-            <span class="text-12 text-text-weak">Enter a URL to open a page</span>
-            <span class="text-11 text-text-weaker">{browser.session.connectionStatus}</span>
+          <div class="browser-empty-state">
+            <div class="browser-empty-mark">
+              <Icon name={getSemanticIcon("browser.main")} class="size-4" />
+            </div>
+            <div class="browser-empty-title">Browser ready</div>
+            <div class="browser-empty-text">Waiting for the page surface.</div>
+            <div class="browser-status-pill">{browser.session.connectionStatus}</div>
           </div>
         }
       >

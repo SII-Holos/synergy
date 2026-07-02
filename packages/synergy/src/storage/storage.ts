@@ -6,6 +6,8 @@ import { NamedError } from "@ericsanchezok/synergy-util/error"
 import z from "zod"
 
 export namespace Storage {
+  const READ_MANY_CONCURRENCY = 32
+
   export const NotFoundError = NamedError.create(
     "NotFoundError",
     z.object({
@@ -36,17 +38,23 @@ export namespace Storage {
 
   export async function readMany<T>(keys: string[][]): Promise<(T | undefined)[]> {
     const dir = resolveDir()
-    return Promise.all(
-      keys.map(async (key) => {
+    const result: (T | undefined)[] = new Array(keys.length)
+    let next = 0
+    const workers = Array.from({ length: Math.min(READ_MANY_CONCURRENCY, keys.length) }, async () => {
+      while (next < keys.length) {
+        const index = next++
+        const key = keys[index]
         const target = path.join(dir, ...key) + ".json"
         try {
           using _ = await Lock.read(target)
-          return (await Bun.file(target).json()) as T
+          result[index] = (await Bun.file(target).json()) as T
         } catch {
-          return undefined
+          result[index] = undefined
         }
-      }),
-    )
+      }
+    })
+    await Promise.all(workers)
+    return result
   }
 
   export async function update<T>(key: string[], fn: (draft: T) => void) {
@@ -56,7 +64,7 @@ export namespace Storage {
       using _ = await Lock.write(target)
       const content = await Bun.file(target).json()
       fn(content)
-      await Bun.write(target, JSON.stringify(content, null, 2))
+      await writeJsonAtomic(target, content)
       return content as T
     })
   }
@@ -66,7 +74,7 @@ export namespace Storage {
     const target = path.join(dir, ...key) + ".json"
     return withErrorHandling(async () => {
       using _ = await Lock.write(target)
-      await Bun.write(target, JSON.stringify(content, null, 2))
+      await writeJsonAtomic(target, content)
     })
   }
 
@@ -75,7 +83,10 @@ export namespace Storage {
     const target = path.join(dir, ...prefix)
     try {
       const entries = await fs.readdir(target)
-      return entries.map((e) => (e.endsWith(".json") ? e.slice(0, -5) : e)).sort()
+      return entries
+        .filter((e) => !isTempFile(e))
+        .map((e) => (e.endsWith(".json") ? e.slice(0, -5) : e))
+        .sort()
     } catch {
       return []
     }
@@ -121,11 +132,29 @@ export namespace Storage {
           cwd: path.join(dir, ...prefix),
           onlyFiles: true,
         }),
-      ).then((results) => results.map((x) => [...prefix, ...x.slice(0, -5).split(path.sep)]))
+      ).then((results) =>
+        results
+          .filter((x) => x.endsWith(".json") && !isTempFile(path.basename(x)))
+          .map((x) => [...prefix, ...x.slice(0, -5).split(path.sep)]),
+      )
       result.sort()
       return result
     } catch {
       return []
     }
+  }
+
+  async function writeJsonAtomic(target: string, content: unknown) {
+    await fs.mkdir(path.dirname(target), { recursive: true })
+    const tmp = path.join(
+      path.dirname(target),
+      `.tmp-${process.pid}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`,
+    )
+    await Bun.write(tmp, JSON.stringify(content, null, 2))
+    await fs.rename(tmp, target)
+  }
+
+  function isTempFile(name: string) {
+    return name.includes(".tmp-") || name.endsWith(".tmp")
   }
 }

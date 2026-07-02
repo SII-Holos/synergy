@@ -231,6 +231,54 @@ test("provider catalog exposes plugin provider recommendation metadata", async (
   })
 })
 
+test("provider catalog live discovery supports model catalog metadata and legacy model ids", async () => {
+  ;(Plugin as any).allHooks = mock(async () => [
+    {
+      provider: [
+        {
+          id: "plugin-live-catalog-provider",
+          name: "Plugin Live Catalog",
+          authKind: "none",
+          aiSdkPackage: "@ai-sdk/openai-compatible",
+          fallbackModels: ["static-model"],
+          fetchModelCatalog: async () => [
+            {
+              id: "catalog-model",
+              model: {
+                limit: { context: 12_345, input: 12_345, output: 321 },
+              },
+            },
+          ],
+        },
+        {
+          id: "plugin-live-ids-provider",
+          name: "Plugin Live IDs",
+          authKind: "none",
+          aiSdkPackage: "@ai-sdk/openai-compatible",
+          fallbackModels: ["static-model"],
+          fetchModels: async () => ["legacy-model"],
+        },
+      ],
+    },
+  ])
+  ProviderCatalog.reset()
+
+  const catalog = await ProviderCatalog.resolve({
+    forceRefresh: true,
+    includeLive: true,
+    config: { providerCatalog: { enabled: false, offlineCache: false } },
+  })
+
+  expect(Object.keys(catalog["plugin-live-catalog-provider"].models)).toEqual(["catalog-model"])
+  expect(catalog["plugin-live-catalog-provider"].models["catalog-model"].limit).toEqual({
+    context: 12_345,
+    input: 12_345,
+    output: 321,
+  })
+  expect(Object.keys(catalog["plugin-live-ids-provider"].models)).toEqual(["legacy-model"])
+  expect(catalog["plugin-live-ids-provider"].models["legacy-model"].limit.context).toBe(128_000)
+})
+
 test("provider catalog rejects bad signatures and falls back to last verified cache", async () => {
   delete process.env.SYNERGY_DISABLE_PROVIDER_CATALOG_FETCH
   const registryUrl = "https://registry.test/catalog.v1.json"
@@ -345,7 +393,7 @@ test("provider auth store migrates legacy api-key.json into v2 store", async () 
   expect(result).toEqual({ migrated: true, count: 2 })
   expect(all.anthropic).toEqual({ type: "api", key: "sk-ant-test" })
   expect(all["openai-codex"]?.type).toBe("oauth")
-  expect(stat.mode & 0o777).toBe(0o600)
+  if (process.platform !== "win32") expect(stat.mode & 0o777).toBe(0o600)
   expect(await Bun.file(`${Global.Path.authApiKey}.bak`).exists()).toBe(true)
 
   const raw = await Bun.file(Global.Path.authProvider).json()

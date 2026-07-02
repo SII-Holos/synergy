@@ -33,45 +33,6 @@
     overflow-anchor: none;
   }
 
-  [data-slot="session-turn-title"] {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    margin-bottom: 6px;
-    align-items: flex-start;
-  }
-
-  [data-slot="session-turn-title"] h1 {
-    font-size: var(--font-size-large);
-    font-weight: var(--font-weight-semibold, 600);
-    color: var(--text-strong);
-    background: transparent !important;
-    border: 0 !important;
-    box-shadow: none;
-    padding: 0 !important;
-    border-radius: 0 !important;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    min-width: 0;
-    display: inline-block;
-    letter-spacing: -0.01em;
-  }
-
-  [data-slot="session-turn-title-timestamp"] {
-    font-size: var(--font-size-small);
-    color: var(--text-subtle);
-    padding-left: 0;
-    font-weight: var(--font-weight-regular);
-  }
-
-  [data-slot="session-turn-typewriter"] {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    min-width: 0;
-    white-space: nowrap;
-  }
-
   [data-slot="session-turn-mailbox-source"] {
     display: flex;
     align-items: center;
@@ -109,35 +70,73 @@
     min-width: 0;
   }
 
+  [data-slot="session-turn-message-container"] > [data-component="user-message"][data-variant="turn-bubble"],
+  [data-slot="session-turn-timeline-item"]:is(
+    [data-kind="text"],
+    [data-kind="reasoning"],
+    [data-kind="provider-prelude"]
+  ) {
+    max-width: min(54rem, 100%);
+    margin-inline: auto;
+  }
+
   [data-slot="session-turn-timeline-item"] + [data-slot="session-turn-timeline-item"] {
+    margin-top: 10px;
+  }
+
+  [data-slot="session-turn-timeline-item"]:is([data-kind="text"], [data-kind="reasoning"])
+    + [data-slot="session-turn-timeline-item"]:is([data-kind="text"], [data-kind="reasoning"]) {
+    margin-top: 8px;
+  }
+
+  [data-slot="session-turn-timeline-item"][data-kind="provider-prelude"] {
+    color: var(--text-weak);
+  }
+
+  [data-component="provider-prelude"] {
+    display: flex;
+    align-items: center;
+    min-height: 22px;
+    font-size: var(--font-size-small);
+    font-weight: var(--font-weight-regular);
+    line-height: var(--line-height-large);
+    color: var(--text-weak);
+  }
+
+  [data-component="provider-prelude"]::before {
+    content: "";
+    flex: 0 0 auto;
+    width: 2px;
+    height: 14px;
+    margin-right: 10px;
+    border-radius: 999px;
+    background: var(--border-base);
+  }
+
+  [data-slot="session-turn-timeline-item"]:is([data-kind="tool"], [data-kind="tool-attachments"])
+    + [data-slot="session-turn-timeline-item"]:is([data-kind="tool"], [data-kind="tool-attachments"]) {
     margin-top: 6px;
   }
 
-  [data-slot="session-turn-timeline-item"][data-kind="tool"]
-    + [data-slot="session-turn-timeline-item"][data-kind="tool"],
-  [data-slot="session-turn-timeline-item"][data-kind="tool"]
-    + [data-slot="session-turn-timeline-item"][data-kind="tool-attachments"] {
-    margin-top: 4px;
-  }
-
-  [data-slot="session-turn-timeline-item"][data-kind="attachment"]
-    + [data-slot="session-turn-timeline-item"][data-kind="tool"],
-  [data-slot="session-turn-timeline-item"][data-kind="tool-attachments"]
-    + [data-slot="session-turn-timeline-item"][data-kind="tool"],
-  [data-slot="session-turn-timeline-item"][data-kind="tool"]
-    + [data-slot="session-turn-timeline-item"][data-kind="attachment"],
-  [data-slot="session-turn-timeline-item"][data-kind="tool"]
-    + [data-slot="session-turn-timeline-item"][data-kind="text"] {
-    margin-top: 5px;
-  }
-
-  [data-slot="session-turn-timeline-item"][data-kind="text"]
-    + [data-slot="session-turn-timeline-item"][data-kind="text"],
-  [data-slot="session-turn-timeline-item"][data-kind="reasoning"]
-    + [data-slot="session-turn-timeline-item"][data-kind="text"],
-  [data-slot="session-turn-timeline-item"][data-kind="reasoning"]
-    + [data-slot="session-turn-timeline-item"][data-kind="media-pending"] {
-    margin-top: 3px;
+  [data-slot="session-turn-timeline-item"]:is(
+      [data-kind="attachment"],
+      [data-kind="media-pending"],
+      [data-kind="tool"],
+      [data-kind="tool-attachments"]
+    )
+    + [data-slot="session-turn-timeline-item"]:is(
+      [data-kind="attachment"],
+      [data-kind="media-pending"],
+      [data-kind="text"]
+    ),
+  [data-slot="session-turn-timeline-item"]:is([data-kind="reasoning"], [data-kind="text"])
+    + [data-slot="session-turn-timeline-item"]:is(
+      [data-kind="attachment"],
+      [data-kind="media-pending"],
+      [data-kind="tool"],
+      [data-kind="tool-attachments"]
+    ) {
+    margin-top: 12px;
   }
 
   [data-slot="session-turn-timeline-item"] [data-component="attachment-gallery"] {

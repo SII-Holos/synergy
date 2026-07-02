@@ -12,6 +12,21 @@ import { WorkspaceFileStatus } from "../../src/workspace-file/status"
 import { LSP } from "../../src/lsp"
 import { tmpdir } from "../fixture/fixture"
 
+function isSymlinkPrivilegeError(error: unknown) {
+  const code = (error as { code?: unknown })?.code
+  return process.platform === "win32" && (code === "EPERM" || code === "EACCES")
+}
+
+async function trySymlink(target: string, linkPath: string) {
+  try {
+    await fs.symlink(target, linkPath, "file")
+    return true
+  } catch (error) {
+    if (isSymlinkPrivilegeError(error)) return false
+    throw error
+  }
+}
+
 async function withWorkspace<T>(init: (dir: string) => Promise<void>, fn: (dir: string) => Promise<T>): Promise<T> {
   await using tmp = await tmpdir({ git: true, init })
   return ScopeContext.provide({
@@ -32,22 +47,31 @@ describe("WorkspaceFileService", () => {
     const sibling = path.join(os.tmpdir(), `synergy-test-sibling-${Date.now()}`)
     await fs.mkdir(sibling, { recursive: true })
     await Bun.write(path.join(sibling, "outside.txt"), "outside")
+    let symlinkCreated = false
 
-    await withWorkspace(
-      async (dir) => {
-        await Bun.write(path.join(dir, "inside.txt"), "inside")
-        await fs.symlink(path.join(sibling, "outside.txt"), path.join(dir, "outside-link.txt"))
-      },
-      async () => {
-        expect(() => WorkspaceFileService.resolve("../outside.txt")).toThrow(/escapes workspace/)
-        await expect(WorkspaceFileService.node(path.join(sibling, "outside.txt"))).rejects.toThrow(/escapes workspace/)
-        await expect(WorkspaceFileService.node("outside-link.txt")).rejects.toThrow(/escapes workspace/)
+    try {
+      await withWorkspace(
+        async (dir) => {
+          await Bun.write(path.join(dir, "inside.txt"), "inside")
+          symlinkCreated = await trySymlink(path.join(sibling, "outside.txt"), path.join(dir, "outside-link.txt"))
+        },
+        async () => {
+          expect(() => WorkspaceFileService.resolve("../outside.txt")).toThrow(/escapes workspace/)
+          await expect(WorkspaceFileService.node(path.join(sibling, "outside.txt"))).rejects.toThrow(
+            /escapes workspace/,
+          )
+          if (symlinkCreated) {
+            await expect(WorkspaceFileService.node("outside-link.txt")).rejects.toThrow(/escapes workspace/)
+          }
 
-        const inside = await WorkspaceFileService.node("inside.txt")
-        expect(inside.path).toBe("inside.txt")
-        expect(inside.type).toBe("file")
-      },
-    )
+          const inside = await WorkspaceFileService.node("inside.txt")
+          expect(inside.path).toBe("inside.txt")
+          expect(inside.type).toBe("file")
+        },
+      )
+    } finally {
+      await fs.rm(sibling, { recursive: true, force: true }).catch(() => {})
+    }
   })
 
   test("returns lazy directory children with stable sorting and cursor pagination", async () => {

@@ -20,6 +20,7 @@ import { noopSoftWarning, WIDENED_SWAP_WARNING } from "../hashline/messages"
 import { diffStats, displayPath, resolveFilePath } from "./anchored-file"
 import { collectWriteDiagnostics } from "./write-quality"
 import { LSP } from "../lsp"
+import { SnapshotSchema } from "@/session/snapshot-schema"
 
 /**
  * Synergy-aware Filesystem that resolves paths using ScopeContext.current.directory
@@ -167,14 +168,13 @@ export const ReviseFileTool = Tool.define("revise_file", {
           sections: [],
           operations: 0,
           diff: "",
-          filediff: {
+          filediff: SnapshotSchema.fromContents({
             file: displayTitle,
-            path: displayTitle,
             before: p.normalized,
             after: p.normalized,
             additions: 0,
             deletions: 0,
-          },
+          }),
           operationSummary: summarizeOperations(p.section),
           changeSummary: { additions: 0, deletions: 0 },
           recovered: false,
@@ -204,13 +204,13 @@ export const ReviseFileTool = Tool.define("revise_file", {
       metadata: {
         sections: allPaths,
         diff,
-        filediff: {
+        filediff: SnapshotSchema.fromContents({
           file: allPaths.join(", "),
-          path: allPaths.join(", "),
           before: combinedBefore,
           after: combinedAfter,
           ...changeSummary,
-        },
+          preview: diff,
+        }),
         operationSummary: allOpsSummaries,
         changeSummary,
       },
@@ -352,13 +352,13 @@ ${r.after}`,
         })),
         operations: totalOps,
         diff: finalDiff,
-        filediff: {
+        filediff: SnapshotSchema.fromContents({
           file: committedResults.map((r) => r.path).join(", "),
-          path: committedResults.map((r) => r.path).join(", "),
           before: filediffBefore,
           after: filediffAfter,
           ...finalChangeSummary,
-        },
+          preview: finalDiff,
+        }),
         operationSummary: allOpsSummaries,
         changeSummary: finalChangeSummary,
         diagnostics: diagnostics.diagnostics,

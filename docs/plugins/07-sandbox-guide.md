@@ -9,11 +9,13 @@ Declare a sandboxed panel or settings section:
   "contributes": {
     "ui": {
       "entry": "./dist/ui/index.js",
-      "workspacePanels": [
+      "workbenchPanels": [
         {
           "id": "panel",
           "label": "Panel",
           "icon": "layout-panel-left",
+          "surface": "side",
+          "cardinality": "singleton",
           "sandbox": true,
           "sandboxEntry": "./ui/index.js",
         },
@@ -22,7 +24,7 @@ Declare a sandboxed panel or settings section:
   },
   "permissions": {
     "ui": {
-      "workspacePanels": true,
+      "workbenchPanels": true,
       "sandboxIframe": true,
     },
   },

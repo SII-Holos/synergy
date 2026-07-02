@@ -44,11 +44,10 @@ function printPermissionPreview(manifest: PluginManifestType) {
       uiParts.push(`${ui.toolRenderers.length} tool renderer${ui.toolRenderers.length !== 1 ? "s" : ""}`)
     if (ui.partRenderers?.length)
       uiParts.push(`${ui.partRenderers.length} part renderer${ui.partRenderers.length !== 1 ? "s" : ""}`)
-    if (ui.workspacePanels?.length)
-      uiParts.push(`${ui.workspacePanels.length} workspace panel${ui.workspacePanels.length !== 1 ? "s" : ""}`)
-    if (ui.globalPanels?.length)
-      uiParts.push(`${ui.globalPanels.length} global panel${ui.globalPanels.length !== 1 ? "s" : ""}`)
-    if (ui.routes?.length) uiParts.push(`${ui.routes.length} route${ui.routes.length !== 1 ? "s" : ""}`)
+    if (ui.workbenchPanels?.length)
+      uiParts.push(`${ui.workbenchPanels.length} workbench panel${ui.workbenchPanels.length !== 1 ? "s" : ""}`)
+    if (ui.appPanels?.length) uiParts.push(`${ui.appPanels.length} app panel${ui.appPanels.length !== 1 ? "s" : ""}`)
+    if (ui.appRoutes?.length) uiParts.push(`${ui.appRoutes.length} app route${ui.appRoutes.length !== 1 ? "s" : ""}`)
     if (uiParts.length > 0) {
       UI.println(`  → UI: ${uiParts.join(", ")}`)
     }
@@ -65,14 +64,14 @@ function countUiContributions(manifest: PluginManifestType): number {
   return (
     (ui.toolRenderers?.length ?? 0) +
     (ui.partRenderers?.length ?? 0) +
-    (ui.workspacePanels?.length ?? 0) +
-    (ui.globalPanels?.length ?? 0) +
+    (ui.workbenchPanels?.length ?? 0) +
+    (ui.appPanels?.length ?? 0) +
     (ui.settings?.length ?? 0) +
-    (ui.chatComponents?.length ?? 0) +
+    (ui.messageSlots?.length ?? 0) +
     (ui.themes?.length ?? 0) +
     (ui.icons?.length ?? 0) +
     (ui.commands?.length ?? 0) +
-    (ui.routes?.length ?? 0)
+    (ui.appRoutes?.length ?? 0)
   )
 }
 
@@ -83,16 +82,17 @@ function countUiContributions(manifest: PluginManifestType): number {
 export interface SandboxSurface {
   id: string
   label: string
-  kind: "workspacePanel" | "globalPanel"
+  surface: "workbenchPanels" | "appPanels" | "settings" | "appRoutes"
 }
 
 /** Build the sandbox preview URL for a plugin panel. */
 export function buildSandboxPreviewUrl(
   pluginId: string,
+  surface: SandboxSurface["surface"],
   surfaceId: string,
   port: number = Server.DEFAULT_PORT,
 ): string {
-  return `http://localhost:${port}/plugin/${encodeURIComponent(pluginId)}/sandbox/${encodeURIComponent(surfaceId)}`
+  return `http://localhost:${port}/plugin/${encodeURIComponent(pluginId)}/sandbox/${surface}/${encodeURIComponent(surfaceId)}`
 }
 
 /** Extract sandbox-eligible panels from a plugin manifest. */
@@ -102,15 +102,27 @@ export function resolveSandboxSurfaces(manifest: PluginManifestType): SandboxSur
 
   const surfaces: SandboxSurface[] = []
 
-  for (const panel of ui.workspacePanels ?? []) {
+  for (const panel of ui.workbenchPanels ?? []) {
     if (panel.sandbox) {
-      surfaces.push({ id: panel.id, label: panel.label, kind: "workspacePanel" })
+      surfaces.push({ id: panel.id, label: panel.label, surface: "workbenchPanels" })
     }
   }
 
-  for (const panel of ui.globalPanels ?? []) {
+  for (const panel of ui.appPanels ?? []) {
     if (panel.sandbox) {
-      surfaces.push({ id: panel.id, label: panel.label, kind: "globalPanel" })
+      surfaces.push({ id: panel.id, label: panel.label, surface: "appPanels" })
+    }
+  }
+
+  for (const section of ui.settings ?? []) {
+    if (section.sandbox) {
+      surfaces.push({ id: section.id, label: section.label, surface: "settings" })
+    }
+  }
+
+  for (const route of ui.appRoutes ?? []) {
+    if (route.sandbox) {
+      surfaces.push({ id: route.id, label: route.label, surface: "appRoutes" })
     }
   }
 
@@ -125,8 +137,8 @@ function printSandboxPreview(surfaces: SandboxSurface[], manifest: PluginManifes
 
   UI.println(`  ${UI.Style.TEXT_HIGHLIGHT}Sandbox preview URLs:${UI.Style.TEXT_NORMAL}`)
   for (const surface of surfaces) {
-    const url = buildSandboxPreviewUrl(manifest.name, surface.id, port)
-    UI.println(`    ${surface.label} (${surface.kind}): ${UI.Style.TEXT_SUCCESS}${url}${UI.Style.TEXT_NORMAL}`)
+    const url = buildSandboxPreviewUrl(manifest.name, surface.surface, surface.id, port)
+    UI.println(`    ${surface.label} (${surface.surface}): ${UI.Style.TEXT_SUCCESS}${url}${UI.Style.TEXT_NORMAL}`)
   }
 }
 // ---------------------------------------------------------------------------
@@ -285,8 +297,8 @@ export const PluginDevCommand = cmd({
       const uiParts: string[] = []
       if (ui.toolRenderers?.length)
         uiParts.push(`${ui.toolRenderers.length} tool renderer${ui.toolRenderers.length !== 1 ? "s" : ""}`)
-      if (ui.workspacePanels?.length)
-        uiParts.push(`${ui.workspacePanels.length} workspace panel${ui.workspacePanels.length !== 1 ? "s" : ""}`)
+      if (ui.workbenchPanels?.length)
+        uiParts.push(`${ui.workbenchPanels.length} workbench panel${ui.workbenchPanels.length !== 1 ? "s" : ""}`)
       UI.println(`UI: ${uiParts.join(", ")}`)
     }
     // Sandbox preview

@@ -83,13 +83,13 @@ function uiSurfaces(manifest: PluginManifestType): string[] {
   const surfaces: string[] = []
   if (ui.toolRenderers?.length) surfaces.push("toolRenderers")
   if (ui.partRenderers?.length) surfaces.push("partRenderers")
-  if (ui.workspacePanels?.length) surfaces.push("workspacePanels")
-  if (ui.globalPanels?.length) surfaces.push("globalPanels")
+  if (ui.workbenchPanels?.length) surfaces.push("workbenchPanels")
+  if (ui.appPanels?.length) surfaces.push("appPanels")
   if (ui.settings?.length) surfaces.push("settings")
-  if (ui.chatComponents?.length) surfaces.push("chatComponents")
+  if (ui.messageSlots?.length) surfaces.push("messageSlots")
   if (ui.themes?.length) surfaces.push("themes")
   if (ui.icons?.length) surfaces.push("icons")
-  if (ui.routes?.length) surfaces.push("routes")
+  if (ui.appRoutes?.length) surfaces.push("appRoutes")
   if (ui.commands?.length) surfaces.push("commands")
   return surfaces
 }

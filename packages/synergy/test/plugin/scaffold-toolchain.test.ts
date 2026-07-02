@@ -14,7 +14,11 @@ import { copyRegistryEntryIcon, registryEntry, writeRegistryEntry } from "../../
 
 const repoRoot = path.resolve(import.meta.dir, "../../../..")
 const repoNodeModules = path.join(repoRoot, "node_modules")
-const templates = ["tool-ui", "workspace-panel", "api-connector", "theme-icon"] as const
+const templates = ["tool-ui", "workbench-panel", "app-panel", "api-connector", "theme-icon"] as const
+
+async function linkDirectory(target: string, linkPath: string) {
+  await fs.symlink(target, linkPath, process.platform === "win32" ? "junction" : "dir")
+}
 
 async function runCommand(command: { handler: (args: any) => Promise<void> | void }, args: Record<string, unknown>) {
   process.exitCode = undefined
@@ -34,7 +38,7 @@ describe("plugin scaffold toolchain", () => {
         await runCommand(PluginCreateCommand, { name, template })
 
         const pluginDir = path.join(tmp.path, name)
-        await fs.symlink(repoNodeModules, path.join(pluginDir, "node_modules"), "dir")
+        await linkDirectory(repoNodeModules, path.join(pluginDir, "node_modules"))
 
         await runCommand(PluginValidateCommand, { path: pluginDir, "runtime-discovery": true })
         await runCommand(PluginBuildCommand, { path: pluginDir })
@@ -81,12 +85,14 @@ describe("plugin scaffold toolchain", () => {
             skills: [{ name: "frontend", description: "Frontend workflow skill", dir: "./skills/frontend" }],
             ui: {
               entry: "./dist/ui/index.js",
-              routes: [{ path: "/asset-fixture", entry: "./src/route.js", label: "Fixture" }],
-              workspacePanels: [
+              appRoutes: [{ id: "asset-route", entry: "./src/route.js", label: "Fixture" }],
+              workbenchPanels: [
                 {
                   id: "asset-panel",
                   label: "Fixture",
                   icon: "panel-left",
+                  surface: "side",
+                  cardinality: "singleton",
                   sandbox: true,
                   sandboxEntry: "./src/panel-sandbox.js",
                 },
@@ -103,6 +109,17 @@ describe("plugin scaffold toolchain", () => {
               ],
               themes: [{ id: "asset-theme", label: "Fixture", path: "./themes/default.css" }],
               icons: [{ name: "asset-logo", path: "./icons/logo.svg" }],
+            },
+          },
+          permissions: {
+            ui: {
+              workbenchPanels: true,
+              settings: true,
+              themes: true,
+              icons: true,
+              appRoutes: true,
+              trustedImport: true,
+              sandboxIframe: true,
             },
           },
           lifecycle: {
@@ -177,7 +194,7 @@ export default plugin
       new TextDecoder()
         .decode(list.stdout)
         .split("\n")
-        .map((line) => line.replace(/^\.\//, "").replace(/\/$/, ""))
+        .map((line) => line.trim().replace(/\\/g, "/").replace(/^\.\//, "").replace(/\/$/, ""))
         .filter(Boolean),
     )
     expect(files.has("skills/frontend/SKILL.md")).toBe(true)

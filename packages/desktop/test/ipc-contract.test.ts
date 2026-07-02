@@ -3,6 +3,7 @@ import {
   parseBrowserNativeAttach,
   parseBrowserNativePage,
   parseBrowserNativeResize,
+  parseClipboardWriteText,
   parseExternalUrl,
 } from "../src/ipc-contract.js"
 
@@ -36,5 +37,12 @@ describe("desktop ipc contract", () => {
     expect(parseExternalUrl("mailto:hello@example.com")).toBe("mailto:hello@example.com")
     expect(() => parseExternalUrl("file:///etc/passwd")).toThrow()
     expect(() => parseExternalUrl("javascript:alert(1)")).toThrow()
+  })
+
+  test("accepts only string clipboard write payloads", () => {
+    expect(parseClipboardWriteText("copy me")).toBe("copy me")
+    expect(parseClipboardWriteText("")).toBe("")
+    expect(() => parseClipboardWriteText({ text: "copy me" })).toThrow()
+    expect(() => parseClipboardWriteText(null)).toThrow()
   })
 })

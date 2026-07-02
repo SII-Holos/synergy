@@ -115,4 +115,20 @@
   &:focus {
     outline: none;
   }
+
+  &[data-copy-state="copied"] [data-slot="icon-svg"] {
+    color: var(--icon-success-base);
+    transform: scale(1.06);
+  }
+
+  &[data-copy-state="failed"] [data-slot="icon-svg"] {
+    color: var(--icon-critical-base);
+    transform: scale(1.06);
+  }
+
+  &[data-copy-state] [data-slot="icon-svg"] {
+    transition:
+      color var(--motion-duration-fast) var(--motion-ease-standard),
+      transform var(--motion-duration-fast) var(--motion-ease-standard);
+  }
 }

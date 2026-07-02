@@ -38,6 +38,7 @@ import { CortexRoute } from "./cortex"
 import { Installation } from "@/global/installation"
 import { MDNS } from "./mdns"
 import { Worktree } from "../project/worktree"
+import { Session } from "../session"
 import { SessionRoute } from "./session"
 import { PtyRoute } from "./pty"
 import { ProviderRoute } from "./provider"
@@ -839,6 +840,36 @@ export namespace Server {
             return c.json(worktrees)
           },
         )
+        .post(
+          "/experimental/worktree/session/:sessionID/leave",
+          describeRoute({
+            summary: "Leave worktree",
+            description: "Leave the current git worktree for a session and return it to the main checkout.",
+            operationId: "worktree.leave",
+            responses: {
+              200: {
+                description: "Session returned to main checkout",
+                content: {
+                  "application/json": {
+                    schema: resolver(Session.Info),
+                  },
+                },
+              },
+              ...errors(400, 404),
+            },
+          }),
+          validator(
+            "param",
+            z.object({
+              sessionID: z.string(),
+            }),
+          ),
+          async (c) => {
+            const sessionID = c.req.valid("param").sessionID
+            const session = await Worktree.leave(sessionID)
+            return c.json(session)
+          },
+        )
         .get(
           "/vcs",
           describeRoute({
@@ -1220,7 +1251,11 @@ export namespace Server {
           const reqPath = new URL(c.req.url).pathname
           const routeTag = `<script>window.__SYNERGY_ROUTE__=${JSON.stringify(reqPath)}</script>`
           c.header("Content-Security-Policy", spaCsp())
-          const rendered = html.includes("</head>") ? html.replace("</head>", `${routeTag}\n</head>`) : routeTag + html
+          const rendered = html.includes("<head>")
+            ? html.replace("<head>", `<head>\n${routeTag}`)
+            : html.includes("</head>")
+              ? html.replace("</head>", `${routeTag}\n</head>`)
+              : routeTag + html
           return c.body(rendered, { headers: { "Content-Type": "text/html; charset=utf-8" } })
         }
         return c.notFound()

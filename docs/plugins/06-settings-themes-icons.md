@@ -1,4 +1,4 @@
-# Settings, Themes, Icons, Routes, And Commands
+# Settings, Themes, Icons, App Routes, And Commands
 
 These surfaces are declared under `contributes.ui` and registered by the Web plugin host.
 
@@ -49,22 +49,23 @@ Theme files are copied into `dist/themes/` during build and registered with a CS
 
 Icon SVG files are copied into `dist/icons/` and fetched by the host.
 
-## Routes
+## App Routes
 
 ```jsonc
 {
-  "routes": [
+  "appRoutes": [
     {
-      "path": "/plugins/my-plugin",
-      "entry": "default",
+      "id": "details",
       "label": "My Plugin",
       "icon": "sparkles",
+      "entry": "./dist/ui/details.js",
+      "exportName": "default",
     },
   ],
 }
 ```
 
-Routes are registered as plugin routes and load from the plugin UI bundle.
+App routes are registered under `/plugins/routes/:pluginId/:routeId` and load from the route `entry` or the shared `contributes.ui.entry`. They do not automatically create sidebar entries; use `appPanels` for a top-level sidebar panel.
 
 ## Commands
 

@@ -1,6 +1,7 @@
 import { TextField as Kobalte } from "@kobalte/core/text-field"
-import { createSignal, Show, splitProps } from "solid-js"
+import { Show, splitProps } from "solid-js"
 import type { ComponentProps } from "solid-js"
+import { createCopyController } from "./clipboard"
 import { IconButton } from "./icon-button"
 import { Tooltip } from "./tooltip"
 
@@ -49,38 +50,14 @@ export function TextField(props: TextFieldProps) {
     "copyable",
     "multiline",
   ])
-  const [copied, setCopied] = createSignal(false)
-
-  async function handleCopy() {
-    const value = local.value ?? local.defaultValue ?? ""
-    let ok = false
-    if (navigator.clipboard && window.isSecureContext) {
-      await navigator.clipboard.writeText(value)
-      ok = true
-    } else {
-      try {
-        const ta = document.createElement("textarea")
-        ta.value = value
-        ta.style.position = "fixed"
-        ta.style.opacity = "0"
-        ta.style.pointerEvents = "none"
-        document.body.appendChild(ta)
-        ta.focus()
-        ta.select()
-        ok = document.execCommand("copy")
-        document.body.removeChild(ta)
-      } catch {
-        /* execCommand failed */
-      }
-    }
-    if (ok) {
-      setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
-    }
-  }
+  const copy = createCopyController({
+    text: () => `${local.value ?? local.defaultValue ?? ""}`,
+    copyLabel: "Copy to clipboard",
+    failureDescription: "Unable to copy the field value.",
+  })
 
   function handleClick() {
-    if (local.copyable) handleCopy()
+    if (local.copyable) void copy.copy()
   }
 
   return (
@@ -111,12 +88,17 @@ export function TextField(props: TextFieldProps) {
           <Kobalte.TextArea {...others} autoResize data-slot="input-input" class={local.class} />
         </Show>
         <Show when={local.copyable}>
-          <Tooltip value={copied() ? "Copied" : "Copy to clipboard"} placement="top" gutter={8}>
+          <Tooltip value={copy.tooltip()} placement="top" gutter={8}>
             <IconButton
               type="button"
-              icon={copied() ? "check" : "copy"}
+              icon={copy.icon()}
               variant="ghost"
-              onClick={handleCopy}
+              data-copy-state={copy.state()}
+              disabled={copy.disabled()}
+              onClick={(event) => {
+                event.stopPropagation()
+                void copy.copy()
+              }}
               data-slot="input-copy-button"
             />
           </Tooltip>

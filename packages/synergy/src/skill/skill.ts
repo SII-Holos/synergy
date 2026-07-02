@@ -1,4 +1,5 @@
 import path from "path"
+import os from "os"
 import { existsSync } from "fs"
 import z from "zod"
 import { ScopeContext } from "../scope/context"
@@ -467,6 +468,7 @@ export namespace Skill {
 
     for (const root of projectRoots) {
       const normalized = path.resolve(root)
+      if (path.dirname(normalized) === path.resolve(os.homedir())) continue
       if (normalized.endsWith(`${path.sep}.synergy`)) {
         candidates.push(...(await scanRoots([normalized], "synergy", "project", SYNERGY_ENTRY_GLOBS)))
       } else if (normalized.endsWith(`${path.sep}.claude`) && !Flag.SYNERGY_DISABLE_CLAUDE_CODE_SKILLS) {

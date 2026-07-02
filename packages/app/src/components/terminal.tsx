@@ -3,6 +3,7 @@ import { ComponentProps, Show, createEffect, createSignal, onCleanup, onMount, s
 import { useSDK } from "@/context/sdk"
 import { SerializeAddon } from "@/addons/serialize"
 import { LocalPTY } from "@/context/terminal"
+import { copyTextToClipboard } from "@ericsanchezok/synergy-ui/clipboard"
 import { resolveThemeVariant, useTheme, withAlpha, type HexColor } from "@ericsanchezok/synergy-ui/theme"
 
 export interface TerminalProps extends ComponentProps<"div"> {
@@ -123,27 +124,11 @@ export const Terminal = (props: TerminalProps) => {
       const selection = t.getSelection()
       if (!selection) return false
 
-      const body = document.body
-      if (body) {
-        const textarea = document.createElement("textarea")
-        textarea.value = selection
-        textarea.setAttribute("readonly", "")
-        textarea.style.position = "fixed"
-        textarea.style.opacity = "0"
-        body.appendChild(textarea)
-        textarea.select()
-        const copied = document.execCommand("copy")
-        body.removeChild(textarea)
-        if (copied) return true
-      }
-
-      const clipboard = navigator.clipboard
-      if (clipboard?.writeText) {
-        clipboard.writeText(selection).catch(() => {})
-        return true
-      }
-
-      return false
+      void copyTextToClipboard(selection, {
+        label: "Copy terminal selection",
+        failureDescription: "Unable to copy the terminal selection.",
+      })
+      return true
     }
 
     t.attachCustomKeyEventHandler((event) => {

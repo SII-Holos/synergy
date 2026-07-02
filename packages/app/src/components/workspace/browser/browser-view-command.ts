@@ -1,7 +1,6 @@
 export interface BrowserWorkspaceController {
-  setActive(id: string | null): void
-  openPanel(): void
-  closePanel(): void
+  openPanel(panelId: string, options?: { reuseExisting?: boolean }): unknown
+  surface(surface: "side"): { close(): void }
 }
 
 const AUTO_SHOW_BROWSER_TOOLS = new Set([
@@ -33,12 +32,11 @@ export function applyBrowserViewCommand(
 ): boolean {
   const command = metadata.workspaceCommand ?? metadata.action
   if (command === "hide") {
-    workspace.closePanel()
+    workspace.surface("side").close()
     return true
   }
   if (command === "show" || command === "focus") {
-    workspace.setActive("browser")
-    workspace.openPanel()
+    workspace.openPanel("browser", { reuseExisting: true })
     return true
   }
   return false

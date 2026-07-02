@@ -980,6 +980,10 @@
                     "type": "string",
                     "format": "uri"
                   },
+                  "clientSurface": {
+                    "type": "string",
+                    "enum": ["web", "desktop"]
+                  },
                   "profile": {
                     "$ref": "#/components/schemas/HolosAgentProfileInput"
                   }
@@ -3390,6 +3394,75 @@
           {
             "lang": "js",
             "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.worktree.list({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/experimental/worktree/session/{sessionID}/leave": {
+      "post": {
+        "operationId": "worktree.leave",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "sessionID",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "summary": "Leave worktree",
+        "description": "Leave the current git worktree for a session and return it to the main checkout.",
+        "responses": {
+          "200": {
+            "description": "Session returned to main checkout",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Session"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.worktree.leave({\n  ...\n})"
           }
         ]
       }
@@ -13119,7 +13192,7 @@
         ]
       }
     },
-    "/plugin/{pluginId}/sandbox/{panelId}": {
+    "/plugin/{pluginId}/sandbox/{surface}/{surfaceId}": {
       "get": {
         "operationId": "plugin.sandbox",
         "parameters": [
@@ -13150,7 +13223,15 @@
               "type": "string"
             },
             "in": "path",
-            "name": "panelId",
+            "name": "surface",
+            "required": true
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "surfaceId",
             "required": true
           }
         ],
@@ -21787,15 +21868,6 @@
           }
         }
       },
-      "VcsInfo": {
-        "type": "object",
-        "properties": {
-          "branch": {
-            "type": "string"
-          }
-        },
-        "required": ["branch"]
-      },
       "SessionScope": {
         "type": "object",
         "properties": {
@@ -21862,20 +21934,34 @@
           "file": {
             "type": "string"
           },
-          "before": {
-            "type": "string"
-          },
-          "after": {
-            "type": "string"
-          },
           "additions": {
             "type": "number"
           },
           "deletions": {
             "type": "number"
+          },
+          "binary": {
+            "type": "boolean"
+          },
+          "preview": {
+            "type": "string"
+          },
+          "beforeBytes": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "afterBytes": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "truncated": {
+            "type": "boolean"
           }
         },
-        "required": ["file", "before", "after", "additions", "deletions"]
+        "required": ["file", "additions", "deletions"],
+        "additionalProperties": false
       },
       "PermissionAction": {
         "type": "string",
@@ -22307,6 +22393,15 @@
           }
         },
         "required": ["id", "scope", "title", "version", "time"]
+      },
+      "VcsInfo": {
+        "type": "object",
+        "properties": {
+          "branch": {
+            "type": "string"
+          }
+        },
+        "required": ["branch"]
       },
       "SessionStatus": {
         "anyOf": [
@@ -23521,6 +23616,14 @@
           },
           "output": {
             "type": "string"
+          },
+          "outputBytes": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "outputTruncated": {
+            "type": "boolean"
           },
           "title": {
             "type": "string"
@@ -27181,7 +27284,7 @@
             },
             "required": ["base", "tools", "overallRisk", "warnings"]
           },
-          "routes": {
+          "appRoutes": {
             "type": "array",
             "items": {
               "type": "string"
@@ -27309,7 +27412,7 @@
           "manifestValid",
           "integrity",
           "permissions",
-          "routes",
+          "appRoutes",
           "tools",
           "ui",
           "stores",

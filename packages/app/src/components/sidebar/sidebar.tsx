@@ -23,6 +23,7 @@ import { usePlatform } from "@/context/platform"
 import { useProductUpdate } from "@/context/product-update"
 import { useHolosAgentActions } from "@/components/holos/agent-actions"
 import { SettingsDialog } from "@/components/settings"
+import { listAppPanels, subscribeAppPanels } from "@/plugin"
 import {
   resolveSessionVisualState,
   scopeKeyForNavEntry,
@@ -59,6 +60,14 @@ export function Sidebar(props: SidebarProps) {
   const recentEntries = createMemo(() => layout.nav.recentEntries())
   const hasMoreForProject = (scope: LocalScope) => layout.nav.navEntries()[scope.worktree]?.nextCursor != null
   const hasMoreRecent = createMemo(() => layout.nav.hasMoreRecent())
+  const [appPanelRegistryVersion, setAppPanelRegistryVersion] = createSignal(0)
+  const pluginAppPanels = createMemo(() => {
+    appPanelRegistryVersion()
+    return listAppPanels()
+  })
+  const isPluginsSectionActive = () =>
+    location.pathname === "/plugins/marketplace" || /^\/plugins\/[^/]+$/.test(location.pathname)
+  const appPanelPath = (pluginId: string, panelId: string) => `/plugins/panels/${pluginId}/${panelId}`
 
   const [recentSectionOpen, setRecentSectionOpen] = createSignal(true)
   const [homeSectionOpen, setHomeSectionOpen] = createSignal(false)
@@ -71,6 +80,8 @@ export function Sidebar(props: SidebarProps) {
 
   let scopeListRef!: HTMLDivElement
   let prevSnapshot = new Map<string, number>()
+
+  onCleanup(subscribeAppPanels(() => setAppPanelRegistryVersion((version) => version + 1)))
 
   createEffect(
     on(
@@ -300,25 +311,40 @@ export function Sidebar(props: SidebarProps) {
           when={isExpanded()}
           fallback={
             <Tooltip value="Expand sidebar" placement="right">
-              <button type="button" class="sb-collapsed-toggle" onClick={() => layout.sidebar.toggle()}>
-                <img src={holosLogoPath(isDark() ? "dark" : "light")} alt="HOLOS" class="sb-collapsed-logo" />
+              <button
+                type="button"
+                class="sb-collapsed-toggle"
+                aria-label="Expand sidebar"
+                onClick={() => layout.sidebar.toggle()}
+              >
+                <img
+                  src={holosLogoPath(isDark() ? "dark" : "light")}
+                  alt="HOLOS"
+                  class="sb-collapsed-logo"
+                  draggable={false}
+                />
                 <Icon name="panel-left-open" size="normal" class="sb-collapsed-toggle-icon" />
               </button>
             </Tooltip>
           }
         >
           <A href={`/${base64Encode("home")}/session`} class="sb-logo">
-            <img src={holosLogoPath(isDark() ? "dark" : "light")} alt="HOLOS" class="sb-logo-img" />
+            <img src={holosLogoPath(isDark() ? "dark" : "light")} alt="HOLOS" class="sb-logo-img" draggable={false} />
             <span class="sb-logo-text">HOLOS</span>
           </A>
           <div class="sb-header-actions">
             <Tooltip value="Search sessions" placement="right">
-              <button type="button" class="sb-icon-btn" onClick={props.onSearchOpen}>
+              <button type="button" class="sb-icon-btn" aria-label="Search sessions" onClick={props.onSearchOpen}>
                 <Icon name="search" size="normal" />
               </button>
             </Tooltip>
             <Tooltip value="Collapse sidebar" placement="right">
-              <button type="button" class="sb-icon-btn" onClick={() => layout.sidebar.toggle()}>
+              <button
+                type="button"
+                class="sb-icon-btn"
+                aria-label="Collapse sidebar"
+                onClick={() => layout.sidebar.toggle()}
+              >
                 <Icon name="panel-left-close" size="normal" />
               </button>
             </Tooltip>
@@ -375,7 +401,7 @@ export function Sidebar(props: SidebarProps) {
             type="button"
             classList={{
               "sb-global-btn": true,
-              "sb-global-active": location.pathname.startsWith("/plugins"),
+              "sb-global-active": isPluginsSectionActive(),
             }}
             onClick={() => navigate("/plugins/marketplace")}
           >
@@ -385,6 +411,25 @@ export function Sidebar(props: SidebarProps) {
             </Show>
           </button>
         </Tooltip>
+        <For each={pluginAppPanels()}>
+          {(panel) => (
+            <Tooltip value={panel.label} placement="right">
+              <button
+                type="button"
+                classList={{
+                  "sb-global-btn": true,
+                  "sb-global-active": location.pathname === appPanelPath(panel.pluginId, panel.panelId),
+                }}
+                onClick={() => navigate(appPanelPath(panel.pluginId, panel.panelId))}
+              >
+                <Icon name={panel.icon} size="normal" />
+                <Show when={isExpanded()}>
+                  <span class="sb-action-label">{panel.label}</span>
+                </Show>
+              </button>
+            </Tooltip>
+          )}
+        </For>
       </div>
 
       {/* Unified scroll region */}

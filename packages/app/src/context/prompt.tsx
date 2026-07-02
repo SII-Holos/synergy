@@ -4,6 +4,7 @@ import { batch, createMemo, createRoot, onCleanup } from "solid-js"
 import { useParams } from "@solidjs/router"
 import type { FileSelection } from "@/context/file"
 import { Persist, persisted } from "@/utils/persist"
+import { sanitizePromptStateValue, sanitizePromptValue } from "./prompt-sanitize"
 
 interface PartBase {
   content: string
@@ -21,20 +22,20 @@ export interface FileAttachmentPart extends PartBase {
   selection?: FileSelection
 }
 
-export interface ImageAttachmentPart {
-  type: "image"
-  id: string
-  filename: string
-  mime: string
-  dataUrl: string
-}
-
 export interface UploadedAttachmentPart {
   type: "attachment"
   id: string
   filename: string
   mime: string
   url: string
+  size?: number
+  metadata?: Record<string, unknown>
+  presentation?: {
+    hidden?: boolean
+    renderer?: "image" | "video" | "audio" | "thumbnail" | "file"
+    size?: "original" | "small" | "medium" | "large"
+    crop?: boolean
+  }
 }
 
 export interface NoteAttachmentPart {
@@ -57,7 +58,6 @@ export interface SessionAttachmentPart {
 export type ContentPart =
   | TextPart
   | FileAttachmentPart
-  | ImageAttachmentPart
   | UploadedAttachmentPart
   | NoteAttachmentPart
   | SessionAttachmentPart
@@ -96,9 +96,6 @@ export function isPromptEqual(promptA: Prompt, promptB: Prompt): boolean {
       if (fileA.path !== fileB.path) return false
       if (!isSelectionEqual(fileA.selection, fileB.selection)) return false
     }
-    if (partA.type === "image" && partA.id !== (partB as ImageAttachmentPart).id) {
-      return false
-    }
     if (partA.type === "attachment" && partA.id !== (partB as UploadedAttachmentPart).id) {
       return false
     }
@@ -119,7 +116,6 @@ function cloneSelection(selection?: FileSelection) {
 
 function clonePart(part: ContentPart): ContentPart {
   if (part.type === "text") return { ...part }
-  if (part.type === "image") return { ...part }
   if (part.type === "attachment") return { ...part }
   if (part.type === "note") return { ...part }
   if (part.type === "session") return { ...part }
@@ -131,6 +127,10 @@ function clonePart(part: ContentPart): ContentPart {
 
 function clonePrompt(prompt: Prompt): Prompt {
   return prompt.map(clonePart)
+}
+
+export function sanitizePrompt(value: unknown): Prompt {
+  return sanitizePromptValue(value) as unknown as Prompt
 }
 
 const WORKSPACE_KEY = "__workspace__"
@@ -147,7 +147,7 @@ function createPromptSession(dir: string, id: string | undefined) {
   const legacy = `${dir}/prompt${id ? "/" + id : ""}.v2`
 
   const [store, setStore, _, ready] = persisted(
-    Persist.scoped(dir, id, "prompt", [legacy]),
+    { ...Persist.scoped(dir, id, "prompt", [legacy]), migrate: sanitizePromptStateValue },
     createStore<{
       prompt: Prompt
       cursor?: number
@@ -196,7 +196,7 @@ function createPromptSession(dir: string, id: string | undefined) {
       },
     },
     set(prompt: Prompt, cursorPosition?: number) {
-      const next = clonePrompt(prompt)
+      const next = sanitizePrompt(prompt).map(clonePart)
       batch(() => {
         setStore("prompt", next)
         if (cursorPosition !== undefined) setStore("cursor", cursorPosition)

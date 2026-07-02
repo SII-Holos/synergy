@@ -6,8 +6,20 @@ import { Shell } from "../../src/util/shell"
 const ORIGINAL_SHELL = process.env.SHELL
 
 function expectedFallback() {
-  if (process.platform === "win32") return process.env.COMSPEC || "cmd.exe"
-  if (process.platform === "darwin") return "/bin/zsh"
+  if (process.platform === "win32") {
+    const git = Bun.which("git")
+    if (git) {
+      const bash = path.join(git, "..", "..", "bin", "bash.exe")
+      if (Bun.file(bash).size) return bash
+    }
+    return process.env.COMSPEC || "cmd.exe"
+  }
+  if (process.platform === "darwin") {
+    for (const shell of ["/bin/zsh", "/bin/bash", "/bin/sh"]) {
+      if (Bun.file(shell).size) return shell
+    }
+    return "/bin/sh"
+  }
   return Bun.which("bash") || "/bin/sh"
 }
 

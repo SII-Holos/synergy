@@ -41,24 +41,22 @@ function createTerminalSession(sdk: ReturnType<typeof useSDK>, dir: string, id: 
     ready,
     all: createMemo(() => Object.values(store.all)),
     active: createMemo(() => store.active),
-    new() {
-      sdk.client.pty
-        .create({ title: `Terminal ${store.all.length + 1}` })
-        .then((pty) => {
-          const id = pty.data?.id
-          if (!id) return
-          setStore("all", [
-            ...store.all,
-            {
-              id,
-              title: pty.data?.title ?? "Terminal",
-            },
-          ])
-          setStore("active", id)
-        })
-        .catch((e) => {
-          console.error("Failed to create terminal", e)
-        })
+    async new() {
+      try {
+        const pty = await sdk.client.pty.create({ title: `Terminal ${store.all.length + 1}` })
+        const id = pty.data?.id
+        if (!id) return undefined
+        const next = {
+          id,
+          title: pty.data?.title ?? "Terminal",
+        }
+        setStore("all", [...store.all, next])
+        setStore("active", id)
+        return next
+      } catch (e) {
+        console.error("Failed to create terminal", e)
+        return undefined
+      }
     },
     update(pty: Partial<LocalPTY> & { id: string }) {
       setStore("all", (x) => x.map((x) => (x.id === pty.id ? { ...x, ...pty } : x)))

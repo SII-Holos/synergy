@@ -437,6 +437,8 @@ import type {
   WorktreeCreateErrors,
   WorktreeCreateInput,
   WorktreeCreateResponses,
+  WorktreeLeaveErrors,
+  WorktreeLeaveResponses,
   WorktreeListResponses,
 } from "./types.gen.js"
 
@@ -3405,6 +3407,7 @@ export class Holos extends HeyApiClient {
   public login<ThrowOnError extends boolean = false>(
     parameters?: {
       callbackUrl?: string
+      clientSurface?: "web" | "desktop"
       profile?: HolosAgentProfileInput
     },
     options?: Options<never, ThrowOnError>,
@@ -3415,6 +3418,7 @@ export class Holos extends HeyApiClient {
         {
           args: [
             { in: "body", key: "callbackUrl" },
+            { in: "body", key: "clientSurface" },
             { in: "body", key: "profile" },
           ],
         },
@@ -4957,6 +4961,38 @@ export class Worktree extends HeyApiClient {
         ...options?.headers,
         ...params.headers,
       },
+    })
+  }
+
+  /**
+   * Leave worktree
+   *
+   * Leave the current git worktree for a session and return it to the main checkout.
+   */
+  public leave<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      directory?: string
+      scopeID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<WorktreeLeaveResponses, WorktreeLeaveErrors, ThrowOnError>({
+      url: "/experimental/worktree/session/{sessionID}/leave",
+      ...options,
+      ...params,
     })
   }
 }
@@ -7096,7 +7132,8 @@ export class Plugin extends HeyApiClient {
   public sandbox<ThrowOnError extends boolean = false>(
     parameters: {
       pluginId: string
-      panelId: string
+      surface: string
+      surfaceId: string
       directory?: string
       scopeID?: string
     },
@@ -7108,7 +7145,8 @@ export class Plugin extends HeyApiClient {
         {
           args: [
             { in: "path", key: "pluginId" },
-            { in: "path", key: "panelId" },
+            { in: "path", key: "surface" },
+            { in: "path", key: "surfaceId" },
             { in: "query", key: "directory" },
             { in: "query", key: "scopeID" },
           ],
@@ -7116,7 +7154,7 @@ export class Plugin extends HeyApiClient {
       ],
     )
     return (options?.client ?? this.client).get<PluginSandboxResponses, PluginSandboxErrors, ThrowOnError>({
-      url: "/plugin/{pluginId}/sandbox/{panelId}",
+      url: "/plugin/{pluginId}/sandbox/{surface}/{surfaceId}",
       ...options,
       ...params,
     })

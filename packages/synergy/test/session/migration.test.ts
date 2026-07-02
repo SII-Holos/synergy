@@ -8,6 +8,8 @@ import { Identifier } from "../../src/id/id"
 import { migrations } from "../../src/session/migration"
 import { Storage } from "../../src/storage/storage"
 import { StoragePath } from "../../src/storage/path"
+import { SnapshotSchema } from "../../src/session/snapshot-schema"
+import { SessionBounds } from "../../src/session/bounds"
 
 const projectRoot = path.join(__dirname, "../..")
 
@@ -291,6 +293,115 @@ describe("session migrations", () => {
         expect(toolPart.state.metadata).toEqual({ display: { toolCard: "hidden" } })
         expect(toolPart.state.attachments[0].presentation).toBeUndefined()
         expect(toolPart.state.attachments[1].presentation).toEqual({ hidden: true })
+      },
+    })
+  })
+
+  test("canonicalizes unbounded session output and diffs without retaining legacy fields", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const tmpScope = await tmp.scope()
+    await ScopeContext.provide({
+      scope: tmpScope,
+      fn: async () => {
+        const session = await Session.create({})
+        const user = await addUserMessage(session.id)
+        const assistant = await addTerminalAssistantMessage(session.id, user.id)
+        const scope = Identifier.asScopeID(tmpScope.id)
+        const sid = Identifier.asSessionID(session.id)
+        const userMessage = Identifier.asMessageID(user.id)
+        const assistantMessage = Identifier.asMessageID(assistant.id)
+        const longOutput = "x".repeat(SessionBounds.TOOL_OUTPUT_MAX_CHARS + 4_000)
+
+        await Storage.write(StoragePath.sessionSummary(scope, sid), [
+          {
+            file: "summary.txt",
+            before: "old summary\n",
+            after: "new summary\n",
+            additions: 1,
+            deletions: 1,
+          },
+        ])
+
+        await Storage.update<any>(StoragePath.messageInfo(scope, sid, userMessage), (draft) => {
+          draft.summary = {
+            text: "legacy summary",
+            diffs: [
+              {
+                file: "message.txt",
+                before: "old message\n",
+                after: "new message\n",
+                additions: 1,
+                deletions: 1,
+              },
+            ],
+          }
+        })
+
+        await Storage.write(StoragePath.messagePart(scope, sid, assistantMessage, Identifier.asPartID("part_tool")), {
+          id: "part_tool",
+          sessionID: session.id,
+          messageID: assistant.id,
+          type: "tool",
+          callID: "call_1",
+          tool: "read",
+          state: {
+            status: "completed",
+            input: {},
+            output: longOutput,
+            title: "Read",
+            metadata: {
+              filediff: {
+                file: "tool.txt",
+                before: "old tool\n",
+                after: "new tool\n",
+                additions: 1,
+                deletions: 1,
+              },
+            },
+            time: { start: 1, end: 2 },
+          },
+        })
+
+        const migration = migrations.find((entry) => entry.id === "20260701-bounded-session-data")
+        expect(migration).toBeDefined()
+        await migration!.up(() => {})
+
+        const firstPart = await Storage.read<any>(
+          StoragePath.messagePart(scope, sid, assistantMessage, Identifier.asPartID("part_tool")),
+        )
+        const firstSummary = await Storage.read<any>(StoragePath.sessionSummary(scope, sid))
+        const firstMessage = await Storage.read<any>(StoragePath.messageInfo(scope, sid, userMessage))
+
+        expect(firstPart.state.output.length).toBeLessThanOrEqual(SessionBounds.TOOL_OUTPUT_MAX_CHARS)
+        expect(firstPart.state.outputBytes).toBe(Buffer.byteLength(longOutput, "utf8"))
+        expect(firstPart.state.outputTruncated).toBe(true)
+        expect(firstPart.state.metadata.filediff.before).toBeUndefined()
+        expect(firstPart.state.metadata.filediff.after).toBeUndefined()
+        expect(firstPart.state.metadata.filediff.beforeBytes).toBe("old tool\n".length)
+        expect(firstPart.state.metadata.filediff.afterBytes).toBe("new tool\n".length)
+        expect(firstPart.state.metadata.filediff.preview).toContain("new tool")
+
+        expect(firstSummary[0].before).toBeUndefined()
+        expect(firstSummary[0].after).toBeUndefined()
+        expect(firstSummary[0].preview).toContain("new summary")
+        expect(firstMessage.summary.diffs[0].before).toBeUndefined()
+        expect(firstMessage.summary.diffs[0].after).toBeUndefined()
+        expect(firstMessage.summary.diffs[0].preview).toContain("new message")
+        expect(SnapshotSchema.FileDiff.safeParse({ file: "x", additions: 1, deletions: 0, before: "a" }).success).toBe(
+          false,
+        )
+
+        const serialized = JSON.stringify({ part: firstPart, summary: firstSummary, message: firstMessage })
+        expect(serialized).not.toContain('"before":')
+        expect(serialized).not.toContain('"after":')
+
+        await migration!.up(() => {})
+        const secondPart = await Storage.read<any>(
+          StoragePath.messagePart(scope, sid, assistantMessage, Identifier.asPartID("part_tool")),
+        )
+        const secondSummary = await Storage.read<any>(StoragePath.sessionSummary(scope, sid))
+        const secondMessage = await Storage.read<any>(StoragePath.messageInfo(scope, sid, userMessage))
+        expect(JSON.stringify({ part: secondPart, summary: secondSummary, message: secondMessage })).toBe(serialized)
       },
     })
   })

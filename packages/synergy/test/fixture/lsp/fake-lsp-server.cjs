@@ -1,8 +1,6 @@
 // Simple JSON-RPC 2.0 LSP-like fake server over stdio
 // Implements a minimal LSP handshake and triggers a request upon notification
 
-const net = require("net")
-
 let nextId = 1
 
 function encode(message) {
@@ -63,6 +61,9 @@ function handle(raw) {
   }
   if (data.method === "workspace/didChangeConfiguration") {
     return
+  }
+  if (data.method === "exit") {
+    process.exit(0)
   }
   if (data.method === "test/trigger") {
     const method = data.params && data.params.method

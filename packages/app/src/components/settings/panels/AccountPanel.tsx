@@ -1,6 +1,7 @@
 import { createEffect, createMemo, createSignal, Show } from "solid-js"
 import { createStore } from "solid-js/store"
 import { Button } from "@ericsanchezok/synergy-ui/button"
+import { createCopyController } from "@ericsanchezok/synergy-ui/clipboard"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { TextField } from "@ericsanchezok/synergy-ui/text-field"
@@ -28,6 +29,11 @@ export function AccountPanel() {
   const activeAgentId = createMemo(
     () => holos.state.identity.activeAccount?.agentId ?? holos.state.identity.agentId ?? undefined,
   )
+  const copyAgentID = createCopyController({
+    text: activeAgentId,
+    copyLabel: "Copy agent ID",
+    failureDescription: "Unable to copy the agent ID.",
+  })
   const shortAgentId = createMemo(() => activeAgentId()?.slice(0, 8))
   const profile = createMemo(() => holos.state.social.profile)
   const displayName = createMemo(
@@ -81,17 +87,6 @@ export function AccountPanel() {
   function cancelProfileEdit() {
     resetProfileForm()
     setEditingProfile(false)
-  }
-
-  async function copyAgentID() {
-    const agentId = activeAgentId()
-    if (!agentId) return
-    try {
-      await navigator.clipboard.writeText(agentId)
-      showToast({ type: "success", title: "Agent ID copied" })
-    } catch {
-      showToast({ type: "error", title: "Copy failed", description: "Unable to copy the agent ID." })
-    }
   }
 
   async function saveProfile(e: SubmitEvent) {
@@ -288,11 +283,12 @@ export function AccountPanel() {
               type="button"
               variant="secondary"
               size="small"
-              icon={getSemanticIcon("action.copy")}
-              disabled={!activeAgentId()}
-              onClick={() => void copyAgentID()}
+              icon={copyAgentID.copied() ? getSemanticIcon("state.success") : copyAgentID.icon()}
+              data-copy-state={copyAgentID.state()}
+              disabled={copyAgentID.disabled()}
+              onClick={() => void copyAgentID.copy()}
             >
-              Copy
+              {copyAgentID.copied() ? "Copied" : "Copy"}
             </Button>
           </div>
         </div>

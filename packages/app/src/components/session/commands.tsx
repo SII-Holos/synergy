@@ -6,7 +6,7 @@ import type { useSDK } from "@/context/sdk"
 import type { useSync } from "@/context/sync"
 import type { useTerminal } from "@/context/terminal"
 import type { useLayout } from "@/context/layout"
-import { useWorkspace } from "@/context/workspace"
+import { useWorkbenchPanels } from "@/context/workbench-panels"
 import { extractPromptFromParts } from "@/utils/prompt"
 import type { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import type { UserMessage } from "@ericsanchezok/synergy-sdk"
@@ -39,7 +39,6 @@ export function useSessionCommands(params: {
     sync,
     local,
     dialog,
-    terminal,
     layout,
     prompt,
     navigate,
@@ -53,7 +52,7 @@ export function useSessionCommands(params: {
     navigateMessageByOffset,
   } = params
 
-  const workspace = useWorkspace()
+  const workbench = useWorkbenchPanels()
 
   command.register(() => [
     {
@@ -83,19 +82,26 @@ export function useSessionCommands(params: {
       category: "View",
       keybind: "ctrl+`",
       slash: "terminal",
-      onSelect: () => layout.terminal.toggle(),
+      onSelect: () => {
+        const bottom = workbench.surface("bottom")
+        const active = bottom.activeTab()
+        if (bottom.opened() && active?.panelId === "terminal") {
+          bottom.close()
+          return
+        }
+        void workbench.openPanel("terminal", { reuseExisting: true })
+      },
     },
     {
       id: "workspace.close",
-      title: "Close workspace drawer",
-      description: "Close the workspace drawer",
+      title: "Close side workspace",
+      description: "Close the side workspace",
       category: "View",
       keybind: "mod+shift+w",
-      disabled: !routeParams.id || !workspace.opened(),
+      disabled: !workbench.surface("side").opened(),
       slash: "workspace",
       onSelect: () => {
-        workspace.closePanel()
-        workspace.setActive(null)
+        workbench.surface("side").close()
       },
     },
     {
@@ -114,7 +120,9 @@ export function useSessionCommands(params: {
       description: "Create a new terminal tab",
       category: "Terminal",
       keybind: "ctrl+shift+`",
-      onSelect: () => terminal.new(),
+      onSelect: () => {
+        void workbench.openPanel("terminal", { forceNew: true })
+      },
     },
     {
       id: "message.previous",

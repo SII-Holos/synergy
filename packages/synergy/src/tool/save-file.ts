@@ -19,6 +19,7 @@ import {
 import { stripHashlineDisplayPrefixes } from "../hashline/format"
 import { splitContentLines } from "../hashline/tag"
 import { collectWriteDiagnostics } from "./write-quality"
+import { SnapshotSchema } from "@/session/snapshot-schema"
 
 export const SaveFileTool = Tool.define("save_file", {
   description: DESCRIPTION,
@@ -45,6 +46,13 @@ export const SaveFileTool = Tool.define("save_file", {
         const contentConflict = detectConflicts(content)
         const diff = trimDiff(createTwoFilesPatch(filePath, filePath, oldContent, content))
         const changeSummary = diffStats(diff)
+        const askFilediff = SnapshotSchema.fromContents({
+          file: title,
+          before: oldContent,
+          after: content,
+          ...changeSummary,
+          preview: diff,
+        })
         await ctx.ask({
           permission: "save_file",
           patterns: [title],
@@ -52,7 +60,7 @@ export const SaveFileTool = Tool.define("save_file", {
             filepath: filePath,
             path: title,
             diff,
-            filediff: { file: title, path: title, before: oldContent, after: content, ...changeSummary },
+            filediff: askFilediff,
             changeSummary,
             exists,
             hasConflicts: contentConflict.hasConflicts,
@@ -92,6 +100,13 @@ export const SaveFileTool = Tool.define("save_file", {
         }
         const finalDiff = trimDiff(createTwoFilesPatch(filePath, filePath, oldContent, finalContent))
         const finalChangeSummary = diffStats(finalDiff)
+        const filediff = SnapshotSchema.fromContents({
+          file: title,
+          before: oldContent,
+          after: finalContent,
+          ...finalChangeSummary,
+          preview: finalDiff,
+        })
         let output = header
         output += diagnostics.output
         if (runtimeReload) output += `\nRuntime reload applied: ${runtimeReload.executed.join(",")}`
@@ -105,7 +120,7 @@ export const SaveFileTool = Tool.define("save_file", {
             path: title,
             tag,
             diff: finalDiff,
-            filediff: { file: title, path: title, before: oldContent, after: finalContent, ...finalChangeSummary },
+            filediff,
             changeSummary: finalChangeSummary,
             exists,
             hasConflicts: finalConflict.hasConflicts,

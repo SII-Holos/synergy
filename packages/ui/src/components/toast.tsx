@@ -1,8 +1,9 @@
 import { Toast as Kobalte, toaster } from "@kobalte/core/toast"
 import type { ToastRootProps, ToastCloseButtonProps, ToastTitleProps, ToastDescriptionProps } from "@kobalte/core/toast"
 import type { ComponentProps, JSX } from "solid-js"
-import { createSignal, onCleanup, Show } from "solid-js"
+import { createSignal, onCleanup, Show, splitProps } from "solid-js"
 import { Portal } from "solid-js/web"
+import { createCopyController, type CopyState } from "./clipboard"
 import { Icon, type IconName } from "./icon"
 
 export interface ToastRegionProps extends ComponentProps<typeof Kobalte.Region> {}
@@ -72,10 +73,17 @@ function ToastCloseButton(props: ToastCloseButtonProps & ComponentProps<"button"
   )
 }
 
-function ToastCopyButton(props: ComponentProps<"button"> & { copied?: boolean }) {
+function ToastCopyButton(props: ComponentProps<"button"> & { copyState?: CopyState; icon?: IconName }) {
+  const [local, rest] = splitProps(props, ["copyState", "icon"])
   return (
-    <button data-slot="toast-copy-button" data-component="icon-button" data-variant="ghost" {...props}>
-      <Icon name={props.copied ? "clipboard-check" : "copy"} size="small" />
+    <button
+      data-slot="toast-copy-button"
+      data-component="icon-button"
+      data-variant="ghost"
+      data-copy-state={local.copyState}
+      {...rest}
+    >
+      <Icon name={local.icon ?? "copy"} size="small" />
     </button>
   )
 }
@@ -160,14 +168,16 @@ export function showToast(options: ToastOptions): number {
     let intervalId: ReturnType<typeof setInterval> | undefined
     let elapsedBeforePause = 0
     let segmentStartTime = 0
-    const [copied, setCopied] = createSignal(false)
     const copyText = () => {
       const parts = [options.title, options.description].filter(Boolean)
-      if (parts.length === 0) return
-      navigator.clipboard.writeText(parts.join("\n"))
-      setCopied(true)
-      setTimeout(() => setCopied(false), 1500)
+      return parts.join("\n")
     }
+    const copy = createCopyController({
+      text: copyText,
+      copyLabel: "Copy toast",
+      copiedIcon: "clipboard-check",
+      failureDescription: "Unable to copy the toast.",
+    })
     let isPaused = false
 
     const updateCountdown = () => {
@@ -255,7 +265,14 @@ export function showToast(options: ToastOptions): number {
             <Toast.ProgressFill />
           </Toast.ProgressTrack>
         </Toast.Content>
-        <Toast.CopyButton copied={copied()} onClick={copyText} />
+        <Toast.CopyButton
+          copyState={copy.state()}
+          icon={copy.icon()}
+          title={copy.tooltip()}
+          aria-label={copy.tooltip()}
+          disabled={copy.disabled()}
+          onClick={() => void copy.copy()}
+        />
         <Toast.CloseButton />
       </Toast>
     )

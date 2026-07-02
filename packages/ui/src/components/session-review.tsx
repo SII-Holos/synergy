@@ -5,13 +5,11 @@ import { DiffChanges } from "./diff-changes"
 import { FileIcon } from "./file-icon"
 import { Icon } from "./icon"
 import { StickyAccordionHeader } from "./sticky-accordion-header"
-import { useDiffComponent } from "../context/diff"
 import { getDirectory, getFilename } from "@ericsanchezok/synergy-util/path"
 import { For, Match, Show, Switch, type JSX } from "solid-js"
 import { createStore } from "solid-js/store"
 import { type FileDiff } from "@ericsanchezok/synergy-sdk"
 import { PreloadMultiFileDiffResult } from "@pierre/diffs/ssr"
-import { Dynamic } from "solid-js/web"
 
 export type SessionReviewDiffStyle = "unified" | "split"
 
@@ -32,7 +30,6 @@ export interface SessionReviewProps {
 }
 
 export const SessionReview = (props: SessionReviewProps) => {
-  const diffComponent = useDiffComponent()
   const [store, setStore] = createStore({
     open: props.diffs.length > 10 ? [] : props.diffs.map((d) => d.file),
   })
@@ -130,25 +127,34 @@ export const SessionReview = (props: SessionReviewProps) => {
                   </Accordion.Trigger>
                 </StickyAccordionHeader>
                 <Accordion.Content data-slot="session-review-accordion-content">
-                  <Dynamic
-                    component={diffComponent}
-                    preloadedDiff={diff.preloaded}
-                    diffStyle={diffStyle()}
-                    before={{
-                      name: diff.file!,
-                      contents: typeof diff.before === "string" ? diff.before : "",
-                    }}
-                    after={{
-                      name: diff.file!,
-                      contents: typeof diff.after === "string" ? diff.after : "",
-                    }}
-                  />
+                  <DiffPreview diff={diff} />
                 </Accordion.Content>
               </Accordion.Item>
             )}
           </For>
         </Accordion>
       </div>
+    </div>
+  )
+}
+
+function DiffPreview(props: { diff: FileDiff }) {
+  return (
+    <div data-component="session-review-preview">
+      <div class="text-12-regular text-text-weak">
+        {props.diff.beforeBytes ?? 0} bytes to {props.diff.afterBytes ?? 0} bytes
+        <Show when={props.diff.truncated}> - preview truncated</Show>
+      </div>
+      <Show
+        when={props.diff.preview}
+        fallback={<div class="text-12-regular text-text-weaker">No text preview available.</div>}
+      >
+        {(preview) => (
+          <pre class="mt-2 max-h-96 overflow-auto whitespace-pre-wrap rounded-md bg-surface-subtle p-3 text-12-regular text-text-base">
+            {preview()}
+          </pre>
+        )}
+      </Show>
     </div>
   )
 }

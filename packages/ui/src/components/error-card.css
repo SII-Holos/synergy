@@ -49,6 +49,18 @@
       background: var(--workbench-control-bg-hover, var(--surface-raised-base-hover));
       color: var(--icon-base);
     }
+
+    &[data-copy-state="copied"] {
+      color: var(--icon-success-base);
+    }
+
+    &[data-copy-state="failed"] {
+      color: var(--icon-critical-base);
+    }
+
+    &:disabled {
+      cursor: not-allowed;
+    }
   }
 
   &:hover [data-slot="error-card-copy"] {

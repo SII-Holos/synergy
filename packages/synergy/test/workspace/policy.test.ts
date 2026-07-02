@@ -9,6 +9,21 @@ import { Filesystem } from "../../src/util/filesystem"
 import path from "path"
 import fs from "fs/promises"
 
+function isSymlinkPrivilegeError(error: unknown) {
+  const code = (error as { code?: unknown })?.code
+  return process.platform === "win32" && (code === "EPERM" || code === "EACCES")
+}
+
+async function trySymlink(target: string, linkPath: string, type?: "file" | "dir" | "junction") {
+  try {
+    await fs.symlink(target, linkPath, type)
+    return true
+  } catch (error) {
+    if (isSymlinkPrivilegeError(error)) return false
+    throw error
+  }
+}
+
 describe("WorkspacePolicy", () => {
   // === Requirement 1: WorkspacePolicy.fromSession (main) derives active root from scope.directory ===
 
@@ -399,7 +414,15 @@ describe("WorkspacePolicy.classifyPath for worktree original checkout", () => {
 
           await fs.mkdir(worktreePath, { recursive: true })
           const symlinkPath = path.join(worktreePath, "link-to-original")
-          await fs.symlink(scope.directory, symlinkPath)
+          const linked = await trySymlink(
+            scope.directory,
+            symlinkPath,
+            process.platform === "win32" ? "junction" : "dir",
+          )
+          if (!linked) {
+            await fs.rm(worktreePath, { recursive: true, force: true }).catch(() => {})
+            return
+          }
 
           const ws = {
             type: "git_worktree",
@@ -412,6 +435,8 @@ describe("WorkspacePolicy.classifyPath for worktree original checkout", () => {
 
           if (typeof (policy as any).classifyPath !== "function") {
             expect(typeof (policy as any).classifyPath).toBe("function")
+            await Session.remove(session.id)
+            await fs.rm(worktreePath, { recursive: true, force: true }).catch(() => {})
             return
           }
 
@@ -421,12 +446,18 @@ describe("WorkspacePolicy.classifyPath for worktree original checkout", () => {
 
           await fs.mkdir(path.join(worktreePath, "nested"), { recursive: true })
           const nestedSymlink = path.join(worktreePath, "nested", "config-link")
-          await fs.symlink(path.join(scope.directory, "synergy.jsonc"), nestedSymlink)
+          const nestedLinked = await trySymlink(path.join(scope.directory, "synergy.jsonc"), nestedSymlink, "file")
+          if (!nestedLinked) {
+            await Session.remove(session.id)
+            await fs.rm(worktreePath, { recursive: true, force: true }).catch(() => {})
+            return
+          }
 
           const nestedResult = (policy as any).classifyPath(nestedSymlink)
           expect(nestedResult.boundary).toBe("outside")
 
           await Session.remove(session.id)
+          await fs.rm(worktreePath, { recursive: true, force: true })
 
           await fs.unlink(symlinkPath).catch(() => {})
           await fs.unlink(nestedSymlink).catch(() => {})

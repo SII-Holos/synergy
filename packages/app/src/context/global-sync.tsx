@@ -176,6 +176,10 @@ function createGlobalSync() {
     })
   }
 
+  function scopeRequest(scopeKey: string) {
+    return isHomeScope(scopeKey) ? { scopeID: HOME_SCOPE_KEY } : { directory: scopeKey }
+  }
+
   function scheduleBootstrap(scopeKey: string) {
     if (!scopeKey || !children[scopeKey]) return
     if (bootstrapActive.has(scopeKey) || bootstrapQueued.has(scopeKey)) return
@@ -628,7 +632,7 @@ function createGlobalSync() {
       .then(async () => {
         if (store.status !== "complete") setStore("status", "partial")
         const requests: Promise<unknown>[] = [
-          sdk.path.get().then((x) => setStore("path", x.data!)),
+          sdk.path.get(scopeRequest(scopeKey)).then((x) => setStore("path", x.data!)),
           sdk.command.list().then((x) => setStore("command", x.data ?? [])),
           sdk.session.status().then((x) => setStore("session_status", x.data!)),
           loadSessions(scopeKey, sdk),

@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import path from "path"
+import { pathToFileURL } from "url"
 import { BrowserPolicy } from "../../src/browser/policy"
 
 describe("BrowserPolicy URL normalization", () => {
@@ -23,7 +24,7 @@ describe("BrowserPolicy user hard safety", () => {
 
   test("allows file URLs only inside workspace", () => {
     const inside = path.join(process.cwd(), "README.md")
-    expect(BrowserPolicy.hardCheckNavigation(`file://${inside}`, process.cwd()).decision).toBe("allow")
+    expect(BrowserPolicy.hardCheckNavigation(pathToFileURL(inside).href, process.cwd()).decision).toBe("allow")
     expect(BrowserPolicy.hardCheckNavigation("file:///etc/passwd", process.cwd()).decision).toBe("deny")
   })
 })

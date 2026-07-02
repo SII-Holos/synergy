@@ -1,20 +1,24 @@
 import { NotePanel } from "@/components/note-panel"
-import { useWorkspace } from "@/context/workspace"
+import { registerWorkbenchPanel } from "@/plugin/registries/workbench-panel-registry"
 import { onMount, onCleanup } from "solid-js"
 
 export function WorkspaceNotesTool() {
-  const workspace = useWorkspace()
+  let unregister: VoidFunction | undefined
 
   onMount(() => {
-    workspace.register({
+    unregister = registerWorkbenchPanel({
       id: "notes",
       label: "Notes",
       icon: "notebook-pen",
+      surface: "side",
+      cardinality: "singleton",
+      pluginId: "builtin",
+      order: 10,
       component: () => <NotePanel />,
     })
   })
 
-  onCleanup(() => workspace.unregister("notes"))
+  onCleanup(() => unregister?.())
 
   return null
 }

@@ -7,6 +7,7 @@ import os from "os"
 import path from "path"
 import z from "zod"
 import type { ModelsDev } from "./models"
+import type { ProviderProfile } from "./profile"
 import type { AuthOuathResult } from "@ericsanchezok/synergy-plugin"
 import { AccountUsage } from "./usage"
 
@@ -28,6 +29,8 @@ export namespace CodexProvider {
     "gpt-5.3-codex",
     "gpt-5.3-codex-spark",
   ] as const
+  export const DEFAULT_CODEX_CONTEXT_WINDOW = 272_000
+  export const SPARK_CONTEXT_WINDOW = 128_000
 
   type FetchLike = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>
 
@@ -509,9 +512,53 @@ export namespace CodexProvider {
       .join(" ")
   }
 
+  function fallbackContextWindow(modelID: string) {
+    const normalized = modelID.toLowerCase()
+    if (normalized.includes("spark")) return SPARK_CONTEXT_WINDOW
+    if (normalized.startsWith("gpt-5") || normalized.includes("codex")) return DEFAULT_CODEX_CONTEXT_WINDOW
+    return DEFAULT_CODEX_CONTEXT_WINDOW
+  }
+
+  function outputLimit(modelID: string, source?: ModelsDev.Model) {
+    if (typeof source?.limit.output === "number") return source.limit.output
+    return modelID.toLowerCase().includes("spark") ? 32_000 : 128_000
+  }
+
+  export function codexModelLimit(
+    modelID: string,
+    source?: ModelsDev.Model,
+    input?: {
+      contextWindow?: number
+    },
+  ): ModelsDev.Model["limit"] {
+    const context = input?.contextWindow ?? fallbackContextWindow(modelID)
+    return {
+      ...source?.limit,
+      context,
+      input: context,
+      output: outputLimit(modelID, source),
+    }
+  }
+
+  export function withCodexModelMetadata(
+    modelID: string,
+    model: ModelsDev.Model,
+    input?: {
+      contextWindow?: number
+    },
+  ): ModelsDev.Model {
+    return {
+      ...model,
+      id: modelID,
+      limit: codexModelLimit(modelID, model, input),
+      provider: {
+        ...(model.provider ?? {}),
+        npm: "@ai-sdk/openai",
+      },
+    }
+  }
+
   function fallbackModel(modelID: string): ModelsDev.Model {
-    const isSpark = modelID.includes("spark")
-    const isLarge = modelID === "gpt-5.5" || modelID === "gpt-5.4"
     return {
       id: modelID,
       name: displayName(modelID),
@@ -522,11 +569,7 @@ export namespace CodexProvider {
       temperature: false,
       tool_call: true,
       cost: { input: 0, output: 0 },
-      limit: isSpark
-        ? { context: 128000, input: 100000, output: 32000 }
-        : isLarge
-          ? { context: 1050000, input: 922000, output: 128000 }
-          : { context: 400000, input: 272000, output: 128000 },
+      limit: codexModelLimit(modelID),
       modalities: {
         input: ["text", "image", "pdf"],
         output: ["text"],
@@ -546,13 +589,11 @@ export namespace CodexProvider {
     for (const modelID of Array.from(new Set(modelIDs))) {
       const source = openaiModels?.[modelID]
       models[modelID] = source
-        ? {
+        ? withCodexModelMetadata(modelID, {
             ...source,
-            id: modelID,
             options: { ...source.options },
             headers: { ...source.headers },
-            provider: { npm: "@ai-sdk/openai" },
-          }
+          })
         : fallbackModel(modelID)
     }
     return {
@@ -565,7 +606,7 @@ export namespace CodexProvider {
     }
   }
 
-  export async function fetchModelIDs(accessToken: string, fetchFn: FetchLike = fetch): Promise<string[]> {
+  async function fetchModelPayload(accessToken: string, fetchFn: FetchLike = fetch) {
     const response = await fetchFn(`${baseURL()}/models?client_version=1.0.0`, {
       headers: {
         Authorization: `Bearer ${accessToken}`,
@@ -576,18 +617,40 @@ export namespace CodexProvider {
     })
     if (!response.ok) return []
     const payload = await safeJson(response)
-    const entries = Array.isArray(payload.models) ? payload.models : []
-    const models: Array<{ slug: string; rank: number }> = []
+    return Array.isArray(payload.models) ? payload.models : []
+  }
+
+  export async function fetchModelCatalog(
+    accessToken: string,
+    fetchFn: FetchLike = fetch,
+  ): Promise<ProviderProfile.ModelCatalogEntry[]> {
+    const entries = await fetchModelPayload(accessToken, fetchFn)
+    const models: Array<ProviderProfile.ModelCatalogEntry & { rank: number }> = []
     for (const entry of entries) {
       if (!entry || typeof entry !== "object") continue
       if (typeof entry.slug !== "string" || !entry.slug.trim()) continue
       if (typeof entry.visibility === "string" && ["hide", "hidden"].includes(entry.visibility.toLowerCase())) continue
+      const id = entry.slug.trim()
+      const contextWindow =
+        typeof entry.context_window === "number" && entry.context_window > 0 ? entry.context_window : undefined
       models.push({
-        slug: entry.slug.trim(),
+        id,
         rank: typeof entry.priority === "number" ? entry.priority : 10_000,
+        ...(contextWindow
+          ? {
+              model: {
+                limit: codexModelLimit(id, undefined, { contextWindow }),
+              },
+            }
+          : {}),
       })
     }
-    return models.sort((a, b) => a.rank - b.rank || a.slug.localeCompare(b.slug)).map((item) => item.slug)
+    return models.sort((a, b) => a.rank - b.rank || a.id.localeCompare(b.id))
+  }
+
+  export async function fetchModelIDs(accessToken: string, fetchFn: FetchLike = fetch): Promise<string[]> {
+    const payload = await fetchModelCatalog(accessToken, fetchFn)
+    return payload.map((item) => item.id)
   }
 
   export async function runtimeModelIDs(fetchFn: FetchLike = fetch): Promise<string[]> {

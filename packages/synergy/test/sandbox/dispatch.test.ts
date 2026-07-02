@@ -3,6 +3,13 @@ import { SandboxBackend } from "../../src/sandbox/backend"
 import * as fs from "fs"
 import * as os from "os"
 
+function printCommand(text: string) {
+  return {
+    command: process.execPath,
+    args: ["-e", `console.log(${JSON.stringify(text)})`],
+  }
+}
+
 // ---------------------------------------------------------------------------
 // sandbox/dispatch.test.ts
 //
@@ -219,9 +226,10 @@ describe("execute fallback", () => {
   })
 
   test("skipReason with fallbackPolicy warn spawns directly (unsandboxed)", () => {
+    const command = printCommand("warn-fallback-test")
     const wrapper = {
-      command: "echo",
-      args: ["warn-fallback-test"],
+      command: command.command,
+      args: command.args,
       sandboxed: false,
       skipReason: "Sandbox not available",
     }
@@ -232,9 +240,10 @@ describe("execute fallback", () => {
   })
 
   test("skipReason with fallbackPolicy allow spawns directly (unsandboxed)", () => {
+    const command = printCommand("allow-fallback-test")
     const wrapper = {
-      command: "echo",
-      args: ["allow-fallback-test"],
+      command: command.command,
+      args: command.args,
       sandboxed: false,
       skipReason: "Sandbox not available",
     }
@@ -245,9 +254,10 @@ describe("execute fallback", () => {
   })
 
   test("default fallback policy is warn (unsandboxed)", () => {
+    const command = printCommand("default-warn-test")
     const wrapper = {
-      command: "echo",
-      args: ["default-warn-test"],
+      command: command.command,
+      args: command.args,
       sandboxed: false,
       skipReason: "Sandbox not available",
     }

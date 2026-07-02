@@ -91,11 +91,12 @@ export function collectPackagedAssets(manifest: PluginManifest): PackagedAsset[]
 
   const ui = manifest.contributes?.ui
   if (ui?.entry) addAsset(assets, { label: "UI entry", kind: "file", path: ui.entry })
-  for (const route of ui?.routes ?? []) {
-    addAsset(assets, { label: `route "${route.path}" entry`, kind: "file", path: route.entry })
+  for (const route of ui?.appRoutes ?? []) {
+    addAsset(assets, { label: `app route "${route.id}" entry`, kind: "file", path: route.entry })
+    addAsset(assets, { label: `app route "${route.id}" sandbox entry`, kind: "file", path: route.sandboxEntry })
   }
-  addSandboxEntries(assets, "workspace panel", ui?.workspacePanels)
-  addSandboxEntries(assets, "global panel", ui?.globalPanels)
+  addSandboxEntries(assets, "workbench panel", ui?.workbenchPanels)
+  addSandboxEntries(assets, "app panel", ui?.appPanels)
   addSandboxEntries(assets, "settings", ui?.settings)
   for (const theme of ui?.themes ?? [])
     addAsset(assets, { label: `theme "${theme.id}"`, kind: "file", path: theme.path })
@@ -117,11 +118,14 @@ export function rewritePackagedManifestPaths(manifest: PluginManifest): PluginMa
   const ui = next.contributes?.ui
   if (!ui) return next
   if (ui.entry) ui.entry = packageManifestPath(ui.entry)
-  for (const route of ui.routes ?? []) route.entry = packageManifestPath(route.entry)
-  for (const panel of ui.workspacePanels ?? []) {
+  for (const route of ui.appRoutes ?? []) {
+    if (route.entry) route.entry = packageManifestPath(route.entry)
+    if (route.sandboxEntry) route.sandboxEntry = packageManifestPath(route.sandboxEntry)
+  }
+  for (const panel of ui.workbenchPanels ?? []) {
     if (panel.sandboxEntry) panel.sandboxEntry = packageManifestPath(panel.sandboxEntry)
   }
-  for (const panel of ui.globalPanels ?? []) {
+  for (const panel of ui.appPanels ?? []) {
     if (panel.sandboxEntry) panel.sandboxEntry = packageManifestPath(panel.sandboxEntry)
   }
   for (const settings of ui.settings ?? []) {

@@ -76,16 +76,16 @@ export function PluginPermissionsDisplay(props: PluginPermissionsDisplayProps) {
         label: "Part renderers in chat",
       })
     }
-    if (hasPermission(p, ["ui", "workspacePanels"])) {
+    if (hasPermission(p, ["ui", "workbenchPanels"])) {
       addItem({
         icon: "panel-left",
-        label: "Custom workspace panels",
+        label: "Custom workbench panels",
       })
     }
-    if (hasPermission(p, ["ui", "globalPanels"])) {
+    if (hasPermission(p, ["ui", "appPanels"])) {
       addItem({
-        icon: "panel-right",
-        label: "Custom global panels",
+        icon: "panel-left",
+        label: "Sidebar app panels",
       })
     }
     if (hasPermission(p, ["ui", "settings"])) {
@@ -106,10 +106,22 @@ export function PluginPermissionsDisplay(props: PluginPermissionsDisplayProps) {
         label: "Custom icons",
       })
     }
-    if (hasPermission(p, ["ui", "routes"])) {
+    if (hasPermission(p, ["ui", "messageSlots"])) {
+      addItem({
+        icon: "message-square",
+        label: "Message timeline slots",
+      })
+    }
+    if (hasPermission(p, ["ui", "appRoutes"])) {
       addItem({
         icon: "route",
         label: "Custom application pages",
+      })
+    }
+    if (hasPermission(p, ["ui", "commands"])) {
+      addItem({
+        icon: "terminal",
+        label: "Command palette actions",
       })
     }
     if (uiItems.length > 0) {

@@ -83,6 +83,22 @@
   letter-spacing: var(--letter-spacing-normal);
 }
 
+.settings-select {
+  min-width: 180px;
+  border: 1px solid var(--settings-border);
+  border-radius: 6px;
+  background: var(--settings-input-bg);
+  color: var(--text-strong);
+  padding: 8px 10px;
+  font-size: var(--settings-type-control-size);
+  line-height: var(--settings-type-control-line-height);
+  outline: none;
+}
+
+.settings-select:focus {
+  box-shadow: var(--settings-focus-ring);
+}
+
 .settings-panel-close {
   position: absolute;
   top: 12px;
@@ -115,6 +131,17 @@
   height: 100%;
   min-height: 0;
   background: var(--settings-canvas-bg);
+}
+
+.settings-popover-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 70;
+  pointer-events: none;
+}
+
+.settings-popover-layer .settings-model-picker-popover {
+  pointer-events: auto;
 }
 
 .settings-panel-loading {
@@ -845,6 +872,7 @@
   width: min(360px, calc(100vw - 32px));
   height: 360px;
   border-radius: 12px !important;
+  z-index: 70;
 }
 
 .settings-model-picker-list {

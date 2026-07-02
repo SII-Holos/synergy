@@ -183,10 +183,6 @@ function buildP0ValidTokenSet(): Set<string> {
 
   // Local component-scoped tokens
   const localTokens = [
-    "session-turn-title-bg",
-    "session-turn-title-border",
-    "session-turn-title-highlight",
-    "session-turn-title-glow",
     "workbench-canvas-bg",
     "workbench-panel-bg",
     "workbench-panel-bg-hover",

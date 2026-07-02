@@ -60,12 +60,14 @@ During `synergy-plugin build`, the runtime entry is bundled to `dist/runtime/ind
     "ui": {
       "toolRenderers": false,
       "partRenderers": false,
-      "workspacePanels": false,
-      "globalPanels": false,
+      "workbenchPanels": false,
+      "appPanels": false,
       "settings": false,
+      "messageSlots": false,
       "themes": false,
       "icons": false,
-      "routes": false,
+      "appRoutes": false,
+      "commands": false,
       "trustedImport": false,
       "sandboxIframe": false,
     },
@@ -171,13 +173,30 @@ result into `task.outputResult` without changing the normal trajectory-summary `
       "minUIApiVersion": "2.0.0",
       "toolRenderers": [{ "tool": "greet", "exportName": "default" }],
       "partRenderers": [{ "type": "custom-part", "exportName": "CustomPart" }],
-      "workspacePanels": [{ "id": "panel", "label": "Panel", "icon": "layout-panel-left" }],
-      "globalPanels": [{ "id": "global", "label": "Global", "icon": "globe" }],
+      "workbenchPanels": [
+        {
+          "id": "panel",
+          "label": "Panel",
+          "icon": "layout-panel-left",
+          "surface": "side",
+          "cardinality": "singleton",
+          "requiresSession": true,
+        },
+      ],
+      "appPanels": [
+        {
+          "id": "dashboard",
+          "label": "Dashboard",
+          "icon": "layout-dashboard",
+          "exportName": "DashboardPanel",
+          "order": 100,
+        },
+      ],
       "settings": [{ "id": "settings", "label": "Settings", "icon": "settings", "group": "plugins" }],
-      "chatComponents": [{ "id": "chat", "slot": "after-tools", "exportName": "ChatComponent" }],
+      "messageSlots": [{ "id": "after-tools", "slot": "after-tools", "exportName": "AfterToolsSlot" }],
       "themes": [{ "id": "theme", "label": "Theme", "path": "./themes/default.css" }],
       "icons": [{ "name": "logo", "path": "./icons/logo.svg" }],
-      "routes": [{ "path": "/plugins/my-plugin", "entry": "default", "label": "My Plugin" }],
+      "appRoutes": [{ "id": "details", "label": "Details", "icon": "sparkles", "exportName": "DetailsRoute" }],
       "commands": [{ "id": "run", "label": "Run", "exportName": "runCommand" }],
     },
   },
@@ -186,7 +205,13 @@ result into `task.outputResult` without changing the normal trajectory-summary `
 
 `entry` is the built JavaScript bundle loaded by the Web host. The normal source path is `src/ui.tsx`; build writes it to the manifest entry path.
 
-The Web host currently registers all schema-declared surfaces listed above. Internal API calls should use generated SDK methods; asset/script URLs remain browser-native.
+`appPanels` create top-level sidebar entries at `/plugins/panels/:pluginId/:panelId`. They are app-level surfaces and are not tied to a session.
+`workbenchPanels` are session workspace panels for the side or bottom workbench. `appRoutes` create routable app pages at `/plugins/routes/:pluginId/:routeId` and do not appear in the sidebar unless the plugin also declares an `appPanel`.
+`messageSlots` render in the message timeline around reasoning and tool sections; valid slots are `before-reasoning`, `after-reasoning`, `before-tools`, and `after-tools`.
+
+Trusted Solid UI bundle surfaces require the matching `permissions.ui.*` key plus `permissions.ui.trustedImport`. Sandboxed iframe surfaces require the matching `permissions.ui.*` key plus `permissions.ui.sandboxIframe`.
+
+The Web host registers all schema-declared surfaces listed above. Internal API calls should use generated SDK methods; asset/script URLs remain browser-native.
 
 ## Packaged Output
 

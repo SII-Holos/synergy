@@ -2634,10 +2634,6 @@ export type WorktreeCreateInput = {
   bind?: boolean
 }
 
-export type VcsInfo = {
-  branch: string
-}
-
 export type SessionScope = {
   id: string
   type?: string
@@ -2659,10 +2655,13 @@ export type SessionScope = {
 
 export type FileDiff = {
   file: string
-  before: string
-  after: string
   additions: number
   deletions: number
+  binary?: boolean
+  preview?: string
+  beforeBytes?: number
+  afterBytes?: number
+  truncated?: boolean
 }
 
 export type PermissionAction = "allow" | "deny" | "ask"
@@ -2806,6 +2805,10 @@ export type Session = {
     loopRole?: "execution" | "audit"
     planMode?: boolean
   }
+}
+
+export type VcsInfo = {
+  branch: string
 }
 
 export type SessionStatus =
@@ -3271,6 +3274,8 @@ export type ToolStateCompleted = {
     [key: string]: unknown
   }
   output: string
+  outputBytes?: number
+  outputTruncated?: boolean
   title: string
   metadata: {
     [key: string]: unknown
@@ -4478,7 +4483,7 @@ export type PluginStatus = {
       toolId?: string
     }>
   }
-  routes: Array<string>
+  appRoutes: Array<string>
   tools: Array<{
     id: string
     fullId: string
@@ -5958,6 +5963,7 @@ export type GlobalDisposeResponse = GlobalDisposeResponses[keyof GlobalDisposeRe
 export type HolosLoginData = {
   body?: {
     callbackUrl?: string
+    clientSurface?: "web" | "desktop"
     profile: HolosAgentProfileInput
   }
   path?: never
@@ -7122,6 +7128,40 @@ export type WorktreeCreateResponses = {
 }
 
 export type WorktreeCreateResponse = WorktreeCreateResponses[keyof WorktreeCreateResponses]
+
+export type WorktreeLeaveData = {
+  body?: never
+  path: {
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/experimental/worktree/session/{sessionID}/leave"
+}
+
+export type WorktreeLeaveErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type WorktreeLeaveError = WorktreeLeaveErrors[keyof WorktreeLeaveErrors]
+
+export type WorktreeLeaveResponses = {
+  /**
+   * Session returned to main checkout
+   */
+  200: Session
+}
+
+export type WorktreeLeaveResponse = WorktreeLeaveResponses[keyof WorktreeLeaveResponses]
 
 export type VcsGetData = {
   body?: never
@@ -11636,13 +11676,14 @@ export type PluginSandboxData = {
   body?: never
   path: {
     pluginId: string
-    panelId: string
+    surface: string
+    surfaceId: string
   }
   query?: {
     directory?: string
     scopeID?: string
   }
-  url: "/plugin/{pluginId}/sandbox/{panelId}"
+  url: "/plugin/{pluginId}/sandbox/{surface}/{surfaceId}"
 }
 
 export type PluginSandboxErrors = {

@@ -5,7 +5,7 @@ const parameters = z.object({
   action: z
     .enum(["show", "hide", "focus", "status"])
     .describe(
-      "show: open browser workspace panel. hide: close browser workspace panel. focus: switch active tool to browser. status: query current workspace open state.",
+      "show: open the Browser Side Workspace panel. hide: close the Side Workspace. focus: switch the Side Workspace to Browser. status: query current Side Workspace open state.",
     ),
 })
 
@@ -18,26 +18,26 @@ interface BrowserViewMetadata {
 
 export const BrowserViewTool = Tool.define<typeof parameters, BrowserViewMetadata>("browser_view", {
   description:
-    "Control the browser workspace panel. Show or hide the browser workspace UI, switch focus to the browser page, or query the workspace open state. This does not affect CDP or the running browser — only the frontend view.",
+    "Control the Browser Side Workspace panel. Show or hide the Browser UI, switch focus to the browser page, or query the Side Workspace open state. This does not affect CDP or the running browser — only the frontend view.",
   parameters,
   async execute(params) {
     switch (params.action) {
       case "show":
         return {
           title: "Browser workspace shown",
-          output: "Requested the Browser workspace panel.",
+          output: "Requested the Browser Side Workspace panel.",
           metadata: { action: "show", workspaceCommand: "show", workspaceTool: "browser", workspaceOpen: "unknown" },
         }
       case "hide":
         return {
           title: "Browser workspace hidden",
-          output: "Requested hiding the Browser workspace panel.",
+          output: "Requested hiding the side workspace.",
           metadata: { action: "hide", workspaceCommand: "hide", workspaceTool: "browser", workspaceOpen: "unknown" },
         }
       case "focus":
         return {
           title: "Browser focused",
-          output: "Requested focus for the Browser workspace panel.",
+          output: "Requested focus for the Browser Side Workspace panel.",
           metadata: { action: "focus", workspaceCommand: "focus", workspaceTool: "browser", workspaceOpen: "unknown" },
         }
       case "status":

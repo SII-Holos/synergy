@@ -75,6 +75,17 @@ function findUiSource(pluginDir: string): string | undefined {
   return candidates.map((candidate) => path.join(pluginDir, candidate)).find((candidate) => fs.existsSync(candidate))
 }
 
+function needsTrustedImport(surface: { sandbox?: boolean; formSchema?: unknown } | undefined): boolean {
+  if (!surface) return false
+  if (surface.sandbox) return false
+  if (surface.formSchema) return false
+  return true
+}
+
+function hasSandboxEntry(surface: { sandboxEntry?: string; entry?: string }, uiEntry: string | undefined): boolean {
+  return Boolean(surface.sandboxEntry ?? surface.entry ?? uiEntry)
+}
+
 function printResults(results: CheckResult[]) {
   const passCount = results.filter((result) => result.type === "pass").length
   const warnCount = results.filter((result) => result.type === "warn").length
@@ -147,6 +158,68 @@ export async function validatePluginProject(pluginPath: string, options: { runti
 
   if (m.contributes?.ui) {
     const ui = m.contributes.ui
+    const uiPermissions = m.permissions?.ui
+    const requirePermission = (key: keyof NonNullable<typeof uiPermissions>, contributed: boolean) => {
+      if (!contributed) return
+      if (uiPermissions?.[key] === true) {
+        results.push({ type: "pass", message: `permissions.ui.${key} declared` })
+      } else {
+        results.push({ type: "error", message: `contributes.ui.${key} requires permissions.ui.${key}: true` })
+      }
+    }
+    requirePermission("toolRenderers", Boolean(ui.toolRenderers?.length))
+    requirePermission("partRenderers", Boolean(ui.partRenderers?.length))
+    requirePermission("workbenchPanels", Boolean(ui.workbenchPanels?.length))
+    requirePermission("appPanels", Boolean(ui.appPanels?.length))
+    requirePermission("settings", Boolean(ui.settings?.length))
+    requirePermission("messageSlots", Boolean(ui.messageSlots?.length))
+    requirePermission("themes", Boolean(ui.themes?.length))
+    requirePermission("icons", Boolean(ui.icons?.length))
+    requirePermission("appRoutes", Boolean(ui.appRoutes?.length))
+    requirePermission("commands", Boolean(ui.commands?.length))
+
+    const solidBundleRequired =
+      Boolean(ui.toolRenderers?.some((item) => !item.fallback)) ||
+      Boolean(ui.partRenderers?.length) ||
+      Boolean(ui.messageSlots?.length) ||
+      Boolean(ui.commands?.length) ||
+      Boolean(ui.workbenchPanels?.some(needsTrustedImport)) ||
+      Boolean(ui.appPanels?.some(needsTrustedImport)) ||
+      Boolean(ui.settings?.some(needsTrustedImport)) ||
+      Boolean(ui.appRoutes?.some(needsTrustedImport))
+    if (solidBundleRequired && uiPermissions?.trustedImport !== true) {
+      results.push({ type: "error", message: "Solid UI bundle surfaces require permissions.ui.trustedImport: true" })
+    }
+
+    const sandboxRequired =
+      Boolean(ui.workbenchPanels?.some((item) => item.sandbox)) ||
+      Boolean(ui.appPanels?.some((item) => item.sandbox)) ||
+      Boolean(ui.settings?.some((item) => item.sandbox)) ||
+      Boolean(ui.appRoutes?.some((item) => item.sandbox))
+    if (sandboxRequired && uiPermissions?.sandboxIframe !== true) {
+      results.push({ type: "error", message: "sandbox UI surfaces require permissions.ui.sandboxIframe: true" })
+    }
+    for (const panel of ui.workbenchPanels ?? []) {
+      if (panel.sandbox && !hasSandboxEntry(panel, ui.entry)) {
+        results.push({ type: "error", message: `workbenchPanel "${panel.id}" requires sandboxEntry or ui.entry` })
+      }
+    }
+    for (const panel of ui.appPanels ?? []) {
+      if (panel.sandbox && !hasSandboxEntry(panel, ui.entry)) {
+        results.push({ type: "error", message: `appPanel "${panel.id}" requires sandboxEntry or ui.entry` })
+      }
+    }
+    for (const section of ui.settings ?? []) {
+      if (section.sandbox && !hasSandboxEntry(section, ui.entry)) {
+        results.push({ type: "error", message: `settings "${section.id}" requires sandboxEntry or ui.entry` })
+      }
+    }
+    for (const route of ui.appRoutes ?? []) {
+      if (route.sandbox && !hasSandboxEntry(route, ui.entry)) {
+        results.push({ type: "error", message: `appRoute "${route.id}" requires sandboxEntry, entry, or ui.entry` })
+      }
+    }
+
     if (ui.entry) {
       const entryPath = path.resolve(pluginDir, ui.entry)
       const uiSource = findUiSource(pluginDir)
@@ -178,12 +251,16 @@ export async function validatePluginProject(pluginPath: string, options: { runti
             }
           }
         }
-        checkExport("workspacePanel", ui.workspacePanels)
-        checkExport("globalPanel", ui.globalPanels)
+        checkExport("workbenchPanel", ui.workbenchPanels)
+        checkExport("appPanel", ui.appPanels)
         checkExport("settings", ui.settings)
         checkExport("toolRenderer", ui.toolRenderers)
         checkExport("partRenderer", ui.partRenderers)
-        checkExport("chatComponent", ui.chatComponents)
+        checkExport("messageSlot", ui.messageSlots)
+        checkExport(
+          "appRoute",
+          ui.appRoutes?.filter((route) => !route.entry),
+        )
         checkExport("uiCommand", ui.commands)
       }
     }

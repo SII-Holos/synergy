@@ -196,8 +196,52 @@ describe("Holos profile routes", () => {
     expect(html).toContain("holos-login-success")
     expect(html).toContain("window.opener.postMessage")
     expect(html).toContain("window.close()")
+    expect(html).toContain('href="http://127.0.0.1:4096"')
     expect(html).toContain('"http://127.0.0.1:4096"')
     expect(html).not.toContain("Login Successful")
+  })
+
+  test("login callback desktop success page returns through the app protocol", async () => {
+    globalThis.WebSocket = TestWebSocket as unknown as typeof WebSocket
+    mockFetch((url) => {
+      if (url.endsWith("/api/v1/holos/agent_tunnel/bind/exchange")) {
+        return json({
+          code: 0,
+          data: {
+            agent_id: "agent_desktop",
+            agent_secret: "secret_desktop",
+          },
+        })
+      }
+      if (url.endsWith("/api/v1/holos/agent_tunnel/ws_token")) {
+        return json({ code: 0, data: { ws_token: "token", expires_in: 60 } })
+      }
+      throw new Error(`Unexpected fetch ${url}`)
+    })
+
+    const app = new Hono().route("/holos", HolosRoute)
+    const loginRes = await app.request("http://127.0.0.1:4096/holos/login", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        callbackUrl: "http://127.0.0.1:4096/holos/callback",
+        clientSurface: "desktop",
+        profile: { name: "Desktop Agent", description: "Callback profile", avatarUrl: "" },
+      }),
+    })
+    const login = (await loginRes.json()) as { url: string }
+    const state = new URL(login.url).searchParams.get("state")
+    expect(state).toBeTruthy()
+
+    const res = await app.request(`http://127.0.0.1:4096/holos/callback?code=ok&state=${state}`)
+    const html = await res.text()
+    await new Promise((resolve) => setTimeout(resolve, 10))
+
+    expect(res.status).toBe(200)
+    expect(html).toContain("Agent connected")
+    expect(html).toContain('href="synergy://open"')
+    expect(html).toContain('"http://127.0.0.1:4096"')
+    expect(html).not.toContain('href="http://127.0.0.1:4096"')
   })
 
   test("login callback failure page avoids debug-style result copy", async () => {

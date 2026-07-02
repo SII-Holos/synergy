@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test"
 
 const modelRoleRow = await Bun.file(new URL("../components/ModelRoleRow.tsx", import.meta.url)).text()
+const modelRoleDraft = await Bun.file(new URL("../model-role-draft.ts", import.meta.url)).text()
 const modelsPanel = await Bun.file(new URL("./ModelsPanel.tsx", import.meta.url)).text()
 const modelManager = await Bun.file(new URL("../../model-manager.tsx", import.meta.url)).text()
 
@@ -19,8 +20,8 @@ describe("Models panel UI contract", () => {
   })
 
   test("vision unset state is presented as disabled image analysis", () => {
-    expect(modelRoleRow).toContain("Image analysis disabled")
-    expect(modelRoleRow).toContain("Not configured")
+    expect(modelRoleDraft).toContain("Image analysis disabled")
+    expect(modelRoleDraft).toContain("Not configured")
     expect(modelRoleRow).not.toContain("global required")
   })
 

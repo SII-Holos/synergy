@@ -147,47 +147,51 @@ describe("SessionManager.getSession", () => {
 describe("signalAbort", () => {
   test("aborts the active controller and notifies all waiters", () => {
     const sessionID = "ses_signal_abort_1"
-    const runtime = SessionManager.registerRuntime(sessionID)
-
-    // Simulate an acquired (busy) runtime
-    const controller = new AbortController()
-    runtime.abort = controller
-    runtime.status = { type: "busy" }
-
-    const onCancel1 = mock(() => {})
-    const onCancel2 = mock(() => {})
-    const onComplete = mock(() => {})
-    runtime.waiters = [
-      { onComplete, onCancel: onCancel1 },
-      { onComplete, onCancel: onCancel2 },
-    ]
-    ;(SessionManager as any).signalAbort(sessionID)
-
-    expect(controller.signal.aborted).toBe(true)
-    expect(onCancel1).toHaveBeenCalledTimes(1)
-    expect(onCancel2).toHaveBeenCalledTimes(1)
-    expect(onComplete).not.toHaveBeenCalled()
-    expect(runtime.waiters).toEqual([])
-    expect(runtime.abort).toBeUndefined()
-
     SessionManager.unregisterRuntime(sessionID)
+    const runtime = SessionManager.registerRuntime(sessionID)
+    try {
+      // Simulate an acquired (busy) runtime
+      const controller = new AbortController()
+      runtime.abort = controller
+      runtime.status = { type: "busy" }
+
+      const onCancel1 = mock(() => {})
+      const onCancel2 = mock(() => {})
+      const onComplete = mock(() => {})
+      runtime.waiters = [
+        { onComplete, onCancel: onCancel1 },
+        { onComplete, onCancel: onCancel2 },
+      ]
+      ;(SessionManager as any).signalAbort(sessionID)
+
+      expect(controller.signal.aborted).toBe(true)
+      expect(onCancel1).toHaveBeenCalledTimes(1)
+      expect(onCancel2).toHaveBeenCalledTimes(1)
+      expect(onComplete).not.toHaveBeenCalled()
+      expect(runtime.waiters).toEqual([])
+      expect(runtime.abort).toBeUndefined()
+    } finally {
+      SessionManager.unregisterRuntime(sessionID)
+    }
   })
 
   test("does not change the runtime status", () => {
     const sessionID = "ses_signal_abort_2"
-    const runtime = SessionManager.registerRuntime(sessionID)
-
-    runtime.abort = new AbortController()
-    runtime.status = { type: "busy", description: "thinking..." }
-    ;(SessionManager as any).signalAbort(sessionID)
-
-    // Status must remain unchanged — signalAbort only signals, it does not
-    // transition the runtime to idle. This is the core invariant that prevents
-    // the race condition where session.status(idle) SSE arrives before
-    // message.updated(time.completed).
-    expect(runtime.status).toEqual({ type: "busy", description: "thinking..." })
-
     SessionManager.unregisterRuntime(sessionID)
+    const runtime = SessionManager.registerRuntime(sessionID)
+    try {
+      runtime.abort = new AbortController()
+      runtime.status = { type: "busy", description: "thinking..." }
+      ;(SessionManager as any).signalAbort(sessionID)
+
+      // Status must remain unchanged: signalAbort only signals, it does not
+      // transition the runtime to idle. This is the core invariant that prevents
+      // the race condition where session.status(idle) SSE arrives before
+      // message.updated(time.completed).
+      expect(runtime.status).toEqual({ type: "busy", description: "thinking..." })
+    } finally {
+      SessionManager.unregisterRuntime(sessionID)
+    }
   })
 
   test("returns safely when no runtime exists", () => {
@@ -198,14 +202,17 @@ describe("signalAbort", () => {
 
   test("returns safely when runtime exists but has no active abort controller", () => {
     const sessionID = "ses_signal_abort_4"
-    SessionManager.registerRuntime(sessionID)
-    // Runtime exists but is idle (abort is undefined — normal idle state
-    // after a previous release, or before acquire)
-
-    expect(() => {
-      ;(SessionManager as any).signalAbort(sessionID)
-    }).not.toThrow()
-
     SessionManager.unregisterRuntime(sessionID)
+    SessionManager.registerRuntime(sessionID)
+    try {
+      // Runtime exists but is idle (abort is undefined: normal idle state
+      // after a previous release, or before acquire)
+
+      expect(() => {
+        ;(SessionManager as any).signalAbort(sessionID)
+      }).not.toThrow()
+    } finally {
+      SessionManager.unregisterRuntime(sessionID)
+    }
   })
 })

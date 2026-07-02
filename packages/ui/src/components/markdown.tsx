@@ -1,6 +1,7 @@
 import { useMarked } from "../context/marked"
 import { checksum } from "@ericsanchezok/synergy-util/encode"
 import { ComponentProps, createEffect, createResource, onCleanup, splitProps } from "solid-js"
+import { copyTextToClipboard, type CopyState } from "./clipboard"
 
 type Entry = {
   hash: string
@@ -9,31 +10,7 @@ type Entry = {
 
 const max = 200
 const cache = new Map<string, Entry>()
-const copyResetDelay = 2000
-
-/** Copy text to clipboard, falling back to execCommand for insecure contexts (http://IP, tailscale http) */
-async function copyToClipboard(text: string): Promise<boolean> {
-  if (navigator.clipboard && window.isSecureContext) {
-    await navigator.clipboard.writeText(text)
-    return true
-  }
-  // Fallback for HTTP / non-secure contexts (user-gesture-triggered only)
-  try {
-    const ta = document.createElement("textarea")
-    ta.value = text
-    ta.style.position = "fixed"
-    ta.style.opacity = "0"
-    ta.style.pointerEvents = "none"
-    document.body.appendChild(ta)
-    ta.focus()
-    ta.select()
-    const ok = document.execCommand("copy")
-    document.body.removeChild(ta)
-    return ok
-  } catch {
-    return false
-  }
-}
+const copyResetDelay = 1600
 
 function touch(key: string, value: Entry) {
   cache.delete(key)
@@ -82,9 +59,11 @@ function enhanceMarkdown(root: HTMLDivElement) {
 
     const handleKatexClick = async (e: MouseEvent) => {
       e.stopPropagation()
-      const ok = await copyToClipboard(source)
-      if (!ok) return
-      // Show "Copied" tooltip
+      const result = await copyTextToClipboard(source, {
+        label: "Copy LaTeX",
+        failureDescription: "Unable to copy the LaTeX source.",
+      })
+      if (!result.ok) return
       const tooltip = document.createElement("span")
       tooltip.dataset.slot = "katex-copy-tooltip"
       tooltip.textContent = "Copied!"
@@ -148,20 +127,23 @@ function enhanceMarkdown(root: HTMLDivElement) {
 
     let resetTimer: number | undefined
 
-    const setCopied = (copied: boolean) => {
-      button.dataset.copied = copied ? "true" : "false"
-      button.title = copied ? "Copied" : "Copy code"
-      text.textContent = copied ? "Copied" : "Copy"
+    const setCopyState = (state: CopyState) => {
+      button.dataset.copyState = state
+      button.title = state === "copied" ? "Copied" : state === "failed" ? "Copy failed" : "Copy code"
+      text.textContent = state === "copied" ? "Copied" : state === "failed" ? "Failed" : "Copy"
     }
 
-    setCopied(false)
+    setCopyState("idle")
 
     const handleClick = async () => {
-      const ok = await copyToClipboard(source)
+      const result = await copyTextToClipboard(source, {
+        label: "Copy code",
+        failureDescription: "Unable to copy the code block.",
+      })
       window.clearTimeout(resetTimer)
-      setCopied(ok)
-      if (ok) {
-        resetTimer = window.setTimeout(() => setCopied(false), copyResetDelay)
+      setCopyState(result.ok ? "copied" : "failed")
+      if (result.ok || result.reason !== "empty") {
+        resetTimer = window.setTimeout(() => setCopyState("idle"), copyResetDelay)
       }
     }
 

@@ -41,14 +41,14 @@ function countUiContributions(manifest: PluginManifestType): number {
   return (
     (ui.toolRenderers?.length ?? 0) +
     (ui.partRenderers?.length ?? 0) +
-    (ui.workspacePanels?.length ?? 0) +
-    (ui.globalPanels?.length ?? 0) +
+    (ui.workbenchPanels?.length ?? 0) +
+    (ui.appPanels?.length ?? 0) +
     (ui.settings?.length ?? 0) +
-    (ui.chatComponents?.length ?? 0) +
+    (ui.messageSlots?.length ?? 0) +
     (ui.themes?.length ?? 0) +
     (ui.icons?.length ?? 0) +
     (ui.commands?.length ?? 0) +
-    (ui.routes?.length ?? 0)
+    (ui.appRoutes?.length ?? 0)
   )
 }
 
@@ -108,17 +108,31 @@ export const PluginDevCommand = cmd({
     }
 
     if (args["sandbox-preview"]) {
-      for (const panel of manifest.contributes?.ui?.workspacePanels ?? []) {
+      for (const panel of manifest.contributes?.ui?.workbenchPanels ?? []) {
         if (panel.sandbox) {
           UI.println(
-            `  ${panel.label}: http://localhost:${args.port}/plugin/${encodeURIComponent(manifest.name)}/sandbox/${encodeURIComponent(panel.id)}`,
+            `  ${panel.label}: http://localhost:${args.port}/plugin/${encodeURIComponent(manifest.name)}/sandbox/workbenchPanels/${encodeURIComponent(panel.id)}`,
           )
         }
       }
-      for (const panel of manifest.contributes?.ui?.globalPanels ?? []) {
+      for (const panel of manifest.contributes?.ui?.appPanels ?? []) {
         if (panel.sandbox) {
           UI.println(
-            `  ${panel.label}: http://localhost:${args.port}/plugin/${encodeURIComponent(manifest.name)}/sandbox/${encodeURIComponent(panel.id)}`,
+            `  ${panel.label}: http://localhost:${args.port}/plugin/${encodeURIComponent(manifest.name)}/sandbox/appPanels/${encodeURIComponent(panel.id)}`,
+          )
+        }
+      }
+      for (const section of manifest.contributes?.ui?.settings ?? []) {
+        if (section.sandbox) {
+          UI.println(
+            `  ${section.label}: http://localhost:${args.port}/plugin/${encodeURIComponent(manifest.name)}/sandbox/settings/${encodeURIComponent(section.id)}`,
+          )
+        }
+      }
+      for (const route of manifest.contributes?.ui?.appRoutes ?? []) {
+        if (route.sandbox) {
+          UI.println(
+            `  ${route.label}: http://localhost:${args.port}/plugin/${encodeURIComponent(manifest.name)}/sandbox/appRoutes/${encodeURIComponent(route.id)}`,
           )
         }
       }

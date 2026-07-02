@@ -39,7 +39,7 @@ describe("build-helper.ts", () => {
   // Test 3: --target flag changes binary path
   test("--target x86_64-pc-windows-msvc uses target-specific release path", async () => {
     const result = await $`bun run ${BUILD_HELPER} windows --dry-run --target x86_64-pc-windows-msvc`.nothrow().quiet()
-    const stdout = result.stdout.toString()
+    const stdout = result.stdout.toString().replace(/\\/g, "/")
 
     expect(result.exitCode).toBe(0)
     expect(stdout).toContain("target: x86_64-pc-windows-msvc")
@@ -61,7 +61,7 @@ describe("build-helper.ts", () => {
   // Test 5: --target aarch64-unknown-linux-gnu
   test("--target aarch64-unknown-linux-gnu uses target-specific path", async () => {
     const result = await $`bun run ${BUILD_HELPER} linux --dry-run --target aarch64-unknown-linux-gnu`.nothrow().quiet()
-    const stdout = result.stdout.toString()
+    const stdout = result.stdout.toString().replace(/\\/g, "/")
 
     expect(result.exitCode).toBe(0)
     expect(stdout).toContain("target: aarch64-unknown-linux-gnu")

@@ -2,14 +2,11 @@ import { describe, expect, test } from "bun:test"
 import {
   WORKSPACE_DEFAULT_WIDTH,
   WORKSPACE_MIN_WIDTH,
-  WORKSPACE_RAIL_GAP,
-  WORKSPACE_RAIL_VISIBLE_MARGIN,
   WORKSPACE_SESSION_MIN_WIDTH,
   WORKSPACE_TABS_MIN_WIDTH,
   clampWorkspaceWidth,
   computeDefaultWorkspaceWidth,
   computeMaxWorkspaceWidth,
-  computeWorkspaceRailRight,
 } from "./workspace-layout"
 
 describe("workspace layout constants", () => {
@@ -27,11 +24,6 @@ describe("workspace layout constants", () => {
 
   test("reserves room for an open tabs panel", () => {
     expect(WORKSPACE_TABS_MIN_WIDTH).toBe(200)
-  })
-
-  test("keeps the dock close to the workspace edge", () => {
-    expect(WORKSPACE_RAIL_GAP).toBe(0)
-    expect(WORKSPACE_RAIL_VISIBLE_MARGIN).toBe(60)
   })
 })
 
@@ -82,20 +74,6 @@ describe("clampWorkspaceWidth", () => {
   test("clamping is idempotent", () => {
     const width = clampWorkspaceWidth(1300, 1440)
     expect(clampWorkspaceWidth(width, 1440)).toBe(width)
-  })
-})
-
-describe("computeWorkspaceRailRight", () => {
-  test("tracks the workspace edge while there is room", () => {
-    expect(computeWorkspaceRailRight(WORKSPACE_DEFAULT_WIDTH, 1440)).toBe(WORKSPACE_DEFAULT_WIDTH + WORKSPACE_RAIL_GAP)
-  })
-
-  test("keeps the dock visible when workspace is dominant", () => {
-    expect(computeWorkspaceRailRight(1500, 1440)).toBe(1380)
-  })
-
-  test("never positions the dock closer than the default gap", () => {
-    expect(computeWorkspaceRailRight(0, 40)).toBe(WORKSPACE_RAIL_GAP)
   })
 })
 

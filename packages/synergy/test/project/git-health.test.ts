@@ -78,7 +78,7 @@ interface TestRepo {
 
 function makeRepo(): TestRepo {
   const dir = mkdtempSync(join(os.tmpdir(), "synergy-test-git-health-"))
-  return { path: dir, cleanup: () => rmSync(dir, { recursive: true, force: true }) }
+  return { path: dir, cleanup: () => rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }) }
 }
 
 async function gitInit(dir: string): Promise<void> {
@@ -587,8 +587,9 @@ describe("GitHealth.injectCached()", () => {
       const output = GitHealth.injectCached(repo.path)
       expect(output).toBeUndefined()
     } finally {
-      repo.cleanup()
+      await GitHealth.refresh(repo.path).catch(() => [])
       GitHealth.invalidate()
+      repo.cleanup()
     }
   })
 

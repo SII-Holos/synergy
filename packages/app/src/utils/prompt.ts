@@ -1,5 +1,5 @@
 import type { AttachmentPart, Part, TextPart } from "@ericsanchezok/synergy-sdk"
-import type { FileAttachmentPart, ImageAttachmentPart, Prompt, UploadedAttachmentPart } from "@/context/prompt"
+import type { FileAttachmentPart, Prompt, UploadedAttachmentPart } from "@/context/prompt"
 
 type Inline = {
   type: "file"
@@ -66,7 +66,6 @@ export function extractPromptFromParts(parts: Part[], opts?: { directory?: strin
   }
 
   const inline: Inline[] = []
-  const images: ImageAttachmentPart[] = []
   const attachments: UploadedAttachmentPart[] = []
 
   for (const part of parts) {
@@ -93,19 +92,7 @@ export function extractPromptFromParts(parts: Part[], opts?: { directory?: strin
         continue
       }
 
-      if (filePart.url.startsWith("data:") && filePart.mime.startsWith("image/")) {
-        images.push({
-          type: "image",
-          id: filePart.id,
-          filename: filePart.filename ?? "attachment",
-          mime: filePart.mime,
-          dataUrl: filePart.url,
-        })
-        continue
-      }
-
       if (
-        filePart.url.startsWith("data:") ||
         filePart.url.startsWith("http://") ||
         filePart.url.startsWith("https://") ||
         filePart.url.startsWith("asset://")
@@ -116,6 +103,8 @@ export function extractPromptFromParts(parts: Part[], opts?: { directory?: strin
           filename: filePart.filename ?? "attachment",
           mime: filePart.mime,
           url: filePart.url,
+          metadata: filePart.metadata,
+          presentation: filePart.presentation,
         })
       }
     }
@@ -179,6 +168,6 @@ export function extractPromptFromParts(parts: Part[], opts?: { directory?: strin
     result.push({ type: "text", content: "", start: 0, end: 0 })
   }
 
-  if (images.length === 0 && attachments.length === 0) return result
-  return [...result, ...images, ...attachments]
+  if (attachments.length === 0) return result
+  return [...result, ...attachments]
 }

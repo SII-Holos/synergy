@@ -31,9 +31,10 @@ import { useGlobalSync } from "@/context/global-sync"
 import { DialogConfirm } from "@/components/dialog/dialog-confirm"
 import { getSettingsSections, type SettingsSection as RegisteredSettingsSection } from "@/plugin"
 import { SandboxIframe } from "@/plugin/sandbox"
+import { DeclarativeSettingsForm } from "@/plugin/components/declarative-settings-form"
 import { AppPanel } from "@/components/app-panel"
 import "./settings-panel.css"
-import type { DialogSettingsProps, McpEntry, ProviderModel, SettingsState } from "./types"
+import type { DialogSettingsProps, McpEntry, ModelsStore, ProviderModel, SettingsState } from "./types"
 import { defaultSettingsState, emptyMcp } from "./types"
 import { BUILTIN_SETTINGS_IDS, isBuiltinSettingsId, settingsGroupOrder } from "./catalog"
 import { ensureInit } from "./hooks/useSettingsForm"
@@ -89,6 +90,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
   const [saving, setSaving] = createSignal(false)
   const [refreshing, setRefreshing] = createSignal(false)
   const [openingDomain, setOpeningDomain] = createSignal<string | undefined>()
+  const [settingsPopoverLayer, setSettingsPopoverLayer] = createSignal<HTMLElement>()
 
   const [settings, setSettings] = createStore<SettingsState>(defaultSettingsState(input.sendShortcut()))
 
@@ -122,6 +124,20 @@ export function SettingsPanel(props: SettingsPanelProps) {
       }
     }
     return list
+  })
+
+  const savedModels = createMemo<ModelsStore>(() => {
+    const cfg = config()
+    return {
+      model: cfg?.model ?? "",
+      nano_model: cfg?.nano_model ?? "",
+      mini_model: cfg?.mini_model ?? "",
+      mid_model: cfg?.mid_model ?? "",
+      vision_model: cfg?.vision_model ?? "",
+      thinking_model: cfg?.thinking_model ?? "",
+      long_context_model: cfg?.long_context_model ?? "",
+      creative_model: cfg?.creative_model ?? "",
+    }
   })
 
   const providerSummaries = createMemo(() => {
@@ -251,11 +267,6 @@ export function SettingsPanel(props: SettingsPanelProps) {
         description: "This device preference is saved immediately.",
       })
     }
-  }
-
-  async function copyPath(path: string) {
-    await navigator.clipboard.writeText(path)
-    showToast({ type: "success", title: "Path copied", description: path })
   }
 
   async function openDomain(domain: ConfigDomainSummary["id"]) {
@@ -418,6 +429,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
       ) : (
         <div class="settings-panel-loading">Loading...</div>
       )}
+      <div class="settings-popover-layer" ref={setSettingsPopoverLayer} />
     </div>
   )
 
@@ -437,8 +449,10 @@ export function SettingsPanel(props: SettingsPanelProps) {
         return (
           <ModelsPanel
             models={settings.models}
+            savedModels={savedModels()}
             providerModels={providerModels}
             modelRoleSummaries={() => modelRoleSummaries() ?? []}
+            popoverLayer={settingsPopoverLayer()}
             onModelChange={(key, value) => setSettings("models", key, value)}
             onConnectProvider={() => setActiveTab("providers")}
           />
@@ -584,7 +598,6 @@ export function SettingsPanel(props: SettingsPanelProps) {
           <ConfigFilesPanel
             domains={domainSummaries() ?? []}
             openingDomain={openingDomain()}
-            onCopyPath={(path) => void copyPath(path)}
             onOpenDomain={(domain) => void openDomain(domain)}
           />
         )
@@ -600,7 +613,6 @@ export function SettingsPanel(props: SettingsPanelProps) {
         description={description}
         domains={domainsFor(domainIds)}
         openingDomain={openingDomain()}
-        onCopyPath={(path) => void copyPath(path)}
         onOpenDomain={(domain) => void openDomain(domain)}
       />
     )
@@ -643,17 +655,38 @@ function sectionIcon(section: RegisteredSettingsSection): IconName {
   return (section.icon ?? getSemanticIcon("settings.general")) as IconName
 }
 
+type PluginSettingsComponentProps = {
+  pluginId?: string
+  values: Record<string, unknown>
+  onChange: (values: Record<string, unknown>) => void | Promise<void>
+}
+
 function PluginSettingsContent(props: { section: RegisteredSettingsSection }) {
-  const [comp, setComp] = createSignal<Component | null>(null)
+  const globalSDK = useGlobalSDK()
+  const [comp, setComp] = createSignal<Component<PluginSettingsComponentProps> | null>(null)
   const [loading, setLoading] = createSignal(true)
 
   const section = () => props.section
   const isSandbox = () => section().sandbox && section().sandboxUrl && section().pluginId
+  const [values, { mutate }] = createResource(
+    () => section().pluginId,
+    async (pluginId) => {
+      const result = await globalSDK.client.plugin.getConfig({ pluginId })
+      return result.data ?? {}
+    },
+  )
+
+  async function updateValues(next: Record<string, unknown>) {
+    const pluginId = section().pluginId
+    if (!pluginId) return
+    const result = await globalSDK.client.plugin.updateConfig({ pluginId, body: next })
+    mutate(result.data ?? next)
+  }
 
   onMount(() => {
     const s = section()
     if (s.component) {
-      setComp(() => s.component!)
+      setComp(() => s.component! as Component<PluginSettingsComponentProps>)
       setLoading(false)
       return
     }
@@ -664,7 +697,7 @@ function PluginSettingsContent(props: { section: RegisteredSettingsSection }) {
     if (s.loader) {
       s.loader().then(
         (mod) => {
-          setComp(() => mod.default)
+          setComp(() => mod.default as Component<PluginSettingsComponentProps>)
           setLoading(false)
         },
         () => setLoading(false),
@@ -695,15 +728,41 @@ function PluginSettingsContent(props: { section: RegisteredSettingsSection }) {
         </ErrorBoundary>
       </Show>
       <Show when={!isSandbox()}>
-        <Show
-          when={comp()}
-          fallback={
-            <div class="settings-availability-message flex items-center justify-center py-8">
-              {section().label} is not available
-            </div>
-          }
-        >
-          {(c) => <Dynamic component={c()} />}
+        <Show when={!section().pluginId || values()}>
+          <Show
+            when={comp()}
+            fallback={
+              <Show
+                when={section().formSchema}
+                fallback={
+                  <div class="settings-availability-message flex items-center justify-center py-8">
+                    {section().label} is not available
+                  </div>
+                }
+              >
+                {(schema) => (
+                  <SettingsPage title={section().label}>
+                    <SettingsSection>
+                      <DeclarativeSettingsForm
+                        schema={schema()}
+                        values={values() ?? {}}
+                        onChange={(next) => updateValues(next)}
+                      />
+                    </SettingsSection>
+                  </SettingsPage>
+                )}
+              </Show>
+            }
+          >
+            {(c) => (
+              <Dynamic
+                component={c()}
+                pluginId={section().pluginId}
+                values={values() ?? {}}
+                onChange={(next: Record<string, unknown>) => updateValues(next)}
+              />
+            )}
+          </Show>
         </Show>
       </Show>
     </Show>

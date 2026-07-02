@@ -10,6 +10,8 @@ export const SemanticIconToken = {
   // Workspace
   "workspace.main": "home",
   "workspace.worktree": "git-fork",
+  "workspace.enterWorktree": "worktree-enter",
+  "workspace.leaveWorktree": "worktree-leave",
   "workspace.branch": "git-branch",
 
   // Session runtime
@@ -73,11 +75,17 @@ export const SemanticIconToken = {
 
   // App shell and navigation
   "app.sidebar": "panel-left",
+  "app.sideWorkspace": "panel-right",
+  "app.bottomSpace": "panel-bottom",
   "app.statusBar": "panel-bottom",
   "app.statusBar.toggle": "panel-bottom-open",
   "app.plugins": "package",
   "product.update": "download",
   "product.update.install": "rotate-cw",
+  "window.minimize": "minimize",
+  "window.maximize": "maximize",
+  "window.restore": "shrink",
+  "window.close": "x",
   "navigation.back": "arrow-left",
   "navigation.expand": "chevron-right",
   "navigation.collapse": "chevron-down",
@@ -100,6 +108,9 @@ export const SemanticIconToken = {
   "action.copy": "copy",
   "action.open": "arrow-up-right",
   "action.more": "ellipsis",
+  "action.rename": "pencil",
+  "action.export": "arrow-down-to-line",
+  "action.archive": "archive",
   "action.info": "help-circle",
   "action.search": "search",
   "action.remove": "trash-2",

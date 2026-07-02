@@ -1,5 +1,6 @@
 import { createEffect, createMemo, createResource, createSignal, For, Show } from "solid-js"
 import { Popover } from "@kobalte/core/popover"
+import { createCopyController } from "@ericsanchezok/synergy-ui/clipboard"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { Markdown } from "@ericsanchezok/synergy-ui/markdown"
 import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
@@ -670,10 +671,7 @@ function ExperienceCard(props: {
   }
   const updated = () => props.item.updatedAt
   const searchScore = () => experienceScore(props.item)
-  const [copied, setCopied] = createSignal(false)
-
-  function copyExperience(e: MouseEvent) {
-    e.stopPropagation()
+  const experienceCopyText = createMemo(() => {
     const r = rewards()
     const lines: string[] = [
       `Intent: ${props.item.intent}`,
@@ -699,9 +697,17 @@ function ExperienceCard(props: {
     const detail = props.detail
     if (detail?.script) lines.push("", "--- Script ---", detail.script)
     if (detail?.raw) lines.push("", "--- Raw ---", detail.raw)
-    navigator.clipboard.writeText(lines.join("\n"))
-    setCopied(true)
-    setTimeout(() => setCopied(false), 1500)
+    return lines.join("\n")
+  })
+  const copyExperience = createCopyController({
+    text: experienceCopyText,
+    copyLabel: "Copy all content",
+    failureDescription: "Unable to copy the experience.",
+  })
+
+  function handleCopyExperience(e: MouseEvent) {
+    e.stopPropagation()
+    void copyExperience.copy()
   }
 
   return (
@@ -742,10 +748,12 @@ function ExperienceCard(props: {
               <button
                 type="button"
                 class="flex size-6 items-center justify-center rounded-full bg-surface-inset-base text-icon-weak ring-1 ring-inset ring-border-base/35 transition-all hover:bg-surface-raised-base-hover hover:text-icon-base"
-                onClick={copyExperience}
-                title="Copy all content"
+                onClick={handleCopyExperience}
+                title={copyExperience.tooltip()}
+                data-copy-state={copyExperience.state()}
+                disabled={copyExperience.disabled()}
               >
-                <Show when={copied()} fallback={<Icon name="copy" size="small" />}>
+                <Show when={copyExperience.copied()} fallback={<Icon name={copyExperience.icon()} size="small" />}>
                   <Icon name="check" size="small" class="text-icon-success-base" />
                 </Show>
               </button>

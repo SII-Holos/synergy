@@ -67,7 +67,7 @@ export function registerBuiltinProviderProfiles() {
     authKind: "oauth_external",
     aiSdkPackage: "@ai-sdk/openai",
     modelFactory: "openaiResponses",
-    modelsDevProviderID: "openai",
+    modelsDevProviderID: CodexProvider.PROVIDER_ID,
     fallbackModels: [...CodexProvider.DEFAULT_MODEL_IDS],
     liveModelDiscovery: "codex",
     usageKind: "codex",
@@ -85,6 +85,11 @@ export function registerBuiltinProviderProfiles() {
       const access = await CodexProvider.resolveToken({ allowMissing: true, fetch: input.fetch }).catch(() => undefined)
       if (!access) return []
       return CodexProvider.fetchModelIDs(access, input.fetch)
+    },
+    fetchModelCatalog: async (input) => {
+      const access = await CodexProvider.resolveToken({ allowMissing: true, fetch: input.fetch }).catch(() => undefined)
+      if (!access) return []
+      return CodexProvider.fetchModelCatalog(access, input.fetch)
     },
     fetchUsage: (input) => CodexProvider.fetchUsage(input?.fetch),
   })

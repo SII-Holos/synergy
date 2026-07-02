@@ -1,5 +1,6 @@
 import { createMemo, createSignal, For, Show } from "solid-js"
 import { Popover } from "@kobalte/core/popover"
+import { createCopyController } from "./clipboard"
 import { Icon } from "./icon"
 import "./session-resonance-popover.css"
 
@@ -57,22 +58,24 @@ function tone(value: number): "pos" | "neg" | "neutral" {
 
 export function ResonancePopover(props: { context?: InjectedContext }) {
   const [open, setOpen] = createSignal(false)
-  const [copied, setCopied] = createSignal(false)
 
   const memories = createMemo(() => (props.context?.memory ? parseMemories(props.context.memory) : []))
   const experiences = createMemo(() => (props.context?.experience ? parseExperiences(props.context.experience) : []))
   const hasContent = createMemo(() => memories().length > 0 || experiences().length > 0)
   const totalCount = createMemo(() => memories().length + experiences().length)
 
-  async function handleCopy() {
+  const copyText = () => {
     if (!props.context) return
     const parts: string[] = []
     if (props.context.memory) parts.push(props.context.memory)
     if (props.context.experience) parts.push(props.context.experience)
-    await navigator.clipboard.writeText(parts.join("\n\n"))
-    setCopied(true)
-    setTimeout(() => setCopied(false), 1500)
+    return parts.join("\n\n")
   }
+  const copy = createCopyController({
+    text: copyText,
+    copyLabel: "Copy all",
+    failureDescription: "Unable to copy resonance context.",
+  })
 
   return (
     <Popover open={open()} onOpenChange={setOpen} placement="bottom-start" gutter={6}>
@@ -94,8 +97,14 @@ export function ResonancePopover(props: { context?: InjectedContext }) {
             <span data-slot="resonance-title">Resonance</span>
             <div data-slot="resonance-header-actions">
               <Show when={hasContent()}>
-                <button data-slot="resonance-copy" title="Copy all" onClick={handleCopy}>
-                  <Icon name={copied() ? "check" : "copy"} size="small" />
+                <button
+                  data-slot="resonance-copy"
+                  data-copy-state={copy.state()}
+                  title={copy.tooltip()}
+                  disabled={copy.disabled()}
+                  onClick={() => void copy.copy()}
+                >
+                  <Icon name={copy.icon()} size="small" />
                 </button>
               </Show>
               <Popover.CloseButton data-slot="resonance-close">

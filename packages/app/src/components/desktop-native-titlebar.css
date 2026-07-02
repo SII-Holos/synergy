@@ -1,0 +1,24 @@
+.desktop-native-titlebar {
+  position: relative;
+  z-index: 40;
+  display: flex;
+  flex: 0 0 var(--desktop-native-titlebar-height);
+  width: 100%;
+  height: var(--desktop-native-titlebar-height);
+  min-height: var(--desktop-native-titlebar-height);
+  color: var(--text-base);
+  background: transparent;
+  user-select: none;
+  -webkit-app-region: drag;
+}
+
+.desktop-native-titlebar__traffic-space {
+  flex: 0 0 var(--desktop-native-titlebar-traffic-width);
+  height: 100%;
+}
+
+.desktop-native-titlebar__drag-region {
+  flex: 1;
+  align-self: stretch;
+  min-width: 0;
+}

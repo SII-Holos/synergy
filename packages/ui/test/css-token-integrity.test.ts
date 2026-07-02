@@ -115,10 +115,6 @@ const KNOWN_STATIC_TOKENS = new Set([
 ])
 
 const KNOWN_LOCAL_TOKENS = new Set([
-  "session-turn-title-bg",
-  "session-turn-title-border",
-  "session-turn-title-highlight",
-  "session-turn-title-glow",
   "workbench-canvas-bg",
   "workbench-panel-bg",
   "workbench-panel-bg-hover",
@@ -161,6 +157,25 @@ async function readFileSafe(path: string): Promise<string> {
   const file = Bun.file(path)
   if (!(await file.exists())) return ""
   return file.text()
+}
+
+function extractRuleBlock(css: string, selector: string): string {
+  const selectorStart = css.indexOf(selector)
+  if (selectorStart === -1) return ""
+
+  const blockStart = css.indexOf("{", selectorStart)
+  if (blockStart === -1) return ""
+
+  let depth = 0
+  for (let i = blockStart; i < css.length; i++) {
+    const char = css[i]
+    if (char === "{") depth++
+    if (char !== "}") continue
+    depth--
+    if (depth === 0) return css.slice(selectorStart, i + 1)
+  }
+
+  return ""
 }
 
 function buildValidTokenSet(): Set<string> {
@@ -278,6 +293,38 @@ describe("CSS Token Integrity", () => {
     if (legacy.length > 0) {
       throw new Error(`Legacy token refs in session-turn.css:\n` + legacy.map((t) => `  --${t}`).join("\n"))
     }
+  })
+
+  test("markdown code blocks stay document surfaces instead of gray control slabs", async () => {
+    const css = await readFileSafe("src/components/markdown.css")
+    const codeBlock = extractRuleBlock(css, '[data-slot="markdown-code-block"]')
+    expect(codeBlock).toContain("background-color: var(--workbench-control-bg")
+
+    const lightOverride = extractRuleBlock(css, ':root[data-color-scheme="light"] [data-component="markdown"]')
+    expect(lightOverride).toContain("var(--surface-base) 92%")
+    expect(lightOverride).toContain("var(--surface-base) 78%")
+
+    const header = extractRuleBlock(css, '[data-slot="markdown-code-header"]')
+    expect(header).toContain("background-color: transparent")
+
+    const copyButton = extractRuleBlock(css, '[data-slot="markdown-code-copy"]')
+    expect(copyButton).toContain("border: 0")
+    expect(copyButton).toContain("background: transparent")
+  })
+
+  test("session turn timeline spacing uses semantic rhythm tiers", async () => {
+    const css = await readFileSafe("src/components/session-turn.css")
+    const timelineStart = css.indexOf('[data-slot="session-turn-timeline-item"] +')
+    const timelineEnd = css.indexOf('[data-slot="session-turn-timeline-item"] [data-component="attachment-gallery"]')
+    expect(timelineStart).toBeGreaterThan(-1)
+    expect(timelineEnd).toBeGreaterThan(timelineStart)
+
+    const rhythm = css.slice(timelineStart, timelineEnd)
+    expect(rhythm).toContain("margin-top: 6px;")
+    expect(rhythm).toContain("margin-top: 8px;")
+    expect(rhythm).toContain("margin-top: 10px;")
+    expect(rhythm).toContain("margin-top: 12px;")
+    expect(rhythm).not.toMatch(/margin-top:\s*[345]px/)
   })
 
   test("icon-button.css has no commented-out old code blocks", async () => {

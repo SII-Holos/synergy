@@ -10,6 +10,7 @@ import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import type { HolosAccountMeta, HolosAgentProfile } from "@ericsanchezok/synergy-sdk/client"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { useHolos } from "@/context/holos"
+import { usePlatform } from "@/context/platform"
 
 type GlobalSDK = ReturnType<typeof useGlobalSDK>
 type HolosProfileInput = {
@@ -21,6 +22,7 @@ type HolosProfileInput = {
 export function useHolosAgentActions(globalSDK: GlobalSDK) {
   const dialog = useDialog()
   const holos = useHolos()
+  const platform = usePlatform()
   let loginMessageHandler: ((event: MessageEvent) => void) | undefined
   let loginMessageTimeout: ReturnType<typeof setTimeout> | undefined
 
@@ -38,7 +40,10 @@ export function useHolosAgentActions(globalSDK: GlobalSDK) {
 
   async function startCreateAgent(profile: HolosProfileInput): Promise<boolean> {
     try {
-      const res = await globalSDK.client.holos.login({ callbackUrl: callbackUrl(), profile }, { throwOnError: true })
+      const res = await globalSDK.client.holos.login(
+        { callbackUrl: callbackUrl(), clientSurface: platform.platform, profile },
+        { throwOnError: true },
+      )
       const authUrl = res.data?.url
       if (!authUrl) {
         showToast({ type: "error", title: "Holos login failed", description: "No login URL returned." })
@@ -62,6 +67,12 @@ export function useHolosAgentActions(globalSDK: GlobalSDK) {
       }
 
       window.addEventListener("message", loginMessageHandler)
+      if (platform.platform === "desktop") {
+        platform.openLink(authUrl)
+        loginMessageTimeout = setTimeout(clearLoginMessageHandler, 300_000)
+        return true
+      }
+
       const popup = window.open(authUrl, "holos-login", "width=600,height=700")
       loginMessageTimeout = setTimeout(clearLoginMessageHandler, 300_000)
       if (!popup) {

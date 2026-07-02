@@ -1,5 +1,6 @@
 import { realpathSync } from "fs"
 import path from "path"
+import { fileURLToPath } from "url"
 import { normalizeBrowserURL as normalizeBrowserURLInput } from "@ericsanchezok/synergy-util/browser-protocol"
 
 export namespace BrowserPolicy {
@@ -98,6 +99,18 @@ export namespace BrowserPolicy {
     return !path.relative(resolvedWorkspace, resolved).startsWith("..")
   }
 
+  function evaluateParsedFileURL(url: URL, workspace: string): PolicyResult {
+    try {
+      return evaluateFileURL(fileURLToPath(url), workspace)
+    } catch {
+      return {
+        decision: "deny",
+        reason: `Invalid file URL: ${url.href}`,
+        permanent: false,
+      }
+    }
+  }
+
   function matchMimePattern(mimeType: string, pattern: string): boolean {
     if (pattern.endsWith("/*")) {
       const prefix = pattern.slice(0, -1) // e.g. "text/"
@@ -123,7 +136,7 @@ export namespace BrowserPolicy {
     }
 
     const protocol = parsed.protocol.replace(/:$/, "")
-    if (protocol === "file") return evaluateFileURL(parsed.pathname, workspace)
+    if (protocol === "file") return evaluateParsedFileURL(parsed, workspace)
 
     if (protocol !== "http" && protocol !== "https" && protocol !== "about") {
       return {
@@ -175,7 +188,7 @@ export namespace BrowserPolicy {
     const protocol = parsed.protocol.replace(/:$/, "")
 
     if (protocol === "file") {
-      return evaluateFileURL(parsed.pathname, workspace)
+      return evaluateParsedFileURL(parsed, workspace)
     }
 
     if (protocol !== "http" && protocol !== "https") {

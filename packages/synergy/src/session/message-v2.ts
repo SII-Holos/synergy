@@ -15,6 +15,8 @@ import { iife } from "@/util/iife"
 import { type SystemError } from "bun"
 import type { Scope } from "@/scope"
 import { Attachment } from "@/attachment"
+import { Log } from "@/util/log"
+import { SessionBounds } from "./bounds"
 
 function isTLSError(message: string) {
   return /certificate|SSL|TLS|ERR_SSL|UNABLE_TO_VERIFY|CERT_HAS_EXPIRED|DEPTH_ZERO|self[- ]signed/i.test(message)
@@ -63,6 +65,8 @@ function networkErrorMetadata(error: Error) {
   return metadata
 }
 export namespace MessageV2 {
+  const log = Log.create({ service: "message-v2" })
+
   type SessionLookup = {
     scope: Scope
   }
@@ -346,6 +350,8 @@ export namespace MessageV2 {
       status: z.literal("completed"),
       input: z.record(z.string(), z.any()),
       output: z.string(),
+      outputBytes: z.number().int().nonnegative().optional(),
+      outputTruncated: z.boolean().optional(),
       title: z.string(),
       metadata: z.record(z.string(), z.any()),
       time: z.object({
@@ -447,6 +453,58 @@ export namespace MessageV2 {
       ref: "Part",
     })
   export type Part = z.infer<typeof Part>
+
+  export function canonicalPart<T extends Part>(part: T): T {
+    if (part.type !== "tool") return part
+    if (part.state.status !== "completed") return part
+    const bounded =
+      part.state.outputTruncated && typeof part.state.outputBytes === "number"
+        ? {
+            output: part.state.output,
+            outputBytes: part.state.outputBytes,
+            outputTruncated: true,
+          }
+        : SessionBounds.toolOutput(part.state.output)
+    return {
+      ...part,
+      state: {
+        ...part.state,
+        output: bounded.output,
+        outputBytes: bounded.outputBytes,
+        outputTruncated: bounded.outputTruncated || undefined,
+        metadata: canonicalMetadata(part.state.metadata),
+      },
+      metadata: part.metadata ? canonicalMetadata(part.metadata) : part.metadata,
+    } as T
+  }
+
+  export function canonicalMessage<T extends Info>(info: T): T {
+    if (info.role !== "user" || !info.summary?.diffs) return info
+    return {
+      ...info,
+      summary: {
+        ...info.summary,
+        diffs: SnapshotSchema.normalizeArray(info.summary.diffs) ?? [],
+      },
+    } as T
+  }
+
+  function canonicalMetadata(metadata: Record<string, any>): Record<string, any> {
+    const next = { ...metadata }
+    const filediff = SnapshotSchema.normalize(next.filediff)
+    if (filediff) next.filediff = filediff
+    const results = Array.isArray(next.results)
+      ? next.results.map((item) => {
+          if (!item || typeof item !== "object" || Array.isArray(item)) return item
+          const result = { ...(item as Record<string, any>) }
+          const resultDiff = SnapshotSchema.normalize(result.filediff)
+          if (resultDiff) result.filediff = resultDiff
+          return result
+        })
+      : undefined
+    if (results) next.results = results
+    return next
+  }
 
   export const Assistant = Base.extend({
     role: z.literal("assistant"),
@@ -787,11 +845,16 @@ export namespace MessageV2 {
       const sessionID = input.sessionID as Identifier.SessionID
       const messageIDs = await Storage.scan(StoragePath.sessionMessagesRoot(scopeID, sessionID))
       for (let i = messageIDs.length - 1; i >= 0; i--) {
-        yield await get({
-          scopeID: scopeID,
-          sessionID: input.sessionID,
-          messageID: messageIDs[i],
-        })
+        const messageID = messageIDs[i]
+        try {
+          yield await get({
+            scopeID: scopeID,
+            sessionID: input.sessionID,
+            messageID,
+          })
+        } catch (error) {
+          log.warn("skipping unreadable message", { sessionID: input.sessionID, messageID, error: String(error) })
+        }
       }
     },
   )

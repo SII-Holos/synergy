@@ -35,7 +35,7 @@ export function resolvePluginProcessRunnerCommand(
   entryPath: string,
   runnerExists = fs.existsSync(RUNNER_PATH),
 ): string[] {
-  if (runnerExists) return ["bun", "run", RUNNER_PATH, entryPath]
+  if (runnerExists) return [process.execPath, "run", RUNNER_PATH, entryPath]
   return [process.execPath, "__plugin-runtime-runner", entryPath]
 }
 

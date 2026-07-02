@@ -2,7 +2,13 @@ import * as os from "os"
 import * as path from "path"
 import * as fs from "fs"
 import type { PrepareWrapperOpts, SandboxExecutionWrapper, SeatbeltProfileOpts } from "./types"
-import { DEFAULT_PROTECTED_PATHS, uniqueRoots, traversalLiterals, defaultRuntimeReadRoots } from "./policy"
+import {
+  DEFAULT_PROTECTED_PATHS,
+  uniqueRoots,
+  traversalLiterals,
+  defaultRuntimeReadRoots,
+  joinPathLike,
+} from "./policy"
 import { detectPlatform } from "./detect"
 import { getTempDir } from "./platform"
 import { MacOSPolicy } from "./macos-policy"
@@ -54,7 +60,7 @@ export namespace MacBackend {
 
     if (sandboxMode === "workspace_write") {
       const writeRoots = [...writableRoots]
-      writeRoots.push(path.join(workspace, ".synergy", "tmp"))
+      writeRoots.push(joinPathLike(workspace, ".synergy", "tmp"))
 
       for (const root of writeRoots) {
         lines.push(`(allow file-read* file-write* (subpath "${root}"))`)

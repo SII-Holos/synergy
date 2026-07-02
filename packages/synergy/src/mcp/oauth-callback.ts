@@ -73,6 +73,71 @@ export namespace McpOAuthCallback {
     return getOAuthCallbackPort()
   }
 
+  export function handleRequest(req: Request): Response {
+    const url = new URL(req.url)
+
+    if (url.pathname !== OAUTH_CALLBACK_PATH) {
+      return new Response("Not found", { status: 404 })
+    }
+
+    const code = url.searchParams.get("code")
+    const state = url.searchParams.get("state")
+    const error = url.searchParams.get("error")
+    const errorDescription = url.searchParams.get("error_description")
+
+    log.info("received oauth callback", { hasCode: !!code, hasError: !!error })
+
+    // Enforce state parameter presence
+    if (!state) {
+      const errorMsg = "Missing required state parameter - potential CSRF attack"
+      log.error("oauth callback missing state parameter", { path: url.pathname })
+      return new Response(HTML_ERROR(errorMsg), {
+        status: 400,
+        headers: { "Content-Type": "text/html" },
+      })
+    }
+
+    if (error) {
+      const errorMsg = errorDescription || error
+      if (pendingAuths.has(state)) {
+        const pending = pendingAuths.get(state)!
+        clearTimeout(pending.timeout)
+        pendingAuths.delete(state)
+        pending.reject(new Error(errorMsg))
+      }
+      return new Response(HTML_ERROR(errorMsg), {
+        headers: { "Content-Type": "text/html" },
+      })
+    }
+
+    if (!code) {
+      return new Response(HTML_ERROR("No authorization code provided"), {
+        status: 400,
+        headers: { "Content-Type": "text/html" },
+      })
+    }
+
+    // Validate state parameter
+    if (!pendingAuths.has(state)) {
+      const errorMsg = "Invalid or expired state parameter - potential CSRF attack"
+      log.error("oauth callback with invalid state", { pendingCount: pendingAuths.size })
+      return new Response(HTML_ERROR(errorMsg), {
+        status: 400,
+        headers: { "Content-Type": "text/html" },
+      })
+    }
+
+    const pending = pendingAuths.get(state)!
+
+    clearTimeout(pending.timeout)
+    pendingAuths.delete(state)
+    pending.resolve(code)
+
+    return new Response(HTML_SUCCESS, {
+      headers: { "Content-Type": "text/html" },
+    })
+  }
+
   export async function ensureRunning(): Promise<void> {
     if (server) return
 
@@ -84,70 +149,7 @@ export namespace McpOAuthCallback {
 
     server = Bun.serve({
       port,
-      fetch(req) {
-        const url = new URL(req.url)
-
-        if (url.pathname !== OAUTH_CALLBACK_PATH) {
-          return new Response("Not found", { status: 404 })
-        }
-
-        const code = url.searchParams.get("code")
-        const state = url.searchParams.get("state")
-        const error = url.searchParams.get("error")
-        const errorDescription = url.searchParams.get("error_description")
-
-        log.info("received oauth callback", { hasCode: !!code, hasError: !!error })
-
-        // Enforce state parameter presence
-        if (!state) {
-          const errorMsg = "Missing required state parameter - potential CSRF attack"
-          log.error("oauth callback missing state parameter", { path: url.pathname })
-          return new Response(HTML_ERROR(errorMsg), {
-            status: 400,
-            headers: { "Content-Type": "text/html" },
-          })
-        }
-
-        if (error) {
-          const errorMsg = errorDescription || error
-          if (pendingAuths.has(state)) {
-            const pending = pendingAuths.get(state)!
-            clearTimeout(pending.timeout)
-            pendingAuths.delete(state)
-            pending.reject(new Error(errorMsg))
-          }
-          return new Response(HTML_ERROR(errorMsg), {
-            headers: { "Content-Type": "text/html" },
-          })
-        }
-
-        if (!code) {
-          return new Response(HTML_ERROR("No authorization code provided"), {
-            status: 400,
-            headers: { "Content-Type": "text/html" },
-          })
-        }
-
-        // Validate state parameter
-        if (!pendingAuths.has(state)) {
-          const errorMsg = "Invalid or expired state parameter - potential CSRF attack"
-          log.error("oauth callback with invalid state", { pendingCount: pendingAuths.size })
-          return new Response(HTML_ERROR(errorMsg), {
-            status: 400,
-            headers: { "Content-Type": "text/html" },
-          })
-        }
-
-        const pending = pendingAuths.get(state)!
-
-        clearTimeout(pending.timeout)
-        pendingAuths.delete(state)
-        pending.resolve(code)
-
-        return new Response(HTML_SUCCESS, {
-          headers: { "Content-Type": "text/html" },
-        })
-      },
+      fetch: handleRequest,
     })
 
     log.info("oauth callback server started", { port: callbackPort() })

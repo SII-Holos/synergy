@@ -1,5 +1,5 @@
 import { describe, expect, mock, test } from "bun:test"
-import type { AssistantMessage, Part as PartType } from "@ericsanchezok/synergy-sdk/client"
+import type { AssistantMessage, Part as PartType, SessionStatus } from "@ericsanchezok/synergy-sdk/client"
 
 const Empty = () => null
 
@@ -35,7 +35,13 @@ mock.module("./sticky-accordion-header", () => ({ StickyAccordionHeader: Empty }
 mock.module("./tool-renders", () => ({}))
 mock.module("./typewriter", () => ({ Typewriter: Empty }))
 
-const { collectSessionTurnTimelineItems } = await import("./session-turn")
+const {
+  collectSessionTurnTimelineItems,
+  providerPreludeText,
+  shouldShowProviderPrelude,
+  timelineItemStableKey,
+  timelineVisualKind,
+} = await import("./session-turn")
 
 function assistant(id: string): AssistantMessage {
   return {
@@ -52,6 +58,23 @@ function assistant(id: string): AssistantMessage {
     providerID: "provider",
     time: { created: 1 },
   } as AssistantMessage
+}
+
+function completedAssistant(id: string): AssistantMessage {
+  return {
+    ...assistant(id),
+    time: { created: 1, completed: 2 },
+  } as AssistantMessage
+}
+
+function textPart(id: string, messageID: string, text = "Hello"): PartType {
+  return {
+    id,
+    sessionID: "session",
+    messageID,
+    type: "text",
+    text,
+  } as PartType
 }
 
 const image = {
@@ -110,7 +133,137 @@ function mediaTool(input: {
   } as PartType
 }
 
+function ordinaryTool(input: {
+  id: string
+  messageID: string
+  status: "pending" | "generating" | "running" | "completed"
+}): PartType {
+  return {
+    id: input.id,
+    sessionID: "session",
+    messageID: input.messageID,
+    type: "tool",
+    callID: `call-${input.id}`,
+    tool: "read",
+    state:
+      input.status === "completed"
+        ? {
+            status: "completed",
+            input: { filePath: "report.md" },
+            output: "done",
+            title: "report.md",
+            metadata: {},
+            time: { start: 1, end: 2 },
+          }
+        : input.status === "running"
+          ? {
+              status: "running",
+              input: { filePath: "report.md" },
+              metadata: {},
+              time: { start: 1 },
+            }
+          : {
+              status: input.status,
+              input: {},
+              raw: '{"filePath":"report.md"}',
+              charsReceived: input.status === "generating" ? 24 : undefined,
+              metadata: {},
+            },
+  } as PartType
+}
+
 describe("session turn timeline", () => {
+  test("shows provider prelude while the first assistant response has no visible part", () => {
+    expect(
+      shouldShowProviderPrelude({
+        working: true,
+        hasError: false,
+        latestAssistant: undefined,
+        latestAssistantTimelineItems: [],
+      }),
+    ).toBe(true)
+  })
+
+  test("shows provider prelude after prior visible work when the latest assistant response is empty", () => {
+    const previous = completedAssistant("assistant-a")
+    const latest = assistant("assistant-b")
+    const previousItems = collectSessionTurnTimelineItems(
+      [previous],
+      { [previous.id]: [ordinaryTool({ id: "tool-a", messageID: previous.id, status: "completed" })] },
+      true,
+    )
+    const latestItems = collectSessionTurnTimelineItems([latest], {}, true)
+
+    expect(previousItems).toHaveLength(1)
+    expect(latestItems).toHaveLength(0)
+    expect(
+      shouldShowProviderPrelude({
+        working: true,
+        hasError: false,
+        latestAssistant: latest,
+        latestAssistantTimelineItems: latestItems,
+      }),
+    ).toBe(true)
+  })
+
+  test("hides provider prelude once the latest assistant response has a visible part", () => {
+    const latest = assistant("assistant-a")
+    const latestItems = collectSessionTurnTimelineItems(
+      [latest],
+      { [latest.id]: [textPart("text-a", latest.id)] },
+      true,
+    )
+
+    expect(latestItems).toHaveLength(1)
+    expect(
+      shouldShowProviderPrelude({
+        working: true,
+        hasError: false,
+        latestAssistant: latest,
+        latestAssistantTimelineItems: latestItems,
+      }),
+    ).toBe(false)
+  })
+
+  test("hides provider prelude when the turn is not actively waiting", () => {
+    const latest = assistant("assistant-a")
+
+    expect(
+      shouldShowProviderPrelude({
+        working: false,
+        hasError: false,
+        latestAssistant: latest,
+        latestAssistantTimelineItems: [],
+      }),
+    ).toBe(false)
+    expect(
+      shouldShowProviderPrelude({
+        working: true,
+        hasError: true,
+        latestAssistant: latest,
+        latestAssistantTimelineItems: [],
+      }),
+    ).toBe(false)
+    expect(
+      shouldShowProviderPrelude({
+        working: true,
+        hasError: false,
+        latestAssistant: completedAssistant("assistant-b"),
+        latestAssistantTimelineItems: [],
+      }),
+    ).toBe(false)
+  })
+
+  test("keeps backend provider prelude status text verbatim", () => {
+    const status = {
+      type: "busy",
+      description: "Awaiting response...",
+    } satisfies SessionStatus
+
+    expect(providerPreludeText(status)).toBe("Awaiting response...")
+    expect(providerPreludeText({ type: "busy" })).toBe("Awaiting response...")
+  })
+
   test("keeps reasoning before a running media placeholder and later text", () => {
     const message = assistant("assistant-a")
     const parts: PartType[] = [
@@ -177,6 +330,44 @@ describe("session turn timeline", () => {
     expect(items.map((item) => item.kind)).toEqual(["tool-attachments", "part"])
     expect(items[0]).toMatchObject({ kind: "tool-attachments", files: [image] })
     expect(items[1]).toMatchObject({ kind: "part", part: { type: "text" } })
+  })
+
+  test("keeps tool-call prelude text as text display", () => {
+    const message = {
+      ...assistant("assistant-a"),
+      finish: "tool-calls",
+    }
+    const part = {
+      id: "text-a",
+      sessionID: "session",
+      messageID: message.id,
+      type: "text",
+      text: "Let me inspect the relevant files first.",
+    } as PartType
+
+    const items = collectSessionTurnTimelineItems([message], { [message.id]: [part] }, false)
+
+    expect(items).toHaveLength(1)
+    expect(timelineVisualKind(items[0])).toBe("text")
+  })
+
+  test("keeps final assistant text as text display", () => {
+    const message = {
+      ...assistant("assistant-a"),
+      finish: "stop",
+    }
+    const part = {
+      id: "text-a",
+      sessionID: "session",
+      messageID: message.id,
+      type: "text",
+      text: "Here is the final answer.",
+    } as PartType
+
+    const items = collectSessionTurnTimelineItems([message], { [message.id]: [part] }, false)
+
+    expect(items).toHaveLength(1)
+    expect(timelineVisualKind(items[0])).toBe("text")
   })
 
   test("keeps completed media before later text and render tool across messages", () => {
@@ -264,5 +455,39 @@ describe("session turn timeline", () => {
 
     expect(items.map((item) => item.kind)).toEqual(["part"])
     expect(items[0]).toMatchObject({ kind: "part", part: { type: "text" } })
+  })
+
+  test("keeps ordinary tool timeline key stable across state updates", () => {
+    const message = assistant("assistant-a")
+    const keys = (["pending", "generating", "running", "completed"] as const).map((status) => {
+      const items = collectSessionTurnTimelineItems(
+        [message],
+        { [message.id]: [ordinaryTool({ id: "tool-a", messageID: message.id, status })] },
+        status !== "completed",
+      )
+
+      expect(items).toHaveLength(1)
+      return timelineItemStableKey(items[0])
+    })
+
+    expect(new Set(keys).size).toBe(1)
+    expect(keys[0]).toBe("tool:assistant-a:tool-a")
+  })
+
+  test("changes timeline key when a media tool changes render shape", () => {
+    const message = assistant("assistant-a")
+    const pending = collectSessionTurnTimelineItems(
+      [message],
+      { [message.id]: [mediaTool({ id: "tool-a", messageID: message.id, status: "pending" })] },
+      true,
+    )
+    const completed = collectSessionTurnTimelineItems(
+      [message],
+      { [message.id]: [mediaTool({ id: "tool-a", messageID: message.id, status: "completed" })] },
+      false,
+    )
+
+    expect(timelineItemStableKey(pending[0])).toBe("media-pending:assistant-a:tool-a")
+    expect(timelineItemStableKey(completed[0])).toBe("tool-attachments:assistant-a:tool-a")
   })
 })

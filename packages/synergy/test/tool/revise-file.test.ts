@@ -562,7 +562,7 @@ describe("tool.revise_file", () => {
       })
     })
 
-    test("returned filediff.after matches final on-disk content after formatting", async () => {
+    test("returned filediff summary matches final on-disk content after formatting", async () => {
       const sessID = "test-revise-fmt-filediff"
       await using tmp = await tmpdir({
         git: true,
@@ -598,7 +598,8 @@ describe("tool.revise_file", () => {
           const result = await tool.execute({ input: patch }, formatAwareCtx(sessID))
 
           const onDisk = await Bun.file(path.join(tmp.path, "fmt2.ts")).text()
-          expect(result.metadata.filediff.after).toBe(onDisk)
+          expect(result.metadata.filediff.afterBytes).toBe(Buffer.byteLength(onDisk, "utf8"))
+          expect(result.metadata.filediff.preview).toContain(onDisk.trim())
         },
       })
     })

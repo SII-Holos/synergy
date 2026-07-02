@@ -3,6 +3,7 @@ import { describeRoute, resolver, validator } from "hono-openapi"
 import z from "zod"
 import path from "path"
 import fs from "fs"
+import { fileURLToPath } from "url"
 import { errors } from "./error"
 import { checkPathContainment } from "../util/path-contain"
 import { PluginMarketplaceRegistry } from "../plugin/marketplace-registry"
@@ -524,7 +525,7 @@ export const RegistryRoute = new Hono()
       if (downloadUrl.startsWith("file://")) {
         let filePath: string
         try {
-          filePath = new URL(downloadUrl).pathname
+          filePath = fileURLToPath(new URL(downloadUrl))
         } catch {
           return c.json({ message: "Invalid download URL" }, 400)
         }

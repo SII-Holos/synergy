@@ -358,8 +358,8 @@ describe("Phase 1: Windows protected paths parity", () => {
     const paths = DEFAULT_PROTECTED_PATHS(homedir, workspace)
 
     // Workspace-specific protections
-    expect(paths).toContain(path.join(workspace, ".git"))
-    expect(paths).toContain(path.join(workspace, ".synergy"))
+    expect(paths).toContain(path.posix.join(workspace, ".git"))
+    expect(paths).toContain(path.posix.join(workspace, ".synergy"))
 
     // Synergy internal config/auth — must be protected on all platforms
     expect(paths).toContain(path.join(homedir, ".synergy", "config"))

@@ -21,30 +21,25 @@ const pluginDistComplete =
   fs.existsSync(path.join(pluginRoot, "dist/ids.js")) &&
   fs.existsSync(path.join(pluginRoot, "dist/permissions.js"))
 
-// Check that all generated source files exist — partial/interrupted SDK
-// generation (e.g. missing types.gen.ts or client.gen.ts) can break the
-// frontend build. Only activate aliases when all critical gen files are present.
 const sdkGenSourceExists =
   fs.existsSync(path.join(sdkRoot, "src/gen/sdk.gen.ts")) &&
   fs.existsSync(path.join(sdkRoot, "src/gen/types.gen.ts")) &&
   fs.existsSync(path.join(sdkRoot, "src/gen/client/client.gen.ts"))
 
 /**
- * Fallback aliases for the SDK — only active when dist/ hasn't been built yet.
- * In production (where dist/ exists), Vite resolves normally via package.json exports.
+ * Use SDK sources during dev so Vite cannot serve stale workspace dist files.
  *
- * Evaluated once at Vite config load time. After generating the SDK dist/,
- * restart the dev server to switch back to normal package resolution.
- * @type {import("vite").Alias[]}
+ * @returns {import("vite").Alias[]}
  */
-const sdkAliases =
-  sdkDistComplete || !sdkGenSourceExists
-    ? []
-    : [
-        { find: /^@ericsanchezok\/synergy-sdk\/client$/, replacement: path.join(sdkRoot, "src/client.ts") },
-        { find: /^@ericsanchezok\/synergy-sdk\/server$/, replacement: path.join(sdkRoot, "src/server.ts") },
-        { find: /^@ericsanchezok\/synergy-sdk$/, replacement: path.join(sdkRoot, "src/index.ts") },
-      ]
+function sdkAliases(command) {
+  if (!sdkGenSourceExists) return []
+  if (command !== "serve" && sdkDistComplete) return []
+  return [
+    { find: /^@ericsanchezok\/synergy-sdk\/client$/, replacement: path.join(sdkRoot, "src/client.ts") },
+    { find: /^@ericsanchezok\/synergy-sdk\/server$/, replacement: path.join(sdkRoot, "src/server.ts") },
+    { find: /^@ericsanchezok\/synergy-sdk$/, replacement: path.join(sdkRoot, "src/index.ts") },
+  ]
+}
 
 const pluginAliases = pluginDistComplete
   ? []
@@ -56,7 +51,7 @@ const pluginAliases = pluginDistComplete
 export default [
   {
     name: "synergy-app:config",
-    config() {
+    config(_config, env) {
       return {
         resolve: {
           alias: [
@@ -68,7 +63,7 @@ export default [
               find: "@",
               replacement: fileURLToPath(new URL("./src", import.meta.url)),
             },
-            ...sdkAliases,
+            ...sdkAliases(env.command),
             ...pluginAliases,
           ],
         },

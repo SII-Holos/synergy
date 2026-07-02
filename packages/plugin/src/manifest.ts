@@ -1,5 +1,11 @@
 import z from "zod"
 
+const UiSurfaceId = z.string().regex(/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/)
+const JsAssetPath = z
+  .string()
+  .regex(/^[a-zA-Z0-9_/.-]+\.js$/)
+  .max(256)
+
 const ToolRendererDef = z
   .object({
     tool: z.string().min(1),
@@ -25,41 +31,41 @@ const PartRendererDef = z
 
 const PanelDef = z
   .object({
-    id: z.string().min(1).max(64),
+    id: UiSurfaceId,
     label: z.string().min(1).max(64),
     icon: z.string().min(1),
     exportName: z.string().optional().default("default"),
+    order: z.number().int().optional().default(1000),
     sandbox: z.boolean().optional().default(false),
-    sandboxEntry: z
-      .string()
-      .regex(/^[a-zA-Z0-9_/.-]+\.js$/)
-      .max(256)
-      .optional(),
+    sandboxEntry: JsAssetPath.optional(),
   })
   .strict()
 
+const WorkbenchPanelDef = PanelDef.extend({
+  surface: z.enum(["side", "bottom"]),
+  cardinality: z.enum(["exclusive", "singleton", "multi"]),
+  requiresSession: z.boolean().optional(),
+}).strict()
+
 const SettingsDef = z
   .object({
-    id: z.string().min(1).max(64),
+    id: UiSurfaceId,
     label: z.string().min(1).max(64),
     icon: z.string().min(1),
     group: z.string(),
     formSchema: z.record(z.string(), z.unknown()).optional(),
-    exportName: z.string().optional(),
+    exportName: z.string().optional().default("default"),
+    order: z.number().int().optional().default(1000),
     sandbox: z.boolean().optional().default(false),
-    sandboxEntry: z
-      .string()
-      .regex(/^[a-zA-Z0-9_/.-]+\.js$/)
-      .max(256)
-      .optional(),
+    sandboxEntry: JsAssetPath.optional(),
   })
   .strict()
 
-const ChatComponentDef = z
+const MessageSlotDef = z
   .object({
-    id: z.string().min(1),
+    id: UiSurfaceId,
     exportName: z.string().optional().default("default"),
-    slot: z.enum(["before-tools", "after-tools", "before-reasoning", "after-reasoning"]).optional(),
+    slot: z.enum(["before-reasoning", "after-reasoning", "before-tools", "after-tools"]),
   })
   .strict()
 
@@ -78,20 +84,23 @@ const IconDef = z
   })
   .strict()
 
-const RouteDef = z
+const AppRouteDef = z
   .object({
-    path: z.string().min(1),
-    entry: z.string().min(1),
+    id: UiSurfaceId,
     label: z.string().min(1),
     icon: z.string().optional(),
+    entry: JsAssetPath.optional(),
+    exportName: z.string().optional().default("default"),
+    sandbox: z.boolean().optional().default(false),
+    sandboxEntry: JsAssetPath.optional(),
   })
   .strict()
 
 const UICommandDef = z
   .object({
-    id: z.string().min(1).max(64),
+    id: UiSurfaceId,
     label: z.string().min(1).max(64),
-    exportName: z.string().optional(),
+    exportName: z.string().optional().default("default"),
     description: z.string().max(256).optional(),
     icon: z.string().optional(),
   })
@@ -155,27 +164,23 @@ const ToolDisplayDef = z
 
 const UIContribution = z
   .object({
-    entry: z
-      .string()
-      .regex(/^[a-zA-Z0-9_/.-]+\.js$/)
-      .max(256)
-      .optional(),
+    entry: JsAssetPath.optional(),
     minUIApiVersion: z
       .string()
       .regex(/^\d+\.\d+\.\d+$/)
       .optional(),
     toolRenderers: z.array(ToolRendererDef).optional(),
     partRenderers: z.array(PartRendererDef).optional(),
-    workspacePanels: z.array(PanelDef).optional(),
-    globalPanels: z.array(PanelDef).optional(),
+    workbenchPanels: z.array(WorkbenchPanelDef).optional(),
+    appPanels: z.array(PanelDef).optional(),
     settings: z.array(SettingsDef).optional(),
-    chatComponents: z.array(ChatComponentDef).optional(),
+    messageSlots: z.array(MessageSlotDef).optional(),
     themes: z.array(ThemeDef).optional(),
     icons: z.array(IconDef).optional(),
-    routes: z.array(RouteDef).optional(),
+    appRoutes: z.array(AppRouteDef).optional(),
     commands: z.array(UICommandDef).optional(),
   })
-  .partial()
+  .strict()
   .optional()
 
 const PluginPermissionsSchema = z
@@ -225,12 +230,14 @@ const PluginPermissionsSchema = z
       .object({
         toolRenderers: z.boolean().default(false),
         partRenderers: z.boolean().default(false),
-        workspacePanels: z.boolean().default(false),
-        globalPanels: z.boolean().default(false),
+        workbenchPanels: z.boolean().default(false),
+        appPanels: z.boolean().default(false),
         settings: z.boolean().default(false),
+        messageSlots: z.boolean().default(false),
         themes: z.boolean().default(false),
         icons: z.boolean().default(false),
-        routes: z.boolean().default(false),
+        appRoutes: z.boolean().default(false),
+        commands: z.boolean().default(false),
         trustedImport: z.boolean().default(false),
         sandboxIframe: z.boolean().default(false),
       })

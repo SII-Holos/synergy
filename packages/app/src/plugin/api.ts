@@ -13,8 +13,8 @@ export interface PluginContribution {
   name: string
   version: string
   trustTier: "declarative" | "trusted-import" | "sandbox"
-  ui: PluginUIContributions
-  permissions: PluginPermissions
+  ui: PluginUIContributions | null
+  permissions: PluginPermissions | null
 }
 
 /**

@@ -23,8 +23,8 @@ import {
   DEFAULT_PROMPT,
   isPromptEqual,
   Prompt,
+  sanitizePrompt,
   usePrompt,
-  ImageAttachmentPart,
   UploadedAttachmentPart,
   NoteAttachmentPart,
   SessionAttachmentPart,
@@ -72,6 +72,15 @@ import { usePromptEditor } from "@/components/prompt-input/editor-hook"
 import { inlineLength, inlineText } from "@/components/prompt-input/content"
 import { getCursorPosition, setCursorPosition } from "@/components/prompt-input/editor-dom"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
+
+function sanitizePromptHistory(value: unknown) {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return value
+  const entries = (value as { entries?: unknown }).entries
+  return {
+    ...value,
+    entries: Array.isArray(entries) ? entries.map(sanitizePrompt) : [],
+  }
+}
 
 export const PromptInput: Component<PromptInputProps> = (props) => {
   const sdk = useSDK()
@@ -563,9 +572,6 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       setStore("switchingProfile", false)
     }
   }
-  const imageAttachments = createMemo(
-    () => prompt.current().filter((part) => part.type === "image") as ImageAttachmentPart[],
-  )
   const uploadedAttachments = createMemo(
     () => prompt.current().filter((part) => part.type === "attachment") as UploadedAttachmentPart[],
   )
@@ -576,11 +582,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     () => prompt.current().filter((part) => part.type === "session") as SessionAttachmentPart[],
   )
   const hasAttachments = createMemo(
-    () =>
-      imageAttachments().length > 0 ||
-      uploadedAttachments().length > 0 ||
-      noteAttachments().length > 0 ||
-      sessionAttachments().length > 0,
+    () => uploadedAttachments().length > 0 || noteAttachments().length > 0 || sessionAttachments().length > 0,
   )
 
   const [store, setStore] = createStore<PromptInputStore>({
@@ -596,7 +598,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
 
   const MAX_HISTORY = 100
   const [history, setHistory] = persisted(
-    Persist.global("prompt-history", ["prompt-history.v1"]),
+    { ...Persist.global("prompt-history", ["prompt-history.v1"]), migrate: sanitizePromptHistory },
     createStore<{
       entries: Prompt[]
     }>({
@@ -604,7 +606,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     }),
   )
   const [shellHistory, setShellHistory] = persisted(
-    Persist.global("prompt-history-shell", ["prompt-history-shell.v1"]),
+    { ...Persist.global("prompt-history-shell", ["prompt-history-shell.v1"]), migrate: sanitizePromptHistory },
     createStore<{
       entries: Prompt[]
     }>({
@@ -613,9 +615,8 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   )
 
   const clonePromptParts = (prompt: Prompt): Prompt =>
-    prompt.map((part) => {
+    sanitizePrompt(prompt).map((part) => {
       if (part.type === "text") return { ...part }
-      if (part.type === "image") return { ...part }
       if (part.type === "attachment") return { ...part }
       if (part.type === "note") return { ...part }
       if (part.type === "session") return { ...part }
@@ -784,7 +785,6 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
 
   const { addPart, handleInput } = usePromptEditor({
     editor: () => editorRef,
-    imageAttachments,
     uploadedAttachments,
     noteAttachments,
     sessionAttachments,
@@ -795,7 +795,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     queueScroll,
   })
 
-  const { addAttachment, removeAttachment, handlePaste, handleDragOver, handleDragLeave, handleDrop } =
+  const { addAttachments, removeAttachment, handlePaste, handleDragOver, handleDragLeave, handleDrop } =
     usePromptAttachments({
       editor: () => editorRef,
       isFocused,
@@ -868,7 +868,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   const addToHistory = (prompt: Prompt, mode: "normal" | "shell") => {
     const text = inlineText(prompt).trim()
     const hasAttachment = prompt.some(
-      (part) => part.type === "image" || part.type === "attachment" || part.type === "note" || part.type === "session",
+      (part) => part.type === "attachment" || part.type === "note" || part.type === "session",
     )
     if (!text && !hasAttachment) return
 
@@ -1063,7 +1063,6 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
 
   const handleSubmit = usePromptSubmit({
     props,
-    imageAttachments,
     uploadedAttachments,
     noteAttachments,
     sessionAttachments,
@@ -1129,7 +1128,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
           <div class="absolute inset-0 z-10 flex items-center justify-center bg-surface-raised-stronger-non-alpha/90 pointer-events-none">
             <div class="flex flex-col items-center gap-2 text-text-weak">
               <Icon name="paperclip" class="size-8" />
-              <span class="text-14-regular">Drop files, notes, or sessions here</span>
+              <span class="text-14-regular">Drop supported files, notes, or sessions here</span>
             </div>
           </div>
         </Show>
@@ -1195,10 +1194,10 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
         </Show>
         <Show when={hasAttachments()}>
           <PromptAttachments
-            images={imageAttachments}
             uploads={uploadedAttachments}
             notes={noteAttachments}
             sessions={sessionAttachments}
+            serverUrl={sdk.url}
             removeAttachment={removeAttachment}
           />
         </Show>
@@ -1336,12 +1335,13 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
             <input
               ref={fileInputRef}
               type="file"
+              multiple
               accept={FILE_INPUT_ACCEPT}
               class="hidden"
               onChange={(e) => {
-                const file = e.currentTarget.files?.[0]
-                if (file) addAttachment(file)
+                const files = e.currentTarget.files ? Array.from(e.currentTarget.files) : []
                 e.currentTarget.value = ""
+                if (files.length > 0) void addAttachments(files)
               }}
             />
             <Show when={!sdk.connected()}>

@@ -9,6 +9,8 @@ describe("Holos agent actions", () => {
     expect(agentActions).toContain("Choose how this agent should appear in Holos")
     expect(agentActions).toContain("avatarUrl")
     expect(agentActions).toContain("globalSDK.client.holos.login")
+    expect(agentActions).toContain("clientSurface: platform.platform")
+    expect(agentActions).toContain("platform.openLink(authUrl)")
     expect(agentActions).not.toContain('name="sparkles"')
     expect(agentActions).not.toContain('name="shield-check"')
     expect(agentActions).not.toContain("not stored in local Synergy settings")

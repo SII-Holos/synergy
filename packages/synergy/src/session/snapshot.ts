@@ -11,6 +11,49 @@ import { SnapshotSchema } from "./snapshot-schema"
 export namespace Snapshot {
   const log = Log.create({ service: "snapshot" })
   const SNAPSHOT_TIMEOUT_MS = 10_000
+  const SNAPSHOT_MAX_FILE_BYTES = 2 * 1024 * 1024
+  const EXCLUDED_DIRS = new Set([
+    ".git",
+    ".synergy",
+    "node_modules",
+    "dist",
+    "build",
+    "target",
+    ".next",
+    ".nuxt",
+    ".cache",
+    "coverage",
+  ])
+  const EXCLUDED_EXTENSIONS = new Set([
+    ".zip",
+    ".7z",
+    ".rar",
+    ".tar",
+    ".gz",
+    ".tgz",
+    ".bz2",
+    ".xz",
+    ".db",
+    ".sqlite",
+    ".sqlite3",
+    ".pdf",
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".gif",
+    ".webp",
+    ".mp3",
+    ".mp4",
+    ".mov",
+    ".avi",
+    ".mkv",
+    ".bin",
+    ".exe",
+    ".dll",
+    ".dylib",
+    ".so",
+    ".lock",
+  ])
 
   function spawnSignal(timeoutMs: number, parentSignal?: AbortSignal): { signal: AbortSignal; cleanup: () => void } {
     const controller = new AbortController()
@@ -90,14 +133,9 @@ export namespace Snapshot {
       )
       log.info("initialized")
     }
-    const addResult = await gitSpawn(
-      ["git", "--git-dir", git, "--work-tree", ScopeContext.current.directory, "add", "."],
-      ScopeContext.current.directory,
-      undefined,
-      signal,
-    )
-    if (addResult.exitCode !== 0) {
-      log.warn("track add failed", { exitCode: addResult.exitCode })
+    const addResult = await refreshIndex(sessionID, signal)
+    if (!addResult) {
+      log.warn("track add failed")
       return undefined
     }
     const writeResult = await gitSpawn(
@@ -128,14 +166,9 @@ export namespace Snapshot {
   ): Promise<Patch> {
     const git = gitdir(sessionID)
     if (!opts?.indexFresh) {
-      const addResult = await gitSpawn(
-        ["git", "--git-dir", git, "--work-tree", ScopeContext.current.directory, "add", "."],
-        ScopeContext.current.directory,
-        undefined,
-        opts?.signal,
-      )
-      if (addResult.exitCode !== 0) {
-        log.warn("patch add failed", { hash, exitCode: addResult.exitCode })
+      const addResult = await refreshIndex(sessionID, opts?.signal)
+      if (!addResult) {
+        log.warn("patch add failed", { hash })
         return { hash, files: [] }
       }
     }
@@ -173,7 +206,7 @@ export namespace Snapshot {
         .split("\n")
         .map((x) => x.trim())
         .filter(Boolean)
-        .map((x) => path.join(ScopeContext.current.directory, x)),
+        .map((x) => absoluteWorktreePath(x)),
     }
   }
 
@@ -260,11 +293,7 @@ export namespace Snapshot {
 
   export async function diff(hash: string, sessionID: string, opts?: { indexFresh?: boolean }) {
     const git = gitdir(sessionID)
-    if (!opts?.indexFresh)
-      await $`git --git-dir ${git} --work-tree ${ScopeContext.current.directory} add .`
-        .quiet()
-        .cwd(ScopeContext.current.directory)
-        .nothrow()
+    if (!opts?.indexFresh) await refreshIndex(sessionID)
     const result =
       await $`git -c core.autocrlf=false --git-dir ${git} --work-tree ${ScopeContext.current.directory} diff --no-ext-diff ${hash} -- .`
         .quiet()
@@ -286,7 +315,7 @@ export namespace Snapshot {
 
   export const FileDiff = SnapshotSchema.FileDiff
   export type FileDiff = SnapshotSchema.FileDiff
-  export async function diffFull(from: string, to: string, sessionID: string): Promise<FileDiff[]> {
+  export async function diffSummary(from: string, to: string, sessionID: string): Promise<FileDiff[]> {
     const git = gitdir(sessionID)
     const result: FileDiff[] = []
     for await (const line of $`git -c core.autocrlf=false --git-dir ${git} --work-tree ${ScopeContext.current.directory} diff --no-ext-diff --no-renames --numstat ${from} ${to} -- .`
@@ -297,29 +326,90 @@ export namespace Snapshot {
       if (!line) continue
       const [additions, deletions, file] = line.split("\t")
       const isBinaryFile = additions === "-" && deletions === "-"
-      const before = isBinaryFile
-        ? ""
-        : await $`git -c core.autocrlf=false --git-dir ${git} --work-tree ${ScopeContext.current.directory} show ${from}:${file}`
-            .quiet()
-            .nothrow()
-            .text()
-      const after = isBinaryFile
-        ? ""
-        : await $`git -c core.autocrlf=false --git-dir ${git} --work-tree ${ScopeContext.current.directory} show ${to}:${file}`
-            .quiet()
-            .nothrow()
-            .text()
       const added = isBinaryFile ? 0 : parseInt(additions)
       const deleted = isBinaryFile ? 0 : parseInt(deletions)
-      result.push({
-        file,
-        before,
-        after,
-        additions: Number.isFinite(added) ? added : 0,
-        deletions: Number.isFinite(deleted) ? deleted : 0,
-      })
+      const patch = isBinaryFile
+        ? ""
+        : await $`git -c core.autocrlf=false --git-dir ${git} --work-tree ${ScopeContext.current.directory} diff --no-ext-diff --no-renames ${from} ${to} -- ${file}`
+            .quiet()
+            .cwd(ScopeContext.current.directory)
+            .nothrow()
+            .text()
+      result.push(
+        SnapshotSchema.fromPatch({
+          file,
+          additions: Number.isFinite(added) ? added : 0,
+          deletions: Number.isFinite(deleted) ? deleted : 0,
+          binary: isBinaryFile,
+          patch,
+          beforeBytes: await objectSize(git, from, file),
+          afterBytes: await objectSize(git, to, file),
+        }),
+      )
     }
     return result
+  }
+
+  async function refreshIndex(sessionID: string, signal?: AbortSignal): Promise<boolean> {
+    const git = gitdir(sessionID)
+    const cwd = ScopeContext.current.directory
+    const rm = await gitSpawn(
+      ["git", "--git-dir", git, "--work-tree", cwd, "rm", "-r", "--cached", "--ignore-unmatch", "-f", "."],
+      cwd,
+      undefined,
+      signal,
+    )
+    if (rm.exitCode !== 0) return false
+
+    const files = await includedFiles(cwd)
+    if (files.length === 0) return true
+
+    const pathspec = path.join(git, "synergy-pathspec")
+    await fs.writeFile(pathspec, files.join("\0") + "\0")
+    try {
+      const add = await gitSpawn(
+        ["git", "--git-dir", git, "--work-tree", cwd, "add", "--pathspec-from-file", pathspec, "--pathspec-file-nul"],
+        cwd,
+        undefined,
+        signal,
+      )
+      return add.exitCode === 0
+    } finally {
+      await fs.unlink(pathspec).catch(() => undefined)
+    }
+  }
+
+  async function includedFiles(cwd: string): Promise<string[]> {
+    const text = await $`git ls-files -co --exclude-standard -z`.cwd(cwd).quiet().nothrow().text()
+    const files: string[] = []
+    for (const raw of text.split("\0")) {
+      const rel = raw.trim()
+      if (!rel || excludePath(rel)) continue
+      const absolute = path.join(cwd, rel)
+      const stat = await fs.lstat(absolute).catch(() => undefined)
+      if (!stat?.isFile() && !stat?.isSymbolicLink()) continue
+      if (stat.isFile() && stat.size > SNAPSHOT_MAX_FILE_BYTES) continue
+      files.push(rel.replaceAll("\\", "/"))
+    }
+    return files
+  }
+
+  function excludePath(rel: string): boolean {
+    const normalized = rel.replaceAll("\\", "/")
+    const segments = normalized.split("/")
+    if (segments.some((segment) => EXCLUDED_DIRS.has(segment))) return true
+    return EXCLUDED_EXTENSIONS.has(path.extname(normalized).toLowerCase())
+  }
+
+  function absoluteWorktreePath(rel: string): string {
+    return `${ScopeContext.current.directory}/${rel.replaceAll("\\", "/")}`
+  }
+
+  async function objectSize(git: string, tree: string, file: string): Promise<number | undefined> {
+    const result = await $`git --git-dir ${git} cat-file -s ${tree}:${file}`.quiet().nothrow()
+    if (result.exitCode !== 0) return undefined
+    const parsed = Number.parseInt(result.text().trim(), 10)
+    return Number.isFinite(parsed) ? parsed : undefined
   }
 
   function gitdir(sessionID: string) {

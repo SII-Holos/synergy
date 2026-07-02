@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import type { ConfigDomainSummary } from "@ericsanchezok/synergy-sdk/client"
 import { buildFieldDomainMap, groupPatchByDomain, strategyForPatch } from "../domain-routing"
+import { MODEL_ROLES } from "../types"
 
 const domains: ConfigDomainSummary[] = [
   domain("general", ["snapshot", "theme", "username"]),
@@ -27,6 +28,13 @@ describe("settings save routing", () => {
 
   test("throws when a patch field has no save strategy", () => {
     expect(() => strategyForPatch({ unknownField: true })).toThrow("does not define a save strategy")
+  })
+
+  test("routes model role patches through explicit save", () => {
+    for (const role of MODEL_ROLES) {
+      expect(strategyForPatch({ [role.key]: "openai/gpt-5.5" })).toEqual(["explicit"])
+    }
+    expect(strategyForPatch({ model: "openai/gpt-5.5", theme: "dark" })).toEqual(["explicit", "background"])
   })
 
   test("does not route product update mode into server config", () => {

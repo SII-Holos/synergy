@@ -3,12 +3,18 @@ import { render } from "solid-js/web"
 import { AppBaseProviders, AppInterface } from "@/app"
 import { Platform, PlatformProvider } from "@/context/platform"
 import { BRAND_ASSETS, brandAssetPath } from "@/utils/brand-assets"
+import { configureClipboard } from "@ericsanchezok/synergy-ui/clipboard"
+import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import pkg from "../package.json"
 
 declare global {
   interface Window {
-    synergyDesktop?: Pick<Platform, "platform" | "browserNative" | "desktopUpdate"> & {
+    synergyDesktop?: Pick<Platform, "platform" | "browserNative" | "desktopUpdate" | "clipboard"> & {
       update?: Platform["desktopUpdate"]
+      shell?: {
+        openExternal(url: string): Promise<void>
+      }
+      window?: Platform["desktopWindow"]
     }
   }
 }
@@ -25,7 +31,13 @@ const platform: Platform = {
   version: pkg.version,
   browserNative: window.synergyDesktop?.browserNative,
   desktopUpdate: window.synergyDesktop?.update ?? window.synergyDesktop?.desktopUpdate,
+  desktopWindow: window.synergyDesktop?.window,
+  clipboard: window.synergyDesktop?.clipboard,
   openLink(url: string) {
+    if (window.synergyDesktop?.shell) {
+      void window.synergyDesktop.shell.openExternal(url)
+      return
+    }
     window.open(url, "_blank")
   },
   restart: async () => {
@@ -62,6 +74,17 @@ const platform: Platform = {
       .catch(() => undefined)
   },
 }
+
+configureClipboard({
+  writer: platform.clipboard?.writeText,
+  onFailure: (failure) => {
+    showToast({
+      type: "error",
+      title: "Copy failed",
+      description: failure.description ?? "Unable to copy to the clipboard.",
+    })
+  },
+})
 
 render(
   () => (

@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from "electron"
 import type { BrowserNativeAttachRequest, BrowserNativeBounds, BrowserNativeViewEvent } from "./browser-native-view.js"
 import type { DesktopUpdateEvent, DesktopUpdateMode } from "./updater.js"
+import type { DesktopWindowState } from "./window-chrome.js"
 
 const browserNative = {
   attachView(input: BrowserNativeAttachRequest) {
@@ -66,10 +67,40 @@ const desktopShell = {
   },
 }
 
+const desktopClipboard = {
+  writeText(text: string) {
+    return ipcRenderer.invoke("desktop.clipboard.writeText", text) as Promise<boolean>
+  },
+}
+
+const desktopWindow = {
+  chrome: process.platform === "darwin" ? "native" : "custom",
+  minimize() {
+    return ipcRenderer.invoke("desktop.window.minimize") as Promise<void>
+  },
+  toggleMaximize() {
+    return ipcRenderer.invoke("desktop.window.toggleMaximize") as Promise<DesktopWindowState | null>
+  },
+  close() {
+    return ipcRenderer.invoke("desktop.window.close") as Promise<void>
+  },
+  state() {
+    return ipcRenderer.invoke("desktop.window.state") as Promise<DesktopWindowState | null>
+  },
+  onEvent(listener: (event: { type: "state"; state: DesktopWindowState }) => void) {
+    const wrapped = (_event: IpcRendererEvent, payload: { type: "state"; state: DesktopWindowState }) =>
+      listener(payload)
+    ipcRenderer.on("desktop-window:event", wrapped)
+    return () => ipcRenderer.off("desktop-window:event", wrapped)
+  },
+}
+
 contextBridge.exposeInMainWorld("synergyDesktop", {
   platform: "desktop",
   server,
   update,
   shell: desktopShell,
+  clipboard: desktopClipboard,
+  window: desktopWindow,
   browserNative,
 })

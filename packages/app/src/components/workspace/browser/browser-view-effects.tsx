@@ -1,11 +1,11 @@
 import { createEffect } from "solid-js"
 import type { Message, ToolPart } from "@ericsanchezok/synergy-sdk"
 import { useData } from "@ericsanchezok/synergy-ui/context"
-import { useWorkspace } from "@/context/workspace"
+import { useWorkbenchPanels } from "@/context/workbench-panels"
 import { applyBrowserViewCommand, shouldAutoShowBrowserTool } from "./browser-view-command"
 
 export function BrowserViewEffects(props: { timeline: () => Message[] }) {
-  const workspace = useWorkspace()
+  const workspace = useWorkbenchPanels()
   const data = useData()
   const handled = new Set<string>()
 

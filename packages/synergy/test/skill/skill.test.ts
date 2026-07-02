@@ -8,6 +8,10 @@ import fs from "fs/promises"
 
 const BUILTIN_SKILL_COUNT = BUILTIN_SKILLS.filter((s) => !s.condition).length
 
+function normalizedLocation(location: string) {
+  return location.replace(/\\/g, "/")
+}
+
 async function createGlobalSkill(homeDir: string) {
   const skillDir = path.join(homeDir, ".claude", "skills", "global-test-skill")
   await fs.mkdir(skillDir, { recursive: true })
@@ -62,7 +66,7 @@ Instructions here.
         const testSkill = skills.find((s) => s.name === "test-skill")
         expect(testSkill).toBeDefined()
         expect(testSkill!.description).toBe("A test skill for verification.")
-        expect(testSkill!.location).toContain("skill/test-skill/SKILL.md")
+        expect(normalizedLocation(testSkill!.location)).toContain("skill/test-skill/SKILL.md")
         // Verify builtin skills are also present
         const builtinSkill = skills.find((s) => s.builtin === true)
         expect(builtinSkill).toBeDefined()
@@ -138,7 +142,7 @@ Instructions here.
         const testSkill = skills.find((s) => s.name === "plural-skill")
         expect(testSkill).toBeDefined()
         expect(testSkill!.description).toBe("A test skill in the plural skills directory.")
-        expect(testSkill!.location).toContain("skills/plural-skill/SKILL.md")
+        expect(normalizedLocation(testSkill!.location)).toContain("skills/plural-skill/SKILL.md")
       },
     })
   })
@@ -235,7 +239,7 @@ description: A skill in the .claude/skills directory.
         expect(skills.length).toBe(BUILTIN_SKILL_COUNT + 1)
         const claudeSkill = skills.find((s) => s.name === "claude-skill")
         expect(claudeSkill).toBeDefined()
-        expect(claudeSkill!.location).toContain(".claude/skills/claude-skill/SKILL.md")
+        expect(normalizedLocation(claudeSkill!.location)).toContain(".claude/skills/claude-skill/SKILL.md")
       },
     })
   })
@@ -256,7 +260,7 @@ description: A skill in the .claude/skills directory.
           const globalSkill = skills.find((s) => s.name === "global-test-skill")
           expect(globalSkill).toBeDefined()
           expect(globalSkill!.description).toBe("A global skill from ~/.claude/skills for testing.")
-          expect(globalSkill!.location).toContain(".claude/skills/global-test-skill/SKILL.md")
+          expect(normalizedLocation(globalSkill!.location)).toContain(".claude/skills/global-test-skill/SKILL.md")
         },
       })
     } finally {
@@ -308,7 +312,7 @@ description: A project-local skill created after startup.
         const skills = await Skill.all()
         const lateSkill = skills.find((s) => s.name === "late-skill")
         expect(lateSkill).toBeDefined()
-        expect(lateSkill!.location).toContain(".synergy/skill/late-skill/SKILL.md")
+        expect(normalizedLocation(lateSkill!.location)).toContain(".synergy/skill/late-skill/SKILL.md")
       },
     })
   })
@@ -345,7 +349,7 @@ description: A root project skill discovered from a nested directory.
         const skills = await Skill.all()
         const rootSkill = skills.find((s) => s.name === "root-skill")
         expect(rootSkill).toBeDefined()
-        expect(rootSkill!.location).toContain(".synergy/skill/root-skill/SKILL.md")
+        expect(normalizedLocation(rootSkill!.location)).toContain(".synergy/skill/root-skill/SKILL.md")
       },
     })
   })
@@ -440,7 +444,7 @@ description: Codex skill file.
         expect(codexSkill).toBeDefined()
         expect(codexSkill!.source).toBe("codex")
         expect(codexSkill!.scope).toBe("project")
-        expect(codexSkill!.location).toContain(".codex/skills/codex-skill/Skill.md")
+        expect(normalizedLocation(codexSkill!.location)).toContain(".codex/skills/codex-skill/Skill.md")
       },
     })
   })
