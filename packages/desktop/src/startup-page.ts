@@ -1,6 +1,6 @@
 export interface DesktopStartupPageOptions {
   chrome: "custom" | "native"
-  iconUrl?: string
+  iconDataUrl?: string
 }
 
 export interface DesktopStartupStatus {
@@ -9,8 +9,8 @@ export interface DesktopStartupStatus {
 }
 
 export function desktopStartupPage(options: DesktopStartupPageOptions): string {
-  const icon = options.iconUrl
-    ? `<img class="startup-mark__icon" src="${escapeAttribute(options.iconUrl)}" alt="" draggable="false">`
+  const icon = options.iconDataUrl
+    ? `<img class="startup-mark__icon" src="${escapeAttribute(options.iconDataUrl)}" alt="" draggable="false">`
     : `<span class="startup-mark__fallback" aria-hidden="true">S</span>`
   const customChrome =
     options.chrome === "custom"
@@ -37,7 +37,7 @@ export function desktopStartupPage(options: DesktopStartupPageOptions): string {
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data: file:; style-src 'unsafe-inline'; script-src 'unsafe-inline';">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'unsafe-inline'; script-src 'unsafe-inline';">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Starting Synergy</title>
   <style>

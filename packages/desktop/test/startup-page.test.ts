@@ -13,9 +13,12 @@ function decodeDesktopHtml(url: string): string {
 
 describe("desktop startup page", () => {
   test("renders a custom desktop shell before the app surface is ready", () => {
-    const html = decodeDesktopHtml(desktopStartupPage({ chrome: "custom", iconUrl: "file:///app/icon.png" }))
+    const html = decodeDesktopHtml(
+      desktopStartupPage({ chrome: "custom", iconDataUrl: "data:image/png;base64,c3luZXJneQ==" }),
+    )
 
     expect(html).toContain("<title>Starting Synergy</title>")
+    expect(html).toContain("img-src data:;")
     expect(html).toContain('class="startup-chrome"')
     expect(html).toContain('class="startup-center"')
     expect(html).toContain('class="startup-mark"')
@@ -23,7 +26,8 @@ describe("desktop startup page", () => {
     expect(html).toContain('data-window-action="maximize"')
     expect(html).toContain('data-window-action="close"')
     expect(html).toContain("Opening Synergy")
-    expect(html).toContain("file:///app/icon.png")
+    expect(html).toContain("data:image/png;base64,c3luZXJneQ==")
+    expect(html).not.toContain("file:///")
     expect(html).not.toContain('class="startup-sidebar"')
     expect(html).not.toContain('class="startup-composer"')
     expect(html).not.toContain('class="startup-topbar"')

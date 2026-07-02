@@ -9,8 +9,9 @@ import {
   Tray,
   type BrowserWindowConstructorOptions,
 } from "electron"
+import { readFile } from "node:fs/promises"
 import path from "node:path"
-import { fileURLToPath, pathToFileURL } from "node:url"
+import { fileURLToPath } from "node:url"
 import { BrowserNativeViewManager } from "./browser-native-view.js"
 import { BrowserWebRTCHost } from "./browser-webrtc-host.js"
 import { desktopErrorPage } from "./error-page.js"
@@ -40,6 +41,7 @@ import {
   desktopDevDockIconPath,
   desktopIconPath,
   desktopShouldHideToTray,
+  desktopStartupIconPath,
   desktopUsesSystemTray,
   desktopWindowChromeOptions,
   desktopWindowState,
@@ -80,6 +82,19 @@ function runtimeLog(message: string, data?: Record<string, unknown>) {
   console.log(`[desktop-runtime] ${message}${data ? ` ${JSON.stringify(data)}` : ""}`)
 }
 
+async function loadStartupIconDataURL(iconPath: string): Promise<string | undefined> {
+  try {
+    const data = await readFile(iconPath)
+    return `data:image/png;base64,${data.toString("base64")}`
+  } catch (error) {
+    runtimeLog("startupIconUnavailable", {
+      iconPath,
+      error: error instanceof Error ? error.message : String(error),
+    })
+    return undefined
+  }
+}
+
 runtimeLog("mainLoaded", { argv: process.argv })
 
 async function createWindow() {
@@ -110,6 +125,14 @@ async function createWindow() {
     isPackaged: app.isPackaged,
     resourcesPath: process.resourcesPath,
   })
+  const startupIconDataUrl = await loadStartupIconDataURL(
+    desktopStartupIconPath({
+      platform: process.platform,
+      dirname,
+      isPackaged: app.isPackaged,
+      resourcesPath: process.resourcesPath,
+    }),
+  )
   const windowOptions: BrowserWindowConstructorOptions = {
     show: false,
     width: windowState.width,
@@ -161,7 +184,7 @@ async function createWindow() {
   await mainWindow.loadURL(
     desktopStartupPage({
       chrome: process.platform === "darwin" ? "native" : "custom",
-      iconUrl: iconPath ? pathToFileURL(iconPath).toString() : undefined,
+      iconDataUrl: startupIconDataUrl,
     }),
   )
   await setStartupStatus({

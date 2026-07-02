@@ -4,6 +4,7 @@ import {
   desktopDevDockIconPath,
   desktopDevIconPath,
   desktopShouldHideToTray,
+  desktopStartupIconPath,
   desktopUsesSystemTray,
   desktopWindowChromeOptions,
   desktopWindowState,
@@ -106,6 +107,33 @@ describe("desktop window chrome", () => {
         resourcesPath: "/resources",
       }),
     ).toBeUndefined()
+  })
+
+  test("uses PNG resources for the startup splash icon", () => {
+    expect(
+      desktopStartupIconPath({
+        platform: "win32",
+        dirname: "C:\\app\\dist",
+        isPackaged: false,
+        resourcesPath: "C:\\app\\resources",
+      }),
+    ).toBe("C:\\app\\build\\icon.png")
+    expect(
+      desktopStartupIconPath({
+        platform: "win32",
+        dirname: "C:\\app\\dist",
+        isPackaged: true,
+        resourcesPath: "C:\\app\\resources",
+      }),
+    ).toBe("C:\\app\\resources\\icons\\icon.png")
+    expect(
+      desktopStartupIconPath({
+        platform: "linux",
+        dirname: "/app/dist",
+        isPackaged: false,
+        resourcesPath: "/resources",
+      }),
+    ).toBe("/app/build/icon.png")
   })
 
   test("keeps Windows and Linux desktop sessions reopenable from the tray", () => {
