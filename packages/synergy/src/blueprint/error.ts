@@ -16,4 +16,14 @@ export namespace LoopError {
       to: z.string(),
     }),
   )
+
+  export const AlreadyActive = NamedError.create(
+    "BlueprintLoopAlreadyActive",
+    z.object({
+      noteID: z.string(),
+      loopID: z.string(),
+      sessionID: z.string(),
+      status: z.string(),
+    }),
+  )
 }

@@ -17,8 +17,20 @@ function asString(value: unknown): string | undefined {
   return typeof value === "string" && value.length > 0 ? value : undefined
 }
 
+function asNumber(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined
+}
+
 function isLiveLoopStatus(status: BlueprintLoopInfo["status"]) {
   return status === "running" || status === "waiting" || status === "auditing"
+}
+
+function isActiveLoopStatus(status: unknown): status is BlueprintLoopInfo["status"] {
+  return status === "armed" || status === "running" || status === "waiting" || status === "auditing"
+}
+
+function loopUpdatedAt(loop: BlueprintLoopInfo) {
+  return asNumber(asRecord(loop.time)?.updated) ?? 0
 }
 
 async function clearNoteActiveLoop(loop: BlueprintLoopInfo) {
@@ -35,11 +47,11 @@ async function clearNoteActiveLoop(loop: BlueprintLoopInfo) {
   return true
 }
 
-async function clearSessionLoop(loop: BlueprintLoopInfo) {
-  if (!loop.sessionID) return false
+async function clearSessionLoop(loop: BlueprintLoopInfo, sessionID = loop.sessionID) {
+  if (!sessionID) return false
 
   const scope = Identifier.asScopeID(loop.scopeID)
-  const sessionPath = StoragePath.sessionInfo(scope, Identifier.asSessionID(loop.sessionID))
+  const sessionPath = StoragePath.sessionInfo(scope, Identifier.asSessionID(sessionID))
   const session = await Storage.read<Record<string, unknown>>(sessionPath).catch(() => undefined)
   const blueprint = asRecord(session?.blueprint)
   if (!session || blueprint?.loopID !== loop.id) return false
@@ -53,6 +65,38 @@ async function clearSessionLoop(loop: BlueprintLoopInfo) {
   }
   await Storage.write(sessionPath, session)
   return true
+}
+
+async function setNoteActiveLoop(scopeID: string, noteID: string, loopID: string) {
+  const scope = Identifier.asScopeID(scopeID)
+  const notePath = StoragePath.note(scope, noteID)
+  const note = await Storage.read<Record<string, unknown>>(notePath).catch(() => undefined)
+  if (!note) return false
+
+  const blueprint = asRecord(note.blueprint) ?? {}
+  if (note.kind !== "blueprint" && !note.blueprint) return false
+
+  if (blueprint.activeLoopID === loopID) return false
+  blueprint.activeLoopID = loopID
+  note.blueprint = blueprint
+  await Storage.write(notePath, note)
+  await Storage.remove(StoragePath.note(scope, "_index")).catch(() => undefined)
+  return true
+}
+
+async function cancelDuplicateActiveLoop(loop: BlueprintLoopInfo) {
+  const scope = Identifier.asScopeID(loop.scopeID)
+  const loopPath = StoragePath.blueprintLoop(scope, loop.id)
+  const now = Date.now()
+  loop.status = "cancelled"
+  loop.time.updated = now
+  loop.time.completed ??= now
+  await Storage.write(loopPath, loop)
+
+  let clearedSessions = 0
+  if (await clearSessionLoop(loop)) clearedSessions++
+  if (loop.auditSessionID && (await clearSessionLoop(loop, loop.auditSessionID))) clearedSessions++
+  return clearedSessions
 }
 
 export const migrations: Migration[] = [
@@ -160,6 +204,75 @@ export const migrations: Migration[] = [
       }
 
       log.info("BlueprintLoop audit agent migration complete", { totalLoops: loops.length, changed })
+    },
+  },
+  {
+    id: "20260703-blueprint-single-active-loop",
+    description: "Collapse duplicate active BlueprintLoops to one active run per Blueprint",
+    domain: "blueprint_loop",
+    dependsOn: ["20260628-blueprint-loop-audit-agent"],
+    async up(progress) {
+      const scopeIDs = await Storage.scan(["blueprint_loops"])
+      const loops: BlueprintLoopInfo[] = []
+
+      for (const scopeID of scopeIDs) {
+        const scope = Identifier.asScopeID(scopeID)
+        const loopIDs = await Storage.scan(StoragePath.blueprintLoopsRoot(scope))
+        for (const loopID of loopIDs) {
+          try {
+            loops.push(await Storage.read<BlueprintLoopInfo>(StoragePath.blueprintLoop(scope, loopID)))
+          } catch (err) {
+            log.warn("failed to read BlueprintLoop for single-active migration", {
+              scopeID,
+              loopID,
+              error: String(err),
+            })
+          }
+        }
+      }
+
+      const activeByBlueprint = new Map<string, BlueprintLoopInfo[]>()
+      for (const loop of loops) {
+        if (!isActiveLoopStatus(loop.status)) continue
+        const key = `${loop.scopeID}\0${loop.noteID}`
+        activeByBlueprint.set(key, [...(activeByBlueprint.get(key) ?? []), loop])
+      }
+
+      let done = 0
+      let cancelled = 0
+      let clearedSessions = 0
+      let normalizedNotes = 0
+      const groups = [...activeByBlueprint.values()].filter((group) => group.length > 1)
+      for (const group of groups) {
+        const first = group[0]
+        const scope = Identifier.asScopeID(first.scopeID)
+        const note = await Storage.read<Record<string, unknown>>(StoragePath.note(scope, first.noteID)).catch(
+          () => undefined,
+        )
+        const activeLoopID = asString(asRecord(note?.blueprint)?.activeLoopID)
+        const keep =
+          group.find((loop) => loop.id === activeLoopID) ??
+          [...group].sort((a, b) => loopUpdatedAt(b) - loopUpdatedAt(a))[0]
+
+        if (await setNoteActiveLoop(keep.scopeID, keep.noteID, keep.id)) normalizedNotes++
+
+        for (const loop of group) {
+          if (loop.id === keep.id) continue
+          clearedSessions += await cancelDuplicateActiveLoop(loop)
+          cancelled++
+        }
+
+        done++
+        progress(done, groups.length)
+      }
+
+      log.info("BlueprintLoop single-active migration complete", {
+        activeGroups: activeByBlueprint.size,
+        duplicateGroups: groups.length,
+        cancelled,
+        clearedSessions,
+        normalizedNotes,
+      })
     },
   },
 ]

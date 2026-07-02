@@ -367,6 +367,7 @@ export function BubbleMenuContent(props: { editor: Editor }) {
   return (
     <Show
       when={math()}
+      keyed
       fallback={
         <div class="flex items-center gap-0.5 rounded-lg border border-border-base/50 bg-surface-raised-stronger-non-alpha px-1 py-0.5 shadow-lg">
           <TextFormatMenu editor={props.editor} />
@@ -377,7 +378,7 @@ export function BubbleMenuContent(props: { editor: Editor }) {
         </div>
       }
     >
-      {(selected) => <FormulaMenu editor={props.editor} selected={selected()} onSync={syncMathSelection} />}
+      {(selected) => <FormulaMenu editor={props.editor} selected={selected} onSync={syncMathSelection} />}
     </Show>
   )
 }

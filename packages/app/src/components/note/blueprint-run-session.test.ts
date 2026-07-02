@@ -3,7 +3,6 @@ import {
   activeBlueprintLoop,
   blueprintExecutionControlProfile,
   blueprintScopeIDForDirectory,
-  blueprintSessionRouteDirectory,
   blueprintSessionWorkspaceSelection,
   canCreateBlueprintWorktree,
   canRunBlueprintInCurrentSession,
@@ -37,21 +36,6 @@ describe("Blueprint run session helpers", () => {
     expect(blueprintExecutionControlProfile("full_access")).toBe("full_access")
   })
 
-  test("keeps navigation on the canonical session scope", () => {
-    expect(
-      blueprintSessionRouteDirectory(
-        {
-          scope: {
-            id: "scope-main",
-            worktree: "C:/repo/main",
-            directory: "C:/repo/main/.synergy/worktrees/feature-a",
-          },
-        },
-        "C:/fallback",
-      ),
-    ).toBe("C:/repo/main")
-  })
-
   test("matches current sessions by scope instead of raw route directory", () => {
     expect(blueprintScopeIDForDirectory("C:/repo/main/.synergy/worktrees/feature-a", scopes)).toBe("scope-main")
     expect(
@@ -79,8 +63,14 @@ describe("Blueprint run session helpers", () => {
   })
 
   test("detects active BlueprintLoop state", () => {
-    expect(activeBlueprintLoop({ blueprint: { activeLoopID: "loop-armed" } }, [])?.id).toBe("loop-armed")
+    expect(activeBlueprintLoop({ blueprint: { activeLoopID: "loop-armed" } }, [])).toBeUndefined()
     expect(activeBlueprintLoop({}, [{ id: "loop-complete", status: "completed" }])).toBeUndefined()
     expect(activeBlueprintLoop({}, [{ id: "loop-running", status: "running" }])?.id).toBe("loop-running")
+    expect(
+      activeBlueprintLoop({ blueprint: { activeLoopID: "loop-waiting" } }, [
+        { id: "loop-running", status: "running" },
+        { id: "loop-waiting", status: "waiting" },
+      ])?.id,
+    ).toBe("loop-waiting")
   })
 })

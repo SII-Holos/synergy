@@ -25,6 +25,10 @@ function isValidTransition(from: LoopStatus, to: LoopStatus): boolean {
   return TRANSITIONS[from]?.includes(to) ?? false
 }
 
+function isActiveLoopStatus(status: LoopStatus) {
+  return status === "armed" || status === "running" || status === "waiting" || status === "auditing"
+}
+
 export namespace BlueprintLoopStore {
   export async function create(input: {
     noteID: string
@@ -41,6 +45,18 @@ export namespace BlueprintLoopStore {
   }): Promise<Info> {
     const scopeID = ScopeContext.current.scope.id
     const sid = Identifier.asScopeID(scopeID)
+    const activeLoop = (await list(scopeID)).find(
+      (loop) => loop.noteID === input.noteID && isActiveLoopStatus(loop.status),
+    )
+    if (activeLoop) {
+      throw new LoopError.AlreadyActive({
+        noteID: input.noteID,
+        loopID: activeLoop.id,
+        sessionID: activeLoop.sessionID,
+        status: activeLoop.status,
+      })
+    }
+
     const now = Date.now()
     const id = Identifier.ascending("blueprint_loop")
     const loop: Info = {

@@ -411,6 +411,33 @@
   color: var(--text-diff-delete-base);
 }
 
+.note-blueprint-session-link {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.3rem;
+  border-radius: 0.45rem;
+  color: var(--text-interactive-base);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  line-height: 1;
+  padding: 0.25rem 0.35rem;
+  transition:
+    background-color var(--motion-duration-fast) var(--motion-ease-standard),
+    color var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+.note-blueprint-session-link:hover,
+.note-blueprint-session-link:focus-visible {
+  background: color-mix(in srgb, var(--surface-raised-base-hover) 76%, transparent);
+  color: var(--text-strong);
+}
+
+.note-blueprint-session-link:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--border-strong-base) 34%, transparent);
+}
+
 .note-run-menu {
   border: 1px solid var(--border-weak-base);
   border-radius: 0.75rem;

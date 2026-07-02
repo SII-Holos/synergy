@@ -1,4 +1,4 @@
-import type { Session, SessionWorkspaceSelection } from "@ericsanchezok/synergy-sdk/client"
+import type { SessionWorkspaceSelection } from "@ericsanchezok/synergy-sdk/client"
 
 export type BlueprintRunMode = "current" | "new" | "worktree"
 export type BlueprintExecutionControlProfile = "autonomous" | "full_access"
@@ -31,10 +31,6 @@ export function blueprintSessionWorkspaceSelection(mode: BlueprintRunMode): Sess
 
 export function blueprintExecutionControlProfile(configured?: string | null): BlueprintExecutionControlProfile {
   return configured === "full_access" ? "full_access" : "autonomous"
-}
-
-export function blueprintSessionRouteDirectory(session: Pick<Session, "scope">, fallback: string) {
-  return session.scope.worktree ?? session.scope.directory ?? fallback
 }
 
 export function blueprintScopeIDForDirectory(directory: string | undefined, scopes: BlueprintScopeSummary[]) {
@@ -75,13 +71,13 @@ export function isActiveBlueprintLoopStatus(status?: string | null) {
 export function activeBlueprintLoop<T extends BlueprintLoopSummary>(
   note: BlueprintRunNoteSummary,
   loops: T[],
-): T | BlueprintLoopSummary | undefined {
-  const active = loops.find((loop) => isActiveBlueprintLoopStatus(loop.status))
-  if (active) return active
+): T | undefined {
+  const active = loops.filter((loop) => isActiveBlueprintLoopStatus(loop.status))
 
   const activeLoopID = note.blueprint?.activeLoopID
-  if (!activeLoopID) return undefined
-  const referenced = loops.find((loop) => loop.id === activeLoopID)
-  if (referenced && !isActiveBlueprintLoopStatus(referenced.status)) return undefined
-  return referenced ?? { id: activeLoopID, status: "running" }
+  if (activeLoopID) {
+    const referenced = active.find((loop) => loop.id === activeLoopID)
+    if (referenced) return referenced
+  }
+  return active[0]
 }

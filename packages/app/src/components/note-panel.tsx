@@ -1,11 +1,12 @@
 import { createMemo, createResource, createSignal, For, Show, createEffect, onCleanup, onMount } from "solid-js"
-import { useNavigate, useParams } from "@solidjs/router"
+import { useParams } from "@solidjs/router"
 import type { Editor } from "@tiptap/core"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
+import { useData } from "@ericsanchezok/synergy-ui/context"
 
-import { base64Decode, base64Encode } from "@ericsanchezok/synergy-util/encode"
+import { base64Decode } from "@ericsanchezok/synergy-util/encode"
 import { createSynergyClient } from "@ericsanchezok/synergy-sdk/client"
 import { usePlatform } from "@/context/platform"
 import { useGlobalSDK } from "@/context/global-sdk"
@@ -21,7 +22,6 @@ import { relativeTime } from "@/utils/time"
 import {
   activeBlueprintLoop,
   blueprintExecutionControlProfile,
-  blueprintSessionRouteDirectory,
   blueprintSessionWorkspaceSelection,
   canCreateBlueprintWorktree,
   canRunBlueprintInCurrentSession,
@@ -867,9 +867,9 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
   const sdk = useGlobalSDK()
   const globalSync = useGlobalSync()
   const sync = useSync()
+  const data = useData()
   const platform = usePlatform()
   const params = useParams()
-  const navigate = useNavigate()
   const confirm = useConfirm()
   const directory = () => props.directory
 
@@ -956,6 +956,11 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
     const base = baseNote()
     if (!base) return null
     return getBlueprintVisualState(base, noteLoops() ?? [])
+  })
+  const activeBlueprintRun = createMemo(() => {
+    const base = baseNote()
+    if (!base) return undefined
+    return activeBlueprintLoop(base, noteLoops() ?? [])
   })
 
   function remoteConflict() {
@@ -1330,6 +1335,10 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
     }
   }
 
+  function openBlueprintSession(sessionID: string) {
+    data.navigateToSession?.(sessionID)
+  }
+
   function scopedClient(directory: string) {
     globalSync.ensureScopeState(directory)
     return createSynergyClient({
@@ -1348,7 +1357,6 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
       }
       return {
         sessionID: params.id,
-        directory: blueprintDir,
         createdSession: false,
         client: scopedClient(blueprintDir),
       }
@@ -1364,7 +1372,6 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
     if (!session?.id) throw new Error("Failed to create session")
     return {
       sessionID: session.id,
-      directory: blueprintSessionRouteDirectory(session, blueprintDir),
       createdSession: true,
       client,
     }
@@ -1408,7 +1415,6 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
       setShowRunMenu(false)
       await refetchLoops()
       await refetch()
-      navigate(`/${base64Encode(target.directory)}/session/${target.sessionID}`)
     } catch (error) {
       if (createdLoopID) {
         await sdk.client.blueprint.loop.cancel({ id: createdLoopID, directory: dir }).catch(() => undefined)
@@ -1416,6 +1422,7 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
       if (target?.createdSession) {
         await target.client.session.delete({ sessionID: target.sessionID }).catch(() => undefined)
       }
+      await Promise.all([refetchLoops(), refetch()]).catch(() => undefined)
       console.error("Failed to run blueprint", error)
       alert(requestErrorMessage(error, "Failed to run blueprint"))
     } finally {
@@ -1575,6 +1582,21 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
               <Show when={baseNote()!.blueprint?.defaultAgent}>
                 <span class="h-3 w-px bg-border-weaker-base" />
                 <span class="text-11-regular text-text-weak">{baseNote()!.blueprint!.defaultAgent}</span>
+              </Show>
+              <Show when={activeBlueprintRun()?.sessionID} keyed>
+                {(sessionID) => (
+                  <>
+                    <span class="h-3 w-px bg-border-weaker-base" />
+                    <button
+                      type="button"
+                      class="note-blueprint-session-link"
+                      onClick={() => openBlueprintSession(sessionID)}
+                    >
+                      <Icon name={getSemanticIcon("action.open")} size="small" class="size-3" />
+                      Open session
+                    </button>
+                  </>
+                )}
               </Show>
             </div>
           </div>

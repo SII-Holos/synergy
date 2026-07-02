@@ -6,6 +6,26 @@ import { migrations } from "../../src/blueprint/migration"
 import { Storage } from "../../src/storage/storage"
 import { StoragePath } from "../../src/storage/path"
 
+function blueprintLoop(input: {
+  id: string
+  noteID: string
+  sessionID: string
+  scopeID: string
+  status: "running" | "waiting" | "auditing" | "armed" | "completed" | "failed" | "cancelled"
+  updated: number
+}) {
+  return {
+    id: input.id,
+    noteID: input.noteID,
+    title: `Loop ${input.id}`,
+    sessionID: input.sessionID,
+    auditAgent: "supervisor",
+    scopeID: input.scopeID,
+    status: input.status,
+    time: { created: input.updated - 100, updated: input.updated },
+  }
+}
+
 describe("blueprint migrations", () => {
   test("migrates legacy supervisor audit fields to audit agent fields", async () => {
     await using tmp = await tmpdir({ git: true })
@@ -63,5 +83,121 @@ describe("blueprint migrations", () => {
     expect(migrated.auditAgent).toBe("security-reviewer")
     expect(migrated.auditSessionID).toBe("ses_audit")
     expect("supervisorSessionID" in migrated).toBe(false)
+  })
+
+  test("collapses duplicate active BlueprintLoops and clears cancelled session bindings", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const scope = (await Scope.fromDirectory(tmp.path)).scope
+    const scopeID = Identifier.asScopeID(scope.id)
+    const noteID = Identifier.ascending("note")
+    const keepLoopID = Identifier.ascending("blueprint_loop")
+    const cancelLoopID = Identifier.ascending("blueprint_loop")
+    const keepSessionID = Identifier.ascending("session")
+    const cancelSessionID = Identifier.ascending("session")
+    const now = Date.now()
+
+    await Storage.write(StoragePath.note(scopeID, noteID), {
+      id: noteID,
+      title: "Blueprint",
+      kind: "blueprint",
+      blueprint: { activeLoopID: keepLoopID },
+      time: { created: now, updated: now },
+    })
+    await Storage.write(
+      StoragePath.blueprintLoop(scopeID, keepLoopID),
+      blueprintLoop({
+        id: keepLoopID,
+        noteID,
+        sessionID: keepSessionID,
+        scopeID,
+        status: "running",
+        updated: now,
+      }),
+    )
+    await Storage.write(
+      StoragePath.blueprintLoop(scopeID, cancelLoopID),
+      blueprintLoop({
+        id: cancelLoopID,
+        noteID,
+        sessionID: cancelSessionID,
+        scopeID,
+        status: "waiting",
+        updated: now + 1000,
+      }),
+    )
+    await Storage.write(StoragePath.sessionInfo(scopeID, Identifier.asSessionID(cancelSessionID)), {
+      id: cancelSessionID,
+      scope: { id: scopeID, directory: scope.directory, worktree: scope.worktree },
+      blueprint: { loopID: cancelLoopID, loopRole: "execution" },
+    })
+
+    const migration = migrations.find((entry) => entry.id === "20260703-blueprint-single-active-loop")
+    expect(migration).toBeDefined()
+    await migration!.up(() => {})
+
+    const kept = await Storage.read<Record<string, unknown>>(StoragePath.blueprintLoop(scopeID, keepLoopID))
+    const cancelled = await Storage.read<Record<string, unknown>>(StoragePath.blueprintLoop(scopeID, cancelLoopID))
+    const note = await Storage.read<Record<string, unknown>>(StoragePath.note(scopeID, noteID))
+    const cancelledSession = await Storage.read<Record<string, unknown>>(
+      StoragePath.sessionInfo(scopeID, Identifier.asSessionID(cancelSessionID)),
+    )
+
+    expect(kept.status).toBe("running")
+    expect(cancelled.status).toBe("cancelled")
+    expect(cancelled.time).toMatchObject({ completed: expect.any(Number) })
+    expect((note.blueprint as { activeLoopID?: string }).activeLoopID).toBe(keepLoopID)
+    expect(cancelledSession.blueprint).toBeUndefined()
+  })
+
+  test("keeps the newest active BlueprintLoop when the note does not identify one", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const scope = (await Scope.fromDirectory(tmp.path)).scope
+    const scopeID = Identifier.asScopeID(scope.id)
+    const noteID = Identifier.ascending("note")
+    const olderLoopID = Identifier.ascending("blueprint_loop")
+    const newerLoopID = Identifier.ascending("blueprint_loop")
+    const now = Date.now()
+
+    await Storage.write(StoragePath.note(scopeID, noteID), {
+      id: noteID,
+      title: "Blueprint",
+      kind: "blueprint",
+      blueprint: {},
+      time: { created: now, updated: now },
+    })
+    await Storage.write(
+      StoragePath.blueprintLoop(scopeID, olderLoopID),
+      blueprintLoop({
+        id: olderLoopID,
+        noteID,
+        sessionID: Identifier.ascending("session"),
+        scopeID,
+        status: "running",
+        updated: now,
+      }),
+    )
+    await Storage.write(
+      StoragePath.blueprintLoop(scopeID, newerLoopID),
+      blueprintLoop({
+        id: newerLoopID,
+        noteID,
+        sessionID: Identifier.ascending("session"),
+        scopeID,
+        status: "auditing",
+        updated: now + 1000,
+      }),
+    )
+
+    const migration = migrations.find((entry) => entry.id === "20260703-blueprint-single-active-loop")
+    expect(migration).toBeDefined()
+    await migration!.up(() => {})
+
+    const older = await Storage.read<Record<string, unknown>>(StoragePath.blueprintLoop(scopeID, olderLoopID))
+    const newer = await Storage.read<Record<string, unknown>>(StoragePath.blueprintLoop(scopeID, newerLoopID))
+    const note = await Storage.read<Record<string, unknown>>(StoragePath.note(scopeID, noteID))
+
+    expect(older.status).toBe("cancelled")
+    expect(newer.status).toBe("auditing")
+    expect((note.blueprint as { activeLoopID?: string }).activeLoopID).toBe(newerLoopID)
   })
 })

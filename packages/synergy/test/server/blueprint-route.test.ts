@@ -99,6 +99,40 @@ describe("BlueprintRoute start prompt", () => {
     })
   })
 
+  test("rejects a second active loop for the same Blueprint", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const firstSession = await Session.create({})
+        const secondSession = await Session.create({})
+        const note = await createBlueprint("synergy-max")
+        const firstLoop = await createLoop(note.id, firstSession.id)
+
+        const response = await app().request("/blueprint/loop", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            noteID: note.id,
+            title: "Duplicate run",
+            sessionID: secondSession.id,
+            runMode: "new",
+          }),
+        })
+
+        expect(response.status).toBe(400)
+        const body = (await response.json()) as { message?: string; data?: Record<string, string> }
+        expect(body.message).toBe("This Blueprint already has an active run.")
+        expect(body.data).toEqual({
+          noteID: note.id,
+          loopID: firstLoop.id,
+          sessionID: firstSession.id,
+          status: "armed",
+        })
+      },
+    })
+  })
+
   test("uses the general Blueprint prompt for synergy", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({

@@ -196,6 +196,9 @@ export const BlueprintRoute = new Hono()
         })
         return c.json(loop)
       } catch (err: any) {
+        if (err instanceof LoopError.AlreadyActive) {
+          return c.json({ message: "This Blueprint already has an active run.", data: err.data }, 400)
+        }
         return c.json({ message: err?.message ?? String(err) }, 400)
       }
     },

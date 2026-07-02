@@ -26,6 +26,7 @@ Use one visual source of truth for shared document editing.
 Make reciprocal actions visibly reciprocal.
 Reserve emphasis for workflow state and current selection.
 Let blueprints read as plans with status, activity, and next action, not as passive notes.
+Starting a Blueprint run should keep the user on the Blueprint detail surface; the run status owns the feedback there, and session output is opened through an explicit session link.
 Note and Blueprint detail headers should use flat toolbar controls with compact rectangular hit targets; keep workflow metadata as text rows, and use divider-row popovers instead of bordered option cards inside bordered shells.
 Keep dense surfaces quiet enough for repeated daily use.
 Use one neutral surface system: light mode reads as a near-white canvas with white or transparent rows, hairline borders, and very light hover/selected fills; dark mode reads inward by getting brighter than its shell.
