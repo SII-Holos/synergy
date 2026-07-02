@@ -7132,7 +7132,8 @@ export class Plugin extends HeyApiClient {
   public sandbox<ThrowOnError extends boolean = false>(
     parameters: {
       pluginId: string
-      panelId: string
+      surface: string
+      surfaceId: string
       directory?: string
       scopeID?: string
     },
@@ -7144,7 +7145,8 @@ export class Plugin extends HeyApiClient {
         {
           args: [
             { in: "path", key: "pluginId" },
-            { in: "path", key: "panelId" },
+            { in: "path", key: "surface" },
+            { in: "path", key: "surfaceId" },
             { in: "query", key: "directory" },
             { in: "query", key: "scopeID" },
           ],
@@ -7152,7 +7154,7 @@ export class Plugin extends HeyApiClient {
       ],
     )
     return (options?.client ?? this.client).get<PluginSandboxResponses, PluginSandboxErrors, ThrowOnError>({
-      url: "/plugin/{pluginId}/sandbox/{panelId}",
+      url: "/plugin/{pluginId}/sandbox/{surface}/{surfaceId}",
       ...options,
       ...params,
     })

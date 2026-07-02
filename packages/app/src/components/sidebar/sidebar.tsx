@@ -23,6 +23,7 @@ import { usePlatform } from "@/context/platform"
 import { useProductUpdate } from "@/context/product-update"
 import { useHolosAgentActions } from "@/components/holos/agent-actions"
 import { SettingsDialog } from "@/components/settings"
+import { listAppPanels, subscribeAppPanels } from "@/plugin"
 import {
   resolveSessionVisualState,
   scopeKeyForNavEntry,
@@ -59,6 +60,14 @@ export function Sidebar(props: SidebarProps) {
   const recentEntries = createMemo(() => layout.nav.recentEntries())
   const hasMoreForProject = (scope: LocalScope) => layout.nav.navEntries()[scope.worktree]?.nextCursor != null
   const hasMoreRecent = createMemo(() => layout.nav.hasMoreRecent())
+  const [appPanelRegistryVersion, setAppPanelRegistryVersion] = createSignal(0)
+  const pluginAppPanels = createMemo(() => {
+    appPanelRegistryVersion()
+    return listAppPanels()
+  })
+  const isPluginsSectionActive = () =>
+    location.pathname === "/plugins/marketplace" || /^\/plugins\/[^/]+$/.test(location.pathname)
+  const appPanelPath = (pluginId: string, panelId: string) => `/plugins/panels/${pluginId}/${panelId}`
 
   const [recentSectionOpen, setRecentSectionOpen] = createSignal(true)
   const [homeSectionOpen, setHomeSectionOpen] = createSignal(false)
@@ -71,6 +80,8 @@ export function Sidebar(props: SidebarProps) {
 
   let scopeListRef!: HTMLDivElement
   let prevSnapshot = new Map<string, number>()
+
+  onCleanup(subscribeAppPanels(() => setAppPanelRegistryVersion((version) => version + 1)))
 
   createEffect(
     on(
@@ -390,7 +401,7 @@ export function Sidebar(props: SidebarProps) {
             type="button"
             classList={{
               "sb-global-btn": true,
-              "sb-global-active": location.pathname.startsWith("/plugins"),
+              "sb-global-active": isPluginsSectionActive(),
             }}
             onClick={() => navigate("/plugins/marketplace")}
           >
@@ -400,6 +411,25 @@ export function Sidebar(props: SidebarProps) {
             </Show>
           </button>
         </Tooltip>
+        <For each={pluginAppPanels()}>
+          {(panel) => (
+            <Tooltip value={panel.label} placement="right">
+              <button
+                type="button"
+                classList={{
+                  "sb-global-btn": true,
+                  "sb-global-active": location.pathname === appPanelPath(panel.pluginId, panel.panelId),
+                }}
+                onClick={() => navigate(appPanelPath(panel.pluginId, panel.panelId))}
+              >
+                <Icon name={panel.icon} size="normal" />
+                <Show when={isExpanded()}>
+                  <span class="sb-action-label">{panel.label}</span>
+                </Show>
+              </button>
+            </Tooltip>
+          )}
+        </For>
       </div>
 
       {/* Unified scroll region */}

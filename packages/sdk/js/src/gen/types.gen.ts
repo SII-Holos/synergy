@@ -4483,7 +4483,7 @@ export type PluginStatus = {
       toolId?: string
     }>
   }
-  routes: Array<string>
+  appRoutes: Array<string>
   tools: Array<{
     id: string
     fullId: string
@@ -11676,13 +11676,14 @@ export type PluginSandboxData = {
   body?: never
   path: {
     pluginId: string
-    panelId: string
+    surface: string
+    surfaceId: string
   }
   query?: {
     directory?: string
     scopeID?: string
   }
-  url: "/plugin/{pluginId}/sandbox/{panelId}"
+  url: "/plugin/{pluginId}/sandbox/{surface}/{surfaceId}"
 }
 
 export type PluginSandboxErrors = {

@@ -261,17 +261,22 @@ Session workbench UI uses `contributes.ui.workbenchPanels`. A workbench panel de
 }
 ```
 
-`surface` is `"side"` or `"bottom"`. `cardinality` is `"exclusive"` for one active panel on that surface, `"singleton"` for one tab per panel id, or `"multi"` for a new tab each time. `requiresSession` hides the panel until the user is in a concrete session. Global panels remain separate under `contributes.ui.globalPanels`.
+`surface` is `"side"` or `"bottom"`. `cardinality` is `"exclusive"` for one active panel on that surface, `"singleton"` for one tab per panel id, or `"multi"` for a new tab each time. `requiresSession` hides the panel until the user is in a concrete session. App panels remain separate under `contributes.ui.appPanels` and create top-level sidebar entries.
 
 ## UI Types
 
 UI contribution types are exported separately:
 
 ```ts
-import type { PluginToolRendererProps, PluginWorkbenchPanel, PluginPanelProps } from "@ericsanchezok/synergy-plugin/ui"
+import type {
+  PluginToolRendererProps,
+  PluginWorkbenchPanel,
+  PluginPanelProps,
+  PluginMessageSlotProps,
+} from "@ericsanchezok/synergy-plugin/ui"
 ```
 
-Supported UI surfaces are tool renderers, part renderers, workbench panels, global panels, settings sections, chat components, themes, icons, routes, and commands. The Web client loads aggregated UI metadata with the generated SDK method `plugin.listUiContributions()`, which maps to `/plugin/ui/contributions`; plugin JS and assets are still loaded through browser-native asset URLs.
+Supported UI surfaces are tool renderers, part renderers, workbench panels, app panels, settings sections, message slots, themes, icons, app routes, and commands. The Web client loads aggregated UI metadata with the generated SDK method `plugin.listUiContributions()`, which maps to `/plugin/ui/contributions`; plugin JS and assets are still loaded through browser-native asset URLs.
 
 ## Runtime Modes
 

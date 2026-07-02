@@ -26,5 +26,13 @@ export {
 
 export { resolveThemeVariant, resolveTheme, themeToCss } from "./resolve"
 export { ThemeProvider, useTheme, type ColorScheme } from "./context"
+export {
+  registerPluginTheme,
+  listPluginThemes,
+  getPluginTheme,
+  listThemeChoices,
+  subscribePluginThemes,
+  type PluginThemeDefinition,
+} from "./plugin-theme-registry"
 
 export { synergyTheme } from "./default-themes"

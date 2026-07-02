@@ -163,12 +163,12 @@ Supported surfaces include:
 - tool renderers
 - part renderers
 - workbench panels
-- global panels
+- app panels
 - settings sections
-- chat components
+- message slots
 - themes
 - icons
-- routes
+- app routes
 - commands
 
 Plugin JS and assets load through browser asset URLs. Internal Synergy API calls in the Web app use the generated SDK.

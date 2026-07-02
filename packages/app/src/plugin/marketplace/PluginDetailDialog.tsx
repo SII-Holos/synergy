@@ -76,12 +76,12 @@ function uiSurfacesFromManifest(manifest: Record<string, unknown> | null | undef
     "toolRenderers",
     "partRenderers",
     "workbenchPanels",
-    "globalPanels",
+    "appPanels",
     "settings",
-    "chatComponents",
+    "messageSlots",
     "themes",
     "icons",
-    "routes",
+    "appRoutes",
     "commands",
   ].filter((key) => arrayField(ui, key).length > 0)
 }

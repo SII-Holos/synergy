@@ -14,7 +14,7 @@ import { copyRegistryEntryIcon, registryEntry, writeRegistryEntry } from "../../
 
 const repoRoot = path.resolve(import.meta.dir, "../../../..")
 const repoNodeModules = path.join(repoRoot, "node_modules")
-const templates = ["tool-ui", "workbench-panel", "api-connector", "theme-icon"] as const
+const templates = ["tool-ui", "workbench-panel", "app-panel", "api-connector", "theme-icon"] as const
 
 async function linkDirectory(target: string, linkPath: string) {
   await fs.symlink(target, linkPath, process.platform === "win32" ? "junction" : "dir")
@@ -85,7 +85,7 @@ describe("plugin scaffold toolchain", () => {
             skills: [{ name: "frontend", description: "Frontend workflow skill", dir: "./skills/frontend" }],
             ui: {
               entry: "./dist/ui/index.js",
-              routes: [{ path: "/asset-fixture", entry: "./src/route.js", label: "Fixture" }],
+              appRoutes: [{ id: "asset-route", entry: "./src/route.js", label: "Fixture" }],
               workbenchPanels: [
                 {
                   id: "asset-panel",
@@ -109,6 +109,17 @@ describe("plugin scaffold toolchain", () => {
               ],
               themes: [{ id: "asset-theme", label: "Fixture", path: "./themes/default.css" }],
               icons: [{ name: "asset-logo", path: "./icons/logo.svg" }],
+            },
+          },
+          permissions: {
+            ui: {
+              workbenchPanels: true,
+              settings: true,
+              themes: true,
+              icons: true,
+              appRoutes: true,
+              trustedImport: true,
+              sandboxIframe: true,
             },
           },
           lifecycle: {

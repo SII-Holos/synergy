@@ -15,7 +15,7 @@ import type { PluginManifest as PluginManifestType } from "@ericsanchezok/synerg
 
 describe("plugin-dev existing exports", () => {
   test("buildSandboxPreviewUrl is callable", () => {
-    const url = buildSandboxPreviewUrl("test-plugin", "my-panel")
+    const url = buildSandboxPreviewUrl("test-plugin", "appPanels", "my-panel")
     expect(url).toContain("localhost")
     expect(url).toContain("test-plugin")
     expect(url).toContain("my-panel")
