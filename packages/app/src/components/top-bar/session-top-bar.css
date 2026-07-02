@@ -14,19 +14,18 @@
   pointer-events: none;
 }
 
-.app-shell--desktop-native-chrome .stb-root {
+.stb-root--desktop-titlebar {
+  position: static;
+  z-index: auto;
+  width: 100%;
   height: var(--desktop-native-titlebar-height, 44px);
   padding: 0 18px;
   -webkit-app-region: drag;
   pointer-events: auto;
 }
 
-.app-shell--desktop-native-chrome.app-shell--sidebar-collapsed .stb-root {
-  padding-left: 112px;
-}
-
-.app-shell--desktop-native-chrome .stb-left,
-.app-shell--desktop-native-chrome .stb-right {
+.stb-root--desktop-titlebar .stb-left,
+.stb-root--desktop-titlebar .stb-right {
   -webkit-app-region: no-drag;
 }
 
@@ -82,6 +81,10 @@
   transition:
     background-color 150ms,
     color 150ms;
+}
+
+.stb-root--desktop-titlebar .stb-selector-btn {
+  height: 34px;
 }
 
 .stb-selector-btn:hover {

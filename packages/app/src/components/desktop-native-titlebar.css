@@ -1,14 +1,17 @@
 .desktop-native-titlebar {
   --desktop-native-titlebar-height: 44px;
-  --desktop-native-titlebar-traffic-width: 84px;
-  --desktop-native-titlebar-control-width: 68px;
-  position: fixed;
-  top: 0;
-  left: 0;
-  z-index: 90;
-  display: flex;
+  --desktop-native-titlebar-traffic-width: 104px;
+  --desktop-native-titlebar-control-width: 72px;
+  --desktop-native-titlebar-collapsed-left-width: 176px;
+  --desktop-native-titlebar-expanded-left-width: 300px;
+  --desktop-native-titlebar-left-width: var(--desktop-native-titlebar-expanded-left-width);
+  position: relative;
+  z-index: 40;
+  display: grid;
+  grid-template-columns: var(--desktop-native-titlebar-left-width) minmax(0, 1fr);
   align-items: center;
-  width: 300px;
+  flex: 0 0 var(--desktop-native-titlebar-height);
+  width: 100%;
   height: var(--desktop-native-titlebar-height);
   min-height: var(--desktop-native-titlebar-height);
   color: var(--text-base);
@@ -18,20 +21,34 @@
 }
 
 .app-shell--sidebar-collapsed .desktop-native-titlebar {
-  width: calc(var(--desktop-native-titlebar-traffic-width) + var(--desktop-native-titlebar-control-width));
+  --desktop-native-titlebar-left-width: var(--desktop-native-titlebar-collapsed-left-width);
+}
+
+.desktop-native-titlebar__sidebar-area {
+  display: grid;
+  grid-template-columns:
+    var(--desktop-native-titlebar-traffic-width)
+    var(--desktop-native-titlebar-control-width)
+    minmax(0, 1fr);
+  align-items: center;
+  height: 100%;
+  min-width: 0;
+  background: var(--background-base);
+}
+
+.app-shell--sidebar-expanded .desktop-native-titlebar__sidebar-area {
+  border-right: 1px solid var(--border-weaker-base);
 }
 
 .desktop-native-titlebar__traffic-space {
-  flex: 0 0 var(--desktop-native-titlebar-traffic-width);
   height: 100%;
 }
 
 .desktop-native-titlebar__controls {
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 4px;
-  flex: 0 0 var(--desktop-native-titlebar-control-width);
+  justify-content: flex-start;
+  gap: 2px;
   height: 100%;
   -webkit-app-region: no-drag;
 }
@@ -74,7 +91,14 @@
   outline-offset: -2px;
 }
 
-.desktop-native-titlebar__drag-region {
-  flex: 1;
+.desktop-native-titlebar__sidebar-drag-region,
+.desktop-native-titlebar__content {
   align-self: stretch;
+  min-width: 0;
+}
+
+.desktop-native-titlebar__content {
+  display: flex;
+  align-items: center;
+  background: transparent;
 }

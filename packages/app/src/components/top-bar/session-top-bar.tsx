@@ -1,4 +1,5 @@
 import { Show, createMemo } from "solid-js"
+import { Portal } from "solid-js/web"
 import { useParams } from "@solidjs/router"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
@@ -13,9 +14,27 @@ import { base64Decode } from "@ericsanchezok/synergy-util/encode"
 import { isHomeScope } from "@/utils/scope"
 import { useSessionMeta } from "@/composables/use-session-meta"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
+import { useDesktopTitlebar } from "@/context/desktop-titlebar"
 import "./session-top-bar.css"
 
 export function SessionTopBar() {
+  const titlebar = useDesktopTitlebar()
+  const useNativeTitlebar = () => titlebar?.active() ?? false
+
+  return (
+    <Show when={useNativeTitlebar()} fallback={<SessionTopBarContent placement="session" />}>
+      <Show when={titlebar?.host()} keyed>
+        {(host) => (
+          <Portal mount={host}>
+            <SessionTopBarContent placement="desktop-titlebar" />
+          </Portal>
+        )}
+      </Show>
+    </Show>
+  )
+}
+
+function SessionTopBarContent(props: { placement: "session" | "desktop-titlebar" }) {
   const params = useParams()
   const dialog = useDialog()
   const local = useLocal()
@@ -45,7 +64,12 @@ export function SessionTopBar() {
   })
 
   return (
-    <div class="stb-root">
+    <div
+      class="stb-root"
+      classList={{
+        "stb-root--desktop-titlebar": props.placement === "desktop-titlebar",
+      }}
+    >
       <div class="stb-left">
         <Show when={!isGlobal()}>
           <Icon name="folder" size="normal" class="stb-folder" />
