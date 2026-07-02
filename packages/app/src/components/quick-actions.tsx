@@ -66,6 +66,9 @@ const PROMPTS: PromptAction[] = [
   },
 ]
 
+const QUICK_ACTION_COUNT = COMMANDS.length + PROMPTS.length
+const quickActionDelay = (index: number) => `${(QUICK_ACTION_COUNT - index - 1) * 30}ms`
+
 interface QuickActionsProps {
   onSend: (prompt: string) => void
   onCommand: (commandId: string) => void
@@ -94,7 +97,7 @@ export function QuickActions(props: QuickActionsProps) {
                     type="button"
                     disabled={commandsDisabled()}
                     class="qa-bubble qa-bubble-icon"
-                    style={{ "animation-delay": `${i() * 30}ms` }}
+                    style={{ "animation-delay": quickActionDelay(i()) }}
                     onClick={() => props.onCommand(action.commandId)}
                   >
                     <Icon name={action.icon} size="small" />
@@ -109,7 +112,7 @@ export function QuickActions(props: QuickActionsProps) {
                     type="button"
                     disabled={props.disabled}
                     class="qa-bubble qa-bubble-pill"
-                    style={{ "animation-delay": `${(COMMANDS.length + i()) * 30}ms` }}
+                    style={{ "animation-delay": quickActionDelay(COMMANDS.length + i()) }}
                     onClick={() => props.onSend(action.prompt)}
                   >
                     <Icon name={action.icon} size="small" />
