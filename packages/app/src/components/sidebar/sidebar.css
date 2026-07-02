@@ -141,7 +141,7 @@
 }
 
 .app-shell--desktop-native-chrome .sb-actions {
-  padding-top: 48px;
+  padding-top: 42px;
 }
 
 .sb-action-btn {
@@ -1374,7 +1374,7 @@
 }
 
 .app-shell--desktop-native-chrome .sb-collapsed .sb-globals {
-  padding-top: 48px;
+  padding-top: 42px;
 }
 
 .sb-collapsed .sb-global-btn {

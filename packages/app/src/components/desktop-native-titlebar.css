@@ -1,7 +1,7 @@
 .desktop-native-titlebar {
   --desktop-native-titlebar-height: 44px;
-  --desktop-native-titlebar-traffic-width: 112px;
-  --desktop-native-titlebar-control-width: 76px;
+  --desktop-native-titlebar-traffic-width: 96px;
+  --desktop-native-titlebar-control-width: 68px;
   position: absolute;
   top: 0;
   left: 0;
@@ -30,7 +30,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
+  gap: 4px;
   flex: 0 0 var(--desktop-native-titlebar-control-width);
   height: 100%;
   -webkit-app-region: no-drag;
