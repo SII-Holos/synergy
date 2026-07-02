@@ -85,6 +85,24 @@ export namespace SessionSummary {
     }
   }
 
+  function sameDiffs(a: SnapshotSchema.FileDiff[] | undefined, b: SnapshotSchema.FileDiff[]) {
+    if ((a?.length ?? 0) !== b.length) return false
+    return b.every((next, index) => {
+      const previous = a?.[index]
+      if (!previous) return false
+      return (
+        previous.file === next.file &&
+        previous.additions === next.additions &&
+        previous.deletions === next.deletions &&
+        previous.binary === next.binary &&
+        previous.preview === next.preview &&
+        previous.beforeBytes === next.beforeBytes &&
+        previous.afterBytes === next.afterBytes &&
+        previous.truncated === next.truncated
+      )
+    })
+  }
+
   async function summarizeMessage(input: { messageID: string; messages: MessageV2.WithParts[]; sessionID: string }) {
     const turn = Turn.collectOne(input.messages, input.messageID)
     if (!turn) return
@@ -93,6 +111,7 @@ export namespace SessionSummary {
     const userMsg = msgWithParts.info as MessageV2.User
     if (!MessageV2.isPromptVisible(msgWithParts)) return
     const diffs = await computeDiff({ messages, sessionID: input.sessionID })
+    const diffsChanged = !sameDiffs(userMsg.summary?.diffs, diffs)
     userMsg.summary = {
       ...userMsg.summary,
       diffs,
@@ -185,12 +204,14 @@ export namespace SessionSummary {
     if (title) userMsg.summary.title = title
     if (body) userMsg.summary.body = body
 
-    // Only persist when new content was produced. The processor path
+    // Only persist when summary content changed. The processor path
     // (finish-step) calls summarize() on every step; without this
     // guard, saveSummary fires message.updated every time — even when
-    // title and body are unchanged — causing the frontend Typewriter to
-    // restart and producing a visible flicker.
-    if (title || body) {
+    // title, body, and diffs are unchanged — causing the frontend
+    // Typewriter to restart and producing a visible flicker. Diffs are
+    // included because session-turn diff cards read them from the
+    // persisted user message summary.
+    if (title || body || diffsChanged) {
       await saveSummary(userMsg)
     }
   }
