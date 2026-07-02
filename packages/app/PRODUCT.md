@@ -68,6 +68,8 @@ Session turns should render as one persisted message-part timeline. Text, reason
 
 When a text or reasoning part is superseded by later visible work in the same running turn, its typewriter playback should settle immediately instead of continuing as a second active stream above the current work.
 
+When the current running assistant step has no visible message part yet, the timeline may show a transient provider-waiting status using the backend session status text verbatim. Once any real text, reasoning, tool, media, or attachment part appears for that step, the persisted part timeline takes over and the transient status disappears.
+
 User prompts inside a turn may render as a compact right-aligned bubble with matching prompt attachments, but the turn header, tool/result timeline, media results, and diffs must keep their workbench-width timeline structure and original part order.
 
 Turn titles are navigation metadata, not conversation content; keep them in the session timeline or session-level chrome, and place user-prompt timestamps and copy controls outside the prompt bubble as low-emphasis metadata.

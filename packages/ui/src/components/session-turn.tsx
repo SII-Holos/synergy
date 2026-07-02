@@ -5,6 +5,7 @@ import type {
   Part as PartType,
   PermissionRequest,
   ReasoningPart,
+  SessionStatus,
   TextPart,
   ToolPart,
   UserMessage,
@@ -70,6 +71,8 @@ export type SessionTurnTimelineVisualKind =
   | "attachment"
   | "media-pending"
   | "tool-attachments"
+
+const DEFAULT_PROVIDER_PRELUDE_TEXT = "Awaiting response..."
 
 function visibleAttachmentParts(files: AttachmentPart[] | undefined): AttachmentPart[] {
   return (files ?? []).filter((file) => !resolveAttachmentPresentation(file).hidden)
@@ -137,12 +140,40 @@ export function collectSessionTurnTimelineItems(
   return items
 }
 
+export function providerPreludeText(status: SessionStatus | undefined): string {
+  if (status?.type === "busy") {
+    const description = status.description?.trim()
+    if (description) return description
+  }
+  return DEFAULT_PROVIDER_PRELUDE_TEXT
+}
+
+export function shouldShowProviderPrelude(input: {
+  working: boolean
+  hasError: boolean
+  latestAssistant?: AssistantMessage
+  latestAssistantTimelineItems: readonly SessionTurnTimelineItem[]
+}): boolean {
+  if (!input.working || input.hasError) return false
+  if (!input.latestAssistant) return true
+  if (input.latestAssistant.time.completed != null) return false
+  return input.latestAssistantTimelineItems.length === 0
+}
+
 function TimelineItemDisplay(props: { item: SessionTurnTimelineItem; serverUrl: string }) {
   if (props.item.kind === "part" || props.item.kind === "reasoning") {
     return <Part part={props.item.part} message={props.item.message} />
   }
   if (props.item.kind === "media-pending") return <MediaGenerationCard part={props.item.part} />
   return <AttachmentGallery files={props.item.files} serverUrl={props.serverUrl} />
+}
+
+function ProviderPrelude(props: { text: string }) {
+  return (
+    <div data-component="provider-prelude" role="status" aria-live="polite">
+      {props.text}
+    </div>
+  )
 }
 
 function MailboxSourceBadge(props: { message: UserMessage }) {
@@ -306,6 +337,11 @@ export function SessionTurn(
   const timelineItems = createMemo(() =>
     collectSessionTurnTimelineItems(assistantMessages(), data.store.part, working()),
   )
+  const latestAssistantTimelineItems = createMemo(() => {
+    const latest = lastAssistantMessage()
+    if (!latest) return []
+    return collectSessionTurnTimelineItems([latest], data.store.part, working())
+  })
   const timelineItemMap = createMemo(() => {
     const result = new Map<string, SessionTurnTimelineItem>()
     for (const item of timelineItems()) result.set(timelineItemStableKey(item), item)
@@ -313,6 +349,15 @@ export function SessionTurn(
   })
   const timelineItemKeys = createMemo(() => timelineItems().map(timelineItemStableKey))
   const hasTimelineItems = createMemo(() => timelineItems().length > 0)
+  const sessionStatus = createMemo(() => data.store.session_status[props.sessionID])
+  const showProviderPrelude = createMemo(() =>
+    shouldShowProviderPrelude({
+      working: working(),
+      hasError: !!error(),
+      latestAssistant: lastAssistantMessage(),
+      latestAssistantTimelineItems: latestAssistantTimelineItems(),
+    }),
+  )
 
   const autoScroll = createAutoScroll({
     working,
@@ -381,7 +426,7 @@ export function SessionTurn(
                         <Dynamic component={SpecialUserMessage()} message={msg()} parts={parts()} />
                       )}
                     </Show>
-                    <Show when={hasTimelineItems() || (!working() && hasDiffs())}>
+                    <Show when={hasTimelineItems() || showProviderPrelude() || (!working() && hasDiffs())}>
                       <div data-slot="session-turn-timeline">
                         <For each={timelineItemKeys()}>
                           {(key) => {
@@ -397,6 +442,11 @@ export function SessionTurn(
                             )
                           }}
                         </For>
+                        <Show when={showProviderPrelude()}>
+                          <div data-slot="session-turn-timeline-item" data-kind="provider-prelude">
+                            <ProviderPrelude text={providerPreludeText(sessionStatus())} />
+                          </div>
+                        </Show>
                         <Show when={!working() && hasDiffs()}>
                           <Accordion
                             data-slot="session-turn-accordion"
