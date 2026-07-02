@@ -103,6 +103,7 @@ const builtinIconNames = [
   "message-circle",
   "message-square",
   "microscope",
+  "minus",
   "minimize",
   "moon",
   "mouse-pointer-2",

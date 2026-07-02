@@ -6,6 +6,7 @@ const allowedDuplicateIcons: Record<string, string[]> = {
   braces: ["connection.lsp", "settings.lsp"],
   cable: ["connection.mcp", "settings.mcp"],
   circle: ["session.idle", "state.empty"],
+  copy: ["action.copy", "window.restore"],
   globe: ["settings.channels", "browser.main"],
   "help-circle": ["action.info", "session.waiting", "settings.questions"],
   "octagon-alert": ["session.retry", "state.warning"],
