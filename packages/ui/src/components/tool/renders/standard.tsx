@@ -168,7 +168,15 @@ ToolRegistry.register({
           subtitle: props.input.target || "",
           tags: props.input.role ? [{ label: props.input.role }] : undefined,
         }}
-      />
+      >
+        <Show when={props.output}>
+          {(output) => (
+            <div data-component="tool-output" data-scrollable>
+              <ToolTextOutput text={output()} />
+            </div>
+          )}
+        </Show>
+      </BasicTool>
     )
   },
 })
@@ -233,7 +241,15 @@ ToolRegistry.register({
           title: "Update Profile",
           subtitle: props.input.name || "",
         }}
-      />
+      >
+        <Show when={props.output}>
+          {(output) => (
+            <div data-component="tool-output" data-scrollable>
+              <ToolTextOutput text={output()} />
+            </div>
+          )}
+        </Show>
+      </BasicTool>
     )
   },
 })

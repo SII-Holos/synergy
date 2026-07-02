@@ -11,6 +11,7 @@ import {
   AnchoredViewTool,
 } from "../../anchored-tool-card"
 import { ToolRegistry, getDiagnostics, DiagnosticsDisplay } from "../../message-part"
+import { ToolTextOutput } from "../../tool-output-text"
 import { ToolDiffPreview } from "../diff-preview"
 
 ToolRegistry.register({ name: "view_file", render: AnchoredViewTool })
@@ -22,6 +23,7 @@ ToolRegistry.register({ name: "save_file", render: AnchoredSaveTool })
 ToolRegistry.register({
   name: "file_search",
   render(props) {
+    const count = () => props.metadata?.count as number | undefined
     return (
       <BasicTool
         {...props}
@@ -29,8 +31,17 @@ ToolRegistry.register({
           icon: "scan-document",
           title: "File Search",
           subtitle: props.input.query as string | undefined,
+          tags: count() != null ? [{ label: `${count()} result${count() === 1 ? "" : "s"}` }] : undefined,
         }}
-      />
+      >
+        <Show when={props.output}>
+          {(output) => (
+            <div data-component="tool-output" data-scrollable>
+              <ToolTextOutput text={output()} />
+            </div>
+          )}
+        </Show>
+      </BasicTool>
     )
   },
 })
