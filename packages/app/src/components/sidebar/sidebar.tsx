@@ -300,25 +300,45 @@ export function Sidebar(props: SidebarProps) {
           when={isExpanded()}
           fallback={
             <Tooltip value="Expand sidebar" placement="right">
-              <button type="button" class="sb-collapsed-toggle" onClick={() => layout.sidebar.toggle()}>
-                <img src={holosLogoPath(isDark() ? "dark" : "light")} alt="HOLOS" class="sb-collapsed-logo" />
+              <button
+                type="button"
+                class="sb-collapsed-toggle"
+                aria-label="Expand sidebar"
+                onClick={() => layout.sidebar.toggle()}
+              >
+                <img
+                  src={holosLogoPath(isDark() ? "dark" : "light")}
+                  alt="HOLOS"
+                  class="sb-collapsed-logo"
+                  draggable={false}
+                />
                 <Icon name="panel-left-open" size="normal" class="sb-collapsed-toggle-icon" />
               </button>
             </Tooltip>
           }
         >
           <A href={`/${base64Encode("home")}/session`} class="sb-logo">
-            <img src={holosLogoPath(isDark() ? "dark" : "light")} alt="HOLOS" class="sb-logo-img" />
+            <img
+              src={holosLogoPath(isDark() ? "dark" : "light")}
+              alt="HOLOS"
+              class="sb-logo-img"
+              draggable={false}
+            />
             <span class="sb-logo-text">HOLOS</span>
           </A>
           <div class="sb-header-actions">
             <Tooltip value="Search sessions" placement="right">
-              <button type="button" class="sb-icon-btn" onClick={props.onSearchOpen}>
+              <button type="button" class="sb-icon-btn" aria-label="Search sessions" onClick={props.onSearchOpen}>
                 <Icon name="search" size="normal" />
               </button>
             </Tooltip>
             <Tooltip value="Collapse sidebar" placement="right">
-              <button type="button" class="sb-icon-btn" onClick={() => layout.sidebar.toggle()}>
+              <button
+                type="button"
+                class="sb-icon-btn"
+                aria-label="Collapse sidebar"
+                onClick={() => layout.sidebar.toggle()}
+              >
                 <Icon name="panel-left-close" size="normal" />
               </button>
             </Tooltip>

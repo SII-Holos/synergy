@@ -254,6 +254,7 @@ a:active,
 .synergy-workbench-canvas
   :where(
     .bg-surface-inset-base,
+    .bg-surface-subtle,
     .bg-surface-base-hover,
     .bg-surface-raised-base-hover,
     .bg-surface-raised-stronger-hover,

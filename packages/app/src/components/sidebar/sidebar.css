@@ -35,6 +35,10 @@
   min-height: auto;
 }
 
+.app-shell--desktop-native-chrome .sb-header {
+  display: none;
+}
+
 .sb-logo {
   display: flex;
   flex-direction: row;

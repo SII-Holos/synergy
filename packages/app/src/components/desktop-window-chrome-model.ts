@@ -5,6 +5,10 @@ export function desktopWindowChromeVisible(platform: Pick<Platform, "platform" |
   return platform.platform === "desktop" && platform.desktopWindow?.chrome === "custom"
 }
 
+export function desktopWindowNativeChromeActive(platform: Pick<Platform, "platform" | "desktopWindow">): boolean {
+  return platform.platform === "desktop" && platform.desktopWindow?.chrome === "native"
+}
+
 export function desktopWindowToggleIcon(state: DesktopWindowState | null | undefined): SemanticIconTokenName {
   return state?.maximized || state?.fullscreen ? "window.restore" : "window.maximize"
 }

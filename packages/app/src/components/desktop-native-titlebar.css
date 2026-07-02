@@ -1,0 +1,55 @@
+.desktop-native-titlebar {
+  --desktop-native-titlebar-height: 44px;
+  --desktop-native-titlebar-traffic-width: 108px;
+  display: flex;
+  align-items: center;
+  flex: 0 0 var(--desktop-native-titlebar-height);
+  height: var(--desktop-native-titlebar-height);
+  min-height: var(--desktop-native-titlebar-height);
+  color: var(--text-base);
+  background: var(--background-base);
+  user-select: none;
+  -webkit-app-region: drag;
+}
+
+.desktop-native-titlebar__traffic-space {
+  flex: 0 0 var(--desktop-native-titlebar-traffic-width);
+  height: 100%;
+}
+
+.desktop-native-titlebar__controls {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 100%;
+  -webkit-app-region: no-drag;
+}
+
+.desktop-native-titlebar__button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  color: var(--icon-base);
+  transition:
+    background-color 150ms cubic-bezier(0.16, 1, 0.3, 1),
+    color 150ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.desktop-native-titlebar__button:hover,
+.desktop-native-titlebar__button:focus-visible {
+  color: var(--icon-strong);
+  background: var(--surface-hover-base);
+}
+
+.desktop-native-titlebar__button:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--text-strong) 18%, transparent);
+  outline-offset: -2px;
+}
+
+.desktop-native-titlebar__drag-region {
+  flex: 1;
+  align-self: stretch;
+}

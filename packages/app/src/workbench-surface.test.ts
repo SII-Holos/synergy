@@ -15,6 +15,8 @@ const libraryShared = await Bun.file(new URL("./components/library/shared.tsx", 
 const questionPromptCss = await Bun.file(new URL("./components/session/question-prompt.css", import.meta.url)).text()
 const questionPrompt = await Bun.file(new URL("./components/session/question-prompt.tsx", import.meta.url)).text()
 const sidebarCss = await Bun.file(new URL("./components/sidebar/sidebar.css", import.meta.url)).text()
+const nativeTitlebarCss = await Bun.file(new URL("./components/desktop-native-titlebar.css", import.meta.url)).text()
+const nativeTitlebar = await Bun.file(new URL("./components/desktop-native-titlebar.tsx", import.meta.url)).text()
 const appSrc = fileURLToPath(new URL(".", import.meta.url))
 const uiSrc = fileURLToPath(new URL("../../ui/src", import.meta.url))
 
@@ -88,6 +90,20 @@ describe("workbench surface polarity", () => {
     for (const source of [marketplaceCss, libraryCss, agendaCss, questionPromptCss, sidebarCss]) {
       expect(source).not.toContain("light-dark(rgb(")
     }
+  })
+
+  test("macOS native chrome uses one draggable titlebar with sidebar controls outside the sidebar header", () => {
+    expect(nativeTitlebar).toContain("desktopWindowNativeChromeActive(platform)")
+    expect(nativeTitlebar).toContain('getSemanticIcon("app.sidebar")')
+    expect(nativeTitlebar).toContain('getSemanticIcon("action.search")')
+    expect(nativeTitlebarCss).toContain("-webkit-app-region: drag;")
+    expect(nativeTitlebarCss).toContain("--desktop-native-titlebar-traffic-width: 108px;")
+    expect(nativeTitlebarCss).toContain(".desktop-native-titlebar__traffic-space")
+    expect(nativeTitlebarCss).toContain(".desktop-native-titlebar__controls")
+    expect(nativeTitlebarCss).toContain("-webkit-app-region: no-drag;")
+    expect(sidebarCss).toContain(".app-shell--desktop-native-chrome .sb-header")
+    expect(sidebarCss).toContain("display: none;")
+    expect(sidebarCss).not.toContain("--sb-native-titlebar-height")
   })
 
   test("raised stronger non-alpha utilities resolve to popover surfaces inside the workbench", () => {
