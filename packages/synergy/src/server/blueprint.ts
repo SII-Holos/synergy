@@ -12,6 +12,9 @@ import { SessionManager } from "../session/manager"
 import { MessageV2 } from "../session/message-v2"
 import { Agent } from "../agent/agent"
 import { NoteStore } from "../note"
+import { Log } from "../util/log"
+
+const log = Log.create({ service: "server.blueprint" })
 
 const CreateInput = z
   .object({
@@ -89,6 +92,17 @@ async function bindSessionToLoop(sessionID: string, loopID: string, loopRole: "e
   await Session.update(sessionID, (draft) => {
     draft.blueprint = { ...draft.blueprint, loopID, loopRole }
   })
+}
+
+async function assertLoopSessionInCurrentScope(sessionID: string) {
+  const session = await Session.get(sessionID)
+  const sessionScopeID = session.scope.id
+  const loopScopeID = ScopeContext.current.scope.id
+  if (sessionScopeID !== loopScopeID) {
+    throw new Error(
+      `Session ${sessionID} belongs to scope ${sessionScopeID}, but this BlueprintLoop is in ${loopScopeID}.`,
+    )
+  }
 }
 
 async function deliverFirstPrompt(
@@ -169,6 +183,7 @@ export const BlueprintRoute = new Hono()
     async (c) => {
       try {
         const body = c.req.valid("json")
+        await assertLoopSessionInCurrentScope(body.sessionID)
         const [executionAgent, auditAgent] = await Promise.all([
           resolveBlueprintAgent(body.sessionID, body.noteID),
           resolveBlueprintAuditAgent(body.noteID),
@@ -332,7 +347,14 @@ export const BlueprintRoute = new Hono()
         const loop = await BlueprintLoopStore.updateStatus(ScopeContext.current.scope.id, id, { status: "running" })
         started = true
         await bindSessionToLoop(before.sessionID, id, "execution")
-        await deliverFirstPrompt(before.sessionID, before, body?.userPrompt)
+        const scopeID = ScopeContext.current.scope.id
+        void deliverFirstPrompt(before.sessionID, before, body?.userPrompt).catch((err) => {
+          log.error("failed to deliver BlueprintLoop start prompt", { loopID: id, error: err })
+          BlueprintLoopStore.updateStatus(scopeID, id, {
+            status: "failed",
+            error: err?.message ?? String(err),
+          }).catch(() => undefined)
+        })
         return c.json(loop)
       } catch (err: any) {
         if (started) {

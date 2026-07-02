@@ -17,6 +17,15 @@ import type { BlueprintLoopInfo, NoteInfo, NoteMetaInfo, NoteMetaScopeGroup } fr
 import { getScopeLabel } from "@/utils/scope"
 import { assetHttpUrl } from "@/utils/asset-url"
 import { relativeTime } from "@/utils/time"
+import {
+  activeBlueprintLoop,
+  blueprintSessionRouteDirectory,
+  blueprintSessionWorkspaceSelection,
+  canCreateBlueprintWorktree,
+  canRunBlueprintInCurrentSession,
+  isActiveBlueprintLoopStatus,
+  type BlueprintRunMode,
+} from "@/components/note/blueprint-run-session"
 import "./note-panel.css"
 
 type LoopStatus = BlueprintLoopInfo["status"]
@@ -34,10 +43,6 @@ type BlueprintVisualState = {
 
 function isBlueprintNote(note: { kind?: string; blueprint?: unknown }) {
   return note.kind === "blueprint"
-}
-
-function isActiveLoopStatus(status: LoopStatus) {
-  return status === "running" || status === "waiting" || status === "auditing"
 }
 
 function getLoopLabel(status: LoopStatus) {
@@ -67,13 +72,15 @@ function getRunModeLabel(mode?: BlueprintLoopInfo["runMode"]) {
 }
 
 function getBlueprintVisualState(note: NoteCardInfo | NoteInfo, loops: BlueprintLoopInfo[] = []): BlueprintVisualState {
-  const active = loops.find((loop) => isActiveLoopStatus(loop.status))
+  const active = activeBlueprintLoop(note, loops)
   if (active) {
+    const status = active.status as LoopStatus
+    const runMode = "runMode" in active ? active.runMode : undefined
     return {
-      label: getLoopLabel(active.status),
-      detail: getRunModeLabel(active.runMode),
-      tone: getLoopTone(active.status),
-      icon: active.status === "auditing" ? "clipboard-check" : active.status === "waiting" ? "hourglass" : "zap",
+      label: getLoopLabel(status),
+      detail: getRunModeLabel(runMode),
+      tone: getLoopTone(status),
+      icon: status === "auditing" ? "clipboard-check" : status === "waiting" ? "hourglass" : "zap",
     }
   }
   const latest = loops[0]
@@ -287,8 +294,9 @@ function NoteCardSkeleton() {
 
 function RunMenu(props: {
   title: string
-  hasCurrentSession: boolean
-  onRun: (mode: "current" | "new" | "worktree") => void
+  canRunInCurrentSession: boolean
+  canCreateWorktree: boolean
+  onRun: (mode: BlueprintRunMode) => void
   onClose: () => void
 }) {
   const options = [
@@ -296,8 +304,10 @@ function RunMenu(props: {
       mode: "current" as const,
       icon: "square-play",
       title: "Current session",
-      description: props.hasCurrentSession ? "Run in the session you are viewing." : "Open a session first.",
-      disabled: !props.hasCurrentSession,
+      description: props.canRunInCurrentSession
+        ? "Run in the session you are viewing."
+        : "Open a session in this Blueprint scope first.",
+      disabled: !props.canRunInCurrentSession,
     },
     {
       mode: "new" as const,
@@ -310,8 +320,10 @@ function RunMenu(props: {
       mode: "worktree" as const,
       icon: "git-branch",
       title: "New worktree session",
-      description: "Create an isolated worktree session and start immediately.",
-      disabled: false,
+      description: props.canCreateWorktree
+        ? "Create an isolated worktree session and start immediately."
+        : "Worktree runs require a git project scope.",
+      disabled: !props.canCreateWorktree,
     },
   ]
 
@@ -888,6 +900,29 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
 
   const noteLoaded = createMemo(() => !!baseNote())
   const isBlueprint = createMemo(() => baseNote()?.kind === "blueprint")
+  const routeDirectory = createMemo(() => (params.dir ? base64Decode(params.dir) : undefined))
+  const blueprintScopes = createMemo(() =>
+    globalSync.data.scope.map((scope) => ({
+      id: scope.id,
+      worktree: scope.worktree,
+      sandboxes: scope.sandboxes,
+      vcs: scope.vcs,
+    })),
+  )
+  const canRunCurrentSession = createMemo(() =>
+    canRunBlueprintInCurrentSession({
+      sessionID: params.id,
+      blueprintDirectory: directory(),
+      routeDirectory: routeDirectory(),
+      scopes: blueprintScopes(),
+    }),
+  )
+  const canRunWorktreeSession = createMemo(() =>
+    canCreateBlueprintWorktree({
+      blueprintDirectory: directory(),
+      scopes: blueprintScopes(),
+    }),
+  )
   const [noteLoops, { refetch: refetchLoops }] = createResource(
     () => ({ id: props.id, dir: directory(), ver: globalSync.noteVersion() }),
     async ({ id, dir }) => {
@@ -1247,7 +1282,7 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
       })
       return
     }
-    if (base.blueprint?.activeLoopID || (noteLoops() ?? []).some((loop) => isActiveLoopStatus(loop.status))) {
+    if (base.blueprint?.activeLoopID || (noteLoops() ?? []).some((loop) => isActiveBlueprintLoopStatus(loop.status))) {
       alert("This Blueprint has an active loop. Finish or cancel the loop before converting it back to a Note.")
       return
     }
@@ -1281,48 +1316,64 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
     }
   }
 
-  async function createExecutionSession(mode: "current" | "new" | "worktree", blueprintDir: string) {
-    if (mode === "current") {
-      if (!params.id) {
-        alert("Open a session before running this Blueprint in the current session.")
-        return undefined
-      }
-      return { sessionID: params.id, directory: blueprintDir }
-    }
-
-    let targetDirectory = blueprintDir
-    let client = sdk.client
-
-    if (mode === "worktree") {
-      const worktree = await sdk.client.worktree.create({ directory: blueprintDir }).then((result) => result.data)
-      if (!worktree?.path) throw new Error("Failed to create worktree")
-      targetDirectory = worktree.path
-      client = createSynergyClient({
-        baseUrl: sdk.url,
-        fetch: platform.fetch,
-        directory: targetDirectory,
-        throwOnError: true,
-      })
-      globalSync.ensureScopeState(targetDirectory)
-    }
-
-    const session = await client.session.create({}).then((result) => result.data)
-    if (!session?.id) throw new Error("Failed to create session")
-    return { sessionID: session.id, directory: targetDirectory }
+  function scopedClient(directory: string) {
+    if (directory === routeDirectory()) return sdk.client
+    globalSync.ensureScopeState(directory)
+    return createSynergyClient({
+      baseUrl: sdk.url,
+      fetch: platform.fetch,
+      directory,
+      throwOnError: true,
+    })
   }
 
-  async function runBlueprint(mode: "current" | "new" | "worktree") {
+  async function createExecutionSession(mode: BlueprintRunMode, blueprintDir: string) {
+    if (mode === "current") {
+      if (!canRunCurrentSession() || !params.id) {
+        alert("Open a session in this Blueprint scope before running it there.")
+        return undefined
+      }
+      return {
+        sessionID: params.id,
+        directory: blueprintDir,
+        createdSession: false,
+        client: scopedClient(blueprintDir),
+      }
+    }
+
+    const client = scopedClient(blueprintDir)
+    const session = await client.session
+      .create({
+        workspace: blueprintSessionWorkspaceSelection(mode),
+      })
+      .then((result) => result.data)
+    if (!session?.id) throw new Error("Failed to create session")
+    return {
+      sessionID: session.id,
+      directory: blueprintSessionRouteDirectory(session, blueprintDir),
+      createdSession: true,
+      client,
+    }
+  }
+
+  async function runBlueprint(mode: BlueprintRunMode) {
     const dir = directory()
     if (!dir || runningBlueprint()) return
     await flushSave()
     if (remoteConflict()) return
     const base = baseNote()
     if (!base || !isBlueprint()) return
+    const activeLoop = activeBlueprintLoop(base, noteLoops() ?? [])
+    if (activeLoop) {
+      alert("This Blueprint already has an active run. Finish or cancel it before starting another run.")
+      return
+    }
 
     setRunningBlueprint(true)
     let createdLoopID: string | undefined
+    let target: Awaited<ReturnType<typeof createExecutionSession>> | undefined
     try {
-      const target = await createExecutionSession(mode, dir)
+      target = await createExecutionSession(mode, dir)
       if (!target) return
       const loop = await sdk.client.blueprint.loop
         .create({
@@ -1347,6 +1398,9 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
     } catch (error) {
       if (createdLoopID) {
         await sdk.client.blueprint.loop.cancel({ id: createdLoopID, directory: dir }).catch(() => undefined)
+      }
+      if (target?.createdSession) {
+        await target.client.session.delete({ sessionID: target.sessionID }).catch(() => undefined)
       }
       console.error("Failed to run blueprint", error)
       alert(error instanceof Error ? error.message : "Failed to run blueprint")
@@ -1588,7 +1642,8 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
         <Show when={showRunMenu() && isBlueprint() && baseNote()}>
           <RunMenu
             title={baseNote()!.title || "Untitled"}
-            hasCurrentSession={!!params.id}
+            canRunInCurrentSession={canRunCurrentSession()}
+            canCreateWorktree={canRunWorktreeSession()}
             onRun={runBlueprint}
             onClose={() => setShowRunMenu(false)}
           />

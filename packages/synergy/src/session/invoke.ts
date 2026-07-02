@@ -189,16 +189,11 @@ export namespace SessionInvoke {
         continue
       }
 
-      const model = mail.model ?? fallbackModel
-      if (!model) {
-        log.warn("materializeInboxItems: no model for mail, skipping", { sessionID, inboxItemID: item.id })
-        continue
-      }
       const noReply = options?.guiding ? true : mail.noReply
       const created = await createUserMessage({
         sessionID,
         agent: mail.agent,
-        model,
+        model: mail.model ?? fallbackModel,
         parts: partsFromMail(mail),
         noReply,
         summary: mail.summary,
@@ -226,15 +221,10 @@ export namespace SessionInvoke {
         await writeAssistantMail(sessionID, mail)
         continue
       }
-      const model = mail.model ?? fallbackModel
-      if (!model) {
-        log.warn("materializeLegacyMails: no model for mail, skipping", { sessionID })
-        continue
-      }
       const created = await createUserMessage({
         sessionID,
         agent: mail.agent,
-        model,
+        model: mail.model ?? fallbackModel,
         parts: partsFromMail(mail),
         noReply: mail.noReply,
         summary: mail.summary,
