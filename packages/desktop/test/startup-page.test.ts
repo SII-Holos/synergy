@@ -42,6 +42,8 @@ describe("desktop startup page", () => {
     const html = decodeDesktopHtml(desktopStartupPage({ chrome: "custom" }))
 
     expect(html).toContain("place-items: center;")
+    expect(html).toContain("width: 96px;")
+    expect(html).toContain("width: 72px;")
     expect(html).toContain("animation: startup-breathe")
     expect(html).toContain("@media (prefers-reduced-motion: reduce)")
     expect(html).not.toContain("startup-orbit")

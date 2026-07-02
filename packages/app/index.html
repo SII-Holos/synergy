@@ -215,17 +215,23 @@
       .synergy-app-boot-mark {
         position: relative;
         display: grid;
-        width: 64px;
-        height: 64px;
+        width: 96px;
+        height: 96px;
         place-items: center;
         animation: synergy-app-boot-breathe 1600ms cubic-bezier(0.4, 0, 0.2, 1) infinite;
       }
 
       .synergy-app-boot-icon {
         position: relative;
-        width: 40px;
-        height: 40px;
-        border-radius: 9px;
+        width: 72px;
+        height: 72px;
+        border-radius: 14px;
+        opacity: 0;
+        transition: opacity 160ms cubic-bezier(0.2, 0, 0, 1);
+      }
+
+      .synergy-app-boot-icon.is-loaded {
+        opacity: 1;
       }
 
       .synergy-app-boot-status {
@@ -298,13 +304,7 @@
       </header>
       <main class="synergy-app-boot-stage">
         <div class="synergy-app-boot-mark" aria-hidden="true">
-          <img
-            class="synergy-app-boot-icon"
-            data-synergy-app-boot-icon
-            src="/favicon-96x96.png"
-            alt=""
-            draggable="false"
-          />
+          <img class="synergy-app-boot-icon" data-synergy-app-boot-icon alt="" draggable="false" />
         </div>
         <div class="synergy-app-boot-status">Opening Synergy</div>
       </main>
@@ -322,7 +322,19 @@
         if (icons.length) {
           var prefix = window.__SYNERGY_ASSET_PREFIX__ || ""
           icons.forEach(function (icon) {
+            function revealIcon() {
+              icon.classList.add("is-loaded")
+            }
+            icon.addEventListener("load", revealIcon, { once: true })
+            icon.addEventListener(
+              "error",
+              function () {
+                icon.removeAttribute("src")
+              },
+              { once: true },
+            )
             icon.setAttribute("src", prefix + "/favicon-96x96.png")
+            if (icon.complete && icon.naturalWidth > 0) revealIcon()
           })
         }
 

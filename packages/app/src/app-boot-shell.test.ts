@@ -45,13 +45,19 @@ describe("app boot shell", () => {
 
   test("renders a minimal animated icon splash instead of an app skeleton", () => {
     const style = blockBetween(html, '<style id="synergy-app-boot-style">', "</style>")
+    const splashMarkup = blockBetween(html, '<main class="synergy-app-boot-stage">', "</main>")
 
     expect(html).toContain('class="synergy-app-boot-mark"')
     expect(html).toContain("data-synergy-app-boot-icon")
     expect(style).toContain("place-items: center;")
+    expect(style).toContain("width: 96px;")
+    expect(style).toContain("width: 72px;")
     expect(style).toContain("animation: synergy-app-boot-breathe")
     expect(style).toContain("@media (prefers-reduced-motion: reduce)")
     expect(style).not.toContain("synergy-app-boot-orbit")
+    expect(splashMarkup).not.toContain("src=")
+    expect(html).toContain('icon.addEventListener("load", revealIcon, { once: true })')
+    expect(html).toContain('icon.classList.add("is-loaded")')
     expect(html).not.toContain("synergy-app-boot-sidebar")
     expect(html).not.toContain("synergy-app-boot-workbench")
     expect(html).not.toContain("synergy-app-boot-composer")

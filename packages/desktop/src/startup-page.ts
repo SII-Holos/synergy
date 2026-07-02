@@ -202,8 +202,8 @@ export function desktopStartupPage(options: DesktopStartupPageOptions): string {
     .startup-mark {
       position: relative;
       display: grid;
-      width: 64px;
-      height: 64px;
+      width: 96px;
+      height: 96px;
       place-items: center;
       animation: startup-breathe 1600ms cubic-bezier(0.4, 0, 0.2, 1) infinite;
     }
@@ -211,9 +211,9 @@ export function desktopStartupPage(options: DesktopStartupPageOptions): string {
     .startup-mark__icon,
     .startup-mark__fallback {
       position: relative;
-      width: 40px;
-      height: 40px;
-      border-radius: 9px;
+      width: 72px;
+      height: 72px;
+      border-radius: 14px;
     }
 
     .startup-mark__fallback {
@@ -221,7 +221,7 @@ export function desktopStartupPage(options: DesktopStartupPageOptions): string {
       place-items: center;
       color: #111214;
       background: #f5f6f7;
-      font-size: 20px;
+      font-size: 32px;
       font-weight: 650;
     }
 
