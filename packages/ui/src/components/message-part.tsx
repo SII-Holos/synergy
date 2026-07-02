@@ -1546,7 +1546,21 @@ export function UserMessageDisplay(props: { message: UserMessage; parts: PartTyp
         >
           <HighlightedText text={text()} references={inlineFiles()} />
           <Show when={collapsed()}>
-            <div data-slot="user-message-fade" aria-hidden="true" />
+            <div data-slot="user-message-fade">
+              <button type="button" data-slot="user-message-expand" onClick={() => setExpanded(true)}>
+                Show more
+              </button>
+            </div>
+          </Show>
+          <Show when={canCollapse() && expanded()}>
+            <button
+              type="button"
+              data-slot="user-message-expand"
+              data-position="inline"
+              onClick={() => setExpanded(false)}
+            >
+              Show less
+            </button>
           </Show>
         </div>
       </Show>
@@ -1568,11 +1582,6 @@ export function UserMessageDisplay(props: { message: UserMessage; parts: PartTyp
             </Tooltip>
           </Show>
         </div>
-      </Show>
-      <Show when={canCollapse()}>
-        <button type="button" data-slot="user-message-expand" onClick={() => setExpanded((value) => !value)}>
-          {expanded() ? "Show less" : "Show more"}
-        </button>
       </Show>
     </div>
   )

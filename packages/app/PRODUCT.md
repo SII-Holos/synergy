@@ -85,7 +85,7 @@ User prompts inside a turn may render as a compact right-aligned bubble with mat
 
 Special user-message renderers must preserve authorship semantics. Plan Mode user requests are user-authored prompts and should keep the right-aligned bubble treatment, while Blueprint control messages are orchestration events and should render as quiet centered event cards instead of pretending to be user speech.
 
-Turn titles are navigation metadata, not conversation content; keep them in the session timeline or session-level chrome, and place user-prompt timestamps and copy controls outside the prompt bubble as low-emphasis metadata.
+Turn titles are navigation metadata, not conversation content; keep them in the session timeline or session-level chrome, and place user-prompt timestamps and copy controls outside the prompt bubble as low-emphasis metadata. Collapsed user-prompt expansion belongs inside the prompt bubble at the truncation edge, not in the external metadata row.
 
 Copy controls should use the shared clipboard capability and shared copied/failed feedback. Success is shown in the triggering control, while failures use the global error toast; do not add local `navigator.clipboard` or `execCommand` implementations in product UI.
 
