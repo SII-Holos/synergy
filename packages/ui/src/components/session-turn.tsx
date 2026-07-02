@@ -16,6 +16,7 @@ import { getDirectory, getFilename } from "@ericsanchezok/synergy-util/path"
 import { Binary } from "@ericsanchezok/synergy-util/binary"
 import { createEffect, createMemo, For, Match, on, ParentProps, Show, Switch } from "solid-js"
 import { DiffChanges } from "./diff-changes"
+import { DiffPreview } from "./tool/diff-preview"
 import { Message, Part } from "./message-part"
 import { MessageSlotOutlet, type MessageSlotName } from "./message-slots"
 import { AttachmentGallery } from "./attachment-card"
@@ -492,58 +493,43 @@ export function SessionTurn(
                             }}
                           >
                             <For each={(msg().summary?.diffs ?? []).slice(0, store.diffLimit)}>
-                              {(diff) => (
-                                <Accordion.Item value={diff.file}>
-                                  <StickyAccordionHeader>
-                                    <Accordion.Trigger>
-                                      <div data-slot="session-turn-accordion-trigger-content">
-                                        <div data-slot="session-turn-file-info">
-                                          <FileIcon
-                                            node={{ path: diff.file, type: "file" }}
-                                            data-slot="session-turn-file-icon"
-                                          />
-                                          <div data-slot="session-turn-file-path">
-                                            <Show when={diff.file.includes("/")}>
-                                              <span data-slot="session-turn-directory">
-                                                {getDirectory(diff.file)}&lrm;
-                                              </span>
-                                            </Show>
-                                            <span data-slot="session-turn-filename">{getFilename(diff.file)}</span>
+                              {(diff, index) => {
+                                const diffKey = () => diff.file || `diff-${index()}`
+
+                                return (
+                                  <Accordion.Item value={diffKey()}>
+                                    <StickyAccordionHeader>
+                                      <Accordion.Trigger>
+                                        <div data-slot="session-turn-accordion-trigger-content">
+                                          <div data-slot="session-turn-file-info">
+                                            <FileIcon
+                                              node={{ path: diff.file, type: "file" }}
+                                              data-slot="session-turn-file-icon"
+                                            />
+                                            <div data-slot="session-turn-file-path">
+                                              <Show when={diff.file.includes("/")}>
+                                                <span data-slot="session-turn-directory">
+                                                  {getDirectory(diff.file)}&lrm;
+                                                </span>
+                                              </Show>
+                                              <span data-slot="session-turn-filename">{getFilename(diff.file)}</span>
+                                            </div>
+                                          </div>
+                                          <div data-slot="session-turn-accordion-actions">
+                                            <DiffChanges changes={diff} />
+                                            <Icon name="grip-vertical" size="small" />
                                           </div>
                                         </div>
-                                        <div data-slot="session-turn-accordion-actions">
-                                          <DiffChanges changes={diff} />
-                                          <Icon name="grip-vertical" size="small" />
-                                        </div>
-                                      </div>
-                                    </Accordion.Trigger>
-                                  </StickyAccordionHeader>
-                                  <Accordion.Content data-slot="session-turn-accordion-content">
-                                    <Show when={store.diffsOpen.includes(diff.file!)}>
-                                      <div data-component="session-turn-diff-preview">
-                                        <div class="text-12-regular text-text-weak">
-                                          {diff.beforeBytes ?? 0} bytes to {diff.afterBytes ?? 0} bytes
-                                          <Show when={diff.truncated}> - preview truncated</Show>
-                                        </div>
-                                        <Show
-                                          when={diff.preview}
-                                          fallback={
-                                            <div class="text-12-regular text-text-weaker">
-                                              No text preview available.
-                                            </div>
-                                          }
-                                        >
-                                          {(preview) => (
-                                            <pre class="mt-2 max-h-96 overflow-auto whitespace-pre-wrap rounded-md bg-surface-subtle p-3 text-12-regular text-text-base">
-                                              {preview()}
-                                            </pre>
-                                          )}
-                                        </Show>
-                                      </div>
-                                    </Show>
-                                  </Accordion.Content>
-                                </Accordion.Item>
-                              )}
+                                      </Accordion.Trigger>
+                                    </StickyAccordionHeader>
+                                    <Accordion.Content data-slot="session-turn-accordion-content">
+                                      <Show when={store.diffsOpen.includes(diffKey())}>
+                                        <DiffPreview diff={diff} variant="session" />
+                                      </Show>
+                                    </Accordion.Content>
+                                  </Accordion.Item>
+                                )
+                              }}
                             </For>
                           </Accordion>
                           <Show when={(msg().summary?.diffs?.length ?? 0) > store.diffLimit}>
