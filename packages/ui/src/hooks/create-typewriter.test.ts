@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { createRoot } from "solid-js"
+import { createRoot, createSignal } from "solid-js"
 import { advanceTypewriterFrame, createTypewriter, type TypewriterFrameState } from "./create-typewriter"
 
 describe("createTypewriter", () => {
@@ -29,7 +29,7 @@ describe("createTypewriter", () => {
     expect(next.revealedLength).toBeLessThan(160)
   })
 
-  test("drains after completion instead of snapping to the full source", () => {
+  test("snaps after completion instead of draining", () => {
     const live = advanceTypewriterFrame({
       state: { revealedLength: 0, fractional: 0 },
       sourceLength: 160,
@@ -45,8 +45,39 @@ describe("createTypewriter", () => {
       completed: true,
     })
 
+    expect(completed).toEqual({ revealedLength: 160, fractional: 0 })
     expect(completed.revealedLength).toBeGreaterThan(live.revealedLength)
-    expect(completed.revealedLength).toBeLessThan(160)
+  })
+
+  test("snaps active backlog when completion arrives", () => {
+    let frame: FrameRequestCallback | undefined
+    const requestAnimationFrame = globalThis.requestAnimationFrame
+    const cancelAnimationFrame = globalThis.cancelAnimationFrame
+    globalThis.requestAnimationFrame = ((callback: FrameRequestCallback) => {
+      frame = callback
+      return 1
+    }) as typeof globalThis.requestAnimationFrame
+    globalThis.cancelAnimationFrame = (() => {}) as typeof globalThis.cancelAnimationFrame
+
+    try {
+      createRoot((dispose) => {
+        const [completed, setCompleted] = createSignal(false)
+        const output = createTypewriter({
+          source: () => "streamed backlog",
+          streaming: () => true,
+          completed,
+        })
+
+        expect(output()).toBe("")
+        setCompleted(true)
+        frame?.(performance.now() + 16)
+        expect(output()).toBe("streamed backlog")
+        dispose()
+      })
+    } finally {
+      globalThis.requestAnimationFrame = requestAnimationFrame
+      globalThis.cancelAnimationFrame = cancelAnimationFrame
+    }
   })
 
   test("snaps and resets when the source shrinks", () => {

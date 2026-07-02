@@ -4,7 +4,6 @@ const EMIT_INTERVAL_MS = 16
 const MAX_ELAPSED_MS = 80
 const BASE_STREAM_RATE_CPS = 260
 const MAX_STREAM_RATE_CPS = 420
-const COMPLETION_DRAIN_RATE_CPS = 420
 const LOW_BUFFER_CHARS = 80
 
 export interface TypewriterOptions {
@@ -26,8 +25,7 @@ export interface TypewriterFrameInput {
   completed: boolean
 }
 
-function displayRate(buffer: number, streaming: boolean, completed: boolean) {
-  if (completed || !streaming) return COMPLETION_DRAIN_RATE_CPS
+function displayRate(buffer: number) {
   if (buffer <= LOW_BUFFER_CHARS) return BASE_STREAM_RATE_CPS
 
   const overflow = buffer - LOW_BUFFER_CHARS
@@ -36,12 +34,12 @@ function displayRate(buffer: number, streaming: boolean, completed: boolean) {
 }
 
 export function advanceTypewriterFrame(input: TypewriterFrameInput): TypewriterFrameState {
-  if (input.sourceLength < input.state.revealedLength) {
+  if (input.completed || !input.streaming || input.sourceLength < input.state.revealedLength) {
     return { revealedLength: input.sourceLength, fractional: 0 }
   }
 
   const buffer = input.sourceLength - input.state.revealedLength
-  const rate = displayRate(buffer, input.streaming, input.completed)
+  const rate = displayRate(buffer)
   const fractional = input.state.fractional + (rate * Math.min(input.elapsedMs, MAX_ELAPSED_MS)) / 1000
   const chars = Math.floor(fractional)
 
@@ -83,6 +81,8 @@ export function createTypewriter(options: TypewriterOptions) {
 
   function snapTo(source: string) {
     stop()
+    live = false
+    observedSourceLength = source.length
     revealedLength = source.length
     fractional = 0
     setDisplayed(source)
@@ -160,9 +160,13 @@ export function createTypewriter(options: TypewriterOptions) {
       return
     }
 
+    if (isDone(streaming, completed)) {
+      snapTo(source)
+      return
+    }
+
     if (source.length < observedSourceLength) {
       observedSourceLength = source.length
-      live = streaming && !completed
       snapTo(source)
       return
     }
