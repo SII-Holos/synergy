@@ -506,6 +506,23 @@ export namespace MessageV2 {
     return next
   }
 
+  function modelProviderMetadata(metadata: Record<string, any> | undefined): Record<string, any> | undefined {
+    if (!metadata) return undefined
+    const openai = metadata.openai
+    if (!openai || typeof openai !== "object" || Array.isArray(openai)) return metadata
+    if (!("itemId" in openai) && !("reasoningEncryptedContent" in openai)) return metadata
+
+    const nextOpenAI = { ...openai }
+    delete nextOpenAI.itemId
+    delete nextOpenAI.reasoningEncryptedContent
+
+    const next = { ...metadata }
+    if (Object.keys(nextOpenAI).length > 0) next.openai = nextOpenAI
+    else delete next.openai
+
+    return Object.keys(next).length > 0 ? next : undefined
+  }
+
   export const Assistant = Base.extend({
     role: z.literal("assistant"),
     time: z.object({
@@ -773,7 +790,7 @@ export namespace MessageV2 {
             assistantMessage.parts.push({
               type: "text",
               text: part.text,
-              providerMetadata: part.metadata,
+              providerMetadata: modelProviderMetadata(part.metadata),
             })
           if (part.type === "step-start")
             assistantMessage.parts.push({
@@ -804,7 +821,7 @@ export namespace MessageV2 {
                 toolCallId: part.callID,
                 input: part.state.input,
                 output: part.state.time.compacted ? "[Old tool result content cleared]" : part.state.output,
-                callProviderMetadata: part.metadata,
+                callProviderMetadata: modelProviderMetadata(part.metadata),
               })
             }
             if (part.state.status === "error")
@@ -814,14 +831,14 @@ export namespace MessageV2 {
                 toolCallId: part.callID,
                 input: part.state.input,
                 errorText: part.state.error,
-                callProviderMetadata: part.metadata,
+                callProviderMetadata: modelProviderMetadata(part.metadata),
               })
           }
           if (part.type === "reasoning") {
             assistantMessage.parts.push({
               type: "reasoning",
               text: part.text,
-              providerMetadata: part.metadata,
+              providerMetadata: modelProviderMetadata(part.metadata),
             })
           }
         }

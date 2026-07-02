@@ -590,6 +590,120 @@ describe("session.message-v2.toModelMessage", () => {
     ])
   })
 
+  test("removes OpenAI response item references from model provider metadata", () => {
+    const userID = "m-user"
+    const assistantID = "m-assistant"
+
+    const input: MessageV2.WithParts[] = [
+      {
+        info: userInfo(userID),
+        parts: [
+          {
+            ...basePart(userID, "u1"),
+            type: "text",
+            text: "continue",
+          },
+        ] as MessageV2.Part[],
+      },
+      {
+        info: assistantInfo(assistantID, userID),
+        parts: [
+          {
+            ...basePart(assistantID, "a1"),
+            type: "text",
+            text: "answer",
+            metadata: {
+              openai: {
+                itemId: "rs_05cc53d0d93cbe50016a46668417b4819186ef05beefb099a1",
+                reasoningEncryptedContent: "encrypted",
+                retained: "ok",
+              },
+              custom: { keep: true },
+            },
+          },
+          {
+            ...basePart(assistantID, "a2"),
+            type: "reasoning",
+            text: "summary",
+            time: { start: 0 },
+            metadata: {
+              openai: {
+                itemId: "rs_reasoning",
+                reasoningEncryptedContent: "encrypted",
+              },
+            },
+          },
+          {
+            ...basePart(assistantID, "a3"),
+            type: "tool",
+            callID: "call-1",
+            tool: "bash",
+            state: {
+              status: "completed",
+              input: { cmd: "pwd" },
+              output: "ok",
+              title: "Bash",
+              metadata: {},
+              time: { start: 0, end: 1 },
+            },
+            metadata: {
+              openai: {
+                itemId: "rs_tool",
+                retained: "tool",
+              },
+            },
+          },
+        ] as MessageV2.Part[],
+      },
+    ]
+
+    expect(MessageV2.toModelMessage(input)).toStrictEqual([
+      {
+        role: "user",
+        content: [{ type: "text", text: "continue" }],
+      },
+      {
+        role: "assistant",
+        content: [
+          {
+            type: "text",
+            text: "answer",
+            providerOptions: {
+              openai: { retained: "ok" },
+              custom: { keep: true },
+            },
+          },
+          {
+            type: "reasoning",
+            text: "summary",
+            providerOptions: undefined,
+          },
+          {
+            type: "tool-call",
+            toolCallId: "call-1",
+            toolName: "bash",
+            input: { cmd: "pwd" },
+            providerExecuted: undefined,
+            providerOptions: {
+              openai: { retained: "tool" },
+            },
+          },
+        ],
+      },
+      {
+        role: "tool",
+        content: [
+          {
+            type: "tool-result",
+            toolCallId: "call-1",
+            toolName: "bash",
+            output: { type: "text", value: "ok" },
+          },
+        ],
+      },
+    ])
+  })
+
   test("filters assistant messages with non-abort errors", () => {
     const assistantID = "m-assistant"
 
