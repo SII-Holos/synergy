@@ -20,6 +20,10 @@ const nativeTitlebar = await Bun.file(new URL("./components/desktop-native-title
 const sessionTopBarCss = await Bun.file(new URL("./components/top-bar/session-top-bar.css", import.meta.url)).text()
 const sessionTopBar = await Bun.file(new URL("./components/top-bar/session-top-bar.tsx", import.meta.url)).text()
 const sessionPage = await Bun.file(new URL("./pages/session.tsx", import.meta.url)).text()
+const workbenchSurface = await Bun.file(new URL("./components/session/workbench-surface.tsx", import.meta.url)).text()
+const workbenchSurfaceCss = await Bun.file(new URL("./components/session/workbench-surface.css", import.meta.url)).text()
+const workspaceNotesTool = await Bun.file(new URL("./components/workspace/tool-notes.tsx", import.meta.url)).text()
+const workspaceBrowserTool = await Bun.file(new URL("./components/workspace/tool-browser.tsx", import.meta.url)).text()
 const appSrc = fileURLToPath(new URL(".", import.meta.url))
 const uiSrc = fileURLToPath(new URL("../../ui/src", import.meta.url))
 
@@ -113,6 +117,18 @@ describe("workbench surface polarity", () => {
     expect(sidebarCss).not.toContain(".app-shell--desktop-native-chrome .sb-header")
     expect(sidebarCss).not.toContain(".app-shell--desktop-native-chrome .sb-actions")
     expect(sidebarCss).not.toContain("--sb-native-titlebar-height")
+  })
+
+  test("workbench panel tabs keep close and add controls compact", () => {
+    expect(workspaceNotesTool).toContain('cardinality: "singleton"')
+    expect(workspaceBrowserTool).toContain('cardinality: "singleton"')
+    expect(workbenchSurface).toContain("addablePanels")
+    expect(workbenchSurface).toContain('panel.cardinality === "multi" || !openPanelIds.has(panel.id)')
+    expect(workbenchSurface).not.toContain('aria-label={isSide() ? "Close side workspace" : "Close BottomSpace"}')
+    expect(workbenchSurfaceCss).toContain(".workbench-surface-tab:hover .workbench-surface-tab-close")
+    expect(workbenchSurfaceCss).toContain("pointer-events: none;")
+    expect(workbenchSurfaceCss).toContain(".workbench-surface-add-wrap")
+    expect(workbenchSurfaceCss).toContain("left: 0;")
   })
 
   test("raised stronger non-alpha utilities resolve to popover surfaces inside the workbench", () => {

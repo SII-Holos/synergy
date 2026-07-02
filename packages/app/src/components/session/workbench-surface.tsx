@@ -126,6 +126,10 @@ export function WorkbenchSurface(props: { surface: WorkbenchPanelSurface }) {
   const panels = createMemo(() => workbench.panels(props.surface))
   const activeTab = createMemo(() => state().activeTab())
   const activeEntry = createMemo(() => workbench.panelForTab(activeTab()))
+  const addablePanels = createMemo(() => {
+    const openPanelIds = new Set(state().tabs().map((tab) => tab.panelId))
+    return panels().filter((panel) => panel.cardinality === "multi" || !openPanelIds.has(panel.id))
+  })
   const [addOpen, setAddOpen] = createSignal(false)
 
   const openPanel = (panel: WorkbenchPanelEntry, mode: "launcher" | "add") => {
@@ -138,6 +142,10 @@ export function WorkbenchSurface(props: { surface: WorkbenchPanelSurface }) {
 
   createEffect(() => {
     if (!state().opened()) setAddOpen(false)
+  })
+
+  createEffect(() => {
+    if (addablePanels().length === 0) setAddOpen(false)
   })
 
   onMount(() => {
@@ -214,40 +222,39 @@ export function WorkbenchSurface(props: { surface: WorkbenchPanelSurface }) {
                 </div>
               )}
             </For>
-            <div class="workbench-surface-tabs-spacer" />
-            <div class="workbench-surface-add-wrap">
-              <IconButton
-                icon="plus"
-                variant="ghost"
-                aria-label={isSide() ? "Add side panel" : "Add bottom panel"}
-                aria-expanded={addOpen()}
-                onClick={() => setAddOpen((value) => !value)}
-              />
-              <Show when={addOpen()}>
-                <div class="workbench-surface-add-menu">
-                  <For each={panels()}>
-                    {(panel) => (
-                      <button type="button" class="workbench-surface-add-row" onClick={() => openPanel(panel, "add")}>
-                        <Icon name={panel.icon as IconName} size="small" />
-                        <span>{panel.label}</span>
-                      </button>
-                    )}
-                  </For>
-                </div>
-              </Show>
-            </div>
-            <IconButton
-              icon="x"
-              variant="ghost"
-              aria-label={isSide() ? "Close side workspace" : "Close BottomSpace"}
-              onClick={state().close}
-            />
+            <Show when={addablePanels().length > 0}>
+              <div class="workbench-surface-add-wrap">
+                <IconButton
+                  icon="plus"
+                  variant="ghost"
+                  aria-label={isSide() ? "Add side panel" : "Add bottom panel"}
+                  aria-expanded={addOpen()}
+                  onClick={() => setAddOpen((value) => !value)}
+                />
+                <Show when={addOpen()}>
+                  <div class="workbench-surface-add-menu">
+                    <For each={addablePanels()}>
+                      {(panel) => (
+                        <button
+                          type="button"
+                          class="workbench-surface-add-row"
+                          onClick={() => openPanel(panel, "add")}
+                        >
+                          <Icon name={panel.icon as IconName} size="small" />
+                          <span>{panel.label}</span>
+                        </button>
+                      )}
+                    </For>
+                  </div>
+                </Show>
+              </div>
+            </Show>
           </div>
         </Show>
         <div class="workbench-surface-body">
           <Show
             when={activeTab() && activeEntry()}
-            fallback={<Launcher surface={props.surface} panels={panels()} onOpen={openPanel} />}
+            fallback={<Launcher surface={props.surface} panels={addablePanels()} onOpen={openPanel} />}
           >
             <WorkbenchPanelContent
               entry={activeEntry()!}

@@ -110,6 +110,18 @@
   border-radius: 5px;
   color: var(--icon-weak);
   margin-right: 5px;
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    opacity var(--motion-duration-fast) var(--motion-ease-standard),
+    background-color var(--motion-duration-fast) var(--motion-ease-standard),
+    color var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+.workbench-surface-tab:hover .workbench-surface-tab-close,
+.workbench-surface-tab:focus-within .workbench-surface-tab-close {
+  opacity: 1;
+  pointer-events: auto;
 }
 
 .workbench-surface-tab-close:hover {
@@ -125,11 +137,12 @@
 .workbench-surface-add-wrap {
   position: relative;
   display: flex;
+  margin-left: 2px;
 }
 
 .workbench-surface-add-menu {
   position: absolute;
-  right: 0;
+  left: 0;
   top: calc(100% + 6px);
   z-index: 20;
   min-width: 190px;
