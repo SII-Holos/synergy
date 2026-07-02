@@ -4,10 +4,13 @@ import { Button } from "@ericsanchezok/synergy-ui/button"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import { useGlobalSDK } from "@/context/global-sdk"
+import { useConfirm } from "@/components/dialog/confirm-dialog"
+import { overwriteImportConfirm } from "@/components/dialog/confirm-copy"
 import type { ConfigDomainImportPlan, ConfigDomainSummary } from "@ericsanchezok/synergy-sdk/client"
 
 export function ImportPanel(props: { domains: ConfigDomainSummary[]; onImported: () => Promise<void> }) {
   const globalSDK = useGlobalSDK()
+  const confirm = useConfirm()
   const [sourceLabel, setSourceLabel] = createSignal("")
   const [url, setUrl] = createSignal("")
   const [config, setConfig] = createSignal<Record<string, unknown> | undefined>()
@@ -90,28 +93,39 @@ export function ImportPanel(props: { domains: ConfigDomainSummary[]; onImported:
     setSelected((prev) => prev.filter((item) => item !== id))
   }
 
-  async function applyImport() {
-    const input = config()
-    if (!input || selected().length === 0) return
-    if (
-      selectedConflicts().length > 0 &&
-      !window.confirm(`${selectedConflicts().length} conflicting key(s) will be overwritten. Continue?`)
-    ) {
-      return
-    }
+  async function runApplyImport(input: Record<string, unknown>, only: Array<ConfigDomainSummary["id"]>) {
     setApplying(true)
     try {
       await globalSDK.client.config.import.apply({
         config: input as any,
-        only: selected(),
+        only,
         yes: true,
       })
-      showToast({ type: "success", title: "Config imported", description: `Updated ${selected().length} domain(s).` })
+      showToast({ type: "success", title: "Config imported", description: `Updated ${only.length} domain(s).` })
       await props.onImported()
-    } catch (error: any) {
-      showToast({ type: "error", title: "Import failed", description: error.message })
     } finally {
       setApplying(false)
+    }
+  }
+
+  async function applyImport() {
+    const input = config()
+    const only = selected()
+    if (!input || only.length === 0) return
+
+    const conflictCount = selectedConflicts().length
+    if (conflictCount > 0) {
+      confirm.show({
+        ...overwriteImportConfirm(conflictCount),
+        onConfirm: () => runApplyImport(input, only),
+      })
+      return
+    }
+
+    try {
+      await runApplyImport(input, only)
+    } catch (error: any) {
+      showToast({ type: "error", title: "Import failed", description: error.message })
     }
   }
 

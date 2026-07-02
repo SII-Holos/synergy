@@ -8,6 +8,8 @@ import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import { createSynergyClient } from "@ericsanchezok/synergy-sdk/client"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { usePlatform } from "@/context/platform"
+import { useConfirm } from "@/components/dialog/confirm-dialog"
+import { deleteSkillConfirm } from "@/components/dialog/confirm-copy"
 import { AppPanel } from "@/components/app-panel"
 import type { SkillList } from "@ericsanchezok/synergy-sdk/client"
 import {
@@ -144,15 +146,9 @@ export function SkillView(props: { sdk: ReturnType<typeof useGlobalSDK>; search:
   })
 
   async function deleteSkill(name: string) {
-    try {
-      await scopedClient().skill.remove({ name })
-      await refetch()
-      showToast({ type: "info", title: "Skill deleted", description: `Removed "${name}" from disk` })
-      return true
-    } catch {
-      showToast({ type: "error", title: "Failed to delete skill" })
-      return false
-    }
+    await scopedClient().skill.remove({ name })
+    await refetch()
+    showToast({ type: "info", title: "Skill deleted", description: `Removed "${name}" from disk` })
   }
 
   function openSkillDetail(skill: SkillItem) {
@@ -562,10 +558,9 @@ function SkillCard(props: { skill: SkillItem; onOpen: () => void }) {
   )
 }
 
-function SkillDetailDialog(props: { skill: SkillItem; onDelete?: () => Promise<boolean>; onDeleted: () => void }) {
+function SkillDetailDialog(props: { skill: SkillItem; onDelete?: () => Promise<void>; onDeleted: () => void }) {
   const dialog = useDialog()
-  const [deleting, setDeleting] = createSignal(false)
-  const [confirmingDelete, setConfirmingDelete] = createSignal(false)
+  const confirm = useConfirm()
   const scopeLabel = () => skillScopeLabel(props.skill)
   const displayLocation = () => compactPath(props.skill.location)
   const displayEntryFile = () => compactPath(props.skill.entryFile)
@@ -573,12 +568,17 @@ function SkillDetailDialog(props: { skill: SkillItem; onDelete?: () => Promise<b
   const compatibility = () => props.skill.compatibility
 
   async function handleDelete() {
-    if (!props.onDelete || deleting()) return
-    setDeleting(true)
-    const deleted = await props.onDelete()
-    setDeleting(false)
-    if (deleted) props.onDeleted()
-    else setConfirmingDelete(false)
+    if (!props.onDelete) return
+    await props.onDelete()
+    props.onDeleted()
+  }
+
+  function requestDelete() {
+    if (!props.onDelete) return
+    confirm.show({
+      ...deleteSkillConfirm(props.skill.name),
+      onConfirm: handleDelete,
+    })
   }
 
   return (
@@ -650,63 +650,19 @@ function SkillDetailDialog(props: { skill: SkillItem; onDelete?: () => Promise<b
           </Show>
         </div>
 
-        <div classList={{ "skill-detail-footer": true, "is-confirming": confirmingDelete() }}>
-          <Show
-            when={confirmingDelete() && props.onDelete}
-            fallback={
-              <>
-                <Show when={props.onDelete}>
-                  <button
-                    type="button"
-                    class="skill-detail-button skill-detail-button-danger"
-                    onClick={() => setConfirmingDelete(true)}
-                  >
-                    Delete skill
-                  </button>
-                </Show>
-                <button
-                  type="button"
-                  class="skill-detail-button skill-detail-button-secondary ml-auto"
-                  onClick={() => dialog.close()}
-                >
-                  Close
-                </button>
-              </>
-            }
-          >
-            <div class="skill-delete-confirm-copy">
-              <div class="skill-delete-confirm-title">Delete this skill?</div>
-              <div class="skill-delete-confirm-text">
-                This removes "{props.skill.name}" from disk. This cannot be undone.
-              </div>
-            </div>
-            <div class="skill-delete-confirm-actions">
-              <button
-                type="button"
-                class="skill-detail-button skill-detail-button-secondary"
-                onClick={() => setConfirmingDelete(false)}
-                disabled={deleting()}
-              >
-                Keep skill
-              </button>
-              <button
-                type="button"
-                classList={{
-                  "skill-detail-button skill-detail-button-danger-solid": true,
-                  "is-disabled": deleting(),
-                }}
-                onClick={handleDelete}
-                disabled={deleting()}
-              >
-                <Show when={deleting()} fallback="Delete">
-                  <span class="inline-flex items-center gap-1.5">
-                    <Spinner class="size-3" />
-                    Deleting...
-                  </span>
-                </Show>
-              </button>
-            </div>
+        <div class="skill-detail-footer">
+          <Show when={props.onDelete}>
+            <button type="button" class="skill-detail-button skill-detail-button-danger" onClick={requestDelete}>
+              Delete skill
+            </button>
           </Show>
+          <button
+            type="button"
+            class="skill-detail-button skill-detail-button-secondary ml-auto"
+            onClick={() => dialog.close()}
+          >
+            Close
+          </button>
         </div>
       </div>
     </Dialog>

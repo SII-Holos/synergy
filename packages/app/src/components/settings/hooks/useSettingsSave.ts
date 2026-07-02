@@ -2,15 +2,11 @@ import { createEffect, createSignal, onCleanup } from "solid-js"
 import type { ConfigDomainSummary } from "@ericsanchezok/synergy-sdk/client"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
+import type { ConfirmOptions } from "@/components/dialog/confirm-dialog"
+import { discardSettingsConfirm } from "@/components/dialog/confirm-copy"
 import { groupPatchByDomain, strategyForPatch } from "../domain-routing"
 
-export type ShowConfirmFn = (params: {
-  title: string
-  description: string
-  confirmLabel: string
-  cancelLabel: string
-  onConfirm: () => void | Promise<void>
-}) => void
+export type ShowConfirmFn = (params: ConfirmOptions) => void
 
 export type SaveStatus = "idle" | "saving" | "saved" | "error"
 
@@ -162,10 +158,7 @@ export function useSettingsSave(ctx: SaveContext) {
     }
 
     ctx.showConfirm({
-      title: "Discard unsaved changes?",
-      description: `You have unsaved changes for Settings. Discard them and ${action}?`,
-      confirmLabel: "Discard",
-      cancelLabel: "Keep Editing",
+      ...discardSettingsConfirm(action),
       onConfirm,
     })
   }

@@ -3,6 +3,8 @@ import { Dialog } from "@ericsanchezok/synergy-ui/dialog"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { useGlobalSDK } from "@/context/global-sdk"
+import { useConfirm } from "@/components/dialog/confirm-dialog"
+import { uninstallPluginConfirm } from "@/components/dialog/confirm-copy"
 import { usePluginHost } from "@/plugin"
 import { VerifiedBadge } from "./VerifiedBadge"
 import { PermissionRiskBadge } from "../consent/PermissionRiskBadge"
@@ -198,9 +200,9 @@ export function PluginDetailDialog(props: {
   const globalSDK = useGlobalSDK()
   const pluginHost = usePluginHost()
   const dialog = useDialog()
+  const confirm = useConfirm()
   const [action, setAction] = createSignal<"install" | "update" | "uninstall" | null>(null)
   const [error, setError] = createSignal<string | null>(null)
-  const [confirmingUninstall, setConfirmingUninstall] = createSignal(false)
 
   const [summary] = createResource(
     () => ({ id: props.pluginId, source: props.source }),
@@ -331,21 +333,26 @@ export function PluginDetailDialog(props: {
 
   async function performUninstall() {
     if (busy() || !installedVersion()) return
-    if (!confirmingUninstall()) {
-      setConfirmingUninstall(true)
-      return
-    }
     setAction("uninstall")
     setError(null)
     try {
       await globalSDK.client.api.plugins.remove({ pluginId: props.pluginId })
-      setConfirmingUninstall(false)
       await refreshAfterMutation()
     } catch (err) {
-      setError(installErrorMessage(err))
+      const message = installErrorMessage(err)
+      setError(message)
+      throw new Error(message)
     } finally {
       setAction(null)
     }
+  }
+
+  function requestUninstall() {
+    if (busy() || !installedVersion()) return
+    confirm.show({
+      ...uninstallPluginConfirm(plugin()?.name ?? props.pluginId),
+      onConfirm: performUninstall,
+    })
   }
 
   return (
@@ -429,23 +436,16 @@ export function PluginDetailDialog(props: {
                   <Show when={installedVersion()}>
                     <button
                       type="button"
-                      classList={{
-                        "plugin-detail-secondary-action": true,
-                        "is-confirming": confirmingUninstall(),
-                      }}
+                      class="plugin-detail-secondary-action"
                       disabled={busy()}
-                      onClick={() => void performUninstall()}
+                      onClick={requestUninstall}
                     >
                       <Icon
                         name={action() === "uninstall" ? "loader-circle" : "trash-2"}
                         size="small"
                         class={action() === "uninstall" ? "animate-spin" : ""}
                       />
-                      {action() === "uninstall"
-                        ? "Uninstalling..."
-                        : confirmingUninstall()
-                          ? "Confirm uninstall"
-                          : "Uninstall"}
+                      {action() === "uninstall" ? "Uninstalling..." : "Uninstall"}
                     </button>
                   </Show>
 
