@@ -1,4 +1,5 @@
 import type { ControlProfileId } from "@/context/input"
+import type { NewSessionWorkspaceSelection } from "@/components/session/worktree-session"
 
 export type DroppedSessionData = {
   id: string
@@ -43,10 +44,12 @@ export type PromptInputStore = {
 export interface PromptInputProps {
   class?: string
   ref?: (el: HTMLDivElement) => void
-  newSessionWorktree?: string
+  newSessionWorkspaceSelection?: NewSessionWorkspaceSelection
+  newSessionCanonicalDirectory?: string
+  newSessionCurrentDirectory?: string
   newSessionCanCreateWorktree?: boolean
-  onNewSessionWorktreeChange?: (worktree: string) => void
-  onNewSessionWorktreeReset?: () => void
+  onNewSessionWorkspaceSelectionChange?: (selection: NewSessionWorkspaceSelection) => void
+  onNewSessionWorkspaceSelectionReset?: () => void
   hideAgentSelector?: boolean
 }
 

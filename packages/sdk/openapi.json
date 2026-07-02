@@ -3773,6 +3773,9 @@
                   "controlProfile": {
                     "type": "string",
                     "enum": ["guarded", "autonomous", "full_access"]
+                  },
+                  "workspace": {
+                    "$ref": "#/components/schemas/SessionWorkspaceSelection"
                   }
                 }
               }
@@ -4597,56 +4600,7 @@
                     ]
                   },
                   "workspace": {
-                    "anyOf": [
-                      {
-                        "type": "object",
-                        "properties": {
-                          "mode": {
-                            "type": "string",
-                            "const": "current"
-                          }
-                        },
-                        "required": ["mode"]
-                      },
-                      {
-                        "type": "object",
-                        "properties": {
-                          "mode": {
-                            "type": "string",
-                            "const": "existing"
-                          },
-                          "target": {
-                            "type": "string",
-                            "minLength": 1
-                          },
-                          "force": {
-                            "type": "boolean"
-                          }
-                        },
-                        "required": ["mode", "target"]
-                      },
-                      {
-                        "type": "object",
-                        "properties": {
-                          "mode": {
-                            "type": "string",
-                            "const": "create"
-                          },
-                          "name": {
-                            "type": "string"
-                          },
-                          "baseRef": {
-                            "type": "string",
-                            "enum": ["current", "fresh"]
-                          },
-                          "baseRevision": {
-                            "type": "string",
-                            "minLength": 1
-                          }
-                        },
-                        "required": ["mode"]
-                      }
-                    ]
+                    "$ref": "#/components/schemas/SessionWorkspaceSelection"
                   },
                   "title": {
                     "type": "string"
@@ -22706,6 +22660,58 @@
           }
         },
         "required": ["sessionID", "count", "hasActiveAgenda", "items", "offset", "limit", "total", "hasMore"]
+      },
+      "SessionWorkspaceSelection": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "mode": {
+                "type": "string",
+                "const": "current"
+              }
+            },
+            "required": ["mode"]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "mode": {
+                "type": "string",
+                "const": "existing"
+              },
+              "target": {
+                "type": "string",
+                "minLength": 1
+              },
+              "force": {
+                "type": "boolean"
+              }
+            },
+            "required": ["mode", "target"]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "mode": {
+                "type": "string",
+                "const": "create"
+              },
+              "name": {
+                "type": "string"
+              },
+              "baseRef": {
+                "type": "string",
+                "enum": ["current", "fresh"]
+              },
+              "baseRevision": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": ["mode"]
+          }
+        ]
       },
       "SessionInboxItemSource": {
         "type": "object",
