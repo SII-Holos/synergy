@@ -463,7 +463,7 @@ function LayoutContent(
     >
       <MobileDrawer />
       <DesktopWindowChrome />
-      <DesktopNativeTitlebar onSearchOpen={props.onSearchOpen} />
+      <DesktopNativeTitlebar />
       <ConnectionBanner />
       <div class="flex-1 min-h-0 min-w-0 flex overflow-hidden">
         <Show when={layout.isDesktop()}>

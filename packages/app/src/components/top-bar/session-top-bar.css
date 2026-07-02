@@ -14,22 +14,6 @@
   pointer-events: none;
 }
 
-.app-shell--desktop-native-chrome .stb-root {
-  position: fixed;
-  left: var(--desktop-native-titlebar-left-width);
-  right: 0;
-  z-index: 41;
-  height: var(--desktop-native-titlebar-height, 44px);
-  padding: 0 18px;
-  -webkit-app-region: drag;
-  pointer-events: auto;
-}
-
-.app-shell--desktop-native-chrome .stb-left,
-.app-shell--desktop-native-chrome .stb-right {
-  -webkit-app-region: no-drag;
-}
-
 .stb-folder {
   flex-shrink: 0;
   color: var(--icon-base);
@@ -82,10 +66,6 @@
   transition:
     background-color 150ms,
     color 150ms;
-}
-
-.app-shell--desktop-native-chrome .stb-selector-btn {
-  height: 34px;
 }
 
 .stb-selector-btn:hover {

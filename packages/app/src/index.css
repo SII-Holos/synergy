@@ -12,16 +12,8 @@ a:active,
 }
 
 .app-shell--desktop-native-chrome {
-  --desktop-native-titlebar-height: 44px;
-  --desktop-native-titlebar-traffic-width: 104px;
-  --desktop-native-titlebar-control-width: 72px;
-  --desktop-native-titlebar-expanded-left-width: 300px;
-  --desktop-native-titlebar-collapsed-left-width: 176px;
-  --desktop-native-titlebar-left-width: var(--desktop-native-titlebar-expanded-left-width);
-}
-
-.app-shell--desktop-native-chrome.app-shell--sidebar-collapsed {
-  --desktop-native-titlebar-left-width: var(--desktop-native-titlebar-collapsed-left-width);
+  --desktop-native-titlebar-height: 36px;
+  --desktop-native-titlebar-traffic-width: 90px;
 }
 
 [data-slot="dialog-container"]:has(.dialog-session-export) {
