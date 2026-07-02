@@ -663,7 +663,10 @@ Run TS tests from `packages/synergy` — the root `test` script intentionally bl
 
 ```bash
 cd packages/synergy
-bun test                                # full suite
+bun test                                # full suite without coverage
+bun run test:changed                    # tests affected by changes against origin/dev
+bun run test:coverage                   # full suite with coverage, matching CI
+bun run test:profile                    # write JUnit timings to coverage/test-profile-junit.xml
 bun test test/sandbox/                  # sandbox tests
 bun test test/tool/read.test.ts         # single file
 bun test --watch                        # watch mode

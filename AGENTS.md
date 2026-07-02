@@ -134,6 +134,8 @@ Run tests from `packages/synergy`, not from repo root:
 cd packages/synergy
 bun test
 bun test test/tool/read.test.ts
+bun run test:changed
+bun run test:coverage
 bun test --watch
 ```
 
