@@ -318,12 +318,7 @@ export function Sidebar(props: SidebarProps) {
           }
         >
           <A href={`/${base64Encode("home")}/session`} class="sb-logo">
-            <img
-              src={holosLogoPath(isDark() ? "dark" : "light")}
-              alt="HOLOS"
-              class="sb-logo-img"
-              draggable={false}
-            />
+            <img src={holosLogoPath(isDark() ? "dark" : "light")} alt="HOLOS" class="sb-logo-img" draggable={false} />
             <span class="sb-logo-text">HOLOS</span>
           </A>
           <div class="sb-header-actions">
