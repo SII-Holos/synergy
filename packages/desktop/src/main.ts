@@ -24,7 +24,7 @@ import { DesktopServerManager } from "./server-manager.js"
 import { enforceProductionLoading, installSessionSecurity, installWindowSecurity } from "./security.js"
 import { DesktopUpdateMode, DesktopUpdater } from "./updater.js"
 import { loadWindowState, scheduleWindowStatePersistence } from "./window-state.js"
-import { desktopWindowChromeOptions, desktopWindowState } from "./window-chrome.js"
+import { desktopDevDockIconPath, desktopWindowChromeOptions, desktopWindowState } from "./window-chrome.js"
 
 const dirname = path.dirname(fileURLToPath(import.meta.url))
 const isBrowserHostMode = process.env.SYNERGY_DESKTOP_MODE === "browser-host"
@@ -359,6 +359,13 @@ async function start() {
     await createBrowserHost()
     return
   }
+
+  const dockIconPath = desktopDevDockIconPath({
+    platform: process.platform,
+    dirname,
+    isPackaged: app.isPackaged,
+  })
+  if (dockIconPath) app.dock?.setIcon(dockIconPath)
 
   const channel = desktopChannel(app.isPackaged)
   installSessionSecurity()
