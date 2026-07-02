@@ -43,7 +43,7 @@ export interface PluginWorkbenchPanelProps extends PluginPanelProps {
 }
 
 export type PluginWorkbenchPanel = Component<PluginWorkbenchPanelProps>
-export type PluginGlobalPanel = Component<PluginPanelProps>
+export type PluginAppPanel = Component<PluginPanelProps>
 
 export interface PluginSettingsProps {
   pluginId: string
@@ -53,15 +53,15 @@ export interface PluginSettingsProps {
 
 export type PluginSettingsSection = Component<PluginSettingsProps>
 
-export type PluginChatSlot = "before-tools" | "after-tools" | "before-reasoning" | "after-reasoning"
+export type PluginMessageSlotName = "before-tools" | "after-tools" | "before-reasoning" | "after-reasoning"
 
-export interface PluginChatComponentProps {
-  slot: PluginChatSlot
+export interface PluginMessageSlotProps {
+  slot: PluginMessageSlotName
   sessionId?: string
   messageId?: string
 }
 
-export type PluginChatComponent = Component<PluginChatComponentProps>
+export type PluginMessageSlot = Component<PluginMessageSlotProps>
 
 export interface PluginCommandContext {
   pluginId: string

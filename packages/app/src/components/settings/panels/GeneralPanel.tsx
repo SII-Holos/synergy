@@ -48,6 +48,13 @@ export function GeneralPanel(props: {
   onGeneralChange: <K extends keyof GeneralStore>(key: K, value: GeneralStore[K]) => void
 }) {
   const theme = useTheme()
+  const selectedThemeId = () => props.general.theme || "synergy"
+
+  function setThemeId(themeId: string) {
+    const next = themeId === "synergy" ? "" : themeId
+    props.onGeneralChange("theme", next)
+    theme.setThemeId(themeId)
+  }
 
   function toggleMutedToast(type: ToastType, enabled: boolean) {
     const next = enabled
@@ -66,6 +73,19 @@ export function GeneralPanel(props: {
   return (
     <SettingsPage title="General" description="Appearance, behavior, and notification preferences.">
       <SettingsSection title="Appearance">
+        <SettingRow
+          title="Theme"
+          description="Select the active Synergy visual theme"
+          trailing={
+            <select
+              class="settings-select"
+              value={selectedThemeId()}
+              onChange={(event) => setThemeId(event.currentTarget.value)}
+            >
+              <For each={theme.themes()}>{(option) => <option value={option.id}>{option.label}</option>}</For>
+            </select>
+          }
+        />
         <div class="settings-color-grid" role="radiogroup" aria-label="Color scheme">
           <For each={colorSchemeOptions}>
             {(option) => (

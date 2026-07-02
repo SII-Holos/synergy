@@ -12,6 +12,7 @@ Available templates:
 
 - `tool-ui`
 - `workbench-panel`
+- `app-panel`
 - `api-connector`
 - `theme-icon`
 
@@ -154,9 +155,10 @@ import type {
   PluginToolRendererProps,
   PluginWorkbenchPanelProps,
   PluginPanelProps,
+  PluginMessageSlotProps,
 } from "@ericsanchezok/synergy-plugin/ui"
 ```
 
-The Web client registers tool renderers, part renderers, workbench panels, global panels, settings, chat components, themes, icons, routes, and commands from `contributes.ui`.
+The Web client registers tool renderers, part renderers, workbench panels, app panels, settings, message slots, themes, icons, app routes, and commands from `contributes.ui`.
 
 The internal API call is generated SDK method `plugin.listUiContributions()`. Plugin bundles and assets load from `/plugin/assets/:pluginId/:version/*`.

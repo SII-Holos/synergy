@@ -17,6 +17,7 @@ import { Binary } from "@ericsanchezok/synergy-util/binary"
 import { createEffect, createMemo, For, Match, on, ParentProps, Show, Switch } from "solid-js"
 import { DiffChanges } from "./diff-changes"
 import { Message, Part } from "./message-part"
+import { MessageSlotOutlet, type MessageSlotName } from "./message-slots"
 import { AttachmentGallery } from "./attachment-card"
 import { resolveAttachmentPresentation } from "./attachment-card-utils"
 import { MediaGenerationCard } from "./media-generation-card"
@@ -166,6 +167,11 @@ function TimelineItemDisplay(props: { item: SessionTurnTimelineItem; serverUrl: 
   }
   if (props.item.kind === "media-pending") return <MediaGenerationCard part={props.item.part} />
   return <AttachmentGallery files={props.item.files} serverUrl={props.serverUrl} />
+}
+
+function isToolTimelineItem(item: SessionTurnTimelineItem): boolean {
+  const kind = timelineVisualKind(item)
+  return kind === "tool" || kind === "media-pending" || kind === "tool-attachments"
 }
 
 function ProviderPrelude(props: { text: string }) {
@@ -348,6 +354,17 @@ export function SessionTurn(
     return result
   })
   const timelineItemKeys = createMemo(() => timelineItems().map(timelineItemStableKey))
+  const timelineSlotIndexes = createMemo(() => {
+    const items = timelineItems()
+    const firstReasoning = items.findIndex((item) => timelineVisualKind(item) === "reasoning")
+    const lastReasoning = items.findLastIndex((item) => timelineVisualKind(item) === "reasoning")
+    const firstTool = items.findIndex(isToolTimelineItem)
+    const lastTool = items.findLastIndex(isToolTimelineItem)
+    return { firstReasoning, lastReasoning, firstTool, lastTool }
+  })
+  const renderMessageSlot = (slot: MessageSlotName) => (
+    <MessageSlotOutlet slot={slot} sessionId={props.sessionID} messageId={props.messageID} />
+  )
   const hasTimelineItems = createMemo(() => timelineItems().length > 0)
   const sessionStatus = createMemo(() => data.store.session_status[props.sessionID])
   const showProviderPrelude = createMemo(() =>
@@ -429,14 +446,31 @@ export function SessionTurn(
                     <Show when={hasTimelineItems() || showProviderPrelude() || (!working() && hasDiffs())}>
                       <div data-slot="session-turn-timeline">
                         <For each={timelineItemKeys()}>
-                          {(key) => {
+                          {(key, index) => {
                             const item = () => timelineItemMap().get(key)
                             return (
                               <Show when={item()}>
                                 {(current) => (
-                                  <div data-slot="session-turn-timeline-item" data-kind={timelineVisualKind(current())}>
-                                    <TimelineItemDisplay item={current()} serverUrl={data.serverUrl} />
-                                  </div>
+                                  <>
+                                    <Show when={index() === timelineSlotIndexes().firstReasoning}>
+                                      {renderMessageSlot("before-reasoning")}
+                                    </Show>
+                                    <Show when={index() === timelineSlotIndexes().firstTool}>
+                                      {renderMessageSlot("before-tools")}
+                                    </Show>
+                                    <div
+                                      data-slot="session-turn-timeline-item"
+                                      data-kind={timelineVisualKind(current())}
+                                    >
+                                      <TimelineItemDisplay item={current()} serverUrl={data.serverUrl} />
+                                    </div>
+                                    <Show when={index() === timelineSlotIndexes().lastReasoning}>
+                                      {renderMessageSlot("after-reasoning")}
+                                    </Show>
+                                    <Show when={index() === timelineSlotIndexes().lastTool}>
+                                      {renderMessageSlot("after-tools")}
+                                    </Show>
+                                  </>
                                 )}
                               </Show>
                             )

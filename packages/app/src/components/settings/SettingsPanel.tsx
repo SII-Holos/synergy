@@ -31,6 +31,7 @@ import { useGlobalSync } from "@/context/global-sync"
 import { DialogConfirm } from "@/components/dialog/dialog-confirm"
 import { getSettingsSections, type SettingsSection as RegisteredSettingsSection } from "@/plugin"
 import { SandboxIframe } from "@/plugin/sandbox"
+import { DeclarativeSettingsForm } from "@/plugin/components/declarative-settings-form"
 import { AppPanel } from "@/components/app-panel"
 import "./settings-panel.css"
 import type { DialogSettingsProps, McpEntry, ModelsStore, ProviderModel, SettingsState } from "./types"
@@ -654,17 +655,38 @@ function sectionIcon(section: RegisteredSettingsSection): IconName {
   return (section.icon ?? getSemanticIcon("settings.general")) as IconName
 }
 
+type PluginSettingsComponentProps = {
+  pluginId?: string
+  values: Record<string, unknown>
+  onChange: (values: Record<string, unknown>) => void | Promise<void>
+}
+
 function PluginSettingsContent(props: { section: RegisteredSettingsSection }) {
-  const [comp, setComp] = createSignal<Component | null>(null)
+  const globalSDK = useGlobalSDK()
+  const [comp, setComp] = createSignal<Component<PluginSettingsComponentProps> | null>(null)
   const [loading, setLoading] = createSignal(true)
 
   const section = () => props.section
   const isSandbox = () => section().sandbox && section().sandboxUrl && section().pluginId
+  const [values, { mutate }] = createResource(
+    () => section().pluginId,
+    async (pluginId) => {
+      const result = await globalSDK.client.plugin.getConfig({ pluginId })
+      return result.data ?? {}
+    },
+  )
+
+  async function updateValues(next: Record<string, unknown>) {
+    const pluginId = section().pluginId
+    if (!pluginId) return
+    const result = await globalSDK.client.plugin.updateConfig({ pluginId, body: next })
+    mutate(result.data ?? next)
+  }
 
   onMount(() => {
     const s = section()
     if (s.component) {
-      setComp(() => s.component!)
+      setComp(() => s.component! as Component<PluginSettingsComponentProps>)
       setLoading(false)
       return
     }
@@ -675,7 +697,7 @@ function PluginSettingsContent(props: { section: RegisteredSettingsSection }) {
     if (s.loader) {
       s.loader().then(
         (mod) => {
-          setComp(() => mod.default)
+          setComp(() => mod.default as Component<PluginSettingsComponentProps>)
           setLoading(false)
         },
         () => setLoading(false),
@@ -706,15 +728,41 @@ function PluginSettingsContent(props: { section: RegisteredSettingsSection }) {
         </ErrorBoundary>
       </Show>
       <Show when={!isSandbox()}>
-        <Show
-          when={comp()}
-          fallback={
-            <div class="settings-availability-message flex items-center justify-center py-8">
-              {section().label} is not available
-            </div>
-          }
-        >
-          {(c) => <Dynamic component={c()} />}
+        <Show when={!section().pluginId || values()}>
+          <Show
+            when={comp()}
+            fallback={
+              <Show
+                when={section().formSchema}
+                fallback={
+                  <div class="settings-availability-message flex items-center justify-center py-8">
+                    {section().label} is not available
+                  </div>
+                }
+              >
+                {(schema) => (
+                  <SettingsPage title={section().label}>
+                    <SettingsSection>
+                      <DeclarativeSettingsForm
+                        schema={schema()}
+                        values={values() ?? {}}
+                        onChange={(next) => updateValues(next)}
+                      />
+                    </SettingsSection>
+                  </SettingsPage>
+                )}
+              </Show>
+            }
+          >
+            {(c) => (
+              <Dynamic
+                component={c()}
+                pluginId={section().pluginId}
+                values={values() ?? {}}
+                onChange={(next: Record<string, unknown>) => updateValues(next)}
+              />
+            )}
+          </Show>
         </Show>
       </Show>
     </Show>

@@ -39,23 +39,23 @@ import {
 } from "./workbench-panel-registry"
 
 // ── Panel Registry ─────────────────────────────────────────────────
-import { registerGlobalPanel, listGlobalPanels, getGlobalPanel, clearGlobalPanels } from "./panel-registry"
+import { registerAppPanel, listAppPanels, getAppPanel, clearAppPanels } from "./app-panel-registry"
 
 // ── Settings Registry ──────────────────────────────────────────────
 import { registerSettingsSection, getSettingsSections, getSettingsSection } from "./settings-registry"
 import { BUILTIN_SETTINGS_IDS } from "@/components/settings/catalog"
 
 // ── Theme Registry ─────────────────────────────────────────────────
-import { registerTheme, listThemes, getTheme, activateTheme, getActiveThemeId, getActiveTheme } from "./theme-registry"
+import { registerPluginTheme, listPluginThemes, getPluginTheme } from "@ericsanchezok/synergy-ui/theme"
 
 // ── Icon Registry ──────────────────────────────────────────────────
 import { registerIcon, getIcon, hasIcon, listIcons } from "./icon-registry"
 
 // ── Chat Registry ──────────────────────────────────────────────────
-import { registerChatComponent, getChatComponentsBySlot } from "./chat-registry"
+import { registerMessageSlot, getMessageSlotsByName, clearMessageSlots } from "./message-slot-registry"
 
 // ── Route Registry ─────────────────────────────────────────────────
-import { registerPluginRoute, getPluginRoutes, clearPluginRoutes } from "./route-registry"
+import { registerAppRoute, listAppRoutes, getAppRoute, clearAppRoutes } from "./app-route-registry"
 
 // ── Helpers ────────────────────────────────────────────────────────
 
@@ -429,65 +429,66 @@ describe("WorkbenchPanelRegistry", () => {
 // Panel Registry
 // ═══════════════════════════════════════════════════════════════════
 
-describe("PanelRegistry", () => {
+describe("AppPanelRegistry", () => {
   beforeEach(() => {
-    clearGlobalPanels()
+    clearAppPanels()
   })
 
-  test("registerGlobalPanel adds entry and returns disposer", () => {
-    const disposer = registerGlobalPanel({
-      id: "custom-panel",
+  test("registerAppPanel adds entry and returns disposer", () => {
+    const disposer = registerAppPanel({
+      id: "test-plugin:custom-panel",
+      panelId: "custom-panel",
       label: "Custom",
       icon: "star",
       pluginId: "test-plugin",
     })
     expect(typeof disposer).toBe("function")
-    const entry = getGlobalPanel("custom-panel")
+    const entry = getAppPanel("test-plugin", "custom-panel")
     expect(entry).toBeDefined()
     expect(entry!.label).toBe("Custom")
     disposer()
   })
 
   test("disposer removes only that entry", () => {
-    const disposer = registerGlobalPanel({
-      id: "removable-panel",
+    const disposer = registerAppPanel({
+      id: "test-plugin:removable-panel",
+      panelId: "removable-panel",
       label: "Gone",
       icon: "x",
       pluginId: "test-plugin",
     })
-    expect(getGlobalPanel("removable-panel")).toBeDefined()
+    expect(getAppPanel("test-plugin", "removable-panel")).toBeDefined()
     disposer()
-    expect(getGlobalPanel("removable-panel")).toBeUndefined()
-    expect(listGlobalPanels().length).toBe(0)
+    expect(getAppPanel("test-plugin", "removable-panel")).toBeUndefined()
+    expect(listAppPanels().length).toBe(0)
   })
 
-  test("listGlobalPanels includes plugin panels", () => {
-    registerGlobalPanel({ id: "p1", label: "P1", icon: "package", pluginId: "plugin-x" })
-    const list = listGlobalPanels()
+  test("listAppPanels includes plugin panels sorted by order then label", () => {
+    registerAppPanel({ id: "plugin-x:p1", panelId: "p1", label: "B", icon: "package", order: 20, pluginId: "plugin-x" })
+    registerAppPanel({ id: "plugin-x:p2", panelId: "p2", label: "A", icon: "package", order: 10, pluginId: "plugin-x" })
+    const list = listAppPanels()
+    expect(list.map((entry) => entry.panelId)).toEqual(["p2", "p1"])
+  })
+
+  test("getAppPanel returns undefined for unknown id", () => {
+    expect(getAppPanel("plugin-x", "nonexistent")).toBeUndefined()
+  })
+
+  test("clearAppPanels with pluginId removes only matching entries", () => {
+    registerAppPanel({ id: "plugin-x:p1", panelId: "p1", label: "P1", icon: "star", pluginId: "plugin-x" })
+    registerAppPanel({ id: "plugin-y:p2", panelId: "p2", label: "P2", icon: "star", pluginId: "plugin-y" })
+    clearAppPanels("plugin-x")
+    const list = listAppPanels()
     expect(list.length).toBe(1)
-    const ids = list.map((e) => e.id)
-    expect(ids).toContain("p1")
-  })
-
-  test("getGlobalPanel returns undefined for unknown id", () => {
-    expect(getGlobalPanel("nonexistent")).toBeUndefined()
-  })
-
-  test("clearGlobalPanels with pluginId removes only matching entries", () => {
-    registerGlobalPanel({ id: "p1", label: "P1", icon: "star", pluginId: "plugin-x" })
-    registerGlobalPanel({ id: "p2", label: "P2", icon: "star", pluginId: "plugin-y" })
-    clearGlobalPanels("plugin-x")
-    const list = listGlobalPanels()
-    expect(list.length).toBe(1)
-    const ids = list.map((e) => e.id)
-    expect(ids).not.toContain("p1")
-    expect(ids).toContain("p2")
+    const ids = list.map((entry) => entry.id)
+    expect(ids).not.toContain("plugin-x:p1")
+    expect(ids).toContain("plugin-y:p2")
   })
 
   test("duplicate registration replaces previous without crashing", () => {
-    registerGlobalPanel({ id: "dup-panel", label: "First", icon: "a", pluginId: "p1" })
-    registerGlobalPanel({ id: "dup-panel", label: "Second", icon: "b", pluginId: "p1" })
-    expect(getGlobalPanel("dup-panel")!.label).toBe("Second")
+    registerAppPanel({ id: "p1:dup-panel", panelId: "dup-panel", label: "First", icon: "a", pluginId: "p1" })
+    registerAppPanel({ id: "p1:dup-panel", panelId: "dup-panel", label: "Second", icon: "b", pluginId: "p1" })
+    expect(getAppPanel("p1", "dup-panel")!.label).toBe("Second")
   })
 })
 
@@ -575,90 +576,51 @@ describe("SettingsRegistry", () => {
 // Theme Registry
 // ═══════════════════════════════════════════════════════════════════
 
-describe("ThemeRegistry", () => {
-  // Note: theme-registry registers the built-in synergy theme at module init.
-
-  test("registerTheme adds entry and returns disposer", () => {
-    const disposer = registerTheme({
+describe("PluginThemeRegistry", () => {
+  test("registerPluginTheme adds entry and returns disposer", () => {
+    const disposer = registerPluginTheme({
       id: "custom-theme",
       label: "Custom Theme",
-      appearance: "dark",
-      variables: { "--bg": "#111" },
+      cssUrl: "/theme.css",
       pluginId: "test-plugin",
     })
     expect(typeof disposer).toBe("function")
-    expect(getTheme("custom-theme")).toBeDefined()
+    expect(getPluginTheme("custom-theme")).toBeDefined()
     disposer()
   })
 
   test("disposer removes the entry", () => {
-    const disposer = registerTheme({
+    const disposer = registerPluginTheme({
       id: "temp-theme",
       label: "Temporary",
-      variables: {},
+      cssUrl: "/temp.css",
     })
-    expect(getTheme("temp-theme")).toBeDefined()
+    expect(getPluginTheme("temp-theme")).toBeDefined()
     disposer()
-    expect(getTheme("temp-theme")).toBeUndefined()
+    expect(getPluginTheme("temp-theme")).toBeUndefined()
   })
 
-  test("disposer clears active theme if it was the removed theme", () => {
-    // Register under a new id, activate it, then dispose
-    const disposer = registerTheme({ id: "theme-x", label: "X", variables: {} })
-    activateTheme("theme-x")
-    expect(getActiveThemeId()).toBe("theme-x")
-    disposer()
-    expect(getActiveThemeId()).toBeNull()
-    expect(getActiveTheme()).toBeUndefined()
+  test("listPluginThemes includes added themes sorted by label", () => {
+    const disposeB = registerPluginTheme({ id: "theme-b", label: "B", cssUrl: "/b.css", pluginId: "p1" })
+    const disposeA = registerPluginTheme({ id: "theme-a", label: "A", cssUrl: "/a.css", pluginId: "p1" })
+    const list = listPluginThemes().filter((theme) => theme.id === "theme-a" || theme.id === "theme-b")
+    expect(list.map((theme) => theme.id)).toEqual(["theme-a", "theme-b"])
+    disposeA()
+    disposeB()
   })
 
-  test("listThemes includes built-in and added themes", () => {
-    registerTheme({ id: "extra-theme", label: "Extra", variables: {}, pluginId: "p1" })
-    const list = listThemes()
-    const ids = list.map((t) => t.id)
-    expect(ids).toContain("extra-theme")
+  test("getPluginTheme returns undefined for unknown id", () => {
+    expect(getPluginTheme("nonexistent")).toBeUndefined()
   })
 
-  test("getTheme returns undefined for unknown id", () => {
-    expect(getTheme("nonexistent")).toBeUndefined()
-  })
-
-  test("activateTheme sets active theme id", () => {
-    registerTheme({ id: "theme-a", label: "A", variables: {} })
-    activateTheme("theme-a")
-    expect(getActiveThemeId()).toBe("theme-a")
-    const active = getActiveTheme()
-    expect(active).toBeDefined()
-    expect(active!.id).toBe("theme-a")
-  })
-
-  test("activateTheme does nothing for unknown id", () => {
-    const prev = getActiveThemeId()
-    activateTheme("nonexistent-theme-xyz")
-    expect(getActiveThemeId()).toBe(prev)
-  })
-
-  test("getActiveTheme returns undefined when no theme activated", () => {
-    // Deactivate any currently active theme
-    const current = getActiveThemeId()
-    if (current) {
-      const theme = getTheme(current)
-      if (theme) {
-        const disposer = registerTheme({ ...theme, id: current })
-        disposer()
-        // Re-add without re-activating
-        registerTheme({ ...theme, id: current })
-      }
-    }
-    expect(getActiveTheme()).toBeUndefined()
-  })
-
-  test("duplicate registration replaces previous without crashing (Map semantics)", () => {
-    registerTheme({ id: "dup-theme", label: "First", variables: { "--a": "1" } })
-    registerTheme({ id: "dup-theme", label: "Second", variables: { "--b": "2" } })
-    const theme = getTheme("dup-theme")
+  test("duplicate registration replaces previous without crashing", () => {
+    const disposeFirst = registerPluginTheme({ id: "dup-theme", label: "First", cssUrl: "/first.css" })
+    const disposeSecond = registerPluginTheme({ id: "dup-theme", label: "Second", cssUrl: "/second.css" })
+    const theme = getPluginTheme("dup-theme")
     expect(theme!.label).toBe("Second")
-    expect(listThemes().filter((t) => t.id === "dup-theme").length).toBe(1)
+    expect(listPluginThemes().filter((item) => item.id === "dup-theme").length).toBe(1)
+    disposeSecond()
+    disposeFirst()
   })
 })
 
@@ -728,73 +690,77 @@ describe("IconRegistry", () => {
 // Chat Registry
 // ═══════════════════════════════════════════════════════════════════
 
-describe("ChatRegistry", () => {
-  test("registerChatComponent adds entry and returns disposer", () => {
+describe("MessageSlotRegistry", () => {
+  beforeEach(() => {
+    clearMessageSlots()
+  })
+
+  test("registerMessageSlot adds entry and returns disposer", () => {
     const component = makeMockComponent()
-    const disposer = registerChatComponent({
-      id: "chat-comp-1",
+    const disposer = registerMessageSlot({
+      id: "message-slot-1",
       slot: "before-tools",
       component,
       pluginId: "test-plugin",
     })
     expect(typeof disposer).toBe("function")
-    const entries = getChatComponentsBySlot("before-tools")
-    expect(entries.some((e) => e.id === "chat-comp-1")).toBe(true)
+    const entries = getMessageSlotsByName("before-tools")
+    expect(entries.some((entry) => entry.id === "message-slot-1")).toBe(true)
     disposer()
   })
 
   test("disposer removes the entry", () => {
-    const disposer = registerChatComponent({
-      id: "chat-comp-rm",
+    const disposer = registerMessageSlot({
+      id: "message-slot-rm",
       slot: "after-tools",
       component: makeMockComponent(),
       pluginId: "test-plugin",
     })
-    expect(getChatComponentsBySlot("after-tools").some((e) => e.id === "chat-comp-rm")).toBe(true)
+    expect(getMessageSlotsByName("after-tools").some((entry) => entry.id === "message-slot-rm")).toBe(true)
     disposer()
-    expect(getChatComponentsBySlot("after-tools").some((e) => e.id === "chat-comp-rm")).toBe(false)
+    expect(getMessageSlotsByName("after-tools").some((entry) => entry.id === "message-slot-rm")).toBe(false)
   })
 
-  test("getChatComponentsBySlot returns entries filtered by slot", () => {
+  test("getMessageSlotsByName returns entries filtered by slot", () => {
     const compBefore = makeMockComponent()
     const compAfter = makeMockComponent()
-    registerChatComponent({ id: "c-before", slot: "before-tools", component: compBefore, pluginId: "p1" })
-    registerChatComponent({ id: "c-after", slot: "after-tools", component: compAfter, pluginId: "p1" })
+    registerMessageSlot({ id: "c-before", slot: "before-tools", component: compBefore, pluginId: "p1" })
+    registerMessageSlot({ id: "c-after", slot: "after-tools", component: compAfter, pluginId: "p1" })
 
-    const beforeEntries = getChatComponentsBySlot("before-tools")
+    const beforeEntries = getMessageSlotsByName("before-tools")
     expect(beforeEntries.length).toBe(1)
     expect(beforeEntries[0].id).toBe("c-before")
 
-    const afterEntries = getChatComponentsBySlot("after-tools")
+    const afterEntries = getMessageSlotsByName("after-tools")
     expect(afterEntries.length).toBe(1)
     expect(afterEntries[0].id).toBe("c-after")
   })
 
-  test("getChatComponentsBySlot returns empty array for slot with no entries", () => {
-    expect(getChatComponentsBySlot("before-reasoning").length).toBe(0)
+  test("getMessageSlotsByName returns empty array for slot with no entries", () => {
+    expect(getMessageSlotsByName("before-reasoning").length).toBe(0)
   })
 
   test("duplicate registration appends without crashing", () => {
-    registerChatComponent({
-      id: "dup-chat",
+    registerMessageSlot({
+      id: "dup-slot",
       slot: "before-tools",
       component: makeMockComponent(),
       pluginId: "p1",
     })
-    registerChatComponent({
-      id: "dup-chat",
+    registerMessageSlot({
+      id: "dup-slot",
       slot: "before-tools",
       component: makeMockComponent(),
       pluginId: "p1",
     })
-    const entries = getChatComponentsBySlot("before-tools").filter((e) => e.id === "dup-chat")
+    const entries = getMessageSlotsByName("before-tools").filter((entry) => entry.id === "dup-slot")
     expect(entries.length).toBe(2)
   })
 
   test("multiple plugins can register to same slot", () => {
-    registerChatComponent({ id: "c1", slot: "before-tools", component: makeMockComponent(), pluginId: "plugin-a" })
-    registerChatComponent({ id: "c2", slot: "before-tools", component: makeMockComponent(), pluginId: "plugin-b" })
-    const entries = getChatComponentsBySlot("before-tools")
+    registerMessageSlot({ id: "c1", slot: "before-tools", component: makeMockComponent(), pluginId: "plugin-a" })
+    registerMessageSlot({ id: "c2", slot: "before-tools", component: makeMockComponent(), pluginId: "plugin-b" })
+    const entries = getMessageSlotsByName("before-tools")
     expect(entries.length).toBeGreaterThanOrEqual(2)
   })
 })
@@ -803,72 +769,73 @@ describe("ChatRegistry", () => {
 // Route Registry
 // ═══════════════════════════════════════════════════════════════════
 
-describe("RouteRegistry", () => {
+describe("AppRouteRegistry", () => {
   beforeEach(() => {
-    clearPluginRoutes()
+    clearAppRoutes()
   })
 
-  test("registerPluginRoute adds entry and returns disposer", () => {
-    const disposer = registerPluginRoute({
-      path: "/plugin/test",
+  test("registerAppRoute adds entry and returns disposer", () => {
+    const disposer = registerAppRoute({
+      id: "test-plugin:test",
+      routeId: "test",
       label: "Test Route",
       icon: "package",
-      entry: "test.html",
       pluginId: "test-plugin",
     })
     expect(typeof disposer).toBe("function")
-    const routes = getPluginRoutes()
+    const routes = listAppRoutes()
     expect(routes.length).toBe(1)
-    expect(routes[0].path).toBe("/plugin/test")
+    expect(getAppRoute("test-plugin", "test")).toBeDefined()
     disposer()
   })
 
   test("disposer removes the entry", () => {
-    const disposer = registerPluginRoute({
-      path: "/plugin/rm",
+    const disposer = registerAppRoute({
+      id: "test-plugin:rm",
+      routeId: "rm",
       label: "Removable",
-      entry: "rm.html",
       pluginId: "test-plugin",
     })
-    expect(getPluginRoutes().length).toBe(1)
+    expect(listAppRoutes().length).toBe(1)
     disposer()
-    expect(getPluginRoutes().length).toBe(0)
+    expect(listAppRoutes().length).toBe(0)
   })
 
-  test("getPluginRoutes returns all entries", () => {
-    registerPluginRoute({ path: "/a", label: "A", entry: "a.html", pluginId: "p1" })
-    registerPluginRoute({ path: "/b", label: "B", entry: "b.html", pluginId: "p1" })
-    const routes = getPluginRoutes()
+  test("listAppRoutes returns all entries", () => {
+    registerAppRoute({ id: "p1:a", routeId: "a", label: "A", pluginId: "p1" })
+    registerAppRoute({ id: "p1:b", routeId: "b", label: "B", pluginId: "p1" })
+    const routes = listAppRoutes()
     expect(routes.length).toBe(2)
   })
 
-  test("getPluginRoutes returns a copy (mutation safe)", () => {
-    registerPluginRoute({ path: "/x", label: "X", entry: "x.html", pluginId: "p1" })
-    const routes = getPluginRoutes()
-    routes.push({ path: "/y", label: "Y", entry: "y.html", pluginId: "p2" })
-    expect(getPluginRoutes().length).toBe(1)
+  test("listAppRoutes returns a copy", () => {
+    registerAppRoute({ id: "p1:x", routeId: "x", label: "X", pluginId: "p1" })
+    const routes = listAppRoutes()
+    routes.push({ id: "p2:y", routeId: "y", label: "Y", pluginId: "p2" })
+    expect(listAppRoutes().length).toBe(1)
   })
 
-  test("clearPluginRoutes removes all entries when no pluginId", () => {
-    registerPluginRoute({ path: "/a", label: "A", entry: "a.html", pluginId: "p1" })
-    registerPluginRoute({ path: "/b", label: "B", entry: "b.html", pluginId: "p2" })
-    clearPluginRoutes()
-    expect(getPluginRoutes().length).toBe(0)
+  test("clearAppRoutes removes all entries when no pluginId", () => {
+    registerAppRoute({ id: "p1:a", routeId: "a", label: "A", pluginId: "p1" })
+    registerAppRoute({ id: "p2:b", routeId: "b", label: "B", pluginId: "p2" })
+    clearAppRoutes()
+    expect(listAppRoutes().length).toBe(0)
   })
 
-  test("clearPluginRoutes with pluginId removes only matching entries", () => {
-    registerPluginRoute({ path: "/a", label: "A", entry: "a.html", pluginId: "p1" })
-    registerPluginRoute({ path: "/b", label: "B", entry: "b.html", pluginId: "p2" })
-    registerPluginRoute({ path: "/c", label: "C", entry: "c.html", pluginId: "p1" })
-    clearPluginRoutes("p1")
-    const routes = getPluginRoutes()
+  test("clearAppRoutes with pluginId removes only matching entries", () => {
+    registerAppRoute({ id: "p1:a", routeId: "a", label: "A", pluginId: "p1" })
+    registerAppRoute({ id: "p2:b", routeId: "b", label: "B", pluginId: "p2" })
+    registerAppRoute({ id: "p1:c", routeId: "c", label: "C", pluginId: "p1" })
+    clearAppRoutes("p1")
+    const routes = listAppRoutes()
     expect(routes.length).toBe(1)
-    expect(routes[0].path).toBe("/b")
+    expect(routes[0].id).toBe("p2:b")
   })
 
-  test("duplicate registration appends without crashing", () => {
-    registerPluginRoute({ path: "/dup", label: "First", entry: "first.html", pluginId: "p1" })
-    registerPluginRoute({ path: "/dup", label: "Second", entry: "second.html", pluginId: "p1" })
-    expect(getPluginRoutes().length).toBe(2)
+  test("duplicate registration replaces previous without crashing", () => {
+    registerAppRoute({ id: "p1:dup", routeId: "dup", label: "First", pluginId: "p1" })
+    registerAppRoute({ id: "p1:dup", routeId: "dup", label: "Second", pluginId: "p1" })
+    expect(listAppRoutes().length).toBe(1)
+    expect(getAppRoute("p1", "dup")!.label).toBe("Second")
   })
 })

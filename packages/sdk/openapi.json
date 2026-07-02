@@ -13123,7 +13123,7 @@
         ]
       }
     },
-    "/plugin/{pluginId}/sandbox/{panelId}": {
+    "/plugin/{pluginId}/sandbox/{surface}/{surfaceId}": {
       "get": {
         "operationId": "plugin.sandbox",
         "parameters": [
@@ -13154,7 +13154,15 @@
               "type": "string"
             },
             "in": "path",
-            "name": "panelId",
+            "name": "surface",
+            "required": true
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "surfaceId",
             "required": true
           }
         ],
@@ -27207,7 +27215,7 @@
             },
             "required": ["base", "tools", "overallRisk", "warnings"]
           },
-          "routes": {
+          "appRoutes": {
             "type": "array",
             "items": {
               "type": "string"
@@ -27335,7 +27343,7 @@
           "manifestValid",
           "integrity",
           "permissions",
-          "routes",
+          "appRoutes",
           "tools",
           "ui",
           "stores",

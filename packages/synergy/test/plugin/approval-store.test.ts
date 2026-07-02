@@ -145,7 +145,7 @@ describe("computePermissionsHash", () => {
           },
         ],
         ui: {
-          routes: [{ path: "/hello", entry: "./ui/hello.js", label: "Hello" }],
+          appRoutes: [{ id: "hello", entry: "./ui/hello.js", label: "Hello", exportName: "default", sandbox: false }],
         },
       },
     })
@@ -165,7 +165,15 @@ describe("computePermissionsHash", () => {
           },
         ],
         ui: {
-          routes: [{ path: "/hello-renamed", entry: "./ui/hello-renamed.js", label: "Hello renamed" }],
+          appRoutes: [
+            {
+              id: "hello-renamed",
+              entry: "./ui/hello-renamed.js",
+              label: "Hello renamed",
+              exportName: "default",
+              sandbox: false,
+            },
+          ],
         },
       },
     })

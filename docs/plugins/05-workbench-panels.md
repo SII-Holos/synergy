@@ -1,4 +1,4 @@
-# Workbench And Global Panels
+# Workbench And App Panels
 
 Panels are Web UI surfaces declared in `plugin.json`.
 
@@ -18,14 +18,22 @@ Panels are Web UI surfaces declared in `plugin.json`.
           "requiresSession": true,
         },
       ],
-      "globalPanels": [
+      "appPanels": [
         {
-          "id": "global-panel",
-          "label": "Global Panel",
-          "icon": "globe",
-          "exportName": "GlobalPanel",
+          "id": "dashboard",
+          "label": "Dashboard",
+          "icon": "layout-dashboard",
+          "exportName": "DashboardPanel",
+          "order": 100,
         },
       ],
+    },
+  },
+  "permissions": {
+    "ui": {
+      "workbenchPanels": true,
+      "appPanels": true,
+      "trustedImport": true,
     },
   },
 }
@@ -47,6 +55,15 @@ export const ScopePanel: Component<PluginWorkbenchPanelProps> = (props) => {
 }
 ```
 
-Global panels use `PluginPanelProps` and remain separate from session workbench surfaces.
+App panels create top-level sidebar entries after Synergy's built-in Agenda, Library, and Plugins entries. Their fixed URL is `/plugins/panels/:pluginId/:panelId`; ordering is by `order` and then `label`.
 
-If `sandbox: true` is set, the host records sandbox metadata and uses `/plugin/:pluginId/sandbox/:panelId` for iframe loading.
+```tsx
+import type { Component } from "solid-js"
+import type { PluginPanelProps } from "@ericsanchezok/synergy-plugin/ui"
+
+export const DashboardPanel: Component<PluginPanelProps> = (props) => {
+  return <section>{props.pluginId}</section>
+}
+```
+
+If `sandbox: true` is set, declare `permissions.ui.sandboxIframe` and provide `sandboxEntry` or `contributes.ui.entry`. The host loads iframe surfaces from `/plugin/:pluginId/sandbox/:surface/:surfaceId`, where `surface` is `workbenchPanels` or `appPanels`.

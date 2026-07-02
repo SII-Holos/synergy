@@ -6,9 +6,9 @@ import { PLUGIN_PROTOCOL_MIN_SYNERGY_RANGE } from "@ericsanchezok/synergy-plugin
 import { cmd } from "../cmd"
 import { UI } from "../ui"
 
-type TemplateName = "tool-ui" | "workbench-panel" | "api-connector" | "theme-icon"
+type TemplateName = "tool-ui" | "workbench-panel" | "app-panel" | "api-connector" | "theme-icon"
 
-const TEMPLATES: TemplateName[] = ["tool-ui", "workbench-panel", "api-connector", "theme-icon"]
+const TEMPLATES: TemplateName[] = ["tool-ui", "workbench-panel", "app-panel", "api-connector", "theme-icon"]
 
 function currentPackageRange(): string {
   const pkgPath = path.resolve(import.meta.dir, "..", "..", "package.json")
@@ -141,6 +141,10 @@ export default plugin
 `
 }
 
+function indexAppPanel(name: string): string {
+  return indexWorkbenchPanel(name)
+}
+
 function indexApiConnector(name: string): string {
   return `import type { PluginDescriptor, PluginInput, PluginHooks } from "@ericsanchezok/synergy-plugin"
 import { getJSON, postJSON } from "./tools"
@@ -267,6 +271,17 @@ export default WorkbenchPanel
 `
 }
 
+function uiAppPanel(_name: string): string {
+  return `import type { Component } from "solid-js"
+
+const AppPanel: Component = () => {
+  return <div>App panel content</div>
+}
+
+export default AppPanel
+`
+}
+
 function manifestToolUI(name: string): object {
   return {
     permissions: {
@@ -275,6 +290,10 @@ function manifestToolUI(name: string): object {
         filesystem: "none",
         network: false,
         mcp: "none",
+      },
+      ui: {
+        toolRenderers: true,
+        trustedImport: true,
       },
     },
     contributes: {
@@ -300,6 +319,12 @@ function manifestToolUI(name: string): object {
 
 function manifestWorkbenchPanel(name: string): object {
   return {
+    permissions: {
+      ui: {
+        workbenchPanels: true,
+        trustedImport: true,
+      },
+    },
     contributes: {
       ui: {
         entry: "./dist/ui/index.js",
@@ -310,6 +335,29 @@ function manifestWorkbenchPanel(name: string): object {
             icon: "layout-panel-left",
             surface: "side",
             cardinality: "singleton",
+          },
+        ],
+      },
+    },
+  }
+}
+
+function manifestAppPanel(name: string): object {
+  return {
+    permissions: {
+      ui: {
+        appPanels: true,
+        trustedImport: true,
+      },
+    },
+    contributes: {
+      ui: {
+        entry: "./dist/ui/index.js",
+        appPanels: [
+          {
+            id: `${name}-panel`,
+            label: name,
+            icon: "package",
           },
         ],
       },
@@ -328,6 +376,10 @@ function manifestApiConnector(_name: string): object {
       },
       network: {
         connectDomains: ["api.example.com"],
+      },
+      ui: {
+        toolRenderers: true,
+        trustedImport: true,
       },
     },
     contributes: {
@@ -363,6 +415,12 @@ function manifestApiConnector(_name: string): object {
 
 function manifestThemeIcon(name: string): object {
   return {
+    permissions: {
+      ui: {
+        themes: true,
+        icons: true,
+      },
+    },
     contributes: {
       ui: {
         themes: [{ id: `${name}-theme`, label: name, path: "./themes/default.css" }],
@@ -394,6 +452,14 @@ const TEMPLATE_DEFS: Record<TemplateName, TemplateDef> = {
     files: [
       { relativePath: "src/index.ts", content: indexWorkbenchPanel },
       { relativePath: "src/ui.tsx", content: uiWorkbenchPanel },
+    ],
+  },
+  "app-panel": {
+    label: "App Panel - Solid sidebar app panel with no tools",
+    manifest: manifestAppPanel,
+    files: [
+      { relativePath: "src/index.ts", content: indexAppPanel },
+      { relativePath: "src/ui.tsx", content: uiAppPanel },
     ],
   },
   "api-connector": {

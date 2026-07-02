@@ -28,8 +28,17 @@ import { InputProvider } from "@/context/input"
 import Layout from "@/pages/layout"
 import DirectoryLayout from "@/pages/directory-layout"
 import { ErrorPage } from "./pages/error"
-import { PluginToolBridge, PluginHostProvider } from "@/plugin"
-import { MarketplacePage, PluginDetailPage } from "@/plugin"
+import {
+  PluginToolBridge,
+  PluginCommandBridge,
+  PluginMessageSlotBridge,
+  PluginThemeConfigBridge,
+  PluginHostProvider,
+  MarketplacePage,
+  PluginDetailPage,
+  PluginAppPanelPage,
+  PluginAppRoutePage,
+} from "@/plugin"
 import { AgendaPanel } from "@/components/agenda"
 import { LibraryPanel } from "@/components/library"
 import { iife } from "@ericsanchezok/synergy-util/iife"
@@ -165,12 +174,15 @@ function ConnectedApp() {
                 <PluginHostProvider>
                   <GlobalSyncProvider>
                     <PluginToolBridge />
+                    <PluginMessageSlotBridge />
+                    <PluginThemeConfigBridge />
                     <Router
                       base={proxyPrefix()}
                       root={(props) => (
                         <LayoutProvider>
                           <NotificationProvider>
                             <CommandProvider>
+                              <PluginCommandBridge />
                               <Layout>{props.children}</Layout>
                             </CommandProvider>
                           </NotificationProvider>
@@ -181,6 +193,8 @@ function ConnectedApp() {
                       <Route path="/agenda" component={AgendaPanel} />
                       <Route path="/library" component={LibraryPanel} />
                       <Route path="/plugins/marketplace" component={MarketplacePage} />
+                      <Route path="/plugins/panels/:pluginId/:panelId" component={PluginAppPanelPage} />
+                      <Route path="/plugins/routes/:pluginId/:routeId" component={PluginAppRoutePage} />
                       <Route path="/plugins/:pluginId" component={PluginDetailPage} />
                       <Route path="/:dir" component={DirectoryLayout}>
                         <Route path="/" component={() => <Navigate href="session" />} />

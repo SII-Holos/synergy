@@ -8,6 +8,7 @@ export interface SettingsSection {
   icon?: string
   iconToken?: SemanticIconTokenName
   group: string
+  formSchema?: Record<string, unknown>
   order?: number
   description?: string
   keywords?: string[]

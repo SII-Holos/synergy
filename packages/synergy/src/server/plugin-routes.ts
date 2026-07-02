@@ -361,7 +361,7 @@ export const PluginRoute = new Hono()
 
   // 3. GET /:pluginId/sandbox/:panelId — Serve sandbox HTML shell for iframe panels
   .get(
-    "/:pluginId/sandbox/:panelId",
+    "/:pluginId/sandbox/:surface/:surfaceId",
     describeRoute({
       summary: "Serve plugin sandbox iframe shell",
       description: "Serve an HTML shell for loading a plugin panel in a sandboxed iframe.",
@@ -373,7 +373,8 @@ export const PluginRoute = new Hono()
     }),
     async (c) => {
       const pluginId = c.req.param("pluginId")
-      const panelId = c.req.param("panelId")
+      const surface = c.req.param("surface")
+      const surfaceId = c.req.param("surfaceId")
       const plugin = await Plugin.get(pluginId)
       if (!plugin) return c.json({ message: `Plugin not found: ${pluginId}` }, 404)
 
@@ -382,11 +383,17 @@ export const PluginRoute = new Hono()
       const ui = manifest.contributes?.ui
       const version = manifest.version
 
-      // Resolve entry: panel-level sandboxEntry > ui.entry > default
-      const panels = [...(ui?.workbenchPanels ?? []), ...(ui?.globalPanels ?? [])]
-      const panel = panels.find((p) => p.id === panelId)
-      const entry = panel?.sandboxEntry ?? ui?.entry
-      if (!entry) return c.json({ message: `Plugin panel has no sandbox entry: ${panelId}` }, 404)
+      const entries: Record<string, Array<{ id: string; entry?: string; sandboxEntry?: string }>> = {
+        workbenchPanels: ui?.workbenchPanels ?? [],
+        appPanels: ui?.appPanels ?? [],
+        settings: ui?.settings ?? [],
+        appRoutes: ui?.appRoutes ?? [],
+      }
+      const item = entries[surface]?.find((candidate) => candidate.id === surfaceId)
+      const entry = item?.sandboxEntry ?? item?.entry ?? ui?.entry
+      if (!item || !entry) {
+        return c.json({ message: `Plugin sandbox surface not found: ${surface}/${surfaceId}` }, 404)
+      }
       const entryUrl = pluginAssetUrl(pluginId, version, entry)
 
       const html = `<!DOCTYPE html>

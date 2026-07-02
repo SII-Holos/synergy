@@ -24,7 +24,7 @@ interface PluginStatus {
     overallRisk: "low" | "medium" | "high"
     warnings: Array<{ type: string; message: string }>
   }
-  routes: string[]
+  appRoutes: string[]
   tools: Array<{ id: string; fullId: string; capabilities: string[]; warnings: string[] }>
   ui: { contributions: number; errors: string[] }
   stores: { config: boolean; secrets: string; cacheBytes?: number }
@@ -114,8 +114,8 @@ export const PluginInfoCommand = cmd({
     if (status.ui.contributions > 0) {
       UI.println()
       UI.println(`${UI.Style.TEXT_DIM}UI Contributions:${UI.Style.TEXT_NORMAL} ${status.ui.contributions}`)
-      if (status.routes.length > 0) {
-        UI.println(`  Routes: ${status.routes.join(", ")}`)
+      if (status.appRoutes.length > 0) {
+        UI.println(`  App routes: ${status.appRoutes.join(", ")}`)
       }
       if (status.ui.errors.length > 0) {
         for (const err of status.ui.errors) {

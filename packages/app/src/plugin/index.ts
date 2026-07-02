@@ -11,12 +11,14 @@ export {
 } from "./registries/workbench-panel-registry"
 
 export {
-  type GlobalPanelEntry,
-  registerGlobalPanel,
-  listGlobalPanels,
-  getGlobalPanel,
-  clearGlobalPanels,
-} from "./registries/panel-registry"
+  type AppPanelContentProps,
+  type AppPanelEntry,
+  registerAppPanel,
+  listAppPanels,
+  getAppPanel,
+  clearAppPanels,
+  subscribeAppPanels,
+} from "./registries/app-panel-registry"
 
 export {
   type SettingsSection,
@@ -26,38 +28,45 @@ export {
 } from "./registries/settings-registry"
 
 export {
-  type ThemeDefinition,
-  registerTheme,
-  listThemes,
-  getTheme,
-  activateTheme,
-  getActiveThemeId,
-  getActiveTheme,
-} from "./registries/theme-registry"
+  type PluginThemeDefinition,
+  registerPluginTheme,
+  listPluginThemes,
+  getPluginTheme,
+  subscribePluginThemes,
+} from "@ericsanchezok/synergy-ui/theme"
 
 export { type IconEntry, registerIcon, getIcon, hasIcon, listIcons } from "./registries/icon-registry"
 
 export {
-  type ChatSlot,
-  type ChatComponentEntry,
-  registerChatComponent,
-  getChatComponentsBySlot,
-} from "./registries/chat-registry"
+  type MessageSlotName,
+  type MessageSlotProps,
+  type MessageSlotEntry,
+  registerMessageSlot,
+  getMessageSlotsByName,
+  clearMessageSlots,
+  subscribeMessageSlots,
+} from "./registries/message-slot-registry"
 
 export {
-  type PluginRouteEntry,
-  registerPluginRoute,
-  getPluginRoutes,
-  clearPluginRoutes,
-} from "./registries/route-registry"
+  type AppRouteContentProps,
+  type AppRouteEntry,
+  registerAppRoute,
+  listAppRoutes,
+  getAppRoute,
+  clearAppRoutes,
+  subscribeAppRoutes,
+} from "./registries/app-route-registry"
 
 export {
-  type PluginCommandEntry,
-  registerPluginCommand,
-  listPluginCommands,
-  getPluginCommand,
-  clearPluginCommands,
-} from "./registries/command-registry"
+  type PluginCommandContext,
+  type PluginUICommand,
+  type UICommandEntry,
+  registerUICommand,
+  listUICommands,
+  getUICommand,
+  clearUICommands,
+  subscribeUICommands,
+} from "./registries/ui-command-registry"
 
 export {
   ToolRendererRegistry,
@@ -76,11 +85,12 @@ export {
 export { type PartRenderer, registerPartRenderer, getPartRenderer, hasPartRenderer } from "./registries/part-registry"
 export { type PluginContribution, type PluginUIContributions, type PluginPermissions } from "./api"
 export { loadPluginExport, isCompatibleUIVersion, CURRENT_UI_API_VERSION } from "./loaders"
-export { PluginToolBridge } from "./bridge"
+export { PluginToolBridge, PluginCommandBridge, PluginMessageSlotBridge, PluginThemeConfigBridge } from "./bridge"
 export { PluginErrorBoundary } from "./components/plugin-error-boundary"
 export { initDevReload } from "./dev-reload"
 export { PluginHostProvider, usePluginHost, type PluginUIStatus, type PluginUIError } from "./host"
 export { fetchUIContributions } from "./api"
+export { PluginAppPanelPage, PluginAppRoutePage } from "./pages"
 
 // Consent UI components
 export { PermissionDiffList, PermissionRiskBadge, TrustTierExplanation, InstallConsentDialog } from "./consent"

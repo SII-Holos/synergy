@@ -67,11 +67,15 @@ export interface SynergyCapabilityManifest {
       toolRenderers?: boolean
       partRenderers?: boolean
       workbenchPanels?: boolean
-      globalPanels?: boolean
+      appPanels?: boolean
       settings?: boolean
+      messageSlots?: boolean
       themes?: boolean
       icons?: boolean
-      routes?: boolean
+      appRoutes?: boolean
+      commands?: boolean
+      trustedImport?: boolean
+      sandboxIframe?: boolean
     }
     hooks?: {
       promptTransform?: boolean
@@ -99,12 +103,12 @@ export interface SynergyCapabilityManifest {
       toolRenderers?: unknown[]
       partRenderers?: unknown[]
       workbenchPanels?: unknown[]
-      globalPanels?: unknown[]
+      appPanels?: unknown[]
       settings?: unknown[]
-      chatComponents?: unknown[]
+      messageSlots?: unknown[]
       themes?: unknown[]
       icons?: unknown[]
-      routes?: unknown[]
+      appRoutes?: unknown[]
       commands?: unknown[]
     }
   }
@@ -647,13 +651,13 @@ function contributionPermissionItems(manifest: SynergyCapabilityManifest): Syner
       description: "Adds custom panels to the side workspace or BottomSpace.",
     })
   }
-  if (ui?.globalPanels || perms?.globalPanels) {
+  if (ui?.appPanels || perms?.appPanels) {
     items.push({
-      key: "ui.globalPanels",
+      key: "ui.appPanels",
       category: "ui",
       severity: "low",
-      title: "Global panels",
-      description: "Adds custom panels visible across all workspaces.",
+      title: "App panels",
+      description: "Adds top-level sidebar panels to the app.",
     })
   }
   if (ui?.settings || perms?.settings) {
@@ -683,16 +687,25 @@ function contributionPermissionItems(manifest: SynergyCapabilityManifest): Syner
       description: "Adds custom icon sets to the UI.",
     })
   }
-  if (ui?.routes || perms?.routes) {
+  if (ui?.messageSlots || perms?.messageSlots) {
     items.push({
-      key: "ui.routes",
+      key: "ui.messageSlots",
       category: "ui",
       severity: "low",
-      title: "Custom routes",
-      description: "Adds custom pages and routes to the app.",
+      title: "Message slots",
+      description: "Adds custom components around reasoning and tool timeline sections.",
     })
   }
-  if (ui?.commands) {
+  if (ui?.appRoutes || perms?.appRoutes) {
+    items.push({
+      key: "ui.appRoutes",
+      category: "ui",
+      severity: "low",
+      title: "App routes",
+      description: "Adds custom plugin pages to the app.",
+    })
+  }
+  if (ui?.commands || perms?.commands) {
     items.push({
       key: "ui.commands",
       category: "ui",
@@ -897,12 +910,12 @@ function permissionsRelevantContributes(manifest: SynergyCapabilityManifest) {
             toolRenderers: Boolean(contributes.ui.toolRenderers?.length),
             partRenderers: Boolean(contributes.ui.partRenderers?.length),
             workbenchPanels: Boolean(contributes.ui.workbenchPanels?.length),
-            globalPanels: Boolean(contributes.ui.globalPanels?.length),
+            appPanels: Boolean(contributes.ui.appPanels?.length),
             settings: Boolean(contributes.ui.settings?.length),
-            chatComponents: Boolean(contributes.ui.chatComponents?.length),
+            messageSlots: Boolean(contributes.ui.messageSlots?.length),
             themes: Boolean(contributes.ui.themes?.length),
             icons: Boolean(contributes.ui.icons?.length),
-            routes: Boolean(contributes.ui.routes?.length),
+            appRoutes: Boolean(contributes.ui.appRoutes?.length),
             commands: Boolean(contributes.ui.commands?.length),
           },
         }

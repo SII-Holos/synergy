@@ -83,6 +83,22 @@
   letter-spacing: var(--letter-spacing-normal);
 }
 
+.settings-select {
+  min-width: 180px;
+  border: 1px solid var(--settings-border);
+  border-radius: 6px;
+  background: var(--settings-input-bg);
+  color: var(--text-strong);
+  padding: 8px 10px;
+  font-size: var(--settings-type-control-size);
+  line-height: var(--settings-type-control-line-height);
+  outline: none;
+}
+
+.settings-select:focus {
+  box-shadow: var(--settings-focus-ring);
+}
+
 .settings-panel-close {
   position: absolute;
   top: 12px;
