@@ -344,42 +344,45 @@
   min-width: 0;
   max-width: 100%;
   color: var(--text-weak);
+}
 
+[data-component="reasoning-part"] [data-component="markdown"],
+[data-slot="session-turn-timeline-item"][data-kind="reasoning"]
+  [data-component="text-part"]
   [data-component="markdown"] {
-    margin-top: 16px;
-    color: var(--text-weak);
-    font-size: var(--font-size-small);
-    line-height: 1.55;
-    font-style: italic;
+  margin-top: 16px;
+  color: var(--text-weak);
+  font-size: var(--font-size-small);
+  line-height: 1.55;
+  font-style: italic;
 
-    &,
-    * {
-      color: var(--text-weak) !important;
-    }
+  &,
+  * {
+    color: var(--text-weak) !important;
+  }
 
-    li::marker {
-      color: var(--text-weaker);
-    }
+  li::marker {
+    color: var(--text-weaker);
+  }
 
-    h1,
-    h2,
-    h3,
-    h4,
-    h5,
-    h6,
-    blockquote {
-      border-left-color: var(--border-base);
-    }
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6,
+  blockquote {
+    border-left-color: var(--border-base);
+  }
 
-    [data-slot="markdown-code-block"],
-    table {
-      border-color: var(--border-weaker-base);
-    }
+  [data-slot="markdown-code-block"],
+  table {
+    border-color: var(--border-weaker-base);
+  }
 
-    th,
-    td {
-      border-color: var(--border-weaker-base);
-    }
+  th,
+  td {
+    border-color: var(--border-weaker-base);
   }
 }
 

@@ -35,7 +35,7 @@ mock.module("./sticky-accordion-header", () => ({ StickyAccordionHeader: Empty }
 mock.module("./tool-renders", () => ({}))
 mock.module("./typewriter", () => ({ Typewriter: Empty }))
 
-const { collectSessionTurnTimelineItems, timelineItemStableKey } = await import("./session-turn")
+const { collectSessionTurnTimelineItems, timelineItemStableKey, timelineVisualKind } = await import("./session-turn")
 
 function assistant(id: string): AssistantMessage {
   return {
@@ -216,6 +216,44 @@ describe("session turn timeline", () => {
     expect(items.map((item) => item.kind)).toEqual(["tool-attachments", "part"])
     expect(items[0]).toMatchObject({ kind: "tool-attachments", files: [image] })
     expect(items[1]).toMatchObject({ kind: "part", part: { type: "text" } })
+  })
+
+  test("marks tool-call progress text as reasoning display", () => {
+    const message = {
+      ...assistant("assistant-a"),
+      finish: "tool-calls",
+    }
+    const part = {
+      id: "text-a",
+      sessionID: "session",
+      messageID: message.id,
+      type: "text",
+      text: "Let me inspect the relevant files first.",
+    } as PartType
+
+    const items = collectSessionTurnTimelineItems([message], { [message.id]: [part] }, false)
+
+    expect(items).toHaveLength(1)
+    expect(timelineVisualKind(items[0])).toBe("reasoning")
+  })
+
+  test("keeps final assistant text as text display", () => {
+    const message = {
+      ...assistant("assistant-a"),
+      finish: "stop",
+    }
+    const part = {
+      id: "text-a",
+      sessionID: "session",
+      messageID: message.id,
+      type: "text",
+      text: "Here is the final answer.",
+    } as PartType
+
+    const items = collectSessionTurnTimelineItems([message], { [message.id]: [part] }, false)
+
+    expect(items).toHaveLength(1)
+    expect(timelineVisualKind(items[0])).toBe("text")
   })
 
   test("keeps completed media before later text and render tool across messages", () => {

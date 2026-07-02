@@ -92,6 +92,7 @@ export function timelineVisualKind(item: SessionTurnTimelineItem): SessionTurnTi
   if (item.kind !== "part") return item.kind
   if (item.part.type === "tool") return "tool"
   if (item.part.type === "attachment") return "attachment"
+  if (item.part.type === "text" && item.message.finish === "tool-calls") return "reasoning"
   return "text"
 }
 
