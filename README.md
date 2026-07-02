@@ -418,12 +418,14 @@ Control profiles are configured in the permissions domain (`80-permissions.jsonc
 
 `smartAllow` enables a hidden internal agent that can auto-allow safe asks and eligible soft denies. It never overrides hard safety boundaries such as protected paths, external writes, identity actions, plugin secrets, destructive shell commands, or hardline commands. Autonomous sessions deny failed Smart allow checks.
 
+Risk levels follow the operation's effect. Ordinary reads, including non-protected external reads, are low risk. Revertible local edits, non-destructive shell commands, and network calls are medium risk. Protected paths, external writes, secrets, destructive shell commands, identity-affecting actions, and outbound communication are high risk.
+
 Built-in profiles:
 
 | Config value  | UI label    | Behavior                                                                                                                                                                               |
 | ------------- | ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `guarded`     | Guarded     | Default protected mode. Auto-allows safe reads, workspace-local edits, and ordinary network lookups; asks before shell, external filesystem, identity, platform, or extension actions. |
-| `autonomous`  | Autonomous  | Unattended mode. Never asks; allows low/medium-risk work and denies high-risk boundaries.                                                                                              |
+| `guarded`     | Guarded     | Default protected mode. Auto-allows ordinary reads, workspace-local edits, and ordinary network lookups; asks before shell, external writes, identity, platform, or extension actions. |
+| `autonomous`  | Autonomous  | Unattended mode. Includes Guarded's automatic approvals, allows medium-risk development work, and denies high-risk asks instead of prompting.                                          |
 | `full_access` | Full Access | Allows all tool requests without approval prompts or workspace sandboxing.                                                                                                             |
 
 `full_access` is blocked in unattended execution mode. It is only available in attended sessions.

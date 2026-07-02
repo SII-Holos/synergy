@@ -158,27 +158,36 @@ describe("autonomous profile sandbox", () => {
 })
 
 describe("profile isolation", () => {
-  test("guarded still has original rules (not affected by autonomous changes)", async () => {
+  test("guarded auto-allows low-risk reads while keeping shell gated", async () => {
     await using tmp = await tmpdir()
     await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const profile = await guardedProfile()
-        // Guarded should still ask for file_external_read — it was NOT changed to "allow"
-        expect(rule(profile, "file_external_read")?.action).toBe("ask")
+        expect(rule(profile, "file_external_read")?.action).toBe("allow")
+        expect(rule(profile, "shell")?.action).toBe("ask")
       },
     })
   })
 })
 
 describe("autonomous profile summary", () => {
-  test("autonomous deniedCapabilities contains shell_hardline and shell_destructive", async () => {
+  test("autonomous deniedCapabilities is derived from its denied rules", async () => {
     await using tmp = await tmpdir()
     await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const profile = await autonomousProfile()
-        expect(profile.summary?.deniedCapabilities).toEqual(["shell_hardline", "shell_destructive"])
+        expect(profile.summary?.deniedCapabilities).toEqual([
+          "shell_destructive",
+          "shell_hardline",
+          "file_external_write",
+          "secrets",
+          "prompt_transform",
+          "compaction_transform",
+          "permission_hook",
+          "browser_eval_trusted",
+        ])
       },
     })
   })
@@ -191,9 +200,54 @@ describe("autonomous profile approval risk", () => {
       scope: await tmp.scope(),
       fn: async () => {
         const profile = await autonomousProfile()
-        expect(ApprovalPolicy.decidePermission(profile.approval, "task", {}).action).toBe("allow")
-        expect(ApprovalPolicy.decidePermission(profile.approval, "mcp_invoke", {}).action).toBe("allow")
-        expect(ApprovalPolicy.decidePermission(profile.approval, "secrets", {}).action).toBe("deny")
+        expect(ApprovalPolicy.decidePermission(profile, "task", {}).action).toBe("allow")
+        expect(ApprovalPolicy.decidePermission(profile, "mcp_invoke", {}).action).toBe("allow")
+        expect(ApprovalPolicy.decidePermission(profile, "secrets", {}).action).toBe("deny")
+      },
+    })
+  })
+
+  test("workspace boundary read metadata remains low risk", async () => {
+    await using tmp = await tmpdir()
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const profile = await guardedProfile()
+        const decision = ApprovalPolicy.decidePermission(profile, "external_directory", {
+          workspaceBoundary: true,
+          outsideWorkspace: true,
+        })
+        expect(decision).toMatchObject({
+          action: "allow",
+          risk: "low",
+          capabilities: ["file_external_read"],
+        })
+
+        const approval = ApprovalPolicy.withAudit(ApprovalPolicy.metadata(profile.approval, decision, "auto_allowed"))
+        expect(approval.audit?.visible).toBe(false)
+      },
+    })
+  })
+
+  test("audit visibility belongs to approval metadata", async () => {
+    await using tmp = await tmpdir()
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const guarded = await guardedProfile()
+        const autonomous = await autonomousProfile()
+
+        const guardedWrite = ApprovalPolicy.decidePermission(guarded, "edit", {})
+        const guardedApproval = ApprovalPolicy.withAudit(
+          ApprovalPolicy.metadata(guarded.approval, guardedWrite, "auto_allowed"),
+        )
+        expect(guardedApproval.audit?.visible).toBe(false)
+
+        const autonomousTask = ApprovalPolicy.decidePermission(autonomous, "task", {})
+        const autonomousApproval = ApprovalPolicy.withAudit(
+          ApprovalPolicy.metadata(autonomous.approval, autonomousTask, "auto_allowed"),
+        )
+        expect(autonomousApproval.audit?.visible).toBe(true)
       },
     })
   })

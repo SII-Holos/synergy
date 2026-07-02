@@ -7,6 +7,7 @@ type ApprovalStatus =
   | "auto_denied"
   | "policy_denied"
   | "sandbox_blocked"
+  | "pre_authorized"
 type RiskLevel = "low" | "medium" | "high"
 type ApprovalMode = "guarded" | "autonomous" | "full_access"
 
@@ -16,6 +17,9 @@ interface ApprovalMeta {
   mode?: ApprovalMode | string
   reason?: string
   capabilities?: string[]
+  audit?: {
+    visible?: boolean
+  }
 }
 
 export interface ApprovalAudit {
@@ -31,6 +35,7 @@ const STATUS_ICON: Record<string, string | null> = {
   auto_denied: "octagon-alert",
   policy_denied: "octagon-alert",
   sandbox_blocked: "shield-x",
+  pre_authorized: "badge-check",
   not_required: null,
 }
 
@@ -60,6 +65,7 @@ const STATUS_LABEL: Record<string, string> = {
   auto_denied: "Auto denied",
   policy_denied: "Policy denied",
   sandbox_blocked: "Sandbox blocked",
+  pre_authorized: "Pre-authorized",
 }
 
 const RISK_ADJECTIVE: Record<string, string> = {
@@ -76,7 +82,7 @@ function explain(status: string, mode?: string, risk?: string, reason?: string):
   switch (mode) {
     case "guarded": {
       if (risk !== "low") {
-        return "Guarded mode applies capability-specific approval rules before shell, external, identity, platform, or extension actions."
+        return "Guarded mode applies capability-specific approval rules before shell, external writes, identity, platform, or extension actions."
       }
       return "Guarded mode allowed this automatically."
     }
@@ -101,6 +107,7 @@ export function getApprovalAudit(approval: ApprovalMeta | null | undefined): App
   if (!approval) return empty
   const status = approval.status ?? ""
   if (!status || status === "not_required") return empty
+  if (approval.audit?.visible !== true) return empty
 
   const { risk, mode, reason } = approval
 
@@ -118,9 +125,6 @@ export function getApprovalAudit(approval: ApprovalMeta | null | undefined): App
     iconClass = STATUS_COLOR[status] ?? "text-icon-base"
   }
 
-  // Hide icon for low-risk auto-approvals (expected, not noteworthy)
-  // and for full_access mode (everything is auto-allowed by design).
-  if (status === "auto_allowed" && (risk === "low" || mode === "full_access")) return empty
   if (!icon) return empty
 
   const label = STATUS_LABEL[status] ?? status

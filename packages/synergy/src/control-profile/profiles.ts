@@ -20,66 +20,63 @@ function rule(permission: string, action: "allow" | "deny" | "ask", nonBypassabl
   return { permission, pattern: "*", action, ...(nonBypassable ? { nonBypassable: true } : {}) }
 }
 
+function capabilityRule(permission: string, action: "allow" | "deny" | "ask") {
+  return rule(permission, action, capabilityNonBypassable(permission))
+}
+
 function rulesFor(actions: {
   low: "allow" | "deny" | "ask"
   medium: "allow" | "deny" | "ask"
   high: "allow" | "deny" | "ask"
 }) {
   return SYNERGY_PROFILE_CAPABILITIES.map((permission) => {
-    if (permission === "shell_hardline") return rule(permission, "deny", true)
-    if (permission === "protected_op") return rule(permission, "ask", true)
+    if (permission === "shell_hardline") return capabilityRule(permission, "deny")
+    if (permission === "protected_op") return capabilityRule(permission, "ask")
     const risk = capabilityRisk(permission)
-    if (risk === "high") return rule(permission, actions.high, capabilityNonBypassable(permission))
-    if (risk === "low") return rule(permission, actions.low, capabilityNonBypassable(permission))
-    return rule(permission, actions.medium)
+    if (risk === "high") return capabilityRule(permission, actions.high)
+    if (risk === "low") return capabilityRule(permission, actions.low)
+    return capabilityRule(permission, actions.medium)
   })
 }
 
+const GUARDED_MEDIUM_ALLOWED = new Set(["file_write", "network_request", "session_state", "browser_interact"])
+
+const AUTONOMOUS_DENIED = new Set([
+  "shell_hardline",
+  "shell_destructive",
+  "file_external_write",
+  "secrets",
+  "prompt_transform",
+  "compaction_transform",
+  "permission_hook",
+  "browser_eval_trusted",
+])
+
+const AUTONOMOUS_HIGH_ALLOWED = new Set(["identity_act", "communication_email", "channel_outbound", "platform_control"])
+
 function guardedRules() {
   return SYNERGY_PROFILE_CAPABILITIES.map((permission) => {
-    if (permission === "shell_hardline") return rule(permission, "deny", true)
-    if (permission === "protected_op") return rule(permission, "ask", true)
-    if (capabilityRisk(permission) === "high") return rule(permission, "ask", capabilityNonBypassable(permission))
-    if (permission === "file_read" || permission === "shell_read") return rule(permission, "allow")
-    if (
-      permission === "file_write" ||
-      permission === "network_request" ||
-      permission === "network_read" ||
-      permission === "session_state" ||
-      permission === "browser_interact" ||
-      permission === "browser_inspect"
-    )
-      return rule(permission, "allow")
-    return rule(permission, "ask")
+    if (permission === "shell_hardline") return capabilityRule(permission, "deny")
+    if (permission === "protected_op") return capabilityRule(permission, "ask")
+    const risk = capabilityRisk(permission)
+    if (risk === "low") return capabilityRule(permission, "allow")
+    if (risk === "high") return capabilityRule(permission, "ask")
+    if (GUARDED_MEDIUM_ALLOWED.has(permission)) return capabilityRule(permission, "allow")
+    return capabilityRule(permission, "ask")
   })
 }
 
 function autonomousRules() {
+  const guarded = new Map(guardedRules().map((item) => [item.permission, item]))
   return SYNERGY_PROFILE_CAPABILITIES.map((permission) => {
-    if (permission === "shell_hardline") return rule(permission, "deny", true)
-    if (permission === "file_read" || permission === "shell_read") return rule(permission, "allow")
-    if (permission === "file_write") return rule(permission, "allow")
-    if (permission === "file_external_read") return rule(permission, "allow")
-    if (permission === "file_external_write") return rule(permission, "deny", true)
-    if (permission === "network_request") return rule(permission, "allow")
-    if (permission === "browser_interact") return rule(permission, "allow")
-    if (permission === "browser_inspect") return rule(permission, "allow")
-    if (permission === "protected_op") return rule(permission, "ask", true)
-    if (permission === "mcp_invoke") return rule(permission, "allow")
-    if (permission === "mcp_spawn") return rule(permission, "allow")
-    if (permission === "secrets") return rule(permission, "deny", true)
-    if (permission === "prompt_transform") return rule(permission, "deny", true)
-    if (permission === "compaction_transform") return rule(permission, "deny", true)
-    if (permission === "permission_hook") return rule(permission, "deny", true)
-    if (permission === "tool_execution_hook") return rule(permission, "allow")
-    if (permission === "event_hook") return rule(permission, "allow")
-    if (permission === "identity_act") return rule(permission, "allow")
-    if (permission === "communication_email") return rule(permission, "allow")
-    if (permission === "channel_outbound") return rule(permission, "allow")
-    if (permission === "platform_control") return rule(permission, "allow")
-    if (permission === "shell_destructive") return rule(permission, "deny")
-    if (permission === "browser_eval_trusted") return rule(permission, "deny", true)
-    return rule(permission, "allow")
+    if (AUTONOMOUS_DENIED.has(permission)) return capabilityRule(permission, "deny")
+    if (permission === "protected_op") return capabilityRule(permission, "ask")
+    const guardedRule = guarded.get(permission)
+    if (guardedRule?.action === "allow") return guardedRule
+    const risk = capabilityRisk(permission)
+    if (risk === "medium") return capabilityRule(permission, "allow")
+    if (risk === "high" && AUTONOMOUS_HIGH_ALLOWED.has(permission)) return capabilityRule(permission, "allow")
+    return capabilityRule(permission, "ask")
   })
 }
 
@@ -138,19 +135,14 @@ function approval(mode: ProfileApproval["mode"]): ProfileApproval {
   }
 }
 
-function summary(
-  id: ProfileId,
-  profile: Omit<ControlProfile, "ruleset" | "filesystem" | "network">,
-  deniedCapabilities: string[],
-  workspace: string,
-) {
+function summary(id: ProfileId, profile: Omit<ControlProfile, "filesystem" | "network">, workspace: string) {
   return {
     profileId: id,
     sandbox: profile.sandbox,
     label: profile.label,
     brief: profile.description,
     approval: profile.approval,
-    deniedCapabilities,
+    deniedCapabilities: profile.ruleset.filter((item) => item.action === "deny").map((item) => item.permission),
     workspaceRoot: workspace,
   }
 }
@@ -243,13 +235,13 @@ export async function buildProfile(idInput: ProfileIdInput | string, ctx: Resolu
         valid: true,
         label: "Guarded",
         description:
-          "Auto-allow safe local edits and network lookups. Ask before shell, external, identity, or platform actions.",
+          "Auto-allow ordinary reads, safe local edits, and network lookups. Ask before shell, external writes, identity, or platform actions.",
         ruleset: guardedRules(),
         ...policy,
         sandbox: effectiveSandbox,
         approval: approval("guarded"),
       }
-      return { ...profile, summary: summary(id, profile, [], workspace) }
+      return { ...profile, summary: summary(id, profile, workspace) }
     }
 
     case "autonomous": {
@@ -258,7 +250,7 @@ export async function buildProfile(idInput: ProfileIdInput | string, ctx: Resolu
         valid: true,
         label: "Autonomous",
         description:
-          "Unattended development with full tool access. Network and external reads are available. Only destructive shell commands are blocked with recovery guidance.",
+          "Unattended development with Guarded's automatic approvals plus medium-risk work. High-risk asks are denied instead of prompting.",
         ruleset: autonomousRules(),
         ...policy,
         sandbox: effectiveSandbox,
@@ -266,7 +258,7 @@ export async function buildProfile(idInput: ProfileIdInput | string, ctx: Resolu
       }
       return {
         ...profile,
-        summary: summary(id, profile, ["shell_hardline", "shell_destructive"], workspace),
+        summary: summary(id, profile, workspace),
       }
     }
 
@@ -294,7 +286,7 @@ export async function buildProfile(idInput: ProfileIdInput | string, ctx: Resolu
         sandbox: effectiveSandbox,
         approval: approval("full_access"),
       }
-      return { ...profile, summary: summary(id, profile, [], workspace) }
+      return { ...profile, summary: summary(id, profile, workspace) }
     }
   }
 }

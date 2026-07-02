@@ -7,7 +7,7 @@ import { tmpdir } from "../fixture/fixture"
 // permission/agent-blanket-allow.test.ts
 //
 // Tests encoding the behavioral contract that internal agent blanket `allow`
-// permissions CANNOT bypass the ControlProfile or nonBypassable boundary.
+// permissions cannot bypass explicit nonBypassable boundaries.
 //
 // Background:
 //   - `anima` has `external_directory: {"*":"allow"}`
@@ -16,17 +16,11 @@ import { tmpdir } from "../fixture/fixture"
 //     evaluated by findLast(), so they can override earlier "ask" rules.
 //
 // Problem:
-//   In a worktree session, `anima` reading a file in the original checkout
-//   would currently get `external_directory: allow` from its blanket rule.
-//   This must NOT happen when ControlProfile is active.
+//   Dangerous operations carry explicit nonBypassable metadata. Blanket allow
+//   rules must not resolve those requests without surfacing the ask.
 //
 // After implementation:
-//   - ControlProfile must intercept and insert nonBypassable metadata
 //   - nonBypassable must defeat blanket allow rules
-//   - Blanket external_directory allow must NOT auto-resolve cross-boundary
-//
-// These tests MUST fail (RED) until the enforcement gate is wired into
-// the tool execution path and PermissionNext.ask is aware of ControlProfile.
 // ---------------------------------------------------------------------------
 
 // ===========================================================================
@@ -285,26 +279,26 @@ describe("isNonBypassableMetadata detection", () => {
     expect(isNonBypassableMetadata(undefined)).toBe(false)
   })
 
-  test("recognizes workspaceBoundary flag alone", async () => {
+  test("workspace boundary context alone is bypassable", async () => {
     const { isNonBypassableMetadata } = await import("../../src/enforcement/capability")
 
-    expect(isNonBypassableMetadata({ workspaceBoundary: true })).toBe(true)
+    expect(isNonBypassableMetadata({ workspaceBoundary: true })).toBe(false)
     expect(isNonBypassableMetadata({ workspaceBoundary: false })).toBe(false)
   })
 
-  test("recognizes outsideWorkspace flag alone", async () => {
+  test("outside workspace context alone is bypassable", async () => {
     const { isNonBypassableMetadata } = await import("../../src/enforcement/capability")
 
-    expect(isNonBypassableMetadata({ outsideWorkspace: true })).toBe(true)
+    expect(isNonBypassableMetadata({ outsideWorkspace: true })).toBe(false)
     expect(isNonBypassableMetadata({ outsideWorkspace: false })).toBe(false)
   })
 
-  test("any combination of flags triggers nonBypassable", async () => {
+  test("only explicit nonBypassable triggers nonBypassable", async () => {
     const { isNonBypassableMetadata } = await import("../../src/enforcement/capability")
 
     expect(isNonBypassableMetadata({ nonBypassable: true, workspaceBoundary: true })).toBe(true)
     expect(isNonBypassableMetadata({ nonBypassable: true, workspaceBoundary: false })).toBe(true)
-    expect(isNonBypassableMetadata({ nonBypassable: false, workspaceBoundary: true })).toBe(true)
+    expect(isNonBypassableMetadata({ nonBypassable: false, workspaceBoundary: true })).toBe(false)
   })
 
   test("irrelevant metadata does not trigger nonBypassable", async () => {
