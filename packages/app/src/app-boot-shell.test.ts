@@ -3,6 +3,7 @@ import { describe, expect, test } from "bun:test"
 const html = await Bun.file(new URL("../index.html", import.meta.url)).text()
 const entry = await Bun.file(new URL("./entry.tsx", import.meta.url)).text()
 const app = await Bun.file(new URL("./app.tsx", import.meta.url)).text()
+const themeContext = await Bun.file(new URL("../../ui/src/theme/context.tsx", import.meta.url)).text()
 
 function blockBetween(source: string, start: string, end: string): string {
   const startIndex = source.indexOf(start)
@@ -42,6 +43,7 @@ describe("app boot shell", () => {
     expect(html).toContain('document.documentElement.setAttribute("data-synergy-color-scheme", mode)')
     expect(html).toContain('html[data-synergy-color-scheme="dark"]')
     expect(html).toContain("html:not([data-synergy-color-scheme])")
+    expect(html).toContain('var fallbackScheme = desktopWindow ? "dark" : "system"')
   })
 
   test("gates temporary desktop chrome on the desktop bridge", () => {
@@ -51,6 +53,25 @@ describe("app boot shell", () => {
     expect(html).toContain('data-synergy-app-boot-window-action="minimize"')
     expect(html).toContain('data-synergy-app-boot-window-action="maximize"')
     expect(html).toContain('data-synergy-app-boot-window-action="close"')
+  })
+
+  test("aligns the boot prompt with the new-session prompt dock measure", () => {
+    const style = blockBetween(html, '<style id="synergy-app-boot-style">', "</style>")
+
+    expect(style).toContain("justify-content: center;")
+    expect(style).toContain("transform: translateY(clamp(24px, 5vh, 64px));")
+    expect(style).toContain("width: min(54rem, 100%);")
+  })
+
+  test("initializes the app theme from the saved color scheme before mount", () => {
+    const initialSchemeIndex = themeContext.indexOf('const initialColorScheme = getSavedColorScheme() ?? "system"')
+    const createStoreIndex = themeContext.indexOf("createStore({")
+
+    expect(initialSchemeIndex).toBeGreaterThanOrEqual(0)
+    expect(createStoreIndex).toBeGreaterThan(initialSchemeIndex)
+    expect(themeContext).toContain("colorScheme: initialColorScheme")
+    expect(themeContext).toContain("mode: resolveColorSchemeMode(initialColorScheme)")
+    expect(themeContext).not.toContain('colorScheme: "system" as ColorScheme')
   })
 
   test("removes the boot shell only after the app surface leaves startup loading", () => {

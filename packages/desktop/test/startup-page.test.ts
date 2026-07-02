@@ -3,6 +3,8 @@ import { desktopErrorPage } from "../src/error-page.js"
 import { isAllowedAppNavigation } from "../src/navigation-policy.js"
 import { desktopStartupPage, startupStatusScript } from "../src/startup-page.js"
 
+const mainSource = await Bun.file(new URL("../src/main.ts", import.meta.url)).text()
+
 function decodeDesktopHtml(url: string): string {
   expect(url.startsWith("data:text/html")).toBe(true)
   const body = url.slice(url.indexOf(",") + 1)
@@ -23,6 +25,23 @@ describe("desktop startup page", () => {
     expect(html).toContain("Opening Synergy")
     expect(html).toContain("Preparing the desktop shell.")
     expect(html).toContain("file:///app/icon.png")
+  })
+
+  test("uses the dark startup base before the saved Web theme is available", () => {
+    const html = decodeDesktopHtml(desktopStartupPage({ chrome: "custom" }))
+
+    expect(html).toContain("color-scheme: dark;")
+    expect(html).toContain("--startup-background: #111214;")
+    expect(mainSource).toContain('backgroundColor: "#111214"')
+    expect(html).not.toContain("prefers-color-scheme: light")
+  })
+
+  test("centers the startup prompt on the same workbench measure as the app", () => {
+    const html = decodeDesktopHtml(desktopStartupPage({ chrome: "custom" }))
+
+    expect(html).toContain("justify-content: center;")
+    expect(html).toContain("transform: translateY(clamp(24px, 5vh, 64px));")
+    expect(html).toContain("width: min(54rem, 100%);")
   })
 
   test("renders the native titlebar spacer for macOS windows", () => {

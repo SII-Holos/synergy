@@ -39,8 +39,17 @@
     <meta name="theme-color" content="#131010" media="(prefers-color-scheme: dark)" />
     <script id="synergy-theme-preload-script">
       ;(function () {
-        var scheme = localStorage.getItem("synergy-color-scheme") || "system"
-        var isDark = scheme === "dark" || (scheme === "system" && matchMedia("(prefers-color-scheme: dark)").matches)
+        var desktopWindow = window.synergyDesktop && window.synergyDesktop.window
+        var fallbackScheme = desktopWindow ? "dark" : "system"
+        var scheme = fallbackScheme
+        try {
+          scheme = localStorage.getItem("synergy-color-scheme") || fallbackScheme
+        } catch (error) {
+          scheme = fallbackScheme
+        }
+        if (scheme !== "light" && scheme !== "dark" && scheme !== "system") scheme = fallbackScheme
+        var systemDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches
+        var isDark = scheme === "dark" || (scheme === "system" && systemDark)
         var mode = isDark ? "dark" : "light"
         document.documentElement.style.setProperty("color-scheme", mode)
         document.documentElement.setAttribute("data-synergy-color-scheme", mode)
@@ -444,12 +453,14 @@
         display: flex;
         flex: 1;
         align-items: center;
+        justify-content: center;
         min-height: 0;
         padding: 64px 8vw;
       }
 
       .synergy-app-boot-stage {
-        width: min(720px, 100%);
+        transform: translateY(clamp(24px, 5vh, 64px));
+        width: min(54rem, 100%);
       }
 
       .synergy-app-boot-logo-row {
@@ -643,6 +654,10 @@
         .synergy-app-boot-canvas {
           align-items: center;
           padding: 40px 24px 56px;
+        }
+
+        .synergy-app-boot-stage {
+          transform: none;
         }
 
         .synergy-app-boot-title {

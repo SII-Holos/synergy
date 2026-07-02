@@ -5,7 +5,6 @@ import {
   ipcMain,
   Menu,
   nativeImage,
-  nativeTheme,
   shell,
   Tray,
   type BrowserWindowConstructorOptions,
@@ -116,7 +115,7 @@ async function createWindow() {
     width: windowState.width,
     height: windowState.height,
     title: desktopWindowTitle(channel),
-    backgroundColor: nativeTheme.shouldUseDarkColors ? "#111214" : "#f7f7f5",
+    backgroundColor: "#111214",
     ...desktopWindowChromeOptions({
       platform: process.platform,
       dirname,

@@ -68,25 +68,6 @@ export function desktopStartupPage(options: DesktopStartupPageOptions): string {
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     }
 
-    @media (prefers-color-scheme: light) {
-      :root {
-        color-scheme: light;
-        --startup-background: #f7f7f5;
-        --startup-sidebar: #f7f7f5;
-        --startup-workbench: #fafaf9;
-        --startup-content: #ffffff;
-        --startup-border: #deded8;
-        --startup-text: #1c1d20;
-        --startup-muted: #5f636b;
-        --startup-faint: #858992;
-        --startup-fill: #ededeb;
-        --startup-line: #deded8;
-        --startup-line-strong: #d8d8d3;
-        --startup-progress: #303238;
-        --startup-shadow: rgba(20, 20, 20, 0.06);
-      }
-    }
-
     * {
       box-sizing: border-box;
     }
@@ -394,12 +375,14 @@ export function desktopStartupPage(options: DesktopStartupPageOptions): string {
       display: flex;
       flex: 1;
       align-items: center;
+      justify-content: center;
       min-height: 0;
       padding: 64px 8vw;
     }
 
     .startup-stage {
-      width: min(720px, 100%);
+      transform: translateY(clamp(24px, 5vh, 64px));
+      width: min(54rem, 100%);
     }
 
     .startup-logo-row {
@@ -551,6 +534,10 @@ export function desktopStartupPage(options: DesktopStartupPageOptions): string {
       .startup-canvas {
         align-items: center;
         padding: 40px 24px 56px;
+      }
+
+      .startup-stage {
+        transform: none;
       }
 
       h1 {
