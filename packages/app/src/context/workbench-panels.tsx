@@ -100,6 +100,7 @@ export const { use: useWorkbenchPanels, provider: WorkbenchPanelsProvider } = cr
         const next = closeWorkbenchPanelTab(target.tabs(), target.active(), tabId)
         target.setTabs(next.tabs)
         target.setActive(next.active)
+        if (next.tabs.length === 0) target.close()
         return
       }
     }
@@ -126,6 +127,7 @@ export const { use: useWorkbenchPanels, provider: WorkbenchPanelsProvider } = cr
         if (!nextTabs.some((tab) => tab.id === target.active())) {
           target.setActive(nextTabs[0]?.id)
         }
+        if (nextTabs.length === 0) target.close()
       }
     })
 
