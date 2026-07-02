@@ -1,9 +1,10 @@
 import { For, Show } from "solid-js"
+import { Button } from "@ericsanchezok/synergy-ui/button"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
-import { IconButton } from "@ericsanchezok/synergy-ui/icon-button"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import type { McpEntry } from "../types"
 import { McpCard } from "../components/McpCard"
+import { SettingsPage } from "../components/SettingsPrimitives"
 
 export function McpPanel(props: {
   entries: McpEntry[]
@@ -12,30 +13,52 @@ export function McpPanel(props: {
   onRemove: (index: number) => void
 }) {
   return (
-    <div class="ds-content-inner">
-      <div class="ds-content-header">
-        <div>
-          <h1 class="ds-content-title">MCP Servers</h1>
-          <p class="ds-section-hint">Configure local (stdio) or remote (HTTP/SSE) servers.</p>
+    <SettingsPage
+      title="MCP"
+      description="Connect local or remote tool servers that Synergy can use during sessions."
+      actions={
+        <Button
+          type="button"
+          variant="secondary"
+          size="small"
+          icon={getSemanticIcon("action.add")}
+          onClick={props.onAdd}
+        >
+          Add server
+        </Button>
+      }
+    >
+      <div class="settings-integration-shell settings-mcp-shell">
+        <div class="settings-integration-section-heading">
+          <h2>Servers</h2>
+          <p>Each server adds tools or prompts from a trusted local command or remote endpoint.</p>
         </div>
-        <IconButton icon={getSemanticIcon("action.add")} variant="ghost" onClick={props.onAdd} />
+
+        <Show
+          when={props.entries.length > 0}
+          fallback={
+            <div class="settings-integration-empty">
+              <Icon name={getSemanticIcon("settings.mcp")} size="normal" />
+              <div>
+                <div class="settings-integration-empty-title">No MCP servers yet</div>
+                <div class="settings-integration-empty-copy">Add a server when a workflow needs external tools.</div>
+              </div>
+            </div>
+          }
+        >
+          <div class="settings-mcp-list">
+            <For each={props.entries}>
+              {(entry, index) => (
+                <McpCard
+                  entry={entry}
+                  onChange={(field, value) => props.onChange(index(), field, value)}
+                  onRemove={() => props.onRemove(index())}
+                />
+              )}
+            </For>
+          </div>
+        </Show>
       </div>
-      <For each={props.entries}>
-        {(entry, index) => (
-          <McpCard
-            entry={entry}
-            onChange={(field, value) => props.onChange(index(), field, value)}
-            onRemove={() => props.onRemove(index())}
-          />
-        )}
-      </For>
-      <Show when={props.entries.length === 0}>
-        <div class="ds-empty-state">
-          <Icon name={getSemanticIcon("settings.mcp")} size="normal" class="text-text-weaker" />
-          <span>No MCP servers configured</span>
-          <span class="text-text-weaker">Click + to add one</span>
-        </div>
-      </Show>
-    </div>
+    </SettingsPage>
   )
 }
