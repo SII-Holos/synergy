@@ -1,4 +1,5 @@
-export { DialogConfirm } from "./dialog-confirm"
+export { ConfirmDialog, useConfirm } from "./confirm-dialog"
+export type { ConfirmOptions, ConfirmTone } from "./confirm-dialog"
 export { DialogConnectProvider } from "./dialog-connect-provider"
 export { DialogSelectDirectory } from "./dialog-select-directory"
 export { DialogSelectFile } from "./dialog-select-file"

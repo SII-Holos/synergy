@@ -3,6 +3,8 @@ import { Popover } from "@kobalte/core/popover"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { Markdown } from "@ericsanchezok/synergy-ui/markdown"
 import { useGlobalSDK } from "@/context/global-sdk"
+import { useConfirm } from "@/components/dialog/confirm-dialog"
+import { deleteLibraryItemsConfirm } from "@/components/dialog/confirm-copy"
 import { AppPanel } from "@/components/app-panel"
 import { relativeTime, absoluteDate } from "@/utils/time"
 import type { MemoryInfo, MemorySearchResult } from "@ericsanchezok/synergy-sdk/client"
@@ -41,6 +43,7 @@ export function MemoryView(props: {
   setSearchError: (v: boolean) => void
   refetchStats: () => void
 }) {
+  const confirm = useConfirm()
   const [sort, setSort] = createSignal<MemorySortKey>("newest")
   const [sortOpen, setSortOpen] = createSignal(false)
   const [filterOpen, setFilterOpen] = createSignal(false)
@@ -136,9 +139,16 @@ export function MemoryView(props: {
     setSelected(new Set(ids))
   }
 
-  async function deleteSelected() {
+  function deleteSelected() {
     const ids = [...selected()]
     if (ids.length === 0) return
+    confirm.show({
+      ...deleteLibraryItemsConfirm("memory", ids.length),
+      onConfirm: () => performDeleteSelected(ids),
+    })
+  }
+
+  async function performDeleteSelected(ids: string[]) {
     setDeleting(true)
     try {
       await Promise.all(ids.map((id) => props.sdk.client.library.remove({ id })))
@@ -150,8 +160,9 @@ export function MemoryView(props: {
       exitSelection()
       refetch()
       props.refetchStats()
-    } catch {}
-    setDeleting(false)
+    } finally {
+      setDeleting(false)
+    }
   }
 
   function exitSelection() {
@@ -159,18 +170,23 @@ export function MemoryView(props: {
     setSelected(new Set<string>())
   }
 
-  async function deleteMemory(id: string, e: MouseEvent) {
+  function deleteMemory(id: string, e: MouseEvent) {
     e.stopPropagation()
-    try {
-      await props.sdk.client.library.remove({ id })
-      setExpandedCards((prev) => {
-        const next = new Set(prev)
-        next.delete(id)
-        return next
-      })
-      refetch()
-      props.refetchStats()
-    } catch {}
+    confirm.show({
+      ...deleteLibraryItemsConfirm("memory", 1),
+      onConfirm: () => performDeleteMemory(id),
+    })
+  }
+
+  async function performDeleteMemory(id: string) {
+    await props.sdk.client.library.remove({ id })
+    setExpandedCards((prev) => {
+      const next = new Set(prev)
+      next.delete(id)
+      return next
+    })
+    refetch()
+    props.refetchStats()
   }
 
   const categoryCounts = createMemo(() => {

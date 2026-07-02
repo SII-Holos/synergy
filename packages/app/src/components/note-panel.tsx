@@ -11,6 +11,8 @@ import { usePlatform } from "@/context/platform"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { useGlobalSync } from "@/context/global-sync"
 import { TIPTAP_STYLES, DocumentEditorCore } from "@/components/note/document-editor-core"
+import { useConfirm } from "@/components/dialog/confirm-dialog"
+import { deleteNoteConfirm } from "@/components/dialog/confirm-copy"
 import type { BlueprintLoopInfo, NoteInfo, NoteMetaInfo, NoteMetaScopeGroup } from "@ericsanchezok/synergy-sdk/client"
 import { getScopeLabel } from "@/utils/scope"
 import { assetHttpUrl } from "@/utils/asset-url"
@@ -833,6 +835,7 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
   const platform = usePlatform()
   const params = useParams()
   const navigate = useNavigate()
+  const confirm = useConfirm()
   const directory = () => props.directory
 
   const [note, { refetch }] = createResource(
@@ -1346,9 +1349,13 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
   async function deleteNote() {
     const dir = directory()
     if (!dir) return
-    if (!confirm("Are you sure you want to delete this note?")) return
-    await sdk.client.note.remove({ id: props.id, directory: dir })
-    props.onDelete()
+    confirm.show({
+      ...deleteNoteConfirm(baseNote()?.title),
+      onConfirm: async () => {
+        await sdk.client.note.remove({ id: props.id, directory: dir })
+        props.onDelete()
+      },
+    })
   }
 
   return (

@@ -5,7 +5,8 @@ import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { Popover } from "@ericsanchezok/synergy-ui/popover"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import { Tooltip, TooltipKeybind } from "@ericsanchezok/synergy-ui/tooltip"
-import { DialogConfirm, DialogSessionRename, ModelSelectorPopover } from "@/components/dialog"
+import { DialogSessionRename, ModelSelectorPopover, useConfirm } from "@/components/dialog"
+import { archiveSessionConfirm } from "@/components/dialog/confirm-copy"
 import { DialogSessionExport } from "@/components/dialog/dialog-session-export"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { useLayout } from "@/context/layout"
@@ -101,6 +102,7 @@ export function SessionTopBar() {
   const params = useParams()
   const navigate = useNavigate()
   const dialog = useDialog()
+  const confirm = useConfirm()
   const globalSDK = useGlobalSDK()
   const layout = useLayout()
   const local = useLocal()
@@ -174,21 +176,16 @@ export function SessionTopBar() {
   const archiveSession = () => {
     const session = sessionInfo()
     if (!session) return
-    dialog.show(() => (
-      <DialogConfirm
-        title="Archive session"
-        description={`Archive "${session.title || "Untitled session"}"? The session will be hidden from active lists and its data preserved.`}
-        confirmLabel="Archive"
-        cancelLabel="Cancel"
-        onConfirm={async () => {
-          const nextSession = await layout.nav.archiveSession(session)
-          if (session.id === params.id) {
-            if (nextSession) navigate(`/${params.dir}/session/${nextSession.id}`)
-            else navigate(`/${params.dir}/session`)
-          }
-        }}
-      />
-    ))
+    confirm.show({
+      ...archiveSessionConfirm(session.title),
+      onConfirm: async () => {
+        const nextSession = await layout.nav.archiveSession(session)
+        if (session.id === params.id) {
+          if (nextSession) navigate(`/${params.dir}/session/${nextSession.id}`)
+          else navigate(`/${params.dir}/session`)
+        }
+      },
+    })
   }
 
   return (

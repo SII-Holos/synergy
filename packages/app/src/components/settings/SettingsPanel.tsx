@@ -28,7 +28,7 @@ import type {
 import { useGlobalSDK } from "@/context/global-sdk"
 import { useInput, type SendShortcut } from "@/context/input"
 import { useGlobalSync } from "@/context/global-sync"
-import { DialogConfirm } from "@/components/dialog/dialog-confirm"
+import { useConfirm, type ConfirmOptions } from "@/components/dialog/confirm-dialog"
 import { getSettingsSections, type SettingsSection as RegisteredSettingsSection } from "@/plugin"
 import { SandboxIframe } from "@/plugin/sandbox"
 import { DeclarativeSettingsForm } from "@/plugin/components/declarative-settings-form"
@@ -79,6 +79,7 @@ export function SettingsDialog(props: DialogSettingsProps) {
 
 export function SettingsPanel(props: SettingsPanelProps) {
   const dialog = useDialog()
+  const confirm = useConfirm()
   const globalSDK = useGlobalSDK()
   const globalSync = useGlobalSync()
   const input = useInput()
@@ -226,23 +227,8 @@ export function SettingsPanel(props: SettingsPanelProps) {
   const editingLabel = createMemo(() => "Global Config")
   const hasAnyChanges = createMemo(() => hasServerChanges())
 
-  function showConfirm(params: {
-    title: string
-    description: string
-    confirmLabel: string
-    cancelLabel: string
-    onConfirm: () => void | Promise<void>
-  }) {
-    dialog.show(() => (
-      <DialogConfirm
-        title={params.title}
-        description={params.description}
-        confirmLabel={params.confirmLabel}
-        cancelLabel={params.cancelLabel}
-        confirmVariant="secondary"
-        onConfirm={params.onConfirm}
-      />
-    ))
+  function showConfirm(params: ConfirmOptions) {
+    confirm.show(params)
   }
 
   const save = useSettingsSave({

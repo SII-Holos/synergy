@@ -16,7 +16,8 @@ import { getScopeLabel } from "@/utils/scope"
 import { useHolos } from "@/context/holos"
 import { DialogSelectDirectory } from "@/components/dialog/dialog-select-directory"
 import { DialogScopeEdit } from "@/components/dialog/dialog-scope-edit"
-import { DialogConfirm } from "@/components/dialog/dialog-confirm"
+import { useConfirm } from "@/components/dialog/confirm-dialog"
+import { archiveProjectConfirm } from "@/components/dialog/confirm-copy"
 import type { LocalScope, NavEntry } from "@/context/layout"
 import type { HolosAccountMeta } from "@ericsanchezok/synergy-sdk/client"
 import { usePlatform } from "@/context/platform"
@@ -50,6 +51,7 @@ export function Sidebar(props: SidebarProps) {
   const globalSync = useGlobalSync()
   const globalSDK = useGlobalSDK()
   const dialog = useDialog()
+  const confirm = useConfirm()
   const theme = useTheme()
   const navigate = useNavigate()
   const location = useLocation()
@@ -215,17 +217,13 @@ export function Sidebar(props: SidebarProps) {
     const scopeID = scope.id
     const worktree = scope.worktree
     if (!scopeID) return
-    dialog.show(() => (
-      <DialogConfirm
-        title="Archive project"
-        description={`Archive "${getScopeLabel(scope)}"? The project will be hidden from the sidebar and its data preserved.`}
-        confirmLabel="Archive"
-        onConfirm={async () => {
-          await globalSDK.client.scope.remove({ path_scopeID: scopeID })
-          layout.scopes.close(worktree)
-        }}
-      />
-    ))
+    confirm.show({
+      ...archiveProjectConfirm(getScopeLabel(scope)),
+      onConfirm: async () => {
+        await globalSDK.client.scope.remove({ path_scopeID: scopeID })
+        layout.scopes.close(worktree)
+      },
+    })
   }
 
   const handleProjectEdit = (e: MouseEvent, scope: LocalScope) => {
