@@ -15,10 +15,12 @@ describe("desktop startup page", () => {
 
     expect(html).toContain("<title>Starting Synergy</title>")
     expect(html).toContain('class="startup-chrome"')
+    expect(html).toContain('class="startup-shell"')
+    expect(html).toContain('class="startup-sidebar"')
     expect(html).toContain('data-window-action="minimize"')
     expect(html).toContain('data-window-action="maximize"')
     expect(html).toContain('data-window-action="close"')
-    expect(html).toContain("Starting local workspace")
+    expect(html).toContain("Opening Synergy")
     expect(html).toContain("Preparing the desktop shell.")
     expect(html).toContain("file:///app/icon.png")
   })

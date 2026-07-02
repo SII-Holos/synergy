@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test"
 
 const html = await Bun.file(new URL("../index.html", import.meta.url)).text()
 const entry = await Bun.file(new URL("./entry.tsx", import.meta.url)).text()
+const app = await Bun.file(new URL("./app.tsx", import.meta.url)).text()
 
 function blockBetween(source: string, start: string, end: string): string {
   const startIndex = source.indexOf(start)
@@ -28,10 +29,19 @@ describe("app boot shell", () => {
     const style = blockBetween(html, '<style id="synergy-app-boot-style">', "</style>")
 
     expect(style).toContain("#f7f7f5")
-    expect(style).toContain("#111214")
+    expect(style).toContain("#101112")
+    expect(style).toContain("#24262a")
     expect(style).toContain("#synergy-app-boot")
+    expect(style).toContain('html[data-synergy-color-scheme="dark"] #synergy-app-boot')
     expect(style).not.toContain("--background-base")
     expect(style).not.toContain("var(")
+  })
+
+  test("hydrates the static boot theme from the saved app color scheme", () => {
+    expect(html).toContain('localStorage.getItem("synergy-color-scheme")')
+    expect(html).toContain('document.documentElement.setAttribute("data-synergy-color-scheme", mode)')
+    expect(html).toContain('html[data-synergy-color-scheme="dark"]')
+    expect(html).toContain("html:not([data-synergy-color-scheme])")
   })
 
   test("gates temporary desktop chrome on the desktop bridge", () => {
@@ -43,13 +53,21 @@ describe("app boot shell", () => {
     expect(html).toContain('data-synergy-app-boot-window-action="close"')
   })
 
-  test("removes the boot shell only after Solid render is invoked", () => {
+  test("removes the boot shell only after the app surface leaves startup loading", () => {
+    const listenerIndex = entry.indexOf(
+      "window.addEventListener(APP_SURFACE_READY_EVENT, scheduleBootShellRemoval, { once: true })",
+    )
     const renderIndex = entry.indexOf("render(")
-    const scheduleIndex = entry.lastIndexOf("scheduleBootShellRemoval()")
 
+    expect(listenerIndex).toBeGreaterThanOrEqual(0)
     expect(renderIndex).toBeGreaterThanOrEqual(0)
-    expect(scheduleIndex).toBeGreaterThan(renderIndex)
+    expect(listenerIndex).toBeLessThan(renderIndex)
+    expect(entry.match(/\bscheduleBootShellRemoval\b/g)).toHaveLength(2)
     expect(entry).toContain('document.getElementById("synergy-app-boot")?.remove()')
     expect(entry).toContain("window.requestAnimationFrame(remove)")
+    expect(app).toContain('const APP_SURFACE_READY_EVENT = "synergy:app-surface-ready"')
+    expect(app).toContain('if (view === "loading") return')
+    expect(app).toContain("initialRouteWaitsForSessionSurface")
+    expect(app).toContain("signalAppSurfaceReady()")
   })
 })
