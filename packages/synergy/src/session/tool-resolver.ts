@@ -790,6 +790,10 @@ export namespace ToolResolver {
 
     for (const def of defs) {
       const isEphemeral = ephemeralToolIds.has(def.id)
+      if (!isEphemeral && def.id === "look_at" && input.model.capabilities.input.image) {
+        continue
+      }
+
       const modeDiagnostic = isEphemeral
         ? undefined
         : SessionModePolicy.visibility({ toolName: def.id, session: input.session })
