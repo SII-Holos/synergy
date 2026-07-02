@@ -3,6 +3,7 @@ import { render } from "solid-js/web"
 import { AppBaseProviders, AppInterface } from "@/app"
 import { Platform, PlatformProvider } from "@/context/platform"
 import { BRAND_ASSETS, brandAssetPath } from "@/utils/brand-assets"
+import { schedulePromptAttachmentImagePipelineWarmup } from "@/utils/prompt-attachment"
 import { configureClipboard } from "@ericsanchezok/synergy-ui/clipboard"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import pkg from "../package.json"
@@ -115,3 +116,5 @@ render(
   ),
   root!,
 )
+
+schedulePromptAttachmentImagePipelineWarmup()
