@@ -593,7 +593,11 @@ export namespace Provider {
         const fetchFn = customFetch ?? fetch
         const opts = init ?? {}
 
-        const timeoutMs = options["timeout"] === false ? false : (options["timeout"] ?? DEFAULT_TIMEOUT_MS)
+        // Provider-level options take precedence; otherwise use the configured
+        // idle timeout (timeout.provider.idle_sec). `false` disables it.
+        const configuredIdle = options["timeout"] !== undefined ? options["timeout"] : timeoutCfg.providerIdleMs
+        const timeoutMs =
+          configuredIdle === false ? false : ((configuredIdle as number | undefined) ?? DEFAULT_TIMEOUT_MS)
 
         let ttfbController: AbortController | null = null
         let ttfbTimer: ReturnType<typeof setTimeout> | null = null
@@ -663,9 +667,16 @@ export namespace Provider {
             timeout: false,
           })
         } catch (error) {
+          cleanupTimers()
           fetchTimer.stop({ status: "exception" })
           log.error("fetch.request.failed", { url: safeUrl, error })
           throw error
+        }
+        // First byte arrived — stop the TTFB timer so it cannot abort a
+        // healthy long-lived stream later on.
+        if (ttfbTimer) {
+          clearTimeout(ttfbTimer)
+          ttfbTimer = null
         }
         fetchTimer.stop({ status: response.ok ? "success" : "error", statusCode: response.status })
         if (!response.ok) {
@@ -679,6 +690,14 @@ export namespace Provider {
         // For streaming responses, wrap the body to reset idle timer on each chunk
         if (idleController && response.body) {
           const originalBody = response.body
+          const idleSignal = idleController.signal
+          // Aborting the fetch signal does not reliably reject a pending body
+          // read on a half-open connection, so the idle timeout must also win
+          // a race against the read itself.
+          const idleAborted = new Promise<never>((_, reject) => {
+            idleSignal.addEventListener("abort", () => reject(idleSignal.reason), { once: true })
+          })
+          idleAborted.catch(() => {})
           const resetIdle = () => {
             if (idleTimer) clearTimeout(idleTimer)
             idleTimer = setTimeout(() => {
@@ -693,7 +712,7 @@ export namespace Provider {
               const reader = originalBody.getReader()
               try {
                 while (true) {
-                  const { done, value } = await reader.read()
+                  const { done, value } = await Promise.race([reader.read(), idleAborted])
                   if (done) {
                     if (idleTimer) clearTimeout(idleTimer)
                     controller.close()
@@ -705,8 +724,13 @@ export namespace Provider {
               } catch (err) {
                 if (idleTimer) clearTimeout(idleTimer)
                 controller.error(err)
+                try {
+                  reader.cancel(err).catch(() => {})
+                } catch {}
               } finally {
-                reader.releaseLock()
+                try {
+                  reader.releaseLock()
+                } catch {}
               }
             },
             cancel() {
