@@ -15,7 +15,7 @@ export function WorkspaceBrowserTool() {
       label: "Browser",
       icon: "globe",
       surface: "side",
-      cardinality: "exclusive",
+      cardinality: "singleton",
       requiresSession: true,
       pluginId: "builtin",
       order: 20,

@@ -22,6 +22,8 @@ import { GlobalSearchModal } from "@/components/search/global-search-modal"
 import { MobileDrawer } from "@/components/mobile-drawer"
 import { ConnectionBanner } from "@/components/connection-banner"
 import { DesktopWindowChrome } from "@/components/desktop-window-chrome"
+import { DesktopNativeTitlebar } from "@/components/desktop-native-titlebar"
+import { desktopWindowNativeChromeActive } from "@/components/desktop-window-chrome-model"
 
 export default function Layout(props: ParentProps) {
   const [store, setStore] = createStore({
@@ -448,11 +450,20 @@ function LayoutContent(
   props: ParentProps & { searchOpen: boolean; onSearchClose: () => void; onSearchOpen: () => void },
 ) {
   const layout = useLayout()
+  const platform = usePlatform()
 
   return (
-    <div class="relative flex-1 min-h-0 flex flex-col select-none [&_input]:select-text [&_textarea]:select-text [&_[contenteditable]]:select-text">
+    <div
+      class="relative flex-1 min-h-0 flex flex-col select-none [&_input]:select-text [&_textarea]:select-text [&_[contenteditable]]:select-text"
+      classList={{
+        "app-shell--desktop-native-chrome": desktopWindowNativeChromeActive(platform),
+        "app-shell--sidebar-expanded": layout.sidebar.opened(),
+        "app-shell--sidebar-collapsed": !layout.sidebar.opened(),
+      }}
+    >
       <MobileDrawer />
       <DesktopWindowChrome />
+      <DesktopNativeTitlebar />
       <ConnectionBanner />
       <div class="flex-1 min-h-0 min-w-0 flex overflow-hidden">
         <Show when={layout.isDesktop()}>

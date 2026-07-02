@@ -1,10 +1,14 @@
-import { Show, createMemo } from "solid-js"
-import { useParams } from "@solidjs/router"
+import { Show, createMemo, createSignal } from "solid-js"
+import { useNavigate, useParams } from "@solidjs/router"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
+import { Popover } from "@ericsanchezok/synergy-ui/popover"
+import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import { Tooltip, TooltipKeybind } from "@ericsanchezok/synergy-ui/tooltip"
+import { DialogConfirm, DialogSessionRename, ModelSelectorPopover } from "@/components/dialog"
 import { DialogSessionExport } from "@/components/dialog/dialog-session-export"
-import { ModelSelectorPopover } from "@/components/dialog"
+import { useGlobalSDK } from "@/context/global-sdk"
+import { useLayout } from "@/context/layout"
 import { useLocal } from "@/context/local"
 import { useCommand } from "@/context/command"
 import { useSync } from "@/context/sync"
@@ -15,19 +19,104 @@ import { useSessionMeta } from "@/composables/use-session-meta"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import "./session-top-bar.css"
 
+function errorDescription(error: unknown) {
+  return error instanceof Error ? error.message : "Request failed"
+}
+
+function SessionActionMenu(props: {
+  isWorktree: () => boolean
+  worktreePending: () => boolean
+  onRename: () => void
+  onWorktreeToggle: () => void
+  onExport: () => void
+  onArchive: () => void
+}) {
+  const [open, setOpen] = createSignal(false)
+
+  const run = (action: () => void) => {
+    setOpen(false)
+    action()
+  }
+
+  return (
+    <Popover
+      open={open()}
+      onOpenChange={setOpen}
+      placement="bottom-end"
+      gutter={8}
+      class="stb-menu-popover"
+      trigger={
+        <Tooltip value="Session actions" placement="bottom">
+          <button
+            type="button"
+            class="stb-icon-btn"
+            aria-label="Session actions"
+            aria-haspopup="menu"
+            aria-expanded={open()}
+          >
+            <Icon name={getSemanticIcon("action.more")} size="normal" />
+          </button>
+        </Tooltip>
+      }
+    >
+      <div class="stb-menu-list" role="menu">
+        <button type="button" class="stb-menu-item" role="menuitem" onClick={() => run(props.onRename)}>
+          <Icon name={getSemanticIcon("action.rename")} size="small" />
+          <span>Rename</span>
+        </button>
+        <button
+          type="button"
+          class="stb-menu-item"
+          role="menuitem"
+          disabled={props.worktreePending()}
+          onClick={() => run(props.onWorktreeToggle)}
+        >
+          <Icon
+            name={getSemanticIcon(props.isWorktree() ? "workspace.leaveWorktree" : "workspace.enterWorktree")}
+            size="small"
+          />
+          <span>
+            {props.worktreePending() ? "Updating worktree..." : props.isWorktree() ? "Exit worktree" : "Enter worktree"}
+          </span>
+        </button>
+        <button type="button" class="stb-menu-item" role="menuitem" onClick={() => run(props.onExport)}>
+          <Icon name={getSemanticIcon("action.export")} size="small" />
+          <span>Export session data</span>
+        </button>
+        <button
+          type="button"
+          class="stb-menu-item stb-menu-item--danger"
+          role="menuitem"
+          onClick={() => run(props.onArchive)}
+        >
+          <Icon name={getSemanticIcon("action.archive")} size="small" />
+          <span>Archive</span>
+        </button>
+      </div>
+    </Popover>
+  )
+}
+
 export function SessionTopBar() {
   const params = useParams()
+  const navigate = useNavigate()
   const dialog = useDialog()
+  const globalSDK = useGlobalSDK()
+  const layout = useLayout()
   const local = useLocal()
   const command = useCommand()
   const sync = useSync()
   const workbench = useWorkbenchPanels()
+  const [worktreePending, setWorktreePending] = createSignal(false)
   const sideSurface = createMemo(() => workbench.surface("side"))
   const bottomSurface = createMemo(() => workbench.surface("bottom"))
 
-  const isGlobal = () => (params.dir ? isHomeScope(base64Decode(params.dir)) : false)
+  const directory = () => (params.dir ? base64Decode(params.dir) : "")
+  const isGlobal = () => (params.dir ? isHomeScope(directory()) : false)
 
   const sessionInfo = createMemo(() => (params.id ? sync.session.get(params.id) : undefined))
+  const sessionDirectory = createMemo(() => sessionInfo()?.scope.directory ?? directory())
+  const isWorktreeSession = createMemo(() => sessionInfo()?.workspace?.type === "git_worktree")
 
   const sessionHasMessages = createMemo(() => {
     if (!params.id) return false
@@ -43,6 +132,64 @@ export function SessionTopBar() {
     if (!sessionHasMessages()) return false
     return external.adapter === "codex"
   })
+
+  const showRenameDialog = () => {
+    const session = sessionInfo()
+    const dir = sessionDirectory()
+    if (!session || !dir) return
+    dialog.show(() => <DialogSessionRename session={session} directory={dir} />)
+  }
+
+  const toggleWorktree = async () => {
+    const session = sessionInfo()
+    const dir = sessionDirectory()
+    if (!session || !dir || worktreePending()) return
+    setWorktreePending(true)
+    try {
+      if (isWorktreeSession()) {
+        await globalSDK.client.worktree.leave({ directory: dir, sessionID: session.id })
+        showToast({ type: "info", title: "Exited worktree", description: "Session returned to the main checkout." })
+      } else {
+        const result = await globalSDK.client.worktree.create({
+          directory: dir,
+          worktreeCreateInput: { sessionID: session.id, bind: true },
+        })
+        showToast({
+          type: "info",
+          title: "Entered worktree",
+          description: result.data?.name ? `Session is now using ${result.data.name}.` : "Worktree created.",
+        })
+      }
+    } catch (error) {
+      showToast({
+        type: "error",
+        title: isWorktreeSession() ? "Exit worktree failed" : "Enter worktree failed",
+        description: errorDescription(error),
+      })
+    } finally {
+      setWorktreePending(false)
+    }
+  }
+
+  const archiveSession = () => {
+    const session = sessionInfo()
+    if (!session) return
+    dialog.show(() => (
+      <DialogConfirm
+        title="Archive session"
+        description={`Archive "${session.title || "Untitled session"}"? The session will be hidden from active lists and its data preserved.`}
+        confirmLabel="Archive"
+        cancelLabel="Cancel"
+        onConfirm={async () => {
+          const nextSession = await layout.nav.archiveSession(session)
+          if (session.id === params.id) {
+            if (nextSession) navigate(`/${params.dir}/session/${nextSession.id}`)
+            else navigate(`/${params.dir}/session`)
+          }
+        }}
+      />
+    ))
+  }
 
   return (
     <div class="stb-root">
@@ -88,6 +235,16 @@ export function SessionTopBar() {
         </Show>
       </div>
       <div class="stb-right">
+        <Show when={!!params.id && !isGlobal()}>
+          <SessionActionMenu
+            isWorktree={isWorktreeSession}
+            worktreePending={worktreePending}
+            onRename={showRenameDialog}
+            onWorktreeToggle={() => void toggleWorktree()}
+            onExport={() => dialog.show(() => <DialogSessionExport />)}
+            onArchive={archiveSession}
+          />
+        </Show>
         <Tooltip value={bottomSurface().opened() ? "Hide BottomSpace" : "Open BottomSpace"} placement="bottom">
           <button
             type="button"
@@ -112,13 +269,6 @@ export function SessionTopBar() {
             <Icon name={getSemanticIcon("app.sideWorkspace")} size="normal" />
           </button>
         </Tooltip>
-        <Show when={!!params.id && !isGlobal()}>
-          <Tooltip value="Export session data" placement="bottom">
-            <button type="button" class="stb-icon-btn" onClick={() => dialog.show(() => <DialogSessionExport />)}>
-              <Icon name="download" size="normal" />
-            </button>
-          </Tooltip>
-        </Show>
       </div>
     </div>
   )

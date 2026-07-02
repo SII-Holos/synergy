@@ -39,6 +39,12 @@ export function desktopDevIconPath(platform: NodeJS.Platform, dirname: string): 
   return undefined
 }
 
+export function desktopDevDockIconPath(options: DesktopWindowChromeOptions): string | undefined {
+  if (options.isPackaged) return undefined
+  if (options.platform !== "darwin") return undefined
+  return path.posix.resolve(options.dirname, "..", "build", "icon.png")
+}
+
 export function desktopWindowState(window: BrowserWindow): DesktopWindowState {
   return {
     maximized: window.isMaximized(),

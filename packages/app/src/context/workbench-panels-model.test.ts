@@ -27,6 +27,21 @@ describe("openWorkbenchPanelTab", () => {
     expect(result.active).toBe("notes-tab")
   })
 
+  test("different singleton panels can coexist", () => {
+    const result = openWorkbenchPanelTab({
+      panelId: "browser",
+      cardinality: "singleton",
+      tabs: [{ id: "notes-tab", panelId: "notes" }],
+      createId: () => "browser-tab",
+    })
+
+    expect(result.tabs).toEqual([
+      { id: "notes-tab", panelId: "notes" },
+      { id: "browser-tab", panelId: "browser" },
+    ])
+    expect(result.active).toBe("browser-tab")
+  })
+
   test("multi panels create new tabs unless reuse is requested", () => {
     const tabs = [{ id: "terminal:1", panelId: "terminal", resourceId: "pty-1" }]
     const created = openWorkbenchPanelTab({

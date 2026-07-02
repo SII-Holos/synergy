@@ -11,7 +11,7 @@ export function WorkspaceNotesTool() {
       label: "Notes",
       icon: "notebook-pen",
       surface: "side",
-      cardinality: "exclusive",
+      cardinality: "singleton",
       pluginId: "builtin",
       order: 10,
       component: () => <NotePanel />,

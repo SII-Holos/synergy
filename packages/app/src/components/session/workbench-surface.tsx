@@ -9,6 +9,7 @@ import {
   onCleanup,
   onMount,
 } from "solid-js"
+import { createStore } from "solid-js/store"
 import type { Component } from "solid-js"
 import { Icon, type IconName } from "@ericsanchezok/synergy-ui/icon"
 import { IconButton } from "@ericsanchezok/synergy-ui/icon-button"
@@ -126,10 +127,27 @@ export function WorkbenchSurface(props: { surface: WorkbenchPanelSurface }) {
   const panels = createMemo(() => workbench.panels(props.surface))
   const activeTab = createMemo(() => state().activeTab())
   const activeEntry = createMemo(() => workbench.panelForTab(activeTab()))
-  const [addOpen, setAddOpen] = createSignal(false)
+  const activePanel = createMemo(() => {
+    const tab = activeTab()
+    const entry = activeEntry()
+    if (!tab || !entry) return undefined
+    return { tab, entry }
+  })
+  const addablePanels = createMemo(() => {
+    const openPanelIds = new Set(
+      state()
+        .tabs()
+        .map((tab) => tab.panelId),
+    )
+    return panels().filter((panel) => panel.cardinality === "multi" || !openPanelIds.has(panel.id))
+  })
+  const [local, setLocal] = createStore({
+    addOpen: false,
+    resizing: false,
+  })
 
   const openPanel = (panel: WorkbenchPanelEntry, mode: "launcher" | "add") => {
-    setAddOpen(false)
+    setLocal("addOpen", false)
     void workbench.openPanel(panel.id, {
       forceNew: mode === "add" && panel.cardinality === "multi",
       reuseExisting: mode === "launcher",
@@ -137,7 +155,11 @@ export function WorkbenchSurface(props: { surface: WorkbenchPanelSurface }) {
   }
 
   createEffect(() => {
-    if (!state().opened()) setAddOpen(false)
+    if (!state().opened()) setLocal("addOpen", false)
+  })
+
+  createEffect(() => {
+    if (addablePanels().length === 0) setLocal("addOpen", false)
   })
 
   onMount(() => {
@@ -168,6 +190,7 @@ export function WorkbenchSurface(props: { surface: WorkbenchPanelSurface }) {
         "workbench-surface--side": isSide(),
         "workbench-surface--bottom": !isSide(),
         "workbench-surface--open": state().opened(),
+        "workbench-surface--resizing": local.resizing,
       }}
       style={rootStyle()}
     >
@@ -179,11 +202,12 @@ export function WorkbenchSurface(props: { surface: WorkbenchPanelSurface }) {
         max={isSide() ? maxSideWidth() : maxBottomHeight()}
         collapseThreshold={isSide() ? 200 : 50}
         onResize={state().setSize}
+        onResizeStart={() => setLocal("resizing", true)}
+        onResizeEnd={() => setLocal("resizing", false)}
         onCollapse={state().close}
       />
       <aside
         class="workbench-surface-panel"
-        style={isSide() ? { width: `${size()}px` } : { height: `${size()}px` }}
         role="complementary"
         aria-label={isSide() ? "Side workspace" : "BottomSpace"}
       >
@@ -205,7 +229,8 @@ export function WorkbenchSurface(props: { surface: WorkbenchPanelSurface }) {
                     type="button"
                     class="workbench-surface-tab-close"
                     aria-label={`Close ${workbench.panelTitle(tab)}`}
-                    onClick={() => {
+                    onClick={(event) => {
+                      event.stopPropagation()
                       void workbench.closeTab(tab.id)
                     }}
                   >
@@ -214,50 +239,46 @@ export function WorkbenchSurface(props: { surface: WorkbenchPanelSurface }) {
                 </div>
               )}
             </For>
-            <div class="workbench-surface-tabs-spacer" />
-            <div class="workbench-surface-add-wrap">
-              <IconButton
-                icon="plus"
-                variant="ghost"
-                aria-label={isSide() ? "Add side panel" : "Add bottom panel"}
-                aria-expanded={addOpen()}
-                onClick={() => setAddOpen((value) => !value)}
-              />
-              <Show when={addOpen()}>
-                <div class="workbench-surface-add-menu">
-                  <For each={panels()}>
-                    {(panel) => (
-                      <button type="button" class="workbench-surface-add-row" onClick={() => openPanel(panel, "add")}>
-                        <Icon name={panel.icon as IconName} size="small" />
-                        <span>{panel.label}</span>
-                      </button>
-                    )}
-                  </For>
-                </div>
-              </Show>
-            </div>
-            <IconButton
-              icon="x"
-              variant="ghost"
-              aria-label={isSide() ? "Close side workspace" : "Close BottomSpace"}
-              onClick={state().close}
-            />
+            <Show when={addablePanels().length > 0}>
+              <div class="workbench-surface-add-wrap">
+                <IconButton
+                  icon="plus"
+                  variant="ghost"
+                  aria-label={isSide() ? "Add side panel" : "Add bottom panel"}
+                  aria-expanded={local.addOpen}
+                  onClick={() => setLocal("addOpen", (value) => !value)}
+                />
+                <Show when={local.addOpen}>
+                  <div class="workbench-surface-add-menu">
+                    <For each={addablePanels()}>
+                      {(panel) => (
+                        <button type="button" class="workbench-surface-add-row" onClick={() => openPanel(panel, "add")}>
+                          <Icon name={panel.icon as IconName} size="small" />
+                          <span>{panel.label}</span>
+                        </button>
+                      )}
+                    </For>
+                  </div>
+                </Show>
+              </div>
+            </Show>
           </div>
         </Show>
         <div class="workbench-surface-body">
           <Show
-            when={activeTab() && activeEntry()}
-            fallback={<Launcher surface={props.surface} panels={panels()} onOpen={openPanel} />}
+            when={activePanel()}
+            keyed
+            fallback={<Launcher surface={props.surface} panels={addablePanels()} onOpen={openPanel} />}
           >
-            <WorkbenchPanelContent
-              entry={activeEntry()!}
-              tab={activeTab()!}
-              onRequestClose={() => {
-                const tab = activeTab()
-                if (!tab) return
-                void workbench.closeTab(tab.id)
-              }}
-            />
+            {(panel) => (
+              <WorkbenchPanelContent
+                entry={panel.entry}
+                tab={panel.tab}
+                onRequestClose={() => {
+                  void workbench.closeTab(panel.tab.id)
+                }}
+              />
+            )}
           </Show>
         </div>
       </aside>

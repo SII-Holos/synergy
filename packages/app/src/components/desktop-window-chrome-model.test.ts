@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import {
   desktopWindowChromeVisible,
+  desktopWindowNativeChromeActive,
   desktopWindowToggleIcon,
   desktopWindowToggleLabel,
 } from "@/components/desktop-window-chrome-model"
@@ -20,6 +21,22 @@ describe("desktop window chrome model", () => {
     expect(desktopWindowChromeVisible({ platform: "desktop", desktopWindow: nativeBridge })).toBe(false)
     expect(desktopWindowChromeVisible({ platform: "desktop" })).toBe(false)
     expect(desktopWindowChromeVisible({ platform: "web", desktopWindow: bridge })).toBe(false)
+  })
+
+  test("marks only desktop shells with native chrome as native chrome surfaces", () => {
+    const bridge = {
+      chrome: "custom" as const,
+      minimize: async () => {},
+      toggleMaximize: async () => null,
+      close: async () => {},
+      state: async () => null,
+    }
+    const nativeBridge = { ...bridge, chrome: "native" as const }
+
+    expect(desktopWindowNativeChromeActive({ platform: "desktop", desktopWindow: nativeBridge })).toBe(true)
+    expect(desktopWindowNativeChromeActive({ platform: "desktop", desktopWindow: bridge })).toBe(false)
+    expect(desktopWindowNativeChromeActive({ platform: "desktop" })).toBe(false)
+    expect(desktopWindowNativeChromeActive({ platform: "web", desktopWindow: nativeBridge })).toBe(false)
   })
 
   test("uses maximize until the window is maximized or fullscreen", () => {

@@ -119,3 +119,67 @@
   color: var(--icon-strong);
   background: var(--surface-raised-base-hover);
 }
+
+.stb-menu-popover[data-component="popover-content"] {
+  min-width: 204px;
+  max-width: 248px;
+  border-radius: 12px;
+}
+
+.stb-menu-popover[data-component="popover-content"] [data-slot="popover-body"] {
+  padding: 6px;
+}
+
+.stb-menu-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.stb-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  min-height: 32px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  color: var(--text-base);
+  font-size: var(--font-size-small);
+  font-weight: var(--font-weight-medium);
+  line-height: var(--line-height-small);
+  text-align: left;
+  transition:
+    background-color 150ms,
+    color 150ms;
+}
+
+.stb-menu-item:hover {
+  color: var(--text-strong);
+  background: var(--surface-raised-base-hover);
+}
+
+.stb-menu-item:focus-visible {
+  outline: 2px solid var(--border-interactive-base);
+  outline-offset: -2px;
+}
+
+.stb-menu-item:disabled {
+  cursor: default;
+  opacity: 0.58;
+  background: transparent;
+}
+
+.stb-menu-item svg {
+  flex-shrink: 0;
+  color: var(--icon-weak);
+}
+
+.stb-menu-item--danger {
+  color: var(--text-diff-delete-base);
+}
+
+.stb-menu-item--danger:hover {
+  color: var(--text-diff-delete-base);
+  background: color-mix(in srgb, var(--text-diff-delete-base) 10%, transparent);
+}

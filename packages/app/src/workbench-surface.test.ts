@@ -15,6 +15,17 @@ const libraryShared = await Bun.file(new URL("./components/library/shared.tsx", 
 const questionPromptCss = await Bun.file(new URL("./components/session/question-prompt.css", import.meta.url)).text()
 const questionPrompt = await Bun.file(new URL("./components/session/question-prompt.tsx", import.meta.url)).text()
 const sidebarCss = await Bun.file(new URL("./components/sidebar/sidebar.css", import.meta.url)).text()
+const nativeTitlebarCss = await Bun.file(new URL("./components/desktop-native-titlebar.css", import.meta.url)).text()
+const nativeTitlebar = await Bun.file(new URL("./components/desktop-native-titlebar.tsx", import.meta.url)).text()
+const sessionTopBarCss = await Bun.file(new URL("./components/top-bar/session-top-bar.css", import.meta.url)).text()
+const sessionTopBar = await Bun.file(new URL("./components/top-bar/session-top-bar.tsx", import.meta.url)).text()
+const sessionPage = await Bun.file(new URL("./pages/session.tsx", import.meta.url)).text()
+const workbenchSurface = await Bun.file(new URL("./components/session/workbench-surface.tsx", import.meta.url)).text()
+const workbenchSurfaceCss = await Bun.file(
+  new URL("./components/session/workbench-surface.css", import.meta.url),
+).text()
+const workspaceNotesTool = await Bun.file(new URL("./components/workspace/tool-notes.tsx", import.meta.url)).text()
+const workspaceBrowserTool = await Bun.file(new URL("./components/workspace/tool-browser.tsx", import.meta.url)).text()
 const appSrc = fileURLToPath(new URL(".", import.meta.url))
 const uiSrc = fileURLToPath(new URL("../../ui/src", import.meta.url))
 
@@ -88,6 +99,44 @@ describe("workbench surface polarity", () => {
     for (const source of [marketplaceCss, libraryCss, agendaCss, questionPromptCss, sidebarCss]) {
       expect(source).not.toContain("light-dark(rgb(")
     }
+  })
+
+  test("macOS native chrome keeps a narrow draggable header above the Holos sidebar", () => {
+    expect(nativeTitlebar).toContain("desktopWindowNativeChromeActive(platform)")
+    expect(nativeTitlebar).not.toContain('getSemanticIcon("app.sidebar")')
+    expect(nativeTitlebar).not.toContain('getSemanticIcon("action.search")')
+    expect(nativeTitlebarCss).toContain("position: relative;")
+    expect(nativeTitlebarCss).toContain("flex: 0 0 var(--desktop-native-titlebar-height);")
+    expect(nativeTitlebarCss).toContain("-webkit-app-region: drag;")
+    expect(css).toContain("--desktop-native-titlebar-height: 18px;")
+    expect(css).toContain("--desktop-native-titlebar-traffic-width: 90px;")
+    expect(nativeTitlebarCss).toContain(".desktop-native-titlebar__traffic-space")
+    expect(nativeTitlebarCss).toContain(".desktop-native-titlebar__drag-region")
+    expect(sessionPage).toContain("session-workbench-pane")
+    expect(sessionTopBar).not.toContain('import { Portal } from "solid-js/web"')
+    expect(sessionTopBarCss).not.toContain(".app-shell--desktop-native-chrome .stb-root")
+    expect(sessionTopBarCss).not.toContain(".app-shell--desktop-native-chrome.app-shell--sidebar-collapsed .stb-root")
+    expect(sidebarCss).not.toContain(".app-shell--desktop-native-chrome .sb-header")
+    expect(sidebarCss).not.toContain(".app-shell--desktop-native-chrome .sb-actions")
+    expect(sidebarCss).not.toContain("--sb-native-titlebar-height")
+  })
+
+  test("workbench panel tabs keep close and add controls compact", () => {
+    expect(workspaceNotesTool).toContain('cardinality: "singleton"')
+    expect(workspaceBrowserTool).toContain('cardinality: "singleton"')
+    expect(workbenchSurface).toContain("addablePanels")
+    expect(workbenchSurface).toContain('panel.cardinality === "multi" || !openPanelIds.has(panel.id)')
+    expect(workbenchSurface).toContain("const activePanel = createMemo")
+    expect(workbenchSurface).toContain("when={activePanel()}")
+    expect(workbenchSurface).toContain("keyed")
+    expect(workbenchSurface).not.toContain('aria-label={isSide() ? "Close side workspace" : "Close BottomSpace"}')
+    expect(workbenchSurfaceCss).toContain(".workbench-surface-tab:hover .workbench-surface-tab-close")
+    expect(workbenchSurfaceCss).toContain("position: absolute;")
+    expect(workbenchSurfaceCss).toContain("border-radius: 999px;")
+    expect(workbenchSurfaceCss).toContain("pointer-events: none;")
+    expect(workbenchSurfaceCss).toContain("var(--workbench-tab-bg)")
+    expect(workbenchSurfaceCss).toContain(".workbench-surface-add-wrap")
+    expect(workbenchSurfaceCss).toContain("left: 0;")
   })
 
   test("raised stronger non-alpha utilities resolve to popover surfaces inside the workbench", () => {

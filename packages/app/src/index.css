@@ -11,6 +11,11 @@ a:active,
   transition-duration: 80ms;
 }
 
+.app-shell--desktop-native-chrome {
+  --desktop-native-titlebar-height: 18px;
+  --desktop-native-titlebar-traffic-width: 90px;
+}
+
 [data-slot="dialog-container"]:has(.dialog-session-export) {
   width: min(calc(100vw - 16px), 520px);
 }
@@ -254,6 +259,7 @@ a:active,
 .synergy-workbench-canvas
   :where(
     .bg-surface-inset-base,
+    .bg-surface-subtle,
     .bg-surface-base-hover,
     .bg-surface-raised-base-hover,
     .bg-surface-raised-stronger-hover,

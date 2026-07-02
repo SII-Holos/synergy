@@ -7,6 +7,8 @@ export interface ResizeHandleProps extends Omit<JSX.HTMLAttributes<HTMLDivElemen
   min: number
   max: number
   onResize: (size: number) => void
+  onResizeStart?: () => void
+  onResizeEnd?: () => void
   onCollapse?: () => void
   collapseThreshold?: number
 }
@@ -19,6 +21,8 @@ export function ResizeHandle(props: ResizeHandleProps) {
     "min",
     "max",
     "onResize",
+    "onResizeStart",
+    "onResizeEnd",
     "onCollapse",
     "collapseThreshold",
     "class",
@@ -33,6 +37,7 @@ export function ResizeHandle(props: ResizeHandleProps) {
 
     document.body.style.userSelect = "none"
     document.body.style.overflow = "hidden"
+    local.onResizeStart?.()
 
     const edge = local.edge ?? "end"
     const onMouseMove = (moveEvent: MouseEvent) => {
@@ -48,6 +53,7 @@ export function ResizeHandle(props: ResizeHandleProps) {
       document.body.style.overflow = ""
       document.removeEventListener("mousemove", onMouseMove)
       document.removeEventListener("mouseup", onMouseUp)
+      local.onResizeEnd?.()
 
       const threshold = local.collapseThreshold ?? 0
       if (local.onCollapse && threshold > 0 && current < threshold) {

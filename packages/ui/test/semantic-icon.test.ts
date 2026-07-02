@@ -9,9 +9,11 @@ const allowedDuplicateIcons: Record<string, string[]> = {
   globe: ["settings.channels", "browser.main"],
   "help-circle": ["action.info", "session.waiting", "settings.questions"],
   "octagon-alert": ["session.retry", "state.warning"],
+  "panel-bottom": ["app.bottomSpace", "app.statusBar"],
   "refresh-ccw": ["action.refresh", "browser.refresh"],
   satellite: ["connection.holos", "settings.holos"],
   sun: ["settings.appearance", "settings.colorLight"],
+  x: ["action.close", "window.close"],
 }
 
 describe("semantic icons", () => {

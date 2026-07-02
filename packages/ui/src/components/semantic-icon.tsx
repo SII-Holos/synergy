@@ -10,6 +10,8 @@ export const SemanticIconToken = {
   // Workspace
   "workspace.main": "home",
   "workspace.worktree": "git-fork",
+  "workspace.enterWorktree": "worktree-enter",
+  "workspace.leaveWorktree": "worktree-leave",
   "workspace.branch": "git-branch",
 
   // Session runtime
@@ -106,6 +108,9 @@ export const SemanticIconToken = {
   "action.copy": "copy",
   "action.open": "arrow-up-right",
   "action.more": "ellipsis",
+  "action.rename": "pencil",
+  "action.export": "arrow-down-to-line",
+  "action.archive": "archive",
   "action.info": "help-circle",
   "action.search": "search",
   "action.remove": "trash-2",
