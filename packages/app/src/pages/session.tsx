@@ -37,12 +37,13 @@ import { useSessionMeta } from "@/composables/use-session-meta"
 import { SessionConversation } from "@/components/session/conversation"
 import { PromptDock } from "@/components/session/prompt-dock"
 import { TabsPanel } from "@/components/session/tabs-panel"
-import { WorkbenchPanelsProvider } from "@/context/workbench-panels"
+import { WorkbenchPanelsProvider, useWorkbenchPanels } from "@/context/workbench-panels"
 import { WorkspaceNotesTool } from "@/components/workspace/tool-notes"
 import { WorkspaceBrowserTool } from "@/components/workspace/tool-browser"
 import { WorkspaceTerminalTool } from "@/components/workspace/tool-terminal"
 import { WorkbenchSurface } from "@/components/session/workbench-surface"
 import { SessionTopBar } from "@/components/top-bar/session-top-bar"
+import { blueprintNoteCreateFocusRequest } from "@/components/note/blueprint-note-focus"
 import {
   defaultNewSessionWorkspaceSelection,
   normalizePathForCompare,
@@ -76,6 +77,7 @@ function SessionPageContent() {
   const location = useLocation()
   const sdk = useSDK()
   const prompt = usePrompt()
+  const workbench = useWorkbenchPanels()
   const sessionKey = createMemo(() => `${params.dir}${params.id ? "/" + params.id : ""}`)
   const tabs = createMemo(() => layout.tabs(sessionKey()))
   const sideSurface = createMemo(() => layout.surface(sessionKey(), "side"))
@@ -403,6 +405,28 @@ function SessionPageContent() {
 
   const currentSession = createMemo(() => sync.data.session.find((s) => s.id === params.id))
   const sessionMeta = useSessionMeta(currentSession, sessionHasMessages)
+  const focusedBlueprintWriteParts = new Set<string>()
+  const unsubBlueprintNoteWrite = sdk.event.on("message.part.updated", (event) => {
+    const sessionID = params.id
+    if (!sessionID) return
+
+    const request = blueprintNoteCreateFocusRequest(event.properties.part, sessionID)
+    if (!request) return
+
+    const key = `${event.properties.part.sessionID}:${event.properties.part.id}:${request.noteID}`
+    if (focusedBlueprintWriteParts.has(key)) return
+    focusedBlueprintWriteParts.add(key)
+
+    void workbench.openPanel("notes", {
+      reuseExisting: true,
+      init: {
+        resourceId: request.noteID,
+        source: sdk.isHome ? HOME_SCOPE_KEY : sdk.scopeKey,
+      },
+    })
+  })
+  onCleanup(unsubBlueprintNoteWrite)
+
   createEffect(() => {
     const session = currentSession()
     const id = params.id

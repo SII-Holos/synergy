@@ -1,4 +1,4 @@
-import { createMemo, createResource, createSignal, For, Show, createEffect, onCleanup, onMount } from "solid-js"
+import { createMemo, createResource, createSignal, For, Show, createEffect, on, onCleanup, onMount } from "solid-js"
 import { useParams } from "@solidjs/router"
 import type { Editor } from "@tiptap/core"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
@@ -16,9 +16,10 @@ import { TIPTAP_STYLES, DocumentEditorCore } from "@/components/note/document-ed
 import { useConfirm } from "@/components/dialog/confirm-dialog"
 import { deleteNoteConfirm } from "@/components/dialog/confirm-copy"
 import type { BlueprintLoopInfo, NoteInfo, NoteMetaInfo, NoteMetaScopeGroup } from "@ericsanchezok/synergy-sdk/client"
-import { getScopeLabel } from "@/utils/scope"
+import { getScopeLabel, HOME_SCOPE_KEY } from "@/utils/scope"
 import { assetHttpUrl } from "@/utils/asset-url"
 import { relativeTime } from "@/utils/time"
+import type { WorkbenchPanelTab } from "@/plugin/registries/workbench-panel-registry"
 import {
   activeBlueprintLoop,
   blueprintExecutionControlProfile,
@@ -535,7 +536,7 @@ function ScopeSection(props: {
   )
 }
 
-export function NotePanel() {
+export function NotePanel(props: { tab?: WorkbenchPanelTab } = {}) {
   const sdk = useGlobalSDK()
   const globalSync = useGlobalSync()
   const params = useParams()
@@ -713,6 +714,16 @@ export function NotePanel() {
     setSelectedNoteDir(dir)
     setView("editor")
   }
+
+  createEffect(
+    on(
+      () => [props.tab?.resourceId, props.tab?.source] as const,
+      ([id, source]) => {
+        if (!id) return
+        openNote(id, source || directory() || HOME_SCOPE_KEY)
+      },
+    ),
+  )
 
   async function createNoteInScope(dir: string) {
     if (!dir) return

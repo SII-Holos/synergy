@@ -1,6 +1,10 @@
 import { NotePanel } from "@/components/note-panel"
-import { registerWorkbenchPanel } from "@/plugin/registries/workbench-panel-registry"
+import { registerWorkbenchPanel, type WorkbenchPanelContentProps } from "@/plugin/registries/workbench-panel-registry"
 import { onMount, onCleanup } from "solid-js"
+
+function NotesWorkbenchContent(props: WorkbenchPanelContentProps) {
+  return <NotePanel tab={props.tab} />
+}
 
 export function WorkspaceNotesTool() {
   let unregister: VoidFunction | undefined
@@ -14,7 +18,7 @@ export function WorkspaceNotesTool() {
       cardinality: "singleton",
       pluginId: "builtin",
       order: 10,
-      component: () => <NotePanel />,
+      component: NotesWorkbenchContent,
     })
   })
 
