@@ -10,6 +10,9 @@ describe("tool diff preview", () => {
   test("classifies unified diff lines", () => {
     expect(classifyToolDiffLine("Index: C:\\Users\\Tel13\\test_file.txt")).toBe("header")
     expect(classifyToolDiffLine("========================================")).toBe("header")
+    expect(classifyToolDiffLine("diff --git a/file.txt b/file.txt")).toBe("header")
+    expect(classifyToolDiffLine("index 0000000..15aebc3")).toBe("header")
+    expect(classifyToolDiffLine("new file mode 100644")).toBe("header")
     expect(classifyToolDiffLine("--- C:\\Users\\Tel13\\test_file.txt")).toBe("header")
     expect(classifyToolDiffLine("+++ C:\\Users\\Tel13\\test_file.txt")).toBe("header")
     expect(classifyToolDiffLine("@@ -1,5 +1,5 @@")).toBe("hunk")
@@ -55,10 +58,10 @@ describe("tool diff preview", () => {
     expect(TOOL_DIFF_PREVIEW_EMPTY_MESSAGE).toBe("No text preview available.")
   })
 
-  test("formats byte and truncation summary text", () => {
-    expect(formatToolDiffPreviewSummary({ beforeBytes: 134, afterBytes: 164 })).toBe("134 bytes to 164 bytes")
+  test("formats truncation summary text", () => {
+    expect(formatToolDiffPreviewSummary({ beforeBytes: 134, afterBytes: 164 })).toBe("")
     expect(formatToolDiffPreviewSummary({ beforeBytes: 134, afterBytes: 164, truncated: true })).toBe(
-      "134 bytes to 164 bytes - preview truncated",
+      "Preview truncated",
     )
   })
 })
