@@ -1,15 +1,6 @@
 .desktop-native-titlebar {
-  --desktop-native-titlebar-height: 44px;
-  --desktop-native-titlebar-traffic-width: 104px;
-  --desktop-native-titlebar-control-width: 72px;
-  --desktop-native-titlebar-collapsed-left-width: 176px;
-  --desktop-native-titlebar-expanded-left-width: 300px;
-  --desktop-native-titlebar-left-width: var(--desktop-native-titlebar-expanded-left-width);
   position: relative;
   z-index: 40;
-  display: grid;
-  grid-template-columns: var(--desktop-native-titlebar-left-width) minmax(0, 1fr);
-  align-items: center;
   flex: 0 0 var(--desktop-native-titlebar-height);
   width: 100%;
   height: var(--desktop-native-titlebar-height);
@@ -20,18 +11,13 @@
   -webkit-app-region: drag;
 }
 
-.app-shell--sidebar-collapsed .desktop-native-titlebar {
-  --desktop-native-titlebar-left-width: var(--desktop-native-titlebar-collapsed-left-width);
-}
-
 .desktop-native-titlebar__sidebar-area {
-  display: grid;
-  grid-template-columns:
-    var(--desktop-native-titlebar-traffic-width)
-    var(--desktop-native-titlebar-control-width)
-    minmax(0, 1fr);
+  position: absolute;
+  inset: 0 auto 0 0;
+  z-index: 1;
+  display: flex;
   align-items: center;
-  height: 100%;
+  width: var(--desktop-native-titlebar-left-width);
   min-width: 0;
   background: var(--background-base);
 }
@@ -41,6 +27,7 @@
 }
 
 .desktop-native-titlebar__traffic-space {
+  flex: 0 0 var(--desktop-native-titlebar-traffic-width);
   height: 100%;
 }
 
@@ -49,6 +36,7 @@
   align-items: center;
   justify-content: flex-start;
   gap: 2px;
+  flex: 0 0 var(--desktop-native-titlebar-control-width);
   height: 100%;
   -webkit-app-region: no-drag;
 }
@@ -91,14 +79,8 @@
   outline-offset: -2px;
 }
 
-.desktop-native-titlebar__sidebar-drag-region,
-.desktop-native-titlebar__content {
+.desktop-native-titlebar__sidebar-drag-region {
+  flex: 1;
   align-self: stretch;
   min-width: 0;
-}
-
-.desktop-native-titlebar__content {
-  display: flex;
-  align-items: center;
-  background: transparent;
 }

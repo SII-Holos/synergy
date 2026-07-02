@@ -14,18 +14,19 @@
   pointer-events: none;
 }
 
-.stb-root--desktop-titlebar {
-  position: static;
-  z-index: auto;
-  width: 100%;
+.app-shell--desktop-native-chrome .stb-root {
+  position: fixed;
+  left: var(--desktop-native-titlebar-left-width);
+  right: 0;
+  z-index: 41;
   height: var(--desktop-native-titlebar-height, 44px);
   padding: 0 18px;
   -webkit-app-region: drag;
   pointer-events: auto;
 }
 
-.stb-root--desktop-titlebar .stb-left,
-.stb-root--desktop-titlebar .stb-right {
+.app-shell--desktop-native-chrome .stb-left,
+.app-shell--desktop-native-chrome .stb-right {
   -webkit-app-region: no-drag;
 }
 
@@ -83,7 +84,7 @@
     color 150ms;
 }
 
-.stb-root--desktop-titlebar .stb-selector-btn {
+.app-shell--desktop-native-chrome .stb-selector-btn {
   height: 34px;
 }
 
