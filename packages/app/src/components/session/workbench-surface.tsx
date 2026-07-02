@@ -126,6 +126,12 @@ export function WorkbenchSurface(props: { surface: WorkbenchPanelSurface }) {
   const panels = createMemo(() => workbench.panels(props.surface))
   const activeTab = createMemo(() => state().activeTab())
   const activeEntry = createMemo(() => workbench.panelForTab(activeTab()))
+  const activePanel = createMemo(() => {
+    const tab = activeTab()
+    const entry = activeEntry()
+    if (!tab || !entry) return undefined
+    return { tab, entry }
+  })
   const addablePanels = createMemo(() => {
     const openPanelIds = new Set(state().tabs().map((tab) => tab.panelId))
     return panels().filter((panel) => panel.cardinality === "multi" || !openPanelIds.has(panel.id))
@@ -213,7 +219,8 @@ export function WorkbenchSurface(props: { surface: WorkbenchPanelSurface }) {
                     type="button"
                     class="workbench-surface-tab-close"
                     aria-label={`Close ${workbench.panelTitle(tab)}`}
-                    onClick={() => {
+                    onClick={(event) => {
+                      event.stopPropagation()
                       void workbench.closeTab(tab.id)
                     }}
                   >
@@ -253,18 +260,19 @@ export function WorkbenchSurface(props: { surface: WorkbenchPanelSurface }) {
         </Show>
         <div class="workbench-surface-body">
           <Show
-            when={activeTab() && activeEntry()}
+            when={activePanel()}
+            keyed
             fallback={<Launcher surface={props.surface} panels={addablePanels()} onOpen={openPanel} />}
           >
-            <WorkbenchPanelContent
-              entry={activeEntry()!}
-              tab={activeTab()!}
-              onRequestClose={() => {
-                const tab = activeTab()
-                if (!tab) return
-                void workbench.closeTab(tab.id)
-              }}
-            />
+            {(panel) => (
+              <WorkbenchPanelContent
+                entry={panel.entry}
+                tab={panel.tab}
+                onRequestClose={() => {
+                  void workbench.closeTab(panel.tab.id)
+                }}
+              />
+            )}
           </Show>
         </div>
       </aside>
