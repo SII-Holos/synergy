@@ -14,6 +14,9 @@ declare global {
       shell?: {
         openExternal(url: string): Promise<void>
       }
+      startup?: {
+        appReady(): Promise<boolean>
+      }
       window?: Platform["desktopWindow"]
     }
   }
@@ -29,7 +32,10 @@ if (import.meta.env.DEV && !(root instanceof HTMLElement)) {
 const APP_SURFACE_READY_EVENT = "synergy:app-surface-ready"
 
 function scheduleBootShellRemoval() {
-  const remove = () => document.getElementById("synergy-app-boot")?.remove()
+  const remove = () => {
+    document.getElementById("synergy-app-boot")?.remove()
+    void window.synergyDesktop?.startup?.appReady?.()
+  }
   if (typeof window.requestAnimationFrame === "function") {
     window.requestAnimationFrame(remove)
     return

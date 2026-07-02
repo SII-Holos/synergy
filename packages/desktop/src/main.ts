@@ -34,7 +34,8 @@ import {
 import { installAppMenu } from "./menu.js"
 import { DesktopServerManager } from "./server-manager.js"
 import { enforceProductionLoading, installSessionSecurity, installWindowSecurity } from "./security.js"
-import { desktopStartupPage, startupStatusScript, type DesktopStartupStatus } from "./startup-page.js"
+import { DesktopStartupOverlay } from "./startup-overlay.js"
+import type { DesktopStartupStatus } from "./startup-page.js"
 import { DesktopUpdateMode, DesktopUpdater } from "./updater.js"
 import { loadWindowState, scheduleWindowStatePersistence } from "./window-state.js"
 import {
@@ -51,6 +52,7 @@ const dirname = path.dirname(fileURLToPath(import.meta.url))
 const isBrowserHostMode = process.env.SYNERGY_DESKTOP_MODE === "browser-host"
 
 let mainWindow: BrowserWindow | null = null
+let startupOverlay: DesktopStartupOverlay | null = null
 let nativeViews: BrowserNativeViewManager | null = null
 let browserHost: BrowserWebRTCHost | null = null
 let serverManager: DesktopServerManager | null = null
@@ -133,6 +135,7 @@ async function createWindow() {
       resourcesPath: process.resourcesPath,
     }),
   )
+  const preloadPath = path.join(dirname, "preload.cjs")
   const windowOptions: BrowserWindowConstructorOptions = {
     show: false,
     width: windowState.width,
@@ -146,7 +149,7 @@ async function createWindow() {
       resourcesPath: process.resourcesPath,
     }),
     webPreferences: {
-      preload: path.join(dirname, "preload.cjs"),
+      preload: preloadPath,
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
@@ -171,22 +174,26 @@ async function createWindow() {
   installWindowCloseBehavior(mainWindow)
 
   if (windowState.maximized) mainWindow.maximize()
+  startupOverlay = new DesktopStartupOverlay({
+    window: mainWindow,
+    preloadPath,
+    chrome: process.platform === "darwin" ? "native" : "custom",
+    iconDataUrl: startupIconDataUrl,
+  })
+  await startupOverlay.load()
+  startupOverlay.attach()
   if (process.env.SYNERGY_DESKTOP_SHOW !== "0") {
-    mainWindow.once("ready-to-show", () => mainWindow?.show())
+    mainWindow.show()
   }
 
   mainWindow.on("closed", () => {
+    startupOverlay?.destroy()
+    startupOverlay = null
     nativeViews?.destroy()
     nativeViews = null
     mainWindow = null
   })
 
-  await mainWindow.loadURL(
-    desktopStartupPage({
-      chrome: process.platform === "darwin" ? "native" : "custom",
-      iconDataUrl: startupIconDataUrl,
-    }),
-  )
   await setStartupStatus({
     title: mode === "external" ? "Connecting to Synergy" : "Starting local runtime",
     detail:
@@ -202,15 +209,25 @@ async function createWindow() {
       ? "Connecting to the local app surface."
       : "Synergy could not start the local runtime. Opening diagnostics.",
   })
-  await mainWindow.loadURL(targetURL)
+  try {
+    await mainWindow.loadURL(targetURL)
+  } catch (error) {
+    await dismissStartupOverlay()
+    throw error
+  }
+  if (!currentAppURL) await dismissStartupOverlay()
   runtimeLog("windowLoaded", { url: mainWindow.webContents.getURL() })
 }
 
 async function setStartupStatus(status: DesktopStartupStatus): Promise<void> {
-  const window = mainWindow
-  if (!window || window.isDestroyed()) return
-  if (!window.webContents.getURL().startsWith("data:text/html,")) return
-  await window.webContents.executeJavaScript(startupStatusScript(status)).catch(() => {})
+  await startupOverlay?.setStatus(status)
+}
+
+async function dismissStartupOverlay(): Promise<void> {
+  const overlay = startupOverlay
+  if (!overlay) return
+  await overlay.dismiss()
+  if (startupOverlay === overlay) startupOverlay = null
 }
 
 async function ensureMainWindow() {
@@ -311,6 +328,11 @@ function registerIpcHandlers() {
   ipcMain.handle("desktop.clipboard.writeText", (_event, input: unknown) => {
     const text = parseClipboardWriteText(input)
     clipboard.writeText(text)
+    return true
+  })
+  ipcMain.handle("desktop.startup.appReady", async (event) => {
+    if (!mainWindow || event.sender !== mainWindow.webContents) return false
+    await dismissStartupOverlay()
     return true
   })
   ipcMain.handle("desktop.window.minimize", () => {

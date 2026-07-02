@@ -4,6 +4,8 @@ import { isAllowedAppNavigation } from "../src/navigation-policy.js"
 import { desktopStartupPage, startupStatusScript } from "../src/startup-page.js"
 
 const mainSource = await Bun.file(new URL("../src/main.ts", import.meta.url)).text()
+const preloadSource = await Bun.file(new URL("../src/preload.ts", import.meta.url)).text()
+const startupOverlaySource = await Bun.file(new URL("../src/startup-overlay.ts", import.meta.url)).text()
 
 function decodeDesktopHtml(url: string): string {
   expect(url.startsWith("data:text/html")).toBe(true)
@@ -70,5 +72,22 @@ describe("desktop startup page", () => {
     expect(startupStatusScript({ title: "Loading workspace", detail: "Connecting to the local app surface." })).toBe(
       'window.synergySetStartupStatus?.({"title":"Loading workspace","detail":"Connecting to the local app surface."})',
     )
+  })
+
+  test("hosts the startup page in an overlay instead of the main app navigation", () => {
+    expect(startupOverlaySource).toContain("new WebContentsView")
+    expect(startupOverlaySource).toContain("window.contentView.addChildView(view)")
+    expect(startupOverlaySource).toContain("startupStatusScript(status)")
+    expect(startupOverlaySource).toContain("if (this.dismissed) return")
+    expect(mainSource).toContain("new DesktopStartupOverlay")
+    expect(mainSource).not.toContain("mainWindow.loadURL(\n    desktopStartupPage")
+  })
+
+  test("dismisses the startup overlay from an app-ready desktop bridge", () => {
+    expect(preloadSource).toContain('ipcRenderer.invoke("desktop.startup.appReady")')
+    expect(preloadSource).toContain("startup: desktopStartup")
+    expect(mainSource).toContain('ipcMain.handle("desktop.startup.appReady"')
+    expect(mainSource).toContain("event.sender !== mainWindow.webContents")
+    expect(mainSource).toContain("await dismissStartupOverlay()")
   })
 })
