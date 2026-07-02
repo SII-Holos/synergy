@@ -518,7 +518,12 @@ export namespace Snapshot {
     return `${ScopeContext.current.directory}/${rel.replaceAll("\\", "/")}`
   }
 
-  async function objectSize(git: string, tree: string, file: string, signal?: AbortSignal): Promise<number | undefined> {
+  async function objectSize(
+    git: string,
+    tree: string,
+    file: string,
+    signal?: AbortSignal,
+  ): Promise<number | undefined> {
     const result = await gitSpawn(
       ["git", "--git-dir", git, "cat-file", "-s", `${tree}:${file}`],
       ScopeContext.current.directory,
