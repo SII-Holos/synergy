@@ -1709,6 +1709,11 @@ export class Session extends HeyApiClient {
       sessionID: string
       directory?: string
       scopeID?: string
+      limit?: number
+      cursorLastActivityAt?: number
+      cursorId?: string
+      search?: string
+      includeArchived?: boolean
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -1720,6 +1725,11 @@ export class Session extends HeyApiClient {
             { in: "path", key: "sessionID" },
             { in: "query", key: "directory" },
             { in: "query", key: "scopeID" },
+            { in: "query", key: "limit" },
+            { in: "query", key: "cursorLastActivityAt" },
+            { in: "query", key: "cursorId" },
+            { in: "query", key: "search" },
+            { in: "query", key: "includeArchived" },
           ],
         },
       ],

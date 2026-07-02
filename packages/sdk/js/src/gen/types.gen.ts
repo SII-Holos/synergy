@@ -2830,6 +2830,17 @@ export type SessionStatus =
       description?: string
     }
 
+export type SessionChildCursor = {
+  lastActivityAt: number
+  id: string
+}
+
+export type SessionChildrenPage = {
+  items: Array<Session>
+  nextCursor: SessionChildCursor | null
+  total: number
+}
+
 export type Todo = {
   /**
    * Brief description of the task
@@ -7439,6 +7450,11 @@ export type SessionChildrenData = {
   query?: {
     directory?: string
     scopeID?: string
+    limit?: number
+    cursorLastActivityAt?: number
+    cursorId?: string
+    search?: string
+    includeArchived?: boolean
   }
   url: "/session/{sessionID}/children"
 }
@@ -7458,9 +7474,9 @@ export type SessionChildrenError = SessionChildrenErrors[keyof SessionChildrenEr
 
 export type SessionChildrenResponses = {
   /**
-   * List of children
+   * Paginated child sessions
    */
-  200: Array<Session>
+  200: SessionChildrenPage
 }
 
 export type SessionChildrenResponse = SessionChildrenResponses[keyof SessionChildrenResponses]

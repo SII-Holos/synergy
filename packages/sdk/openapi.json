@@ -3669,7 +3669,6 @@
             "in": "query",
             "name": "parentOnly",
             "schema": {
-              "default": true,
               "type": "boolean"
             },
             "description": "Only include top-level sessions (exclude subsessions). Default: true"
@@ -4106,6 +4105,44 @@
               "pattern": "^ses.*"
             },
             "required": true
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 8,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 50
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursorLastActivityAt",
+            "schema": {
+              "type": "number"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursorId",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "search",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "includeArchived",
+            "schema": {
+              "type": "boolean"
+            }
           }
         ],
         "summary": "Get session children",
@@ -4113,14 +4150,11 @@
         "description": "Retrieve all child sessions that were forked from the specified parent session.",
         "responses": {
           "200": {
-            "description": "List of children",
+            "description": "Paginated child sessions",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/Session"
-                  }
+                  "$ref": "#/components/schemas/SessionChildrenPage"
                 }
               }
             }
@@ -22461,6 +22495,43 @@
             "required": ["type"]
           }
         ]
+      },
+      "SessionChildCursor": {
+        "type": "object",
+        "properties": {
+          "lastActivityAt": {
+            "type": "number"
+          },
+          "id": {
+            "type": "string"
+          }
+        },
+        "required": ["lastActivityAt", "id"]
+      },
+      "SessionChildrenPage": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Session"
+            }
+          },
+          "nextCursor": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SessionChildCursor"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "total": {
+            "type": "number"
+          }
+        },
+        "required": ["items", "nextCursor", "total"]
       },
       "Todo": {
         "type": "object",
