@@ -77,11 +77,10 @@ describe("tracking data migration (log.json → log-{domain}.json)", () => {
     }
     writeFileSync(oldLogPath, JSON.stringify(oldLog, null, 2))
 
-    // Now run runMigrations which calls migrateOldTrackingData first
-    // (but the migrations themselves should already be marked, so they won't run)
-    // Actually, since these are new domains with no per-domain log, the old log
-    // data should be migrated first, and then runMigrations sees them as completed.
-    await runMigrations()
+    // runMigrations always migrates old tracking data before applying the target
+    // domain filter, so one test domain is enough to exercise the split without
+    // running every real repository migration.
+    await runMigrations({ output: "silent", targetDomain: TEST_DOMAINS[0] })
 
     // Old log should be deleted
     expect(existsSync(oldLogPath)).toBe(false)
@@ -112,7 +111,7 @@ describe("tracking data migration (log.json → log-{domain}.json)", () => {
     writeFileSync(oldLogPath, JSON.stringify({ "20260610-idem-a": Date.now() }))
 
     // First run: migrates old log
-    await runMigrations()
+    await runMigrations({ output: "silent", targetDomain: TEST_DOMAINS[0] })
     expect(existsSync(oldLogPath)).toBe(false)
 
     const firstData = JSON.parse(readFileSync(domainLogPath(TEST_DOMAINS[0]), "utf-8"))
@@ -121,7 +120,7 @@ describe("tracking data migration (log.json → log-{domain}.json)", () => {
     resetMigrations()
 
     // Second run: no old log to migrate, no new migrations to run
-    await runMigrations()
+    await runMigrations({ output: "silent", targetDomain: TEST_DOMAINS[0] })
     expect(existsSync(oldLogPath)).toBe(false)
 
     const secondData = JSON.parse(readFileSync(domainLogPath(TEST_DOMAINS[0]), "utf-8"))
@@ -143,7 +142,7 @@ describe("tracking data migration (log.json → log-{domain}.json)", () => {
 
     // This should just run the migration (since it's not tracked)
     // Actually, running with targetDomain to avoid running all real migrations
-    await runMigrations({ targetDomain: TEST_DOMAINS[0] })
+    await runMigrations({ output: "silent", targetDomain: TEST_DOMAINS[0] })
 
     // The migration runs and creates the per-domain tracking file
     const p = domainLogPath(TEST_DOMAINS[0])
