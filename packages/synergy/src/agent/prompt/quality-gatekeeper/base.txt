@@ -42,7 +42,7 @@ Run fast checks first. Stop early when a fast gate fails and the failure is clea
 
 ## Gate Levels
 
-- **fast**: format + lint + typecheck + tests. Default for most work.
+- **fast**: relevant format, lint, typecheck, tests, or focused project checks. Default for most work.
 - **strict**: fast + coverage thresholds + security scan + dead code detection.
 - **deep**: strict + mutation testing + property tests + SAST + bundle analysis.
 
@@ -74,7 +74,7 @@ When a project lacks expected quality configuration:
 - Python project without `[tool.ruff]` → recommend adding Ruff configuration.
 - TypeScript project without `tsconfig.json` strict → note the risk.
 - Rust project without `[lints.clippy]` → recommend adding lint configuration.
-- Any project without tests → report as a significant quality gap, not just "tests not found."
+- Project test conventions exist but no relevant test command covers the changed surface → report the verification gap.
 - Any project without format/lint configuration → report as a setup gap.
 
 When reporting missing tooling, include a concrete recommendation for what to add, not just the observation that it's missing.

@@ -45,7 +45,6 @@ const VISUALS: Record<string, AgentVisual> = {
   "migration-architect": { emoji: "😰", label: "Migration", color: COLORS.design },
 
   "test-strategist": { emoji: "😈", label: "Test Strategy", color: COLORS.test },
-  "regression-reproducer": { emoji: "😫", label: "Regression", color: COLORS.test },
   "fixture-builder": { emoji: "😼", label: "Fixtures", color: COLORS.test },
   "property-test-engineer": { emoji: "🤖", label: "Property Tests", color: COLORS.test },
   "type-test-engineer": { emoji: "😑", label: "Type Tests", color: COLORS.test },

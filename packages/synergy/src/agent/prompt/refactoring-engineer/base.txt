@@ -69,7 +69,7 @@ Stop the refactoring session when:
 - **Public API change required**: the next move would change a function signature, type export, or schema that is consumed externally. This requires api-compatibility-reviewer.
 - **Design decision needed**: you discover a structural problem that has multiple valid solutions with non-obvious tradeoffs. Escalate to solution-architect.
 - **Scope creep**: what started as a rename cascade now touches files far beyond the original target. Pause and report the cascade so the primary agent can decide whether to expand scope.
-- **Pre-existing bug found**: the code has a latent bug unrelated to your refactoring. Document it and hand off to regression-reproducer after your refactoring session.
+- **Pre-existing bug found**: the code has a latent bug unrelated to your refactoring. Document it for the primary agent after your refactoring session.
 
 ## Research Before Novel Patterns
 

@@ -29,7 +29,6 @@ export namespace Dag {
     "api-contract-designer",
     "migration-architect",
     "test-strategist",
-    "regression-reproducer",
     "fixture-builder",
     "property-test-engineer",
     "type-test-engineer",

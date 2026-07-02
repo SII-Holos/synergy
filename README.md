@@ -250,7 +250,7 @@ Core `synergy-max` subagent groups include:
 - Task understanding: `intent-analyst`, `requirements-engineer`
 - Code understanding: `code-cartographer`, `dependency-tracer`
 - Design: `solution-architect`, `api-contract-designer`, `migration-architect`
-- TDD: `test-strategist`, `regression-reproducer`, `fixture-builder`, `property-test-engineer`, `type-test-engineer`
+- Verification: `test-strategist`, `fixture-builder`, `property-test-engineer`, `type-test-engineer`
 - Execution: `implementation-engineer`, `refactoring-engineer`, `integration-engineer`, `documentation-engineer`
 - Quality gates: `quality-gatekeeper`, `python-quality-engineer`, `rust-quality-engineer`, `typescript-quality-engineer`
 - Reviews: `maintainability-reviewer`, `security-reviewer`, `performance-reviewer`, `api-compatibility-reviewer`, `documentation-reviewer`

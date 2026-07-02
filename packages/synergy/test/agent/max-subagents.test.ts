@@ -45,7 +45,6 @@ describe("synergy-max subagents", () => {
       "integration-engineer",
       "documentation-engineer",
       "test-strategist",
-      "regression-reproducer",
       "fixture-builder",
       "property-test-engineer",
       "type-test-engineer",

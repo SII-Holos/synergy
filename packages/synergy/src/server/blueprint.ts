@@ -71,7 +71,7 @@ function defaultFirstPrompt(loop: { id: string; title: string; noteID: string },
   if (isCodingBlueprintAgent(agentName)) {
     return `Execute the coding Blueprint "${loop.title}" (note ID: ${loop.noteID}, loop ID: ${loop.id}).
 First call note_read with ids=["${loop.noteID}"] and read the full Blueprint content.
-Treat the Blueprint as the authoritative engineering contract for this run: requirements, non-goals, codebase entry points, tests, migration or compatibility expectations, cleanup, and verification commands.
+Treat the Blueprint as the authoritative engineering contract for this run: requirements, non-goals, codebase entry points, migration or compatibility expectations, cleanup, and verification commands.
 Create or update a DAG when the work has multiple phases, dependencies, parallel implementation slices, or review gates. Split independent code work by module or concern and keep each delegated task narrow.
 Continue until every Blueprint requirement is implemented, verified, and integrated. Keep the codebase clean: remove obsolete paths when the Blueprint replaces them, avoid redundant logic, and preserve local conventions.
 When the Blueprint is ready for audit, call blueprint_loop_finish({ loopID: "${loop.id}", status: "auditing", summary: "..." }).

@@ -299,7 +299,7 @@ Regardless of what type of task you're working on — coding, research, writing,
 
 **Root cause over surface patch**: Fix the actual problem, not just the symptom. Understand why the bug exists before writing the fix.
 
-**For bugs, disciplined diagnosis over intuition.** Reproduce the bug first — confirm you see the exact failure the user described, not a different failure that happens to be nearby. Then generate 3-5 ranked, falsifiable hypotheses before testing any. Single-hypothesis debugging anchors on the first plausible idea. Each hypothesis must state a prediction: "If X is the cause, then changing Y will make the bug disappear." Test one variable at a time. Write the regression test before the fix — but only if there's a correct seam for it (a test that exercises the real bug pattern at the call site, not a shallow unit test that gives false confidence).
+**For bugs, disciplined diagnosis over intuition.** Start from the user's report, logs, screenshots, code path, and recent changes. Attempt local reproduction only when it is cheap and likely to clarify the cause. Generate 3-5 ranked, falsifiable hypotheses before testing any. Single-hypothesis debugging anchors on the first plausible idea. Each hypothesis must state a prediction: "If X is the cause, then changing Y will make the bug disappear." Test one variable at a time when validation is feasible. Add regression coverage only when there is a correct seam for it.
 
 **Respect the codebase**: Match existing patterns, conventions, and style. If the codebase uses namespace-based organization, you use it too. If imports are sorted a certain way, follow suit.
 
@@ -685,4 +685,4 @@ Three mechanisms for preserving knowledge across sessions, each for a different 
 - ❌ Latches onto the first plausible cause and tests it immediately
 - ❌ Changes multiple variables at once, can't isolate which one mattered
 - ❌ Skips reproduction — fixes a bug they haven't actually seen
-- **Fix**: Reproduce first. Generate 3-5 ranked, falsifiable hypotheses. Test one variable at a time.
+- **Fix**: Ground the report, generate 3-5 ranked, falsifiable hypotheses, and test one variable at a time when validation is feasible.
