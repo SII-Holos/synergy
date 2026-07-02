@@ -21,7 +21,9 @@ const sessionTopBarCss = await Bun.file(new URL("./components/top-bar/session-to
 const sessionTopBar = await Bun.file(new URL("./components/top-bar/session-top-bar.tsx", import.meta.url)).text()
 const sessionPage = await Bun.file(new URL("./pages/session.tsx", import.meta.url)).text()
 const workbenchSurface = await Bun.file(new URL("./components/session/workbench-surface.tsx", import.meta.url)).text()
-const workbenchSurfaceCss = await Bun.file(new URL("./components/session/workbench-surface.css", import.meta.url)).text()
+const workbenchSurfaceCss = await Bun.file(
+  new URL("./components/session/workbench-surface.css", import.meta.url),
+).text()
 const workspaceNotesTool = await Bun.file(new URL("./components/workspace/tool-notes.tsx", import.meta.url)).text()
 const workspaceBrowserTool = await Bun.file(new URL("./components/workspace/tool-browser.tsx", import.meta.url)).text()
 const appSrc = fileURLToPath(new URL(".", import.meta.url))
