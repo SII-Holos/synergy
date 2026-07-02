@@ -1,10 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import type { BlueprintLoopInfo } from "@ericsanchezok/synergy-sdk/client"
-import {
-  blueprintRequestErrorMessage,
-  resolveBlueprintSlotDisplay,
-  type BlueprintSlotDisplay,
-} from "./blueprint-slot"
+import { blueprintRequestErrorMessage, resolveBlueprintSlotDisplay, type BlueprintSlotDisplay } from "./blueprint-slot"
 import type { BlueprintSlot } from "./types"
 
 function loop(status: BlueprintLoopInfo["status"] = "running") {
@@ -63,8 +59,9 @@ describe("prompt blueprint slot display", () => {
 
 describe("prompt blueprint request errors", () => {
   test("uses top-level backend error messages", () => {
-    expect(blueprintRequestErrorMessage({ message: "BlueprintLoopInvalidTransition", data: { from: "cancelled" } }))
-      .toBe("BlueprintLoopInvalidTransition")
+    expect(
+      blueprintRequestErrorMessage({ message: "BlueprintLoopInvalidTransition", data: { from: "cancelled" } }),
+    ).toBe("BlueprintLoopInvalidTransition")
   })
 
   test("uses nested data messages before falling back", () => {
