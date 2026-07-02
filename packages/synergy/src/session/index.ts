@@ -105,6 +105,26 @@ export namespace Session {
   export type ChildCursor = z.infer<typeof ChildCursor>
   export type ChildrenPage = z.infer<typeof ChildrenPage>
 
+  export const WorkspaceSelection = z
+    .discriminatedUnion("mode", [
+      z.object({
+        mode: z.literal("current"),
+      }),
+      z.object({
+        mode: z.literal("existing"),
+        target: z.string().min(1),
+        force: z.boolean().optional(),
+      }),
+      z.object({
+        mode: z.literal("create"),
+        name: z.string().optional(),
+        baseRef: z.enum(["current", "fresh"]).optional(),
+        baseRevision: z.string().min(1).optional(),
+      }),
+    ])
+    .meta({ ref: "SessionWorkspaceSelection" })
+  export type WorkspaceSelection = z.infer<typeof WorkspaceSelection>
+
   export async function readPageIndex(scopeID: string): Promise<PageIndex> {
     return Storage.read<PageIndex>(StoragePath.sessionsPageIndex(asScopeID(scopeID))).catch(() => ({ entries: [] }))
   }
@@ -339,6 +359,32 @@ export namespace Session {
     return withRuntimeInfo(result)
   }
 
+  export async function applyWorkspaceSelection(
+    sessionID: string,
+    selection?: WorkspaceSelection,
+  ): Promise<Info & { working?: WorkingInfoType }> {
+    if (!selection || selection.mode === "current") return get(sessionID)
+
+    const { Worktree } = await import("../project/worktree")
+    if (selection.mode === "create") {
+      await Worktree.create({
+        sessionID,
+        name: selection.name,
+        baseRef: selection.baseRef ?? "current",
+        baseRevision: selection.baseRevision,
+        bind: true,
+      })
+      return get(sessionID)
+    }
+
+    await Worktree.enter({
+      sessionID,
+      target: selection.target,
+      force: selection.force ?? false,
+    })
+    return get(sessionID)
+  }
+
   export const fork = fn(
     z.object({
       sessionID: Identifier.schema("session"),
@@ -354,24 +400,7 @@ export namespace Session {
           }),
         ])
         .optional(),
-      workspace: z
-        .discriminatedUnion("mode", [
-          z.object({
-            mode: z.literal("current"),
-          }),
-          z.object({
-            mode: z.literal("existing"),
-            target: z.string().min(1),
-            force: z.boolean().optional(),
-          }),
-          z.object({
-            mode: z.literal("create"),
-            name: z.string().optional(),
-            baseRef: z.enum(["current", "fresh"]).optional(),
-            baseRevision: z.string().min(1).optional(),
-          }),
-        ])
-        .optional(),
+      workspace: WorkspaceSelection.optional(),
       title: z.string().optional(),
       controlProfile: z.enum(["guarded", "autonomous", "full_access"]).optional(),
     }),
@@ -415,26 +444,7 @@ export namespace Session {
       }
 
       try {
-        if (input.workspace?.mode === "create") {
-          const { Worktree } = await import("../project/worktree")
-          await Worktree.create({
-            sessionID: session.id,
-            name: input.workspace.name,
-            baseRef: input.workspace.baseRef ?? "current",
-            baseRevision: input.workspace.baseRevision,
-            bind: true,
-          })
-          session = await get(session.id)
-        }
-        if (input.workspace?.mode === "existing") {
-          const { Worktree } = await import("../project/worktree")
-          await Worktree.enter({
-            sessionID: session.id,
-            target: input.workspace.target,
-            force: input.workspace.force ?? false,
-          })
-          session = await get(session.id)
-        }
+        session = await applyWorkspaceSelection(session.id, input.workspace)
       } catch (error) {
         await remove(session.id)
         throw error

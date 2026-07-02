@@ -32,6 +32,126 @@ function compact<T extends Record<string, unknown>>(value: T): T | undefined {
   return Object.fromEntries(entries) as T
 }
 
+function normalizePathForCompare(input: string) {
+  const resolved = path.resolve(input)
+  return process.platform === "win32" ? resolved.toLowerCase() : resolved
+}
+
+function samePath(a: string, b: string) {
+  return normalizePathForCompare(a) === normalizePathForCompare(b)
+}
+
+async function findWorktreeRegistry(
+  mainCheckout: string,
+  worktreePath: string,
+): Promise<Record<string, unknown> | undefined> {
+  const root = path.join(mainCheckout, ".synergy", "worktrees", ".registry")
+  const entries = await fs.readdir(root).catch(() => [] as string[])
+  for (const entry of entries) {
+    if (!entry.endsWith(".json")) continue
+    const filepath = path.join(root, entry)
+    const text = await Bun.file(filepath)
+      .text()
+      .catch(() => undefined)
+    if (!text) continue
+    let parsed: Record<string, unknown>
+    try {
+      parsed = JSON.parse(text)
+    } catch {
+      continue
+    }
+    const registeredPath = asString(parsed.path)
+    if (registeredPath && samePath(registeredPath, worktreePath)) return parsed
+  }
+  return undefined
+}
+
+async function migrateSessionWorktreeWorkspace(progress: (current: number, total: number) => void) {
+  const scopeIDs = await Storage.scan(["sessions"]).catch(() => [])
+  const tasks: Array<{ scopeID: string; sessionID: string; info: any }> = []
+
+  for (const scopeID of scopeIDs) {
+    const scope = Identifier.asScopeID(scopeID)
+    const sessionIDs = await Storage.scan(StoragePath.sessionsRoot(scope)).catch(() => [])
+    const sessions = await Storage.readMany<any>(
+      sessionIDs.map((sessionID) => StoragePath.sessionInfo(scope, Identifier.asSessionID(sessionID))),
+    )
+
+    for (const info of sessions) {
+      const scopeInfo = asRecord(info?.scope)
+      const directory = asString(scopeInfo?.directory)
+      const worktree = asString(scopeInfo?.worktree)
+      const workspace = asRecord(info?.workspace)
+      if (!info?.id || !directory || !worktree) continue
+      if (samePath(directory, worktree)) continue
+      if (workspace?.type && workspace.type !== "main") continue
+      tasks.push({ scopeID, sessionID: info.id, info })
+    }
+  }
+
+  if (tasks.length === 0) return
+
+  const changedScopes = new Set<string>()
+  let done = 0
+  let changed = 0
+  for (const { scopeID, sessionID, info } of tasks) {
+    const scope = Identifier.asScopeID(scopeID)
+    const sid = Identifier.asSessionID(sessionID)
+    const scopeInfo = asRecord(info.scope)!
+    const worktreePath = asString(scopeInfo.directory)!
+    const mainCheckout = asString(scopeInfo.worktree)!
+    const registry = await findWorktreeRegistry(mainCheckout, worktreePath)
+    const sandboxes = Array.isArray(scopeInfo.sandboxes)
+      ? scopeInfo.sandboxes.filter((item): item is string => typeof item === "string" && item.length > 0)
+      : []
+    const nextSandboxes = sandboxes.includes(worktreePath) ? sandboxes : [...sandboxes, worktreePath]
+    const workspace = compact({
+      type: "git_worktree",
+      path: worktreePath,
+      scopeID,
+      worktreeID: asString(registry?.id),
+      name: asString(registry?.name) ?? path.basename(worktreePath),
+      branch: asString(registry?.branch),
+      baseRef: asString(registry?.baseRef),
+      baseRevision: asString(registry?.baseRevision),
+      resolvedBaseCommit: asString(registry?.resolvedBaseCommit),
+      originalCheckout: mainCheckout,
+    })!
+    const nextInfo = {
+      ...info,
+      scope: {
+        ...scopeInfo,
+        directory: mainCheckout,
+        worktree: mainCheckout,
+        sandboxes: nextSandboxes,
+      },
+      workspace,
+    }
+
+    await Storage.write(StoragePath.sessionInfo(scope, sid), nextInfo)
+    await Storage.write(StoragePath.sessionIndex(sid), {
+      sessionID,
+      scopeID,
+      directory: mainCheckout,
+      parentID: nextInfo.parentID,
+      endpoint: nextInfo.endpoint,
+      endpointKey: nextInfo.endpoint ? SessionEndpoint.toKey(nextInfo.endpoint) : undefined,
+    })
+    changedScopes.add(scopeID)
+    changed++
+    done++
+    progress(done, tasks.length)
+  }
+
+  for (const scopeID of changedScopes) {
+    await SessionNav.buildNavIndex(scopeID).catch((error) => {
+      log.warn("failed to rebuild nav index after worktree workspace migration", { scopeID, error: String(error) })
+    })
+  }
+
+  log.info("session worktree workspace migration complete", { total: tasks.length, changed })
+}
+
 function normalizeLegacyHolosMetadata(metadata: Record<string, unknown>): {
   metadata: Record<string, unknown> | undefined
   changed: boolean
@@ -1403,6 +1523,13 @@ export const migrations: Migration[] = [
     description: "Build parent-to-child session indexes for paginated child session lookup",
     async up(progress) {
       await migrateSessionChildIndex(progress)
+    },
+  },
+  {
+    id: "20260703-session-worktree-workspace",
+    description: "Normalize legacy route-directory worktree sessions into session workspace metadata",
+    async up(progress) {
+      await migrateSessionWorktreeWorkspace(progress)
     },
   },
 ]

@@ -10,6 +10,7 @@ import { Storage } from "../../src/storage/storage"
 import { StoragePath } from "../../src/storage/path"
 import { SnapshotSchema } from "../../src/session/snapshot-schema"
 import { SessionBounds } from "../../src/session/bounds"
+import { Worktree } from "../../src/project/worktree"
 
 const projectRoot = path.join(__dirname, "../..")
 
@@ -69,6 +70,55 @@ describe("session migrations", () => {
         expect(index.entries.find((entry) => entry.id === childA.id)?.title).toBe("Child A")
 
         await Session.remove(parent.id)
+      },
+    })
+  })
+
+  test("migrates legacy route-directory worktree sessions to workspace metadata", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const tmpScope = await tmp.scope()
+
+    await ScopeContext.provide({
+      scope: tmpScope,
+      fn: async () => {
+        const session = await Session.create({ title: "Legacy Worktree Session" })
+        const worktree = await Worktree.create({ name: "legacy-migration", bind: false, baseRef: "current" })
+        const scope = Identifier.asScopeID(tmpScope.id)
+        const sid = Identifier.asSessionID(session.id)
+        const legacyScope = {
+          ...(session.scope as any),
+          directory: worktree.path,
+          worktree: tmpScope.worktree,
+          sandboxes: [worktree.path],
+        }
+        await Storage.write(StoragePath.sessionInfo(scope, sid), {
+          ...session,
+          scope: legacyScope,
+          workspace: { type: "main", path: worktree.path, scopeID: tmpScope.id },
+        })
+        await Storage.write(StoragePath.sessionIndex(sid), {
+          sessionID: session.id,
+          scopeID: tmpScope.id,
+          directory: worktree.path,
+        })
+
+        const migration = migrations.find((entry) => entry.id === "20260703-session-worktree-workspace")
+        expect(migration).toBeDefined()
+        await migration!.up(() => {})
+
+        const migrated = await Storage.read<any>(StoragePath.sessionInfo(scope, sid))
+        expect(migrated.scope.directory).toBe(tmpScope.worktree)
+        expect(migrated.workspace.type).toBe("git_worktree")
+        expect(migrated.workspace.path).toBe(worktree.path)
+        expect(migrated.workspace.worktreeID).toBe(worktree.id)
+        expect(migrated.workspace.name).toBe(worktree.name)
+        expect(migrated.workspace.originalCheckout).toBe(tmpScope.worktree)
+
+        const index = await Storage.read<any>(StoragePath.sessionIndex(sid))
+        expect(index.directory).toBe(tmpScope.worktree)
+
+        await Worktree.remove({ sessionID: session.id, target: worktree.id, force: true })
+        await Session.remove(session.id)
       },
     })
   })

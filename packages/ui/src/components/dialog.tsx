@@ -6,6 +6,7 @@ export interface DialogProps extends ParentProps {
   title?: JSXElement
   description?: JSXElement
   action?: JSXElement
+  dismissible?: boolean
   class?: ComponentProps<"div">["class"]
   classList?: ComponentProps<"div">["classList"]
 }
@@ -16,6 +17,15 @@ export function Dialog(props: DialogProps) {
       <div data-slot="dialog-container">
         <Kobalte.Content
           data-slot="dialog-content"
+          onEscapeKeyDown={(e) => {
+            if (props.dismissible === false) e.preventDefault()
+          }}
+          onPointerDownOutside={(e) => {
+            if (props.dismissible === false) e.preventDefault()
+          }}
+          onInteractOutside={(e) => {
+            if (props.dismissible === false) e.preventDefault()
+          }}
           classList={{
             ...(props.classList ?? {}),
             [props.class ?? ""]: !!props.class,

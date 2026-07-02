@@ -42,6 +42,10 @@ import { WorkspaceBrowserTool } from "@/components/workspace/tool-browser"
 import { WorkspaceTerminalTool } from "@/components/workspace/tool-terminal"
 import { WorkbenchSurface } from "@/components/session/workbench-surface"
 import { SessionTopBar } from "@/components/top-bar/session-top-bar"
+import {
+  defaultNewSessionWorkspaceSelection,
+  type NewSessionWorkspaceSelection,
+} from "@/components/session/worktree-session"
 
 const handoff = {
   prompt: "",
@@ -175,7 +179,7 @@ function SessionPageContent() {
     messageId: undefined as string | undefined,
     turnStart: 0,
     mobileTab: "session" as "session" | "review",
-    newSessionWorktree: "main",
+    newSessionWorkspaceSelection: undefined as NewSessionWorkspaceSelection | undefined,
     promptHeight: 0,
   })
 
@@ -295,14 +299,14 @@ function SessionPageContent() {
     return mergeTimelineMessages([...turns, ...mailbox, ...actionCommands])
   }, emptyTimeline)
 
-  const newSessionWorktree = createMemo(() => {
-    if (store.newSessionWorktree === "create") return "create"
-    const scope = sync.scope
-    if (scope && sync.data.path.directory !== scope.worktree) return sync.data.path.directory
-    return "main"
-  })
-
   const scopeRoot = createMemo(() => sync.scope?.worktree ?? sync.data.path.directory)
+  const newSessionWorkspaceSelection = createMemo(() =>
+    defaultNewSessionWorkspaceSelection({
+      selected: store.newSessionWorkspaceSelection,
+      currentDirectory: sync.data.path.directory,
+      canonicalDirectory: scopeRoot(),
+    }),
+  )
   const scopeName = createMemo(() => getFilename(scopeRoot()))
   const branch = createMemo(() => sync.data.vcs?.branch)
   const lastModified = createMemo(() => {
@@ -927,9 +931,11 @@ function SessionPageContent() {
               forkedFromID={currentSession()?.forkedFrom?.sessionID}
               forkedFromTitle={forkedFromSession()?.title ?? currentSession()?.forkedFrom?.title}
               backPath={backPath}
-              newSessionWorktree={newSessionWorktree}
-              onNewSessionWorktreeChange={(worktree) => setStore("newSessionWorktree", worktree)}
-              onNewSessionWorktreeReset={() => setStore("newSessionWorktree", "main")}
+              newSessionWorkspaceSelection={newSessionWorkspaceSelection}
+              newSessionCanonicalDirectory={scopeRoot}
+              newSessionCurrentDirectory={() => sync.data.path.directory}
+              onNewSessionWorkspaceSelectionChange={(selection) => setStore("newSessionWorkspaceSelection", selection)}
+              onNewSessionWorkspaceSelectionReset={() => setStore("newSessionWorkspaceSelection", undefined)}
               scopeName={scopeName}
               branch={branch}
               lastModified={lastModified}

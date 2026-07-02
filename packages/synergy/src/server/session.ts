@@ -346,12 +346,19 @@ export const SessionRoute = new Hono()
           title: z.string().optional(),
           id: z.string().optional(),
           controlProfile: ControlProfileId.optional(),
+          workspace: Session.WorkspaceSelection.optional(),
         })
         .optional(),
     ),
     async (c) => {
-      const body = c.req.valid("json") ?? {}
-      const session = await Session.create(body)
+      const { workspace, ...body } = c.req.valid("json") ?? {}
+      let session = await Session.create(body)
+      try {
+        session = await Session.applyWorkspaceSelection(session.id, workspace)
+      } catch (error) {
+        await Session.remove(session.id)
+        throw error
+      }
       return c.json(session)
     },
   )

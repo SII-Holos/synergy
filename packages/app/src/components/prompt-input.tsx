@@ -79,6 +79,7 @@ import {
   resolveBlueprintSlotDisplay,
   type BlueprintSlotDisplay,
 } from "@/components/prompt-input/blueprint-slot"
+import { isWorktreeWorkspaceSelection, worktreeOptionSelection } from "@/components/session/worktree-session"
 
 function sanitizePromptHistory(value: unknown) {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return value
@@ -505,9 +506,10 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   const newSessionStartOptions = createMemo<PromptStartOptionGroup[]>(() => {
     if (params.id) return []
 
-    const creatingWorktree = props.newSessionWorktree === "create"
+    const workspaceSelection = props.newSessionWorkspaceSelection ?? { mode: "current" as const }
+    const worktreeSelected = isWorktreeWorkspaceSelection(workspaceSelection)
     const canCreateWorktree = props.newSessionCanCreateWorktree ?? (!sdk.isHome && !!sdk.directory)
-    const localLabel = isHomeScope(sdk.scopeKey) ? "Home" : "Local"
+    const mainLabel = isHomeScope(sdk.scopeKey) ? "Home" : "Main checkout"
     const localDescription = isHomeScope(sdk.scopeKey) ? "Global context" : "Current checkout"
 
     return [
@@ -517,23 +519,29 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
         options: [
           {
             id: "workspace.local",
-            label: localLabel,
+            label: mainLabel,
             description: localDescription,
             icon: getSemanticIcon("workspace.main"),
-            selected: !creatingWorktree,
-            onSelect: () => props.onNewSessionWorktreeChange?.("main"),
+            selected: !worktreeSelected,
+            onSelect: () => props.onNewSessionWorkspaceSelectionChange?.({ mode: "current" }),
           },
           {
             id: "workspace.worktree",
             label: "Worktree",
             description: "Isolated checkout",
             icon: getSemanticIcon("workspace.worktree"),
-            selected: creatingWorktree,
+            selected: worktreeSelected,
             disabled: !canCreateWorktree,
             tooltip: canCreateWorktree
               ? "Create an isolated worktree for this session."
               : "Choose a project to use worktree isolation.",
-            onSelect: () => props.onNewSessionWorktreeChange?.("create"),
+            onSelect: () =>
+              props.onNewSessionWorkspaceSelectionChange?.(
+                worktreeOptionSelection({
+                  currentDirectory: props.newSessionCurrentDirectory,
+                  canonicalDirectory: props.newSessionCanonicalDirectory,
+                }),
+              ),
           },
         ],
       },

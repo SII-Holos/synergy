@@ -119,6 +119,10 @@ export namespace Worktree {
   export const LockFailedError = NamedError.create("WorktreeLockFailedError", z.object({ message: z.string() }))
   export const NotFoundError = NamedError.create("WorktreeNotFoundError", z.object({ message: z.string() }))
   export const DirtyError = NamedError.create("WorktreeDirtyError", z.object({ message: z.string() }))
+  export const SessionBusyError = NamedError.create(
+    "WorktreeSessionBusyError",
+    z.object({ message: z.string(), sessionID: z.string() }),
+  )
 
   const ADJECTIVES = [
     "brave",
@@ -640,7 +644,12 @@ export namespace Worktree {
       )
     }
     const scope = session.scope as Scope
-    const mainWorkspace = { type: "main" as const, path: scope.directory, scopeID: scope.id }
+    const originalCheckout =
+      previous?.type === "git_worktree" && typeof previous.originalCheckout === "string"
+        ? previous.originalCheckout
+        : undefined
+    const mainPath = originalCheckout ?? scope.worktree ?? scope.directory
+    const mainWorkspace = { type: "main" as const, path: mainPath, scopeID: scope.id }
     const result = await Session.updateWorkspace(sessionID, mainWorkspace)
     ScopeContext.refreshWorkspace(mainWorkspace as import("../session/types").Workspace)
     return result

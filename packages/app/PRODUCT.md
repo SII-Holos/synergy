@@ -133,6 +133,8 @@ Prompt composers should read as one grounded input surface with a quiet bottom t
 
 New-session initialization controls should sit in the composer toolbar next to the Add control as a quiet start-mode selector, not as a second row inside the typing area. Keep the selector menu data-driven so workspace mode, templates, cloud execution, and future start parameters can expand in one place while preserving the composer as a single grounded surface.
 
+New-session initialization must use a blocking workbench progress surface whenever workspace or session setup can take visible time. The user should see compact step progress for worktree creation, session preparation, and prompt dispatch, and should not be able to operate the half-initialized session until setup completes or fails cleanly.
+
 Use icons sparingly. Icons should clarify primary navigation or compact controls, not decorate every row of a form.
 
 Treat brand assets as a hierarchy, not interchangeable decoration. SII is the institutional parent, Holos is the organization and platform behind Synergy, and Synergy is the product. The Synergy product icon is the canonical app, favicon, notification, social, and external-attribution icon; Holos wordmarks may identify the backing organization/platform layer in the app shell and account surfaces, and SII marks should only identify the institute layer.

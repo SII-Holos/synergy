@@ -2950,6 +2950,22 @@ export type SessionAgendaResponse = {
   hasMore: boolean
 }
 
+export type SessionWorkspaceSelection =
+  | {
+      mode: "current"
+    }
+  | {
+      mode: "existing"
+      target: string
+      force?: boolean
+    }
+  | {
+      mode: "create"
+      name?: string
+      baseRef?: "current" | "fresh"
+      baseRevision?: string
+    }
+
 export type SessionInboxItemSource = {
   type: string
   label?: string
@@ -7276,6 +7292,7 @@ export type SessionCreateData = {
     title?: string
     id?: string
     controlProfile?: "guarded" | "autonomous" | "full_access"
+    workspace?: SessionWorkspaceSelection
   }
   path?: never
   query?: {
@@ -7646,21 +7663,7 @@ export type SessionForkData = {
           type: "before"
           messageID: string
         }
-    workspace?:
-      | {
-          mode: "current"
-        }
-      | {
-          mode: "existing"
-          target: string
-          force?: boolean
-        }
-      | {
-          mode: "create"
-          name?: string
-          baseRef?: "current" | "fresh"
-          baseRevision?: string
-        }
+    workspace?: SessionWorkspaceSelection
     title?: string
     controlProfile?: "guarded" | "autonomous" | "full_access"
   }

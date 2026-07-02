@@ -1,4 +1,4 @@
-import type { Accessor, Setter } from "solid-js"
+import { createSignal, type Accessor, Setter } from "solid-js"
 import { produce, type SetStoreFunction } from "solid-js/store"
 import { useNavigate, useParams } from "@solidjs/router"
 import { createSynergyClient, type Message, type Part } from "@ericsanchezok/synergy-sdk/client"
@@ -6,6 +6,7 @@ import { Binary } from "@ericsanchezok/synergy-util/binary"
 import { base64Encode } from "@ericsanchezok/synergy-util/encode"
 import { getFilename } from "@ericsanchezok/synergy-util/path"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
+import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { useLocal } from "@/context/local"
 import { useSDK } from "@/context/sdk"
 import { useSync } from "@/context/sync"
@@ -33,9 +34,18 @@ import {
 import { setCursorPosition } from "./editor-dom"
 import { createUploadedAttachmentInputPart } from "./attachment-submit"
 import type { BlueprintSlot, PromptInputMode, PromptInputProps, PromptInputStore } from "./types"
+import {
+  SessionStartProgressDialog,
+  type SessionStartProgress,
+  type SessionStartProgressStepState,
+} from "@/components/session/worktree-transition-dialog"
+import type { NewSessionWorkspaceSelection } from "@/components/session/worktree-session"
 
 type PromptSubmitInput = {
-  props: Pick<PromptInputProps, "newSessionWorktree" | "onNewSessionWorktreeReset">
+  props: Pick<
+    PromptInputProps,
+    "newSessionWorkspaceSelection" | "newSessionCanonicalDirectory" | "onNewSessionWorkspaceSelectionReset"
+  >
   uploadedAttachments: Accessor<UploadedAttachmentPart[]>
   noteAttachments: Accessor<NoteAttachmentPart[]>
   sessionAttachments: Accessor<SessionAttachmentPart[]>
@@ -65,6 +75,7 @@ function errorMessage(err: unknown) {
 
 export function usePromptSubmit(input: PromptSubmitInput) {
   const navigate = useNavigate()
+  const dialog = useDialog()
   const sdk = useSDK()
   const sync = useSync()
   const globalSync = useGlobalSync()
@@ -72,6 +83,56 @@ export function usePromptSubmit(input: PromptSubmitInput) {
   const local = useLocal()
   const prompt = usePrompt()
   const params = useParams()
+  const [startProgress, setStartProgress] = createSignal<SessionStartProgress>({
+    title: "Starting session",
+    description: "Preparing this session before sending your prompt.",
+    steps: [],
+  })
+  let startProgressOpen = false
+
+  const startProgressSteps = (
+    selection: NewSessionWorkspaceSelection,
+    active: "workspace" | "session" | "prompt",
+  ): SessionStartProgress["steps"] => {
+    const steps: Array<{ id: "workspace" | "session" | "prompt"; label: string }> = []
+    if (selection.mode === "create") steps.push({ id: "workspace", label: "Creating worktree" })
+    if (selection.mode === "existing") steps.push({ id: "workspace", label: "Preparing worktree" })
+    steps.push({ id: "session", label: "Preparing session" })
+    steps.push({ id: "prompt", label: "Sending prompt" })
+    const activeIndex = Math.max(
+      0,
+      steps.findIndex((step) => step.id === active),
+    )
+    return steps.map((step, index) => {
+      const state: SessionStartProgressStepState =
+        index < activeIndex ? "complete" : index === activeIndex ? "active" : "pending"
+      return { ...step, state }
+    })
+  }
+
+  const updateStartProgress = (selection: NewSessionWorkspaceSelection, active: "workspace" | "session" | "prompt") => {
+    setStartProgress({
+      title: selection.mode === "current" ? "Starting session" : "Starting worktree session",
+      description:
+        selection.mode === "current"
+          ? "Preparing this session before sending your prompt."
+          : "Creating and binding the worktree before sending your prompt.",
+      steps: startProgressSteps(selection, active),
+    })
+  }
+
+  const openStartProgress = (selection: NewSessionWorkspaceSelection) => {
+    updateStartProgress(selection, selection.mode === "current" ? "session" : "workspace")
+    if (startProgressOpen) return
+    startProgressOpen = true
+    dialog.push(() => SessionStartProgressDialog({ progress: startProgress }))
+  }
+
+  const closeStartProgress = () => {
+    if (!startProgressOpen) return
+    startProgressOpen = false
+    dialog.close()
+  }
 
   return async (event: Event) => {
     event.preventDefault()
@@ -113,61 +174,71 @@ export function usePromptSubmit(input: PromptSubmitInput) {
     const projectDirectory = sdk.directory
     const currentScopeKey = sdk.scopeKey
     const isNewSession = !params.id
-    const worktreeSelection = input.props.newSessionWorktree ?? "main"
+    const workspaceSelection = input.props.newSessionWorkspaceSelection ?? { mode: "current" as const }
 
     let sessionScopeKey = currentScopeKey
+    let sessionCreateScopeKey = currentScopeKey
     let client = sdk.client
 
-    if (isNewSession && !sdk.isHome && projectDirectory) {
-      if (worktreeSelection === "create") {
-        const createdWorktree = await client.worktree
-          .create({ directory: projectDirectory })
-          .then((x) => x.data)
-          .catch((err) => {
-            showToast({
-              type: "error",
-              title: "Failed to create worktree",
-              description: errorMessage(err),
-            })
-            return undefined
+    if (isNewSession) {
+      openStartProgress(workspaceSelection)
+      if (!sdk.isHome) {
+        sessionCreateScopeKey = input.props.newSessionCanonicalDirectory ?? projectDirectory ?? currentScopeKey
+        if (sessionCreateScopeKey !== currentScopeKey) {
+          client = createSynergyClient({
+            baseUrl: sdk.url,
+            fetch: platform.fetch,
+            directory: sessionCreateScopeKey,
+            throwOnError: true,
           })
-
-        if (!createdWorktree?.path) {
-          showToast({
-            type: "error",
-            title: "Failed to create worktree",
-            description: "Request failed",
-          })
-          return
+          globalSync.ensureScopeState(sessionCreateScopeKey)
         }
-        sessionScopeKey = createdWorktree.path
       }
+    }
 
-      if (worktreeSelection !== "main" && worktreeSelection !== "create") {
-        sessionScopeKey = worktreeSelection
-      }
-
-      if (sessionScopeKey !== currentScopeKey) {
+    const useSessionScopeClient = (scopeKey: string) => {
+      sessionScopeKey = scopeKey
+      if (scopeKey !== currentScopeKey) {
         client = createSynergyClient({
           baseUrl: sdk.url,
           fetch: platform.fetch,
-          directory: sessionScopeKey,
+          directory: scopeKey,
           throwOnError: true,
         })
-        globalSync.ensureScopeState(sessionScopeKey)
+        globalSync.ensureScopeState(scopeKey)
+      } else {
+        client = sdk.client
       }
-
-      input.props.onNewSessionWorktreeReset?.()
     }
+
     let createdSessionForSubmit = false
 
     let session = params.id ? sync.session.get(params.id) : undefined
     if (!session && isNewSession) {
       session = await client.session
-        .create({ controlProfile: input.selectedControlProfile() })
+        .create({
+          controlProfile: input.selectedControlProfile(),
+          workspace: workspaceSelection,
+        })
         .then((x) => x.data ?? undefined)
+        .catch((err) => {
+          showToast({
+            type: "error",
+            title: workspaceSelection.mode === "current" ? "Failed to start session" : "Failed to create worktree",
+            description: errorMessage(err),
+          })
+          closeStartProgress()
+          return undefined
+        })
       if (session) {
         createdSessionForSubmit = true
+        const workspacePath =
+          session.workspace?.type === "git_worktree" && typeof session.workspace.path === "string"
+            ? session.workspace.path
+            : sessionCreateScopeKey
+        useSessionScopeClient(workspacePath)
+        input.props.onNewSessionWorkspaceSelectionReset?.()
+        updateStartProgress(workspaceSelection, "session")
         navigate(`/${base64Encode(sessionScopeKey)}/session/${session.id}`)
       }
     }
@@ -175,7 +246,10 @@ export function usePromptSubmit(input: PromptSubmitInput) {
       await sync.session.sync(params.id)
       session = sync.session.get(params.id)
     }
-    if (!session) return
+    if (!session) {
+      closeStartProgress()
+      return
+    }
     if (isNewSession && session.controlProfile !== input.selectedControlProfile()) {
       session = await client.session
         .update({ sessionID: session.id, controlProfile: input.selectedControlProfile() })
@@ -199,6 +273,7 @@ export function usePromptSubmit(input: PromptSubmitInput) {
             await client.session.delete({ sessionID }).catch(() => undefined)
             navigate(`/${base64Encode(currentScopeKey)}/session`, { replace: true })
           }
+          closeStartProgress()
           return undefined
         })
       if (!session) return
@@ -219,6 +294,7 @@ export function usePromptSubmit(input: PromptSubmitInput) {
             await client.session.delete({ sessionID }).catch(() => undefined)
             navigate(`/${base64Encode(currentScopeKey)}/session`, { replace: true })
           }
+          closeStartProgress()
           return undefined
         })
       if (!session) return
@@ -258,6 +334,8 @@ export function usePromptSubmit(input: PromptSubmitInput) {
       navigate(`/${base64Encode(currentScopeKey)}/session`, { replace: true })
     }
 
+    if (isNewSession) updateStartProgress(workspaceSelection, "prompt")
+
     if (blueprintSlot && mode === "normal") {
       input.setBlueprintLoading(true)
       let createdLoopID: string | undefined
@@ -283,10 +361,12 @@ export function usePromptSubmit(input: PromptSubmitInput) {
 
         clearInput()
         await sdk.client.blueprint.loop.start({ id: loopID, userPrompt: userText || undefined })
+        closeStartProgress()
       } catch (err) {
         if (createdLoopID) {
           await sdk.client.blueprint.loop.cancel({ id: createdLoopID }).catch(() => undefined)
         }
+        closeStartProgress()
         showToast({
           type: "error",
           title: "Failed to start Blueprint",
@@ -309,7 +389,11 @@ export function usePromptSubmit(input: PromptSubmitInput) {
           model,
           command: text,
         })
+        .then(() => {
+          closeStartProgress()
+        })
         .catch((err) => {
+          closeStartProgress()
           showToast({
             type: "error",
             title: "Failed to send shell command",
@@ -367,7 +451,11 @@ export function usePromptSubmit(input: PromptSubmitInput) {
               })),
             ],
           })
+          .then(() => {
+            closeStartProgress()
+          })
           .catch((err) => {
+            closeStartProgress()
             showToast({
               type: "error",
               title: "Failed to send command",
@@ -606,6 +694,7 @@ export function usePromptSubmit(input: PromptSubmitInput) {
         variant,
       })
       .then((result) => {
+        closeStartProgress()
         if (result.data?.status === "queued" && optimisticAdded) {
           removeOptimisticMessage()
           optimisticAdded = false
@@ -619,6 +708,7 @@ export function usePromptSubmit(input: PromptSubmitInput) {
         }
       })
       .catch((err) => {
+        closeStartProgress()
         showToast({
           type: "error",
           title: "Failed to send prompt",
