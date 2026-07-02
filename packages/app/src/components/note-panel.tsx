@@ -103,6 +103,17 @@ function getBlueprintActivityTime(note: NoteCardInfo | NoteInfo, loops: Blueprin
   return note.blueprint?.lastRunAt ?? loops[0]?.time.updated ?? note.time.updated
 }
 
+function requestErrorMessage(error: unknown, fallback: string) {
+  if (error && typeof error === "object") {
+    const data = (error as { data?: { message?: string; error?: string } }).data
+    if (data?.message) return data.message
+    if (data?.error) return data.error
+    const message = (error as { message?: unknown }).message
+    if (typeof message === "string" && message) return message
+  }
+  return fallback
+}
+
 function attachNoteDragData(e: DragEvent, note: NoteCardInfo) {
   const title = note.title || "Untitled"
   const payload = JSON.stringify({
@@ -1317,7 +1328,6 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
   }
 
   function scopedClient(directory: string) {
-    if (directory === routeDirectory()) return sdk.client
     globalSync.ensureScopeState(directory)
     return createSynergyClient({
       baseUrl: sdk.url,
@@ -1403,7 +1413,7 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
         await target.client.session.delete({ sessionID: target.sessionID }).catch(() => undefined)
       }
       console.error("Failed to run blueprint", error)
-      alert(error instanceof Error ? error.message : "Failed to run blueprint")
+      alert(requestErrorMessage(error, "Failed to run blueprint"))
     } finally {
       setRunningBlueprint(false)
     }
