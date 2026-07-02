@@ -268,11 +268,6 @@ export function SettingsPanel(props: SettingsPanelProps) {
     }
   }
 
-  async function copyPath(path: string) {
-    await navigator.clipboard.writeText(path)
-    showToast({ type: "success", title: "Path copied", description: path })
-  }
-
   async function openDomain(domain: ConfigDomainSummary["id"]) {
     setOpeningDomain(domain)
     try {
@@ -602,7 +597,6 @@ export function SettingsPanel(props: SettingsPanelProps) {
           <ConfigFilesPanel
             domains={domainSummaries() ?? []}
             openingDomain={openingDomain()}
-            onCopyPath={(path) => void copyPath(path)}
             onOpenDomain={(domain) => void openDomain(domain)}
           />
         )
@@ -618,7 +612,6 @@ export function SettingsPanel(props: SettingsPanelProps) {
         description={description}
         domains={domainsFor(domainIds)}
         openingDomain={openingDomain()}
-        onCopyPath={(path) => void copyPath(path)}
         onOpenDomain={(domain) => void openDomain(domain)}
       />
     )

@@ -50,6 +50,8 @@ export const externalUrlSchema = z
     { message: "Only http, https, and mailto URLs can be opened externally" },
   )
 
+export const clipboardWriteTextSchema = z.string()
+
 export function parseBrowserNativeAttach(input: unknown): BrowserNativeAttachRequest {
   return browserNativeAttachSchema.parse(input)
 }
@@ -64,4 +66,8 @@ export function parseBrowserNativeResize(input: unknown): { pageId: string; boun
 
 export function parseExternalUrl(input: unknown): string {
   return externalUrlSchema.parse(input)
+}
+
+export function parseClipboardWriteText(input: unknown): string {
+  return clipboardWriteTextSchema.parse(input)
 }

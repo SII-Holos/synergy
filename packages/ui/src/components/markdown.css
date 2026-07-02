@@ -193,9 +193,14 @@
     box-shadow: 0 0 0 1px color-mix(in srgb, var(--border-weaker-focus) 34%, transparent);
   }
 
-  [data-slot="markdown-code-copy"][data-copied="true"] {
+  [data-slot="markdown-code-copy"][data-copy-state="copied"] {
     background-color: var(--workbench-selected-bg, var(--surface-interactive-selected));
     color: var(--text-strong);
+  }
+
+  [data-slot="markdown-code-copy"][data-copy-state="failed"] {
+    background-color: color-mix(in srgb, var(--surface-critical-base) 32%, transparent);
+    color: var(--text-on-critical-base);
   }
 
   .shiki {

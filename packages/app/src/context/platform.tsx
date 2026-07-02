@@ -79,6 +79,10 @@ export type DesktopWindowBridge = {
   onEvent?(listener: (event: { type: "state"; state: DesktopWindowState }) => void): () => void
 }
 
+export type ClipboardBridge = {
+  writeText(text: string): Promise<boolean>
+}
+
 export type Platform = {
   /** Platform discriminator */
   platform: "web" | "desktop"
@@ -109,6 +113,9 @@ export type Platform = {
 
   /** Desktop window controls bridge, provided by the desktop shell. */
   desktopWindow?: DesktopWindowBridge
+
+  /** Clipboard bridge, provided by the desktop shell when browser clipboard permissions are not enough. */
+  clipboard?: ClipboardBridge
 }
 
 export const { use: usePlatform, provider: PlatformProvider } = createSimpleContext({

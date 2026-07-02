@@ -34,6 +34,7 @@ import { useCodeComponent } from "../context/code"
 import { BasicTool } from "./basic-tool"
 import { SmartTool } from "./basic-tool"
 import { Card } from "./card"
+import { createCopyController } from "./clipboard"
 import { Icon } from "./icon"
 import { Tooltip } from "./tooltip"
 import { Checkbox } from "./checkbox"
@@ -1478,8 +1479,6 @@ export function AssistantMessageDisplay(props: { message: AssistantMessage; part
   return <For each={filteredParts()}>{(part) => <Part part={part} message={props.message} />}</For>
 }
 
-const userMessageCopyResetDelay = 1600
-
 function formatMessageTimestamp(timestamp: number): string {
   const date = new Date(timestamp)
   const hours = date.getHours().toString().padStart(2, "0")
@@ -1487,33 +1486,9 @@ function formatMessageTimestamp(timestamp: number): string {
   return `${hours}:${minutes}`
 }
 
-async function copyTextToClipboard(text: string): Promise<boolean> {
-  if (navigator.clipboard && window.isSecureContext) {
-    await navigator.clipboard.writeText(text)
-    return true
-  }
-  try {
-    const ta = document.createElement("textarea")
-    ta.value = text
-    ta.style.position = "fixed"
-    ta.style.opacity = "0"
-    ta.style.pointerEvents = "none"
-    document.body.appendChild(ta)
-    ta.focus()
-    ta.select()
-    const ok = document.execCommand("copy")
-    document.body.removeChild(ta)
-    return ok
-  } catch {
-    return false
-  }
-}
-
 export function UserMessageDisplay(props: { message: UserMessage; parts: PartType[]; variant?: UserMessageVariant }) {
   const data = useData()
   const [expanded, setExpanded] = createSignal(false)
-  const [copied, setCopied] = createSignal(false)
-  let copyReset: ReturnType<typeof setTimeout> | undefined
 
   const text = createMemo(() => visibleUserMessageText(props.parts))
   const isTurnBubble = createMemo(() => props.variant === "turn-bubble")
@@ -1547,18 +1522,11 @@ export function UserMessageDisplay(props: { message: UserMessage; parts: PartTyp
     }),
   )
 
-  async function copyMessageText() {
-    const value = text()
-    if (!value) return
-    const ok = await copyTextToClipboard(value)
-    if (!ok) return
-    setCopied(true)
-    if (copyReset) clearTimeout(copyReset)
-    copyReset = setTimeout(() => setCopied(false), userMessageCopyResetDelay)
-  }
-
-  onCleanup(() => {
-    if (copyReset) clearTimeout(copyReset)
+  const copy = createCopyController({
+    text,
+    copyLabel: "Copy message",
+    copiedLabel: "Message copied",
+    failureDescription: "Unable to copy the message.",
   })
 
   return (
@@ -1586,22 +1554,16 @@ export function UserMessageDisplay(props: { message: UserMessage; parts: PartTyp
         <div data-slot="user-message-meta">
           <Show when={timestamp()}>{(value) => <span data-slot="user-message-time">{value()}</span>}</Show>
           <Show when={text()}>
-            <Tooltip
-              value={copied() ? "Copied" : "Copy message"}
-              placement="top"
-              gutter={4}
-              class="user-message-copy-trigger"
-            >
+            <Tooltip value={copy.tooltip()} placement="top" gutter={4} class="user-message-copy-trigger">
               <button
                 type="button"
                 data-slot="user-message-copy"
-                aria-label={copied() ? "Message copied" : "Copy message"}
-                onClick={() => void copyMessageText()}
+                data-copy-state={copy.state()}
+                aria-label={copy.tooltip()}
+                disabled={copy.disabled()}
+                onClick={() => void copy.copy()}
               >
-                <Icon
-                  name={copied() ? getSemanticIcon("state.success") : getSemanticIcon("action.copy")}
-                  size="small"
-                />
+                <Icon name={copy.copied() ? getSemanticIcon("state.success") : copy.icon()} size="small" />
               </button>
             </Tooltip>
           </Show>

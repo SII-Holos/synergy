@@ -1,5 +1,6 @@
 import { For, Show, type JSX } from "solid-js"
 import { Button } from "@ericsanchezok/synergy-ui/button"
+import { createCopyController } from "@ericsanchezok/synergy-ui/clipboard"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import type { IconName } from "@ericsanchezok/synergy-ui/icon"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
@@ -80,10 +81,15 @@ export function SettingsPathRow(props: {
   status?: string
   ownedKeys?: string[]
   mergePolicy?: string
-  onCopy?: () => void
   onOpen?: () => void
   opening?: boolean
 }) {
+  const copy = createCopyController({
+    text: () => props.path,
+    copyLabel: "Copy path",
+    failureDescription: "Unable to copy the path.",
+  })
+
   return (
     <div class="ds-path-row">
       <div class="min-w-0 flex-1">
@@ -109,17 +115,17 @@ export function SettingsPathRow(props: {
         </Show>
       </div>
       <div class="ds-path-actions">
-        <Show when={props.onCopy}>
-          <Button
-            type="button"
-            variant="ghost"
-            size="small"
-            icon={getSemanticIcon("action.copy")}
-            onClick={props.onCopy}
-          >
-            Copy Path
-          </Button>
-        </Show>
+        <Button
+          type="button"
+          variant="ghost"
+          size="small"
+          icon={copy.copied() ? getSemanticIcon("state.success") : copy.icon()}
+          data-copy-state={copy.state()}
+          disabled={copy.disabled()}
+          onClick={() => void copy.copy()}
+        >
+          {copy.copied() ? "Copied" : "Copy Path"}
+        </Button>
         <Show when={props.onOpen}>
           <Button
             type="button"

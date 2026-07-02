@@ -72,6 +72,8 @@ User prompts inside a turn may render as a compact right-aligned bubble with mat
 
 Turn titles are navigation metadata, not conversation content; keep them in the session timeline or session-level chrome, and place user-prompt timestamps and copy controls outside the prompt bubble as low-emphasis metadata.
 
+Copy controls should use the shared clipboard capability and shared copied/failed feedback. Success is shown in the triggering control, while failures use the global error toast; do not add local `navigator.clipboard` or `execCommand` implementations in product UI.
+
 Markdown code blocks in the message stream are document content surfaces, not form controls. In light mode they should stay close to the white workbench surface with a hairline border and low-emphasis copy control; in dark mode they may keep the inward-brighter relationship.
 
 Session timeline spacing should follow semantic rhythm: compact spacing for consecutive text, tighter grouping for consecutive tool events, and more breathing room when moving between prose and tool/media blocks. Avoid stacking narrow one-off adjacent selectors that make reasoning, text, and tools feel randomly packed.

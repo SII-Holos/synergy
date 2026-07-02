@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, shell, type BrowserWindowConstructorOptions } from "electron"
+import { app, BrowserWindow, clipboard, ipcMain, shell, type BrowserWindowConstructorOptions } from "electron"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
 import { BrowserNativeViewManager } from "./browser-native-view.js"
@@ -16,6 +16,7 @@ import {
   parseBrowserNativeAttach,
   parseBrowserNativePage,
   parseBrowserNativeResize,
+  parseClipboardWriteText,
   parseExternalUrl,
 } from "./ipc-contract.js"
 import { installAppMenu } from "./menu.js"
@@ -220,6 +221,11 @@ function registerIpcHandlers() {
   ipcMain.handle("desktop.shell.openExternal", async (_event, input: unknown) => {
     const url = parseExternalUrl(input)
     await shell.openExternal(url)
+  })
+  ipcMain.handle("desktop.clipboard.writeText", (_event, input: unknown) => {
+    const text = parseClipboardWriteText(input)
+    clipboard.writeText(text)
+    return true
   })
   ipcMain.handle("desktop.window.minimize", () => {
     mainWindow?.minimize()

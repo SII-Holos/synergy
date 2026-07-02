@@ -67,6 +67,12 @@ const desktopShell = {
   },
 }
 
+const desktopClipboard = {
+  writeText(text: string) {
+    return ipcRenderer.invoke("desktop.clipboard.writeText", text) as Promise<boolean>
+  },
+}
+
 const desktopWindow = {
   chrome: process.platform === "darwin" ? "native" : "custom",
   minimize() {
@@ -94,6 +100,7 @@ contextBridge.exposeInMainWorld("synergyDesktop", {
   server,
   update,
   shell: desktopShell,
+  clipboard: desktopClipboard,
   window: desktopWindow,
   browserNative,
 })

@@ -6,10 +6,10 @@ import { useGlobalSync } from "@/context/global-sync"
 import { useSync } from "@/context/sync"
 import { ContextBar } from "@/components/context-bar"
 import { SessionLspIndicator, SessionMcpIndicator, SessionCortexIndicator } from "@/components/session"
+import { createCopyController } from "@ericsanchezok/synergy-ui/clipboard"
 import { Icon, type IconName } from "@ericsanchezok/synergy-ui/icon"
 import { Tooltip } from "@ericsanchezok/synergy-ui/tooltip"
 import { Popover } from "@ericsanchezok/synergy-ui/popover"
-import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import { base64Decode } from "@ericsanchezok/synergy-util/encode"
 import { getScopeLabel } from "@/utils/scope"
 import { relativeTime } from "@/utils/time"
@@ -132,29 +132,29 @@ function BranchIconButton(props: { branch: string }) {
 
 function RuntimeIconButton(props: { status: SessionStatus | undefined; waiting: boolean }) {
   const runtimeState = createMemo(() => resolveRuntimeIconState(props.status, props.waiting))
-
-  async function copyRetryError() {
-    const copyText = runtimeState().copyText
-    if (!copyText) return
-
-    try {
-      await navigator.clipboard.writeText(copyText)
-      showToast({ type: "success", title: "Retry error copied" })
-    } catch {
-      showToast({ type: "error", title: "Copy failed", description: "Unable to copy the retry error." })
-    }
-  }
+  const copyRetryError = createCopyController({
+    text: () => runtimeState().copyText,
+    copyLabel: "Copy retry error",
+    failureDescription: "Unable to copy the retry error.",
+  })
+  const tooltip = createMemo(() => (runtimeState().copyText ? copyRetryError.tooltip() : runtimeState().tooltip))
+  const icon = createMemo(() =>
+    runtimeState().copyText && copyRetryError.state() !== "idle" ? copyRetryError.icon() : runtimeState().icon,
+  )
 
   return (
-    <Tooltip placement="top" value={runtimeState().tooltip}>
+    <Tooltip placement="top" value={tooltip()}>
       <button
         type="button"
         classList={iconButtonClass(runtimeState().tone)}
-        onClick={() => void copyRetryError()}
+        data-copy-state={copyRetryError.state()}
+        onClick={() => {
+          if (runtimeState().copyText) void copyRetryError.copy()
+        }}
         aria-label={runtimeState().copyText ? "Copy retry error" : runtimeState().tooltip}
       >
         <span classList={{ "sb-session-icon-pulse": runtimeState().pulse }}>
-          <Icon name={runtimeState().icon} size="small" class="translate-y-0.5" />
+          <Icon name={icon()} size="small" class="translate-y-0.5" />
         </span>
       </button>
     </Tooltip>

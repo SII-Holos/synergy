@@ -5,7 +5,6 @@ import { SettingsPage, SettingsPathRow, SettingsSection } from "../components/Se
 export function ConfigFilesPanel(props: {
   domains: ConfigDomainSummary[]
   openingDomain?: string
-  onCopyPath: (path: string) => void
   onOpenDomain: (domain: ConfigDomainSummary["id"]) => void
 }) {
   return (
@@ -19,7 +18,6 @@ export function ConfigFilesPanel(props: {
               status={domainStatus(domain)}
               ownedKeys={domain.ownedKeys}
               mergePolicy={domain.mergePolicy}
-              onCopy={() => props.onCopyPath(domain.path)}
               onOpen={() => props.onOpenDomain(domain.id)}
               opening={props.openingDomain === domain.id}
             />
@@ -38,7 +36,6 @@ export function ConfigReferencePanel(props: {
   description: string
   domains: ConfigDomainSummary[]
   openingDomain?: string
-  onCopyPath: (path: string) => void
   onOpenDomain: (domain: ConfigDomainSummary["id"]) => void
 }) {
   return (
@@ -53,7 +50,6 @@ export function ConfigReferencePanel(props: {
               status={domainStatus(domain)}
               ownedKeys={domain.ownedKeys}
               mergePolicy={domain.mergePolicy}
-              onCopy={() => props.onCopyPath(domain.path)}
               onOpen={() => props.onOpenDomain(domain.id)}
               opening={props.openingDomain === domain.id}
             />
