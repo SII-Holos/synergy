@@ -126,6 +126,7 @@ describe("workbench surface polarity", () => {
     expect(workbenchSurface).toContain('panel.cardinality === "multi" || !openPanelIds.has(panel.id)')
     expect(workbenchSurface).not.toContain('aria-label={isSide() ? "Close side workspace" : "Close BottomSpace"}')
     expect(workbenchSurfaceCss).toContain(".workbench-surface-tab:hover .workbench-surface-tab-close")
+    expect(workbenchSurfaceCss).toContain("position: absolute;")
     expect(workbenchSurfaceCss).toContain("pointer-events: none;")
     expect(workbenchSurfaceCss).toContain(".workbench-surface-add-wrap")
     expect(workbenchSurfaceCss).toContain("left: 0;")

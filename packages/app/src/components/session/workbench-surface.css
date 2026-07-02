@@ -58,6 +58,7 @@
 }
 
 .workbench-surface-tab {
+  position: relative;
   display: inline-flex;
   max-width: 220px;
   min-width: 0;
@@ -89,7 +90,7 @@
   flex: 1;
   align-items: center;
   gap: 7px;
-  padding: 0 3px 0 9px;
+  padding: 0 9px;
   color: inherit;
 }
 
@@ -101,6 +102,10 @@
 }
 
 .workbench-surface-tab-close {
+  position: absolute;
+  top: 50%;
+  right: 5px;
+  z-index: 1;
   display: inline-flex;
   width: 18px;
   height: 18px;
@@ -109,7 +114,7 @@
   justify-content: center;
   border-radius: 5px;
   color: var(--icon-weak);
-  margin-right: 5px;
+  margin-top: -9px;
   opacity: 0;
   pointer-events: none;
   transition:
