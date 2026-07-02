@@ -8,7 +8,7 @@ import { withScopeContext } from "../scope"
 import { Command } from "../../command/command"
 import { EOL } from "os"
 import { select } from "@clack/prompts"
-import { createSynergyClient, type SynergyClient } from "@ericsanchezok/synergy-sdk"
+import { createSynergyClient, type ControlProfileId, type SynergyClient } from "@ericsanchezok/synergy-sdk"
 import { Server } from "../../server/server"
 import { runMigrations } from "../../migration"
 import { Provider } from "../../provider/provider"
@@ -29,6 +29,29 @@ const TOOL: Record<string, [string, string]> = {
   read: ["Read", UI.Style.TEXT_HIGHLIGHT_BOLD],
   write: ["Write", UI.Style.TEXT_SUCCESS_BOLD],
   websearch: ["Search", UI.Style.TEXT_DIM_BOLD],
+}
+
+function isControlProfileId(value: string | undefined): value is ControlProfileId {
+  return value === "guarded" || value === "autonomous" || value === "full_access"
+}
+
+async function effectiveControlProfile(sdk: SynergyClient): Promise<ControlProfileId | undefined> {
+  return sdk.controlProfile
+    .effective()
+    .then((result) => {
+      const profile = result.data?.profileId
+      return isControlProfileId(profile) ? profile : undefined
+    })
+    .catch(() => undefined)
+}
+
+async function createSendSession(sdk: SynergyClient, title?: string) {
+  const controlProfile = await effectiveControlProfile(sdk)
+  return sdk.session.create({
+    ...(title ? { title } : {}),
+    workspace: { mode: "current" },
+    ...(controlProfile ? { controlProfile } : {}),
+  })
 }
 
 export const SendCommand = cmd({
@@ -309,7 +332,7 @@ export const SendCommand = cmd({
                 : args.title
               : undefined
 
-          const result = await sdk.session.create(title ? { title } : undefined)
+          const result = await createSendSession(sdk, title)
           return result.data?.id
         })()
 
@@ -352,7 +375,7 @@ export const SendCommand = cmd({
               : args.title
             : undefined
 
-        const result = await sdk.session.create(title ? { title } : {})
+        const result = await createSendSession(sdk, title)
         return result.data?.id
       })()
 

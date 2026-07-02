@@ -413,7 +413,7 @@ export namespace Session {
         scope: source.scope as Scope,
         workspace: source.workspace,
         title: input.title,
-        controlProfile: input.controlProfile,
+        controlProfile: input.controlProfile ?? (await resolveControlProfile(source.id)),
         forkedFrom: {
           sessionID: source.id,
           messageID: forkPoint,

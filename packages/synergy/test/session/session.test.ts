@@ -167,6 +167,23 @@ describe("session lifecycle events", () => {
     })
   })
 
+  test("fork inherits the source session's effective control profile", async () => {
+    await using tmp = await tmpdir({ git: true, config: { controlProfile: "full_access" } })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const source = await Session.create({})
+        const forked = await Session.fork({ sessionID: source.id })
+
+        expect(forked.controlProfile).toBe("full_access")
+        expect(await Session.resolveControlProfile(forked.id)).toBe("full_access")
+
+        await Session.remove(source.id)
+        await Session.remove(forked.id)
+      },
+    })
+  })
+
   test("resolveControlProfile sees updated parent profile", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({
