@@ -26,6 +26,7 @@ Use one visual source of truth for shared document editing.
 Make reciprocal actions visibly reciprocal.
 Reserve emphasis for workflow state and current selection.
 Let blueprints read as plans with status, activity, and next action, not as passive notes.
+Note and Blueprint detail headers should use flat toolbar controls with compact rectangular hit targets; keep workflow metadata as text rows, and use divider-row popovers instead of bordered option cards inside bordered shells.
 Keep dense surfaces quiet enough for repeated daily use.
 Use one neutral surface system: light mode reads as a near-white canvas with white or transparent rows, hairline borders, and very light hover/selected fills; dark mode reads inward by getting brighter than its shell.
 Treat that surface model as a hierarchy invariant, not a per-page decoration choice; if a page drifts blue-gray or slab-heavy, audit the token source first, then the component consumer.

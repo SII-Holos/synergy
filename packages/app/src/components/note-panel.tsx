@@ -294,18 +294,21 @@ function RunMenu(props: {
   const options = [
     {
       mode: "current" as const,
+      icon: "square-play",
       title: "Current session",
       description: props.hasCurrentSession ? "Run in the session you are viewing." : "Open a session first.",
       disabled: !props.hasCurrentSession,
     },
     {
       mode: "new" as const,
+      icon: "message-square",
       title: "New session",
       description: "Create a fresh session in this scope and start immediately.",
       disabled: false,
     },
     {
       mode: "worktree" as const,
+      icon: "git-branch",
       title: "New worktree session",
       description: "Create an isolated worktree session and start immediately.",
       disabled: false,
@@ -313,8 +316,8 @@ function RunMenu(props: {
   ]
 
   return (
-    <div class="note-run-menu absolute right-4 top-[3.75rem] z-40 w-[min(22rem,calc(100%-2rem))] p-3">
-      <div class="px-2 pb-2">
+    <div class="note-run-menu absolute right-4 top-[3.75rem] z-40 w-[min(22rem,calc(100%-2rem))]">
+      <div class="note-run-menu-header">
         <div class="flex items-start gap-2">
           <div class="min-w-0 flex-1">
             <h3 class="text-13-medium text-text-strong">Run Blueprint</h3>
@@ -322,26 +325,32 @@ function RunMenu(props: {
           </div>
           <button
             type="button"
-            class="flex size-6 shrink-0 items-center justify-center rounded-full text-icon-weak transition-colors hover:bg-surface-raised-base-hover hover:text-icon-base"
+            class="note-run-menu-close"
             onClick={props.onClose}
             title="Close"
+            aria-label="Close run menu"
           >
             <Icon name="x" size="small" class="size-3" />
           </button>
         </div>
       </div>
-      <div class="space-y-1.5">
+      <div class="note-run-option-list">
         <For each={options}>
           {(option) => (
             <button
               type="button"
-              class="w-full rounded-[0.95rem] border border-border-weak-base bg-surface-raised-base px-3 py-2.5 text-left transition-colors hover:bg-surface-raised-base-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-border-strong-base/35"
-              classList={{ "cursor-not-allowed opacity-55 hover:bg-surface-raised-base": option.disabled }}
+              class="note-run-option"
+              classList={{ "note-run-option--disabled": option.disabled }}
               disabled={option.disabled}
               onClick={() => props.onRun(option.mode)}
             >
-              <span class="block text-12-medium text-text-strong">{option.title}</span>
-              <span class="mt-0.5 block text-10-regular leading-4 text-text-weak">{option.description}</span>
+              <span class="note-run-option-icon">
+                <Icon name={option.icon} size="small" class="size-3.5" />
+              </span>
+              <span class="min-w-0 flex-1">
+                <span class="block text-12-medium text-text-strong">{option.title}</span>
+                <span class="mt-0.5 block text-10-regular leading-4 text-text-weak">{option.description}</span>
+              </span>
             </button>
           )}
         </For>
@@ -1367,18 +1376,19 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
       </Show>
 
       <Show when={noteLoaded() && baseNote()}>
-        <div class="shrink-0 border-b border-border-weaker-base bg-surface-raised-base px-4 py-3">
-          <div class="flex items-center gap-2">
+        <div class="note-detail-header">
+          <div class="note-detail-header-row">
             <button
               type="button"
-              class="flex size-8 items-center justify-center rounded-full text-icon-weak transition-colors hover:bg-surface-raised-base-hover hover:text-text-base focus:outline-none focus-visible:ring-2 focus-visible:ring-border-strong-base/35"
+              class="note-detail-icon-button"
               onClick={handleBack}
               title="Back to list"
+              aria-label="Back to list"
             >
               <Icon name={getSemanticIcon("navigation.back")} size="normal" />
             </button>
 
-            <div class="min-w-0 flex-1 px-2 py-1.5">
+            <div class="note-detail-title">
               <input
                 type="text"
                 class="w-full bg-transparent text-14-medium tracking-tight text-text-strong outline-none placeholder:text-text-weak/50"
@@ -1388,97 +1398,98 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
               />
             </div>
 
-            <Show when={isBlueprint()}>
+            <div class="note-detail-actions">
+              <Show when={isBlueprint()}>
+                <button
+                  type="button"
+                  class="note-detail-action note-detail-action--run"
+                  classList={{ "note-detail-action--running": runningBlueprint() }}
+                  onClick={() => setShowRunMenu((current) => !current)}
+                  disabled={runningBlueprint()}
+                  title="Run Blueprint"
+                >
+                  <Show when={!runningBlueprint()} fallback={<Spinner class="size-3.5" />}>
+                    <Icon name="zap" size="small" class="size-3" />
+                  </Show>
+                  <span>Run</span>
+                </button>
+                <span class="note-detail-action-divider" aria-hidden="true" />
+              </Show>
+
               <button
                 type="button"
-                class="inline-flex h-8 items-center gap-1.5 whitespace-nowrap rounded-full bg-surface-success-base/58 px-3 text-11-medium text-text-diff-add-base transition-colors hover:bg-surface-success-base/82 focus:outline-none focus-visible:ring-2 focus-visible:ring-border-success-base/35 disabled:cursor-not-allowed disabled:opacity-60"
-                onClick={() => setShowRunMenu((current) => !current)}
-                disabled={runningBlueprint()}
-                title="Run Blueprint"
+                class="note-detail-action"
+                classList={{ "note-detail-action--active": baseNote()!.pinned }}
+                onClick={togglePin}
+                title={baseNote()!.pinned ? "Unpin" : "Pin"}
               >
-                <Show when={!runningBlueprint()} fallback={<Spinner class="size-3.5" />}>
-                  <Icon name="zap" size="small" class="size-3" />
-                </Show>
-                <span>Run</span>
+                <Icon name="pin" size="small" />
+                <span>{baseNote()!.pinned ? "Pinned" : "Pin"}</span>
               </button>
-            </Show>
 
-            <button
-              type="button"
-              class="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-11-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-border-strong-base/35"
-              classList={{
-                "bg-surface-inset-base text-text-base": baseNote()!.pinned,
-                "bg-surface-raised-stronger-non-alpha text-text-weak hover:bg-surface-raised-base-hover hover:text-text-base":
-                  !baseNote()!.pinned,
-              }}
-              onClick={togglePin}
-            >
-              <Icon name="pin" size="small" />
-              <span>{baseNote()!.pinned ? "Pinned" : "Pin"}</span>
-            </button>
+              <button
+                type="button"
+                class="note-detail-action"
+                classList={{ "note-detail-action--global": baseNote()!.global }}
+                onClick={toggleGlobal}
+                title={baseNote()!.global ? "Make local" : "Make global"}
+              >
+                <Icon name={getSemanticIcon("browser.main")} size="small" />
+                <span>{baseNote()!.global ? "Global" : "Local"}</span>
+              </button>
 
-            <button
-              type="button"
-              class="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-11-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-border-strong-base/35"
-              classList={{
-                "bg-surface-diff-add-base/12 text-text-diff-add-base": baseNote()!.global,
-                "bg-surface-raised-stronger-non-alpha text-text-weak hover:bg-surface-raised-base-hover hover:text-text-base":
-                  !baseNote()!.global,
-              }}
-              onClick={toggleGlobal}
-            >
-              <Icon name={getSemanticIcon("browser.main")} size="small" />
-              <span>{baseNote()!.global ? "Global" : "Local"}</span>
-            </button>
+              <span class="note-detail-action-divider" aria-hidden="true" />
 
-            <button
-              type="button"
-              class="flex size-8 items-center justify-center rounded-full text-icon-weak transition-colors hover:bg-surface-raised-base-hover hover:text-text-base focus:outline-none focus-visible:ring-2 focus-visible:ring-border-strong-base/35"
-              onClick={downloadNote}
-              title="Download as Markdown"
-            >
-              <Icon name="download" size="small" />
-            </button>
-            <button
-              type="button"
-              class="inline-flex h-8 items-center gap-1.5 whitespace-nowrap rounded-full px-3 text-11-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-border-strong-base/35"
-              classList={{
-                "bg-surface-inset-base text-text-base": isBlueprint(),
-                "bg-surface-raised-stronger-non-alpha text-text-weak hover:bg-surface-raised-base-hover hover:text-text-base":
-                  !isBlueprint(),
-                "opacity-60 cursor-not-allowed": convertingBlueprint(),
-              }}
-              onClick={() => {
-                if (isBlueprint()) void convertToNote()
-                else void convertToBlueprint()
-              }}
-              title={isBlueprint() ? "Convert to Note" : "Convert to Blueprint"}
-              disabled={convertingBlueprint()}
-            >
-              <Show when={!convertingBlueprint()} fallback={<Spinner class="size-3.5" />}>
-                <Icon
-                  name={isBlueprint() ? getSemanticIcon("notes.main") : getSemanticIcon("orchestration.blueprint")}
-                  size="small"
-                />
-              </Show>
-              <span>{isBlueprint() ? "To Note" : "To Blueprint"}</span>
-            </button>
+              <button
+                type="button"
+                class="note-detail-icon-button"
+                onClick={downloadNote}
+                title="Download as Markdown"
+                aria-label="Download as Markdown"
+              >
+                <Icon name="download" size="small" />
+              </button>
 
-            <button
-              type="button"
-              class="flex size-8 items-center justify-center rounded-full text-icon-weak transition-colors hover:bg-surface-raised-base-hover hover:text-text-diff-delete-base focus:outline-none focus-visible:ring-2 focus-visible:ring-border-strong-base/35"
-              onClick={deleteNote}
-              title="Delete"
-            >
-              <Icon name={getSemanticIcon("action.remove")} size="small" />
-            </button>
+              <button
+                type="button"
+                class="note-detail-action"
+                classList={{
+                  "note-detail-action--active": isBlueprint(),
+                  "note-detail-action--disabled": convertingBlueprint(),
+                }}
+                onClick={() => {
+                  if (isBlueprint()) void convertToNote()
+                  else void convertToBlueprint()
+                }}
+                title={isBlueprint() ? "Convert to Note" : "Convert to Blueprint"}
+                disabled={convertingBlueprint()}
+              >
+                <Show when={!convertingBlueprint()} fallback={<Spinner class="size-3.5" />}>
+                  <Icon
+                    name={isBlueprint() ? getSemanticIcon("notes.main") : getSemanticIcon("orchestration.blueprint")}
+                    size="small"
+                  />
+                </Show>
+                <span>{isBlueprint() ? "To Note" : "To Blueprint"}</span>
+              </button>
+
+              <button
+                type="button"
+                class="note-detail-icon-button note-detail-icon-button--danger"
+                onClick={deleteNote}
+                title="Delete"
+                aria-label="Delete"
+              >
+                <Icon name={getSemanticIcon("action.remove")} size="small" />
+              </button>
+            </div>
           </div>
         </div>
 
         <Show when={isBlueprint() && blueprintState()}>
           <div class="shrink-0 border-b border-border-weaker-base bg-surface-raised-base px-4 py-2.5">
             <div class="note-blueprint-meta flex flex-wrap items-center gap-2">
-              <span class={`note-card-status note-card-status--${blueprintState()!.tone}`}>
+              <span class={`note-blueprint-state note-blueprint-state--${blueprintState()!.tone}`}>
                 <Icon name={blueprintState()!.icon} size="small" class="size-3" />
                 {blueprintState()!.label}
               </span>
