@@ -12,7 +12,7 @@ a:active,
 }
 
 .app-shell--desktop-native-chrome {
-  --desktop-native-titlebar-height: 36px;
+  --desktop-native-titlebar-height: 18px;
   --desktop-native-titlebar-traffic-width: 90px;
 }
 

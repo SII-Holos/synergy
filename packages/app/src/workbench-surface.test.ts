@@ -102,7 +102,7 @@ describe("workbench surface polarity", () => {
     expect(nativeTitlebarCss).toContain("position: relative;")
     expect(nativeTitlebarCss).toContain("flex: 0 0 var(--desktop-native-titlebar-height);")
     expect(nativeTitlebarCss).toContain("-webkit-app-region: drag;")
-    expect(css).toContain("--desktop-native-titlebar-height: 36px;")
+    expect(css).toContain("--desktop-native-titlebar-height: 18px;")
     expect(css).toContain("--desktop-native-titlebar-traffic-width: 90px;")
     expect(nativeTitlebarCss).toContain(".desktop-native-titlebar__traffic-space")
     expect(nativeTitlebarCss).toContain(".desktop-native-titlebar__drag-region")
