@@ -19,6 +19,7 @@ declare global {
       startup?: {
         appReady(): Promise<boolean>
       }
+      theme?: Platform["desktopTheme"]
       window?: Platform["desktopWindow"]
     }
   }
@@ -52,6 +53,7 @@ const platform: Platform = {
   desktopUpdate: window.synergyDesktop?.update,
   desktopServer: window.synergyDesktop?.server,
   desktopWindow: window.synergyDesktop?.window,
+  desktopTheme: window.synergyDesktop?.theme,
   clipboard: window.synergyDesktop?.clipboard,
   openDirectoryPickerDialog: window.synergyDesktop?.openDirectoryPickerDialog,
   openLink(url: string) {

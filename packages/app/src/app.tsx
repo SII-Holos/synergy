@@ -21,6 +21,7 @@ import { ResourceOpenProvider } from "@/context/resource-open"
 import { NotificationProvider } from "@/context/notification"
 import { CommandProvider } from "@/context/command"
 import { ProductUpdateProvider } from "@/context/product-update"
+import { DesktopThemeSync } from "@/components/desktop-theme-sync"
 
 import { AuthProvider } from "@/context/auth"
 import { HolosProvider } from "@/context/holos"
@@ -105,6 +106,7 @@ export function AppBaseProviders(props: ParentProps) {
     <MetaProvider>
       <Font />
       <ThemeProvider>
+        <DesktopThemeSync />
         <ErrorBoundary fallback={(error) => <ErrorPage error={error} />}>
           <DialogProvider>
             <MarkedProvider>

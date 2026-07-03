@@ -25,7 +25,8 @@ export {
 } from "./color"
 
 export { resolveThemeVariant, resolveTheme, themeToCss } from "./resolve"
-export { ThemeProvider, useTheme, type ColorScheme } from "./context"
+export { ThemeProvider, useTheme } from "./context"
+export type { ColorScheme } from "./color-scheme"
 export {
   registerPluginTheme,
   listPluginThemes,

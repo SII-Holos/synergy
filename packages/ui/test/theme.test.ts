@@ -1,6 +1,7 @@
 import { describe, test, expect } from "bun:test"
 import { resolveThemeVariant, resolveTheme, themeToCss } from "../src/theme/resolve"
 import { synergyTheme } from "../src/theme/default-themes"
+import { getSavedColorScheme, getSystemMode, isColorScheme, resolveColorSchemeMode } from "../src/theme/color-scheme"
 import type { ResolvedTheme } from "../src/theme/types"
 
 // ── Helpers ──────────────────────────────────────────────────
@@ -90,6 +91,40 @@ const CONSUMER_REQUIRED_TOKENS = [
   "background-strong",
   "background-stronger",
 ]
+
+describe("color scheme helpers", () => {
+  test("parses saved color scheme values", () => {
+    const storage = { getItem: () => "dark" }
+    expect(getSavedColorScheme(storage)).toBe("dark")
+    expect(isColorScheme("light")).toBe(true)
+    expect(isColorScheme("dark")).toBe(true)
+    expect(isColorScheme("system")).toBe(true)
+  })
+
+  test("returns null for invalid saved color scheme values", () => {
+    expect(getSavedColorScheme({ getItem: () => "blue" })).toBeNull()
+    expect(getSavedColorScheme({ getItem: () => null })).toBeNull()
+    expect(
+      getSavedColorScheme({
+        getItem: () => {
+          throw new Error("blocked")
+        },
+      }),
+    ).toBeNull()
+    expect(isColorScheme("blue")).toBe(false)
+  })
+
+  test("resolves system mode from matchMedia", () => {
+    expect(getSystemMode(() => ({ matches: true }) as MediaQueryList)).toBe("dark")
+    expect(getSystemMode(() => ({ matches: false }) as MediaQueryList)).toBe("light")
+    expect(resolveColorSchemeMode("light")).toBe("light")
+    expect(resolveColorSchemeMode("dark")).toBe("dark")
+  })
+
+  test("defaults missing saved color scheme to system", () => {
+    expect(getSavedColorScheme({ getItem: () => null }) ?? "system").toBe("system")
+  })
+})
 
 describe("resolveTheme (synergy)", () => {
   // ── Contract: only 2 themes exist ───────────────────────
