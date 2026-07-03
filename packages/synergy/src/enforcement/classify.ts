@@ -1,5 +1,6 @@
 import path from "path"
 import { Filesystem } from "../util/filesystem"
+import { isPathContained } from "../util/path-contain"
 /**
  * Paths that are ALWAYS protected regardless of permission profile/mode.
  * Touching these triggers an ask even in full_access mode. This is a hard
@@ -196,7 +197,7 @@ export namespace PathClassifier {
     // Check if the candidate falls within the original checkout.
     // This catches paths that are outside the active worktree but inside the
     // original main checkout, and enriches the reason accordingly.
-    if (!path.relative(oc, candidate).startsWith("..")) {
+    if (isPathContained(oc, candidate)) {
       return outside("path is in the original checkout, outside the active workspace")
     }
 
@@ -204,11 +205,7 @@ export namespace PathClassifier {
     // from original checkout).
     const workspaceParent = path.dirname(workspace)
     const candidateParent = path.dirname(candidate)
-    if (
-      workspaceParent === candidateParent &&
-      workspace !== candidate &&
-      !path.relative(oc, workspaceParent).startsWith("..")
-    ) {
+    if (workspaceParent === candidateParent && workspace !== candidate && isPathContained(oc, workspaceParent)) {
       return outside("path is in a sibling worktree, outside the active workspace")
     }
 

@@ -10,12 +10,13 @@ import { ScopeContext } from "../scope/context"
 import { Global } from "../global"
 import { errors } from "./error"
 import { RuntimeReload } from "../runtime/reload"
+import { isPathContained } from "../util/path-contain"
 
 function resolveScope(skill: Skill.Info): Skill.Scope {
   if (skill.scope) return skill.scope
   if (skill.builtin) return "builtin"
   const projectDir = ScopeContext.current.directory
-  if (skill.location.startsWith(projectDir + path.sep)) return "project"
+  if (isPathContained(projectDir, skill.location)) return "project"
   return "global"
 }
 
