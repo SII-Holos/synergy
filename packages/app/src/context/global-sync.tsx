@@ -904,7 +904,7 @@ function createGlobalSync() {
         }
         const result = Binary.search(parts, part.id, (p) => p.id)
         if (result.found) {
-          setStore("part", part.messageID, result.index, part)
+          setStore("part", part.messageID, result.index, reconcile(part))
           break
         }
         setStore(
