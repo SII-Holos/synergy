@@ -961,6 +961,52 @@ async function repairPendingReplyFlags(progress: (current: number, total: number
   log.info("pendingReply repair complete", { checked: tasks.length, cleared })
 }
 
+async function recomputePendingReplyFlags(progress: (current: number, total: number) => void) {
+  const scopeIDs = await Storage.scan(["sessions"]).catch(() => [])
+  const tasks: Array<{ scopeID: string; sessionID: string; info: Info }> = []
+
+  for (const scopeID of scopeIDs) {
+    const scope = Identifier.asScopeID(scopeID)
+    const sessionIDs = await Storage.scan(StoragePath.sessionsRoot(scope)).catch(() => [])
+    const sessions = await Storage.readMany<Info>(
+      sessionIDs.map((sessionID) => StoragePath.sessionInfo(scope, Identifier.asSessionID(sessionID))),
+    )
+
+    for (const info of sessions) {
+      if (!info || info.time?.archived) continue
+      tasks.push({ scopeID, sessionID: info.id, info })
+    }
+  }
+
+  if (tasks.length === 0) return
+
+  let done = 0
+  let updated = 0
+  for (const { scopeID, sessionID, info } of tasks) {
+    const scope = Identifier.asScopeID(scopeID)
+    const sid = Identifier.asSessionID(sessionID)
+    try {
+      const messages = await MessageV2.filterCompacted(MessageV2.stream({ scopeID, sessionID }))
+      const pendingReply = SessionProgress.pendingReply(messages)
+      const nextPendingReply = pendingReply || undefined
+      if (info.pendingReply !== nextPendingReply) {
+        await Storage.write(StoragePath.sessionInfo(scope, sid), {
+          ...info,
+          pendingReply: nextPendingReply,
+        })
+        updated++
+      }
+    } catch (error) {
+      log.warn("failed to recompute pendingReply flag", { scopeID, sessionID, error: String(error) })
+    }
+
+    done++
+    progress(done, tasks.length)
+  }
+
+  log.info("pendingReply recompute complete", { checked: tasks.length, updated })
+}
+
 async function migrateActiveRevertState(progress: (current: number, total: number) => void) {
   const scopeIDs = await Storage.scan(["sessions"]).catch(() => [])
   const tasks: Array<{ scopeID: string; sessionID: string; info: any }> = []
@@ -1530,6 +1576,13 @@ export const migrations: Migration[] = [
     description: "Normalize legacy route-directory worktree sessions into session workspace metadata",
     async up(progress) {
       await migrateSessionWorktreeWorkspace(progress)
+    },
+  },
+  {
+    id: "20260703-session-parent-pending-reply",
+    description: "Recompute session pendingReply using assistant parent links",
+    async up(progress) {
+      await recomputePendingReplyFlags(progress)
     },
   },
 ]

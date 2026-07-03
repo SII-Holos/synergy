@@ -30,12 +30,13 @@ const booleanQuery = z.preprocess((value) => {
 }, z.boolean())
 
 async function submitInput(input: InvokeInput): Promise<SessionInbox.InputResult> {
-  const messageID = input.messageID ?? Identifier.ascending("message")
-  const next = { ...input, messageID }
   if (SessionManager.isRunning(input.sessionID)) {
-    const item = await SessionInbox.enqueueUser(next)
+    const { messageID: _queuedMessageID, ...queuedInput } = input
+    const item = await SessionInbox.enqueueUser(queuedInput)
     return { status: "queued", item }
   }
+  const messageID = input.messageID ?? Identifier.ascending("message")
+  const next = { ...input, messageID }
   SessionInvoke.invoke(next).catch((error) => {
     log.error("failed to execute async input", { sessionID: input.sessionID, error })
   })

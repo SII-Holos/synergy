@@ -9,9 +9,21 @@ export namespace SessionProgress {
     return !!assistant.finish && !["tool-calls", "unknown"].includes(assistant.finish)
   }
 
+  export function findTerminalReply(messages: MessageV2.WithParts[], userID: string) {
+    for (let index = messages.length - 1; index >= 0; index--) {
+      const msg = messages[index]
+      if (msg.info.role !== "assistant") continue
+      const assistant = msg.info as MessageV2.Assistant
+      if (assistant.parentID === userID && isTerminalAssistant(assistant)) return msg
+    }
+  }
+
+  export function hasTerminalReply(input: { messages: MessageV2.WithParts[]; userID: string }) {
+    return !!findTerminalReply(input.messages, input.userID)
+  }
+
   export function pendingReply(messages: MessageV2.WithParts[]) {
     let lastReplyRequiredUser: MessageV2.User | undefined
-    let lastTerminalAssistant: MessageV2.Assistant | undefined
 
     for (let index = messages.length - 1; index >= 0; index--) {
       const msg = messages[index]
@@ -21,15 +33,9 @@ export namespace SessionProgress {
           lastReplyRequiredUser = user
         }
       }
-      if (!lastTerminalAssistant && msg.info.role === "assistant") {
-        const assistant = msg.info as MessageV2.Assistant
-        if (isTerminalAssistant(assistant)) {
-          lastTerminalAssistant = assistant
-        }
-      }
-      if (lastReplyRequiredUser && lastTerminalAssistant) break
+      if (lastReplyRequiredUser) break
     }
 
-    return !!lastReplyRequiredUser && (!lastTerminalAssistant || lastTerminalAssistant.id < lastReplyRequiredUser.id)
+    return !!lastReplyRequiredUser && !hasTerminalReply({ messages, userID: lastReplyRequiredUser.id })
   }
 }

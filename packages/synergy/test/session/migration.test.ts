@@ -154,6 +154,46 @@ describe("session migrations", () => {
     })
   })
 
+  test("recomputes pendingReply from assistant parent links and skips archived sessions", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const swallowed = await Session.create({})
+        const swallowedFirstUser = await addUserMessage(swallowed.id)
+        await addTerminalAssistantMessage(swallowed.id, swallowedFirstUser.id)
+        await addUserMessage(swallowed.id)
+        await addTerminalAssistantMessage(swallowed.id, swallowedFirstUser.id)
+
+        const completed = await Session.create({})
+        const completedUser = await addUserMessage(completed.id)
+        await addTerminalAssistantMessage(completed.id, completedUser.id)
+        await Session.update(completed.id, (draft) => {
+          draft.pendingReply = true
+        })
+
+        const archived = await Session.create({})
+        await addUserMessage(archived.id)
+        await Session.update(archived.id, (draft) => {
+          draft.pendingReply = undefined
+          draft.time.archived = Date.now()
+        })
+
+        const migration = migrations.find((entry) => entry.id === "20260703-session-parent-pending-reply")
+        expect(migration).toBeDefined()
+        await migration!.up(() => {})
+
+        const swallowedAfter = await SessionManager.getSession(swallowed.id)
+        const completedAfter = await SessionManager.getSession(completed.id)
+        const archivedAfter = await SessionManager.getSession(archived.id)
+
+        expect(swallowedAfter?.pendingReply).toBe(true)
+        expect(completedAfter?.pendingReply).toBeUndefined()
+        expect(archivedAfter?.pendingReply).toBeUndefined()
+      },
+    })
+  })
+
   test("migrates legacy file parts and artifact-only tool metadata to attachments", async () => {
     await using tmp = await tmpdir({ git: true })
     const tmpScope = await tmp.scope()
