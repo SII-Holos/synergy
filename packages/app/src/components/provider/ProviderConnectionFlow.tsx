@@ -355,7 +355,10 @@ export function ProviderConnectionFlow(props: {
                     })
                     if (result.error) {
                       setStore("state", "error")
-                      setStore("error", "Authorization did not complete.")
+                      setStore(
+                        "error",
+                        "Authorization timed out. Open the authorization page and enter the confirmation code, then try again.",
+                      )
                       return
                     }
                     await complete()

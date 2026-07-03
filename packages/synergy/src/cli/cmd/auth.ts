@@ -379,7 +379,17 @@ async function handleBuiltinAuth(provider: string): Promise<boolean> {
       prompts.outro("Done")
       return true
     }
-    return runOauthResult(provider, await GitHubProvider.authorizeDeviceCode())
+    if (method === "oauth") {
+      try {
+        return runOauthResult(provider, await GitHubProvider.authorizeDeviceCode())
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err)
+        prompts.log.error(`GitHub device login failed: ${message}`)
+        prompts.outro("Done")
+        return true
+      }
+    }
+    return false
   }
 
   if (provider === MiniMaxProvider.PROVIDER_ID) {

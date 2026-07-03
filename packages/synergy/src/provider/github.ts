@@ -152,11 +152,12 @@ export namespace GitHubProvider {
           })
           const result = await safeJson(poll)
           if (typeof result.access_token === "string") {
-            await fetchAccount(result.access_token, fetchFn).catch(() => undefined)
+            const account = await fetchAccount(result.access_token, fetchFn).catch(() => undefined)
             return {
-              type: "success",
+              type: "success" as const,
               provider: PROVIDER_ID,
               key: result.access_token,
+              ...(account ? { metadata: { account } } : {}),
             }
           }
           if (result.error === "authorization_pending") continue

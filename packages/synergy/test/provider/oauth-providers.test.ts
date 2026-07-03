@@ -229,11 +229,10 @@ test("github provider device login resolves managed token and reports account st
   if (authorize.method !== "auto") throw new Error("expected auto device flow")
   expect(authorize.instructions).toBe("GH-CODE")
   const login = await authorize.callback()
-  expect(login).toEqual({
-    type: "success",
-    provider: GitHubProvider.PROVIDER_ID,
-    key: "github-managed-token",
-  })
+  expect(login.type).toBe("success")
+  if (login.type !== "success" || !("key" in login)) throw new Error("expected api success")
+  expect(login.key).toBe("github-managed-token")
+  expect((login as any).metadata).toEqual({ account: { id: 1, login: "octocat", url: "https://github.com/octocat" } })
 
   await Auth.set(GitHubProvider.PROVIDER_ID, { type: "api", key: "github-managed-token" })
   const resolved = await GitHubProvider.resolveToken()
