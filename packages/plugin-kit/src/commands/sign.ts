@@ -50,7 +50,7 @@ async function generateKeyPair(): Promise<KeyFile> {
   }
 }
 
-async function importPrivateKey(hex: string): Promise<CryptoKey> {
+async function importPrivateKey(hex: string) {
   return subtle.importKey("pkcs8", Buffer.from(hex, "hex"), "Ed25519" as any, false, ["sign"])
 }
 
