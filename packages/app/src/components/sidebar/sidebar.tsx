@@ -14,7 +14,7 @@ import { BRAND_ASSETS, brandAssetPath, holosLogoPath } from "@/utils/brand-asset
 import { base64Encode } from "@ericsanchezok/synergy-util/encode"
 import { getScopeLabel } from "@/utils/scope"
 import { useHolos } from "@/context/holos"
-import { DialogSelectDirectory } from "@/components/dialog/dialog-select-directory"
+import { useProjectDirectoryPicker } from "@/components/dialog/project-directory-picker"
 import { DialogScopeEdit } from "@/components/dialog/dialog-scope-edit"
 import { useConfirm } from "@/components/dialog/confirm-dialog"
 import { archiveProjectConfirm } from "@/components/dialog/confirm-copy"
@@ -56,6 +56,7 @@ export function Sidebar(props: SidebarProps) {
   const navigate = useNavigate()
   const location = useLocation()
   const params = useParams()
+  const { pickProjectDirectories } = useProjectDirectoryPicker()
 
   const isExpanded = () => layout.sidebar.opened()
   const isDark = () => theme.mode() === "dark"
@@ -236,21 +237,12 @@ export function Sidebar(props: SidebarProps) {
     navigate(`/${base64Encode(scope.worktree)}/session`)
   }
 
-  const handleAddProject = () => {
-    dialog.show(() => (
-      <DialogSelectDirectory
-        title="Add project"
-        multiple={true}
-        showInitGit={true}
-        onSelect={async (result) => {
-          if (!result) return
-          const dirs = Array.isArray(result.directory) ? result.directory : [result.directory]
-          for (const dir of dirs) {
-            layout.scopes.open(dir)
-          }
-        }}
-      />
-    ))
+  const handleAddProject = async () => {
+    const result = await pickProjectDirectories({ title: "Add project", multiple: true })
+    if (!result) return
+    for (const dir of result.directoryPaths) {
+      layout.scopes.open(dir)
+    }
   }
 
   const handleSessionClick = (scope: LocalScope, entry: NavEntry) => {

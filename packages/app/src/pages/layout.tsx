@@ -13,7 +13,7 @@ import { useNotification } from "@/context/notification"
 
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { useTheme, type ColorScheme } from "@ericsanchezok/synergy-ui/theme"
-import { DialogSelectServer, DialogSelectDirectory, useConfirm } from "@/components/dialog"
+import { DialogSelectServer, useConfirm } from "@/components/dialog"
 import { archiveSessionConfirm } from "@/components/dialog/confirm-copy"
 import { SettingsDialog } from "@/components/settings"
 import { useCommand, type CommandOption } from "@/context/command"
@@ -25,6 +25,7 @@ import { ConnectionBanner } from "@/components/connection-banner"
 import { DesktopWindowChrome } from "@/components/desktop-window-chrome"
 import { DesktopNativeTitlebar } from "@/components/desktop-native-titlebar"
 import { desktopWindowNativeChromeActive } from "@/components/desktop-window-chrome-model"
+import { useProjectDirectoryPicker } from "@/components/dialog/project-directory-picker"
 
 export default function Layout(props: ParentProps) {
   const [store, setStore] = createStore({
@@ -43,6 +44,7 @@ export default function Layout(props: ParentProps) {
   const command = useCommand()
   const theme = useTheme()
   const [searchOpen, setSearchOpen] = createSignal(false)
+  const { pickProjectDirectories } = useProjectDirectoryPicker()
   // Wire toast config from serialized config, watching the current directory's config.
   createEffect(() => {
     const dir = params.dir ? base64Decode(params.dir) : undefined
@@ -410,30 +412,12 @@ export default function Layout(props: ParentProps) {
   }
 
   async function chooseProject() {
-    async function resolve(result: { directory: string | string[]; initGit: boolean } | null) {
-      if (!result) return
-
-      if (result.initGit) {
-        const dirs = Array.isArray(result.directory) ? result.directory : [result.directory]
-        for (const dir of dirs) {
-          await globalSDK.client.global.git.init({ directory: dir }).catch(() => {})
-        }
-      }
-
-      if (Array.isArray(result.directory)) {
-        for (const directory of result.directory) {
-          openProject(directory, false)
-        }
-        navigateToProject(result.directory[0])
-      } else {
-        openProject(result.directory)
-      }
+    const result = await pickProjectDirectories({ title: "Open project", multiple: true })
+    if (!result) return
+    for (const directory of result.directoryPaths) {
+      openProject(directory, false)
     }
-
-    dialog.show(
-      () => <DialogSelectDirectory multiple={true} showInitGit={true} onSelect={resolve} />,
-      () => resolve(null),
-    )
+    navigateToProject(result.directoryPaths[0])
   }
 
   // Track last viewed session

@@ -2,6 +2,7 @@ import {
   app,
   BrowserWindow,
   clipboard,
+  dialog,
   ipcMain,
   Menu,
   nativeImage,
@@ -31,6 +32,7 @@ import {
   parseClipboardWriteText,
   parseExternalUrl,
 } from "./ipc-contract.js"
+import { selectDirectoryWithNativeDialog } from "./directory-picker.js"
 import { installAppMenu } from "./menu.js"
 import { DesktopServerManager } from "./server-manager.js"
 import { enforceProductionLoading, installSessionSecurity, installWindowSecurity } from "./security.js"
@@ -329,6 +331,15 @@ function registerIpcHandlers() {
     const text = parseClipboardWriteText(input)
     clipboard.writeText(text)
     return true
+  })
+  ipcMain.handle("dialog:select-directory", async (event, input: unknown) => {
+    return selectDirectoryWithNativeDialog({
+      mainWindow,
+      sender: event.sender,
+      serverStatus: serverManager?.status(),
+      showOpenDialog: dialog.showOpenDialog.bind(dialog),
+      rawRequest: input,
+    })
   })
   ipcMain.handle("desktop.startup.appReady", async (event) => {
     if (!mainWindow || event.sender !== mainWindow.webContents) return false
