@@ -435,6 +435,46 @@ describe("session.compaction.buildAnchor", () => {
     expect(anchor).not.toContain("hidden ignored text")
     expect(anchor).not.toContain("previous real request")
   })
+
+  test("falls back to carried anchor metadata after the source user message is compacted away", () => {
+    const messages = [
+      userMsg(
+        "continue-1",
+        [
+          { text: "Continue if you have next steps", synthetic: true },
+          { text: "<anchor>original carried request</anchor>", synthetic: true },
+        ],
+        { compactionAnchor: { text: "original carried request", sourceMessageID: "original" } },
+      ),
+      userMsg(
+        "continue-2",
+        [
+          { text: "Continue if you have next steps", synthetic: true },
+          { text: "<anchor>original carried request</anchor>", synthetic: true },
+        ],
+        { compactionAnchor: { text: "original carried request", sourceMessageID: "original" } },
+      ),
+    ]
+
+    const anchor = SessionCompaction.buildAnchor(messages, "continue-2")
+
+    expect(anchor).toContain("original carried request")
+    expect(anchor).not.toContain("Continue if you have next steps")
+  })
+
+  test("prefers a new real user request over older carried anchor metadata", () => {
+    const messages = [
+      userMsg("continue", [{ text: "Continue if you have next steps", synthetic: true }], {
+        compactionAnchor: { text: "old carried request", sourceMessageID: "old" },
+      }),
+      userMsg("active", [{ text: "new real request" }]),
+    ]
+
+    const anchor = SessionCompaction.buildAnchor(messages, "active")
+
+    expect(anchor).toContain("new real request")
+    expect(anchor).not.toContain("old carried request")
+  })
 })
 
 // ---------------------------------------------------------------------------
