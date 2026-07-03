@@ -34,6 +34,7 @@ function buildEntry(overrides: Record<string, any> = {}): Record<string, any> {
     verified: false,
     official: false,
     keywords: ["test", "v2"],
+    compatibility: { synergy: ">=1.0.0" },
     versions: [
       {
         version: "1.0.0",
@@ -130,6 +131,7 @@ async function writeOfficialRegistryCache(registryUrl = PluginMarketplaceRegistr
         verified: true,
         official: true,
         keywords: ["synergy-plugin", "official"],
+        compatibility: { synergy: ">=2.4.3" },
         versions: [
           {
             version: "1.0.0",
@@ -236,11 +238,11 @@ describe("plugin registry routes v2", () => {
     })
   })
 
-  test("publish rejects removed compatibility field", async () => {
+  test("publish preserves compatibility metadata", async () => {
     await using tmp = await tmpdir({ git: true })
     cleanRegistry()
 
-    const entry = buildEntry({ compatibility: { synergy: ">=1.0.0" } })
+    const entry = buildEntry({ compatibility: { synergy: ">=2.4.3" } })
 
     await ScopeContext.provide({
       scope: await tmp.scope(),
@@ -251,7 +253,9 @@ describe("plugin registry routes v2", () => {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(entry),
         })
-        expect(res.status).toBe(400)
+        expect(res.status).toBe(200)
+        const body = await res.json()
+        expect(body.compatibility).toEqual({ synergy: ">=2.4.3" })
       },
     })
   })
@@ -438,6 +442,48 @@ describe("plugin registry routes v2", () => {
       const aggregate = await aggregateRes.json()
       expect(aggregate.total).toBe(2)
       expect(new Set(aggregate.plugins.map((plugin: any) => plugin.source))).toEqual(new Set(["official", "local"]))
+    } finally {
+      await Config.domainUpdate("plugins", previousDomain, { mode: "replace-domain" })
+      await Config.reload("global")
+    }
+  })
+
+  test("official detail and versions accept compatibility metadata", async () => {
+    const registryUrl = "https://registry.test/synergy/plugins/registry.json"
+    const previousDomain = await Config.domainGet("plugins")
+    cleanRegistry()
+    await writeOfficialRegistryCache(registryUrl)
+
+    try {
+      await Config.domainUpdate(
+        "plugins",
+        {
+          ...previousDomain,
+          pluginMarketplace: {
+            ...PLUGIN_MARKETPLACE_DEFAULTS,
+            enabled: true,
+            registryUrl,
+          },
+        },
+        { mode: "replace-domain" },
+      )
+      await Config.reload("global")
+
+      await ScopeContext.provide({
+        scope: Scope.home(),
+        fn: async () => {
+          const app = Server.App()
+          const detailRes = await app.request("/api/registry/official-test-plugin?source=official")
+          expect(detailRes.status).toBe(200)
+          const detail = await detailRes.json()
+          expect(detail.compatibility).toEqual({ synergy: ">=2.4.3" })
+
+          const versionsRes = await app.request("/api/registry/official-test-plugin/versions?source=official")
+          expect(versionsRes.status).toBe(200)
+          const versions = await versionsRes.json()
+          expect(versions[0].version).toBe("1.0.0")
+        },
+      })
     } finally {
       await Config.domainUpdate("plugins", previousDomain, { mode: "replace-domain" })
       await Config.reload("global")
