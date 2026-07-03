@@ -4653,6 +4653,10 @@ export type RegistryPluginSummary = {
   source: "official" | "local"
 }
 
+export type RegistryPluginCompatibility = {
+  synergy: string
+}
+
 export type RegistryPluginSignature = {
   algorithm: "ed25519"
   signer: string
@@ -4707,6 +4711,7 @@ export type RegistryPluginEntry = {
   verified: boolean
   official: boolean
   keywords: Array<string>
+  compatibility?: RegistryPluginCompatibility
   versions: Array<RegistryPluginVersion>
   createdAt: number
   updatedAt: number
@@ -4740,6 +4745,7 @@ export type RegistryPublishInput = {
   verified: boolean
   official: boolean
   keywords: Array<string>
+  compatibility?: RegistryPluginCompatibility
   versions: Array<RegistryPluginVersion>
   risk: "low" | "medium" | "high"
   trustTier: "declarative" | "trusted-import" | "sandbox"
