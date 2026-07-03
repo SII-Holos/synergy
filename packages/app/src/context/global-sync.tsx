@@ -480,46 +480,36 @@ function createGlobalSync() {
         if (grouped[sessionID]) continue
         setStore(storeKey, sessionID, [])
       }
-      for (const [sessionID, entries] of Object.entries(grouped)) {
-        setStore(
-          storeKey,
-          sessionID,
-          reconcile(
-            entries
-              .filter((e) => !!e?.id)
-              .slice()
-              .sort((a, b) => a.id!.localeCompare(b.id!)),
-            { key: "id" },
-          ),
-        )
+
+      for (const [sessionID, group] of Object.entries(grouped)) {
+        group.sort((a, b) => a.id!.localeCompare(b.id!))
+        setStore(storeKey, sessionID, reconcile(group, { key: "id" }))
       }
     })
   }
 
-  const inboxRefreshTimers = new Map<string, ReturnType<typeof setTimeout>>()
-  const cortexRefreshTimers = new Map<string, ReturnType<typeof setTimeout>>()
-  const terminalCortexStatuses = new Set(["completed", "error", "cancelled"])
-
+  let inboxRefreshTimers = new Map<string, ReturnType<typeof setTimeout>>()
   function refreshInbox(scopeKey: string, sessionID: string) {
-    const key = `${scopeKey}:${sessionID}`
-    const existing = inboxRefreshTimers.get(key)
+    const existing = inboxRefreshTimers.get(sessionID)
     if (existing) clearTimeout(existing)
     inboxRefreshTimers.set(
-      key,
+      sessionID,
       setTimeout(() => {
-        inboxRefreshTimers.delete(key)
-        const state = children[scopeKey]
-        if (!state) return
-        const [, setStore] = state
+        inboxRefreshTimers.delete(sessionID)
         const sdk = createScopedClient(scopeKey)
         sdk.session
           .inbox({ sessionID })
-          .then((result) => setStore("inbox", sessionID, reconcile(result.data ?? [], { key: "id" })))
+          .then((x) => {
+            const items = x.data ?? []
+            const [_, setStore] = ensureScopeState(scopeKey)
+            setStore("inbox", sessionID, reconcile(items, { key: "id" }))
+          })
           .catch(() => {})
-      }, 120),
+      }, 500),
     )
   }
 
+  let cortexRefreshTimers = new Map<string, ReturnType<typeof setTimeout>>()
   function refreshCortex(scopeKey: string) {
     const existing = cortexRefreshTimers.get(scopeKey)
     if (existing) clearTimeout(existing)
@@ -527,612 +517,585 @@ function createGlobalSync() {
       scopeKey,
       setTimeout(() => {
         cortexRefreshTimers.delete(scopeKey)
-        const state = children[scopeKey]
-        if (!state) return
-        const [, setStore] = state
         const sdk = createScopedClient(scopeKey)
         sdk.cortex
-          .list({})
-          .then((result) => setStore("cortex", reconcile(result.data ?? [])))
-          .catch(() => {})
-      }, 250),
-    )
-  }
-
-  function reconcileCortexFromSession(setStore: SetStoreFunction<State>, info: Session) {
-    const cortex = info.cortex
-    if (!cortex || !terminalCortexStatuses.has(cortex.status)) return
-    setStore(
-      "cortex",
-      produce((draft) => {
-        const idx = draft.findIndex((task) => task.sessionID === info.id)
-        if (idx === -1) return
-        draft[idx] = {
-          ...draft[idx],
-          status: cortex.status,
-          completedAt: cortex.completedAt ?? draft[idx].completedAt,
-          result: cortex.result ?? draft[idx].result,
-          error: cortex.error ?? draft[idx].error,
-        }
-      }),
-    )
-  }
-
-  function refreshVolatileStateAfterMessage(scopeKey: string, store: State, sessionID: string) {
-    if (store.inbox[sessionID]?.length) refreshInbox(scopeKey, sessionID)
-    if (
-      store.cortex.some(
-        (task) => task.sessionID === sessionID && (task.status === "running" || task.status === "queued"),
-      )
-    ) {
-      refreshCortex(scopeKey)
-    }
-  }
-
-  async function refreshRetainedVolatileState(scopeKey: string, store: State, setStore: SetStoreFunction<State>) {
-    const sessionIDs = Array.from(
-      new Set([...Object.keys(store.inbox), ...Object.keys(store.todo), ...Object.keys(store.dag)]),
-    )
-    const sdk = createScopedClient(scopeKey)
-    await runInstanceRequests(sessionIDs, async (sessionID) => {
-      await Promise.all([
-        sdk.session
-          .inbox({ sessionID })
-          .then((result) => setStore("inbox", sessionID, reconcile(result.data ?? [], { key: "id" })))
-          .catch(() => {}),
-        sdk.session
-          .todo({ sessionID })
-          .then((result) => setStore("todo", sessionID, reconcile(result.data ?? [], { key: "id" })))
-          .catch(() => {}),
-        sdk.session
-          .dag({ sessionID, ...scopeRequest(scopeKey) })
-          .then((result) => setStore("dag", sessionID, reconcile(result.data ?? [], { key: "id" })))
-          .catch(() => {}),
-      ])
-    })
-  }
-
-  async function resyncInstance(scopeKey: string) {
-    if (!scopeKey || !children[scopeKey]) return
-    const [store, setStore] = children[scopeKey]
-    if (store.status === "loading") return
-    const isHome = isHomeScope(scopeKey)
-    const sdk = createScopedClient(scopeKey)
-
-    await Promise.all([
-      loadSessions(scopeKey, sdk),
-      sdk.session.status().then((x) => setStore("session_status", x.data!)),
-      sdk.cortex.list({}).then((x) => setStore("cortex", x.data ?? [])),
-      sdk.agenda.list().then((x) =>
-        setStore(
-          "agenda",
-          reconcile(
-            (x.data ?? []).slice().sort((a, b) => a.id.localeCompare(b.id)),
-            { key: "id" },
-          ),
-        ),
-      ),
-      sdk.permission
-        .list()
-        .then((x) => syncBySession(setStore, "permission", Object.keys(store.permission), x.data ?? [])),
-      sdk.question.list().then((x) => syncBySession(setStore, "question", Object.keys(store.question), x.data ?? [])),
-      refreshRetainedVolatileState(scopeKey, store, setStore),
-      ...(!isHome
-        ? [
-            sdk.mcp.status().then((x) => setStore("mcp", x.data!)),
-            sdk.lsp.status().then((x) => setStore("lsp", x.data!)),
-          ]
-        : []),
-    ])
-  }
-
-  async function bootstrapInstance(scopeKey: string) {
-    if (!scopeKey) return
-    const isHome = isHomeScope(scopeKey)
-    const [store, setStore] = ensureScopeState(scopeKey)
-    const sdk = createScopedClient(scopeKey)
-
-    const blockingRequests: Record<string, () => Promise<void>> = {
-      provider: () =>
-        sdk.provider.list().then((x) => {
-          const data = x.data!
-          setStore("provider", {
-            ...data,
-            all: data.all.map((provider) => ({
-              ...provider,
-              models: Object.fromEntries(
-                Object.entries(provider.models).filter(([, info]) => info.status !== "deprecated"),
-              ),
-            })),
-          })
-        }),
-      agent: () => sdk.app.agents().then((x) => setStore("agent", x.data ?? [])),
-      config: () => sdk.config.get().then((x) => setStore("config", x.data!)),
-    }
-    blockingRequests.scopeID = isHome
-      ? () => Promise.resolve(setStore("scopeID", HOME_SCOPE_KEY))
-      : () => sdk.scope.current().then((x) => setStore("scopeID", x.data!.id))
-    await Promise.all(Object.values(blockingRequests).map((p) => retry(p).catch((e) => setGlobalStore("error", e))))
-      .then(async () => {
-        if (store.status !== "complete") setStore("status", "partial")
-        const requests: Promise<unknown>[] = [
-          sdk.path.get(scopeRequest(scopeKey)).then((x) => setStore("path", x.data!)),
-          sdk.command.list().then((x) => setStore("command", x.data ?? [])),
-          sdk.session.status().then((x) => setStore("session_status", x.data!)),
-          loadSessions(scopeKey, sdk),
-          sdk.mcp.status().then((x) => setStore("mcp", x.data!)),
-          sdk.cortex.list({}).then((x) => setStore("cortex", x.data ?? [])),
-          sdk.agenda.list().then((x) =>
+          .list()
+          .then((x) => {
+            const [_, setStore] = ensureScopeState(scopeKey)
             setStore(
-              "agenda",
+              "cortex",
               reconcile(
                 (x.data ?? []).slice().sort((a, b) => a.id.localeCompare(b.id)),
                 { key: "id" },
               ),
-            ),
-          ),
-          sdk.permission
-            .list()
-            .then((x) => syncBySession(setStore, "permission", Object.keys(store.permission), x.data ?? [])),
-          sdk.question
-            .list()
-            .then((x) => syncBySession(setStore, "question", Object.keys(store.question), x.data ?? [])),
-        ]
-        if (!isHome) {
-          requests.push(sdk.lsp.status().then((x) => setStore("lsp", x.data!)))
-          requests.push(sdk.vcs.get().then((x) => setStore("vcs", x.data)))
-        }
-        await Promise.all(requests)
-        setStore("status", "complete")
-      })
-      .catch((e) => setGlobalStore("error", e))
+            )
+          })
+          .catch(() => {})
+      }, 500),
+    )
   }
 
-  const unsub = globalSDK.event.listen((e) => {
-    const scopeKey = e.name
-    const event = e.details
+  function refreshVolatileStateAfterMessage(scopeKey: string, store: State, sessionID: string) {
+    if (!store.session.find((s) => s.id === sessionID)) return
+    const active =
+      store.cortex.filter(
+        (task) => task.sessionID === sessionID && (task.status === "running" || task.status === "queued"),
+      ).length > 0
+    if (active) refreshCortex(scopeKey)
+    refreshInbox(scopeKey, sessionID)
+  }
 
-    if (event?.type === "global.disposed") {
-      bootstrap()
-      return
-    }
-    if (event?.type === "scope.updated") {
-      const result = Binary.search(globalStore.scope, event.properties.id, (s) => s.id)
-      if (event.properties.time?.archived) {
-        if (result.found) {
-          setGlobalStore(
-            "scope",
-            produce((draft) => {
-              draft.splice(result.index, 1)
-            }),
-          )
-        }
-        return
-      }
-      if (result.found) {
-        setGlobalStore("scope", result.index, reconcile(event.properties))
-        return
-      }
-      setGlobalStore(
-        "scope",
-        produce((draft) => {
-          draft.splice(result.index, 0, event.properties)
-        }),
-      )
-      return
-    }
-    if (event?.type === "scope.removed") {
-      const id = event.properties.id
-      const result = Binary.search(globalStore.scope, id, (s) => s.id)
-      if (result.found) {
-        setGlobalStore(
-          "scope",
-          produce((draft) => {
-            draft.splice(result.index, 1)
-          }),
-        )
-      }
-      return
-    }
-    if (event?.type === "note.created" || event?.type === "note.updated" || event?.type === "note.deleted") {
-      bumpNoteVersion()
-      if (event.type === "note.deleted") {
-        const props = event.properties as { id: string; scopeID: string }
-        setNoteUpdate({ id: props.id, version: -1, type: "deleted" })
-      } else {
-        const props = event.properties as { note: { id: string; version: number } }
-        setNoteUpdate({
-          id: props.note.id,
-          version: props.note.version,
-          type: event.type as "created" | "updated",
+  async function loadMessages(
+    scopeKey: string,
+    sessionID: string,
+    setStore: SetStoreFunction<State>,
+    store: State,
+    sdk?: ReturnType<typeof createSynergyClient>,
+  ) {
+    const client = sdk ?? createScopedClient(scopeKey)
+    return client.session
+      .messages({ sessionID, limit: 200 })
+      .then((result) => {
+        const items = (result.data ?? []).filter((x) => !!x?.info?.id)
+        const all = items
+          .map((x) => x.info)
+          .filter((m) => !!m?.id)
+          .slice()
+          .sort((a, b) => a.id.localeCompare(b.id))
+        const keep = all.length > 500 ? all.slice(-500) : all
+        batch(() => {
+          setStore("message", sessionID, reconcile(keep, { key: "id" }))
+          const keepIds = new Set(keep.map((m) => m.id))
+          for (const item of items) {
+            if (!keepIds.has(item.info.id)) continue
+            setStore(
+              "part",
+              item.info.id,
+              reconcile(
+                item.parts
+                  .filter((p) => !!p?.id)
+                  .slice()
+                  .sort((a, b) => a.id.localeCompare(b.id)),
+                { key: "id" },
+              ),
+            )
+          }
         })
-      }
-    }
+      })
+      .catch((err) => {
+        console.error("Failed to load messages", err)
+      })
+  }
 
-    if (event?.type === "agenda.item.created" || event?.type === "agenda.item.updated") {
-      const item = event.properties.item as AgendaItem
-      const result = Binary.search(globalStore.agenda, item.id, (a) => a.id)
-      if (result.found) {
-        setGlobalStore("agenda", result.index, reconcile(item))
-      } else {
-        setGlobalStore(
-          "agenda",
-          produce((draft) => {
-            draft.splice(result.index, 0, item)
+  async function resyncInstance(directory: string) {
+    const [store, setStore] = ensureScopeState(directory)
+    const sdk = createScopedClient(directory)
+
+    return retry(() =>
+      sdk.scope.sync().then(async (sync) => {
+        const d = sync.data!
+        batch(() => {
+          setStore("scopeID", d.scopeID!)
+          setStore("status", "partial")
+          setStore("path", {
+            state: d.paths?.state ?? "",
+            config: d.paths?.config ?? "",
+            worktree: d.paths?.worktree ?? "",
+            directory: d.paths?.directory ?? "",
+            home: d.paths?.home ?? "",
+          })
+          setStore("agent", reconcile(d.agents ?? [], { key: "id" }))
+          setStore("command", reconcile(d.commands ?? [], { key: "id" }))
+          setStore("session", reconcile(d.sessions ?? [], { key: "id" }))
+          setStore("sessionTotal", d.sessionTotal ?? 0)
+
+          const statusMap: Record<string, SessionStatus> = {}
+          for (const status of d.sessionStatuses ?? []) {
+            if (!status.sessionID) continue
+            statusMap[status.sessionID] = status
+          }
+          setStore("session_status", statusMap)
+
+          const diffMap: Record<string, FileDiff[]> = {}
+          for (const diff of d.sessionDiffs ?? []) {
+            if (!diff.sessionID) continue
+            diffMap[diff.sessionID] = diff.diffs ?? []
+          }
+          setStore("session_diff", diffMap)
+
+          syncBySession(setStore, "permission", Object.keys(store.permission), d.permissions ?? [])
+          syncBySession(setStore, "question", Object.keys(store.question), d.questions ?? [])
+        })
+
+        const loadPromises: Promise<unknown>[] = [
+          loadSessions(directory, sdk),
+          loadAgenda(directory),
+          refreshConfig(directory),
+          loadGlobalProviders(),
+        ]
+
+        const sessionIDs = new Set<string>()
+        for (const s of d.sessions ?? []) {
+          if (!s?.id || !s.time || s.time.archived) continue
+          sessionIDs.add(s.id)
+        }
+
+        loadPromises.push(
+          runInstanceRequests([...sessionIDs], (sessionID) => {
+            const [store, setStore] = ensureScopeState(directory)
+            const client = createScopedClient(directory)
+            return loadMessages(directory, sessionID, setStore, store, client)
           }),
         )
-      }
-    }
-    if (event?.type === "agenda.item.deleted") {
-      const result = Binary.search(globalStore.agenda, event.properties.id, (a) => a.id)
-      if (result.found) {
-        setGlobalStore(
-          "agenda",
-          produce((draft) => {
-            draft.splice(result.index, 1)
-          }),
-        )
-      }
-    }
 
-    if (event?.type === "config.updated") {
-      void refreshAllConfigs()
-      return
-    }
+        await Promise.all(loadPromises)
 
-    if (event?.type === "runtime.reloaded") {
-      const props = event.properties as { executed?: string[]; changedFields?: string[] } | undefined
-      if (props?.executed?.length) {
-        void refreshTargeted(props.executed)
-      } else {
-        void refreshAllConfigs()
-      }
-      return
-    }
-    if (e.name === "global") return
+        sdk.mcp
+          .status()
+          .then((x) => setStore("mcp", x.data!))
+          .catch(() => {})
+        sdk.lsp
+          .status()
+          .then((x) => setStore("lsp", x.data!))
+          .catch(() => {})
+        sdk.cortex
+          .list()
+          .then((x) => {
+            setStore(
+              "cortex",
+              reconcile(
+                (x.data ?? []).slice().sort((a, b) => a.id.localeCompare(b.id)),
+                { key: "id" },
+              ),
+            )
+          })
+          .catch(() => {})
+        sdk.vcs
+          .status()
+          .then((x) => {
+            if (x.data) setStore("vcs", x.data)
+          })
+          .catch(() => {})
+        setStore("status", "complete")
+      }),
+    )
+  }
 
+  async function loadMessagesForNewSession(scopeKey: string, sessionID: string) {
     const [store, setStore] = ensureScopeState(scopeKey)
-    switch (event.type) {
-      case "scope.runtime.disposed": {
-        scheduleBootstrap(scopeKey)
-        break
-      }
-      case "session.updated": {
-        const info = event.properties.info as Session
-        reconcileCortexFromSession(setStore, info)
-        const result = Binary.search(store.session, info.id, (s) => s.id)
-        if (info.time.archived) {
-          if (result.found) {
+    const client = createScopedClient(scopeKey)
+    return loadMessages(scopeKey, sessionID, setStore, store, client)
+  }
+
+  async function bootstrapInstance(scopeKey: string) {
+    return resyncInstance(scopeKey).then(() => {
+      const [store, setStore] = ensureScopeState(scopeKey)
+      const sdk = createScopedClient(scopeKey)
+      const unsub = sdk.subscribe((event) => {
+        switch (event.type) {
+          case "session.created": {
+            const session = event.properties.session
+            const result = Binary.search(store.session, session.id, (s) => s.id)
+            if (result.found) {
+              setStore("session", result.index, reconcile(session))
+            } else {
+              setStore(
+                "session",
+                produce((draft) => {
+                  draft.splice(result.index, 0, session)
+                }),
+              )
+            }
+            setStore("sessionTotal", (x) => x + 1)
+            loadMessagesForNewSession(scopeKey, session.id)
+            break
+          }
+          case "session.updated": {
+            const session = event.properties.session
+            const result = Binary.search(store.session, session.id, (s) => s.id)
+            if (result.found) {
+              setStore("session", result.index, reconcile(session))
+            } else {
+              setStore(
+                "session",
+                produce((draft) => {
+                  draft.splice(result.index, 0, session)
+                }),
+              )
+            }
+            break
+          }
+          case "session.removed": {
+            const result = Binary.search(store.session, event.properties.sessionID, (s) => s.id)
+            if (!result.found) break
             setStore(
               "session",
               produce((draft) => {
                 draft.splice(result.index, 1)
               }),
             )
-            setStore("sessionTotal", Math.max(0, store.sessionTotal - 1))
+            break
           }
-          break
-        }
-        if (result.found) {
-          setStore("session", result.index, reconcile(info))
-          break
-        }
-        setStore(
-          "session",
-          produce((draft) => {
-            draft.splice(result.index, 0, info)
-          }),
-        )
-        setStore("sessionTotal", store.sessionTotal + 1)
-        break
-      }
-      case "session.diff":
-        setStore("session_diff", event.properties.sessionID, reconcile(event.properties.diff, { key: "file" }))
-        break
-      case "todo.updated":
-        setStore("todo", event.properties.sessionID, reconcile(event.properties.todos, { key: "id" }))
-        break
-      case "dag.updated" as string:
-        setStore("dag", (event as any).properties.sessionID, reconcile((event as any).properties.nodes, { key: "id" }))
-        break
-      case "session.status": {
-        // Handles busy, retry, idle, and recovering statuses
-        setStore("session_status", event.properties.sessionID, reconcile(event.properties.status))
-        if (event.properties.status.type === "idle") {
-          if (store.inbox[event.properties.sessionID]?.length) refreshInbox(scopeKey, event.properties.sessionID)
-          if (
-            store.cortex.some(
-              (task) =>
-                task.sessionID === event.properties.sessionID &&
-                (task.status === "running" || task.status === "queued"),
-            )
-          ) {
-            refreshCortex(scopeKey)
-          }
-        }
-        break
-      }
-      case "session.inbox.updated": {
-        setStore("inbox", event.properties.sessionID, reconcile(event.properties.items, { key: "id" }))
-        break
-      }
-      case "message.updated": {
-        const sessionID = event.properties.info.sessionID
-        const messages = store.message[event.properties.info.sessionID]
-        if (!messages) {
-          setStore("message", event.properties.info.sessionID, [event.properties.info])
-          refreshVolatileStateAfterMessage(scopeKey, store, sessionID)
-          break
-        }
-        const result = Binary.search(messages, event.properties.info.id, (m) => m.id)
-        if (result.found) {
-          setStore("message", event.properties.info.sessionID, result.index, reconcile(event.properties.info))
-          refreshVolatileStateAfterMessage(scopeKey, store, sessionID)
-          break
-        }
-        setStore(
-          "message",
-          event.properties.info.sessionID,
-          produce((draft) => {
-            draft.splice(result.index, 0, event.properties.info)
-          }),
-        )
-        refreshVolatileStateAfterMessage(scopeKey, store, sessionID)
-        break
-      }
-      case "message.removed": {
-        const messages = store.message[event.properties.sessionID]
-        if (!messages) break
-        const result = Binary.search(messages, event.properties.messageID, (m) => m.id)
-        if (result.found) {
-          setStore(
-            "message",
-            event.properties.sessionID,
-            produce((draft) => {
-              draft.splice(result.index, 1)
-            }),
-          )
-        }
-        break
-      }
-      case "message.part.updated": {
-        const part = event.properties.part
-        const parts = store.part[part.messageID]
-        if (!parts) {
-          setStore("part", part.messageID, [part])
-          break
-        }
-        const result = Binary.search(parts, part.id, (p) => p.id)
-        if (result.found) {
-          setStore("part", part.messageID, result.index, reconcile(part))
-          break
-        }
-        setStore(
-          "part",
-          part.messageID,
-          produce((draft) => {
-            draft.splice(result.index, 0, part)
-          }),
-        )
-        break
-      }
-      case "message.part.removed": {
-        const parts = store.part[event.properties.messageID]
-        if (!parts) break
-        const result = Binary.search(parts, event.properties.partID, (p) => p.id)
-        if (result.found) {
-          setStore(
-            "part",
-            event.properties.messageID,
-            produce((draft) => {
-              draft.splice(result.index, 1)
-            }),
-          )
-        }
-        break
-      }
-      case "vcs.branch.updated": {
-        setStore("vcs", { branch: event.properties.branch })
-        break
-      }
-      case "permission.asked": {
-        const sessionID = event.properties.sessionID
-        const permissions = store.permission[sessionID]
-        if (!permissions) {
-          setStore("permission", sessionID, [event.properties])
-          break
-        }
-
-        const result = Binary.search(permissions, event.properties.id, (p) => p.id)
-        if (result.found) {
-          setStore("permission", sessionID, result.index, reconcile(event.properties))
-          break
-        }
-
-        setStore(
-          "permission",
-          sessionID,
-          produce((draft) => {
-            draft.splice(result.index, 0, event.properties)
-          }),
-        )
-        break
-      }
-      case "permission.replied": {
-        const permissions = store.permission[event.properties.sessionID]
-        if (!permissions) break
-        const result = Binary.search(permissions, event.properties.requestID, (p) => p.id)
-        if (!result.found) break
-        setStore(
-          "permission",
-          event.properties.sessionID,
-          produce((draft) => {
-            draft.splice(result.index, 1)
-          }),
-        )
-        break
-      }
-      case "question.asked": {
-        const request = event.properties
-        const requests = store.question[request.sessionID]
-        if (!requests) {
-          setStore("question", request.sessionID, [request])
-          break
-        }
-        const result = Binary.search(requests, request.id, (r) => r.id)
-        if (result.found) {
-          setStore("question", request.sessionID, result.index, reconcile(request))
-          break
-        }
-        setStore(
-          "question",
-          request.sessionID,
-          produce((draft) => {
-            draft.splice(result.index, 0, request)
-          }),
-        )
-        break
-      }
-      case "question.replied":
-      case "question.rejected":
-      case "question.timed_out": {
-        const requests = store.question[event.properties.sessionID]
-        if (!requests) break
-        const result = Binary.search(requests, event.properties.requestID, (r) => r.id)
-        if (!result.found) break
-        setStore(
-          "question",
-          event.properties.sessionID,
-          produce((draft) => {
-            draft.splice(result.index, 1)
-          }),
-        )
-        break
-      }
-      case "lsp.updated": {
-        const sdk = createScopedClient(scopeKey)
-        sdk.lsp.status().then((x) => setStore("lsp", x.data ?? []))
-        break
-      }
-      case "cortex.task.created": {
-        const task = event.properties.task
-        setStore(
-          "cortex",
-          produce((draft) => {
-            const idx = draft.findIndex((t) => t.id === task.id)
-            if (idx === -1) {
-              draft.push(task)
-            } else {
-              draft[idx] = task
-            }
-          }),
-        )
-        break
-      }
-      case "cortex.task.completed": {
-        const task = event.properties.task
-        setStore(
-          "cortex",
-          produce((draft) => {
-            const idx = draft.findIndex((t) => t.id === task.id)
-            if (idx !== -1) {
-              draft[idx] = task
-            }
-          }),
-        )
-        break
-      }
-      case "cortex.tasks.updated": {
-        setStore("cortex", reconcile(event.properties.tasks))
-        break
-      }
-      case "agenda.item.created":
-      case "agenda.item.updated": {
-        const item = event.properties.item
-        const result = Binary.search(store.agenda, item.id, (a) => a.id)
-        if (result.found) {
-          setStore("agenda", result.index, reconcile(item))
-          break
-        }
-        setStore(
-          "agenda",
-          produce((draft) => {
-            draft.splice(result.index, 0, item)
-          }),
-        )
-        break
-      }
-      case "agenda.item.deleted": {
-        const result = Binary.search(store.agenda, event.properties.id, (a) => a.id)
-        if (result.found) {
-          setStore(
-            "agenda",
-            produce((draft) => {
-              draft.splice(result.index, 1)
-            }),
-          )
-        }
-        break
-      }
-      case "session.compacted": {
-        const sessionID = event.properties.sessionID as string
-        const messages = store.message[sessionID]
-        if (!messages) break
-        const limit = Math.max(200, Math.min(messages.length, 500))
-        const sdk = createScopedClient(scopeKey)
-        retry(() => sdk.session.messages({ sessionID, limit }))
-          .then((result) => {
-            const items = (result.data ?? []).filter((x) => !!x?.info?.id)
-            const all = items
-              .map((x) => x.info)
-              .filter((m) => !!m?.id)
-              .slice()
-              .sort((a, b) => a.id.localeCompare(b.id))
-            const byID = new Set(all.map((m) => m.id))
-            const current = store.message[sessionID] ?? messages
-            for (const message of current) {
-              if (!byID.has(message.id)) all.push(message)
-            }
-            all.sort((a, b) => a.id.localeCompare(b.id))
-            const keep = all.length > 500 ? all.slice(-500) : all
-            const keepIds = new Set(keep.map((m) => m.id))
+          case "session.compacted": {
+            const sessionID = event.properties.sessionID as string
+            const messages = store.message[sessionID]
+            if (!messages) break
             batch(() => {
               setStore(
                 produce((draft) => {
-                  for (const msg of current) {
-                    if (!keepIds.has(msg.id)) delete draft.part[msg.id]
+                  for (const msg of messages) {
+                    delete draft.part[msg.id]
                   }
+                  delete draft.message[sessionID]
+                  delete draft.session_diff[sessionID]
+                  delete draft.inbox[sessionID]
                 }),
               )
-              setStore("message", sessionID, reconcile(keep, { key: "id" }))
-              for (const item of items) {
-                if (!keepIds.has(item.info.id)) continue
+            })
+            const sdk = createScopedClient(scopeKey)
+            retry(() => sdk.session.messages({ sessionID, limit: 200 }))
+              .then((result) => {
+                const items = (result.data ?? []).filter((x) => !!x?.info?.id)
+                const all = items
+                  .map((x) => x.info)
+                  .filter((m) => !!m?.id)
+                  .slice()
+                  .sort((a, b) => a.id.localeCompare(b.id))
+                const keep = all.length > 500 ? all.slice(-500) : all
+                batch(() => {
+                  setStore("message", sessionID, reconcile(keep, { key: "id" }))
+                  const keepIds = new Set(keep.map((m) => m.id))
+                  for (const item of items) {
+                    if (!keepIds.has(item.info.id)) continue
+                    setStore(
+                      "part",
+                      item.info.id,
+                      reconcile(
+                        item.parts
+                          .filter((p) => !!p?.id)
+                          .slice()
+                          .sort((a, b) => a.id.localeCompare(b.id)),
+                        { key: "id" },
+                      ),
+                    )
+                  }
+                })
+              })
+              .catch(() => {})
+            break
+          }
+          case "todo.updated": {
+            if (!event.properties.sessionID || !event.properties.todos) break
+            setStore("todo", event.properties.sessionID, reconcile(event.properties.todos, { key: "id" }))
+            break
+          }
+          case "dag.updated": {
+            if (!event.properties.sessionID || !event.properties.dag) break
+            setStore("dag", event.properties.sessionID, event.properties.dag)
+            break
+          }
+          case "todo.created":
+          case "todo.updated.event": {
+            const todo = event.properties.todo
+            const todos = store.todo[todo.sessionID]
+            if (!todos) {
+              setStore("todo", todo.sessionID, [todo])
+              break
+            }
+            const result = Binary.search(todos, todo.id, (t) => t.id)
+            if (result.found) {
+              setStore("todo", todo.sessionID, result.index, reconcile(todo))
+              break
+            }
+            setStore(
+              "todo",
+              todo.sessionID,
+              produce((draft) => {
+                draft.splice(result.index, 0, todo)
+              }),
+            )
+            break
+          }
+          case "todo.deleted": {
+            const todos = store.todo[event.properties.sessionID]
+            if (!todos) break
+            const result = Binary.search(todos, event.properties.todoID, (t) => t.id)
+            if (!result.found) break
+            setStore(
+              "todo",
+              event.properties.sessionID,
+              produce((draft) => {
+                draft.splice(result.index, 1)
+              }),
+            )
+            break
+          }
+          case "session.diff.updated": {
+            const diffs = event.properties.diffs
+            if (!diffs) break
+            setStore("session_diff", event.properties.sessionID, reconcile(diffs, { key: "path" }))
+            break
+          }
+          case "session.inbox.updated": {
+            setStore("inbox", event.properties.sessionID, reconcile(event.properties.items, { key: "id" }))
+            break
+          }
+          case "message.updated": {
+            const sessionID = event.properties.info.sessionID
+            const messages = store.message[event.properties.info.sessionID]
+            if (!messages) {
+              setStore("message", event.properties.info.sessionID, [event.properties.info])
+              refreshVolatileStateAfterMessage(scopeKey, store, sessionID)
+              break
+            }
+            const result = Binary.search(messages, event.properties.info.id, (m) => m.id)
+            if (result.found) {
+              setStore("message", event.properties.info.sessionID, result.index, reconcile(event.properties.info))
+              refreshVolatileStateAfterMessage(scopeKey, store, sessionID)
+              break
+            }
+            setStore(
+              "message",
+              event.properties.info.sessionID,
+              produce((draft) => {
+                draft.splice(result.index, 0, event.properties.info)
+              }),
+            )
+            refreshVolatileStateAfterMessage(scopeKey, store, sessionID)
+            break
+          }
+          case "message.removed": {
+            const messages = store.message[event.properties.sessionID]
+            if (!messages) break
+            const result = Binary.search(messages, event.properties.messageID, (m) => m.id)
+            if (result.found) {
+              setStore(
+                "message",
+                event.properties.sessionID,
+                produce((draft) => {
+                  draft.splice(result.index, 1)
+                }),
+              )
+            }
+            break
+          }
+          case "message.part.updated": {
+            const part = event.properties.part
+            const parts = store.part[part.messageID]
+            if (!parts) {
+              setStore("part", part.messageID, [part])
+            } else {
+              const result = Binary.search(parts, part.id, (p) => p.id)
+              if (result.found) {
+                setStore("part", part.messageID, result.index, reconcile(part))
+              } else {
                 setStore(
                   "part",
-                  item.info.id,
-                  reconcile(
-                    item.parts
-                      .filter((p) => !!p?.id)
-                      .slice()
-                      .sort((a, b) => a.id.localeCompare(b.id)),
-                    { key: "id" },
-                  ),
+                  part.messageID,
+                  produce((draft) => {
+                    draft.splice(result.index, 0, part)
+                  }),
                 )
               }
-            })
-          })
-          .catch(() => {})
-        break
-      }
-    }
-  })
-  onCleanup(() => {
-    unsub()
-    for (const timer of inboxRefreshTimers.values()) clearTimeout(timer)
-    for (const timer of cortexRefreshTimers.values()) clearTimeout(timer)
-    inboxRefreshTimers.clear()
-    cortexRefreshTimers.clear()
-  })
+            }
+
+            // Optimistic workspace update for worktree tools — the status bar reads
+            // session.workspace from the store and should reflect the new workspace
+            // immediately when the tool result appears, without waiting for the
+            // session.updated event. This races with the canonical session.updated
+            // handler; in practice the events carry identical data so the race is benign.
+            if (part.type === "tool" && part.state.status === "completed") {
+              if (part.tool === "worktree_enter" && part.state.metadata?.action === "entered") {
+                const ws = part.state.metadata?.workspace as Record<string, unknown> | undefined
+                if (ws) {
+                  const idx = Binary.search(store.session, part.sessionID, (s) => s.id)
+                  if (idx.found) setStore("session", idx.index, "workspace", ws)
+                }
+              } else if (part.tool === "worktree_leave" && part.state.metadata?.action === "left") {
+                const restored = part.state.metadata?.restored as { type?: string; path?: string } | undefined
+                if (restored) {
+                  const idx = Binary.search(store.session, part.sessionID, (s) => s.id)
+                  if (idx.found) {
+                    setStore("session", idx.index, "workspace", {
+                      type: restored.type ?? "main",
+                      path: restored.path,
+                      scopeID: (store.session[idx.index] as { scope?: { id?: string } })?.scope?.id ?? "",
+                    })
+                  }
+                }
+              }
+            }
+            break
+          }
+          case "message.part.removed": {
+            const parts = store.part[event.properties.messageID]
+            if (!parts) break
+            const result = Binary.search(parts, event.properties.partID, (p) => p.id)
+            if (result.found) {
+              setStore(
+                "part",
+                event.properties.messageID,
+                produce((draft) => {
+                  draft.splice(result.index, 1)
+                }),
+              )
+            }
+            break
+          }
+          case "vcs.branch.updated": {
+            setStore("vcs", { branch: event.properties.branch })
+            break
+          }
+          case "permission.asked": {
+            const sessionID = event.properties.sessionID
+            const permissions = store.permission[sessionID]
+            if (!permissions) {
+              setStore("permission", sessionID, [event.properties])
+              break
+            }
+
+            const result = Binary.search(permissions, event.properties.id, (p) => p.id)
+            if (result.found) {
+              setStore("permission", sessionID, result.index, reconcile(event.properties))
+              break
+            }
+
+            setStore(
+              "permission",
+              sessionID,
+              produce((draft) => {
+                draft.splice(result.index, 0, event.properties)
+              }),
+            )
+            break
+          }
+          case "permission.replied": {
+            const permissions = store.permission[event.properties.sessionID]
+            if (!permissions) break
+            const result = Binary.search(permissions, event.properties.requestID, (p) => p.id)
+            if (!result.found) break
+            setStore(
+              "permission",
+              event.properties.sessionID,
+              produce((draft) => {
+                draft.splice(result.index, 1)
+              }),
+            )
+            break
+          }
+          case "question.asked": {
+            const request = event.properties
+            const requests = store.question[request.sessionID]
+            if (!requests) {
+              setStore("question", request.sessionID, [request])
+              break
+            }
+            const result = Binary.search(requests, request.id, (r) => r.id)
+            if (result.found) {
+              setStore("question", request.sessionID, result.index, reconcile(request))
+              break
+            }
+            setStore(
+              "question",
+              request.sessionID,
+              produce((draft) => {
+                draft.splice(result.index, 0, request)
+              }),
+            )
+            break
+          }
+          case "question.replied":
+          case "question.rejected":
+          case "question.timed_out": {
+            const requests = store.question[event.properties.sessionID]
+            if (!requests) break
+            const result = Binary.search(requests, event.properties.requestID, (r) => r.id)
+            if (!result.found) break
+            setStore(
+              "question",
+              event.properties.sessionID,
+              produce((draft) => {
+                draft.splice(result.index, 1)
+              }),
+            )
+            break
+          }
+          case "lsp.updated": {
+            const sdk = createScopedClient(scopeKey)
+            sdk.lsp.status().then((x) => setStore("lsp", x.data ?? []))
+            break
+          }
+          case "cortex.task.created": {
+            const task = event.properties.task
+            setStore(
+              "cortex",
+              produce((draft) => {
+                const idx = draft.findIndex((t) => t.id === task.id)
+                if (idx === -1) {
+                  draft.push(task)
+                } else {
+                  draft[idx] = task
+                }
+              }),
+            )
+            break
+          }
+          case "cortex.task.completed": {
+            const task = event.properties.task
+            setStore(
+              "cortex",
+              produce((draft) => {
+                const idx = draft.findIndex((t) => t.id === task.id)
+                if (idx !== -1) {
+                  draft[idx] = task
+                }
+              }),
+            )
+            break
+          }
+          case "cortex.tasks.updated": {
+            setStore("cortex", reconcile(event.properties.tasks))
+            break
+          }
+          case "agenda.item.created":
+          case "agenda.item.updated": {
+            const item = event.properties.item
+            const result = Binary.search(store.agenda, item.id, (a) => a.id)
+            if (result.found) {
+              setStore("agenda", result.index, reconcile(item))
+              break
+            }
+            setStore(
+              "agenda",
+              produce((draft) => {
+                draft.splice(result.index, 0, item)
+              }),
+            )
+            break
+          }
+          case "agenda.item.deleted": {
+            const result = Binary.search(store.agenda, event.properties.id, (a) => a.id)
+            if (result.found) {
+              setStore(
+                "agenda",
+                produce((draft) => {
+                  draft.splice(result.index, 1)
+                }),
+              )
+            }
+            break
+          }
+        }
+      })
+      onCleanup(() => {
+        unsub()
+        for (const timer of inboxRefreshTimers.values()) clearTimeout(timer)
+        for (const timer of cortexRefreshTimers.values()) clearTimeout(timer)
+        inboxRefreshTimers.clear()
+        cortexRefreshTimers.clear()
+      })
+    })
+  }
 
   let resyncInstancesPromise: Promise<void> | undefined
   function resyncInstances(directories: string[]) {
@@ -1247,13 +1210,7 @@ const GlobalSyncContext = createContext<ReturnType<typeof createGlobalSync>>()
 export function GlobalSyncProvider(props: ParentProps) {
   const value = createGlobalSync()
   return (
-    <Switch
-      fallback={
-        <div class="synergy-workbench-canvas size-full flex items-center justify-center bg-background-stronger text-text-weak">
-          Loading...
-        </div>
-      }
-    >
+    <Switch fallback={<div class="size-full flex items-center justify-center text-text-weak">Loading...</div>}>
       <Match when={value.error}>
         <ErrorPage error={value.error} />
       </Match>
