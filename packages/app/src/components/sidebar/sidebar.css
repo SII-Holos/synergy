@@ -459,11 +459,24 @@
 }
 
 .sb-session-icon-wrap {
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
   color: var(--icon-weak);
+}
+
+.sb-session-completion-dot {
+  position: absolute;
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+  top: 1px;
+  right: -1px;
+  background: color-mix(in srgb, var(--icon-critical-base) 76%, transparent);
+  box-shadow: 0 0 0 1px var(--sb-session-row-bg, var(--sb-bg));
+  pointer-events: none;
 }
 
 .sb-session-icon {

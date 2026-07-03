@@ -113,6 +113,36 @@ describe("session lifecycle events", () => {
     })
   })
 
+  test("initializes completion notice state for new sessions", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({})
+
+        expect(session.completionNotice).toEqual({ unread: false, silent: false })
+
+        await Session.remove(session.id)
+      },
+    })
+  })
+
+  test("supports silent completion notice creation and child inheritance", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const parent = await Session.create({ completionNotice: { silent: true } })
+        const child = await Session.create({ parentID: parent.id })
+
+        expect(parent.completionNotice).toEqual({ unread: false, silent: true })
+        expect(child.completionNotice).toEqual({ unread: false, silent: true })
+
+        await Session.remove(parent.id)
+      },
+    })
+  })
+
   test("resolveControlProfile walks the parent chain", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({

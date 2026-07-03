@@ -903,6 +903,9 @@ export namespace SessionInvoke {
     // on already-finished sessions and incorrectly mark them as pending resume.
     await Session.update(sessionID, (draft) => {
       draft.pendingReply = undefined
+      if (!abort.aborted && !draft.time.archived && !draft.completionNotice.silent) {
+        draft.completionNotice.unread = true
+      }
     })
 
     let resultMessage = selectResultMessage(await Session.messages({ sessionID }))

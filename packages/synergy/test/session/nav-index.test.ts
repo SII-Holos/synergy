@@ -229,6 +229,27 @@ describe("SessionNav.buildNavIndex", () => {
     })
   })
 
+  test("projects completion unread state into nav entries", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const scope = await tmp.scope()
+
+    await ScopeContext.provide({
+      scope,
+      fn: async () => {
+        const session = await Session.create({ title: "Unread Session" })
+        await Session.update(session.id, (draft) => {
+          draft.completionNotice.unread = true
+        })
+
+        const index = await SessionNav.buildNavIndex(scope.id)
+        const entry = index.entries.find((e) => e.id === session.id)
+        expect(entry?.completionNotice).toEqual({ unread: true })
+
+        await Session.remove(session.id)
+      },
+    })
+  })
+
   test("ignores stale session.scope.id when building index for a project scope", async () => {
     await using tmp = await tmpdir({ git: true })
     const scope = await tmp.scope()

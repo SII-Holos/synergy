@@ -1533,6 +1533,9 @@ export class Session extends HeyApiClient {
       id?: string
       controlProfile?: "guarded" | "autonomous" | "full_access"
       workspace?: SessionWorkspaceSelection
+      completionNotice?: {
+        silent?: boolean
+      }
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -1548,6 +1551,7 @@ export class Session extends HeyApiClient {
             { in: "body", key: "id" },
             { in: "body", key: "controlProfile" },
             { in: "body", key: "workspace" },
+            { in: "body", key: "completionNotice" },
           ],
         },
       ],
@@ -1671,6 +1675,9 @@ export class Session extends HeyApiClient {
       title?: string
       pinned?: number
       controlProfile?: "guarded" | "autonomous" | "full_access"
+      completionNotice?: {
+        unread: false
+      }
       time?: {
         archived?: number
       }
@@ -1688,6 +1695,7 @@ export class Session extends HeyApiClient {
             { in: "body", key: "title" },
             { in: "body", key: "pinned" },
             { in: "body", key: "controlProfile" },
+            { in: "body", key: "completionNotice" },
             { in: "body", key: "time" },
           ],
         },

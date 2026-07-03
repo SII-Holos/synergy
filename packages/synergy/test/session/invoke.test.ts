@@ -168,6 +168,28 @@ function installBasicLoopMocks(options?: {
   }
 }
 
+async function createSessionWithUser(options?: { silent?: boolean }) {
+  const session = await Session.create({
+    completionNotice: options?.silent ? { silent: true } : undefined,
+  })
+  const user = await Session.updateMessage({
+    id: Identifier.ascending("message"),
+    role: "user",
+    sessionID: session.id,
+    agent: "synergy",
+    model: { providerID: "test-provider", modelID: "test-model" },
+    time: { created: Date.now() },
+  })
+  await Session.updatePart({
+    id: Identifier.ascending("part"),
+    messageID: user.id,
+    sessionID: session.id,
+    type: "text",
+    text: "Run the session",
+  })
+  return { session, user }
+}
+
 describe("SessionInvoke.selectResultMessage", () => {
   test("selects the last assistant for the latest reply-required user turn", () => {
     const user = userMessage("msg_user")
@@ -503,6 +525,108 @@ describe("SessionInvoke inbox boundaries", () => {
           expect(guided!.info.id).not.toBe(staleMessageID)
           expect(guided!.info.metadata?.noReply).toBe(true)
           expect(guided!.info.metadata?.guided).toBe(true)
+        },
+      })
+    } finally {
+      restore()
+      if (activeSessionID) SessionManager.unregisterRuntime(activeSessionID)
+    }
+  })
+})
+
+describe("SessionInvoke completion notices", () => {
+  test("normal terminal assistant completion marks non-silent sessions unread", async () => {
+    await using tmp = await tmpdir({ git: true })
+    let activeSessionID = ""
+    const restore = installBasicLoopMocks()
+
+    try {
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const { session } = await createSessionWithUser()
+          activeSessionID = session.id
+
+          await SessionInvoke.loop.force(session.id)
+
+          expect((await Session.get(session.id)).completionNotice).toEqual({ unread: true, silent: false })
+        },
+      })
+    } finally {
+      restore()
+      if (activeSessionID) SessionManager.unregisterRuntime(activeSessionID)
+    }
+  })
+
+  test("silent session completion leaves unread false", async () => {
+    await using tmp = await tmpdir({ git: true })
+    let activeSessionID = ""
+    const restore = installBasicLoopMocks()
+
+    try {
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const { session } = await createSessionWithUser({ silent: true })
+          activeSessionID = session.id
+
+          await SessionInvoke.loop.force(session.id)
+
+          expect((await Session.get(session.id)).completionNotice).toEqual({ unread: false, silent: true })
+        },
+      })
+    } finally {
+      restore()
+      if (activeSessionID) SessionManager.unregisterRuntime(activeSessionID)
+    }
+  })
+
+  test("explicit cancel completion leaves unread false", async () => {
+    await using tmp = await tmpdir({ git: true })
+    let activeSessionID = ""
+    const restore = installBasicLoopMocks({
+      onProcess: async () => {
+        SessionInvoke.cancel(activeSessionID)
+      },
+    })
+
+    try {
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const { session } = await createSessionWithUser()
+          activeSessionID = session.id
+
+          await SessionInvoke.loop.force(session.id)
+
+          expect((await Session.get(session.id)).completionNotice).toEqual({ unread: false, silent: false })
+        },
+      })
+    } finally {
+      restore()
+      if (activeSessionID) SessionManager.unregisterRuntime(activeSessionID)
+    }
+  })
+
+  test("terminal assistant error marks unread unless explicitly aborted", async () => {
+    await using tmp = await tmpdir({ git: true })
+    let activeSessionID = ""
+    const restore = installBasicLoopMocks({
+      onProcess: async (_input, assistant) => {
+        assistant.error = new MessageV2.APIError({ message: "boom", isRetryable: false }).toObject()
+      },
+    })
+
+    try {
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const { session } = await createSessionWithUser()
+          activeSessionID = session.id
+
+          await expect(SessionInvoke.loop.force(session.id)).rejects.toThrow()
+
+          expect((await Session.get(session.id)).completionNotice).toEqual({ unread: true, silent: false })
         },
       })
     } finally {
