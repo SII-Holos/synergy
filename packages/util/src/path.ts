@@ -42,11 +42,13 @@ export function getFileExtension(path: string | undefined) {
  * 1. Empty input → homeDir with no query
  * 2. Expand "~" and "~/..." using homeDir
  * 3. Normalize backslashes to forward slashes
- * 4. Absolute paths (Unix `/`, Windows `C:/`, UNC `//`) → split on last `/`; the portion before the last `/` is the parent, the last segment is the query
+ * 4. Absolute paths (Unix `/`, Windows `C:/`, UNC `//`) → split on last `/`; Windows drive roots stay rooted at `C:/`
  * 5. Relative paths → homeDir is the parent, the whole input is the query
  *
  *   resolvePathInput("~/projects/myapp", "/home/user") → { path: "/home/user/projects", query: "myapp" }
  *   resolvePathInput("C:\\Users\\me", "/home/user")    → { path: "C:/Users", query: "me" }
+ *   resolvePathInput("D:\\data", "/home/user")         → { path: "D:/", query: "data" }
+ *   resolvePathInput("D:", "/home/user")               → { path: "D:/", query: "" }
  *   resolvePathInput("myproject", "/home/user")         → { path: "/home/user", query: "myproject" }
  */
 export function resolvePathInput(input: string, homeDir: string): { path: string; query: string } {
@@ -66,11 +68,17 @@ export function resolvePathInput(input: string, homeDir: string): { path: string
   // Normalize all backslashes to forward slashes
   expanded = expanded.replace(/\\/g, "/")
 
-  // Detect absolute paths
+  // Bare Windows drive letters are treated as drive roots in browser-style path inputs.
+  const driveRoot = expanded.match(/^([A-Za-z]):(?:\/)?$/)
+  if (driveRoot) return { path: `${driveRoot[1]}:/`, query: "" }
+
   const isAbsolute = expanded.startsWith("/") || /^[A-Za-z]:\//.test(expanded)
 
   if (isAbsolute) {
     const lastSlash = expanded.lastIndexOf("/")
+    if (/^[A-Za-z]:\//.test(expanded) && lastSlash <= 2) {
+      return { path: `${expanded[0]}:/`, query: expanded.slice(3) }
+    }
     const parentDir = expanded.slice(0, lastSlash) || "/"
     const query = expanded.slice(lastSlash + 1)
     return { path: parentDir, query }
