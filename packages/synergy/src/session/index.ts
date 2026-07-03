@@ -590,7 +590,7 @@ export namespace Session {
     if (result.parentID) {
       await upsertChildIndexEntry(scope.id, result.parentID, toChildIndexEntry(result))
     }
-    await SessionNav.upsertNavEntry(toNavEntry(result))
+    await SessionNav.upsertNavEntry(toNavEntry(result), { preserveActivityAt: result.pendingReply === true })
 
     const beforeKey = before.endpoint ? SessionEndpoint.toKey(before.endpoint) : undefined
     const afterKey = result.endpoint ? SessionEndpoint.toKey(result.endpoint) : undefined

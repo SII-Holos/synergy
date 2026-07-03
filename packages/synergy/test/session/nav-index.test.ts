@@ -250,6 +250,43 @@ describe("SessionNav.buildNavIndex", () => {
     })
   })
 
+  test("keeps nav activity stable while a session reply is pending", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const scope = await tmp.scope()
+
+    await ScopeContext.provide({
+      scope,
+      fn: async () => {
+        const session = await Session.create({ title: "Running Session" })
+        const initial = (await SessionNav.readNavIndex(scope.id)).entries.find((e) => e.id === session.id)
+        expect(initial).toBeDefined()
+
+        await Bun.sleep(5)
+        const pending = await Session.update(session.id, (draft) => {
+          draft.pendingReply = true
+          draft.title = "Running Session Updated"
+        })
+        const duringRun = (await SessionNav.readNavIndex(scope.id)).entries.find((e) => e.id === session.id)
+        expect(duringRun).toBeDefined()
+        expect(pending.time.updated).toBeGreaterThan(initial!.lastActivityAt)
+        expect(duringRun!.title).toBe("Running Session Updated")
+        expect(duringRun!.lastActivityAt).toBe(initial!.lastActivityAt)
+
+        await Bun.sleep(5)
+        await Session.update(session.id, (draft) => {
+          draft.pendingReply = undefined
+          draft.completionNotice.unread = true
+        })
+        const finished = (await SessionNav.readNavIndex(scope.id)).entries.find((e) => e.id === session.id)
+        expect(finished).toBeDefined()
+        expect(finished!.lastActivityAt).toBeGreaterThan(duringRun!.lastActivityAt)
+        expect(finished!.completionNotice).toEqual({ unread: true })
+
+        await Session.remove(session.id)
+      },
+    })
+  })
+
   test("ignores stale session.scope.id when building index for a project scope", async () => {
     await using tmp = await tmpdir({ git: true })
     const scope = await tmp.scope()
