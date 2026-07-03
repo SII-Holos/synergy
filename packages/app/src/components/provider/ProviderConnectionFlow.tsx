@@ -80,9 +80,9 @@ export function ProviderConnectionFlow(props: {
           setStore("state", "complete")
           setStore("authorization", x.data!)
         })
-        .catch((e) => {
+        .catch((e: any) => {
           setStore("state", "error")
-          setStore("error", String(e))
+          setStore("error", typeof e?.data?.message === "string" ? e.data.message : String(e))
         })
     }
 
