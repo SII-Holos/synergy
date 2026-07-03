@@ -109,11 +109,12 @@ export function GitHubPanel() {
         )}
       </Show>
 
-      <SettingsSection title={connected() ? "Refresh credentials" : "Connect"}>
+      <SettingsSection>
         <ProviderConnectionFlow
           providerID="github"
           providerName="GitHub"
           connectedOverride={connected()}
+          compact
           completeDescription="GitHub credentials are ready for GitHub CLI-backed actions."
           onComplete={refreshStatus}
         />
