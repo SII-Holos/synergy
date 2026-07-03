@@ -220,6 +220,12 @@ export namespace SessionManager {
       runtime.waiters = []
     }
     runtime.abort = undefined
+
+    // Emit idle status so the frontend leaves the Stop state immediately,
+    // even if the processor hasn't unwound yet. The persisted incomplete
+    // assistant message is repaired separately by SessionInvoke.cancel().
+    runtime.status = { type: "idle" }
+    emitStatus(runtime, runtime.status)
   }
 
   export async function release(sessionID: string): Promise<void> {

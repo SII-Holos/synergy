@@ -84,7 +84,7 @@ export namespace SessionInvoke {
   })
 
   export const assertIdle = SessionManager.assertIdle
-  export function cancel(sessionID: string) {
+  export async function cancel(sessionID: string) {
     log.info("cancel", { sessionID })
     evictRecallCache(sessionID)
 
@@ -96,6 +96,15 @@ export namespace SessionInvoke {
     })
 
     SessionManager.signalAbort(sessionID)
+
+    // Repair the persisted incomplete assistant message and clear pendingReply.
+    // signalAbort fires the AbortController and emits idle status, but the
+    // processor may still be stuck in a provider stream or tool execution.
+    // This ensures the session state is always repaired regardless of whether
+    // the processor observes the abort signal.
+    await repairIncompleteAssistant(sessionID).catch((err) => {
+      log.error("assistant repair after abort failed", { sessionID, error: err })
+    })
   }
 
   type InternalInvokeInput = InvokeInput & {
@@ -927,6 +936,46 @@ export namespace SessionInvoke {
 
   // --- Helpers ---
 
+  /**
+   * Repair an incomplete assistant message when abort was requested but the
+   * processor never reached the normal completion path. Marks the last assistant
+   * with time.completed, finish: "error", and an AbortedError, then clears
+   * pendingReply so working.ts no longer reports "recovering".
+   */
+  async function repairIncompleteAssistant(sessionID: string): Promise<void> {
+    const session = await SessionManager.getSession(sessionID)
+    if (!session) return
+
+    const messages = await Session.messages({ sessionID })
+    let latestAssistant: MessageV2.Assistant | undefined
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].info.role === "assistant") {
+        latestAssistant = messages[i].info as MessageV2.Assistant
+        break
+      }
+    }
+    if (!latestAssistant || latestAssistant.time.completed != null) return
+
+    log.info("repairing incomplete assistant after abort", {
+      sessionID,
+      messageID: latestAssistant.id,
+    })
+
+    const repaired: MessageV2.Assistant = {
+      ...latestAssistant,
+      time: { ...latestAssistant.time, completed: Date.now() },
+      finish: "error",
+      error: new MessageV2.AbortedError({
+        message: "Session aborted during turn — assistant response was not completed",
+      }).toObject(),
+    }
+    await Session.updateMessage(repaired)
+
+    await Session.update(sessionID, (draft) => {
+      draft.pendingReply = undefined
+    })
+  }
+
   async function writeAbortedAssistantMessage(sessionID: string, scopeID: string): Promise<MessageV2.WithParts> {
     const assistantMessage = (await Session.updateMessage({
       id: Identifier.ascending("message"),
@@ -1590,6 +1639,18 @@ export namespace SessionInvoke {
       }
 
       if (!pendingReply) continue
+
+      // Auto-repair: if a session has pendingReply but the latest assistant
+      // message is incomplete (time.completed == null) and no runtime is
+      // active, repair it so working.ts stops reporting "recovering".
+      const latestAssistant = messages.find((m) => m.info.role === "assistant")?.info as MessageV2.Assistant | undefined
+      if (latestAssistant && latestAssistant.time.completed == null && !SessionManager.getRuntime(sessionID)?.abort) {
+        log.info("pending reply found with incomplete assistant; auto-repairing", { sessionID })
+        await repairIncompleteAssistant(sessionID).catch((err) => {
+          log.error("auto-repair failed", { sessionID, error: err })
+        })
+        continue
+      }
 
       log.info("pending reply found; automatic assistant resume is disabled", { sessionID })
     }

@@ -632,7 +632,7 @@ export namespace Cortex {
     if (isTerminal(task.status)) return
 
     log.info("cancelling task", { taskID, sessionID: task.sessionID, status: task.status })
-    SessionInvoke.cancel(task.sessionID)
+    await SessionInvoke.cancel(task.sessionID)
     updateTaskStatus(taskID, "cancelled")
 
     const run = taskRuns.get(taskID)

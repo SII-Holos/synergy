@@ -537,7 +537,7 @@ export const SessionRoute = new Hono()
     ),
     async (c) => {
       const sessionID = c.req.valid("param").sessionID
-      SessionInvoke.cancel(sessionID)
+      await SessionInvoke.cancel(sessionID)
       const { Cortex } = await import("../cortex")
       await Cortex.cancelAll(sessionID)
       return c.json(true)
