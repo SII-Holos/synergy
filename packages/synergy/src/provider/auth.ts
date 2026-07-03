@@ -164,11 +164,16 @@ export namespace ProviderAuth {
       providerID: z.string(),
       method: z.number(),
     }),
-    async (input): Promise<Authorization | undefined> => {
+    async (input) => {
       const auth = await state().then((s) => s.methods[input.providerID])
       const method = auth.methods[input.method]
       if (method.type === "oauth") {
-        const result = await method.authorize()
+        const result = await method.authorize().catch((original) => {
+          throw new OauthNotConfigured({
+            providerID: input.providerID,
+            message: original instanceof Error ? original.message : String(original),
+          })
+        })
         await state().then((s) => (s.pending[input.providerID] = result))
         return {
           url: result.url,
@@ -287,6 +292,14 @@ export namespace ProviderAuth {
   )
 
   export const OauthCallbackFailed = NamedError.create("ProviderAuthOauthCallbackFailed", z.object({}))
+
+  export const OauthNotConfigured = NamedError.create(
+    "ProviderAuthOauthNotConfigured",
+    z.object({
+      providerID: z.string(),
+      message: z.string().optional(),
+    }),
+  )
 
   export const ImportUnavailable = NamedError.create(
     "ProviderAuthImportUnavailable",
