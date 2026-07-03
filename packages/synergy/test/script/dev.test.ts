@@ -44,16 +44,17 @@ describe("dev orchestrator planner", () => {
     })
   })
 
-  test("plans managed desktop without server or app processes", () => {
+  test("plans managed desktop with build when app/dist is missing", () => {
     const plan = createDevPlan(["desktop", "--managed"], options)
 
     expect(plan.kind).toBe("run")
-    expect(plan.processes.map((process) => process.label)).toEqual(["desktop"])
-    expect(plan.processes[0]?.env).toMatchObject({
+    expect(plan.mode).toBe("serial")
+    expect(plan.processes.map((process) => process.label)).toEqual(["build", "desktop"])
+    expect(plan.processes[1]?.env).toMatchObject({
       SYNERGY_DESKTOP_CHANNEL: "dev",
       SYNERGY_DESKTOP_SERVER_MODE: "managed",
     })
-    expect(plan.processes[0]?.env).not.toHaveProperty("SYNERGY_DESKTOP_APP_URL")
+    expect(plan.processes[1]?.env).not.toHaveProperty("SYNERGY_DESKTOP_APP_URL")
   })
 
   test("requires an explicit build target", () => {
