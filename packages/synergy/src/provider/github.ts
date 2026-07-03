@@ -5,7 +5,7 @@ import z from "zod"
 
 export namespace GitHubProvider {
   export const PROVIDER_ID = "github"
-  export const OAUTH_CLIENT_ID_ENV = "SYNERGY_GITHUB_OAUTH_CLIENT_ID"
+  export const OAUTH_CLIENT_ID = "178c6fc778ccc68e1d6a"
   export const DEVICE_SCOPE = "repo read:user"
   export const USER_AGENT = "Synergy/1.0"
 
@@ -51,14 +51,6 @@ export namespace GitHubProvider {
     }
   }
 
-  export function oauthClientID() {
-    return process.env[OAUTH_CLIENT_ID_ENV]?.trim()
-  }
-
-  export function hasOAuthClient() {
-    return Boolean(oauthClientID())
-  }
-
   function accountFromPayload(payload: Record<string, any>): Account | undefined {
     if (typeof payload.login !== "string" || !payload.login) return undefined
     return {
@@ -93,14 +85,6 @@ export namespace GitHubProvider {
   }
 
   export async function authorizeDeviceCode(fetchFn: FetchLike = fetch): Promise<AuthOuathResult> {
-    const clientID = oauthClientID()
-    if (!clientID) {
-      throw new AuthError({
-        code: "github_oauth_client_missing",
-        message: `${OAUTH_CLIENT_ID_ENV} must be configured before GitHub device login can be used.`,
-        reloginRequired: false,
-      })
-    }
     const response = await fetchFn("https://github.com/login/device/code", {
       method: "POST",
       headers: {
@@ -109,7 +93,7 @@ export namespace GitHubProvider {
         "User-Agent": USER_AGENT,
       },
       body: new URLSearchParams({
-        client_id: clientID,
+        client_id: OAUTH_CLIENT_ID,
         scope: DEVICE_SCOPE,
       }),
       signal: AbortSignal.timeout(15_000),
@@ -144,7 +128,7 @@ export namespace GitHubProvider {
               "User-Agent": USER_AGENT,
             },
             body: new URLSearchParams({
-              client_id: clientID,
+              client_id: OAUTH_CLIENT_ID,
               device_code: String(deviceCode),
               grant_type: "urn:ietf:params:oauth:grant-type:device_code",
             }),
