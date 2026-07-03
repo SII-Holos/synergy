@@ -373,7 +373,11 @@ function SessionPageContent() {
   createEffect(
     on(
       () => params.id,
-      (id) => {
+      (id, prevId) => {
+        if (prevId && prevId !== id) {
+          hydratedSessions.delete(prevId)
+          initializedSessions.delete(prevId)
+        }
         if (id) sync.session.sync(id, { refreshVolatile: true })
       },
     ),
