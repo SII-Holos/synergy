@@ -28,7 +28,7 @@ export function GitHubPanel() {
     await globalSDK.client.auth.githubLogout({}, { throwOnError: true })
     await globalSDK.client.global.dispose()
     await refreshStatus()
-    showToast({ type: "success", title: "GitHub disconnected", description: "Stored GitHub credentials were removed." })
+    showToast({ type: "warning", title: "GitHub disconnected", description: "Stored GitHub credentials were removed." })
   }
 
   return (
