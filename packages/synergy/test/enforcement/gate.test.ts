@@ -1214,34 +1214,37 @@ describe("EnforcementGate DESTRUCTIVE_PATTERNS — expanded", () => {
 
   // ── Refined git classifications (classifyBashRisk primary path) ──
 
-  test("git push (plain) is classified as destructive (classifyBashRisk)", async () => {
+  test("git push (plain) is classified as shell_remote_write (Smart Allow eligible)", async () => {
     const gate = await EnforcementGate.create({
       activeWorkspace: "/Users/test/synergy-control-profile",
       workspaceType: "worktree",
     })
     const result = gate.classify("bash", { command: "git push" })
-    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")!
-    expect(destructive).toBeDefined()
+    const remoteWrite = result.capabilities.find((c: any) => c.class === "shell_remote_write")!
+    expect(remoteWrite).toBeDefined()
+    expect(remoteWrite.nonBypassable).toBe(false)
   })
 
-  test("git push origin main is classified as destructive (classifyBashRisk)", async () => {
+  test("git push origin main is classified as shell_remote_write (Smart Allow eligible)", async () => {
     const gate = await EnforcementGate.create({
       activeWorkspace: "/Users/test/synergy-control-profile",
       workspaceType: "worktree",
     })
     const result = gate.classify("bash", { command: "git push origin main" })
-    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")!
-    expect(destructive).toBeDefined()
+    const remoteWrite = result.capabilities.find((c: any) => c.class === "shell_remote_write")!
+    expect(remoteWrite).toBeDefined()
+    expect(remoteWrite.nonBypassable).toBe(false)
   })
 
-  test("git push through git global options is classified as destructive", async () => {
+  test("git push through git global options is classified as shell_remote_write", async () => {
     const gate = await EnforcementGate.create({
       activeWorkspace: "/Users/test/synergy-control-profile",
       workspaceType: "worktree",
     })
     const result = gate.classify("bash", { command: "git -C /tmp push" })
-    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")!
-    expect(destructive).toBeDefined()
+    const remoteWrite = result.capabilities.find((c: any) => c.class === "shell_remote_write")!
+    expect(remoteWrite).toBeDefined()
+    expect(remoteWrite.nonBypassable).toBe(false)
   })
 
   test("git push through shell wrapper is classified as destructive", async () => {
@@ -2358,7 +2361,7 @@ describe("EnforcementGate file_external split", () => {
 })
 
 describe("security invariants: nonBypassable permission boundaries", () => {
-  test("autonomous denies git push and keeps shell_destructive nonBypassable", async () => {
+  test("autonomous denies git push via shell_remote_write; destructive stays hard", async () => {
     const gate = await EnforcementGate.create({
       activeWorkspace: "/Users/test/synergy-control-profile",
       workspaceType: "worktree",
@@ -2368,9 +2371,9 @@ describe("security invariants: nonBypassable permission boundaries", () => {
     const envelope = gate.evaluate("bash", { command: "git push" })
     expect(envelope.decision).toBe("deny")
 
-    const caps = envelope.capabilities.filter((c: any) => c.class === "shell_destructive")
+    const caps = envelope.capabilities.filter((c: any) => c.class === "shell_remote_write")
     expect(caps.length).toBeGreaterThan(0)
-    expect(caps.every((c: any) => c.nonBypassable === true)).toBe(true)
+    expect(caps.every((c: any) => c.nonBypassable === false)).toBe(true)
   })
 
   test("classifyBashRisk shell_destructive path sets nonBypassable=true", async () => {
@@ -2379,7 +2382,7 @@ describe("security invariants: nonBypassable permission boundaries", () => {
       workspaceType: "main",
     })
 
-    const result = gate.classify("bash", { command: "git push" })
+    const result = gate.classify("bash", { command: "git reset --hard" })
     const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")
     expect(destructive).toBeDefined()
     expect(destructive!.nonBypassable).toBe(true)

@@ -181,6 +181,7 @@ describe("autonomous profile summary", () => {
         expect(profile.summary?.deniedCapabilities).toEqual([
           "shell_destructive",
           "shell_hardline",
+          "shell_remote_write",
           "file_external_write",
           "secrets",
           "prompt_transform",
