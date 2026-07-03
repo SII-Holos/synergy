@@ -271,23 +271,37 @@ export namespace SessionCompaction {
   const ANCHOR_OPEN = "<anchor>"
   const ANCHOR_CLOSE = "</anchor>"
 
+  function realUserText(msg: MessageV2.WithParts): string | undefined {
+    const textParts = msg.parts.filter((p): p is MessageV2.TextPart => p.type === "text" && !p.synthetic)
+    if (textParts.length === 0) return undefined
+    const text = textParts
+      .map((p) => p.text)
+      .join("\n")
+      .trim()
+    return text || undefined
+  }
+
+  function formatAnchor(text: string): string {
+    return [ANCHOR_OPEN, "This is the most recent request before compaction.", "", text, ANCHOR_CLOSE].join("\n")
+  }
+
   /**
-   * Extract the last real (non-synthetic) user message before the compaction
-   * trigger as an anchor, so the agent remembers what it was working on.
+   * Preserve the active user request across compaction. Prefer the compaction
+   * parent when it has real text; synthetic continue messages fall back to the
+   * latest earlier real user message.
    */
-  function buildAnchor(messages: MessageV2.WithParts[], parentID: string): string | undefined {
+  export function buildAnchor(messages: MessageV2.WithParts[], parentID: string): string | undefined {
+    const parent = messages.findLast((msg) => msg.info.role === "user" && msg.info.id === parentID)
+    const parentText = parent ? realUserText(parent) : undefined
+    if (parentText) return formatAnchor(parentText)
+
     for (let i = messages.length - 1; i >= 0; i--) {
       const msg = messages[i]
       if (msg.info.role !== "user") continue
       if (msg.info.id === parentID) continue
-      const textParts = msg.parts.filter((p): p is MessageV2.TextPart => p.type === "text" && !p.synthetic)
-      if (textParts.length === 0) continue
-      const text = textParts
-        .map((p) => p.text)
-        .join("\n")
-        .trim()
+      const text = realUserText(msg)
       if (!text) continue
-      return [ANCHOR_OPEN, "This is the most recent request before compaction.", "", text, ANCHOR_CLOSE].join("\n")
+      return formatAnchor(text)
     }
 
     return undefined

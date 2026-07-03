@@ -322,6 +322,59 @@ describe("session.compaction.isContextExceeded", () => {
 })
 
 // ---------------------------------------------------------------------------
+// SessionCompaction.buildAnchor
+// ---------------------------------------------------------------------------
+
+describe("session.compaction.buildAnchor", () => {
+  const now = Date.now()
+
+  function userMsg(id: string, parts: Array<{ text: string; synthetic?: boolean }>): MessageV2.WithParts {
+    return {
+      info: {
+        id,
+        role: "user",
+        sessionID: "test-session",
+        time: { created: now },
+        agent: "synergy",
+        model: { providerID: "test", modelID: "test-model" },
+      },
+      parts: parts.map((part, index) => ({
+        id: `text-${id}-${index}`,
+        sessionID: "test-session",
+        messageID: id,
+        type: "text",
+        text: part.text,
+        ...(part.synthetic ? { synthetic: true } : {}),
+      })),
+    }
+  }
+
+  test("anchors the active parent user request when it has real text", () => {
+    const messages = [
+      userMsg("previous", [{ text: "will gh pr create be blocked?" }]),
+      userMsg("active", [{ text: "allow ordinary branch push and gh pr create in autonomous mode" }]),
+    ]
+
+    const anchor = SessionCompaction.buildAnchor(messages, "active")
+
+    expect(anchor).toContain("allow ordinary branch push and gh pr create in autonomous mode")
+    expect(anchor).not.toContain("will gh pr create be blocked?")
+  })
+
+  test("falls back to the latest real user request for synthetic continue parents", () => {
+    const messages = [
+      userMsg("active", [{ text: "keep this active request across compaction" }]),
+      userMsg("continue", [{ text: "Continue if you have next steps", synthetic: true }]),
+    ]
+
+    const anchor = SessionCompaction.buildAnchor(messages, "continue")
+
+    expect(anchor).toContain("keep this active request across compaction")
+    expect(anchor).not.toContain("Continue if you have next steps")
+  })
+})
+
+// ---------------------------------------------------------------------------
 // Token.encodingForModelID
 // ---------------------------------------------------------------------------
 
