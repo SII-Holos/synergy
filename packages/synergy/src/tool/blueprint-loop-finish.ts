@@ -176,9 +176,9 @@ If complete, call blueprint_loop_finish({ loopID: "${params.loopID}", status: "c
           ...(loop.userPrompt ? { userPrompt: loop.userPrompt } : {}),
         },
       }
-      await SessionManager.deliver({ target: loop.sessionID, mail: completionMail, waitForProcessing: false })
       await BlueprintLoopStore.updateStatus(scopeID, params.loopID, { status: "completed" })
       await Bus.publish(LoopEvent.Completed, { loopID: params.loopID })
+      await SessionManager.deliver({ target: loop.sessionID, mail: completionMail, waitForProcessing: false })
       const { Cortex } = await import("../cortex")
       await Cortex.cancelAll(ctx.sessionID)
       SessionManager.signalAbort(ctx.sessionID)

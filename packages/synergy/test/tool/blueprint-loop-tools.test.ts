@@ -283,7 +283,9 @@ describe("BlueprintLoop tools", () => {
         const deliveries: Parameters<typeof SessionManager.deliver>[0][] = []
         const cancelAllCalls: string[] = []
         const signalAbortCalls: string[] = []
+        const statusAtDelivery: string[] = []
         ;(SessionManager.deliver as any) = mock(async (input: Parameters<typeof SessionManager.deliver>[0]) => {
+          statusAtDelivery.push((await BlueprintLoopStore.get(ScopeContext.current.scope.id, loop.id)).status)
           deliveries.push(input)
         })
         ;(Cortex.cancelAll as any) = mock(async (sessionID: string) => {
@@ -303,6 +305,7 @@ describe("BlueprintLoop tools", () => {
         expect(deliveries).toHaveLength(1)
         expect(deliveries[0].target).toBe(session.id)
         expect(deliveries[0].waitForProcessing).toBe(false)
+        expect(statusAtDelivery).toEqual(["completed"])
         const mail = deliveries[0].mail
         expect(mail.type).toBe("user")
         if (mail.type !== "user") throw new Error("expected user mail")
