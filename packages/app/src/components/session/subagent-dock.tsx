@@ -3,13 +3,20 @@ import { useSync } from "@/context/sync"
 import { useSDK } from "@/context/sdk"
 import { useNavigate, useParams } from "@solidjs/router"
 import { Tooltip } from "@ericsanchezok/synergy-ui/tooltip"
-import type { CortexTask } from "@ericsanchezok/synergy-sdk/client"
+import { Icon } from "@ericsanchezok/synergy-ui/icon"
+import type { CortexTask, SessionStatus } from "@ericsanchezok/synergy-sdk/client"
 import { getAgentVisual } from "@/components/agent-visual"
+import { resolveRuntimeIconState } from "@/components/status-bar-runtime"
 import "./subagent-dock.css"
+
+type RetrySessionStatus = Extract<SessionStatus, { type: "retry" }>
+
+function isRetryStatus(status: SessionStatus | undefined): status is RetrySessionStatus {
+  return status?.type === "retry"
+}
 
 const HOLD_TO_CANCEL_MS = 2000
 const HOLD_RING_CIRCUMFERENCE = 2 * Math.PI * 19
-
 function formatElapsed(startedAt: number): string {
   const seconds = Math.floor((Date.now() - startedAt) / 1000)
   if (seconds < 60) return `${seconds}s`
@@ -25,10 +32,14 @@ interface SubagentAvatarProps {
 }
 
 function SubagentAvatar(props: SubagentAvatarProps) {
+  const sync = useSync()
   const params = useParams()
   const navigate = useNavigate()
   const config = createMemo(() => getAgentVisual(props.task.agent))
   const isQueued = () => props.task.status === "queued"
+  const sessionStatus = createMemo<SessionStatus | undefined>(() => sync.data.session_status[props.task.sessionID])
+  const runtimeState = createMemo(() => resolveRuntimeIconState(sessionStatus(), false))
+  const isRetrying = () => sessionStatus()?.type === "retry"
   const [elapsed, setElapsed] = createSignal(formatElapsed(props.task.startedAt))
   const [holdProgress, setHoldProgress] = createSignal(0)
   const [isHolding, setIsHolding] = createSignal(false)
@@ -123,6 +134,9 @@ function SubagentAvatar(props: SubagentAvatarProps) {
   const tooltipContent = (): JSX.Element => {
     const task = props.task
     const cfg = config()
+    const state = runtimeState()
+    const status = sessionStatus()
+    const retryStatus = isRetryStatus(status) ? status : undefined
     return (
       <div class="subagent-popover flex flex-col gap-1.5 py-1 max-w-56">
         <div class="flex items-center gap-2">
@@ -146,6 +160,24 @@ function SubagentAvatar(props: SubagentAvatarProps) {
             </Show>
           </div>
         </Show>
+        <Show when={retryStatus}>
+          {(status) => {
+            const s = status() as RetrySessionStatus
+            return (
+              <div class="flex flex-col gap-0.5">
+                <div class="flex items-center gap-1.5 text-11-medium text-text-critical-base">
+                  <Icon name={state.icon} size="small" />
+                  <span>Retry #{s.attempt}</span>
+                </div>
+                <Show when={s.message}>
+                  <span class="text-11-regular text-text-critical-base leading-relaxed break-words line-clamp-3">
+                    {s.message}
+                  </span>
+                </Show>
+              </div>
+            )
+          }}
+        </Show>
         <span class="text-11-regular text-text-interactive-base">
           {isQueued() ? "Queued — waiting for slot" : "Tap to open · press and hold to cancel"}
         </span>
@@ -153,20 +185,36 @@ function SubagentAvatar(props: SubagentAvatarProps) {
     )
   }
 
+  const ariaLabel = createMemo(() => {
+    if (isQueued()) return `${config().label} queued`
+    const status = sessionStatus()
+    if (isRetryStatus(status)) {
+      return `${config().label}: Retry #${status.attempt} — ${status.message}`
+    }
+    return `Open ${props.task.description}. Press and hold to cancel.`
+  })
+
   return (
     <div class="subagent-dock-item" style={{ "animation-delay": `${props.index * 60}ms` }}>
       <Tooltip value={tooltipContent()} placement="top">
         <button
           type="button"
-          aria-label={
-            isQueued() ? `${config().label} queued` : `Open ${props.task.description}. Press and hold to cancel.`
-          }
+          aria-label={ariaLabel()}
           onClick={handleClick}
           onPointerDown={handlePointerDown}
           onPointerUp={handlePointerUp}
           onPointerLeave={handlePointerLeave}
           onPointerCancel={handlePointerCancel}
-          class={`workbench-control-surface subagent-avatar subagent-avatar-${props.task.agent} group relative flex items-center justify-center size-9 rounded-full border border-border-base transition-all duration-200 ${isQueued() ? "subagent-avatar-queued opacity-50 cursor-default" : "cursor-pointer hover:scale-105 hover:border-border-strong active:scale-95"} ${isHolding() ? "subagent-avatar-holding" : ""}`}
+          classList={{
+            "workbench-control-surface subagent-avatar group relative flex items-center justify-center size-9 rounded-full border transition-all duration-200": true,
+            [`subagent-avatar-${props.task.agent}`]: true,
+            "subagent-avatar-queued opacity-50 cursor-default": isQueued(),
+            "cursor-pointer hover:scale-105 hover:border-border-strong active:scale-95": !isQueued(),
+            "subagent-avatar-holding": isHolding(),
+            "subagent-avatar-retrying": isRetrying(),
+            "border-border-base": !isRetrying(),
+            "subagent-avatar-retry-border": isRetrying(),
+          }}
           style={{ "--subagent-accent-color": config().color }}
         >
           <Show when={!isQueued() && isHolding()}>
@@ -185,7 +233,13 @@ function SubagentAvatar(props: SubagentAvatarProps) {
               />
             </svg>
           </Show>
-          <span class="subagent-icon inline-flex items-center justify-center size-5 select-none text-[16px] leading-none">
+          <span
+            classList={{
+              "subagent-icon inline-flex items-center justify-center size-5 select-none text-[16px] leading-none": true,
+              "text-icon-base": !isRetrying(),
+              "text-icon-critical-base": isRetrying(),
+            }}
+          >
             {config().emoji}
           </span>
         </button>

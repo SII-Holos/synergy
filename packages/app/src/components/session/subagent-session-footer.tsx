@@ -1,8 +1,9 @@
 import { Show, createMemo, createEffect, createSignal, onCleanup } from "solid-js"
 import { useNavigate, useParams } from "@solidjs/router"
+import { useSync } from "@/context/sync"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { AgentGlyph, getAgentVisual } from "@/components/agent-visual"
-import type { SessionCortexDelegation } from "@ericsanchezok/synergy-sdk/client"
+import type { SessionCortexDelegation, SessionStatus } from "@ericsanchezok/synergy-sdk/client"
 
 const HIDE_MODEL_LABEL_AGENTS = new Set(["codex", "claude-code"])
 
@@ -42,13 +43,16 @@ function cleanPreview(input?: string): string | undefined {
 }
 
 export function SubagentSessionFooter(props: { cortex: SessionCortexDelegation; parentSessionID?: string }) {
+  const sync = useSync()
   const params = useParams()
   const navigate = useNavigate()
 
   const visual = createMemo(() => getAgentVisual(props.cortex.agent))
   const preview = createMemo(() => cleanPreview(props.cortex.error ?? props.cortex.result))
   const [tick, setTick] = createSignal(0)
-
+  const sessionStatus = createMemo<SessionStatus | undefined>(() =>
+    params.id ? sync.data.session_status[params.id] : undefined,
+  )
   createEffect(() => {
     if (props.cortex.status !== "running") return
     const id = setInterval(() => setTick((t) => t + 1), 1000)
@@ -63,13 +67,22 @@ export function SubagentSessionFooter(props: { cortex: SessionCortexDelegation; 
     if (HIDE_MODEL_LABEL_AGENTS.has(props.cortex.agent)) return undefined
     const m = props.cortex.model
     if (!m) return undefined
-    // If provider name is redundant with model prefix, show just modelID
     const provider = m.providerID.replace(/^openai$|^anthropic$|^google$/i, "")
     const model = m.modelID
     return model.startsWith(m.providerID.split("/").pop()!) ? model : `${m.providerID}/${model}`
   })
 
+  const retryStatus = createMemo(() => {
+    const s = sessionStatus()
+    if (s?.type === "retry") return s
+    return undefined
+  })
+
   const statusInfo = createMemo(() => {
+    const rs = retryStatus()
+    if (rs) {
+      return { label: `Retry #${rs.attempt}`, tone: "text-text-critical-base", dot: "bg-icon-critical-base" }
+    }
     switch (props.cortex.status) {
       case "queued":
         return { label: "Queued", tone: "text-text-subtle", dot: "bg-text-subtle" }
