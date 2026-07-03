@@ -362,6 +362,7 @@ export function ProviderConnectionFlow(props: {
                       return
                     }
                     await complete()
+                    resetMethod()
                   })
 
                   return (
