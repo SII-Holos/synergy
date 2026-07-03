@@ -382,12 +382,9 @@ function RunMenu(props: {
   function handleRun() {
     const mode = selectedMode()
     if (!mode) return
-    const val = selectedModelValue()
-    if (val) {
-      const parts = val.split("/")
-      const providerID = parts[0]
-      const modelID = parts.slice(1).join("/")
-      props.onRun(mode, { providerID, modelID })
+    const opt = currentModelOption()
+    if (opt && opt.kind === "model") {
+      props.onRun(mode, { providerID: opt.providerID, modelID: opt.modelID })
     } else {
       props.onRun(mode)
     }
@@ -1541,11 +1538,7 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
     })
   }
 
-  async function createExecutionSession(
-    mode: BlueprintRunMode,
-    blueprintDir: string,
-    model?: { providerID: string; modelID: string },
-  ) {
+  async function createExecutionSession(mode: BlueprintRunMode, blueprintDir: string) {
     if (mode === "current") {
       if (!canRunCurrentSession() || !params.id) {
         alert("Open a session in this Blueprint scope before running it there.")
@@ -1590,7 +1583,7 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
     let createdLoopID: string | undefined
     let target: Awaited<ReturnType<typeof createExecutionSession>> | undefined
     try {
-      target = await createExecutionSession(mode, dir, model)
+      target = await createExecutionSession(mode, dir)
       if (!target) return
       const loop = await sdk.client.blueprint.loop
         .create({
