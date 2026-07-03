@@ -6,6 +6,7 @@ import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { TextField } from "@ericsanchezok/synergy-ui/text-field"
 import { Markdown } from "@ericsanchezok/synergy-ui/markdown"
 import { Countdown } from "@ericsanchezok/synergy-ui/countdown"
+import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { useSDK } from "@/context/sdk"
 import "./question-prompt.css"
 
@@ -124,11 +125,11 @@ export function QuestionPrompt(props: QuestionPromptProps) {
   }
 
   return (
-    <section class="question-prompt-shell">
+    <section class="question-prompt-shell" aria-label="Question awaiting your input">
       <Show when={collapsed()}>
         <button type="button" class="question-prompt-collapsed" onClick={() => setCollapsed(false)}>
           <span class="question-prompt-collapsed-main">
-            <Icon name="chevron-right" size="small" class="question-prompt-muted-icon" />
+            <Icon name={getSemanticIcon("navigation.expand")} size="small" class="question-prompt-muted-icon" />
             <span class="question-prompt-collapsed-title">{currentStepLabel()}</span>
           </span>
           <span class="question-prompt-collapsed-meta">
@@ -143,27 +144,30 @@ export function QuestionPrompt(props: QuestionPromptProps) {
       <Show when={!collapsed()}>
         <div class="question-prompt-expanded">
           <header class="question-prompt-header">
-            <button
-              type="button"
-              class="question-prompt-collapse-button"
-              onClick={() => setCollapsed(true)}
-              title="Collapse"
-            >
-              <Icon name="chevron-down" size="small" />
-            </button>
             <div class="question-prompt-heading">
               <div class="question-prompt-kicker">Needs your input</div>
               <div class="question-prompt-title">{currentStepLabel()}</div>
             </div>
-            <div class="question-prompt-header-meta">
+            <div class="question-prompt-header-actions">
               <Show when={!single()}>
-                <span>
+                <span class="question-prompt-step-count">
                   {Math.min(store.tab + 1, questions().length)} / {questions().length}
                 </span>
               </Show>
               <Show when={countdownSeconds() != null}>
                 <Countdown seconds={countdownSeconds()!} active={true} />
               </Show>
+              <Button variant="ghost" size="small" onClick={reject} class="question-prompt-skip" title="Skip question">
+                Skip
+              </Button>
+              <button
+                type="button"
+                class="question-prompt-collapse-button"
+                onClick={() => setCollapsed(true)}
+                title="Collapse"
+              >
+                <Icon name={getSemanticIcon("navigation.collapse")} size="small" />
+              </button>
             </div>
           </header>
 
@@ -185,7 +189,7 @@ export function QuestionPrompt(props: QuestionPromptProps) {
                     >
                       <span>{q.header}</span>
                       <Show when={isAnswered()}>
-                        <Icon name="check" size="small" />
+                        <Icon name={getSemanticIcon("state.success")} size="small" />
                       </Show>
                     </button>
                   )
@@ -226,7 +230,7 @@ export function QuestionPrompt(props: QuestionPromptProps) {
                       >
                         <span class="question-prompt-option-mark">
                           <Show when={picked()}>
-                            <Icon name="check" size="small" />
+                            <Icon name={getSemanticIcon("state.success")} size="small" />
                           </Show>
                         </span>
                         <span class="question-prompt-option-copy">
@@ -243,10 +247,16 @@ export function QuestionPrompt(props: QuestionPromptProps) {
                   fallback={
                     <button
                       type="button"
-                      class="question-prompt-other-trigger"
+                      class="question-prompt-option question-prompt-other-trigger"
                       onClick={() => setStore("otherOpen", true)}
                     >
-                      Other answer...
+                      <span class="question-prompt-option-mark question-prompt-other-mark">
+                        <Icon name={getSemanticIcon("action.add")} size="small" />
+                      </span>
+                      <span class="question-prompt-option-copy">
+                        <span class="question-prompt-option-label">Other answer</span>
+                        <span class="question-prompt-option-description">Type a different answer</span>
+                      </span>
                     </button>
                   }
                 >
@@ -254,7 +264,7 @@ export function QuestionPrompt(props: QuestionPromptProps) {
                     <div class="question-prompt-other-label">
                       <span>Other answer</span>
                       <Show when={customPicked()}>
-                        <Icon name="check" size="small" />
+                        <Icon name={getSemanticIcon("state.success")} size="small" />
                       </Show>
                     </div>
                     <div class="question-prompt-other-row">
@@ -318,11 +328,8 @@ export function QuestionPrompt(props: QuestionPromptProps) {
             </Show>
           </div>
 
-          <footer class="question-prompt-footer">
-            <Button variant="ghost" size="large" onClick={reject} class="question-prompt-dismiss">
-              Dismiss
-            </Button>
-            <Show when={!single()}>
+          <Show when={!single()}>
+            <footer class="question-prompt-footer">
               <div class="question-prompt-footer-actions">
                 <Show when={store.tab > 0}>
                   <Button variant="ghost" size="large" onClick={() => goToTab(store.tab - 1)}>
@@ -345,8 +352,8 @@ export function QuestionPrompt(props: QuestionPromptProps) {
                   </Button>
                 </Show>
               </div>
-            </Show>
-          </footer>
+            </footer>
+          </Show>
         </div>
       </Show>
     </section>
