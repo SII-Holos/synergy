@@ -285,20 +285,25 @@ export namespace SessionCompaction {
     return [ANCHOR_OPEN, "This is the most recent request before compaction.", "", text, ANCHOR_CLOSE].join("\n")
   }
 
+  function isGuidedContext(msg: MessageV2.WithParts): boolean {
+    return msg.info.role === "user" && msg.info.metadata?.guided === true && msg.info.metadata?.noReply === true
+  }
+
   /**
    * Preserve the active user request across compaction. Prefer the compaction
-   * parent when it has real text; synthetic continue messages fall back to the
-   * latest earlier real user message.
+   * parent when it has real text; synthetic continue and guided context messages
+   * fall back to the latest earlier real user request.
    */
   export function buildAnchor(messages: MessageV2.WithParts[], parentID: string): string | undefined {
     const parent = messages.findLast((msg) => msg.info.role === "user" && msg.info.id === parentID)
-    const parentText = parent ? realUserText(parent) : undefined
+    const parentText = parent && !isGuidedContext(parent) ? realUserText(parent) : undefined
     if (parentText) return formatAnchor(parentText)
 
     for (let i = messages.length - 1; i >= 0; i--) {
       const msg = messages[i]
       if (msg.info.role !== "user") continue
       if (msg.info.id === parentID) continue
+      if (isGuidedContext(msg)) continue
       const text = realUserText(msg)
       if (!text) continue
       return formatAnchor(text)

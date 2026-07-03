@@ -328,7 +328,11 @@ describe("session.compaction.isContextExceeded", () => {
 describe("session.compaction.buildAnchor", () => {
   const now = Date.now()
 
-  function userMsg(id: string, parts: Array<{ text: string; synthetic?: boolean }>): MessageV2.WithParts {
+  function userMsg(
+    id: string,
+    parts: Array<{ text: string; synthetic?: boolean }>,
+    metadata?: Record<string, any>,
+  ): MessageV2.WithParts {
     return {
       info: {
         id,
@@ -337,6 +341,7 @@ describe("session.compaction.buildAnchor", () => {
         time: { created: now },
         agent: "synergy",
         model: { providerID: "test", modelID: "test-model" },
+        ...(metadata ? { metadata } : {}),
       },
       parts: parts.map((part, index) => ({
         id: `text-${id}-${index}`,
@@ -371,6 +376,31 @@ describe("session.compaction.buildAnchor", () => {
 
     expect(anchor).toContain("keep this active request across compaction")
     expect(anchor).not.toContain("Continue if you have next steps")
+  })
+
+  test("falls back past guided context even when it has real user text", () => {
+    const messages = [
+      userMsg("active", [{ text: "implement the active task" }]),
+      userMsg("guided", [{ text: "temporary steering context" }], { guided: true, noReply: true }),
+    ]
+
+    const anchor = SessionCompaction.buildAnchor(messages, "guided")
+
+    expect(anchor).toContain("implement the active task")
+    expect(anchor).not.toContain("temporary steering context")
+  })
+
+  test("does not use earlier guided context as a fallback anchor", () => {
+    const messages = [
+      userMsg("active", [{ text: "preserve this original request" }]),
+      userMsg("guided", [{ text: "do not anchor this guided context" }], { guided: true, noReply: true }),
+      userMsg("continue", [{ text: "Continue if you have next steps", synthetic: true }]),
+    ]
+
+    const anchor = SessionCompaction.buildAnchor(messages, "continue")
+
+    expect(anchor).toContain("preserve this original request")
+    expect(anchor).not.toContain("do not anchor this guided context")
   })
 })
 
