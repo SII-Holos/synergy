@@ -48,6 +48,7 @@ export function directoryBrowserSetDraft(state: DirectoryBrowserState, draft: st
 }
 
 export function directoryBrowserClearDraft(state: DirectoryBrowserState, home: string): DirectoryBrowserState {
+  if (state.draft) return { ...state, draft: "" }
   return { ...createInitialDirectoryBrowserState(home), requestID: state.requestID + 1 }
 }
 

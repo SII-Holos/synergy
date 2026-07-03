@@ -129,4 +129,29 @@ describe("File.browse", () => {
     expect(results).toContain(path.join(tmp.path, "workspace", "focus-target"))
     expect(results).not.toContain(path.join(tmp.path, "other", "focus-target"))
   })
+
+  test("bounded traversal stops before enumerating all descendants", async () => {
+    await using tmp = await tmpdir({
+      init: async (dir) => {
+        await mkdirp(dir, "near-match")
+        await mkdirp(dir, "branch-a", "deep-match")
+        await mkdirp(dir, "branch-b", "deeper", "deepest-match")
+      },
+    })
+
+    const results = await File.browse({
+      path: tmp.path,
+      query: "match",
+      limit: 10,
+      depth: 4,
+      maxVisitedDirs: 0,
+      maxElapsedMs: 10_000,
+    })
+
+    expect(results).toContain(path.join(tmp.path, "near-match"))
+    expect(results).not.toContain(path.join(tmp.path, "branch-a", "deep-match"))
+    expect(results).not.toContain(path.join(tmp.path, "branch-b", "deeper", "deepest-match"))
+  })
+
+  test.skip("does not follow symlink directory cycles; symlink privileges vary across CI and Windows developer hosts", () => {})
 })

@@ -71,17 +71,39 @@ describe("project directory browser model", () => {
     expect(stale.status).toBe("loading")
   })
 
-  test("clear draft resets visible search state and invalidates stale requests", () => {
+  test("clear with a non-empty draft preserves visible search state", () => {
     const loading = directoryBrowserSubmitStart(
       directoryBrowserSetDraft(createInitialDirectoryBrowserState(home), "focus"),
       home,
     )
-    const cleared = directoryBrowserClearDraft(loading, home)
+    const ready = directoryBrowserSubmitSuccess(loading, loading.requestID, ["/home/user/focus"])
+    const edited = directoryBrowserSetDraft(ready, "different")
+    const cleared = directoryBrowserClearDraft(edited, home)
+
+    expect(cleared.draft).toBe("")
+    expect(cleared.submitted).toBe("focus")
+    expect(cleared.resolved).toEqual(ready.resolved)
+    expect(cleared.status).toBe("ready")
+    expect(cleared.results).toEqual(["/home/user/focus"])
+    expect(cleared.requestID).toBe(ready.requestID)
+  })
+
+  test("clear with an empty draft resets visible search state and invalidates stale requests", () => {
+    const loading = directoryBrowserSubmitStart(
+      directoryBrowserSetDraft(createInitialDirectoryBrowserState(home), "focus"),
+      home,
+    )
+    const ready = directoryBrowserSubmitSuccess(loading, loading.requestID, ["/home/user/focus"])
+    const draftCleared = directoryBrowserClearDraft(ready, home)
+    const cleared = directoryBrowserClearDraft(draftCleared, home)
+
+    expect(draftCleared.draft).toBe("")
+    expect(draftCleared.status).toBe("ready")
     expect(cleared.draft).toBe("")
     expect(cleared.status).toBe("idle")
     expect(cleared.results).toEqual([])
-    expect(cleared.requestID).toBe(loading.requestID + 1)
-    expect(directoryBrowserSubmitSuccess(cleared, loading.requestID, ["/stale"])).toEqual(cleared)
+    expect(cleared.requestID).toBe(ready.requestID + 1)
+    expect(directoryBrowserSubmitSuccess(cleared, ready.requestID, ["/stale"])).toEqual(cleared)
   })
 
   test("empty draft can submit when home is available", () => {
