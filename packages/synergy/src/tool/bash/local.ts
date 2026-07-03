@@ -168,6 +168,7 @@ export const LocalBashBackend: BashBackend = {
     const sandboxWarning = (ctx.extra as any)?.sandboxWarning as string | undefined
     const warnOutput = (base: string) => (sandboxWarning ? `[Sandbox unavailable: ${sandboxWarning}]\n\n${base}` : base)
     const withAttachments = async (result: BashResult): Promise<BashResult> => {
+      if (AttachmentDiscovery.shouldSkip(params.command)) return result
       await trace("attachment.discovery.start", {
         outputChars: result.output.length,
       })

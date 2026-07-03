@@ -41,6 +41,8 @@ function rulesFor(actions: {
 
 const GUARDED_MEDIUM_ALLOWED = new Set(["file_write", "network_request", "session_state", "browser_interact"])
 
+const AUTONOMOUS_MEDIUM_ALLOWED = new Set(["shell_remote_publish"])
+
 const AUTONOMOUS_DENIED = new Set([
   "shell_hardline",
   "shell_remote_write",
@@ -70,6 +72,7 @@ function guardedRules() {
 function autonomousRules() {
   const guarded = new Map(guardedRules().map((item) => [item.permission, item]))
   return SYNERGY_PROFILE_CAPABILITIES.map((permission) => {
+    if (AUTONOMOUS_MEDIUM_ALLOWED.has(permission)) return capabilityRule(permission, "allow")
     if (AUTONOMOUS_DENIED.has(permission)) return capabilityRule(permission, "deny")
     if (permission === "protected_op") return capabilityRule(permission, "ask")
     const guardedRule = guarded.get(permission)

@@ -11,6 +11,7 @@ import type { Scope } from "../scope"
 import { ScopeContext } from "../scope/context"
 import { fn } from "../util/fn"
 import { Log } from "../util/log"
+import { isPathContained } from "../util/path-contain"
 
 export namespace Worktree {
   export const Owner = z.discriminatedUnion("type", [
@@ -288,7 +289,7 @@ export namespace Worktree {
 
   function normalizeRegistryPath(info: RegistryInfo, repoRoot: string): RegistryInfo {
     const resolved = path.resolve(info.path)
-    if (resolved.startsWith(path.resolve(repoRoot) + path.sep)) return info
+    if (isPathContained(repoRoot, resolved)) return info
     return { ...info, path: path.join(worktreesRoot(repoRoot), path.basename(resolved)) }
   }
 

@@ -35,6 +35,7 @@ describe("synergy-max subagents", () => {
         expect(action(agent, permission)).toBe("allow")
       }
       expect(action(agent, "arxiv_download")).toBe("ask")
+      expect(action(agent, "mcp__any_server__any_tool")).toBe("allow")
     }
   })
 

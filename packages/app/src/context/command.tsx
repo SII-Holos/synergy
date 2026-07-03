@@ -140,7 +140,7 @@ function DialogCommand(props: { options: CommandOption[] }) {
   })
 
   return (
-    <Dialog title="Commands">
+    <Dialog title="Commands" size="command" placement="top">
       <List
         search={{ placeholder: "Search commands", autofocus: true }}
         emptyMessage="No commands found"

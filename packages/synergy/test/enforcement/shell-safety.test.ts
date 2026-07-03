@@ -295,14 +295,14 @@ describe("ShellSafety classifyBashRisk", () => {
     expect(ShellSafety.classifyBashRisk("wc -l input.txt")).toBe("shell_read")
   })
 
-  test("non-read-only non-hardline commands return shell or shell_remote_write", () => {
+  test("non-read-only non-hardline commands return shell or remote publish/write", () => {
     expect(ShellSafety.classifyBashRisk("git add file.ts")).toBe("shell")
     expect(ShellSafety.classifyBashRisk("npm install")).toBe("shell")
     expect(ShellSafety.classifyBashRisk("pip install requests")).toBe("shell")
     expect(ShellSafety.classifyBashRisk("curl https://example.com")).toBe("shell")
     expect(ShellSafety.classifyBashRisk("bun run build")).toBe("shell")
     expect(ShellSafety.classifyBashRisk("mkdir newdir")).toBe("shell")
-    expect(ShellSafety.classifyBashRisk("git push")).toBe("shell_remote_write")
+    expect(ShellSafety.classifyBashRisk("git push origin feature")).toBe("shell_remote_publish")
     expect(ShellSafety.classifyBashRisk("rm file.txt")).toBe("shell")
     expect(ShellSafety.classifyBashRisk("python3 -c 'print(1)'")).toBe("shell")
     expect(ShellSafety.classifyBashRisk("ssh user@host")).toBe("shell")
@@ -773,11 +773,29 @@ describe("ShellSafety git taxonomy — warn (shell)", () => {
     expect(ShellSafety.classifyBashRisk("git pull -r")).toBe("shell_destructive")
   })
 
-  test("git push (normal) is shell_remote_write; force/delete are shell_destructive", () => {
+  test("explicit branch push is shell_remote_publish; ambiguous/protected/force/delete pushes are stricter", () => {
     expect(ShellSafety.classifyBashRisk("git push")).toBe("shell_remote_write")
+    expect(ShellSafety.classifyBashRisk("git push origin")).toBe("shell_remote_write")
+    expect(ShellSafety.classifyBashRisk("git -c push.default=matching push origin")).toBe("shell_remote_write")
+    expect(ShellSafety.classifyBashRisk("git -c remote.origin.push=refs/heads/main:refs/heads/main push origin")).toBe(
+      "shell_remote_write",
+    )
+    expect(ShellSafety.classifyBashRisk("git push origin feature")).toBe("shell_remote_publish")
+    expect(ShellSafety.classifyBashRisk("git push -u origin feature")).toBe("shell_remote_publish")
+    expect(ShellSafety.classifyBashRisk("git push origin HEAD:refs/heads/feature")).toBe("shell_remote_publish")
+    expect(ShellSafety.classifyBashRisk("git push origin HEAD:refs/tags/v1.0")).toBe("shell_remote_write")
+    expect(ShellSafety.classifyBashRisk("git push origin refs/tags/v1.0")).toBe("shell_remote_write")
+    expect(ShellSafety.classifyBashRisk("git push origin HEAD:refs/notes/test")).toBe("shell_remote_write")
     expect(ShellSafety.classifyBashRisk("git push origin main")).toBe("shell_remote_write")
-    expect(ShellSafety.classifyBashRisk("git -C /tmp push")).toBe("shell_remote_write")
-    expect(ShellSafety.classifyBashRisk("git --git-dir=/tmp/repo/.git push origin main")).toBe("shell_remote_write")
+    expect(ShellSafety.classifyBashRisk("git push origin dev")).toBe("shell_remote_write")
+    expect(ShellSafety.classifyBashRisk("git -C /tmp push origin feature")).toBe("shell_remote_write")
+    expect(ShellSafety.classifyBashRisk("git --git-dir=/tmp/repo/.git push origin feature")).toBe("shell_remote_write")
+    expect(ShellSafety.classifyBashRisk("git --exec-path=/tmp/git-core push origin feature")).toBe("shell_remote_write")
+    expect(ShellSafety.classifyBashRisk("git -C/tmp push origin feature")).toBe("shell_remote_write")
+    expect(ShellSafety.classifyBashRisk("git -cfoo.bar=baz push origin feature")).toBe("shell_remote_write")
+    expect(ShellSafety.classifyBashRisk("command git push origin feature")).toBe("shell_remote_publish")
+    expect(ShellSafety.classifyBashRisk("command git push origin main")).toBe("shell_remote_write")
+    expect(ShellSafety.classifyBashRisk("command git push --force origin feature")).toBe("shell_destructive")
   })
 
   test("git revert is shell_destructive (history-rewriting inverse commit)", () => {
@@ -836,6 +854,24 @@ describe("ShellSafety git taxonomy — warn (shell)", () => {
   })
 })
 
+describe("ShellSafety GitHub CLI PR taxonomy", () => {
+  const { ShellSafety } = require("../../src/enforcement/shell-safety")
+
+  test("gh pr create is remote publish", () => {
+    expect(ShellSafety.classifyBashRisk("gh pr create --title fix --body body")).toBe("shell_remote_publish")
+  })
+
+  test("gh pr merge and close are destructive", () => {
+    expect(ShellSafety.classifyBashRisk("gh pr merge 123 --squash")).toBe("shell_destructive")
+    expect(ShellSafety.classifyBashRisk("gh pr close 123")).toBe("shell_destructive")
+  })
+
+  test("gh pr edit and comment remain generic remote writes", () => {
+    expect(ShellSafety.classifyBashRisk("gh pr edit 123 --title updated")).toBe("shell_remote_write")
+    expect(ShellSafety.classifyBashRisk("gh pr comment 123 --body note")).toBe("shell_remote_write")
+  })
+})
+
 // ------------------------------------------------------------------
 // 15. Git subcommand taxonomy — destructive
 // ------------------------------------------------------------------
@@ -875,6 +911,11 @@ describe("ShellSafety git taxonomy — destructive", () => {
 
   test("git push --delete is shell_destructive", () => {
     expect(ShellSafety.classifyBashRisk("git push --delete origin old-branch")).toBe("shell_destructive")
+  })
+
+  test("git push deleting by refspec is shell_destructive", () => {
+    expect(ShellSafety.classifyBashRisk("git push origin :old-branch")).toBe("shell_destructive")
+    expect(ShellSafety.classifyBashRisk("git push origin +feature")).toBe("shell_destructive")
   })
 
   test("git push --mirror is shell_destructive", () => {
@@ -969,6 +1010,24 @@ describe("ShellSafety git taxonomy — non-git commands unaffected", () => {
     // env vars before git should be skipped
     expect(ShellSafety.classifyBashRisk("GIT_DIR=/tmp git log")).toBe("shell_read")
     expect(ShellSafety.classifyBashRisk("GIT_DIR=/tmp git push --force")).toBe("shell_destructive")
+    expect(ShellSafety.classifyBashRisk("GIT_DIR=/tmp git push origin feature")).toBe("shell_remote_write")
+    expect(ShellSafety.classifyBashRisk("env GIT_DIR=/tmp git push origin feature")).toBe("shell_remote_write")
+    expect(ShellSafety.classifyBashRisk("env GIT_WORK_TREE=/tmp git push origin feature")).toBe("shell_remote_write")
+    expect(ShellSafety.classifyBashRisk("env -i GIT_NAMESPACE=test git push origin feature")).toBe("shell_remote_write")
+    expect(ShellSafety.classifyBashRisk("command env GIT_DIR=/tmp git push origin feature")).toBe("shell_remote_write")
+    expect(ShellSafety.classifyBashRisk("env -S 'GIT_DIR=/tmp git push origin feature'")).toBe("shell_remote_write")
+    expect(ShellSafety.classifyBashRisk("env --split-string='GIT_NAMESPACE=test git push origin feature'")).toBe(
+      "shell_remote_write",
+    )
+    expect(ShellSafety.classifyBashRisk("env -S 'git push origin main'")).toBe("shell_remote_write")
+    expect(ShellSafety.classifyBashRisk("env -S 'git push --force origin feature'")).toBe("shell_destructive")
+    expect(ShellSafety.classifyBashRisk("env -i -S 'GIT_DIR=/tmp git push origin feature'")).toBe("shell_remote_write")
+    expect(
+      ShellSafety.classifyBashRisk("env --ignore-environment -S 'GIT_NAMESPACE=test git push origin feature'"),
+    ).toBe("shell_remote_write")
+    expect(ShellSafety.classifyBashRisk("command env -i -S 'GIT_DIR=/tmp git push origin feature'")).toBe(
+      "shell_remote_write",
+    )
   })
 })
 

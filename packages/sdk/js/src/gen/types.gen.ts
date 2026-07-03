@@ -3762,7 +3762,7 @@ export type SkillList = {
     description: string
     location: string
     builtin?: boolean
-    source?: "builtin" | "synergy" | "claude" | "openclaw" | "codex" | "generic"
+    source?: "builtin" | "plugin" | "synergy" | "claude" | "openclaw" | "codex" | "generic"
     scope: "builtin" | "project" | "global" | "workspace" | "external"
     compatibility?: {
       level: "native" | "compatible" | "partial"
@@ -3771,6 +3771,8 @@ export type SkillList = {
     }
     entryFile?: string
     baseDir?: string
+    pluginId?: string
+    pluginName?: string
     references?: Array<string>
     scripts?: Array<string>
   }>
@@ -4287,6 +4289,7 @@ export type BlueprintLoopInfo = {
   runMode?: "current" | "new" | "worktree"
   parentSessionID?: string
   firstPrompt?: string
+  userPrompt?: string
   error?: string
   loopIndex?: number
   audit?: {
@@ -4669,6 +4672,10 @@ export type RegistryPluginSummary = {
   source: "official" | "local"
 }
 
+export type RegistryPluginCompatibility = {
+  synergy: string
+}
+
 export type RegistryPluginSignature = {
   algorithm: "ed25519"
   signer: string
@@ -4723,6 +4730,7 @@ export type RegistryPluginEntry = {
   verified: boolean
   official: boolean
   keywords: Array<string>
+  compatibility?: RegistryPluginCompatibility
   versions: Array<RegistryPluginVersion>
   createdAt: number
   updatedAt: number
@@ -4756,6 +4764,7 @@ export type RegistryPublishInput = {
   verified: boolean
   official: boolean
   keywords: Array<string>
+  compatibility?: RegistryPluginCompatibility
   versions: Array<RegistryPluginVersion>
   risk: "low" | "medium" | "high"
   trustTier: "declarative" | "trusted-import" | "sandbox"

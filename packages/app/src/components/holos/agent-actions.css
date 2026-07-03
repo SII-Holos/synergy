@@ -1,0 +1,179 @@
+[data-component="dialog"] [data-slot="dialog-container"]:has(.holos-agent-switch-dialog) {
+  width: min(calc(100vw - 32px), 560px);
+  height: auto;
+}
+
+[data-component="dialog"] [data-slot="dialog-container"]:has(.holos-agent-form-dialog) {
+  width: min(calc(100vw - 32px), 560px);
+  height: auto;
+}
+
+[data-slot="dialog-content"].holos-agent-switch-dialog,
+[data-slot="dialog-content"].holos-agent-form-dialog {
+  --holos-dialog-row-bg: color-mix(in srgb, var(--dialog-control-bg) 70%, transparent);
+  --holos-dialog-row-hover: var(--dialog-control-bg-hover);
+  min-height: 0;
+}
+
+[data-slot="dialog-content"].holos-agent-switch-dialog [data-slot="dialog-body"],
+[data-slot="dialog-content"].holos-agent-form-dialog [data-slot="dialog-body"] {
+  flex: 0 1 auto;
+  overflow: visible;
+}
+
+.holos-agent-form {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.holos-agent-form-fields {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.holos-agent-form-fields textarea[data-slot="input-input"] {
+  min-height: 104px;
+}
+
+.holos-agent-actions,
+.holos-agent-switch-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.holos-agent-switch {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.holos-agent-switch-list {
+  display: flex;
+  max-height: min(360px, calc(100vh - 260px));
+  min-width: 0;
+  flex-direction: column;
+  gap: 4px;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
+.holos-agent-switch-row {
+  display: grid;
+  width: 100%;
+  min-width: 0;
+  grid-template-columns: 32px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  color: var(--text-base);
+  text-align: left;
+  transition:
+    background-color 120ms ease,
+    color 120ms ease;
+}
+
+.holos-agent-switch-row:hover:not(:disabled),
+.holos-agent-switch-row:focus-visible:not(:disabled) {
+  background: var(--holos-dialog-row-hover);
+}
+
+.holos-agent-switch-row:focus-visible {
+  outline: none;
+  box-shadow: var(--dialog-focus-ring);
+}
+
+.holos-agent-switch-row[data-active="true"] {
+  background: var(--holos-dialog-row-bg);
+  cursor: default;
+}
+
+.holos-agent-switch-avatar {
+  display: inline-flex;
+  width: 32px;
+  height: 32px;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--dialog-control-bg);
+  color: var(--icon-base);
+  box-shadow: inset 0 0 0 1px var(--dialog-border-weak);
+}
+
+.holos-agent-switch-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.holos-agent-switch-copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.holos-agent-switch-name {
+  overflow: hidden;
+  color: var(--text-strong);
+  font-size: var(--type-ui-row-title-size, 14px);
+  font-weight: var(--font-weight-semibold, 600);
+  line-height: var(--type-ui-row-title-line-height, 20px);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.holos-agent-switch-description {
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--text-weak);
+  font-size: var(--type-ui-body-size, 13px);
+  line-height: var(--type-ui-body-line-height, 18px);
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.holos-agent-switch-id {
+  overflow: hidden;
+  color: var(--text-subtle);
+  font-family: var(--font-family-mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace);
+  font-size: var(--type-ui-caption-size, 12px);
+  line-height: var(--type-ui-caption-line-height, 16px);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.holos-agent-switch-status {
+  justify-self: end;
+  border-radius: 999px;
+  background: var(--dialog-control-bg);
+  padding: 5px 9px;
+  color: var(--text-base);
+  font-size: var(--type-ui-caption-size, 12px);
+  font-weight: var(--font-weight-medium, 500);
+  line-height: var(--type-ui-caption-line-height, 16px);
+  box-shadow: inset 0 0 0 1px var(--dialog-border-weak);
+}
+
+.holos-agent-switch-empty {
+  display: flex;
+  min-height: 108px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border-radius: 12px;
+  background: var(--holos-dialog-row-bg);
+  color: var(--text-weak);
+}
+
+.holos-agent-switch-actions {
+  padding-top: 4px;
+}

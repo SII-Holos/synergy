@@ -299,7 +299,7 @@ Worker and process plugins are started through Synergy's plugin runner. The runn
 - `dist/permissions.summary.json`
 - `dist/integrity.json`
 
-`synergy-plugin pack` archives `dist/` into `<name>-<version>.synergy-plugin.tgz`. `synergy-plugin sign` writes `<tarball>.sig`. `synergy-plugin publish-market` prepares the official marketplace submission by uploading or checking GitHub Release assets, writing a `SII-Holos/synergy-plugins` entry with the signer public key, regenerating the registry index, running registry validation, and opening a PR when `gh` is available.
+`synergy-plugin pack` archives `dist/` into `<name>-<version>.synergy-plugin.tgz`. `synergy-plugin sign` writes `<tarball>.sig`. `synergy-plugin publish-market` prepares the official marketplace submission by uploading or checking GitHub Release assets, writing a `SII-Holos/synergy-plugins` entry with the signer public key and `compatibility.synergy` from `plugin.json` `engines.synergy`, regenerating the registry index, running registry validation, and opening a PR when `gh` is available.
 
 For local marketplace UX testing, the Synergy runtime still provides `synergy plugin publish <tarball>` to publish into the local development registry.
 

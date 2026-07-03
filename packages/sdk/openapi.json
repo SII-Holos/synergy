@@ -25204,7 +25204,7 @@
                 },
                 "source": {
                   "type": "string",
-                  "enum": ["builtin", "synergy", "claude", "openclaw", "codex", "generic"]
+                  "enum": ["builtin", "plugin", "synergy", "claude", "openclaw", "codex", "generic"]
                 },
                 "scope": {
                   "type": "string",
@@ -25238,6 +25238,12 @@
                   "type": "string"
                 },
                 "baseDir": {
+                  "type": "string"
+                },
+                "pluginId": {
+                  "type": "string"
+                },
+                "pluginName": {
                   "type": "string"
                 },
                 "references": {
@@ -26867,6 +26873,9 @@
           "firstPrompt": {
             "type": "string"
           },
+          "userPrompt": {
+            "type": "string"
+          },
           "error": {
             "type": "string"
           },
@@ -28039,6 +28048,17 @@
           "source"
         ]
       },
+      "RegistryPluginCompatibility": {
+        "type": "object",
+        "properties": {
+          "synergy": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": ["synergy"],
+        "additionalProperties": false
+      },
       "RegistryPluginSignature": {
         "type": "object",
         "properties": {
@@ -28208,6 +28228,9 @@
               "type": "string"
             }
           },
+          "compatibility": {
+            "$ref": "#/components/schemas/RegistryPluginCompatibility"
+          },
           "versions": {
             "type": "array",
             "items": {
@@ -28344,6 +28367,9 @@
             "items": {
               "type": "string"
             }
+          },
+          "compatibility": {
+            "$ref": "#/components/schemas/RegistryPluginCompatibility"
           },
           "versions": {
             "type": "array",

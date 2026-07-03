@@ -79,6 +79,9 @@ describe("plugin scaffold toolchain", () => {
           name: "asset-fixture",
           version: "0.1.0",
           description: "Fixture plugin with declared contribution assets",
+          engines: {
+            synergy: PLUGIN_PROTOCOL_MIN_SYNERGY_RANGE,
+          },
           icon: "./icons/market.svg",
           main: "./src/index.ts",
           contributes: {
@@ -233,7 +236,7 @@ export default plugin
       publishedAt: "2026-06-27T00:00:00.000Z",
     })
     expect(entry.icon).toEqual({ type: "registry-svg", path: "icons/asset-fixture.svg" })
-    expect("compatibility" in entry).toBe(false)
+    expect(entry.compatibility).toEqual({ synergy: PLUGIN_PROTOCOL_MIN_SYNERGY_RANGE })
 
     const registryEntryPath = path.join(tmp.path, "registry", "plugins", "asset-fixture.json")
     writeRegistryEntry(registryEntryPath, entry)

@@ -16,7 +16,7 @@ export function DialogSelectFile() {
   const sessionKey = createMemo(() => `${params.dir}${params.id ? "/" + params.id : ""}`)
   const tabs = createMemo(() => layout.tabs(sessionKey()))
   return (
-    <Dialog title="Select file">
+    <Dialog title="Select file" size="list">
       <List
         search={{ placeholder: "Search files", autofocus: true }}
         emptyMessage="No files found"

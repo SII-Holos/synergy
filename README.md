@@ -187,6 +187,7 @@ bun dev server            # server only, fixed development port
 bun dev app --open        # Vite web app against an existing server
 bun dev web               # server + Vite web app
 bun dev desktop           # server + Vite web app + Electron desktop shell
+bun dev desktop --managed # rebuild Web app dist + Electron managed server mode
 ```
 
 After editing code:
@@ -632,6 +633,12 @@ Run the desktop shell in the default external development mode:
 
 ```bash
 bun dev desktop
+```
+
+Validate the production-style managed server path with a fresh Web app dist:
+
+```bash
+bun dev desktop --managed
 ```
 
 Build, test, and package the desktop app:

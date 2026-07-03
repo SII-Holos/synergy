@@ -313,12 +313,14 @@ export async function getCliEntries(): Promise<Array<{ pluginId: string; command
   return result
 }
 
-export async function getSkillEntries(): Promise<Array<PluginSkill & { pluginDir: string }>> {
-  const result: Array<PluginSkill & { pluginDir: string }> = []
+export async function getSkillEntries(): Promise<
+  Array<PluginSkill & { pluginId: string; pluginName?: string; pluginDir: string }>
+> {
+  const result: Array<PluginSkill & { pluginId: string; pluginName?: string; pluginDir: string }> = []
   for (const p of await state().then((x) => x.loaded)) {
     if (p.skills) {
       for (const skill of p.skills) {
-        result.push({ ...skill, pluginDir: p.pluginDir })
+        result.push({ ...skill, pluginId: p.id, pluginName: p.name, pluginDir: p.pluginDir })
       }
     }
   }

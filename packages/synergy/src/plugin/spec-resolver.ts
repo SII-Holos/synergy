@@ -5,7 +5,7 @@ import { Global } from "../global"
 import { BunProc } from "../util/bun"
 import { PluginSpec } from "../util/plugin-spec"
 import { PluginId } from "./ids"
-import { PluginManifest } from "@ericsanchezok/synergy-plugin"
+import { PluginManifest, normalizePluginArchiveEntry } from "@ericsanchezok/synergy-plugin"
 import { resolveEntryFromPluginDir } from "@ericsanchezok/synergy-plugin/spec"
 import type { PluginDescriptor, PluginManifest as PluginManifestType } from "@ericsanchezok/synergy-plugin"
 import type { PluginSource } from "./trust"
@@ -56,6 +56,22 @@ export function archiveCacheDir(archivePath: string): string {
   return path.join(Global.Path.cache, "plugin-archives", safeArchiveName(archivePath).replace(/\.tgz$/i, ""))
 }
 
+function validateArchiveEntries(archivePath: string) {
+  const result = Bun.spawnSync(["tar", "-tzf", archivePath], { stdout: "pipe", stderr: "pipe" })
+  if (result.exitCode !== 0) {
+    const stderr = new TextDecoder().decode(result.stderr)
+    throw new Error(`Failed to inspect plugin archive ${archivePath}${stderr ? `: ${stderr}` : ""}`)
+  }
+  for (const line of new TextDecoder().decode(result.stdout).split("\n")) {
+    try {
+      normalizePluginArchiveEntry(line)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      throw new Error(`Plugin archive contains unsafe path: ${message}`)
+    }
+  }
+}
+
 /** Walk up from a file path to find the nearest directory containing package.json or plugin.json. */
 export function findPackageRoot(entryPath: string): string {
   const stat = fs.existsSync(entryPath) ? fs.statSync(entryPath) : undefined
@@ -84,6 +100,7 @@ export async function readPluginManifest(pluginDir: string): Promise<PluginManif
 }
 
 async function extractArchive(archivePath: string, options: { stage?: boolean } = {}): Promise<string> {
+  validateArchiveEntries(archivePath)
   const targetDir = options.stage
     ? path.join(
         Global.Path.state,

@@ -8,6 +8,8 @@ Audit agents may set:
 - completed: audit passed
 - failed: audit cannot continue
 
+When an audit agent completes a loop, this tool automatically delivers a completion notification to the original execution session and wakes it asynchronously. The execution session should use that final turn for acknowledgement or allowed follow-up, not to call BlueprintLoop finish/restart tools again.
+
 Parameters:
 - loopID: The active BlueprintLoop ID
 - status: "auditing", "failed", or "completed" according to the role rules above
