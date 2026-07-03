@@ -408,10 +408,14 @@ export namespace MessageV2 {
   const Base = z.object({
     id: z.string(),
     sessionID: z.string(),
+    visible: z.boolean().optional(),
+    includeInContext: z.boolean().optional(),
+    rootID: z.string().optional(),
   })
 
   export const User = Base.extend({
     role: z.literal("user"),
+    isRoot: z.boolean().optional(),
     time: z.object({
       created: z.number(),
     }),

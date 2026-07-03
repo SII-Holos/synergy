@@ -236,11 +236,7 @@ function SessionPageContent() {
       messages().filter((m) => {
         if (m.role !== "user") return false
         const user = m as UserMessage
-        return (
-          !user.metadata?.synthetic &&
-          !isGuidedContextUserMessage(user) &&
-          isSessionIdentityAnchor(user)
-        )
+        return !user.metadata?.synthetic && !isGuidedContextUserMessage(user) && isSessionIdentityAnchor(user)
       }) as UserMessage[],
     emptyUserMessages,
   )

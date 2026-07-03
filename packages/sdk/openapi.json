@@ -22108,6 +22108,10 @@
         }
       },
       "SessionCompletionNotice": {
+        "default": {
+          "unread": false,
+          "silent": false
+        },
         "type": "object",
         "properties": {
           "unread": {
@@ -22526,7 +22530,7 @@
             }
           }
         },
-        "required": ["id", "scope", "title", "version", "time", "completionNotice"]
+        "required": ["id", "scope", "title", "version", "time"]
       },
       "VcsInfo": {
         "type": "object",
@@ -23264,9 +23268,21 @@
           "sessionID": {
             "type": "string"
           },
+          "visible": {
+            "type": "boolean"
+          },
+          "includeInContext": {
+            "type": "boolean"
+          },
+          "rootID": {
+            "type": "string"
+          },
           "role": {
             "type": "string",
             "const": "user"
+          },
+          "isRoot": {
+            "type": "boolean"
           },
           "time": {
             "type": "object",
@@ -23462,6 +23478,15 @@
             "type": "string"
           },
           "sessionID": {
+            "type": "string"
+          },
+          "visible": {
+            "type": "boolean"
+          },
+          "includeInContext": {
+            "type": "boolean"
+          },
+          "rootID": {
             "type": "string"
           },
           "role": {
