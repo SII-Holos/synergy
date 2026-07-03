@@ -52,6 +52,7 @@ export const DialogSelectModel: Component<{ provider?: string }> = (props) => {
     <Dialog
       title="Select model"
       description="Choose a quick-switch model for the current session."
+      size="list"
       action={
         <Button
           class="h-7 -my-1 text-14-medium"

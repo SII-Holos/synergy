@@ -101,6 +101,7 @@ export function DialogSelectDirectory(props: DialogSelectDirectoryProps) {
   return (
     <Dialog
       class="project-directory-dialog"
+      size="list"
       title={
         <div class="project-directory-title">
           <span class="project-directory-title-icon" aria-hidden="true">
