@@ -3734,6 +3734,22 @@ export type ProviderAuthMethod = {
   label: string
 }
 
+export type GitHubAccount = {
+  login: string
+  id?: number
+  url?: string
+}
+
+export type GitHubAuthStatus = {
+  providerID: "github"
+  status: "connected" | "not_configured" | "invalid" | "unverified"
+  source?: "env" | "store"
+  authKind?: "api_key" | "oauth"
+  account?: GitHubAccount
+  failureCode?: string
+  updatedAt?: number
+}
+
 export type ProviderAuthAuthorization = {
   url: string
   method: "auto" | "code"
@@ -9097,6 +9113,55 @@ export type ProviderAuthResponses = {
 }
 
 export type ProviderAuthResponse = ProviderAuthResponses[keyof ProviderAuthResponses]
+
+export type ProviderAuthGithubStatusData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/provider/auth/github/status"
+}
+
+export type ProviderAuthGithubStatusResponses = {
+  /**
+   * GitHub auth status
+   */
+  200: GitHubAuthStatus
+}
+
+export type ProviderAuthGithubStatusResponse =
+  ProviderAuthGithubStatusResponses[keyof ProviderAuthGithubStatusResponses]
+
+export type ProviderAuthGithubLogoutData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/provider/auth/github"
+}
+
+export type ProviderAuthGithubLogoutErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type ProviderAuthGithubLogoutError = ProviderAuthGithubLogoutErrors[keyof ProviderAuthGithubLogoutErrors]
+
+export type ProviderAuthGithubLogoutResponses = {
+  /**
+   * GitHub credentials removed
+   */
+  200: boolean
+}
+
+export type ProviderAuthGithubLogoutResponse =
+  ProviderAuthGithubLogoutResponses[keyof ProviderAuthGithubLogoutResponses]
 
 export type ProviderOauthAuthorizeData = {
   body?: {

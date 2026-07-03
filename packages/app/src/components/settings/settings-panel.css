@@ -2295,6 +2295,12 @@
   line-height: var(--settings-type-body-line-height);
 }
 
+.providers-connect-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .providers-empty-detail {
   min-height: 300px;
   display: flex;
