@@ -26993,6 +26993,18 @@
               }
             },
             "required": ["created", "updated"]
+          },
+          "model": {
+            "type": "object",
+            "properties": {
+              "providerID": {
+                "type": "string"
+              },
+              "modelID": {
+                "type": "string"
+              }
+            },
+            "required": ["providerID", "modelID"]
           }
         },
         "required": ["id", "noteID", "title", "sessionID", "auditAgent", "scopeID", "status", "time"]
@@ -27036,6 +27048,19 @@
           "loopIndex": {
             "description": "Zero-based loop index",
             "type": "number"
+          },
+          "model": {
+            "description": "Explicit model override for the Blueprint Run",
+            "type": "object",
+            "properties": {
+              "providerID": {
+                "type": "string"
+              },
+              "modelID": {
+                "type": "string"
+              }
+            },
+            "required": ["providerID", "modelID"]
           }
         },
         "required": ["noteID", "title", "sessionID"]
