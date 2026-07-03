@@ -2,9 +2,8 @@ import { createRenderEffect, createSignal, onCleanup } from "solid-js"
 
 const EMIT_INTERVAL_MS = 16
 const MAX_ELAPSED_MS = 80
-const BASE_STREAM_RATE_CPS = 260
-const MAX_STREAM_RATE_CPS = 420
-const LOW_BUFFER_CHARS = 80
+const BUFFER_MULTIPLIER = 10
+const MIN_DISPLAY_CPS = 20
 
 export interface TypewriterOptions {
   source: () => string
@@ -26,11 +25,7 @@ export interface TypewriterFrameInput {
 }
 
 function displayRate(buffer: number) {
-  if (buffer <= LOW_BUFFER_CHARS) return BASE_STREAM_RATE_CPS
-
-  const overflow = buffer - LOW_BUFFER_CHARS
-  const ramp = Math.min(overflow / LOW_BUFFER_CHARS, 1)
-  return BASE_STREAM_RATE_CPS + (MAX_STREAM_RATE_CPS - BASE_STREAM_RATE_CPS) * ramp
+  return Math.max(MIN_DISPLAY_CPS, buffer * BUFFER_MULTIPLIER)
 }
 
 export function advanceTypewriterFrame(input: TypewriterFrameInput): TypewriterFrameState {
