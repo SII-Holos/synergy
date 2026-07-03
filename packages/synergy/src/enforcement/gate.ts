@@ -124,7 +124,7 @@ const DESTRUCTIVE_PATTERNS = [
   "vgremove ",
   // Privilege escalation
   "sudo ",
-  // Git destructive operations (subcommand-aware)
+  // Git destructive operations (force/delete/hard-reset only — normal push is shell_remote_write)
   "git reset --hard",
   "git clean -f",
   "git clean -x",
@@ -140,8 +140,7 @@ const DESTRUCTIVE_PATTERNS = [
   "git filter-branch",
   "git reflog expire",
   "git reflog delete",
-  // Git refined classifications — defense-in-depth
-  "git push ",
+  // Git refined classifications — defense-in-depth (only truly destructive variants)
   "git pull --rebase",
   "git pull -r",
   "git revert ",
@@ -612,11 +611,13 @@ export namespace EnforcementGate {
           })
           return { capabilities: caps }
         }
-
         // shell_destructive is high-risk by definition; it must always be a hard
         // boundary so Smart allow can never bypass a profile deny on it.
+        // shell_remote_write is medium-risk and is Smart allow eligible.
         caps.push({ class: risk, nonBypassable: risk === "shell_destructive" })
 
+        // Defense-in-depth: secondary destructive pattern checks.
+        // For shell_remote_write, only flag if a force/delete pattern is matched.
         if (risk !== "shell_destructive") {
           const resilient = analyzeDestructiveCommand(command)
           if (resilient.matched) {

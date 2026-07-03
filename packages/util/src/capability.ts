@@ -142,6 +142,12 @@ export const SYNERGY_CAPABILITY_DETAILS: Record<string, SynergyCapabilityDefinit
     title: "Run shell commands",
     description: "Can execute non-destructive shell commands in the current workspace.",
   },
+  shell_remote_write: {
+    category: "runtime",
+    severity: "medium",
+    title: "Run remote-write shell commands",
+    description: "Can run commands that push, create, or modify remote state without local destruction.",
+  },
   shell_destructive: {
     category: "runtime",
     severity: "high",
@@ -365,6 +371,7 @@ export const SYNERGY_PROFILE_CAPABILITIES = [
   "file_write",
   "shell_read",
   "shell",
+  "shell_remote_write",
   "shell_destructive",
   "shell_hardline",
   "file_external_read",
