@@ -213,10 +213,13 @@ export const Terminal = (props: TerminalProps) => {
     })
 
     const connect = () => {
-      if (!sdk.directory) return
-      const socket = new WebSocket(
-        sdk.url + `/pty/${local.pty.id}/connect?directory=${encodeURIComponent(sdk.directory)}`,
-      )
+      const params = new URLSearchParams()
+      if (sdk.directory) {
+        params.set("directory", sdk.directory)
+      } else if (sdk.scopeID) {
+        params.set("scopeID", sdk.scopeID)
+      }
+      const socket = new WebSocket(sdk.url + `/pty/${local.pty.id}/connect?${params.toString()}`)
       ws = socket
 
       socket.addEventListener("open", () => {
