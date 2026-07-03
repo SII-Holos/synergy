@@ -218,7 +218,7 @@ export namespace SessionInbox {
 
   export async function enqueueUser(input: InvokeInput): Promise<Item> {
     const itemID = Identifier.ascending("inbox")
-    const messageID = input.messageID ?? Identifier.ascending("message")
+    const { messageID: _queuedMessageID, ...queuedInput } = input
     const summarized = summarizeParts(input.parts)
     const item: StoredItem = {
       id: itemID,
@@ -234,8 +234,7 @@ export namespace SessionInbox {
       source: { type: "user", label: "You" },
       time: { created: Date.now() },
       orderKey: itemID,
-      messageID,
-      input: { ...input, messageID },
+      input: queuedInput,
     }
     return publicItem(await writeItem(item))
   }

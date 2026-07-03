@@ -870,12 +870,16 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     const agent = currentAgent.name
     const model = { modelID: currentModel.id, providerID: currentModel.provider.id }
     const variant = local.model.variant.current()
-    const messageID = Identifier.ascending("message")
+    const queueing = working()
+    const messageID = queueing ? undefined : Identifier.ascending("message")
     const textPart = { id: Identifier.ascending("part"), type: "text" as const, text }
 
-    const optimistic: Message = { id: messageID, sessionID, role: "user", time: { created: Date.now() }, agent, model }
+    const optimistic: Message | undefined = messageID
+      ? { id: messageID, sessionID, role: "user", time: { created: Date.now() }, agent, model }
+      : undefined
     let optimisticAdded = false
     const addOptimisticMessage = () => {
+      if (!messageID || !optimistic) return
       sync.set(
         produce((draft) => {
           const messages = draft.message[sessionID]
@@ -891,6 +895,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       optimisticAdded = true
     }
     const removeOptimisticMessage = () => {
+      if (!messageID) return
       sync.set(
         produce((draft) => {
           const messages = draft.message[sessionID]
@@ -904,10 +909,10 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       optimisticAdded = false
     }
 
-    if (!working()) addOptimisticMessage()
+    if (!queueing) addOptimisticMessage()
 
     sdk.client.session
-      .input({ sessionID, agent, model, messageID, parts: [textPart], variant })
+      .input({ sessionID, agent, model, ...(messageID ? { messageID } : {}), parts: [textPart], variant })
       .then((result) => {
         if (result.data?.status === "queued" && optimisticAdded) removeOptimisticMessage()
       })
