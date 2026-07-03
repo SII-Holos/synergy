@@ -106,4 +106,12 @@ describe("desktop startup page", () => {
     expect(mainSource).toContain("event.sender !== mainWindow.webContents")
     expect(mainSource).toContain("await dismissStartupOverlay()")
   })
+
+  test("dismisses the startup overlay after the app URL loads", () => {
+    const loadIndex = mainSource.indexOf("await mainWindow.loadURL(targetURL)")
+    const dismissIndex = mainSource.indexOf("await dismissStartupOverlay()", loadIndex)
+
+    expect(loadIndex).toBeGreaterThanOrEqual(0)
+    expect(dismissIndex).toBeGreaterThan(loadIndex)
+  })
 })
