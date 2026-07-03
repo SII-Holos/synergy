@@ -1,11 +1,32 @@
 import { describe, expect, test } from "bun:test"
+import { mapSelectDirectoryDialogResponse, selectDirectoryWithNativeDialog } from "../src/directory-picker.js"
 import {
   parseBrowserNativeAttach,
   parseBrowserNativePage,
   parseBrowserNativeResize,
   parseClipboardWriteText,
   parseExternalUrl,
+  parseSelectDirectoryDialogRequest,
+  parseSelectDirectoryDialogResponse,
 } from "../src/ipc-contract.js"
+
+const managedRunningStatus = {
+  mode: "managed" as const,
+  state: "running" as const,
+  url: "http://127.0.0.1:3000",
+  port: 3000,
+  pid: 123,
+  lastError: null,
+  logFile: null,
+}
+
+function mainWindowFixture() {
+  const webContents = {}
+  return {
+    window: { webContents },
+    webContents,
+  }
+}
 
 describe("desktop ipc contract", () => {
   test("accepts valid browser native attach payloads", () => {
@@ -44,5 +65,104 @@ describe("desktop ipc contract", () => {
     expect(parseClipboardWriteText("")).toBe("")
     expect(() => parseClipboardWriteText({ text: "copy me" })).toThrow()
     expect(() => parseClipboardWriteText(null)).toThrow()
+  })
+
+  test("validates native directory picker requests", () => {
+    expect(parseSelectDirectoryDialogRequest({})).toEqual({ multiple: false })
+    expect(parseSelectDirectoryDialogRequest({ title: "Add project", multiple: true })).toEqual({
+      title: "Add project",
+      multiple: true,
+    })
+    expect(() => parseSelectDirectoryDialogRequest({ title: "" })).toThrow()
+    expect(() => parseSelectDirectoryDialogRequest({ title: "x".repeat(121) })).toThrow()
+    expect(() => parseSelectDirectoryDialogRequest({ multiple: true, extra: true })).toThrow()
+  })
+
+  test("validates native directory picker responses", () => {
+    expect(parseSelectDirectoryDialogResponse({ canceled: true, directoryPaths: [] })).toEqual({
+      canceled: true,
+      directoryPaths: [],
+    })
+    expect(parseSelectDirectoryDialogResponse({ canceled: false, directoryPaths: ["/repo"] })).toEqual({
+      canceled: false,
+      directoryPaths: ["/repo"],
+    })
+    expect(() => parseSelectDirectoryDialogResponse({ canceled: false, directoryPaths: [1] })).toThrow()
+    expect(() => parseSelectDirectoryDialogResponse({ canceled: true, directoryPaths: ["/repo"] })).toThrow()
+    expect(() => parseSelectDirectoryDialogResponse({ canceled: false, directoryPaths: [] })).toThrow()
+  })
+
+  test("authorizes native directory picker against sender and managed running server", async () => {
+    const { window, webContents } = mainWindowFixture()
+    const showOpenDialog = async () => ({ canceled: true, filePaths: [] })
+
+    await expect(
+      selectDirectoryWithNativeDialog({
+        mainWindow: window as any,
+        sender: {} as any,
+        serverStatus: managedRunningStatus,
+        showOpenDialog: showOpenDialog as any,
+        rawRequest: {},
+      }),
+    ).rejects.toThrow("main desktop window")
+
+    await expect(
+      selectDirectoryWithNativeDialog({
+        mainWindow: window as any,
+        sender: webContents as any,
+        serverStatus: { ...managedRunningStatus, mode: "external", state: "external" },
+        showOpenDialog: showOpenDialog as any,
+        rawRequest: {},
+      }),
+    ).rejects.toThrow("managed local server")
+
+    await expect(
+      selectDirectoryWithNativeDialog({
+        mainWindow: window as any,
+        sender: webContents as any,
+        serverStatus: { ...managedRunningStatus, state: "starting" },
+        showOpenDialog: showOpenDialog as any,
+        rawRequest: {},
+      }),
+    ).rejects.toThrow("managed local server")
+  })
+
+  test("maps native directory picker dialog results", async () => {
+    const { window, webContents } = mainWindowFixture()
+    const cancel = await selectDirectoryWithNativeDialog({
+      mainWindow: window as any,
+      sender: webContents as any,
+      serverStatus: managedRunningStatus,
+      showOpenDialog: (async () => ({ canceled: true, filePaths: [] })) as any,
+      rawRequest: {},
+    })
+    expect(cancel).toEqual({ canceled: true, directoryPaths: [] })
+
+    const selected = await selectDirectoryWithNativeDialog({
+      mainWindow: window as any,
+      sender: webContents as any,
+      serverStatus: managedRunningStatus,
+      showOpenDialog: (async () => ({ canceled: false, filePaths: ["/repo-a", "/repo-b"] })) as any,
+      rawRequest: { multiple: true },
+    })
+    expect(selected).toEqual({ canceled: false, directoryPaths: ["/repo-a", "/repo-b"] })
+
+    await expect(
+      selectDirectoryWithNativeDialog({
+        mainWindow: window as any,
+        sender: webContents as any,
+        serverStatus: managedRunningStatus,
+        showOpenDialog: (async () => ({ canceled: false, filePaths: ["/repo-a", "/repo-b"] })) as any,
+        rawRequest: {},
+      }),
+    ).rejects.toThrow("multiple paths")
+  })
+
+  test("maps preload directory picker responses", () => {
+    expect(mapSelectDirectoryDialogResponse({ canceled: true, directoryPaths: [] }, false)).toBeNull()
+    expect(mapSelectDirectoryDialogResponse({ canceled: false, directoryPaths: ["/repo"] }, false)).toBe("/repo")
+    expect(mapSelectDirectoryDialogResponse({ canceled: false, directoryPaths: ["/repo-a", "/repo-b"] }, true)).toEqual(
+      ["/repo-a", "/repo-b"],
+    )
   })
 })

@@ -66,6 +66,8 @@ Large browser diagnostics such as console, network, snapshots, assets, and downl
 
 Production desktop builds default to managed server mode: the app starts a packaged local Synergy server runtime, waits for `/global/health`, then loads the Web UI from the local server origin. Managed server failures show a desktop error page. Source-checkout desktop development uses `bun dev desktop`, which defaults to external mode against the local Vite app and Synergy server.
 
+In managed desktop mode, Add/Open Project uses the operating system's native folder picker because the app and managed Synergy server share the same local filesystem. Web clients, remote servers, and desktop external-server mode use Synergy's server-directory browser so project paths always come from the server filesystem.
+
 On Windows and Linux, closing the desktop window hides it to the Synergy system tray icon so the local server and session shell remain reopenable. Use the tray menu to reopen Synergy or quit the desktop process. macOS keeps the standard Dock activation behavior.
 
 Desktop release artifacts are produced with `electron-builder` for macOS, Windows, and Linux and published through GitHub Releases. Stable builds use GitHub Releases update metadata through `electron-updater`; dev builds show product updates as disabled and never check the release feed.
@@ -416,7 +418,9 @@ Control profiles are configured in the permissions domain (`80-permissions.jsonc
 }
 ```
 
-**Precedence:** agent config `controlProfile` > top-level config `controlProfile` > default `guarded`.
+**Precedence:** explicit session control profile resolved from the session parent chain > agent config `controlProfile` > top-level config `controlProfile` > source default. Channel-backed and agenda automation root sessions default to `autonomous`; ordinary interactive/manual sessions default to `guarded`.
+
+Explicit configuration is always honored. For example, a top-level `controlProfile: "full_access"` remains `full_access` for Feishu/channel sessions instead of being downgraded by unattended metadata.
 
 Blueprint runs started from the Notes side panel use the current session's control profile when running in the current session. New-session and worktree Blueprint runs create an execution session with at least `autonomous`; a top-level `full_access` profile remains `full_access`.
 
@@ -426,13 +430,11 @@ Risk levels follow the operation's effect. Ordinary reads, including non-protect
 
 Built-in profiles:
 
-| Config value  | UI label    | Behavior                                                                                                                                                                               |
-| ------------- | ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `guarded`     | Guarded     | Default protected mode. Auto-allows ordinary reads, workspace-local edits, and ordinary network lookups; asks before shell, external writes, identity, platform, or extension actions. |
-| `autonomous`  | Autonomous  | Unattended mode. Includes Guarded's automatic approvals, allows medium-risk development work, and denies high-risk asks instead of prompting.                                          |
-| `full_access` | Full Access | Allows all tool requests without approval prompts or workspace sandboxing.                                                                                                             |
-
-`full_access` is blocked in unattended execution mode. It is only available in attended sessions.
+| Config value  | UI label    | Behavior                                                                                                                                                                                           |
+| ------------- | ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `guarded`     | Guarded     | Protected mode for manual sessions. Auto-allows ordinary reads, workspace-local edits, and ordinary network lookups; asks before shell, external writes, identity, platform, or extension actions. |
+| `autonomous`  | Autonomous  | Automation-oriented profile. Includes Guarded's automatic approvals, allows medium-risk development work, and denies high-risk asks instead of prompting.                                          |
+| `full_access` | Full Access | Allows all tool requests without approval prompts or workspace sandboxing. Explicit `full_access` remains valid for channel and automation sessions.                                               |
 
 ### Sandbox
 

@@ -2,11 +2,9 @@ import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { Dialog } from "@ericsanchezok/synergy-ui/dialog"
 import { FileIcon } from "@ericsanchezok/synergy-ui/file-icon"
 import { List } from "@ericsanchezok/synergy-ui/list"
-import { Switch } from "@ericsanchezok/synergy-ui/switch"
 import { TextField } from "@ericsanchezok/synergy-ui/text-field"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { IconButton } from "@ericsanchezok/synergy-ui/icon-button"
-import { Tooltip } from "@ericsanchezok/synergy-ui/tooltip"
 import { getDirectory, getFilename, resolvePathInput } from "@ericsanchezok/synergy-util/path"
 import { createMemo, createResource, createSignal, Show } from "solid-js"
 import { useGlobalSDK } from "@/context/global-sdk"
@@ -14,13 +12,11 @@ import { useGlobalSync } from "@/context/global-sync"
 
 export interface DialogSelectDirectoryResult {
   directory: string | string[]
-  initGit: boolean
 }
 
 interface DialogSelectDirectoryProps {
   title?: string
   multiple?: boolean
-  showInitGit?: boolean
   onSelect: (result: DialogSelectDirectoryResult | null) => void
 }
 
@@ -29,7 +25,6 @@ export function DialogSelectDirectory(props: DialogSelectDirectoryProps) {
   const sdk = useGlobalSDK()
   const dialog = useDialog()
 
-  const [initGit, setInitGit] = createSignal(false)
   const [filter, setFilter] = createSignal("")
 
   const home = createMemo(() => sync.data.paths.home)
@@ -64,7 +59,6 @@ export function DialogSelectDirectory(props: DialogSelectDirectoryProps) {
   function resolve(abs: string) {
     props.onSelect({
       directory: props.multiple ? [abs] : abs,
-      initGit: initGit(),
     })
     dialog.close()
   }
@@ -92,16 +86,6 @@ export function DialogSelectDirectory(props: DialogSelectDirectoryProps) {
           />
           <Show when={filter()}>
             <IconButton icon="circle-x" variant="ghost" onClick={() => setFilter("")} />
-          </Show>
-          <Show when={props.showInitGit}>
-            <div class="border-l border-border-weak-base/40 pl-2 ml-1">
-              <Tooltip value="Initialize git repository if not present">
-                <div class="flex items-center gap-2">
-                  <Icon name="git-branch" class={initGit() ? "text-icon-success-base" : "text-icon-dim-base"} />
-                  <Switch checked={initGit()} onChange={setInitGit} />
-                </div>
-              </Tooltip>
-            </div>
           </Show>
         </div>
         <List

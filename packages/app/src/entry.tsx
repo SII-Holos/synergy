@@ -3,14 +3,16 @@ import { render } from "solid-js/web"
 import { AppBaseProviders, AppInterface } from "@/app"
 import { Platform, PlatformProvider } from "@/context/platform"
 import { BRAND_ASSETS, brandAssetPath } from "@/utils/brand-assets"
+import { schedulePromptAttachmentImagePipelineWarmup } from "@/utils/prompt-attachment"
 import { configureClipboard } from "@ericsanchezok/synergy-ui/clipboard"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import pkg from "../package.json"
 
 declare global {
   interface Window {
-    synergyDesktop?: Pick<Platform, "platform" | "browserNative" | "desktopUpdate" | "clipboard"> & {
+    synergyDesktop?: Pick<Platform, "platform" | "browserNative" | "clipboard" | "openDirectoryPickerDialog"> & {
       update?: Platform["desktopUpdate"]
+      server?: Platform["desktopServer"]
       shell?: {
         openExternal(url: string): Promise<void>
       }
@@ -47,9 +49,11 @@ const platform: Platform = {
   platform: window.synergyDesktop?.platform === "desktop" ? "desktop" : "web",
   version: pkg.version,
   browserNative: window.synergyDesktop?.browserNative,
-  desktopUpdate: window.synergyDesktop?.update ?? window.synergyDesktop?.desktopUpdate,
+  desktopUpdate: window.synergyDesktop?.update,
+  desktopServer: window.synergyDesktop?.server,
   desktopWindow: window.synergyDesktop?.window,
   clipboard: window.synergyDesktop?.clipboard,
+  openDirectoryPickerDialog: window.synergyDesktop?.openDirectoryPickerDialog,
   openLink(url: string) {
     if (window.synergyDesktop?.shell) {
       void window.synergyDesktop.shell.openExternal(url)
@@ -115,3 +119,5 @@ render(
   ),
   root!,
 )
+
+schedulePromptAttachmentImagePipelineWarmup()

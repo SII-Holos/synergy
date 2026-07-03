@@ -52,6 +52,37 @@ export const externalUrlSchema = z
 
 export const clipboardWriteTextSchema = z.string()
 
+export const selectDirectoryDialogRequestSchema = z
+  .object({
+    title: z.string().trim().min(1).max(120).optional(),
+    multiple: z.boolean().default(false),
+  })
+  .strict()
+
+export const selectDirectoryDialogResponseSchema = z
+  .object({
+    canceled: z.boolean(),
+    directoryPaths: z.array(z.string().min(1)),
+  })
+  .strict()
+  .superRefine((value, ctx) => {
+    if (value.canceled && value.directoryPaths.length !== 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Canceled directory picker responses cannot include paths",
+      })
+    }
+    if (!value.canceled && value.directoryPaths.length === 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Selected directory picker responses must include at least one path",
+      })
+    }
+  })
+
+export type SelectDirectoryDialogRequest = z.infer<typeof selectDirectoryDialogRequestSchema>
+export type SelectDirectoryDialogResponse = z.infer<typeof selectDirectoryDialogResponseSchema>
+
 export function parseBrowserNativeAttach(input: unknown): BrowserNativeAttachRequest {
   return browserNativeAttachSchema.parse(input)
 }
@@ -70,4 +101,12 @@ export function parseExternalUrl(input: unknown): string {
 
 export function parseClipboardWriteText(input: unknown): string {
   return clipboardWriteTextSchema.parse(input)
+}
+
+export function parseSelectDirectoryDialogRequest(input: unknown): SelectDirectoryDialogRequest {
+  return selectDirectoryDialogRequestSchema.parse(input)
+}
+
+export function parseSelectDirectoryDialogResponse(input: unknown): SelectDirectoryDialogResponse {
+  return selectDirectoryDialogResponseSchema.parse(input)
 }

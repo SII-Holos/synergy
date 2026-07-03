@@ -64,6 +64,21 @@ export type DesktopUpdateBridge = {
   onEvent?(listener: (event: { type: "status"; status: DesktopUpdateStatus }) => void): () => void
 }
 
+export type DesktopServerStatus = {
+  mode: "managed" | "external"
+  state: "stopped" | "starting" | "running" | "failed" | "external"
+  url: string | null
+  port: number | null
+  pid: number | null
+  lastError: string | null
+  logFile: string | null
+}
+
+export type DesktopServerBridge = {
+  status(): Promise<DesktopServerStatus | null>
+  restart(): Promise<DesktopServerStatus | null>
+}
+
 export type DesktopWindowState = {
   maximized: boolean
   fullscreen: boolean
@@ -110,6 +125,9 @@ export type Platform = {
 
   /** Desktop product update bridge, provided by the desktop shell. */
   desktopUpdate?: DesktopUpdateBridge
+
+  /** Desktop managed server bridge, provided by the desktop shell. */
+  desktopServer?: DesktopServerBridge
 
   /** Desktop window controls bridge, provided by the desktop shell. */
   desktopWindow?: DesktopWindowBridge

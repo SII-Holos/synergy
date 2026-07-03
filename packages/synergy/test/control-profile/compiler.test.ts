@@ -87,13 +87,10 @@ describe("full_access profile policy", () => {
     expect(rule(profile, "identity_act")?.action).toBe("allow")
   })
 
-  test("is forbidden in unattended interaction mode", async () => {
-    const result = await ControlProfileCompiler.resolve("full_access", {
-      ...context,
-      interactionMode: "unattended",
-    })
-    expect(result.valid).toBe(false)
-    expect(result.reason).toContain("unattended")
+  test("is valid in non-interactive channel contexts when explicitly selected", async () => {
+    const result = await ControlProfileCompiler.resolve("full_access", context)
+    expect(result.valid).toBe(true)
+    expect(result.summary?.approval.mode).toBe("full_access")
   })
 })
 

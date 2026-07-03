@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test"
-import { uploadPromptAttachment } from "./prompt-attachment"
+import { uploadPromptAttachment, warmPromptAttachmentImagePipeline } from "./prompt-attachment"
 
 const originalDocument = globalThis.document
 const originalImage = globalThis.Image
@@ -38,8 +38,20 @@ function uploadClient() {
 }
 
 function installImageMocks() {
-  URL.createObjectURL = () => "blob:prompt-attachment"
-  URL.revokeObjectURL = () => {}
+  const calls = {
+    createObjectURL: 0,
+    revokeObjectURL: 0,
+    drawImage: 0,
+    toBlobMimes: [] as string[],
+  }
+
+  URL.createObjectURL = () => {
+    calls.createObjectURL++
+    return "blob:prompt-attachment"
+  }
+  URL.revokeObjectURL = () => {
+    calls.revokeObjectURL++
+  }
 
   class MockImage {
     naturalWidth = 640
@@ -62,12 +74,20 @@ function installImageMocks() {
         getContext: () => ({
           imageSmoothingEnabled: false,
           imageSmoothingQuality: "low",
-          drawImage: () => {},
+          clearRect: () => {},
+          drawImage: () => {
+            calls.drawImage++
+          },
         }),
-        toBlob: (callback: BlobCallback, mime: string) => callback(new Blob(["thumb"], { type: mime })),
+        toBlob: (callback: BlobCallback, mime: string) => {
+          calls.toBlobMimes.push(mime)
+          callback(new Blob(["thumb"], { type: mime }))
+        },
       }
     },
   } as unknown as Document
+
+  return calls
 }
 
 describe("prompt attachment upload", () => {
@@ -102,5 +122,18 @@ describe("prompt attachment upload", () => {
       },
     })
     expect(uploaded.presentation).toEqual({ renderer: "thumbnail", size: "small", crop: true })
+  })
+
+  test("warms image thumbnail pipeline without uploading assets", async () => {
+    const calls = installImageMocks()
+    const { files } = uploadClient()
+
+    await warmPromptAttachmentImagePipeline()
+
+    expect(files).toHaveLength(0)
+    expect(calls.createObjectURL).toBe(1)
+    expect(calls.revokeObjectURL).toBe(1)
+    expect(calls.drawImage).toBe(1)
+    expect(calls.toBlobMimes).toEqual(["image/png", "image/webp"])
   })
 })

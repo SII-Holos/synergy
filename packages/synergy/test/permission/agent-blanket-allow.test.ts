@@ -84,7 +84,7 @@ describe("nonBypassable defeats blanket external_directory allow", () => {
     })
   })
 
-  test("nonBypassable defeats unattended auto-approve with blanket allow rule", async () => {
+  test("nonBypassable metadata defeats blanket allow rules", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({
       scope: await tmp.scope(),
@@ -103,7 +103,7 @@ describe("nonBypassable defeats blanket external_directory allow", () => {
           ruleset: [{ permission: "external_directory", pattern: "*", action: "allow" }],
         })
 
-        // Unattended must NOT auto-approve nonBypassable
+        // nonBypassable boundaries must remain pending even with blanket allow rules.
         expect(promise).toBeInstanceOf(Promise)
 
         const pending = await PermissionNext.list()

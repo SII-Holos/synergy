@@ -42,7 +42,7 @@ describe("session_send identity boundary", () => {
     })
   })
 
-  test("identity_act with nonBypassable metadata prevents unattended auto-approve", async () => {
+  test("identity_act with unattended metadata stays pending", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({
       scope: await tmp.scope(),
@@ -136,7 +136,7 @@ describe("email_send communication boundary", () => {
     })
   })
 
-  test("communication_email with nonBypassable metadata prevents unattended auto-approve", async () => {
+  test("communication_email with unattended metadata stays pending", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({
       scope: await tmp.scope(),

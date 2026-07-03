@@ -7,7 +7,7 @@ import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import type { SessionInboxItem } from "@ericsanchezok/synergy-sdk/client"
 import type { useSDK } from "@/context/sdk"
 import type { useSync } from "@/context/sync"
-import { isInboxItemInteractive, sortInboxItems } from "./session-inbox-utils"
+import { deriveSessionInboxView, isInboxItemInteractive } from "./session-inbox-utils"
 import "./session-inbox.css"
 
 type SessionInboxProps = {
@@ -116,8 +116,9 @@ function InboxRow(props: {
 }
 
 export function SessionInbox(props: SessionInboxProps) {
-  const items = createMemo(() => sortInboxItems(props.sync.data.inbox[props.sessionID] ?? []))
-  const count = createMemo(() => items().length)
+  const view = createMemo(() => deriveSessionInboxView(props.sync.data.inbox[props.sessionID]))
+  const items = createMemo(() => view().items)
+  const count = createMemo(() => view().count)
 
   const guide = async (item: SessionInboxItem) => {
     try {
@@ -170,7 +171,10 @@ export function SessionInbox(props: SessionInboxProps) {
         }
       >
         <Switch>
-          <Match when={count() === 0}>
+          <Match when={view().status === "loading"}>
+            <div class="px-1 py-2 text-12-regular text-text-weak">Loading inbox…</div>
+          </Match>
+          <Match when={view().status === "empty"}>
             <div class="px-1 py-2 text-12-regular text-text-weak">Inbox clear</div>
           </Match>
           <Match when={true}>

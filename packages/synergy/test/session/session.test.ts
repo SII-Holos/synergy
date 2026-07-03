@@ -3,6 +3,7 @@ import { tmpdir } from "../fixture/fixture"
 import { Session } from "../../src/session"
 import { SessionInteraction } from "../../src/session/interaction"
 import { AppChannel } from "../../src/channel/app"
+import { SessionEndpoint } from "../../src/session/endpoint"
 import { SessionEvent } from "../../src/session/event"
 import { MessageV2 } from "../../src/session/message-v2"
 import { Bus } from "../../src/bus"
@@ -161,6 +162,99 @@ describe("session lifecycle events", () => {
 
         expect(await Session.resolveSessionControlProfile(session.id)).toBeUndefined()
         expect(await Session.resolveControlProfile(session.id)).toBe("full_access")
+
+        await Session.remove(session.id)
+      },
+    })
+  })
+  test("resolveControlProfile falls back to guarded for ordinary root sessions", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({})
+
+        expect(await Session.resolveSessionControlProfile(session.id)).toBeUndefined()
+        expect(await Session.resolveControlProfile(session.id)).toBe("guarded")
+
+        await Session.remove(session.id)
+      },
+    })
+  })
+
+  test("resolveControlProfile falls back to autonomous for channel roots", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const root = await Session.create({
+          endpoint: SessionEndpoint.fromChannel({
+            type: "feishu",
+            accountId: "acct_1",
+            chatId: "chat_1",
+          }),
+        })
+        const child = await Session.create({ parentID: root.id })
+
+        expect(await Session.resolveControlProfile(root.id)).toBe("autonomous")
+        expect(await Session.resolveControlProfile(child.id)).toBe("autonomous")
+
+        await Session.remove(root.id)
+      },
+    })
+  })
+
+  test("resolveControlProfile honors top-level full_access for channel roots", async () => {
+    await using tmp = await tmpdir({ git: true, config: { controlProfile: "full_access" } })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({
+          endpoint: SessionEndpoint.fromChannel({
+            type: "feishu",
+            accountId: "acct_1",
+            chatId: "chat_1",
+          }),
+        })
+
+        expect(await Session.resolveControlProfile(session.id)).toBe("full_access")
+
+        await Session.remove(session.id)
+      },
+    })
+  })
+
+  test("resolveControlProfile honors explicit guarded profile for channel roots", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({
+          controlProfile: "guarded",
+          endpoint: SessionEndpoint.fromChannel({
+            type: "feishu",
+            accountId: "acct_1",
+            chatId: "chat_1",
+          }),
+        })
+
+        expect(await Session.resolveControlProfile(session.id)).toBe("guarded")
+
+        await Session.remove(session.id)
+      },
+    })
+  })
+
+  test("resolveControlProfile falls back to autonomous for agenda roots", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({
+          agenda: { itemID: "agenda_item_1" },
+        })
+
+        expect(await Session.resolveControlProfile(session.id)).toBe("autonomous")
 
         await Session.remove(session.id)
       },
