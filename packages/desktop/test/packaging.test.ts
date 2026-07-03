@@ -81,6 +81,14 @@ describe("desktop packaging", () => {
     expect(nsisScript).not.toContain("$INSTDIR\\resources\\synergy\\bin;")
   })
 
+  test("Windows installer de-dupes PATH by exact entry rather than prefix substring", async () => {
+    const nsisScript = await Bun.file(new URL("../build/installer.nsh", import.meta.url)).text()
+
+    expect(nsisScript).toContain("Call PathHasEntry")
+    expect(nsisScript).toContain("StrCmp $R6 $R1 found")
+    expect(nsisScript).not.toContain("Call StrStr")
+  })
+
   test("writes Desktop package version metadata beside the embedded runtime", async () => {
     const afterPackScript = await Bun.file(new URL("../script/after-pack.cjs", import.meta.url)).text()
 

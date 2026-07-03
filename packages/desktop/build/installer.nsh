@@ -9,9 +9,9 @@
   StrCpy $1 "$INSTDIR\bin"
   Push $0
   Push $1
-  Call StrStr
+  Call PathHasEntry
   Pop $2
-  ${If} $2 == ""
+  ${If} $2 != "1"
     ${If} $0 == ""
       WriteRegExpandStr HKCU "Environment" "Path" "$1"
     ${Else}
@@ -34,32 +34,42 @@
   SendMessage ${HWND_BROADCAST} ${WM_SETTINGCHANGE} 0 "STR:Environment" /TIMEOUT=5000
 !macroend
 
-Function StrStr
+Function PathHasEntry
   Exch $R1
   Exch
   Exch $R2
   Push $R3
   Push $R4
   Push $R5
-  StrLen $R3 $R1
-  StrCpy $R4 0
+  Push $R6
+  StrCpy $R3 "0"
   loop:
-    StrCpy $R5 $R2 $R3 $R4
-    StrCmp $R5 $R1 done
-    StrCmp $R5 "" notfound
-    IntOp $R4 $R4 + 1
+    StrCpy $R4 $R2 1
+    StrCmp $R4 "" done
+    StrCpy $R5 0
+  entry:
+    StrCpy $R4 $R2 1 $R5
+    StrCmp $R4 ";" entry_done
+    StrCmp $R4 "" entry_done
+    IntOp $R5 $R5 + 1
+    Goto entry
+  entry_done:
+    StrCpy $R6 $R2 $R5
+    IntOp $R5 $R5 + 1
+    StrCpy $R2 $R2 "" $R5
+    StrCmp $R6 $R1 found
     Goto loop
+  found:
+    StrCpy $R3 "1"
   done:
-    StrCpy $R1 $R2 "" $R4
-    Goto end
-  notfound:
-    StrCpy $R1 ""
-  end:
+    Pop $R6
     Pop $R5
     Pop $R4
-    Pop $R3
+    Exch $R3
+    Exch 3
     Pop $R2
-    Exch $R1
+    Pop $R1
+    Pop $R3
 FunctionEnd
 
 Function un.RemovePathEntry
