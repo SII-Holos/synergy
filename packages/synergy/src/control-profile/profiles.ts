@@ -225,7 +225,7 @@ export async function resolveEffectiveSandbox(profileId: ProfileId): Promise<Pro
 
 export async function buildProfile(idInput: ProfileIdInput | string, ctx: ResolutionContext): Promise<ResolvedProfile> {
   const id = normalizeProfileId(idInput)
-  const { workspace, interactionMode } = ctx
+  const { workspace } = ctx
   const effectiveSandbox = await resolveEffectiveSandbox(id)
 
   switch (id) {
@@ -263,19 +263,6 @@ export async function buildProfile(idInput: ProfileIdInput | string, ctx: Resolu
     }
 
     case "full_access": {
-      if (interactionMode === "unattended") {
-        return {
-          valid: false,
-          reason: "full_access profile is forbidden in unattended mode",
-          label: "Full Access",
-          description: "Unrestricted local access. Disabled for unattended sessions.",
-          ruleset: [],
-          filesystem: { readRoots: [], writeRoots: [], protectedPaths: [] },
-          network: { mode: "disabled" },
-          sandbox: { mode: "read_only", fallback: "deny" },
-          approval: approval("full_access"),
-        }
-      }
       const policy = fullAccessPolicy()
       const profile = {
         valid: true,

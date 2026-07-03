@@ -94,7 +94,6 @@ export interface GateOptions {
   activeWorkspace: string
   workspaceType: string
   profileId?: ProfileIdInput
-  interactionMode?: "attended" | "unattended"
   registeredMcpTools?: Set<string>
   registeredPluginTools?: Set<string>
   /** Map from plugin tool full ID (e.g. plugin__x__y) to resolved capabilities */
@@ -430,7 +429,6 @@ export namespace EnforcementGate {
       activeWorkspace,
       workspaceType,
       profileId: rawProfileId = "guarded",
-      interactionMode = "attended",
       registeredMcpTools = new Set<string>(),
       registeredPluginTools = new Set<string>(),
       pluginToolCapabilities = {},
@@ -444,7 +442,6 @@ export namespace EnforcementGate {
     const resolved = await ControlProfileCompiler.resolve(profileId, {
       workspace: activeWorkspace,
       workspaceType,
-      interactionMode,
     })
 
     if (!resolved.valid) {

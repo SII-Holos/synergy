@@ -2,6 +2,7 @@ const THUMBNAIL_MAX_DIMENSION = 128
 const THUMBNAIL_MIME = "image/webp"
 const THUMBNAIL_QUALITY = 0.78
 const BITMAP_IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"])
+let imagePipelineWarmup: Promise<void> | undefined
 
 export class PromptAttachmentError extends Error {
   constructor(
@@ -132,6 +133,48 @@ async function stripCicpFromPng(file: File): Promise<File> {
 
 function canvasToBlob(canvas: HTMLCanvasElement, mime: string, quality?: number) {
   return new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, mime, quality))
+}
+export function warmPromptAttachmentImagePipeline() {
+  if (imagePipelineWarmup) return imagePipelineWarmup
+  if (typeof document === "undefined" || typeof Image === "undefined") return Promise.resolve()
+
+  imagePipelineWarmup = (async () => {
+    const seedCanvas = document.createElement("canvas")
+    seedCanvas.width = 1
+    seedCanvas.height = 1
+    seedCanvas.getContext("2d")?.clearRect(0, 0, 1, 1)
+
+    const seedBlob = await canvasToBlob(seedCanvas, "image/png")
+    const thumbnailCanvas = document.createElement("canvas")
+    thumbnailCanvas.width = 1
+    thumbnailCanvas.height = 1
+
+    const thumbnailContext = thumbnailCanvas.getContext("2d")
+    if (!thumbnailContext) return
+
+    if (seedBlob && typeof File !== "undefined") {
+      const image = await loadImage(new File([seedBlob], "prompt-attachment-warmup.png", { type: "image/png" })).catch(
+        () => undefined,
+      )
+      if (image) thumbnailContext.drawImage(image, 0, 0, 1, 1)
+    }
+
+    await canvasToBlob(thumbnailCanvas, THUMBNAIL_MIME, THUMBNAIL_QUALITY)
+  })().catch(() => undefined)
+
+  return imagePipelineWarmup
+}
+
+export function schedulePromptAttachmentImagePipelineWarmup() {
+  if (typeof window === "undefined") return
+
+  const warm = () => void warmPromptAttachmentImagePipeline()
+  if (typeof window.requestIdleCallback === "function") {
+    window.requestIdleCallback(warm, { timeout: 1500 })
+    return
+  }
+
+  window.setTimeout(warm, 250)
 }
 
 async function createThumbnailFile(file: File): Promise<File | undefined> {

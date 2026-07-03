@@ -46,7 +46,6 @@ export interface ControlProfile {
 export interface ResolutionContext {
   workspace: string
   workspaceType: string
-  interactionMode?: string
 }
 
 export interface ProfileSummary {
