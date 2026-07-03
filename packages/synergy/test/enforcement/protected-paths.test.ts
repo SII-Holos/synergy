@@ -135,3 +135,31 @@ describe("checkProtectedPath - secrets always protected (both modes)", () => {
     expect(checkProtectedPath("id_rsa", "write").matched).toBe(true)
   })
 })
+
+describe("checkProtectedPath - worktree exclusion", () => {
+  test("worktree paths are NOT flagged (absolute)", () => {
+    const worktreePath = "/home/user/project/.synergy/worktrees/fix-123/src/index.ts"
+    expect(checkProtectedPath(worktreePath, "write").matched).toBe(false)
+  })
+
+  test("worktree paths are NOT flagged (relative)", () => {
+    const worktreePath = ".synergy/worktrees/fix-123/packages/synergy/src/index.ts"
+    expect(checkProtectedPath(worktreePath, "write").matched).toBe(false)
+  })
+
+  test("worktree paths are NOT flagged (read mode)", () => {
+    expect(checkProtectedPath(".synergy/worktrees/fix-123/src/main.ts", "read").matched).toBe(false)
+  })
+
+  test("non-worktree .synergy/ paths are STILL flagged", () => {
+    expect(checkProtectedPath(".synergy/config", "write").matched).toBe(true)
+    expect(checkProtectedPath(".synergy/synergy.d/00-general.jsonc", "write").matched).toBe(true)
+    expect(checkProtectedPath("subdir/.synergy/data/profile.json", "write").matched).toBe(true)
+  })
+
+  test("worktree paths with config-like content are safe", () => {
+    // A path like .synergy/worktrees/X/.synergy/config should NOT be flagged
+    // because the worktree prefix takes priority
+    expect(checkProtectedPath(".synergy/worktrees/fix-123/.synergy/config", "write").matched).toBe(false)
+  })
+})
