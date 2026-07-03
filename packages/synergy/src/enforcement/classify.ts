@@ -70,6 +70,15 @@ export function checkProtectedPath(path: string, mode: "read" | "write"): Protec
     for (const prefix of PROTECTED_WRITE_PATHS) {
       const trimmed = prefix.endsWith("/") ? prefix : prefix + "/"
       if (lower === prefix || lower.startsWith(trimmed) || lower.includes("/" + trimmed)) {
+        // .synergy/worktrees/ is a workspace, not Synergy config data.
+        // Paths inside worktrees should not trigger the .synergy/ protected
+        // write check. Must handle both relative (startsWith) and absolute
+        // (includes "/.synergy/worktrees/") paths.
+        if (
+          prefix === ".synergy/" &&
+          (lower.startsWith(".synergy/worktrees/") || lower.includes("/.synergy/worktrees/"))
+        )
+          continue
         const category: ProtectedMatch["category"] = prefix.startsWith(".git")
           ? "vcs"
           : prefix.startsWith(".env")
