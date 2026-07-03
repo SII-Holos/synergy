@@ -642,23 +642,49 @@ describe("EnforcementGate profile integration", () => {
     expect(envelope.decision).toBe("allow")
   })
 
-  test("autonomous denies git push as shell_destructive", async () => {
+  test("autonomous allows worktree publish workflow while denying merge", async () => {
     const gate = await EnforcementGate.create({
       activeWorkspace: "/Users/test/synergy-control-profile",
       workspaceType: "worktree",
       profileId: "autonomous",
     })
-    const envelope = gate.evaluate("bash", { command: "git push" })
-    expect(envelope.decision).toBe("deny")
+
+    expect(gate.evaluate("worktree_enter", { target: "feature", baseRef: "current", force: false }).decision).toBe(
+      "allow",
+    )
+    expect(gate.evaluate("bash", { command: "git push origin feature" }).decision).toBe("allow")
+    expect(gate.evaluate("bash", { command: "gh pr create --title fix --body body" }).decision).toBe("allow")
+    expect(gate.evaluate("bash", { command: "gh pr merge 123 --squash" }).decision).toBe("deny")
+    expect(gate.evaluate("worktree_leave", { cleanup: "keep" }).decision).toBe("allow")
   })
 
-  test("autonomous denies git push through git global options", async () => {
+  test("autonomous allows explicit branch push publication", async () => {
     const gate = await EnforcementGate.create({
       activeWorkspace: "/Users/test/synergy-control-profile",
       workspaceType: "worktree",
       profileId: "autonomous",
     })
-    const envelope = gate.evaluate("bash", { command: "git -C /tmp push" })
+    const envelope = gate.evaluate("bash", { command: "git push origin feature" })
+    expect(envelope.decision).toBe("allow")
+  })
+
+  test("autonomous allows PR creation but denies PR merge", async () => {
+    const gate = await EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+      profileId: "autonomous",
+    })
+    expect(gate.evaluate("bash", { command: "gh pr create --title fix --body body" }).decision).toBe("allow")
+    expect(gate.evaluate("bash", { command: "gh pr merge 123 --squash" }).decision).toBe("deny")
+  })
+
+  test("autonomous denies ambiguous git push through git global options", async () => {
+    const gate = await EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+      profileId: "autonomous",
+    })
+    const envelope = gate.evaluate("bash", { command: "git -C /tmp push origin feature" })
     expect(envelope.decision).toBe("deny")
   })
 
@@ -1214,7 +1240,7 @@ describe("EnforcementGate DESTRUCTIVE_PATTERNS — expanded", () => {
 
   // ── Refined git classifications (classifyBashRisk primary path) ──
 
-  test("git push (plain) is classified as shell_remote_write (Smart Allow eligible)", async () => {
+  test("git push (plain) is classified as shell_remote_write", async () => {
     const gate = await EnforcementGate.create({
       activeWorkspace: "/Users/test/synergy-control-profile",
       workspaceType: "worktree",
@@ -1225,7 +1251,7 @@ describe("EnforcementGate DESTRUCTIVE_PATTERNS — expanded", () => {
     expect(remoteWrite.nonBypassable).toBe(false)
   })
 
-  test("git push origin main is classified as shell_remote_write (Smart Allow eligible)", async () => {
+  test("git push origin main is classified as shell_remote_write", async () => {
     const gate = await EnforcementGate.create({
       activeWorkspace: "/Users/test/synergy-control-profile",
       workspaceType: "worktree",
@@ -1241,7 +1267,7 @@ describe("EnforcementGate DESTRUCTIVE_PATTERNS — expanded", () => {
       activeWorkspace: "/Users/test/synergy-control-profile",
       workspaceType: "worktree",
     })
-    const result = gate.classify("bash", { command: "git -C /tmp push" })
+    const result = gate.classify("bash", { command: "git -C /tmp push origin feature" })
     const remoteWrite = result.capabilities.find((c: any) => c.class === "shell_remote_write")!
     expect(remoteWrite).toBeDefined()
     expect(remoteWrite.nonBypassable).toBe(false)
@@ -2361,17 +2387,17 @@ describe("EnforcementGate file_external split", () => {
 })
 
 describe("security invariants: nonBypassable permission boundaries", () => {
-  test("autonomous denies git push via shell_remote_write; destructive stays hard", async () => {
+  test("autonomous allows publish commands while destructive commands stay hard", async () => {
     const gate = await EnforcementGate.create({
       activeWorkspace: "/Users/test/synergy-control-profile",
       workspaceType: "worktree",
       profileId: "autonomous",
     })
 
-    const envelope = gate.evaluate("bash", { command: "git push" })
-    expect(envelope.decision).toBe("deny")
+    const envelope = gate.evaluate("bash", { command: "git push origin feature" })
+    expect(envelope.decision).toBe("allow")
 
-    const caps = envelope.capabilities.filter((c: any) => c.class === "shell_remote_write")
+    const caps = envelope.capabilities.filter((c: any) => c.class === "shell_remote_publish")
     expect(caps.length).toBeGreaterThan(0)
     expect(caps.every((c: any) => c.nonBypassable === false)).toBe(true)
   })
