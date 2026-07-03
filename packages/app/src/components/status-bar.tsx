@@ -1,6 +1,8 @@
 import { createEffect, createMemo, createSignal, For, onCleanup, Show, type JSX } from "solid-js"
 import { useNavigate, useParams } from "@solidjs/router"
 import { useHolos } from "@/context/holos"
+import { useHolosAgentActions } from "@/components/holos/agent-actions"
+import { useGlobalSDK } from "@/context/global-sdk"
 import { useServer } from "@/context/server"
 import { useGlobalSync } from "@/context/global-sync"
 import { useSync } from "@/context/sync"
@@ -90,22 +92,85 @@ function iconButtonClass(tone?: "base" | "danger" | "success") {
 // ─── Holos icon button ────────────────────────────────────────────
 
 function HolosIconButton() {
+  const globalSDK = useGlobalSDK()
   const holos = useHolos()
+  const agentActions = useHolosAgentActions(globalSDK)
   const label = createMemo(() => holosLabel(holos))
   const dot = createMemo(() => holosTone(holos))
+  const [open, setOpen] = createSignal(false)
+
+  const activeAgentShortID = () => holos.state.identity.agentId?.slice(0, 8)
+  const needReconnect = () =>
+    holos.state.identity.loggedIn &&
+    (holos.state.connection.status === "failed" || holos.state.connection.status === "disconnected")
+
+  const handleReconnect = () => {
+    void agentActions.reconnect()
+  }
 
   return (
-    <Tooltip placement="top" value={label()}>
-      <button type="button" classList={iconButtonClass()}>
-        <Icon name={getSemanticIcon("connection.holos")} size="small" class="translate-y-px" />
-        <div
-          classList={{
-            ...statusDotClass(dot()),
-            "absolute bottom-1 right-1": true,
-          }}
-        />
-      </button>
-    </Tooltip>
+    <Popover
+      open={open()}
+      onOpenChange={setOpen}
+      placement="top"
+      gutter={8}
+      trigger={
+        <Tooltip placement="top" value={label()}>
+          <button type="button" classList={iconButtonClass()}>
+            <Icon name={getSemanticIcon("connection.holos")} size="small" class="translate-y-px" />
+            <div
+              classList={{
+                ...statusDotClass(dot()),
+                "absolute bottom-1 right-1": true,
+              }}
+            />
+          </button>
+        </Tooltip>
+      }
+    >
+      <div class="w-56">
+        <div class="text-12-medium text-text-base border-b border-border-weaker-base/60 px-1 pb-2 mb-2">Holos</div>
+        <div class="space-y-0.5 mb-2">
+          <div class="flex items-center gap-2 px-1 text-12-regular text-text-base">
+            <span class="text-text-weak w-14 shrink-0">Login</span>
+            <span class={holos.state.identity.loggedIn ? "text-text-success-base" : "text-text-subtle"}>
+              {holos.state.identity.loggedIn ? `Agent ${activeAgentShortID()}` : "Not logged in"}
+            </span>
+          </div>
+          <div class="flex items-center gap-2 px-1 text-12-regular text-text-base">
+            <span class="text-text-weak w-14 shrink-0">Service</span>
+            <span
+              classList={{
+                "text-text-success-base": holos.state.connection.status === "connected",
+                "text-text-interactive-base": holos.state.connection.status === "connecting",
+                "text-text-critical-base":
+                  holos.state.connection.status === "failed" || holos.state.connection.status === "disconnected",
+                "text-text-subtle": !["connected", "connecting", "failed", "disconnected"].includes(
+                  holos.state.connection.status,
+                ),
+              }}
+            >
+              {holosLabel(holos).replace("Holos ", "")}
+            </span>
+          </div>
+          <Show when={holos.state.connection.error}>
+            <div class="px-1 py-1 text-11-regular text-text-critical-base break-words">
+              {holos.state.connection.error}
+            </div>
+          </Show>
+        </div>
+        <Show when={needReconnect()}>
+          <button
+            type="button"
+            class="flex w-full items-center gap-2 rounded-md px-1 py-1.5 text-12-medium text-text-success-base transition-colors hover:bg-surface-raised-base-hover"
+            onClick={handleReconnect}
+          >
+            <Icon name={getSemanticIcon("action.refresh")} size="small" />
+            <span>Reconnect</span>
+          </button>
+        </Show>
+      </div>
+    </Popover>
   )
 }
 
