@@ -96,7 +96,7 @@
 
   [data-component="provider-prelude"] {
     display: flex;
-    align-items: center;
+    align-items: baseline;
     min-height: 22px;
     font-size: var(--font-size-small);
     font-weight: var(--font-weight-regular);
@@ -106,12 +106,25 @@
 
   [data-component="provider-prelude"]::before {
     content: "";
+    align-self: center;
     flex: 0 0 auto;
     width: 2px;
     height: 14px;
     margin-right: 10px;
     border-radius: 999px;
     background: var(--border-base);
+  }
+
+  [data-slot="provider-prelude-separator"] {
+    margin-inline: 6px;
+    color: var(--text-subtle);
+  }
+
+  [data-slot="provider-prelude-time"] {
+    color: var(--text-subtle);
+    font-size: var(--font-size-x-small);
+    font-variant-numeric: tabular-nums;
+    line-height: 1;
   }
 
   [data-slot="session-turn-timeline-item"]:is([data-kind="tool"], [data-kind="tool-attachments"])

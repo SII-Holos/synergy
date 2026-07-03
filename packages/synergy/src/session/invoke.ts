@@ -758,7 +758,7 @@ export namespace SessionInvoke {
         })
         toolResolveTimer.stop()
 
-        SessionManager.setStatus(sessionID, { type: "busy", description: "Awaiting response..." })
+        SessionManager.setStatus(sessionID, { type: "busy", description: "Awaiting response…" })
         const processTimer = log.time("processor.process")
         const timeoutCfg = await TimeoutConfig.resolve()
         const turnDeadline = new AbortController()

@@ -35,6 +35,7 @@ import { Button } from "./button"
 import { createStore } from "solid-js/store"
 import { createAutoScroll } from "../hooks"
 import { getSpecialUserMessageRenderer, hasSpecialUserMessageRenderer } from "./special-user-message"
+import { DateTime } from "luxon"
 
 function same<T>(a: readonly T[] | undefined, b: readonly T[] | undefined) {
   if (a === b) return true
@@ -74,7 +75,12 @@ export type SessionTurnTimelineVisualKind =
   | "media-pending"
   | "tool-attachments"
 
-const DEFAULT_PROVIDER_PRELUDE_TEXT = "Awaiting response..."
+const DEFAULT_PROVIDER_PRELUDE_TEXT = "Awaiting response…"
+
+export function providerPreludeTimeLabel(created: number | undefined): string | undefined {
+  if (created == null) return undefined
+  return DateTime.fromMillis(created).toFormat("HH:mm")
+}
 
 function visibleAttachmentParts(files: AttachmentPart[] | undefined): AttachmentPart[] {
   return (files ?? []).filter((file) => !resolveAttachmentPresentation(file).hidden)
@@ -252,10 +258,20 @@ function TimelineDisplay(props: { item: SessionTurnDisplayItem; serverUrl: strin
   return <TimelineItemDisplay item={props.item} serverUrl={props.serverUrl} />
 }
 
-function ProviderPrelude(props: { text: string }) {
+function ProviderPrelude(props: { text: string; time?: string }) {
   return (
     <div data-component="provider-prelude" role="status" aria-live="polite">
-      {props.text}
+      <span data-slot="provider-prelude-text">{props.text}</span>
+      <Show when={props.time}>
+        {(time) => (
+          <>
+            <span data-slot="provider-prelude-separator" aria-hidden="true">
+              ·
+            </span>
+            <span data-slot="provider-prelude-time">{time()}</span>
+          </>
+        )}
+      </Show>
     </div>
   )
 }
@@ -453,6 +469,9 @@ export function SessionTurn(
   )
   const hasTimelineItems = createMemo(() => timelineItems().length > 0)
   const sessionStatus = createMemo(() => data.store.session_status[props.sessionID])
+  const providerPreludeTime = createMemo(() =>
+    providerPreludeTimeLabel(lastAssistantMessage()?.time.created ?? message()?.time.created),
+  )
   const showProviderPrelude = createMemo(() =>
     shouldShowProviderPrelude({
       working: working(),
@@ -564,7 +583,7 @@ export function SessionTurn(
                         </For>
                         <Show when={showProviderPrelude()}>
                           <div data-slot="session-turn-timeline-item" data-kind="provider-prelude">
-                            <ProviderPrelude text={providerPreludeText(sessionStatus())} />
+                            <ProviderPrelude text={providerPreludeText(sessionStatus())} time={providerPreludeTime()} />
                           </div>
                         </Show>
                         <Show when={!working() && hasDiffs()}>
