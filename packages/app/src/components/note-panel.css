@@ -516,6 +516,66 @@
   color: var(--icon-weak);
 }
 
+.note-run-menu-back {
+  display: inline-flex;
+  width: 1.5rem;
+  height: 1.5rem;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.5rem;
+  color: var(--icon-weak);
+  transition:
+    background-color var(--motion-duration-fast) var(--motion-ease-standard),
+    color var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+.note-run-menu-back:hover {
+  background: var(--surface-raised-base-hover);
+  color: var(--icon-base);
+}
+
+.note-run-model-body {
+  padding: 0.75rem 0.875rem;
+  border-top: 1px solid color-mix(in srgb, var(--border-weaker-base) 74%, transparent);
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.note-run-model-trigger {
+  width: 100%;
+}
+
+.note-run-model-picker {
+  z-index: 75;
+}
+
+.note-run-model-run {
+  display: inline-flex;
+  width: 100%;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.625rem 0.875rem;
+  border-radius: 0.625rem;
+  background: var(--surface-accent-base);
+  color: var(--text-on-accent);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.25;
+  transition:
+    background-color var(--motion-duration-fast) var(--motion-ease-standard),
+    opacity var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+.note-run-model-run:hover {
+  background: var(--surface-accent-hover);
+}
+
+.note-run-model-run:active {
+  background: var(--surface-accent-active);
+}
 @media (prefers-reduced-motion: reduce) {
   .note-card {
     transition: none;
@@ -526,8 +586,10 @@
   .note-scope-view-all,
   .note-detail-action,
   .note-detail-icon-button,
+  .note-run-menu-back,
   .note-run-menu-close,
-  .note-run-option {
+  .note-run-option,
+  .note-run-model-run {
     transition: none;
   }
 }

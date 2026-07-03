@@ -1,3 +1,6 @@
+import { Popover as KobaltePopover } from "@kobalte/core/popover"
+import { List } from "@ericsanchezok/synergy-ui/list"
+import { Portal } from "solid-js/web"
 import { createMemo, createResource, createSignal, For, Show, createEffect, on, onCleanup, onMount } from "solid-js"
 import { useParams } from "@solidjs/router"
 import type { Editor } from "@tiptap/core"
@@ -310,9 +313,85 @@ function RunMenu(props: {
   title: string
   canRunInCurrentSession: boolean
   canCreateWorktree: boolean
-  onRun: (mode: BlueprintRunMode) => void
+  onRun: (mode: BlueprintRunMode, model?: { providerID: string; modelID: string }) => void
   onClose: () => void
 }) {
+  const globalSync = useGlobalSync()
+  const [level, setLevel] = createSignal<"mode" | "model">("mode")
+  const [selectedMode, setSelectedMode] = createSignal<BlueprintRunMode | null>(null)
+  const [selectedModelValue, setSelectedModelValue] = createSignal("")
+  const [pickerOpen, setPickerOpen] = createSignal(false)
+
+  type ModelOption =
+    | { kind: "fallback"; key: string; label: string; description: string; value: string }
+    | {
+        kind: "model"
+        key: string
+        label: string
+        description: string
+        value: string
+        providerID: string
+        modelID: string
+      }
+
+  const providerModels = createMemo<ModelOption[]>(() => {
+    const data = globalSync.data.provider
+    const list: ModelOption[] = []
+    for (const provider of data.all) {
+      if (!data.connected.includes(provider.id)) continue
+      for (const [modelId, model] of Object.entries(provider.models)) {
+        list.push({
+          kind: "model",
+          key: `${provider.id}/${modelId}`,
+          label: model.name,
+          description: provider.name,
+          value: `${provider.id}/${modelId}`,
+          providerID: provider.id,
+          modelID: modelId,
+        })
+      }
+    }
+    list.sort((a, b) => {
+      if (a.description !== b.description) return a.description.localeCompare(b.description)
+      return a.label.localeCompare(b.label)
+    })
+    return list
+  })
+
+  const modelOptions = createMemo<ModelOption[]>(() => {
+    const fallback: ModelOption = {
+      kind: "fallback",
+      key: "fallback",
+      label: "Use fallback",
+      description: "Let the agent pick the best model automatically.",
+      value: "",
+    }
+    return [fallback, ...providerModels()]
+  })
+
+  const currentModelOption = createMemo(() => {
+    return modelOptions().find((o) => o.value === selectedModelValue()) ?? modelOptions()[0]
+  })
+
+  function selectModelOption(option: ModelOption) {
+    setSelectedModelValue(option.value)
+    setPickerOpen(false)
+  }
+
+  function handleRun() {
+    const mode = selectedMode()
+    if (!mode) return
+    const val = selectedModelValue()
+    if (val) {
+      const parts = val.split("/")
+      const providerID = parts[0]
+      const modelID = parts.slice(1).join("/")
+      props.onRun(mode, { providerID, modelID })
+    } else {
+      props.onRun(mode)
+    }
+  }
+
   const options = [
     {
       mode: "current" as const,
@@ -341,46 +420,147 @@ function RunMenu(props: {
     },
   ]
 
+  const modeLabel = createMemo(() => {
+    const m = selectedMode()
+    if (!m) return ""
+    if (m === "current") return "Current session"
+    if (m === "new") return "New session"
+    return "New worktree"
+  })
+
+  function resolveGroup(option: ModelOption) {
+    if (option.kind === "fallback") return "Default"
+    return option.description
+  }
+
+  function sortModelGroups(
+    a: { category: string; items: ModelOption[] },
+    b: { category: string; items: ModelOption[] },
+  ) {
+    if (a.category === "Default") return -1
+    if (b.category === "Default") return 1
+    return a.category.localeCompare(b.category)
+  }
+
   return (
     <div class="note-run-menu absolute right-4 top-[3.75rem] z-40 w-[min(22rem,calc(100%-2rem))]">
-      <div class="note-run-menu-header">
-        <div class="flex items-start gap-2">
-          <div class="min-w-0 flex-1">
-            <h3 class="text-13-medium text-text-strong">Run Blueprint</h3>
-            <p class="mt-1 line-clamp-2 text-11-regular text-text-weak">{props.title || "Untitled"}</p>
-          </div>
-          <button
-            type="button"
-            class="note-run-menu-close"
-            onClick={props.onClose}
-            title="Close"
-            aria-label="Close run menu"
-          >
-            <Icon name="x" size="small" class="size-3" />
-          </button>
-        </div>
-      </div>
-      <div class="note-run-option-list">
-        <For each={options}>
-          {(option) => (
+      <Show when={level() === "mode"} fallback={null}>
+        <div class="note-run-menu-header">
+          <div class="flex items-start gap-2">
+            <div class="min-w-0 flex-1">
+              <h3 class="text-13-medium text-text-strong">Run Blueprint</h3>
+              <p class="mt-1 line-clamp-2 text-11-regular text-text-weak">{props.title || "Untitled"}</p>
+            </div>
             <button
               type="button"
-              class="note-run-option"
-              classList={{ "note-run-option--disabled": option.disabled }}
-              disabled={option.disabled}
-              onClick={() => props.onRun(option.mode)}
+              class="note-run-menu-close"
+              onClick={props.onClose}
+              title="Close"
+              aria-label="Close run menu"
             >
-              <span class="note-run-option-icon">
-                <Icon name={option.icon} size="small" class="size-3.5" />
-              </span>
-              <span class="min-w-0 flex-1">
-                <span class="block text-12-medium text-text-strong">{option.title}</span>
-                <span class="mt-0.5 block text-10-regular leading-4 text-text-weak">{option.description}</span>
-              </span>
+              <Icon name="x" size="small" class="size-3" />
             </button>
-          )}
-        </For>
-      </div>
+          </div>
+        </div>
+        <div class="note-run-option-list">
+          <For each={options}>
+            {(option) => (
+              <button
+                type="button"
+                class="note-run-option"
+                classList={{ "note-run-option--disabled": option.disabled }}
+                disabled={option.disabled}
+                onClick={() => {
+                  setSelectedMode(option.mode)
+                  setLevel("model")
+                }}
+              >
+                <span class="note-run-option-icon">
+                  <Icon name={option.icon} size="small" class="size-3.5" />
+                </span>
+                <span class="min-w-0 flex-1">
+                  <span class="block text-12-medium text-text-strong">{option.title}</span>
+                  <span class="mt-0.5 block text-10-regular leading-4 text-text-weak">{option.description}</span>
+                </span>
+              </button>
+            )}
+          </For>
+        </div>
+      </Show>
+
+      <Show when={level() === "model"}>
+        <div class="note-run-menu-header">
+          <div class="flex items-start gap-2">
+            <button
+              type="button"
+              class="note-run-menu-back"
+              onClick={() => setLevel("mode")}
+              title="Back"
+              aria-label="Back to session mode"
+            >
+              <Icon name="chevron-left" size="small" class="size-3.5" />
+            </button>
+            <div class="min-w-0 flex-1">
+              <h3 class="text-13-medium text-text-strong">Choose model</h3>
+              <p class="mt-1 line-clamp-2 text-11-regular text-text-weak">
+                {modeLabel()} &middot; {props.title || "Untitled"}
+              </p>
+            </div>
+            <button
+              type="button"
+              class="note-run-menu-close"
+              onClick={props.onClose}
+              title="Close"
+              aria-label="Close run menu"
+            >
+              <Icon name="x" size="small" class="size-3" />
+            </button>
+          </div>
+        </div>
+        <div class="note-run-model-body">
+          <KobaltePopover open={pickerOpen()} onOpenChange={setPickerOpen} placement="bottom-end" gutter={8}>
+            <KobaltePopover.Trigger
+              type="button"
+              class="settings-model-trigger note-run-model-trigger"
+              aria-label="Select model"
+            >
+              <span class="settings-model-trigger-text">
+                <span class="settings-model-trigger-title">{currentModelOption()?.label}</span>
+                <span class="settings-model-trigger-detail">{currentModelOption()?.description}</span>
+              </span>
+              <Icon name="chevron-down" size="small" class="settings-model-trigger-icon" />
+            </KobaltePopover.Trigger>
+            <Portal>
+              <KobaltePopover.Content class="settings-model-picker-popover note-run-model-picker flex flex-col border border-border-base bg-surface-raised-stronger-non-alpha shadow-lg outline-none overflow-hidden">
+                <KobaltePopover.Title class="sr-only">Select model</KobaltePopover.Title>
+                <List<ModelOption>
+                  class="settings-model-picker-list"
+                  search={{ placeholder: "Search models", autofocus: true }}
+                  emptyMessage="No model results"
+                  key={(option) => option.key}
+                  items={modelOptions}
+                  current={currentModelOption()}
+                  filterKeys={["label", "description", "value"]}
+                  groupBy={resolveGroup}
+                  sortGroupsBy={sortModelGroups}
+                  onSelect={selectModelOption}
+                >
+                  {(option) => (
+                    <div class="settings-model-option">
+                      <span class="settings-model-option-title">{option.label}</span>
+                      <span class="settings-model-option-detail">{option.description}</span>
+                    </div>
+                  )}
+                </List>
+              </KobaltePopover.Content>
+            </Portal>
+          </KobaltePopover>
+          <button type="button" class="note-run-model-run" onClick={handleRun}>
+            <Icon name="zap" size="small" class="size-3.5" />
+            Run with selected model
+          </button>
+        </div>
+      </Show>
     </div>
   )
 }
@@ -1360,7 +1540,11 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
     })
   }
 
-  async function createExecutionSession(mode: BlueprintRunMode, blueprintDir: string) {
+  async function createExecutionSession(
+    mode: BlueprintRunMode,
+    blueprintDir: string,
+    model?: { providerID: string; modelID: string },
+  ) {
     if (mode === "current") {
       if (!canRunCurrentSession() || !params.id) {
         alert("Open a session in this Blueprint scope before running it there.")
@@ -1388,7 +1572,7 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
     }
   }
 
-  async function runBlueprint(mode: BlueprintRunMode) {
+  async function runBlueprint(mode: BlueprintRunMode, model?: { providerID: string; modelID: string }) {
     const dir = directory()
     if (!dir || runningBlueprint()) return
     await flushSave()
@@ -1405,7 +1589,7 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
     let createdLoopID: string | undefined
     let target: Awaited<ReturnType<typeof createExecutionSession>> | undefined
     try {
-      target = await createExecutionSession(mode, dir)
+      target = await createExecutionSession(mode, dir, model)
       if (!target) return
       const loop = await sdk.client.blueprint.loop
         .create({
@@ -1417,6 +1601,7 @@ function NoteEditor(props: { id: string; directory: string; onBack: () => void; 
             description: base.blueprint?.description,
             sessionID: target.sessionID,
             runMode: mode,
+            ...(model ? { model: { providerID: model.providerID, modelID: model.modelID } } : {}),
           },
         })
         .then((result) => result.data)
