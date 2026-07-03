@@ -2,6 +2,7 @@ import { realpathSync } from "fs"
 import path from "path"
 import { fileURLToPath } from "url"
 import { normalizeBrowserURL as normalizeBrowserURLInput } from "@ericsanchezok/synergy-util/browser-protocol"
+import { isPathContained } from "../util/path-contain"
 
 export namespace BrowserPolicy {
   export type Decision = "allow" | "blocked" | "deny"
@@ -96,7 +97,7 @@ export namespace BrowserPolicy {
   function isContainedWithin(filePath: string, workspace: string): boolean {
     const resolved = realpathSync(filePath)
     const resolvedWorkspace = realpathSync(workspace)
-    return !path.relative(resolvedWorkspace, resolved).startsWith("..")
+    return isPathContained(resolvedWorkspace, resolved)
   }
 
   function evaluateParsedFileURL(url: URL, workspace: string): PolicyResult {

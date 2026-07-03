@@ -18,6 +18,7 @@ import type { PluginLockEntry } from "./lockfile-schema"
 import { getApproval } from "./consent/approval-store"
 import type { PluginApprovalRecord } from "./consent/approval-store"
 import { sourceFromSpec } from "./source"
+import { isPathContained } from "../util/path-contain"
 
 export {
   decideTrust,
@@ -41,12 +42,9 @@ function sourceFromLockfile(pluginDir: string): PluginSource | undefined {
     for (const entry of entries) {
       if (!entry.spec || !entry.resolved) continue
       const resolved = path.resolve(entry.resolved)
-      const relative = path.relative(path.dirname(resolved), normalizedPluginDir)
-      const reverse = path.relative(normalizedPluginDir, resolved)
-      if (relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative)))
+      if (isPathContained(path.dirname(resolved), normalizedPluginDir))
         return entry.source ?? sourceFromSpec(entry.spec)
-      if (reverse === "" || (!reverse.startsWith("..") && !path.isAbsolute(reverse)))
-        return entry.source ?? sourceFromSpec(entry.spec)
+      if (isPathContained(normalizedPluginDir, resolved)) return entry.source ?? sourceFromSpec(entry.spec)
     }
   } catch {}
 }
@@ -60,11 +58,9 @@ export function derivePluginSource(pluginDir: string): PluginSource {
   if (fromLockfile) return fromLockfile
 
   const cacheRoot = Global.Path.cache
+  if (!isPathContained(cacheRoot, pluginDir)) return "local"
   const relative = path.relative(cacheRoot, pluginDir)
-  if (relative.startsWith("..") || path.isAbsolute(relative)) {
-    return "local"
-  }
-  if (relative.startsWith("plugin-archives")) return "local"
+  if (relative === "plugin-archives" || relative.startsWith(`plugin-archives${path.sep}`)) return "local"
   return "url"
 }
 
@@ -90,8 +86,7 @@ export async function findPluginLockEntry(pluginDir: string): Promise<PluginLock
     const lockfile = await Lockfile.read()
     for (const entry of Object.values(lockfile.plugins)) {
       const resolved = path.resolve(entry.resolved)
-      const relative = path.relative(normalizedPluginDir, resolved)
-      if (relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative))) {
+      if (isPathContained(normalizedPluginDir, resolved)) {
         return entry
       }
     }

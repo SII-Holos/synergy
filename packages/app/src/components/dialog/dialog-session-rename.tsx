@@ -39,8 +39,8 @@ export function DialogSessionRename(props: { session: Session; directory: string
   }
 
   return (
-    <Dialog title="Rename session">
-      <div class="flex flex-col gap-4 pt-1">
+    <Dialog title="Rename session" size="compact">
+      <div data-slot="dialog-form">
         <TextField
           label="Session title"
           value={title()}
@@ -50,11 +50,11 @@ export function DialogSessionRename(props: { session: Session; directory: string
             if (event.key === "Enter") void save()
           }}
         />
-        <div class="flex justify-end gap-2">
-          <Button type="button" variant="ghost" size="small" onClick={() => dialog.close()}>
+        <div data-slot="dialog-actions">
+          <Button type="button" variant="ghost" size="large" onClick={() => dialog.close()}>
             Cancel
           </Button>
-          <Button type="button" size="small" disabled={!canSave()} onClick={save}>
+          <Button type="button" variant="primary" size="large" disabled={!canSave()} onClick={save}>
             {saving() ? "Saving..." : "Rename"}
           </Button>
         </div>

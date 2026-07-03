@@ -177,6 +177,7 @@ export const LookAtTool = Tool.define<typeof parameters, LookAtMetadata>("look_a
           { permission: "edit", pattern: "*", action: "deny" },
           { permission: "bash", pattern: "*", action: "deny" },
         ],
+        completionNotice: { silent: true },
       })
 
       const prompt =

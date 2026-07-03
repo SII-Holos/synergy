@@ -45,6 +45,7 @@ import { ModelsPanel } from "./panels/ModelsPanel"
 import { ProvidersPanel } from "./panels/ProvidersPanel"
 import { AccountPanel } from "./panels/AccountPanel"
 import { UsagePanel } from "./panels/UsagePanel"
+import { GitHubPanel } from "./panels/GitHubPanel"
 import { McpPanel } from "./panels/McpPanel"
 import { LearningPanel, MemoryPanel, ExperiencePanel } from "./panels/LibraryPanels"
 import { ChannelsPanel } from "./panels/ChannelsPanel"
@@ -451,6 +452,8 @@ export function SettingsPanel(props: SettingsPanelProps) {
             providerFocusID={providerFocusID()}
           />
         )
+      case "github":
+        return <GitHubPanel />
       case "usage":
         return (
           <UsagePanel

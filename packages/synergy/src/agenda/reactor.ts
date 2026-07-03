@@ -252,6 +252,7 @@ export namespace AgendaReactor {
       agenda: { itemID: item.id },
       interaction: SessionInteraction.unattended("agenda"),
       preAuthorizedActions: item.wake !== false ? ["session_send"] : undefined,
+      completionNotice: { silent: item.silent === true },
     })
     return session.id
   }

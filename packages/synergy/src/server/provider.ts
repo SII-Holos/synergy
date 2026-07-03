@@ -14,6 +14,7 @@ import { ProviderUsage } from "@/provider/usage-service"
 import { AccountUsage } from "@/provider/usage"
 import { Auth } from "@/provider/api-key"
 import { ProviderProfile } from "@/provider/profile"
+import { GitHubProvider } from "@/provider/github"
 
 const log = Log.create({ service: "provider" })
 
@@ -293,6 +294,51 @@ export const ProviderRoute = new Hono()
     }),
     async (c) => {
       return c.json(await ProviderAuth.methods())
+    },
+  )
+  .get(
+    "/auth/github/status",
+    describeRoute({
+      summary: "Get GitHub auth status",
+      description: "Get the managed GitHub account status used for GitHub CLI-backed actions.",
+      operationId: "provider.auth.githubStatus",
+      responses: {
+        200: {
+          description: "GitHub auth status",
+          content: {
+            "application/json": {
+              schema: resolver(GitHubProvider.Status),
+            },
+          },
+        },
+      },
+    }),
+    async (c) => {
+      return c.json(await GitHubProvider.status())
+    },
+  )
+  .delete(
+    "/auth/github",
+    describeRoute({
+      summary: "Remove GitHub auth credentials",
+      description: "Remove the managed GitHub credential used for GitHub CLI-backed actions.",
+      operationId: "provider.auth.githubLogout",
+      responses: {
+        200: {
+          description: "GitHub credentials removed",
+          content: {
+            "application/json": {
+              schema: resolver(z.boolean()),
+            },
+          },
+        },
+        ...errors(400),
+      },
+    }),
+    async (c) => {
+      await GitHubProvider.remove()
+      await Provider.reload()
+      return c.json(true)
     },
   )
   .post(

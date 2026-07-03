@@ -71,6 +71,9 @@ export interface NavEntry {
   archived: boolean
   parentID?: string
   endpointKind?: "channel"
+  completionNotice: {
+    unread: boolean
+  }
 }
 
 export interface NavCursor {
@@ -853,6 +856,45 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       }
     }
 
+    function setNavEntryCompletionUnread(scopeKey: string, sessionID: string, unread: boolean) {
+      const updateEntry = (entry: NavEntry) =>
+        entry.id === sessionID ? { ...entry, completionNotice: { unread } } : entry
+      const projectEntry = navEntries[scopeKey]
+      if (projectEntry) {
+        setNavEntries(scopeKey, "items", (items) => items.map(updateEntry) as NavEntry[])
+      }
+      setRecentEntries("items", (items) => items.map(updateEntry) as NavEntry[])
+      for (const category of ROOT_NAV_SECTION_KEYS) {
+        setRootNavStore(category, "items", (items) => items.map(updateEntry) as NavEntry[])
+      }
+    }
+
+    function navEntryForSession(scopeKey: string, sessionID: string): NavEntry | undefined {
+      return (
+        navEntries[scopeKey]?.items.find((entry) => entry.id === sessionID) ??
+        recentEntries.items.find((entry) => entry.id === sessionID) ??
+        ROOT_NAV_SECTION_KEYS.flatMap((category) => rootNavStore[category].items).find(
+          (entry) => entry.id === sessionID,
+        )
+      )
+    }
+
+    async function clearCompletionNotice(directory: string, sessionID: string) {
+      const entry = navEntryForSession(directory, sessionID)
+      if (!entry?.completionNotice.unread) return
+      setNavEntryCompletionUnread(directory, sessionID, false)
+      try {
+        await globalSdk.client.session.update({
+          ...scopeRequest(directory),
+          sessionID,
+          completionNotice: { unread: false },
+        })
+      } catch (err) {
+        console.warn("Failed to clear session completion notice", err)
+        if (entry) setNavEntryCompletionUnread(directory, sessionID, true)
+      }
+    }
+
     async function archiveSession(session: Session) {
       const scopeKey = scopeKeyForSession(session)
       const [childStore, setChildStore] = globalSync.ensureScopeState(scopeKey)
@@ -926,6 +968,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         resetPrefetch,
         archiveSession,
         pinSession,
+        clearCompletionNotice,
         loadScopeNav: (directory: string) => loadScopeNav(directory),
         navEntries: () => navEntries,
         scopeIndexLoaded,

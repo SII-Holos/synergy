@@ -15,8 +15,10 @@ export namespace LocalProcessBackend {
       result: ProcessResult,
       output: string,
       cwd = ScopeContext.current.directory,
+      command?: string,
     ): Promise<ProcessResult> => {
       if (!ctx || (action !== "poll" && action !== "log")) return result
+      if (AttachmentDiscovery.shouldSkip(command)) return result
       const attachments = await AttachmentDiscovery.discover({
         output,
         cwd,
@@ -121,6 +123,7 @@ export namespace LocalProcessBackend {
             },
             currentFinished.output,
             currentFinished.cwd,
+            currentFinished.command,
           )
         }
 
@@ -167,7 +170,7 @@ export namespace LocalProcessBackend {
           output: slice || "(no output)",
         }
         if (status === "running") return result
-        return withAttachments(result, slice || output, target.cwd)
+        return withAttachments(result, slice || output, target.cwd, target.command)
       }
 
       case "write": {

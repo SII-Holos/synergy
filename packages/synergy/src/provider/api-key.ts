@@ -278,8 +278,12 @@ export namespace Auth {
     const filename = filepath()
     await fs.mkdir(Global.Path.auth, { recursive: true })
     const tmp = `${filename}.${process.pid}.${Date.now()}.tmp`
-    await Bun.write(tmp, JSON.stringify(store, null, 2))
-    await fs.chmod(tmp, 0o600)
+    const handle = await fs.open(tmp, "wx", 0o600)
+    try {
+      await handle.writeFile(JSON.stringify(store, null, 2))
+    } finally {
+      await handle.close()
+    }
     await fs.rename(tmp, filename)
   }
 

@@ -117,7 +117,7 @@ export function DialogSelectServer(props: DialogSelectServerProps = {}) {
   }
 
   return (
-    <Dialog title="Servers" description="Switch which Synergy server this app connects to.">
+    <Dialog title="Servers" description="Switch which Synergy server this app connects to." size="list">
       <div class="flex flex-col gap-4 pb-4">
         <List
           search={{ placeholder: "Search servers", autofocus: true }}

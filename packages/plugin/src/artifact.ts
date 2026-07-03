@@ -20,6 +20,14 @@ export function normalizePluginArtifactPath(filePath: string): string {
   return parts.join("/")
 }
 
+export function normalizePluginArchiveEntry(entry: string): string | undefined {
+  let normalized = entry.replace(/\r$/, "").replace(/\\/g, "/")
+  while (normalized.startsWith("./")) normalized = normalized.slice(2)
+  normalized = normalized.replace(/\/+$/, "")
+  if (!normalized || normalized === ".") return undefined
+  return normalizePluginArtifactPath(normalized)
+}
+
 export function pluginArtifactAssetRoot(filePath: string): string {
   return normalizePluginArtifactPath(filePath).split("/")[0] ?? ""
 }

@@ -51,6 +51,7 @@ export const SemanticIconToken = {
   "settings.models": "cpu",
   "settings.providers": "server",
   "settings.usage": "gauge",
+  "settings.github": "github",
   "settings.learning": "book-open",
   "settings.memory": "brain",
   "settings.experience": "lightbulb",

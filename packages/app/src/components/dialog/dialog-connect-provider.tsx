@@ -6,8 +6,8 @@ export function DialogConnectProvider(props: { provider: string }) {
   const dialog = useDialog()
 
   return (
-    <Dialog>
-      <div class="px-2.5 pb-3 min-w-[420px]">
+    <Dialog size="form">
+      <div class="pb-1">
         <ProviderConnectionFlow providerID={props.provider} onComplete={() => dialog.close()} />
       </div>
     </Dialog>

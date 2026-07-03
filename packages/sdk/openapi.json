@@ -3776,6 +3776,15 @@
                   },
                   "workspace": {
                     "$ref": "#/components/schemas/SessionWorkspaceSelection"
+                  },
+                  "completionNotice": {
+                    "type": "object",
+                    "properties": {
+                      "silent": {
+                        "type": "boolean"
+                      }
+                    },
+                    "additionalProperties": false
                   }
                 }
               }
@@ -4060,6 +4069,17 @@
                   "controlProfile": {
                     "type": "string",
                     "enum": ["guarded", "autonomous", "full_access"]
+                  },
+                  "completionNotice": {
+                    "type": "object",
+                    "properties": {
+                      "unread": {
+                        "type": "boolean",
+                        "const": false
+                      }
+                    },
+                    "required": ["unread"],
+                    "additionalProperties": false
                   },
                   "time": {
                     "type": "object",
@@ -7817,6 +7837,98 @@
           {
             "lang": "js",
             "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.provider.auth({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/provider/auth/github/status": {
+      "get": {
+        "operationId": "provider.auth.githubStatus",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Get GitHub auth status",
+        "description": "Get the managed GitHub account status used for GitHub CLI-backed actions.",
+        "responses": {
+          "200": {
+            "description": "GitHub auth status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GitHubAuthStatus"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.provider.auth.githubStatus({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/provider/auth/github": {
+      "delete": {
+        "operationId": "provider.auth.githubLogout",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Remove GitHub auth credentials",
+        "description": "Remove the managed GitHub credential used for GitHub CLI-backed actions.",
+        "responses": {
+          "200": {
+            "description": "GitHub credentials removed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "boolean"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.provider.auth.githubLogout({\n  ...\n})"
           }
         ]
       }
@@ -17941,9 +18053,28 @@
           "endpointKind": {
             "type": "string",
             "const": "channel"
+          },
+          "completionNotice": {
+            "type": "object",
+            "properties": {
+              "unread": {
+                "type": "boolean"
+              }
+            },
+            "required": ["unread"]
           }
         },
-        "required": ["id", "scopeID", "scopeType", "title", "category", "lastActivityAt", "pinned", "archived"]
+        "required": [
+          "id",
+          "scopeID",
+          "scopeType",
+          "title",
+          "category",
+          "lastActivityAt",
+          "pinned",
+          "archived",
+          "completionNotice"
+        ]
       },
       "NavCursor": {
         "type": "object",
@@ -21976,6 +22107,18 @@
           "$ref": "#/components/schemas/PermissionRule"
         }
       },
+      "SessionCompletionNotice": {
+        "type": "object",
+        "properties": {
+          "unread": {
+            "type": "boolean"
+          },
+          "silent": {
+            "type": "boolean"
+          }
+        },
+        "required": ["unread", "silent"]
+      },
       "SessionInteractionMode": {
         "type": "string",
         "enum": ["interactive", "unattended"]
@@ -22323,6 +22466,9 @@
               }
             }
           },
+          "completionNotice": {
+            "$ref": "#/components/schemas/SessionCompletionNotice"
+          },
           "pendingReply": {
             "type": "boolean"
           },
@@ -22380,7 +22526,7 @@
             }
           }
         },
-        "required": ["id", "scope", "title", "version", "time"]
+        "required": ["id", "scope", "title", "version", "time", "completionNotice"]
       },
       "VcsInfo": {
         "type": "object",
@@ -25020,6 +25166,52 @@
         },
         "required": ["type", "label"]
       },
+      "GitHubAccount": {
+        "type": "object",
+        "properties": {
+          "login": {
+            "type": "string"
+          },
+          "id": {
+            "type": "number"
+          },
+          "url": {
+            "type": "string"
+          }
+        },
+        "required": ["login"]
+      },
+      "GitHubAuthStatus": {
+        "type": "object",
+        "properties": {
+          "providerID": {
+            "type": "string",
+            "const": "github"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["connected", "not_configured", "invalid", "unverified"]
+          },
+          "source": {
+            "type": "string",
+            "enum": ["env", "store"]
+          },
+          "authKind": {
+            "type": "string",
+            "enum": ["api_key", "oauth"]
+          },
+          "account": {
+            "$ref": "#/components/schemas/GitHubAccount"
+          },
+          "failureCode": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "type": "number"
+          }
+        },
+        "required": ["providerID", "status"]
+      },
       "ProviderAuthAuthorization": {
         "type": "object",
         "properties": {
@@ -25066,7 +25258,7 @@
                 },
                 "source": {
                   "type": "string",
-                  "enum": ["builtin", "synergy", "claude", "openclaw", "codex", "generic"]
+                  "enum": ["builtin", "plugin", "synergy", "claude", "openclaw", "codex", "generic"]
                 },
                 "scope": {
                   "type": "string",
@@ -25100,6 +25292,12 @@
                   "type": "string"
                 },
                 "baseDir": {
+                  "type": "string"
+                },
+                "pluginId": {
+                  "type": "string"
+                },
+                "pluginName": {
                   "type": "string"
                 },
                 "references": {
@@ -26727,6 +26925,9 @@
             "type": "string"
           },
           "firstPrompt": {
+            "type": "string"
+          },
+          "userPrompt": {
             "type": "string"
           },
           "error": {

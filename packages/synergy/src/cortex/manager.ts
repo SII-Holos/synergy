@@ -142,6 +142,7 @@ export namespace Cortex {
           output: input.output,
         },
         workspace: (parent as import("../session/types").Info).workspace,
+        completionNotice: { silent: input.visibility === "hidden" },
       })
     }
     if (input.worktree?.create) {

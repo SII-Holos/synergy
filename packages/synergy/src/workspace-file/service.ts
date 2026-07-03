@@ -6,6 +6,7 @@ import { FileIgnore } from "../file/ignore"
 import { WorkspaceFile } from "./types"
 import { WorkspaceFileRead, likelyBinaryByExtension } from "./read"
 import { WorkspaceFileStatus } from "./status"
+import { isPathContained } from "../util/path-contain"
 
 const DEFAULT_CHILDREN_LIMIT = 200
 
@@ -25,11 +26,6 @@ function stripFileProtocol(input: string) {
 function isControlPath(input: string) {
   // eslint-disable-next-line no-control-regex
   return /[\x00-\x1f]/.test(input)
-}
-
-function contains(parent: string, child: string) {
-  const rel = path.relative(parent, child)
-  return rel === "" || (!rel.startsWith("..") && !path.isAbsolute(rel))
 }
 
 async function realpathIfExists(input: string) {
@@ -60,7 +56,7 @@ export namespace WorkspaceFileService {
     const cleaned = stripFileProtocol(input.trim())
     const workspace = root()
     const absolute = path.resolve(workspace, cleaned || ".")
-    if (!contains(workspace, absolute)) {
+    if (!isPathContained(workspace, absolute)) {
       throw new AccessDeniedError("Access denied: path escapes workspace")
     }
     return absolute
@@ -68,13 +64,13 @@ export namespace WorkspaceFileService {
 
   export function relative(input: string) {
     const absolute = path.isAbsolute(input) ? path.resolve(input) : resolve(input)
-    if (!contains(root(), absolute)) throw new AccessDeniedError("Access denied: path escapes workspace")
+    if (!isPathContained(root(), absolute)) throw new AccessDeniedError("Access denied: path escapes workspace")
     return displayRelative(absolute)
   }
 
   export async function assertRealpathInside(absolute: string) {
     const real = await realpathIfExists(absolute)
-    if (real && !contains(root(), real)) {
+    if (real && !isPathContained(root(), real)) {
       throw new AccessDeniedError("Access denied: real path escapes workspace")
     }
   }
@@ -86,7 +82,7 @@ export namespace WorkspaceFileService {
 
   export async function node(input: string): Promise<WorkspaceFile.Node> {
     const absolute = path.isAbsolute(input) ? input : resolve(input)
-    if (!contains(root(), absolute)) throw new AccessDeniedError("Access denied: path escapes workspace")
+    if (!isPathContained(root(), absolute)) throw new AccessDeniedError("Access denied: path escapes workspace")
     await assertRealpathInside(absolute)
 
     const relativePath = displayRelative(absolute)
