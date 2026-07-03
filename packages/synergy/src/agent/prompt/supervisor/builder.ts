@@ -17,6 +17,6 @@ export function createSupervisorAgent(ctx: BuiltinAgentContext) {
     prompt: buildSupervisorPrompt([]),
     model: "thinking",
     permission: "supervisor",
-    visibleTo: [],
+    visibleTo: ["synergy", "synergy-max", "supervisor"],
   })
 }
