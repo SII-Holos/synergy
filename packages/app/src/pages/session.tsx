@@ -427,7 +427,8 @@ function SessionPageContent() {
       reuseExisting: true,
       init: {
         resourceId: request.noteID,
-        source: sdk.isHome ? HOME_SCOPE_KEY : sdk.scopeKey,
+        source:
+          request.scopeID === "home" ? HOME_SCOPE_KEY : request.scopeID || (sdk.isHome ? HOME_SCOPE_KEY : sdk.scopeKey),
       },
     })
   })
