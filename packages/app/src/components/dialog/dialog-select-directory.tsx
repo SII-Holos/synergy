@@ -64,7 +64,7 @@ export function DialogSelectDirectory(props: DialogSelectDirectoryProps) {
   }
 
   return (
-    <Dialog title={props.title ?? "Open project"}>
+    <Dialog title={props.title ?? "Open project"} size="list">
       <div class="flex flex-col flex-1 min-h-0">
         <div class="px-3 py-2 text-12-regular text-text-weak border-b border-border-weak-base/40">
           Browsing server directory
