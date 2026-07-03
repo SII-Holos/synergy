@@ -257,13 +257,15 @@ function SessionPageContent() {
   )
   const lastUserMessage = createMemo(() => visibleUserMessages().at(-1))
   const lastRenderableUserMessage = createMemo(() => renderableUserMessages().at(-1))
+  const selectableAgentNames = createMemo(() => new Set(local.agent.list().map((agent) => agent.name)))
   createEffect(
     on(
-      () => lastUserMessage()?.id,
+      () => [lastUserMessage()?.id, selectableAgentNames()] as const,
       () => {
         const msg = lastUserMessage()
         if (!msg) return
-        if (msg.agent) local.agent.set(msg.agent)
+        if (!msg.agent || !selectableAgentNames().has(msg.agent)) return
+        local.agent.set(msg.agent)
         if (msg.model) local.model.set(msg.model)
       },
     ),
