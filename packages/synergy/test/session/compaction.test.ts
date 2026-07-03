@@ -330,7 +330,7 @@ describe("session.compaction.buildAnchor", () => {
 
   function userMsg(
     id: string,
-    parts: Array<{ text: string; synthetic?: boolean }>,
+    parts: Array<{ text: string; synthetic?: boolean; ignored?: boolean }>,
     metadata?: Record<string, any>,
   ): MessageV2.WithParts {
     return {
@@ -350,6 +350,7 @@ describe("session.compaction.buildAnchor", () => {
         type: "text",
         text: part.text,
         ...(part.synthetic ? { synthetic: true } : {}),
+        ...(part.ignored ? { ignored: true } : {}),
       })),
     }
   }
@@ -381,7 +382,7 @@ describe("session.compaction.buildAnchor", () => {
   test("falls back past guided context even when it has real user text", () => {
     const messages = [
       userMsg("active", [{ text: "implement the active task" }]),
-      userMsg("guided", [{ text: "temporary steering context" }], { guided: true, noReply: true }),
+      userMsg("guided", [{ text: "temporary steering context" }], { guided: true }),
     ]
 
     const anchor = SessionCompaction.buildAnchor(messages, "guided")
@@ -393,7 +394,7 @@ describe("session.compaction.buildAnchor", () => {
   test("does not use earlier guided context as a fallback anchor", () => {
     const messages = [
       userMsg("active", [{ text: "preserve this original request" }]),
-      userMsg("guided", [{ text: "do not anchor this guided context" }], { guided: true, noReply: true }),
+      userMsg("guided", [{ text: "do not anchor this guided context" }], { guided: true }),
       userMsg("continue", [{ text: "Continue if you have next steps", synthetic: true }]),
     ]
 
@@ -401,6 +402,38 @@ describe("session.compaction.buildAnchor", () => {
 
     expect(anchor).toContain("preserve this original request")
     expect(anchor).not.toContain("do not anchor this guided context")
+  })
+
+  test("does not anchor synthetic or no-reply user messages", () => {
+    const messages = [
+      userMsg("active", [{ text: "anchor the actual request" }]),
+      userMsg("synthetic", [{ text: "synthetic user message" }], { synthetic: true }),
+      userMsg("no-reply", [{ text: "no reply context" }], { noReply: true }),
+    ]
+
+    const anchor = SessionCompaction.buildAnchor(messages, "no-reply")
+
+    expect(anchor).toContain("anchor the actual request")
+    expect(anchor).not.toContain("synthetic user message")
+    expect(anchor).not.toContain("no reply context")
+  })
+
+  test("ignores synthetic and ignored text parts when extracting anchor text", () => {
+    const messages = [
+      userMsg("previous", [{ text: "previous real request" }]),
+      userMsg("active", [
+        { text: "hidden synthetic text", synthetic: true },
+        { text: "hidden ignored text", ignored: true },
+        { text: "visible active request" },
+      ]),
+    ]
+
+    const anchor = SessionCompaction.buildAnchor(messages, "active")
+
+    expect(anchor).toContain("visible active request")
+    expect(anchor).not.toContain("hidden synthetic text")
+    expect(anchor).not.toContain("hidden ignored text")
+    expect(anchor).not.toContain("previous real request")
   })
 })
 

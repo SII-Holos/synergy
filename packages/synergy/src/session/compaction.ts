@@ -272,7 +272,7 @@ export namespace SessionCompaction {
   const ANCHOR_CLOSE = "</anchor>"
 
   function realUserText(msg: MessageV2.WithParts): string | undefined {
-    const textParts = msg.parts.filter((p): p is MessageV2.TextPart => p.type === "text" && !p.synthetic)
+    const textParts = msg.parts.filter((p): p is MessageV2.TextPart => p.type === "text" && !p.synthetic && !p.ignored)
     if (textParts.length === 0) return undefined
     const text = textParts
       .map((p) => p.text)
@@ -285,25 +285,26 @@ export namespace SessionCompaction {
     return [ANCHOR_OPEN, "This is the most recent request before compaction.", "", text, ANCHOR_CLOSE].join("\n")
   }
 
-  function isGuidedContext(msg: MessageV2.WithParts): boolean {
-    return msg.info.role === "user" && msg.info.metadata?.guided === true && msg.info.metadata?.noReply === true
+  function isAnchorEligibleUser(msg: MessageV2.WithParts): boolean {
+    if (msg.info.role !== "user") return false
+    const metadata = msg.info.metadata
+    return metadata?.synthetic !== true && metadata?.noReply !== true && metadata?.guided !== true
   }
 
   /**
    * Preserve the active user request across compaction. Prefer the compaction
-   * parent when it has real text; synthetic continue and guided context messages
-   * fall back to the latest earlier real user request.
+   * parent when it is a real reply-requesting user message; synthetic, no-reply,
+   * and guided context messages fall back to the latest earlier real request.
    */
   export function buildAnchor(messages: MessageV2.WithParts[], parentID: string): string | undefined {
-    const parent = messages.findLast((msg) => msg.info.role === "user" && msg.info.id === parentID)
-    const parentText = parent && !isGuidedContext(parent) ? realUserText(parent) : undefined
+    const parent = messages.findLast((msg) => msg.info.id === parentID && isAnchorEligibleUser(msg))
+    const parentText = parent ? realUserText(parent) : undefined
     if (parentText) return formatAnchor(parentText)
 
     for (let i = messages.length - 1; i >= 0; i--) {
       const msg = messages[i]
-      if (msg.info.role !== "user") continue
+      if (!isAnchorEligibleUser(msg)) continue
       if (msg.info.id === parentID) continue
-      if (isGuidedContext(msg)) continue
       const text = realUserText(msg)
       if (!text) continue
       return formatAnchor(text)
