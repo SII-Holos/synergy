@@ -112,7 +112,7 @@ async function searchContent(input: {
     }
   }
 
-  const args = [await Ripgrep.filepath(), "--json", "--hidden", "--glob=!.git/*"]
+  const args = [await Ripgrep.filepath(), "--json", "--hidden", "--glob=!.git/*", "--fixed-strings"]
   for (const glob of input.include ?? []) args.push(`--glob=${glob}`)
   for (const glob of input.exclude ?? []) args.push(`--glob=!${glob}`)
   args.push("--", input.query)
