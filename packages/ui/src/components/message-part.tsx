@@ -1652,6 +1652,7 @@ function HighlightedText(props: { text: string; references: AttachmentPart[] }) 
     <For each={segments()}>
       {(segment) => (
         <Show
+          keyed
           when={resourceOpen ? segment.file : undefined}
           fallback={
             <span
@@ -1671,9 +1672,9 @@ function HighlightedText(props: { text: string; references: AttachmentPart[] }) 
                 resourceOpen?.open(
                   {
                     kind: "workspace-file",
-                    path: fileReferencePath(file()),
-                    mime: file().mime,
-                    filename: file().filename,
+                    path: fileReferencePath(file),
+                    mime: file.mime,
+                    filename: file.filename,
                   },
                   { prefer: "workspace" },
                 )

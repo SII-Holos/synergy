@@ -128,6 +128,26 @@ export namespace SessionManager {
     })
   }
 
+  async function emitSessionUpdated(sessionID: string): Promise<void> {
+    const session = await getSession(sessionID)
+    if (!session) return
+    const { Session } = await import(".")
+    const properties = { info: await Session.withRuntimeInfo(session) }
+    try {
+      await Bus.publish(SessionEvent.Updated, properties)
+    } catch (error) {
+      if (!(error instanceof Context.NotFound)) throw error
+      const scope = session.scope as Scope
+      GlobalBus.emit("event", {
+        directory: scope.type === "home" ? "home" : scope.directory,
+        payload: {
+          type: SessionEvent.Updated.type,
+          properties,
+        },
+      })
+    }
+  }
+
   export function registerRuntime(sessionID: string): SessionRuntime {
     const existing = runtimes.get(sessionID)
     if (existing) {
@@ -238,6 +258,9 @@ export namespace SessionManager {
 
     runtime.status = { type: "idle" }
     emitStatus(runtime, runtime.status)
+    await emitSessionUpdated(sessionID).catch((error) => {
+      log.warn("failed to emit session update after release", { sessionID, error })
+    })
 
     if (runtime.mailbox.length > 0 && mailboxHandler) {
       await run(sessionID, () => mailboxHandler!(sessionID))

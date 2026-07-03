@@ -6,6 +6,7 @@ import { Flag } from "../flag/flag"
 import { Global } from "../global"
 import { ScopeContext } from "../scope/context"
 import { Filesystem } from "../util/filesystem"
+import { isPathContained } from "../util/path-contain"
 
 export namespace InstructionFiles {
   export const DEFAULT_PROJECT_DOC_MAX_BYTES = 32 * 1024
@@ -33,18 +34,13 @@ export namespace InstructionFiles {
     ])
   }
 
-  function containsPath(parent: string, child: string) {
-    const relative = path.relative(parent, child)
-    return relative === "" || (!!relative && !relative.startsWith("..") && !path.isAbsolute(relative))
-  }
-
   function searchDirsWithinScope() {
     const cwd = path.resolve(ScopeContext.current.directory)
     const scope = ScopeContext.current.scope
     if (scope.type !== "project") return [cwd]
 
     const root = path.resolve(scope.directory)
-    if (!containsPath(root, cwd)) return [cwd]
+    if (!isPathContained(root, cwd)) return [cwd]
 
     const dirs: string[] = []
     let current = cwd

@@ -535,7 +535,7 @@ export function SessionTurn(
                           {(key, index) => {
                             const item = () => timelineItemMap().get(key)
                             return (
-                              <Show when={item()}>
+                              <Show when={item()} keyed>
                                 {(current) => (
                                   <>
                                     <Show when={index() === timelineSlotIndexes().firstReasoning}>
@@ -546,9 +546,9 @@ export function SessionTurn(
                                     </Show>
                                     <div
                                       data-slot="session-turn-timeline-item"
-                                      data-kind={displayItemVisualKind(current())}
+                                      data-kind={displayItemVisualKind(current)}
                                     >
-                                      <TimelineDisplay item={current()} serverUrl={data.serverUrl} />
+                                      <TimelineDisplay item={current} serverUrl={data.serverUrl} />
                                     </div>
                                     <Show when={index() === timelineSlotIndexes().lastReasoning}>
                                       {renderMessageSlot("after-reasoning")}

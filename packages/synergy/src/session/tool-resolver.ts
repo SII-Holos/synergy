@@ -135,7 +135,8 @@ export namespace ToolResolver {
 
   function permissionForGateCapability(toolName: string, className: string): string {
     if (className === "file_external_read" || className === "file_external_write") return "external_directory"
-    if (className === "shell_read" || className === "shell_remote_write") return "bash"
+    if (className === "shell_read" || className === "shell_remote_publish" || className === "shell_remote_write")
+      return "bash"
     if (className === "shell_destructive") return "bash"
     if (className === "network_request")
       return toolName === "webfetch" || toolName === "websearch" ? toolName : "network_request"
@@ -145,7 +146,8 @@ export namespace ToolResolver {
   function patternsForGateCapability(toolName: string, cap: Capability, args: Record<string, any>): string[] {
     if (cap.class === "file_external_read" || cap.class === "file_external_write")
       return cap.paths?.length ? cap.paths : [externalPathFromArgs(toolName, args) || "*"]
-    if (cap.class === "shell_destructive" || cap.class === "shell_remote_write") return [String(args.command ?? "*")]
+    if (cap.class === "shell_destructive" || cap.class === "shell_remote_publish" || cap.class === "shell_remote_write")
+      return [String(args.command ?? "*")]
     if (cap.class === "network_request") return [String(args.url ?? args.query ?? "*")]
     if (cap.class === "communication_email") return [String(args.to ?? args.from ?? args.subject ?? "*")]
     if (cap.class === "identity_act") return [`${toolName} role=${args.role ?? "*"} to ${args.target ?? "*"}`]
@@ -170,6 +172,7 @@ export namespace ToolResolver {
       permission === "bash" ||
       capability === "shell" ||
       capability === "shell_read" ||
+      capability === "shell_remote_publish" ||
       capability === "shell_remote_write" ||
       capability === "shell_destructive"
     ) {

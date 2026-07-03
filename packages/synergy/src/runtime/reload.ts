@@ -10,6 +10,7 @@ import { ScopeContext } from "../scope/context"
 import { RuntimeSchema } from "./schema"
 import { SkillPaths } from "../skill/paths"
 import { Log } from "../util/log"
+import { isPathContained } from "../util/path-contain"
 
 export namespace RuntimeReload {
   export const Target = RuntimeSchema.ReloadTarget
@@ -437,7 +438,7 @@ export namespace RuntimeReload {
   export function builtinSourceEditWarning(filePath: string) {
     const normalized = path.resolve(filePath)
     const builtinRoot = path.resolve(path.join(ScopeContext.current.directory, "packages", "synergy", "src"))
-    if (!normalized.startsWith(builtinRoot + path.sep)) return undefined
+    if (!isPathContained(builtinRoot, normalized)) return undefined
     return BUILTIN_SOURCE_RESTART_WARNING
   }
 
@@ -453,7 +454,7 @@ export namespace RuntimeReload {
         path.resolve(path.join(Global.Path.config, "commands")),
       ],
       skill: SkillPaths.runtimeSkillRootsSync(ScopeContext.current.directory).filter(
-        (root) => !root.startsWith(path.resolve(ScopeContext.current.directory)),
+        (root) => !isPathContained(path.resolve(ScopeContext.current.directory), root),
       ),
       tool: [path.resolve(path.join(Global.Path.config, "tool"))],
     }
@@ -470,14 +471,14 @@ export namespace RuntimeReload {
         path.resolve(path.join(ScopeContext.current.directory, ".synergy", "commands")),
       ],
       skill: SkillPaths.runtimeSkillRootsSync(ScopeContext.current.directory).filter((root) =>
-        root.startsWith(path.resolve(ScopeContext.current.directory)),
+        isPathContained(path.resolve(ScopeContext.current.directory), root),
       ),
       tool: [path.resolve(path.join(ScopeContext.current.directory, ".synergy", "tool"))],
     }
   }
 
   function isUnderRoots(normalized: string, roots: string[]): boolean {
-    return roots.some((root) => normalized.startsWith(root + path.sep))
+    return roots.some((root) => isPathContained(root, normalized))
   }
 
   function globalLegacyConfigFiles() {
@@ -502,10 +503,10 @@ export namespace RuntimeReload {
     if (projectLegacyConfigFiles().includes(normalized)) return "project"
 
     const globalDomainDir = path.resolve(ConfigDomain.directory())
-    if (normalized.startsWith(globalDomainDir + path.sep) && ConfigDomain.domainForFile(normalized)) return "global"
+    if (isPathContained(globalDomainDir, normalized) && ConfigDomain.domainForFile(normalized)) return "global"
 
     const projectDomainDir = path.resolve(path.join(ScopeContext.current.directory, ".synergy", "synergy.d"))
-    if (normalized.startsWith(projectDomainDir + path.sep) && ConfigDomain.domainForFile(normalized)) return "project"
+    if (isPathContained(projectDomainDir, normalized) && ConfigDomain.domainForFile(normalized)) return "project"
 
     // P3: Check global config directory roots (agent, command, skill, tool)
     const globalRoots = globalConfigRoots()
@@ -536,7 +537,7 @@ export namespace RuntimeReload {
     const globalDomainDir = path.resolve(ConfigDomain.directory())
     const projectDomainDir = path.resolve(path.join(ScopeContext.current.directory, ".synergy", "synergy.d"))
     if (
-      (normalized.startsWith(globalDomainDir + path.sep) || normalized.startsWith(projectDomainDir + path.sep)) &&
+      (isPathContained(globalDomainDir, normalized) || isPathContained(projectDomainDir, normalized)) &&
       ConfigDomain.domainForFile(normalized)
     ) {
       const domain = ConfigDomain.domainForFile(normalized)!
@@ -548,10 +549,7 @@ export namespace RuntimeReload {
 
     // Skill files
     const skillRoots = [...gRoots.skill, ...pRoots.skill]
-    if (
-      normalized.endsWith(`${path.sep}SKILL.md`) &&
-      skillRoots.some((root) => normalized === root || normalized.startsWith(root + path.sep))
-    ) {
+    if (normalized.endsWith(`${path.sep}SKILL.md`) && skillRoots.some((root) => isPathContained(root, normalized))) {
       targets.push("skill")
     }
 

@@ -26,7 +26,7 @@ import {
 } from "../plugin/consent/approval-store"
 import type { PluginApprovalRecord } from "../plugin/consent/approval-store"
 import { baseCapabilities } from "../plugin/capability"
-import { checkPathContainment } from "../util/path-contain"
+import { checkPathContainment, isPathContained } from "../util/path-contain"
 import { PluginMarketplaceRegistry } from "../plugin/marketplace-registry"
 import { localRegistryPath, resolveLocalRegistryInstallSpec } from "../plugin/local-registry-store"
 import { getPluginConfig, PluginConfigValidationError, replacePluginConfig } from "../plugin/config-store"
@@ -329,10 +329,10 @@ export const PluginRoute = new Hono()
       } catch {
         return c.json({ message: `Asset not found: ${filePath}` }, 404)
       }
-      const realRelative = path.relative(pluginDir, real)
-      if (realRelative.startsWith("..") || path.isAbsolute(realRelative)) {
+      if (!isPathContained(pluginDir, real)) {
         return c.json({ message: "Path traversal denied" }, 403)
       }
+      const realRelative = path.relative(pluginDir, real)
 
       // 3. Allowed directories restriction
       if (!isAllowedPluginAssetPath(realRelative)) {

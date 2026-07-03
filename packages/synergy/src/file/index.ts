@@ -383,39 +383,190 @@ export namespace File {
     })
   }
 
-  export async function browse(input: { path: string; query?: string; limit?: number; depth?: number }) {
-    const base = input.path
-    const query = (input.query ?? "").trim()
-    const limit = input.limit ?? 50
-    const maxDepth = input.depth ?? 4
-    log.info("browse", { base, query, maxDepth })
+  type BrowseCandidate = {
+    path: string
+    depth: number
+    priority: number
+    fuzzyScore: number
+    name: string
+  }
+
+  const browseExcludeNames = new Set([
+    "node_modules",
+    "dist",
+    "build",
+    "target",
+    "vendor",
+    ".git",
+    ".ds_store",
+    "appdata",
+    "application data",
+    "local settings",
+    "$recycle.bin",
+    "system volume information",
+    ".cache",
+    ".npm",
+    ".pnpm-store",
+    ".yarn",
+    ".cargo",
+    ".rustup",
+    ".gradle",
+    ".m2",
+    ".nuget",
+    ".vscode",
+    ".cursor",
+    ".idea",
+    ".venv",
+    "venv",
+    "__pycache__",
+    ".next",
+    ".turbo",
+    ".parcel-cache",
+    "out",
+    "coverage",
+  ])
+
+  function normalizeBrowsePath(value: string) {
+    const normalized = value.trim().replace(/\\/g, "/")
+    const driveRoot = normalized.match(/^([A-Za-z]):(?:\/)?$/)
+    if (driveRoot) return `${driveRoot[1]}:/`
+    if (/^[A-Za-z]:\//.test(normalized)) return normalized
+    if (normalized.startsWith("//")) return `//${normalized.slice(2).replace(/\/+/g, "/")}`
+    return normalized || "/"
+  }
+
+  function isHiddenDirectory(name: string) {
+    return name.startsWith(".") && name.length > 1
+  }
+
+  function shouldSkipBrowseDirectory(name: string, preferHidden: boolean) {
+    const key = name.toLowerCase()
+    if (browseExcludeNames.has(key)) return true
+    if (!preferHidden && isHiddenDirectory(name)) return true
+    return false
+  }
+
+  async function readBrowseChildren(dir: string, preferHidden: boolean) {
+    const entries = await fs.promises.readdir(dir, { withFileTypes: true }).catch(() => [] as fs.Dirent[])
+    return entries
+      .filter((entry) => entry.isDirectory() && !entry.isSymbolicLink())
+      .filter((entry) => !shouldSkipBrowseDirectory(entry.name, preferHidden))
+      .map((entry) => ({ name: entry.name, path: path.join(dir, entry.name) }))
+      .sort((a, b) => a.name.localeCompare(b.name))
+  }
+
+  function scoreBrowseCandidate(
+    base: string,
+    dir: string,
+    name: string,
+    depth: number,
+    query: string,
+  ): BrowseCandidate | undefined {
+    const normalizedQuery = query.toLowerCase()
+    const normalizedName = name.toLowerCase()
+    const relative = path.relative(base, dir) || name
+    const normalizedRelative = relative.replace(/\\/g, "/").toLowerCase()
+    if (normalizedName === normalizedQuery) return { path: dir, depth, priority: 0, fuzzyScore: 0, name }
+    if (normalizedName.startsWith(normalizedQuery)) return { path: dir, depth, priority: 1, fuzzyScore: 0, name }
+    if (normalizedName.includes(normalizedQuery) || normalizedRelative.includes(normalizedQuery)) {
+      return { path: dir, depth, priority: 2, fuzzyScore: 0, name }
+    }
+    const fuzzy = fuzzysort.single(query, normalizedRelative)
+    if (!fuzzy) return undefined
+    return { path: dir, depth, priority: 3, fuzzyScore: fuzzy.score, name }
+  }
+
+  function sortBrowseCandidates(candidates: BrowseCandidate[]) {
+    return candidates.toSorted((a, b) => {
+      if (a.priority !== b.priority) return a.priority - b.priority
+      if (a.depth !== b.depth) return a.depth - b.depth
+      if (a.fuzzyScore !== b.fuzzyScore) return b.fuzzyScore - a.fuzzyScore
+      return a.name.localeCompare(b.name)
+    })
+  }
+
+  async function narrowBrowseBase(base: string, query: string) {
+    if (!/[\\/]/.test(query)) return { base, query }
+    const normalizedQuery = query.replace(/\\/g, "/").replace(/^\/+/, "")
+    const parts = normalizedQuery.split("/").filter(Boolean)
+    let current = base
+    for (let index = 0; index < parts.length - 1; index++) {
+      const next = path.join(current, parts[index])
+      const stat = await fs.promises.stat(next).catch(() => null)
+      if (!stat?.isDirectory()) break
+      current = next
+    }
+    const relative = path.relative(base, current).replace(/\\/g, "/")
+    const consumed = relative ? relative.split("/").filter(Boolean).length : 0
+    return { base: current, query: parts.slice(consumed).join(" ") || parts.at(-1) || "" }
+  }
+
+  export async function browse(input: {
+    path: string
+    query?: string
+    limit?: number
+    depth?: number
+    maxVisitedDirs?: number
+    maxElapsedMs?: number
+    maxQueueSize?: number
+  }) {
+    let base = normalizeBrowsePath(input.path)
+    let query = (input.query ?? "").trim()
+    const limit = Math.max(0, input.limit ?? 50)
+    const maxDepth = Math.max(0, input.depth ?? 4)
+    const maxVisitedDirs = input.maxVisitedDirs ?? 2000
+    const maxElapsedMs = input.maxElapsedMs ?? 250
+    const maxQueueSize = input.maxQueueSize ?? 5000
+    const maxCandidates = Math.max(limit, limit * 10)
+    if (limit === 0) return []
+
+    const narrowed = await narrowBrowseBase(base, query)
+    base = narrowed.base
+    query = narrowed.query.trim()
 
     const stat = await fs.promises.stat(base).catch(() => null)
     if (!stat || !stat.isDirectory()) return []
 
-    const ignoreNames = new Set(["node_modules", "dist", "build", "target", "vendor", ".git", ".DS_Store"])
-    const dirs: string[] = []
+    const preferHidden = query.startsWith(".") || query.includes("/.") || query.includes("\\.")
+    const directChildren = await readBrowseChildren(base, preferHidden)
+    if (!query) return directChildren.slice(0, limit).map((entry) => entry.path)
 
-    async function scan(dir: string, depth: number) {
-      if (depth > maxDepth) return
-      const entries = await fs.promises.readdir(dir, { withFileTypes: true }).catch(() => [] as fs.Dirent[])
-      for (const entry of entries) {
-        if (!entry.isDirectory()) continue
-        if (ignoreNames.has(entry.name)) continue
-        if (depth > 0 && entry.name.startsWith(".") && entry.name.length > 1) continue
-        const full = path.join(dir, entry.name)
-        dirs.push(full)
-        await scan(full, depth + 1)
+    const started = performance.now()
+    const candidates: BrowseCandidate[] = []
+    const seen = new Set<string>()
+    const queue: Array<{ path: string; depth: number }> = []
+    let queueIndex = 0
+    let visited = 0
+
+    function addCandidate(candidate: BrowseCandidate | undefined) {
+      if (!candidate || seen.has(candidate.path)) return
+      seen.add(candidate.path)
+      candidates.push(candidate)
+      if (candidates.length > maxCandidates) {
+        candidates.splice(0, candidates.length, ...sortBrowseCandidates(candidates).slice(0, maxCandidates))
       }
     }
 
-    await scan(base, 0)
-
-    if (!query) {
-      return dirs.slice(0, limit)
+    for (const child of directChildren) {
+      addCandidate(scoreBrowseCandidate(base, child.path, child.name, 0, query))
+      if (maxDepth > 0 && queue.length < maxQueueSize) queue.push({ path: child.path, depth: 1 })
     }
 
-    return fuzzysort.go(query, dirs, { limit, key: (item: string) => item.slice(base.length + 1) }).map((r) => r.obj)
+    while (queueIndex < queue.length && visited < maxVisitedDirs && performance.now() - started < maxElapsedMs) {
+      const current = queue[queueIndex++]
+      if (current.depth > maxDepth) continue
+      visited++
+      const children = await readBrowseChildren(current.path, preferHidden)
+      for (const child of children) {
+        addCandidate(scoreBrowseCandidate(base, child.path, child.name, current.depth, query))
+        if (current.depth < maxDepth && queue.length < maxQueueSize)
+          queue.push({ path: child.path, depth: current.depth + 1 })
+      }
+    }
+
+    return sortBrowseCandidates(candidates)
+      .slice(0, limit)
+      .map((candidate) => candidate.path)
   }
 
   export async function search(input: { query: string; limit?: number; dirs?: boolean; type?: "file" | "directory" }) {
