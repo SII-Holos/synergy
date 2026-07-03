@@ -498,6 +498,68 @@
   text-align: left;
 }
 
+.sb-session-rename-input {
+  flex: 1;
+  min-width: 0;
+  height: 22px;
+  padding: 0 4px;
+  font-size: var(--font-size-small);
+  font-weight: 400;
+  color: var(--text-strong);
+  background: var(--surface-inset-base);
+  border: 1px solid var(--border-interactive-base);
+  border-radius: 4px;
+  outline: none;
+}
+
+.sb-session-actions {
+  flex-shrink: 0;
+  opacity: 0;
+  transition: opacity 100ms;
+}
+
+.group\/row:hover .sb-session-actions {
+  opacity: 1;
+}
+
+.sb-session-action-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  color: var(--icon-weak);
+  transition:
+    color 100ms,
+    background-color 100ms;
+}
+
+.sb-session-action-btn:hover {
+  background: var(--sb-hover-bg);
+  color: var(--text-base);
+}
+
+.sb-session-menu-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+}
+
+.sb-session-menu {
+  position: fixed;
+  z-index: 90;
+  min-width: 120px;
+  padding: 4px;
+  border-radius: 10px;
+  background: var(--sb-popover-bg);
+  border: 1px solid var(--sb-border);
+  box-shadow: none;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
 /* Dropdown menu */
 .sb-project-menu-backdrop {
   position: fixed;

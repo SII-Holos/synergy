@@ -33,6 +33,108 @@ import {
 } from "@/components/sidebar/session-visual-state"
 import "./sidebar.css"
 
+// Module-level rename & context menu state
+const [renaming, setRenaming] = createSignal(false)
+const [renameValue, setRenameValue] = createSignal("")
+const [renamingEntryId, setRenamingEntryId] = createSignal("")
+const [contextMenuEntry, setContextMenuEntry] = createSignal<NavEntry | null>(null)
+const [menuOpen, setMenuOpen] = createSignal(false)
+const [menuPosition, setMenuPosition] = createSignal({ x: 0, y: 0 })
+
+function SbSessionRow(props: { entry: NavEntry; isActive: boolean; onClick: () => void; scope?: LocalScope }) {
+  const layout = useLayout()
+
+  function handleRowClick(e: Event) {
+    if (renaming() && renamingEntryId() === props.entry.id) return
+    e.stopPropagation()
+    props.onClick()
+  }
+
+  return (
+    <div
+      role="button"
+      tabindex="0"
+      classList={{
+        "sb-session-row": true,
+        "sb-session-active": props.isActive,
+        "group/row": true,
+      }}
+      data-session-id={props.entry.id}
+      onClick={handleRowClick}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault()
+          handleRowClick(e)
+        }
+      }}
+      onContextMenu={(e) => {
+        e.preventDefault()
+        e.stopPropagation()
+        setMenuPosition({ x: e.clientX, y: e.clientY })
+        setContextMenuEntry(props.entry)
+        setMenuOpen(true)
+      }}
+    >
+      <SessionRowIcon entry={props.entry} scope={props.scope} />
+      <Show
+        when={!(renaming() && renamingEntryId() === props.entry.id)}
+        fallback={
+          <input
+            ref={(el) => requestAnimationFrame(() => el.focus())}
+            type="text"
+            class="sb-session-rename-input"
+            value={renameValue()}
+            onInput={(e) => setRenameValue(e.currentTarget.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.stopPropagation()
+                const value = renameValue().trim()
+                if (value && value !== (props.entry.title || "")) {
+                  layout.nav.renameNavEntry(props.entry, value)
+                }
+                setRenaming(false)
+                setRenamingEntryId("")
+              }
+              if (e.key === "Escape") {
+                e.stopPropagation()
+                setRenaming(false)
+                setRenamingEntryId("")
+              }
+            }}
+            onBlur={() => {
+              const value = renameValue().trim()
+              if (value && value !== (props.entry.title || "")) {
+                layout.nav.renameNavEntry(props.entry, value)
+              }
+              setRenaming(false)
+              setRenamingEntryId("")
+            }}
+            onClick={(e) => e.stopPropagation()}
+          />
+        }
+      >
+        <span class="sb-session-title">{props.entry.title || "Untitled"}</span>
+      </Show>
+      <div class="sb-session-actions">
+        <button
+          type="button"
+          class="sb-session-action-btn"
+          onClick={(e) => {
+            e.stopPropagation()
+            const btn = e.currentTarget as HTMLElement
+            const rect = btn.getBoundingClientRect()
+            setMenuPosition({ x: rect.right - 100, y: rect.bottom + 4 })
+            setContextMenuEntry(props.entry)
+            setMenuOpen(true)
+          }}
+        >
+          <Icon name="ellipsis" size="small" />
+        </button>
+      </div>
+    </div>
+  )
+}
+
 interface SidebarProps {
   onSearchOpen: () => void
 }
@@ -475,18 +577,11 @@ export function Sidebar(props: SidebarProps) {
                   <FlipList entries={recentEntries()} class="sb-sessions">
                     <For each={recentEntries()}>
                       {(entry) => (
-                        <button
-                          type="button"
-                          classList={{
-                            "sb-session-row": true,
-                            "sb-session-active": entry.id === params.id,
-                          }}
-                          data-session-id={entry.id}
+                        <SbSessionRow
+                          entry={entry}
+                          isActive={entry.id === params.id}
                           onClick={() => handleNavEntryClick(entry)}
-                        >
-                          <SessionRowIcon entry={entry} />
-                          <span class="sb-session-title">{entry.title || "Untitled"}</span>
-                        </button>
+                        />
                       )}
                     </For>
                   </FlipList>
@@ -533,18 +628,11 @@ export function Sidebar(props: SidebarProps) {
                     <FlipList entries={channelEntries()} class="sb-sessions">
                       <For each={channelEntries()}>
                         {(entry) => (
-                          <button
-                            type="button"
-                            classList={{
-                              "sb-session-row": true,
-                              "sb-session-active": entry.id === params.id,
-                            }}
-                            data-session-id={entry.id}
+                          <SbSessionRow
+                            entry={entry}
+                            isActive={entry.id === params.id}
                             onClick={() => handleNavEntryClick(entry)}
-                          >
-                            <SessionRowIcon entry={entry} />
-                            <span class="sb-session-title">{entry.title || "Untitled"}</span>
-                          </button>
+                          />
                         )}
                       </For>
                     </FlipList>
@@ -740,6 +828,34 @@ export function Sidebar(props: SidebarProps) {
                               </Show>
                             </div>
                           </Show>
+
+                          {/* Session row context menu */}
+                          <Show when={menuOpen()}>
+                            <div class="sb-session-menu-backdrop" onClick={() => setMenuOpen(false)} />
+                            <div
+                              class="sb-session-menu"
+                              style={{
+                                left: `${menuPosition().x}px`,
+                                top: `${menuPosition().y}px`,
+                              }}
+                            >
+                              <button
+                                type="button"
+                                class="sb-menu-item"
+                                onClick={() => {
+                                  const entry = contextMenuEntry()
+                                  if (!entry) return
+                                  setMenuOpen(false)
+                                  setRenameValue(entry.title || "")
+                                  setRenamingEntryId(entry.id)
+                                  setRenaming(true)
+                                }}
+                              >
+                                <Icon name="pencil" size="small" />
+                                <span>Rename</span>
+                              </button>
+                            </div>
+                          </Show>
                         </div>
                       )
                     }}
@@ -872,18 +988,11 @@ function RootNavSection(props: {
           <FlipList entries={props.entries} class="sb-sessions">
             <For each={props.entries}>
               {(entry) => (
-                <button
-                  type="button"
-                  classList={{
-                    "sb-session-row": true,
-                    "sb-session-active": entry.id === props.activeID,
-                  }}
-                  data-session-id={entry.id}
+                <SbSessionRow
+                  entry={entry}
+                  isActive={entry.id === props.activeID}
                   onClick={() => props.onSessionClick(entry)}
-                >
-                  <SessionRowIcon entry={entry} />
-                  <span class="sb-session-title">{entry.title || "Untitled"}</span>
-                </button>
+                />
               )}
             </For>
           </FlipList>
@@ -908,21 +1017,12 @@ function GroupedSessionList(props: {
     <FlipList entries={props.entries} class="sb-sessions">
       <For each={props.entries.filter((e) => e.category === "project")}>
         {(entry) => (
-          <button
-            type="button"
-            classList={{
-              "sb-session-row": true,
-              "sb-session-active": entry.id === props.activeID,
-            }}
-            data-session-id={entry.id}
-            onClick={(e) => {
-              e.stopPropagation()
-              props.onSessionClick(entry)
-            }}
-          >
-            <SessionRowIcon entry={entry} scope={props.scope} />
-            <span class="sb-session-title">{entry.title || "Untitled"}</span>
-          </button>
+          <SbSessionRow
+            entry={entry}
+            isActive={entry.id === props.activeID}
+            scope={props.scope}
+            onClick={() => props.onSessionClick(entry)}
+          />
         )}
       </For>
     </FlipList>

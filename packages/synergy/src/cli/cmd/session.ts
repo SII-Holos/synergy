@@ -45,6 +45,7 @@ export const SessionCommand = cmd({
       .command(SessionListCommand)
       .command(SessionInspectCommand)
       .command(SessionDeleteCommand)
+      .command(SessionRenameCommand)
       .command(SessionRepairCommand)
       .demandCommand(),
   async handler() {},
@@ -159,6 +160,37 @@ export const SessionDeleteCommand = cmd({
     })
     if (args.json) console.log(JSON.stringify(result, null, 2))
     else console.log(formatDeleteReport(result))
+  },
+})
+
+export const SessionRenameCommand = cmd({
+  command: "rename <sessionID> <title>",
+  describe: "rename a session",
+  builder: (yargs: Argv) => {
+    return yargs
+      .positional("sessionID", {
+        describe: "session id to rename",
+        type: "string",
+        demandOption: true,
+      })
+      .positional("title", {
+        describe: "new title for the session",
+        type: "string",
+        demandOption: true,
+      })
+  },
+  handler: async (args) => {
+    await withScopeContext(process.cwd(), async () => {
+      try {
+        await Session.update(args.sessionID as string, (draft) => {
+          draft.title = args.title as string
+        })
+        console.log(`Renamed session ${args.sessionID} to "${args.title}"`)
+      } catch (error) {
+        console.error(`Failed to rename session: ${error instanceof Error ? error.message : error}`)
+        process.exit(1)
+      }
+    })
   },
 })
 

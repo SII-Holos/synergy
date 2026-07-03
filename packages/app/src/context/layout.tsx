@@ -907,6 +907,48 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       })
     }
 
+    async function renameNavEntry(entry: NavEntry, newTitle: string) {
+      const isHome = entry.scopeType === "home" || entry.scopeID === "home"
+      const scopeReq = isHome
+        ? { scopeID: HOME_SCOPE_KEY }
+        : (() => {
+            const metadata = globalSync.data.scope.find((s) => s.id === entry.scopeID)
+            return { directory: metadata?.worktree ?? entry.scopeID }
+          })()
+
+      await globalSdk.client.session.update({
+        ...scopeReq,
+        sessionID: entry.id,
+        title: newTitle,
+      })
+
+      // Update local nav state for immediate UI feedback
+      if (recentEntries.items.some((e) => e.id === entry.id)) {
+        setRecentEntries(
+          "items",
+          (items) => items.map((e) => (e.id === entry.id ? { ...e, title: newTitle } : e)) as NavEntry[],
+        )
+      }
+      for (const category of ROOT_NAV_SECTION_KEYS) {
+        if (rootNavStore[category]?.items.some((e) => e.id === entry.id)) {
+          setRootNavStore(
+            category,
+            "items",
+            (items) => items.map((e) => (e.id === entry.id ? { ...e, title: newTitle } : e)) as NavEntry[],
+          )
+        }
+      }
+      for (const [key, state] of Object.entries(navEntries)) {
+        if ((state as NavListState)?.items.some((e) => e.id === entry.id)) {
+          setNavEntries(
+            key,
+            "items",
+            (items) => items.map((e) => (e.id === entry.id ? { ...e, title: newTitle } : e)) as NavEntry[],
+          )
+        }
+      }
+    }
+
     const isDesktop = createMediaQuery("(min-width: 768px)")
 
     return {
@@ -926,6 +968,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         resetPrefetch,
         archiveSession,
         pinSession,
+        renameNavEntry,
         loadScopeNav: (directory: string) => loadScopeNav(directory),
         navEntries: () => navEntries,
         scopeIndexLoaded,
