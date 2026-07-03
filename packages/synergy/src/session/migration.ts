@@ -928,7 +928,7 @@ async function repairPendingReplyFlags(progress: (current: number, total: number
     )
 
     for (const info of sessions) {
-      if (!info || info.time.archived || info.pendingReply !== true) continue
+      if (!info || info.time?.archived || info.pendingReply !== true) continue
       tasks.push({ scopeID, sessionID: info.id, info })
     }
   }
