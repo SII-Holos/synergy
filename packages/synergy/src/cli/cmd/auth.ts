@@ -355,9 +355,7 @@ async function handleBuiltinAuth(provider: string): Promise<boolean> {
 
   if (provider === GitHubProvider.PROVIDER_ID) {
     const options = [
-      ...(GitHubProvider.hasOAuthClient()
-        ? [{ label: "GitHub device login", value: "oauth", hint: "Stores a Synergy-managed GitHub token" }]
-        : []),
+      { label: "GitHub device login", value: "oauth", hint: "Stores a Synergy-managed GitHub token" },
       { label: "Import GitHub CLI token", value: "import", hint: "Reads the token from gh auth token" },
       { label: "GitHub token", value: "api", hint: "Stores an existing GitHub token" },
     ]

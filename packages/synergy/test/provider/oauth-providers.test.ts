@@ -7,7 +7,6 @@ import { GitHubProvider } from "../../src/provider/github"
 
 const originalFetch = globalThis.fetch
 const originalSleep = Bun.sleep
-const originalGitHubClientID = process.env[GitHubProvider.OAUTH_CLIENT_ID_ENV]
 const originalGHToken = process.env.GH_TOKEN
 const originalGITHUBToken = process.env.GITHUB_TOKEN
 
@@ -40,8 +39,6 @@ async function reset() {
   ]) {
     await Auth.remove(provider).catch(() => {})
   }
-  if (originalGitHubClientID === undefined) delete process.env[GitHubProvider.OAUTH_CLIENT_ID_ENV]
-  else process.env[GitHubProvider.OAUTH_CLIENT_ID_ENV] = originalGitHubClientID
   if (originalGHToken === undefined) delete process.env.GH_TOKEN
   else process.env.GH_TOKEN = originalGHToken
   if (originalGITHUBToken === undefined) delete process.env.GITHUB_TOKEN
@@ -195,13 +192,12 @@ test("github copilot device login exchanges a GitHub token for Copilot models", 
 })
 
 test("github provider device login resolves managed token and reports account status", async () => {
-  process.env[GitHubProvider.OAUTH_CLIENT_ID_ENV] = "github-oauth-client"
   const authorize = await GitHubProvider.authorizeDeviceCode(
     asFetch(async (input, init) => {
       const url = String(input)
       if (url.endsWith("/login/device/code")) {
         const body = init?.body as URLSearchParams
-        expect(body.get("client_id")).toBe("github-oauth-client")
+        expect(body.get("client_id")).toBe(GitHubProvider.OAUTH_CLIENT_ID)
         expect(body.get("scope")).toBe(GitHubProvider.DEVICE_SCOPE)
         return jsonResponse({
           device_code: "device-github",
@@ -213,7 +209,7 @@ test("github provider device login resolves managed token and reports account st
       }
       if (url.endsWith("/login/oauth/access_token")) {
         const body = init?.body as URLSearchParams
-        expect(body.get("client_id")).toBe("github-oauth-client")
+        expect(body.get("client_id")).toBe(GitHubProvider.OAUTH_CLIENT_ID)
         expect(body.get("device_code")).toBe("device-github")
         return jsonResponse({ access_token: "github-managed-token" })
       }
