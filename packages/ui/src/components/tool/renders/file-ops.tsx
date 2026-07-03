@@ -118,14 +118,15 @@ ToolRegistry.register({
           subtitlePath: (props.input.filePath as string | undefined) ?? undefined,
         }}
       >
-        <Show when={props.status !== "generating" && props.metadata.results}>
+        <Show keyed when={props.status !== "generating" ? props.metadata.results : undefined}>
           {(results) => {
-            const lastResult = () => {
-              const r = results()
-              if (!Array.isArray(r) || r.length === 0) return undefined
-              return r[r.length - 1]
-            }
-            return <Show when={lastResult()?.filediff}>{(filediff) => <ToolDiffPreview diff={filediff()} />}</Show>
+            if (!Array.isArray(results) || results.length === 0) return null
+            const lastResult = results[results.length - 1]
+            return (
+              <Show keyed when={lastResult?.filediff}>
+                {(filediff) => <ToolDiffPreview diff={filediff} />}
+              </Show>
+            )
           }}
         </Show>
       </BasicTool>
