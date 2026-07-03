@@ -854,15 +854,31 @@ export namespace SessionInvoke {
         continue
       }
 
-      // Inner loop finished — drain queued user input and agent updates in the
-      // same visible Inbox order. If any item requires a reply, re-enter the loop.
-      const readyItems = await SessionInbox.drainReady(sessionID)
+      // Inner loop finished — use peek-then-commit pattern for inbox items
+      // so items are never deleted before they are successfully materialized
+      // and the reply cycle completes. If needsReply, commit now (they're
+      // already in the session as user messages) and re-enter the loop.
+      // Otherwise, commit after the full loop exits with a final race check.
+      const readyItems = await SessionInbox.peekReady(sessionID)
       const readyResult = await materializeInboxItems(sessionID, readyItems)
-      if (readyResult.needsReply) continue outer
+      const committedIDs = new Set(readyItems.map((item) => item.id))
+
+      if (readyResult.needsReply) {
+        await SessionInbox.commitReady(sessionID, committedIDs)
+        continue outer
+      }
 
       const legacyMails = SessionManager.drainAllMails(sessionID).filter((mail) => !mail.inboxItemID)
       const legacyResult = await materializeLegacyMails(sessionID, legacyMails)
-      if (legacyResult.needsReply) continue outer
+      if (legacyResult.needsReply) {
+        await SessionInbox.commitReady(sessionID, committedIDs)
+        continue outer
+      }
+
+      // Commit to remove materialized items from the inbox, then do a
+      // final check for late-arriving items before clearing pendingReply.
+      await SessionInbox.commitReady(sessionID, committedIDs)
+      if (await hasLateArrivingInbox(sessionID)) continue outer
       break
     }
 
@@ -971,6 +987,22 @@ export namespace SessionInvoke {
     await Session.update(sessionID, (draft) => {
       draft.pendingReply = undefined
     })
+  }
+
+  /**
+   * Check for inbox items that arrived after the after-turn boundary closed.
+   * Returns true if any ready items exist and should trigger a loop re-entry.
+   */
+  async function hasLateArrivingInbox(sessionID: string): Promise<boolean> {
+    const lateItems = await SessionInbox.peekReady(sessionID)
+    if (lateItems.length > 0) {
+      log.info("late-arriving inbox items detected, re-entering loop", {
+        sessionID,
+        count: lateItems.length,
+      })
+      return true
+    }
+    return false
   }
 
   async function writeAbortedAssistantMessage(sessionID: string, scopeID: string): Promise<MessageV2.WithParts> {
