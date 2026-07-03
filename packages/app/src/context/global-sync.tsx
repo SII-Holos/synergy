@@ -1078,20 +1078,9 @@ function createGlobalSync() {
         const sessionID = event.properties.sessionID as string
         const messages = store.message[sessionID]
         if (!messages) break
-        batch(() => {
-          setStore(
-            produce((draft) => {
-              for (const msg of messages) {
-                delete draft.part[msg.id]
-              }
-              delete draft.message[sessionID]
-              delete draft.session_diff[sessionID]
-              delete draft.inbox[sessionID]
-            }),
-          )
-        })
+        const limit = Math.max(200, Math.min(messages.length, 500))
         const sdk = createScopedClient(scopeKey)
-        retry(() => sdk.session.messages({ sessionID, limit: 200 }))
+        retry(() => sdk.session.messages({ sessionID, limit }))
           .then((result) => {
             const items = (result.data ?? []).filter((x) => !!x?.info?.id)
             const all = items
@@ -1099,10 +1088,23 @@ function createGlobalSync() {
               .filter((m) => !!m?.id)
               .slice()
               .sort((a, b) => a.id.localeCompare(b.id))
+            const byID = new Set(all.map((m) => m.id))
+            const current = store.message[sessionID] ?? messages
+            for (const message of current) {
+              if (!byID.has(message.id)) all.push(message)
+            }
+            all.sort((a, b) => a.id.localeCompare(b.id))
             const keep = all.length > 500 ? all.slice(-500) : all
+            const keepIds = new Set(keep.map((m) => m.id))
             batch(() => {
+              setStore(
+                produce((draft) => {
+                  for (const msg of current) {
+                    if (!keepIds.has(msg.id)) delete draft.part[msg.id]
+                  }
+                }),
+              )
               setStore("message", sessionID, reconcile(keep, { key: "id" }))
-              const keepIds = new Set(keep.map((m) => m.id))
               for (const item of items) {
                 if (!keepIds.has(item.info.id)) continue
                 setStore(
