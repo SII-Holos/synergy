@@ -172,7 +172,7 @@ export const Info = z
           activatedTools: z.array(z.string()).optional(),
         })
         .optional(),
-      completionNotice: CompletionNotice,
+      completionNotice: CompletionNotice.default(() => ({ unread: false, silent: false })),
       pendingReply: z.boolean().optional(),
       interaction: SessionInteraction.Info.optional(),
       agenda: z
