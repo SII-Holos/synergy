@@ -540,6 +540,9 @@ export const SessionRoute = new Hono()
       SessionInvoke.cancel(sessionID)
       const { Cortex } = await import("../cortex")
       await Cortex.cancelAll(sessionID)
+      // Repair the persisted incomplete assistant so the frontend sees the
+      // session as stopped (not "recovering"), even if the processor is stuck.
+      await SessionInvoke.repairAfterAbort(sessionID)
       return c.json(true)
     },
   )
