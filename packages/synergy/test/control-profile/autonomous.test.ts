@@ -179,9 +179,9 @@ describe("autonomous profile summary", () => {
       fn: async () => {
         const profile = await autonomousProfile()
         expect(profile.summary?.deniedCapabilities).toEqual([
+          "shell_remote_write",
           "shell_destructive",
           "shell_hardline",
-          "shell_remote_write",
           "file_external_write",
           "secrets",
           "prompt_transform",
