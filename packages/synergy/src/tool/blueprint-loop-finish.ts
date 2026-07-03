@@ -122,14 +122,17 @@ If complete, call blueprint_loop_finish({ loopID: "${params.loopID}", status: "c
         status: "auditing",
         auditSessionID,
       })
-      await Bus.publish(LoopEvent.Auditing, { loopID: params.loopID })
     } else if (params.status === "failed") {
       await BlueprintLoopStore.updateStatus(scopeID, params.loopID, { status: "failed" })
       await Bus.publish(LoopEvent.Failed, { loopID: params.loopID, error: params.summary ?? "Loop execution failed" })
+      const { Cortex } = await import("../cortex")
+      await Cortex.cancelAll(ctx.sessionID)
       SessionManager.signalAbort(ctx.sessionID)
     } else if (params.status === "completed") {
       await BlueprintLoopStore.updateStatus(scopeID, params.loopID, { status: "completed" })
       await Bus.publish(LoopEvent.Completed, { loopID: params.loopID })
+      const { Cortex } = await import("../cortex")
+      await Cortex.cancelAll(ctx.sessionID)
       SessionManager.signalAbort(ctx.sessionID)
     }
 
