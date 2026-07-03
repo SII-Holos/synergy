@@ -727,6 +727,152 @@ describe("note_edit anchored operations", () => {
     })
   })
 
+  test("setAttrs semantic result reports beforeAttrs and afterAttrs", async () => {
+    await using tmp = await tmpdir()
+    const scope = (await Scope.fromDirectory(tmp.path)).scope
+
+    await ScopeContext.provide({
+      scope,
+      fn: async () => {
+        const note = await NoteStore.create({
+          title: "Semantic setAttrs",
+          content: {
+            type: "doc",
+            content: [
+              {
+                type: "heading",
+                attrs: { level: 1 },
+                content: [{ type: "text", text: "Title" }],
+              },
+            ],
+          },
+        })
+        const block = NoteDocument.listBlocks(note.content)[0]
+
+        const result = await execute({
+          id: note.id,
+          baseVersion: note.version,
+          baseDocHash: NoteDocument.hash(note.content),
+          ops: [
+            {
+              action: "setAttrs",
+              blockId: block.id,
+              expectedHash: block.hash,
+              attrs: { level: 2 },
+            },
+          ],
+        })
+
+        const op = result.metadata.operationResults[0]
+        expect(op.semantic.beforeAttrs).toEqual({ level: 1 })
+        expect(op.semantic.afterAttrs).toEqual({ level: 2 })
+        expect(op.directChangedBlocks[0].id).toBe(block.id)
+        expect(op.warnings).toHaveLength(0)
+        expect(result.output).toContain("level")
+        expect(result.output).toContain("Attrs:")
+      },
+    })
+  })
+
+  test("replaceRange semantic result reports removedBlocks and replacementText", async () => {
+    await using tmp = await tmpdir()
+    const scope = (await Scope.fromDirectory(tmp.path)).scope
+
+    await ScopeContext.provide({
+      scope,
+      fn: async () => {
+        const note = await NoteStore.create({
+          title: "Semantic replaceRange",
+          content: {
+            type: "doc",
+            content: [paragraph("A"), paragraph("B"), paragraph("C"), paragraph("D")],
+          },
+        })
+        const blocks = NoteDocument.listBlocks(note.content)
+        const b = blocks.find((block) => block.text.trim() === "B")!
+        const c = blocks.find((block) => block.text.trim() === "C")!
+
+        const result = await execute({
+          id: note.id,
+          baseVersion: note.version,
+          baseDocHash: NoteDocument.hash(note.content),
+          ops: [
+            {
+              action: "replaceRange",
+              startBlockId: b.id,
+              endBlockId: c.id,
+              expectedStartHash: b.hash,
+              expectedEndHash: c.hash,
+              content: { format: "text", text: "BC replaced" },
+            },
+          ],
+        })
+
+        const op = result.metadata.operationResults[0]
+        expect(op.targetBlocks).toHaveLength(2)
+        expect(op.directChangedBlocks).toHaveLength(3)
+        expect(op.semantic.replacementText).toBe("BC replaced")
+        expect(result.output).toContain("Replacement: BC replaced")
+        expect(result.output).toContain("Changed: direct=3")
+      },
+    })
+  })
+
+  test("updateTableCell via cellId produces the same semantic result fields", async () => {
+    await using tmp = await tmpdir()
+    const scope = (await Scope.fromDirectory(tmp.path)).scope
+
+    await ScopeContext.provide({
+      scope,
+      fn: async () => {
+        const note = await NoteStore.create({
+          title: "Semantic cellId",
+          content: {
+            type: "doc",
+            content: [
+              {
+                type: "table",
+                content: [
+                  {
+                    type: "tableRow",
+                    content: [
+                      { type: "tableHeader", content: [paragraph("Header")] },
+                      { type: "tableCell", content: [paragraph("Data")] },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        })
+        const cell = NoteDocument.listBlocks(note.content).find((block) => block.type === "tableCell")!
+
+        const result = await execute({
+          id: note.id,
+          baseVersion: note.version,
+          baseDocHash: NoteDocument.hash(note.content),
+          ops: [
+            {
+              action: "updateTableCell",
+              cellId: cell.id,
+              expectedHash: cell.hash,
+              content: { format: "text", text: "Updated via cellId" },
+            },
+          ],
+        })
+
+        const op = result.metadata.operationResults[0]
+        expect(op.semantic.cellId).toBe(cell.id)
+        expect(op.semantic.row).toBe(0)
+        expect(op.semantic.col).toBe(1)
+        expect(op.semantic.beforeText).toBe("Data")
+        expect(op.semantic.afterText).toBe("Updated via cellId")
+        expect(op.checks.replacementPresentInTarget).toBe(true)
+        expect(result.output).toContain("row=0 col=1")
+      },
+    })
+  })
+
   test("dryRun validates edits without updating version or content", async () => {
     await using tmp = await tmpdir()
     const scope = (await Scope.fromDirectory(tmp.path)).scope
