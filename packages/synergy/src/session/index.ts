@@ -17,6 +17,8 @@ import { Snapshot } from "@/session/snapshot"
 import { SnapshotSchema } from "@/session/snapshot-schema"
 import { SessionHistory } from "./history"
 import { Config } from "@/config/config"
+import { ControlProfileCompiler } from "@/control-profile/compiler"
+import type { ProfileId } from "@/control-profile/types"
 
 import type { Provider } from "@/provider/provider"
 import { PermissionNext } from "@/permission/next"
@@ -481,23 +483,52 @@ export namespace Session {
     return updated
   }
 
-  export async function resolveSessionControlProfile(sessionID: string): Promise<Info["controlProfile"] | undefined> {
+  async function sessionControlProfileState(
+    sessionID: string,
+  ): Promise<{ controlProfile?: Info["controlProfile"]; root: Info }> {
     let currentID = sessionID
     while (true) {
       const session = await SessionManager.requireSession(currentID)
       const scope = session.scope as Scope
-      const info = await Storage.read<Info>(StoragePath.sessionInfo(asScopeID(scope.id), asSessionID(currentID)))
-      if (info?.controlProfile) return info.controlProfile
-      if (!info?.parentID) return undefined
+      const info =
+        (await Storage.read<Info>(StoragePath.sessionInfo(asScopeID(scope.id), asSessionID(currentID)))) ?? session
+      if (info.controlProfile) return { controlProfile: info.controlProfile, root: info }
+      if (!info.parentID) return { root: info }
       currentID = info.parentID
     }
   }
 
+  export function defaultControlProfileForSessionSource(session?: Pick<Info, "endpoint" | "agenda">): ProfileId {
+    if (session?.endpoint?.kind === "channel") return "autonomous"
+    if (session?.agenda) return "autonomous"
+    return "guarded"
+  }
+
+  export async function resolveSessionControlProfile(sessionID: string): Promise<Info["controlProfile"] | undefined> {
+    return (await sessionControlProfileState(sessionID)).controlProfile
+  }
+
+  export async function resolveEffectiveControlProfile(input: {
+    sessionID?: string
+    agentControlProfile?: string
+    topLevelControlProfile?: string
+  }): Promise<ProfileId> {
+    const sessionState = input.sessionID ? await sessionControlProfileState(input.sessionID) : undefined
+    if (sessionState?.controlProfile) return ControlProfileCompiler.normalize(sessionState.controlProfile)
+    if (input.agentControlProfile) return ControlProfileCompiler.normalize(input.agentControlProfile)
+
+    const topLevelProfile =
+      input.topLevelControlProfile ??
+      (await Config.current()
+        .then((cfg) => cfg.controlProfile)
+        .catch(() => undefined))
+    if (topLevelProfile) return ControlProfileCompiler.normalize(topLevelProfile)
+
+    return defaultControlProfileForSessionSource(sessionState?.root)
+  }
+
   export async function resolveControlProfile(sessionID: string): Promise<NonNullable<Info["controlProfile"]>> {
-    const sessionProfile = await resolveSessionControlProfile(sessionID)
-    if (sessionProfile) return sessionProfile
-    const cfg = await Config.current().catch(() => undefined)
-    return cfg?.controlProfile ?? "guarded"
+    return resolveEffectiveControlProfile({ sessionID })
   }
 
   export const get = fn(Identifier.schema("session"), async (id) => {
