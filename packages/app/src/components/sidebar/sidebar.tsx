@@ -46,6 +46,21 @@ function getStoreForEntry(
   return globalSync.peekScopeState(scopeKey)?.[0]
 }
 
+function sessionIconClassList(visual: SessionVisualState) {
+  return {
+    "sb-session-icon-wrap": true,
+    "sb-session-icon-active-tone": visual.tone === "active",
+    "sb-session-icon-waiting-tone": visual.tone === "waiting",
+    "sb-session-icon-worktree-tone": visual.tone === "worktree",
+    "sb-session-icon-muted-tone": visual.tone === "muted",
+    "sb-session-icon-blueprint-tone": visual.tone === "blueprint",
+    "sb-session-icon-blueprint-running-tone": visual.tone === "blueprint-running",
+    "sb-session-icon-blueprint-waiting-tone": visual.tone === "blueprint-waiting",
+    "sb-session-icon-blueprint-audit-tone": visual.tone === "blueprint-audit",
+    "sb-session-icon-pulse": !!visual.pulse,
+  }
+}
+
 export function Sidebar(props: SidebarProps) {
   const layout = useLayout()
   const globalSync = useGlobalSync()
@@ -271,17 +286,7 @@ export function Sidebar(props: SidebarProps) {
   const SessionIcon = (props: { scope: LocalScope; entry: NavEntry; flyout?: boolean }) => {
     const visual = createMemo(() => sessionVisualState(props.scope, props.entry))
     return (
-      <span
-        classList={{
-          "sb-session-icon-wrap": true,
-          "sb-session-icon-active-tone": visual().tone === "active",
-          "sb-session-icon-waiting-tone": visual().tone === "waiting",
-          "sb-session-icon-worktree-tone": visual().tone === "worktree",
-          "sb-session-icon-muted-tone": visual().tone === "muted",
-          "sb-session-icon-pulse": !!visual().pulse,
-        }}
-        title={visual().label}
-      >
+      <span classList={sessionIconClassList(visual())} title={visual().label}>
         <Icon name={visual().icon} size="small" class={props.flyout ? "sb-flyout-session-icon" : "sb-session-icon"} />
       </span>
     )
@@ -938,17 +943,7 @@ function SessionRowIcon(props: { entry: NavEntry; scope?: LocalScope }) {
   })
 
   return (
-    <span
-      classList={{
-        "sb-session-icon-wrap": true,
-        "sb-session-icon-active-tone": visual().tone === "active",
-        "sb-session-icon-waiting-tone": visual().tone === "waiting",
-        "sb-session-icon-worktree-tone": visual().tone === "worktree",
-        "sb-session-icon-muted-tone": visual().tone === "muted",
-        "sb-session-icon-pulse": !!visual().pulse,
-      }}
-      title={visual().label}
-    >
+    <span classList={sessionIconClassList(visual())} title={visual().label}>
       <Icon name={visual().icon} size="small" class="sb-session-icon" />
     </span>
   )

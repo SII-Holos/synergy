@@ -6,7 +6,16 @@ import { HOME_SCOPE_KEY } from "@/utils/scope"
 export type SessionVisualState = {
   icon: IconName
   label: string
-  tone: "default" | "active" | "waiting" | "worktree" | "muted"
+  tone:
+    | "default"
+    | "active"
+    | "waiting"
+    | "worktree"
+    | "muted"
+    | "blueprint"
+    | "blueprint-running"
+    | "blueprint-waiting"
+    | "blueprint-audit"
   pulse?: boolean
 }
 
@@ -15,7 +24,13 @@ export interface SessionVisualStore {
   permission: Record<string, unknown[] | undefined>
   question: Record<string, unknown[] | undefined>
   cortex: { parentSessionID?: string; status?: string }[]
-  session: { id: string; parentID?: string; category?: string; workspace?: { type?: string } }[]
+  session: {
+    id: string
+    parentID?: string
+    category?: string
+    workspace?: { type?: string }
+    blueprint?: { loopID?: string; loopRole?: "execution" | "audit"; planMode?: boolean }
+  }[]
 }
 
 export interface SessionVisualScope {
@@ -38,6 +53,22 @@ export function resolveSessionVisualState(store: SessionVisualStore | undefined,
     )
     const fullSession = store.session.find((session) => session.id === entry.id)
 
+    if (fullSession?.blueprint?.loopID) {
+      const blueprintIcon = getSemanticIcon("orchestration.blueprint")
+      if (waiting)
+        return { icon: blueprintIcon, label: "Blueprint waiting for you", tone: "blueprint-waiting", pulse: true }
+      if (fullSession.blueprint.loopRole === "audit") {
+        return {
+          icon: blueprintIcon,
+          label: "Auditing Blueprint",
+          tone: "blueprint-audit",
+          pulse: running || childTasksRunning ? true : undefined,
+        }
+      }
+      if (running || childTasksRunning)
+        return { icon: blueprintIcon, label: "Running Blueprint", tone: "blueprint-running", pulse: true }
+      return { icon: blueprintIcon, label: "Blueprint session", tone: "blueprint" }
+    }
     if (waiting)
       return { icon: getSemanticIcon("session.waiting"), label: "Waiting for you", tone: "waiting", pulse: true }
     if (running || childTasksRunning)

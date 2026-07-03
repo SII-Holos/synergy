@@ -482,6 +482,22 @@
   color: var(--icon-success-base);
 }
 
+.sb-session-icon-blueprint-tone {
+  color: var(--icon-info-base);
+}
+
+.sb-session-icon-blueprint-running-tone {
+  color: var(--icon-success-base);
+}
+
+.sb-session-icon-blueprint-waiting-tone {
+  color: var(--icon-warning-base);
+}
+
+.sb-session-icon-blueprint-audit-tone {
+  color: var(--icon-info-base);
+}
+
 .sb-session-icon-muted-tone {
   color: var(--text-weaker);
 }
@@ -1466,7 +1482,7 @@
 }
 
 .sb-flyout-session-icon {
-  color: var(--icon-weak);
+  color: currentColor;
   flex-shrink: 0;
 }
 

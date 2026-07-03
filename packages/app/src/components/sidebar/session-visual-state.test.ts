@@ -98,6 +98,99 @@ describe("resolveSessionVisualState", () => {
     expect(visual.icon).toBe(getSemanticIcon("session.running"))
     expect(visual.tone).toBe("active")
   })
+
+  test("shows blueprint state for idle sessions bound to BlueprintLoop", () => {
+    const visual = resolveSessionVisualState(
+      store({ session: [{ id: "ses_test", blueprint: { loopID: "bll_test" } }] }),
+      entry(),
+    )
+
+    expect(visual.icon).toBe(getSemanticIcon("orchestration.blueprint"))
+    expect(visual.label).toBe("Blueprint session")
+    expect(visual.tone).toBe("blueprint")
+    expect(visual.pulse).toBeUndefined()
+  })
+
+  test("shows blueprint running state instead of generic running state", () => {
+    const visual = resolveSessionVisualState(
+      store({
+        session_status: { ses_test: { type: "busy" } },
+        session: [{ id: "ses_test", blueprint: { loopID: "bll_test", loopRole: "execution" } }],
+      }),
+      entry(),
+    )
+
+    expect(visual.icon).toBe(getSemanticIcon("orchestration.blueprint"))
+    expect(visual.label).toBe("Running Blueprint")
+    expect(visual.tone).toBe("blueprint-running")
+    expect(visual.pulse).toBe(true)
+  })
+
+  test("shows blueprint running state when a blueprint session has running child tasks", () => {
+    const visual = resolveSessionVisualState(
+      store({
+        cortex: [{ parentSessionID: "ses_test", status: "running" }],
+        session: [{ id: "ses_test", blueprint: { loopID: "bll_test", loopRole: "execution" } }],
+      }),
+      entry(),
+    )
+
+    expect(visual.icon).toBe(getSemanticIcon("orchestration.blueprint"))
+    expect(visual.label).toBe("Running Blueprint")
+    expect(visual.tone).toBe("blueprint-running")
+    expect(visual.pulse).toBe(true)
+  })
+
+  test("combines waiting state with blueprint identity", () => {
+    const visual = resolveSessionVisualState(
+      store({
+        permission: { ses_test: [{}] },
+        session: [{ id: "ses_test", blueprint: { loopID: "bll_test" } }],
+      }),
+      entry(),
+    )
+
+    expect(visual.icon).toBe(getSemanticIcon("orchestration.blueprint"))
+    expect(visual.label).toBe("Blueprint waiting for you")
+    expect(visual.tone).toBe("blueprint-waiting")
+    expect(visual.pulse).toBe(true)
+  })
+
+  test("distinguishes blueprint audit sessions", () => {
+    const visual = resolveSessionVisualState(
+      store({ session: [{ id: "ses_test", blueprint: { loopID: "bll_test", loopRole: "audit" } }] }),
+      entry(),
+    )
+
+    expect(visual.icon).toBe(getSemanticIcon("orchestration.blueprint"))
+    expect(visual.label).toBe("Auditing Blueprint")
+    expect(visual.tone).toBe("blueprint-audit")
+  })
+
+  test("pulses blueprint audit sessions while their child tasks are running", () => {
+    const visual = resolveSessionVisualState(
+      store({
+        cortex: [{ parentSessionID: "ses_test", status: "running" }],
+        session: [{ id: "ses_test", blueprint: { loopID: "bll_test", loopRole: "audit" } }],
+      }),
+      entry(),
+    )
+
+    expect(visual.icon).toBe(getSemanticIcon("orchestration.blueprint"))
+    expect(visual.label).toBe("Auditing Blueprint")
+    expect(visual.tone).toBe("blueprint-audit")
+    expect(visual.pulse).toBe(true)
+  })
+
+  test("keeps worktree state for non-blueprint worktree sessions", () => {
+    const visual = resolveSessionVisualState(
+      store({ session: [{ id: "ses_test", workspace: { type: "git_worktree" } }] }),
+      entry(),
+    )
+
+    expect(visual.icon).toBe(getSemanticIcon("workspace.worktree"))
+    expect(visual.tone).toBe("worktree")
+  })
 })
 
 describe("scopeKeyForNavEntry", () => {
