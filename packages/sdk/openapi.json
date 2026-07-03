@@ -27901,6 +27901,17 @@
           "source"
         ]
       },
+      "RegistryPluginCompatibility": {
+        "type": "object",
+        "properties": {
+          "synergy": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": ["synergy"],
+        "additionalProperties": false
+      },
       "RegistryPluginSignature": {
         "type": "object",
         "properties": {
@@ -28070,6 +28081,9 @@
               "type": "string"
             }
           },
+          "compatibility": {
+            "$ref": "#/components/schemas/RegistryPluginCompatibility"
+          },
           "versions": {
             "type": "array",
             "items": {
@@ -28206,6 +28220,9 @@
             "items": {
               "type": "string"
             }
+          },
+          "compatibility": {
+            "$ref": "#/components/schemas/RegistryPluginCompatibility"
           },
           "versions": {
             "type": "array",

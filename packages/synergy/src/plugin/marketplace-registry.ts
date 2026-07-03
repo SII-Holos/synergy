@@ -35,6 +35,11 @@ export namespace PluginMarketplaceRegistry {
     email: z.string().optional(),
     url: z.string().optional(),
   })
+  const Compatibility = z
+    .object({
+      synergy: z.string().min(1),
+    })
+    .strict()
   const RemotePermission = z.object({
     key: z.string(),
     description: z.string(),
@@ -80,6 +85,7 @@ export namespace PluginMarketplaceRegistry {
       verified: z.boolean(),
       official: z.boolean(),
       keywords: z.array(z.string()),
+      compatibility: Compatibility.optional(),
       versions: z.array(RemoteVersion),
       yankedVersions: z.array(z.string()).optional().default([]),
     })
@@ -143,6 +149,7 @@ export namespace PluginMarketplaceRegistry {
     verified: boolean
     official: boolean
     keywords: string[]
+    compatibility?: { synergy: string }
     versions: NormalizedVersion[]
     createdAt: number
     updatedAt: number
@@ -302,6 +309,7 @@ export namespace PluginMarketplaceRegistry {
       verified: entry.verified,
       official: entry.official,
       keywords: entry.keywords,
+      ...(entry.compatibility ? { compatibility: entry.compatibility } : {}),
       versions,
       createdAt: versions.length ? Math.min(...versions.map((version) => version.publishedAt)) : 0,
       updatedAt: latest?.publishedAt ?? 0,

@@ -46,6 +46,7 @@ test("developer agent has correct default properties", async () => {
       expect(developer?.native).toBe(true)
       expect(evalPerm(developer, "edit")).toBe("ask")
       expect(evalPerm(developer, "bash")).toBe("allow")
+      expect(evalPerm(developer, "mcp__any_server__any_tool")).toBe("allow")
     },
   })
 })

@@ -89,6 +89,7 @@ function anchoredWriteTools(): PermissionNext.Ruleset {
 function baseToolPermissions(profile: SubagentPermissionProfile): PermissionNext.Ruleset {
   const common = PermissionNext.fromConfig({
     "*": "deny",
+    "mcp__*": "allow",
     question: "deny",
     dagwrite: "deny",
     dagread: "deny",

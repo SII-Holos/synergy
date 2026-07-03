@@ -1,4 +1,4 @@
-import type { AccountUsageSnapshot, AccountUsageWindow } from "@ericsanchezok/synergy-sdk/client"
+import type { AccountUsageSnapshot } from "@ericsanchezok/synergy-sdk/client"
 import { Button } from "@ericsanchezok/synergy-ui/button"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { ProviderIcon } from "@ericsanchezok/synergy-ui/provider-icon"
@@ -9,6 +9,14 @@ import { useGlobalSDK } from "@/context/global-sdk"
 import { useGlobalSync } from "@/context/global-sync"
 import { compareProviderIDs, providerConnectCopy } from "@/components/provider/provider-recommendation"
 import { SettingsEntityList, SettingsPage, SettingsSection } from "../components/SettingsPrimitives"
+import {
+  formatUsageResetSentence,
+  formatUsageWindowDetail,
+  formatUsageWindowLabel,
+  formatUsageWindowValue,
+  nextUsageReset,
+  usageWindowMeterPercent,
+} from "./UsagePanel.model"
 
 const USAGE_FIRST_PROVIDER_IDS = ["openai-codex", "anthropic", "github-copilot", "openrouter", "openai"]
 
@@ -48,6 +56,7 @@ export function UsagePanel(props: { onConnectProvider: (providerID?: string) => 
     if (times.length === 0) return undefined
     return formatDate(new Date(Math.max(...times)).toISOString())
   })
+  const nextReset = createMemo(() => nextUsageReset(connectedUsage().map((item) => item.snapshot)))
 
   function providerName(providerID: string) {
     return providers().find((provider) => provider.id === providerID)?.name ?? providerID
@@ -66,6 +75,14 @@ export function UsagePanel(props: { onConnectProvider: (providerID?: string) => 
               <span class="usage-overview-value">{unconnected().length}</span>
               <span class="usage-overview-label">Available to connect</span>
             </div>
+            <Show when={nextReset()}>
+              {(reset) => (
+                <div class="usage-overview-metric" title={reset().title}>
+                  <span class="usage-overview-value usage-overview-date">{reset().value}</span>
+                  <span class="usage-overview-label">Next reset</span>
+                </div>
+              )}
+            </Show>
             <Show when={lastFetched()}>
               {(value) => (
                 <div class="usage-overview-metric">
@@ -222,7 +239,16 @@ function UsageProviderPanel(props: {
                   <div class="usage-window-meter" aria-hidden="true">
                     <span style={{ width: `${usageWindowMeterPercent(window)}%` }} />
                   </div>
-                  <div class="usage-window-value">{formatUsageWindowValue(window)}</div>
+                  <div class="usage-window-reading">
+                    <div class="usage-window-value">{formatUsageWindowValue(window)}</div>
+                    <Show when={formatUsageResetSentence(window.resetAt)}>
+                      {(reset) => (
+                        <div class="usage-window-reset" title={reset().title}>
+                          {reset().value}
+                        </div>
+                      )}
+                    </Show>
+                  </div>
                 </div>
               )}
             </For>
@@ -231,14 +257,16 @@ function UsageProviderPanel(props: {
                 <div class="usage-window-row">
                   <div class="usage-window-label">Credits</div>
                   <div class="usage-window-meter usage-window-meter-empty" aria-hidden="true" />
-                  <div class="usage-window-value">
-                    {credits().unlimited
-                      ? "unlimited"
-                      : credits().balance !== undefined
-                        ? `${credits().balance}${credits().currency ? ` ${credits().currency}` : ""}`
-                        : credits().hasCredits === false
-                          ? "none"
-                          : "available"}
+                  <div class="usage-window-reading">
+                    <div class="usage-window-value">
+                      {credits().unlimited
+                        ? "unlimited"
+                        : credits().balance !== undefined
+                          ? `${credits().balance}${credits().currency ? ` ${credits().currency}` : ""}`
+                          : credits().hasCredits === false
+                            ? "none"
+                            : "available"}
+                    </div>
                   </div>
                 </div>
               )}
@@ -249,42 +277,6 @@ function UsageProviderPanel(props: {
       </Show>
     </div>
   )
-}
-
-function formatPercent(value: number | undefined) {
-  if (value === undefined) return "n/a"
-  return `${Math.round(value)}%`
-}
-
-function formatUsageWindowLabel(label: string) {
-  const normalized = label.trim().toLowerCase()
-  if (normalized === "session") return "5-hour window"
-  if (normalized === "weekly") return "Weekly window"
-  if (normalized === "monthly") return "Monthly window"
-  return label
-}
-
-function formatUsageWindowValue(window: AccountUsageWindow) {
-  if (window.remainingPercent !== undefined) return `${formatPercent(window.remainingPercent)} remaining`
-  if (window.usedPercent !== undefined) return `${formatPercent(window.usedPercent)} used`
-  return "n/a"
-}
-
-function formatUsageWindowDetail(window: AccountUsageWindow) {
-  const detail = window.detail?.trim()
-  const renews = window.resetAt ? `Renews ${formatDate(window.resetAt)}` : undefined
-  if (detail && renews) return `${detail} · ${renews}`
-  return detail || renews
-}
-
-function usageWindowMeterPercent(window: AccountUsageWindow) {
-  const value =
-    window.remainingPercent !== undefined
-      ? window.remainingPercent
-      : window.usedPercent !== undefined
-        ? 100 - window.usedPercent
-        : 0
-  return Math.max(0, Math.min(100, Math.round(value)))
 }
 
 function formatDate(value: string) {
